@@ -1,6 +1,6 @@
 # Library inventory
 
-The workspace holds one application and 39 libraries. Every library carries a `type:*` and a
+The workspace holds one application and 40 libraries. Every library carries a `type:*` and a
 `scope:*` tag in its `project.json`, and the UI libraries carry a third `ui:*` tag that
 separates Trinity's own wrapper layer from the vendored kit; those tags are what
 [`@nx/enforce-module-boundaries`](https://github.com/quwisky/trinity-matrix-client/blob/develop/eslint.config.mjs)
@@ -11,7 +11,7 @@ Libraries are imported through `@trinity/*` path aliases declared in
 never by relative path across a library boundary. Imports _within_ a library stay relative.
 
 `libs/` itself has seven entries. Three are layer parents holding that layer's libraries:
-`data-access/` (12), `feature/` (5) and `util/` (1). `spartan/` (17) groups the Helm components and
+`data-access/` (12), `feature/` (5) and `util/` (1). `spartan/` (19) groups the Helm components and
 the overlay adapters. The remaining three are single libraries sitting directly under `libs/`:
 `platform-native`, `testing` and `ui`.
 

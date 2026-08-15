@@ -167,9 +167,11 @@ asserts its **shape**:
 - Every `bannedExternalImports` glob ends in `*`. Without it the pattern matches only the
   bare specifier, which nothing imports, so the rule reports success while enforcing
   nothing.
-- The staged `type:feature` ban sits on the **core** `no-restricted-imports` at severity 1,
-  while `@typescript-eslint/no-restricted-imports` stays at 2. Folding them into one entry
-  would promote 103 known violations to errors, since a rule entry has one severity.
+- Nothing is staged any more. The four vendor bans were held at `warn` on the **core**
+  `no-restricted-imports` only while the 103 known violations were being worked off; that
+  block is deleted, and every ban is now an error carried by `depConstraints`. The invariant
+  asserts the absence, so re-introducing a staged block fails the suite rather than quietly
+  reopening the gate.
 - `no-restricted-syntax` over `libs/feature/**` still carries the `matrix-js-sdk`
   `ImportExpression` selector. Flat config replaces a rule's options wholesale, so a second
   entry over those globs would delete it without a word — leaving

@@ -1,6 +1,6 @@
 # Architecture overview
 
-Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 38
+Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 40
 libraries under `libs/`, grouped by layer into `libs/data-access/`, `libs/feature/` and
 `libs/util/`, alongside `libs/platform-native`, `libs/ui`, `libs/testing` and the `libs/spartan/`
 Helm components. Web, iOS, Android and desktop are all the same compiled bundle wrapped
@@ -56,10 +56,10 @@ declared once at `eslint.config.mjs`.
 A third axis, `ui:*`, separates the two halves of the UI tier so third-party UI can be
 contained: `libs/ui` is `ui:wrapper`, the vendored Helm kit is `ui:vendor-wrapper`, and
 `bannedExternalImports` keeps `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` and
-`@ctrl/ngx-emoji-mart` out of `data-access`, `util`, `platform` and `app` entirely, and the
-first three out of `feature` as well (`@ctrl/ngx-emoji-mart` is still staged there, pending
-#152). The kit is
-unrestricted because it is the wrapper. Each glob carries a trailing `*` — without it the
+`@ctrl/ngx-emoji-mart` out of `feature`, `data-access`, `util`, `platform` and `app`
+entirely — and out of `libs/ui` too, which wraps none of them. Nothing is staged: all four
+are errors at every tier below the kit, so a new vendor import fails `pnpm lint` rather than
+warning. The kit is unrestricted because it is the wrapper. Each glob carries a trailing `*` — without it the
 pattern matches only the bare specifier, nothing imports that, and the ban silently enforces
 nothing while lint reports success. See [UI and theming](ui-and-theming.md).
 

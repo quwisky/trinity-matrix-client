@@ -16,12 +16,12 @@ once.
 | `@trinity/ui` | `libs/ui`                                                               | Trinity's own presentational components and small UI utilities.         |
 | Features      | `libs/feature/*`, aliased `@trinity/feature/*`                          | Screens and the components that make them up.                           |
 
-Eighteen libraries live under `libs/spartan/`. Two are Trinity-authored rather than
-generated — `overlay` (the dialog/alert/toast adapters) and `icon` (`<trn-icon>`, below).
-The other sixteen are Helm: avatar, badge, button, card, checkbox,
-dropdown-menu, input, label, overlay, progress, radio-group, select, sonner, spinner,
-textarea, tooltip, utils. All are tagged `type:ui` and `scope:shared`, plus
-`ui:vendor-wrapper`.
+Nineteen libraries live under `libs/spartan/`. Three are Trinity-authored rather than
+generated — `overlay` (the dialog/alert/toast adapters), `icon` (`<trn-icon>`, below) and
+`emoji-picker` (`<trn-emoji-picker>`, below); they are the ones with no `ng-package.json`.
+The other sixteen are Helm: avatar, badge, button, card, checkbox, dropdown-menu, input,
+label, progress, radio-group, select, sonner, spinner, textarea, tooltip, utils. All are
+tagged `type:ui` and `scope:shared`, plus `ui:vendor-wrapper`.
 
 That third tag is what makes the layering above enforceable rather than merely described.
 `libs/ui` and every Helm library used to carry identical tags, so no boundary rule could say
@@ -97,23 +97,17 @@ regenerate a component with the CLI rather than hand-authoring it:
 
 ```bash
 pnpm exec nx g @spartan-ng/cli:ui <name>
-node scripts/rebrand-kit.mjs
 ```
 
-**The second command is not optional.** The CLI is upstream code, so it generates upstream's
-own naming — its selector prefix, its class names, its path alias — into a kit this repo
-renamed to `trn` wholesale. `rebrand-kit.mjs` re-applies that rename. It is a pure prefix
-substitution and idempotent, so running it when nothing needs changing is a no-op.
+That is the whole workflow. The kit keeps upstream's own naming — `hlm` selectors, `Hlm*`
+class names, the `@trinity/helm/*` alias — so a regenerate lands consistent with what is
+already there and needs no post-processing step.
 
-Skip it and the kit ends up half upstream's naming and half Trinity's, which **lints clean** —
-the kit is deliberately exempt from the selector and class-suffix rules, so nothing there
-objects. `scripts/rebrand-kit.spec.mjs` is what actually catches it, by asserting the working
-tree is already a fixpoint of the codemod.
-
-(This page deliberately does not spell the old prefix out. The codemod rewrites every
-`git ls-files` path outside its own exclusion list, documentation included, so a doc that
-quotes the old identifiers rewrites itself into nonsense on the next run — and fails the
-fixpoint test on the way. The substitution table is in `scripts/rebrand-kit.mjs`.)
+An earlier revision of this branch renamed the kit to `trn` wholesale and needed a codemod
+(`scripts/rebrand-kit.mjs`) after every generate to re-apply it. That rename was reverted:
+`trn` is reserved for Trinity's own code, which is what makes the wrapper layer legible, and
+removing the second command removes a footgun — a half-renamed kit **lints clean**, because
+the kit is deliberately exempt from the selector and class-suffix rules.
 
 Configuration lives in the root `components.json`:
 
@@ -133,9 +127,10 @@ prefixes, un-suffixed class names such as `HlmButton`, and aliased inputs includ
 `libs/spartan/**/*.ts` from `component-class-suffix`, `component-selector`,
 `directive-selector` and `no-input-rename`.
 
-Only `libs/spartan/overlay` has a Vitest target; every other Helm library is build and lint
-only. That is why the specs pinning Helm behaviour live in `overlay` and import across the
-library boundary.
+The three Trinity-authored libraries under `libs/spartan/` — `overlay`, `icon` and
+`emoji-picker` — carry a Vitest target (and no build target); the sixteen generated Helm
+libraries are build and lint only. That is why the specs pinning _Helm_ behaviour live in
+`overlay` and import across the library boundary: there is nowhere else to put them.
 
 !!! warning "Never assert on a Helm component's host class string"
 
@@ -239,7 +234,7 @@ step with the banner in
 | `dropdown-menu` · `HlmDropdownMenu` and `HlmDropdownMenuSub` | `CdkTargetMenuAim` host directive                                                                                                                  | `dropdown-menu-submenu.spec.ts` |
 | `dropdown-menu` · `HlmDropdownMenuItem`                      | A destructive item's text and icon use `text-danger`, not upstream's `text-destructive`                                                            | `dropdown-menu-submenu.spec.ts` |
 | `badge` · `badgeVariants`                                    | Adds `success` and `warning` variants that upstream Helm does not ship                                                                             | `helm-components.spec.ts`       |
-| All 11 kit files with `hostDirectives`                       | Every entry states its `inputs` and `outputs` explicitly, even when empty — the generator's shorthand decides the element's public API by omission | `host-directives.spec.mjs`      |
+| All 25 kit files with `hostDirectives`, across 11 libraries  | Every entry states its `inputs` and `outputs` explicitly, even when empty — the generator's shorthand decides the element's public API by omission | `host-directives.spec.mjs`      |
 
 The specs live in
 [`libs/spartan/overlay/src/lib`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/spartan/overlay/src/lib).

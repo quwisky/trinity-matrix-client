@@ -171,7 +171,7 @@ separate acts, and only the first one is automated.
 | App-icon badge       | `@capawesome/capacitor-badge`. iOS prompts once for badge authorization on first use; Android grants without a prompt                                             |
 | Status bar           | `ThemeService` sets the native status-bar style to match the resolved light or dark theme                                                                         |
 | Deep links           | `appUrlOpen` for a warm open, `getLaunchUrl` for a cold start                                                                                                     |
-| Android back button  | The app owns the whole chain: dismiss the topmost CDK overlay, then step back through history, then minimize                                                      |
+| Android back button  | The app owns the whole chain: an open overlay always consumes the press (dismissed unless it set `disableClose`), else step back through history, else minimize   |
 | Media capture        | `MediaPickerService` opens the Capacitor gallery picker on native; elsewhere the composer falls back to a hidden file input                                       |
 | Saving an attachment | Bytes are written to the cache and handed to the OS share sheet, rather than triggering a browser download                                                        |
 | Service worker       | Not registered. The shell and the crypto module are already local files                                                                                           |

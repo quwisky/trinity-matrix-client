@@ -1,5 +1,5 @@
 {
-  "name": "kit-icon",
+  "name": "icon",
   "$schema": "../../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "libs/spartan/icon/src",
   "prefix": "trn",
