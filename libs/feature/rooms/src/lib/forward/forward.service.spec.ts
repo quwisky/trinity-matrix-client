@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { type Observable, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
-import { TrnToastService } from '@trinity/helm/overlay';
+import { TrnToastService } from '@trinity/components/overlay';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { type SwitcherSelection } from '@trinity/data-access/search';
 import { ForwardService } from './forward.service';

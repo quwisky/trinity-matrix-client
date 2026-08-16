@@ -10,11 +10,11 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { parseLocationInput } from '@trinity/util/matrix';
 import { GeolocationService, type GeoPoint } from '@trinity/platform-native';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmInput } from '@trinity/helm/input';
-import { HlmLabel } from '@trinity/helm/label';
-import { HlmSpinner } from '@trinity/helm/spinner';
-import { TrnDialogRef, TrnToastService } from '@trinity/helm/overlay';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnInput } from '@trinity/components/input';
+import { TrnLabel } from '@trinity/components/label';
+import { TrnSpinnerComponent } from '@trinity/components/spinner';
+import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 /**
  * Desktop location picker: paste a map link or type `lat, lng`. Closes with the
@@ -27,7 +27,13 @@ import { TrnIconComponent } from '@trinity/helm/icon';
 @Component({
   selector: 'trn-manual-location-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnIconComponent, HlmButton, HlmInput, HlmLabel, HlmSpinner],
+  imports: [
+    TrnIconComponent,
+    HlmButton,
+    TrnInput,
+    TrnLabel,
+    TrnSpinnerComponent,
+  ],
   templateUrl: './manual-location-dialog.component.html',
 })
 export class ManualLocationDialogComponent {

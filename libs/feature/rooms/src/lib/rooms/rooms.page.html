@@ -101,7 +101,7 @@
           size="icon"
           class="md:hidden"
           (click)="backToList()"
-          hlmTooltip="Back to rooms"
+          trnTooltip="Back to rooms"
           aria-label="Back to rooms"
           data-testid="back-to-rooms"
         >
@@ -151,7 +151,7 @@
               variant="ghost"
               size="icon"
               (click)="messageActions.openMessageSearch()"
-              hlmTooltip="Search messages in this room"
+              trnTooltip="Search messages in this room"
               aria-label="Search messages in this room"
               data-testid="search-messages"
             >
@@ -163,7 +163,7 @@
               size="icon"
               class="max-md:hidden"
               (click)="roomActions.onInviteToRoom()"
-              hlmTooltip="Invite people"
+              trnTooltip="Invite people"
               aria-label="Invite people"
               data-testid="invite-people"
             >
@@ -175,7 +175,7 @@
               size="icon"
               class="max-md:hidden"
               (click)="roomActions.onOpenRoomSettings()"
-              hlmTooltip="Room settings"
+              trnTooltip="Room settings"
               aria-label="Room settings"
               data-testid="open-room-settings"
             >
@@ -186,7 +186,7 @@
               variant="ghost"
               size="icon"
               (click)="messageActions.openThreadsList()"
-              hlmTooltip="Threads"
+              trnTooltip="Threads"
               aria-label="Threads"
               data-testid="open-threads"
             >
@@ -198,7 +198,7 @@
               size="icon"
               class="header-pin max-md:hidden"
               (click)="messageActions.openPinnedPanel()"
-              hlmTooltip="Pinned messages"
+              trnTooltip="Pinned messages"
               aria-label="Pinned messages"
               data-testid="open-pinned"
             >
@@ -216,7 +216,7 @@
               class="max-md:hidden"
               (click)="toggleMembers()"
               [attr.aria-pressed]="store.membersOpen()"
-              hlmTooltip="Members"
+              trnTooltip="Members"
               aria-label="Members"
               data-testid="toggle-members"
             >

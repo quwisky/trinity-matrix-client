@@ -65,7 +65,7 @@ describe('SasCompareComponent', () => {
     const waiting = container.querySelector('[data-testid="sas-waiting"]');
     expect(waiting).not.toBeNull();
     expect(waiting?.getAttribute('aria-live')).toBe('polite');
-    expect(waiting?.querySelector('hlm-spinner')).not.toBeNull();
+    expect(waiting?.querySelector('trn-spinner')).not.toBeNull();
     expect(waiting?.textContent).toMatch(/waiting for the other device/i);
 
     expect(container.querySelector('[data-testid="sas-match"]')).toBeNull();

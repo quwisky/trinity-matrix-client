@@ -5,7 +5,7 @@ import {
   input,
 } from '@angular/core';
 import { HlmButton } from '@trinity/helm/button';
-import { TrnDialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 
 /** Dialog that shows a message event's raw JSON ("view source"), with a copy action. */
 @Component({

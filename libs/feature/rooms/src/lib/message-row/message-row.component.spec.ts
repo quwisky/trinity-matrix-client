@@ -289,7 +289,7 @@ describe('MessageRowComponent', () => {
 
       // Defect control, and the reason the assertion above means anything. On its own,
       // "no tooltip appeared" also passes if the PointerEvent shim were dropped, if
-      // [hlmTooltip] were removed from the shield, or if brain stopped rendering this
+      // [trnTooltip] were removed from the shield, or if brain stopped rendering this
       // testid — every regression it is meant to catch. Driving the SAME element through
       // the SAME plumbing with a mouse pointer must open it.
       fireEvent.pointerEnter(shield, { pointerType: 'mouse' });

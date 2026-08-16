@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
-import { TrnDialogService } from '@trinity/helm/overlay';
+import { TrnDialogService } from '@trinity/components/overlay';
 import { ReactionPickerComponent } from './reaction-picker.component';
 import { ReactionPickerService } from './reaction-picker.service';
 

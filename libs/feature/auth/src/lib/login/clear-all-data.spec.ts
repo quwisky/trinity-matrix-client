@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { TrnAlertService } from '@trinity/helm/overlay';
+import type { TrnAlertService } from '@trinity/components/overlay';
 import {
   CLEAR_DATA_CONFIRMATION_WORD,
   CLEAR_DATA_CONSEQUENCES,

@@ -49,8 +49,8 @@ import {
   ENCRYPTION_DIALOG_COMPONENTS,
   type EncryptionDialogLoaders,
 } from '@trinity/ui';
-import { provideTrnIcons } from '@trinity/helm/icon';
-import { provideSpartanHlm } from '@trinity/helm/utils';
+import { provideTrnIcons } from '@trinity/components/icon';
+import { provideTrnOverlayDefaults } from '@trinity/components/overlay';
 
 import { routes } from './app/app.routes';
 import { AppComponent, NavigationFocusService } from '@trinity/feature/shell';
@@ -85,7 +85,7 @@ bootstrapApplication(AppComponent, {
     { provide: ErrorHandler, useClass: TrinityErrorHandler },
     // Spartan/helm CDK-overlay default: disable Angular 21's usePopover so helm
     // dialogs/tooltips render above position:fixed elements (e.g. the toaster).
-    provideSpartanHlm(),
+    provideTrnOverlayDefaults(),
     // `canceledNavigationResolution: 'computed'` is required by the canDeactivate guards
     // on /encryption/{setup,unlock}: under the default 'replace', a guard that cancels a
     // popstate navigation makes the router replaceState the current URL over the entry

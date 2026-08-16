@@ -1,7 +1,7 @@
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
-import { TrnDialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import { fireEvent, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import {
@@ -157,7 +157,7 @@ describe('DeviceVerificationPage', () => {
     );
 
     expect(
-      container.querySelector('[data-testid="sas-waiting"] hlm-spinner'),
+      container.querySelector('[data-testid="sas-waiting"] trn-spinner'),
     ).not.toBeNull();
     expect(container.querySelector('[data-testid="sas-match"]')).toBeNull();
   });

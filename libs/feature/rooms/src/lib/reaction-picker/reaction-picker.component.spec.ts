@@ -1,4 +1,4 @@
-import { TrnDialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
 import { MockComponent } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
@@ -6,7 +6,7 @@ import { ReactionPickerComponent } from './reaction-picker.component';
 import {
   TrnEmojiPickerComponent,
   type TrnEmojiPick,
-} from '@trinity/helm/emoji-picker';
+} from '@trinity/components/emoji-picker';
 
 /** A pick as the wrapper emits it — always with a character; see TrnEmojiPick. */
 const pick = (native: string): TrnEmojiPick => ({

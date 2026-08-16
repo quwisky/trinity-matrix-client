@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProfileService, type UserProfile } from '@trinity/data-access/profile';
 import { AvatarComponent } from '@trinity/ui';
 import { ProfileSettingsComponent } from './profile-settings.component';
-import { provideTrnIcons } from '@trinity/helm/icon';
+import { provideTrnIcons } from '@trinity/components/icon';
 
 describe('ProfileSettingsComponent', () => {
   let profile: ReturnType<typeof signal<UserProfile | null>>;

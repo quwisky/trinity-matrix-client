@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { type Observable, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
-import { TrnDialogService, TrnToastService } from '@trinity/helm/overlay';
+import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { CreatePollService } from './create-poll.service';
 import { type NewPoll } from './create-poll-dialog.component';

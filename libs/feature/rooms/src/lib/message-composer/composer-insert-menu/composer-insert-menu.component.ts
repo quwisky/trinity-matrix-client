@@ -9,9 +9,9 @@ import {
   HlmDropdownMenuItem,
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
-import { HlmSpinner } from '@trinity/helm/spinner';
-import { HlmTooltip } from '@trinity/helm/tooltip';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnSpinnerComponent } from '@trinity/components/spinner';
+import { TrnTooltip } from '@trinity/components/tooltip';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 /**
  * The composer's `+`: every way something other than typed text gets into a message.
@@ -29,8 +29,8 @@ import { TrnIconComponent } from '@trinity/helm/icon';
     HlmDropdownMenu,
     HlmDropdownMenuItem,
     HlmDropdownMenuTrigger,
-    HlmSpinner,
-    HlmTooltip,
+    TrnSpinnerComponent,
+    TrnTooltip,
   ],
   templateUrl: './composer-insert-menu.component.html',
   styleUrl: './composer-insert-menu.component.scss',

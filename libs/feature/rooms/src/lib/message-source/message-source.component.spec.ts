@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
-import { TrnDialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import { MessageSourceComponent } from './message-source.component';
 
 async function build(source: string) {

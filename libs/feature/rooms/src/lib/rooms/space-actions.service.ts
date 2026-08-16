@@ -11,7 +11,7 @@ import {
   type RoomSortMode,
   type SpaceChildRoom,
 } from '@trinity/data-access/rooms';
-import { TrnAlertService, TrnDialogService } from '@trinity/helm/overlay';
+import { TrnAlertService, TrnDialogService } from '@trinity/components/overlay';
 import { map, switchMap } from 'rxjs';
 import { AddToSpaceComponent } from '../add-to-space/add-to-space.component';
 import { ManageSpaceRoomsComponent } from '../manage-space-rooms/manage-space-rooms.component';

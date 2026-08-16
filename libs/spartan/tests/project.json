@@ -1,0 +1,12 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "spartan-tests",
+  "projectType": "library",
+  "sourceRoot": "libs/spartan/tests/src",
+  "prefix": "hlm",
+  "tags": ["type:ui", "scope:shared", "ui:vendor-wrapper"],
+  "targets": {
+    "test": {},
+    "typecheck": {}
+  }
+}

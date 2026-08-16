@@ -31,7 +31,7 @@
   <button
     type="button"
     class="toolbar__btn"
-    hlmTooltip="Add reaction"
+    trnTooltip="Add reaction"
     aria-label="Add reaction"
     [attr.aria-expanded]="pickerOpen()"
     [attr.aria-controls]="pickerOpen() ? pickerId : null"
@@ -44,7 +44,7 @@
   <button
     type="button"
     class="toolbar__btn"
-    hlmTooltip="Reply"
+    trnTooltip="Reply"
     aria-label="Reply"
     (click)="action.emit({ type: 'reply' })"
   >
@@ -55,7 +55,7 @@
     <button
       type="button"
       class="toolbar__btn"
-      hlmTooltip="Reply in thread"
+      trnTooltip="Reply in thread"
       aria-label="Reply in thread"
       (click)="action.emit({ type: 'thread' })"
     >
@@ -68,7 +68,7 @@
     class="toolbar__btn"
     [hlmDropdownMenuTrigger]="moreMenu"
     align="end"
-    hlmTooltip="More actions"
+    trnTooltip="More actions"
     aria-label="More actions"
     data-testid="msg-more"
   >

@@ -1,4 +1,4 @@
-import { TrnDialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import {
   RoomsService,
   type UserSearchResult,

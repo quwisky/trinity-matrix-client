@@ -7,10 +7,10 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmTooltip } from '@trinity/helm/tooltip';
-import { TrnDialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnTooltip } from '@trinity/components/tooltip';
+import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 /**
  * Pinned-messages panel: every `m.room.pinned_events` entry for the active room, in
@@ -28,7 +28,7 @@ import { TrnIconComponent } from '@trinity/helm/icon';
 @Component({
   selector: 'trn-pinned-messages-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnIconComponent, HlmButton, HlmTooltip],
+  imports: [TrnIconComponent, HlmButton, TrnTooltip],
   templateUrl: './pinned-messages-panel.component.html',
   styleUrl: './pinned-messages-panel.component.scss',
 })

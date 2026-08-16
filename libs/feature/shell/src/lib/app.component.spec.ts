@@ -12,7 +12,7 @@ import { App } from '@capacitor/app';
 import { VerificationService } from '@trinity/data-access/crypto';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { render } from '@trinity/testing';
-import { TrnDialogService, TrnToastService } from '@trinity/helm/overlay';
+import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { Subject } from 'rxjs';
 import {

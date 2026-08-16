@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "components-select",
+  "projectType": "library",
+  "sourceRoot": "libs/components/select/src",
+  "prefix": "trn",
+  "tags": ["type:ui", "scope:shared", "ui:public"],
+  "targets": { "test": {}, "typecheck": {} }
+}

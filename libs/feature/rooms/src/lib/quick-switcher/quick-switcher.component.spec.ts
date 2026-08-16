@@ -1,6 +1,6 @@
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { TrnDialogRef, TrnDialogService } from '@trinity/helm/overlay';
+import { TrnDialogRef, TrnDialogService } from '@trinity/components/overlay';
 import {
   SearchService,
   type SwitcherResult,

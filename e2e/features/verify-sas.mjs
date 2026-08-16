@@ -166,7 +166,7 @@ async function assertWaitingOnPeer(scope) {
   if ((await waiting.getAttribute('aria-live')) !== 'polite') {
     throw new Error('the waiting status is not an aria-live region');
   }
-  if ((await waiting.locator('hlm-spinner').count()) !== 1) {
+  if ((await waiting.locator('trn-spinner').count()) !== 1) {
     throw new Error('no spinner inside the waiting status');
   }
   const names = await emojiNames(scope);

@@ -7,7 +7,7 @@ import {
 import { HlmButton } from '@trinity/helm/button';
 import { TimelineService } from '@trinity/data-access/timeline';
 import { BannerComponent } from '@trinity/ui';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 /**
  * Banner shown at the top of a room that has been **upgraded** (`m.room.tombstone`):

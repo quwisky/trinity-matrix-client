@@ -9,7 +9,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmCheckbox } from '@trinity/helm/checkbox';
+import { TrnCheckboxComponent } from '@trinity/components/checkbox';
 import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-key-display.component';
 
 /**
@@ -32,7 +32,7 @@ import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-ke
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './recovery-key-save.component.html',
   styleUrls: ['./recovery-key-save.component.scss'],
-  imports: [HlmButton, HlmCheckbox, RecoveryKeyDisplayComponent],
+  imports: [HlmButton, TrnCheckboxComponent, RecoveryKeyDisplayComponent],
 })
 export class RecoveryKeySaveComponent {
   readonly recoveryKey = input.required<string>();

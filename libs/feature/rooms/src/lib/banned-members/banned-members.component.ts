@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HlmButton } from '@trinity/helm/button';
-import { TrnToastService } from '@trinity/helm/overlay';
+import { TrnToastService } from '@trinity/components/overlay';
 import {
   RoomModerationService,
   type BannedMember,

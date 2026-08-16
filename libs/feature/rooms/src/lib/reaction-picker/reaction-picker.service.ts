@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { TrnDialogService } from '@trinity/helm/overlay';
+import { TrnDialogService } from '@trinity/components/overlay';
 import { ReactionPickerComponent } from './reaction-picker.component';
 
 /**

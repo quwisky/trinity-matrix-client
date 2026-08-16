@@ -28,7 +28,7 @@ import {
 import { PresenceService } from '@trinity/data-access/profile';
 import { type PresenceState } from '@trinity/util/matrix';
 import { type PendingInvite } from '@trinity/data-access/invites';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 /**
  * The scrolling body of the channel sidebar: pending invites, the favourite and

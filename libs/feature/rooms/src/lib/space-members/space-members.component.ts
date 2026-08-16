@@ -6,7 +6,7 @@ import {
   input,
 } from '@angular/core';
 import { HlmButton } from '@trinity/helm/button';
-import { TrnDialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import { RoomsService, type MemberSummary } from '@trinity/data-access/rooms';
 import { AvatarComponent } from '@trinity/ui';
 import { MEMBER_ROLE_LABEL, memberRole } from '../shared/member-role';

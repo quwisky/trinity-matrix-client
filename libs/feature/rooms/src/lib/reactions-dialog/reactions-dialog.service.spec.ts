@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { TrnDialogService } from '@trinity/helm/overlay';
+import { TrnDialogService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReactionsDialogComponent } from './reactions-dialog.component';

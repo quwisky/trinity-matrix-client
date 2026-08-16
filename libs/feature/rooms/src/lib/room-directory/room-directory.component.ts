@@ -11,8 +11,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subscription } from 'rxjs';
 import { FormField, FormRoot, form } from '@angular/forms/signals';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmInput } from '@trinity/helm/input';
-import { TrnDialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnInput } from '@trinity/components/input';
+import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import {
   PublicRoomsService,
   type PublicRoomSummary,
@@ -37,7 +37,7 @@ export interface DirectoryJoin {
   selector: 'trn-room-directory',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './room-directory.component.html',
-  imports: [FormField, FormRoot, HlmButton, HlmInput, AvatarComponent],
+  imports: [FormField, FormRoot, HlmButton, TrnInput, AvatarComponent],
 })
 export class RoomDirectoryComponent implements OnInit {
   private readonly dialogRef =

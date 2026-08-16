@@ -5,30 +5,21 @@
     Presence
   </h2>
 
-  <hlm-radio-group
+  <trn-radio-group
     class="px-4 py-2"
+    [options]="presenceOptions"
     [value]="stateDraft()"
     (valueChange)="onStateChange($event)"
-  >
-    @for (state of options; track state) {
-      <label
-        class="flex cursor-pointer items-center gap-3 text-sm font-medium"
-        [attr.data-testid]="'presence-' + state"
-      >
-        <hlm-radio [value]="state"><hlm-radio-indicator /></hlm-radio>
-        {{ labelFor(state) }}
-      </label>
-    }
-  </hlm-radio-group>
+  />
 
   <div
     class="flex items-end gap-3 border-b border-solid border-border px-4 py-2"
   >
     <div class="min-w-0 flex-1">
-      <label hlmLabel for="presence-status">Status message</label>
+      <label trnLabel for="presence-status">Status message</label>
       <input
         id="presence-status"
-        hlmInput
+        trnInput
         type="text"
         autocomplete="off"
         [attr.maxlength]="maxLength"

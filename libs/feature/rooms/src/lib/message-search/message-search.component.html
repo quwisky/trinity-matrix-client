@@ -18,7 +18,7 @@
 
   <div class="border-b border-solid border-border p-3">
     <input
-      hlmInput
+      trnInput
       data-autofocus
       placeholder="Search this conversation"
       autocapitalize="off"
@@ -47,7 +47,7 @@
           data-testid="load-older"
         >
           @if (loadingHistory()) {
-            <hlm-spinner />
+            <trn-spinner />
           }
           Load older messages
         </button>
@@ -70,7 +70,7 @@
             data-testid="search-server"
           >
             @if (searching()) {
-              <hlm-spinner />
+              <trn-spinner />
             } @else {
               <trn-icon name="server" />
             }
@@ -130,7 +130,7 @@
           data-testid="load-more-server"
         >
           @if (searching()) {
-            <hlm-spinner />
+            <trn-spinner />
           }
           Load more results
         </button>

@@ -18,7 +18,7 @@
 
   <div class="border-b border-solid border-border p-3">
     <input
-      hlmInput
+      trnInput
       [placeholder]="placeholder()"
       [attr.aria-label]="placeholder()"
       autocapitalize="off"
@@ -31,7 +31,7 @@
 
   <div class="flex-1 overflow-y-auto p-2">
     @if (searching()) {
-      <div class="picker-status" aria-live="polite"><hlm-spinner /></div>
+      <div class="picker-status" aria-live="polite"><trn-spinner /></div>
     }
     @for (user of results(); track user.userId) {
       <button

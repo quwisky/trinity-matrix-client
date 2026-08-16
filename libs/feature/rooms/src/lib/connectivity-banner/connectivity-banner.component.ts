@@ -6,7 +6,7 @@ import {
 } from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { BannerComponent } from '@trinity/ui';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 /**
  * Slim banner shown in the rooms shell when the sync connection is lost. The

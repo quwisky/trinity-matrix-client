@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Capacitor } from '@capacitor/core';
-import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
+import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import {
   APP_CONFIG_ENTRIES,
   AppConfigService,

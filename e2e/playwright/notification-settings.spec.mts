@@ -76,7 +76,7 @@ test.describe('Notification settings', () => {
 
     const checkbox = page
       .getByTestId(`notif-${RULE_ID}`)
-      .locator('hlm-checkbox');
+      .locator('trn-checkbox');
     await expect(checkbox).toBeVisible({ timeout: 15_000 });
     await checkbox.click();
 

@@ -6,7 +6,7 @@ import {
   TimelineActionsService,
   TimelineService,
 } from '@trinity/data-access/timeline';
-import { TrnToastService } from '@trinity/helm/overlay';
+import { TrnToastService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { Subject, config, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';

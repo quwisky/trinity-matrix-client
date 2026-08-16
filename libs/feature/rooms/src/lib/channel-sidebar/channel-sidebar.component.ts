@@ -19,7 +19,7 @@ import {
   HlmDropdownMenuSubTrigger,
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
-import { HlmInput } from '@trinity/helm/input';
+import { TrnInput } from '@trinity/components/input';
 import {
   AvatarComponent,
   BELOW_MD_QUERY,
@@ -56,7 +56,7 @@ import {
   type AccountSummary,
 } from './sidebar-user-panel/sidebar-user-panel.component';
 import { SidebarRoomListComponent } from './sidebar-room-list/sidebar-room-list.component';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 export type { AccountSummary };
 
@@ -69,7 +69,7 @@ export type { AccountSummary };
     SidebarRoomListComponent,
     AvatarComponent,
     TrnIconComponent,
-    HlmInput,
+    TrnInput,
     HlmDropdownMenuTrigger,
     HlmDropdownMenu,
     HlmDropdownMenuItem,

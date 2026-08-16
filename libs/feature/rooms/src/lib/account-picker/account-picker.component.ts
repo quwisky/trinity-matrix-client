@@ -4,7 +4,7 @@ import {
   inject,
   input,
 } from '@angular/core';
-import { TrnDialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
 import { AccountScopeService } from '@trinity/data-access/rooms';
 import { AvatarComponent } from '@trinity/ui';
