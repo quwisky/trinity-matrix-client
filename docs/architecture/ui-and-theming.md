@@ -31,6 +31,16 @@ That third tag is what makes the layering above enforceable rather than merely d
 below the UI one. The kit is deliberately unrestricted: it **is** the wrapper. `libs/ui` is
 banned from all four, including `@angular/cdk` — it wraps none of them.
 
+The ban reads TypeScript import specifiers and nothing else, so it is worth knowing where it
+cannot see. `apps/trinity`'s build `styles` array names two vendor stylesheets directly —
+`@angular/cdk/overlay-prebuilt.css`, without which no overlay positions at all, and
+`@ctrl/ngx-emoji-mart/picker.css`. Both must load globally. The picker's _can_ be pulled into
+its lazy component chunk (`@import '@ctrl/ngx-emoji-mart/picker'` resolves and inlines), but
+that puts the component 517 bytes over the 8 kB `anyComponentStyle` budget, and widening a
+budget that guards every component to relocate one vendored file is the worse trade. So the
+two are pinned by `lint-invariants.spec.mjs` instead: a third has to be argued for there
+rather than appearing in build config nobody reads as part of the boundary.
+
 Composition is the other half of that containment. `hostDirectives` **is** public API — a
 composed directive's input is bindable on our element only if the entry lists it — so every
 entry in the kit states its `inputs`, even when the answer is `[]`. The shorthand

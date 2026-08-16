@@ -171,11 +171,10 @@ const UI_BOUNDARY = [
  * filter below, since it is the layer the bans exist to protect rather than an exception to
  * them.
  *
- * Not listed because no glob can reach it: `trinity-desktop` (the Electron shell at
- * `electron/`) is an Nx project with NO project.json — its config is inferred, and it
- * carries no tags at all. It is a separate dependency tree with no Angular in it, so no UI
- * vendor ban would apply, but nothing here can assert that. Give it a project.json with
- * tags if it ever grows renderer-side UI code.
+ * `trinity-desktop` (the Electron shell) is not listed either, and no longer needs to be: it
+ * used to be the one Nx project with no tags AND no project.json for a glob to find, so this
+ * guard could not see the single project it could not vouch for. It now carries
+ * `type:app`/`scope:shared` in `electron/project.json` and is swept below like anything else.
  */
 const OUTSIDE_THE_VENDOR_BANS = ['e2e/project.json', 'scripts/project.json'];
 
@@ -221,9 +220,10 @@ describe('UI vendor boundary', () => {
     // Swept beyond {apps,libs}: `e2e` and `scripts` are Nx projects too, and the previous
     // glob simply could not see them — so "tags every project" was asserted over 41 of the
     // 43 project.json files in the tree and passed on a sweep that never looked.
-    const projects = globSync('{apps,libs,e2e,scripts}/**/project.json', {
-      cwd: workspaceRoot,
-    });
+    const projects = globSync(
+      '{apps,libs,e2e,scripts,electron}/**/project.json',
+      { cwd: workspaceRoot },
+    );
     // An empty sweep must not pass as a clean one — the same trap the host-directives
     // guard was written around.
     expect(projects.length).toBeGreaterThan(30);
@@ -243,6 +243,33 @@ describe('UI vendor boundary', () => {
       .sort();
 
     expect(uncovered).toEqual(OUTSIDE_THE_VENDOR_BANS);
+  });
+
+  it('keeps the app-tier vendor stylesheets to the two the ban cannot cover', () => {
+    // `bannedExternalImports` matches TS/JS import specifiers, and nothing else. The app's
+    // build `styles` array is configuration, so a vendor stylesheet listed there is
+    // invisible to every rule above — the boundary is enforced for code and silent here.
+    // Both entries below are deliberate and both have to live at this tier: CDK's overlay
+    // sheet must be global for any overlay to position at all, and while the emoji picker's
+    // CAN be pulled into the lazy component chunk (`@import '@ctrl/ngx-emoji-mart/picker'`
+    // resolves and inlines), doing so puts that component 517 bytes over the workspace's
+    // 8 kB `anyComponentStyle` budget — and raising a budget that guards every component,
+    // to relocate one vendored file, is the worse trade.
+    //
+    // So this is pinned rather than fixed: the list is a decision with a reason, and a third
+    // entry has to be argued for here instead of appearing in a build config nobody reads as
+    // part of the boundary.
+    const app = JSON.parse(
+      readFileSync(join(workspaceRoot, 'apps/trinity/project.json'), 'utf8'),
+    );
+    const vendorStyles = app.targets.build.options.styles.filter((style) =>
+      style.startsWith('node_modules/'),
+    );
+
+    expect(vendorStyles).toEqual([
+      'node_modules/@angular/cdk/overlay-prebuilt.css',
+      'node_modules/@ctrl/ngx-emoji-mart/picker.css',
+    ]);
   });
 
   it('bans the vendors from every tier that should not render third-party UI', async () => {
