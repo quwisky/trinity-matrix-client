@@ -42,6 +42,11 @@ log.txt
 # cache into `libs/<lib>/node_modules/.vite/`, and an anchored `/node_modules` left those
 # committable. Nothing tracked them yet, but `git add -A` picked one up.
 node_modules/
+# Without the bare form too, a `node_modules` SYMLINK is not ignored — the trailing
+# slash only matches a directory. Tooling that links a shared install into a git
+# worktree creates exactly that, and `git add -A` then commits a symlink whose target
+# is an absolute path; checking it out replaces the real directory with a loop.
+node_modules
 npm-debug.log
 yarn-error.log
 
