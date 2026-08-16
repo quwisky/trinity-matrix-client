@@ -57,7 +57,7 @@ import {
     </ng-template>
   `,
 })
-class SubmenuHost {}
+class SubmenuHostComponent {}
 
 // CDK menu overlays are root views attached to ApplicationRef, not the fixture view,
 // so a full tick() is what renders their content under zoneless change detection.
@@ -71,7 +71,7 @@ function byTestId(id: string): HTMLElement | null {
 
 describe('HlmDropdownMenuSubTrigger — submenu open semantics', () => {
   it('opens the submenu on click and keeps it open on a second click (never toggles closed)', async () => {
-    await render(SubmenuHost);
+    await render(SubmenuHostComponent);
 
     (byTestId('root-trigger') as HTMLElement).click();
     flush();
@@ -112,11 +112,11 @@ describe('HlmDropdownMenuSubTrigger — submenu open semantics', () => {
     <ng-template #empty><div hlmDropdownMenu></div></ng-template>
   `,
 })
-class TriggerHost {}
+class TriggerHostComponent {}
 
 /** The `menuPosition` the directive on `testid` assigned to its host CdkMenuTrigger. */
 function positionsFor(
-  fixture: ComponentFixture<TriggerHost>,
+  fixture: ComponentFixture<TriggerHostComponent>,
   testid: string,
 ): ConnectedPosition[] {
   const el = fixture.debugElement.query(By.css(`[data-testid="${testid}"]`));
@@ -129,7 +129,7 @@ function positionsFor(
 // untestable here; the position list handed to CDK is the real input and is what these pin.
 describe('HlmDropdownMenuSubTrigger — submenu placement', () => {
   it('places a submenu beside its trigger, never above or below it', async () => {
-    const { fixture } = await render(TriggerHost);
+    const { fixture } = await render(TriggerHostComponent);
 
     expect(positionsFor(fixture, 'sub')).toEqual([
       { originX: 'end', originY: 'top', overlayX: 'start', overlayY: 'top' },
@@ -141,7 +141,7 @@ describe('HlmDropdownMenuSubTrigger — submenu placement', () => {
   // the parent, whichever fallback CDK picks. Stated separately so the reason survives an
   // upstream change to the exact list.
   it('offers only horizontal placements, so no fallback can cover the parent', async () => {
-    const { fixture } = await render(TriggerHost);
+    const { fixture } = await render(TriggerHostComponent);
 
     for (const position of positionsFor(fixture, 'sub')) {
       expect(position.originY).toBe(position.overlayY);
@@ -150,7 +150,7 @@ describe('HlmDropdownMenuSubTrigger — submenu placement', () => {
   });
 
   it('still honours an explicit side, so the default is an override and not a lock', async () => {
-    const { fixture } = await render(TriggerHost);
+    const { fixture } = await render(TriggerHostComponent);
 
     expect(positionsFor(fixture, 'sub-forced')).toEqual([
       {
@@ -170,7 +170,7 @@ describe('HlmDropdownMenuSubTrigger — submenu placement', () => {
 
   // A root dropdown SHOULD open below its trigger — the override is scoped to submenus.
   it('leaves a root trigger opening below its trigger', async () => {
-    const { fixture } = await render(TriggerHost);
+    const { fixture } = await render(TriggerHostComponent);
 
     expect(positionsFor(fixture, 'root')).toEqual([
       {
@@ -195,7 +195,7 @@ describe('HlmDropdownMenuSubTrigger — submenu placement', () => {
   imports: [HlmDropdownMenu],
   template: `<div hlmDropdownMenu data-testid="menu"></div>`,
 })
-class AimHost {}
+class AimHostComponent {}
 
 // Issue #28, second half. Now that submenus open BESIDE their parent, the pointer has to
 // travel across the rows between the trigger and the row it is aiming at — and CDK closes an
@@ -204,7 +204,7 @@ class AimHost {}
 // jsdom cannot model pointer trajectory, so this pins the provider instead.
 describe('HlmDropdownMenu — menu aim', () => {
   it('provides a MENU_AIM so travelling into a submenu does not close it', async () => {
-    const { fixture } = await render(AimHost);
+    const { fixture } = await render(AimHostComponent);
 
     const menu = fixture.debugElement.query(By.css('[data-testid="menu"]'));
     expect(menu.injector.get(MENU_AIM, null)).not.toBeNull();
@@ -235,11 +235,11 @@ describe('HlmDropdownMenu — menu aim', () => {
     </ng-template>
   `,
 })
-class DestructiveHost {}
+class DestructiveHostComponent {}
 
 describe('HlmDropdownMenuItem — destructive colouring', () => {
   it('colours a destructive row with the danger token, never Helm’s fill-only destructive', async () => {
-    await render(DestructiveHost);
+    await render(DestructiveHostComponent);
     byTestId('root-trigger')!.click();
     flush();
 

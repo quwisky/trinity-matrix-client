@@ -13,7 +13,7 @@ import { TrnEmojiPickerComponent } from './trn-emoji-picker.component';
   imports: [TrnEmojiPickerComponent],
   template: `<trn-emoji-picker (picked)="picks.set([...picks(), $event])" />`,
 })
-class Host {
+class HostComponent {
   readonly picks = signal<TrnEmojiPick[]>([]);
 }
 
@@ -99,7 +99,7 @@ describe('TrnEmojiPickerComponent', () => {
    * the narrowing in one path, so breaking either fails here.
    */
   const emit = async (emoji: unknown) => {
-    const { fixture } = await render(Host);
+    const { fixture } = await render(HostComponent);
     const vendor = fixture.debugElement.query(By.directive(PickerComponent));
     vendor.componentInstance.emojiSelect.emit({
       emoji,

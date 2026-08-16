@@ -145,12 +145,12 @@ describe('aria-describedby on helm form controls', () => {
       <hlm-checkbox data-testid="checkbox" aria-describedby="hint" />
     `,
   })
-  class Host {
+  class HostComponent {
     readonly id = 'hint';
   }
 
   const describedBy = async (testId: string) => {
-    const { fixture } = await render(Host);
+    const { fixture } = await render(HostComponent);
     return fixture.debugElement
       .query(By.css(`[data-testid=${testId}]`))
       .nativeElement.getAttribute('aria-describedby');
@@ -185,11 +185,11 @@ describe('aria-describedby on helm form controls', () => {
         [attr.aria-describedby]="id"
       />`,
     })
-    class AttrHost {
+    class AttrHostComponent {
       readonly id = 'hint';
     }
 
-    const { fixture } = await render(AttrHost);
+    const { fixture } = await render(AttrHostComponent);
 
     expect(
       fixture.debugElement

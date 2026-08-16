@@ -19,7 +19,7 @@ import { TrnToastService } from './trn-toast.service';
   imports: [HlmToaster],
   template: `<hlm-toaster />`,
 })
-class ToasterHost {}
+class ToasterHostComponent {}
 
 // Brain's sonner adds toasts to a signal and renders on the following render pass;
 // tick + drain a microtask + tick lets that settle under zoneless.
@@ -31,7 +31,7 @@ async function settle(): Promise<void> {
 
 describe('TrnToastService → <hlm-toaster/> (shared brain sonner state)', () => {
   it('actually renders a shown toast in the mounted toaster', async () => {
-    await render(ToasterHost);
+    await render(ToasterHostComponent);
 
     TestBed.inject(TrnToastService).show('regression-toast-marker', {
       variant: 'success',
@@ -47,7 +47,7 @@ describe('TrnToastService → <hlm-toaster/> (shared brain sonner state)', () =>
     // does nothing. Only mounting the real toaster and clicking the button proves
     // the option survives the trip — asserting on the object handed to `toast()`
     // would pass just as happily against a key sonner ignores.
-    await render(ToasterHost);
+    await render(ToasterHostComponent);
     let activated = 0;
 
     TestBed.inject(TrnToastService).show('A new version is available.', {
