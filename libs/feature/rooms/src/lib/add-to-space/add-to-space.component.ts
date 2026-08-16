@@ -12,7 +12,7 @@ import { FormField, form } from '@angular/forms/signals';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { HlmInput } from '@trinity/helm/input';
-import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnDialogRef, TrnToastService } from '@trinity/helm/overlay';
 import {
   RoomsService,
   SpaceChildrenService,
@@ -59,8 +59,7 @@ export class AddToSpaceComponent {
   readonly spaceId = input.required<string>();
   readonly spaceName = input('this space');
 
-  private readonly dialogRef =
-    inject<DialogRef<boolean, AddToSpaceComponent>>(DialogRef);
+  private readonly dialogRef = inject<TrnDialogRef<boolean>>(TrnDialogRef);
   private readonly rooms = inject(RoomsService);
   private readonly spaces = inject(SpacesService);
   private readonly children = inject(SpaceChildrenService);

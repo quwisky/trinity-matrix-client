@@ -15,7 +15,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize, type Observable } from 'rxjs';
 import {
-  DialogRef,
+  TrnDialogRef,
   TrnAlertService,
   TrnToastService,
 } from '@trinity/helm/overlay';
@@ -103,8 +103,7 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   private readonly reactionsDialog = inject(ReactionsDialogService);
   private readonly timeline = inject(TimelineService);
   private readonly timelineActions = inject(TimelineActionsService);
-  private readonly dialogRef =
-    inject<DialogRef<void, ThreadViewComponent>>(DialogRef);
+  private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef);
   private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);

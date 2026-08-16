@@ -1,7 +1,7 @@
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
-import { DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/helm/overlay';
 import { fireEvent, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import {
@@ -44,7 +44,7 @@ async function renderPage(
           },
         } as never,
       }),
-      MockProvider(DialogRef, { close }),
+      MockProvider(TrnDialogRef, { close }),
     ],
   });
 

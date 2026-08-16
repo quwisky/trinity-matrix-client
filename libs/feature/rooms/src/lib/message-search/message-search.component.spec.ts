@@ -1,6 +1,6 @@
 import { ApplicationRef, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { DialogRef, TrnDialogService } from '@trinity/helm/overlay';
+import { TrnDialogRef, TrnDialogService } from '@trinity/helm/overlay';
 import { render } from '@trinity/testing';
 import {
   SearchService,
@@ -56,7 +56,7 @@ describe('MessageSearchComponent', () => {
       inputs: { roomId: '!r:hs' },
       imports: [MockComponent(AvatarComponent)],
       providers: [
-        MockProvider(DialogRef, { close: dismiss }),
+        MockProvider(TrnDialogRef, { close: dismiss }),
         MockProvider(SearchService, {
           searchLoadedMessages,
           searchServerMessages,

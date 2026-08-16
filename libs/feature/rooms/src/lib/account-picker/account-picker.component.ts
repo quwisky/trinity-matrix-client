@@ -4,7 +4,7 @@ import {
   inject,
   input,
 } from '@angular/core';
-import { DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/helm/overlay';
 import { HlmButton } from '@trinity/helm/button';
 import { AccountScopeService } from '@trinity/data-access/rooms';
 import { AvatarComponent } from '@trinity/ui';
@@ -33,8 +33,7 @@ import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sideb
 })
 export class AccountPickerComponent {
   private readonly scope = inject(AccountScopeService);
-  private readonly dialogRef =
-    inject<DialogRef<void, AccountPickerComponent>>(DialogRef);
+  private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef);
 
   /** Every signed-in account (populated from the dialog's `inputs`). */
   readonly accounts = input<AccountSummary[]>([]);

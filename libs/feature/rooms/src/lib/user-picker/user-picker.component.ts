@@ -22,7 +22,7 @@ import {
 } from '@trinity/data-access/rooms';
 import { isValidUserId } from '@trinity/util/matrix';
 import { AvatarComponent } from '@trinity/ui';
-import { DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/helm/overlay';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmSpinner } from '@trinity/helm/spinner';
@@ -53,7 +53,7 @@ const MIN_SEARCH_LENGTH = 2;
 })
 export class UserPickerComponent {
   private readonly dialogRef =
-    inject<DialogRef<string | null, UserPickerComponent>>(DialogRef);
+    inject<TrnDialogRef<string | null>>(TrnDialogRef);
   private readonly rooms = inject(RoomsService);
 
   /** Dialog heading (e.g. "Start a direct message"). */

@@ -5,7 +5,7 @@ import {
   inject,
   input,
 } from '@angular/core';
-import { DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/helm/overlay';
 import { HlmButton } from '@trinity/helm/button';
 
 /** What the confirmation needs to describe the gateway the user is about to trust. */
@@ -33,7 +33,7 @@ export interface PushGatewayTrustData {
   imports: [HlmButton],
 })
 export class PushGatewayTrustDialogComponent {
-  private readonly dialogRef = inject<DialogRef<boolean>>(DialogRef);
+  private readonly dialogRef = inject<TrnDialogRef<boolean>>(TrnDialogRef);
   /**
    * Taken as an input rather than through CDK's `DIALOG_DATA`, so this component names
    * no vendor token: `TrnDialogService.open`'s `inputs` bag applies it with `setInput`

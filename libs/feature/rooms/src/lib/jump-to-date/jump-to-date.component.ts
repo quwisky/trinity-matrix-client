@@ -5,7 +5,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/helm/overlay';
 import { FormField, FormRoot, form } from '@angular/forms/signals';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
@@ -30,7 +30,8 @@ import { isoDateOf, localDayStartFromIso } from '@trinity/util/matrix';
   styleUrl: './jump-to-date.component.scss',
 })
 export class JumpToDateComponent {
-  private readonly dialogRef = inject<DialogRef<number | undefined>>(DialogRef);
+  private readonly dialogRef =
+    inject<TrnDialogRef<number | undefined>>(TrnDialogRef);
 
   /** Seeded to today, which is both a sensible default and a valid value. */
   private readonly model = signal({ date: isoDateOf(Date.now()) });

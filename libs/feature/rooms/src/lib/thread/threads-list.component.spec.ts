@@ -1,5 +1,5 @@
 import { signal } from '@angular/core';
-import { DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/helm/overlay';
 import { render } from '@trinity/testing';
 import {
   ThreadsService,
@@ -35,7 +35,7 @@ async function build(threads: ThreadSummary[] = []) {
     imports: [MockComponent(AvatarComponent)],
     providers: [
       MockProvider(ThreadsService, { threadList }),
-      MockProvider(DialogRef, { close: dismiss }),
+      MockProvider(TrnDialogRef, { close: dismiss }),
     ],
   });
   return { fixture, container, dismiss };

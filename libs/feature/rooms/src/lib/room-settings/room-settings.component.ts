@@ -13,7 +13,7 @@ import { FormField, FormRoot, disabled, form } from '@angular/forms/signals';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { HlmInput } from '@trinity/helm/input';
-import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnDialogRef, TrnToastService } from '@trinity/helm/overlay';
 import {
   HistoryVisibility,
   JoinRule,
@@ -114,8 +114,7 @@ export class RoomSettingsComponent implements OnInit {
   /** Whether the viewer may manage this room's published addresses. */
   readonly canManageAliases = input(false);
 
-  private readonly dialogRef =
-    inject<DialogRef<boolean, RoomSettingsComponent>>(DialogRef);
+  private readonly dialogRef = inject<TrnDialogRef<boolean>>(TrnDialogRef);
   private readonly settings = inject(RoomSettingsService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);

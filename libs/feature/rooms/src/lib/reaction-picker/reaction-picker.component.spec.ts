@@ -1,4 +1,4 @@
-import { DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/helm/overlay';
 import { render } from '@trinity/testing';
 import { MockComponent } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
@@ -19,7 +19,7 @@ describe('ReactionPickerComponent', () => {
   async function setup() {
     const close = vi.fn();
     const { fixture } = await render(ReactionPickerComponent, {
-      providers: [{ provide: DialogRef, useValue: { close } }],
+      providers: [{ provide: TrnDialogRef, useValue: { close } }],
       componentImports: [MockComponent(TrnEmojiPickerComponent)],
     });
     return { cmp: fixture.componentInstance, close };

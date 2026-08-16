@@ -7,7 +7,7 @@ import {
   input,
   signal,
 } from '@angular/core';
-import { DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/helm/overlay';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import {
   SearchService,
@@ -63,7 +63,7 @@ export class MessageSearchComponent {
   private readonly search = inject(SearchService);
   private readonly timeline = inject(TimelineService);
   private readonly dialogRef =
-    inject<DialogRef<string | null, MessageSearchComponent>>(DialogRef);
+    inject<TrnDialogRef<string | null>>(TrnDialogRef);
   private readonly destroyRef = inject(DestroyRef);
 
   /** Active room, populated from the dialog's `inputs` (app sets `useSetInputAPI`). */

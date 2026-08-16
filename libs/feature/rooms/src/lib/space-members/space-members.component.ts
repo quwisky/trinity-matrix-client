@@ -6,7 +6,7 @@ import {
   input,
 } from '@angular/core';
 import { HlmButton } from '@trinity/helm/button';
-import { DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/helm/overlay';
 import { RoomsService, type MemberSummary } from '@trinity/data-access/rooms';
 import { AvatarComponent } from '@trinity/ui';
 import { MEMBER_ROLE_LABEL, memberRole } from '../shared/member-role';
@@ -38,7 +38,7 @@ export class SpaceMembersComponent {
   readonly spaceName = input('this space');
 
   private readonly dialogRef =
-    inject<DialogRef<MemberSummary | null, SpaceMembersComponent>>(DialogRef);
+    inject<TrnDialogRef<MemberSummary | null>>(TrnDialogRef);
   private readonly rooms = inject(RoomsService);
 
   readonly members = computed<readonly MemberSummary[]>(() => {

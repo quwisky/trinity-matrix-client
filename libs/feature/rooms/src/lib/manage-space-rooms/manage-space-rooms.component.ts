@@ -12,7 +12,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
-import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnDialogRef, TrnToastService } from '@trinity/helm/overlay';
 import {
   RoomsService,
   SpaceChildrenService,
@@ -67,8 +67,7 @@ export class ManageSpaceRoomsComponent {
   readonly spaceId = input.required<string>();
   readonly spaceName = input('this space');
 
-  private readonly dialogRef =
-    inject<DialogRef<boolean, ManageSpaceRoomsComponent>>(DialogRef);
+  private readonly dialogRef = inject<TrnDialogRef<boolean>>(TrnDialogRef);
   private readonly children = inject(SpaceChildrenService);
   private readonly rooms = inject(RoomsService);
   private readonly spaces = inject(SpacesService);

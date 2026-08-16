@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
-import { DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/helm/overlay';
 import { RoomsService, type MemberSummary } from '@trinity/data-access/rooms';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
@@ -36,7 +36,7 @@ async function build(members: MemberSummary[] = []) {
     inputs: { spaceId: '!s:hs', spaceName: 'Design' },
     providers: [
       MockProvider(RoomsService, { membersFor }),
-      MockProvider(DialogRef, { close }),
+      MockProvider(TrnDialogRef, { close }),
     ],
   });
   return {

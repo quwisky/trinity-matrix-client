@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import {
-  DialogRef,
+  TrnDialogRef,
   TrnAlertService,
   TrnToastService,
 } from '@trinity/helm/overlay';
@@ -62,9 +62,7 @@ export class EditHistoryComponent {
 
   private readonly history = inject(EditHistoryService);
   private readonly dialogRef =
-    inject<DialogRef<MatrixLinkTarget | undefined, EditHistoryComponent>>(
-      DialogRef,
-    );
+    inject<TrnDialogRef<MatrixLinkTarget | undefined>>(TrnDialogRef);
   private readonly destroyRef = inject(DestroyRef);
   private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);

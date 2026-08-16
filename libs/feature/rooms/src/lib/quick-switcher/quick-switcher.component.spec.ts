@@ -1,6 +1,6 @@
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { DialogRef, TrnDialogService } from '@trinity/helm/overlay';
+import { TrnDialogRef, TrnDialogService } from '@trinity/helm/overlay';
 import {
   SearchService,
   type SwitcherResult,
@@ -63,7 +63,7 @@ describe('QuickSwitcherComponent', () => {
     return render(QuickSwitcherComponent, {
       ...(opts.inputs ? { inputs: opts.inputs } : {}),
       providers: [
-        { provide: DialogRef, useValue: { close: dismiss } },
+        { provide: TrnDialogRef, useValue: { close: dismiss } },
         MockProvider(SearchService, { localResults, searchPeople }),
         MockProvider(MatrixClientService, {
           activeUserId: signal<string | null>(

@@ -13,7 +13,7 @@ import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
 import { HlmSpinner } from '@trinity/helm/spinner';
-import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnDialogRef, TrnToastService } from '@trinity/helm/overlay';
 import { TrnIconComponent } from '@trinity/helm/icon';
 
 /**
@@ -31,7 +31,8 @@ import { TrnIconComponent } from '@trinity/helm/icon';
   templateUrl: './manual-location-dialog.component.html',
 })
 export class ManualLocationDialogComponent {
-  private readonly dialogRef = inject<DialogRef<GeoPoint | null>>(DialogRef);
+  private readonly dialogRef =
+    inject<TrnDialogRef<GeoPoint | null>>(TrnDialogRef);
   private readonly geo = inject(GeolocationService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);

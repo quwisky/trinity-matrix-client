@@ -11,7 +11,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { switchMap, type Observable } from 'rxjs';
 import { HlmButton } from '@trinity/helm/button';
 import {
-  DialogRef,
+  TrnDialogRef,
   TrnAlertService,
   TrnToastService,
 } from '@trinity/helm/overlay';
@@ -71,7 +71,7 @@ export class MemberInfoComponent {
   readonly myPower = input(0);
 
   private readonly dialogRef =
-    inject<DialogRef<string | null, MemberInfoComponent>>(DialogRef);
+    inject<TrnDialogRef<string | null>>(TrnDialogRef);
   private readonly presence = inject(PresenceService);
   private readonly toast = inject(TrnToastService);
   private readonly matrix = inject(MatrixClientService);

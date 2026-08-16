@@ -1,4 +1,4 @@
-import { DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/helm/overlay';
 import { render } from '@trinity/testing';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -13,7 +13,7 @@ function setup(data: PushGatewayTrustData) {
     // `inputs` bag — the render wrapper calls setInput before the first change
     // detection, so the computed that reads it never sees an unset signal.
     inputs: { data },
-    providers: [{ provide: DialogRef, useValue: { close } }],
+    providers: [{ provide: TrnDialogRef, useValue: { close } }],
   }).then((r) => ({ ...r, close }));
 }
 

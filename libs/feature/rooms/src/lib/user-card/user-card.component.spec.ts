@@ -1,5 +1,5 @@
 import { signal } from '@angular/core';
-import { DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/helm/overlay';
 import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
@@ -23,7 +23,7 @@ async function setup(
   const { fixture, container } = await render(UserCardComponent, {
     inputs: { userId: '@bob:hs' },
     providers: [
-      { provide: DialogRef, useValue: { close } },
+      { provide: TrnDialogRef, useValue: { close } },
       MockProvider(ProfileService, { fetch: () => of(profile) }),
       MockProvider(PresenceService, {
         presenceFor: () => signal('online' as const).asReadonly(),

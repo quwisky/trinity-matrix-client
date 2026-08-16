@@ -10,7 +10,7 @@ import {
 } from '@trinity/data-access/crypto';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ENCRYPTION_DIALOG_COMPONENTS } from '@trinity/ui';
-import { TrnDialogService, type DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogService, type TrnDialogRef } from '@trinity/helm/overlay';
 
 /**
  * App-level, route-independent host for device verification. Incoming requests can
@@ -35,7 +35,7 @@ export class VerificationHostComponent {
   private readonly dialogComponents = inject(ENCRYPTION_DIALOG_COMPONENTS, {
     optional: true,
   });
-  private ref: DialogRef<void, unknown> | null = null;
+  private ref: TrnDialogRef<void> | null = null;
   /** Synchronous in-flight guard: `ref` is only set after the lazy import, so
    * without this a second effect run during the import opens a second modal. */
   private presenting = false;

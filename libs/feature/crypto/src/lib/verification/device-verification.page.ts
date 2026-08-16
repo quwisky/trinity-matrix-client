@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
-import { DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/helm/overlay';
 import { Observable } from 'rxjs';
 import { VerificationService } from '@trinity/data-access/crypto';
 import {
@@ -46,10 +46,9 @@ export class DeviceVerificationPage {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   // Present only when opened as a dialog (incoming request); null on the routed page.
-  private readonly dialogRef = inject<DialogRef<void, DeviceVerificationPage>>(
-    DialogRef,
-    { optional: true },
-  );
+  private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef, {
+    optional: true,
+  });
   private readonly destroyRef = inject(DestroyRef);
 
   /** The active verification view (null until one starts). */

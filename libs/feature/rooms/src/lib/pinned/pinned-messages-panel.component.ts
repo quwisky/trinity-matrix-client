@@ -8,7 +8,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmTooltip } from '@trinity/helm/tooltip';
-import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnDialogRef, TrnToastService } from '@trinity/helm/overlay';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import { TrnIconComponent } from '@trinity/helm/icon';
 
@@ -40,9 +40,7 @@ export class PinnedMessagesPanelComponent {
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly dialogRef =
-    inject<DialogRef<string | undefined, PinnedMessagesPanelComponent>>(
-      DialogRef,
-    );
+    inject<TrnDialogRef<string | undefined>>(TrnDialogRef);
 
   /** The active room's pinned messages, in pin order. */
   readonly pinned = this.pinnedSvc.pinnedMessages;

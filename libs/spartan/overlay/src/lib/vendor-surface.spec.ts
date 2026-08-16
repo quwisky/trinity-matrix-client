@@ -18,16 +18,24 @@ import * as overlay from '../index';
  * and therefore invisible here, which is correct: a type cannot open a dialog.
  */
 describe('@trinity/helm/overlay vendor surface', () => {
-  it('re-exports exactly one CDK symbol, DialogRef', () => {
+  it('re-exports no CDK symbol at all', () => {
     const cdkValues = new Set<unknown>(Object.values(cdkDialog));
     const leaked = Object.entries(overlay)
       .filter(([, value]) => cdkValues.has(value))
       .map(([name]) => name)
       .sort();
 
-    // DialogRef is deliberate: a modal'd component closes itself with
-    // `inject(DialogRef).close(value)`, and that is the whole reason the barrel exists.
-    expect(leaked).toEqual(['DialogRef']);
+    // Was `['DialogRef']`, and that one export was still a leak: it put CDK's class in the
+    // type signature of 24 feature components, so swapping the dialog library would have
+    // meant editing all of them — the cost this layer exists to remove. `TrnDialogRef` is
+    // Trinity's own two-method handle, so the barrel now names no vendor value whatsoever.
+    expect(leaked).toEqual([]);
+  });
+
+  it('still hands out a way for a dialog to close itself', () => {
+    // The counterpart to the assertion above, so "leaks nothing" cannot be satisfied by
+    // deleting the capability instead of owning it.
+    expect(overlay.TrnDialogRef).toBeTypeOf('function');
   });
 
   it('does not hand out Dialog or DIALOG_DATA', () => {

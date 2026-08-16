@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
-import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnDialogRef, TrnToastService } from '@trinity/helm/overlay';
 import {
   RoomsService,
   SpaceChildrenService,
@@ -78,7 +78,7 @@ async function build(
           })),
         ) as never,
       }),
-      MockProvider(DialogRef, { close }),
+      MockProvider(TrnDialogRef, { close }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
   });

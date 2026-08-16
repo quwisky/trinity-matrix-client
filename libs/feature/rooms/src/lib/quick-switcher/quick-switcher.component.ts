@@ -16,7 +16,7 @@ import {
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AccountBadgesService } from '../shared/account-badges.service';
 import { AvatarComponent, type AccountBadge } from '@trinity/ui';
-import { DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/helm/overlay';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmSpinner } from '@trinity/helm/spinner';
@@ -74,9 +74,7 @@ const KIND_ICON: Record<SwitcherKind, TrnIconName> = {
 })
 export class QuickSwitcherComponent {
   private readonly dialogRef =
-    inject<DialogRef<SwitcherSelection | null, QuickSwitcherComponent>>(
-      DialogRef,
-    );
+    inject<TrnDialogRef<SwitcherSelection | null>>(TrnDialogRef);
   private readonly search = inject(SearchService);
   private readonly accountBadges = inject(AccountBadgesService);
   private readonly matrix = inject(MatrixClientService);

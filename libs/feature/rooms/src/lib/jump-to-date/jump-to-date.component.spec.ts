@@ -1,4 +1,4 @@
-import { DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/helm/overlay';
 import { render } from '@trinity/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { isoDateOf } from '@trinity/util/matrix';
@@ -7,7 +7,7 @@ import { JumpToDateComponent } from './jump-to-date.component';
 async function open() {
   const close = vi.fn();
   const rendered = await render(JumpToDateComponent, {
-    providers: [{ provide: DialogRef, useValue: { close } }],
+    providers: [{ provide: TrnDialogRef, useValue: { close } }],
   });
   const input = rendered.fixture.nativeElement.querySelector(
     '[data-testid=jump-to-date-input]',

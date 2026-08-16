@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import {
-  DialogRef,
+  TrnDialogRef,
   TrnAlertService,
   TrnToastService,
 } from '@trinity/helm/overlay';
@@ -76,7 +76,7 @@ async function build(
       myPower: opts.myPower ?? 0,
     },
     providers: [
-      MockProvider(DialogRef, { close }),
+      MockProvider(TrnDialogRef, { close }),
       MockProvider(TrnToastService, { show: toastShow }),
       {
         provide: PresenceService,

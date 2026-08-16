@@ -1,4 +1,4 @@
-import { DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/helm/overlay';
 import { TimelineService } from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/ui';
 import { type ReactionDetail } from '@trinity/util/matrix';
@@ -33,7 +33,7 @@ describe('ReactionsDialogComponent', () => {
       inputs: { eventId: '$m' },
       imports: [MockComponent(AvatarComponent)],
       providers: [
-        MockProvider(DialogRef, { close: vi.fn() }),
+        MockProvider(TrnDialogRef, { close: vi.fn() }),
         MockProvider(TimelineService, { reactionDetails }),
       ],
     });

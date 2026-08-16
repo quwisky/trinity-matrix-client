@@ -8,7 +8,7 @@ import {
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
-import { DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/helm/overlay';
 import { TrnIconComponent } from '@trinity/helm/icon';
 
 /** The poll a {@link CreatePollDialogComponent} resolves with. */
@@ -33,7 +33,8 @@ const MAX_OPTIONS = 8;
   templateUrl: './create-poll-dialog.component.html',
 })
 export class CreatePollDialogComponent {
-  private readonly dialogRef = inject<DialogRef<NewPoll | null>>(DialogRef);
+  private readonly dialogRef =
+    inject<TrnDialogRef<NewPoll | null>>(TrnDialogRef);
 
   readonly maxOptions = MAX_OPTIONS;
   readonly minOptions = MIN_OPTIONS;

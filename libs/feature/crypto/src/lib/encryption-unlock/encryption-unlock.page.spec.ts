@@ -3,7 +3,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { render, screen } from '@trinity/testing';
 import { CryptoService } from '@trinity/data-access/crypto';
 import { AuthService } from '@trinity/data-access/auth';
-import { DialogRef, TrnAlertService } from '@trinity/helm/overlay';
+import { TrnDialogRef, TrnAlertService } from '@trinity/helm/overlay';
 import { UiaCancelledError, UiaUnsupportedError } from '@trinity/util/matrix';
 import { Browser } from '@capacitor/browser';
 import { MockProvider } from 'ng-mocks';
@@ -66,7 +66,7 @@ async function renderPage(options: RenderOptions = {}) {
           },
         },
       } as never),
-      MockProvider(DialogRef),
+      MockProvider(TrnDialogRef),
       MockProvider(TrnAlertService, { prompt, confirm }),
       MockProvider(AuthService, {
         getAccountManagement: () =>
@@ -79,7 +79,7 @@ async function renderPage(options: RenderOptions = {}) {
 
   const crypto = TestBed.inject(CryptoService);
   const router = TestBed.inject(Router);
-  const dialogRef = TestBed.inject(DialogRef);
+  const dialogRef = TestBed.inject(TrnDialogRef);
   if (recover) {
     vi.mocked(crypto.recoverWithKey).mockReturnValue(recover);
   }

@@ -1,4 +1,4 @@
-import { DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/helm/overlay';
 import {
   RoomsService,
   type UserSearchResult,
@@ -31,7 +31,7 @@ describe('UserPickerComponent', () => {
   function renderPicker() {
     return render(UserPickerComponent, {
       providers: [
-        { provide: DialogRef, useValue: { close: dismiss } },
+        { provide: TrnDialogRef, useValue: { close: dismiss } },
         MockProvider(RoomsService, { searchUsers }),
       ],
       imports: [MockComponent(AvatarComponent)],

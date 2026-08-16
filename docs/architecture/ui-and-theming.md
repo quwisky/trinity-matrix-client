@@ -29,7 +29,7 @@ That third tag is what makes the layering above enforceable rather than merely d
 `ui:wrapper`, the kit carries `ui:vendor-wrapper`, and `bannedExternalImports` keeps
 `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` and `@ctrl/ngx-emoji-mart` out of every tier
 below the UI one. The kit is deliberately unrestricted: it **is** the wrapper. `libs/ui` is
-banned from Brain and `@ng-icons`, both of which the kit now wraps.
+banned from all four, including `@angular/cdk` — it wraps none of them.
 
 Composition is the other half of that containment. `hostDirectives` **is** public API — a
 composed directive's input is bindable on our element only if the entry lists it — so every
@@ -149,8 +149,16 @@ Despite living under `libs/spartan/` and being aliased `@trinity/helm/overlay`, 
 library is **hand-authored**, not generated. It holds the imperative overlay adapters:
 `TrnDialogService`, `TrnAlertService` with `TrnAlertDialogComponent`, `TrnActionSheetService`
 with `TrnActionSheetComponent`, and `TrnToastService` — built on CDK Dialog and Overlay plus
-brain sonner. It re-exports CDK's `DialogRef` so a modal'd component can call
-`inject(DialogRef).close(data)` without importing `@angular/cdk` directly.
+brain sonner. A modal'd component closes itself with `inject(TrnDialogRef).close(data)`.
+
+`TrnDialogRef` is Trinity's own class, not a re-exported `DialogRef`. That distinction is the
+whole point of the layer: the barrel used to hand out CDK's class — one deliberate, documented
+export — and that single line put `@angular/cdk` in the type signature of 24 feature
+components, so swapping the dialog library would have meant editing every one of them. The
+wrapper is two members wide (`close`, `closed`), which is everything the app used across 51
+call sites, and `vendor-surface.spec.ts` asserts the barrel re-exports **no** CDK value at
+all. Anything genuinely new should arrive as a named method on `TrnDialogService`, where it
+can be given Trinity's semantics, rather than by widening this handle.
 
 ```ts
 const ref = this.dialog.open(MyComponent, {

@@ -3,6 +3,7 @@ import { Dialog, DialogConfig, DialogRef } from '@angular/cdk/dialog';
 import { Overlay } from '@angular/cdk/overlay';
 import type { ComponentType } from '@angular/cdk/portal';
 import { firstValueFrom } from 'rxjs';
+import { TrnDialogRef } from './trn-dialog-ref';
 
 export interface DialogOptions {
   /** Set on the opened component as @Inputs after creation (Ionic componentProps). */
@@ -49,7 +50,7 @@ export class TrnDialogService {
   open<R = unknown, C = object>(
     component: ComponentType<C>,
     opts: DialogOptions = {},
-  ): DialogRef<R, C> {
+  ): TrnDialogRef<R> {
     // No `panelClass`. The option and its `trn-dialog-panel` default were both dead: no
     // call site ever passed one, and the class name occurred exactly once in the whole
     // workspace — here, styled by nothing. Same reason `DialogOptions.data` went in #151.
@@ -69,13 +70,24 @@ export class TrnDialogService {
         opts.side === 'end'
           ? this.overlay.position().global().top('0').right('0')
           : undefined,
+      // What lets a modal'd component `inject(TrnDialogRef)` instead of CDK's own class.
+      // Declared with an explicit `deps` rather than an `inject()` call in the factory,
+      // because `DialogConfig.providers` is typed `StaticProvider[]`.
+      providers: [
+        {
+          provide: TrnDialogRef,
+          useFactory: (cdkRef: DialogRef<R, unknown>) =>
+            new TrnDialogRef<R>(cdkRef),
+          deps: [DialogRef],
+        },
+      ],
     });
     if (opts.inputs && ref.componentRef) {
       for (const [key, value] of Object.entries(opts.inputs)) {
         ref.componentRef.setInput(key, value);
       }
     }
-    return ref;
+    return new TrnDialogRef<R>(ref);
   }
 
   /** Open and resolve the component's close value (null if dismissed without one). */

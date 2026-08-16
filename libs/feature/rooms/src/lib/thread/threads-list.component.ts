@@ -4,7 +4,7 @@ import {
   inject,
   input,
 } from '@angular/core';
-import { DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/helm/overlay';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { AvatarComponent } from '@trinity/ui';
 import { HlmButton } from '@trinity/helm/button';
@@ -44,7 +44,7 @@ export class ThreadsListComponent {
 
   private readonly threadsSvc = inject(ThreadsService);
   private readonly dialogRef =
-    inject<DialogRef<string | undefined, ThreadsListComponent>>(DialogRef);
+    inject<TrnDialogRef<string | undefined>>(TrnDialogRef);
 
   /** The room whose threads are listed (used by the panel to re-open a thread). */
   readonly roomId = input.required<string>();

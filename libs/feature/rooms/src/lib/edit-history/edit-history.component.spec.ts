@@ -3,7 +3,7 @@ import { MockProvider } from 'ng-mocks';
 import { Observable, map, of, throwError, timer } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import {
-  DialogRef,
+  TrnDialogRef,
   TrnAlertService,
   TrnToastService,
 } from '@trinity/helm/overlay';
@@ -46,7 +46,7 @@ async function build(
         revisions,
         removeRevision: remove,
       }),
-      MockProvider(DialogRef, { close }),
+      MockProvider(TrnDialogRef, { close }),
       MockProvider(TrnAlertService, { confirm }),
       MockProvider(TrnToastService, { show: toast }),
     ],

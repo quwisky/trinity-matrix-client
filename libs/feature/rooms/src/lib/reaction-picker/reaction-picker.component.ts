@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/helm/overlay';
 import {
   TrnEmojiPickerComponent,
   type TrnEmojiPick,
@@ -21,7 +21,7 @@ import {
 })
 export class ReactionPickerComponent {
   private readonly dialogRef =
-    inject<DialogRef<string | null, ReactionPickerComponent>>(DialogRef);
+    inject<TrnDialogRef<string | null>>(TrnDialogRef);
   /**
    * A reaction was chosen — close with its character.
    *

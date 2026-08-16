@@ -4,17 +4,32 @@ import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 import { TrnAlertService } from '../alert/trn-alert.service';
+import { TrnDialogRef } from './trn-dialog-ref';
 import { TrnDialogService } from './trn-dialog.service';
 
-@Component({ standalone: true, template: `<p>{{ label() }}</p>` })
+// Closes ITSELF through the ref it injects, which is the path that matters: `TrnDialogRef`
+// is Trinity's own class, provided into the dialog's injector by `open()`, and injecting it
+// here is what proves that provider is wired. It is also why these tests click a button
+// rather than reach for `componentInstance` — the wrapper deliberately does not expose the
+// instance, since that member is CDK's and would put the vendor back in the signature.
+@Component({
+  standalone: true,
+  template: `<p>{{ label() }}</p>
+    <button type="button" data-testid="close" (click)="close(label())">
+      Close
+    </button>`,
+})
 class TestDialogComponent {
   readonly label = input('');
-  private readonly ref =
-    inject<DialogRef<string, TestDialogComponent>>(DialogRef);
+  private readonly ref = inject<TrnDialogRef<string>>(TrnDialogRef);
   close(value: string): void {
     this.ref.close(value);
   }
 }
+
+/** Click the open test dialog's own close button, so it closes with its label. */
+const clickClose = () =>
+  document.querySelector<HTMLButtonElement>('[data-testid="close"]')?.click();
 
 @Component({
   standalone: true,
@@ -33,12 +48,11 @@ describe('TrnDialogService', () => {
     });
     TestBed.inject(ApplicationRef).tick();
 
-    expect(ref.componentInstance).toBeTruthy();
     expect(document.body.textContent).toContain('Hi there'); // input applied
 
     const closed = firstValueFrom(ref.closed);
-    ref.componentInstance!.close('picked');
-    expect(await closed).toBe('picked');
+    clickClose();
+    expect(await closed).toBe('Hi there');
   });
 
   it('maps a bare dismiss to null (openAndWait contract)', async () => {
@@ -63,8 +77,8 @@ describe('TrnDialogService', () => {
     expect(document.body.textContent).toContain('Side');
 
     const closed = firstValueFrom(ref.closed);
-    ref.componentInstance!.close('done');
-    expect(await closed).toBe('done');
+    clickClose();
+    expect(await closed).toBe('Side');
   });
 
   it('focuses the element named by autoFocus, not the first tabbable one', async () => {

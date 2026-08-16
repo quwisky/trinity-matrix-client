@@ -12,7 +12,7 @@ import { Subscription } from 'rxjs';
 import { FormField, FormRoot, form } from '@angular/forms/signals';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
-import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnDialogRef, TrnToastService } from '@trinity/helm/overlay';
 import {
   PublicRoomsService,
   type PublicRoomSummary,
@@ -41,7 +41,7 @@ export interface DirectoryJoin {
 })
 export class RoomDirectoryComponent implements OnInit {
   private readonly dialogRef =
-    inject<DialogRef<DirectoryJoin | null, RoomDirectoryComponent>>(DialogRef);
+    inject<TrnDialogRef<DirectoryJoin | null>>(TrnDialogRef);
   private readonly directory = inject(PublicRoomsService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
