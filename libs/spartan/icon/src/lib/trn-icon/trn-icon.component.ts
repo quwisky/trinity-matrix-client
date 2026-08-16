@@ -35,12 +35,19 @@ import type { TrnIconName } from '../trn-icon-name';
   templateUrl: './trn-icon.component.html',
   imports: [NgIcon],
   styles: [
-    // Matches the element this replaced. `ng-icon` sets `:host{display:inline-block}`, so
-    // without this the wrapper is `display: inline` and every icon in the app changes box
-    // model — harmless inside a flex parent, which blockifies its children, but in true
-    // inline flow an inline host participates in baseline and line-height in a way the
-    // inline-block element did not, and icons shift. `HlmSpinner` — the same shape, a
-    // wrapper whose template is one `<ng-icon>` — declares `inline-flex` for this reason.
+    // `inline-flex`, NOT `inline-block`, and the difference is visible on ~115 call sites.
+    //
+    // An inline-block host sizes its height from its LINE BOX, so it is taller than the
+    // glyph by the strut's half-leading and descent. As a flex item of an `hlmBtn` that
+    // taller box is what `items-center` centres, and the glyph lands above the button's
+    // true middle. Before this wrapper existed the `<ng-icon>` WAS the flex item, with
+    // explicit width/height, so it centred exactly. Measured in Chromium against the real
+    // button mechanics (`size-8`, `text-sm`, the cva `[&_ng-icon…]` rule): inline-block
+    // gives gaps of 3.5px above / 8.5px below for a 20px glyph and 5.5/10.5 for a 16px one;
+    // `inline-flex` restores 6/6 and 8/8, which is what the element it replaced produced.
+    //
+    // `HlmSpinner` — the same shape, a wrapper whose template is one `<ng-icon>` — declares
+    // `inline-flex` for exactly this reason.
     //
     // It does so through `classes()` from @trinity/helm/utils, which is the kit's house
     // pattern and what this would otherwise use. A component style is deliberate here on
@@ -49,7 +56,7 @@ import type { TrnIconName } from '../trn-icon-name';
     // Tailwind class is not, because jsdom loads no stylesheet. Switching to `classes()`
     // would silently make the box-model test in the spec vacuous — change both together
     // or neither. Keeping it also leaves this library importing nothing but @ng-icons.
-    ':host { display: inline-block; }',
+    ':host { display: inline-flex; }',
   ],
   host: {
     // Null rather than absent-when-false: an unlabelled icon must expose no role at all,

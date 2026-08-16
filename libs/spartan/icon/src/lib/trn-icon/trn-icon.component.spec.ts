@@ -101,9 +101,13 @@ describe('TrnIconComponent', () => {
   });
 
   it('keeps the box model of the element it replaced', async () => {
-    // ng-icon is `display: inline-block`. A wrapper defaulting to `inline` changes inline
-    // layout at all 116 call sites — invisible to every test in this repo, since jsdom
-    // does no layout, which is exactly why it is pinned here rather than trusted.
+    // `inline-flex`, not `inline-block`. Both give the host a block-ish box, but only
+    // inline-flex sizes it to the glyph: an inline-block host takes its height from the
+    // line box, so it is taller than the icon by the strut's half-leading and descent, and
+    // inside an `hlmBtn` — a flex row with `items-center` — that taller box is what gets
+    // centred, leaving the glyph ~2.5px high at every one of ~115 call sites. The element
+    // this wrapper replaced was the flex item itself, with explicit width and height.
+    // `HlmSpinner`, the same one-`<ng-icon>` shape, uses inline-flex for the same reason.
     //
     // This assertion only works because the rule is a component STYLE. jsdom loads no
     // stylesheet, so moving the display onto a Tailwind class — the kit's usual `classes()`
@@ -112,6 +116,6 @@ describe('TrnIconComponent', () => {
     const { fixture } = await setup({ name: 'lock' });
     const host = fixture.nativeElement as HTMLElement;
 
-    expect(getComputedStyle(host).display).toBe('inline-block');
+    expect(getComputedStyle(host).display).toBe('inline-flex');
   });
 });
