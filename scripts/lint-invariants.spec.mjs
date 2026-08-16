@@ -171,10 +171,23 @@ const UI_BOUNDARY = [
  * filter below, since it is the layer the bans exist to protect rather than an exception to
  * them.
  *
- * `trinity-desktop` (the Electron shell) is not listed either, and no longer needs to be: it
- * used to be the one Nx project with no tags AND no project.json for a glob to find, so this
- * guard could not see the single project it could not vouch for. It now carries
- * `type:app`/`scope:shared` in `electron/project.json` and is swept below like anything else.
+ * `trinity-desktop` (the Electron shell) is not listed, and cannot be: it has no project.json
+ * for the glob to find and carries no tags. That is a deliberate non-fix, measured twice.
+ *
+ * Tagging it would enforce nothing. The shell is isolated by construction — its own tsconfig
+ * with no `extends` and no `@trinity/*` paths, plus its own dependency tree via
+ * `pnpm electron:install` — so neither a vendor import nor a `@trinity/*` import RESOLVES
+ * there, and `@nx/enforce-module-boundaries` needs a resolved graph node to report anything.
+ * Piping both import shapes through eslint against `electron/src/main.ts` reports nothing,
+ * with or without tags.
+ *
+ * And giving it tags is not free. Tags only stick via a `project.json` (an `nx` key in
+ * `electron/package.json` is ignored — it is not a pnpm workspace member), and adding one
+ * takes the project from ONE inferred target to sixteen: `pnpm test` and CI's unit job would
+ * start running the Electron suite, which needs `pnpm electron:install` first. That turns a
+ * theoretical gap into a real failure on any clone that skipped an optional install step.
+ *
+ * So the shell stays untagged, and the boundary is honest about ending at the web app.
  */
 const OUTSIDE_THE_VENDOR_BANS = ['e2e/project.json', 'scripts/project.json'];
 
@@ -220,10 +233,9 @@ describe('UI vendor boundary', () => {
     // Swept beyond {apps,libs}: `e2e` and `scripts` are Nx projects too, and the previous
     // glob simply could not see them — so "tags every project" was asserted over 41 of the
     // 43 project.json files in the tree and passed on a sweep that never looked.
-    const projects = globSync(
-      '{apps,libs,e2e,scripts,electron}/**/project.json',
-      { cwd: workspaceRoot },
-    );
+    const projects = globSync('{apps,libs,e2e,scripts}/**/project.json', {
+      cwd: workspaceRoot,
+    });
     // An empty sweep must not pass as a clean one — the same trap the host-directives
     // guard was written around.
     expect(projects.length).toBeGreaterThan(30);
