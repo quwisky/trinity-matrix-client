@@ -77,6 +77,32 @@ describe('lint invariants', () => {
     expect(differing.sort()).toEqual([...SPARTAN_EXEMPT_RULES].sort());
   });
 
+  it('holds the hand-authored kit libraries to the naming rules, generated-only exemption', async () => {
+    // The other side of the same exemption, and the side that was open. The glob used to be
+    // `libs/spartan/**/*.ts`, which covered three libraries in that directory that are NOT
+    // generated — overlay, icon and emoji-picker are Trinity's own, and two of them are new
+    // in #148. They are the public wrapper tier this boundary exists to build, so exempting
+    // them meant `<trn-icon>` could be renamed to `<icon>`, or `TrnIconComponent` to
+    // `TrnIcon`, with `pnpm lint` still green.
+    //
+    // Checked from both directions on purpose: the test above proves the generated files
+    // ARE exempt, and this one proves the authored files are NOT. A future glob that
+    // re-widens to the directory fails here rather than going unnoticed.
+    for (const authored of [
+      'libs/spartan/icon/src/lib/trn-icon/trn-icon.component.ts',
+      'libs/spartan/emoji-picker/src/lib/trn-emoji-picker/trn-emoji-picker.component.ts',
+      'libs/spartan/overlay/src/lib/alert/trn-alert-dialog.component.ts',
+    ]) {
+      const config = await resolve(authored);
+      for (const ruleId of SPARTAN_EXEMPT_RULES) {
+        expect(
+          severityOf(config, ruleId),
+          `${ruleId} must stay an error in hand-authored ${authored}`,
+        ).toBe(2);
+      }
+    }
+  });
+
   it('keeps the type-aware and boundary guards enabled on first-party TypeScript', async () => {
     const config = await resolve('libs/ui/src/index.ts');
 
@@ -174,12 +200,17 @@ const UI_BOUNDARY = [
  * `trinity-desktop` (the Electron shell) is not listed, and cannot be: it has no project.json
  * for the glob to find and carries no tags. That is a deliberate non-fix, measured twice.
  *
- * Tagging it would enforce nothing. The shell is isolated by construction — its own tsconfig
- * with no `extends` and no `@trinity/*` paths, plus its own dependency tree via
- * `pnpm electron:install` — so neither a vendor import nor a `@trinity/*` import RESOLVES
- * there, and `@nx/enforce-module-boundaries` needs a resolved graph node to report anything.
- * Piping both import shapes through eslint against `electron/src/main.ts` reports nothing,
- * with or without tags.
+ * Tagging it would enforce nothing, because `@nx/enforce-module-boundaries` is switched OFF
+ * for the shell outright — `eslint.config.mjs` sets that rule to `'off'` for the shell's own
+ * TypeScript, with its own rationale (it legitimately imports the `electron` runtime, which
+ * the rule misreads as a same-project import). Tags cannot re-enable a disabled rule.
+ *
+ * An earlier revision of this note claimed instead that vendor and `@trinity/*` specifiers
+ * "do not resolve" from the shell, and cited a silent eslint probe as proof. That was wrong
+ * twice over: the specifiers do resolve against the workspace graph regardless of the
+ * shell's own tsconfig, and the probe was silent because of the off-block above, so it could
+ * never have distinguished tagged from untagged. Corrected here rather than deleted, since
+ * the wrong reason is the one a maintainer would otherwise re-derive.
  *
  * And giving it tags is not free. Tags only stick via a `project.json` (an `nx` key in
  * `electron/package.json` is ignored — it is not a pnpm workspace member), and adding one
@@ -255,6 +286,30 @@ describe('UI vendor boundary', () => {
       .sort();
 
     expect(uncovered).toEqual(OUTSIDE_THE_VENDOR_BANS);
+
+    // The scope axis, checked separately because no `scope:` tag carries
+    // `bannedExternalImports` — they carry `onlyDependOnLibsWithTags` instead, so the
+    // vendor-ban comparison above cannot see them. Rewriting this guard to key on the
+    // constraint table (which is what catches a `type:featrue` typo) quietly dropped the
+    // scope half that the prefix version did assert, leaving a lib with a good `type:` tag
+    // and no `scope:` tag free of any layering rule while both gates stayed green.
+    const scopeTags = new Set(
+      constraints
+        .filter((entry) => entry.sourceTag.startsWith('scope:'))
+        .map((entry) => entry.sourceTag),
+    );
+    expect(scopeTags.size).toBeGreaterThan(0);
+
+    const unscoped = projects
+      .map((path) => ({ path, tags: tagsOf(dirname(path)) }))
+      .filter(({ tags }) => !tags.some((tag) => scopeTags.has(tag)))
+      .map(({ path }) => path)
+      .sort();
+
+    // A shorter list than the vendor-ban exemption above, and deliberately its own: the
+    // `scripts` project is `scope:shared`, so it DOES carry a layering rule even though no
+    // vendor ban keys on `type:tool`. Only `e2e` (`scope:trinity`) sits outside both.
+    expect(unscoped).toEqual(['e2e/project.json']);
   });
 
   it('keeps the app-tier vendor stylesheets to the two the ban cannot cover', () => {
