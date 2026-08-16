@@ -94,7 +94,7 @@ imported via `@trinity/*` path aliases (`tsconfig.base.json`) and guarded by Nx 
 The web build emits to root `www/` (not `dist/`), which Capacitor and Electron wrap unchanged.
 
 **Layering — dependencies point inward, enforced by `@nx/enforce-module-boundaries`** (`type:*` +
-`scope:*` tags in each `project.json`). The former monolithic `@trinity/core` was dissolved into
+`scope:*` + `ui:*` tags in each `project.json`). The former monolithic `@trinity/core` was dissolved into
 typed, per-domain libs (do **not** import `@trinity/core` — it no longer exists):
 
 - `@trinity/util/matrix` `[type:util]` — pure, DI-free Matrix models/helpers (`MessageView` +
@@ -112,7 +112,13 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
 - `@trinity/feature/*` `[type:feature]` — screens/pages incl. `feature-shell` (the app shell moved out of
   `apps/trinity`). May depend on `data-access-*` + `ui` + `util` + `platform`, **never another feature**.
 - `@trinity/ui` + `@trinity/helm/*` (`libs/spartan/*`) `[type:ui]` — **presentational** only; no
-  state/SDK deps. Helm is `@spartan-ng/cli`-generated.
+  state/SDK deps. Most of `libs/spartan/*` is `@spartan-ng/cli`-generated Helm (`hlm-*.ts`);
+  `overlay`, `icon` and `emoji-picker` are hand-authored Trinity code with the `trn` prefix.
+- **Third-party UI stops at the UI tier.** A third `ui:*` tag splits that tier — `libs/ui` is
+  `ui:wrapper`, the kit is `ui:vendor-wrapper` — and `bannedExternalImports` keeps
+  `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` and `@ctrl/ngx-emoji-mart` out of every tier
+  below, `libs/ui` included. Only the kit may name them. Reach for a `@trinity/helm/*` component,
+  or `@trinity/helm/overlay` for dialogs and toasts; a new vendor import fails `pnpm lint`.
 - **Scopes:** `scope:shared` (the kernel: util/platform/matrix-client/ui/helm) may not reach into
   `scope:matrix` (domain data-access + feature libs); the thin `apps/trinity` composes both.
 

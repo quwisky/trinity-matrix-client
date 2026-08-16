@@ -37,8 +37,8 @@ export interface DialogOptions {
 /**
  * Component dialogs / modals — the spartan replacement for Ionic's
  * `ModalController`. `open()` mounts a component in a CDK dialog and returns the
- * {@link DialogRef}; the component closes itself with a result via
- * `inject(DialogRef).close(value)` (replacing `modalCtrl.dismiss(data)`), and the
+ * {@link TrnDialogRef}; the component closes itself with a result via
+ * `inject(TrnDialogRef).close(value)` (replacing `modalCtrl.dismiss(data)`), and the
  * opener reads that value with `openAndWait()` (replacing `onWillDismiss()`).
  * `inputs` map to the component's signal `input()`s (Ionic `componentProps`).
  */

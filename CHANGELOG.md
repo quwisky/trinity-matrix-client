@@ -303,6 +303,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **On Android, back no longer closes a dialog that asked to stay open.** Setting up or
+  unlocking encryption, and verifying a device, are steps that must not be dismissed
+  half-finished — but the hardware back button closed them anyway, leaving the flow in an
+  in-between state. Back now leaves those dialogs alone, and while any dialog is open it
+  dismisses that rather than navigating the page behind it.
+
 - **Hints under text boxes are read out again.** Where a field had explanatory text beneath it —
   the push gateway URL, its app id, and the manual location entry — screen readers never announced
   it. The text was in the page and visually correct, so the gap was invisible unless you used one:

@@ -9,7 +9,7 @@ import {
  * The full `emoji-mart` picker presented as a dialog for reacting with any emoji,
  * beyond the six quick reactions in the message toolbar. Opened by
  * {@link ReactionPickerService}; closes with the chosen native emoji, or `null` when
- * dismissed. Presentational: it reads the theme for the picker's chrome but sends no
+ * dismissed. Presentational: it renders the picker and reports a pick, but sends no
  * reaction itself — the host does that with the returned emoji.
  */
 @Component({

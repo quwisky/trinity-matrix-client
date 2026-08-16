@@ -142,9 +142,12 @@ These are the widest case of the three-way naming split described above: the dir
 component name. The button library lives at `libs/spartan/button`, is imported as
 `@trinity/helm/button`, and is built with `nx build button`.
 
-`libs/spartan/overlay` is the exception in that group — it is hand-written Trinity code with the
-`trn` prefix and no ng-package, not generated Helm. Regenerating or adding Helm components goes
-through the CLI; see [UI and theming](ui-and-theming.md).
+Three libraries in that directory are the exception — `libs/spartan/overlay`,
+`libs/spartan/icon` and `libs/spartan/emoji-picker` are hand-written Trinity code with the
+`trn` prefix and no ng-package, not generated Helm. The presence of `ng-package.json` is what
+separates the two groups, and `.prettierignore` and the lint config both draw the line at the
+generated `hlm-*.ts` files rather than at the directory. Regenerating or adding Helm components
+goes through the CLI; see [UI and theming](ui-and-theming.md).
 
 ## The two secondary entry points
 
@@ -162,8 +165,9 @@ drags along.
 
 ## Libraries are not buildable
 
-None of the 21 libraries outside `libs/spartan/` has a `build` target, and neither does
-`libs/spartan/overlay`. There is no intermediate compilation step: the application build
+None of the 21 libraries outside `libs/spartan/` has a `build` target, and neither do the three
+hand-authored ones inside it — `overlay`, `icon` and `emoji-picker`. There is no intermediate
+compilation step: the application build
 (`@angular/build:application`) compiles library sources directly, resolved through the tsconfig
 path aliases. That is what makes a cross-library change a one-step edit rather than a
 build-and-consume cycle.

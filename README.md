@@ -140,8 +140,10 @@ android/ ios/         Capacitor native projects (webDir: www)
 www/                  web build output
 ```
 
-Boundaries are enforced by `@nx/enforce-module-boundaries` on two independent axes,
-`type:` and `scope:`, with no exceptions configured. Dependencies point inward —
+Boundaries are enforced by `@nx/enforce-module-boundaries` on three independent axes:
+`type:`, `scope:`, and `ui:`, which separates Trinity's own wrapper layer from the vendored
+spartan kit so third-party UI packages can be banned everywhere below it. Dependencies point
+inward —
 `app → feature → {data-access, ui} → {util, platform}` — and one feature may never
 import another. `ui` is presentational only and cannot reach a data-access lib at all.
 A library is named three different ways and they no longer coincide: the directory

@@ -113,11 +113,11 @@ That is the whole workflow. The kit keeps upstream's own naming — `hlm` select
 class names, the `@trinity/helm/*` alias — so a regenerate lands consistent with what is
 already there and needs no post-processing step.
 
-An earlier revision of this branch renamed the kit to `trn` wholesale and needed a codemod
-(`scripts/rebrand-kit.mjs`) after every generate to re-apply it. That rename was reverted:
-`trn` is reserved for Trinity's own code, which is what makes the wrapper layer legible, and
-removing the second command removes a footgun — a half-renamed kit **lints clean**, because
-the kit is deliberately exempt from the selector and class-suffix rules.
+`trn` is reserved for Trinity's own code — `<trn-icon>`, `<trn-emoji-picker>` and the overlay
+adapters — which is what makes the wrapper layer legible at a glance: an `hlm` name is
+upstream's, a `trn` name is ours. Renaming the kit into that namespace was tried and rejected;
+it would have needed a codemod re-applied after every generate, and a half-applied one **lints
+clean** because the generated files are exempt from the selector and class-suffix rules.
 
 Configuration lives in the root `components.json`:
 
