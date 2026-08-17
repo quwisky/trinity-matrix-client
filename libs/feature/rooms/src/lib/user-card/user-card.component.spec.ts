@@ -9,7 +9,7 @@ import {
   ProfileService,
   type UserProfile,
 } from '@trinity/data-access/profile';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { UserCardComponent } from './user-card.component';
 
 async function setup(

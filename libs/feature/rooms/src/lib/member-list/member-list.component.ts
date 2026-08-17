@@ -6,7 +6,7 @@ import {
   input,
   output,
 } from '@angular/core';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { type MemberSummary } from '@trinity/data-access/rooms';
 import { PresenceService } from '@trinity/data-access/profile';
 import { type PresenceState } from '@trinity/util/matrix';

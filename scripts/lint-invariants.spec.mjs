@@ -473,7 +473,6 @@ describe('UI vendor boundary', () => {
       '!@trinity/helm/button',
       '!@trinity/helm/dropdown-menu',
       '!@trinity/helm/sonner',
-      '!@trinity/helm/avatar',
     ]);
 
     // Splitting the globs is what keeps both bans alive: flat config replaces a rule's

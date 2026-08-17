@@ -8,12 +8,12 @@ import {
   signal,
 } from '@angular/core';
 import { DateTimeFormatService } from '@trinity/platform-native';
+import { AvatarComponent } from '@trinity/components/avatar';
 import {
-  AvatarComponent,
   MessageToolbarComponent,
   type MessageAction,
   type MessageToolbarCaps,
-} from '@trinity/ui';
+} from '@trinity/components/message-toolbar';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import { type ThreadSummary } from '@trinity/data-access/timeline';
 import {

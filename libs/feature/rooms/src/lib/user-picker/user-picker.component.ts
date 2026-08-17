@@ -21,7 +21,7 @@ import {
   type UserSearchResult,
 } from '@trinity/data-access/rooms';
 import { isValidUserId } from '@trinity/util/matrix';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnInput } from '@trinity/components/input';

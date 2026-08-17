@@ -18,7 +18,7 @@ import {
   HlmDropdownMenuSubTrigger,
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
-import { AvatarComponent, type AccountBadge } from '@trinity/ui';
+import { AvatarComponent, type AccountBadge } from '@trinity/components/avatar';
 import { unreadBadgeLabel } from '../../shared/unread-badge';
 import { RoomsService, type RoomSummary } from '@trinity/data-access/rooms';
 import {

@@ -20,7 +20,7 @@ import {
 import { filter, map } from 'rxjs';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
-import { PageHeaderComponent } from '@trinity/ui';
+import { PageHeaderComponent } from '@trinity/components/page-header';
 import { BUILD_INFO } from '@trinity/platform-native';
 import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
 

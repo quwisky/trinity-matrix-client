@@ -12,11 +12,8 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { Observable } from 'rxjs';
 import { VerificationService } from '@trinity/data-access/crypto';
-import {
-  PageHeaderComponent,
-  resolveInternalReturnTo,
-  runWithBusy,
-} from '@trinity/ui';
+import { resolveInternalReturnTo, runWithBusy } from '@trinity/ui';
+import { PageHeaderComponent } from '@trinity/components/page-header';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { SasCompareComponent } from './sas-compare.component';

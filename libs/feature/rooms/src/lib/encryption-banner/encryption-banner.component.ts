@@ -7,7 +7,8 @@ import {
 import { Router } from '@angular/router';
 import { HlmButton } from '@trinity/helm/button';
 import { CryptoService } from '@trinity/data-access/crypto';
-import { BannerComponent, EncryptionDialogService } from '@trinity/ui';
+import { EncryptionDialogService } from '@trinity/ui';
+import { BannerComponent } from '@trinity/components/banner';
 import { TrnIconComponent } from '@trinity/components/icon';
 
 /** Which encryption flow a banner action triggers. */

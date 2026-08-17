@@ -12,7 +12,8 @@ import { HlmButton } from '@trinity/helm/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import { TrnInput } from '@trinity/components/input';
 import { TrnLabel } from '@trinity/components/label';
-import { AvatarComponent, runWithBusy } from '@trinity/ui';
+import { runWithBusy } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { ProfileService } from '@trinity/data-access/profile';
 import { TrnIconComponent } from '@trinity/components/icon';
 

@@ -127,14 +127,16 @@ libs/
     settings/         @trinity/feature/settings — Settings page: appearance
                       (light/dark/system theme), profile (name + avatar), and
                       device management (sign-out/verify)  [type:feature]
-  ui/                 @trinity/ui — reusable presentational components (avatar +
-                      mxc resolver token, banner, page header, media bubble,
-                      message toolbar, encryption-dialog service); may use
-                      @trinity/helm/* + @trinity/util/* but no data-access/state deps  [type:ui]
+  ui/                 @trinity/ui — non-component UI code: encryption-dialog
+                      service + loader token, runWithBusy, media-query and
+                      internal-URL helpers; no data-access/state deps
+                      [type:ui, ui:wrapper]
   components/*        @trinity/components/* — the public component tier feature code
                       reaches for: Trinity-authored wrappers (overlay adapters, icon,
-                      emoji-picker, select, checkbox, tooltip, …) whose API is ours, so
-                      the library underneath can be swapped  [type:ui, ui:public]
+                      emoji-picker, select, checkbox, tooltip, …) plus Trinity's own
+                      presentational components (avatar, banner, page header, media
+                      bubble, message toolbar); the API is ours, so the library
+                      underneath can be swapped  [type:ui, ui:public]
   spartan/*           @trinity/helm/* — styled spartan-ng Helm components over
                       headless Brain primitives (button, input, card, dropdown-menu, …),
                       generated via @spartan-ng/cli; consume through components/*

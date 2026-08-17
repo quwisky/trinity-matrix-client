@@ -18,7 +18,7 @@ import {
   SpaceChildrenService,
   SpacesService,
 } from '@trinity/data-access/rooms';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { saveFields, type FieldWrite } from '../shared/save-fields';
 
 /** A room or space offered for adding, flattened so one list can hold both. */

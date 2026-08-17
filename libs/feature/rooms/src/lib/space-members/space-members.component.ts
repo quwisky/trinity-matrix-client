@@ -8,7 +8,7 @@ import {
 import { HlmButton } from '@trinity/helm/button';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { RoomsService, type MemberSummary } from '@trinity/data-access/rooms';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { MEMBER_ROLE_LABEL, memberRole } from '../shared/member-role';
 
 /**

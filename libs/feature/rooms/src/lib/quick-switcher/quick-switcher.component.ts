@@ -15,7 +15,7 @@ import {
 } from '@trinity/data-access/search';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AccountBadgesService } from '../shared/account-badges.service';
-import { AvatarComponent, type AccountBadge } from '@trinity/ui';
+import { AvatarComponent, type AccountBadge } from '@trinity/components/avatar';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnInput } from '@trinity/components/input';

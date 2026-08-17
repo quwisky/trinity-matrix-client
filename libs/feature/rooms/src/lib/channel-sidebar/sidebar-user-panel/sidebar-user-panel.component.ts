@@ -5,7 +5,7 @@ import {
   input,
   output,
 } from '@angular/core';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { type UserProfile } from '@trinity/data-access/profile';
 import {
   HlmDropdownMenu,

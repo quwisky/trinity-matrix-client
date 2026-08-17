@@ -285,9 +285,11 @@ export default defineConfig([
             },
             {
               // Staged, exactly as #148 staged the vendor bans. Four kit libraries are still
-              // reached from here — `button` (50 call sites), `dropdown-menu` (7), `sonner`
-              // and `avatar` (1 each) — so they are excepted by name while the rest of the
-              // kit is closed today. A NEW reach past the tier fails immediately, and the
+              // reached from here — `button` (50 call sites), `dropdown-menu` (6) and
+              // `sonner` (1) — so they are excepted by name while the rest of the kit is
+              // closed today. `avatar` left the list when `@trinity/components/avatar`
+              // moved into the tier and took the kit import with it, which is exactly how
+              // the list is meant to shrink. A NEW reach past the tier fails immediately, and the
               // exceptions are a list that shrinks to zero as each wrapper lands rather than
               // a permanent carve-out. `lint-invariants.spec.mjs` pins it, so removing one
               // is a deliberate step and adding a fifth is not possible by accident.
@@ -296,7 +298,6 @@ export default defineConfig([
                 '!@trinity/helm/button',
                 '!@trinity/helm/dropdown-menu',
                 '!@trinity/helm/sonner',
-                '!@trinity/helm/avatar',
               ],
               message: KIT_IMPORT_MESSAGE,
             },

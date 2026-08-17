@@ -112,11 +112,13 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
 - `@trinity/feature/*` `[type:feature]` — screens/pages incl. `feature-shell` (the app shell moved out of
   `apps/trinity`). May depend on `data-access-*` + `ui` + `util` + `platform`, **never another feature**.
 - `@trinity/components/*` (`libs/components/*`) `[type:ui]`, tagged `ui:public` — the **public
-  component tier**: Trinity-authored wrappers (`overlay`, `icon`, `emoji-picker`, and the
-  wrappers being added) whose API is ours, so the library underneath can be swapped without
-  touching a call site. This is the UI tier feature code should reach for.
-- `@trinity/ui` (`libs/ui`) `[type:ui]` — Trinity's own presentational components (`trn-avatar`,
-  banner, page header, media bubble, message toolbar).
+  component tier**: every component feature code reaches for. Trinity-authored wrappers over
+  vendors (`overlay`, `icon`, `emoji-picker`, select, checkbox, tooltip, …) AND Trinity's own
+  presentational components (`trn-avatar`, banner, page header, media bubble, message
+  toolbar). The API is ours, so the library underneath can be swapped without touching a
+  call site.
+- `@trinity/ui` (`libs/ui`) `[type:ui]` — the non-component remainder: `EncryptionDialogService`
+  + its loader token, `runWithBusy`, `mediaQuerySignal`, internal-URL helpers.
 - `@trinity/helm/*` (`libs/spartan/*`) `[type:ui]`, tagged `ui:vendor-wrapper` — the vendored
   `@spartan-ng/cli`-generated kit, `hlm` prefix. Consume it through `@trinity/components/*`
   rather than directly.

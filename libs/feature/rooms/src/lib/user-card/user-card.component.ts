@@ -10,7 +10,7 @@ import { catchError, of, switchMap } from 'rxjs';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { ProfileService, PresenceService } from '@trinity/data-access/profile';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { initialOf } from '@trinity/util/matrix';
 
 /**

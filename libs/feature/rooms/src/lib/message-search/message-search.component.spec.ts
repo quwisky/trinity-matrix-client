@@ -9,7 +9,7 @@ import {
   type ServerMessageSearch,
 } from '@trinity/data-access/search';
 import { TimelineService } from '@trinity/data-access/timeline';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';

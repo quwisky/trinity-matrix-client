@@ -25,7 +25,12 @@ and `ui:vendor-wrapper`.
 
 The Trinity-authored wrappers that used to sit among them — the overlay adapters,
 `<trn-icon>` and `<trn-emoji-picker>` — now live in `libs/components/` with the rest of the
-public tier (fifteen libraries, tagged `ui:public`).
+public tier (twenty libraries, tagged `ui:public`). Trinity's own presentational components
+— `<trn-avatar>` (with its `AVATAR_RESOLVER` seam), banner, media bubble, message toolbar
+and page header — live there too: the avatar and message toolbar wrap kit primitives, which
+is the tier's job, and moving them deleted the `@trinity/helm/avatar` staging exception from
+the consumer-side kit ban. `libs/ui` keeps what is not a component: `EncryptionDialogService`
+and its loader token, `runWithBusy`, `mediaQuerySignal`, and the internal-URL helpers.
 
 That tier is closed from both sides. The vendor bans stop everything below the UI layer
 naming `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` or `@ctrl/ngx-emoji-mart`; and a

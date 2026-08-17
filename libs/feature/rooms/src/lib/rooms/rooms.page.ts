@@ -53,7 +53,8 @@ import {
   TimelineService,
 } from '@trinity/data-access/timeline';
 import { FeatureFlagsService } from '@trinity/platform-native';
-import { AvatarComponent, PageHeaderComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
+import { PageHeaderComponent } from '@trinity/components/page-header';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { MemberListComponent } from '../member-list/member-list.component';

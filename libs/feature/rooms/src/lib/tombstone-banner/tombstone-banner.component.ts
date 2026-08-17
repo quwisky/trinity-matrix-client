@@ -6,7 +6,7 @@ import {
 } from '@angular/core';
 import { HlmButton } from '@trinity/helm/button';
 import { TimelineService } from '@trinity/data-access/timeline';
-import { BannerComponent } from '@trinity/ui';
+import { BannerComponent } from '@trinity/components/banner';
 import { TrnIconComponent } from '@trinity/components/icon';
 
 /**

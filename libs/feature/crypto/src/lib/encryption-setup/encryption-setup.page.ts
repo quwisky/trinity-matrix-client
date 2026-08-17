@@ -12,7 +12,8 @@ import { HlmButton } from '@trinity/helm/button';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { CryptoService } from '@trinity/data-access/crypto';
 import { type PasswordPrompt } from '@trinity/util/matrix';
-import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
+import { runWithBusy } from '@trinity/ui';
+import { PageHeaderComponent } from '@trinity/components/page-header';
 import { RecoveryKeySaveComponent } from '../recovery-key-save/recovery-key-save.component';
 import {
   confirmLeaving,

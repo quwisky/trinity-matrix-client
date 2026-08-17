@@ -45,10 +45,10 @@ import {
   providePlatformConfigEntries,
 } from '@trinity/platform-native';
 import {
-  AVATAR_RESOLVER,
   ENCRYPTION_DIALOG_COMPONENTS,
   type EncryptionDialogLoaders,
 } from '@trinity/ui';
+import { AVATAR_RESOLVER } from '@trinity/components/avatar';
 import { provideTrnIcons } from '@trinity/components/icon';
 import { provideTrnOverlayDefaults } from '@trinity/components/overlay';
 

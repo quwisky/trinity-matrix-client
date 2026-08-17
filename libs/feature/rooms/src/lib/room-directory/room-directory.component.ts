@@ -17,7 +17,7 @@ import {
   PublicRoomsService,
   type PublicRoomSummary,
 } from '@trinity/data-access/rooms';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { initialOf } from '@trinity/util/matrix';
 
 /** What the directory resolves when a room/space is joined from it. */

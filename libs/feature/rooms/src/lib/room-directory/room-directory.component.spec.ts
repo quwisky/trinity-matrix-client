@@ -9,7 +9,7 @@ import {
   type PublicRoomsPage,
   type PublicRoomSummary,
 } from '@trinity/data-access/rooms';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { RoomDirectoryComponent } from './room-directory.component';
 
 function room(over: Partial<PublicRoomSummary> = {}): PublicRoomSummary {

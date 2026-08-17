@@ -19,7 +19,7 @@ import {
   SpacesService,
   compareOrder,
 } from '@trinity/data-access/rooms';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { initialOf } from '@trinity/util/matrix';
 import { TrnIconComponent } from '@trinity/components/icon';
 

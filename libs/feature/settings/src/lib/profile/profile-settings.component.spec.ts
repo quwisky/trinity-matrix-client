@@ -5,7 +5,7 @@ import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProfileService, type UserProfile } from '@trinity/data-access/profile';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { ProfileSettingsComponent } from './profile-settings.component';
 import { provideTrnIcons } from '@trinity/components/icon';
 

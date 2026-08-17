@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { PresenceService } from '@trinity/data-access/profile';
 import { type MemberSummary } from '@trinity/data-access/rooms';
 import { type PresenceState } from '@trinity/util/matrix';

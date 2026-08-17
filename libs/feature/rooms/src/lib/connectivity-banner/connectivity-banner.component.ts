@@ -5,7 +5,7 @@ import {
   inject,
 } from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { BannerComponent } from '@trinity/ui';
+import { BannerComponent } from '@trinity/components/banner';
 import { TrnIconComponent } from '@trinity/components/icon';
 
 /**

@@ -20,12 +20,8 @@ import {
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
 import { TrnInput } from '@trinity/components/input';
-import {
-  AvatarComponent,
-  BELOW_MD_QUERY,
-  mediaQuerySignal,
-  type AccountBadge,
-} from '@trinity/ui';
+import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/ui';
+import { AvatarComponent, type AccountBadge } from '@trinity/components/avatar';
 import {
   InvitesService,
   MixedInvitesService,

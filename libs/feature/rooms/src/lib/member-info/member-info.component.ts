@@ -26,7 +26,7 @@ import {
 } from '@trinity/data-access/profile';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { VerificationService } from '@trinity/data-access/crypto';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { MEMBER_ROLE_LABEL, memberRole } from '../shared/member-role';
 
 /**
