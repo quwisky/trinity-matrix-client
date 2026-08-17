@@ -42,7 +42,6 @@ export class PresenceSectionComponent {
   private readonly presence = inject(PresenceService);
   private readonly destroyRef = inject(DestroyRef);
 
-  readonly options = PRESENCE_OPTIONS;
   /** The same states, in the shape the radio group takes. */
   readonly presenceOptions: readonly TrnRadioOption<PresenceState>[] =
     PRESENCE_OPTIONS.map((state) => ({
@@ -71,11 +70,6 @@ export class PresenceSectionComponent {
     this.presence.loadOwnPresence();
     this.stateDraft.set(this.presence.myPresence());
     this.statusDraft.set(this.presence.myStatusMessage());
-  }
-
-  /** Human label for a presence state (Online / Away / Offline). */
-  labelFor(state: PresenceState): string {
-    return presenceLabel(state);
   }
 
   onStateChange(value: string): void {

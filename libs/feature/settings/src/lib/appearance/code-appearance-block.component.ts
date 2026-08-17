@@ -26,10 +26,9 @@ export class CodeAppearanceBlockComponent {
   readonly theme = inject(ThemeService);
 
   /**
-   * Label for a code-scale id. The select renders the collapsed trigger from the bound
-   * VALUE rather than the chosen option's markup, so without this the control would read
-   * "larger" instead of "Larger". A stable field, not an inline arrow, which would be a new
-   * reference every change detection.
+   * The choices, in the shape the wrapper takes. A stable field rather than an inline
+   * arrow, which would be a new reference every change detection — the wrapper takes
+   * `options` as an input, so a fresh array each pass would re-render the list.
    */
   readonly codeScaleOptions: readonly TrnSelectOption<string>[] =
     this.theme.codeScales.map((scale) => ({
@@ -50,8 +49,6 @@ export class CodeAppearanceBlockComponent {
       this.theme.setCodeScale(value as CodeScale);
     }
   }
-
-  /** Label for a line-number mode id, for the same reason as {@link codeScaleLabel}. */
 
   /** Apply + persist when blocks show line numbers. */
   onCodeLinesChange(value: string | null | undefined): void {

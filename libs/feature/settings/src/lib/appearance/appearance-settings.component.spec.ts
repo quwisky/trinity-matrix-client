@@ -193,6 +193,39 @@ describe('AppearanceSettingsComponent', () => {
       }
     });
 
+    it('re-previews the options when the system locale changes', async () => {
+      // The regression this pins. The option lists were built once, in a field initializer,
+      // so their preview text froze at construction. `sample` is a fixed instant on purpose,
+      // but the preview formats it through `prefs()`, whose locales come from a
+      // `languagechange` listener — and Android keeps the WebView alive across an OS
+      // language change (`locale` sits in the Activity's `configChanges`). The paragraph
+      // below the dropdowns stayed a live template call, so the same screen ended up
+      // previewing "Match system" two contradictory ways.
+      //
+      // Driven through the real mechanism — stub the chain `systemLocales()` reads, then
+      // fire the event the service listens for — rather than poking a setter, because the
+      // service exposes none and the event is what actually happens on device.
+      const languages = vi.spyOn(navigator, 'languages', 'get');
+
+      languages.mockReturnValue(['en-US']);
+      const { fixture, container } = await renderPage();
+      window.dispatchEvent(new Event('languagechange'));
+      fixture.detectChanges();
+      const before =
+        container.querySelector('[data-testid=time-format-select]')
+          ?.textContent ?? '';
+
+      languages.mockReturnValue(['de-DE']);
+      window.dispatchEvent(new Event('languagechange'));
+      fixture.detectChanges();
+
+      expect(before).not.toBe('');
+      expect(
+        container.querySelector('[data-testid=time-format-select]')
+          ?.textContent,
+      ).not.toBe(before);
+    });
+
     it('shows the current formats applied to a sample instant', async () => {
       const { fixture, container } = await renderPage();
       const format = TestBed.inject(DateTimeFormatService);
