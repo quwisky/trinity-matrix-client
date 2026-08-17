@@ -16,12 +16,16 @@ once.
 | `@trinity/ui` | `libs/ui`                                                               | Trinity's own presentational components and small UI utilities.         |
 | Features      | `libs/feature/*`, aliased `@trinity/feature/*`                          | Screens and the components that make them up.                           |
 
-Nineteen libraries live under `libs/spartan/`. Three are Trinity-authored rather than
-generated — `overlay` (the dialog/alert/toast adapters), `icon` (`<trn-icon>`, below) and
-`emoji-picker` (`<trn-emoji-picker>`, below); they are the ones with no `ng-package.json`.
-The other sixteen are Helm: avatar, badge, button, card, checkbox, dropdown-menu, input,
-label, progress, radio-group, select, sonner, spinner, textarea, tooltip, utils. All are
-tagged `type:ui` and `scope:shared`, plus `ui:vendor-wrapper`.
+Seventeen libraries live under `libs/spartan/`. Sixteen are generated Helm — avatar, badge,
+button, card, checkbox, dropdown-menu, input, label, progress, radio-group, select, sonner,
+spinner, textarea, tooltip, utils — and are the ones with an `ng-package.json`. The
+seventeenth, `tests`, is a Trinity-authored project holding the specs that pin Helm's
+behaviour, so those specs stay in the vendor tier. All are tagged `type:ui`, `scope:shared`
+and `ui:vendor-wrapper`.
+
+The Trinity-authored wrappers that used to sit among them — the overlay adapters,
+`<trn-icon>` and `<trn-emoji-picker>` — now live in `libs/components/` with the rest of the
+public tier (fifteen libraries, tagged `ui:public`).
 
 That third tag is what makes the layering above enforceable rather than merely described.
 `libs/ui` and every Helm library used to carry identical tags, so no boundary rule could say
@@ -253,10 +257,13 @@ step with the banner in
 | `dropdown-menu` · `HlmDropdownMenu` and `HlmDropdownMenuSub` | `CdkTargetMenuAim` host directive                                                                                                                  | `dropdown-menu-submenu.spec.ts` |
 | `dropdown-menu` · `HlmDropdownMenuItem`                      | A destructive item's text and icon use `text-danger`, not upstream's `text-destructive`                                                            | `dropdown-menu-submenu.spec.ts` |
 | `badge` · `badgeVariants`                                    | Adds `success` and `warning` variants that upstream Helm does not ship                                                                             | `helm-components.spec.ts`       |
-| All 25 kit files with `hostDirectives`, across 11 libraries  | Every entry states its `inputs` and `outputs` explicitly, even when empty — the generator's shorthand decides the element's public API by omission | `host-directives.spec.mjs`      |
+| All 30 files with `hostDirectives` (25 kit, 5 public tier)   | Every entry states its `inputs` and `outputs` explicitly, even when empty — the generator's shorthand decides the element's public API by omission | `host-directives.spec.mjs`      |
 
-The specs live in
-[`libs/components/overlay/src/lib`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/components/overlay/src/lib).
+The two `.spec.ts` files live in
+[`libs/spartan/tests/src/lib`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/spartan/tests/src/lib),
+a project that exists so specs pinning vendored behaviour stay in the vendor tier now that the
+hand-authored wrappers have moved to `libs/components/`. `host-directives.spec.mjs` is a
+workspace-wide sweep and lives in `scripts/`.
 
 The `CdkTargetMenuAim` row is a consequence of the row above it. CDK closes an open submenu
 the moment the pointer enters any non-trigger sibling row, unless a `MENU_AIM` is provided —

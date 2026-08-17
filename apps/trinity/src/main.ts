@@ -83,8 +83,9 @@ bootstrapApplication(AppComponent, {
     // initial-sync request burst) so SDK-internal rejections don't spam the
     // console as ERROR; genuine errors still reach the default handler.
     { provide: ErrorHandler, useClass: TrinityErrorHandler },
-    // Spartan/helm CDK-overlay default: disable Angular 21's usePopover so helm
-    // dialogs/tooltips render above position:fixed elements (e.g. the toaster).
+    // CDK-overlay default: turn OFF Angular 21's usePopover. That mode renders overlays in
+    // the top layer, ABOVE every position:fixed element — so a dialog or tooltip would draw
+    // over the toaster that is meant to sit on top of it. See the provider's own header.
     provideTrnOverlayDefaults(),
     // `canceledNavigationResolution: 'computed'` is required by the canDeactivate guards
     // on /encryption/{setup,unlock}: under the default 'replace', a guard that cancels a

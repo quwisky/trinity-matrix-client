@@ -60,9 +60,10 @@ const topLevelEntries = (body) => {
 };
 
 describe('hostDirectives', () => {
-  // Scanned workspace-wide, not just over the kit. The kit is where every composition
-  // lives today — the only `hostDirectives` match outside it is a comment — but the rule
-  // is about not inheriting a directive's template API by accident, which is not a
+  // Scanned workspace-wide, not just over the kit. Composition used to live only there;
+  // the public tier now composes too — every wrapper that keeps the kit's styling does it
+  // this way — so the sweep covers both. The rule is about not inheriting a directive's
+  // template API by accident, which is not a
   // kit-specific hazard. Cheap enough to be worth the coverage: most files are skipped on
   // a substring test before they are parsed.
   const files = globSync(['libs/**/*.ts', 'apps/**/*.ts'], {

@@ -131,9 +131,14 @@ libs/
                       mxc resolver token, banner, page header, media bubble,
                       message toolbar, encryption-dialog service); may use
                       @trinity/helm/* + @trinity/util/* but no data-access/state deps  [type:ui]
+  components/*        @trinity/components/* — the public component tier feature code
+                      reaches for: Trinity-authored wrappers (overlay adapters, icon,
+                      emoji-picker, select, checkbox, tooltip, …) whose API is ours, so
+                      the library underneath can be swapped  [type:ui, ui:public]
   spartan/*           @trinity/helm/* — styled spartan-ng Helm components over
-                      headless Brain primitives (button, input, card, overlay,
-                      dropdown-menu, …), generated via @spartan-ng/cli  [type:ui]
+                      headless Brain primitives (button, input, card, dropdown-menu, …),
+                      generated via @spartan-ng/cli; consume through components/*
+                      [type:ui, ui:vendor-wrapper]
 e2e/playwright/     @nx/playwright app-journey specs (run: nx e2e trinity-e2e)
 e2e/                  standalone crypto/protocol harnesses (serve www/)
 android/ ios/         Capacitor native projects (webDir: www)

@@ -18,9 +18,6 @@ const tailwindCssConfigPath = join(
 const SDK_IMPORT_MESSAGE =
   'Only libs/data-access/* (and libs/util/matrix, which models the SDK types) may import matrix-js-sdk. Re-export what you need from the data-access lib that owns the domain.';
 
-const UI_VENDOR_IMPORT_MESSAGE =
-  'Only libs/spartan/* (the vendored kit) and libs/ui may import a third-party UI package. Use the kit component, or @trinity/helm/overlay for dialogs and toasts — see docs/architecture/ui-and-theming.md.';
-
 export default defineConfig([
   globalIgnores([
     '**/dist',

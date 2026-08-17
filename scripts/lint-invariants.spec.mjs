@@ -88,10 +88,15 @@ describe('lint invariants', () => {
     // Checked from both directions on purpose: the test above proves the generated files
     // ARE exempt, and this one proves the authored files are NOT. A future glob that
     // re-widens to the directory fails here rather than going unnoticed.
+    // Paths under libs/components, NOT libs/spartan. The three hand-authored libraries moved
+    // out when the public tier landed, and ESLint resolves a config for a path whether or not
+    // the file exists — so the old paths kept returning severity 2 and this test kept passing
+    // while asserting nothing about any file in the repo. A guard that cannot fail is worse
+    // than no guard, because it reads as coverage.
     for (const authored of [
-      'libs/spartan/icon/src/lib/trn-icon/trn-icon.component.ts',
-      'libs/spartan/emoji-picker/src/lib/trn-emoji-picker/trn-emoji-picker.component.ts',
-      'libs/spartan/overlay/src/lib/alert/trn-alert-dialog.component.ts',
+      'libs/components/icon/src/lib/trn-icon/trn-icon.component.ts',
+      'libs/components/select/src/lib/trn-select.component.ts',
+      'libs/components/overlay/src/lib/alert/trn-alert-dialog.component.ts',
     ]) {
       const config = await resolve(authored);
       for (const ruleId of SPARTAN_EXEMPT_RULES) {
@@ -164,11 +169,18 @@ const ALL_UI_VENDORS = [
 
 const UI_BOUNDARY = [
   // `ui:public` (libs/components) may name every vendor, and that is the point rather than
-  // an oversight: it IS a wrapper layer, the same status `ui:vendor-wrapper` has. What makes
-  // it a boundary is the other direction — it is the only tier feature code may reach, which
-  // is enforced on the CONSUMER side. Stated here so the asymmetry is on the record: the one
-  // library whose job is to absorb a substrate swap is also the one place a fifth vendor
-  // could appear without any lint signal, so a change to this row has to be argued for.
+  // an oversight: it IS a wrapper layer, the same status `ui:vendor-wrapper` has.
+  //
+  // What is NOT yet true is the other direction. Nothing keys on `ui:public`, so nothing stops
+  // feature code reaching straight past the tier into `@trinity/helm/*` — 59 files still do,
+  // 50 of them for `button`. The tier is structure today, not a rule; closing it needs the
+  // remaining kit libraries wrapped first, which is the same staging the vendor bans used.
+  // Recorded here rather than implied, because an earlier revision of this comment claimed the
+  // consumer side was already enforced, which would have let a reader believe the gate was shut.
+  //
+  // The asymmetry that follows: the one tier whose job is to absorb a substrate swap is also
+  // the one place a fifth vendor could appear with no lint signal, so a change to this row has
+  // to be argued for.
   { tier: 'ui:public', banned: [], allowed: ALL_UI_VENDORS },
   // libs/ui keeps nothing. Both wrappers it was once expected to host went to the public
   // tier instead — <trn-icon> in #154, <trn-emoji-picker> in #152 — because a lib tagged

@@ -1,8 +1,9 @@
 # Architecture overview
 
-Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 40
-libraries under `libs/`, grouped by layer into `libs/data-access/`, `libs/feature/` and
-`libs/util/`, alongside `libs/platform-native`, `libs/ui`, `libs/testing` and the `libs/spartan/`
+Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 53
+libraries under `libs/`, grouped by layer into `libs/data-access/`, `libs/feature/`,
+`libs/util/` and `libs/components/` (the public component tier), alongside
+`libs/platform-native`, `libs/ui`, `libs/testing` and the `libs/spartan/`
 Helm components. Web, iOS, Android and desktop are all the same compiled bundle wrapped
 differently, so there is no per-platform source tree — platform differences are branches inside
 `libs/platform-native`, not forks of the app.

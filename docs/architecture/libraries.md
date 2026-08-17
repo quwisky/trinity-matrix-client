@@ -1,6 +1,6 @@
 # Library inventory
 
-The workspace holds one application and 40 libraries. Every library carries a `type:*` and a
+The workspace holds one application and 53 libraries. Every library carries a `type:*` and a
 `scope:*` tag in its `project.json`, and the UI libraries carry a third `ui:*` tag that
 separates Trinity's own wrapper layer from the vendored kit; those tags are what
 [`@nx/enforce-module-boundaries`](https://github.com/quwisky/trinity-matrix-client/blob/develop/eslint.config.mjs)
@@ -10,10 +10,11 @@ Libraries are imported through `@trinity/*` path aliases declared in
 [`tsconfig.base.json`](https://github.com/quwisky/trinity-matrix-client/blob/develop/tsconfig.base.json),
 never by relative path across a library boundary. Imports _within_ a library stay relative.
 
-`libs/` itself has seven entries. Three are layer parents holding that layer's libraries:
-`data-access/` (12), `feature/` (5) and `util/` (1). `spartan/` (19) groups the Helm components and
-the overlay adapters. The remaining three are single libraries sitting directly under `libs/`:
-`platform-native`, `testing` and `ui`.
+`libs/` itself has eight entries. Four are layer parents holding that layer's libraries:
+`data-access/` (12), `feature/` (5), `util/` (1) and `components/` (15) — the public component
+tier feature code reaches for. `spartan/` (17) groups the generated Helm components plus the
+`tests` project that holds the specs pinning their behaviour. The remaining three are single
+libraries sitting directly under `libs/`: `platform-native`, `testing` and `ui`.
 
 A library answers to three different strings, and they are not interchangeable. The directories
 were nested without renaming the Nx projects, so for the rooms data-access library:

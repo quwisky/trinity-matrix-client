@@ -133,7 +133,7 @@ ephemeral runners is a remote cache, which this repository does not use.
 
 ## Three invariant specs that guard what a green run cannot see
 
-Both live in the `scripts` project and run as part of `pnpm test`, so they gate every
+All three live in the `scripts` project and run as part of `pnpm test`, so they gate every
 pull request and every release.
 
 ### The lint invariants spec
@@ -232,7 +232,7 @@ all — so a parser change that matched nothing cannot pass as a clean sweep.
 
     If you restructure that table, run `pnpm exec nx test scripts` before committing.
 
-A third spec in the same project drives the build-info generator against a temporary
+A fourth spec in the same project drives the build-info generator against a temporary
 manifest and an injected fake `git`, deliberately never reading the real repository
 version — a release bump from 0.0.1 to 0.1.0 had broken it once.
 
