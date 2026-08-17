@@ -68,6 +68,12 @@ export interface TrnSelectOption<T> {
 @Component({
   selector: 'trn-select',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // Owned here rather than left to callers. Every one of the seven call sites wrote
+  // `class="block"` because the kit's trigger is `w-fit`, so an inline host collapses the
+  // control to its content width — which means the box model was a rule each consumer had
+  // to know, and the first one to forget it would get a silently narrow select. Same
+  // reasoning as TrnRadioGroupComponent, where forgetting it was already costing an indent.
+  styles: [':host { display: block; }'],
   imports: [
     HlmSelect,
     HlmSelectTrigger,

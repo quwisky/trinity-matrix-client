@@ -53,6 +53,16 @@ export interface TrnRadioOption<T> {
   selector: 'trn-radio-group',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [HlmRadioGroup, HlmRadio, HlmRadioIndicator],
+  // Wrapping moved the caller's layout class onto THIS host, so this host has to be a block.
+  // The kit's `hlm-radio-group` merges `grid gap-2` into its own class list, so on the
+  // element this replaced a `class="px-4 py-2"` applied to a grid box. Here that class sits
+  // one level out, and without a display the host falls back to `inline`: the padding lands
+  // on an inline box whose block-level grid child ignores it, so the options lose their
+  // indent and the vertical padding spills into empty line boxes instead of spacing them.
+  // Measured in Chromium against the real class strings — first option x=16 -> x=0 and the
+  // section 20px taller — which no test in this repo can see, since jsdom does no layout.
+  // A component STYLE rather than a Tailwind class so the spec below can assert it.
+  styles: [':host { display: block; }'],
   host: {
     // Routed to the inner group below; a duplicate here would name an element with no role.
     '[attr.aria-labelledby]': 'null',

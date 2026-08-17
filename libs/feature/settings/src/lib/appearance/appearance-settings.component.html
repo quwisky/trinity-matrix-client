@@ -23,7 +23,6 @@
 </h2>
 <div class="px-4 py-2">
   <trn-select
-    class="block"
     data-testid="text-scale-select"
     aria-labelledby="appearance-text-size-heading"
     placeholder="Select a text size"
@@ -48,7 +47,6 @@
 </h2>
 <div class="px-4 py-2">
   <trn-select
-    class="block"
     data-testid="palette-select"
     aria-labelledby="appearance-palette-heading"
     placeholder="Select a palette"
@@ -67,12 +65,11 @@
 </h2>
 <div class="px-4 py-2">
   <trn-select
-    class="block"
     data-testid="time-format-select"
     aria-labelledby="appearance-time-heading"
     placeholder="Select a time format"
     triggerClass="w-full"
-    [options]="timeFormatOptions"
+    [options]="timeFormatOptions()"
     [value]="format.timeFormat()"
     (valueChange)="onTimeFormatChange($event)"
   />
@@ -86,12 +83,11 @@
 </h2>
 <div class="px-4 py-2">
   <trn-select
-    class="block"
     data-testid="date-format-select"
     aria-labelledby="appearance-date-heading"
     placeholder="Select a date format"
     triggerClass="w-full"
-    [options]="dateFormatOptions"
+    [options]="dateFormatOptions()"
     [value]="format.dateFormat()"
     (valueChange)="onDateFormatChange($event)"
   />
@@ -117,7 +113,6 @@
 </p>
 <div class="px-4 py-2">
   <trn-select
-    class="block"
     data-testid="space-order-select"
     aria-labelledby="appearance-space-order-heading"
     placeholder="Select an order"

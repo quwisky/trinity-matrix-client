@@ -70,4 +70,20 @@ describe('TrnRadioGroupComponent', () => {
 
     expect(fixture.componentInstance.value()).toBe('light');
   });
+
+  it('is a block, so a layout class on the host still lays the options out', async () => {
+    // The regression this pins. Wrapping moved the caller's `class="px-4 py-2"` off the
+    // kit's `grid` element and onto THIS host; with no display the host is `inline`, the
+    // block-level grid child ignores its padding, and the options lose their indent while
+    // the vertical padding spills into empty line boxes. Measured in Chromium at the time:
+    // first option x=16 -> x=0 and the section 20px taller.
+    //
+    // Assertable precisely because it is a component `styles:` declaration rather than a
+    // Tailwind class — jsdom loads no stylesheet, but it does apply component styles. Move
+    // the display onto a class and this passes against `display: inline`.
+    const { container } = await render(HostComponent);
+    const host = container.querySelector('trn-radio-group') as HTMLElement;
+
+    expect(getComputedStyle(host).display).toBe('block');
+  });
 });

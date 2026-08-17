@@ -20,7 +20,6 @@ const OPTIONS: readonly TrnSelectOption<string>[] = [
   imports: [TrnSelectComponent],
   template: `
     <trn-select
-      class="block"
       data-testid="space-order-select"
       placeholder="Select an order"
       triggerClass="w-full"
@@ -75,5 +74,20 @@ describe('TrnSelectComponent', () => {
     expect(
       container.querySelector('[data-slot="select-value"]'),
     ).not.toBeNull();
+  });
+
+  it('is a block on its own, without the call site supplying it', async () => {
+    // The kit's trigger is `w-fit`, so an inline host collapses the control to its content
+    // width. Every call site used to write `class="block"` to avoid that — a rule each
+    // consumer had to know, and the first to forget it got a silently narrow select. The
+    // component owns it now, and this host deliberately does NOT pass the class, so the
+    // assertion fails if the style is dropped rather than passing on the caller's copy.
+    //
+    // Assertable because it is a component `styles:` declaration: jsdom loads no
+    // stylesheet, but it does apply component styles.
+    const { container } = await render(HostComponent);
+    const host = container.querySelector('trn-select') as HTMLElement;
+
+    expect(getComputedStyle(host).display).toBe('block');
   });
 });
