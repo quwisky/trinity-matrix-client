@@ -15,6 +15,9 @@ const tailwindCssConfigPath = join(
 );
 
 /** Shared by the two rules below, which police the same ban over different AST shapes. */
+const KIT_IMPORT_MESSAGE =
+  'Feature, ui and app code reaches for @trinity/components/* (the public tier), not the vendored kit. The tier owns the vendor API so a swap touches one library instead of every call site — see docs/architecture/ui-and-theming.md. If the component you need has no wrapper yet, add one there rather than importing @trinity/helm/* here.';
+
 const SDK_IMPORT_MESSAGE =
   'Only libs/data-access/* (and libs/util/matrix, which models the SDK types) may import matrix-js-sdk. Re-export what you need from the data-access lib that owns the domain.';
 
@@ -214,9 +217,12 @@ export default defineConfig([
     // libs/ui and libs/spartan disagreed on — which scripts/lint-invariants.spec.mjs
     // correctly failed on, since a widening gap between those two configs is exactly
     // what that invariant exists to catch.
+    // Split from the consumer tiers (libs/feature, libs/ui, apps), which carry this same
+    // rule PLUS the kit ban in the block below. Flat config replaces a rule's options
+    // wholesale, so two blocks configuring `@typescript-eslint/no-restricted-imports` over
+    // overlapping globs would silently drop whichever set lost — the globs are disjoint on
+    // purpose, and `lint-invariants.spec.mjs` asserts the SDK ban still reaches both halves.
     files: [
-      'libs/feature/**/*.ts',
-      'libs/ui/**/*.ts',
       'libs/spartan/**/*.ts',
       // The public component tier, for the same reason libs/spartan is here: it is
       // presentational UI that must never reach the SDK. Absence from this list is how a
@@ -226,7 +232,6 @@ export default defineConfig([
       'libs/components/**/*.ts',
       'libs/platform-native/**/*.ts',
       'libs/testing/**/*.ts',
-      'apps/**/*.ts',
     ],
     rules: {
       '@typescript-eslint/no-restricted-imports': [
@@ -245,6 +250,64 @@ export default defineConfig([
       // lazily-loaded feature component is exactly the shape that would reach for one,
       // since every route in this app is lazy. Same rule, expressed over the AST node
       // that form actually produces.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'ImportExpression[source.value=/^matrix-js-sdk/]',
+          message: SDK_IMPORT_MESSAGE,
+        },
+      ],
+    },
+  },
+  {
+    // The consumer side of the public component tier — the half that makes it a boundary
+    // rather than a suggestion.
+    //
+    // `@nx/enforce-module-boundaries` cannot express this. Its `notDependOnLibsWithTags` is
+    // TRANSITIVE: the tier depends on the kit by design, so banning `ui:vendor-wrapper` from
+    // feature code also bans it through `@trinity/components/*` and fails on the very path it
+    // is meant to bless. Measured, not assumed — the first attempt reported
+    // `components-overlay -> button` against libs/ui. A direct-import rule is the right shape,
+    // and it is the one this repo already uses for the matrix-js-sdk ban above.
+    //
+    // These globs are disjoint from that block's on purpose: flat config replaces a rule's
+    // options wholesale, so overlapping them would silently drop one set of patterns. That is
+    // why the SDK pattern is restated here rather than inherited.
+    files: ['libs/feature/**/*.ts', 'libs/ui/**/*.ts', 'apps/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['matrix-js-sdk', 'matrix-js-sdk/*'],
+              message: SDK_IMPORT_MESSAGE,
+            },
+            {
+              // Staged, exactly as #148 staged the vendor bans. Four kit libraries are still
+              // reached from here — `button` (50 call sites), `dropdown-menu` (7), `sonner`
+              // and `avatar` (1 each) — so they are excepted by name while the rest of the
+              // kit is closed today. A NEW reach past the tier fails immediately, and the
+              // exceptions are a list that shrinks to zero as each wrapper lands rather than
+              // a permanent carve-out. `lint-invariants.spec.mjs` pins it, so removing one
+              // is a deliberate step and adding a fifth is not possible by accident.
+              group: [
+                '@trinity/helm/*',
+                '!@trinity/helm/button',
+                '!@trinity/helm/dropdown-menu',
+                '!@trinity/helm/sonner',
+                '!@trinity/helm/avatar',
+              ],
+              message: KIT_IMPORT_MESSAGE,
+            },
+          ],
+        },
+      ],
+      // Restated here for the same reason the SDK pattern above is: splitting the globs
+      // means this block owns these tiers outright. Dropping it was not hypothetical — the
+      // first version of this split did exactly that, and `lint-invariants.spec.mjs` failed
+      // on the missing selector, which is the whole reason that assertion exists. Every
+      // route in this app is lazy, so this form is the half that matters here.
       'no-restricted-syntax': [
         'error',
         {

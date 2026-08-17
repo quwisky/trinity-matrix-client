@@ -45,7 +45,13 @@ const SPARTAN_EXEMPT_RULES = [
 
 describe('lint invariants', () => {
   it('exempts libs/spartan from exactly the four generated-code rules, and nothing else', async () => {
-    const app = await resolve('libs/ui/src/index.ts');
+    // Baseline is the PUBLIC TIER, not libs/ui. Both are non-generated UI, but libs/ui is a
+    // consumer tier and so carries the kit ban that generated code does not — comparing
+    // against it would surface that as a difference and drown the signal this test exists
+    // for. `libs/components` and `libs/spartan` differ ONLY by the generated-code exemption.
+    const app = await resolve(
+      'libs/components/select/src/lib/trn-select.component.ts',
+    );
     const spartan = await resolve(
       'libs/spartan/tooltip/src/lib/hlm-tooltip.ts',
     );
@@ -425,6 +431,65 @@ describe('UI vendor boundary', () => {
         ?.bannedExternalImports,
     ).toBeUndefined();
     expect(kit.rules['no-restricted-imports']).toBeUndefined();
+  });
+
+  it('closes the vendored kit to consumer tiers, staged to the libraries still unwrapped', async () => {
+    // The consumer half of the public tier. `@nx/enforce-module-boundaries` cannot express
+    // it — `notDependOnLibsWithTags` is transitive, and the tier depends on the kit by
+    // design, so it fails on the very path it should bless. A direct-import rule is the
+    // right shape; this pins that it reaches the consumer tiers and NOT the tier itself.
+    const KIT = '@trinity/helm/*';
+    const groupsFor = (config) =>
+      (
+        config.rules['@typescript-eslint/no-restricted-imports']?.[1]
+          ?.patterns ?? []
+      ).map((pattern) => pattern.group ?? []);
+    const kitGroup = (config) =>
+      groupsFor(config).find((group) => group[0] === KIT);
+
+    for (const consumer of [
+      'libs/feature/rooms/src/lib/rooms.routes.ts',
+      'libs/ui/src/lib/banner/banner.component.ts',
+      'apps/trinity/src/main.ts',
+    ]) {
+      expect(kitGroup(await resolve(consumer)), consumer).toBeDefined();
+    }
+
+    // The tier and the kit must stay free to name it, or the wrapper layer cannot exist.
+    for (const wrapper of [
+      'libs/components/select/src/lib/trn-select.component.ts',
+      'libs/spartan/button/src/lib/hlm-button.ts',
+    ]) {
+      expect(kitGroup(await resolve(wrapper)), wrapper).toBeUndefined();
+    }
+
+    // The staging list, exact and shrinking. A fifth exception cannot arrive unnoticed, and
+    // removing one as its wrapper lands is a deliberate edit here. Empty means the tier is
+    // fully closed — at which point this expectation is the thing that says so.
+    expect(
+      kitGroup(await resolve('libs/feature/rooms/src/lib/rooms.routes.ts')),
+    ).toEqual([
+      KIT,
+      '!@trinity/helm/button',
+      '!@trinity/helm/dropdown-menu',
+      '!@trinity/helm/sonner',
+      '!@trinity/helm/avatar',
+    ]);
+
+    // Splitting the globs is what keeps both bans alive: flat config replaces a rule's
+    // options wholesale, so the SDK pattern has to be restated in the consumer block.
+    // Asserted from both halves, because losing it there would be silent.
+    for (const anywhere of [
+      'libs/feature/rooms/src/lib/rooms.routes.ts',
+      'libs/components/select/src/lib/trn-select.component.ts',
+    ]) {
+      expect(
+        groupsFor(await resolve(anywhere)).some(
+          (g) => g[0] === 'matrix-js-sdk',
+        ),
+        anywhere,
+      ).toBe(true);
+    }
   });
 
   it('keeps the matrix-js-sdk dynamic-import ban after the staging block was deleted', async () => {

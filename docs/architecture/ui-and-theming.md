@@ -27,6 +27,24 @@ The Trinity-authored wrappers that used to sit among them — the overlay adapte
 `<trn-icon>` and `<trn-emoji-picker>` — now live in `libs/components/` with the rest of the
 public tier (fifteen libraries, tagged `ui:public`).
 
+That tier is closed from both sides. The vendor bans stop everything below the UI layer
+naming `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` or `@ctrl/ngx-emoji-mart`; and a
+`no-restricted-imports` pattern over `libs/feature`, `libs/ui` and `apps` stops them reaching
+past the tier into `@trinity/helm/*`. Feature code asks for `@trinity/components/*`, full
+stop.
+
+`@nx/enforce-module-boundaries` cannot express that second half: its
+`notDependOnLibsWithTags` is **transitive**, and the tier depends on the kit by design, so
+banning `ui:vendor-wrapper` from feature code also fails on every path through
+`@trinity/components/*` — the very path it exists to bless. A direct-import rule is the right
+shape, and it is the same one the `matrix-js-sdk` ban uses.
+
+Four kit libraries are still excepted by name — `button` (50 call sites), `dropdown-menu`
+(7), `sonner` and `avatar` (1 each) — because banning them today would fail `pnpm lint` on 59
+files. Same staging #148 used for the vendor bans: a NEW reach past the tier fails
+immediately, and the exception list shrinks to zero as each wrapper lands.
+`scripts/lint-invariants.spec.mjs` pins the list, so a fifth cannot arrive by accident.
+
 That third tag is what makes the layering above enforceable rather than merely described.
 `libs/ui` and every Helm library used to carry identical tags, so no boundary rule could say
 "only the kit may import Brain" — the two were indistinguishable to Nx. `libs/ui` now carries
