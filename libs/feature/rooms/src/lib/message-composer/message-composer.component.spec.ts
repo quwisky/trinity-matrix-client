@@ -1076,6 +1076,22 @@ describe('MessageComposerComponent', () => {
     expect(sent).toEqual(['one.png', 'one.png']); // failed, so still staged and resendable
   });
 
+  it('keeps what you typed when a send is refused', async () => {
+    // A refusal must leave the composer exactly as it found it. Falling through would clear
+    // the caption for a send that never happened — the user's words, gone, with the files
+    // still sitting in the strip and nothing to say why.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    cmp.submitMedia.subscribe(() => undefined); // in flight: outcomes never arrive
+    pickFiles(cmp, [png('one.png')]);
+    cmp.submit();
+
+    cmp.text.set('a caption I typed');
+    cmp.submit(); // refused — a batch is already going out
+
+    expect(cmp.text()).toBe('a caption I typed');
+  });
+
   it('shows the send button as blocked before the progress bar has caught up', async () => {
     // The window the button clause exists for: between the dispatch and the parent's change
     // detection, `uploadProgress` is still null. Reading only that leaves the button live
