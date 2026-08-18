@@ -177,6 +177,32 @@ test.describe('Settings', () => {
     );
   });
 
+  test('expanding the unstable features does not add a second scrollbar', async ({
+    page,
+  }) => {
+    // jsdom has no layout, so this can only be checked in a browser. At a line per flag the
+    // disclosure added ~256px to the block, which pushed the settings detail pane into its
+    // own scrollbar beside the submenu's on any window under ~610px tall. 600px is inside
+    // the band that used to fail and is an ordinary laptop-with-dock height.
+    await page.setViewportSize({ width: 1280, height: 600 });
+    await openSection(page, 'server');
+    await expect(page.getByTestId('hs-software')).toBeVisible({
+      timeout: 20_000,
+    });
+
+    const detailOverflows = () =>
+      page.evaluate(() => {
+        const pane = document.querySelector('.settings__detail');
+        return !!pane && pane.scrollHeight > pane.clientHeight + 1;
+      });
+
+    expect(await detailOverflows()).toBe(false);
+    await page.getByTestId('hs-unstable').locator('summary').click();
+    await expect(page.getByTestId('hs-unstable')).toHaveAttribute('open', '');
+
+    expect(await detailOverflows()).toBe(false);
+  });
+
   test('re-checks the server on demand', async ({ page }) => {
     // "Check again" is the requirement the whole surface exists for — noticing that the
     // value CHANGED — so the button has to actually re-run the probe rather than re-render

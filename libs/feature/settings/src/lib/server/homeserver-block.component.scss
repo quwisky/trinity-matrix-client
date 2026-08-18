@@ -63,11 +63,26 @@ summary {
   cursor: pointer;
 }
 
+// Wrapped rather than one flag per line. A server advertises a dozen or more of these, and
+// at a line each the disclosure added ~256px to the block — enough to push the settings
+// detail pane into its own scrollbar beside the submenu's on any window under ~610px tall.
+// Two panes each scrolling is the two-pane layout working, but not for a list nobody opened
+// the page for.
 .hs-block__flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
   margin-top: 4px;
   color: var(--trinity-text-muted);
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 12px;
+
+  li {
+    // The long ones (`org.matrix.msc4445.initial_sync_timeline_topological_ordering`) are
+    // wider than the value column, so they must be able to break rather than widen it.
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
 }
 
 .hs-block__status {
