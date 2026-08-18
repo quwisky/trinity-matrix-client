@@ -6,7 +6,6 @@ import {
   computed,
   effect,
   inject,
-  signal,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import {
@@ -22,6 +21,7 @@ import { HlmButton } from '@trinity/helm/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import { PageHeaderComponent } from '@trinity/components/page-header';
 import { BUILD_INFO } from '@trinity/platform-native';
+import { MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
 
 /** One row of the settings submenu, routing to its section sub-page. */
@@ -45,9 +45,6 @@ const MENU: readonly SettingsMenuItem[] = [
   { path: 'experimental', label: 'Experimental', icon: 'flask-conical' },
   { path: 'advanced', label: 'Advanced', icon: 'braces' },
 ];
-
-/** The two-pane / single-pane breakpoint — the same `md` the rooms shell uses. */
-const WIDE_QUERY = '(min-width: 768px)';
 
 /**
  * Settings shell: a submenu of sections beside a routed detail outlet. On the wide
@@ -98,25 +95,15 @@ export class SettingsPage {
    * Wide layout: both panes show, the index auto-selects the first section, and
    * section links replace rather than push (lateral switches must not stack history,
    * so one Back leaves settings instead of retracing visited sections). Template-read.
+   *
+   * This used to hand-roll `mediaQuerySignal`: the same single MediaQueryList, the same
+   * seed-then-listen, the same teardown on `destroyRef` — beside its own copy of the
+   * breakpoint string. Both are shared now, so the `md` boundary is defined once and the
+   * live-resize behaviour cannot drift between the two screens that branch on it.
    */
-  protected readonly wide = signal(false);
+  protected readonly wide = mediaQuerySignal(MD_QUERY, this.destroyRef);
 
   constructor() {
-    // One MediaQueryList: seed the signal and track live resizes off the same object.
-    const mql =
-      typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-        ? window.matchMedia(WIDE_QUERY)
-        : null;
-    this.wide.set(mql?.matches ?? false);
-    if (mql) {
-      const onChange = (event: MediaQueryListEvent): void =>
-        this.wide.set(event.matches);
-      mql.addEventListener('change', onChange);
-      this.destroyRef.onDestroy(() =>
-        mql.removeEventListener('change', onChange),
-      );
-    }
-
     // The wide two-pane layout must never show an empty detail pane: land the bare
     // `/settings` index on the first section. Narrow leaves the index on the list.
     effect(() => {

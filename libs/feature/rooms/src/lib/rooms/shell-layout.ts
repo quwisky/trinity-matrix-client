@@ -1,3 +1,5 @@
+import { BELOW_MD_QUERY } from '@trinity/util/ui';
+
 /**
  * Viewport predicates the rooms shell branches on.
  *
@@ -24,12 +26,14 @@ export function membersColumnDefaultsOpen(): boolean {
   return !membersShownAsDrawer();
 }
 
-/** True on the mobile master-detail layout (below md), where the room list and the
- * chat are separate full-screen pages — mirrors the `max-width: 767.98px` scss query. */
+/** True on the mobile master-detail layout (below md), where the room list and the chat are
+ * separate full-screen pages. `BELOW_MD_QUERY` is the same string the `@media` block in
+ * rooms.page.scss uses; SCSS cannot import it, so that pairing stays a convention, but at
+ * least the three TypeScript readers of this breakpoint now share one definition. */
 export function isMobileMasterDetail(): boolean {
   return (
     typeof window !== 'undefined' &&
     typeof window.matchMedia === 'function' &&
-    window.matchMedia('(max-width: 767.98px)').matches
+    window.matchMedia(BELOW_MD_QUERY).matches
   );
 }

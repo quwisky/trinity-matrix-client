@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import type { Type } from '@angular/core';
 import { TrnDialogService } from '@trinity/components/overlay';
+import { MD_QUERY } from '@trinity/util/ui';
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
   type EncryptionDialogKind,
@@ -21,10 +22,6 @@ export interface EncryptionDialogOptions {
    */
   offerReset?: boolean;
 }
-
-/** The rooms shell's md breakpoint: at/above this the sidebar is a static column
- * rather than an overlay drawer, so the encryption flows present as a dialog. */
-const DESKTOP_QUERY = '(min-width: 768px)';
 
 /**
  * Presents the self-initiated encryption flows — recovery-key unlock
@@ -91,15 +88,21 @@ export class EncryptionDialogService {
   }
 
   /**
-   * True on the wide split-pane layout (the same `md` breakpoint as the rooms
-   * shell; Electron is always wide). Feature-detects `matchMedia` so SSR /
-   * non-DOM contexts fall back to the routed flow.
+   * True on the wide split-pane layout: at/above `md` the sidebar is a static column
+   * rather than an overlay drawer, so the encryption flows present as a dialog (Electron
+   * is always wide). Feature-detects `matchMedia` so SSR / non-DOM contexts fall back to
+   * the routed flow.
+   *
+   * A one-shot read, deliberately: this decides how to PRESENT the flow at the moment it
+   * opens. A dialog does not become a route because the window was dragged narrower
+   * afterwards, so the live `mediaQuerySignal` next to `MD_QUERY` would be the wrong tool
+   * — the shared constant is the part worth having.
    */
   private isDesktopLayout(): boolean {
     return (
       typeof window !== 'undefined' &&
       typeof window.matchMedia === 'function' &&
-      window.matchMedia(DESKTOP_QUERY).matches
+      window.matchMedia(MD_QUERY).matches
     );
   }
 }
