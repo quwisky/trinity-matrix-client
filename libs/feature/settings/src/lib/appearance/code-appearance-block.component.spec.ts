@@ -97,6 +97,12 @@ describe('CodeAppearanceBlockComponent', () => {
     expect(container.querySelector(`#${id}`)?.textContent?.trim()).toBe(
       'Line numbers',
     );
+    // And that the threshold survives all the way to the collapsed trigger — the surface
+    // #168 was about. `auto` shares no substring with its label, so this needs no negative
+    // half: reading anything other than the sentence means the id leaked through.
+    expect(
+      select?.querySelector('hlm-select-trigger')?.textContent?.trim(),
+    ).toBe('Blocks over 5 lines');
   });
 
   it('applies a registered line-number mode and ignores anything else', async () => {

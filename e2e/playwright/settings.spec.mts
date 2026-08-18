@@ -126,12 +126,15 @@ test.describe('Settings', () => {
     await amethyst.click();
     await expect.poll(() => paletteAttr(page)).toBe('amethyst');
     await expect(amethyst).toHaveCount(0); // closed after selecting
+    // #168: and the closed trigger reads the label, not the stored id `amethyst`.
+    await expect(trigger).toHaveText('Amethyst');
 
     // Back to the default palette → the attribute is removed again.
     await trigger.click();
     await page.getByTestId('palette-trinity').click();
     await expect.poll(() => paletteAttr(page)).toBeNull();
     await expect(amethyst).toHaveCount(0);
+    await expect(trigger).toHaveText('Trinity');
   });
 
   test('edits and saves the display name', async ({ page }) => {

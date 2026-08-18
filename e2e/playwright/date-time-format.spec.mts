@@ -136,6 +136,16 @@ test.describe('Date and time format', () => {
     await chooseFormat(page, 'time-format-select', 'time-format-h24');
     await chooseFormat(page, 'date-format-select', 'date-format-iso');
 
+    // #168: what each CLOSED dropdown then reads. This suite addresses options by
+    // data-testid and never looked at the trigger, which is how it stayed green while the
+    // trigger showed the stored id — `h24`, `iso` — instead of the option just clicked.
+    await expect(
+      page.getByTestId('time-format-select').locator('button').first(),
+    ).toContainText('24-hour');
+    await expect(
+      page.getByTestId('date-format-select').locator('button').first(),
+    ).toContainText('ISO');
+
     // The sample line reflects both choices immediately, with no reload.
     await expect(page.getByTestId('date-time-showing')).toContainText(
       '2026-07-24, 15:45',
