@@ -667,7 +667,11 @@ describe('RoomsPage panels, pins and media', () => {
       },
     );
 
-    shell.messages.onSendMedia({ file: pngFile(), caption: '' });
+    shell.messages.onSendMedia({
+      file: pngFile(),
+      caption: '',
+      done: () => undefined,
+    });
     expect(shell.messages.uploadProgress()).toBe(0); // reset to 0 on start
 
     progressCb?.(0.5);
@@ -678,12 +682,31 @@ describe('RoomsPage panels, pins and media', () => {
     expect(toastShow).not.toHaveBeenCalled(); // no error toast
   });
 
+  it('reports done even when the send completes synchronously', () => {
+    // What `TimelineActionsService.sendMedia` returns for a 0-byte file or a closed room
+    // context: `of(void 0)`, completing inside the subscribe. The composer cannot infer this
+    // from `uploadProgress` — it is back to null before anything can observe it — so the
+    // host has to say so, or the composer's send latch stays closed for good.
+    const shell = build();
+    sendMedia.mockReturnValue(of(undefined));
+    const done = vi.fn();
+
+    shell.messages.onSendMedia({ file: pngFile(), caption: '', done });
+
+    expect(done).toHaveBeenCalledTimes(1);
+    expect(shell.messages.uploadProgress()).toBeNull();
+  });
+
   it('clears uploadProgress and toasts when a media send fails', () => {
     const shell = build();
     const stream = new Subject<void>();
     sendMedia.mockReturnValue(stream.asObservable());
 
-    shell.messages.onSendMedia({ file: pngFile(), caption: '' });
+    shell.messages.onSendMedia({
+      file: pngFile(),
+      caption: '',
+      done: () => undefined,
+    });
     expect(shell.messages.uploadProgress()).toBe(0);
 
     stream.error(new Error('upload failed'));

@@ -137,7 +137,15 @@ export abstract class MessageListBase {
   /** Pin or unpin this event id (host resolves which, given its current pinned state). */
   readonly togglePin = output<string>();
   readonly send = output<{ body: string; mentions: Mention[] }>();
-  readonly sendMedia = output<{ file: File; caption: string }>();
+  /**
+   * Send a staged file as a media message. `done` is forwarded from the composer and MUST be
+   * called by whoever performs the send — it releases the composer's one-at-a-time latch.
+   */
+  readonly sendMedia = output<{
+    file: File;
+    caption: string;
+    done: () => void;
+  }>();
   readonly retry = output<string>();
   readonly editMessage = output<{
     id: string;

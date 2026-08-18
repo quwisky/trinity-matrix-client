@@ -150,7 +150,15 @@ export class MessageActionsService {
     );
   }
 
-  onSendMedia({ file, caption }: { file: File; caption: string }): void {
+  onSendMedia({
+    file,
+    caption,
+    done,
+  }: {
+    file: File;
+    caption: string;
+    done: () => void;
+  }): void {
     // The upload phase has no echo, so drive a determinate progress bar from the
     // upload fraction and surface a failure as a toast. Once the event is sent the
     // SDK echo + retry path takes over (like onSend). finalize() clears the bar on
@@ -159,7 +167,12 @@ export class MessageActionsService {
     this.timelineActions
       .sendMedia(file, caption, (fraction) => this.uploadProgress.set(fraction))
       .pipe(
-        finalize(() => this.uploadProgress.set(null)),
+        finalize(() => {
+          this.uploadProgress.set(null);
+          // Releases the composer's send latch. `finalize` covers success, error AND
+          // unsubscribe, so there is no path that dispatches without eventually reporting.
+          done();
+        }),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({

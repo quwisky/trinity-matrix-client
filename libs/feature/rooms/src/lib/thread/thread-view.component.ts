@@ -211,14 +211,27 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
     }
   }
 
-  onSendMedia({ file, caption }: { file: File; caption: string }): void {
+  onSendMedia({
+    file,
+    caption,
+    done,
+  }: {
+    file: File;
+    caption: string;
+    done: () => void;
+  }): void {
     this.uploadProgress.set(0);
     this.threads
       .sendMediaToThread(file, caption, (fraction) =>
         this.uploadProgress.set(fraction),
       )
       .pipe(
-        finalize(() => this.uploadProgress.set(null)),
+        finalize(() => {
+          this.uploadProgress.set(null);
+          // Releases the composer's send latch. `finalize` covers success, error AND
+          // unsubscribe, so there is no path that dispatches without eventually reporting.
+          done();
+        }),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({

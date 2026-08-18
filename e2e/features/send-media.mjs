@@ -195,6 +195,16 @@ async function main() {
     await composer.press('Enter');
     log('typed a caption and pressed Enter');
 
+    // Both halves, in this order and BEFORE any wait that outlives the upload. Everything
+    // below — the bubble reaching `ready`, the caption rendering, the chip detaching —
+    // happens strictly after `finalize()` clears the bar, so a `detached` wait placed after
+    // them matches zero elements and resolves instantly. `visible` first is what makes the
+    // `detached` half mean "it went away" rather than "it was never here".
+    const uploadBar = page.getByTestId('upload-progress');
+    await uploadBar.waitFor({ state: 'visible', timeout: 15_000 });
+    await uploadBar.waitFor({ state: 'detached', timeout: 30_000 });
+    log('upload bar appeared during the upload and cleared after it ✓');
+
     // The app uploads the ciphertext, sends m.image, renders the echo, then
     // downloads + decrypts its own attachment back into the bubble.
     log('waiting for the media bubble to resolve (upload → decrypt → render)');
@@ -233,15 +243,6 @@ async function main() {
       .getByTestId('composer-pending')
       .waitFor({ state: 'detached', timeout: 10_000 });
     log('staged chip cleared after send ✓');
-
-    // The bar appears while the upload runs and clears when it finishes. Asserted here, right
-    // after the first send, because that is the only point it is observable — by the time the
-    // media bubble is ready the bar is long gone, so a `detached` wait later would pass
-    // against an element that never existed.
-    await page
-      .getByTestId('upload-progress')
-      .waitFor({ state: 'detached', timeout: 30_000 });
-    log('upload bar cleared once the first upload finished ✓');
 
     // Second send: an attachment with NO caption — Enter on an empty caption
     // still sends, and no caption text is rendered.

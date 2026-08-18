@@ -164,7 +164,22 @@ export class MessageComposerComponent {
   readonly uploadProgress = input<number | null>(null);
   readonly submitText = output<ComposerSubmit>();
   /** A staged attachment plus its optional caption, emitted on submit. */
-  readonly submitMedia = output<{ file: File; caption: string }>();
+  /**
+   * Send a file as a media message. The host MUST call `done` when the send settles —
+   * success, failure or cancellation alike — because that is what releases the composer's
+   * one-at-a-time latch.
+   *
+   * It is a callback rather than something derived from `uploadProgress` because a send can
+   * finish before the host's progress is ever observable: `sendMedia` completes synchronously
+   * for a 0-byte file, so the host's signal goes null → 0 → null inside this emit, and a
+   * signal input — written only at change detection, and skipped entirely when the value is
+   * `Object.is`-equal — never sees it move at all.
+   */
+  readonly submitMedia = output<{
+    file: File;
+    caption: string;
+    done: () => void;
+  }>();
   readonly cancelEdit = output<void>();
   readonly cancelReply = output<void>();
   readonly editLast = output<void>();
@@ -323,9 +338,19 @@ export class MessageComposerComponent {
    * is only written during the parent's change detection — which, zoneless, is scheduled on a
    * rAF/timer race. Two `submit()` calls in one task (a held Enter key, while the first send's
    * `encryptAttachment` janks the frame) would both read `null` and both dispatch. A local
-   * flag closes in the same statement that opens it, and is released by the effect below.
+   * flag closes in the same statement that opens it, and is released by the `done` callback
+   * the host calls when the send settles.
    */
   private readonly sendingMedia = signal(false);
+  /**
+   * Whether a media send would be accepted right now — the same condition `dispatchMedia`
+   * enforces, exposed so the send button can SAY it is blocked rather than silently doing
+   * nothing. `sendingMedia` matters here and not just `uploadProgress`: the latch closes
+   * synchronously, while the input it mirrors lags by a change-detection tick.
+   */
+  protected readonly canSendMedia = computed(
+    () => this.uploadProgress() === null && !this.sendingMedia(),
+  );
   /** Whether to show a determinate bar — true once the first real fraction lands.
    * Until then (metadata probe + thumbnail upload) the bar is indeterminate so it
    * reads as "working" rather than a stalled 0%. */
@@ -366,7 +391,9 @@ export class MessageComposerComponent {
       roomId: this.roomId,
       editing: this.editing,
       uploadProgress: this.uploadProgress,
-      sendMedia: (file, caption) => this.dispatchMedia(file, caption),
+      sendMedia: (file, caption) => {
+        this.dispatchMedia(file, caption);
+      },
       endReply: () => {
         if (this.replyingTo()) {
           this.cancelReply.emit();
@@ -376,17 +403,6 @@ export class MessageComposerComponent {
         queueMicrotask(() => this.textarea()?.nativeElement.focus()),
       leavePreview: () => this.previewing.set(false),
       openFileDialog: () => this.fileInput()?.nativeElement.click(),
-    });
-
-    // Release the send latch when the host reports the upload finished.
-    //
-    // Safe despite `uploadProgress` still being null in the window between the emit and the
-    // parent's change detection: an effect re-runs when a tracked dependency CHANGES, and in
-    // that window nothing has, so this cannot fire and reopen the latch early.
-    effect(() => {
-      if (this.uploadProgress() === null) {
-        this.sendingMedia.set(false);
-      }
     });
 
     // On a room/thread change: drop the staged (unsent) attachment — it was staged
@@ -737,17 +753,12 @@ export class MessageComposerComponent {
     // batch. Clearing the lot here would silently discard everything after the first.
     const next = this.editing() ? null : (this.staged()[0] ?? null);
     if (next) {
-      // One attachment upload at a time. Guarded HERE and not only on the send button,
-      // because `onEnter` reaches this directly and never consults `[disabled]` — and key
-      // auto-repeat is enough to fire it twice. Two in flight share one `uploadProgress`
-      // scalar (the first to finish nulls it, hiding the bar for the other) and reach
-      // `sendMessage` only after their own upload resolves, so the events land
-      // fastest-file-first rather than in the order staged.
-      if (this.uploadProgress() !== null || this.sendingMedia()) {
+      // One attachment upload at a time — the check lives in `dispatchMedia`, so every route
+      // to a send is covered rather than just this one. Nothing below runs when it refuses:
+      // the file has to stay staged, or a blocked send would delete it.
+      if (!this.dispatchMedia(next.file, this.text().trim())) {
         return;
       }
-      const file = next.file;
-      this.dispatchMedia(file, this.text().trim());
       // A media send carries no reply relation, so end any active reply — else
       // the banner lingers and the next plain message silently replies to a
       // now-stale target.
@@ -794,6 +805,11 @@ export class MessageComposerComponent {
     this.emojiQuery.set(null);
     this.mentionQuery.set(null);
     this.mentionAutocomplete.clearChosen();
+    // A grid left open across a send is the one remaining route to two uploads at once: its
+    // items call `sendMedia` directly, and unlike the toolbar button they are not disabled
+    // while an upload runs. `dispatchMedia` refuses it either way; closing the grid means the
+    // user does not lose a chosen GIF to that refusal.
+    this.gifPickerOpen.set(false);
     // Leaving the preview on is a trap rather than a preference: it hides the textarea, so a
     // composer that lands in preview mode after a send or a room switch looks broken — an
     // empty box that swallows typing until you notice the eye button.
@@ -958,18 +974,35 @@ export class MessageComposerComponent {
     this.attachments.filePicked(event);
   }
 
-  /** Drop the staged attachment (× button, Escape, or after it's sent). */
   /**
    * The single funnel every media send passes through: `submit()` for a staged file, and the
-   * attachments service's `sendMedia` hook for a GIF. Both the bar's label and the send latch
-   * are set here so neither can be missed by a path that does not go through `submit()`.
+   * attachments service's `sendMedia` hook for a GIF. The bar's label, the send latch and the
+   * one-at-a-time check all live here, so a path that does not go through `submit()` cannot
+   * miss any of them.
+   *
+   * Returns whether the send was dispatched, so a caller that has cleanup to do — `submit()`
+   * unstages the file — can tell a refusal from a send.
    */
-  private dispatchMedia(file: File, caption: string): void {
+  private dispatchMedia(file: File, caption: string): boolean {
+    // Guarded here rather than only on the send button, because `onEnter` calls `submit()`
+    // directly and never consults `[disabled]` — key auto-repeat alone is enough to fire it
+    // twice. Two uploads in flight share one `uploadProgress` scalar (the first to finish
+    // nulls it, hiding the bar for the other) and reach `sendMessage` only after their own
+    // upload resolves, so the events land fastest-file-first, not in the order staged.
+    if (this.uploadProgress() !== null || this.sendingMedia()) {
+      return false;
+    }
     this.uploadingName.set(file.name);
     this.sendingMedia.set(true);
-    this.submitMedia.emit({ file, caption });
+    this.submitMedia.emit({
+      file,
+      caption,
+      done: () => this.sendingMedia.set(false),
+    });
+    return true;
   }
 
+  /** Drop the staged attachment (× button, Escape, or after it's sent). */
   removeStaged(id: string): void {
     this.attachments.removeStaged(id);
     // Whatever removed the row — its × or a send — the element that had focus is about to be

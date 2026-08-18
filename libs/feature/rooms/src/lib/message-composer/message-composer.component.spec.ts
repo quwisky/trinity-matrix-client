@@ -250,7 +250,7 @@ describe('MessageComposerComponent', () => {
     // A caption + Enter sends the file and caption together, then clears.
     cmp.text.set('nice shot');
     cmp.submit();
-    expect(emitted).toEqual({ file, caption: 'nice shot' });
+    expect(emitted).toMatchObject({ file, caption: 'nice shot' });
     expect(stagedFiles(cmp)).toEqual([]);
     expect(cmp.text()).toBe('');
   });
@@ -441,7 +441,7 @@ describe('MessageComposerComponent', () => {
     expect(emitted).toBeUndefined();
 
     cmp.submit(); // no caption typed
-    expect(emitted).toEqual({ file, caption: '' });
+    expect(emitted).toMatchObject({ file, caption: '' });
   });
 
   it('stages a pasted image exposed only via clipboard items (WebKit fallback)', async () => {
@@ -507,7 +507,7 @@ describe('MessageComposerComponent', () => {
 
     // Media carries no reply relation, so the reply banner must be cleared
     // (otherwise the next plain message would silently reply to Alice).
-    expect(emitted).toEqual({ file, caption: '' });
+    expect(emitted).toMatchObject({ file, caption: '' });
     expect(cancelledReply).toBe(true);
   });
 
@@ -857,19 +857,82 @@ describe('MessageComposerComponent', () => {
     const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
     const sent: File[] = [];
-    cmp.submitMedia.subscribe((e) => sent.push(e.file));
+    const finish: (() => void)[] = [];
+    cmp.submitMedia.subscribe((e) => {
+      sent.push(e.file);
+      finish.push(e.done); // held, the way a real upload holds it
+    });
     pickFiles(cmp, [png('one.png'), png('two.png')]);
 
     cmp.submit();
-    // The host reports the upload in flight, then finished — which is what releases the latch.
+    // The bar comes and goes, but it is the host's own report that releases the latch — the
+    // bar's value is not always observable, and inferring from it is what stranded it before.
     fixture.componentRef.setInput('uploadProgress', 0.3);
     fixture.detectChanges();
+    cmp.submit();
+    expect(sent.map((f) => f.name)).toEqual(['one.png']); // still latched
+
     fixture.componentRef.setInput('uploadProgress', null);
     fixture.detectChanges();
+    finish[0]?.();
     cmp.submit();
 
     expect(sent.map((f) => f.name)).toEqual(['one.png', 'two.png']);
     expect(stagedFiles(cmp)).toEqual([]);
+  });
+
+  it('shows the send button as blocked before the progress bar has caught up', async () => {
+    // The window the button clause exists for: between the dispatch and the parent's change
+    // detection, `uploadProgress` is still null. Reading only that leaves the button live
+    // while `submit()` refuses — a control that looks pressable and does nothing.
+    const { fixture, container } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    cmp.submitMedia.subscribe(() => undefined); // in flight: `done` is never called
+    pickFiles(cmp, [png('one.png'), png('two.png')]);
+
+    cmp.submit();
+    fixture.detectChanges(); // CD runs, but the host has reported nothing yet
+
+    expect(
+      container.querySelector<HTMLButtonElement>('[data-testid=composer-send]')
+        ?.disabled,
+    ).toBe(true);
+  });
+
+  it('closes the GIF grid on a send, so it cannot outlive one', async () => {
+    // Grid items call `sendMedia` directly and are not disabled while an upload runs, so a
+    // grid still open after a send is the last route to two uploads at once.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    cmp.submitMedia.subscribe(() => undefined);
+    cmp.gifPickerOpen.set(true);
+    pickFiles(cmp, [png('one.png')]);
+
+    cmp.submit();
+
+    expect(cmp.gifPickerOpen()).toBe(false);
+  });
+
+  it('releases the latch when a send finishes without the bar ever appearing', async () => {
+    // The host brackets an upload with `set(0)` … `finalize(set(null))`, and `sendMedia`
+    // completes SYNCHRONOUSLY for a 0-byte file — so the host's signal goes null → 0 → null
+    // inside the emit. A signal input only ever takes the value present at change detection,
+    // and Angular skips the write entirely when it is `Object.is`-equal, so `uploadProgress`
+    // never changes and an effect watching it never re-runs. Releasing on the host's own
+    // report is what makes the latch independent of whether that value was ever observable.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const sent: File[] = [];
+    cmp.submitMedia.subscribe((e) => {
+      sent.push(e.file);
+      e.done(); // the send completed before the emit returned
+    });
+    pickFiles(cmp, [png('one.png'), png('two.png')]);
+
+    cmp.submit();
+    cmp.submit();
+
+    expect(sent.map((f) => f.name)).toEqual(['one.png', 'two.png']);
   });
 
   it('does not strand the latch when the room changes mid-upload', async () => {
