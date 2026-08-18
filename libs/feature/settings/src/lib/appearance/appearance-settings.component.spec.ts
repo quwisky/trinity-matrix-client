@@ -180,17 +180,44 @@ describe('AppearanceSettingsComponent', () => {
   });
 
   describe('date and time', () => {
-    it('renders both format dropdowns bound to the current preference', async () => {
+    // Presence and shape only — what each dropdown SHOWS for the stored preference is the
+    // test below, which is the one #168 is about.
+    it('renders both format dropdowns as select controls', async () => {
       const { container } = await renderPage();
-      const format = TestBed.inject(DateTimeFormatService);
-      format.setTimeFormat('h24');
-      format.setDateFormat('iso');
 
       for (const testid of ['time-format-select', 'date-format-select']) {
         const select = container.querySelector(`[data-testid=${testid}]`);
         expect(select?.tagName.toLowerCase(), testid).toBe('trn-select');
         expect(select?.querySelector('button'), testid).not.toBeNull();
       }
+    });
+
+    // #168. The trigger renders from the bound VALUE, not from the chosen item's markup, so
+    // a select with no label lookup showed `h24` and `dmy` — identifiers that appear nowhere
+    // else in the UI, in place of the worked example the reader had just clicked.
+    // `<trn-select>` derives the label from the options it already holds, and this pins the
+    // user-visible result for the two dropdowns that were wrong.
+    //
+    // `h24`/`dmy` rather than the default `system` on purpose: 'Match system' CONTAINS
+    // 'system', so the negative half of the assertion would pass on the defect itself.
+    // Only the label's stable half is asserted — the parenthetical sample is locale-derived
+    // and belongs to the sample-instant test above.
+    it('shows each chosen format’s label on the collapsed trigger, not the stored id', async () => {
+      const { fixture, container } = await renderPage();
+      const format = TestBed.inject(DateTimeFormatService);
+
+      format.setTimeFormat('h24');
+      format.setDateFormat('dmy');
+      fixture.detectChanges();
+
+      const triggerText = (testid: string) =>
+        container.querySelector(`[data-testid=${testid}] hlm-select-trigger`)
+          ?.textContent ?? '';
+
+      expect(triggerText('time-format-select')).toContain('24-hour');
+      expect(triggerText('time-format-select')).not.toContain('h24');
+      expect(triggerText('date-format-select')).toContain('Day first');
+      expect(triggerText('date-format-select')).not.toContain('dmy');
     });
 
     it('re-previews the options when the system locale changes', async () => {
@@ -335,6 +362,21 @@ describe('AppearanceSettingsComponent', () => {
     const select = container.querySelector('[data-testid=palette-select]');
     expect(select?.tagName.toLowerCase()).toBe('trn-select');
     expect(select?.querySelector('button')).not.toBeNull();
+  });
+
+  // #168, and the quietest of the three: the palette dropdown lost only a capital letter,
+  // reading `amethyst` under an option labelled 'Amethyst'. `toContain` is case-sensitive,
+  // which is the whole reason the negative half of this assertion can still fail.
+  it('shows the chosen palette’s label on the collapsed trigger, not the stored id', async () => {
+    palette.set('amethyst');
+    const { container } = await renderPage();
+
+    const trigger = container.querySelector(
+      '[data-testid="palette-select"] hlm-select-trigger',
+    );
+
+    expect(trigger?.textContent).toContain('Amethyst');
+    expect(trigger?.textContent).not.toContain('amethyst');
   });
 
   it('applies the chosen palette when the dropdown emits a value', async () => {

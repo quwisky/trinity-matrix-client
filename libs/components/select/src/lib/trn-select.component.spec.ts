@@ -67,13 +67,15 @@ describe('TrnSelectComponent', () => {
   });
 
   it('keeps the placeholder for when nothing is chosen', async () => {
+    // Asserted on the rendered TEXT, not on the presence of `[data-slot="select-value"]`:
+    // the kit emits that attribute whenever a placeholder is set at all, whatever the value,
+    // so the older form of this test passed for every input it could be given — including
+    // the defect the test above exists for.
     const { container, fixture } = await render(HostComponent);
     fixture.componentInstance.value.set('');
     fixture.detectChanges();
 
-    expect(
-      container.querySelector('[data-slot="select-value"]'),
-    ).not.toBeNull();
+    expect(trigger(container)?.textContent).toBe('Select an order');
   });
 
   it('is a block on its own, without the call site supplying it', async () => {
