@@ -19,6 +19,12 @@ All notable changes to this project are documented here. The format is based on
   announced it to a screen reader as nothing but "dialog", with no indication of what it was
   for — on the most-used picker in the app. It now announces "Pick a reaction".
 
+- **Settings dropdowns show the choice you made, not its internal name.** Once you had picked
+  a palette, a time format or a date format, the closed dropdown went back to displaying the
+  raw stored value — `amethyst`, `h24`, `iso` — instead of the wording you chose it by. All
+  of them now read the same way open or closed, and the time and date dropdowns keep their
+  worked example in view.
+
 ### Added
 
 - **Your settings, readable and editable in one place.** Settings → **Advanced** shows
@@ -234,12 +240,6 @@ All notable changes to this project are documented here. The format is based on
   waits for you to say so.
 
 ### Changed
-
-- **Settings dropdowns show the choice you made, not its internal name.** Once you had picked
-  a palette, a time format or a date format, the closed dropdown went back to displaying the
-  raw stored value — `ocean`, `h24`, `iso` — instead of the wording you chose it by. All of
-  them now read the same way open or closed, and the time and date dropdowns keep their
-  worked example in view.
 
 - **The emoji picker follows your theme.** It came from a third-party library that only knew
   "light or dark", so it showed its own purple accent and its own greys whichever Trinity
