@@ -33,6 +33,7 @@ import {
 } from '@trinity/util/matrix';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { DayBoundaryService } from './day-boundary.service';
+import { TrnFileDropDirective } from '../shared/file-drop.directive';
 import {
   type BatchItem,
   type BatchOutcome,
@@ -192,6 +193,11 @@ export abstract class MessageListBase {
    * "New messages" divider is scrolled out of the viewport. */
   readonly showJumpToUnread = signal(false);
 
+  /**
+   * Files dragged onto the conversation. Handled here rather than in each list because the
+   * drop directive is a host directive on both, and staging is identical for both.
+   */
+  protected readonly fileDrop = inject(TrnFileDropDirective);
   protected readonly alert = inject(TrnAlertService);
   private readonly dayBoundary = inject(DayBoundaryService);
   private readonly dateFormat = inject(DateTimeFormatService);
@@ -203,8 +209,22 @@ export abstract class MessageListBase {
   private readonly reactionsDialog = inject(ReactionsDialogService);
   protected readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
 
-  /** The composer rendered by each concrete list, so a quote can be put into it directly. */
+  /**
+   * The composer rendered by each concrete list, so a quote can be put into it directly —
+   * and so a file dropped on the conversation reaches the same staging the picker fills.
+   */
   private readonly composer = viewChild(MessageComposerComponent);
+
+  /**
+   * Stage files dropped on the conversation.
+   *
+   * Routed through the composer rather than the attachments service directly: that service is
+   * provided BY the composer, so it does not exist at this level, and going through the
+   * component keeps one definition of what staging means (and of when it is refused).
+   */
+  protected onFilesDropped(files: readonly File[]): void {
+    this.composer()?.stageFiles(files);
+  }
 
   // Grouping rows, cached per event id so an unchanged message (same view object, same
   // header flag AND same day-separator label) keeps its row identity — an OnPush row is
@@ -283,6 +303,11 @@ export abstract class MessageListBase {
   });
 
   constructor() {
+    // A host directive's outputs are not template-bound, so the subscription IS the wiring.
+    // No teardown: an `OutputEmitterRef` drops its subscribers when its own directive is
+    // destroyed, and a host directive is destroyed with the component it is attached to.
+    this.fileDrop.filesDropped.subscribe((files) => this.onFilesDropped(files));
+
     // Reset per-room state when the active room changes. Created here — before any
     // scroll effect a subclass adds in its own constructor — so it runs FIRST
     // (effects fire in creation order), letting the scroll effect treat the new room

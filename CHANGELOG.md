@@ -27,12 +27,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
-- **Attach several images at once.** On the web and desktop apps the file picker now lets you
-  choose more than one, and pasting a batch of screenshots stages all of them instead of only
-  the first. (On phones the gallery picker still takes one at a time for now — you can still
-  add them one after another, and they queue up together.) Everything you
-  have staged is listed above the message box, each with its own × so you can drop one without
-  starting over, and picking again adds to the list rather than replacing it.
+- **Attach several images at once.** Pick more than one in the file dialog, paste a batch of
+  screenshots, select several photos in the phone gallery, or **drag them straight onto the
+  conversation** — the room is the drop target, and it says so while you are dragging.
+  Everything you have staged is listed above the message box, each with its own × so you can
+  drop one without starting over, and picking again adds to the list rather than replacing it.
+  You can keep adding while an earlier batch is still uploading; the new ones simply wait for
+  the next send.
 
   One press sends the lot, in the order you staged them. They go out one at a time — the bar
   above the message box says which file of how many is uploading — so a big photo can't

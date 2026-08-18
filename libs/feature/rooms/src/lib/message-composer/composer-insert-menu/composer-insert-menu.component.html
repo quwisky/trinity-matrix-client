@@ -25,7 +25,6 @@
       <button
         hlmDropdownMenuItem
         class="composer__insert-item"
-        [disabled]="uploading()"
         (triggered)="attachFile.emit()"
         data-testid="insert-attach"
       >
@@ -88,7 +87,7 @@
     trnTooltip="Attach"
     aria-label="Attach a file"
     data-testid="composer-insert-attach"
-    [disabled]="uploading() || editing()"
+    [disabled]="editing()"
     (click)="attachFile.emit()"
   >
     <trn-icon name="plus" />

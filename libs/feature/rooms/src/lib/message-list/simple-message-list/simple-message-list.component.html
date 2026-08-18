@@ -2,6 +2,10 @@
   announcement()
 }}</span>
 
+@if (fileDrop.active() && editingId() === null) {
+  <trn-drop-overlay />
+}
+
 @if (showJumpToUnread()) {
   <button
     type="button"

@@ -15,6 +15,8 @@ import {
 import { MessageComposerComponent } from '../../message-composer/message-composer.component';
 import { MessageRowComponent } from '../../message-row/message-row.component';
 import { MessageListBase } from '../message-list-base';
+import { TrnFileDropDirective } from '../../shared/file-drop.directive';
+import { DropOverlayComponent } from '../drop-overlay/drop-overlay.component';
 import {
   buildPrefixSums,
   computeWindow,
@@ -57,7 +59,14 @@ const SMALL_LIST_ROWS = 80;
 @Component({
   selector: 'trn-virtual-message-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MessageComposerComponent, MessageRowComponent],
+  imports: [
+    MessageComposerComponent,
+    MessageRowComponent,
+    DropOverlayComponent,
+  ],
+  // The whole conversation is the drop target — "drop it on the room" is the gesture, and
+  // these templates are host fragments with no element of their own to carry it.
+  hostDirectives: [TrnFileDropDirective],
   templateUrl: './virtual-message-list.component.html',
   styleUrl: './virtual-message-list.component.scss',
 })

@@ -1121,6 +1121,16 @@ export class MessageComposerComponent {
     queueMicrotask(() => this.textarea()?.nativeElement.focus());
   }
 
+  /**
+   * Stage files that came from outside the composer — today, a drop on the conversation.
+   *
+   * Public because the drop target is the whole room, which the message list owns; the
+   * refusal rules stay here so a drop cannot bypass what a paste respects.
+   */
+  stageFiles(files: readonly File[]): void {
+    this.attachments.stageExternal(files);
+  }
+
   /** Drop every staged attachment. */
   clearStaged(): void {
     this.attachments.clearStaged();

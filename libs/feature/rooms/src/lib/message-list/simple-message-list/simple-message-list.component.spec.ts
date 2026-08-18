@@ -1127,4 +1127,38 @@ describe('SimpleMessageListComponent', () => {
       expect(separators(container)[0]?.textContent?.trim()).toBe('Yesterday');
     });
   });
+
+  it('stages files dropped on the conversation, and shows the target while dragging', async () => {
+    // The drop target is the whole room, which this component owns — but staging belongs to
+    // the composer, two layers down. This is the wiring between them, and nothing else
+    // exercises it: the directive's own spec stops at the output.
+    const { fixture, container } = await render(SimpleMessageListComponent, {
+      inputs: { messages: [msg('$1', '@a:hs', 'Alice', 1000)] },
+    });
+    const host = fixture.nativeElement as HTMLElement;
+    const fire = (name: string, files: File[] = []) => {
+      const event = new Event(name, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'dataTransfer', {
+        value: { types: ['Files'], files, dropEffect: 'none' },
+      });
+      host.dispatchEvent(event);
+      fixture.detectChanges();
+    };
+
+    expect(container.querySelector('[data-testid=drop-overlay]')).toBeNull();
+
+    fire('dragenter');
+    expect(
+      container.querySelector('[data-testid=drop-overlay]'),
+    ).not.toBeNull();
+
+    fire('drop', [new File(['x'], 'dropped.png', { type: 'image/png' })]);
+
+    expect(container.querySelector('[data-testid=drop-overlay]')).toBeNull();
+    expect(
+      Array.from(
+        container.querySelectorAll('[data-testid=composer-pending]'),
+      ).map((row) => row.textContent?.trim()),
+    ).toEqual([expect.stringContaining('dropped.png')]);
+  });
 });

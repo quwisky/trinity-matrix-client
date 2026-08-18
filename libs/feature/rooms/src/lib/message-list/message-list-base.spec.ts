@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type MessageView } from '@trinity/util/matrix';
 import { MessageListBase } from './message-list-base';
+import { TrnFileDropDirective } from '../shared/file-drop.directive';
 
 /**
  * A concrete list with no scroll strategy of its own, so what is exercised here is the
@@ -12,6 +13,9 @@ import { MessageListBase } from './message-list-base';
   selector: 'trn-test-message-list',
   template: '<div #scroll></div>',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // The base injects it, so every list must carry it — a subclass that forgets loses
+  // drag-and-drop, and this stub standing in for one has to be honest about that.
+  hostDirectives: [TrnFileDropDirective],
 })
 class TestMessageListComponent extends MessageListBase {
   override jumpTo(): void {
