@@ -39,6 +39,7 @@ const MENU: readonly SettingsMenuItem[] = [
   { path: 'account', label: 'Account', icon: 'key-round' },
   { path: 'security', label: 'Security', icon: 'lock' },
   { path: 'notifications', label: 'Notifications', icon: 'bell' },
+  { path: 'server', label: 'Server', icon: 'server' },
   { path: 'privacy', label: 'Privacy', icon: 'shield' },
   { path: 'gifs', label: 'GIFs', icon: 'image' },
   { path: 'shortcuts', label: 'Keyboard shortcuts', icon: 'keyboard' },

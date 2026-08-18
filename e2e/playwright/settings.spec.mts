@@ -15,6 +15,7 @@ const SECTIONS = [
   'account',
   'security',
   'notifications',
+  'server',
   'privacy',
   'gifs',
   'shortcuts',
@@ -135,6 +136,92 @@ test.describe('Settings', () => {
     await expect.poll(() => paletteAttr(page)).toBeNull();
     await expect(amethyst).toHaveCount(0);
     await expect(trigger).toHaveText('Trinity');
+  });
+
+  test('shows the homeserver software and version for the signed-in account', async ({
+    page,
+  }) => {
+    // The one claim jsdom cannot make: that a real cross-origin request for
+    // /_matrix/federation/v1/version survives the app's real CSP
+    // (`connect-src 'self' https: wss:`) in a real browser. The probe logic, its two-attempt
+    // fallback and the whole failure taxonomy are unit-tested; this is the wire.
+    await openSection(page, 'server');
+
+    const block = page.getByTestId('server-block').first();
+    await expect(block).toBeVisible({ timeout: 20_000 });
+
+    // The shape, not the number: hardcoding the version would make this a second place the
+    // Synapse image pin has to be bumped, and it would fail for a reason that is not a bug.
+    await expect(block.getByTestId('hs-software')).toHaveText(
+      /^\s*Synapse \d+\.\d+/,
+      { timeout: 20_000 },
+    );
+    await expect(block.getByTestId('hs-url')).toHaveText(session.hs as string);
+    // Spec versions come from a separate request, so a green software row does not imply it.
+    await expect(block.getByTestId('hs-spec-versions')).toContainText('v1.');
+  });
+
+  test('shows the server version under the account in the switcher', async ({
+    page,
+  }) => {
+    // The one assertion that exercises the whole switcher chain end to end: reaching for the
+    // menu → `accountsOpened` → `RoomShellViewModel.loadHomeserverInfo()` → the per-account
+    // signal → the row. Each link is unit-tested in isolation; nothing but this joins them,
+    // and the binding in `rooms.page.html` is the kind a unit test in this repo never covers.
+    await page.goto('/rooms');
+    await page.getByTestId('user-menu-trigger').click();
+
+    await expect(page.getByTestId('account-row-server').first()).toHaveText(
+      /^\s*Synapse \d+\.\d+/,
+      { timeout: 20_000 },
+    );
+  });
+
+  test('expanding the unstable features does not add a second scrollbar', async ({
+    page,
+  }) => {
+    // jsdom has no layout, so this can only be checked in a browser. At a line per flag the
+    // disclosure added ~256px to the block, which pushed the settings detail pane into its
+    // own scrollbar beside the submenu's on any window under ~610px tall. 600px is inside
+    // the band that used to fail and is an ordinary laptop-with-dock height.
+    await page.setViewportSize({ width: 1280, height: 600 });
+    await openSection(page, 'server');
+    await expect(page.getByTestId('hs-software')).toBeVisible({
+      timeout: 20_000,
+    });
+
+    const detailOverflows = () =>
+      page.evaluate(() => {
+        const pane = document.querySelector('.settings__detail');
+        return !!pane && pane.scrollHeight > pane.clientHeight + 1;
+      });
+
+    expect(await detailOverflows()).toBe(false);
+    await page.getByTestId('hs-unstable').locator('summary').click();
+    await expect(page.getByTestId('hs-unstable')).toHaveAttribute('open', '');
+
+    expect(await detailOverflows()).toBe(false);
+  });
+
+  test('re-checks the server on demand', async ({ page }) => {
+    // "Check again" is the requirement the whole surface exists for — noticing that the
+    // value CHANGED — so the button has to actually re-run the probe rather than re-render
+    // what was cached at login.
+    await openSection(page, 'server');
+    const software = page
+      .getByTestId('server-block')
+      .first()
+      .getByTestId('hs-software');
+    await expect(software).toHaveText(/^\s*Synapse/, { timeout: 20_000 });
+
+    const versions = page.waitForResponse(
+      (res) => res.url().includes('/_matrix/federation/v1/version'),
+      { timeout: 20_000 },
+    );
+    await page.getByTestId('server-check-again').click();
+    await versions;
+
+    await expect(software).toHaveText(/^\s*Synapse/);
   });
 
   test('edits and saves the display name', async ({ page }) => {

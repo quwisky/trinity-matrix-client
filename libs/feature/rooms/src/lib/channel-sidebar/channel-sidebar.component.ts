@@ -290,6 +290,8 @@ export class ChannelSidebarComponent {
   readonly openSwitcher = output<void>();
   /** User-panel gear — open the settings page. */
   readonly openSettings = output<void>();
+  /** The account menu was reached for — see {@link SidebarUserPanelComponent.accountsOpened}. */
+  readonly accountsOpened = output<void>();
   /** Switch the active account to the given user id (a switcher row that isn't active). */
   readonly switchAccount = output<string>();
   /** Re-authenticate a soft-logged-out account by its user id. */

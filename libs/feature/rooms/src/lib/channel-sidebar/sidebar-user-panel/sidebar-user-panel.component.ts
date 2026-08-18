@@ -30,6 +30,14 @@ const STACK_MAX = 3;
 export interface AccountSummary extends UserProfile {
   /** Unread notification total for this account (drives the switcher badge). */
   unread: number;
+  /**
+   * What this account's homeserver is running — `Synapse 1.158.0` — or null until it has
+   * been looked up, or when the server does not publish it.
+   *
+   * Optional only so the many fixtures that build an `AccountSummary` inline need not carry
+   * a field they do not exercise; the one production producer always sets it.
+   */
+  server?: string | null;
 }
 
 /** The channel sidebar's bottom user panel: the signed-in user plus the account switcher. */
@@ -118,6 +126,21 @@ export class SidebarUserPanelComponent {
   });
   /** Gear — open the settings page. */
   readonly openSettings = output<void>();
+  /**
+   * The account menu was reached for. The host uses it to look up each account's homeserver
+   * version lazily — nobody may ever look at it, so nothing is spent until someone reaches
+   * for the menu.
+   *
+   * Raised from three places, and all three are needed. `hlmDropdownMenuOpened` rather than
+   * `(click)`, because CDK's trigger opens on ArrowDown/ArrowUp by calling `open()` directly
+   * without dispatching a click — so a keyboard user got no lookup at all — and because
+   * `(click)` also fired on the click that CLOSES the menu. `pointerenter` and `focus` are
+   * prefetches: the menu is a `side="top"` overlay pinned by its bottom edge, so a version
+   * arriving after it opens pushes the rows upward under the pointer, and hovering or
+   * tabbing to the trigger is enough warning to have the answer ready. Every extra emission
+   * is free — `HomeserverInfoService` serves a cached answer, or joins the in-flight one.
+   */
+  readonly accountsOpened = output<void>();
   /** Show the account picker as a dialog — raised only when {@link pickAccountsInDialog}. */
   readonly openAccountPicker = output<void>();
 

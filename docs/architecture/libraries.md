@@ -99,7 +99,7 @@ Screens and pages. `type:feature` may not depend on another `type:feature`; see
 | `libs/feature/auth`     | `@trinity/feature/auth`     | `type:feature`, `scope:matrix` | `LoginPage` and `SsoCallbackPage`                                                                                                                                                                 |
 | `libs/feature/crypto`   | `@trinity/feature/crypto`   | `type:feature`, `scope:matrix` | `EncryptionSetupPage`, `EncryptionUnlockPage`, `DeviceVerificationPage`                                                                                                                           |
 | `libs/feature/rooms`    | `@trinity/feature/rooms`    | `type:feature`, `scope:matrix` | The entire chat surface, across 44 component directories: the rooms shell, sidebar and server rail, message list, composer, threads, reactions, polls, media, search, member and space management |
-| `libs/feature/settings` | `@trinity/feature/settings` | `type:feature`, `scope:matrix` | Exports only `settingsRoutes`; the settings shell and its eleven sections are internal routing targets                                                                                            |
+| `libs/feature/settings` | `@trinity/feature/settings` | `type:feature`, `scope:matrix` | Exports only `settingsRoutes`; the settings shell and its thirteen sections are internal routing targets                                                                                          |
 
 `feature-settings` is worth copying as a pattern. Its public surface is a route table, not a set of
 components, so nothing outside the library can accidentally import one of its sections and pull it

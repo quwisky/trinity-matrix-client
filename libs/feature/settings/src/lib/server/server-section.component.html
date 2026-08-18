@@ -1,0 +1,49 @@
+<div>
+  <div class="flex items-center justify-between px-4 pt-5 pb-1">
+    <h2
+      class="text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+    >
+      Server
+    </h2>
+    @if (accounts().length) {
+      <button
+        hlmBtn
+        variant="ghost"
+        size="sm"
+        data-testid="server-check-again"
+        [disabled]="refreshing()"
+        (click)="checkAgain()"
+      >
+        {{ refreshing() ? 'Checking…' : 'Check again' }}
+      </button>
+    }
+  </div>
+
+  <p class="px-4 pb-2 text-sm text-muted-foreground">
+    What each signed-in account's homeserver is running. Checked once per
+    session — use Check again to see whether anything has changed since. Some
+    servers do not publish their software version, and those simply read
+    “Unknown”.
+  </p>
+
+  @for (userId of accounts(); track userId) {
+    <trn-homeserver-block [userId]="userId" />
+  } @empty {
+    <p class="px-4 py-2 text-13 text-muted-foreground">
+      No account is signed in.
+    </p>
+  }
+
+  @if (showBuildLine()) {
+    <p
+      class="px-4 py-2 text-13 text-muted-foreground"
+      data-testid="server-build"
+    >
+      {{ buildLabel }}
+    </p>
+  }
+
+  @if (refreshError(); as message) {
+    <p class="px-4 py-2 text-13 text-danger" role="alert">{{ message }}</p>
+  }
+</div>
