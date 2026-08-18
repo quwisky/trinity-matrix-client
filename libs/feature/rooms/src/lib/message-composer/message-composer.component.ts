@@ -215,7 +215,7 @@ export class MessageComposerComponent {
     // slash — so previewing `/spoiler x` concealed while replying would promise a
     // spoiler and send the literal text.
     const parsesCommands =
-      !this.editing() && !this.replyingTo() && !this.pendingFile();
+      !this.editing() && !this.replyingTo() && !this.hasStaged();
     const content = ((parsesCommands
       ? slashCommandContent(text, renderMarkdown, mentions)
       : null) ?? textMessageContent(text, renderMarkdown(text), mentions)) as {
@@ -249,11 +249,10 @@ export class MessageComposerComponent {
    */
   private readonly attachments = inject(ComposerAttachmentsService);
 
-  /** A picked/pasted attachment held for a caption, sent on the next submit
-   * (Enter / send button) — not uploaded immediately. */
-  readonly pendingFile = this.attachments.pendingFile;
-  /** Object URL previewing a staged image, else null (revoked on clear/destroy). */
-  readonly pendingPreview = this.attachments.pendingPreview;
+  /** Everything staged for the next submit, in the order it will be sent. */
+  readonly staged = this.attachments.staged;
+  /** Whether anything is staged. */
+  readonly hasStaged = this.attachments.hasStaged;
   readonly pickerOpen = signal(false);
   /** Whether the GIF search grid is open (mutually exclusive with the emoji picker). */
   readonly gifPickerOpen = this.attachments.gifPickerOpen;
@@ -363,7 +362,7 @@ export class MessageComposerComponent {
         const prev = this.wasRoomId;
         this.wasRoomId = id;
         untracked(() => {
-          this.clearPending();
+          this.clearStaged();
           // A recording belongs to the room it was started in — cancel it on a
           // room/thread switch so the mic doesn't stay open and a later Send can't
           // post the clip to the wrong room.
@@ -692,8 +691,13 @@ export class MessageComposerComponent {
   submit(): void {
     // A staged attachment sends as media with the text as its caption. Never mixes
     // with an edit (attach is disabled while editing), so edit mode ignores it.
-    const file = this.editing() ? null : this.pendingFile();
-    if (file) {
+    // One file per submit in this change: the staging model became a list, the SEND path has
+    // not — batch dispatch, ordering and per-item retry follow in the next PR. Until then the
+    // sent file is REMOVED and the rest stay staged, so pressing send again works through the
+    // batch. Clearing the lot here would silently discard everything after the first.
+    const next = this.editing() ? null : (this.staged()[0] ?? null);
+    if (next) {
+      const file = next.file;
       this.submitMedia.emit({ file, caption: this.text().trim() });
       // A media send carries no reply relation, so end any active reply — else
       // the banner lingers and the next plain message silently replies to a
@@ -701,7 +705,7 @@ export class MessageComposerComponent {
       if (this.replyingTo()) {
         this.cancelReply.emit();
       }
-      this.clearPending();
+      this.removeStaged(next.id);
       this.text.set('');
       this.resetMenus();
       this.regrowAfterRender();
@@ -906,8 +910,13 @@ export class MessageComposerComponent {
   }
 
   /** Drop the staged attachment (× button, Escape, or after it's sent). */
-  clearPending(): void {
-    this.attachments.clearPending();
+  removeStaged(id: string): void {
+    this.attachments.removeStaged(id);
+  }
+
+  /** Drop every staged attachment. */
+  clearStaged(): void {
+    this.attachments.clearStaged();
   }
 
   /** Paste an image from the clipboard → stage it as an attachment (Discord-style). */
@@ -932,8 +941,8 @@ export class MessageComposerComponent {
       this.gifPickerOpen.set(false);
       return;
     }
-    if (this.pendingFile()) {
-      this.clearPending();
+    if (this.hasStaged()) {
+      this.clearStaged();
       return;
     }
     if (this.replyingTo()) {
@@ -974,7 +983,7 @@ export class MessageComposerComponent {
     }
     // Empty composer + Up arrow → edit the last message (Discord-style).
     // Otherwise (editing, typed text, or a staged attachment) move the cursor.
-    if (this.editing() || this.text().length > 0 || this.pendingFile()) {
+    if (this.editing() || this.text().length > 0 || this.hasStaged()) {
       return;
     }
     event.preventDefault();

@@ -10,31 +10,35 @@
   </div>
 }
 
-@if (pendingFile(); as file) {
-  <div class="composer__pending" data-testid="composer-pending">
-    @if (pendingPreview(); as src) {
-      <img
-        decoding="async"
-        class="composer__pending-thumb"
-        [src]="src"
-        alt=""
-      />
-    } @else {
-      <span class="composer__pending-icon" aria-hidden="true">
-        <trn-icon name="paperclip" />
-      </span>
+@if (staged().length) {
+  <ul class="composer__pending-list" data-testid="composer-pending-list">
+    @for (attachment of staged(); track attachment.id) {
+      <li class="composer__pending" data-testid="composer-pending">
+        @if (attachment.previewUrl; as src) {
+          <img
+            decoding="async"
+            class="composer__pending-thumb"
+            [src]="src"
+            alt=""
+          />
+        } @else {
+          <span class="composer__pending-icon" aria-hidden="true">
+            <trn-icon name="paperclip" />
+          </span>
+        }
+        <span class="composer__pending-name" [title]="attachment.file.name">{{
+          attachment.file.name
+        }}</span>
+        <button
+          type="button"
+          class="composer__pending-remove"
+          [attr.aria-label]="'Remove ' + attachment.file.name"
+          data-testid="composer-pending-remove"
+          (click)="removeStaged.emit(attachment.id)"
+        >
+          <trn-icon name="x" />
+        </button>
+      </li>
     }
-    <span class="composer__pending-name" [title]="file.name">{{
-      file.name
-    }}</span>
-    <button
-      type="button"
-      class="composer__pending-remove"
-      aria-label="Remove attachment"
-      data-testid="composer-pending-remove"
-      (click)="removePending.emit()"
-    >
-      <trn-icon name="x" />
-    </button>
-  </div>
+  </ul>
 }

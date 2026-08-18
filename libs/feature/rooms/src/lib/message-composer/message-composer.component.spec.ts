@@ -33,11 +33,25 @@ vi.mock('@capacitor/preferences', () => ({
   },
 }));
 
+/** The staged files, in order — the list equivalent of the old scalar `pendingFile()`. */
+const stagedFiles = (cmp: MessageComposerComponent): readonly File[] =>
+  cmp.staged().map((attachment) => attachment.file);
+
 describe('MessageComposerComponent', () => {
+  let createObjectURL: Mock;
+  let revokeObjectURL: Mock;
+
   beforeEach(() => {
-    // jsdom has no object-URL API; stub it for the staged-image preview.
-    URL.createObjectURL = vi.fn(() => 'blob:preview');
-    URL.revokeObjectURL = vi.fn();
+    // jsdom has no object-URL API. A COUNTER, not a constant: with several files staged the
+    // URLs must be distinguishable, and a constant would additionally make every revoke
+    // assertion vacuous — the old scalar `setPreview` only revoked when the URL changed.
+    let issued = 0;
+    createObjectURL = vi.fn(() => `blob:preview-${++issued}`);
+    revokeObjectURL = vi.fn();
+    URL.createObjectURL =
+      createObjectURL as unknown as typeof URL.createObjectURL;
+    URL.revokeObjectURL =
+      revokeObjectURL as unknown as typeof URL.revokeObjectURL;
   });
 
   /** Render the composer with the toast service auto-mocked (plus any extra providers). */
@@ -228,7 +242,7 @@ describe('MessageComposerComponent', () => {
     input.dispatchEvent(new Event('change'));
 
     // Staged, not sent immediately; the input resets so the same file re-picks.
-    expect(cmp.pendingFile()).toBe(file);
+    expect(stagedFiles(cmp)).toEqual([file]);
     expect(emitted).toBeUndefined();
     expect(input.value).toBe('');
 
@@ -236,7 +250,7 @@ describe('MessageComposerComponent', () => {
     cmp.text.set('nice shot');
     cmp.submit();
     expect(emitted).toEqual({ file, caption: 'nice shot' });
-    expect(cmp.pendingFile()).toBeNull();
+    expect(stagedFiles(cmp)).toEqual([]);
     expect(cmp.text()).toBe('');
   });
 
@@ -421,7 +435,7 @@ describe('MessageComposerComponent', () => {
 
     cmp.onPaste(event);
 
-    expect(cmp.pendingFile()).toBe(file);
+    expect(stagedFiles(cmp)).toEqual([file]);
     expect(preventDefault).toHaveBeenCalledTimes(1);
     expect(emitted).toBeUndefined();
 
@@ -442,7 +456,7 @@ describe('MessageComposerComponent', () => {
 
     cmp.onPaste(event);
 
-    expect(cmp.pendingFile()).toBe(file);
+    expect(stagedFiles(cmp)).toEqual([file]);
   });
 
   it('discards a staged attachment when the room changes', async () => {
@@ -453,12 +467,12 @@ describe('MessageComposerComponent', () => {
       type: 'image/png',
     });
     cmp.onPaste(pasteEvent({ files: [file] }).event);
-    expect(cmp.pendingFile()).toBe(file);
+    expect(stagedFiles(cmp)).toEqual([file]);
 
     // Switch room — the file was staged for room A and must not leak into B.
     fixture.componentRef.setInput('roomId', '!b:hs');
     fixture.detectChanges();
-    expect(cmp.pendingFile()).toBeNull();
+    expect(stagedFiles(cmp)).toEqual([]);
   });
 
   it('Escape discards a staged attachment', async () => {
@@ -469,10 +483,10 @@ describe('MessageComposerComponent', () => {
       type: 'image/png',
     });
     cmp.onPaste(pasteEvent({ files: [file] }).event);
-    expect(cmp.pendingFile()).toBe(file);
+    expect(stagedFiles(cmp)).toEqual([file]);
 
     cmp.onEscape();
-    expect(cmp.pendingFile()).toBeNull();
+    expect(stagedFiles(cmp)).toEqual([]);
   });
 
   it('ends an active reply when a staged attachment is sent', async () => {
@@ -506,7 +520,7 @@ describe('MessageComposerComponent', () => {
     const { event, preventDefault } = pasteEvent({ files: [file] });
     cmp.onPaste(event);
 
-    expect(cmp.pendingFile()).toBeNull();
+    expect(stagedFiles(cmp)).toEqual([]);
     expect(preventDefault).not.toHaveBeenCalled(); // browser pastes normally
   });
 
@@ -525,7 +539,196 @@ describe('MessageComposerComponent', () => {
     expect(count).toBe(0); // staged file suppresses the edit-last shortcut
   });
 
-  it('clearPending drops a staged attachment', async () => {
+  /** Fire the hidden file input's change event with `files` attached. */
+  function pickFiles(
+    cmp: MessageComposerComponent,
+    files: File[],
+  ): HTMLInputElement {
+    const input = document.createElement('input');
+    input.type = 'file';
+    Object.defineProperty(input, 'files', { value: files, configurable: true });
+    cmp.onFilePicked({ target: input } as unknown as Event);
+    return input;
+  }
+
+  const png = (name: string) =>
+    new File([new Uint8Array([1])], name, { type: 'image/png' });
+
+  it('lets the OS dialog offer more than one file', async () => {
+    // Without `multiple` the dialog will not let you select two, so every other part of this
+    // is unreachable from the picker — and nothing else in the suite looks at the attribute.
+    const { container } = await renderComposer();
+
+    expect(
+      container
+        .querySelector('[data-testid=composer-file-input]')
+        ?.hasAttribute('multiple'),
+    ).toBe(true);
+  });
+
+  it('stages every file the picker returns, in order', async () => {
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+
+    pickFiles(cmp, [png('one.png'), png('two.png'), png('three.png')]);
+
+    expect(stagedFiles(cmp).map((f) => f.name)).toEqual([
+      'one.png',
+      'two.png',
+      'three.png',
+    ]);
+  });
+
+  it('appends a second pick rather than replacing the first', async () => {
+    // "An obvious way to add more before sending" is the picker itself; replacing would
+    // silently discard what the user already chose.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+
+    pickFiles(cmp, [png('one.png')]);
+    pickFiles(cmp, [png('two.png')]);
+
+    expect(stagedFiles(cmp).map((f) => f.name)).toEqual(['one.png', 'two.png']);
+  });
+
+  it('stages every pasted image, not just the first', async () => {
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+
+    const { event, preventDefault } = pasteEvent({
+      files: [png('a.png'), png('b.png')],
+    });
+    cmp.onPaste(event);
+
+    expect(stagedFiles(cmp).map((f) => f.name)).toEqual(['a.png', 'b.png']);
+    expect(preventDefault).toHaveBeenCalled();
+  });
+
+  it('stages every image from a WebKit-style clipboard item list', async () => {
+    // The `items` fallback path, which older WebKit uses instead of `files`.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const [first, second] = [png('a.png'), png('b.png')];
+
+    cmp.onPaste(
+      pasteEvent({
+        items: [
+          { kind: 'file', type: 'image/png', getAsFile: () => first },
+          { kind: 'string', type: 'text/plain', getAsFile: () => null },
+          { kind: 'file', type: 'image/png', getAsFile: () => second },
+        ],
+      }).event,
+    );
+
+    expect(stagedFiles(cmp).map((f) => f.name)).toEqual(['a.png', 'b.png']);
+  });
+
+  it('ignores the non-image half of a mixed clipboard', async () => {
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+
+    cmp.onPaste(
+      pasteEvent({
+        files: [
+          png('shot.png'),
+          new File(['x'], 'notes.txt', { type: 'text/plain' }),
+        ],
+      }).event,
+    );
+
+    expect(stagedFiles(cmp).map((f) => f.name)).toEqual(['shot.png']);
+  });
+
+  it('previews images and leaves other files without an object URL', async () => {
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+
+    pickFiles(cmp, [
+      png('shot.png'),
+      new File(['x'], 'notes.pdf', { type: 'application/pdf' }),
+    ]);
+
+    const previews = cmp.staged().map((a) => a.previewUrl);
+    expect(previews[0]).toMatch(/^blob:preview-/);
+    expect(previews[1]).toBeNull();
+    expect(createObjectURL).toHaveBeenCalledTimes(1); // not for the PDF
+  });
+
+  it('removes one staged attachment and revokes only its preview', async () => {
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    pickFiles(cmp, [png('one.png'), png('two.png'), png('three.png')]);
+    const doomed = cmp.staged()[1];
+
+    cmp.removeStaged(doomed.id);
+
+    expect(stagedFiles(cmp).map((f) => f.name)).toEqual([
+      'one.png',
+      'three.png',
+    ]);
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith(doomed.previewUrl);
+  });
+
+  it('revokes every preview when the batch is cleared', async () => {
+    // The scalar model revoked exactly one, which was only ever correct because one was all
+    // that could be live. Three staged means three to release.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    pickFiles(cmp, [png('one.png'), png('two.png'), png('three.png')]);
+    const urls = cmp.staged().map((a) => a.previewUrl);
+
+    cmp.clearStaged();
+
+    expect(revokeObjectURL).toHaveBeenCalledTimes(3);
+    expect(revokeObjectURL.mock.calls.flat()).toEqual(urls);
+  });
+
+  it('revokes every preview when the composer is destroyed', async () => {
+    const { fixture } = await renderComposer();
+    pickFiles(fixture.componentInstance, [png('one.png'), png('two.png')]);
+
+    fixture.destroy();
+
+    expect(revokeObjectURL).toHaveBeenCalledTimes(2);
+  });
+
+  it('sends the first staged file and keeps the rest, losing nothing', async () => {
+    // The send path is still single-file in this change. Clearing the whole batch after
+    // sending one would silently discard the others — staging three and pressing send would
+    // deliver one and drop two, with nothing on screen to say so.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const sent: File[] = [];
+    cmp.submitMedia.subscribe((e) => sent.push(e.file));
+    pickFiles(cmp, [png('one.png'), png('two.png'), png('three.png')]);
+
+    cmp.submit();
+
+    expect(sent.map((f) => f.name)).toEqual(['one.png']);
+    expect(stagedFiles(cmp).map((f) => f.name)).toEqual([
+      'two.png',
+      'three.png',
+    ]);
+    // Only the sent file's preview is released; the survivors still need theirs.
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+  });
+
+  it('works through the batch on repeated sends', async () => {
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const sent: File[] = [];
+    cmp.submitMedia.subscribe((e) => sent.push(e.file));
+    pickFiles(cmp, [png('one.png'), png('two.png')]);
+
+    cmp.submit();
+    cmp.submit();
+
+    expect(sent.map((f) => f.name)).toEqual(['one.png', 'two.png']);
+    expect(stagedFiles(cmp)).toEqual([]);
+  });
+
+  it('clearStaged drops every staged attachment', async () => {
     const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
@@ -533,11 +736,10 @@ describe('MessageComposerComponent', () => {
       type: 'image/png',
     });
     cmp.onPaste(pasteEvent({ files: [file] }).event);
-    expect(cmp.pendingFile()).not.toBeNull();
+    expect(stagedFiles(cmp)).toHaveLength(1);
 
-    cmp.clearPending();
-    expect(cmp.pendingFile()).toBeNull();
-    expect(cmp.pendingPreview()).toBeNull();
+    cmp.clearStaged();
+    expect(stagedFiles(cmp)).toEqual([]);
   });
 
   it('enables the send button with a staged file even when the text is empty', async () => {
@@ -1888,8 +2090,10 @@ describe('MessageComposerComponent', () => {
       it('previews a staged attachment caption literally', async () => {
         // The caption goes through mediaCaptionFields, which does not parse commands either.
         const { fixture } = await renderComposer();
-        fixture.componentInstance.pendingFile.set(
-          new File(['x'], 'a.png', { type: 'image/png' }),
+        fixture.componentInstance.onPaste(
+          pasteEvent({
+            files: [new File(['x'], 'a.png', { type: 'image/png' })],
+          }).event,
         );
         fixture.componentInstance.text.set('/shrug');
         fixture.detectChanges();

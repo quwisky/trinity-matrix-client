@@ -5,6 +5,13 @@ import { ComposerAttachmentStripComponent } from './composer-attachment-strip.co
 
 const png = () => new File(['x'], 'holiday.png', { type: 'image/png' });
 
+/** One staged item, in the shape the strip now takes. */
+const item = (file: File, previewUrl: string | null = 'blob:preview') => ({
+  id: `id-${file.name}`,
+  file,
+  previewUrl,
+});
+
 describe('ComposerAttachmentStripComponent', () => {
   it('shows nothing while idle', async () => {
     const { container } = await render(ComposerAttachmentStripComponent, {
@@ -60,7 +67,7 @@ describe('ComposerAttachmentStripComponent', () => {
 
   it('names a staged attachment and previews an image by its object URL', async () => {
     const { container } = await render(ComposerAttachmentStripComponent, {
-      inputs: { pendingFile: png(), pendingPreview: 'blob:preview' },
+      inputs: { staged: [item(png())] },
     });
 
     expect(
@@ -76,8 +83,9 @@ describe('ComposerAttachmentStripComponent', () => {
   it('falls back to a paperclip when the staged file is not an image', async () => {
     const { container } = await render(ComposerAttachmentStripComponent, {
       inputs: {
-        pendingFile: new File(['x'], 'notes.pdf', { type: 'application/pdf' }),
-        pendingPreview: null,
+        staged: [
+          item(new File(['x'], 'notes.pdf', { type: 'application/pdf' }), null),
+        ],
       },
     });
 
@@ -85,19 +93,50 @@ describe('ComposerAttachmentStripComponent', () => {
     expect(container.querySelector('.composer__pending-icon')).not.toBeNull();
   });
 
-  it('asks the composer to drop the attachment when the × is pressed', async () => {
+  it('lists every staged attachment, in the order it will be sent', async () => {
+    const { container } = await render(ComposerAttachmentStripComponent, {
+      inputs: {
+        staged: [
+          item(new File(['x'], 'one.png', { type: 'image/png' })),
+          item(new File(['x'], 'two.png', { type: 'image/png' })),
+          item(new File(['x'], 'three.png', { type: 'image/png' })),
+        ],
+      },
+    });
+
+    const rows = container.querySelectorAll('[data-testid=composer-pending]');
+    expect(rows).toHaveLength(3);
+    expect([...rows].map((row) => row.textContent?.trim())).toEqual([
+      'one.png',
+      'two.png',
+      'three.png',
+    ]);
+  });
+
+  it('names the attachment each × removes, and reports which one', async () => {
+    // The id, not the index: the strip is re-rendered from a signal, and an index would
+    // remove the wrong file the moment anything above it is dropped first.
     const { fixture, container } = await render(
       ComposerAttachmentStripComponent,
-      { inputs: { pendingFile: png(), pendingPreview: 'blob:preview' } },
+      {
+        inputs: {
+          staged: [
+            item(new File(['x'], 'one.png', { type: 'image/png' })),
+            item(new File(['x'], 'two.png', { type: 'image/png' })),
+          ],
+        },
+      },
     );
-    let removed = 0;
-    fixture.componentInstance.removePending.subscribe(() => removed++);
+    let removed: string | null = null;
+    fixture.componentInstance.removeStaged.subscribe((id) => (removed = id));
 
-    container
-      .querySelector<HTMLElement>('[data-testid=composer-pending-remove]')
-      ?.click();
+    const buttons = container.querySelectorAll<HTMLElement>(
+      '[data-testid=composer-pending-remove]',
+    );
+    expect(buttons[1]?.getAttribute('aria-label')).toBe('Remove two.png');
+    buttons[1]?.click();
 
-    expect(removed).toBe(1);
+    expect(removed).toBe('id-two.png');
   });
 
   it('names its controls and announces progress for screen readers', async () => {
@@ -106,8 +145,7 @@ describe('ComposerAttachmentStripComponent', () => {
         uploadProgress: 0.5,
         uploadDeterminate: true,
         uploadPercent: 50,
-        pendingFile: png(),
-        pendingPreview: 'blob:preview',
+        staged: [item(png())],
       },
     });
 
@@ -121,11 +159,13 @@ describe('ComposerAttachmentStripComponent', () => {
         .querySelector('.composer__upload-label')
         ?.getAttribute('aria-live'),
     ).toBe('polite');
+    // Named per file, not a generic "Remove attachment": with several staged, N identically
+    // labelled buttons tell a screen-reader user nothing about which one they are on.
     expect(
       container
         .querySelector('[data-testid=composer-pending-remove]')
         ?.getAttribute('aria-label'),
-    ).toBe('Remove attachment');
+    ).toBe('Remove holiday.png');
   });
 
   afterEach(() => TestBed.resetTestingModule());

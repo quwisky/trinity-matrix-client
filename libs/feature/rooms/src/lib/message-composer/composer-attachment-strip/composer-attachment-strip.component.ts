@@ -6,10 +6,11 @@ import {
 } from '@angular/core';
 import { TrnProgressComponent } from '@trinity/components/progress';
 import { TrnIconComponent } from '@trinity/components/icon';
+import { type StagedAttachment } from '../staged-attachment';
 
 /**
  * The strip above the composer input: an upload progress bar while an attachment is in flight,
- * and the file staged for a caption.
+ * and every file staged for sending, each removable on its own.
  *
  * Presentational — it injects nothing and holds no state; `ComposerAttachmentsService` owns
  * both, and the composer passes the two upload derivations down rather than re-deriving them
@@ -30,11 +31,9 @@ export class ComposerAttachmentStripComponent {
   readonly uploadDeterminate = input(false);
   /** Whole-percent upload progress for the determinate bar's label. */
   readonly uploadPercent = input(0);
-  /** The attachment staged for a caption, or null when nothing is staged. */
-  readonly pendingFile = input<File | null>(null);
-  /** Object URL previewing a staged image, else null. */
-  readonly pendingPreview = input<string | null>(null);
+  /** Everything staged, in the order it will be sent. */
+  readonly staged = input<readonly StagedAttachment[]>([]);
 
-  /** The × on the staged attachment was pressed. */
-  readonly removePending = output<void>();
+  /** The × on one staged attachment was pressed; carries its id. */
+  readonly removeStaged = output<string>();
 }

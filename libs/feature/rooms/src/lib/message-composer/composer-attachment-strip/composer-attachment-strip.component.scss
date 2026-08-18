@@ -23,11 +23,22 @@
 }
 
 // Staged attachment awaiting a caption (shown above the input until sent).
+// The margin that used to sit on each row moves to the list, so N rows stack tightly instead
+// of each carrying the full gap. Capped and scrollable because a batch is unbounded and the
+// composer must not grow until it pushes the timeline off screen.
+.composer__pending-list {
+  margin: 0 16px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 168px; // ~3 rows, then scroll
+  overflow-y: auto;
+}
+
 .composer__pending {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 16px 8px;
   padding: 6px 8px;
   border-radius: var(--trinity-radius);
   background: var(--trinity-sidebar);
