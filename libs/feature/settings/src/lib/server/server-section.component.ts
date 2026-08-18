@@ -8,13 +8,24 @@ import {
 import { HlmButton } from '@trinity/helm/button';
 import { HomeserverInfoService } from '@trinity/data-access/homeserver';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { runWithBusy } from '@trinity/util/ui';
+import { BUILD_INFO } from '@trinity/platform-native';
+import {
+  BELOW_MD_QUERY,
+  mediaQuerySignal,
+  runWithBusy,
+} from '@trinity/util/ui';
 import { HomeserverBlockComponent } from './homeserver-block.component';
 
 /**
  * Server section: one block per signed-in account, saying what that account's homeserver is
- * running. The client's own build line is not repeated here — the settings shell renders it
- * in the footer of every section, so both halves are already on screen together.
+ * running.
+ *
+ * The client's own build line is repeated here **only on narrow layouts**. The settings shell
+ * renders it in the nav footer, which answers #155's "one screen for both versions" on a wide
+ * layout — but that nav is hidden below 768px whenever a section is open
+ * (`settings.page.scss`), so on a phone the two halves could never be seen together, which is
+ * exactly the platform the ask came from. Duplicating it unconditionally would give one fact
+ * two sources on the layout where the footer is already visible.
  *
  * A thin host over repeated child blocks, like the notifications section. What is section-
  * level rather than per-block is **Check again**: the value being watched is "did the deploy
@@ -36,7 +47,15 @@ export class ServerSectionComponent {
   private readonly homeservers = inject(HomeserverInfoService);
   private readonly destroyRef = inject(DestroyRef);
 
+  private readonly build = inject(BUILD_INFO);
+
   protected readonly accounts = this.matrix.accountIds;
+  /** Only where the shell's own build line is hidden — see the class doc. */
+  protected readonly showBuildLine = mediaQuerySignal(
+    BELOW_MD_QUERY,
+    this.destroyRef,
+  );
+  protected readonly buildLabel = `Trinity v${this.build.version} · ${this.build.commit}`;
   protected readonly refreshing = signal(false);
   /**
    * Unreachable by construction, like the per-block one: `refreshAll()` resolves rather

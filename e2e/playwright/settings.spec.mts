@@ -161,6 +161,22 @@ test.describe('Settings', () => {
     await expect(block.getByTestId('hs-spec-versions')).toContainText('v1.');
   });
 
+  test('shows the server version under the account in the switcher', async ({
+    page,
+  }) => {
+    // The one assertion that exercises the whole switcher chain end to end: reaching for the
+    // menu → `accountsOpened` → `RoomShellViewModel.loadHomeserverInfo()` → the per-account
+    // signal → the row. Each link is unit-tested in isolation; nothing but this joins them,
+    // and the binding in `rooms.page.html` is the kind a unit test in this repo never covers.
+    await page.goto('/rooms');
+    await page.getByTestId('user-menu-trigger').click();
+
+    await expect(page.getByTestId('account-row-server').first()).toHaveText(
+      /^\s*Synapse \d+\.\d+/,
+      { timeout: 20_000 },
+    );
+  });
+
   test('re-checks the server on demand', async ({ page }) => {
     // "Check again" is the requirement the whole surface exists for — noticing that the
     // value CHANGED — so the button has to actually re-run the probe rather than re-render

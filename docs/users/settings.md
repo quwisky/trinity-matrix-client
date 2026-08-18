@@ -1,6 +1,6 @@
 # Settings
 
-Settings is a two-pane screen: a list of eleven sections beside the section you have open.
+Settings is a two-pane screen: a list of thirteen sections beside the section you have open.
 Below 768 pixels wide the list is the page, and opening a section swaps to it with a back
 button.
 
@@ -20,7 +20,7 @@ button.
     The sections that *are* account-scoped, and therefore do follow you, are Profile,
     Presence, Devices, Account, Security and Notifications.
 
-## The eleven sections
+## The thirteen sections
 
 | Section            | What it holds                                                          |
 | ------------------ | ---------------------------------------------------------------------- |
@@ -31,10 +31,12 @@ button.
 | Account            | Change your password.                                                  |
 | Security           | Encryption posture and room-key export or import.                      |
 | Notifications      | Account-wide push rules, keywords, and this device's push gateway.     |
+| Server             | What each account's homeserver is running, and where it is reached.    |
 | Privacy            | Read receipts and link previews.                                       |
 | GIFs               | Which GIF provider to use, and its API key.                            |
 | Keyboard shortcuts | Every shortcut, its binding, and rebinding.                            |
 | Experimental       | Opt-in feature flags.                                                  |
+| Advanced           | Every setting on this device as one document: copy, edit, import.      |
 
 ## Profile
 

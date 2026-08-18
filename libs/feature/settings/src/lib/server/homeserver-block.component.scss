@@ -1,10 +1,18 @@
-.hs-block {
+// On the host, not on the inner element: a wrapper with no host `display` is inline, and
+// stays invisible until the day its parent becomes flex or grid — at which point every
+// block becomes a flex item and they lay out side by side. Same reason every sibling
+// section component that ships SCSS opens this way.
+:host {
   display: block;
+}
+
+.hs-block {
   padding: 8px 16px 16px;
 }
 
 .hs-block__account {
   margin-bottom: 4px;
+  overflow-wrap: anywhere;
   font-size: 14px;
   font-weight: 600;
 }
@@ -46,6 +54,13 @@
 .hs-block__unknown,
 .hs-block__note {
   color: var(--trinity-text-muted);
+}
+
+// The only hand-authored `<details>` in the app; `rendered-markdown.scss` sets the same
+// thing for the other one. Without it the one expandable row in the block is
+// indistinguishable from the static values above and below it.
+summary {
+  cursor: pointer;
 }
 
 .hs-block__flags {

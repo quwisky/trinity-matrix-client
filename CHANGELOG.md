@@ -31,12 +31,12 @@ All notable changes to this project are documented here. The format is based on
   account you are signed in to, and for each one: the server software and version — `Synapse
 1.158.0` — the address it is reached at, the spec versions it supports, and, where the
   server says so, the room version it creates rooms at and whether passwords can be changed
-  there. The version also appears under each account in the account switcher, so a glance
-  answers it without opening Settings at all.
+  there. The version also appears under each account in the account switcher, so it can be read
+  without opening Settings at all.
 
-  The point is being able to check _now_, so there is a **Check again** button: the value is
-  looked up once per session, and that button re-asks rather than re-showing what was fetched
-  when you signed in. Useful the morning after a server upgrade, when the deploy finished but
+  The point is being able to check _now_, so there is a **Check again** button: each server is
+  asked once and the answer kept for the rest of the session, and that button asks again rather
+  than re-showing what it already had. Useful the morning after a server upgrade, when the deploy finished but
   nothing told you.
 
   Not every homeserver publishes its software version — it comes from an endpoint intended

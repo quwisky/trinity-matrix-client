@@ -63,6 +63,14 @@ const text = (container: Element, testid: string) =>
 describe('HomeserverBlockComponent', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it('heads the block with the account it describes', async () => {
+    // Nothing else asserted the heading, so the whole `AccountProfilesService` dependency —
+    // which exists only for this line — could be dropped for the bare mxid unnoticed.
+    const { container } = await renderBlock(info());
+
+    expect(text(container, 'hs-account')).toBe('Me');
+  });
+
   it('shows the software name and version as the headline', async () => {
     const { container } = await renderBlock(info());
 
@@ -139,8 +147,11 @@ describe('HomeserverBlockComponent', () => {
     );
 
     const row = text(container, 'hs-server-name') ?? '';
-    expect(row).toContain('discovered');
+    expect(row).toContain('a different address');
     expect(row).not.toContain('.well-known');
+    // Nor any other word for the mechanism: "discovered" was the previous wording and it
+    // claimed the same unverifiable thing in softer clothes.
+    expect(row).not.toContain('discovered');
   });
 
   it('lists the spec versions the server advertises', async () => {
@@ -191,14 +202,59 @@ describe('HomeserverBlockComponent', () => {
     expect(container.querySelector('[data-testid="hs-unstable"]')).toBeNull();
   });
 
-  it('shows a polite status line while the first probe is still running', async () => {
+  it('shows a status line while the first probe is still running', async () => {
     // An absent record is "not asked yet" and a record full of nulls is "asked, unknown".
     // Collapsing the two would leave an unreachable server spinning forever.
     const { container } = await renderBlock(null, new Observable<void>());
 
-    const status = container.querySelector('[data-testid="hs-loading"]');
-    expect(status?.getAttribute('aria-live')).toBe('polite');
+    expect(text(container, 'hs-loading')).toContain('Checking');
     expect(container.querySelector('[data-testid="hs-software"]')).toBeNull();
+  });
+
+  it('announces the ANSWER, not only that it is looking', async () => {
+    // The live region is persistent and its CONTENT changes. Wired the other way round — a
+    // region inserted with its loading text and then removed when the rows replace it — a
+    // screen reader hears "Checking…" and then silence, on a surface whose entire point is
+    // a value that arrives seconds later. Same rule the banner component states.
+    const { container } = await renderBlock(info());
+    const live = container.querySelector('[data-testid="hs-status"]');
+
+    expect(live?.getAttribute('aria-live')).toBe('polite');
+    expect(live?.textContent).toContain('Synapse 1.158.0');
+    // And the loading line is gone — the region above is the one thing that persists across
+    // both states, which is what lets it be updated rather than replaced.
+    expect(container.querySelector('[data-testid="hs-loading"]')).toBeNull();
+  });
+
+  it('announces an unknown version rather than falling silent', async () => {
+    const { container } = await renderBlock(info({ software: null }));
+
+    expect(
+      container.querySelector('[data-testid="hs-status"]')?.textContent,
+    ).toContain('server version unknown');
+  });
+
+  it('keeps the visible status out of the announcement', async () => {
+    // Two live regions saying the same thing double-announce; the visible line is decoration
+    // for the region above it.
+    const { container } = await renderBlock(null, new Observable<void>());
+
+    expect(
+      container
+        .querySelector('[data-testid="hs-loading"]')
+        ?.getAttribute('aria-hidden'),
+    ).toBe('true');
+    expect(
+      container.querySelector('[data-testid="hs-status"]')?.textContent,
+    ).toContain('Checking');
+  });
+
+  it('says so when a probe finished without storing anything', async () => {
+    // The third state. It used to render a bare heading and nothing else — the exact silent
+    // blank the error branch below is wired to prevent.
+    const { container } = await renderBlock(null, of(undefined));
+
+    expect(text(container, 'hs-unchecked')).toContain('Not checked yet');
   });
 
   it('loads through the service on first render', async () => {

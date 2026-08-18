@@ -57,9 +57,20 @@ export class HomeserverBlockComponent implements OnInit {
   });
 
   /**
+   * What the block's live region says. Written as one string that CHANGES rather than as
+   * text inserted with its region, which is what makes the answer announced at all.
+   */
+  protected readonly announcement = computed(() => {
+    const name = this.displayName();
+    if (!this.info()) {
+      return this.loading() ? `Checking ${name}'s server…` : '';
+    }
+    return `${name}: ${this.softwareLabel() ?? 'server version unknown'}`;
+  });
+
+  /**
    * `ngOnInit`, not the constructor: `userId` is a required signal input, and a required
-   * input read during construction throws NG0950 — inputs are only set afterwards. Same
-   * shape as the keyword-rules block, which loads on init for the same reason.
+   * input read during construction throws NG0950 — inputs are only set afterwards.
    */
   ngOnInit(): void {
     runWithBusy(this.homeservers.load(this.userId()), {

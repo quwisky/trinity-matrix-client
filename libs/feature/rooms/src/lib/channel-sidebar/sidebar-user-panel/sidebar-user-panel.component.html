@@ -6,7 +6,9 @@
     align="start"
     [attr.aria-label]="accountSummaryLabel()"
     data-testid="user-menu-trigger"
-    (click)="accountsOpened.emit()"
+    (hlmDropdownMenuOpened)="accountsOpened.emit()"
+    (pointerenter)="accountsOpened.emit()"
+    (focus)="accountsOpened.emit()"
   >
     @if (mixedAccounts().length > 1) {
       <!-- Mixing: show the included accounts as an overlapping stack, active one in front,

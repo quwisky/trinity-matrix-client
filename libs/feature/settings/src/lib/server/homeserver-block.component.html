@@ -8,6 +8,17 @@
     {{ displayName() }}
   </h3>
 
+  <!--
+    Persistent, and the reason it is persistent is the whole point: this block's value
+    arrives seconds after it renders, and a live region that is INSERTED with its text (and
+    then removed when the rows replace it) announces the arrival unreliably and the result
+    never. Same rule the banner component states for its consumers. The visible lines below
+    are `aria-hidden` so they do not double-announce.
+  -->
+  <p class="sr-only" role="status" aria-live="polite" data-testid="hs-status">
+    {{ announcement() }}
+  </p>
+
   @if (info(); as server) {
     <dl class="hs-block__rows">
       <dt>Software</dt>
@@ -33,7 +44,7 @@
         <dd data-testid="hs-server-name">
           {{ server.serverName }}
           <span class="hs-block__note">
-            — the homeserver above was discovered, not typed as this name
+            — the homeserver above is a different address from this name
           </span>
         </dd>
       }
@@ -73,7 +84,7 @@
             glance, which is the same question the version row answers.
           -->
           <details data-testid="hs-unstable">
-            <summary>{{ server.unstableFeatures?.length }} enabled</summary>
+            <summary>{{ server.unstableFeatures.length }} enabled</summary>
             <ul class="hs-block__flags">
               @for (flag of server.unstableFeatures; track flag) {
                 <li>{{ flag }}</li>
@@ -84,8 +95,18 @@
       }
     </dl>
   } @else if (loading()) {
-    <p class="hs-block__status" aria-live="polite" data-testid="hs-loading">
-      Checking {{ userId() }}'s server…
+    <p class="hs-block__status" aria-hidden="true" data-testid="hs-loading">
+      Checking this server…
+    </p>
+  } @else {
+    <!--
+      The third state, which used to render a bare heading and nothing else: the probe
+      finished without storing anything. Unreachable from the app today — every account the
+      section lists has a live client — but this is the branch that would actually produce
+      the silent blank the error branch below is wired to prevent.
+    -->
+    <p class="hs-block__status" aria-hidden="true" data-testid="hs-unchecked">
+      Not checked yet.
     </p>
   }
 
