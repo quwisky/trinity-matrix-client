@@ -81,4 +81,32 @@
   .emoji-mart-no-results {
     color: var(--muted-foreground);
   }
+
+  // The last surface the vendor leaves on UA defaults, and it is always drawn: the list is
+  // `overflow-y: scroll`, not `auto`, so on any platform with classic scrollbars the bar is
+  // painted whether or not it is needed (the vendor even reserves `measureScrollbar` px for
+  // it in `getWidth()`). Nothing above sets `scrollbar-color`, and the app ships
+  // `color-scheme: light dark`, so the UA follows the OS rather than the Trinity theme —
+  // Trinity dark on a light desktop drew a pale bar down the edge of a fully themed panel.
+  // ---
+  // The three declarations are inlined rather than `@include scrollable`: that mixin lives in
+  // libs/feature/rooms, which this tier may not reach. Overflow is deliberately left alone —
+  // changing it would change the width the vendor reserves.
+  .emoji-mart-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--trinity-rail) transparent;
+
+    &::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: var(--trinity-rail);
+      border-radius: var(--trinity-radius-sm);
+    }
+
+    &::-webkit-scrollbar-track {
+      background: transparent;
+    }
+  }
 }
