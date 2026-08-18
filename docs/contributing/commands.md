@@ -80,7 +80,7 @@ workspace data goes too.
 
 ### What `pnpm test` does not cover
 
-`pnpm test` runs 43 projects: the twelve `data-access-*` libraries, `feature-auth`,
+`pnpm test` runs 45 projects: the thirteen `data-access-*` libraries, `feature-auth`,
 `feature-crypto`, `feature-rooms`, `feature-settings`, `feature-shell`, `platform-native`,
 `ui`, `util-matrix`, the twenty `libs/components/*` libraries, `spartan-tests`, the
 `trinity` app itself, and `scripts`.

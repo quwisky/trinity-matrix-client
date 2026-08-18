@@ -95,7 +95,7 @@ still fails the scope rule. That is the intended behaviour, not a misconfigurati
 
 This is not a style preference; it is checkable, and it currently holds absolutely. Across every
 non-spec file in `libs/feature/*`, `libs/components/*` and `libs/platform-native` there are zero imports from
-`matrix-js-sdk`. The SDK appears only under `libs/data-access/` — in eleven of its twelve
+`matrix-js-sdk`. The SDK appears only under `libs/data-access/` — in twelve of its thirteen
 libraries; `data-access-gif` talks to KLIPY and Giphy and needs none of it — and in
 `libs/util/matrix`, which models its types.
 

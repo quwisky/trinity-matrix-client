@@ -106,8 +106,8 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
 - `@trinity/data-access/matrix-client` `[type:data-access]` — `MatrixClientService` + the 4S key service;
   the client/session foundation every domain data-access lib depends on.
 - `@trinity/data-access/*` `[type:data-access]` — one lib per Matrix domain (`media`, `rooms`,
-  `timeline`, `crypto`, `profile`, `invites`, `pinned`, `search`, `notifications`, `auth`, `gif`),
-  each at `libs/data-access/<domain>`.
+  `timeline`, `crypto`, `profile`, `invites`, `pinned`, `search`, `notifications`, `auth`, `gif`,
+  `homeserver`), each at `libs/data-access/<domain>`.
   Cross-domain injects are inter-lib edges (search→rooms/invites, auth→media/notifications, notification→timeline).
 - `@trinity/feature/*` `[type:feature]` — screens/pages incl. `feature-shell` (the app shell moved out of
   `apps/trinity`). May depend on `data-access-*` + `ui` + `util` + `platform`, **never another feature**.

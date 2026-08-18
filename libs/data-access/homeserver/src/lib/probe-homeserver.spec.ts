@@ -122,9 +122,70 @@ describe('probeServerSoftware', () => {
   it('keys the .well-known lookup on the server name, not the base URL', async () => {
     // The one place a copy-paste slip would be invisible: for a single-host server the two
     // are the same string, and only a delegating account tells them apart — which is the
-    // only case the fallback ever runs in. The stub throws on any other host.
-    stubFetch({
+    // only case the fallback ever runs in.
+    //
+    // Asserted on the CALL LIST, not on the resolved value. A stray request to the wrong
+    // host throws inside the stub, and `getJson`'s `catchError` turns that into exactly the
+    // `null` a value-only assertion expects — so keying this on the base URL used to pass.
+    const fetchMock = stubFetch({
       [FEDERATION_AT_BASE]: () => jsonResponse(null, false),
+      [WELL_KNOWN]: () => jsonResponse({}),
+    });
+
+    await expect(
+      firstValueFrom(probeServerSoftware(BASE_URL, SERVER_NAME)),
+    ).resolves.toBeNull();
+    expect(fetchMock.mock.calls.map((call) => String(call[0]))).toEqual([
+      FEDERATION_AT_BASE,
+      WELL_KNOWN,
+    ]);
+  });
+
+  it('does not re-ask the origin attempt 1 already tried', async () => {
+    // The common single-host shape: base `https://example.org`, well-known says
+    // `example.org:443`. Re-asking spends a second request — and a second timeout against a
+    // host that hangs — to reach the same answer, and would label it `delegated` for a
+    // server that is not delegating.
+    const base = 'https://example.org';
+    const fetchMock = stubFetch({
+      [`${base}/_matrix/federation/v1/version`]: () =>
+        jsonResponse(null, false),
+      [`${base}/.well-known/matrix/server`]: () =>
+        jsonResponse({ 'm.server': 'example.org:443' }),
+    });
+
+    await expect(
+      firstValueFrom(probeServerSoftware(base, 'example.org')),
+    ).resolves.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('validates the server name before putting it in a URL', async () => {
+    // `serverName` comes from the account's own mxid, which the homeserver supplied at login
+    // and which nothing validates on the way in. Interpolated raw,
+    // `good.example@evil.example` addresses evil.example.
+    const fetchMock = stubFetch({
+      [FEDERATION_AT_BASE]: () => jsonResponse(null, false),
+    });
+
+    await expect(
+      firstValueFrom(
+        probeServerSoftware(BASE_URL, 'good.example@evil.example'),
+      ),
+    ).resolves.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1); // attempt 1 only; no well-known request
+  });
+
+  it('ignores a JSON body served with an error status', async () => {
+    // The `res.ok` guard, made falsifiable: every other non-2xx fixture here has a body that
+    // would parse to nothing anyway, so dropping the guard changed no result. A 404 whose
+    // body IS a well-formed version document is the case that tells them apart.
+    stubFetch({
+      [FEDERATION_AT_BASE]: () => ({
+        ok: false,
+        status: 404,
+        json: async () => ({ server: { name: 'Wrong', version: '9.9.9' } }),
+      }),
       [WELL_KNOWN]: () => jsonResponse({}),
     });
 
@@ -160,6 +221,19 @@ describe('probeServerSoftware', () => {
     await expect(
       firstValueFrom(probeServerSoftware(BASE_URL, SERVER_NAME)),
     ).resolves.toBeNull();
+  });
+
+  it('trims a version the server padded with whitespace', async () => {
+    // A server that echoes a version file keeps its trailing newline, and the caller renders
+    // this straight into a one-line heading.
+    stubFetch({
+      [FEDERATION_AT_BASE]: () =>
+        jsonResponse({ server: { name: ' Synapse', version: ' 1.2.3 \n' } }),
+    });
+
+    await expect(
+      firstValueFrom(probeServerSoftware(BASE_URL, SERVER_NAME)),
+    ).resolves.toMatchObject({ name: 'Synapse', version: '1.2.3' });
   });
 
   it.each([
@@ -245,22 +319,47 @@ describe('probeServerSoftware', () => {
     expect(String(fetchMock.mock.calls[0][0])).toBe(WELL_KNOWN);
   });
 
-  it('sends no credentials and follows no redirect to the federation host', async () => {
-    // The two hosts reached here are named by the server itself, so neither a cookie nor a
-    // redirect may travel with the request. Asserted on the real init object rather than
-    // trusted, because both are silent if they regress.
+  it('sends no credentials and follows no redirect to ANY server-named host', async () => {
+    // Asserted over every call, not just the first. The first is the account's own base URL
+    // — the one host here that is not server-named — so a `calls[0]`-only assertion said
+    // nothing about the two hosts the posture actually exists for: the well-known lookup
+    // and the federation host it names.
     const fetchMock = stubFetch({
-      [FEDERATION_AT_BASE]: () =>
+      [FEDERATION_AT_BASE]: () => jsonResponse(null, false),
+      [WELL_KNOWN]: () =>
+        jsonResponse({ 'm.server': 'matrix-federation.example.org:443' }),
+      [FEDERATION_DELEGATED]: () =>
         jsonResponse({ server: { name: 'Synapse', version: '1.2.3' } }),
     });
 
     await firstValueFrom(probeServerSoftware(BASE_URL, SERVER_NAME));
 
-    const init = fetchMock.mock.calls[0][1] as RequestInit;
-    expect(init.credentials).toBe('omit');
-    expect(init.redirect).toBe('error');
-    expect(init.headers).toBeUndefined(); // no bearer token off-origin
-    expect(init.signal).toBeInstanceOf(AbortSignal); // a hung server cannot hang the block
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    for (const [url, init] of fetchMock.mock.calls as [URL, RequestInit][]) {
+      expect(init.credentials, String(url)).toBe('omit');
+      expect(init.redirect, String(url)).toBe('error');
+      expect(init.headers, String(url)).toBeUndefined(); // no bearer token, any host
+      expect(init.cache, String(url)).toBe('no-store');
+    }
+  });
+
+  it('gives every request its own abort signal', async () => {
+    // A hung server must not hang the block — and one signal shared across requests would
+    // abort every later probe in the session 8s after the first was built, which a
+    // `toBeInstanceOf(AbortSignal)` check cannot see.
+    const fetchMock = stubFetch({
+      [FEDERATION_AT_BASE]: () => jsonResponse(null, false),
+      [WELL_KNOWN]: () => jsonResponse({}),
+    });
+
+    await firstValueFrom(probeServerSoftware(BASE_URL, SERVER_NAME));
+
+    const signals = fetchMock.mock.calls.map(
+      (call) => (call[1] as RequestInit).signal,
+    );
+    expect(signals).toHaveLength(2);
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+    expect(signals[0]).not.toBe(signals[1]);
   });
 
   it('re-issues the request on every subscribe, so "Check again" really checks', async () => {
@@ -292,10 +391,13 @@ describe('fetchSpecVersions', () => {
       [VERSIONS_URL]: () =>
         jsonResponse({
           versions: ['v1.11', 'v1.12'],
+          // Deliberately NOT in sorted order: with a pre-sorted fixture, dropping the
+          // `.sort()` in the projection changed no result and the "sorted" claim below
+          // could not fail.
           unstable_features: {
-            'org.matrix.msc3916': true,
-            'org.matrix.msc2716': false,
             'org.matrix.msc4028': true,
+            'org.matrix.msc2716': false,
+            'org.matrix.msc3916': true,
           },
         }),
     });
@@ -334,6 +436,40 @@ describe('fetchSpecVersions', () => {
     await expect(
       firstValueFrom(fetchSpecVersions(BASE_URL, 'tok')),
     ).resolves.toBeNull();
+  });
+
+  it('keeps a path component of the base URL', async () => {
+    // A homeserver may publish `{"m.homeserver":{"base_url":"https://example.org/matrix"}}`;
+    // AutoDiscovery preserves that path and the SDK concatenates, so such a deployment syncs
+    // normally. Resolving an absolute path against it instead — `new URL('/_matrix/…', base)`
+    // — silently addresses the APEX, which answers "Unknown" forever and puts the account's
+    // bearer token on a path its homeserver does not own.
+    const fetchMock = stubFetch({
+      'https://example.org/matrix/_matrix/client/versions': () =>
+        jsonResponse({ versions: ['v1.11'] }),
+    });
+
+    await expect(
+      firstValueFrom(fetchSpecVersions('https://example.org/matrix', 'tok')),
+    ).resolves.toMatchObject({ versions: ['v1.11'] });
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      'https://example.org/matrix/_matrix/client/versions',
+    );
+  });
+
+  it('does not double the separator when the base URL ends in a slash', async () => {
+    const fetchMock = stubFetch({
+      'https://example.org/matrix/_matrix/client/versions': () =>
+        jsonResponse({ versions: ['v1.11'] }),
+    });
+
+    await firstValueFrom(
+      fetchSpecVersions('https://example.org/matrix/', 'tok'),
+    );
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      'https://example.org/matrix/_matrix/client/versions',
+    );
   });
 
   it('never puts the access token on a plain-http connection', async () => {

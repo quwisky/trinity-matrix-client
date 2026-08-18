@@ -17,6 +17,7 @@ import { HomeserverInfoService } from './homeserver-info.service';
 function fakeClient(
   userId: string,
   host: string,
+  /** Distinct per account in the fan-out tests: a shared token hides a cross-account swap. */
   token: string | null = 'tok',
 ) {
   return {
@@ -70,7 +71,7 @@ const software = (name: string, version: string) => ({
  * host cannot pass as a clean "unknown".
  */
 function stubFetch(routes: Record<string, () => unknown>) {
-  const fetchMock = vi.fn(async (url: URL | string) => {
+  const fetchMock = vi.fn(async (url: URL | string, _init?: RequestInit) => {
     const key = String(url);
     const handler = routes[key];
     if (!handler) {
@@ -94,6 +95,13 @@ function routesFor(host: string, name: string, version: string) {
   };
 }
 
+/**
+ * Read an account's record the way the real consumers do — both of #171's read
+ * `infos().get(...)` — rather than through an accessor that exists only for tests.
+ */
+const infoFor = (svc: HomeserverInfoService, userId: string) =>
+  svc.infos().get(userId) ?? null;
+
 describe('HomeserverInfoService', () => {
   // Restore only `fetch`: vi.unstubAllGlobals() would also drop the matchMedia /
   // PointerEvent stubs test-setup.base installs once for the whole file.
@@ -114,16 +122,173 @@ describe('HomeserverInfoService', () => {
 
     await firstValueFrom(svc.loadAll());
 
-    expect(svc.infoFor('@me:one.org')?.software).toMatchObject({
+    expect(infoFor(svc, '@me:one.org')?.software).toMatchObject({
       name: 'Synapse',
       version: '1.157.2',
     });
     // Not "Synapse": a second account on a different server is the whole point of the
     // surface, and reading the active client for both is the bug this pins.
-    expect(svc.infoFor('@alt:two.org')?.software).toMatchObject({
+    expect(infoFor(svc, '@alt:two.org')?.software).toMatchObject({
       name: 'Dendrite',
       version: '0.13.8',
     });
+  });
+
+  it('sends each account its OWN token, to its own host', async () => {
+    // Both halves matter and neither was covered: every account used to share one token, and
+    // the stub never received `init`, so a service that read the active client for all
+    // accounts — or leaked one account's bearer to another's homeserver — passed.
+    const fetchMock = stubFetch({
+      ...routesFor('one.example', 'Synapse', '1.1.0'),
+      ...routesFor('two.example', 'Synapse', '1.2.0'),
+    });
+    const { svc } = setup({
+      '@me:one.example': fakeClient(
+        '@me:one.example',
+        'one.example',
+        'tok-one',
+      ),
+      '@alt:two.example': fakeClient(
+        '@alt:two.example',
+        'two.example',
+        'tok-two',
+      ),
+    });
+
+    await firstValueFrom(svc.loadAll());
+
+    const authFor = (host: string) =>
+      (fetchMock.mock.calls as [URL, RequestInit][])
+        .filter(([url]) =>
+          String(url).startsWith(`https://${host}/_matrix/client/`),
+        )
+        .map(
+          ([, init]) =>
+            (init.headers as Record<string, string>)?.['Authorization'],
+        );
+
+    expect(authFor('one.example')).toEqual([
+      'Bearer tok-one',
+      'Bearer tok-one',
+    ]);
+    expect(authFor('two.example')).toEqual([
+      'Bearer tok-two',
+      'Bearer tok-two',
+    ]);
+  });
+
+  it('records the spec versions, unstable flags and capabilities it was given', async () => {
+    // These three fields were asserted only as NULL anywhere in this spec, so replacing any
+    // of them with a literal `null` in the service could not fail.
+    stubFetch({
+      'https://one.example/_matrix/federation/v1/version': () =>
+        ok(software('Synapse', '1.1.0')),
+      'https://one.example/_matrix/client/versions': () =>
+        ok({
+          versions: ['v1.11', 'v1.12'],
+          unstable_features: { 'org.matrix.msc4028': true },
+        }),
+      'https://one.example/_matrix/client/v3/capabilities': () =>
+        ok({
+          capabilities: {
+            'm.room_versions': { default: '10' },
+            'm.change_password': { enabled: false },
+          },
+        }),
+    });
+    const { svc } = setup({
+      '@me:one.example': fakeClient('@me:one.example', 'one.example'),
+    });
+
+    await firstValueFrom(svc.load('@me:one.example'));
+
+    expect(infoFor(svc, '@me:one.example')).toMatchObject({
+      specVersions: ['v1.11', 'v1.12'],
+      unstableFeatures: ['org.matrix.msc4028'],
+      capabilities: { defaultRoomVersion: '10', canChangePassword: false },
+    });
+  });
+
+  it('shares one in-flight probe rather than starting a second', async () => {
+    // The cache is only written when the whole probe settles, so without this every caller
+    // arriving during those seconds starts its own set of requests — and #171 reaches that
+    // directly: each block loads on init, and the account menu re-triggers on every toggle.
+    // Sharing also removes the ordering hazard, since an older response can no longer land
+    // on top of a newer one.
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const fetchMock = stubFetch({
+      'https://one.example/_matrix/federation/v1/version': async () => {
+        await gate;
+        return ok(software('Synapse', '1.1.0'));
+      },
+      'https://one.example/_matrix/client/versions': () =>
+        ok({ versions: ['v1.11'] }),
+      'https://one.example/_matrix/client/v3/capabilities': () => fail(),
+    });
+    const { svc } = setup({
+      '@me:one.example': fakeClient('@me:one.example', 'one.example'),
+    });
+
+    const first = firstValueFrom(svc.load('@me:one.example'));
+    const second = firstValueFrom(svc.refresh('@me:one.example'));
+    release?.();
+    await Promise.all([first, second]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(3); // one probe, not two
+    expect(infoFor(svc, '@me:one.example')?.software).toMatchObject({
+      version: '1.1.0',
+    });
+  });
+
+  it('probes again once the shared request has finished', async () => {
+    // The in-flight entry must be released on completion, or it would become a permanent
+    // cache and "Check again" would stop asking anything.
+    const fetchMock = stubFetch(routesFor('one.example', 'Synapse', '1.1.0'));
+    const { svc } = setup({
+      '@me:one.example': fakeClient('@me:one.example', 'one.example'),
+    });
+
+    await firstValueFrom(svc.refresh('@me:one.example'));
+    await firstValueFrom(svc.refresh('@me:one.example'));
+
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+  });
+
+  it('reads a token no earlier than subscribe', async () => {
+    // Documented as cold. Reading the token when the observable is BUILT would replay a
+    // stale bearer after an OIDC rotation between build and subscribe.
+    stubFetch(routesFor('one.example', 'Synapse', '1.1.0'));
+    const client = fakeClient('@me:one.example', 'one.example');
+    const getAccessToken = vi.fn(() => 'tok');
+    const { svc } = setup({
+      '@me:one.example': { ...client, getAccessToken },
+    });
+
+    const pending = svc.refresh('@me:one.example');
+    expect(getAccessToken).not.toHaveBeenCalled();
+
+    await firstValueFrom(pending);
+    expect(getAccessToken).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a differently-cased host', 'https://One.Example', 'one.example'],
+    ['an explicit default port', 'https://one.example:443', 'one.example'],
+  ])('does not read %s as delegation', async (_label, baseUrl, serverName) => {
+    // `discovered` drives a sentence in #171 about the homeserver having been discovered
+    // rather than typed. A raw string compare reports both of these as delegated.
+    stubFetch(routesFor(new URL(baseUrl).host, 'Synapse', '1.1.0'));
+    const { svc } = setup({
+      [`@me:${serverName}`]: {
+        ...fakeClient(`@me:${serverName}`, serverName),
+        baseUrl,
+      },
+    });
+
+    await firstValueFrom(svc.load(`@me:${serverName}`));
+
+    expect(infoFor(svc, `@me:${serverName}`)?.discovered).toBe(false);
   });
 
   it('records the server name and base URL, and notes when they differ', async () => {
@@ -134,7 +299,7 @@ describe('HomeserverInfoService', () => {
 
     await firstValueFrom(svc.load('@me:one.org'));
 
-    expect(svc.infoFor('@me:one.org')).toMatchObject({
+    expect(infoFor(svc, '@me:one.org')).toMatchObject({
       serverName: 'one.org',
       baseUrl: 'https://matrix.one.org',
       discovered: true,
@@ -149,7 +314,7 @@ describe('HomeserverInfoService', () => {
 
     await firstValueFrom(svc.load('@me:one.org'));
 
-    expect(svc.infoFor('@me:one.org')?.discovered).toBe(false);
+    expect(infoFor(svc, '@me:one.org')?.discovered).toBe(false);
   });
 
   it('does not read a trailing slash as delegation', async () => {
@@ -164,7 +329,7 @@ describe('HomeserverInfoService', () => {
 
     await firstValueFrom(svc.load('@me:one.org'));
 
-    expect(svc.infoFor('@me:one.org')).toMatchObject({
+    expect(infoFor(svc, '@me:one.org')).toMatchObject({
       baseUrl: 'https://one.org',
       discovered: false,
     });
@@ -183,11 +348,11 @@ describe('HomeserverInfoService', () => {
     const { svc } = setup({
       '@me:one.org': fakeClient('@me:one.org', 'one.org'),
     });
-    expect(svc.infoFor('@me:one.org')).toBeNull();
+    expect(infoFor(svc, '@me:one.org')).toBeNull();
 
     await firstValueFrom(svc.load('@me:one.org'));
 
-    expect(svc.infoFor('@me:one.org')).toMatchObject({
+    expect(infoFor(svc, '@me:one.org')).toMatchObject({
       software: null,
       specVersions: null,
       capabilities: null,
@@ -237,12 +402,12 @@ describe('HomeserverInfoService', () => {
       '@me:one.org': fakeClient('@me:one.org', 'one.org'),
     });
     await firstValueFrom(svc.load('@me:one.org'));
-    expect(svc.infoFor('@me:one.org')?.software?.version).toBe('1.157.2');
+    expect(infoFor(svc, '@me:one.org')?.software?.version).toBe('1.157.2');
 
     version = '1.158.0';
     await firstValueFrom(svc.refresh('@me:one.org'));
 
-    expect(svc.infoFor('@me:one.org')?.software?.version).toBe('1.158.0');
+    expect(infoFor(svc, '@me:one.org')?.software?.version).toBe('1.158.0');
   });
 
   it('lets a refresh succeed after a first attempt found nothing', async () => {
@@ -258,12 +423,12 @@ describe('HomeserverInfoService', () => {
       '@me:one.org': fakeClient('@me:one.org', 'one.org'),
     });
     await firstValueFrom(svc.load('@me:one.org'));
-    expect(svc.infoFor('@me:one.org')?.software).toBeNull();
+    expect(infoFor(svc, '@me:one.org')?.software).toBeNull();
 
     reachable = true;
     await firstValueFrom(svc.refresh('@me:one.org'));
 
-    expect(svc.infoFor('@me:one.org')?.software).toMatchObject({
+    expect(infoFor(svc, '@me:one.org')?.software).toMatchObject({
       version: '1.157.2',
     });
   });
@@ -279,8 +444,8 @@ describe('HomeserverInfoService', () => {
 
     await firstValueFrom(svc.loadAll());
 
-    expect(svc.infoFor('@me:one.org')).not.toBeNull();
-    expect(svc.infoFor('@pending:two.org')).toBeNull();
+    expect(infoFor(svc, '@me:one.org')).not.toBeNull();
+    expect(infoFor(svc, '@pending:two.org')).toBeNull();
   });
 
   it('drops an account that signs out', async () => {
@@ -289,13 +454,13 @@ describe('HomeserverInfoService', () => {
       '@me:one.org': fakeClient('@me:one.org', 'one.org'),
     });
     await firstValueFrom(svc.load('@me:one.org'));
-    expect(svc.infoFor('@me:one.org')).not.toBeNull();
+    expect(infoFor(svc, '@me:one.org')).not.toBeNull();
 
     clients.delete('@me:one.org');
     ids.set([]);
     TestBed.tick();
 
-    expect(svc.infoFor('@me:one.org')).toBeNull();
+    expect(infoFor(svc, '@me:one.org')).toBeNull();
   });
 
   it('re-probes when the same user id gets a NEW client object', async () => {
@@ -310,15 +475,15 @@ describe('HomeserverInfoService', () => {
       '@me:one.org': fakeClient('@me:one.org', 'old.example'),
     });
     await firstValueFrom(svc.load('@me:one.org'));
-    expect(svc.infoFor('@me:one.org')?.baseUrl).toBe('https://old.example');
+    expect(infoFor(svc, '@me:one.org')?.baseUrl).toBe('https://old.example');
 
     clients.set('@me:one.org', fakeClient('@me:one.org', 'new.example'));
     ids.set(['@me:one.org']); // same set, different client object
     TestBed.tick();
 
-    expect(svc.infoFor('@me:one.org')).toBeNull(); // stale answer dropped, not kept
+    expect(infoFor(svc, '@me:one.org')).toBeNull(); // stale answer dropped, not kept
     await firstValueFrom(svc.load('@me:one.org'));
-    expect(svc.infoFor('@me:one.org')?.baseUrl).toBe('https://new.example');
+    expect(infoFor(svc, '@me:one.org')?.baseUrl).toBe('https://new.example');
   });
 
   it('discards a probe that finished after its account was removed', async () => {
@@ -347,7 +512,7 @@ describe('HomeserverInfoService', () => {
     release?.();
     await inFlight;
 
-    expect(svc.infoFor('@me:one.org')).toBeNull();
+    expect(infoFor(svc, '@me:one.org')).toBeNull();
   });
 
   it('refreshes every account at once', async () => {

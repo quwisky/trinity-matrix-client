@@ -1,6 +1,14 @@
 import { Injectable, effect, inject, signal } from '@angular/core';
 import type { MatrixClient } from 'matrix-js-sdk';
-import { Observable, forkJoin, map, of } from 'rxjs';
+import {
+  Observable,
+  defer,
+  finalize,
+  forkJoin,
+  map,
+  of,
+  shareReplay,
+} from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import type { HomeserverInfo } from './homeserver-info.model';
 import {
@@ -64,11 +72,6 @@ export class HomeserverInfoService {
     });
   }
 
-  /** This account's answer, or null when it has not been probed yet. */
-  infoFor(userId: string): HomeserverInfo | null {
-    return this._infos().get(userId) ?? null;
-  }
-
   /**
    * Probe this account unless a cached answer is already held. Cold — runs on subscribe.
    * This is what a block does when it first renders.
@@ -78,6 +81,18 @@ export class HomeserverInfoService {
   }
 
   /**
+   * Probes that have been started and not yet finished, keyed by user id.
+   *
+   * A probe is only written to {@link cache} once its whole `forkJoin` settles, so without
+   * this every caller that arrives during those seconds starts its own — and #171 reaches
+   * exactly that: each block loads on init, and the account menu re-triggers a lookup on
+   * every toggle. Sharing the in-flight observable also removes the ordering hazard a
+   * second concurrent probe would create, since an older, slower response can no longer
+   * land on top of a newer one. Same shape as `MatrixClientService.starting`.
+   */
+  private readonly inFlight = new Map<string, Observable<void>>();
+
+  /**
    * Re-probe this account, ignoring anything cached. Cold. Backs "Check again".
    *
    * Always re-issues the requests, which is the whole point: every value here is reachable
@@ -85,37 +100,53 @@ export class HomeserverInfoService {
    * `probe-homeserver.ts`), and a refresh that cannot observe a change is not a refresh.
    */
   refresh(userId: string): Observable<void> {
-    const client = this.matrix.clientFor(userId);
-    if (!client) {
-      // Signed in but not started yet, or stopped underneath us. Not an error: the account
-      // effect re-runs when it appears, and the block simply has nothing to show meanwhile.
-      return of(undefined);
+    const running = this.inFlight.get(userId);
+    if (running) {
+      return running;
     }
-    // Trailing slash stripped before it is compared or shown: `AuthService` already
-    // normalises what it stores, but `discovered` is a straight string comparison and a
-    // stray slash would report every account as delegated.
-    const baseUrl = client.baseUrl.replace(/\/+$/, '');
-    const serverName = client.getDomain() ?? serverNameOf(userId);
-    const token = client.getAccessToken();
+    // Wholly inside `defer`, so this really is cold as documented: the client, its base URL
+    // and its access token are read on SUBSCRIBE, not when the observable is built. A token
+    // read at build time would be the stale one after an OIDC rotation.
+    const request = defer(() => {
+      const client = this.matrix.clientFor(userId);
+      if (!client) {
+        // A user id held past sign-out, or one passed in from elsewhere. Every id in
+        // `accountIds()` has a live client, so this is a stale caller rather than an
+        // account still warming up — and it is not an error either way.
+        return of(undefined);
+      }
+      // Trailing slash stripped before it is shown: `AuthService` normalises what it
+      // stores, but a stray slash would still reach the URL row.
+      const baseUrl = client.baseUrl.replace(/\/+$/, '');
+      const serverName = client.getDomain() ?? serverNameOf(userId);
+      const token = client.getAccessToken();
 
-    return forkJoin({
-      software: probeServerSoftware(baseUrl, serverName),
-      versions: fetchSpecVersions(baseUrl, token),
-      capabilities: fetchCapabilities(baseUrl, token),
+      return forkJoin({
+        software: probeServerSoftware(baseUrl, serverName),
+        versions: fetchSpecVersions(baseUrl, token),
+        capabilities: fetchCapabilities(baseUrl, token),
+      }).pipe(
+        map(({ software, versions, capabilities }) => {
+          this.store(userId, client, {
+            userId,
+            serverName,
+            baseUrl,
+            discovered: !sameOrigin(baseUrl, `https://${serverName}`),
+            software,
+            specVersions: versions?.versions ?? null,
+            unstableFeatures: versions?.unstableFeatures ?? null,
+            capabilities,
+          });
+        }),
+      );
     }).pipe(
-      map(({ software, versions, capabilities }) => {
-        this.store(userId, client, {
-          userId,
-          serverName,
-          baseUrl,
-          discovered: baseUrl !== `https://${serverName}`,
-          software,
-          specVersions: versions?.versions ?? null,
-          unstableFeatures: versions?.unstableFeatures ?? null,
-          capabilities,
-        });
-      }),
+      finalize(() => this.inFlight.delete(userId)),
+      // `refCount: false` so a second caller arriving mid-flight joins the same request
+      // instead of starting another; the `finalize` above is what stops it being a cache.
+      shareReplay({ bufferSize: 1, refCount: false }),
     );
+    this.inFlight.set(userId, request);
+    return request;
   }
 
   /** Probe every signed-in account that has no answer yet. Cold. */
@@ -183,6 +214,22 @@ export class HomeserverInfoService {
       next.set(userId, held.info);
     }
     this._infos.set(next);
+  }
+}
+
+/**
+ * Whether two URLs address the same origin.
+ *
+ * Compared as origins rather than as strings so `https://Example.org` and an explicit
+ * `https://example.org:443` are not reported as delegation — `URL.origin` lower-cases the
+ * host and drops the default port. An unparseable value falls back to inequality, which
+ * reports delegation, which is the honest answer when we cannot tell.
+ */
+function sameOrigin(a: string, b: string): boolean {
+  try {
+    return new URL(a).origin === new URL(b).origin;
+  } catch {
+    return false;
   }
 }
 
