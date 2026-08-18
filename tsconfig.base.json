@@ -50,6 +50,9 @@
       "@trinity/data-access/rooms": ["./libs/data-access/rooms/src/index.ts"],
       "@trinity/data-access/media": ["./libs/data-access/media/src/index.ts"],
       "@trinity/data-access/gif": ["./libs/data-access/gif/src/index.ts"],
+      "@trinity/data-access/homeserver": [
+        "./libs/data-access/homeserver/src/index.ts"
+      ],
       "@trinity/feature/auth": ["./libs/feature/auth/src/index.ts"],
       "@trinity/feature/crypto": ["./libs/feature/crypto/src/index.ts"],
       "@trinity/feature/rooms": ["./libs/feature/rooms/src/index.ts"],
