@@ -31,6 +31,13 @@ export class ComposerAttachmentStripComponent {
   readonly uploadDeterminate = input(false);
   /** Whole-percent upload progress for the determinate bar's label. */
   readonly uploadPercent = input(0);
+  /**
+   * The name of the file the bar is uploading, when the host knows it.
+   *
+   * The bar sits above rows that are still staged, so without a name it reads as though it
+   * describes them — it describes the one that just left the list.
+   */
+  readonly uploadLabel = input<string | null>(null);
   /** Everything staged, in the order it will be sent. */
   readonly staged = input<readonly StagedAttachment[]>([]);
 

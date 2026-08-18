@@ -304,6 +304,18 @@ export class MessageComposerComponent {
   /** Whether to show a determinate bar — true once the first real fraction lands.
    * Until then (metadata probe + thumbnail upload) the bar is indeterminate so it
    * reads as "working" rather than a stalled 0%. */
+  /**
+   * The file the visible upload belongs to.
+   *
+   * The bar renders above the rows that are still staged, and without this it reads as though
+   * it describes them — it describes the one that just left the list. Cleared when the host
+   * reports the upload finished.
+   */
+  private readonly uploadingName = signal<string | null>(null);
+  /** What the upload bar is uploading, or null when the host has not said. */
+  readonly uploadLabel = computed(() =>
+    this.uploadProgress() === null ? null : this.uploadingName(),
+  );
   readonly uploadDeterminate = computed(() => (this.uploadProgress() ?? 0) > 0);
   /** Whole-percent upload progress for the determinate bar's label. */
   readonly uploadPercent = computed(() =>
@@ -697,6 +709,15 @@ export class MessageComposerComponent {
     // batch. Clearing the lot here would silently discard everything after the first.
     const next = this.editing() ? null : (this.staged()[0] ?? null);
     if (next) {
+      // One attachment upload at a time. Guarded HERE and not only on the send button,
+      // because `onEnter` reaches this directly and never consults `[disabled]` — and key
+      // auto-repeat is enough to fire it twice. Two in flight share one `uploadProgress`
+      // scalar (the first to finish nulls it, hiding the bar for the other) and reach
+      // `sendMessage` only after their own upload resolves, so the events land
+      // fastest-file-first rather than in the order staged.
+      if (this.uploadProgress() !== null) {
+        return;
+      }
       const file = next.file;
       this.submitMedia.emit({ file, caption: this.text().trim() });
       // A media send carries no reply relation, so end any active reply — else
@@ -705,6 +726,7 @@ export class MessageComposerComponent {
       if (this.replyingTo()) {
         this.cancelReply.emit();
       }
+      this.uploadingName.set(file.name);
       this.removeStaged(next.id);
       this.text.set('');
       this.resetMenus();
@@ -912,6 +934,10 @@ export class MessageComposerComponent {
   /** Drop the staged attachment (× button, Escape, or after it's sent). */
   removeStaged(id: string): void {
     this.attachments.removeStaged(id);
+    // The × that was pressed has just been destroyed, which drops focus to <body> and strands
+    // a keyboard user at the top of the page. The textarea is where they were heading anyway.
+    // Queued, like the staging path's own focus call: the row is still in the DOM until CD runs.
+    queueMicrotask(() => this.textarea()?.nativeElement.focus());
   }
 
   /** Drop every staged attachment. */

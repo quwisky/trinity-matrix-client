@@ -42,9 +42,10 @@ describe('MessageComposerComponent', () => {
   let revokeObjectURL: Mock;
 
   beforeEach(() => {
-    // jsdom has no object-URL API. A COUNTER, not a constant: with several files staged the
-    // URLs must be distinguishable, and a constant would additionally make every revoke
-    // assertion vacuous — the old scalar `setPreview` only revoked when the URL changed.
+    // Node supplies a real object-URL API here, so this stub is for determinism and spying
+    // rather than absence — which matters, because a dropped stub would now silently work
+    // instead of throwing. A COUNTER, not a constant: with several files staged the URLs must
+    // be distinguishable, and a constant made every revoke assertion vacuous.
     let issued = 0;
     createObjectURL = vi.fn(() => `blob:preview-${++issued}`);
     revokeObjectURL = vi.fn();
@@ -614,7 +615,22 @@ describe('MessageComposerComponent', () => {
       pasteEvent({
         items: [
           { kind: 'file', type: 'image/png', getAsFile: () => first },
-          { kind: 'string', type: 'text/plain', getAsFile: () => null },
+          // Each decoy fails exactly ONE half of the predicate AND returns a real file, so
+          // dropping either half leaks a name into the result. Decoys returning null cannot
+          // do that — the null filter downstream absorbs them and the mutation survives.
+          {
+            kind: 'string',
+            type: 'image/png',
+            getAsFile: () => png('decoy-kind.png'),
+          },
+          {
+            kind: 'file',
+            type: 'text/plain',
+            getAsFile: () => png('decoy-type.png'),
+          },
+          // A `kind: 'file'` entry the page cannot read — real on Safari, and the reason the
+          // null filter exists.
+          { kind: 'file', type: 'image/png', getAsFile: () => null },
           { kind: 'file', type: 'image/png', getAsFile: () => second },
         ],
       }).event,
@@ -652,6 +668,31 @@ describe('MessageComposerComponent', () => {
     expect(previews[0]).toMatch(/^blob:preview-/);
     expect(previews[1]).toBeNull();
     expect(createObjectURL).toHaveBeenCalledTimes(1); // not for the PDF
+  });
+
+  it('ignores a remove for an id that is not staged', async () => {
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    pickFiles(cmp, [png('one.png')]);
+    const before = cmp.staged();
+
+    cmp.removeStaged('attachment-does-not-exist');
+
+    expect(cmp.staged()).toBe(before); // same array, so the strip does not re-render
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when the picker is dismissed without choosing', async () => {
+    // A cancelled OS dialog still fires `change`, with zero files. Without the guard this
+    // steals focus into the textarea and churns the strip for a non-event.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    pickFiles(cmp, [png('one.png')]);
+    const before = cmp.staged();
+
+    pickFiles(cmp, []);
+
+    expect(cmp.staged()).toBe(before);
   });
 
   it('removes one staged attachment and revokes only its preview', async () => {
@@ -712,6 +753,81 @@ describe('MessageComposerComponent', () => {
     ]);
     // Only the sent file's preview is released; the survivors still need theirs.
     expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a second send while the first attachment is still uploading', async () => {
+    // Two in flight share one `uploadProgress` scalar — the first to finish nulls it, hiding
+    // the bar for the other — and each reaches `sendMessage` only after its OWN upload
+    // resolves, so the events land fastest-file-first rather than in the order staged.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const sent: File[] = [];
+    cmp.submitMedia.subscribe((e) => sent.push(e.file));
+    pickFiles(cmp, [png('one.png'), png('two.png')]);
+
+    cmp.submit();
+    fixture.componentRef.setInput('uploadProgress', 0.3); // the host reports it in flight
+    fixture.detectChanges();
+    cmp.submit();
+
+    expect(sent.map((f) => f.name)).toEqual(['one.png']);
+    expect(stagedFiles(cmp).map((f) => f.name)).toEqual(['two.png']);
+  });
+
+  it('guards the second send in code, not only on the button', async () => {
+    // `onEnter` calls `submit()` directly and never consults `[disabled]`, so a template-only
+    // guard is no guard at all — key auto-repeat is enough to fire it twice.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const sent: File[] = [];
+    cmp.submitMedia.subscribe((e) => sent.push(e.file));
+    pickFiles(cmp, [png('one.png'), png('two.png')]);
+    cmp.submit();
+    fixture.componentRef.setInput('uploadProgress', 0.3);
+    fixture.detectChanges();
+
+    cmp.onEnter(new KeyboardEvent('keydown', { key: 'Enter' }));
+
+    expect(sent.map((f) => f.name)).toEqual(['one.png']);
+  });
+
+  it('shows which file the upload bar belongs to', async () => {
+    // The bar renders above the rows still staged; unlabelled it reads as though it describes
+    // them, when it describes the one that just left the list.
+    const { fixture, container } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    pickFiles(cmp, [png('one.png'), png('two.png')]);
+
+    cmp.submit();
+    fixture.componentRef.setInput('uploadProgress', 0.3);
+    fixture.detectChanges();
+
+    expect(
+      container.querySelector('[data-testid=upload-progress]')?.textContent,
+    ).toContain('one.png');
+  });
+
+  it('renders every staged file and removes the one whose × is pressed', async () => {
+    // The composer→strip wiring, which nothing covered: `[staged]` bound to an empty array,
+    // or the × routed to `clearStaged`, both shipped with the whole suite green — and the
+    // second is exactly the batch-wipe this change exists to avoid.
+    const { fixture, container } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    pickFiles(cmp, [png('one.png'), png('two.png'), png('three.png')]);
+    fixture.detectChanges();
+
+    const rows = container.querySelectorAll('[data-testid=composer-pending]');
+    expect(rows).toHaveLength(3);
+
+    container
+      .querySelectorAll<HTMLElement>('[data-testid=composer-pending-remove]')[1]
+      ?.click();
+    fixture.detectChanges();
+
+    expect(stagedFiles(cmp).map((f) => f.name)).toEqual([
+      'one.png',
+      'three.png',
+    ]);
   });
 
   it('works through the batch on repeated sends', async () => {

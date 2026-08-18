@@ -2,10 +2,14 @@
   <div class="composer__upload" data-testid="upload-progress">
     <trn-progress
       [value]="uploadDeterminate() ? (uploadProgress() ?? 0) * 100 : null"
-      aria-label="Uploading attachment"
+      [aria-label]="
+        uploadLabel() ? 'Uploading ' + uploadLabel() : 'Uploading attachment'
+      "
     />
     <span class="composer__upload-label" aria-live="polite">
-      Uploading…{{ uploadDeterminate() ? ' ' + uploadPercent() + '%' : '' }}
+      Uploading{{ uploadLabel() ? ' ' + uploadLabel() : '' }}…{{
+        uploadDeterminate() ? ' ' + uploadPercent() + '%' : ''
+      }}
     </span>
   </div>
 }

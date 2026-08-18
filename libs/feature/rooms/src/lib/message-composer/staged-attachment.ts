@@ -1,9 +1,11 @@
 /**
  * One file staged in the composer, waiting to be sent.
  *
- * `id` exists because `File` has no stable identity: two files picked from the same folder can
- * be equal in name, size and type, and a `File` is not comparable by reference across a
- * re-render. Both `@for … track` and "remove this one" need a key that survives neither.
+ * `id` exists so the strip can say WHICH one to remove. `track` alone would be satisfied by the
+ * `File` reference — the list holds the same instances across renders — but the removal output
+ * has to carry something, and an opaque string is a better payload for a presentational
+ * component than the `File` itself. Two files picked from the same folder can also match on
+ * name, size and type, so neither is a key.
  */
 export interface StagedAttachment {
   readonly id: string;

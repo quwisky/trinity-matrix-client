@@ -31,7 +31,11 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 168px; // ~3 rows, then scroll
+
+  // Deliberately NOT a whole number of rows: rows are 52px with a 4px gap, so 168px would cut
+  // exactly at the fourth row's top edge and a fourth file would be completely invisible with
+  // no scrollbar gutter to hint otherwise. 150px leaves the fourth peeking.
+  max-height: 150px;
   overflow-y: auto;
 }
 

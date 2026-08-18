@@ -19,6 +19,7 @@
   [uploadDeterminate]="uploadDeterminate()"
   [uploadPercent]="uploadPercent()"
   [staged]="staged()"
+  [uploadLabel]="uploadLabel()"
   (removeStaged)="removeStaged($event)"
 />
 
@@ -193,7 +194,10 @@
         trnTooltip="Send"
         aria-label="Send message"
         data-testid="composer-send"
-        [disabled]="!text().trim() && !hasStaged()"
+        [disabled]="
+          (!text().trim() && !hasStaged()) ||
+          (hasStaged() && uploadProgress() !== null)
+        "
         (click)="submit()"
       >
         <trn-icon name="send" />

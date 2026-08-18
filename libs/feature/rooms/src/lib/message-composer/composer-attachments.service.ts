@@ -214,15 +214,13 @@ export class ComposerAttachmentsService {
 
   /** Drop one staged attachment (its × button), keeping the rest. */
   removeStaged(id: string): void {
-    const survivors: StagedAttachment[] = [];
-    for (const attachment of this._staged()) {
-      if (attachment.id === id) {
-        releaseAttachment(attachment);
-      } else {
-        survivors.push(attachment);
-      }
+    const current = this._staged();
+    const doomed = current.find((attachment) => attachment.id === id);
+    if (!doomed) {
+      return; // unknown id: leave the array identity alone rather than re-rendering the strip
     }
-    this._staged.set(survivors);
+    releaseAttachment(doomed);
+    this._staged.set(current.filter((attachment) => attachment !== doomed));
   }
 
   /** Toggle the GIF grid. The caller closes the emoji picker (only one at a time). */
@@ -368,10 +366,8 @@ export class ComposerAttachmentsService {
     if (!files.length) {
       return;
     }
-    this._staged.update((current) => [
-      ...current,
-      ...files.map(stageAttachment),
-    ]);
+    const added = files.map(stageAttachment); // outside the updater: it allocates object URLs
+    this._staged.update((current) => [...current, ...added]);
     this.host.focusInput();
   }
 

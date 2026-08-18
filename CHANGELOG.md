@@ -27,8 +27,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
-- **Attach several images at once.** The file picker now lets you choose more than one, and
-  pasting a batch of screenshots stages all of them instead of only the first. Everything you
+- **Attach several images at once.** On the web and desktop apps the file picker now lets you
+  choose more than one, and pasting a batch of screenshots stages all of them instead of only
+  the first. (On phones the gallery picker still takes one at a time for now — you can still
+  add them one after another, and they queue up together.) Everything you
   have staged is listed above the message box, each with its own × so you can drop one without
   starting over, and picking again adds to the list rather than replacing it.
 
