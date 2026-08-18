@@ -10,11 +10,11 @@ Libraries are imported through `@trinity/*` path aliases declared in
 [`tsconfig.base.json`](https://github.com/quwisky/trinity-matrix-client/blob/develop/tsconfig.base.json),
 never by relative path across a library boundary. Imports _within_ a library stay relative.
 
-`libs/` itself has eight entries. Four are layer parents holding that layer's libraries:
-`data-access/` (12), `feature/` (5), `util/` (2) and `components/` (20) — the public component
+`libs/` itself has seven entries. Four are layer parents holding that layer's libraries:
+`data-access/` (12), `feature/` (5), `util/` (2) and `components/` (21) — the public component
 tier feature code reaches for. `spartan/` (17) groups the generated Helm components plus the
-`tests` project that holds the specs pinning their behaviour. The remaining three are single
-libraries sitting directly under `libs/`: `platform-native`, `testing` and `ui`.
+`tests` project that holds the specs pinning their behaviour. The remaining two are single
+libraries sitting directly under `libs/`: `platform-native` and `testing`.
 
 A library answers to three different strings, and they are not interchangeable. The directories
 were nested without renaming the Nx projects, so for the rooms data-access library:
@@ -109,12 +109,12 @@ into another chunk.
 Presentational only. `type:ui` may not depend on `type:data-access`, so a component here can never
 reach a service.
 
-| Library                        | Alias                              | Tags                                    | Purpose                                                                                                                                                                                                                                                                                           |
-| ------------------------------ | ---------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `libs/ui`                      | `@trinity/ui`                      | `type:ui`, `scope:shared`, `ui:wrapper` | `EncryptionDialogService` with its `ENCRYPTION_DIALOG_COMPONENTS` loader token, and nothing else. The presentational components moved to `libs/components/*` (avatar, banner, media-bubble, message-toolbar, page-header) and the `util/` folder to `@trinity/util/ui`                            |
-| `libs/components/emoji-picker` | `@trinity/components/emoji-picker` | `type:ui`, `scope:shared`, `ui:public`  | Trinity-authored: `<trn-emoji-picker>` over `TrnEmojiPick`, plus the `TrnEmojiIndex` facade the `:shortcode` autocomplete uses — the only importer of `@ctrl/ngx-emoji-mart`                                                                                                                      |
-| `libs/components/icon`         | `@trinity/components/icon`         | `type:ui`, `scope:shared`, `ui:public`  | Trinity-authored: `<trn-icon>` over a closed `TrnIconName` union of the 82 icons in use, the single `TRN_ICONS` vendor map, and `provideTrnIcons()` — the only importer of `@ng-icons` outside the generated kit                                                                                  |
-| `libs/components/overlay`      | `@trinity/components/overlay`      | `type:ui`, `scope:shared`, `ui:public`  | Trinity-authored imperative overlay adapters: `TrnDialogService`, `TrnAlertService`, `TrnActionSheetService`, `TrnToastService`, plus `TrnDialogRef`, Trinity's own two-method handle (`close`, `closed`) so a modalled component can close itself without naming `@angular/cdk` in its signature |
+| Library                             | Alias                                   | Tags                                   | Purpose                                                                                                                                                                                                                                                                                           |
+| ----------------------------------- | --------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `libs/components/encryption-dialog` | `@trinity/components/encryption-dialog` | `type:ui`, `scope:shared`, `ui:public` | `EncryptionDialogService` and its `ENCRYPTION_DIALOG_COMPONENTS` loader token: presents the unlock and device-verification flows as a dialog on wide layouts and a route on narrow ones. Its own library rather than part of `overlay`, which stays the generic dialog wrapper                    |
+| `libs/components/emoji-picker`      | `@trinity/components/emoji-picker`      | `type:ui`, `scope:shared`, `ui:public` | Trinity-authored: `<trn-emoji-picker>` over `TrnEmojiPick`, plus the `TrnEmojiIndex` facade the `:shortcode` autocomplete uses — the only importer of `@ctrl/ngx-emoji-mart`                                                                                                                      |
+| `libs/components/icon`              | `@trinity/components/icon`              | `type:ui`, `scope:shared`, `ui:public` | Trinity-authored: `<trn-icon>` over a closed `TrnIconName` union of the 82 icons in use, the single `TRN_ICONS` vendor map, and `provideTrnIcons()` — the only importer of `@ng-icons` outside the generated kit                                                                                  |
+| `libs/components/overlay`           | `@trinity/components/overlay`           | `type:ui`, `scope:shared`, `ui:public` | Trinity-authored imperative overlay adapters: `TrnDialogService`, `TrnAlertService`, `TrnActionSheetService`, `TrnToastService`, plus `TrnDialogRef`, Trinity's own two-method handle (`close`, `closed`) so a modalled component can close itself without naming `@angular/cdk` in its signature |
 
 `libs/components/*` is the **public tier**, tagged `ui:public`: Trinity-authored wrappers whose
 API is ours, so the library underneath can be swapped without touching a call site. It is the

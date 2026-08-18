@@ -7,7 +7,7 @@ import {
 import { Router } from '@angular/router';
 import { HlmButton } from '@trinity/helm/button';
 import { CryptoService } from '@trinity/data-access/crypto';
-import { EncryptionDialogService } from '@trinity/ui';
+import { EncryptionDialogService } from '@trinity/components/encryption-dialog';
 import { BannerComponent } from '@trinity/components/banner';
 import { TrnIconComponent } from '@trinity/components/icon';
 

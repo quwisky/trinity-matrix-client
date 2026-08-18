@@ -14,7 +14,7 @@ import { Router } from '@angular/router';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { CryptoService } from '@trinity/data-access/crypto';
-import { EncryptionDialogService } from '@trinity/ui';
+import { EncryptionDialogService } from '@trinity/components/encryption-dialog';
 import { downloadTextFile } from '../download-text-file';
 
 /** Where the encryption flows return after finishing on the routed (mobile) path. */

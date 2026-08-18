@@ -59,36 +59,30 @@ export default defineConfig([
             // reports success and the ban enforces nothing. `lint-invariants.spec.mjs`
             // pins the `*` for exactly this reason.
             //
-            // `ui:wrapper` (libs/ui) keeps nothing, @angular/cdk included. It was expected
-            // to host both the icon and emoji wrappers; they went to the public tier
-            // instead — `@trinity/components/icon` (#154) and
-            // `@trinity/components/emoji-picker` (#152) — because a lib tagged `ui:wrapper`
-            // is precisely the tier that may not name a vendor. CDK was the last one left
-            // off this list, and it was an unused allowance rather than a carve-out:
-            // libs/ui imports no vendor at all, and the layer that genuinely wraps CDK is
-            // `@trinity/components/overlay`, which is tagged `ui:public`.
+            // There is no `ui:wrapper` entry here any more, and its absence is a decision
+            // rather than an oversight. That tag belonged to `libs/ui`, which held the
+            // presentational components and then, briefly, nothing but a DI seam; the
+            // components went to the public tier and the seam became
+            // `@trinity/components/encryption-dialog`, so the library — and the only project
+            // carrying the tag — is gone. A `bannedExternalImports` entry keyed on a tag no
+            // project has enforces exactly nothing while reading as a closed door, which is
+            // the shape this whole boundary exists to eliminate. `lint-invariants.spec.mjs`
+            // fails on a tier named in its table that no project carries, so this cannot
+            // quietly come back.
             //
-            // TWO tiers are deliberately absent from this list, and for the same reason:
-            // `ui:public` (libs/components/*) and `ui:vendor-wrapper` (the generated kit).
-            // Both ARE wrapper layers — naming a vendor is their job — and banning it there
-            // would ban them from existing. What contains the public tier is the other
-            // direction: a consumer-side ban keeps libs/feature, libs/ui and apps from
-            // reaching past it into `@trinity/helm/*`. `lint-invariants.spec.mjs` records
-            // the asymmetry as a table rather than leaving it to be inferred.
+            // What remains of the `ui:*` axis is two tiers, BOTH deliberately absent from
+            // this list: `ui:public` (libs/components/*) and `ui:vendor-wrapper` (the
+            // generated kit). Both ARE wrapper layers — naming a vendor is their job — and
+            // banning it there would ban them from existing. So every `type:ui` project may
+            // now name a vendor, and what contains the public tier is the other direction: a
+            // consumer-side ban keeps libs/feature and apps from reaching past it into
+            // `@trinity/helm/*`. The axis still earns its keep by telling those two tiers
+            // apart for that bookkeeping.
             //
             // `type:feature` carries all four. #151 closed @angular/cdk and
             // @spartan-ng/brain, #154 @ng-icons, #152 @ctrl/ngx-emoji-mart — and with the
             // last one nothing is staged any more, so the temporary `warn` block that used
             // to sit further down is gone.
-            {
-              sourceTag: 'ui:wrapper',
-              bannedExternalImports: [
-                '@spartan-ng/brain*',
-                '@angular/cdk*',
-                '@ng-icons*',
-                '@ctrl/ngx-emoji-mart*',
-              ],
-            },
             {
               // Closed by #151 (@angular/cdk, @spartan-ng/brain), #154 (@ng-icons) and
               // #152 (@ctrl/ngx-emoji-mart), so all four are enforced rather than staged:
@@ -214,11 +208,10 @@ export default defineConfig([
     // data-access/rooms does for JoinRule and util/matrix does for HTTPError — not to
     // widen this rule.
     // libs/spartan is included even though it is generated: it is presentational UI that
-    // must never reach the SDK, and leaving it out made this rule the one thing
-    // libs/ui and libs/spartan disagreed on — which scripts/lint-invariants.spec.mjs
-    // correctly failed on, since a widening gap between those two configs is exactly
-    // what that invariant exists to catch.
-    // Split from the consumer tiers (libs/feature, libs/ui, apps), which carry this same
+    // must never reach the SDK, and leaving it out made this rule the one thing the two UI
+    // configs disagreed on — which scripts/lint-invariants.spec.mjs correctly failed on,
+    // since a widening gap between them is exactly what that invariant exists to catch.
+    // Split from the consumer tiers (libs/feature, apps), which carry this same
     // rule PLUS the kit ban in the block below. Flat config replaces a rule's options
     // wholesale, so two blocks configuring `@typescript-eslint/no-restricted-imports` over
     // overlapping globs would silently drop whichever set lost — the globs are disjoint on
@@ -275,13 +268,14 @@ export default defineConfig([
     // TRANSITIVE: the tier depends on the kit by design, so banning `ui:vendor-wrapper` from
     // feature code also bans it through `@trinity/components/*` and fails on the very path it
     // is meant to bless. Measured, not assumed — the first attempt reported
-    // `components-overlay -> button` against libs/ui. A direct-import rule is the right shape,
+    // `components-overlay -> button` against the then-existing libs/ui. A direct-import rule
+    // is the right shape,
     // and it is the one this repo already uses for the matrix-js-sdk ban above.
     //
     // These globs are disjoint from that block's on purpose: flat config replaces a rule's
     // options wholesale, so overlapping them would silently drop one set of patterns. That is
     // why the SDK pattern is restated here rather than inherited.
-    files: ['libs/feature/**/*.ts', 'libs/ui/**/*.ts', 'apps/**/*.ts'],
+    files: ['libs/feature/**/*.ts', 'apps/**/*.ts'],
     rules: {
       '@typescript-eslint/no-restricted-imports': [
         'error',

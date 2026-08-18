@@ -55,11 +55,12 @@ repo breaks at once.
 
     Enforced in `eslint.config.mjs` by a `@typescript-eslint/no-restricted-imports` rule
     plus a companion `no-restricted-syntax` rule for the dynamic `import()` form the first
-    one cannot see — both over the same `files` array, currently `libs/feature/**`,
-    `libs/ui/**`, `libs/spartan/**`, `libs/platform-native/**`, `libs/testing/**` and
-    `apps/**`. Read that array rather than trusting this list. `libs/spartan` is included
-    even though it is generated: leaving it out made this rule the one thing `libs/ui` and
-    `libs/spartan` disagreed on, which `scripts/lint-invariants.spec.mjs` correctly failed.
+    one cannot see — split across two `files` arrays so the consumer tiers can also carry the
+    kit ban: `libs/feature/**` and `apps/**` in one, `libs/spartan/**`, `libs/components/**`,
+    `libs/platform-native/**`, `libs/testing/**` and `libs/util/ui/**` in the other. Read
+    those arrays rather than trusting this list. `libs/spartan` is included even though it is
+    generated: leaving it out made this rule the one thing the two UI configs disagreed on,
+    which `scripts/lint-invariants.spec.mjs` correctly failed.
     **Not** by Nx module boundaries — this page used to say so, and it was wrong:
     `@nx/enforce-module-boundaries` polices `@trinity/*` edges between projects and has
     nothing to say about a third-party package, which is how three spec files had already

@@ -9,12 +9,12 @@ once.
 
 ## The four UI layers
 
-| Layer         | Where                                                                   | What it is                                                              |
-| ------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Brain         | `@spartan-ng/brain` 1.3.0 in `node_modules`, plus `@angular/cdk` 22.1.0 | Headless primitives: behaviour, accessibility, positioning. No styling. |
-| Helm          | `libs/spartan/*`, aliased `@trinity/helm/*`                             | The **styled** layer, copied into the repo by `@spartan-ng/cli`.        |
-| `@trinity/ui` | `libs/ui`                                                               | Trinity's own presentational components and small UI utilities.         |
-| Features      | `libs/feature/*`, aliased `@trinity/feature/*`                          | Screens and the components that make them up.                           |
+| Layer      | Where                                                                   | What it is                                                              |
+| ---------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Brain      | `@spartan-ng/brain` 1.3.0 in `node_modules`, plus `@angular/cdk` 22.1.0 | Headless primitives: behaviour, accessibility, positioning. No styling. |
+| Helm       | `libs/spartan/*`, aliased `@trinity/helm/*`                             | The **styled** layer, copied into the repo by `@spartan-ng/cli`.        |
+| Components | `libs/components/*`, aliased `@trinity/components/*`                    | Trinity's public tier: the wrappers and components features reach for.  |
+| Features   | `libs/feature/*`, aliased `@trinity/feature/*`                          | Screens and the components that make them up.                           |
 
 Seventeen libraries live under `libs/spartan/`. Sixteen are generated Helm — avatar, badge,
 button, card, checkbox, dropdown-menu, input, label, progress, radio-group, select, sonner,
@@ -29,12 +29,18 @@ public tier (twenty libraries, tagged `ui:public`). Trinity's own presentational
 — `<trn-avatar>` (with its `AVATAR_RESOLVER` seam), banner, media bubble, message toolbar
 and page header — live there too: the avatar and message toolbar wrap kit primitives, which
 is the tier's job, and moving them deleted the `@trinity/helm/avatar` staging exception from
-the consumer-side kit ban. `libs/ui` keeps what is not a component: `EncryptionDialogService`
-and its loader token, `runWithBusy`, `mediaQuerySignal`, and the internal-URL helpers.
+the consumer-side kit ban.
+
+`libs/ui` is gone entirely. What was left after the components moved out was not UI: the
+`runWithBusy` / `mediaQuerySignal` / internal-URL helpers went to `@trinity/util/ui`
+(`type:util`, reachable from every layer rather than only from above), and the
+`EncryptionDialogService` seam became `@trinity/components/encryption-dialog` — its own
+library rather than part of `@trinity/components/overlay`, which stays the generic swappable
+dialog wrapper and is not taught one domain's routes and loader token.
 
 That tier is closed from both sides. The vendor bans stop everything below the UI layer
 naming `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` or `@ctrl/ngx-emoji-mart`; and a
-`no-restricted-imports` pattern over `libs/feature`, `libs/ui` and `apps` stops them reaching
+`no-restricted-imports` pattern over `libs/feature` and `apps` stops them reaching
 past the tier into `@trinity/helm/*`. Feature code asks for `@trinity/components/*`, full
 stop.
 
@@ -51,12 +57,16 @@ immediately, and the exception list shrinks to zero as each wrapper lands.
 `scripts/lint-invariants.spec.mjs` pins the list, so a fifth cannot arrive by accident.
 
 That third tag is what makes the layering above enforceable rather than merely described.
-`libs/ui` and every Helm library used to carry identical tags, so no boundary rule could say
-"only the kit may import Brain" — the two were indistinguishable to Nx. `libs/ui` now carries
-`ui:wrapper`, the kit carries `ui:vendor-wrapper`, and `bannedExternalImports` keeps
-`@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` and `@ctrl/ngx-emoji-mart` out of every tier
-below the UI one. The kit is deliberately unrestricted: it **is** the wrapper. `libs/ui` is
-banned from all four, including `@angular/cdk` — it wraps none of them.
+Every UI library used to carry identical tags, so no boundary rule could say "only the kit may
+import Brain" — they were indistinguishable to Nx. The public tier now carries `ui:public`,
+the kit carries `ui:vendor-wrapper`, and `bannedExternalImports` keeps `@spartan-ng/brain`,
+`@angular/cdk`, `@ng-icons` and `@ctrl/ngx-emoji-mart` out of every tier below the UI one.
+
+Neither UI tag carries a vendor ban, and that is the whole shape: both **are** wrapper layers,
+so banning their vendors would ban them from existing. There was a third tag, `ui:wrapper`,
+which did carry all four — it belonged to `libs/ui`, and it was deleted with that library
+rather than left behind, because a ban keyed on a tag no project carries enforces nothing
+while reading as a closed door. `lint-invariants.spec.mjs` now fails on exactly that.
 
 The ban reads TypeScript import specifiers and nothing else, so it is worth knowing where it
 cannot see. `apps/trinity`'s build `styles` array names two vendor stylesheets directly —
@@ -113,9 +123,9 @@ icon lacking a **static** `aria-hidden`, which silently suppressed a bound `aria
 label the quick switcher was announcing to nobody. `<trn-icon>` is decorative by default and
 puts a `label` on its own host, where nothing can suppress it.
 
-`@trinity/ui` holds `AvatarComponent` (`<trn-avatar>`), `BannerComponent`,
-`PageHeaderComponent`, `MediaBubbleComponent`, `MessageToolbarComponent`, plus
-`EncryptionDialogService`, `runWithBusy` and `mediaQuerySignal`. The boundary rule is that
+`@trinity/components/*` holds `AvatarComponent` (`<trn-avatar>`), `BannerComponent`,
+`PageHeaderComponent`, `MediaBubbleComponent`, `MessageToolbarComponent` and
+`EncryptionDialogService`, one library each. The boundary rule is that
 `type:ui` may depend only on ui, util and platform libraries — never on data-access, never
 on the SDK.
 

@@ -39,7 +39,7 @@ describe('TrnIconName', () => {
   // tier (message-toolbar renders `flag` and `forward`). This lib EXCLUDES ITSELF below:
   // its own union and registration map name every icon by definition, so letting them
   // vouch would make this test vacuous — every name would count as "used" forever.
-  const CALL_SITES = ['libs/feature', 'libs/ui', 'libs/components', 'apps'];
+  const CALL_SITES = ['libs/feature', 'libs/components', 'apps'];
   const isThisLib = (file: string) => file.startsWith('libs/components/icon/');
 
   const templateNames = grep([

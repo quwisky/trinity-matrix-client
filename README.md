@@ -127,10 +127,6 @@ libs/
     settings/         @trinity/feature/settings — Settings page: appearance
                       (light/dark/system theme), profile (name + avatar), and
                       device management (sign-out/verify)  [type:feature]
-  ui/                 @trinity/ui — non-component UI code: encryption-dialog
-                      service + loader token, runWithBusy, media-query and
-                      internal-URL helpers; no data-access/state deps
-                      [type:ui, ui:wrapper]
   components/*        @trinity/components/* — the public component tier feature code
                       reaches for: Trinity-authored wrappers (overlay adapters, icon,
                       emoji-picker, select, checkbox, tooltip, …) plus Trinity's own

@@ -62,10 +62,9 @@ const SPARTAN_EXEMPT_RULES = [
 
 describe('lint invariants', () => {
   it('exempts libs/spartan from exactly the four generated-code rules, and nothing else', async () => {
-    // Baseline is the PUBLIC TIER, not libs/ui. Both are non-generated UI, but libs/ui is a
-    // consumer tier and so carries the kit ban that generated code does not — comparing
-    // against it would surface that as a difference and drown the signal this test exists
-    // for. `libs/components` and `libs/spartan` differ ONLY by the generated-code exemption.
+    // Baseline is the PUBLIC TIER. It and `libs/spartan` differ ONLY by the generated-code
+    // exemption, which is the signal this test exists for; a consumer tier would also carry
+    // the kit ban and drown it.
     const app = await resolve(
       'libs/components/select/src/lib/trn-select.component.ts',
     );
@@ -132,7 +131,7 @@ describe('lint invariants', () => {
   });
 
   it('keeps the type-aware and boundary guards enabled on first-party TypeScript', async () => {
-    const config = await resolve('libs/ui/src/index.ts');
+    const config = await resolve('libs/components/overlay/src/index.ts');
 
     // Type-aware, and the rule most likely to lose its files silently: it needs
     // parserOptions.projectService, and a file the service does not own is skipped
@@ -205,17 +204,13 @@ const UI_BOUNDARY = [
   // the one place a fifth vendor could appear with no lint signal, so a change to this row has
   // to be argued for.
   { tier: 'ui:public', banned: [], allowed: ALL_UI_VENDORS },
-  // libs/ui keeps nothing. Both wrappers it was once expected to host went to the public
-  // tier instead — <trn-icon> in #154, <trn-emoji-picker> in #152 — because a lib tagged
-  // ui:wrapper is precisely the tier that may not name a vendor.
-  //
-  // @angular/cdk was the last vendor still allowed here, and this table used to assert that
-  // it must STAY allowed "because it is the layer that wraps it". That was never true of
-  // libs/ui: it imports no vendor at all, and the layer that wraps CDK is
-  // @trinity/components/overlay, tagged ui:public. The assertion was pinning open a hole
-  // rather than protecting a need — and since libs/ui is type:ui, which every feature lib
-  // may depend on, unmediated CDK reaching it would have propagated straight to features.
-  { tier: 'ui:wrapper', banned: ALL_UI_VENDORS, allowed: [] },
+  // There is no `ui:wrapper` row any more. It described `libs/ui`, which is gone: the
+  // presentational components moved to the public tier, the `util/` folder to
+  // `@trinity/util/ui`, and the encryption-dialog seam to
+  // `@trinity/components/encryption-dialog`. Every `type:ui` project is now a wrapper tier,
+  // so no `ui:*` tag carries a vendor ban — and the row had to go with the library rather
+  // than linger, since a ban asserted against a tag nothing carries passes for free.
+  // `every tier in this table is carried by a project` below is what keeps that honest.
   // #151 and #154 closed the dialog, toast and icon imports; #152 closed the last one.
   // Every tier below the UI layer is now banned from every vendor, and nothing is staged —
   // the `warn` block that made the count visible while it shrank has been deleted, which
@@ -271,13 +266,16 @@ describe('UI vendor boundary', () => {
     ).tags ?? [];
 
   it('gives the wrapper and the vendored kit distinct tags, which is what any rule keys on', () => {
-    // Both were ['type:ui', 'scope:shared'] and nothing else, so no boundary rule could
-    // express "only the kit may import brain" — the two were indistinguishable to Nx.
-    // If these collapse back to being equal, every ban below silently covers both or
-    // neither, and lint still passes.
-    expect(tagsOf('libs/ui')).toContain('ui:wrapper');
+    // Every UI library was ['type:ui', 'scope:shared'] and nothing else, so no boundary rule
+    // could express "only the kit may import brain" — they were indistinguishable to Nx. The
+    // pair that matters is now the public tier and the vendored kit; if these collapse back
+    // to being equal, every ban below silently covers both or neither, and lint still passes.
+    expect(tagsOf('libs/components/overlay')).toContain('ui:public');
     expect(tagsOf('libs/spartan/button')).toContain('ui:vendor-wrapper');
-    expect(tagsOf('libs/ui')).not.toContain('ui:vendor-wrapper');
+    expect(tagsOf('libs/components/overlay')).not.toContain(
+      'ui:vendor-wrapper',
+    );
+    expect(tagsOf('libs/spartan/button')).not.toContain('ui:public');
   });
 
   it('gives every project a tag the vendor bans actually key on', async () => {
@@ -293,7 +291,7 @@ describe('UI vendor boundary', () => {
     // prefixes. The prefix form was the bug: `type:featrue` starts with `type:`, so the
     // exact typo named above sailed through the very guard written to catch it. Only a
     // comparison with the tags that key a ban can tell "tagged" from "covered".
-    const config = await resolve('libs/ui/src/index.ts');
+    const config = await resolve('libs/components/overlay/src/index.ts');
     const constraints =
       config.rules['@nx/enforce-module-boundaries'][1].depConstraints;
     const tagsCarryingBans = new Set(
@@ -357,6 +355,40 @@ describe('UI vendor boundary', () => {
     expect(unscoped).toEqual(['e2e/project.json']);
   });
 
+  it('keys every ban on a tag some project actually carries', async () => {
+    // The complement of the sweep above, and the quieter of the two failures: that one finds
+    // a project no ban covers, this one finds a ban no project carries. A `depConstraints`
+    // entry keyed on a dead tag is not an error to Nx — it simply never matches — so the
+    // config reads as a closed door while enforcing nothing, and every assertion in this file
+    // that inspects only the CONFIG keeps passing.
+    //
+    // `ui:wrapper` is exactly how that arises. It was a real ban while `libs/ui` existed;
+    // dissolving that library into the public tier, `@trinity/util/ui` and
+    // `@trinity/components/encryption-dialog` left the tag with no project, and deleting the
+    // library without deleting the row would have left a ban behind that could never fire.
+    const config = await resolve('libs/components/overlay/src/index.ts');
+    const constraints =
+      config.rules['@nx/enforce-module-boundaries'][1].depConstraints;
+    const projects = globSync('{apps,libs,e2e,scripts}/**/project.json', {
+      cwd: workspaceRoot,
+    });
+    expect(projects.length).toBeGreaterThan(30);
+    const carried = new Set(projects.flatMap((path) => tagsOf(dirname(path))));
+
+    const bansNoProjectCarries = constraints
+      .filter((entry) => entry.bannedExternalImports?.length)
+      .map((entry) => entry.sourceTag)
+      .filter((tier) => !carried.has(tier))
+      .sort();
+    expect(bansNoProjectCarries).toEqual([]);
+
+    // And the same for the table this file keys its own assertions on, which would otherwise
+    // go on asserting a tier into existence after the last project carrying it was deleted.
+    expect(
+      UI_BOUNDARY.map((row) => row.tier).filter((tier) => !carried.has(tier)),
+    ).toEqual([]);
+  });
+
   it('keeps the app-tier vendor stylesheets to the two the ban cannot cover', () => {
     // `bannedExternalImports` matches TS/JS import specifiers, and nothing else. The app's
     // build `styles` array is configuration, so a vendor stylesheet listed there is
@@ -385,7 +417,7 @@ describe('UI vendor boundary', () => {
   });
 
   it('bans the vendors from every tier that should not render third-party UI', async () => {
-    const config = await resolve('libs/ui/src/index.ts');
+    const config = await resolve('libs/components/overlay/src/index.ts');
     const constraints =
       config.rules['@nx/enforce-module-boundaries'][1].depConstraints;
     const bannedFor = (tier) =>
@@ -417,7 +449,7 @@ describe('UI vendor boundary', () => {
   });
 
   it('keeps a trailing * on every banned glob, without which the ban matches nothing', async () => {
-    const config = await resolve('libs/ui/src/index.ts');
+    const config = await resolve('libs/components/overlay/src/index.ts');
     const constraints =
       config.rules['@nx/enforce-module-boundaries'][1].depConstraints;
 
@@ -466,7 +498,6 @@ describe('UI vendor boundary', () => {
 
     for (const consumer of [
       'libs/feature/settings/src/lib/settings.routes.ts',
-      'libs/ui/src/lib/encryption-dialog/encryption-dialog.service.ts',
       'apps/trinity/src/main.ts',
     ]) {
       expect(kitGroup(await resolve(consumer)), consumer).toBeDefined();

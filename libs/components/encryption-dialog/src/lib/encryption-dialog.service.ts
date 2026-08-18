@@ -35,10 +35,10 @@ const DESKTOP_QUERY = '(min-width: 768px)';
  * without touching callers.
  *
  * The page components are resolved lazily through {@link ENCRYPTION_DIALOG_COMPONENTS}
- * (wired at the app via dynamic imports of feature-crypto's pages) so this service
- * stays in `ui` and never imports the feature directly. When the loaders are absent
- * (no app wiring, or `ui` in isolation) it falls back to routing — so the routes
- * remain the canonical deep-link / fallback target.
+ * (wired at the app via dynamic imports of feature-crypto's pages) so this service never
+ * imports the feature directly. When the loaders are absent (no app wiring, or this library
+ * in isolation) it falls back to routing — so the routes remain the canonical deep-link /
+ * fallback target.
  */
 @Injectable({ providedIn: 'root' })
 export class EncryptionDialogService {

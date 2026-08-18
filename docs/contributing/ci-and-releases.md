@@ -159,8 +159,10 @@ asserts its **shape**:
 - Angular templates resolve through a parser whose name contains `template-parser`,
   because a config change collapsing templates onto the TypeScript parser would leave
   them reporting nothing while `pnpm lint` stayed green.
-- `libs/ui` and the vendored kit carry **distinct** `ui:*` tags. If those collapse back to
-  being equal, every UI vendor ban below covers both or neither, and lint still passes.
+- The public tier and the vendored kit carry **distinct** `ui:*` tags. If those collapse back
+  to being equal, no rule can tell the two apart and lint still passes. A companion assertion
+  fails on a ban keyed on a `ui:*` tag no project carries, which is how a tier can go on
+  reading as a closed door after the library carrying it is deleted.
 - The UI vendor bans hold as a table of tier against package, asserting both what each tier
   is refused **and** what it must keep — a ban that widens onto the wrapper layer is as much
   a regression as one that disappears.

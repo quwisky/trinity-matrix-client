@@ -54,7 +54,6 @@
       "@trinity/feature/crypto": ["./libs/feature/crypto/src/index.ts"],
       "@trinity/feature/rooms": ["./libs/feature/rooms/src/index.ts"],
       "@trinity/feature/settings": ["./libs/feature/settings/src/index.ts"],
-      "@trinity/ui": ["./libs/ui/src/index.ts"],
       "@trinity/feature/shell": ["./libs/feature/shell/src/index.ts"],
       "@trinity/feature/shell/home-page": [
         "./libs/feature/shell/src/lib/home.page.ts"
@@ -82,6 +81,9 @@
         "./libs/components/page-header/src/index.ts"
       ],
       "@trinity/components/icon": ["./libs/components/icon/src/index.ts"],
+      "@trinity/components/encryption-dialog": [
+        "./libs/components/encryption-dialog/src/index.ts"
+      ],
       "@trinity/components/emoji-picker": [
         "./libs/components/emoji-picker/src/index.ts"
       ],

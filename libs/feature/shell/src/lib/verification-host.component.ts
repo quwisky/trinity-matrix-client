@@ -9,7 +9,7 @@ import {
   type VerificationView,
 } from '@trinity/data-access/crypto';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { ENCRYPTION_DIALOG_COMPONENTS } from '@trinity/ui';
+import { ENCRYPTION_DIALOG_COMPONENTS } from '@trinity/components/encryption-dialog';
 import {
   TrnDialogService,
   type TrnDialogRef,

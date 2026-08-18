@@ -47,7 +47,7 @@ import {
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
   type EncryptionDialogLoaders,
-} from '@trinity/ui';
+} from '@trinity/components/encryption-dialog';
 import { AVATAR_RESOLVER } from '@trinity/components/avatar';
 import { provideTrnIcons } from '@trinity/components/icon';
 import { provideTrnOverlayDefaults } from '@trinity/components/overlay';

@@ -6,7 +6,7 @@ import {
   ENCRYPTION_DIALOG_COMPONENTS,
   EncryptionDialogService,
   type EncryptionDialogLoaders,
-} from '@trinity/ui';
+} from '@trinity/components/encryption-dialog';
 import { TrnDialogService } from '@trinity/components/overlay';
 import { fireEvent, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';

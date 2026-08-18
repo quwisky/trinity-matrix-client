@@ -117,8 +117,6 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   presentational components (`trn-avatar`, banner, page header, media bubble, message
   toolbar). The API is ours, so the library underneath can be swapped without touching a
   call site.
-- `@trinity/ui` (`libs/ui`) `[type:ui]` — what is left once the components moved out:
-  `EncryptionDialogService` + its `ENCRYPTION_DIALOG_COMPONENTS` loader token, and nothing else.
 - `@trinity/util/ui` (`libs/util/ui`) `[type:util]` — the view-layer helpers that are not
   components: `runWithBusy`, `mediaQuerySignal` + the `MD_QUERY`/`BELOW_MD_QUERY` breakpoints,
   and `resolveInternalReturnTo`. DI-free like the rest of `type:util` — both helpers TAKE a
@@ -126,12 +124,14 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
 - `@trinity/helm/*` (`libs/spartan/*`) `[type:ui]`, tagged `ui:vendor-wrapper` — the vendored
   `@spartan-ng/cli`-generated kit, `hlm` prefix. Consume it through `@trinity/components/*`
   rather than directly.
-  All three are **presentational** only; no state/SDK deps.
-- **Third-party UI stops at the UI tier.** The `ui:*` tag splits it — `libs/components` is
-  `ui:public`, `libs/ui` is `ui:wrapper`, the vendored kit is `ui:vendor-wrapper` — and
-  `bannedExternalImports` keeps `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` and
-  `@ctrl/ngx-emoji-mart` out of every tier below, `libs/ui` included. Only the public tier and
-  the kit may name them; a new vendor import elsewhere fails `pnpm lint`.
+  Both are **presentational** only; no state/SDK deps.
+- **Third-party UI stops at the UI tier.** The `ui:*` tag splits it in two — `libs/components`
+  is `ui:public`, the vendored kit is `ui:vendor-wrapper` — and `bannedExternalImports` keeps
+  `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` and `@ctrl/ngx-emoji-mart` out of every
+  tier below. Both UI tiers may name a vendor, because both ARE wrapper layers; what contains
+  the public tier is the other direction, a `no-restricted-imports` ban stopping
+  `libs/feature` and `apps` reaching past it into `@trinity/helm/*`. A new vendor import
+  below the UI tier fails `pnpm lint`.
 - **Scopes:** `scope:shared` (the kernel: util/platform/matrix-client/ui/helm) may not reach into
   `scope:matrix` (domain data-access + feature libs); the thin `apps/trinity` composes both.
 
