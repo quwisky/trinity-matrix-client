@@ -32,6 +32,24 @@ describe('SidebarUserPanelComponent', () => {
     expect(opened).toBe(true);
   });
 
+  it('asks the host to look up the homeserver versions when the menu is reached for', async () => {
+    // Lazy on purpose: the version is only ever visible in this menu and in Settings →
+    // Server, so nothing is spent until someone actually opens one of them. The click is
+    // the trigger rather than startup, and the host's lookup is cached, so a
+    // close-then-reopen costs nothing.
+    const { fixture, container } = await render(SidebarUserPanelComponent, {
+      inputs: { user: USER },
+    });
+
+    let asked = 0;
+    fixture.componentInstance.accountsOpened.subscribe(() => (asked += 1));
+    container
+      .querySelector<HTMLElement>('[data-testid="user-menu-trigger"]')!
+      .click();
+
+    expect(asked).toBe(1);
+  });
+
   const ACCOUNTS = [
     { userId: '@alice:hs', displayName: 'Alice', avatarMxc: null, unread: 0 },
     { userId: '@bob:hs', displayName: 'Bob', avatarMxc: null, unread: 0 },

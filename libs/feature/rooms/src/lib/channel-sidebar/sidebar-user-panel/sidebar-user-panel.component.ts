@@ -30,6 +30,12 @@ const STACK_MAX = 3;
 export interface AccountSummary extends UserProfile {
   /** Unread notification total for this account (drives the switcher badge). */
   unread: number;
+  /**
+   * What this account's homeserver is running — `Synapse 1.158.0` — or null until it has
+   * been looked up, or when the server does not publish it. Optional so the panel still
+   * renders standalone from a bare profile.
+   */
+  server?: string | null;
 }
 
 /** The channel sidebar's bottom user panel: the signed-in user plus the account switcher. */
@@ -118,6 +124,13 @@ export class SidebarUserPanelComponent {
   });
   /** Gear — open the settings page. */
   readonly openSettings = output<void>();
+  /**
+   * The account menu was reached for. The host uses it to look up each account's homeserver
+   * version lazily — a click on the trigger is the earliest honest moment to spend a request
+   * on something nobody may ever look at, and the lookup is cached, so a close-then-reopen
+   * costs nothing.
+   */
+  readonly accountsOpened = output<void>();
   /** Show the account picker as a dialog — raised only when {@link pickAccountsInDialog}. */
   readonly openAccountPicker = output<void>();
 

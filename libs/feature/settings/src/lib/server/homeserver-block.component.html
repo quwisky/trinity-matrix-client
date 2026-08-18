@@ -1,0 +1,101 @@
+<section
+  class="hs-block"
+  data-testid="server-block"
+  [attr.data-account]="userId()"
+  [attr.aria-label]="'Homeserver for ' + displayName()"
+>
+  <h3 class="hs-block__account" data-testid="hs-account">
+    {{ displayName() }}
+  </h3>
+
+  @if (info(); as server) {
+    <dl class="hs-block__rows">
+      <dt>Software</dt>
+      <dd data-testid="hs-software">
+        @if (softwareLabel(); as label) {
+          {{ label }}
+        } @else {
+          <span class="hs-block__unknown">Unknown</span>
+        }
+      </dd>
+
+      <dt>Homeserver</dt>
+      <dd data-testid="hs-url">{{ server.baseUrl }}</dd>
+
+      @if (server.discovered) {
+        <!--
+          Stated as an observation rather than as ".well-known delegation": Trinity does not
+          record how the URL was arrived at, and a hand-typed address that happens to differ
+          from the server name looks identical from here. Showing both values says what is
+          true without claiming a mechanism.
+        -->
+        <dt>Server name</dt>
+        <dd data-testid="hs-server-name">
+          {{ server.serverName }}
+          <span class="hs-block__note">
+            — the homeserver above was discovered, not typed as this name
+          </span>
+        </dd>
+      }
+
+      <dt>Spec versions</dt>
+      <dd data-testid="hs-spec-versions">
+        @if (server.specVersions; as versions) {
+          {{ versions.join(', ') }}
+        } @else {
+          <span class="hs-block__unknown">Unknown</span>
+        }
+      </dd>
+
+      @if (server.capabilities; as capabilities) {
+        @if (capabilities.defaultRoomVersion; as roomVersion) {
+          <dt>Default room version</dt>
+          <dd data-testid="hs-room-version">{{ roomVersion }}</dd>
+        }
+        @if (capabilities.canChangePassword !== null) {
+          <dt>Password change</dt>
+          <dd data-testid="hs-change-password">
+            {{
+              capabilities.canChangePassword
+                ? 'Supported here'
+                : 'Not offered by this server'
+            }}
+          </dd>
+        }
+      }
+
+      @if (server.unstableFeatures?.length) {
+        <dt>Unstable features</dt>
+        <dd>
+          <!--
+            Behind a disclosure: a server advertises dozens of these and almost nobody wants
+            the list, but the count answers "is this server running anything unusual?" at a
+            glance, which is the same question the version row answers.
+          -->
+          <details data-testid="hs-unstable">
+            <summary>{{ server.unstableFeatures?.length }} enabled</summary>
+            <ul class="hs-block__flags">
+              @for (flag of server.unstableFeatures; track flag) {
+                <li>{{ flag }}</li>
+              }
+            </ul>
+          </details>
+        </dd>
+      }
+    </dl>
+  } @else if (loading()) {
+    <p class="hs-block__status" aria-live="polite" data-testid="hs-loading">
+      Checking {{ userId() }}'s server…
+    </p>
+  }
+
+  @if (error(); as message) {
+    <!--
+      Unreachable by construction — the probe resolves rather than throws — and kept so a
+      service that starts failing later says so instead of rendering a silent blank.
+    -->
+    <p class="hs-block__status hs-block__status--error" role="alert">
+      {{ message }}
+    </p>
+  }
+</section>

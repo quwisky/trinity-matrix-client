@@ -642,6 +642,59 @@ describe('ChannelSidebarComponent', () => {
     ).toBe('3');
   });
 
+  it('shows each account\u2019s homeserver version, and omits the line without one', async () => {
+    // #155: the version where accounts are already listed. Omitted rather than shown as
+    // "Unknown" for a server that does not publish one \u2014 nobody opens the switcher to read
+    // that, and a reserved empty line makes the menu taller for nothing.
+    const { fixture, container } = await renderSidebar({
+      inputs: {
+        accounts: [
+          {
+            userId: '@me:hs',
+            displayName: 'Me',
+            avatarMxc: null,
+            unread: 0,
+            server: 'Synapse 1.158.0',
+          },
+          {
+            userId: '@alt:hs',
+            displayName: 'Alt',
+            avatarMxc: null,
+            unread: 0,
+            server: null,
+          },
+        ],
+        activeUserId: '@me:hs',
+      },
+    });
+
+    container.querySelector<HTMLElement>('.userbar__trigger')!.click();
+    fixture.detectChanges();
+
+    const lines = document.querySelectorAll(
+      '[data-testid="account-row-server"]',
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0].textContent?.trim()).toBe('Synapse 1.158.0');
+  });
+
+  it('forwards the account menu being opened, so the host can look the versions up', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: {
+        accounts: [
+          { userId: '@me:hs', displayName: 'Me', avatarMxc: null, unread: 0 },
+        ],
+        activeUserId: '@me:hs',
+      },
+    });
+
+    let asked = 0;
+    fixture.componentInstance.accountsOpened.subscribe(() => (asked += 1));
+    container.querySelector<HTMLElement>('.userbar__trigger')!.click();
+
+    expect(asked).toBe(1);
+  });
+
   it('emits switchAccount when a non-active account row is clicked', async () => {
     const { fixture, container } = await renderSidebar({
       inputs: {

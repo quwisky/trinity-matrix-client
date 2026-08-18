@@ -15,6 +15,7 @@ const SECTIONS = [
   'account',
   'security',
   'notifications',
+  'server',
   'privacy',
   'gifs',
   'shortcuts',
@@ -135,6 +136,50 @@ test.describe('Settings', () => {
     await expect.poll(() => paletteAttr(page)).toBeNull();
     await expect(amethyst).toHaveCount(0);
     await expect(trigger).toHaveText('Trinity');
+  });
+
+  test('shows the homeserver software and version for the signed-in account', async ({
+    page,
+  }) => {
+    // The one claim jsdom cannot make: that a real cross-origin request for
+    // /_matrix/federation/v1/version survives the app's real CSP
+    // (`connect-src 'self' https: wss:`) in a real browser. The probe logic, its two-attempt
+    // fallback and the whole failure taxonomy are unit-tested; this is the wire.
+    await openSection(page, 'server');
+
+    const block = page.getByTestId('server-block').first();
+    await expect(block).toBeVisible({ timeout: 20_000 });
+
+    // The shape, not the number: hardcoding the version would make this a second place the
+    // Synapse image pin has to be bumped, and it would fail for a reason that is not a bug.
+    await expect(block.getByTestId('hs-software')).toHaveText(
+      /^\s*Synapse \d+\.\d+/,
+      { timeout: 20_000 },
+    );
+    await expect(block.getByTestId('hs-url')).toHaveText(session.hs as string);
+    // Spec versions come from a separate request, so a green software row does not imply it.
+    await expect(block.getByTestId('hs-spec-versions')).toContainText('v1.');
+  });
+
+  test('re-checks the server on demand', async ({ page }) => {
+    // "Check again" is the requirement the whole surface exists for — noticing that the
+    // value CHANGED — so the button has to actually re-run the probe rather than re-render
+    // what was cached at login.
+    await openSection(page, 'server');
+    const software = page
+      .getByTestId('server-block')
+      .first()
+      .getByTestId('hs-software');
+    await expect(software).toHaveText(/^\s*Synapse/, { timeout: 20_000 });
+
+    const versions = page.waitForResponse(
+      (res) => res.url().includes('/_matrix/federation/v1/version'),
+      { timeout: 20_000 },
+    );
+    await page.getByTestId('server-check-again').click();
+    await versions;
+
+    await expect(software).toHaveText(/^\s*Synapse/);
   });
 
   test('edits and saves the display name', async ({ page }) => {

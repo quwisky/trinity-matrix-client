@@ -91,6 +91,15 @@
   color: var(--trinity-text-muted);
 }
 
+// A third, quieter line under the handle. Ellipsised like its siblings: a version can
+// carry a build suffix (`1.158.0 (b=…,5569b9e479)`) that would otherwise widen the menu.
+.account-row__server {
+  @include ellipsis;
+
+  font-size: 11px;
+  color: var(--trinity-text-muted);
+}
+
 .account-row__badge {
   flex: 0 0 auto;
   min-width: 16px;

@@ -13,6 +13,7 @@ import { PrivacySettingsComponent } from './privacy/privacy-settings.component';
 import { NotificationsSectionComponent } from './notifications/notifications-section.component';
 import { SecuritySectionComponent } from './security/security-section.component';
 import { ShortcutsSectionComponent } from './shortcuts/shortcuts-section.component';
+import { ServerSectionComponent } from './server/server-section.component';
 
 /**
  * Settings routes: the {@link SettingsPage} shell hosts a submenu + a routed detail
@@ -30,6 +31,7 @@ export const settingsRoutes: Routes = [
       { path: 'account', component: AccountSectionComponent },
       { path: 'security', component: SecuritySectionComponent },
       { path: 'notifications', component: NotificationsSectionComponent },
+      { path: 'server', component: ServerSectionComponent },
       { path: 'privacy', component: PrivacySettingsComponent },
       { path: 'gifs', component: GifsSectionComponent },
       { path: 'shortcuts', component: ShortcutsSectionComponent },

@@ -1,0 +1,66 @@
+.hs-block {
+  display: block;
+  padding: 8px 16px 16px;
+}
+
+.hs-block__account {
+  margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+// Label / value pairs. A grid rather than a flex row per pair so the values line up down
+// the block, and `max-content` so a long version string wraps in the value column instead
+// of pushing the labels around.
+.hs-block__rows {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 2px 12px;
+  font-size: 13px;
+
+  dt {
+    color: var(--trinity-text-muted);
+  }
+
+  dd {
+    // matrix.org answers `1.158.0 (b=matrix-org-hotfixes-priv,5569b9e479)`, and a
+    // homeserver URL has no spaces at all — both must wrap rather than widen the page.
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+// Stacks the pairs on narrow screens, where a two-column grid leaves the value column too
+// thin for a URL to wrap into.
+@media (max-width: 419.98px) {
+  .hs-block__rows {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+
+    dd {
+      margin-bottom: 6px;
+    }
+  }
+}
+
+.hs-block__unknown,
+.hs-block__note {
+  color: var(--trinity-text-muted);
+}
+
+.hs-block__flags {
+  margin-top: 4px;
+  color: var(--trinity-text-muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+
+.hs-block__status {
+  padding-top: 4px;
+  color: var(--trinity-text-muted);
+  font-size: 13px;
+}
+
+.hs-block__status--error {
+  color: var(--trinity-danger);
+}
