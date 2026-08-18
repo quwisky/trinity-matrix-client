@@ -6,6 +6,9 @@
     align="start"
     [attr.aria-label]="accountSummaryLabel()"
     data-testid="user-menu-trigger"
+    (hlmDropdownMenuOpened)="accountsOpened.emit()"
+    (pointerenter)="accountsOpened.emit()"
+    (focus)="accountsOpened.emit()"
   >
     @if (mixedAccounts().length > 1) {
       <!-- Mixing: show the included accounts as an overlapping stack, active one in front,
@@ -80,6 +83,13 @@
         <div class="account-row__id">
           <span class="account-row__name">{{ account.displayName }}</span>
           <span class="account-row__handle">{{ account.userId }}</span>
+          @if (account.server; as server) {
+            <span
+              class="account-row__server"
+              data-testid="account-row-server"
+              >{{ server }}</span
+            >
+          }
         </div>
         @if (account.unread > 0) {
           <span

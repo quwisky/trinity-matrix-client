@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 import { describe, expect, it } from 'vitest';
 import { AdvancedSettingsComponent } from './advanced/advanced-settings.component';
+import { ServerSectionComponent } from './server/server-section.component';
 import { SettingsPage } from './settings/settings.page';
 import { settingsRoutes } from './settings.routes';
 
@@ -32,6 +33,12 @@ describe('settings routes', () => {
   // outlet and the section is unreachable, which no other spec in the workspace would notice.
   it('resolves advanced to the advanced settings section', () => {
     expect(componentFor('advanced')).toBe(AdvancedSettingsComponent);
+  });
+
+  // Same reasoning as `advanced` above: the submenu links to /settings/server, and without
+  // this child the link lands on an empty outlet with every other spec still green.
+  it('resolves server to the server settings section', () => {
+    expect(componentFor('server')).toBe(ServerSectionComponent);
   });
 
   it('gives every section a path and a component', () => {

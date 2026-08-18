@@ -20,6 +20,7 @@ const SECTIONS = [
   'account',
   'security',
   'notifications',
+  'server',
   'privacy',
   'gifs',
   'shortcuts',

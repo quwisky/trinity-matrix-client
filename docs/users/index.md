@@ -91,8 +91,9 @@ room switches to that account first.
 
 ## Settings
 
-Eleven sections: profile, presence, appearance, devices, account, security, notifications,
-privacy, GIFs, keyboard shortcuts, and an experimental flag. Appearance carries a
+Thirteen sections: profile, presence, appearance, devices, account, security, notifications,
+privacy, GIFs, keyboard shortcuts, an experimental flag, the server your account is on, and
+an advanced view of everything Trinity keeps on this device. Appearance carries a
 light/dark/system choice, a colour palette picker, time and date formats, and toggles for
 the system lines in the timeline. Thirteen keyboard shortcuts are defined and every one is
 rebindable.

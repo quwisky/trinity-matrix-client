@@ -1,0 +1,12 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "data-access-homeserver",
+  "projectType": "library",
+  "sourceRoot": "libs/data-access/homeserver/src",
+  "prefix": "trn",
+  "tags": ["type:data-access", "scope:matrix"],
+  "targets": {
+    "test": {},
+    "typecheck": {}
+  }
+}

@@ -27,6 +27,23 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **See what your homeserver is running.** Settings gains a **Server** section listing every
+  account you are signed in to, and for each one: the server software and version — `Synapse
+1.158.0` — the address it is reached at, the spec versions it supports, and, where the
+  server says so, the room version it creates rooms at and whether passwords can be changed
+  there. The version also appears under each account in the account switcher, so it can be read
+  without opening Settings at all.
+
+  The point is being able to check _now_, so there is a **Check again** button: each server is
+  asked once and the answer kept for the rest of the session, and that button asks again rather
+  than re-showing what it already had. Useful the morning after a server upgrade, when the deploy finished but
+  nothing told you.
+
+  Not every homeserver publishes its software version — it comes from an endpoint intended
+  for other servers, which some deployments do not expose to browsers — so that row reads
+  “Unknown” where it cannot be found. Nothing else on the page depends on it, and nothing
+  fails or interrupts you when it is missing.
+
 - **Your settings, readable and editable in one place.** Settings → **Advanced** shows
   everything Trinity keeps on this device as one formatted JSON document — appearance,
   privacy, timeline, date and time formats, keyboard shortcuts, GIFs and the push gateway —

@@ -83,6 +83,7 @@
         (acceptInvite)="inviteActions.onAcceptInvite($event)"
         (declineInvite)="inviteActions.onDeclineInvite($event)"
         (openSettings)="session.goToSettings()"
+        (accountsOpened)="vm.loadHomeserverInfo()"
         (logout)="session.logout($event)"
         (setNotifyMode)="readState.onSetNotifyMode($event)"
         (markRead)="readState.onMarkRead($event)"

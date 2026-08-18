@@ -56,7 +56,7 @@ depend on `util` and nothing else, which is why it holds no Matrix knowledge.
 ## Data-access libraries
 
 One library per Matrix domain. Apart from `libs/util/matrix`, which models the SDK's types, these
-are the only places `matrix-js-sdk` is imported — eleven of the twelve do, `libs/data-access/gif`
+are the only places `matrix-js-sdk` is imported — twelve of the thirteen do, `libs/data-access/gif`
 being the exception. All are tagged `scope:matrix` except `data-access-matrix-client`, which is
 `scope:shared`.
 
@@ -66,6 +66,7 @@ being the exception. All are tagged `scope:matrix` except `data-access-matrix-cl
 | `libs/data-access/auth`          | `@trinity/data-access/auth`          | `type:data-access`, `scope:matrix`     | Login, legacy SSO, OIDC-native authentication, logout and account switching, the whole-install `FactoryResetService`, plus `authGuard`                                                                                                        |
 | `libs/data-access/crypto`        | `@trinity/data-access/crypto`        | `type:data-access`, `scope:matrix`     | `CryptoService` (4S, cross-signing and key-backup status), `VerificationService` (emoji SAS), `DevicesService`, and the dev-only `CryptoSpikeService`                                                                                         |
 | `libs/data-access/gif`           | `@trinity/data-access/gif`           | `type:data-access`, `scope:matrix`     | KLIPY and Giphy search plus the provider settings. Notably imports no other `@trinity` library                                                                                                                                                |
+| `libs/data-access/homeserver`    | `@trinity/data-access/homeserver`    | `type:data-access`, `scope:matrix`     | `HomeserverInfoService`: what each signed-in account's homeserver is running — software and version (best-effort, from the federation API), spec versions and capabilities. Cached per session, never persisted                               |
 | `libs/data-access/invites`       | `@trinity/data-access/invites`       | `type:data-access`, `scope:matrix`     | Incoming room invites, and the mixed-account variant                                                                                                                                                                                          |
 | `libs/data-access/media`         | `@trinity/data-access/media`         | `type:data-access`, `scope:matrix`     | `MediaService` for encrypted attachments, and `AvatarService`                                                                                                                                                                                 |
 | `libs/data-access/notifications` | `@trinity/data-access/notifications` | `type:data-access`, `scope:matrix`     | Web and OS notifications, push registration, the push gateway, the app badge, per-room notification settings, push rules and keyword rules                                                                                                    |
@@ -98,7 +99,7 @@ Screens and pages. `type:feature` may not depend on another `type:feature`; see
 | `libs/feature/auth`     | `@trinity/feature/auth`     | `type:feature`, `scope:matrix` | `LoginPage` and `SsoCallbackPage`                                                                                                                                                                 |
 | `libs/feature/crypto`   | `@trinity/feature/crypto`   | `type:feature`, `scope:matrix` | `EncryptionSetupPage`, `EncryptionUnlockPage`, `DeviceVerificationPage`                                                                                                                           |
 | `libs/feature/rooms`    | `@trinity/feature/rooms`    | `type:feature`, `scope:matrix` | The entire chat surface, across 44 component directories: the rooms shell, sidebar and server rail, message list, composer, threads, reactions, polls, media, search, member and space management |
-| `libs/feature/settings` | `@trinity/feature/settings` | `type:feature`, `scope:matrix` | Exports only `settingsRoutes`; the settings shell and its eleven sections are internal routing targets                                                                                            |
+| `libs/feature/settings` | `@trinity/feature/settings` | `type:feature`, `scope:matrix` | Exports only `settingsRoutes`; the settings shell and its thirteen sections are internal routing targets                                                                                          |
 
 `feature-settings` is worth copying as a pattern. Its public surface is a route table, not a set of
 components, so nothing outside the library can accidentally import one of its sections and pull it
