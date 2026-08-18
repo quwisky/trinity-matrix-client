@@ -3,8 +3,9 @@ import {
   Component,
   computed,
   inject,
+  input,
 } from '@angular/core';
-import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
 
 /** What the confirmation needs to describe the gateway the user is about to trust. */
@@ -32,15 +33,22 @@ export interface PushGatewayTrustData {
   imports: [HlmButton],
 })
 export class PushGatewayTrustDialogComponent {
-  private readonly dialogRef = inject<DialogRef<boolean>>(DialogRef);
-  readonly data = inject<PushGatewayTrustData>(DIALOG_DATA);
+  private readonly dialogRef = inject<TrnDialogRef<boolean>>(TrnDialogRef);
+  /**
+   * Taken as an input rather than through CDK's `DIALOG_DATA`, so this component names
+   * no vendor token: `TrnDialogService.open`'s `inputs` bag applies it with `setInput`
+   * before the first change detection. `host` below is a `computed()`, which only reads
+   * it at render — moving that read into a field initialiser or the constructor would
+   * make it NG0950, and `pnpm build` rather than `nx test` is what catches that.
+   */
+  readonly data = input.required<PushGatewayTrustData>();
 
   /** Host shown in the prose (the URL is already normalised, so this cannot throw). */
   readonly host = computed(() => {
     try {
-      return new URL(this.data.url).host;
+      return new URL(this.data().url).host;
     } catch {
-      return this.data.url;
+      return this.data().url;
     }
   });
 

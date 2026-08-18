@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
-import { TrnDialogService } from '@trinity/helm/overlay';
+import { TrnDialogService } from '@trinity/components/overlay';
 import { TimelineService } from '@trinity/data-access/timeline';
 import { MessageSourceService } from './message-source.service';
 import { MessageSourceComponent } from './message-source.component';

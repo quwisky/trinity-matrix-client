@@ -1,16 +1,10 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import {
-  HlmSelect,
-  HlmSelectContent,
-  HlmSelectItem,
-  HlmSelectPortal,
-  HlmSelectTrigger,
-  HlmSelectValue,
-} from '@trinity/helm/select';
+  TrnSelectComponent,
+  type TrnSelectOption,
+} from '@trinity/components/select';
 import {
   ThemeService,
-  TRINITY_CODE_LINE_MODES,
-  TRINITY_CODE_SCALES,
   type CodeLineMode,
   type CodeScale,
 } from '@trinity/platform-native';
@@ -26,26 +20,28 @@ import {
   selector: 'trn-code-appearance-block',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './code-appearance-block.component.html',
-  imports: [
-    HlmSelect,
-    HlmSelectTrigger,
-    HlmSelectValue,
-    HlmSelectContent,
-    HlmSelectPortal,
-    HlmSelectItem,
-  ],
+  imports: [TrnSelectComponent],
 })
 export class CodeAppearanceBlockComponent {
   readonly theme = inject(ThemeService);
 
   /**
-   * Label for a code-scale id. `hlm-select` renders the collapsed trigger from the bound
-   * VALUE rather than the chosen option's markup, so without this the control would read
-   * "larger" instead of "Larger". A stable field, not an inline arrow, which would be a new
-   * reference every change detection.
+   * The choices, in the shape the wrapper takes. A stable field rather than an inline
+   * arrow, which would be a new reference every change detection — the wrapper takes
+   * `options` as an input, so a fresh array each pass would re-render the list.
    */
-  readonly codeScaleLabel = (scale: string): string =>
-    TRINITY_CODE_SCALES.find((entry) => entry.id === scale)?.label ?? scale;
+  readonly codeScaleOptions: readonly TrnSelectOption<string>[] =
+    this.theme.codeScales.map((scale) => ({
+      value: scale.id,
+      label: scale.label,
+      testId: `code-scale-${scale.id}`,
+    }));
+  readonly codeLineOptions: readonly TrnSelectOption<string>[] =
+    this.theme.codeLineModes.map((mode) => ({
+      value: mode.id,
+      label: mode.label,
+      testId: `code-lines-${mode.id}`,
+    }));
 
   /** Apply + persist how large code is. */
   onCodeScaleChange(value: string | null | undefined): void {
@@ -53,10 +49,6 @@ export class CodeAppearanceBlockComponent {
       this.theme.setCodeScale(value as CodeScale);
     }
   }
-
-  /** Label for a line-number mode id, for the same reason as {@link codeScaleLabel}. */
-  readonly codeLineLabel = (mode: string): string =>
-    TRINITY_CODE_LINE_MODES.find((entry) => entry.id === mode)?.label ?? mode;
 
   /** Apply + persist when blocks show line numbers. */
   onCodeLinesChange(value: string | null | undefined): void {

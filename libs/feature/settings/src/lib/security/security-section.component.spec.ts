@@ -5,8 +5,8 @@ import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { CryptoService, type CryptoStatus } from '@trinity/data-access/crypto';
-import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
-import { EncryptionDialogService } from '@trinity/ui';
+import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
+import { EncryptionDialogService } from '@trinity/components/encryption-dialog';
 import { SecuritySectionComponent } from './security-section.component';
 
 async function build(

@@ -1,4 +1,4 @@
-import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -9,10 +9,11 @@ import {
 function setup(data: PushGatewayTrustData) {
   const close = vi.fn();
   return render(PushGatewayTrustDialogComponent, {
-    providers: [
-      { provide: DIALOG_DATA, useValue: data },
-      { provide: DialogRef, useValue: { close } },
-    ],
+    // `data` arrives as a required input, the way TrnDialogService.open applies its
+    // `inputs` bag — the render wrapper calls setInput before the first change
+    // detection, so the computed that reads it never sees an unset signal.
+    inputs: { data },
+    providers: [{ provide: TrnDialogRef, useValue: { close } }],
   }).then((r) => ({ ...r, close }));
 }
 

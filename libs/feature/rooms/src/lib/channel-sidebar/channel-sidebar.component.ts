@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   inject,
   input,
   model,
@@ -19,34 +20,9 @@ import {
   HlmDropdownMenuSubTrigger,
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
-import { HlmInput } from '@trinity/helm/input';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import {
-  lucideArrowDownWideNarrow,
-  lucideBell,
-  lucideCheck,
-  lucideCheckCheck,
-  lucideCircleMinus,
-  lucideCommand,
-  lucideEllipsisVertical,
-  lucideLogOut,
-  lucideMailOpen,
-  lucidePlus,
-  lucideFolderPlus,
-  lucideLayers,
-  lucideListOrdered,
-  lucideSettings,
-  lucideStar,
-  lucideUserPlus,
-  lucideUsers,
-  lucideX,
-} from '@ng-icons/lucide';
-import {
-  AvatarComponent,
-  BELOW_MD_QUERY,
-  mediaQuerySignal,
-  type AccountBadge,
-} from '@trinity/ui';
+import { TrnInput } from '@trinity/components/input';
+import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
+import { AvatarComponent, type AccountBadge } from '@trinity/components/avatar';
 import {
   InvitesService,
   MixedInvitesService,
@@ -77,6 +53,7 @@ import {
   type AccountSummary,
 } from './sidebar-user-panel/sidebar-user-panel.component';
 import { SidebarRoomListComponent } from './sidebar-room-list/sidebar-room-list.component';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 export type { AccountSummary };
 
@@ -88,8 +65,8 @@ export type { AccountSummary };
     SidebarUserPanelComponent,
     SidebarRoomListComponent,
     AvatarComponent,
-    NgIcon,
-    HlmInput,
+    TrnIconComponent,
+    TrnInput,
     HlmDropdownMenuTrigger,
     HlmDropdownMenu,
     HlmDropdownMenuItem,
@@ -100,28 +77,6 @@ export type { AccountSummary };
     HlmDropdownMenuSeparator,
     HlmDropdownMenuSub,
     HlmDropdownMenuSubTrigger,
-  ],
-  viewProviders: [
-    provideIcons({
-      lucideArrowDownWideNarrow,
-      lucideBell,
-      lucideCheck,
-      lucideCheckCheck,
-      lucideCircleMinus,
-      lucideCommand,
-      lucideEllipsisVertical,
-      lucideLogOut,
-      lucideMailOpen,
-      lucidePlus,
-      lucideFolderPlus,
-      lucideLayers,
-      lucideListOrdered,
-      lucideSettings,
-      lucideStar,
-      lucideUserPlus,
-      lucideUsers,
-      lucideX,
-    }),
   ],
   templateUrl: './channel-sidebar.component.html',
   styleUrl: './channel-sidebar.component.scss',
@@ -142,7 +97,10 @@ export class ChannelSidebarComponent {
    * read so rotating a phone re-renders the affordance instead of stranding whichever one the
    * page happened to load with.
    */
-  protected readonly narrowLayout = mediaQuerySignal(BELOW_MD_QUERY);
+  protected readonly narrowLayout = mediaQuerySignal(
+    BELOW_MD_QUERY,
+    inject(DestroyRef),
+  );
 
   readonly spaceName = input('Home');
   /** Whether a space (not Home) is selected — gates the header space actions. */

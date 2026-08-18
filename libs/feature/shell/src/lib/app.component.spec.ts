@@ -1,5 +1,4 @@
 import { signal } from '@angular/core';
-import { Dialog, type DialogRef } from '@angular/cdk/dialog';
 import { Location } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
@@ -10,10 +9,10 @@ import {
   type VersionEvent,
 } from '@angular/service-worker';
 import { App } from '@capacitor/app';
-import { toast } from '@spartan-ng/brain/sonner';
 import { VerificationService } from '@trinity/data-access/crypto';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { render } from '@trinity/testing';
+import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { Subject } from 'rxjs';
 import {
@@ -30,18 +29,6 @@ import { AppComponent } from './app.component';
 vi.mock('@capacitor/browser', () => ({
   Browser: { close: vi.fn().mockResolvedValue(undefined), open: vi.fn() },
 }));
-
-// Only the imperative producer is faked; <hlm-toaster/> in this component's template
-// imports the rest of the entry point and must stay real, so the actual module is
-// spread back in. (`toast` MUST come from brain, not ngx-sonner — see TrnToastService.)
-vi.mock('@spartan-ng/brain/sonner', async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import('@spartan-ng/brain/sonner')>();
-  return {
-    ...actual,
-    toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
-  };
-});
 
 // Captures the 'backButton' listener so tests can invoke it directly, and stubs
 // the other App calls the native-only branch of ngOnInit makes. `vi.mock` factories
@@ -203,17 +190,23 @@ describe('AppComponent', () => {
     });
   });
 
-  // Android hardware back button (native only, see ngOnInit): close the top open
-  // CDK overlay if one owns the screen, else step back through router history if
+  // Android hardware back button (native only, see ngOnInit): dismiss the topmost
+  // overlay if one owns the screen, else step back through router history if
   // possible, else minimize the app. Exercised through the actual listener
   // registered with the (mocked) Capacitor App plugin, not a refactored helper.
+  //
+  // Which end of the overlay stack gets closed is TrnDialogService's business and is
+  // asserted against the real CDK stack in trn-dialog.service.spec.ts. What belongs
+  // here is only the branch: overlay wins over navigation, which wins over minimize.
   describe('native back button handling', () => {
-    let dialogOpenDialogs: DialogRef<unknown, unknown>[];
+    let closeTopmost: Mock;
+    let hasOpen: Mock;
     let locationBack: Mock;
 
     beforeEach(() => {
       backButtonListeners.length = 0;
-      dialogOpenDialogs = [];
+      closeTopmost = vi.fn(() => false);
+      hasOpen = vi.fn(() => false);
       locationBack = vi.fn();
       vi.mocked(App.minimizeApp).mockClear();
     });
@@ -224,7 +217,7 @@ describe('AppComponent', () => {
           provideRouter([]),
           provideServiceWorker('ngsw-worker.js', { enabled: false }),
           ...hostProviders,
-          MockProvider(Dialog, { openDialogs: dialogOpenDialogs }),
+          MockProvider(TrnDialogService, { closeTopmost, hasOpen }),
           MockProvider(Location, { back: locationBack }),
         ],
       });
@@ -237,17 +230,32 @@ describe('AppComponent', () => {
       return listener;
     }
 
-    it('closes the top open dialog instead of navigating back or minimizing', async () => {
+    it('dismisses an open overlay instead of navigating back or minimizing', async () => {
       const listener = await create();
-      const closeTop = vi.fn();
-      dialogOpenDialogs.push(
-        { close: vi.fn() } as unknown as DialogRef<unknown, unknown>,
-        { close: closeTop } as unknown as DialogRef<unknown, unknown>,
-      );
+      hasOpen.mockReturnValue(true);
+      closeTopmost.mockReturnValue(true);
 
       listener({ canGoBack: true });
 
-      expect(closeTop).toHaveBeenCalled();
+      expect(closeTopmost).toHaveBeenCalled();
+      expect(locationBack).not.toHaveBeenCalled();
+      expect(App.minimizeApp).not.toHaveBeenCalled();
+    });
+
+    it('swallows the press when an overlay refuses to close, rather than navigating under it', async () => {
+      // The branch is on "is something open", NOT on "did it close". A dialog can decline
+      // — `disableClose` on the encryption and verification flows, or a `closePredicate` —
+      // and treating that refusal as "nothing here" would step the router backwards
+      // beneath a modal the user is still looking at, or minimize the app out from under
+      // it. Gating on `closeTopmost()`'s return alone is exactly that bug, which is why
+      // this asserts the navigation did NOT happen while close reported false.
+      const listener = await create();
+      hasOpen.mockReturnValue(true);
+      closeTopmost.mockReturnValue(false);
+
+      listener({ canGoBack: true });
+
+      expect(closeTopmost).toHaveBeenCalled();
       expect(locationBack).not.toHaveBeenCalled();
       expect(App.minimizeApp).not.toHaveBeenCalled();
     });
@@ -285,9 +293,10 @@ describe('AppComponent', () => {
       activateUpdate: Mock;
     };
     let locationStub: ReturnType<typeof stubLocation>;
+    let showToast: Mock;
 
     beforeEach(() => {
-      vi.mocked(toast).mockClear();
+      showToast = vi.fn();
       versionUpdates = new Subject<VersionEvent>();
       unrecoverable = new Subject<UnrecoverableStateEvent>();
       swUpdate = {
@@ -308,6 +317,7 @@ describe('AppComponent', () => {
           provideRouter([]),
           provideServiceWorker('ngsw-worker.js', { enabled: false }),
           { provide: SwUpdate, useValue: swUpdate },
+          MockProvider(TrnToastService, { show: showToast }),
           ...hostProviders,
         ],
       });
@@ -327,21 +337,23 @@ describe('AppComponent', () => {
 
       versionUpdates.next(readyEvent());
 
-      expect(toast).toHaveBeenCalledTimes(1);
-      const [message, options] = vi.mocked(toast).mock.calls[0];
+      expect(showToast).toHaveBeenCalledTimes(1);
+      const [message, options] = showToast.mock.calls[0];
       expect(message).toContain('new version');
       expect(options?.action?.label).toBe('Reload');
       // The prompt must survive until it is answered — a 3s auto-dismiss would make
       // the update unreachable for anyone not watching the corner of the screen.
-      expect(options?.duration).toBe(Number.POSITIVE_INFINITY);
+      // `0` is TrnToastService's "keep until dismissed"; it maps to sonner's Infinity,
+      // which trn-toast.service.spec.ts asserts.
+      expect(options?.duration).toBe(0);
     });
 
     it('activates the waiting version and reloads when the action is taken', async () => {
       await create();
       versionUpdates.next(readyEvent());
 
-      const options = vi.mocked(toast).mock.calls[0][1];
-      options?.action?.onClick(new MouseEvent('click'));
+      const options = showToast.mock.calls[0][1];
+      options?.action?.onClick();
       await Promise.resolve();
       await Promise.resolve();
 
@@ -354,9 +366,7 @@ describe('AppComponent', () => {
       await create();
       versionUpdates.next(readyEvent());
 
-      vi.mocked(toast).mock.calls[0][1]?.action?.onClick(
-        new MouseEvent('click'),
-      );
+      showToast.mock.calls[0][1]?.action?.onClick();
       await Promise.resolve();
       await Promise.resolve();
 
@@ -371,7 +381,7 @@ describe('AppComponent', () => {
         version: { hash: 'new' },
       });
 
-      expect(toast).not.toHaveBeenCalled();
+      expect(showToast).not.toHaveBeenCalled();
     });
 
     it('re-checks for a deploy when the tab returns to the foreground', async () => {
@@ -414,7 +424,7 @@ describe('AppComponent', () => {
       document.dispatchEvent(new Event('visibilitychange'));
 
       expect(locationStub.calls).not.toContain('reload');
-      expect(toast).not.toHaveBeenCalled();
+      expect(showToast).not.toHaveBeenCalled();
       expect(swUpdate.checkForUpdate).not.toHaveBeenCalled();
     });
   });

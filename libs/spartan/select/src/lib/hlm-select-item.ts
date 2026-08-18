@@ -9,7 +9,7 @@ import { classes } from '@trinity/helm/utils';
 	imports: [NgIcon],
 	providers: [provideIcons({ lucideCheck })],
 	changeDetection: ChangeDetectionStrategy.OnPush,
-	hostDirectives: [{ directive: BrnSelectItem, inputs: ['id', 'disabled', 'value'] }],
+	hostDirectives: [{ directive: BrnSelectItem, inputs: ['id', 'disabled', 'value'] , outputs: [] }],
 	host: { 'data-slot': 'select-item' },
 	template: `
 		<ng-content />

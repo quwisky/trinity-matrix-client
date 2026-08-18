@@ -10,19 +10,18 @@ import {
   untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideChevronDown, lucideChevronUp } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmCheckbox } from '@trinity/helm/checkbox';
-import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnCheckboxComponent } from '@trinity/components/checkbox';
+import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import {
   RoomsService,
   SpaceChildrenService,
   SpacesService,
   compareOrder,
 } from '@trinity/data-access/rooms';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { initialOf } from '@trinity/util/matrix';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 /**
  * How long the write lock survives without an echo. Long enough for a healthy round trip
@@ -60,8 +59,7 @@ export interface ManagedChild {
 @Component({
   selector: 'trn-manage-space-rooms',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmButton, HlmCheckbox, AvatarComponent, NgIcon],
-  providers: [provideIcons({ lucideChevronUp, lucideChevronDown })],
+  imports: [HlmButton, TrnCheckboxComponent, AvatarComponent, TrnIconComponent],
   templateUrl: './manage-space-rooms.component.html',
   styleUrl: './manage-space-rooms.component.scss',
 })
@@ -69,8 +67,7 @@ export class ManageSpaceRoomsComponent {
   readonly spaceId = input.required<string>();
   readonly spaceName = input('this space');
 
-  private readonly dialogRef =
-    inject<DialogRef<boolean, ManageSpaceRoomsComponent>>(DialogRef);
+  private readonly dialogRef = inject<TrnDialogRef<boolean>>(TrnDialogRef);
   private readonly children = inject(SpaceChildrenService);
   private readonly rooms = inject(RoomsService);
   private readonly spaces = inject(SpacesService);
@@ -112,7 +109,7 @@ export class ManageSpaceRoomsComponent {
    * `suggested` writes overlaid on the projected links, from the click until the echo.
    *
    * The one place this dialog is deliberately optimistic, and only because the checkbox
-   * gives it no choice. `HlmCheckbox.checked` is a `linkedSignal` over the `checked` input
+   * gives it no choice. `TrnCheckboxComponent.checked` is a `linkedSignal` over the `checked` input
    * which its own click handler sets locally, so it re-derives only when that INPUT
    * changes value. A rejected write leaves the link at `suggested: false` — the same value
    * the input already had — so nothing re-derives and the box stays ticked for a change

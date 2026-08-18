@@ -5,10 +5,9 @@ import {
   input,
   output,
 } from '@angular/core';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideUsers } from '@ng-icons/lucide';
-import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import { type ReactionView } from '@trinity/util/matrix';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 /** A reaction pill plus the "reacted by …" line shown on hover/focus. */
 interface ReactionPill extends ReactionView {
@@ -44,8 +43,7 @@ function reactorsHint(reaction: ReactionView): string {
 @Component({
   selector: 'trn-message-reactions',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgIcon, HlmTooltip],
-  viewProviders: [provideIcons({ lucideUsers })],
+  imports: [TrnIconComponent, TrnTooltip],
   templateUrl: './message-reactions.component.html',
   styleUrl: './message-reactions.component.scss',
 })

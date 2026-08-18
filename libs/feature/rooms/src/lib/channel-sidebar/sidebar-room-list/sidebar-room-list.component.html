@@ -32,7 +32,7 @@
           [attr.aria-label]="'Accept invite to ' + invite.name"
           title="Accept"
         >
-          <ng-icon name="lucideCheck" aria-hidden="true" />
+          <trn-icon name="check" />
         </button>
         <button
           class="invite__btn decline"
@@ -45,7 +45,7 @@
           [attr.aria-label]="'Decline invite to ' + invite.name"
           title="Decline"
         >
-          <ng-icon name="lucideX" aria-hidden="true" />
+          <trn-icon name="x" />
         </button>
       </div>
     </div>
@@ -151,7 +151,7 @@
       [attr.aria-label]="'Options for ' + room.name"
       title="Room options"
     >
-      <ng-icon name="lucideEllipsisVertical" aria-hidden="true" />
+      <trn-icon name="ellipsis-vertical" />
     </button>
   </div>
 
@@ -162,7 +162,7 @@
         (triggered)="toggleFavourite(room)"
         data-testid="room-favourite"
       >
-        <ng-icon name="lucideStar" />
+        <trn-icon name="star" />
         {{ room.favourite ? 'Unfavourite' : 'Favourite' }}
       </button>
       <button
@@ -170,7 +170,7 @@
         (triggered)="toggleLowPriority(room)"
         data-testid="room-low-priority"
       >
-        <ng-icon name="lucideArrowDownWideNarrow" />
+        <trn-icon name="arrow-down-wide-narrow" />
         {{ room.lowPriority ? 'Restore to list' : 'Low priority' }}
       </button>
       @if (room.hasUnread) {
@@ -181,7 +181,7 @@
           "
           data-testid="room-mark-read"
         >
-          <ng-icon name="lucideCheckCheck" />
+          <trn-icon name="check-check" />
           Mark as read
         </button>
       } @else if (room.id !== activeRoomId()) {
@@ -194,7 +194,7 @@
           "
           data-testid="room-mark-unread"
         >
-          <ng-icon name="lucideMailOpen" />
+          <trn-icon name="mail-open" />
           Mark as unread
         </button>
       }
@@ -204,7 +204,7 @@
         [hlmDropdownMenuSubTrigger]="notifyMenu"
         data-testid="room-notify"
       >
-        <ng-icon name="lucideBell" />
+        <trn-icon name="bell" />
         Notifications
         <hlm-dropdown-menu-item-sub-indicator />
       </button>
@@ -216,7 +216,7 @@
           (triggered)="removeRoom.emit(room.id)"
           data-testid="room-remove"
         >
-          <ng-icon name="lucideCircleMinus" />
+          <trn-icon name="circle-minus" />
           Remove from space
         </button>
       }
@@ -228,7 +228,7 @@
         "
         data-testid="room-leave"
       >
-        <ng-icon name="lucideLogOut" />
+        <trn-icon name="log-out" />
         Leave room
       </button>
     </div>

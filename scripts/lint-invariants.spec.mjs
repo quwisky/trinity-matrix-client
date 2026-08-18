@@ -1,4 +1,5 @@
-import { join } from 'node:path';
+import { existsSync, globSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ESLint } from 'eslint';
 
@@ -22,8 +23,25 @@ const workspaceRoot = join(import.meta.dirname, '..');
 /** One ESLint instance for the whole file — construction dominates the runtime. */
 const eslint = new ESLint({ cwd: workspaceRoot });
 
-const resolve = (relativePath) =>
-  eslint.calculateConfigForFile(join(workspaceRoot, relativePath));
+const resolve = (relativePath) => {
+  // Every probe in this file names a real file, and this is what keeps that true.
+  // `calculateConfigForFile` resolves a config for ANY path, existing or not, so a probe
+  // that outlives the file it names goes on returning plausible severities while the
+  // assertion around it covers nothing — and reads as coverage, which is worse than none.
+  //
+  // Not hypothetical: this file has now been burned twice by the same move. The
+  // naming-exemption probes pointed at `libs/spartan/{icon,emoji-picker,overlay}` after the
+  // public tier moved those libraries out, and the kit-ban probe pointed at
+  // `libs/ui/.../banner.component.ts` after the presentational components followed them.
+  // Both kept passing. Throwing here turns silent rot into a one-line edit.
+  const absolute = join(workspaceRoot, relativePath);
+  if (!existsSync(absolute)) {
+    throw new Error(
+      `lint-invariants probes ${relativePath}, which does not exist — repoint it at a real file rather than deleting the assertion.`,
+    );
+  }
+  return eslint.calculateConfigForFile(absolute);
+};
 
 /** Severity as ESLint reports it in a resolved config: [severity, ...options]. */
 const severityOf = (config, ruleId) => {
@@ -44,7 +62,12 @@ const SPARTAN_EXEMPT_RULES = [
 
 describe('lint invariants', () => {
   it('exempts libs/spartan from exactly the four generated-code rules, and nothing else', async () => {
-    const app = await resolve('libs/ui/src/index.ts');
+    // Baseline is the PUBLIC TIER. It and `libs/spartan` differ ONLY by the generated-code
+    // exemption, which is the signal this test exists for; a consumer tier would also carry
+    // the kit ban and drown it.
+    const app = await resolve(
+      'libs/components/select/src/lib/trn-select.component.ts',
+    );
     const spartan = await resolve(
       'libs/spartan/tooltip/src/lib/hlm-tooltip.ts',
     );
@@ -76,8 +99,39 @@ describe('lint invariants', () => {
     expect(differing.sort()).toEqual([...SPARTAN_EXEMPT_RULES].sort());
   });
 
+  it('holds the hand-authored kit libraries to the naming rules, generated-only exemption', async () => {
+    // The other side of the same exemption, and the side that was open. The glob used to be
+    // `libs/spartan/**/*.ts`, which covered three libraries in that directory that are NOT
+    // generated — overlay, icon and emoji-picker are Trinity's own, and two of them are new
+    // in #148. They are the public wrapper tier this boundary exists to build, so exempting
+    // them meant `<trn-icon>` could be renamed to `<icon>`, or `TrnIconComponent` to
+    // `TrnIcon`, with `pnpm lint` still green.
+    //
+    // Checked from both directions on purpose: the test above proves the generated files
+    // ARE exempt, and this one proves the authored files are NOT. A future glob that
+    // re-widens to the directory fails here rather than going unnoticed.
+    // Paths under libs/components, NOT libs/spartan. The three hand-authored libraries moved
+    // out when the public tier landed, and ESLint resolves a config for a path whether or not
+    // the file exists — so the old paths kept returning severity 2 and this test kept passing
+    // while asserting nothing about any file in the repo. A guard that cannot fail is worse
+    // than no guard, because it reads as coverage.
+    for (const authored of [
+      'libs/components/icon/src/lib/trn-icon/trn-icon.component.ts',
+      'libs/components/select/src/lib/trn-select.component.ts',
+      'libs/components/overlay/src/lib/alert/trn-alert-dialog.component.ts',
+    ]) {
+      const config = await resolve(authored);
+      for (const ruleId of SPARTAN_EXEMPT_RULES) {
+        expect(
+          severityOf(config, ruleId),
+          `${ruleId} must stay an error in hand-authored ${authored}`,
+        ).toBe(2);
+      }
+    }
+  });
+
   it('keeps the type-aware and boundary guards enabled on first-party TypeScript', async () => {
-    const config = await resolve('libs/ui/src/index.ts');
+    const config = await resolve('libs/components/overlay/src/index.ts');
 
     // Type-aware, and the rule most likely to lose its files silently: it needs
     // parserOptions.projectService, and a file the service does not own is skipped
@@ -119,5 +173,485 @@ describe('lint invariants', () => {
       'template-parser',
     );
     expect(Object.keys(template.rules ?? {}).length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Which tier may reach which third-party UI package, as a table rather than a rule, so the
+ * asymmetries are stated instead of inferred. Every `banned` entry must be refused and
+ * every `allowed` entry must stay reachable — a ban that widens onto the wrapper layer is
+ * as much a regression as one that disappears.
+ */
+const ALL_UI_VENDORS = [
+  '@spartan-ng/brain',
+  '@angular/cdk',
+  '@ng-icons',
+  '@ctrl/ngx-emoji-mart',
+];
+
+const UI_BOUNDARY = [
+  // `ui:public` (libs/components) may name every vendor, and that is the point rather than
+  // an oversight: it IS a wrapper layer, the same status `ui:vendor-wrapper` has.
+  //
+  // What is NOT yet true is the other direction. Nothing keys on `ui:public`, so nothing stops
+  // feature code reaching straight past the tier into `@trinity/helm/*` — 59 files still do,
+  // 50 of them for `button`. The tier is structure today, not a rule; closing it needs the
+  // remaining kit libraries wrapped first, which is the same staging the vendor bans used.
+  // Recorded here rather than implied, because an earlier revision of this comment claimed the
+  // consumer side was already enforced, which would have let a reader believe the gate was shut.
+  //
+  // The asymmetry that follows: the one tier whose job is to absorb a substrate swap is also
+  // the one place a fifth vendor could appear with no lint signal, so a change to this row has
+  // to be argued for.
+  { tier: 'ui:public', banned: [], allowed: ALL_UI_VENDORS },
+  // There is no `ui:wrapper` row any more. It described `libs/ui`, which is gone: the
+  // presentational components moved to the public tier, the `util/` folder to
+  // `@trinity/util/ui`, and the encryption-dialog seam to
+  // `@trinity/components/encryption-dialog`. Every `type:ui` project is now a wrapper tier,
+  // so no `ui:*` tag carries a vendor ban — and the row had to go with the library rather
+  // than linger, since a ban asserted against a tag nothing carries passes for free.
+  // `every tier in this table is carried by a project` below is what keeps that honest.
+  // #151 and #154 closed the dialog, toast and icon imports; #152 closed the last one.
+  // Every tier below the UI layer is now banned from every vendor, and nothing is staged —
+  // the `warn` block that made the count visible while it shrank has been deleted, which
+  // is what "the gate is closed" means for #148.
+  { tier: 'type:feature', banned: ALL_UI_VENDORS, allowed: [] },
+  { tier: 'type:data-access', banned: ALL_UI_VENDORS, allowed: [] },
+  { tier: 'type:util', banned: ALL_UI_VENDORS, allowed: [] },
+  { tier: 'type:platform', banned: ALL_UI_VENDORS, allowed: [] },
+  { tier: 'type:app', banned: ALL_UI_VENDORS, allowed: [] },
+];
+
+/**
+ * The projects deliberately outside the vendor bans, listed so the exemption is a decision
+ * somebody made rather than a gap nobody noticed.
+ *
+ * - `e2e` (`type:e2e`) drives a real browser from node. It renders no Angular UI, and it
+ *   must be free to import whatever a Playwright spec needs.
+ * - `scripts` (`type:tool`) is node tooling — guards, codegen, version checks.
+ *
+ * The vendored kit is not listed here: it is exempted by its `ui:vendor-wrapper` tag in the
+ * filter below, since it is the layer the bans exist to protect rather than an exception to
+ * them.
+ *
+ * `trinity-desktop` (the Electron shell) is not listed, and cannot be: it has no project.json
+ * for the glob to find and carries no tags. That is a deliberate non-fix, measured twice.
+ *
+ * Tagging it would enforce nothing, because `@nx/enforce-module-boundaries` is switched OFF
+ * for the shell outright — `eslint.config.mjs` sets that rule to `'off'` for the shell's own
+ * TypeScript, with its own rationale (it legitimately imports the `electron` runtime, which
+ * the rule misreads as a same-project import). Tags cannot re-enable a disabled rule.
+ *
+ * An earlier revision of this note claimed instead that vendor and `@trinity/*` specifiers
+ * "do not resolve" from the shell, and cited a silent eslint probe as proof. That was wrong
+ * twice over: the specifiers do resolve against the workspace graph regardless of the
+ * shell's own tsconfig, and the probe was silent because of the off-block above, so it could
+ * never have distinguished tagged from untagged. Corrected here rather than deleted, since
+ * the wrong reason is the one a maintainer would otherwise re-derive.
+ *
+ * And giving it tags is not free. Tags only stick via a `project.json` (an `nx` key in
+ * `electron/package.json` is ignored — it is not a pnpm workspace member), and adding one
+ * takes the project from ONE inferred target to sixteen: `pnpm test` and CI's unit job would
+ * start running the Electron suite, which needs `pnpm electron:install` first. That turns a
+ * theoretical gap into a real failure on any clone that skipped an optional install step.
+ *
+ * So the shell stays untagged, and the boundary is honest about ending at the web app.
+ */
+const OUTSIDE_THE_VENDOR_BANS = ['e2e/project.json', 'scripts/project.json'];
+
+describe('UI vendor boundary', () => {
+  const tagsOf = (project) =>
+    JSON.parse(
+      readFileSync(join(workspaceRoot, project, 'project.json'), 'utf8'),
+    ).tags ?? [];
+
+  it('gives the wrapper and the vendored kit distinct tags, which is what any rule keys on', () => {
+    // Every UI library was ['type:ui', 'scope:shared'] and nothing else, so no boundary rule
+    // could express "only the kit may import brain" — they were indistinguishable to Nx. The
+    // pair that matters is now the public tier and the vendored kit; if these collapse back
+    // to being equal, every ban below silently covers both or neither, and lint still passes.
+    expect(tagsOf('libs/components/overlay')).toContain('ui:public');
+    expect(tagsOf('libs/spartan/button')).toContain('ui:vendor-wrapper');
+    expect(tagsOf('libs/components/overlay')).not.toContain(
+      'ui:vendor-wrapper',
+    );
+    expect(tagsOf('libs/spartan/button')).not.toContain('ui:public');
+  });
+
+  it('gives every project a tag the vendor bans actually key on', async () => {
+    // The failure mode this exists for is silent and unbounded. `depConstraints` entries
+    // are keyed on `sourceTag`, and there is deliberately no `sourceTag: '*'` catch-all —
+    // so a project whose tags match NO entry gets no layering rule and, worse, none of the
+    // `bannedExternalImports` below. A new lib generated without tags, or one carrying
+    // `type:featrue`, may import @ctrl/ngx-emoji-mart or reach across any boundary it
+    // likes, and `pnpm lint` reports success. Every ban in this file is only as complete
+    // as the tagging is.
+    //
+    // Checked against the CONFIG's own source tags rather than against the `type:`/`scope:`
+    // prefixes. The prefix form was the bug: `type:featrue` starts with `type:`, so the
+    // exact typo named above sailed through the very guard written to catch it. Only a
+    // comparison with the tags that key a ban can tell "tagged" from "covered".
+    const config = await resolve('libs/components/overlay/src/index.ts');
+    const constraints =
+      config.rules['@nx/enforce-module-boundaries'][1].depConstraints;
+    const tagsCarryingBans = new Set(
+      constraints
+        .filter((entry) => entry.bannedExternalImports?.length)
+        .map((entry) => entry.sourceTag),
+    );
+    expect(tagsCarryingBans.size).toBeGreaterThan(0);
+
+    // Swept beyond {apps,libs}: `e2e` and `scripts` are Nx projects too, and the previous
+    // glob simply could not see them — so "tags every project" was asserted over 41 of the
+    // 43 project.json files in the tree and passed on a sweep that never looked.
+    const projects = globSync('{apps,libs,e2e,scripts}/**/project.json', {
+      cwd: workspaceRoot,
+    });
+    // An empty sweep must not pass as a clean one — the same trap the host-directives
+    // guard was written around.
+    expect(projects.length).toBeGreaterThan(30);
+
+    const uncovered = projects
+      .map((path) => ({ path, tags: tagsOf(dirname(path)) }))
+      .filter(
+        ({ tags }) =>
+          !tags.some((tag) => tagsCarryingBans.has(tag)) &&
+          // Both wrapper tiers are uncovered on purpose — they ARE the layers that name a
+          // vendor, and a ban there would ban them from existing. `ui:public`
+          // (libs/components) wraps for feature code, `ui:vendor-wrapper` (the generated
+          // kit) wraps for us; the table above records what each may reach. Exempted by
+          // TAG rather than by listing ~34 paths, so adding a wrapper library is not a test
+          // edit, while a lib uncovered for any OTHER reason still fails below.
+          !tags.includes('ui:vendor-wrapper') &&
+          !tags.includes('ui:public'),
+      )
+      .map(({ path }) => path)
+      .sort();
+
+    expect(uncovered).toEqual(OUTSIDE_THE_VENDOR_BANS);
+
+    // The scope axis, checked separately because no `scope:` tag carries
+    // `bannedExternalImports` — they carry `onlyDependOnLibsWithTags` instead, so the
+    // vendor-ban comparison above cannot see them. Rewriting this guard to key on the
+    // constraint table (which is what catches a `type:featrue` typo) quietly dropped the
+    // scope half that the prefix version did assert, leaving a lib with a good `type:` tag
+    // and no `scope:` tag free of any layering rule while both gates stayed green.
+    const scopeTags = new Set(
+      constraints
+        .filter((entry) => entry.sourceTag.startsWith('scope:'))
+        .map((entry) => entry.sourceTag),
+    );
+    expect(scopeTags.size).toBeGreaterThan(0);
+
+    const unscoped = projects
+      .map((path) => ({ path, tags: tagsOf(dirname(path)) }))
+      .filter(({ tags }) => !tags.some((tag) => scopeTags.has(tag)))
+      .map(({ path }) => path)
+      .sort();
+
+    // A shorter list than the vendor-ban exemption above, and deliberately its own: the
+    // `scripts` project is `scope:shared`, so it DOES carry a layering rule even though no
+    // vendor ban keys on `type:tool`. Only `e2e` (`scope:trinity`) sits outside both.
+    expect(unscoped).toEqual(['e2e/project.json']);
+  });
+
+  it('keys every ban on a tag some project actually carries', async () => {
+    // The complement of the sweep above, and the quieter of the two failures: that one finds
+    // a project no ban covers, this one finds a ban no project carries. A `depConstraints`
+    // entry keyed on a dead tag is not an error to Nx — it simply never matches — so the
+    // config reads as a closed door while enforcing nothing, and every assertion in this file
+    // that inspects only the CONFIG keeps passing.
+    //
+    // `ui:wrapper` is exactly how that arises. It was a real ban while `libs/ui` existed;
+    // dissolving that library into the public tier, `@trinity/util/ui` and
+    // `@trinity/components/encryption-dialog` left the tag with no project, and deleting the
+    // library without deleting the row would have left a ban behind that could never fire.
+    const config = await resolve('libs/components/overlay/src/index.ts');
+    const constraints =
+      config.rules['@nx/enforce-module-boundaries'][1].depConstraints;
+    const projects = globSync('{apps,libs,e2e,scripts}/**/project.json', {
+      cwd: workspaceRoot,
+    });
+    expect(projects.length).toBeGreaterThan(30);
+    const carried = new Set(projects.flatMap((path) => tagsOf(dirname(path))));
+
+    const bansNoProjectCarries = constraints
+      .filter((entry) => entry.bannedExternalImports?.length)
+      .map((entry) => entry.sourceTag)
+      .filter((tier) => !carried.has(tier))
+      .sort();
+    expect(bansNoProjectCarries).toEqual([]);
+
+    // And the same for the table this file keys its own assertions on, which would otherwise
+    // go on asserting a tier into existence after the last project carrying it was deleted.
+    expect(
+      UI_BOUNDARY.map((row) => row.tier).filter((tier) => !carried.has(tier)),
+    ).toEqual([]);
+  });
+
+  it('keeps the app-tier vendor stylesheets to the two the ban cannot cover', () => {
+    // `bannedExternalImports` matches TS/JS import specifiers, and nothing else. The app's
+    // build `styles` array is configuration, so a vendor stylesheet listed there is
+    // invisible to every rule above — the boundary is enforced for code and silent here.
+    // Both entries below are deliberate and both have to live at this tier: CDK's overlay
+    // sheet must be global for any overlay to position at all, and while the emoji picker's
+    // CAN be pulled into the lazy component chunk (`@import '@ctrl/ngx-emoji-mart/picker'`
+    // resolves and inlines), doing so puts that component 517 bytes over the workspace's
+    // 8 kB `anyComponentStyle` budget — and raising a budget that guards every component,
+    // to relocate one vendored file, is the worse trade.
+    //
+    // So this is pinned rather than fixed: the list is a decision with a reason, and a third
+    // entry has to be argued for here instead of appearing in a build config nobody reads as
+    // part of the boundary.
+    const app = JSON.parse(
+      readFileSync(join(workspaceRoot, 'apps/trinity/project.json'), 'utf8'),
+    );
+    const vendorStyles = app.targets.build.options.styles.filter((style) =>
+      style.startsWith('node_modules/'),
+    );
+
+    expect(vendorStyles).toEqual([
+      'node_modules/@angular/cdk/overlay-prebuilt.css',
+      'node_modules/@ctrl/ngx-emoji-mart/picker.css',
+    ]);
+  });
+
+  it('bans the vendors from every tier that should not render third-party UI', async () => {
+    const config = await resolve('libs/components/overlay/src/index.ts');
+    const constraints =
+      config.rules['@nx/enforce-module-boundaries'][1].depConstraints;
+    const bannedFor = (tier) =>
+      constraints.find((entry) => entry.sourceTag === tier)
+        ?.bannedExternalImports ?? [];
+    // Deliberately ignores the trailing `*`: this test asks whether a ban for the vendor
+    // was DECLARED, and the test below asks whether it can actually match. Keeping those
+    // apart means a star-less glob fails exactly one of them, naming the real defect. Do
+    // not fold them together — a combined check would report "no ban" for what is really
+    // "a ban that silently matches nothing".
+    const covers = (globs, vendor) =>
+      globs.some((glob) => vendor.startsWith(glob.replace(/\*$/, '')));
+
+    for (const { tier, banned, allowed } of UI_BOUNDARY) {
+      const globs = bannedFor(tier);
+      for (const vendor of banned) {
+        expect(
+          covers(globs, vendor),
+          `${tier} must not be allowed to import ${vendor}`,
+        ).toBe(true);
+      }
+      for (const vendor of allowed) {
+        expect(
+          covers(globs, vendor),
+          `${tier} must stay able to import ${vendor} — it is the layer that wraps it`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  it('keeps a trailing * on every banned glob, without which the ban matches nothing', async () => {
+    const config = await resolve('libs/components/overlay/src/index.ts');
+    const constraints =
+      config.rules['@nx/enforce-module-boundaries'][1].depConstraints;
+
+    // The failure mode this exists for: `bannedExternalImports` is matched as a glob, so
+    // a bare '@angular/cdk' matches only the bare specifier — which nothing imports, since
+    // every real import is a deep '@angular/cdk/dialog'. The rule then reports SUCCESS,
+    // and the ban reads as enforced while enforcing nothing. Measured, not assumed.
+    const globs = constraints.flatMap(
+      (entry) => entry.bannedExternalImports ?? [],
+    );
+    expect(globs.length).toBeGreaterThan(0);
+    expect(globs.filter((glob) => !glob.endsWith('*'))).toEqual([]);
+  });
+
+  it('leaves the vendored kit itself free to import its own vendor', async () => {
+    const kit = await resolve('libs/spartan/tooltip/src/lib/hlm-tooltip.ts');
+    const constraints =
+      kit.rules['@nx/enforce-module-boundaries'][1].depConstraints;
+
+    // The kit IS the wrapper; banning brain there would ban the layer from existing.
+    //
+    // Asserted against `bannedExternalImports` specifically, not against the entry: a
+    // future `ui:vendor-wrapper` constraint that does something else entirely — an
+    // `onlyDependOnLibsWithTags`, say — is not a violation of this invariant, and a test
+    // that failed on it would be crying wolf.
+    expect(
+      constraints.find((entry) => entry.sourceTag === 'ui:vendor-wrapper')
+        ?.bannedExternalImports,
+    ).toBeUndefined();
+    expect(kit.rules['no-restricted-imports']).toBeUndefined();
+  });
+
+  it('closes the vendored kit to consumer tiers, staged to the libraries still unwrapped', async () => {
+    // The consumer half of the public tier. `@nx/enforce-module-boundaries` cannot express
+    // it — `notDependOnLibsWithTags` is transitive, and the tier depends on the kit by
+    // design, so it fails on the very path it should bless. A direct-import rule is the
+    // right shape; this pins that it reaches the consumer tiers and NOT the tier itself.
+    const KIT = '@trinity/helm/*';
+    const groupsFor = (config) =>
+      (
+        config.rules['@typescript-eslint/no-restricted-imports']?.[1]
+          ?.patterns ?? []
+      ).map((pattern) => pattern.group ?? []);
+    const kitGroup = (config) =>
+      groupsFor(config).find((group) => group[0] === KIT);
+
+    for (const consumer of [
+      'libs/feature/settings/src/lib/settings.routes.ts',
+      'apps/trinity/src/main.ts',
+    ]) {
+      expect(kitGroup(await resolve(consumer)), consumer).toBeDefined();
+    }
+
+    // The tier and the kit must stay free to name it, or the wrapper layer cannot exist.
+    for (const wrapper of [
+      'libs/components/select/src/lib/trn-select.component.ts',
+      'libs/spartan/button/src/lib/hlm-button.ts',
+    ]) {
+      expect(kitGroup(await resolve(wrapper)), wrapper).toBeUndefined();
+    }
+
+    // The staging list, exact and shrinking. A fifth exception cannot arrive unnoticed, and
+    // removing one as its wrapper lands is a deliberate edit here. Empty means the tier is
+    // fully closed — at which point this expectation is the thing that says so.
+    expect(
+      kitGroup(
+        await resolve('libs/feature/settings/src/lib/settings.routes.ts'),
+      ),
+    ).toEqual([
+      KIT,
+      '!@trinity/helm/button',
+      '!@trinity/helm/dropdown-menu',
+      '!@trinity/helm/sonner',
+    ]);
+
+    // Splitting the globs is what keeps both bans alive: flat config replaces a rule's
+    // options wholesale, so the SDK pattern has to be restated in the consumer block.
+    // Asserted from both halves, because losing it there would be silent.
+    for (const anywhere of [
+      'libs/feature/settings/src/lib/settings.routes.ts',
+      'libs/components/select/src/lib/trn-select.component.ts',
+    ]) {
+      expect(
+        groupsFor(await resolve(anywhere)).some(
+          (g) => g[0] === 'matrix-js-sdk',
+        ),
+        anywhere,
+      ).toBe(true);
+    }
+  });
+
+  it('keeps the matrix-js-sdk dynamic-import ban after the staging block was deleted', async () => {
+    // A feature file that genuinely carries a lazy `import()`, so the selector this test
+    // exists for is being resolved against the shape it polices rather than an arbitrary
+    // path that happens to match the same glob.
+    const feature = await resolve(
+      'libs/feature/settings/src/lib/advanced/config-editor-loader.ts',
+    );
+
+    // #148's staged `no-restricted-imports` block is gone — every vendor is enforced
+    // through depConstraints now. What must NOT have gone with it is the matrix-js-sdk
+    // selector: flat config replaces a rule's options wholesale, so removing a block that
+    // configured `no-restricted-syntax` over the same glob is exactly how that ban would
+    // disappear silently. Every route in this app is lazy, so this selector — not the
+    // static-import one — is the half that matters.
+    const syntax = feature.rules['no-restricted-syntax'];
+    expect(syntax[0]).toBe(2);
+    expect(
+      syntax
+        .slice(1)
+        .some((option) => /matrix-js-sdk/.test(option?.selector ?? '')),
+    ).toBe(true);
+
+    // And nothing is staged at `warn` any more.
+    expect(severityOf(feature, 'no-restricted-imports') ?? 0).toBe(0);
+    expect(
+      severityOf(feature, '@typescript-eslint/no-restricted-imports'),
+    ).toBe(2);
+  });
+
+  it('keeps every public-tier barrel free of vendor names, type-only re-exports included', () => {
+    // `libs/components/overlay/src/lib/vendor-surface.spec.ts` compares exported VALUES, so
+    // it cannot see `export type { DialogRef } from '@angular/cdk/dialog'` — types are erased
+    // before it looks. That is the exact shape this tier was built to undo: one type-only
+    // line put CDK's class in the type signature of 24 feature components, which is the cost
+    // a swap would have had to pay. Only the source text can catch it coming back.
+    //
+    // Swept over every barrel, not just the one library that owns a spec: the other fourteen
+    // publish an API too, and none of them had any guard at all.
+    const barrels = globSync('libs/components/*/src/index.ts', {
+      cwd: workspaceRoot,
+    });
+    // An empty sweep must not read as a clean one.
+    expect(barrels.length).toBeGreaterThan(10);
+
+    const offenders = barrels.flatMap((barrel) => {
+      // Comments name the vendors freely and should — the overlay barrel spends twenty
+      // lines explaining which CDK symbols it refuses and why. Only real specifiers count.
+      const source = readFileSync(join(workspaceRoot, barrel), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .split('\n')
+        .filter((line) => !line.trimStart().startsWith('//'))
+        .join('\n');
+      // Matched on `from '…'` anywhere rather than on a statement shape, so a multi-line
+      // `export {\n  Foo,\n} from '…'` cannot slip past on formatting.
+      return [...source.matchAll(/from\s+'([^']+)'/g)]
+        .map((match) => match[1])
+        .filter((specifier) =>
+          ALL_UI_VENDORS.some(
+            (vendor) =>
+              specifier === vendor || specifier.startsWith(`${vendor}/`),
+          ),
+        )
+        .map((specifier) => `${barrel}: ${specifier}`);
+    });
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('applies the matrix-js-sdk ban to every library not allowed the SDK', async () => {
+    // The SDK ban is allow-by-OMISSION: `eslint.config.mjs` lists the tiers it covers, so a
+    // library that is merely forgotten lands in the permitted bucket and may import
+    // matrix-js-sdk — statically or through a lazy `import()` — with `pnpm lint` green. That
+    // block's own comment names the hazard ("a new UI lib that is merely forgotten lands in
+    // the allowed bucket — silently, and with nothing else to catch it") and then nothing
+    // measured it. The vendor bans got a tagging sweep for precisely this reason; this is the
+    // same sweep for the rule CLAUDE.md calls the core architectural one.
+    //
+    // The two allowed roots are the sanctioned exceptions: `libs/data-access/*` owns all SDK
+    // access, and `libs/util/matrix` models the SDK's own types.
+    const ALLOWED_THE_SDK = ['libs/data-access', 'libs/util/matrix'];
+    const projects = globSync('libs/**/project.json', { cwd: workspaceRoot });
+    expect(projects.length).toBeGreaterThan(20);
+
+    const checked = [];
+    const uncovered = [];
+    for (const project of projects) {
+      const root = dirname(project);
+      if (ALLOWED_THE_SDK.some((allowed) => root.startsWith(allowed))) {
+        continue;
+      }
+      // A representative source file rather than a fixed `src/index.ts`: `libs/spartan/tests`
+      // is a real project with no barrel, and skipping it silently is how a sweep empties out.
+      const candidates = globSync(`${root}/src/**/*.ts`, {
+        cwd: workspaceRoot,
+      });
+      const probe =
+        candidates.find((file) => file.endsWith('src/index.ts')) ??
+        candidates.find((file) => !file.endsWith('.spec.ts'));
+      expect(probe, `${root} has no TypeScript to probe`).toBeDefined();
+      checked.push(probe);
+
+      const config = await resolve(probe);
+      const covered =
+        severityOf(config, '@typescript-eslint/no-restricted-imports') === 2 &&
+        severityOf(config, 'no-restricted-syntax') === 2;
+      if (!covered) {
+        uncovered.push(probe);
+      }
+    }
+
+    expect(checked.length).toBeGreaterThan(15);
+    expect(uncovered).toEqual([]);
   });
 });

@@ -4,10 +4,10 @@
   <h2 class="text-base font-semibold">Create poll</h2>
 
   <div>
-    <label hlmLabel for="poll-question">Question</label>
+    <label trnLabel for="poll-question">Question</label>
     <input
       id="poll-question"
-      hlmInput
+      trnInput
       class="mt-1 w-full"
       placeholder="Ask something…"
       [value]="question()"
@@ -20,7 +20,7 @@
     @for (option of options(); track $index) {
       <div class="flex items-center gap-2">
         <input
-          hlmInput
+          trnInput
           class="w-full"
           [placeholder]="'Option ' + ($index + 1)"
           [value]="option"
@@ -38,7 +38,7 @@
             (click)="removeOption($index)"
             [attr.data-testid]="'poll-remove-option-' + $index"
           >
-            <ng-icon name="lucideX" aria-hidden="true" />
+            <trn-icon name="x" />
           </button>
         }
       </div>

@@ -5,7 +5,7 @@ import {
   input,
 } from '@angular/core';
 import { HlmButton } from '@trinity/helm/button';
-import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 
 /** Dialog that shows a message event's raw JSON ("view source"), with a copy action. */
 @Component({
@@ -43,8 +43,7 @@ export class MessageSourceComponent {
   /** The pre-formatted JSON to display. */
   readonly source = input.required<string>();
 
-  private readonly dialogRef =
-    inject<DialogRef<void, MessageSourceComponent>>(DialogRef);
+  private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef);
   private readonly toast = inject(TrnToastService);
 
   /** Copy the source, toasting only once the write resolves — never on a rejection. */

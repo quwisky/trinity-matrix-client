@@ -9,7 +9,7 @@
       aria-label="Cancel reply"
       (click)="cancelReply.emit()"
     >
-      <ng-icon name="lucideX" aria-hidden="true" />
+      <trn-icon name="x" />
     </button>
   </div>
 }
@@ -34,15 +34,10 @@
     />
   }
   @if (pickerOpen()) {
-    <emoji-mart
+    <trn-emoji-picker
       class="composer__picker"
-      [isNative]="true"
-      [showPreview]="false"
-      [darkMode]="isDarkMode()"
-      [emojiSize]="20"
-      title="Pick an emoji"
-      emoji=""
-      (emojiSelect)="onPickerSelect($event)"
+      [pickerId]="pickerId"
+      (picked)="onPickerSelect($event)"
     />
   }
   @if (gifPickerOpen()) {
@@ -60,7 +55,7 @@
         data-testid="composer-voice-cancel"
         (click)="cancelVoiceRecording()"
       >
-        <ng-icon name="lucideTrash2" aria-hidden="true" />
+        <trn-icon name="trash-2" />
       </button>
       <span class="composer__recording-dot" aria-hidden="true"></span>
       <span class="composer__recording-time" data-testid="composer-voice-time">
@@ -73,7 +68,7 @@
         data-testid="composer-voice-send"
         (click)="stopVoiceRecording()"
       >
-        <ng-icon name="lucideSend" aria-hidden="true" />
+        <trn-icon name="send" />
       </button>
     </div>
   }
@@ -139,7 +134,7 @@
     }
     <textarea
       #ta
-      hlmTextarea
+      trnTextarea
       class="composer__input"
       [class.composer__input--hidden]="previewing()"
       data-testid="composer-input"
@@ -179,12 +174,13 @@
     <button
       type="button"
       class="composer__emoji"
-      hlmTooltip="Emoji"
+      trnTooltip="Emoji"
       aria-label="Insert emoji"
       [attr.aria-expanded]="pickerOpen()"
+      [attr.aria-controls]="pickerOpen() ? pickerId : null"
       (click)="toggleEmojiPicker()"
     >
-      <ng-icon name="lucideSmile" aria-hidden="true" />
+      <trn-icon name="smile" />
     </button>
     <!-- Shown at every width and pointer type: touch has no reliable Enter-to-send, and on
        a pointer device it is still the discoverable way to send when Enter is ambiguous
@@ -194,13 +190,13 @@
       <button
         type="button"
         class="composer__send"
-        hlmTooltip="Send"
+        trnTooltip="Send"
         aria-label="Send message"
         data-testid="composer-send"
         [disabled]="!text().trim() && !pendingFile()"
         (click)="submit()"
       >
-        <ng-icon name="lucideSend" aria-hidden="true" />
+        <trn-icon name="send" />
       </button>
     }
   </div>

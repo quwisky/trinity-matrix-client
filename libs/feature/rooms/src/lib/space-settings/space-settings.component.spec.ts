@@ -1,5 +1,5 @@
 import { render } from '@trinity/testing';
-import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import {
   RoomAliasesService,
   RoomModerationService,
@@ -60,7 +60,7 @@ async function build(
         currentCanonical: () => null,
         localAliases: () => of([]),
       }),
-      MockProvider(DialogRef, { close }),
+      MockProvider(TrnDialogRef, { close }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
   });

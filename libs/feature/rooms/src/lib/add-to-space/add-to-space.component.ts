@@ -10,15 +10,15 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, form } from '@angular/forms/signals';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmCheckbox } from '@trinity/helm/checkbox';
-import { HlmInput } from '@trinity/helm/input';
-import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnCheckboxComponent } from '@trinity/components/checkbox';
+import { TrnInput } from '@trinity/components/input';
+import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import {
   RoomsService,
   SpaceChildrenService,
   SpacesService,
 } from '@trinity/data-access/rooms';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { saveFields, type FieldWrite } from '../shared/save-fields';
 
 /** A room or space offered for adding, flattened so one list can hold both. */
@@ -50,7 +50,13 @@ export interface AddCandidate {
 @Component({
   selector: 'trn-add-to-space',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormField, HlmButton, HlmCheckbox, HlmInput, AvatarComponent],
+  imports: [
+    FormField,
+    HlmButton,
+    TrnCheckboxComponent,
+    TrnInput,
+    AvatarComponent,
+  ],
   templateUrl: './add-to-space.component.html',
   styleUrl: './add-to-space.component.scss',
 })
@@ -59,8 +65,7 @@ export class AddToSpaceComponent {
   readonly spaceId = input.required<string>();
   readonly spaceName = input('this space');
 
-  private readonly dialogRef =
-    inject<DialogRef<boolean, AddToSpaceComponent>>(DialogRef);
+  private readonly dialogRef = inject<TrnDialogRef<boolean>>(TrnDialogRef);
   private readonly rooms = inject(RoomsService);
   private readonly spaces = inject(SpacesService);
   private readonly children = inject(SpaceChildrenService);

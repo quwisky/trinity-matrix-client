@@ -4,13 +4,13 @@ import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
-import { HlmCheckbox } from '@trinity/helm/checkbox';
+import { TrnCheckboxComponent } from '@trinity/components/checkbox';
 import {
   KeywordRulesService,
   KeywordValidationError,
   type KeywordRule,
 } from '@trinity/data-access/notifications';
-import { TrnToastService } from '@trinity/helm/overlay';
+import { TrnToastService } from '@trinity/components/overlay';
 import { KeywordRulesBlockComponent } from './keyword-rules-block.component';
 
 const LOUD: KeywordRule = {
@@ -88,8 +88,8 @@ const rows = (fixture: { nativeElement: HTMLElement }) =>
 /** The rendered checkbox instances, so a test asserts pixels rather than the model. */
 const checkboxes = (fixture: {
   debugElement: DebugElement;
-}): { componentInstance: HlmCheckbox }[] =>
-  fixture.debugElement.queryAll(By.directive(HlmCheckbox));
+}): { componentInstance: TrnCheckboxComponent }[] =>
+  fixture.debugElement.queryAll(By.directive(TrnCheckboxComponent));
 
 describe('KeywordRulesBlockComponent', () => {
   it('lists the account’s keywords', async () => {
@@ -303,7 +303,7 @@ describe('KeywordRulesBlockComponent', () => {
   });
 
   it('puts the RENDERED checkbox back when the write fails', async () => {
-    // The bug this exists for: HlmCheckbox flips itself on click and holds that in a
+    // The bug this exists for: TrnCheckboxComponent flips itself on click and holds that in a
     // linkedSignal over its `checked` INPUT, which only recomputes when the input
     // changes. Re-reading the unchanged server value therefore cannot un-flip it — the
     // binding has to genuinely transition. Asserting the component's model instead of
@@ -320,8 +320,9 @@ describe('KeywordRulesBlockComponent', () => {
     const box = () => checkboxes(fixture)[0].componentInstance;
     expect(box().checked()).toBe(true);
 
-    // Model the real interaction: the checkbox flips itself, then tells us.
-    box().checked.set(false);
+    // `toggleSound` IS the real interaction — it is what the checkbox's own
+    // `(checkedChange)` calls. The wrapper's `checked` mirrors the parent's state rather
+    // than keeping an optimistic copy of its own, so there is nothing to flip by hand.
     cmp.toggleSound(LOUD, false);
     fixture.detectChanges();
     expect(box().checked()).toBe(false); // held while the write is in flight
@@ -338,7 +339,6 @@ describe('KeywordRulesBlockComponent', () => {
       setSound: vi.fn(() => new Subject<void>()),
     });
 
-    checkboxes(fixture)[0].componentInstance.checked.set(false);
     cmp.toggleSound(LOUD, false);
     fixture.detectChanges();
 
@@ -357,7 +357,7 @@ describe('KeywordRulesBlockComponent', () => {
         .querySelector('[data-testid="keyword-remove"]')
         ?.getAttribute('aria-label'),
     ).toBe('Remove keyword oncall');
-    // HlmCheckbox nulls its own host aria-label by design and forwards an input to the
+    // TrnCheckboxComponent nulls its own host aria-label by design and forwards an input to the
     // inner control, so the label is asserted wherever it actually lands in the row.
     expect(
       el.querySelector('[aria-label="Play a sound for oncall"]'),
@@ -483,8 +483,7 @@ describe('KeywordRulesBlockComponent', () => {
       const pending = new Subject<void>();
       const { cmp, fixture } = await build({ setSound: vi.fn(() => pending) });
       const boxes = () => checkboxes(fixture).map((b) => b.componentInstance);
-      boxes()[1].checked.set(true); // QUIET starts false; "click" it on
-
+      // QUIET starts false; toggling it on is what clicking its checkbox calls.
       cmp.toggleSound(QUIET, true);
       fixture.detectChanges();
       pending.error(new Error('nope'));

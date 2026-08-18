@@ -46,7 +46,6 @@ export const tooltipPositionVariants = cva('absolute', {
         'showDelay',
         'tooltipDisabled',
       ],
-    },
-  ],
+     outputs: [] }],
 })
 export class HlmTooltip {}

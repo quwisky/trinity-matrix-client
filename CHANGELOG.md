@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **Trinity no longer opens to a blank screen on some systems.** If your computer's language
+  was set in an older style — common on Linux, and on anything configured with `LANG=en_US`
+  or a `POSIX` locale — the app could not read your date and time preferences, and rather
+  than falling back it stopped drawing the room entirely: no messages, no timestamps,
+  nothing. Unusable, with nothing on screen to explain why. Trinity now ignores a language
+  setting it cannot understand and carries on with the rest, or with your system default.
+
+- **The emoji picker says what it is.** Opening the full picker to react to a message
+  announced it to a screen reader as nothing but "dialog", with no indication of what it was
+  for — on the most-used picker in the app. It now announces "Pick a reaction".
+
 ### Added
 
 - **Your settings, readable and editable in one place.** Settings → **Advanced** shows
@@ -222,6 +235,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Settings dropdowns show the choice you made, not its internal name.** Once you had picked
+  a palette, a time format or a date format, the closed dropdown went back to displaying the
+  raw stored value — `ocean`, `h24`, `iso` — instead of the wording you chose it by. All of
+  them now read the same way open or closed, and the time and date dropdowns keep their
+  worked example in view.
+
+- **The emoji picker follows your theme.** It came from a third-party library that only knew
+  "light or dark", so it showed its own purple accent and its own greys whichever Trinity
+  theme and palette you had chosen. It now uses the same colours as the rest of the app, in
+  all four combinations of light/dark and palette.
+
 - **Mentions now have to be meant.** Quoting a message put the quoted words into the
   message you sent, so quoting "Bob, can you look at this?" notified Bob a second time for
   a message that addressed nobody — and quoting anything containing `@room` pinged the
@@ -297,6 +321,12 @@ All notable changes to this project are documented here. The format is based on
   **Invite people**. Home is unchanged — it has room.
 
 ### Fixed
+
+- **On Android, back no longer closes a dialog that asked to stay open.** Setting up or
+  unlocking encryption, and verifying a device, are steps that must not be dismissed
+  half-finished — but the hardware back button closed them anyway, leaving the flow in an
+  in-between state. Back now leaves those dialogs alone, and while any dialog is open it
+  dismisses that rather than navigating the page behind it.
 
 - **Hints under text boxes are read out again.** Where a field had explanatory text beneath it —
   the push gateway URL, its app id, and the manual location entry — screen readers never announced

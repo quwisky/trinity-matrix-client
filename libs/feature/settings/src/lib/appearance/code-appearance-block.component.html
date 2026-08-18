@@ -5,28 +5,15 @@
   Code size
 </h2>
 <div class="px-4 py-2">
-  <hlm-select
-    class="block"
+  <trn-select
     data-testid="code-scale-select"
     aria-labelledby="appearance-code-size-heading"
+    placeholder="Select a code size"
+    triggerClass="w-full"
+    [options]="codeScaleOptions"
     [value]="theme.codeScale()"
-    [itemToString]="codeScaleLabel"
     (valueChange)="onCodeScaleChange($event)"
-  >
-    <hlm-select-trigger class="w-full">
-      <hlm-select-value placeholder="Select a code size" />
-    </hlm-select-trigger>
-    <hlm-select-content *hlmSelectPortal>
-      @for (scale of theme.codeScales; track scale.id) {
-        <hlm-select-item
-          [value]="scale.id"
-          [attr.data-testid]="'code-scale-' + scale.id"
-        >
-          {{ scale.label }}
-        </hlm-select-item>
-      }
-    </hlm-select-content>
-  </hlm-select>
+  />
 </div>
 <p class="block px-4 py-2 text-13 text-muted-foreground">
   Sizes code in messages — both code written inside a sentence and whole blocks.
@@ -41,28 +28,15 @@
   Line numbers
 </h2>
 <div class="px-4 py-2">
-  <hlm-select
-    class="block"
+  <trn-select
     data-testid="code-lines-select"
     aria-labelledby="appearance-code-lines-heading"
+    placeholder="Select when to number lines"
+    triggerClass="w-full"
+    [options]="codeLineOptions"
     [value]="theme.codeLines()"
-    [itemToString]="codeLineLabel"
     (valueChange)="onCodeLinesChange($event)"
-  >
-    <hlm-select-trigger class="w-full">
-      <hlm-select-value placeholder="Select when to number lines" />
-    </hlm-select-trigger>
-    <hlm-select-content *hlmSelectPortal>
-      @for (mode of theme.codeLineModes; track mode.id) {
-        <hlm-select-item
-          [value]="mode.id"
-          [attr.data-testid]="'code-lines-' + mode.id"
-        >
-          {{ mode.label }}
-        </hlm-select-item>
-      }
-    </hlm-select-content>
-  </hlm-select>
+  />
 </div>
 <p class="block px-4 py-2 text-13 text-muted-foreground">
   Numbers the lines of a code block, so you can point at one. They are never

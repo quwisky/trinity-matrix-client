@@ -80,4 +80,31 @@ describe('docs/reference/stack.md version table', () => {
   it('checks a meaningful number of rows', () => {
     expect(checkableRows.length).toBeGreaterThanOrEqual(12);
   });
+
+  it('leaves no package row behind, whatever else is in the cell', () => {
+    // The floor above is too coarse to notice ONE row going dark, which is exactly what
+    // happened: adding an inline `<!-- … -->` note after the backticked name made `ROW`
+    // stop matching, and `@ctrl/ngx-emoji-mart` silently left the guard while all the
+    // other rows kept it green. Nothing failed, so nothing said the coverage had shrunk.
+    //
+    // So this asks the sharper question: is anything SHAPED like a package row not being
+    // parsed as one? That is measured against the document rather than a hand-tuned count,
+    // so it stays honest as the table grows.
+    // "Shaped like a package row" is judged on the SECOND cell being a complete semver,
+    // not merely on the first being a code span: both of these documents also carry API
+    // and ordering tables whose first cell is `someSymbol()` and whose second is prose.
+    const unparsed = stackDoc
+      .split('\n')
+      .filter((line) => {
+        const cells = line.split('|');
+        return (
+          /`[^`]+`/.test(cells[1] ?? '') &&
+          COMPLETE_SEMVER.test((cells[2] ?? '').trim()) &&
+          !ROW.test(line)
+        );
+      })
+      .map((line) => line.slice(0, 80));
+
+    expect(unparsed).toEqual([]);
+  });
 });

@@ -296,7 +296,7 @@ badge refuses to clear.
 ## runWithBusy
 
 Pages that run one-shot actions share a busy and error convention through
-[`runWithBusy`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/ui/src/lib/util/with-busy.ts):
+[`runWithBusy`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/ui/src/lib/with-busy.ts):
 
 ```ts
 runWithBusy(this.auth.changePassword(current, next), {

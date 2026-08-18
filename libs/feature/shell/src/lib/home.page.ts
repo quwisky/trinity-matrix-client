@@ -8,7 +8,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize } from 'rxjs';
 import { HlmButton } from '@trinity/helm/button';
-import { PageHeaderComponent } from '@trinity/ui';
+import { PageHeaderComponent } from '@trinity/components/page-header';
 import {
   CryptoSpikeResult,
   CryptoSpikeService,

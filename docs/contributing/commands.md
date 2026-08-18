@@ -80,9 +80,9 @@ workspace data goes too.
 
 ### What `pnpm test` does not cover
 
-`pnpm test` runs 23 projects: the twelve `data-access-*` libraries, `feature-auth`,
-`feature-crypto`, `feature-rooms`, `feature-settings`, `feature-shell`,
-`platform-native`, `ui`, `util-matrix`, the `overlay` spartan library, the
+`pnpm test` runs 43 projects: the twelve `data-access-*` libraries, `feature-auth`,
+`feature-crypto`, `feature-rooms`, `feature-settings`, `feature-shell`, `platform-native`,
+`ui`, `util-matrix`, the twenty `libs/components/*` libraries, `spartan-tests`, the
 `trinity` app itself, and `scripts`.
 
 It does **not** run the Electron main-process specs. The `trinity-desktop` project
@@ -97,7 +97,8 @@ pnpm -C electron test
 
 Also outside `pnpm test`: `trinity-e2e` (Playwright, run separately), `libs/testing`
 (the shared render wrapper has no specs of its own), and the generated
-`libs/spartan/*` Helm packages other than `overlay`, which are lint and build only.
+`libs/spartan/*` Helm packages, which are lint and build only — their behaviour is pinned
+from `libs/spartan/tests` instead.
 
 ## Desktop
 

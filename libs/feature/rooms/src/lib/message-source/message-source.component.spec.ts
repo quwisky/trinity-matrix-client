@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
-import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import { MessageSourceComponent } from './message-source.component';
 
 async function build(source: string) {
@@ -11,7 +11,7 @@ async function build(source: string) {
   const { fixture, container } = await render(MessageSourceComponent, {
     inputs: { source },
     providers: [
-      MockProvider(DialogRef, { close }),
+      MockProvider(TrnDialogRef, { close }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
   });
@@ -41,7 +41,7 @@ describe('MessageSourceComponent', () => {
   it('closes the dialog', async () => {
     const { cmp } = await build('{}');
     cmp.close();
-    expect(TestBed.inject(DialogRef).close).toHaveBeenCalled();
+    expect(TestBed.inject(TrnDialogRef).close).toHaveBeenCalled();
   });
 
   // The CDK overlay is a bare positioned box: a dialog that doesn't paint its own card

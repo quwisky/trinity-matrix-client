@@ -7,13 +7,12 @@ import {
 } from '@angular/core';
 import { TitleCasePipe } from '@angular/common';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmInput } from '@trinity/helm/input';
-import { HlmLabel } from '@trinity/helm/label';
+import { TrnInput } from '@trinity/components/input';
+import { TrnLabel } from '@trinity/components/label';
 import {
-  HlmRadio,
-  HlmRadioGroup,
-  HlmRadioIndicator,
-} from '@trinity/helm/radio-group';
+  TrnRadioGroupComponent,
+  type TrnRadioOption,
+} from '@trinity/components/radio-group';
 import {
   GIF_PROVIDERS,
   GifSettingsService,
@@ -34,17 +33,22 @@ import {
   imports: [
     TitleCasePipe,
     HlmButton,
-    HlmInput,
-    HlmLabel,
-    HlmRadioGroup,
-    HlmRadio,
-    HlmRadioIndicator,
+    TrnInput,
+    TrnLabel,
+    TrnRadioGroupComponent,
   ],
 })
 export class GifsSectionComponent {
   private readonly settings = inject(GifSettingsService);
 
   readonly providers = GIF_PROVIDERS;
+  /** The same providers, in the shape the radio group takes. */
+  readonly providerOptions: readonly TrnRadioOption<GifProviderId>[] =
+    GIF_PROVIDERS.map((provider) => ({
+      value: provider.id,
+      label: provider.label,
+      testId: `gif-provider-${provider.id}`,
+    }));
   readonly configured = this.settings.configured;
 
   /**

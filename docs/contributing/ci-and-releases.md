@@ -20,7 +20,7 @@ one failing does not stop the others.
 | Job       | Runs                                                                                              | Exists to catch                                                                                                                                                          |
 | --------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `quality` | `pnpm lint`, `pnpm stylelint`, `pnpm format:check`                                                | Lint rules, module-boundary violations, SCSS violations, and formatting drift                                                                                            |
-| `test`    | `pnpm test`                                                                                       | Unit regressions across the 23 projects with a `test` target                                                                                                             |
+| `test`    | `pnpm test`                                                                                       | Unit regressions across the 25 projects with a `test` target                                                                                                             |
 | `build`   | `pnpm build`                                                                                      | AOT-only failures. The production build runs the Angular compiler, which rejects template type errors Vitest never sees, because Vitest transpiles without type checking |
 | `desktop` | Electron install, `ensure:binary`, `compile`, `test`, then `xvfb-run -a pnpm electron:e2e`        | Anything in the desktop shell, up to and including launching the real binary                                                                                             |
 | `e2e`     | Browser install, Docker pre-pull and a dev build in parallel, then `pnpm exec nx e2e trinity-e2e` | Broken user journeys against a real homeserver                                                                                                                           |
@@ -131,9 +131,9 @@ ephemeral runners is a remote cache, which this repository does not use.
     signing certificates in its environment. Renovate keeps the digests current so
     the pins do not rot.
 
-## Two invariant specs that guard what a green run cannot see
+## Three invariant specs that guard what a green run cannot see
 
-Both live in the `scripts` project and run as part of `pnpm test`, so they gate every
+All three live in the `scripts` project and run as part of `pnpm test`, so they gate every
 pull request and every release.
 
 ### The lint invariants spec
@@ -159,6 +159,26 @@ asserts its **shape**:
 - Angular templates resolve through a parser whose name contains `template-parser`,
   because a config change collapsing templates onto the TypeScript parser would leave
   them reporting nothing while `pnpm lint` stayed green.
+- The public tier and the vendored kit carry **distinct** `ui:*` tags. If those collapse back
+  to being equal, no rule can tell the two apart and lint still passes. A companion assertion
+  fails on a ban keyed on a `ui:*` tag no project carries, which is how a tier can go on
+  reading as a closed door after the library carrying it is deleted.
+- The UI vendor bans hold as a table of tier against package, asserting both what each tier
+  is refused **and** what it must keep — a ban that widens onto the wrapper layer is as much
+  a regression as one that disappears.
+- Every `bannedExternalImports` glob ends in `*`. Without it the pattern matches only the
+  bare specifier, which nothing imports, so the rule reports success while enforcing
+  nothing.
+- Nothing is staged any more. The four vendor bans were held at `warn` on the **core**
+  `no-restricted-imports` only while the 103 known violations were being worked off; that
+  block is deleted, and every ban is now an error carried by `depConstraints`. The invariant
+  asserts the absence, so re-introducing a staged block fails the suite rather than quietly
+  reopening the gate.
+- `no-restricted-syntax` over `libs/feature/**` still carries the `matrix-js-sdk`
+  `ImportExpression` selector. Flat config replaces a rule's options wholesale, so a second
+  entry over those globs would delete it without a word — leaving
+  `await import('matrix-js-sdk')` legal in feature code while lint stayed green. Every route
+  here is lazy, so that selector is the half that matters.
 
 Counting rules was rejected deliberately: that fails on every legitimate rule
 addition and gets deleted the first time it cries wolf.
@@ -194,10 +214,27 @@ leaving another row stale.
     - **Reducing the number of exact rows.** A floor assertion requires at least ten
       checkable rows. Without it, a table rewrite would leave a suite that verifies
       nothing while still reporting green.
+    - **Putting anything else in the name cell.** An inline `<!-- … -->` note after the
+      backticked package silently stops the row matching, and the floor is far too coarse
+      to notice one row of fifty going dark. A second assertion now fails on any row whose
+      second cell is a semver but which the parser does not pick up.
+
+### The host-directives spec
+
+`scripts/host-directives.spec.mjs` reads every non-spec `.ts` under `libs/` and `apps/` and
+requires each `hostDirectives` entry to state its `inputs` and `outputs` explicitly, even when
+the answer is `[]`. `hostDirectives` **is** public API: a composed directive's input is
+bindable on our element only if the entry lists it, and the shorthand form exposes nothing —
+which is usually right, but is a decision nobody made. Trinity shipped that bug once, when
+`HlmInput` composed `BrnFieldControlDescribedBy` without listing `aria-describedby`, so the
+attribute was silently overwritten with null and could not be set at all.
+
+It carries the same shape of floor assertion as the two above — it asserts it found entries at
+all — so a parser change that matched nothing cannot pass as a clean sweep.
 
     If you restructure that table, run `pnpm exec nx test scripts` before committing.
 
-A third spec in the same project drives the build-info generator against a temporary
+A fourth spec in the same project drives the build-info generator against a temporary
 manifest and an injected fake `git`, deliberately never reading the real repository
 version — a release bump from 0.0.1 to 0.1.0 had broken it once.
 

@@ -8,19 +8,13 @@ import {
   signal,
 } from '@angular/core';
 import { DateTimeFormatService } from '@trinity/platform-native';
-import { NgIcon, provideIcons } from '@ng-icons/core';
+import { AvatarComponent } from '@trinity/components/avatar';
 import {
-  lucideMessagesSquare,
-  lucideShieldAlert,
-  lucideShieldQuestion,
-} from '@ng-icons/lucide';
-import {
-  AvatarComponent,
   MessageToolbarComponent,
   type MessageAction,
   type MessageToolbarCaps,
-} from '@trinity/ui';
-import { HlmTooltip } from '@trinity/helm/tooltip';
+} from '@trinity/components/message-toolbar';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import { type ThreadSummary } from '@trinity/data-access/timeline';
 import {
   type MatrixLinkTarget,
@@ -35,6 +29,7 @@ import { PollComponent } from '../poll/poll.component';
 import { LinkPreviewComponent } from '../link-preview/link-preview.component';
 import { LocationComponent } from '../location-share/location.component';
 import { VoiceMessageComponent } from '../voice-message/voice-message.component';
+import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
 
 /** A {@link MessageView} plus the presentation state the list derives for it. */
 export interface MessageRow extends MessageView {
@@ -98,7 +93,7 @@ export type MessageRowAction =
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AvatarComponent,
-    NgIcon,
+    TrnIconComponent,
     MediaAttachmentComponent,
     MessageReactionsComponent,
     MessageToolbarComponent,
@@ -108,14 +103,7 @@ export type MessageRowAction =
     LinkPreviewComponent,
     LocationComponent,
     VoiceMessageComponent,
-    HlmTooltip,
-  ],
-  viewProviders: [
-    provideIcons({
-      lucideMessagesSquare,
-      lucideShieldAlert,
-      lucideShieldQuestion,
-    }),
+    TrnTooltip,
   ],
   templateUrl: './message-row.component.html',
   styleUrl: './message-row.component.scss',
@@ -190,8 +178,8 @@ export class MessageRowComponent {
 
   /** Icon shape for an authenticity shield's severity: a distinct glyph per level so the
    * warning (red) and caution (grey) are distinguishable by shape, not colour alone. */
-  shieldIcon(level: 'grey' | 'red'): string {
-    return level === 'red' ? 'lucideShieldAlert' : 'lucideShieldQuestion';
+  shieldIcon(level: 'grey' | 'red'): TrnIconName {
+    return level === 'red' ? 'shield-alert' : 'shield-question';
   }
 
   /** Whether the "seen by" reader list is expanded (toggled from the receipt cluster). */

@@ -4,7 +4,7 @@ import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { afterEach, describe, expect, it, beforeEach, vi } from 'vitest';
 import { type MessageView } from '@trinity/util/matrix';
-import { TrnAlertService } from '@trinity/helm/overlay';
+import { TrnAlertService } from '@trinity/components/overlay';
 import { By } from '@angular/platform-browser';
 import { SimpleMessageListComponent } from './simple-message-list.component';
 import { MessageComposerComponent } from '../../message-composer/message-composer.component';

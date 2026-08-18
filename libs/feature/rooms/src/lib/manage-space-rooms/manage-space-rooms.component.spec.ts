@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
-import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import {
   RoomsService,
   SpaceChildrenService,
@@ -78,7 +78,7 @@ async function build(
           })),
         ) as never,
       }),
-      MockProvider(DialogRef, { close }),
+      MockProvider(TrnDialogRef, { close }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
   });
@@ -452,7 +452,7 @@ describe('ManageSpaceRoomsComponent', () => {
     });
 
     it('un-ticks the rendered checkbox, not just the row model', async () => {
-      // At the DOM, because that is where the bug is. `HlmCheckbox.checked` is a
+      // At the DOM, because that is where the bug is. `TrnCheckboxComponent.checked` is a
       // linkedSignal the click handler sets locally, so the row model going back to false
       // is necessary but not sufficient — the INPUT has to transition for the checkbox to
       // re-derive. Asserting `childList()[0].suggested` alone passes while the box stays

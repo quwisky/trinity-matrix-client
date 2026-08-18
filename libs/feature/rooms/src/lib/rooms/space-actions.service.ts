@@ -11,13 +11,13 @@ import {
   type RoomSortMode,
   type SpaceChildRoom,
 } from '@trinity/data-access/rooms';
-import { TrnAlertService, TrnDialogService } from '@trinity/helm/overlay';
+import { TrnAlertService, TrnDialogService } from '@trinity/components/overlay';
 import { map, switchMap } from 'rxjs';
 import { AddToSpaceComponent } from '../add-to-space/add-to-space.component';
 import { ManageSpaceRoomsComponent } from '../manage-space-rooms/manage-space-rooms.component';
 import { SpaceMembersComponent } from '../space-members/space-members.component';
 import { SpaceSettingsComponent } from '../space-settings/space-settings.component';
-import { runWithBusy } from '@trinity/ui';
+import { runWithBusy } from '@trinity/util/ui';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';

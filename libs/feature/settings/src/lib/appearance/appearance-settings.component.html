@@ -4,34 +4,13 @@
 >
   Appearance
 </h2>
-<hlm-radio-group
+<trn-radio-group
   class="px-4 py-2"
   aria-labelledby="appearance-mode-heading"
+  [options]="themeOptions"
   [value]="theme.preference()"
   (valueChange)="onThemeChange($event)"
->
-  <label
-    class="flex cursor-pointer items-center gap-3 text-sm font-medium"
-    data-testid="theme-system"
-  >
-    <hlm-radio value="system"><hlm-radio-indicator /></hlm-radio>
-    Use system setting
-  </label>
-  <label
-    class="flex cursor-pointer items-center gap-3 text-sm font-medium"
-    data-testid="theme-light"
-  >
-    <hlm-radio value="light"><hlm-radio-indicator /></hlm-radio>
-    Light
-  </label>
-  <label
-    class="flex cursor-pointer items-center gap-3 text-sm font-medium"
-    data-testid="theme-dark"
-  >
-    <hlm-radio value="dark"><hlm-radio-indicator /></hlm-radio>
-    Dark
-  </label>
-</hlm-radio-group>
+/>
 <p class="block px-4 py-2 text-13 text-muted-foreground">
   Showing the {{ theme.resolved() }} theme.
 </p>
@@ -43,28 +22,15 @@
   Text size
 </h2>
 <div class="px-4 py-2">
-  <hlm-select
-    class="block"
+  <trn-select
     data-testid="text-scale-select"
     aria-labelledby="appearance-text-size-heading"
+    placeholder="Select a text size"
+    triggerClass="w-full"
+    [options]="textScaleOptions"
     [value]="theme.textScale()"
-    [itemToString]="textScaleLabel"
     (valueChange)="onTextScaleChange($event)"
-  >
-    <hlm-select-trigger class="w-full">
-      <hlm-select-value placeholder="Select a text size" />
-    </hlm-select-trigger>
-    <hlm-select-content *hlmSelectPortal>
-      @for (scale of theme.textScales; track scale.id) {
-        <hlm-select-item
-          [value]="scale.id"
-          [attr.data-testid]="'text-scale-' + scale.id"
-        >
-          {{ scale.label }}
-        </hlm-select-item>
-      }
-    </hlm-select-content>
-  </hlm-select>
+  />
 </div>
 <p class="block px-4 py-2 text-13 text-muted-foreground">
   Scales message text and most of what is written around it. Some parts of the
@@ -80,27 +46,15 @@
   Palette
 </h2>
 <div class="px-4 py-2">
-  <hlm-select
-    class="block"
+  <trn-select
     data-testid="palette-select"
     aria-labelledby="appearance-palette-heading"
+    placeholder="Select a palette"
+    triggerClass="w-full"
+    [options]="paletteOptions"
     [value]="theme.palette()"
     (valueChange)="onPaletteChange($event)"
-  >
-    <hlm-select-trigger class="w-full">
-      <hlm-select-value placeholder="Select a palette" />
-    </hlm-select-trigger>
-    <hlm-select-content *hlmSelectPortal>
-      @for (palette of theme.palettes; track palette.id) {
-        <hlm-select-item
-          [value]="palette.id"
-          [attr.data-testid]="'palette-' + palette.id"
-        >
-          {{ palette.label }}
-        </hlm-select-item>
-      }
-    </hlm-select-content>
-  </hlm-select>
+  />
 </div>
 
 <h2
@@ -110,27 +64,15 @@
   Time format
 </h2>
 <div class="px-4 py-2">
-  <hlm-select
-    class="block"
+  <trn-select
     data-testid="time-format-select"
     aria-labelledby="appearance-time-heading"
+    placeholder="Select a time format"
+    triggerClass="w-full"
+    [options]="timeFormatOptions()"
     [value]="format.timeFormat()"
     (valueChange)="onTimeFormatChange($event)"
-  >
-    <hlm-select-trigger class="w-full">
-      <hlm-select-value placeholder="Select a time format" />
-    </hlm-select-trigger>
-    <hlm-select-content *hlmSelectPortal>
-      @for (option of format.timeFormats; track option.id) {
-        <hlm-select-item
-          [value]="option.id"
-          [attr.data-testid]="'time-format-' + option.id"
-        >
-          {{ option.label }} ({{ format.sampleTime(sample, option.id) }})
-        </hlm-select-item>
-      }
-    </hlm-select-content>
-  </hlm-select>
+  />
 </div>
 
 <h2
@@ -140,27 +82,15 @@
   Date format
 </h2>
 <div class="px-4 py-2">
-  <hlm-select
-    class="block"
+  <trn-select
     data-testid="date-format-select"
     aria-labelledby="appearance-date-heading"
+    placeholder="Select a date format"
+    triggerClass="w-full"
+    [options]="dateFormatOptions()"
     [value]="format.dateFormat()"
     (valueChange)="onDateFormatChange($event)"
-  >
-    <hlm-select-trigger class="w-full">
-      <hlm-select-value placeholder="Select a date format" />
-    </hlm-select-trigger>
-    <hlm-select-content *hlmSelectPortal>
-      @for (option of format.dateFormats; track option.id) {
-        <hlm-select-item
-          [value]="option.id"
-          [attr.data-testid]="'date-format-' + option.id"
-        >
-          {{ option.label }} ({{ format.sampleDate(sample, option.id) }})
-        </hlm-select-item>
-      }
-    </hlm-select-content>
-  </hlm-select>
+  />
 </div>
 <p
   class="block px-4 py-2 text-13 text-muted-foreground"
@@ -182,35 +112,15 @@
   keeps its own choice.
 </p>
 <div class="px-4 py-2">
-  <hlm-select
-    class="block"
+  <trn-select
     data-testid="space-order-select"
     aria-labelledby="appearance-space-order-heading"
+    placeholder="Select an order"
+    triggerClass="w-full"
+    [options]="spaceOrderOptions"
     [value]="spaceOrder.defaultMode()"
-    [itemToString]="spaceOrderLabel"
     (valueChange)="onSpaceOrderChange($event)"
-  >
-    <hlm-select-trigger class="w-full">
-      <hlm-select-value placeholder="Select an order" />
-    </hlm-select-trigger>
-    <hlm-select-content *hlmSelectPortal>
-      @for (option of spaceOrder.modes; track option.id) {
-        <hlm-select-item
-          [value]="option.id"
-          [attr.data-testid]="'space-order-' + option.id"
-        >
-          <!-- A div, not a span: hlm-select-item forces `flex items-center gap-2` onto its
-               last direct <span> child, which would lay these two lines out side by side. -->
-          <div class="flex flex-col items-start gap-0.5">
-            <span>{{ option.label }}</span>
-            <span class="text-xs text-muted-foreground">
-              {{ option.description }}
-            </span>
-          </div>
-        </hlm-select-item>
-      }
-    </hlm-select-content>
-  </hlm-select>
+  />
 </div>
 <p class="block px-4 pb-2 text-13 text-muted-foreground">
   Favourites always sit in their own group, so “Space order” applies within each
@@ -232,7 +142,7 @@
   class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
   data-testid="timeline-show-membership"
 >
-  <hlm-checkbox
+  <trn-checkbox
     [checked]="systemLines.showMembership()"
     (checkedChange)="systemLines.setShowMembership($event)"
   />
@@ -246,7 +156,7 @@
   class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
   data-testid="timeline-show-profile"
 >
-  <hlm-checkbox
+  <trn-checkbox
     [checked]="systemLines.showProfile()"
     (checkedChange)="systemLines.setShowProfile($event)"
   />
@@ -257,7 +167,7 @@
   class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
   data-testid="timeline-show-room-changes"
 >
-  <hlm-checkbox
+  <trn-checkbox
     [checked]="systemLines.showRoomChanges()"
     (checkedChange)="systemLines.setShowRoomChanges($event)"
   />
@@ -279,7 +189,7 @@
   class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
   data-testid="composer-show-toolbar"
 >
-  <hlm-checkbox
+  <trn-checkbox
     [checked]="composer.showFormattingToolbar()"
     (checkedChange)="composer.setShowFormattingToolbar($event)"
   />

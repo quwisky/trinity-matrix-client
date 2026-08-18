@@ -7,10 +7,10 @@ import {
   input,
   signal,
 } from '@angular/core';
-import { DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
 import { TimelineService } from '@trinity/data-access/timeline';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { type ReactionDetail } from '@trinity/util/matrix';
 
 /**
@@ -30,8 +30,7 @@ import { type ReactionDetail } from '@trinity/util/matrix';
 })
 export class ReactionsDialogComponent implements OnInit {
   private readonly timeline = inject(TimelineService);
-  private readonly dialogRef =
-    inject<DialogRef<void, ReactionsDialogComponent>>(DialogRef);
+  private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef);
 
   /** The message whose reactors to list (populated from the dialog's `inputs`). */
   readonly eventId = input.required<string>();

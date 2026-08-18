@@ -1,9 +1,9 @@
-import { DialogRef } from '@angular/cdk/dialog';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import {
   RoomsService,
   type UserSearchResult,
 } from '@trinity/data-access/rooms';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
@@ -31,7 +31,7 @@ describe('UserPickerComponent', () => {
   function renderPicker() {
     return render(UserPickerComponent, {
       providers: [
-        { provide: DialogRef, useValue: { close: dismiss } },
+        { provide: TrnDialogRef, useValue: { close: dismiss } },
         MockProvider(RoomsService, { searchUsers }),
       ],
       imports: [MockComponent(AvatarComponent)],

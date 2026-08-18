@@ -23,7 +23,7 @@
         }}</span>
 
         <label class="manage-rooms__suggested">
-          <hlm-checkbox
+          <trn-checkbox
             [checked]="child.suggested"
             [disabled]="writeLocked()"
             (checkedChange)="toggleSuggested(child.childId, $event)"
@@ -42,7 +42,7 @@
           [attr.aria-label]="'Move ' + child.name + ' up'"
           [attr.data-testid]="'move-up-' + child.childId"
         >
-          <ng-icon name="lucideChevronUp" />
+          <trn-icon name="chevron-up" />
         </button>
         <button
           hlmBtn
@@ -54,7 +54,7 @@
           [attr.aria-label]="'Move ' + child.name + ' down'"
           [attr.data-testid]="'move-down-' + child.childId"
         >
-          <ng-icon name="lucideChevronDown" />
+          <trn-icon name="chevron-down" />
         </button>
       </li>
     } @empty {

@@ -15,6 +15,9 @@ const tailwindCssConfigPath = join(
 );
 
 /** Shared by the two rules below, which police the same ban over different AST shapes. */
+const KIT_IMPORT_MESSAGE =
+  'Feature, ui and app code reaches for @trinity/components/* (the public tier), not the vendored kit. The tier owns the vendor API so a swap touches one library instead of every call site — see docs/architecture/ui-and-theming.md. If the component you need has no wrapper yet, add one there rather than importing @trinity/helm/* here.';
+
 const SDK_IMPORT_MESSAGE =
   'Only libs/data-access/* (and libs/util/matrix, which models the SDK types) may import matrix-js-sdk. Re-export what you need from the data-access lib that owns the domain.';
 
@@ -47,6 +50,87 @@ export default defineConfig([
           enforceBuildableLibDependency: true,
           allow: [],
           depConstraints: [
+            // Third-party UI stops at the UI tier.
+            //
+            // The trailing `*` on each glob is load-bearing, and its absence is silent:
+            // `bannedExternalImports` is matched as a glob against the whole specifier, so
+            // a bare '@angular/cdk' matches only that exact string — which nothing imports,
+            // because every real import is a deep '@angular/cdk/dialog'. The rule then
+            // reports success and the ban enforces nothing. `lint-invariants.spec.mjs`
+            // pins the `*` for exactly this reason.
+            //
+            // There is no `ui:wrapper` entry here any more, and its absence is a decision
+            // rather than an oversight. That tag belonged to `libs/ui`, which held the
+            // presentational components and then, briefly, nothing but a DI seam; the
+            // components went to the public tier and the seam became
+            // `@trinity/components/encryption-dialog`, so the library — and the only project
+            // carrying the tag — is gone. A `bannedExternalImports` entry keyed on a tag no
+            // project has enforces exactly nothing while reading as a closed door, which is
+            // the shape this whole boundary exists to eliminate. `lint-invariants.spec.mjs`
+            // fails on a tier named in its table that no project carries, so this cannot
+            // quietly come back.
+            //
+            // What remains of the `ui:*` axis is two tiers, BOTH deliberately absent from
+            // this list: `ui:public` (libs/components/*) and `ui:vendor-wrapper` (the
+            // generated kit). Both ARE wrapper layers — naming a vendor is their job — and
+            // banning it there would ban them from existing. So every `type:ui` project may
+            // now name a vendor, and what contains the public tier is the other direction: a
+            // consumer-side ban keeps libs/feature and apps from reaching past it into
+            // `@trinity/helm/*`. The axis still earns its keep by telling those two tiers
+            // apart for that bookkeeping.
+            //
+            // `type:feature` carries all four. #151 closed @angular/cdk and
+            // @spartan-ng/brain, #154 @ng-icons, #152 @ctrl/ngx-emoji-mart — and with the
+            // last one nothing is staged any more, so the temporary `warn` block that used
+            // to sit further down is gone.
+            {
+              // Closed by #151 (@angular/cdk, @spartan-ng/brain), #154 (@ng-icons) and
+              // #152 (@ctrl/ngx-emoji-mart), so all four are enforced rather than staged:
+              // a new one fails `pnpm lint`, statically or through a lazy `import()`.
+              sourceTag: 'type:feature',
+              bannedExternalImports: [
+                '@spartan-ng/brain*',
+                '@angular/cdk*',
+                '@ng-icons*',
+                '@ctrl/ngx-emoji-mart*',
+              ],
+            },
+            {
+              sourceTag: 'type:data-access',
+              bannedExternalImports: [
+                '@spartan-ng/brain*',
+                '@angular/cdk*',
+                '@ng-icons*',
+                '@ctrl/ngx-emoji-mart*',
+              ],
+            },
+            {
+              sourceTag: 'type:util',
+              bannedExternalImports: [
+                '@spartan-ng/brain*',
+                '@angular/cdk*',
+                '@ng-icons*',
+                '@ctrl/ngx-emoji-mart*',
+              ],
+            },
+            {
+              sourceTag: 'type:platform',
+              bannedExternalImports: [
+                '@spartan-ng/brain*',
+                '@angular/cdk*',
+                '@ng-icons*',
+                '@ctrl/ngx-emoji-mart*',
+              ],
+            },
+            {
+              sourceTag: 'type:app',
+              bannedExternalImports: [
+                '@spartan-ng/brain*',
+                '@angular/cdk*',
+                '@ng-icons*',
+                '@ctrl/ngx-emoji-mart*',
+              ],
+            },
             {
               sourceTag: 'scope:matrix',
               onlyDependOnLibsWithTags: ['scope:matrix', 'scope:shared'],
@@ -124,17 +208,31 @@ export default defineConfig([
     // data-access/rooms does for JoinRule and util/matrix does for HTTPError — not to
     // widen this rule.
     // libs/spartan is included even though it is generated: it is presentational UI that
-    // must never reach the SDK, and leaving it out made this rule the one thing
-    // libs/ui and libs/spartan disagreed on — which scripts/lint-invariants.spec.mjs
-    // correctly failed on, since a widening gap between those two configs is exactly
-    // what that invariant exists to catch.
+    // must never reach the SDK, and leaving it out made this rule the one thing the two UI
+    // configs disagreed on — which scripts/lint-invariants.spec.mjs correctly failed on,
+    // since a widening gap between them is exactly what that invariant exists to catch.
+    // Split from the consumer tiers (libs/feature, apps), which carry this same
+    // rule PLUS the kit ban in the block below. Flat config replaces a rule's options
+    // wholesale, so two blocks configuring `@typescript-eslint/no-restricted-imports` over
+    // overlapping globs would silently drop whichever set lost — the globs are disjoint on
+    // purpose, and `lint-invariants.spec.mjs` asserts the SDK ban still reaches both halves.
     files: [
-      'libs/feature/**/*.ts',
-      'libs/ui/**/*.ts',
       'libs/spartan/**/*.ts',
+      // The public component tier, for the same reason libs/spartan is here: it is
+      // presentational UI that must never reach the SDK. Absence from this list is how a
+      // library is PERMITTED to import matrix-js-sdk (that is how data-access and
+      // util/matrix are allowed), so a new UI lib that is merely forgotten lands in the
+      // allowed bucket — silently, and with nothing else to catch it. That is no longer
+      // "nothing": `lint-invariants.spec.mjs` now sweeps every library and fails on any one
+      // not named here and not sanctioned, which is what caught `libs/util/ui` on the day it
+      // was created.
+      'libs/components/**/*.ts',
       'libs/platform-native/**/*.ts',
       'libs/testing/**/*.ts',
-      'apps/**/*.ts',
+      // `libs/util/ui` and not `libs/util/**`: the sibling `libs/util/matrix` is the
+      // sanctioned exception that models the SDK's own types, so a directory-wide glob here
+      // would ban the one library that has to import it.
+      'libs/util/ui/**/*.ts',
     ],
     rules: {
       '@typescript-eslint/no-restricted-imports': [
@@ -153,6 +251,66 @@ export default defineConfig([
       // lazily-loaded feature component is exactly the shape that would reach for one,
       // since every route in this app is lazy. Same rule, expressed over the AST node
       // that form actually produces.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'ImportExpression[source.value=/^matrix-js-sdk/]',
+          message: SDK_IMPORT_MESSAGE,
+        },
+      ],
+    },
+  },
+  {
+    // The consumer side of the public component tier — the half that makes it a boundary
+    // rather than a suggestion.
+    //
+    // `@nx/enforce-module-boundaries` cannot express this. Its `notDependOnLibsWithTags` is
+    // TRANSITIVE: the tier depends on the kit by design, so banning `ui:vendor-wrapper` from
+    // feature code also bans it through `@trinity/components/*` and fails on the very path it
+    // is meant to bless. Measured, not assumed — the first attempt reported
+    // `components-overlay -> button` against the then-existing libs/ui. A direct-import rule
+    // is the right shape,
+    // and it is the one this repo already uses for the matrix-js-sdk ban above.
+    //
+    // These globs are disjoint from that block's on purpose: flat config replaces a rule's
+    // options wholesale, so overlapping them would silently drop one set of patterns. That is
+    // why the SDK pattern is restated here rather than inherited.
+    files: ['libs/feature/**/*.ts', 'apps/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['matrix-js-sdk', 'matrix-js-sdk/*'],
+              message: SDK_IMPORT_MESSAGE,
+            },
+            {
+              // Staged, exactly as #148 staged the vendor bans. Four kit libraries are still
+              // reached from here — `button` (50 call sites), `dropdown-menu` (6) and
+              // `sonner` (1) — so they are excepted by name while the rest of the kit is
+              // closed today. `avatar` left the list when `@trinity/components/avatar`
+              // moved into the tier and took the kit import with it, which is exactly how
+              // the list is meant to shrink. A NEW reach past the tier fails immediately, and the
+              // exceptions are a list that shrinks to zero as each wrapper lands rather than
+              // a permanent carve-out. `lint-invariants.spec.mjs` pins it, so removing one
+              // is a deliberate step and adding a fifth is not possible by accident.
+              group: [
+                '@trinity/helm/*',
+                '!@trinity/helm/button',
+                '!@trinity/helm/dropdown-menu',
+                '!@trinity/helm/sonner',
+              ],
+              message: KIT_IMPORT_MESSAGE,
+            },
+          ],
+        },
+      ],
+      // Restated here for the same reason the SDK pattern above is: splitting the globs
+      // means this block owns these tiers outright. Dropping it was not hypothetical — the
+      // first version of this split did exactly that, and `lint-invariants.spec.mjs` failed
+      // on the missing selector, which is the whole reason that assertion exists. Every
+      // route in this app is lazy, so this form is the half that matters here.
       'no-restricted-syntax': [
         'error',
         {
@@ -295,12 +453,22 @@ export default defineConfig([
     },
   },
   {
-    // libs/spartan/* is canonical spartan-ng "helm" code generated by
-    // @spartan-ng/cli (we own it, but don't author it). It intentionally breaks
-    // our app conventions: `hlm`/`brn` selector prefixes, un-suffixed class names
-    // (HlmButton), and aliased inputs (incl. `class`). Exempt it from those rules
-    // rather than fighting the generator on every re-sync.
-    files: ['libs/spartan/**/*.ts'],
+    // `hlm-*.ts` is canonical spartan-ng "helm" code generated by @spartan-ng/cli (we own
+    // it, but don't author it). It intentionally breaks our app conventions: `hlm`/`brn`
+    // selector prefixes, un-suffixed class names (HlmButton), and aliased inputs (incl.
+    // `class`). Exempt it from those rules rather than fighting the generator on every
+    // re-sync.
+    //
+    // Scoped to the generated FILES, not to `libs/spartan/**`. Three libraries in that
+    // directory — overlay, icon and emoji-picker — are hand-authored Trinity code, and a
+    // directory-wide glob silently exempted them too: `<trn-icon>` could have been renamed
+    // to `<icon>`, or `TrnEmojiPickerComponent` to `TrnEmojiPicker`, and `pnpm lint` would
+    // have agreed. That is the public wrapper tier this whole boundary exists to build, so
+    // it is exactly the code the naming rules should hold. `hlm-*` is the same
+    // generated-vs-authored split `.prettierignore` already draws, and the only non-`hlm-*`
+    // files in the sixteen generated libraries are barrels plus `utils/src/lib/{hlm,
+    // provide-spartan-hlm}.ts`, none of which declares a component or directive.
+    files: ['libs/spartan/**/hlm-*.ts'],
     rules: {
       '@angular-eslint/component-class-suffix': 'off',
       '@angular-eslint/component-selector': 'off',

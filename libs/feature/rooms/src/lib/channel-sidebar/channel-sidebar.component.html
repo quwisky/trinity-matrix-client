@@ -9,7 +9,7 @@
         title="Search (Ctrl/Cmd+K)"
         data-testid="open-switcher"
       >
-        <ng-icon name="lucideCommand" aria-hidden="true" />
+        <trn-icon name="command" />
       </button>
       <!-- A space keeps only its two most-reached-for actions out here; the rest live in the
            overflow. The sidebar is a fixed 280px at EVERY breakpoint, so this is not a
@@ -23,7 +23,7 @@
           aria-label="Create a channel"
           title="Create a channel"
         >
-          <ng-icon name="lucidePlus" aria-hidden="true" />
+          <trn-icon name="plus" />
         </button>
         <button
           class="sidebar__action"
@@ -33,7 +33,7 @@
           title="More actions"
           data-testid="space-actions-overflow"
         >
-          <ng-icon name="lucideEllipsisVertical" aria-hidden="true" />
+          <trn-icon name="ellipsis-vertical" />
         </button>
       } @else {
         <!-- Home has three buttons and already fits, so it keeps the flat row: an overflow
@@ -46,7 +46,7 @@
             title="Mark all as read"
             data-testid="mark-all-read"
           >
-            <ng-icon name="lucideCheckCheck" aria-hidden="true" />
+            <trn-icon name="check-check" />
           </button>
         }
         <button
@@ -55,7 +55,7 @@
           aria-label="New room or direct message"
           title="New room or direct message"
         >
-          <ng-icon name="lucidePlus" aria-hidden="true" />
+          <trn-icon name="plus" />
         </button>
       }
     </div>
@@ -67,7 +67,7 @@
   <div class="sidebar__filter">
     <input
       #filterBox
-      hlmInput
+      trnInput
       class="h-8 w-full pr-8 text-sm"
       type="text"
       [value]="filterQuery()"
@@ -90,7 +90,7 @@
         title="Clear filter"
         data-testid="sidebar-filter-clear"
       >
-        <ng-icon name="lucideX" aria-hidden="true" />
+        <trn-icon name="x" />
       </button>
     }
   </div>
@@ -229,7 +229,7 @@
           (triggered)="markAllRead.emit()"
           data-testid="mark-all-read"
         >
-          <ng-icon name="lucideCheckCheck" />
+          <trn-icon name="check-check" />
           Mark all as read
         </button>
       }
@@ -242,7 +242,7 @@
         [attr.aria-label]="'Order rooms: ' + sortModeLabel()"
         data-testid="space-sort"
       >
-        <ng-icon name="lucideArrowDownWideNarrow" />
+        <trn-icon name="arrow-down-wide-narrow" />
         Order rooms
         <!-- No auto margin here: the sub-indicator already carries `ms-auto`, and a second
              one splits the free space between the two rather than pinning either. `ps-3`
@@ -257,7 +257,7 @@
         (triggered)="inviteToSpace.emit()"
         data-testid="space-invite"
       >
-        <ng-icon name="lucideUserPlus" />
+        <trn-icon name="user-plus" />
         Invite people
       </button>
       <button
@@ -265,7 +265,7 @@
         (triggered)="openSpaceMembers.emit()"
         data-testid="open-space-members"
       >
-        <ng-icon name="lucideUsers" />
+        <trn-icon name="users" />
         Members
       </button>
       @if (canCurateSpace()) {
@@ -274,7 +274,7 @@
           (triggered)="addToSpace.emit()"
           data-testid="space-add-rooms"
         >
-          <ng-icon name="lucideFolderPlus" />
+          <trn-icon name="folder-plus" />
           Add existing rooms
         </button>
         <button
@@ -282,7 +282,7 @@
           (triggered)="manageSpaceRooms.emit()"
           data-testid="space-manage-rooms"
         >
-          <ng-icon name="lucideListOrdered" />
+          <trn-icon name="list-ordered" />
           Organise rooms
         </button>
         <button
@@ -290,7 +290,7 @@
           (triggered)="createSubspace.emit()"
           data-testid="space-create-subspace"
         >
-          <ng-icon name="lucideLayers" />
+          <trn-icon name="layers" />
           Create a space inside
         </button>
       }
@@ -300,7 +300,7 @@
           (triggered)="openSpaceSettings.emit()"
           data-testid="open-space-settings"
         >
-          <ng-icon name="lucideSettings" />
+          <trn-icon name="settings" />
           Space settings
         </button>
       }
@@ -311,7 +311,7 @@
         (triggered)="leaveSpace.emit()"
         data-testid="space-leave"
       >
-        <ng-icon name="lucideLogOut" />
+        <trn-icon name="log-out" />
         Leave space
       </button>
     </div>

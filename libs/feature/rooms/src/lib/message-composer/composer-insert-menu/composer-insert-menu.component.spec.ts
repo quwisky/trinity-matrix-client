@@ -154,7 +154,7 @@ describe('ComposerInsertMenuComponent', () => {
       inputs: { hasMenu: true, gifDownloading: true },
     });
 
-    expect(container.querySelector('hlm-spinner')).not.toBeNull();
+    expect(container.querySelector('trn-spinner')).not.toBeNull();
   });
 
   it('emits the action each tray item stands for', async () => {

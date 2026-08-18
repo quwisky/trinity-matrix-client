@@ -4,9 +4,8 @@ import {
   computed,
   input,
 } from '@angular/core';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideMapPin } from '@ng-icons/lucide';
 import { type LocationView } from '@trinity/util/matrix';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 /**
  * A shared-location (`m.location`) card: a pin, the coordinates, and an "Open in maps"
@@ -16,8 +15,7 @@ import { type LocationView } from '@trinity/util/matrix';
 @Component({
   selector: 'trn-location',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgIcon],
-  viewProviders: [provideIcons({ lucideMapPin })],
+  imports: [TrnIconComponent],
   templateUrl: './location.component.html',
   styleUrl: './location.component.scss',
 })

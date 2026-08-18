@@ -9,10 +9,10 @@
   </p>
 
   <div>
-    <label hlmLabel for="manual-location">Location</label>
+    <label trnLabel for="manual-location">Location</label>
     <input
       id="manual-location"
-      hlmInput
+      trnInput
       class="mt-1 w-full"
       placeholder="48.8584, 2.2945 or a map link"
       aria-describedby="manual-location-hint"
@@ -27,7 +27,7 @@
       class="flex items-center gap-1.5 text-sm text-muted-foreground"
       data-testid="manual-location-preview"
     >
-      <ng-icon name="lucideMapPin" aria-hidden="true" />
+      <trn-icon name="map-pin" />
       <span>{{ point.lat.toFixed(5) }}, {{ point.lng.toFixed(5) }}</span>
     </p>
   }
@@ -43,9 +43,9 @@
       data-testid="manual-location-approx"
     >
       @if (locating()) {
-        <hlm-spinner class="mr-2" />
+        <trn-spinner class="mr-2" />
       } @else {
-        <ng-icon name="lucideLocateFixed" class="mr-2" aria-hidden="true" />
+        <trn-icon name="locate-fixed" class="mr-2" />
       }
       Use my approximate location
     </button>

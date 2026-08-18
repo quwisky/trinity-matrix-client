@@ -3,13 +3,13 @@ import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { of, throwError, Subject } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
-import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import {
   PublicRoomsService,
   type PublicRoomsPage,
   type PublicRoomSummary,
 } from '@trinity/data-access/rooms';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { RoomDirectoryComponent } from './room-directory.component';
 
 function room(over: Partial<PublicRoomSummary> = {}): PublicRoomSummary {
@@ -43,7 +43,7 @@ async function build(
     imports: [MockComponent(AvatarComponent)],
     providers: [
       MockProvider(PublicRoomsService, { search, join }),
-      MockProvider(DialogRef, { close }),
+      MockProvider(TrnDialogRef, { close }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
   });
@@ -223,6 +223,6 @@ describe('RoomDirectoryComponent', () => {
   it('closes resolving null when dismissed', async () => {
     const { cmp } = await build();
     cmp.close();
-    expect(TestBed.inject(DialogRef).close).toHaveBeenCalledWith(null);
+    expect(TestBed.inject(TrnDialogRef).close).toHaveBeenCalledWith(null);
   });
 });

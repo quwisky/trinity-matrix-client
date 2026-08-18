@@ -1,0 +1,12 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "components-overlay",
+  "projectType": "library",
+  "sourceRoot": "libs/components/overlay/src",
+  "prefix": "trn",
+  "tags": ["type:ui", "scope:shared", "ui:public"],
+  "targets": {
+    "test": {},
+    "typecheck": {}
+  }
+}

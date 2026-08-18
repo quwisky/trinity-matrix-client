@@ -12,10 +12,10 @@
       size="icon"
       (click)="close()"
       data-testid="pinned-close"
-      hlmTooltip="Close pinned messages"
+      trnTooltip="Close pinned messages"
       aria-label="Close pinned messages"
     >
-      <ng-icon name="lucideX" class="text-xl" />
+      <trn-icon name="x" size="1.25rem" />
     </button>
   </div>
 
@@ -44,10 +44,10 @@
             class="pin-item__unpin"
             data-testid="pinned-unpin"
             (click)="unpin(p.id)"
-            hlmTooltip="Unpin message"
+            trnTooltip="Unpin message"
             [attr.aria-label]="'Unpin message from ' + p.senderName"
           >
-            <ng-icon name="lucidePinOff" />
+            <trn-icon name="pin-off" />
           </button>
         }
       </div>

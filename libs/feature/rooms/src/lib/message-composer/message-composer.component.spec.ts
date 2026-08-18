@@ -4,11 +4,9 @@ import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { render, type ComponentInput } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import type { EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
 import {
   ComposerSettingsService,
   DraftStoreService,
-  ThemeService,
   VoiceRecorderService,
 } from '@trinity/platform-native';
 import {
@@ -17,7 +15,7 @@ import {
   type GifProviderId,
   type GifResult,
 } from '@trinity/data-access/gif';
-import { TrnToastService } from '@trinity/helm/overlay';
+import { TrnToastService } from '@trinity/components/overlay';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import {
   MessageComposerComponent,
@@ -286,7 +284,9 @@ describe('MessageComposerComponent', () => {
     const wrapper = () =>
       container.querySelector('[data-testid=upload-progress]');
     const bar = () =>
-      container.querySelector('hlm-progress') as HTMLElement | null;
+      container.querySelector(
+        'trn-progress [role="progressbar"]',
+      ) as HTMLElement | null;
 
     // Idle: no progress UI.
     expect(wrapper()).toBeNull();
@@ -364,24 +364,36 @@ describe('MessageComposerComponent', () => {
     cmp.pickerOpen.set(true);
 
     cmp.onPickerSelect({
-      emoji: { native: '😎' },
-      $event: new Event('click'),
-    } as unknown as EmojiEvent);
+      native: '😎',
+      id: 'sunglasses',
+      colons: ':sunglasses:',
+    });
 
     expect(cmp.text()).toBe('a😎b');
     expect(cmp.pickerOpen()).toBe(false);
   });
 
-  it('mirrors the active app theme into the picker dark mode', async () => {
-    const resolved = signal<'light' | 'dark'>('dark');
-    const { fixture } = await renderComposer({}, [
-      MockProvider(ThemeService, { resolved: resolved.asReadonly() }),
-    ]);
+  it('points the emoji trigger at the panel that actually exists', async () => {
+    // Two independent string literals — `pickerId` on the panel and `aria-controls` on the
+    // trigger — with nothing tying them together. A typo in either leaves a button
+    // referencing an id that is not in the document, which is silent: the attribute is
+    // present, it just resolves to nothing. Same shape as the aria-describedby defect in
+    // #153, which is why it is asserted rather than assumed.
+    const { fixture, container } = await renderComposer();
     const cmp = fixture.componentInstance;
+    const trigger = container.querySelector<HTMLElement>('.composer__emoji');
 
-    expect(cmp.isDarkMode()).toBe(true);
-    resolved.set('light');
-    expect(cmp.isDarkMode()).toBe(false);
+    // Closed: nothing to control, so no dangling reference.
+    expect(trigger?.getAttribute('aria-expanded')).toBe('false');
+    expect(trigger?.getAttribute('aria-controls')).toBeNull();
+
+    cmp.pickerOpen.set(true);
+    fixture.detectChanges();
+
+    const controls = trigger?.getAttribute('aria-controls');
+    expect(trigger?.getAttribute('aria-expanded')).toBe('true');
+    expect(controls).toBeTruthy();
+    expect(container.querySelector(`#${controls}`)).not.toBeNull();
   });
 
   function pasteEvent(opts: { files?: File[]; items?: unknown[] }): {
@@ -1146,7 +1158,7 @@ describe('MessageComposerComponent', () => {
     // The `+` trigger swaps its icon for a spinner while a share (or GIF fetch) runs;
     // the tray's own Location item carries the disabled state.
     const trigger = container.querySelector('[data-testid=composer-insert]');
-    expect(trigger?.querySelector('hlm-spinner')).not.toBeNull();
+    expect(trigger?.querySelector('trn-spinner')).not.toBeNull();
   });
 
   describe('voice messages', () => {

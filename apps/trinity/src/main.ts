@@ -45,11 +45,12 @@ import {
   providePlatformConfigEntries,
 } from '@trinity/platform-native';
 import {
-  AVATAR_RESOLVER,
   ENCRYPTION_DIALOG_COMPONENTS,
   type EncryptionDialogLoaders,
-} from '@trinity/ui';
-import { provideSpartanHlm } from '@trinity/helm/utils';
+} from '@trinity/components/encryption-dialog';
+import { AVATAR_RESOLVER } from '@trinity/components/avatar';
+import { provideTrnIcons } from '@trinity/components/icon';
+import { provideTrnOverlayDefaults } from '@trinity/components/overlay';
 
 import { routes } from './app/app.routes';
 import { AppComponent, NavigationFocusService } from '@trinity/feature/shell';
@@ -68,6 +69,10 @@ bootstrapApplication(AppComponent, {
     // event handlers write signals, which schedule change detection directly. See
     // docs/architecture/state-and-reactivity.md.
     provideZonelessChangeDetection(),
+    // Every icon, registered once. Replaces 32 per-component provideIcons() calls, each
+    // of which declared only the subset its own component used — so an icon rendered in
+    // one place and silently nowhere in another.
+    provideTrnIcons(),
     // Installs the window 'error'/'unhandledrejection' listeners that forward to
     // ErrorHandler. REQUIRED here: zone.js used to do this via NgZone.onUnhandledError,
     // and without it the handler below only ever sees errors thrown *inside* Angular —
@@ -78,9 +83,10 @@ bootstrapApplication(AppComponent, {
     // initial-sync request burst) so SDK-internal rejections don't spam the
     // console as ERROR; genuine errors still reach the default handler.
     { provide: ErrorHandler, useClass: TrinityErrorHandler },
-    // Spartan/helm CDK-overlay default: disable Angular 21's usePopover so helm
-    // dialogs/tooltips render above position:fixed elements (e.g. the toaster).
-    provideSpartanHlm(),
+    // CDK-overlay default: turn OFF Angular 21's usePopover. That mode renders overlays in
+    // the top layer, ABOVE every position:fixed element — so a dialog or tooltip would draw
+    // over the toaster that is meant to sit on top of it. See the provider's own header.
+    provideTrnOverlayDefaults(),
     // `canceledNavigationResolution: 'computed'` is required by the canDeactivate guards
     // on /encryption/{setup,unlock}: under the default 'replace', a guard that cancels a
     // popstate navigation makes the router replaceState the current URL over the entry

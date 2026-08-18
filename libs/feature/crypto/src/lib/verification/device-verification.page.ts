@@ -9,16 +9,13 @@ import {
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
-import { DialogRef } from '@angular/cdk/dialog';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import { Observable } from 'rxjs';
 import { VerificationService } from '@trinity/data-access/crypto';
-import {
-  PageHeaderComponent,
-  resolveInternalReturnTo,
-  runWithBusy,
-} from '@trinity/ui';
+import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
+import { PageHeaderComponent } from '@trinity/components/page-header';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmSpinner } from '@trinity/helm/spinner';
+import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { SasCompareComponent } from './sas-compare.component';
 
 /**
@@ -38,7 +35,7 @@ import { SasCompareComponent } from './sas-compare.component';
     PageHeaderComponent,
     HlmButton,
     SasCompareComponent,
-    HlmSpinner,
+    TrnSpinnerComponent,
   ],
 })
 export class DeviceVerificationPage {
@@ -46,10 +43,9 @@ export class DeviceVerificationPage {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   // Present only when opened as a dialog (incoming request); null on the routed page.
-  private readonly dialogRef = inject<DialogRef<void, DeviceVerificationPage>>(
-    DialogRef,
-    { optional: true },
-  );
+  private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef, {
+    optional: true,
+  });
   private readonly destroyRef = inject(DestroyRef);
 
   /** The active verification view (null until one starts). */

@@ -12,13 +12,13 @@
       aria-label="Close search"
       (click)="dismiss()"
     >
-      <ng-icon name="lucideX" class="text-xl" />
+      <trn-icon name="x" size="1.25rem" />
     </button>
   </div>
 
   <div class="border-b border-solid border-border p-3">
     <input
-      hlmInput
+      trnInput
       data-autofocus
       placeholder="Search this conversation"
       autocapitalize="off"
@@ -33,7 +33,7 @@
   <div class="flex-1 overflow-y-auto">
     @if (encrypted()) {
       <div class="ms-banner" data-testid="e2ee-note">
-        <ng-icon name="lucideLock" aria-hidden="true" />
+        <trn-icon name="lock" />
         <span>
           Encrypted room — searching the {{ scanned() }} loaded
           {{ scanned() === 1 ? 'message' : 'messages' }} only.
@@ -47,7 +47,7 @@
           data-testid="load-older"
         >
           @if (loadingHistory()) {
-            <hlm-spinner />
+            <trn-spinner />
           }
           Load older messages
         </button>
@@ -70,9 +70,9 @@
             data-testid="search-server"
           >
             @if (searching()) {
-              <hlm-spinner />
+              <trn-spinner />
             } @else {
-              <ng-icon name="lucideServer" aria-hidden="true" />
+              <trn-icon name="server" />
             }
             Search all messages
           </button>
@@ -130,7 +130,7 @@
           data-testid="load-more-server"
         >
           @if (searching()) {
-            <hlm-spinner />
+            <trn-spinner />
           }
           Load more results
         </button>

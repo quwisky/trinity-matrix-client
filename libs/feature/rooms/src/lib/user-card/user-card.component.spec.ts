@@ -1,5 +1,5 @@
 import { signal } from '@angular/core';
-import { DialogRef } from '@angular/cdk/dialog';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
@@ -9,7 +9,7 @@ import {
   ProfileService,
   type UserProfile,
 } from '@trinity/data-access/profile';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { UserCardComponent } from './user-card.component';
 
 async function setup(
@@ -23,7 +23,7 @@ async function setup(
   const { fixture, container } = await render(UserCardComponent, {
     inputs: { userId: '@bob:hs' },
     providers: [
-      { provide: DialogRef, useValue: { close } },
+      { provide: TrnDialogRef, useValue: { close } },
       MockProvider(ProfileService, { fetch: () => of(profile) }),
       MockProvider(PresenceService, {
         presenceFor: () => signal('online' as const).asReadonly(),

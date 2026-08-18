@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
-import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import {
   RoomsService,
   SpaceChildrenService,
@@ -54,7 +54,7 @@ async function build(
         // regression pass forever. `linksFor` memoizes per space id for the same reason.
         linksFor: () => links.asReadonly(),
       }),
-      MockProvider(DialogRef, { close }),
+      MockProvider(TrnDialogRef, { close }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
   });

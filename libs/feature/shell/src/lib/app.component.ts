@@ -6,17 +6,16 @@ import {
   inject,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Dialog } from '@angular/cdk/dialog';
 import { Location } from '@angular/common';
 import { Router, RouterOutlet } from '@angular/router';
 import { App, type URLOpenListenerEvent } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 import { SwUpdate, type VersionReadyEvent } from '@angular/service-worker';
-import { toast } from '@spartan-ng/brain/sonner';
 import { filter, fromEvent } from 'rxjs';
 import { getTrinityDesktopBridge } from '@trinity/platform-native';
 import { HlmToaster } from '@trinity/helm/sonner';
+import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { VerificationHostComponent } from './verification-host.component';
 
 @Component({
@@ -28,7 +27,8 @@ import { VerificationHostComponent } from './verification-host.component';
 export class AppComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly swUpdate = inject(SwUpdate);
-  private readonly dialog = inject(Dialog);
+  private readonly dialog = inject(TrnDialogService);
+  private readonly toast = inject(TrnToastService);
   private readonly location = inject(Location);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -58,14 +58,22 @@ export class AppComponent implements OnInit {
     // Android hardware back button. IonRouterOutlet used to intercept this at a
     // higher priority to pop overlays/routes, leaving the lowest-priority handler to
     // only background the app at the root. With a plain Angular router-outlet we own
-    // the whole chain: dismiss the top open CDK overlay (TrnDialog/TrnAlert/ActionSheet
-    // all render through @angular/cdk/dialog) first, then step back through history,
-    // and only minimize when there's nowhere left to go. iOS has no hardware back
-    // button, so this never fires there.
+    // the whole chain: dismiss the topmost overlay first, then step back through
+    // history, and only minimize when there's nowhere left to go. iOS has no hardware
+    // back button, so this never fires there.
+    //
+    // `hasOpen()` spans dialogs, alerts and action sheets alike — they share one overlay
+    // stack — and it, not `closeTopmost()`'s return, is what gates navigation. The two
+    // answer different questions: "is something on screen" versus "did something close".
+    // A dialog can legitimately refuse to close (`disableClose`, or a `closePredicate`),
+    // and navigating on that refusal would step the router backwards UNDERNEATH a modal
+    // the user can still see — or minimize the app out from under it. So an open overlay
+    // always consumes the press, whether or not it was dismissible; that is what Android
+    // does for a modal, and it is why the flow-critical encryption dialogs can set
+    // `disableClose` and have it mean something.
     void App.addListener('backButton', ({ canGoBack }) => {
-      const overlays = this.dialog.openDialogs;
-      if (overlays.length > 0) {
-        overlays[overlays.length - 1].close();
+      if (this.dialog.hasOpen()) {
+        this.dialog.closeTopmost();
         return;
       }
       if (canGoBack) {
@@ -100,13 +108,10 @@ export class AppComponent implements OnInit {
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe(() => {
-        // `toast` MUST come from @spartan-ng/brain/sonner: ngx-sonner's pushes into a
-        // different store than the <hlm-toaster/> in this template reads, and drops the
-        // toast silently (see TrnToastService's header). Called directly rather than
-        // through that service because this is the only toast in the app with an action
-        // button, which the service does not model.
-        toast('A new version of Trinity is available.', {
-          duration: Number.POSITIVE_INFINITY,
+        // `duration: 0` is the service's "keep until dismissed" — an update prompt on
+        // a timer is one the user loses by looking away.
+        this.toast.show('A new version of Trinity is available.', {
+          duration: 0,
           action: { label: 'Reload', onClick: () => this.activateUpdate() },
         });
       });

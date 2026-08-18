@@ -5,7 +5,7 @@ import {
   type PendingInvite,
 } from '@trinity/data-access/invites';
 import { AccountScopeService } from '@trinity/data-access/rooms';
-import { runWithBusy } from '@trinity/ui';
+import { runWithBusy } from '@trinity/util/ui';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { AccountRoutingService } from './account-routing.service';
 import { ShellStatusService } from './shell-status.service';

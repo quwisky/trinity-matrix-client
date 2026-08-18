@@ -7,14 +7,6 @@ import {
   signal,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import {
-  lucideLock,
-  lucideMail,
-  lucideMessageSquare,
-  lucideUser,
-  lucideUsers,
-} from '@ng-icons/lucide';
 import {
   SearchService,
   type SwitcherKind,
@@ -23,11 +15,12 @@ import {
 } from '@trinity/data-access/search';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AccountBadgesService } from '../shared/account-badges.service';
-import { AvatarComponent, type AccountBadge } from '@trinity/ui';
-import { DialogRef } from '@trinity/helm/overlay';
+import { AvatarComponent, type AccountBadge } from '@trinity/components/avatar';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmInput } from '@trinity/helm/input';
-import { HlmSpinner } from '@trinity/helm/spinner';
+import { TrnInput } from '@trinity/components/input';
+import { TrnSpinnerComponent } from '@trinity/components/spinner';
+import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
 import {
   debounceTime,
   distinctUntilChanged,
@@ -49,13 +42,13 @@ const KIND_LABEL: Record<SwitcherKind, string> = {
   user: 'Person',
 };
 
-/** Trailing lucide icon per kind. */
-const KIND_ICON: Record<SwitcherKind, string> = {
-  room: 'lucideMessageSquare',
-  space: 'lucideUsers',
-  dm: 'lucideUser',
-  invite: 'lucideMail',
-  user: 'lucideUser',
+/** Trailing icon per kind. */
+const KIND_ICON: Record<SwitcherKind, TrnIconName> = {
+  room: 'message-square',
+  space: 'users',
+  dm: 'user',
+  invite: 'mail',
+  user: 'user',
 };
 
 /**
@@ -75,24 +68,19 @@ const KIND_ICON: Record<SwitcherKind, string> = {
 @Component({
   selector: 'trn-quick-switcher',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgIcon, AvatarComponent, HlmSpinner, HlmButton, HlmInput],
-  viewProviders: [
-    provideIcons({
-      lucideLock,
-      lucideMail,
-      lucideMessageSquare,
-      lucideUser,
-      lucideUsers,
-    }),
+  imports: [
+    TrnIconComponent,
+    AvatarComponent,
+    TrnSpinnerComponent,
+    HlmButton,
+    TrnInput,
   ],
   templateUrl: './quick-switcher.component.html',
   styleUrl: './quick-switcher.component.scss',
 })
 export class QuickSwitcherComponent {
   private readonly dialogRef =
-    inject<DialogRef<SwitcherSelection | null, QuickSwitcherComponent>>(
-      DialogRef,
-    );
+    inject<TrnDialogRef<SwitcherSelection | null>>(TrnDialogRef);
   private readonly search = inject(SearchService);
   private readonly accountBadges = inject(AccountBadgesService);
   private readonly matrix = inject(MatrixClientService);
@@ -205,7 +193,7 @@ export class QuickSwitcherComponent {
     return KIND_LABEL[kind];
   }
 
-  kindIcon(kind: SwitcherKind): string {
+  kindIcon(kind: SwitcherKind): TrnIconName {
     return KIND_ICON[kind];
   }
 }

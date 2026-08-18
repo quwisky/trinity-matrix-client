@@ -4,13 +4,12 @@ import {
   inject,
   input,
 } from '@angular/core';
-import { DialogRef } from '@angular/cdk/dialog';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import { DateTimeFormatService } from '@trinity/platform-native';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideX } from '@ng-icons/lucide';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnTooltip } from '@trinity/components/tooltip';
+import { TrnIconComponent } from '@trinity/components/icon';
 import {
   ThreadsService,
   type ThreadSummary,
@@ -35,8 +34,7 @@ const MAX_AVATARS = 4;
 @Component({
   selector: 'trn-threads-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgIcon, AvatarComponent, HlmButton, HlmTooltip],
-  viewProviders: [provideIcons({ lucideX })],
+  imports: [TrnIconComponent, AvatarComponent, HlmButton, TrnTooltip],
   templateUrl: './threads-list.component.html',
   styleUrl: './threads-list.component.scss',
 })
@@ -46,7 +44,7 @@ export class ThreadsListComponent {
 
   private readonly threadsSvc = inject(ThreadsService);
   private readonly dialogRef =
-    inject<DialogRef<string | undefined, ThreadsListComponent>>(DialogRef);
+    inject<TrnDialogRef<string | undefined>>(TrnDialogRef);
 
   /** The room whose threads are listed (used by the panel to re-open a thread). */
   readonly roomId = input.required<string>();

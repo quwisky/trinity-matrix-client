@@ -1,0 +1,25 @@
+<!--
+  `isNative` and `showPreview` are pinned, not inputs: native glyphs mean no sprite-sheet
+  requests, and the preview row is dead weight in both call sites. `title` and `emoji` are
+  deliberately absent — the vendor guards its preview with `*ngIf="showPreview"`, so with
+  the preview off both were inert, and a `title` that renders nowhere is a lie in the diff.
+
+  `darkMode` is pinned OFF rather than left unbound, which is not the same thing: the
+  vendor defaults it to `matchMedia('(prefers-color-scheme: dark)').matches`, so an absent
+  binding means "follow the OS", not "off". Unbound, every user on a dark desktop would
+  carry `.emoji-mart-dark` whatever the Trinity theme said.
+
+  `color` is the vendor's accent, and at both places it lands it is an INLINE style — the
+  anchor bar's background, and `color` on the selected category anchor, whose icon picks it
+  up through `fill: currentColor`. No rule in our stylesheet can outrank an inline style
+  without `!important`, so the token goes in through the vendor's own input instead of
+  being fought in CSS. See the component's note on theming.
+-->
+<emoji-mart
+  [isNative]="true"
+  [showPreview]="false"
+  [darkMode]="false"
+  [color]="accent"
+  [emojiSize]="emojiSize()"
+  (emojiSelect)="onSelect($event)"
+/>

@@ -13,8 +13,8 @@ import {
   TrnActionSheetService,
   TrnAlertService,
   TrnDialogService,
-} from '@trinity/helm/overlay';
-import { runWithBusy } from '@trinity/ui';
+} from '@trinity/components/overlay';
+import { runWithBusy } from '@trinity/util/ui';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import {
   RoomDirectoryComponent,

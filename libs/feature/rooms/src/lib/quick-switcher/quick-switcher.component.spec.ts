@@ -1,6 +1,6 @@
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { Dialog, DialogRef } from '@angular/cdk/dialog';
+import { TrnDialogRef, TrnDialogService } from '@trinity/components/overlay';
 import {
   SearchService,
   type SwitcherResult,
@@ -63,7 +63,7 @@ describe('QuickSwitcherComponent', () => {
     return render(QuickSwitcherComponent, {
       ...(opts.inputs ? { inputs: opts.inputs } : {}),
       providers: [
-        { provide: DialogRef, useValue: { close: dismiss } },
+        { provide: TrnDialogRef, useValue: { close: dismiss } },
         MockProvider(SearchService, { localResults, searchPeople }),
         MockProvider(MatrixClientService, {
           activeUserId: signal<string | null>(
@@ -115,7 +115,7 @@ describe('QuickSwitcherComponent', () => {
     expect(search).not.toBeNull();
     expect(document.activeElement).toBe(search);
 
-    TestBed.inject(Dialog).closeAll();
+    TestBed.inject(TrnDialogService).closeAll();
     expect(await picked).toBeNull();
   });
 
@@ -281,5 +281,18 @@ describe('QuickSwitcherComponent', () => {
     await renderSwitcher({ activeUserId: '@me:hs' });
 
     expect(localResults).toHaveBeenLastCalledWith('', undefined, undefined);
+  });
+
+  it('does not label the kind icon, because the text beside it already says the same thing', async () => {
+    // The kind icon used to carry `[attr.aria-label]` with no static `aria-hidden`.
+    // NgIcon reads that attribute in its constructor and, finding none, force-hides the
+    // element — so the label was announced to nobody while looking correct in review.
+    // The adjacent <span> already shows the kind visibly, so the icon is decorative and
+    // must carry no ARIA at all. Dead ARIA is worse than none: it reads as handled.
+    const { container } = await renderSwitcher();
+
+    const kindIcon = container.querySelector('.qs-kind');
+    expect(kindIcon).toBeTruthy();
+    expect(kindIcon?.getAttribute('aria-label')).toBeNull();
   });
 });

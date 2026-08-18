@@ -286,7 +286,7 @@ bug.** `<hlm-toaster/>` renders from `@spartan-ng/brain/sonner`'s own toast stor
 A service spec that mocked `ngx-sonner` passed while no toast ever rendered in the
 app, because the call pushed into a store the toaster never observes — and it failed
 silently, with no error anywhere. The guard is
-[`trn-toast-render.spec.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/spartan/overlay/src/lib/toast/trn-toast-render.spec.ts),
+[`trn-toast-render.spec.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/components/overlay/src/lib/toast/trn-toast-render.spec.ts),
 which mounts the real toaster and asserts the string reaches
 `document.body.textContent`. When the defect is "the two sides disagree about which
 object they share", only driving the real objects can catch it.
@@ -309,7 +309,7 @@ locally.
 **A Helm host class assertion is a race, not a check.** Helm styles component hosts
 through an asynchronous `classes()` manager built on an effect and a global
 MutationObserver, so asserting on the rendered `class` string is flaky. The smoke
-tests in `libs/spartan/overlay` assert the `cva` functions directly instead, because
+tests in `libs/spartan/tests` assert the `cva` functions directly instead, because
 those are pure and synchronous.
 
 **An effect that nothing flushed after the interesting moment.** The rooms shell turns

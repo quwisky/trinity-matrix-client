@@ -11,10 +11,10 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { switchMap, type Observable } from 'rxjs';
 import { HlmButton } from '@trinity/helm/button';
 import {
-  DialogRef,
+  TrnDialogRef,
   TrnAlertService,
   TrnToastService,
-} from '@trinity/helm/overlay';
+} from '@trinity/components/overlay';
 import {
   RoomModerationService,
   RoomsService,
@@ -26,7 +26,7 @@ import {
 } from '@trinity/data-access/profile';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { VerificationService } from '@trinity/data-access/crypto';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { MEMBER_ROLE_LABEL, memberRole } from '../shared/member-role';
 
 /**
@@ -71,7 +71,7 @@ export class MemberInfoComponent {
   readonly myPower = input(0);
 
   private readonly dialogRef =
-    inject<DialogRef<string | null, MemberInfoComponent>>(DialogRef);
+    inject<TrnDialogRef<string | null>>(TrnDialogRef);
   private readonly presence = inject(PresenceService);
   private readonly toast = inject(TrnToastService);
   private readonly matrix = inject(MatrixClientService);

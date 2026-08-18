@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AuthService } from '@trinity/data-access/auth';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { TrnAlertService } from '@trinity/helm/overlay';
+import { TrnAlertService } from '@trinity/components/overlay';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
 
 /**

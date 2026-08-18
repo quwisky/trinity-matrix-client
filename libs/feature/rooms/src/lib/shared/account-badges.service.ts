@@ -1,7 +1,7 @@
 import { Injectable, computed, inject } from '@angular/core';
 import { AccountProfilesService } from '@trinity/data-access/profile';
 import { AccountScopeService } from '@trinity/data-access/rooms';
-import { type AccountBadge } from '@trinity/ui';
+import { type AccountBadge } from '@trinity/components/avatar';
 
 /**
  * Owning-account badges for the mixed-account view: account id → the avatar/initial/name

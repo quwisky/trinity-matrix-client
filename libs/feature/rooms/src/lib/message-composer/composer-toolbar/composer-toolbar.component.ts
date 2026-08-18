@@ -5,32 +5,19 @@ import {
   input,
   output,
 } from '@angular/core';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import {
-  lucideBold,
-  lucideCode,
-  lucideEllipsis,
-  lucideEye,
-  lucideItalic,
-  lucideLink,
-  lucideList,
-  lucideListTodo,
-  lucideSquareCode,
-  lucideStrikethrough,
-  lucideTextQuote,
-} from '@ng-icons/lucide';
 import {
   HlmDropdownMenu,
   HlmDropdownMenuItem,
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
-import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import { type FormatAction } from '@trinity/util/matrix';
+import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
 
 /** One toolbar button: the action it applies, its icon and its label. */
 interface ToolbarAction {
   action: FormatAction;
-  icon: string;
+  icon: TrnIconName;
   label: string;
 }
 
@@ -39,21 +26,21 @@ interface ToolbarAction {
  * how often they are reached for, not by how well they demo.
  */
 const PRIMARY: readonly ToolbarAction[] = [
-  { action: 'bold', icon: 'lucideBold', label: 'Bold' },
-  { action: 'italic', icon: 'lucideItalic', label: 'Italic' },
-  { action: 'link', icon: 'lucideLink', label: 'Link' },
-  { action: 'code', icon: 'lucideCode', label: 'Inline code' },
+  { action: 'bold', icon: 'bold', label: 'Bold' },
+  { action: 'italic', icon: 'italic', label: 'Italic' },
+  { action: 'link', icon: 'link', label: 'Link' },
+  { action: 'code', icon: 'code', label: 'Inline code' },
 ];
 
 /** On a phone the composer competes with the keyboard, so only the two most-used stay out. */
 const PRIMARY_NARROW: readonly ToolbarAction[] = PRIMARY.slice(0, 2);
 
 const SECONDARY: readonly ToolbarAction[] = [
-  { action: 'strike', icon: 'lucideStrikethrough', label: 'Strikethrough' },
-  { action: 'codeblock', icon: 'lucideSquareCode', label: 'Code block' },
-  { action: 'quote', icon: 'lucideTextQuote', label: 'Quote' },
-  { action: 'list', icon: 'lucideList', label: 'Bulleted list' },
-  { action: 'tasklist', icon: 'lucideListTodo', label: 'Task list' },
+  { action: 'strike', icon: 'strikethrough', label: 'Strikethrough' },
+  { action: 'codeblock', icon: 'square-code', label: 'Code block' },
+  { action: 'quote', icon: 'text-quote', label: 'Quote' },
+  { action: 'list', icon: 'list', label: 'Bulleted list' },
+  { action: 'tasklist', icon: 'list-todo', label: 'Task list' },
 ];
 
 /**
@@ -68,26 +55,11 @@ const SECONDARY: readonly ToolbarAction[] = [
   selector: 'trn-composer-toolbar',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    NgIcon,
+    TrnIconComponent,
     HlmDropdownMenu,
     HlmDropdownMenuItem,
     HlmDropdownMenuTrigger,
-    HlmTooltip,
-  ],
-  viewProviders: [
-    provideIcons({
-      lucideBold,
-      lucideCode,
-      lucideEllipsis,
-      lucideEye,
-      lucideItalic,
-      lucideLink,
-      lucideList,
-      lucideListTodo,
-      lucideSquareCode,
-      lucideStrikethrough,
-      lucideTextQuote,
-    }),
+    TrnTooltip,
   ],
   templateUrl: './composer-toolbar.component.html',
   styleUrl: './composer-toolbar.component.scss',

@@ -1,8 +1,9 @@
 # Architecture overview
 
-Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 38
-libraries under `libs/`, grouped by layer into `libs/data-access/`, `libs/feature/` and
-`libs/util/`, alongside `libs/platform-native`, `libs/ui`, `libs/testing` and the `libs/spartan/`
+Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 53
+libraries under `libs/`, grouped by layer into `libs/data-access/`, `libs/feature/`,
+`libs/util/` and `libs/components/` (the public component tier), alongside
+`libs/platform-native`, `libs/testing` and the `libs/spartan/`
 Helm components. Web, iOS, Android and desktop are all the same compiled bundle wrapped
 differently, so there is no per-platform source tree — platform differences are branches inside
 `libs/platform-native`, not forks of the app.
@@ -53,6 +54,17 @@ declared once at `eslint.config.mjs`.
 | `type:platform`    | `platform`, `util`                                 | Capability wrappers sit below everything except pure code                                    |
 | `type:util`        | `util`                                             | Pure, DI-free code. `libs/util/matrix` may depend on npm packages and nothing else           |
 
+A third axis, `ui:*`, separates the two halves of the UI tier so third-party UI can be
+contained: `libs/components/*` is `ui:public`, the vendored Helm kit is `ui:vendor-wrapper`,
+and `bannedExternalImports` keeps `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` and
+`@ctrl/ngx-emoji-mart` out of `feature`, `data-access`, `util`, `platform` and `app`
+entirely. Both UI tiers are exempt because both are wrapper layers; the public tier is
+contained from the consumer side instead. Nothing is staged: all four
+are errors at every tier below the kit, so a new vendor import fails `pnpm lint` rather than
+warning. The kit is unrestricted because it is the wrapper. Each glob carries a trailing `*` — without it the
+pattern matches only the bare specifier, nothing imports that, and the ban silently enforces
+nothing while lint reports success. See [UI and theming](ui-and-theming.md).
+
 There is no escape hatch. The rule is configured with `allow: []`, and there is not a single
 `eslint-disable` for `@nx/enforce-module-boundaries` anywhere under `apps/` or `libs/`. A violation
 fails `pnpm lint`, and the `pre-commit` hook runs lint-staged, so it fails the commit too.
@@ -82,7 +94,7 @@ still fails the scope rule. That is the intended behaviour, not a misconfigurati
 **Components never import `matrix-js-sdk`.**
 
 This is not a style preference; it is checkable, and it currently holds absolutely. Across every
-non-spec file in `libs/feature/*`, `libs/ui` and `libs/platform-native` there are zero imports from
+non-spec file in `libs/feature/*`, `libs/components/*` and `libs/platform-native` there are zero imports from
 `matrix-js-sdk`. The SDK appears only under `libs/data-access/` — in eleven of its twelve
 libraries; `data-access-gif` talks to KLIPY and Giphy and needs none of it — and in
 `libs/util/matrix`, which models its types.
@@ -106,7 +118,8 @@ New SDK interaction belongs in a `data-access-*` service. See
 ## Crossing a forbidden edge on purpose
 
 Some legitimate needs run against the grain of the layering. The encryption unlock dialog has to be
-openable from `libs/ui`, which sits below every feature. An incoming device-verification request
+openable from `@trinity/components/encryption-dialog`, which sits below every feature. An
+incoming device-verification request
 has to raise `feature-crypto`'s page from `feature-shell`, and feature-to-feature imports are
 banned.
 
@@ -115,7 +128,7 @@ provided at the app with a dynamic `import()`, and injected `{ optional: true }`
 fallback.
 
 ```ts
-// libs/ui/src/lib/encryption-dialog/encryption-dialog.tokens.ts
+// libs/components/encryption-dialog/src/lib/encryption-dialog.tokens.ts
 export type EncryptionDialogLoaders = Record<'unlock' | 'verify', () => Promise<Type<unknown>>>;
 export const ENCRYPTION_DIALOG_COMPONENTS = new InjectionToken<EncryptionDialogLoaders>('ENCRYPTION_DIALOG_COMPONENTS');
 ```
@@ -133,8 +146,9 @@ export const ENCRYPTION_DIALOG_COMPONENTS = new InjectionToken<EncryptionDialogL
 
 The optional injection is what makes this a pattern rather than a hack. `EncryptionDialogService`
 injects the token optionally and falls back to `router.navigate('/encryption/unlock')` when it is
-absent, so `libs/ui` in isolation and every unit test still work, and the routes remain the
-canonical deep-link target. `AVATAR_RESOLVER` in the same library follows the identical contract:
+absent, so that library in isolation and every unit test still work, and the routes remain the
+canonical deep-link target. `AVATAR_RESOLVER` in `@trinity/components/avatar` follows the
+identical contract:
 the app wires it to `AvatarService.resolve`, and unwired, `<trn-avatar>` just uses its `url` input.
 
 `VerificationHostComponent` reuses that same seam rather than adding a second one. It renders

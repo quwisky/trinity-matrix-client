@@ -10,10 +10,9 @@ import {
   viewChild,
 } from '@angular/core';
 import { Subscription } from 'rxjs';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucidePause, lucidePlay } from '@ng-icons/lucide';
 import { MediaService } from '@trinity/data-access/media';
 import { type MediaPayload } from '@trinity/util/matrix';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 /** Bars whose height is scaled from a `[0, 1024]` waveform amplitude. */
 const WAVEFORM_FULL = 1024;
@@ -29,8 +28,7 @@ const MIN_BAR_HEIGHT = 12;
 @Component({
   selector: 'trn-voice-message',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgIcon],
-  viewProviders: [provideIcons({ lucidePause, lucidePlay })],
+  imports: [TrnIconComponent],
   templateUrl: './voice-message.component.html',
   styleUrl: './voice-message.component.scss',
 })

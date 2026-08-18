@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { render, fireEvent } from '@trinity/testing';
-import { DialogRef } from '@angular/cdk/dialog';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import {
   PinnedMessagesService,
   type PinnedMessageView,
@@ -38,7 +38,7 @@ async function renderPanel(
         canPin: signal(options.canPin ?? true).asReadonly(),
         unpin: vi.fn(() => of(void 0)),
       }),
-      { provide: DialogRef, useValue: { close } },
+      { provide: TrnDialogRef, useValue: { close } },
     ],
   });
   return { container, close };

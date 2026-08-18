@@ -1,11 +1,11 @@
 import { signal } from '@angular/core';
-import { DialogRef } from '@angular/cdk/dialog';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
 import {
   ThreadsService,
   type ThreadSummary,
 } from '@trinity/data-access/timeline';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
 import { ThreadsListComponent } from './threads-list.component';
@@ -35,7 +35,7 @@ async function build(threads: ThreadSummary[] = []) {
     imports: [MockComponent(AvatarComponent)],
     providers: [
       MockProvider(ThreadsService, { threadList }),
-      MockProvider(DialogRef, { close: dismiss }),
+      MockProvider(TrnDialogRef, { close: dismiss }),
     ],
   });
   return { fixture, container, dismiss };

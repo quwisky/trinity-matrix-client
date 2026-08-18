@@ -13,9 +13,9 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Capacitor } from '@capacitor/core';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmLabel } from '@trinity/helm/label';
-import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
-import { HlmTextarea } from '@trinity/helm/textarea';
+import { TrnLabel } from '@trinity/components/label';
+import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
+import { TrnTextarea } from '@trinity/components/textarea';
 import {
   AppConfigService,
   CONFIG_EXCLUSION_NOTES,
@@ -101,7 +101,7 @@ function exportFileName(now: Date): string {
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './advanced-settings.component.html',
   styleUrl: './advanced-settings.component.scss',
-  imports: [ConfigEditorOutletDirective, HlmButton, HlmLabel, HlmTextarea],
+  imports: [ConfigEditorOutletDirective, HlmButton, TrnLabel, TrnTextarea],
 })
 export class AdvancedSettingsComponent {
   private readonly config = inject(AppConfigService);

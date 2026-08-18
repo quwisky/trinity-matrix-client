@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "components-input",
+  "projectType": "library",
+  "sourceRoot": "libs/components/input/src",
+  "prefix": "trn",
+  "tags": ["type:ui", "scope:shared", "ui:public"],
+  "targets": { "test": {}, "typecheck": {} }
+}

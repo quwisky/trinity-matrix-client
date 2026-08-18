@@ -2,7 +2,7 @@ import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
-import { DialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import { AccountScopeService } from '@trinity/data-access/rooms';
 import { AccountPickerComponent } from './account-picker.component';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
@@ -29,7 +29,7 @@ describe('AccountPickerComponent', () => {
       inputs: { accounts: ACCOUNTS, activeUserId },
       providers: [
         MockProvider(AccountScopeService, { selected, toggle }),
-        { provide: DialogRef, useValue: { close } },
+        { provide: TrnDialogRef, useValue: { close } },
       ],
     });
   }

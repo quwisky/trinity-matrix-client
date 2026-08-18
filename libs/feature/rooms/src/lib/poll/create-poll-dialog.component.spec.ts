@@ -1,4 +1,4 @@
-import { DialogRef } from '@angular/cdk/dialog';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { CreatePollDialogComponent } from './create-poll-dialog.component';
@@ -6,7 +6,7 @@ import { CreatePollDialogComponent } from './create-poll-dialog.component';
 async function setup() {
   const close = vi.fn();
   const { fixture } = await render(CreatePollDialogComponent, {
-    providers: [{ provide: DialogRef, useValue: { close } }],
+    providers: [{ provide: TrnDialogRef, useValue: { close } }],
   });
   return { cmp: fixture.componentInstance, close };
 }

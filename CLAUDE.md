@@ -94,7 +94,7 @@ imported via `@trinity/*` path aliases (`tsconfig.base.json`) and guarded by Nx 
 The web build emits to root `www/` (not `dist/`), which Capacitor and Electron wrap unchanged.
 
 **Layering — dependencies point inward, enforced by `@nx/enforce-module-boundaries`** (`type:*` +
-`scope:*` tags in each `project.json`). The former monolithic `@trinity/core` was dissolved into
+`scope:*` + `ui:*` tags in each `project.json`). The former monolithic `@trinity/core` was dissolved into
 typed, per-domain libs (do **not** import `@trinity/core` — it no longer exists):
 
 - `@trinity/util/matrix` `[type:util]` — pure, DI-free Matrix models/helpers (`MessageView` +
@@ -111,8 +111,27 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   Cross-domain injects are inter-lib edges (search→rooms/invites, auth→media/notifications, notification→timeline).
 - `@trinity/feature/*` `[type:feature]` — screens/pages incl. `feature-shell` (the app shell moved out of
   `apps/trinity`). May depend on `data-access-*` + `ui` + `util` + `platform`, **never another feature**.
-- `@trinity/ui` + `@trinity/helm/*` (`libs/spartan/*`) `[type:ui]` — **presentational** only; no
-  state/SDK deps. Helm is `@spartan-ng/cli`-generated.
+- `@trinity/components/*` (`libs/components/*`) `[type:ui]`, tagged `ui:public` — the **public
+  component tier**: every component feature code reaches for. Trinity-authored wrappers over
+  vendors (`overlay`, `icon`, `emoji-picker`, select, checkbox, tooltip, …) AND Trinity's own
+  presentational components (`trn-avatar`, banner, page header, media bubble, message
+  toolbar). The API is ours, so the library underneath can be swapped without touching a
+  call site.
+- `@trinity/util/ui` (`libs/util/ui`) `[type:util]` — the view-layer helpers that are not
+  components: `runWithBusy`, `mediaQuerySignal` + the `MD_QUERY`/`BELOW_MD_QUERY` breakpoints,
+  and `resolveInternalReturnTo`. DI-free like the rest of `type:util` — both helpers TAKE a
+  `DestroyRef` rather than injecting one, so neither needs an injection context.
+- `@trinity/helm/*` (`libs/spartan/*`) `[type:ui]`, tagged `ui:vendor-wrapper` — the vendored
+  `@spartan-ng/cli`-generated kit, `hlm` prefix. Consume it through `@trinity/components/*`
+  rather than directly.
+  Both are **presentational** only; no state/SDK deps.
+- **Third-party UI stops at the UI tier.** The `ui:*` tag splits it in two — `libs/components`
+  is `ui:public`, the vendored kit is `ui:vendor-wrapper` — and `bannedExternalImports` keeps
+  `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` and `@ctrl/ngx-emoji-mart` out of every
+  tier below. Both UI tiers may name a vendor, because both ARE wrapper layers; what contains
+  the public tier is the other direction, a `no-restricted-imports` ban stopping
+  `libs/feature` and `apps` reaching past it into `@trinity/helm/*`. A new vendor import
+  below the UI tier fails `pnpm lint`.
 - **Scopes:** `scope:shared` (the kernel: util/platform/matrix-client/ui/helm) may not reach into
   `scope:matrix` (domain data-access + feature libs); the thin `apps/trinity` composes both.
 

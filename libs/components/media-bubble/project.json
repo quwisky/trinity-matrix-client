@@ -1,0 +1,12 @@
+{
+  "name": "components-media-bubble",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/components/media-bubble/src",
+  "prefix": "trn",
+  "projectType": "library",
+  "tags": ["type:ui", "scope:shared", "ui:public"],
+  "targets": {
+    "test": {},
+    "typecheck": {}
+  }
+}

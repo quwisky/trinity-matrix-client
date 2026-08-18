@@ -9,20 +9,123 @@ once.
 
 ## The four UI layers
 
-| Layer         | Where                                                                   | What it is                                                              |
-| ------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Brain         | `@spartan-ng/brain` 1.3.0 in `node_modules`, plus `@angular/cdk` 22.1.0 | Headless primitives: behaviour, accessibility, positioning. No styling. |
-| Helm          | `libs/spartan/*`, aliased `@trinity/helm/*`                             | The **styled** layer, copied into the repo by `@spartan-ng/cli`.        |
-| `@trinity/ui` | `libs/ui`                                                               | Trinity's own presentational components and small UI utilities.         |
-| Features      | `libs/feature/*`, aliased `@trinity/feature/*`                          | Screens and the components that make them up.                           |
+| Layer      | Where                                                                   | What it is                                                              |
+| ---------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Brain      | `@spartan-ng/brain` 1.3.0 in `node_modules`, plus `@angular/cdk` 22.1.0 | Headless primitives: behaviour, accessibility, positioning. No styling. |
+| Helm       | `libs/spartan/*`, aliased `@trinity/helm/*`                             | The **styled** layer, copied into the repo by `@spartan-ng/cli`.        |
+| Components | `libs/components/*`, aliased `@trinity/components/*`                    | Trinity's public tier: the wrappers and components features reach for.  |
+| Features   | `libs/feature/*`, aliased `@trinity/feature/*`                          | Screens and the components that make them up.                           |
 
-Seventeen Helm libraries are installed: avatar, badge, button, card, checkbox,
-dropdown-menu, input, label, overlay, progress, radio-group, select, sonner, spinner,
-textarea, tooltip, utils. All are tagged `type:ui` and `scope:shared`.
+Seventeen libraries live under `libs/spartan/`. Sixteen are generated Helm — avatar, badge,
+button, card, checkbox, dropdown-menu, input, label, progress, radio-group, select, sonner,
+spinner, textarea, tooltip, utils — and are the ones with an `ng-package.json`. The
+seventeenth, `tests`, is a Trinity-authored project holding the specs that pin Helm's
+behaviour, so those specs stay in the vendor tier. All are tagged `type:ui`, `scope:shared`
+and `ui:vendor-wrapper`.
 
-`@trinity/ui` holds `AvatarComponent` (`<trn-avatar>`), `BannerComponent`,
-`PageHeaderComponent`, `MediaBubbleComponent`, `MessageToolbarComponent`, plus
-`EncryptionDialogService`, `runWithBusy` and `mediaQuerySignal`. The boundary rule is that
+The Trinity-authored wrappers that used to sit among them — the overlay adapters,
+`<trn-icon>` and `<trn-emoji-picker>` — now live in `libs/components/` with the rest of the
+public tier (twenty libraries, tagged `ui:public`). Trinity's own presentational components
+— `<trn-avatar>` (with its `AVATAR_RESOLVER` seam), banner, media bubble, message toolbar
+and page header — live there too: the avatar and message toolbar wrap kit primitives, which
+is the tier's job, and moving them deleted the `@trinity/helm/avatar` staging exception from
+the consumer-side kit ban.
+
+`libs/ui` is gone entirely. What was left after the components moved out was not UI: the
+`runWithBusy` / `mediaQuerySignal` / internal-URL helpers went to `@trinity/util/ui`
+(`type:util`, reachable from every layer rather than only from above), and the
+`EncryptionDialogService` seam became `@trinity/components/encryption-dialog` — its own
+library rather than part of `@trinity/components/overlay`, which stays the generic swappable
+dialog wrapper and is not taught one domain's routes and loader token.
+
+That tier is closed from both sides. The vendor bans stop everything below the UI layer
+naming `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` or `@ctrl/ngx-emoji-mart`; and a
+`no-restricted-imports` pattern over `libs/feature` and `apps` stops them reaching
+past the tier into `@trinity/helm/*`. Feature code asks for `@trinity/components/*`, full
+stop.
+
+`@nx/enforce-module-boundaries` cannot express that second half: its
+`notDependOnLibsWithTags` is **transitive**, and the tier depends on the kit by design, so
+banning `ui:vendor-wrapper` from feature code also fails on every path through
+`@trinity/components/*` — the very path it exists to bless. A direct-import rule is the right
+shape, and it is the same one the `matrix-js-sdk` ban uses.
+
+Four kit libraries are still excepted by name — `button` (50 call sites), `dropdown-menu`
+(7), `sonner` and `avatar` (1 each) — because banning them today would fail `pnpm lint` on 59
+files. Same staging #148 used for the vendor bans: a NEW reach past the tier fails
+immediately, and the exception list shrinks to zero as each wrapper lands.
+`scripts/lint-invariants.spec.mjs` pins the list, so a fifth cannot arrive by accident.
+
+That third tag is what makes the layering above enforceable rather than merely described.
+Every UI library used to carry identical tags, so no boundary rule could say "only the kit may
+import Brain" — they were indistinguishable to Nx. The public tier now carries `ui:public`,
+the kit carries `ui:vendor-wrapper`, and `bannedExternalImports` keeps `@spartan-ng/brain`,
+`@angular/cdk`, `@ng-icons` and `@ctrl/ngx-emoji-mart` out of every tier below the UI one.
+
+Neither UI tag carries a vendor ban, and that is the whole shape: both **are** wrapper layers,
+so banning their vendors would ban them from existing. There was a third tag, `ui:wrapper`,
+which did carry all four — it belonged to `libs/ui`, and it was deleted with that library
+rather than left behind, because a ban keyed on a tag no project carries enforces nothing
+while reading as a closed door. `lint-invariants.spec.mjs` now fails on exactly that.
+
+The ban reads TypeScript import specifiers and nothing else, so it is worth knowing where it
+cannot see. `apps/trinity`'s build `styles` array names two vendor stylesheets directly —
+`@angular/cdk/overlay-prebuilt.css`, without which no overlay positions at all, and
+`@ctrl/ngx-emoji-mart/picker.css`. Both must load globally. The picker's _can_ be pulled into
+its lazy component chunk (`@import '@ctrl/ngx-emoji-mart/picker'` resolves and inlines), but
+that puts the component 517 bytes over the 8 kB `anyComponentStyle` budget, and widening a
+budget that guards every component to relocate one vendored file is the worse trade. So the
+two are pinned by `lint-invariants.spec.mjs` instead: a third has to be argued for there
+rather than appearing in build config nobody reads as part of the boundary.
+
+Composition is the other half of that containment. `hostDirectives` **is** public API — a
+composed directive's input is bindable on our element only if the entry lists it — so every
+entry in the kit states its `inputs`, even when the answer is `[]`. The shorthand
+(`hostDirectives: [BrnFoo]`) exposes nothing, which is usually right but is a decision nobody
+made, and it hides the opposite case equally well: `HlmInput` composed
+`BrnFieldControlDescribedBy` without listing `aria-describedby`, so setting that attribute on
+an `hlmInput` was silently overwritten with null and could not be set at all. The same is true of `outputs`, which Angular
+validates and merges identically. All 43 entries state both, and
+`scripts/host-directives.spec.mjs` fails on one that does not — which is also what a
+`@spartan-ng/cli` regenerate would produce, so it is registered as a vendored divergence
+below.
+
+`type:feature` started with **103** violations across 60 files and is now at **zero**. #151
+closed the 30 dialog and toast imports, #154 the 62 icon ones and #152 the last 11, so every
+tier below the UI layer is enforced the same way: a new vendor import fails `pnpm lint`,
+statically or through a lazy `import()`. Nothing is staged any more — the temporary `warn`
+block that kept the count visible while it shrank is gone, which is what closing this gate
+meant.
+
+The emoji picker is the clearest case of what the vendor layer costs when it is not wrapped.
+`@ctrl/ngx-emoji-mart`'s `picker.css` is 453 lines with **zero** custom properties — every
+colour a literal — and its whole idea of theming is one `darkMode` boolean that toggles an
+`.emoji-mart-dark` class. That cannot express Trinity's mode x palette grid, so the picker
+rendered its own purple accent and its own greys under all four combinations.
+`<trn-emoji-picker>` pins that boolean to `false` and paints the chrome from design tokens
+instead, so it re-themes with everything else.
+
+Two details there are easy to get wrong, and both are pinned by tests. The boolean has to be
+**pinned**, not merely left unbound: the vendor defaults it to
+`matchMedia('(prefers-color-scheme: dark)').matches`, so an absent binding follows the
+desktop rather than switching the class off, and jsdom reports light — so a rendering test
+will happily confirm an invariant that does not hold in a browser. And the **accent is
+passed, not overridden**: the vendor emits it as an inline style on the anchor bar and the
+selected category, which no rule in a stylesheet can outrank without `!important`, so
+`var(--trinity-accent)` goes in through the vendor's own `color` input.
+
+Icons are the clearest illustration of what the wrapper buys. `@ng-icons` types its `name`
+as `IconName | (string & {})` — any string at all — so `name="lucideTrash"` (no `2`) used to
+type-check, build, and render nothing. `<trn-icon>` takes a closed `TrnIconName` union
+instead, so that is a compile error, and the vendor identifiers live in exactly one file.
+Accessibility moved from incidental to systematic in the same step: `NgIcon` force-hides any
+icon lacking a **static** `aria-hidden`, which silently suppressed a bound `aria-label` — a
+label the quick switcher was announcing to nobody. `<trn-icon>` is decorative by default and
+puts a `label` on its own host, where nothing can suppress it.
+
+`@trinity/components/*` holds `AvatarComponent` (`<trn-avatar>`), `BannerComponent`,
+`PageHeaderComponent`, `MediaBubbleComponent`, `MessageToolbarComponent` and
+`EncryptionDialogService`, one library each. The boundary rule is that
 `type:ui` may depend only on ui, util and platform libraries — never on data-access, never
 on the SDK.
 
@@ -43,6 +146,16 @@ regenerate a component with the CLI rather than hand-authoring it:
 pnpm exec nx g @spartan-ng/cli:ui <name>
 ```
 
+That is the whole workflow. The kit keeps upstream's own naming — `hlm` selectors, `Hlm*`
+class names, the `@trinity/helm/*` alias — so a regenerate lands consistent with what is
+already there and needs no post-processing step.
+
+`trn` is reserved for Trinity's own code — `<trn-icon>`, `<trn-emoji-picker>` and the overlay
+adapters — which is what makes the wrapper layer legible at a glance: an `hlm` name is
+upstream's, a `trn` name is ours. Renaming the kit into that namespace was tried and rejected;
+it would have needed a codemod re-applied after every generate, and a half-applied one **lints
+clean** because the generated files are exempt from the selector and class-suffix rules.
+
 Configuration lives in the root `components.json`:
 
 ```json
@@ -61,9 +174,10 @@ prefixes, un-suffixed class names such as `HlmButton`, and aliased inputs includ
 `libs/spartan/**/*.ts` from `component-class-suffix`, `component-selector`,
 `directive-selector` and `no-input-rename`.
 
-Only `libs/spartan/overlay` has a Vitest target; every other Helm library is build and lint
-only. That is why the specs pinning Helm behaviour live in `overlay` and import across the
-library boundary.
+Only `libs/spartan/tests` has a Vitest target; every other Helm library is build and lint only.
+That is why the specs pinning Helm behaviour live there rather than beside the components they
+cover, and import across the library boundary. That project holds nothing else — it exists so
+those specs stay in the vendor tier now that the hand-authored libraries have left it.
 
 !!! warning "Never assert on a Helm component's host class string"
 
@@ -74,16 +188,25 @@ library boundary.
     Assert the pure, synchronous `cva` functions instead (`buttonVariants`,
     `badgeVariants`) plus the fact that the component renders without throwing. This is
     stated as a rule in
-    [`helm-components.spec.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/spartan/overlay/src/lib/helm-components.spec.ts).
+    [`helm-components.spec.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/spartan/tests/src/lib/helm-components.spec.ts).
 
 ## The overlay library is Trinity code
 
-Despite living under `libs/spartan/` and being aliased `@trinity/helm/overlay`, this
-library is **hand-authored**, not generated. It holds the imperative overlay adapters:
+`@trinity/components/overlay` is **hand-authored**, not generated — it sat under `libs/spartan/`
+for historical reasons until it moved to the public tier with the icon and emoji-picker
+wrappers. It holds the imperative overlay adapters:
 `TrnDialogService`, `TrnAlertService` with `TrnAlertDialogComponent`, `TrnActionSheetService`
 with `TrnActionSheetComponent`, and `TrnToastService` — built on CDK Dialog and Overlay plus
-brain sonner. It re-exports CDK's `DialogRef` so a modal'd component can call
-`inject(DialogRef).close(data)` without importing `@angular/cdk` directly.
+brain sonner. A modal'd component closes itself with `inject(TrnDialogRef).close(data)`.
+
+`TrnDialogRef` is Trinity's own class, not a re-exported `DialogRef`. That distinction is the
+whole point of the layer: the barrel used to hand out CDK's class — one deliberate, documented
+export — and that single line put `@angular/cdk` in the type signature of 24 feature
+components, so swapping the dialog library would have meant editing every one of them. The
+wrapper is two members wide (`close`, `closed`), which is everything the app used across 51
+call sites, and `vendor-surface.spec.ts` asserts the barrel re-exports **no** CDK value at
+all. Anything genuinely new should arrive as a named method on `TrnDialogService`, where it
+can be given Trinity's semantics, rather than by widening this handle.
 
 ```ts
 const ref = this.dialog.open(MyComponent, {
@@ -132,13 +255,16 @@ DOM — silently, on three shipped screens, for as long as the components have e
 
 **The rules:**
 
-1. **Every `hostDirectives` entry lists `inputs` explicitly**, even when the answer is `[]`. An
-   empty list is a decision; an omitted one is an accident that publishes or swallows an API
-   nobody chose.
+1. **Every `hostDirectives` entry lists `inputs` AND `outputs` explicitly**, even when the
+   answer is `[]`. An empty list is a decision; an omitted one is an accident that publishes or
+   swallows an API nobody chose. Angular validates and merges the two identically, so the same
+   applies to both — `CdkMenu.closed`, for instance, stays internal by decision, because
+   closure is already public on the trigger as `hlmDropdownMenuClosed` and two names for one
+   lifecycle is easy to add and hard to withdraw.
 2. **Set `aria-describedby` as an attribute or a property binding, never `[attr.aria-describedby]`.**
    Even with the input published, the attribute form is still overwritten: the directive's host
    binding runs after the template's. Pinned by a test in
-   `libs/spartan/overlay/src/lib/helm-components.spec.ts` so a future upstream fix is noticed.
+   `libs/spartan/tests/src/lib/helm-components.spec.ts` so a future upstream fix is noticed.
 3. **`hlm-checkbox` and `hlm-radio` are deliberately different.** Each declares its own
    `aria-describedby` input, forwards it to the inner `brn-*` control and nulls the host
    attribute, because the host is `display: contents` and is not the focusable element. That
@@ -156,17 +282,21 @@ a lost override fails the suite rather than shipping. This table is the register
 step with the banner in
 [`hlm-dropdown-menu.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/spartan/dropdown-menu/src/lib/hlm-dropdown-menu.ts).
 
-| File and symbol                                              | Override                                                                                                                       | Pinned by                       |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------- |
-| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | `_handleClick` shadowed so a sub-trigger click opens the submenu instead of toggling it closed under zoneless change detection | `dropdown-menu-submenu.spec.ts` |
-| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | The same shadow re-does CDK's focus move, so keyboard Enter and Space land inside the submenu                                  | `dropdown-menu-submenu.spec.ts` |
-| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | `side` defaults to `'right'`, so a submenu opens beside its parent rather than over it                                         | `dropdown-menu-submenu.spec.ts` |
-| `dropdown-menu` · `HlmDropdownMenu` and `HlmDropdownMenuSub` | `CdkTargetMenuAim` host directive                                                                                              | `dropdown-menu-submenu.spec.ts` |
-| `dropdown-menu` · `HlmDropdownMenuItem`                      | A destructive item's text and icon use `text-danger`, not upstream's `text-destructive`                                        | `dropdown-menu-submenu.spec.ts` |
-| `badge` · `badgeVariants`                                    | Adds `success` and `warning` variants that upstream Helm does not ship                                                         | `helm-components.spec.ts`       |
+| File and symbol                                              | Override                                                                                                                                           | Pinned by                       |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | `_handleClick` shadowed so a sub-trigger click opens the submenu instead of toggling it closed under zoneless change detection                     | `dropdown-menu-submenu.spec.ts` |
+| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | The same shadow re-does CDK's focus move, so keyboard Enter and Space land inside the submenu                                                      | `dropdown-menu-submenu.spec.ts` |
+| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | `side` defaults to `'right'`, so a submenu opens beside its parent rather than over it                                                             | `dropdown-menu-submenu.spec.ts` |
+| `dropdown-menu` · `HlmDropdownMenu` and `HlmDropdownMenuSub` | `CdkTargetMenuAim` host directive                                                                                                                  | `dropdown-menu-submenu.spec.ts` |
+| `dropdown-menu` · `HlmDropdownMenuItem`                      | A destructive item's text and icon use `text-danger`, not upstream's `text-destructive`                                                            | `dropdown-menu-submenu.spec.ts` |
+| `badge` · `badgeVariants`                                    | Adds `success` and `warning` variants that upstream Helm does not ship                                                                             | `helm-components.spec.ts`       |
+| All 30 files with `hostDirectives` (25 kit, 5 public tier)   | Every entry states its `inputs` and `outputs` explicitly, even when empty — the generator's shorthand decides the element's public API by omission | `host-directives.spec.mjs`      |
 
-The specs live in
-[`libs/spartan/overlay/src/lib`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/spartan/overlay/src/lib).
+The two `.spec.ts` files live in
+[`libs/spartan/tests/src/lib`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/spartan/tests/src/lib),
+a project that exists so specs pinning vendored behaviour stay in the vendor tier now that the
+hand-authored wrappers have moved to `libs/components/`. `host-directives.spec.mjs` is a
+workspace-wide sweep and lives in `scripts/`.
 
 The `CdkTargetMenuAim` row is a consequence of the row above it. CDK closes an open submenu
 the moment the pointer enters any non-trigger sibling row, unless a `MENU_AIM` is provided —

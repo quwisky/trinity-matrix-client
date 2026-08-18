@@ -7,9 +7,8 @@ import {
 } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 import { DOCUMENT } from '@angular/common';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideCheck, lucideCopy, lucideDownload } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 /** How long the "Copied" affordance stays visible after a successful copy. */
 const COPIED_FEEDBACK_MS = 2000;
@@ -25,8 +24,7 @@ const COPIED_FEEDBACK_MS = 2000;
   selector: 'trn-recovery-key-display',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrls: ['recovery-key-display.component.scss'],
-  imports: [HlmButton, NgIcon],
-  viewProviders: [provideIcons({ lucideCheck, lucideCopy, lucideDownload })],
+  imports: [HlmButton, TrnIconComponent],
   templateUrl: './recovery-key-display.component.html',
 })
 export class RecoveryKeyDisplayComponent {

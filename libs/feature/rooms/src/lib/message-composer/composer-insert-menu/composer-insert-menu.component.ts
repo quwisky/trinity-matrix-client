@@ -4,22 +4,14 @@ import {
   input,
   output,
 } from '@angular/core';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import {
-  lucideImagePlay,
-  lucideMapPin,
-  lucideMic,
-  lucidePaperclip,
-  lucidePlus,
-  lucideVote,
-} from '@ng-icons/lucide';
 import {
   HlmDropdownMenu,
   HlmDropdownMenuItem,
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
-import { HlmSpinner } from '@trinity/helm/spinner';
-import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnSpinnerComponent } from '@trinity/components/spinner';
+import { TrnTooltip } from '@trinity/components/tooltip';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 /**
  * The composer's `+`: every way something other than typed text gets into a message.
@@ -33,22 +25,12 @@ import { HlmTooltip } from '@trinity/helm/tooltip';
   selector: 'trn-composer-insert-menu',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    NgIcon,
+    TrnIconComponent,
     HlmDropdownMenu,
     HlmDropdownMenuItem,
     HlmDropdownMenuTrigger,
-    HlmSpinner,
-    HlmTooltip,
-  ],
-  viewProviders: [
-    provideIcons({
-      lucideImagePlay,
-      lucideMapPin,
-      lucideMic,
-      lucidePaperclip,
-      lucidePlus,
-      lucideVote,
-    }),
+    TrnSpinnerComponent,
+    TrnTooltip,
   ],
   templateUrl: './composer-insert-menu.component.html',
   styleUrl: './composer-insert-menu.component.scss',

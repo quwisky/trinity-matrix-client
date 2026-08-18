@@ -21,11 +21,11 @@ import {
   type UserSearchResult,
 } from '@trinity/data-access/rooms';
 import { isValidUserId } from '@trinity/util/matrix';
-import { AvatarComponent } from '@trinity/ui';
-import { DialogRef } from '@trinity/helm/overlay';
+import { AvatarComponent } from '@trinity/components/avatar';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmInput } from '@trinity/helm/input';
-import { HlmSpinner } from '@trinity/helm/spinner';
+import { TrnInput } from '@trinity/components/input';
+import { TrnSpinnerComponent } from '@trinity/components/spinner';
 
 /** Don't hit the directory until the term is at least this long. */
 const MIN_SEARCH_LENGTH = 2;
@@ -47,13 +47,13 @@ const MIN_SEARCH_LENGTH = 2;
 @Component({
   selector: 'trn-user-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, HlmSpinner, HlmButton, HlmInput],
+  imports: [AvatarComponent, TrnSpinnerComponent, HlmButton, TrnInput],
   templateUrl: './user-picker.component.html',
   styleUrl: './user-picker.component.scss',
 })
 export class UserPickerComponent {
   private readonly dialogRef =
-    inject<DialogRef<string | null, UserPickerComponent>>(DialogRef);
+    inject<TrnDialogRef<string | null>>(TrnDialogRef);
   private readonly rooms = inject(RoomsService);
 
   /** Dialog heading (e.g. "Start a direct message"). */

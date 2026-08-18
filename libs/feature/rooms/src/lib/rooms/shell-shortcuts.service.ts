@@ -1,8 +1,8 @@
 import { Injectable, inject } from '@angular/core';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
 import { RoomsService } from '@trinity/data-access/rooms';
-import { TrnDialogService } from '@trinity/helm/overlay';
-import { runWithBusy } from '@trinity/ui';
+import { TrnDialogService } from '@trinity/components/overlay';
+import { runWithBusy } from '@trinity/util/ui';
 import { MruRoomsService } from '../shortcuts/mru-rooms.service';
 import { stepList, stepUnread } from '../shortcuts/room-navigation';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';

@@ -9,8 +9,8 @@ import {
   MatrixClientService,
   type SyncState,
 } from '@trinity/data-access/matrix-client';
-import { ENCRYPTION_DIALOG_COMPONENTS } from '@trinity/ui';
-import { TrnDialogService } from '@trinity/helm/overlay';
+import { ENCRYPTION_DIALOG_COMPONENTS } from '@trinity/components/encryption-dialog';
+import { TrnDialogService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';

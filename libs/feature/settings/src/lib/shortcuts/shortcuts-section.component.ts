@@ -6,7 +6,7 @@ import {
   signal,
 } from '@angular/core';
 import { HlmButton } from '@trinity/helm/button';
-import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
+import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import {
   KeyboardShortcutsService,
   chordFromEvent,

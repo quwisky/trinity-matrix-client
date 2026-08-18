@@ -127,21 +127,26 @@ libs/
     settings/         @trinity/feature/settings — Settings page: appearance
                       (light/dark/system theme), profile (name + avatar), and
                       device management (sign-out/verify)  [type:feature]
-  ui/                 @trinity/ui — reusable presentational components (avatar +
-                      mxc resolver token, banner, page header, media bubble,
-                      message toolbar, encryption-dialog service); may use
-                      @trinity/helm/* + @trinity/util/* but no data-access/state deps  [type:ui]
+  components/*        @trinity/components/* — the public component tier feature code
+                      reaches for: Trinity-authored wrappers (overlay adapters, icon,
+                      emoji-picker, select, checkbox, tooltip, …) plus Trinity's own
+                      presentational components (avatar, banner, page header, media
+                      bubble, message toolbar); the API is ours, so the library
+                      underneath can be swapped  [type:ui, ui:public]
   spartan/*           @trinity/helm/* — styled spartan-ng Helm components over
-                      headless Brain primitives (button, input, card, overlay,
-                      dropdown-menu, …), generated via @spartan-ng/cli  [type:ui]
+                      headless Brain primitives (button, input, card, dropdown-menu, …),
+                      generated via @spartan-ng/cli; consume through components/*
+                      [type:ui, ui:vendor-wrapper]
 e2e/playwright/     @nx/playwright app-journey specs (run: nx e2e trinity-e2e)
 e2e/                  standalone crypto/protocol harnesses (serve www/)
 android/ ios/         Capacitor native projects (webDir: www)
 www/                  web build output
 ```
 
-Boundaries are enforced by `@nx/enforce-module-boundaries` on two independent axes,
-`type:` and `scope:`, with no exceptions configured. Dependencies point inward —
+Boundaries are enforced by `@nx/enforce-module-boundaries` on three independent axes:
+`type:`, `scope:`, and `ui:`, which separates Trinity's own wrapper layer from the vendored
+spartan kit so third-party UI packages can be banned everywhere below it. Dependencies point
+inward —
 `app → feature → {data-access, ui} → {util, platform}` — and one feature may never
 import another. `ui` is presentational only and cannot reach a data-access lib at all.
 A library is named three different ways and they no longer coincide: the directory

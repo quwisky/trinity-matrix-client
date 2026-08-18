@@ -20,26 +20,13 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { map } from 'rxjs';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import {
-  lucideArrowLeft,
-  lucideEllipsisVertical,
-  lucideLock,
-  lucideMessagesSquare,
-  lucideCalendarSearch,
-  lucidePin,
-  lucideSearch,
-  lucideSettings,
-  lucideUserPlus,
-  lucideUsers,
-} from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
 import {
   HlmDropdownMenu,
   HlmDropdownMenuItem,
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
-import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import { CryptoService } from '@trinity/data-access/crypto';
 import {
   InvitesService,
@@ -66,7 +53,8 @@ import {
   TimelineService,
 } from '@trinity/data-access/timeline';
 import { FeatureFlagsService } from '@trinity/platform-native';
-import { AvatarComponent, PageHeaderComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
+import { PageHeaderComponent } from '@trinity/components/page-header';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { MemberListComponent } from '../member-list/member-list.component';
@@ -89,6 +77,7 @@ import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
 import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 /**
  * Discord-style authenticated shell: server rail + channel sidebar (in a
@@ -124,8 +113,8 @@ import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
     HlmDropdownMenu,
     HlmDropdownMenuItem,
     HlmDropdownMenuTrigger,
-    HlmTooltip,
-    NgIcon,
+    TrnTooltip,
+    TrnIconComponent,
     AvatarComponent,
     ServerRailComponent,
     ChannelSidebarComponent,
@@ -145,20 +134,6 @@ import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
     '(document:keydown)': 'onGlobalKeydown($event)',
     '(document:keydown.escape)': 'onEscapeKey()',
   },
-  viewProviders: [
-    provideIcons({
-      lucideArrowLeft,
-      lucideEllipsisVertical,
-      lucideLock,
-      lucideMessagesSquare,
-      lucideCalendarSearch,
-      lucidePin,
-      lucideSearch,
-      lucideSettings,
-      lucideUserPlus,
-      lucideUsers,
-    }),
-  ],
 })
 export class RoomsPage implements OnInit, OnDestroy {
   readonly rooms = inject(RoomsService);

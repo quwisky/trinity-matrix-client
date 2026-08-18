@@ -10,12 +10,12 @@ import {
 } from '@angular/core';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import {
-  DialogRef,
+  TrnDialogRef,
   TrnAlertService,
   TrnToastService,
-} from '@trinity/helm/overlay';
+} from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmSpinner } from '@trinity/helm/spinner';
+import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { EditHistoryService } from '@trinity/data-access/timeline';
 import {
   annotateRevision,
@@ -23,7 +23,7 @@ import {
   type MessageRevisionView,
 } from '@trinity/util/matrix';
 import { switchMap, timer } from 'rxjs';
-import { runWithBusy } from '@trinity/ui';
+import { runWithBusy } from '@trinity/util/ui';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
 import { MatrixLinkDirective } from '../matrix-link/matrix-link.directive';
 
@@ -51,7 +51,12 @@ const REFRESH_DELAY_MS = 600;
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './edit-history.component.html',
   styleUrl: './edit-history.component.scss',
-  imports: [HlmButton, HlmSpinner, SpoilerRevealDirective, MatrixLinkDirective],
+  imports: [
+    HlmButton,
+    TrnSpinnerComponent,
+    SpoilerRevealDirective,
+    MatrixLinkDirective,
+  ],
 })
 export class EditHistoryComponent {
   /** Timestamps go through the app-wide format preference, never a DatePipe. */
@@ -62,9 +67,7 @@ export class EditHistoryComponent {
 
   private readonly history = inject(EditHistoryService);
   private readonly dialogRef =
-    inject<DialogRef<MatrixLinkTarget | undefined, EditHistoryComponent>>(
-      DialogRef,
-    );
+    inject<TrnDialogRef<MatrixLinkTarget | undefined>>(TrnDialogRef);
   private readonly destroyRef = inject(DestroyRef);
   private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);

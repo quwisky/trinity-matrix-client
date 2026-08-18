@@ -4,7 +4,7 @@ import {
   RoomsService,
   type MemberSummary,
 } from '@trinity/data-access/rooms';
-import { runWithBusy } from '@trinity/ui';
+import { runWithBusy } from '@trinity/util/ui';
 import { MemberInfoService } from '../member-info/member-info.service';
 import { UserCardService } from '../user-card/user-card.service';
 import { RoomShellStore } from './room-shell-store';

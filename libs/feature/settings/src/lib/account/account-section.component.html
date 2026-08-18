@@ -30,10 +30,10 @@
       <p class="text-13 text-muted-foreground">Change your account password.</p>
 
       <div class="flex flex-col gap-1.5">
-        <label hlmLabel for="current-password">Current password</label>
+        <label trnLabel for="current-password">Current password</label>
         <div class="relative">
           <input
-            hlmInput
+            trnInput
             id="current-password"
             [type]="revealed().currentPassword ? 'text' : 'password'"
             class="pr-10"
@@ -50,19 +50,16 @@
             [attr.aria-pressed]="revealed().currentPassword"
             (click)="toggleReveal('currentPassword')"
           >
-            <ng-icon
-              [name]="revealed().currentPassword ? 'lucideEyeOff' : 'lucideEye'"
-              aria-hidden="true"
-            />
+            <trn-icon [name]="revealed().currentPassword ? 'eye-off' : 'eye'" />
           </button>
         </div>
       </div>
 
       <div class="flex flex-col gap-1.5">
-        <label hlmLabel for="new-password">New password</label>
+        <label trnLabel for="new-password">New password</label>
         <div class="relative">
           <input
-            hlmInput
+            trnInput
             id="new-password"
             [type]="revealed().newPassword ? 'text' : 'password'"
             class="pr-10"
@@ -79,19 +76,16 @@
             [attr.aria-pressed]="revealed().newPassword"
             (click)="toggleReveal('newPassword')"
           >
-            <ng-icon
-              [name]="revealed().newPassword ? 'lucideEyeOff' : 'lucideEye'"
-              aria-hidden="true"
-            />
+            <trn-icon [name]="revealed().newPassword ? 'eye-off' : 'eye'" />
           </button>
         </div>
       </div>
 
       <div class="flex flex-col gap-1.5">
-        <label hlmLabel for="confirm-password">Confirm new password</label>
+        <label trnLabel for="confirm-password">Confirm new password</label>
         <div class="relative">
           <input
-            hlmInput
+            trnInput
             id="confirm-password"
             [type]="revealed().confirmPassword ? 'text' : 'password'"
             class="pr-10"
@@ -108,10 +102,7 @@
             [attr.aria-pressed]="revealed().confirmPassword"
             (click)="toggleReveal('confirmPassword')"
           >
-            <ng-icon
-              [name]="revealed().confirmPassword ? 'lucideEyeOff' : 'lucideEye'"
-              aria-hidden="true"
-            />
+            <trn-icon [name]="revealed().confirmPassword ? 'eye-off' : 'eye'" />
           </button>
         </div>
       </div>

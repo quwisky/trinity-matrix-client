@@ -1,0 +1,112 @@
+// Bridges @ctrl/ngx-emoji-mart onto Trinity's design tokens.
+// ---
+// The vendor's picker.css is 453 lines with ZERO custom properties — every colour is a
+// literal (#fff, #222427, #d9d9d9, and an #ae65c5 accent). So this cannot be a variable
+// remap; it has to be an override sheet. And because the vendor's inner DOM carries no
+// `_ngcontent` attribute, an encapsulated stylesheet cannot reach it at all — hence
+// `ViewEncapsulation.None` on the component, scoped by the `.trn-emoji-picker` host class
+// so nothing leaks past this element.
+// ---
+// Every rule below is keyed on a token, never a literal, so the picker follows light/dark
+// AND the palette. That is four combinations the vendor's own `darkMode` boolean could
+// never express — which is exactly why the template pins it to `false` (NOT merely leaves
+// it unbound, which would follow the OS): that keeps `.emoji-mart-dark` and its ten rules
+// off the element, so these only have to beat `.emoji-mart` base rules.
+// ---
+// What is NOT here is the accent. The vendor emits it as an inline style, which nothing
+// short of `!important` can outrank, so it is passed through its `color` input instead —
+// see the template.
+
+.trn-emoji-picker {
+  display: block;
+
+  .emoji-mart {
+    background: var(--background);
+    border-color: var(--border);
+    color: var(--foreground);
+    font-family: inherit;
+  }
+
+  // Only the idle and hover states are ours to paint. The vendor inline-styles the anchor
+  // bar and the SELECTED anchor from its `color` input — which the template hands
+  // `var(--trinity-accent)` — so a rule for either would be outranked and, worse, would
+  // read as though it were doing the work.
+  .emoji-mart-anchor {
+    color: var(--muted-foreground);
+
+    &:hover {
+      color: var(--trinity-accent);
+    }
+  }
+
+  .emoji-mart-bar {
+    border-color: var(--border);
+  }
+
+  .emoji-mart-search {
+    input {
+      background: var(--background);
+      border-color: var(--border);
+      color: var(--foreground);
+
+      &::placeholder {
+        color: var(--muted-foreground);
+      }
+
+      // The vendor sets `outline: 0` on this input unconditionally, so without a ring here
+      // it has no focus indicator at all. Same shape as the rest of the app's.
+      &:focus-visible {
+        border-color: var(--trinity-accent);
+        outline: 2px solid var(--trinity-accent);
+        outline-offset: 2px;
+      }
+    }
+  }
+
+  .emoji-mart-search-icon svg {
+    fill: var(--muted-foreground);
+  }
+
+  // Category headings are sticky and painted opaque by the vendor so rows do not show
+  // through; that opaque fill has to be OUR surface or a band of #fff crosses dark mode.
+  .emoji-mart-category-label span {
+    background: var(--background);
+    color: var(--foreground);
+  }
+
+  .emoji-mart-category .emoji-mart-emoji:hover::before {
+    background-color: var(--muted);
+  }
+
+  .emoji-mart-no-results {
+    color: var(--muted-foreground);
+  }
+
+  // The last surface the vendor leaves on UA defaults, and it is always drawn: the list is
+  // `overflow-y: scroll`, not `auto`, so on any platform with classic scrollbars the bar is
+  // painted whether or not it is needed (the vendor even reserves `measureScrollbar` px for
+  // it in `getWidth()`). Nothing above sets `scrollbar-color`, and the app ships
+  // `color-scheme: light dark`, so the UA follows the OS rather than the Trinity theme —
+  // Trinity dark on a light desktop drew a pale bar down the edge of a fully themed panel.
+  // ---
+  // The three declarations are inlined rather than `@include scrollable`: that mixin lives in
+  // libs/feature/rooms, which this tier may not reach. Overflow is deliberately left alone —
+  // changing it would change the width the vendor reserves.
+  .emoji-mart-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--trinity-rail) transparent;
+
+    &::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: var(--trinity-rail);
+      border-radius: var(--trinity-radius-sm);
+    }
+
+    &::-webkit-scrollbar-track {
+      background: transparent;
+    }
+  }
+}

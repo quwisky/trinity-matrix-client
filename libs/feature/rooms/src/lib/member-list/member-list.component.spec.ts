@@ -1,12 +1,13 @@
 import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { PresenceService } from '@trinity/data-access/profile';
 import { type MemberSummary } from '@trinity/data-access/rooms';
 import { type PresenceState } from '@trinity/util/matrix';
 import { MockComponent } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
 import { MemberListComponent } from './member-list.component';
+import { provideTrnIcons } from '@trinity/components/icon';
 
 // Stub presence per user id (defaults to offline).
 const presenceMap: Record<string, PresenceState> = {
@@ -17,7 +18,12 @@ const presenceStub = {
   presenceFor: (userId: string) =>
     signal<PresenceState>(presenceMap[userId] ?? 'offline'),
 };
-const providers = [{ provide: PresenceService, useValue: presenceStub }];
+const providers = [
+  { provide: PresenceService, useValue: presenceStub },
+  // Icons register once at the app root now (provideTrnIcons in main.ts) instead of per
+  // component, so a spec asserting a real <svg> renders has to mirror that root here.
+  provideTrnIcons(),
+];
 
 // A member view-model, defaulting to a regular member (power level 0).
 function member(
@@ -315,7 +321,7 @@ describe('MemberListComponent', () => {
     });
 
     // Each of the three section headers renders exactly one icon that resolves to
-    // a real SVG (i.e. the lucide icon name is registered, not just the host element).
+    // a real SVG (i.e. the icon name is registered, not just the host element).
     const sections = container.querySelectorAll('.members__section');
     expect(sections.length).toBe(3);
     for (const section of sections) {
@@ -326,9 +332,9 @@ describe('MemberListComponent', () => {
 
     // Crown for admins, shield for moderators, user for members — highest role first.
     expect(fixture.componentInstance.sections().map((s) => s.icon)).toEqual([
-      'lucideCrown',
-      'lucideShield',
-      'lucideUser',
+      'crown',
+      'shield',
+      'user',
     ]);
   });
 });

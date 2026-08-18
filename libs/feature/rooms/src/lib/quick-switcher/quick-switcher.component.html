@@ -10,7 +10,7 @@
 
   <div class="border-b border-solid border-border p-3">
     <input
-      hlmInput
+      trnInput
       data-autofocus
       data-testid="switcher-input"
       placeholder="Search rooms, spaces, people"
@@ -72,18 +72,9 @@
           }
         </span>
         @if (result.encrypted) {
-          <ng-icon
-            class="qs-lock"
-            name="lucideLock"
-            aria-label="Encrypted"
-            aria-hidden="false"
-          />
+          <trn-icon class="qs-lock" name="lock" label="Encrypted" />
         }
-        <ng-icon
-          class="qs-kind"
-          [name]="kindIcon(result.kind)"
-          [attr.aria-label]="kindLabel(result.kind)"
-        />
+        <trn-icon class="qs-kind" [name]="kindIcon(result.kind)" />
         <span class="text-xs text-muted-foreground">{{
           kindLabel(result.kind)
         }}</span>
@@ -91,7 +82,7 @@
     } @empty {
       <div class="qs-empty" aria-live="polite">
         @if (searching()) {
-          <hlm-spinner />
+          <trn-spinner />
         } @else {
           <span class="text-xs text-muted-foreground">{{ emptyHint() }}</span>
         }

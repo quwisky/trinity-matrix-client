@@ -13,22 +13,18 @@ import {
 import { NgTemplateOutlet } from '@angular/common';
 import { FormField, disabled, form } from '@angular/forms/signals';
 import { ActivatedRoute, Router } from '@angular/router';
-import { DialogRef } from '@angular/cdk/dialog';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Browser } from '@capacitor/browser';
 import { Observable, finalize, firstValueFrom } from 'rxjs';
 import { CryptoService } from '@trinity/data-access/crypto';
 import { AuthService } from '@trinity/data-access/auth';
-import {
-  PageHeaderComponent,
-  resolveInternalReturnTo,
-  runWithBusy,
-} from '@trinity/ui';
+import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
+import { PageHeaderComponent } from '@trinity/components/page-header';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmInput } from '@trinity/helm/input';
-import { HlmLabel } from '@trinity/helm/label';
-import { HlmSpinner } from '@trinity/helm/spinner';
-import { TrnAlertService } from '@trinity/helm/overlay';
+import { TrnInput } from '@trinity/components/input';
+import { TrnLabel } from '@trinity/components/label';
+import { TrnSpinnerComponent } from '@trinity/components/spinner';
+import { TrnDialogRef, TrnAlertService } from '@trinity/components/overlay';
 import { RecoveryKeySaveComponent } from '../recovery-key-save/recovery-key-save.component';
 import {
   confirmLeaving,
@@ -58,9 +54,9 @@ import {
     PageHeaderComponent,
     RecoveryKeySaveComponent,
     HlmButton,
-    HlmInput,
-    HlmLabel,
-    HlmSpinner,
+    TrnInput,
+    TrnLabel,
+    TrnSpinnerComponent,
   ],
 })
 export class EncryptionUnlockPage {
@@ -70,10 +66,9 @@ export class EncryptionUnlockPage {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   // Present only when opened as a dialog (desktop); null on the routed page.
-  private readonly dialogRef = inject<DialogRef<void, EncryptionUnlockPage>>(
-    DialogRef,
-    { optional: true },
-  );
+  private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef, {
+    optional: true,
+  });
   private readonly destroyRef = inject(DestroyRef);
 
   readonly busy = signal(false);

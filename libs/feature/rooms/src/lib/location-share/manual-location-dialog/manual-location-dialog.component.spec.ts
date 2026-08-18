@@ -1,10 +1,9 @@
-import { DialogRef } from '@angular/cdk/dialog';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { GeolocationService } from '@trinity/platform-native';
-import { TrnToastService } from '@trinity/helm/overlay';
+import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import { ManualLocationDialogComponent } from './manual-location-dialog.component';
 
 async function setup(
@@ -19,7 +18,7 @@ async function setup(
     over.approximate ?? vi.fn(() => of({ lat: 1.5, lng: 2.5 }));
   const { fixture } = await render(ManualLocationDialogComponent, {
     providers: [
-      { provide: DialogRef, useValue: { close } },
+      { provide: TrnDialogRef, useValue: { close } },
       MockProvider(GeolocationService, {
         supportsApproximate: () => over.supportsApproximate ?? false,
         approximateFromDesktop: approximate,

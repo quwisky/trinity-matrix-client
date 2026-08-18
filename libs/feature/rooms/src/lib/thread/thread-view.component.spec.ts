@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { DialogRef } from '@angular/cdk/dialog';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
 import {
   ThreadsService,
@@ -116,7 +116,7 @@ async function build(
       MockProvider(TimelineActionsService),
       MockProvider(RoomsService, { membersFor }),
       MockProvider(MessageSourceService, { open: sourceOpen }),
-      MockProvider(DialogRef, { close: dismiss }),
+      MockProvider(TrnDialogRef, { close: dismiss }),
     ],
   });
   return {

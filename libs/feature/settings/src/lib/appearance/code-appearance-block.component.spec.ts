@@ -51,14 +51,14 @@ describe('CodeAppearanceBlockComponent', () => {
   });
 
   it('shows the stored size by its label, not its id', async () => {
-    // `hlm-select` renders the collapsed trigger from the bound VALUE, so without
+    // `trn-select` renders the collapsed trigger from the bound VALUE, so without
     // `itemToString` this reads "larger". The option list itself lives in a CDK overlay that
     // only exists once opened, which jsdom cannot do — hence the trigger, not the options.
     codeScale.set('larger');
     const { container } = await renderBlock();
 
     expect(
-      container.querySelector('hlm-select-trigger')?.textContent,
+      container.querySelector('trn-select hlm-select-trigger')?.textContent,
     ).toContain('Larger');
   });
 

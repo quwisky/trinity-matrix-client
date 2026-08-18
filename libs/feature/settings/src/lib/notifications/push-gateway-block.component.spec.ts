@@ -1,5 +1,5 @@
 import { signal, type WritableSignal } from '@angular/core';
-import { Dialog } from '@angular/cdk/dialog';
+import { TrnDialogService } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
@@ -52,8 +52,13 @@ function providers(overrides: Partial<Stub> = {}) {
       register: registerSpy,
       unregister: unregisterSpy,
     }),
-    MockProvider(Dialog, {
-      open: vi.fn(() => ({ closed: of(dialogResult()) })) as never,
+    MockProvider(TrnDialogService, {
+      // `openAndWait` is generic in its return type (`Promise<R | null>`), so a stub
+      // resolving a concrete boolean cannot satisfy it without a cast. The component
+      // only ever calls it as `openAndWait<boolean>`, which is what this yields.
+      openAndWait: vi.fn(async () =>
+        dialogResult(),
+      ) as TrnDialogService['openAndWait'],
     }),
   ];
 }
@@ -293,7 +298,7 @@ describe('PushGatewayBlockComponent', () => {
 
   it('describes the URL field with its help text, for a screen reader', async () => {
     // Two of the three places in the app that describe a helm control. The hint was in the
-    // markup all along but never reached the accessibility tree: hlmInput composes
+    // markup all along but never reached the accessibility tree: trnInput composes
     // BrnFieldControlDescribedBy, which owns [attr.aria-describedby], and the hostDirectives
     // entry did not publish that input — so the attribute was computed as null and removed.
     // Asserted here as well as in the kit's own contract test, because this is the screen a

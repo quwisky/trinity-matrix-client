@@ -1,6 +1,6 @@
 import { DestroyRef, Injectable, inject, signal } from '@angular/core';
-import { TrnToastService } from '@trinity/helm/overlay';
-import type { BusyState } from '@trinity/ui';
+import { TrnToastService } from '@trinity/components/overlay';
+import type { BusyState } from '@trinity/util/ui';
 
 /**
  * The rooms shell's single busy/error channel, and the toasts it drives.

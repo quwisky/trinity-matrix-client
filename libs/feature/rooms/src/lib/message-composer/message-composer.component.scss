@@ -219,7 +219,7 @@
   resize: none;
   max-height: 200px;
 
-  // hlmTextarea ships form-textarea sizing (min-h-16, display:flex,
+  // trnTextarea ships form-textarea sizing (min-h-16, display:flex,
   // field-sizing:content); the composer is a single-row-that-grows chat input
   // (height driven by autoGrow()), so neutralise those. This block is unlayered
   // and so wins over hlm's @layer utilities.
@@ -247,7 +247,7 @@
     color: var(--trinity-text-muted);
   }
 
-  // Focus ring comes from hlmTextarea (spartan focus-visible:ring), consistent
+  // Focus ring comes from trnTextarea (spartan focus-visible:ring), consistent
   // with the app's other inputs — no bespoke outline here.
 }
 

@@ -1,6 +1,6 @@
 import { ApplicationRef, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Dialog, DialogRef } from '@angular/cdk/dialog';
+import { TrnDialogRef, TrnDialogService } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
 import {
   SearchService,
@@ -9,7 +9,7 @@ import {
   type ServerMessageSearch,
 } from '@trinity/data-access/search';
 import { TimelineService } from '@trinity/data-access/timeline';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
@@ -56,7 +56,7 @@ describe('MessageSearchComponent', () => {
       inputs: { roomId: '!r:hs' },
       imports: [MockComponent(AvatarComponent)],
       providers: [
-        MockProvider(DialogRef, { close: dismiss }),
+        MockProvider(TrnDialogRef, { close: dismiss }),
         MockProvider(SearchService, {
           searchLoadedMessages,
           searchServerMessages,
@@ -117,7 +117,7 @@ describe('MessageSearchComponent', () => {
     expect(query).not.toBeNull();
     expect(document.activeElement).toBe(query);
 
-    TestBed.inject(Dialog).closeAll();
+    TestBed.inject(TrnDialogService).closeAll();
     expect(await searched).toBeNull();
   });
 

@@ -1,24 +1,23 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import {
-  HlmRadio,
-  HlmRadioGroup,
-  HlmRadioIndicator,
-} from '@trinity/helm/radio-group';
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+} from '@angular/core';
 import {
-  HlmSelect,
-  HlmSelectContent,
-  HlmSelectItem,
-  HlmSelectPortal,
-  HlmSelectTrigger,
-  HlmSelectValue,
-} from '@trinity/helm/select';
-import { HlmCheckbox } from '@trinity/helm/checkbox';
+  TrnRadioGroupComponent,
+  type TrnRadioOption,
+} from '@trinity/components/radio-group';
+import {
+  TrnSelectComponent,
+  type TrnSelectOption,
+} from '@trinity/components/select';
+import { TrnCheckboxComponent } from '@trinity/components/checkbox';
 import {
   DateTimeFormatService,
   ComposerSettingsService,
   SystemLineSettingsService,
   ThemeService,
-  TRINITY_TEXT_SCALES,
   type Palette,
   type TextScale,
   type ThemePreference,
@@ -44,21 +43,20 @@ import { CodeAppearanceBlockComponent } from './code-appearance-block.component'
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './appearance-settings.component.html',
   imports: [
-    HlmRadioGroup,
-    HlmRadio,
-    HlmRadioIndicator,
-    HlmSelect,
-    HlmSelectTrigger,
-    HlmSelectValue,
-    HlmSelectContent,
-    HlmSelectPortal,
-    HlmSelectItem,
-    HlmCheckbox,
+    TrnRadioGroupComponent,
+    TrnSelectComponent,
+    TrnCheckboxComponent,
     CodeAppearanceBlockComponent,
   ],
 })
 export class AppearanceSettingsComponent {
   readonly theme = inject(ThemeService);
+  /** Light/dark/system, in the shape the radio group takes. */
+  readonly themeOptions: readonly TrnRadioOption<ThemePreference>[] = [
+    { value: 'system', label: 'Use system setting', testId: 'theme-system' },
+    { value: 'light', label: 'Light', testId: 'theme-light' },
+    { value: 'dark', label: 'Dark', testId: 'theme-dark' },
+  ];
   readonly systemLines = inject(SystemLineSettingsService);
   readonly composer = inject(ComposerSettingsService);
   readonly format = inject(DateTimeFormatService);
@@ -85,13 +83,53 @@ export class AppearanceSettingsComponent {
     }
   }
 
+  /** Every select's choices, in the shape the wrapper takes. */
+  readonly textScaleOptions: readonly TrnSelectOption<string>[] =
+    this.theme.textScales.map((scale) => ({
+      value: scale.id,
+      label: scale.label,
+      testId: `text-scale-${scale.id}`,
+    }));
+  readonly paletteOptions: readonly TrnSelectOption<string>[] =
+    this.theme.palettes.map((palette) => ({
+      value: palette.id,
+      label: palette.label,
+      testId: `palette-${palette.id}`,
+    }));
   /**
-   * Label for a text-scale id. `hlm-select` renders the collapsed trigger from the bound
-   * VALUE rather than the chosen option's markup, so without this the control would read
-   * "larger" instead of "Larger". An unknown id falls through rather than blanking it.
+   * `computed`, not a field initializer, because the preview text is not static.
+   *
+   * `sample` is a fixed instant on purpose, but `sampleTime` formats it through
+   * `format.prefs()` — whose locales come from a `languagechange` listener. Android keeps
+   * the WebView alive across an OS language change (`locale` is in the Activity's
+   * `configChanges`), so the paragraph below, still a live template call, re-renders in the
+   * new locale while a list built once at construction would keep showing the old one — the
+   * same screen previewing "Match system" two contradictory ways.
    */
-  readonly textScaleLabel = (scale: string): string =>
-    TRINITY_TEXT_SCALES.find((entry) => entry.id === scale)?.label ?? scale;
+  readonly timeFormatOptions = computed<readonly TrnSelectOption<string>[]>(
+    () =>
+      this.format.timeFormats.map((option) => ({
+        value: option.id,
+        label: `${option.label} (${this.format.sampleTime(this.sample, option.id)})`,
+        testId: `time-format-${option.id}`,
+      })),
+  );
+  /** Reactive for the same reason as {@link timeFormatOptions}. */
+  readonly dateFormatOptions = computed<readonly TrnSelectOption<string>[]>(
+    () =>
+      this.format.dateFormats.map((option) => ({
+        value: option.id,
+        label: `${option.label} (${this.format.sampleDate(this.sample, option.id)})`,
+        testId: `date-format-${option.id}`,
+      })),
+  );
+  readonly spaceOrderOptions: readonly TrnSelectOption<string>[] =
+    TRINITY_ROOM_SORTS.map((option) => ({
+      value: option.id,
+      label: option.label,
+      description: option.description,
+      testId: `space-order-${option.id}`,
+    }));
 
   /** Apply + persist how large text is. */
   onTextScaleChange(value: string | null | undefined): void {
@@ -113,16 +151,6 @@ export class AppearanceSettingsComponent {
       this.format.setDateFormat(value);
     }
   }
-
-  /**
-   * What the collapsed trigger shows for the stored id.
-   *
-   * `hlm-select` renders the trigger from the bound *value*, not from the chosen option's
-   * markup, so without this it would read `recent` rather than `Recent activity`. A stable
-   * field rather than an inline arrow, which would be a new reference every change detection.
-   */
-  readonly spaceOrderLabel = (mode: string): string =>
-    TRINITY_ROOM_SORTS.find((option) => option.id === mode)?.label ?? mode;
 
   /** Apply + persist this account's default ordering for spaces with no override. */
   onSpaceOrderChange(value: string | null | undefined): void {

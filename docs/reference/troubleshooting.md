@@ -161,12 +161,12 @@ configured at severity 2, which is a weaker claim than the rule still matching a
 fails, then revert:
 
 ```bash
-echo "import type { RoomsService } from '@trinity/data-access/rooms';" >> libs/ui/src/index.ts
-pnpm exec nx lint ui --skip-nx-cache   # must fail
-git checkout -- libs/ui/src/index.ts
+echo "import type { RoomsService } from '@trinity/data-access/rooms';" >> libs/components/icon/src/index.ts
+pnpm exec nx lint components-icon --skip-nx-cache   # must fail
+git checkout -- libs/components/icon/src/index.ts
 ```
 
-`libs/ui` is tagged `type:ui` and `scope:shared`, while `data-access-rooms` is
+`libs/components/icon` is tagged `type:ui` and `scope:shared`, while `data-access-rooms` is
 `type:data-access` and `scope:matrix`, so both axes are violated. The scope one is what gets
 reported:
 
@@ -765,7 +765,8 @@ other — `data-access-matrix-client` is tagged `scope:shared` on purpose, so th
 foundation stays domain-agnostic.
 
 **Fix.** For a cross-feature need, either read the relevant `@trinity/data-access/*` signal
-from the feature that owns the surface, or put a lazy-loader `InjectionToken` in `libs/ui`,
+from the feature that owns the surface, or put a lazy-loader `InjectionToken` in a `type:ui`
+library below both (as `@trinity/components/encryption-dialog` does),
 provide it in `main.ts` with a dynamic `import()`, and inject it optionally with a graceful
 fallback. See [libraries](../architecture/libraries.md).
 

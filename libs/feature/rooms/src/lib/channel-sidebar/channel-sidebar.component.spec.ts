@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { type AccountBadge } from '@trinity/ui';
+import { type AccountBadge } from '@trinity/components/avatar';
 import { SidebarRoomListComponent } from './sidebar-room-list/sidebar-room-list.component';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';

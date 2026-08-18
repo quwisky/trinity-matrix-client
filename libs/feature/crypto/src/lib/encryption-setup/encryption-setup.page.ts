@@ -7,12 +7,13 @@ import {
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { Observable } from 'rxjs';
-import { TrnAlertService } from '@trinity/helm/overlay';
+import { TrnAlertService } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmSpinner } from '@trinity/helm/spinner';
+import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { CryptoService } from '@trinity/data-access/crypto';
 import { type PasswordPrompt } from '@trinity/util/matrix';
-import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
+import { runWithBusy } from '@trinity/util/ui';
+import { PageHeaderComponent } from '@trinity/components/page-header';
 import { RecoveryKeySaveComponent } from '../recovery-key-save/recovery-key-save.component';
 import {
   confirmLeaving,
@@ -34,7 +35,7 @@ import {
   imports: [
     PageHeaderComponent,
     HlmButton,
-    HlmSpinner,
+    TrnSpinnerComponent,
     RecoveryKeySaveComponent,
   ],
 })

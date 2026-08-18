@@ -7,20 +7,20 @@ import {
   input,
   signal,
 } from '@angular/core';
-import { DialogRef } from '@angular/cdk/dialog';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import { DateTimeFormatService } from '@trinity/platform-native';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideLock, lucideServer, lucideX } from '@ng-icons/lucide';
 import {
   SearchService,
   type LoadedMessageSearch,
   type MessageHit,
 } from '@trinity/data-access/search';
 import { TimelineService } from '@trinity/data-access/timeline';
-import { AvatarComponent, runWithBusy } from '@trinity/ui';
+import { runWithBusy } from '@trinity/util/ui';
+import { AvatarComponent } from '@trinity/components/avatar';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmInput } from '@trinity/helm/input';
-import { HlmSpinner } from '@trinity/helm/spinner';
+import { TrnInput } from '@trinity/components/input';
+import { TrnSpinnerComponent } from '@trinity/components/spinner';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 /** One run of highlighting: a snippet slice and whether it is the matched term. */
 interface HighlightPart {
@@ -54,8 +54,13 @@ interface HighlightPart {
 @Component({
   selector: 'trn-message-search',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgIcon, AvatarComponent, HlmSpinner, HlmButton, HlmInput],
-  viewProviders: [provideIcons({ lucideLock, lucideServer, lucideX })],
+  imports: [
+    TrnIconComponent,
+    AvatarComponent,
+    TrnSpinnerComponent,
+    HlmButton,
+    TrnInput,
+  ],
   templateUrl: './message-search.component.html',
   styleUrl: './message-search.component.scss',
 })
@@ -65,7 +70,7 @@ export class MessageSearchComponent {
   private readonly search = inject(SearchService);
   private readonly timeline = inject(TimelineService);
   private readonly dialogRef =
-    inject<DialogRef<string | null, MessageSearchComponent>>(DialogRef);
+    inject<TrnDialogRef<string | null>>(TrnDialogRef);
   private readonly destroyRef = inject(DestroyRef);
 
   /** Active room, populated from the dialog's `inputs` (app sets `useSetInputAPI`). */

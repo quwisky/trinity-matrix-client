@@ -1,7 +1,8 @@
 # Library inventory
 
-The workspace holds one application and 38 libraries. Every library carries a `type:*` and a
-`scope:*` tag in its `project.json`; those two tags are what
+The workspace holds one application and 59 libraries. Every library carries a `type:*` and a
+`scope:*` tag in its `project.json`, and the UI libraries carry a third `ui:*` tag that
+separates Trinity's own wrapper layer from the vendored kit; those tags are what
 [`@nx/enforce-module-boundaries`](https://github.com/quwisky/trinity-matrix-client/blob/develop/eslint.config.mjs)
 checks. See [the architecture overview](index.md) for what each tag permits.
 
@@ -9,10 +10,11 @@ Libraries are imported through `@trinity/*` path aliases declared in
 [`tsconfig.base.json`](https://github.com/quwisky/trinity-matrix-client/blob/develop/tsconfig.base.json),
 never by relative path across a library boundary. Imports _within_ a library stay relative.
 
-`libs/` itself has seven entries. Three are layer parents holding that layer's libraries:
-`data-access/` (12), `feature/` (5) and `util/` (1). `spartan/` (17) groups the Helm components and
-the overlay adapters. The remaining three are single libraries sitting directly under `libs/`:
-`platform-native`, `testing` and `ui`.
+`libs/` itself has seven entries. Four are layer parents holding that layer's libraries:
+`data-access/` (12), `feature/` (5), `util/` (2) and `components/` (21) — the public component
+tier feature code reaches for. `spartan/` (17) groups the generated Helm components plus the
+`tests` project that holds the specs pinning their behaviour. The remaining two are single
+libraries sitting directly under `libs/`: `platform-native` and `testing`.
 
 A library answers to three different strings, and they are not interchangeable. The directories
 were nested without renaming the Nx projects, so for the rooms data-access library:
@@ -35,6 +37,7 @@ libraries, which in practice means npm packages and nothing else in the workspac
 | Library            | Alias                  | Tags                        | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ------------------ | ---------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `libs/util/matrix` | `@trinity/util/matrix` | `type:util`, `scope:shared` | 26 DI-free modules: the `MessageView` model and its builders, day separators, date formatting, edit history and diffing, timeline-event helpers, media and session models, the Rust crypto store naming, presence, message content, markdown editing, voice, typing, `matrix.to` links, polls, transient-error classification, password UIA, attachment and key-file crypto, authenticated media, room avatars, room creation, room state, the Shiki code highlighter, and the crypto WASM loader |
+| `libs/util/ui`     | `@trinity/util/ui`     | `type:util`, `scope:shared` | The view-layer helpers that are not components: `runWithBusy`, `mediaQuerySignal` with the `MD_QUERY`/`BELOW_MD_QUERY` breakpoint pair, and `resolveInternalReturnTo`. Both stateful helpers take a `DestroyRef` rather than injecting one, which is what keeps this library DI-free                                                                                                                                                                                                              |
 | `libs/testing`     | `@trinity/testing`     | `type:util`, `scope:shared` | One export: the zoneless-safe `render()` wrapper every component spec must use. See [testing](../contributing/testing.md)                                                                                                                                                                                                                                                                                                                                                                         |
 
 `libs/testing` is the one project in the workspace whose `project.json` declares `"targets": {}`.
@@ -106,13 +109,21 @@ into another chunk.
 Presentational only. `type:ui` may not depend on `type:data-access`, so a component here can never
 reach a service.
 
-| Library                | Alias                   | Tags                      | Purpose                                                                                                                                                                                                                                                             |
-| ---------------------- | ----------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `libs/ui`              | `@trinity/ui`           | `type:ui`, `scope:shared` | Trinity's own presentational components (`trn-avatar`, banner, page header, media bubble, message toolbar), the `AVATAR_RESOLVER` and `ENCRYPTION_DIALOG_COMPONENTS` tokens, `EncryptionDialogService`, and the `runWithBusy`, media-query and internal-URL helpers |
-| `libs/spartan/overlay` | `@trinity/helm/overlay` | `type:ui`, `scope:shared` | Trinity-authored imperative overlay adapters: `TrnDialogService`, `TrnAlertService`, `TrnActionSheetService`, `TrnToastService`, plus a re-export of CDK's `DialogRef` so modalled components can close themselves without importing `@angular/cdk`                 |
+| Library                             | Alias                                   | Tags                                   | Purpose                                                                                                                                                                                                                                                                                           |
+| ----------------------------------- | --------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `libs/components/encryption-dialog` | `@trinity/components/encryption-dialog` | `type:ui`, `scope:shared`, `ui:public` | `EncryptionDialogService` and its `ENCRYPTION_DIALOG_COMPONENTS` loader token: presents the unlock and device-verification flows as a dialog on wide layouts and a route on narrow ones. Its own library rather than part of `overlay`, which stays the generic dialog wrapper                    |
+| `libs/components/emoji-picker`      | `@trinity/components/emoji-picker`      | `type:ui`, `scope:shared`, `ui:public` | Trinity-authored: `<trn-emoji-picker>` over `TrnEmojiPick`, plus the `TrnEmojiIndex` facade the `:shortcode` autocomplete uses — the only importer of `@ctrl/ngx-emoji-mart`                                                                                                                      |
+| `libs/components/icon`              | `@trinity/components/icon`              | `type:ui`, `scope:shared`, `ui:public` | Trinity-authored: `<trn-icon>` over a closed `TrnIconName` union of the 82 icons in use, the single `TRN_ICONS` vendor map, and `provideTrnIcons()` — the only importer of `@ng-icons` outside the generated kit                                                                                  |
+| `libs/components/overlay`           | `@trinity/components/overlay`           | `type:ui`, `scope:shared`, `ui:public` | Trinity-authored imperative overlay adapters: `TrnDialogService`, `TrnAlertService`, `TrnActionSheetService`, `TrnToastService`, plus `TrnDialogRef`, Trinity's own two-method handle (`close`, `closed`) so a modalled component can close itself without naming `@angular/cdk` in its signature |
 
-The remaining sixteen libraries under `libs/spartan/` are `@spartan-ng/cli`-generated Helm
-components, all tagged `type:ui`, `scope:shared`, all with the `hlm` selector prefix:
+`libs/components/*` is the **public tier**, tagged `ui:public`: Trinity-authored wrappers whose
+API is ours, so the library underneath can be swapped without touching a call site. It is the
+only UI tier feature code is meant to reach.
+
+The seventeen libraries under `libs/spartan/` are `@spartan-ng/cli`-generated Helm components,
+all tagged `type:ui`, `scope:shared`, `ui:vendor-wrapper`, all with the `hlm` selector prefix
+(`libs/spartan/tests` is the odd one out — no components, just the two specs that pin
+generated-kit behaviour across several libraries at once):
 
 | Directory                    | Alias                         |
 | ---------------------------- | ----------------------------- |
@@ -138,9 +149,10 @@ These are the widest case of the three-way naming split described above: the dir
 component name. The button library lives at `libs/spartan/button`, is imported as
 `@trinity/helm/button`, and is built with `nx build button`.
 
-`libs/spartan/overlay` is the exception in that group — it is hand-written Trinity code with the
-`trn` prefix and no ng-package, not generated Helm. Regenerating or adding Helm components goes
-through the CLI; see [UI and theming](ui-and-theming.md).
+Everything under `libs/spartan/` is generated; the hand-written Trinity code that used to sit
+among it — the overlay adapters, the icon and the emoji picker — now lives in `libs/components/`.
+Regenerating or adding Helm components goes through the CLI; see
+[UI and theming](ui-and-theming.md).
 
 ## The two secondary entry points
 
@@ -158,8 +170,7 @@ drags along.
 
 ## Libraries are not buildable
 
-None of the 21 libraries outside `libs/spartan/` has a `build` target, and neither does
-`libs/spartan/overlay`. There is no intermediate compilation step: the application build
+No library outside `libs/spartan/` has a `build` target. There is no intermediate compilation step: the application build
 (`@angular/build:application`) compiles library sources directly, resolved through the tsconfig
 path aliases. That is what makes a cross-library change a one-step edit rather than a
 build-and-consume cycle.

@@ -1,0 +1,12 @@
+{
+  "name": "components-avatar",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/components/avatar/src",
+  "prefix": "trn",
+  "projectType": "library",
+  "tags": ["type:ui", "scope:shared", "ui:public"],
+  "targets": {
+    "test": {},
+    "typecheck": {}
+  }
+}
