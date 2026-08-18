@@ -15,7 +15,7 @@ import {
   type MessageHit,
 } from '@trinity/data-access/search';
 import { TimelineService } from '@trinity/data-access/timeline';
-import { runWithBusy } from '@trinity/ui';
+import { runWithBusy } from '@trinity/util/ui';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnInput } from '@trinity/components/input';

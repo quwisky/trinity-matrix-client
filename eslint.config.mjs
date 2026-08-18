@@ -229,10 +229,17 @@ export default defineConfig([
       // presentational UI that must never reach the SDK. Absence from this list is how a
       // library is PERMITTED to import matrix-js-sdk (that is how data-access and
       // util/matrix are allowed), so a new UI lib that is merely forgotten lands in the
-      // allowed bucket — silently, and with nothing else to catch it.
+      // allowed bucket — silently, and with nothing else to catch it. That is no longer
+      // "nothing": `lint-invariants.spec.mjs` now sweeps every library and fails on any one
+      // not named here and not sanctioned, which is what caught `libs/util/ui` on the day it
+      // was created.
       'libs/components/**/*.ts',
       'libs/platform-native/**/*.ts',
       'libs/testing/**/*.ts',
+      // `libs/util/ui` and not `libs/util/**`: the sibling `libs/util/matrix` is the
+      // sanctioned exception that models the SDK's own types, so a directory-wide glob here
+      // would ban the one library that has to import it.
+      'libs/util/ui/**/*.ts',
     ],
     rules: {
       '@typescript-eslint/no-restricted-imports': [

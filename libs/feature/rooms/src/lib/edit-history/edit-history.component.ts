@@ -23,7 +23,7 @@ import {
   type MessageRevisionView,
 } from '@trinity/util/matrix';
 import { switchMap, timer } from 'rxjs';
-import { runWithBusy } from '@trinity/ui';
+import { runWithBusy } from '@trinity/util/ui';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
 import { MatrixLinkDirective } from '../matrix-link/matrix-link.directive';
 

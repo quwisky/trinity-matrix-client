@@ -43,7 +43,7 @@ import {
   SessionStorageService,
 } from '@trinity/platform-native';
 import { TrnAlertService } from '@trinity/components/overlay';
-import { runWithBusy } from '@trinity/ui';
+import { runWithBusy } from '@trinity/util/ui';
 import { SsoStateStore } from '../sso-state.store';
 import {
   CLEAR_DATA_MISTYPED_MESSAGE,

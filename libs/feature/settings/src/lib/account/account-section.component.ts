@@ -20,7 +20,7 @@ import { HlmButton } from '@trinity/helm/button';
 import { TrnInput } from '@trinity/components/input';
 import { TrnLabel } from '@trinity/components/label';
 import { TrnToastService } from '@trinity/components/overlay';
-import { runWithBusy } from '@trinity/ui';
+import { runWithBusy } from '@trinity/util/ui';
 import { AuthService, type AccountManagement } from '@trinity/data-access/auth';
 import { TrnIconComponent } from '@trinity/components/icon';
 

@@ -18,7 +18,7 @@ import { Browser } from '@capacitor/browser';
 import { Observable, finalize, firstValueFrom } from 'rxjs';
 import { CryptoService } from '@trinity/data-access/crypto';
 import { AuthService } from '@trinity/data-access/auth';
-import { resolveInternalReturnTo, runWithBusy } from '@trinity/ui';
+import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
 import { PageHeaderComponent } from '@trinity/components/page-header';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnInput } from '@trinity/components/input';

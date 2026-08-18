@@ -15,7 +15,7 @@ import {
 } from '@trinity/components/radio-group';
 import { PresenceService } from '@trinity/data-access/profile';
 import { presenceLabel, type PresenceState } from '@trinity/util/matrix';
-import { runWithBusy } from '@trinity/ui';
+import { runWithBusy } from '@trinity/util/ui';
 
 /** The presence states a user can set for themselves (Matrix has no "invisible"). */
 const PRESENCE_OPTIONS: readonly PresenceState[] = [

@@ -10,7 +10,8 @@ import { TrnAlertService } from '@trinity/components/overlay';
 import { TrnBadge } from '@trinity/components/badge';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
-import { EncryptionDialogService, runWithBusy } from '@trinity/ui';
+import { EncryptionDialogService } from '@trinity/ui';
+import { runWithBusy } from '@trinity/util/ui';
 import { DevicesService, type DeviceInfo } from '@trinity/data-access/crypto';
 import { TrnIconComponent } from '@trinity/components/icon';
 

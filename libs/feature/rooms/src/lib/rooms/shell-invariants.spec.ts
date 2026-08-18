@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { RoomsPage } from './rooms.page';
-import { runWithBusy } from '@trinity/ui';
+import { runWithBusy } from '@trinity/util/ui';
 import { throwError } from 'rxjs';
 import { MockProvider } from 'ng-mocks';
 import { TrnToastService } from '@trinity/components/overlay';

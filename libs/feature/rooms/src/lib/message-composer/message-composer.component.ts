@@ -1,12 +1,13 @@
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
-  ElementRef,
-  Injector,
-  afterNextRender,
   computed,
+  DestroyRef,
   effect,
+  ElementRef,
   inject,
+  Injector,
   input,
   output,
   signal,
@@ -34,7 +35,7 @@ import {
   type FormatAction,
   type Mention,
 } from '@trinity/util/matrix';
-import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/ui';
+import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { ComposerToolbarComponent } from './composer-toolbar/composer-toolbar.component';
 import { ComposerAttachmentStripComponent } from './composer-attachment-strip/composer-attachment-strip.component';
 import { ComposerInsertMenuComponent } from './composer-insert-menu/composer-insert-menu.component';
@@ -182,7 +183,10 @@ export class MessageComposerComponent {
    * overflow. Owned here rather than in the toolbar so that stays presentational, the same
    * division the sidebar's user panel uses.
    */
-  protected readonly narrowLayout = mediaQuerySignal(BELOW_MD_QUERY);
+  protected readonly narrowLayout = mediaQuerySignal(
+    BELOW_MD_QUERY,
+    inject(DestroyRef),
+  );
 
   /** Whether the preview is showing in place of the input. */
   readonly previewing = signal(false);

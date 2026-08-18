@@ -1,4 +1,10 @@
-import { Component, signal, type Signal } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  inject,
+  signal,
+  type Signal,
+} from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BELOW_MD_QUERY, MD_QUERY, mediaQuerySignal } from './media-query';
@@ -27,14 +33,22 @@ function fakeList(matches: boolean) {
   };
 }
 
-/** `mediaQuerySignal` needs an injection context, so read it through a real component. */
+/**
+ * Read the signal through a real component.
+ *
+ * `mediaQuerySignal` no longer needs an injection context — the caller hands it a
+ * `DestroyRef` — but a REAL one is still the point of the teardown assertion below: a
+ * hand-rolled double would only prove the function calls `onDestroy`, not that a destroyed
+ * caller actually drops the listener. So the host stays, and it is also the shape every
+ * call site uses.
+ */
 function hostFor(query: string): {
   value: Signal<boolean>;
   destroy: () => void;
 } {
   @Component({ selector: 'trn-mq-host', template: '' })
   class MqHostComponent {
-    readonly value = mediaQuerySignal(query);
+    readonly value = mediaQuerySignal(query, inject(DestroyRef));
   }
   const fixture = TestBed.createComponent(MqHostComponent);
   return {

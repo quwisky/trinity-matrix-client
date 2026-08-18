@@ -14,7 +14,7 @@ import {
   TrnAlertService,
   TrnDialogService,
 } from '@trinity/components/overlay';
-import { runWithBusy } from '@trinity/ui';
+import { runWithBusy } from '@trinity/util/ui';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import {
   RoomDirectoryComponent,

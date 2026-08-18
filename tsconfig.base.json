@@ -22,6 +22,7 @@
     "useDefineForClassFields": false,
     "paths": {
       "@trinity/util/matrix": ["./libs/util/matrix/src/index.ts"],
+      "@trinity/util/ui": ["./libs/util/ui/src/index.ts"],
       "@trinity/util/matrix/code-highlight": [
         "./libs/util/matrix/src/lib/code-highlight.ts"
       ],

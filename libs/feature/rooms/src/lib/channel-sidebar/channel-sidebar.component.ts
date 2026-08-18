@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   inject,
   input,
   model,
@@ -20,7 +21,7 @@ import {
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
 import { TrnInput } from '@trinity/components/input';
-import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/ui';
+import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { AvatarComponent, type AccountBadge } from '@trinity/components/avatar';
 import {
   InvitesService,
@@ -96,7 +97,10 @@ export class ChannelSidebarComponent {
    * read so rotating a phone re-renders the affordance instead of stranding whichever one the
    * page happened to load with.
    */
-  protected readonly narrowLayout = mediaQuerySignal(BELOW_MD_QUERY);
+  protected readonly narrowLayout = mediaQuerySignal(
+    BELOW_MD_QUERY,
+    inject(DestroyRef),
+  );
 
   readonly spaceName = input('Home');
   /** Whether a space (not Home) is selected — gates the header space actions. */

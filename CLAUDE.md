@@ -117,8 +117,12 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   presentational components (`trn-avatar`, banner, page header, media bubble, message
   toolbar). The API is ours, so the library underneath can be swapped without touching a
   call site.
-- `@trinity/ui` (`libs/ui`) `[type:ui]` — the non-component remainder: `EncryptionDialogService`
-  + its loader token, `runWithBusy`, `mediaQuerySignal`, internal-URL helpers.
+- `@trinity/ui` (`libs/ui`) `[type:ui]` — what is left once the components moved out:
+  `EncryptionDialogService` + its `ENCRYPTION_DIALOG_COMPONENTS` loader token, and nothing else.
+- `@trinity/util/ui` (`libs/util/ui`) `[type:util]` — the view-layer helpers that are not
+  components: `runWithBusy`, `mediaQuerySignal` + the `MD_QUERY`/`BELOW_MD_QUERY` breakpoints,
+  and `resolveInternalReturnTo`. DI-free like the rest of `type:util` — both helpers TAKE a
+  `DestroyRef` rather than injecting one, so neither needs an injection context.
 - `@trinity/helm/*` (`libs/spartan/*`) `[type:ui]`, tagged `ui:vendor-wrapper` — the vendored
   `@spartan-ng/cli`-generated kit, `hlm` prefix. Consume it through `@trinity/components/*`
   rather than directly.
