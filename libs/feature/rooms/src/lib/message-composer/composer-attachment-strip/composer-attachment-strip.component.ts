@@ -1,11 +1,13 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   input,
   output,
 } from '@angular/core';
 import { TrnProgressComponent } from '@trinity/components/progress';
 import { TrnIconComponent } from '@trinity/components/icon';
+import { type BatchProgress } from '../../shared/send-media-batch';
 import { type StagedAttachment } from '../staged-attachment';
 
 /**
@@ -13,9 +15,8 @@ import { type StagedAttachment } from '../staged-attachment';
  * and every file staged for sending, each removable on its own.
  *
  * Presentational — it injects nothing and holds no state; `ComposerAttachmentsService` owns
- * both, and the composer passes the two upload derivations down rather than re-deriving them
- * here so there stays one definition of "determinate". The host is `display: contents`, so the
- * blocks remain direct children of the composer element and the layout is untouched.
+ * both. The host is `display: contents`, so the blocks remain direct children of the composer
+ * element and the layout is untouched.
  */
 @Component({
   selector: 'trn-composer-attachment-strip',
@@ -25,17 +26,13 @@ import { type StagedAttachment } from '../staged-attachment';
   styleUrl: './composer-attachment-strip.component.scss',
 })
 export class ComposerAttachmentStripComponent {
-  /** Upload fraction in [0, 1] while an attachment uploads, else null (idle). */
-  readonly uploadProgress = input<number | null>(null);
-  /** Whether to show a determinate bar — false until the first real fraction lands. */
-  readonly uploadDeterminate = input(false);
-  /** Whole-percent upload progress for the determinate bar's label. */
-  readonly uploadPercent = input(0);
+  /** Which file of how many is uploading and how far along, or null when idle. */
+  readonly uploadProgress = input<BatchProgress | null>(null);
   /**
    * The name of the file the bar is uploading, when the host knows it.
    *
    * The bar sits above rows that are still staged, so without a name it reads as though it
-   * describes them — it describes the one that just left the list.
+   * describes them — it describes the one currently going out.
    */
   readonly uploadLabel = input<string | null>(null);
   /** Everything staged, in the order it will be sent. */
@@ -43,4 +40,36 @@ export class ComposerAttachmentStripComponent {
 
   /** The × on one staged attachment was pressed; carries its id. */
   readonly removeStaged = output<string>();
+
+  /** The retry on one failed attachment was pressed; carries its id. */
+  readonly retryStaged = output<string>();
+
+  /** False until the first real fraction lands, so the bar starts indeterminate. */
+  protected readonly determinate = computed(
+    () => (this.uploadProgress()?.fraction ?? 0) > 0,
+  );
+
+  protected readonly percent = computed(() =>
+    Math.round((this.uploadProgress()?.fraction ?? 0) * 100),
+  );
+
+  /**
+   * What the bar says it is uploading: `holiday.png (2 of 5)`, and the best available subset
+   * of that when the name or the batch is missing.
+   *
+   * The counter only appears for a real batch — "1 of 1" on a single file is noise, and it is
+   * also what every pre-batch caller produces.
+   */
+  protected readonly subject = computed(() => {
+    const progress = this.uploadProgress();
+    const name = this.uploadLabel();
+    const counter =
+      progress && progress.total > 1
+        ? `${progress.index} of ${progress.total}`
+        : null;
+    if (name && counter) {
+      return `${name} (${counter})`;
+    }
+    return name ?? counter ?? 'attachment';
+  });
 }

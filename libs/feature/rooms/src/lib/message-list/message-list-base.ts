@@ -34,6 +34,11 @@ import {
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { DayBoundaryService } from './day-boundary.service';
 import {
+  type BatchItem,
+  type BatchOutcome,
+  type BatchProgress,
+} from '../shared/send-media-batch';
+import {
   type MessageRow,
   type MessageRowAction,
   type MessageRowCaps,
@@ -117,8 +122,8 @@ export abstract class MessageListBase {
    * and a jump-to-unread pill appears while it's off-screen. Null when nothing is unread.
    */
   readonly firstUnreadId = input<string | null>(null);
-  /** Attachment upload fraction in [0, 1], or null when no upload is in flight. */
-  readonly uploadProgress = input<number | null>(null);
+  /** Which file of how many is uploading and how far along, or null when idle. */
+  readonly uploadProgress = input<BatchProgress | null>(null);
   /**
    * Event id to scroll into view, set by an external jump (e.g. in-room search).
    * A no-op when the event isn't in the loaded timeline.
@@ -138,13 +143,14 @@ export abstract class MessageListBase {
   readonly togglePin = output<string>();
   readonly send = output<{ body: string; mentions: Mention[] }>();
   /**
-   * Send a staged file as a media message. `done` is forwarded from the composer and MUST be
-   * called by whoever performs the send — it releases the composer's one-at-a-time latch.
+   * Send a batch of staged attachments. `onOutcomes` reports back per item, so the composer
+   * can drop the delivered ones and keep the rest staged for a retry — and it MUST be called
+   * by whoever performs the send, because it also releases the one-at-a-time send latch.
    */
   readonly sendMedia = output<{
-    file: File;
+    items: readonly BatchItem[];
     caption: string;
-    done: () => void;
+    onOutcomes: (outcomes: readonly BatchOutcome[]) => void;
   }>();
   readonly retry = output<string>();
   readonly editMessage = output<{

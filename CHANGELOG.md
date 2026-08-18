@@ -34,10 +34,16 @@ All notable changes to this project are documented here. The format is based on
   have staged is listed above the message box, each with its own × so you can drop one without
   starting over, and picking again adds to the list rather than replacing it.
 
-  Sending still goes one file at a time, and the waiting is the point rather than a shortcut:
-  uploads that run together arrive in the order they _finish_, so a small screenshot would jump
-  ahead of the big photo you picked first. Press send once per image; the rest stay staged
-  meanwhile. One press for the whole batch, still in order, is the next step.
+  One press sends the lot, in the order you staged them. They go out one at a time — the bar
+  above the message box says which file of how many is uploading — so a big photo can't
+  overtake a small one and land out of order. A caption written alongside a single image
+  stays attached to it; write one for a batch and it is posted as its own message once the
+  files are in.
+
+  If one file fails, the others still go. The one that didn't is kept in the list, marked
+  **Not sent**, with a retry button of its own — so a single bad file costs you that file
+  rather than the whole batch. Leaving the room mid-send stops the rest rather than
+  delivering them to wherever you went, and says so.
 
 - **See what your homeserver is running.** Settings gains a **Server** section listing every
   account you are signed in to, and for each one: the server software and version — `Synapse

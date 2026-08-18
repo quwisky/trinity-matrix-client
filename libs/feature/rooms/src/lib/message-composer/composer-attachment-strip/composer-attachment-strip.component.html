@@ -1,15 +1,11 @@
 @if (uploadProgress() !== null) {
   <div class="composer__upload" data-testid="upload-progress">
     <trn-progress
-      [value]="uploadDeterminate() ? (uploadProgress() ?? 0) * 100 : null"
-      [aria-label]="
-        uploadLabel() ? 'Uploading ' + uploadLabel() : 'Uploading attachment'
-      "
+      [value]="determinate() ? percent() : null"
+      [aria-label]="'Uploading ' + subject()"
     />
     <span class="composer__upload-label" aria-live="polite">
-      Uploading{{ uploadLabel() ? ' ' + uploadLabel() : '' }}…{{
-        uploadDeterminate() ? ' ' + uploadPercent() + '%' : ''
-      }}
+      Uploading {{ subject() }}…{{ determinate() ? ' ' + percent() + '%' : '' }}
     </span>
   </div>
 }
@@ -17,7 +13,11 @@
 @if (staged().length) {
   <ul class="composer__pending-list" data-testid="composer-pending-list">
     @for (attachment of staged(); track attachment.id) {
-      <li class="composer__pending" data-testid="composer-pending">
+      <li
+        class="composer__pending"
+        [class.composer__pending--failed]="attachment.failed"
+        data-testid="composer-pending"
+      >
         @if (attachment.previewUrl; as src) {
           <img
             decoding="async"
@@ -33,6 +33,23 @@
         <span class="composer__pending-name" [title]="attachment.file.name">{{
           attachment.file.name
         }}</span>
+        @if (attachment.failed) {
+          <span
+            class="composer__pending-failed"
+            data-testid="composer-pending-failed"
+          >
+            Not sent
+          </span>
+          <button
+            type="button"
+            class="composer__pending-retry"
+            [attr.aria-label]="'Retry ' + attachment.file.name"
+            data-testid="composer-pending-retry"
+            (click)="retryStaged.emit(attachment.id)"
+          >
+            <trn-icon name="rotate-ccw" />
+          </button>
+        }
         <button
           type="button"
           class="composer__pending-remove"

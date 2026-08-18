@@ -13,7 +13,13 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { finalize, type Observable } from 'rxjs';
+import { throwError, type Observable } from 'rxjs';
+import {
+  sendMediaBatch,
+  type BatchItem,
+  type BatchOutcome,
+  type BatchProgress,
+} from '../shared/send-media-batch';
 import {
   TrnDialogRef,
   TrnAlertService,
@@ -122,8 +128,8 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   readonly editingId = signal<string | null>(null);
   /** Id of the thread message being replied to, or null. */
   readonly replyingToId = signal<string | null>(null);
-  /** Attachment upload fraction in [0, 1] while a send uploads, else null (idle). */
-  readonly uploadProgress = signal<number | null>(null);
+  /** Which file of how many is uploading, and how far along, or null when idle. */
+  readonly uploadProgress = signal<BatchProgress | null>(null);
 
   private readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
 
@@ -211,31 +217,47 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** The thread's half of the batch send — see `MessageActionsService.onSendMedia`. */
   onSendMedia({
-    file,
+    items,
     caption,
-    done,
+    onOutcomes,
   }: {
-    file: File;
+    items: readonly BatchItem[];
     caption: string;
-    done: () => void;
+    onOutcomes: (outcomes: readonly BatchOutcome[]) => void;
   }): void {
-    this.uploadProgress.set(0);
-    this.threads
-      .sendMediaToThread(file, caption, (fraction) =>
-        this.uploadProgress.set(fraction),
-      )
-      .pipe(
-        finalize(() => {
-          this.uploadProgress.set(null);
-          // Releases the composer's send latch. `finalize` covers success, error AND
-          // unsubscribe, so there is no path that dispatches without eventually reporting.
-          done();
-        }),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe({
-        error: () => void this.showError('Could not upload the attachment.'),
+    // Pinned for the whole batch, for the same reason as the room path: the thread is
+    // resolved on SUBSCRIBE, and a batch subscribes item N long after it was pressed, so
+    // opening another thread mid-batch would deliver the rest into that one.
+    const pinnedThreadId = this.threads.openThreadRootId();
+    let abandoned = 0;
+    sendMediaBatch(
+      items,
+      caption,
+      (file, itemCaption, progress) => {
+        if (this.threads.openThreadRootId() !== pinnedThreadId) {
+          abandoned++;
+          return throwError(() => new Error('thread changed mid-batch'));
+        }
+        return this.threads.sendMediaToThread(file, itemCaption, progress);
+      },
+      (progress) => this.uploadProgress.set(progress),
+    )
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((outcomes) => {
+        onOutcomes(outcomes);
+        const failed = outcomes.filter((outcome) => outcome.failed).length;
+        if (!failed) {
+          return;
+        }
+        void this.showError(
+          abandoned
+            ? `${failed} ${failed === 1 ? 'attachment was' : 'attachments were'} not sent — you left the thread before they went out.`
+            : failed === 1
+              ? 'One attachment could not be sent. It is still in the composer.'
+              : `${failed} attachments could not be sent. They are still in the composer.`,
+        );
       });
   }
 

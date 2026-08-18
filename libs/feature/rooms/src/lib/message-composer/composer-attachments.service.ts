@@ -23,6 +23,7 @@ import {
   stageAttachment,
   type StagedAttachment,
 } from './staged-attachment';
+import { type BatchProgress } from '../shared/send-media-batch';
 
 /**
  * What the attachment workflows need back from the composer that owns them.
@@ -37,8 +38,8 @@ export interface ComposerAttachmentsHost {
   readonly roomId: Signal<string | null>;
   /** Whether the composer is in edit mode (an edit can't become media). */
   readonly editing: Signal<boolean>;
-  /** Upload fraction in [0, 1] while an attachment uploads, else null (idle). */
-  readonly uploadProgress: Signal<number | null>;
+  /** Which file of how many is uploading and how far along, else null (idle). */
+  readonly uploadProgress: Signal<BatchProgress | null>;
   /** Send a file as a media message, with `caption` as its caption. */
   sendMedia(file: File, caption: string): void;
   /** End any active reply — a media or voice send carries no reply relation. */
@@ -213,6 +214,28 @@ export class ComposerAttachmentsService {
   }
 
   /** Drop one staged attachment (its × button), keeping the rest. */
+  /**
+   * Flag the items whose send failed, and clear the flag on everything else.
+   *
+   * Clearing matters as much as setting: a retry that succeeds for one file and fails for
+   * another has to leave the strip showing exactly the second, not the union of both rounds.
+   */
+  markFailed(failedIds: readonly string[]): void {
+    const failed = new Set(failedIds);
+    this._staged.update(
+      (current) =>
+        current.some(
+          (attachment) => attachment.failed !== failed.has(attachment.id),
+        )
+          ? current.map((attachment) =>
+              attachment.failed === failed.has(attachment.id)
+                ? attachment
+                : { ...attachment, failed: failed.has(attachment.id) },
+            )
+          : current, // nothing changed: don't hand the strip a new array to re-render
+    );
+  }
+
   removeStaged(id: string): void {
     const current = this._staged();
     const doomed = current.find((attachment) => attachment.id === id);

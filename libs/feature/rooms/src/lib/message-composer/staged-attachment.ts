@@ -12,6 +12,14 @@ export interface StagedAttachment {
   readonly file: File;
   /** Object URL previewing an image, else null. Revoked when the item leaves the strip. */
   readonly previewUrl: string | null;
+  /**
+   * Whether this file's last send attempt failed.
+   *
+   * A batch reports per item rather than throwing, so one bad file leaves four delivered and
+   * itself still staged. Without this the survivor is indistinguishable from a file that was
+   * never sent, and the strip would quietly present a failure as a pending item.
+   */
+  readonly failed: boolean;
 }
 
 /**
@@ -28,6 +36,7 @@ export function stageAttachment(file: File): StagedAttachment {
     previewUrl: file.type.startsWith('image/')
       ? URL.createObjectURL(file)
       : null,
+    failed: false,
   };
 }
 
