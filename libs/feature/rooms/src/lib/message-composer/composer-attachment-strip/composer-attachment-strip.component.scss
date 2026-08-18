@@ -32,10 +32,11 @@
   flex-direction: column;
   gap: 4px;
 
-  // Deliberately NOT a whole number of rows: rows are 52px with a 4px gap, so 168px would cut
-  // exactly at the fourth row's top edge and a fourth file would be completely invisible with
-  // no scrollbar gutter to hint otherwise. 150px leaves the fourth peeking.
-  max-height: 150px;
+  // Deliberately NOT a whole number of rows. Rows are 52px with a 4px gap, so they occupy
+  // 0-52, 56-108, 112-164, 168-220: a 168px cap lands exactly on the fourth row's top edge and
+  // leaves it entirely invisible, with no scrollbar gutter to hint otherwise. 190px shows
+  // three in full and 22px of the fourth, which is what says "there is more".
+  max-height: 190px;
   overflow-y: auto;
 }
 

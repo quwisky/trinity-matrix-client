@@ -139,6 +139,26 @@ describe('ComposerAttachmentStripComponent', () => {
     expect(removed).toBe('id-two.png');
   });
 
+  it('puts the uploading file in the accessible name, not just the visible text', async () => {
+    // The half a screen-reader user actually receives. Reverting this binding to the old
+    // constant left the whole suite green, because the composer-side test reads the visible
+    // span rather than the progressbar's name.
+    const { container } = await render(ComposerAttachmentStripComponent, {
+      inputs: {
+        uploadProgress: 0.5,
+        uploadDeterminate: true,
+        uploadPercent: 50,
+        uploadLabel: 'holiday.png',
+      },
+    });
+
+    expect(
+      container
+        .querySelector('trn-progress [role="progressbar"]')
+        ?.getAttribute('aria-label'),
+    ).toBe('Uploading holiday.png');
+  });
+
   it('names its controls and announces progress for screen readers', async () => {
     const { container } = await render(ComposerAttachmentStripComponent, {
       inputs: {

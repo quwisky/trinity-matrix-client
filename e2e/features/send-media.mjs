@@ -234,6 +234,15 @@ async function main() {
       .waitFor({ state: 'detached', timeout: 10_000 });
     log('staged chip cleared after send ✓');
 
+    // The bar appears while the upload runs and clears when it finishes. Asserted here, right
+    // after the first send, because that is the only point it is observable — by the time the
+    // media bubble is ready the bar is long gone, so a `detached` wait later would pass
+    // against an element that never existed.
+    await page
+      .getByTestId('upload-progress')
+      .waitFor({ state: 'detached', timeout: 30_000 });
+    log('upload bar cleared once the first upload finished ✓');
+
     // Second send: an attachment with NO caption — Enter on an empty caption
     // still sends, and no caption text is rendered.
     log('staging a second file with no caption');
@@ -245,12 +254,6 @@ async function main() {
     await page
       .getByTestId('composer-pending')
       .waitFor({ state: 'visible', timeout: 15_000 });
-    // One attachment upload at a time. This harness stages through the hidden input, which
-    // skips the attach button's own disabled state, so it has to wait for the first upload to
-    // finish the way a user's disabled send button makes them wait.
-    await page
-      .getByTestId('upload-progress')
-      .waitFor({ state: 'detached', timeout: 30_000 });
     await page.locator('textarea.composer__input').press('Enter');
 
     // Both media bubbles resolve; the caption count stays at 1 (the first send).

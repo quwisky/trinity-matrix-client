@@ -196,7 +196,7 @@
         data-testid="composer-send"
         [disabled]="
           (!text().trim() && !hasStaged()) ||
-          (hasStaged() && uploadProgress() !== null)
+          (!editing() && hasStaged() && uploadProgress() !== null)
         "
         (click)="submit()"
       >

@@ -774,10 +774,10 @@ describe('MessageComposerComponent', () => {
     expect(stagedFiles(cmp).map((f) => f.name)).toEqual(['two.png']);
   });
 
-  it('guards the second send in code, not only on the button', async () => {
-    // `onEnter` calls `submit()` directly and never consults `[disabled]`, so a template-only
-    // guard is no guard at all — key auto-repeat is enough to fire it twice.
-    const { fixture } = await renderComposer();
+  it('guards the keyboard path too, and shows the button as disabled', async () => {
+    // `onEnter` calls `submit()` directly and never consults `[disabled]`, so the code guard
+    // is what stops it — and the button has to SAY so, or the block reads as a dead control.
+    const { fixture, container } = await renderComposer();
     const cmp = fixture.componentInstance;
     const sent: File[] = [];
     cmp.submitMedia.subscribe((e) => sent.push(e.file));
@@ -789,6 +789,10 @@ describe('MessageComposerComponent', () => {
     cmp.onEnter(new KeyboardEvent('keydown', { key: 'Enter' }));
 
     expect(sent.map((f) => f.name)).toEqual(['one.png']);
+    expect(
+      container.querySelector<HTMLButtonElement>('[data-testid=composer-send]')
+        ?.disabled,
+    ).toBe(true);
   });
 
   it('shows which file the upload bar belongs to', async () => {
@@ -830,7 +834,12 @@ describe('MessageComposerComponent', () => {
     ]);
   });
 
-  it('works through the batch on repeated sends', async () => {
+  it('does not dispatch twice from two presses in the same task', async () => {
+    // The case a held Enter key produces, and the one a guard on `uploadProgress` ALONE
+    // cannot catch: that is a signal input fed two component layers up, and a signal input is
+    // only written during the parent's change detection. Both presses would read `null`.
+    // Deliberately no `detectChanges()` between them — inserting one is what made the earlier
+    // version of this test pass against the defect.
     const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
     const sent: File[] = [];
@@ -840,8 +849,45 @@ describe('MessageComposerComponent', () => {
     cmp.submit();
     cmp.submit();
 
+    expect(sent.map((f) => f.name)).toEqual(['one.png']);
+    expect(stagedFiles(cmp).map((f) => f.name)).toEqual(['two.png']);
+  });
+
+  it('works through the batch once each upload finishes', async () => {
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const sent: File[] = [];
+    cmp.submitMedia.subscribe((e) => sent.push(e.file));
+    pickFiles(cmp, [png('one.png'), png('two.png')]);
+
+    cmp.submit();
+    // The host reports the upload in flight, then finished — which is what releases the latch.
+    fixture.componentRef.setInput('uploadProgress', 0.3);
+    fixture.detectChanges();
+    fixture.componentRef.setInput('uploadProgress', null);
+    fixture.detectChanges();
+    cmp.submit();
+
     expect(sent.map((f) => f.name)).toEqual(['one.png', 'two.png']);
     expect(stagedFiles(cmp)).toEqual([]);
+  });
+
+  it('does not strand the latch when the room changes mid-upload', async () => {
+    // The upload belongs to the page and survives the switch, but nothing staged here does —
+    // holding the latch would mute the next room's composer for an upload it cannot see.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const sent: File[] = [];
+    cmp.submitMedia.subscribe((e) => sent.push(e.file));
+    pickFiles(cmp, [png('one.png')]);
+    cmp.submit();
+
+    fixture.componentRef.setInput('roomId', '!other:hs');
+    fixture.detectChanges();
+    pickFiles(cmp, [png('elsewhere.png')]);
+    cmp.submit();
+
+    expect(sent.map((f) => f.name)).toEqual(['one.png', 'elsewhere.png']);
   });
 
   it('clearStaged drops every staged attachment', async () => {

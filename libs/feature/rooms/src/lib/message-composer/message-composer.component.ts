@@ -301,21 +301,34 @@ export class MessageComposerComponent {
   readonly mentionOpen = this.mentionAutocomplete.open;
   /** Index of the highlighted member suggestion. */
   readonly mentionActiveIndex = this.mentionAutocomplete.activeIndex;
-  /** Whether to show a determinate bar — true once the first real fraction lands.
-   * Until then (metadata probe + thumbnail upload) the bar is indeterminate so it
-   * reads as "working" rather than a stalled 0%. */
   /**
    * The file the visible upload belongs to.
    *
    * The bar renders above the rows that are still staged, and without this it reads as though
-   * it describes them — it describes the one that just left the list. Cleared when the host
-   * reports the upload finished.
+   * it describes them — it describes the one that just left the list. Written in the host's
+   * `sendMedia` hook rather than in `submit()`, because that hook is the single funnel every
+   * upload passes through: a GIF goes straight to it and never touches `submit()`, and naming
+   * the last *staged* file while a GIF uploads is worse than not naming anything.
    */
   private readonly uploadingName = signal<string | null>(null);
-  /** What the upload bar is uploading, or null when the host has not said. */
+  /** What the upload bar is uploading, or null when nothing is. */
   readonly uploadLabel = computed(() =>
     this.uploadProgress() === null ? null : this.uploadingName(),
   );
+  /**
+   * A media send has been dispatched and its upload has not finished.
+   *
+   * Separate from `uploadProgress` and written SYNCHRONOUSLY, which is the whole point:
+   * `uploadProgress` is a signal input fed from two component layers up, and a signal input
+   * is only written during the parent's change detection — which, zoneless, is scheduled on a
+   * rAF/timer race. Two `submit()` calls in one task (a held Enter key, while the first send's
+   * `encryptAttachment` janks the frame) would both read `null` and both dispatch. A local
+   * flag closes in the same statement that opens it, and is released by the effect below.
+   */
+  private readonly sendingMedia = signal(false);
+  /** Whether to show a determinate bar — true once the first real fraction lands.
+   * Until then (metadata probe + thumbnail upload) the bar is indeterminate so it
+   * reads as "working" rather than a stalled 0%. */
   readonly uploadDeterminate = computed(() => (this.uploadProgress() ?? 0) > 0);
   /** Whole-percent upload progress for the determinate bar's label. */
   readonly uploadPercent = computed(() =>
@@ -353,7 +366,7 @@ export class MessageComposerComponent {
       roomId: this.roomId,
       editing: this.editing,
       uploadProgress: this.uploadProgress,
-      sendMedia: (file, caption) => this.submitMedia.emit({ file, caption }),
+      sendMedia: (file, caption) => this.dispatchMedia(file, caption),
       endReply: () => {
         if (this.replyingTo()) {
           this.cancelReply.emit();
@@ -363,6 +376,17 @@ export class MessageComposerComponent {
         queueMicrotask(() => this.textarea()?.nativeElement.focus()),
       leavePreview: () => this.previewing.set(false),
       openFileDialog: () => this.fileInput()?.nativeElement.click(),
+    });
+
+    // Release the send latch when the host reports the upload finished.
+    //
+    // Safe despite `uploadProgress` still being null in the window between the emit and the
+    // parent's change detection: an effect re-runs when a tracked dependency CHANGES, and in
+    // that window nothing has, so this cannot fire and reopen the latch early.
+    effect(() => {
+      if (this.uploadProgress() === null) {
+        this.sendingMedia.set(false);
+      }
     });
 
     // On a room/thread change: drop the staged (unsent) attachment — it was staged
@@ -375,6 +399,10 @@ export class MessageComposerComponent {
         this.wasRoomId = id;
         untracked(() => {
           this.clearStaged();
+          // The upload itself belongs to the page, not to this composer, and survives the
+          // switch — but nothing staged here does, so holding the latch would only mute the
+          // next room's composer.
+          this.sendingMedia.set(false);
           // A recording belongs to the room it was started in — cancel it on a
           // room/thread switch so the mic doesn't stay open and a later Send can't
           // post the clip to the wrong room.
@@ -715,18 +743,17 @@ export class MessageComposerComponent {
       // scalar (the first to finish nulls it, hiding the bar for the other) and reach
       // `sendMessage` only after their own upload resolves, so the events land
       // fastest-file-first rather than in the order staged.
-      if (this.uploadProgress() !== null) {
+      if (this.uploadProgress() !== null || this.sendingMedia()) {
         return;
       }
       const file = next.file;
-      this.submitMedia.emit({ file, caption: this.text().trim() });
+      this.dispatchMedia(file, this.text().trim());
       // A media send carries no reply relation, so end any active reply — else
       // the banner lingers and the next plain message silently replies to a
       // now-stale target.
       if (this.replyingTo()) {
         this.cancelReply.emit();
       }
-      this.uploadingName.set(file.name);
       this.removeStaged(next.id);
       this.text.set('');
       this.resetMenus();
@@ -932,11 +959,23 @@ export class MessageComposerComponent {
   }
 
   /** Drop the staged attachment (× button, Escape, or after it's sent). */
+  /**
+   * The single funnel every media send passes through: `submit()` for a staged file, and the
+   * attachments service's `sendMedia` hook for a GIF. Both the bar's label and the send latch
+   * are set here so neither can be missed by a path that does not go through `submit()`.
+   */
+  private dispatchMedia(file: File, caption: string): void {
+    this.uploadingName.set(file.name);
+    this.sendingMedia.set(true);
+    this.submitMedia.emit({ file, caption });
+  }
+
   removeStaged(id: string): void {
     this.attachments.removeStaged(id);
-    // The × that was pressed has just been destroyed, which drops focus to <body> and strands
-    // a keyboard user at the top of the page. The textarea is where they were heading anyway.
-    // Queued, like the staging path's own focus call: the row is still in the DOM until CD runs.
+    // Whatever removed the row — its × or a send — the element that had focus is about to be
+    // destroyed, which drops focus to <body> and strands a keyboard user at the top of the
+    // page. The textarea is where they were heading either way. Queued, like the staging
+    // path's own focus call: the row is still in the DOM until CD runs.
     queueMicrotask(() => this.textarea()?.nativeElement.focus());
   }
 

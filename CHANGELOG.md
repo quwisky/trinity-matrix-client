@@ -34,8 +34,9 @@ All notable changes to this project are documented here. The format is based on
   have staged is listed above the message box, each with its own × so you can drop one without
   starting over, and picking again adds to the list rather than replacing it.
 
-  Sending still goes one file at a time — press send once per image, and the rest stay staged
-  and waiting. One press for the whole batch, in order, is the next step.
+  Sending still goes one file at a time — press send once per image, waiting for each to finish
+  before the next, and the rest stay staged meanwhile. One press for the whole batch, in order,
+  is the next step.
 
 - **See what your homeserver is running.** Settings gains a **Server** section listing every
   account you are signed in to, and for each one: the server software and version — `Synapse
