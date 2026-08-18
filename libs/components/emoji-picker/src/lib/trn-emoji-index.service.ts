@@ -14,10 +14,10 @@ const SUGGESTION_LIMIT = 8;
  * this facade the vendor ban could not land — which is why it exists alongside the
  * component rather than after it.
  *
- * It is also the only place a lazy index could later be introduced. AUDIT.md M11 measured
- * that: the emoji weight is anchored by these two eager injections, not by the picker
- * template, so deferring the element moved nothing. Making that change possible is the
- * point; this does not deliver it.
+ * It is also the only place a lazy index could later be introduced, and the measurement that
+ * says so is worth keeping here: the emoji weight is anchored by these two eager injections,
+ * not by the picker template, so deferring the element moved nothing. Making that change
+ * possible is the point; this does not deliver it.
  */
 @Injectable({ providedIn: 'root' })
 export class TrnEmojiIndex {
