@@ -3,8 +3,10 @@ import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { describe, expect, it } from 'vitest';
 // Imported straight from the owning helm libs (libs/spartan/*). These focused
-// smoke tests live in the overlay lib because it's the one spartan lib with a
-// working Vitest target; the helm component libs themselves are lint/build-only.
+// smoke tests live in `libs/spartan/tests` because it is the one project in that
+// directory with a Vitest target; the helm component libs themselves are
+// lint/build-only. (They used to live in the overlay library, which has since moved
+// out to `libs/components/overlay` and is no longer part of the kit at all.)
 import { badgeVariants } from '@trinity/helm/badge';
 import { buttonVariants, HlmButton } from '@trinity/helm/button';
 import { HlmCheckbox } from '@trinity/helm/checkbox';

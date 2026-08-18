@@ -60,20 +60,21 @@ export default defineConfig([
             // pins the `*` for exactly this reason.
             //
             // `ui:wrapper` (libs/ui) keeps nothing, @angular/cdk included. It was expected
-            // to host both the icon and emoji wrappers; #154 put the first in the kit (as
-            // `@trinity/helm/icon`) and #152 the second (`@trinity/helm/emoji-picker`),
-            // because a lib tagged `ui:wrapper` is precisely the tier that may not name a
-            // vendor. CDK was the last one left off this list, and it was an unused
-            // allowance rather than a carve-out: libs/ui imports no vendor at all, and the
-            // layer that genuinely wraps CDK is `@trinity/helm/overlay`, which is tagged
-            // `ui:vendor-wrapper`. Leaving it open contradicted this comment and also
-            // falsified the rationale written at the top of that lib's barrel — "no file
-            // outside libs/spartan imports @angular/cdk, and #148 turns that into a lint
-            // ban" — since libs/ui is `type:ui`, which every feature lib may depend on.
+            // to host both the icon and emoji wrappers; they went to the public tier
+            // instead — `@trinity/components/icon` (#154) and
+            // `@trinity/components/emoji-picker` (#152) — because a lib tagged `ui:wrapper`
+            // is precisely the tier that may not name a vendor. CDK was the last one left
+            // off this list, and it was an unused allowance rather than a carve-out:
+            // libs/ui imports no vendor at all, and the layer that genuinely wraps CDK is
+            // `@trinity/components/overlay`, which is tagged `ui:public`.
             //
-            // The vendored kit (`ui:vendor-wrapper`) is deliberately absent from this list;
-            // it IS the wrapper layer, and banning its vendors there would ban the layer
-            // from existing.
+            // TWO tiers are deliberately absent from this list, and for the same reason:
+            // `ui:public` (libs/components/*) and `ui:vendor-wrapper` (the generated kit).
+            // Both ARE wrapper layers — naming a vendor is their job — and banning it there
+            // would ban them from existing. What contains the public tier is the other
+            // direction: a consumer-side ban keeps libs/feature, libs/ui and apps from
+            // reaching past it into `@trinity/helm/*`. `lint-invariants.spec.mjs` records
+            // the asymmetry as a table rather than leaving it to be inferred.
             //
             // `type:feature` carries all four. #151 closed @angular/cdk and
             // @spartan-ng/brain, #154 @ng-icons, #152 @ctrl/ngx-emoji-mart — and with the

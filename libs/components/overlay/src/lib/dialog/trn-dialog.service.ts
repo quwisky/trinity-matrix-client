@@ -71,8 +71,19 @@ export class TrnDialogService {
           ? this.overlay.position().global().top('0').right('0')
           : undefined,
       // What lets a modal'd component `inject(TrnDialogRef)` instead of CDK's own class.
-      // Declared with an explicit `deps` rather than an `inject()` call in the factory,
-      // because `DialogConfig.providers` is typed `StaticProvider[]`.
+      // The explicit `deps` is a choice, not a constraint, and this comment used to claim
+      // otherwise ("because `DialogConfig.providers` is typed `StaticProvider[]`"). Checked
+      // against Angular 22 rather than reasoned about: `StaticProvider` accepts a
+      // `useFactory` with no `deps` at all, and `inject()` does work inside a factory built
+      // through `Injector.create`, which is how CDK assembles this injector
+      // (`dialog.mjs:609`). Naming the dependency at the provider instead of reaching for it
+      // inside the closure is simply the clearer of two working forms.
+      //
+      // CDK also accepts `providers: (dialogRef, config, container) => StaticProvider[]`.
+      // That form would hand the ref in directly and let `open()` return the SAME instance
+      // it provides, rather than the two equivalent ones `TrnDialogRef` documents — worth
+      // knowing if the two-instance shape ever starts to matter. It does not today: the
+      // handle is a stateless delegate over one CDK ref and identity is never compared.
       providers: [
         {
           provide: TrnDialogRef,

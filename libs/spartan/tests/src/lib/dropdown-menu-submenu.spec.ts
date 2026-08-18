@@ -6,8 +6,9 @@ import { type ConnectedPosition } from '@angular/cdk/overlay';
 import { render } from '@trinity/testing';
 import { describe, expect, it } from 'vitest';
 // Imported straight from the owning helm lib (libs/spartan/dropdown-menu). Like the
-// other helm smoke tests, this lives in the overlay lib because it is the one spartan
-// lib with a working Vitest target; the helm component libs are lint/build-only.
+// other helm smoke tests, this lives in `libs/spartan/tests` because it is the one
+// project in that directory with a Vitest target; the helm component libs are
+// lint/build-only.
 import {
   HlmDropdownMenu,
   HlmDropdownMenuItem,
