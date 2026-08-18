@@ -6,7 +6,21 @@
   "projectType": "library",
   "tags": ["type:ui", "scope:shared", "ui:public"],
   "targets": {
-    "test": {},
+    "test": {
+      "//": "`trn-icon-name.spec.ts` greps the CALL SITES for `name=\"…\"` to prove no icon is registered that nothing renders. Those files are outside this project, and the default inputs (`default` = {projectRoot}/**/*, plus `^production` = this project's own dependencies) do not see them — dependencies point INTO this library, never out. So deleting the last `<trn-icon name=\"vote\">` from a feature template left the guard neither affected nor cache-invalid: it replayed a cached pass while the glyph stayed in the eager root registration forever. These globs are the spec's CALL_SITES list; move the two together.",
+      "inputs": [
+        "default",
+        "^production",
+        "{workspaceRoot}/libs/feature/**/*.ts",
+        "{workspaceRoot}/libs/feature/**/*.html",
+        "{workspaceRoot}/libs/ui/**/*.ts",
+        "{workspaceRoot}/libs/ui/**/*.html",
+        "{workspaceRoot}/libs/components/**/*.ts",
+        "{workspaceRoot}/libs/components/**/*.html",
+        "{workspaceRoot}/apps/**/*.ts",
+        "{workspaceRoot}/apps/**/*.html"
+      ]
+    },
     "typecheck": {}
   }
 }
