@@ -1,4 +1,6 @@
 import * as cdkDialog from '@angular/cdk/dialog';
+import * as cdkOverlay from '@angular/cdk/overlay';
+import * as cdkPortal from '@angular/cdk/portal';
 import { describe, expect, it } from 'vitest';
 import * as overlay from '../index';
 
@@ -19,7 +21,21 @@ import * as overlay from '../index';
  */
 describe('@trinity/components/overlay vendor surface', () => {
   it('re-exports no CDK symbol at all', () => {
-    const cdkValues = new Set<unknown>(Object.values(cdkDialog));
+    // All three entry points this library actually touches, not just `dialog`. The
+    // narrower version was a hole with a plausible way in: `trn-dialog.service.ts` and
+    // `trn-action-sheet.service.ts` both inject `Overlay`, and `provide-overlay-defaults.ts`
+    // — which this barrel `export *`s — already imports `OVERLAY_DEFAULT_CONFIG` from
+    // `@angular/cdk/overlay`. Re-exporting `Overlay` would have let feature code position
+    // unmediated overlays with every assertion here still green, and lint cannot object
+    // because `ui:public` may name a vendor by design.
+    const cdkValues = new Set<unknown>([
+      ...Object.values(cdkDialog),
+      ...Object.values(cdkOverlay),
+      ...Object.values(cdkPortal),
+    ]);
+    // An empty vendor set would make the filter below vacuous, which is exactly how this
+    // guard would stop guarding if an entry point were renamed upstream.
+    expect(cdkValues.size).toBeGreaterThan(10);
     const leaked = Object.entries(overlay)
       .filter(([, value]) => cdkValues.has(value))
       .map(([name]) => name)
