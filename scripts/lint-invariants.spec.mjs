@@ -1,4 +1,4 @@
-import { globSync, readFileSync } from 'node:fs';
+import { existsSync, globSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ESLint } from 'eslint';
@@ -23,8 +23,25 @@ const workspaceRoot = join(import.meta.dirname, '..');
 /** One ESLint instance for the whole file — construction dominates the runtime. */
 const eslint = new ESLint({ cwd: workspaceRoot });
 
-const resolve = (relativePath) =>
-  eslint.calculateConfigForFile(join(workspaceRoot, relativePath));
+const resolve = (relativePath) => {
+  // Every probe in this file names a real file, and this is what keeps that true.
+  // `calculateConfigForFile` resolves a config for ANY path, existing or not, so a probe
+  // that outlives the file it names goes on returning plausible severities while the
+  // assertion around it covers nothing — and reads as coverage, which is worse than none.
+  //
+  // Not hypothetical: this file has now been burned twice by the same move. The
+  // naming-exemption probes pointed at `libs/spartan/{icon,emoji-picker,overlay}` after the
+  // public tier moved those libraries out, and the kit-ban probe pointed at
+  // `libs/ui/.../banner.component.ts` after the presentational components followed them.
+  // Both kept passing. Throwing here turns silent rot into a one-line edit.
+  const absolute = join(workspaceRoot, relativePath);
+  if (!existsSync(absolute)) {
+    throw new Error(
+      `lint-invariants probes ${relativePath}, which does not exist — repoint it at a real file rather than deleting the assertion.`,
+    );
+  }
+  return eslint.calculateConfigForFile(absolute);
+};
 
 /** Severity as ESLint reports it in a resolved config: [severity, ...options]. */
 const severityOf = (config, ruleId) => {
@@ -448,8 +465,8 @@ describe('UI vendor boundary', () => {
       groupsFor(config).find((group) => group[0] === KIT);
 
     for (const consumer of [
-      'libs/feature/rooms/src/lib/rooms.routes.ts',
-      'libs/ui/src/lib/banner/banner.component.ts',
+      'libs/feature/settings/src/lib/settings.routes.ts',
+      'libs/ui/src/lib/encryption-dialog/encryption-dialog.service.ts',
       'apps/trinity/src/main.ts',
     ]) {
       expect(kitGroup(await resolve(consumer)), consumer).toBeDefined();
@@ -467,7 +484,9 @@ describe('UI vendor boundary', () => {
     // removing one as its wrapper lands is a deliberate edit here. Empty means the tier is
     // fully closed — at which point this expectation is the thing that says so.
     expect(
-      kitGroup(await resolve('libs/feature/rooms/src/lib/rooms.routes.ts')),
+      kitGroup(
+        await resolve('libs/feature/settings/src/lib/settings.routes.ts'),
+      ),
     ).toEqual([
       KIT,
       '!@trinity/helm/button',
@@ -479,7 +498,7 @@ describe('UI vendor boundary', () => {
     // options wholesale, so the SDK pattern has to be restated in the consumer block.
     // Asserted from both halves, because losing it there would be silent.
     for (const anywhere of [
-      'libs/feature/rooms/src/lib/rooms.routes.ts',
+      'libs/feature/settings/src/lib/settings.routes.ts',
       'libs/components/select/src/lib/trn-select.component.ts',
     ]) {
       expect(
@@ -492,14 +511,19 @@ describe('UI vendor boundary', () => {
   });
 
   it('keeps the matrix-js-sdk dynamic-import ban after the staging block was deleted', async () => {
-    const feature = await resolve('libs/feature/rooms/src/lib/rooms.routes.ts');
+    // A feature file that genuinely carries a lazy `import()`, so the selector this test
+    // exists for is being resolved against the shape it polices rather than an arbitrary
+    // path that happens to match the same glob.
+    const feature = await resolve(
+      'libs/feature/settings/src/lib/advanced/config-editor-loader.ts',
+    );
 
     // #148's staged `no-restricted-imports` block is gone — every vendor is enforced
     // through depConstraints now. What must NOT have gone with it is the matrix-js-sdk
     // selector: flat config replaces a rule's options wholesale, so removing a block that
     // configured `no-restricted-syntax` over the same glob is exactly how that ban would
-    // disappear silently. Every route here is lazy, so this selector is the half that
-    // matters.
+    // disappear silently. Every route in this app is lazy, so this selector — not the
+    // static-import one — is the half that matters.
     const syntax = feature.rules['no-restricted-syntax'];
     expect(syntax[0]).toBe(2);
     expect(
@@ -513,5 +537,90 @@ describe('UI vendor boundary', () => {
     expect(
       severityOf(feature, '@typescript-eslint/no-restricted-imports'),
     ).toBe(2);
+  });
+
+  it('keeps every public-tier barrel free of vendor names, type-only re-exports included', () => {
+    // `libs/components/overlay/src/lib/vendor-surface.spec.ts` compares exported VALUES, so
+    // it cannot see `export type { DialogRef } from '@angular/cdk/dialog'` — types are erased
+    // before it looks. That is the exact shape this tier was built to undo: one type-only
+    // line put CDK's class in the type signature of 24 feature components, which is the cost
+    // a swap would have had to pay. Only the source text can catch it coming back.
+    //
+    // Swept over every barrel, not just the one library that owns a spec: the other fourteen
+    // publish an API too, and none of them had any guard at all.
+    const barrels = globSync('libs/components/*/src/index.ts', {
+      cwd: workspaceRoot,
+    });
+    // An empty sweep must not read as a clean one.
+    expect(barrels.length).toBeGreaterThan(10);
+
+    const offenders = barrels.flatMap((barrel) => {
+      // Comments name the vendors freely and should — the overlay barrel spends twenty
+      // lines explaining which CDK symbols it refuses and why. Only real specifiers count.
+      const source = readFileSync(join(workspaceRoot, barrel), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .split('\n')
+        .filter((line) => !line.trimStart().startsWith('//'))
+        .join('\n');
+      // Matched on `from '…'` anywhere rather than on a statement shape, so a multi-line
+      // `export {\n  Foo,\n} from '…'` cannot slip past on formatting.
+      return [...source.matchAll(/from\s+'([^']+)'/g)]
+        .map((match) => match[1])
+        .filter((specifier) =>
+          ALL_UI_VENDORS.some(
+            (vendor) =>
+              specifier === vendor || specifier.startsWith(`${vendor}/`),
+          ),
+        )
+        .map((specifier) => `${barrel}: ${specifier}`);
+    });
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('applies the matrix-js-sdk ban to every library not allowed the SDK', async () => {
+    // The SDK ban is allow-by-OMISSION: `eslint.config.mjs` lists the tiers it covers, so a
+    // library that is merely forgotten lands in the permitted bucket and may import
+    // matrix-js-sdk — statically or through a lazy `import()` — with `pnpm lint` green. That
+    // block's own comment names the hazard ("a new UI lib that is merely forgotten lands in
+    // the allowed bucket — silently, and with nothing else to catch it") and then nothing
+    // measured it. The vendor bans got a tagging sweep for precisely this reason; this is the
+    // same sweep for the rule CLAUDE.md calls the core architectural one.
+    //
+    // The two allowed roots are the sanctioned exceptions: `libs/data-access/*` owns all SDK
+    // access, and `libs/util/matrix` models the SDK's own types.
+    const ALLOWED_THE_SDK = ['libs/data-access', 'libs/util/matrix'];
+    const projects = globSync('libs/**/project.json', { cwd: workspaceRoot });
+    expect(projects.length).toBeGreaterThan(20);
+
+    const checked = [];
+    const uncovered = [];
+    for (const project of projects) {
+      const root = dirname(project);
+      if (ALLOWED_THE_SDK.some((allowed) => root.startsWith(allowed))) {
+        continue;
+      }
+      // A representative source file rather than a fixed `src/index.ts`: `libs/spartan/tests`
+      // is a real project with no barrel, and skipping it silently is how a sweep empties out.
+      const candidates = globSync(`${root}/src/**/*.ts`, {
+        cwd: workspaceRoot,
+      });
+      const probe =
+        candidates.find((file) => file.endsWith('src/index.ts')) ??
+        candidates.find((file) => !file.endsWith('.spec.ts'));
+      expect(probe, `${root} has no TypeScript to probe`).toBeDefined();
+      checked.push(probe);
+
+      const config = await resolve(probe);
+      const covered =
+        severityOf(config, '@typescript-eslint/no-restricted-imports') === 2 &&
+        severityOf(config, 'no-restricted-syntax') === 2;
+      if (!covered) {
+        uncovered.push(probe);
+      }
+    }
+
+    expect(checked.length).toBeGreaterThan(15);
+    expect(uncovered).toEqual([]);
   });
 });
