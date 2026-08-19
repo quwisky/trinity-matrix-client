@@ -180,5 +180,28 @@ test.describe('Message grouping', () => {
     expect(gap.start.marginTop).toBe(0);
     // So the measured height of a group start really does include it.
     expect(gap.start.borderBox - gap.cont.borderBox).toBeGreaterThanOrEqual(15);
+
+    // The hover toolbar belongs to its own row. It used to be parked at `top: -16px`, i.e.
+    // deliberately over the row ABOVE — which on a touch device, where the bar is always
+    // open, meant every row permanently covered the top of its predecessor. Measured as a
+    // box containment rather than read off the stylesheet, because that is the actual claim.
+    const containment = await page.evaluate(() => {
+      const row = [...document.querySelectorAll('.msg')].find((candidate) =>
+        candidate.querySelector('.msg__toolbar'),
+      );
+      const bar = row?.querySelector('.msg__toolbar');
+      if (!row || !bar) {
+        return null;
+      }
+      const r = row.getBoundingClientRect();
+      const b = bar.getBoundingClientRect();
+      return { rowTop: r.top, barTop: b.top, overflowAbove: r.top - b.top };
+    });
+
+    if (!containment) {
+      throw new Error('expected a message row carrying a toolbar');
+    }
+    // Zero or negative: the bar starts at or below its row's top edge, never above it.
+    expect(containment.overflowAbove).toBeLessThanOrEqual(0);
   });
 });

@@ -134,10 +134,15 @@
   opacity: 0.85;
 }
 
+// Anchored INSIDE the row's own box. It used to sit at `top: -16px`, i.e. deliberately
+// parked over the row above — so the actions for one message floated across its
+// predecessor, and on a touch device (where the bar is always open, below) every row
+// permanently covered the top of the one before it. The group gap this phase added is what
+// buys the room to keep it in-box without crowding the text.
 .msg__toolbar {
   position: absolute;
-  top: -16px;
-  right: 24px;
+  top: 0;
+  right: var(--trinity-space-6);
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--trinity-duration-fast) var(--trinity-ease-standard);
@@ -149,8 +154,11 @@
   pointer-events: auto;
 }
 
-// Touch devices have no hover, so the actions would be unreachable — keep them
-// visible there. (Keyboard users still reveal them via :focus-within above.)
+// Touch devices have no hover, so the actions would be unreachable — keep them visible
+// there. (Keyboard users still reveal them via :focus-within above.)
+// An always-open bar on every row is still the wrong answer, and it goes when the context
+// menu lands: a long-press reaching the same actions is what makes this override deletable.
+// Until then it at least no longer covers the previous message.
 @media (hover: none) {
   .msg__toolbar {
     opacity: 1;

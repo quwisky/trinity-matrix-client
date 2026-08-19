@@ -271,15 +271,36 @@ test.describe('Message markdown', () => {
       // from the block's edges and the offsets the stylesheet sets.
       const captionBottom = block.bottom - parseFloat(after.bottom || '0');
       const captionTop = captionBottom - parseFloat(after.fontSize || '0');
+      const captionLeft = block.left + parseFloat(after.left || '0');
+      // Generated content has no node, so its width is measured the way the browser would:
+      // the same text in the same font, through a canvas. Estimating it as "the whole block"
+      // would guarantee a horizontal overlap with anything right-aligned and make the
+      // assertion unfalsifiable in the direction that matters.
+      const ctx = document.createElement('canvas').getContext('2d');
+      let captionWidth = 0;
+      if (ctx) {
+        ctx.font = after.font || `${after.fontSize} ${after.fontFamily}`;
+        captionWidth = ctx.measureText(
+          pre.getAttribute('language') ?? '',
+        ).width;
+      }
+      const captionRight = captionLeft + captionWidth;
       return {
         isContinuation: row.classList.contains('msg--cont'),
-        gap: captionTop - toolbar.bottom,
+        // Do the two boxes overlap at all? Asserting non-intersection rather than a vertical
+        // gap holds however they are separated — the caption moved to the block's left when
+        // the toolbar moved inside the row, and a vertical-gap assertion would have called
+        // that a regression when it is the fix.
+        overlaps:
+          captionLeft < toolbar.right &&
+          captionRight > toolbar.left &&
+          captionTop < toolbar.bottom &&
+          captionBottom > toolbar.top,
       };
     });
 
     expect(overlap?.isContinuation).toBe(true);
-    // Positive gap = the caption starts below the toolbar ends.
-    expect(overlap?.gap).toBeGreaterThan(0);
+    expect(overlap?.overlaps).toBe(false);
   });
 
   test('syntax-highlights a fenced block, in the theme’s colours', async ({

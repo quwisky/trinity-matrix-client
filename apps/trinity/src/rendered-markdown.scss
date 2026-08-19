@@ -100,10 +100,15 @@
     // row, which has no author header to push the block down, a top-right caption lands
     // underneath the toolbar. The shortest possible block still puts its bottom edge
     // clear of that band.
+    // Bottom-LEFT, not bottom-right. The message's hover toolbar is right-aligned inside the
+    // row, so a right-aligned caption competes with it for the same corner and loses on a
+    // short block — which is what `message-markdown.spec.mts` measures. Separating them on
+    // the horizontal axis fixes that for every block height rather than for the one that
+    // happened to be measured.
     &[language]::after {
       content: attr(language);
       position: absolute;
-      right: 8px;
+      left: 8px;
       bottom: 6px;
       color: var(--trinity-text-muted);
       font-family: ui-monospace, monospace;
