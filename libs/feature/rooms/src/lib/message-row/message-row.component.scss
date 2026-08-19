@@ -396,15 +396,23 @@
 }
 
 // "Seen by" read-receipt avatars, tucked at the trailing edge under the message.
+// Out of flow, so a reader part-way through a sender's run does not add height in the
+// middle of it and break the group's rhythm.
+// The alternative the redesign issue offered was to fold every reader onto the group's LAST
+// row. That was rejected: a Matrix receipt means "read up to THIS event", so moving it would
+// claim someone had read messages they had not — the app would be stating something false
+// about who saw what, which is worse than a gap in the spacing. Receipts stay on the event
+// they belong to; only their layout changed.
+// It therefore needs no `isGroupEnd` plumbing, which folding would have required (including
+// extending `RowCacheEntry`'s comparison, or rows would stop re-rendering when a group's
+// tail moved).
 .msg__receipts {
+  position: absolute;
+  right: var(--trinity-space-5);
+  bottom: 0;
   display: flex;
   gap: 2px;
-
-  // A <button> shrink-wraps to its content, so `justify-content: flex-end` had no
-  // free space to push against — right-align the whole control with an auto margin.
   width: fit-content;
-  margin-top: 3px;
-  margin-left: auto;
   padding: 0;
   border: none;
   background: none;

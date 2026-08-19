@@ -144,5 +144,38 @@ test.describe('Read receipts (seen by)', () => {
       'aria-label',
       new RegExp(seerName),
     );
+
+    // The cluster is out of flow, so a reader part-way through a sender's run does not add
+    // height in the middle of it and break the group's rhythm. Measured rather than read off
+    // the stylesheet: `position: absolute` is only half the claim — the other half is that
+    // the row it sits in is no taller than one without receipts, which is what a reader
+    // actually notices and what the windowed list measures.
+    const heights = await page.evaluate(() => {
+      const row = [...document.querySelectorAll('.scroll .msg')].find((r) =>
+        r.querySelector('[data-testid="read-receipts"]'),
+      );
+      const bar = row?.querySelector<HTMLElement>(
+        '[data-testid="read-receipts"]',
+      );
+      if (!row || !bar) {
+        return null;
+      }
+      // A direct experiment rather than a comparison with some other row: put the cluster
+      // back in flow and see whether the row grows. If it does, it was genuinely out of it.
+      const outOfFlow = row.getBoundingClientRect().height;
+      const position = getComputedStyle(bar).position;
+      bar.style.position = 'static';
+      const inFlow = row.getBoundingClientRect().height;
+      bar.style.position = '';
+      return { position, outOfFlow, inFlow };
+    });
+
+    if (!heights) {
+      throw new Error('expected a row carrying read receipts');
+    }
+    expect(heights.position).toBe('absolute');
+    // Putting them back in flow makes the row taller — which is the height they are NOT
+    // adding in the middle of a sender's run today.
+    expect(heights.inFlow).toBeGreaterThan(heights.outOfFlow);
   });
 });
