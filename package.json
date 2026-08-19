@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "author": "quwisky <quwisky@qwky.eu>",
   "scripts": {
-    "preinstall": "node -e \"if (!String(process.env.npm_config_user_agent).startsWith('pnpm')) { console.error('Use pnpm for this project — run: corepack enable && pnpm install'); process.exit(1); }\"",
+    "preinstall": "node -e \"if (!String(process.env.npm_config_user_agent).startsWith('pnpm')) { console.error('Use pnpm for this project \u2014 run: corepack enable && pnpm install'); process.exit(1); }\"",
     "prepare": "husky",
     "format": "nx format:write --all",
     "format:check": "nx format:check --all",
@@ -12,7 +12,9 @@
     "watch": "nx build trinity --watch --configuration development",
     "test": "nx run-many -t test",
     "lint": "nx run-many -t lint",
-    "stylelint": "stylelint \"{apps,libs}/**/*.scss\"",
+    "stylelint": "stylelint \"{apps,libs}/**/*.{scss,css}\"",
+    "storybook": "nx storybook components-storybook-host",
+    "storybook:build": "nx build-storybook components-storybook-host",
     "spike:chromium": "nx build trinity --configuration=development && node e2e/features/crypto-spike.mjs chromium",
     "spike:webkit": "nx build trinity --configuration=development && node e2e/features/crypto-spike.mjs webkit",
     "smoke:login": "nx build trinity --configuration=development && node e2e/features/smoke-login.mjs",
@@ -49,7 +51,7 @@
   },
   "private": true,
   "packageManager": "pnpm@11.19.0",
-  "//engines": "The `>= 26` half of this range was removed rather than gaining a CI leg: nothing has ever built, tested or packaged this workspace on Node 26, so the range was advertising support that no gate backed. Widening it again is a deliberate act — add the matrix leg first (the Electron job alone rebuilds a native binary), then the range.",
+  "//engines": "The `>= 26` half of this range was removed rather than gaining a CI leg: nothing has ever built, tested or packaged this workspace on Node 26, so the range was advertising support that no gate backed. Widening it again is a deliberate act \u2014 add the matrix leg first (the Electron job alone rebuilds a native binary), then the range.",
   "engines": {
     "node": "^24.15.0",
     "pnpm": ">=11"
@@ -126,10 +128,14 @@
     "@nx/eslint-plugin": "23.1.1",
     "@nx/js": "23.1.1",
     "@nx/playwright": "23.1.1",
+    "@nx/storybook": "23.1.1",
     "@nx/vite": "23.1.1",
+    "@nx/web": "23.1.1",
     "@playwright/test": "^1.62.1",
     "@schematics/angular": "22.1.2",
     "@spartan-ng/cli": "1.3.0",
+    "@storybook/addon-a11y": "10.5.9",
+    "@storybook/angular-vite": "10.5.9",
     "@swc/helpers": "~0.5.23",
     "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/angular": "^19.4.1",
@@ -152,6 +158,7 @@
     "postcss": "^8.5.25",
     "prettier": "^3.9.6",
     "prettier-plugin-tailwindcss": "^0.8.1",
+    "storybook": "^10.5.0",
     "stylelint": "^17.14.1",
     "stylelint-config-standard-scss": "^17.0.0",
     "tailwindcss": "^4.3.3",
@@ -161,5 +168,5 @@
     "vite-tsconfig-paths": "^6.1.1",
     "vitest": "4.1.10"
   },
-  "description": "Trinity — a cross-platform Matrix client with end-to-end encryption (Angular, spartan.ng, Capacitor, Electron)"
+  "description": "Trinity \u2014 a cross-platform Matrix client with end-to-end encryption (Angular, spartan.ng, Capacitor, Electron)"
 }

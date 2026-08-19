@@ -48,6 +48,74 @@
   --trinity-radius-xl: 0.75rem; // 12px — cards / dialogs / menus
   --trinity-radius-pill: 9999px; // badges, chips, capsules
 
+  // --- Typography (mode- & palette-agnostic; a palette may override) -------------
+  // Roles, not sizes. `--trinity-text-sm` is the message body and the sidebar row —
+  // the workhorse — and is the same 13px the `text-13` utility emits, which stays as
+  // an alias until its call sites migrate. Each size carries its own line-height so a
+  // consumer cannot pair a size with the wrong leading.
+  // These are `rem`, so Settings → Appearance → Text size (a % on the root) scales
+  // them; a px value here would pin them and silently break that preference.
+  --trinity-text-xs: 0.6875rem; // 11px — timestamps, meta, badge text
+  --trinity-text-xs--line-height: 1.45;
+  --trinity-text-sm: 0.8125rem; // 13px — message body, sidebar rows, most chrome
+  --trinity-text-sm--line-height: 1.375;
+  --trinity-text-base: 0.9375rem; // 15px — dialog body, settings prose
+  --trinity-text-base--line-height: 1.5;
+  --trinity-text-lg: 1.25rem; // 20px — page and section headings
+  --trinity-text-lg--line-height: 1.3;
+
+  // --- Spacing (mode- & palette-agnostic) ---------------------------------------
+  // A 4px rhythm. Named by step rather than by use, because the same gap means
+  // different things in different components; what matters is that it is ON the grid.
+  --trinity-space-1: 2px;
+  --trinity-space-2: 4px;
+  --trinity-space-3: 8px;
+  --trinity-space-4: 12px;
+  --trinity-space-5: 16px;
+  --trinity-space-6: 24px;
+  --trinity-space-7: 32px;
+
+  // --- Elevation ----------------------------------------------------------------
+  // Overridden per mode: a shadow that reads on white is invisible on #313338, which
+  // is why the dark block below raises the alpha rather than reusing these.
+  --trinity-shadow-raised: 0 1px 2px rgb(0 0 0 / 8%);
+  --trinity-shadow-floating: 0 4px 12px rgb(0 0 0 / 12%);
+  --trinity-shadow-overlay: 0 12px 32px rgb(0 0 0 / 18%);
+
+  // --- Z-index layers -----------------------------------------------------------
+  // Named because the bare numbers in the tree (5, 10, 20, 40) carry no relation to
+  // each other and nothing said which was meant to sit over which. These govern
+  // APP-level stacking only — a component stacking its own two children is local and
+  // stays a literal. Above all of them sits the CDK overlay container (1000 by
+  // default), which is why a dialog covers everything here without being listed.
+  --trinity-z-sticky: 5; // pinned affordances inside a scroller (jump-to-unread)
+  --trinity-z-floating: 10; // a component's own popovers (emoji picker, suggestions)
+  --trinity-z-overlay: 20; // a sheet over one pane (the drag-and-drop target)
+  --trinity-z-panel: 40; // a panel over the shell (mobile room list)
+
+  // --- Motion -------------------------------------------------------------------
+  // One vocabulary, and one place to collapse it — see the reduced-motion block at
+  // the end of this file. A literal duration cannot be collapsed, which is why
+  // `global.scss` still needs its blanket `!important` override until the remaining
+  // hand-picked durations migrate.
+  --trinity-duration-fast: 120ms; // hover/focus tints — must not be perceptible as motion
+  --trinity-duration-base: 200ms; // the default for anything entering or leaving
+  --trinity-duration-slow: 320ms; // full-surface transitions (panels, sheets)
+  --trinity-ease-standard: cubic-bezier(0.2, 0, 0, 1); // most things
+  --trinity-ease-decelerate: cubic-bezier(
+    0,
+    0,
+    0,
+    1
+  ); // entering: fast in, settles
+
+  --trinity-ease-accelerate: cubic-bezier(
+    0.3,
+    0,
+    1,
+    1
+  ); // leaving: takes off, gone
+
   // --- Code size (mode- & palette-agnostic) -------------------------------------
   // A unitless MULTIPLIER, not a size. rendered-markdown.scss multiplies the 85%
   // optical correction by it, so code stays a proportion of whatever Settings →
@@ -77,8 +145,13 @@
   --warning-foreground: hsl(20deg 14% 4%);
 
   // --- Trinity brand (constant across modes in this palette) --------------------
-  --trinity-accent: #5865f2; // blurple
+  --trinity-accent: #5865f2; // blurple — a FILL. Not readable as text; see --trinity-link.
   --trinity-accent-hover: #4752c4;
+
+  // Accent-coloured TEXT, split from the fill because the two cannot be the same colour and
+  // both clear AA: blurple on the light row grounds is 3.19:1. Every `color:` that used to
+  // read the accent reads this instead; borders and fills still use the accent.
+  --trinity-link: #3f49b8; // 5.09:1 on the worst light surface (--trinity-active)
 
   // Readable text/icon colour on an accent fill — tracks the Helm on-primary token, so a
   // light-accent palette (e.g. Amethyst dark) gets dark on-accent text, not unreadable white.
@@ -183,7 +256,7 @@
 
   // --- Trinity text -------------------------------------------------------------
   --trinity-text: #313338;
-  --trinity-text-muted: #5c5e66;
+  --trinity-text-muted: #5b5d65; // 4.55:1 on --trinity-active (was #5c5e66, 4.48:1)
   --trinity-text-bright: #060607;
 
   // --- Helm surfaces (light) ----------------------------------------------------
@@ -193,7 +266,10 @@
   --popover: var(--trinity-chat);
   --secondary: hsl(240deg 4.8% 95.9%);
   --muted: hsl(240deg 4.8% 95.9%);
-  --muted-foreground: hsl(240deg 3.8% 46.1%);
+  --muted-foreground: hsl(
+    240deg 3.8% 38%
+  ); // 4.52:1 on the lightest row ground (was 3.35:1)
+
   --accent: hsl(240deg 4.8% 95.9%);
   --destructive: hsl(0deg 84.2% 60.2%);
   --destructive-foreground: hsl(0deg 0% 98%);
@@ -229,7 +305,14 @@
 
   // Trinity text
   --trinity-text: #dbdee1;
-  --trinity-text-muted: #949ba4;
+
+  // Shadows carry no weight on a dark ground at the light alphas, so dark raises them
+  // and leans on a hairline highlight rather than trying to out-darken the surface.
+  --trinity-shadow-raised: 0 1px 2px rgb(0 0 0 / 30%);
+  --trinity-shadow-floating: 0 4px 12px rgb(0 0 0 / 40%);
+  --trinity-shadow-overlay: 0 12px 32px rgb(0 0 0 / 55%);
+  --trinity-text-muted: #aab0b7; // 4.59:1 on --trinity-active (was #949ba4, 3.57:1)
+  --trinity-link: #a4abf8; // 4.66:1 on the worst dark surface (blurple was 2.18:1)
   --trinity-text-bright: #f2f3f5;
 
   // Danger, lightened for the dark canvas (see :root for why --destructive is not used).
@@ -255,7 +338,10 @@
   --popover: var(--trinity-sidebar);
   --secondary: var(--trinity-hover); // #35373c
   --muted: var(--trinity-hover);
-  --muted-foreground: hsl(240deg 5% 64.9%);
+  --muted-foreground: hsl(
+    240deg 5% 70%
+  ); // 4.60:1 on --trinity-active (was 3.91:1)
+
   --accent: var(--trinity-hover);
   --destructive: hsl(0deg 62.8% 30.6%);
   --destructive-foreground: hsl(0deg 0% 98%);
@@ -281,7 +367,7 @@
   --trinity-active: #dccfef;
   --trinity-divider: #e6ddf2;
   --trinity-text: #2b2438;
-  --trinity-text-muted: #635a74;
+  --trinity-text-muted: #5d5470; // 4.90:1 on --trinity-active (was #635a74, 4.38:1)
   --trinity-text-bright: #120a1e;
 
   // Helm tokens that hold a literal value in light (so are not auto-aliased). New
@@ -292,7 +378,10 @@
   --accent-foreground: var(--foreground);
   --secondary: #ece5f6;
   --muted: #ece5f6;
-  --muted-foreground: hsl(260deg 10% 44%);
+  --muted-foreground: hsl(
+    260deg 10% 38%
+  ); // 4.77:1 on --trinity-active (was 3.84:1)
+
   --accent: #ece5f6;
   --border: #e6ddf2;
 }
@@ -300,6 +389,7 @@
 :root[data-theme='amethyst'].dark {
   --trinity-accent: #a78bfa; // lighter violet reads better on the dark canvas
   --trinity-accent-hover: #8b5cf6;
+  --trinity-link: #b9a3fc; // 5.32:1 on the worst amethyst-dark surface (was 4.23:1)
 
   // The light accent needs dark on-accent text: white would be 2.7:1 (fails WCAG AA);
   // this dark violet is 6.3:1. --primary-foreground defaults to white in :root.
@@ -312,10 +402,72 @@
   --trinity-active: #3d3550;
   --trinity-divider: #1a1622;
   --trinity-text: #ddd8e6;
-  --trinity-text-muted: #a099b3;
+  --trinity-text-muted: #aaa3bd; // 4.76:1 on the worst amethyst-dark surface (was 4.22:1)
   --trinity-text-bright: #f5f2fa;
   --background: hsl(260deg 20% 8%);
   --foreground: hsl(260deg 20% 96%);
-  --muted-foreground: hsl(260deg 12% 66%);
+  --muted-foreground: hsl(
+    260deg 12% 70%
+  ); // 5.06:1 on the worst amethyst-dark ground
+
   --border: #322c42;
+}
+
+// -----------------------------------------------------------------------------
+// Onyx — an achromatic palette; dark is AMOLED (a true-black rail)
+// -----------------------------------------------------------------------------
+// Deliberately SURFACES ONLY. Every text role, the link, the danger colours, the accent and
+// the whole syntax set are left unset and fall through to the `:root` / `:root.dark` defaults
+// — which is the palette contract doing its job, and the reason this palette is worth
+// shipping: it is the proof that adding a theme is a data change. If it needed a component
+// edited, or a role redefined to stay legible, the token layer would be incomplete.
+// `scripts/contrast-matrix.spec.mjs` is what makes that claim checkable rather than hopeful:
+// it picks this palette up automatically and measures every inherited role against these new
+// grounds, which is exactly where an inherited value is most likely to stop working.
+// Light is included because the two axes compose — "any palette works in both light and dark"
+// is the model stated at the top of this file, and a palette that silently rendered the
+// default in one mode would make the picker lie. Onyx light is therefore the same idea as
+// Onyx dark: neutral greys, no blue cast, rather than a second dark theme.
+
+:root[data-theme='onyx']:not(.dark) {
+  --trinity-rail: #e8e8ea;
+  --trinity-sidebar: #f4f4f5;
+  --trinity-sidebar-header: #ededee;
+  --trinity-chat: #fff;
+  --trinity-hover: #efeff1;
+  --trinity-active: #dcdce0;
+  --trinity-divider: #e4e4e6;
+  --border: #e4e4e6;
+}
+
+:root[data-theme='onyx'].dark {
+  // #000 on purpose: on an OLED panel a black pixel is an unlit pixel, which is the whole
+  // point of the palette. The ramp above it stays shallow so the surfaces remain
+  // distinguishable without reintroducing the grey wash the palette exists to avoid.
+  --trinity-rail: #000;
+  --trinity-sidebar: #0b0b0d;
+  --trinity-sidebar-header: #08080a;
+  --trinity-chat: #141417;
+  --trinity-hover: #1c1c20;
+  --trinity-active: #26262b;
+  --trinity-divider: #1f1f24;
+  --background: #000;
+  --border: #1f1f24;
+}
+
+// -----------------------------------------------------------------------------
+// Reduced motion — collapse the vocabulary rather than police each call site
+// -----------------------------------------------------------------------------
+// Anything built on the duration tokens stops moving here, with no `!important` and
+// no per-component opt-in. `global.scss` keeps its blanket override for now because
+// the hand-picked literal durations still in the tree cannot be reached this way;
+// that override becomes deletable when the last of them is migrated.
+// 0.01ms rather than 0s on purpose: a zero-duration transition never fires
+// `transitionend`, and code that waits for it would hang.
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --trinity-duration-fast: 0.01ms;
+    --trinity-duration-base: 0.01ms;
+    --trinity-duration-slow: 0.01ms;
+  }
 }

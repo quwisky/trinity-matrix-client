@@ -23,7 +23,7 @@
   }
 
   a {
-    color: var(--trinity-accent);
+    color: var(--trinity-link);
     text-decoration: none;
 
     &:hover {
@@ -110,7 +110,8 @@
       font-size: 11px;
       line-height: 1;
       opacity: 0;
-      transition: opacity 0.1s ease;
+      transition: opacity var(--trinity-duration-fast)
+        var(--trinity-ease-standard);
     }
 
     &[language]:hover::after {
@@ -367,8 +368,8 @@
   .mx-spoiler {
     border-radius: var(--trinity-radius-sm);
     transition:
-      background-color 0.12s ease,
-      color 0.12s ease;
+      background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
+      color var(--trinity-duration-fast) var(--trinity-ease-standard);
   }
 
   .mx-spoiler:not(.is-revealed) {

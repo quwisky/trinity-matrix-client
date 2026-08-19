@@ -6,7 +6,24 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **A third theme: Onyx.** A neutral, achromatic palette whose dark mode is true black — on an
+  OLED screen a black pixel is simply switched off, so it saves power and looks properly dark
+  rather than dark grey. Pick it under Settings → Appearance, in either light or dark mode.
+
 ### Fixed
+
+- **Muted text and links are readable everywhere now.** Timestamps, member names, dialog
+  captions and other secondary text failed the accessibility contrast floor the moment you
+  hovered or selected the row they sat on — the exact moment you were most likely to be reading
+  them. Links were worse: on the dark theme they sat at 2.18:1 against 4.5:1 required, which is
+  closer to decoration than to text. Both are repaired across every theme in both light and
+  dark, and a test now measures every text colour against every background it can land on so it
+  cannot drift back.
+
+- **The account switcher has its corners back.** On phones the dialog referred to a rounded
+  corner that was never defined, so the browser dropped the rule and it rendered as a square.
 
 - **Trinity no longer opens to a blank screen on some systems.** If your computer's language
   was set in an older style — common on Linux, and on anything configured with `LANG=en_US`

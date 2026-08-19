@@ -42,6 +42,7 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+
   /*
    * `text-danger` for alert TEXT. `text-destructive` reads --destructive, which is a
    * fill-only token: in dark it is a near-black maroon (#7f1d1d) that lands at 1.26:1

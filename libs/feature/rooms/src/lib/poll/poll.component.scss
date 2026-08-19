@@ -55,7 +55,7 @@
   position: absolute;
   inset: 0 auto 0 0;
   background: color-mix(in srgb, var(--trinity-accent) 22%, transparent);
-  transition: width 0.2s ease;
+  transition: width var(--trinity-duration-base) var(--trinity-ease-standard);
 }
 
 .poll__option--chosen {

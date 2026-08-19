@@ -22,6 +22,7 @@ export type ResolvedTheme = 'light' | 'dark';
 export const TRINITY_PALETTES = [
   { id: 'trinity', label: 'Trinity' },
   { id: 'amethyst', label: 'Amethyst' },
+  { id: 'onyx', label: 'Onyx' },
 ] as const;
 /** The id of a registered palette. */
 export type Palette = (typeof TRINITY_PALETTES)[number]['id'];
