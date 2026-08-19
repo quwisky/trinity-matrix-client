@@ -7,7 +7,9 @@ import { TrnFileDropDirective } from './file-drop.directive';
   selector: 'trn-drop-host',
   template: '<p>timeline</p>',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  hostDirectives: [TrnFileDropDirective],
+  hostDirectives: [
+    { directive: TrnFileDropDirective, inputs: [], outputs: [] },
+  ],
 })
 class DropHostComponent {
   readonly drop = inject(TrnFileDropDirective);

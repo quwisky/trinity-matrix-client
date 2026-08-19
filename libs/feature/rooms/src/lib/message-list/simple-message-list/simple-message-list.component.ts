@@ -43,7 +43,17 @@ const MAX_BACKFILL_ROUNDS = 20;
   ],
   // The whole conversation is the drop target — "drop it on the room" is the gesture, and
   // these templates are host fragments with no element of their own to carry it.
-  hostDirectives: [TrnFileDropDirective],
+  hostDirectives: [
+    {
+      directive: TrnFileDropDirective,
+      // Neither is exposed on this element, and both are stated so that is a decision rather
+      // than an omission (see `scripts/host-directives.spec.mjs`). `filesDropped` in
+      // particular is deliberately NOT re-exported: `MessageListBase` subscribes to it
+      // directly, so a host binding would be a second, silently divergent way in.
+      inputs: [],
+      outputs: [],
+    },
+  ],
   templateUrl: './simple-message-list.component.html',
   styleUrl: './simple-message-list.component.scss',
 })

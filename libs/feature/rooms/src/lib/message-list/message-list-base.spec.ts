@@ -15,7 +15,9 @@ import { TrnFileDropDirective } from '../shared/file-drop.directive';
   changeDetection: ChangeDetectionStrategy.OnPush,
   // The base injects it, so every list must carry it — a subclass that forgets loses
   // drag-and-drop, and this stub standing in for one has to be honest about that.
-  hostDirectives: [TrnFileDropDirective],
+  hostDirectives: [
+    { directive: TrnFileDropDirective, inputs: [], outputs: [] },
+  ],
 })
 class TestMessageListComponent extends MessageListBase {
   override jumpTo(): void {
