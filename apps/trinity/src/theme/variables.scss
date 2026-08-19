@@ -266,7 +266,10 @@
   --popover: var(--trinity-chat);
   --secondary: hsl(240deg 4.8% 95.9%);
   --muted: hsl(240deg 4.8% 95.9%);
-  --muted-foreground: hsl(240deg 3.8% 46.1%);
+  --muted-foreground: hsl(
+    240deg 3.8% 38%
+  ); // 4.52:1 on the lightest row ground (was 3.35:1)
+
   --accent: hsl(240deg 4.8% 95.9%);
   --destructive: hsl(0deg 84.2% 60.2%);
   --destructive-foreground: hsl(0deg 0% 98%);
@@ -335,7 +338,10 @@
   --popover: var(--trinity-sidebar);
   --secondary: var(--trinity-hover); // #35373c
   --muted: var(--trinity-hover);
-  --muted-foreground: hsl(240deg 5% 64.9%);
+  --muted-foreground: hsl(
+    240deg 5% 70%
+  ); // 4.60:1 on --trinity-active (was 3.91:1)
+
   --accent: var(--trinity-hover);
   --destructive: hsl(0deg 62.8% 30.6%);
   --destructive-foreground: hsl(0deg 0% 98%);
@@ -361,7 +367,7 @@
   --trinity-active: #dccfef;
   --trinity-divider: #e6ddf2;
   --trinity-text: #2b2438;
-  --trinity-text-muted: #635a74;
+  --trinity-text-muted: #5d5470; // 4.90:1 on --trinity-active (was #635a74, 4.38:1)
   --trinity-text-bright: #120a1e;
 
   // Helm tokens that hold a literal value in light (so are not auto-aliased). New
@@ -372,7 +378,10 @@
   --accent-foreground: var(--foreground);
   --secondary: #ece5f6;
   --muted: #ece5f6;
-  --muted-foreground: hsl(260deg 10% 44%);
+  --muted-foreground: hsl(
+    260deg 10% 38%
+  ); // 4.77:1 on --trinity-active (was 3.84:1)
+
   --accent: #ece5f6;
   --border: #e6ddf2;
 }
@@ -397,7 +406,10 @@
   --trinity-text-bright: #f5f2fa;
   --background: hsl(260deg 20% 8%);
   --foreground: hsl(260deg 20% 96%);
-  --muted-foreground: hsl(260deg 12% 66%);
+  --muted-foreground: hsl(
+    260deg 12% 70%
+  ); // 5.06:1 on the worst amethyst-dark ground
+
   --border: #322c42;
 }
 

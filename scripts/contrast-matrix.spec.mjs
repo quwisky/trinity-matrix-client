@@ -90,6 +90,36 @@ const ROLES = [
   },
 ];
 
+/**
+ * The Helm/shadcn family, read by the generated components through Tailwind utilities —
+ * `text-muted-foreground` alone appears 151 times. They are a separate vocabulary from
+ * `--trinity-*` but they render on the same surfaces, so leaving them out measured half the
+ * text in the app and called it "every text role".
+ */
+const HELM_ROLES = [
+  {
+    text: '--foreground',
+    on: [
+      '--trinity-chat',
+      '--trinity-sidebar',
+      '--trinity-hover',
+      '--trinity-active',
+    ],
+  },
+  {
+    text: '--muted-foreground',
+    on: [
+      '--trinity-chat',
+      '--trinity-sidebar',
+      '--trinity-hover',
+      '--trinity-active',
+    ],
+  },
+  { text: '--card-foreground', on: ['--card'] },
+  { text: '--popover-foreground', on: ['--popover'] },
+  { text: '--secondary-foreground', on: ['--secondary'] },
+];
+
 /** Syntax highlighting always renders on the code ground. */
 const SYNTAX_ROLES = [
   '--trinity-syntax-plain',
@@ -151,7 +181,10 @@ function resolve(token, palette, mode, seen = new Set()) {
   if (seen.has(token)) return null; // a var() cycle; nothing to measure
   seen.add(token);
   const applicable = blocks.filter(({ selector }) => {
-    const isDark = selector.includes('.dark');
+    // `:not(.dark)` CONTAINS `.dark`, so a substring test calls every light palette block a
+    // dark one — applying it in dark mode and skipping it in light, i.e. exactly inverted.
+    // Strip the negations before asking.
+    const isDark = selector.replace(/:not\([^)]*\)/g, '').includes('.dark');
     const themed = /\[data-theme='([a-z0-9-]+)'\]/.exec(selector);
     if (themed && themed[1] !== palette) return false;
     if (!themed && palette !== 'trinity' && isDark !== (mode === 'dark'))
@@ -171,14 +204,61 @@ function resolve(token, palette, mode, seen = new Set()) {
   return value;
 }
 
-/** #rgb / #rrggbb -> [r,g,b], else null (a token we cannot measure is not a failure). */
+/**
+ * A CSS colour -> [r, g, b], or null if this parser does not understand the notation.
+ *
+ * Both notations in use are handled, and that is deliberate rather than incidental: half the
+ * token system is authored in `hsl()` (`--foreground`, `--muted-foreground`, `--destructive`)
+ * and the `--trinity-*` roles in hex. A parser that quietly returned null for one of them would
+ * drop those pairs out of the matrix and still report a clean run — which is why what it cannot
+ * parse is asserted below rather than filtered away.
+ */
 function toRgb(value) {
   if (!value) return null;
-  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value.trim());
-  if (!hex) return null;
-  const h =
-    hex[1].length === 3 ? [...hex[1]].map((c) => c + c).join('') : hex[1];
-  return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const text = value.trim();
+
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(text);
+  if (hex) {
+    const h =
+      hex[1].length === 3 ? [...hex[1]].map((c) => c + c).join('') : hex[1];
+    return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+  }
+
+  // `hsl(240deg 5% 64.9%)` and `hsl(240, 5%, 64.9%)`; `deg` and the commas are optional.
+  const hsl = /^hsla?\(\s*([\d.]+)(?:deg)?[\s,]+([\d.]+)%[\s,]+([\d.]+)%/i.exec(
+    text,
+  );
+  if (hsl) {
+    return hslToRgb(Number(hsl[1]), Number(hsl[2]) / 100, Number(hsl[3]) / 100);
+  }
+
+  const rgb = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(text);
+  if (rgb) {
+    return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])];
+  }
+
+  return null;
+}
+
+/** The CSS Color spec's hsl-to-rgb, so the two notations agree to the rounded byte. */
+function hslToRgb(hue, saturation, lightness) {
+  const h = ((hue % 360) + 360) % 360;
+  const c = (1 - Math.abs(2 * lightness - 1)) * saturation;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = lightness - c / 2;
+  const channels =
+    h < 60
+      ? [c, x, 0]
+      : h < 120
+        ? [x, c, 0]
+        : h < 180
+          ? [0, c, x]
+          : h < 240
+            ? [0, x, c]
+            : h < 300
+              ? [x, 0, c]
+              : [c, 0, x];
+  return channels.map((channel) => Math.round((channel + m) * 255));
 }
 
 const luminance = ([r, g, b]) => {
@@ -205,7 +285,7 @@ function* pairs() {
           ? { palette, mode, text, surface, ratio: ratio(fg, bg) }
           : null;
       };
-      for (const role of ROLES) {
+      for (const role of [...ROLES, ...HELM_ROLES]) {
         for (const surface of role.on) {
           const pair = check(role.text, surface);
           if (pair) yield pair;
@@ -232,6 +312,28 @@ describe('contrast matrix', () => {
   it('reproduces a known ratio, so the maths is not merely self-consistent', () => {
     // White on the dark chat ground. Hand-checked against an independent calculator.
     expect(ratio([255, 255, 255], [49, 51, 56])).toBeCloseTo(12.63, 1);
+  });
+
+  it('can actually measure every role it was given', () => {
+    // The failure this closes: `toRgb` returning null drops the pair out of the matrix, so a
+    // token written in a notation the parser does not know is not measured AND not reported —
+    // the run stays green and the floor quietly stops covering it. Naming the gap is the
+    // difference between "these all pass" and "these all pass, as far as I could tell".
+    const unmeasurable = [];
+    for (const palette of palettes) {
+      for (const mode of ['light', 'dark']) {
+        for (const role of [...ROLES, ...HELM_ROLES]) {
+          for (const token of [role.text, ...role.on]) {
+            const value = resolve(token, palette, mode);
+            if (value && !toRgb(value)) {
+              unmeasurable.push(`${palette}/${mode}: ${token} = ${value}`);
+            }
+          }
+        }
+      }
+    }
+
+    expect([...new Set(unmeasurable)].sort()).toEqual([]);
   });
 
   it('clears WCAG AA for every text role on every surface it lands on', () => {

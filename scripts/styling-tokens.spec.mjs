@@ -79,6 +79,6 @@ describe('styling tokens', () => {
 
     // Equality, not a subset: an entry that gets migrated must leave the ledger, or the
     // ledger stops describing the tree and starts excusing it.
-    expect(raw).toEqual(LITERAL_ANIMATIONS.sort());
+    expect(raw).toEqual([...LITERAL_ANIMATIONS].sort());
   });
 });
