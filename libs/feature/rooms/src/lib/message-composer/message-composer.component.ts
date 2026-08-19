@@ -757,16 +757,22 @@ export class MessageComposerComponent {
     // with an edit (attach is disabled while editing), so edit mode ignores it.
     const batch = this.editing() ? [] : this.staged();
     if (batch.length) {
+      // Emptied BEFORE the dispatch, not after. A send can settle synchronously — a 0-byte
+      // file never reaches the network — and `onBatchOutcomes` gives the caption back when
+      // nothing carried it, so clearing afterwards would wipe what it had just restored.
+      const typed = this.text();
+      this.text.set('');
       // One batch at a time — the check lives in `dispatchMedia`, so every route to a send is
       // covered rather than just this one. Nothing below runs when it refuses: a blocked send
       // must not clear the composer as though it had gone out.
       if (
         !this.dispatchMedia(
           batch.map(({ id, file }) => ({ id, file })),
-          this.text().trim(),
+          typed.trim(),
           this.activeMentions(),
         )
       ) {
+        this.text.set(typed); // refused, so nothing went out and nothing was cleared
         return;
       }
       // A media send carries no reply relation, so end any active reply — else
@@ -777,7 +783,6 @@ export class MessageComposerComponent {
       }
       // The staged rows stay until their outcomes arrive: the ones that fail have to remain
       // so they can be retried, which is the whole point of the batch reporting per item.
-      this.text.set('');
       this.resetMenus();
       this.regrowAfterRender();
       return;
@@ -1041,14 +1046,30 @@ export class MessageComposerComponent {
         this.attachments.removeStaged(outcome.id);
       }
     }
-    // What is left staged is exactly what failed — but a staged file and a failed one look
-    // identical in the strip, so mark them rather than leaving the user to guess.
+    // A staged file and a failed one look identical in the strip, so mark them rather than
+    // leaving the user to guess. Only this batch's failures — these outcomes say nothing
+    // about files that failed in an earlier round and have not been retried yet.
     this.attachments.markFailed(
       outcomes.filter((outcome) => outcome.failed).map((outcome) => outcome.id),
     );
+    if (!caption) {
+      return;
+    }
     const delivered = outcomes.filter((outcome) => !outcome.failed).length;
-    if (caption && outcomes.length > 1 && delivered) {
+    if (delivered && outcomes.length > 1) {
+      // No file for a batch caption to belong to, so it goes out on its own — after the
+      // files, and only if at least one of them actually arrived.
       this.submitText.emit({ text: caption, mentions: [...mentions] });
+      return;
+    }
+    if (!delivered && !this.text().trim()) {
+      // Nothing carried it: a single file's caption rides its media event (MSC2530) and went
+      // down with it, and a batch caption is never sent when the batch delivered nothing.
+      // `submit()` cleared the box on dispatch, so without this the words are simply gone.
+      // Skipped when something has been typed since — restoring is for what was lost, not
+      // for overwriting what replaced it.
+      this.text.set(caption);
+      this.regrowAfterRender();
     }
   }
 
@@ -1066,19 +1087,28 @@ export class MessageComposerComponent {
     if (!attachment) {
       return;
     }
-    // Clear the flag first, so the row shows as uploading rather than as still-failed. Done
-    // before dispatching but after the lookup; `dispatchMedia` owns the one-at-a-time check
-    // and simply refuses if a batch is already going out, leaving the flag as it was.
+    // The one-at-a-time check is repeated here rather than left to `dispatchMedia`, because
+    // the flag is cleared BEFORE dispatching — a refusal would otherwise leave the row
+    // looking like it had been sent.
     if (this.uploadProgress() !== null || this.sendingMedia()) {
       return;
     }
-    this.attachments.markFailed(
-      this.attachments
-        .staged()
-        .filter((candidate) => candidate.failed && candidate.id !== id)
-        .map((candidate) => candidate.id),
-    );
-    this.dispatchMedia([{ id: attachment.id, file: attachment.file }], '', []);
+    // So the row reads as uploading rather than as still-failed. Only this one: the others
+    // are still failed and have not been retried.
+    this.attachments.clearFailed([id]);
+    // A retry is a send: it takes whatever caption is in the box and clears it the way
+    // `submit()` does, before dispatching and for the same reason.
+    const typed = this.text();
+    this.text.set('');
+    if (
+      !this.dispatchMedia(
+        [{ id: attachment.id, file: attachment.file }],
+        typed.trim(),
+        this.activeMentions(),
+      )
+    ) {
+      this.text.set(typed);
+    }
   }
 
   /** Drop the staged attachment (× button, Escape, or after it's sent). */

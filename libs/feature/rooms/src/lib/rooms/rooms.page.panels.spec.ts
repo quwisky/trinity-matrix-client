@@ -710,6 +710,43 @@ describe('RoomsPage panels, pins and media', () => {
     expect(shell.messages.uploadProgress()).toBeNull();
   });
 
+  it('tells apart an upload that failed from one abandoned by leaving the room', () => {
+    // Both happen in the same batch, and they have different remedies: one file is still in
+    // the composer to retry, the other is gone with the staging the room change cleared.
+    const shell = build();
+    const timeline = TestBed.inject(TimelineService);
+    const context = (roomId: string) =>
+      ({ client: {}, room: { roomId } }) as ReturnType<
+        TimelineService['openContext']
+      >;
+    vi.mocked(timeline.openContext).mockReturnValue(context('!first:hs'));
+    let sent = 0;
+    sendMedia.mockImplementation(() => {
+      sent++;
+      if (sent === 1) {
+        return throwError(() => new Error('upload failed')); // a genuine failure
+      }
+      vi.mocked(timeline.openContext).mockReturnValue(context('!second:hs'));
+      return of(undefined);
+    });
+
+    shell.messages.onSendMedia({
+      items: [
+        { id: 'a', file: pngFile() },
+        { id: 'b', file: pngFile() },
+        { id: 'c', file: pngFile() },
+      ],
+      caption: '',
+      onOutcomes: () => undefined,
+    });
+
+    const message = String(toastShow.mock.calls[0]?.[0] ?? '');
+    expect(message).toContain('you left the room');
+    expect(message).toContain('could not be uploaded');
+    // One abandoned, one uploaded-and-failed — not "2 … you left the room".
+    expect(message).toMatch(/\b1\b.*you left the room/);
+  });
+
   it('abandons the rest of a batch when the room changes under it, and says so', () => {
     // `sendMedia` resolves the open room on SUBSCRIBE, and a batch subscribes its Nth item
     // long after the press. This service belongs to the page and survives a room switch, so

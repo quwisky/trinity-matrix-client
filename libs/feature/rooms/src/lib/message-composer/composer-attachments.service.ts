@@ -215,22 +215,34 @@ export class ComposerAttachmentsService {
 
   /** Drop one staged attachment (its × button), keeping the rest. */
   /**
-   * Flag the items whose send failed, and clear the flag on everything else.
+   * Flag these items as failed. Anything not named keeps the flag it already has.
    *
-   * Clearing matters as much as setting: a retry that succeeds for one file and fails for
-   * another has to leave the strip showing exactly the second, not the union of both rounds.
+   * Scoped deliberately, because a caller only ever knows about its own send: reporting one
+   * retried file's outcome must say nothing about the other files that failed alongside it,
+   * and a GIF — dispatched with a synthetic id that matches nothing staged — must say nothing
+   * about any of them.
    */
-  markFailed(failedIds: readonly string[]): void {
-    const failed = new Set(failedIds);
+  markFailed(ids: readonly string[]): void {
+    this.setFailedFlag(ids, true);
+  }
+
+  /** Clear the failed flag on these items. Anything not named keeps the flag it has. */
+  clearFailed(ids: readonly string[]): void {
+    this.setFailedFlag(ids, false);
+  }
+
+  private setFailedFlag(ids: readonly string[], failed: boolean): void {
+    const targets = new Set(ids);
     this._staged.update(
       (current) =>
         current.some(
-          (attachment) => attachment.failed !== failed.has(attachment.id),
+          (attachment) =>
+            targets.has(attachment.id) && attachment.failed !== failed,
         )
           ? current.map((attachment) =>
-              attachment.failed === failed.has(attachment.id)
-                ? attachment
-                : { ...attachment, failed: failed.has(attachment.id) },
+              targets.has(attachment.id) && attachment.failed !== failed
+                ? { ...attachment, failed }
+                : attachment,
             )
           : current, // nothing changed: don't hand the strip a new array to re-render
     );

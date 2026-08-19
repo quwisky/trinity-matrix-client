@@ -873,6 +873,128 @@ describe('MessageComposerComponent', () => {
     ]);
   });
 
+  it('gives the caption back when nothing carried it', async () => {
+    // `submit()` clears the box as soon as the batch is dispatched. If every file then fails,
+    // the caption rode nothing — and destroying what the user typed is a worse outcome than
+    // the failed upload that caused it.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+      onOutcomes(items.map((item) => ({ id: item.id, failed: true })));
+    });
+    pickFiles(cmp, [png('one.png'), png('two.png')]);
+    cmp.text.set('here are the photos');
+
+    cmp.submit();
+
+    expect(cmp.text()).toBe('here are the photos');
+  });
+
+  it('gives back a single file’s caption too, which rode the send that failed', async () => {
+    // One file's caption travels ON the media event (MSC2530), so a failed send takes it with
+    // it — there is no separate message left holding it.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+      onOutcomes(items.map((item) => ({ id: item.id, failed: true })));
+    });
+    pickFiles(cmp, [png('one.png')]);
+    cmp.text.set('the only one');
+
+    cmp.submit();
+
+    expect(cmp.text()).toBe('the only one');
+  });
+
+  it('does not clobber something typed while the batch was going out', async () => {
+    // Restoring is for the caption the user lost, not for overwriting the one they are in the
+    // middle of writing — outcomes land long after the box was cleared.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const finish: ((outcomes: readonly BatchOutcome[]) => void)[] = [];
+    cmp.submitMedia.subscribe(({ onOutcomes }) => finish.push(onOutcomes));
+    pickFiles(cmp, [png('one.png')]);
+    cmp.text.set('first caption');
+    cmp.submit();
+
+    cmp.text.set('second thoughts');
+    finish[0]?.([{ id: cmp.staged()[0]?.id ?? '', failed: true }]);
+
+    expect(cmp.text()).toBe('second thoughts');
+  });
+
+  it('carries the caption on a per-row retry', async () => {
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const captions: string[] = [];
+    cmp.submitMedia.subscribe(({ caption, items, onOutcomes }) => {
+      captions.push(caption);
+      onOutcomes(items.map((item) => ({ id: item.id, failed: true })));
+    });
+    pickFiles(cmp, [png('one.png')]);
+    cmp.submit();
+
+    cmp.text.set('trying again');
+    cmp['retryStaged'](cmp.staged()[0]?.id ?? '');
+
+    expect(captions).toEqual(['', 'trying again']);
+  });
+
+  it('leaves the other failed rows marked when one of them is retried', async () => {
+    // The flow the retry button exists for. Reporting one item's outcome must not restate the
+    // failure state of files that outcome says nothing about.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    let failNames = ['one.png', 'two.png', 'three.png'];
+    cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+      onOutcomes(
+        items.map((item) => ({
+          id: item.id,
+          failed: failNames.includes(item.file.name),
+        })),
+      );
+    });
+    pickFiles(cmp, [png('one.png'), png('two.png'), png('three.png')]);
+    cmp.submit();
+    expect(cmp.staged().map((a) => a.failed)).toEqual([true, true, true]);
+
+    failNames = []; // the retry succeeds
+    cmp['retryStaged'](cmp.staged()[0]?.id ?? '');
+
+    expect(cmp.staged().map((a) => a.file.name)).toEqual([
+      'two.png',
+      'three.png',
+    ]);
+    expect(cmp.staged().map((a) => a.failed)).toEqual([true, true]);
+  });
+
+  it('leaves the failed rows marked when a GIF is sent past them', async () => {
+    // A GIF dispatches with a synthetic id that matches nothing staged, so an outcome handler
+    // that restates the whole list would wipe every marker in the strip.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+      onOutcomes(
+        items.map((item) => ({
+          id: item.id,
+          failed: !item.id.startsWith('direct-'),
+        })),
+      );
+    });
+    pickFiles(cmp, [png('one.png')]);
+    cmp.submit();
+    expect(cmp.staged().map((a) => a.failed)).toEqual([true]);
+
+    // Exactly the call the attachments service's `sendMedia` hook makes for a chosen GIF.
+    cmp['dispatchMedia'](
+      [{ id: 'direct-cat.gif', file: png('cat.gif') }],
+      '',
+      [],
+    );
+
+    expect(cmp.staged().map((a) => a.failed)).toEqual([true]);
+  });
+
   it('stops showing a retried file as failed while its retry is in flight', async () => {
     // Otherwise the row you just pressed retry on still reads "Not sent" for the whole
     // upload, which is indistinguishable from the press having done nothing.

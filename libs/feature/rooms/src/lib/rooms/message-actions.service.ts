@@ -209,14 +209,20 @@ export class MessageActionsService {
         if (!failed) {
           return;
         }
-        // The composer drops its staging on a room change, so "still in the composer" is
-        // true for an upload that failed and false for one abandoned by leaving the room.
+        // Two different fates, and they are counted separately rather than lumped under
+        // whichever happened to occur: the composer drops its staging on a room change, so
+        // "still in the composer" is true for an upload that failed and false for one
+        // abandoned by leaving. Blaming a network failure on the room switch would send the
+        // user looking for a file that is not there.
+        const upload = failed - abandoned;
         void this.status.showError(
-          abandoned
-            ? `${failed} ${failed === 1 ? 'attachment was' : 'attachments were'} not sent — you left the room before they went out.`
-            : failed === 1
-              ? 'One attachment could not be sent. It is still in the composer.'
-              : `${failed} attachments could not be sent. They are still in the composer.`,
+          abandoned && upload
+            ? `${abandoned} ${plural(abandoned, 'attachment', 'attachments')} not sent — you left the room before they went out — and ${upload} could not be uploaded.`
+            : abandoned
+              ? `${abandoned} ${plural(abandoned, 'attachment was', 'attachments were')} not sent — you left the room before they went out.`
+              : upload === 1
+                ? 'One attachment could not be sent. It is still in the composer.'
+                : `${upload} attachments could not be sent. They are still in the composer.`,
         );
       });
   }
@@ -322,3 +328,8 @@ const JUMP_FAILURE_MESSAGE = {
   unsupported: 'This homeserver cannot jump to a date.',
   failed: 'Could not reach your homeserver. Try that date again.',
 } as const;
+
+/** Pick the singular or plural wording for a count. */
+function plural(count: number, one: string, many: string): string {
+  return count === 1 ? one : many;
+}
