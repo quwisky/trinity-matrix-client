@@ -1165,4 +1165,30 @@ describe('SimpleMessageListComponent', () => {
       ).map((row) => row.textContent?.trim()),
     ).toEqual([expect.stringContaining('dropped.png')]);
   });
+
+  it('sends a batch caption plainly, and is actually wired to do so', async () => {
+    // Emitted from the COMPOSER so the template binding is what carries it. Calling
+    // `onBatchCaption()` directly passes even with the binding deleted — which is exactly how
+    // the thread shipped without one, since an unbound output is legal and the AOT build is
+    // silent about it.
+    const { fixture } = await render(SimpleMessageListComponent, {
+      inputs: { messages: [msg('$1', '@a:hs', 'Alice', 1000)] },
+    });
+    const cmp = fixture.componentInstance;
+    const sent: string[] = [];
+    const edited: string[] = [];
+    cmp.send.subscribe((e) => sent.push(e.body));
+    cmp.editMessage.subscribe((e) => edited.push(e.body));
+    cmp.editingId.set('$1'); // an edit started while the files were uploading
+
+    fixture.debugElement
+      .query(By.directive(MessageComposerComponent))
+      .componentInstance.submitBatchCaption.emit({
+        text: 'both of these',
+        mentions: [],
+      });
+
+    expect(sent).toEqual(['both of these']);
+    expect(edited).toEqual([]);
+  });
 });

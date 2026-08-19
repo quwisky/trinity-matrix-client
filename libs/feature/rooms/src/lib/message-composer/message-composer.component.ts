@@ -770,6 +770,9 @@ export class MessageComposerComponent {
       // file never reaches the network — and `onBatchOutcomes` gives the caption back when
       // nothing carried it, so clearing afterwards would wipe what it had just restored.
       const typed = this.text();
+      // Read BEFORE the box is emptied: `activeMentions()` matches the chosen users against
+      // the current text, so computing it afterwards matches them against nothing.
+      const mentions = this.activeMentions();
       this.text.set('');
       // One batch at a time — the check lives in `dispatchMedia`, so every route to a send is
       // covered rather than just this one. Nothing below runs when it refuses: a blocked send
@@ -778,7 +781,7 @@ export class MessageComposerComponent {
         !this.dispatchMedia(
           batch.map(({ id, file }) => ({ id, file })),
           typed.trim(),
-          this.activeMentions(),
+          mentions,
         )
       ) {
         this.text.set(typed); // refused, so nothing went out and nothing was cleared
@@ -1128,12 +1131,13 @@ export class MessageComposerComponent {
     // A retry is a send: it takes whatever caption is in the box and clears it the way
     // `submit()` does, before dispatching and for the same reason.
     const typed = this.text();
+    const mentions = this.activeMentions(); // before the box is emptied, as in `submit()`
     this.text.set('');
     if (
       !this.dispatchMedia(
         [{ id: attachment.id, file: attachment.file }],
         typed.trim(),
-        this.activeMentions(),
+        mentions,
       )
     ) {
       this.text.set(typed);

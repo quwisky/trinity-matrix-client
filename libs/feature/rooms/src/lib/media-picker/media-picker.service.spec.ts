@@ -178,6 +178,34 @@ describe('MediaPickerService', () => {
     vi.unstubAllGlobals();
   });
 
+  it('accepts iOS’s partial library grant', async () => {
+    // "Select Photos…" rather than "Allow All" reports 'limited', which is enough to pick.
+    // Treating it as a denial would show "photo access is denied" to a user who had just
+    // granted it, on the platform this feature is most used on.
+    isNative.mockReturnValue(true);
+    checkPermissions.mockResolvedValue({ camera: 'denied', photos: 'limited' });
+    chooseFromGallery.mockResolvedValue({
+      results: [{ webPath: 'blob:pic', type: 'photo' }],
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        blob: () =>
+          Promise.resolve(
+            new Blob([new Uint8Array([1])], { type: 'image/png' }),
+          ),
+      }),
+    );
+
+    const svc = makeService();
+    const files = await firstValueFrom(svc.pickImages());
+
+    expect(requestPermissions).not.toHaveBeenCalled(); // already answered
+    expect(files).toHaveLength(1);
+
+    vi.unstubAllGlobals();
+  });
+
   it('errors with a clear message and never opens the gallery when access is denied', async () => {
     isNative.mockReturnValue(true);
     checkPermissions.mockResolvedValue({ camera: 'denied', photos: 'denied' });

@@ -303,6 +303,44 @@ describe('MessageComposerComponent', () => {
     expect(clickSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('stages every photo the native gallery returns', async () => {
+    // Only the ERROR branch of this subscription was ever exercised. Under jsdom
+    // `isNativePlatform()` is false, so every other attach test takes the file-dialog
+    // fallback — the success path that mobile multi-select actually runs had no coverage at
+    // all, on the platform the feature was built for.
+    const picked = [png('holiday-1.jpg'), png('holiday-2.jpg')];
+    const { fixture } = await renderComposer({}, [
+      MockProvider(MediaPickerService, {
+        available: true,
+        pickImages: () => of(picked),
+      }),
+    ]);
+    const cmp = fixture.componentInstance;
+
+    cmp.onAttach();
+
+    expect(stagedFiles(cmp).map((f) => f.name)).toEqual([
+      'holiday-1.jpg',
+      'holiday-2.jpg',
+    ]);
+  });
+
+  it('puts the caret back in the box after staging, ready for a caption', async () => {
+    // The affordance that makes "pick, then type the caption" one gesture. Without it the
+    // focus is left on the attach button — or on nothing at all, after a drop.
+    const { fixture, container } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const textarea = container.querySelector('textarea');
+    (
+      container.querySelector('[data-testid=composer-insert]') as HTMLElement
+    )?.focus();
+
+    cmp.stageFiles([png('dropped.png')]);
+    await fixture.whenStable();
+
+    expect(document.activeElement).toBe(textarea);
+  });
+
   it('toasts a clear message when the native attach is denied/fails', async () => {
     // Stand in for the native picker: available, but pickImages errors (e.g. denied
     // photo access) instead of resolving files.
@@ -961,6 +999,60 @@ describe('MessageComposerComponent', () => {
     expect(stagedFiles(cmp)).toEqual([]);
   });
 
+  it('commits the edit, not the staged files, when Enter is pressed mid-edit', async () => {
+    // Staging survives entering edit mode (nothing clears it, and only paste/drop/the +
+    // trigger are gated on `editing`). Without the gate in `submit()`, Enter would send the
+    // files with the EDIT BODY as their caption and never emit `submitText` — so the host
+    // would never clear `editingId` and the composer would stay stuck in edit mode.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const sent: string[] = [];
+    const texts: string[] = [];
+    cmp.submitMedia.subscribe(({ items }) =>
+      sent.push(...items.map((i) => i.file.name)),
+    );
+    cmp.submitText.subscribe((e) => texts.push(e.text));
+    pickFiles(cmp, [png('one.png')]);
+
+    fixture.componentRef.setInput('editing', true);
+    fixture.detectChanges();
+    cmp.text.set('the corrected wording');
+    cmp.submit();
+
+    expect(sent).toEqual([]); // the files stay put
+    expect(texts).toEqual(['the corrected wording']); // the edit goes through
+    expect(stagedFiles(cmp).map((f) => f.name)).toEqual(['one.png']);
+  });
+
+  it('carries the mentions typed into a batch caption', async () => {
+    // The caption becomes a message in its own right, so its @-mentions have to travel with
+    // it — dropped, the people named in it are never pinged.
+    const { fixture, container } = await renderComposer({
+      members: [{ userId: '@alice:hs', name: 'Alice' }],
+    });
+    const cmp = fixture.componentInstance;
+    cmp.submitMedia.subscribe(({ items, onOutcomes }) =>
+      onOutcomes(items.map((item) => ({ id: item.id, failed: false }))),
+    );
+    let carried: ComposerSubmit | undefined;
+    cmp.submitBatchCaption.subscribe((e) => (carried = e));
+    pickFiles(cmp, [png('one.png'), png('two.png')]);
+
+    const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+    ta.value = 'over to @al';
+    ta.selectionStart = ta.selectionEnd = 11;
+    cmp.onInput({ target: ta } as unknown as Event);
+    ta.selectionStart = 11;
+    cmp.acceptMention();
+
+    cmp.submit();
+
+    expect(carried?.text).toBe('over to @Alice');
+    expect(carried?.mentions).toEqual([
+      { userId: '@alice:hs', display: '@Alice' },
+    ]);
+  });
+
   it('gives the caption back when nothing carried it', async () => {
     // `submit()` clears the box as soon as the batch is dispatched. If every file then fails,
     // the caption rode nothing — and destroying what the user typed is a worse outcome than
@@ -1133,7 +1225,9 @@ describe('MessageComposerComponent', () => {
       onOutcomes(items.map((item) => ({ id: item.id, failed: false })));
     });
     const texts: string[] = [];
+    const batchCaptions: string[] = [];
     cmp.submitText.subscribe((e) => texts.push(e.text));
+    cmp.submitBatchCaption.subscribe((e) => batchCaptions.push(e.text));
     pickFiles(cmp, [png('one.png')]);
     cmp.text.set('just this one');
 
@@ -1141,6 +1235,9 @@ describe('MessageComposerComponent', () => {
 
     expect(seen).toBe('just this one');
     expect(texts).toEqual([]); // no separate message
+    // And not on the batch channel either: one file's caption is IN its event, so posting it
+    // again would put the same sentence in the room twice for the commonest attachment flow.
+    expect(batchCaptions).toEqual([]);
   });
 
   it('refuses a second batch while the first is still uploading', async () => {

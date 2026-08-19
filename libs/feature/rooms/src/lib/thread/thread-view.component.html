@@ -52,6 +52,7 @@
       [replyingTo]="replyingToName()"
       [uploadProgress]="uploadProgress()"
       (submitText)="onSubmit($event)"
+      (submitBatchCaption)="onBatchCaption($event)"
       (submitMedia)="onSendMedia($event)"
       (cancelEdit)="editingId.set(null)"
       (cancelReply)="replyingToId.set(null)"

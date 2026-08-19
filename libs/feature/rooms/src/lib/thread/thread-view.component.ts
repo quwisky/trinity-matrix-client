@@ -193,6 +193,18 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   }
 
   /** Composer submit — routes to an edit or reply when active, else a new send. */
+  /**
+   * A batch caption, posted plainly into the thread. Deliberately NOT routed through
+   * {@link onSubmit}: it was written before an upload that may have taken minutes, so the edit
+   * or reply the user has started since is not what it belongs to.
+   */
+  onBatchCaption({ text, mentions }: ComposerSubmit): void {
+    this.threads
+      .sendToThread(text, mentions)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
+  }
+
   onSubmit({ text, mentions }: ComposerSubmit): void {
     const editId = this.editingId();
     const replyId = this.replyingToId();

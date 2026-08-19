@@ -690,6 +690,33 @@ describe('RoomsPage panels, pins and media', () => {
     expect(toastShow).not.toHaveBeenCalled(); // no error toast
   });
 
+  it('hands a single file its caption, and a batch none', () => {
+    // Every other host fixture sends `caption: ''`, so nothing checked that the caption
+    // survives the host at all — and a caption swallowed here is destroyed outright, since
+    // the composer emptied the box at dispatch and only restores it when NOTHING landed.
+    const shell = build();
+    sendMedia.mockReturnValue(of(undefined));
+
+    shell.messages.onSendMedia({
+      items: [{ id: 'a', file: pngFile() }],
+      caption: "here's the receipt",
+      onOutcomes: () => undefined,
+    });
+    expect(sendMedia.mock.calls[0]?.[1]).toBe("here's the receipt");
+
+    sendMedia.mockClear();
+    shell.messages.onSendMedia({
+      items: [
+        { id: 'a', file: pngFile() },
+        { id: 'b', file: pngFile() },
+      ],
+      caption: 'both of these',
+      onOutcomes: () => undefined,
+    });
+    // A batch caption has no file to belong to; the composer posts it as its own message.
+    expect(sendMedia.mock.calls.map((call) => call[1])).toEqual(['', '']);
+  });
+
   it('reports outcomes even when every send completes synchronously', () => {
     // What `TimelineActionsService.sendMedia` returns for a 0-byte file or a closed room
     // context: `of(void 0)`, completing inside the subscribe — so `uploadProgress` goes
@@ -735,16 +762,44 @@ describe('RoomsPage panels, pins and media', () => {
         { id: 'a', file: pngFile() },
         { id: 'b', file: pngFile() },
         { id: 'c', file: pngFile() },
+        { id: 'd', file: pngFile() },
       ],
       caption: '',
       onOutcomes: () => undefined,
     });
 
     const message = String(toastShow.mock.calls[0]?.[0] ?? '');
-    expect(message).toContain('you left the room');
-    expect(message).toContain('could not be uploaded');
-    // One abandoned, one uploaded-and-failed — not "2 … you left the room".
-    expect(message).toMatch(/\b1\b.*you left the room/);
+    // Asymmetric on purpose: with one of each, "failed" and "failed - abandoned" read the
+    // same, and the split that exists to keep them apart could be deleted unnoticed.
+    expect(message).toMatch(/2 attachments not sent — you left the room/);
+    expect(message).toMatch(/1 could not be uploaded/);
+  });
+
+  it('does not mention an upload failure when the batch was only abandoned', () => {
+    const shell = build();
+    const timeline = TestBed.inject(TimelineService);
+    const context = (roomId: string) =>
+      ({ client: {}, room: { roomId } }) as ReturnType<
+        TimelineService['openContext']
+      >;
+    vi.mocked(timeline.openContext).mockReturnValue(context('!first:hs'));
+    sendMedia.mockImplementation(() => {
+      vi.mocked(timeline.openContext).mockReturnValue(context('!second:hs'));
+      return of(undefined);
+    });
+
+    shell.messages.onSendMedia({
+      items: [
+        { id: 'a', file: pngFile() },
+        { id: 'b', file: pngFile() },
+      ],
+      caption: '',
+      onOutcomes: () => undefined,
+    });
+
+    expect(String(toastShow.mock.calls[0]?.[0] ?? '')).not.toContain(
+      'could not be uploaded',
+    );
   });
 
   it('abandons the rest of a batch when the room changes under it, and says so', () => {

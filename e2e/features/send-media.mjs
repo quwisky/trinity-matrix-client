@@ -308,6 +308,23 @@ async function main() {
     );
     log('all three uploads landed from a single press ✓');
 
+    // ORDER, read back off the timeline. This is the claim the whole `concatMap` design
+    // exists for, and until now only a unit test with a scripted sender checked it — against
+    // a real homeserver the uploads finish at genuinely different times, which is the case
+    // that would actually reorder them. The filename survives as the image's alt text
+    // (`content.filename ?? content.body`), so the DOM can be asked what arrived when.
+    const order = await page.$$eval(
+      '[data-testid="media-bubble"] img[alt]',
+      (imgs) => imgs.map((img) => img.getAttribute('alt')),
+    );
+    const batchOrder = order.filter((name) => name?.startsWith('batch-'));
+    if (batchOrder.join(',') !== 'batch-1.png,batch-2.png,batch-3.png') {
+      throw new Error(
+        `batch arrived out of order: ${JSON.stringify(batchOrder)}`,
+      );
+    }
+    log(`batch arrived in the order staged (${batchOrder.join(' → ')}) ✓`);
+
     await page
       .getByTestId('composer-pending')
       .first()
@@ -426,6 +443,79 @@ async function main() {
       { timeout: 15_000, polling: 100 },
     );
     log('both dropped files staged, target dismissed ✓');
+
+    // Fifth: a batch in which one file genuinely FAILS, which is the claim the per-item
+    // outcome design exists for — one bad file costs you that file and not the other. Every
+    // other case here is a happy path, so the "Not sent" marker and the per-row retry had
+    // never run against a real server. The upload is failed at the network layer rather than
+    // by reconfiguring Synapse, so the shared harness is untouched and one request is hit.
+    await page.locator('textarea.composer__input').press('Escape');
+    await page
+      .getByTestId('composer-pending')
+      .first()
+      .waitFor({ state: 'detached', timeout: 10_000 });
+
+    let failNextUpload = true;
+    await page.route('**/_matrix/media/*/upload*', async (route) => {
+      if (failNextUpload) {
+        failNextUpload = false;
+        await route.abort('failed');
+        return;
+      }
+      await route.fallback();
+    });
+
+    log('sending two files, the first of which cannot be uploaded');
+    await page.getByTestId('composer-file-input').setInputFiles([
+      { name: 'doomed.png', mimeType: 'image/png', buffer: PNG_1x1 },
+      { name: 'survivor.png', mimeType: 'image/png', buffer: PNG_1x1 },
+    ]);
+    await page.waitForFunction(
+      () =>
+        document.querySelectorAll('[data-testid="composer-pending"]').length ===
+        2,
+      undefined,
+      { timeout: 15_000, polling: 100 },
+    );
+    await page.locator('textarea.composer__input').press('Enter');
+
+    // The one that failed stays, marked, with a retry of its own; the one that went out
+    // leaves. Exactly one row, and it is the doomed one.
+    await page
+      .getByTestId('composer-pending-failed')
+      .waitFor({ state: 'visible', timeout: 30_000 });
+    const failedRows = await page
+      .getByTestId('composer-pending')
+      .allInnerTexts();
+    if (failedRows.length !== 1 || !failedRows[0].includes('doomed.png')) {
+      throw new Error(
+        `expected only doomed.png left staged, got ${JSON.stringify(failedRows)}`,
+      );
+    }
+    if (!/not sent/i.test(failedRows[0])) {
+      throw new Error(`row is not marked as failed: "${failedRows[0]}"`);
+    }
+    await page
+      .getByTestId('composer-pending-retry')
+      .waitFor({ state: 'visible', timeout: 10_000 });
+    log('the failed file stayed, marked "Not sent"; its sibling went out ✓');
+
+    // Retry: the interception has spent itself, so this one goes through.
+    await page.getByTestId('composer-pending-retry').click();
+    await page.waitForFunction(
+      () =>
+        Array.from(
+          document.querySelectorAll('[data-testid="media-bubble"] img[alt]'),
+        ).some((img) => img.getAttribute('alt') === 'doomed.png'),
+      undefined,
+      { timeout: 90_000, polling: 250 },
+    );
+    await page
+      .getByTestId('composer-pending')
+      .first()
+      .waitFor({ state: 'detached', timeout: 15_000 });
+    log('retry delivered it and cleared the row ✓');
+    await page.unroute('**/_matrix/media/*/upload*');
 
     console.log('\nRESULT: PASS');
     exit = 0;
