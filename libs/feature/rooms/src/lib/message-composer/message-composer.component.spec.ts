@@ -3,6 +3,7 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { render, type ComponentInput } from '@trinity/testing';
+import { type BatchItem } from '../shared/send-media-batch';
 import { MockProvider } from 'ng-mocks';
 import {
   ComposerSettingsService,
@@ -23,6 +24,7 @@ import {
 } from './message-composer.component';
 import { MediaPickerService } from '../media-picker/media-picker.service';
 import { LocationShareService } from '../location-share/location-share.service';
+import { type BatchOutcome } from '../shared/send-media-batch';
 
 // The draft store persists to Capacitor Preferences (debounced); stub it so the
 // composer's real DraftStoreService is a no-op on the storage side.
@@ -36,6 +38,33 @@ vi.mock('@capacitor/preferences', () => ({
 /** The staged files, in order — the list equivalent of the old scalar `pendingFile()`. */
 const stagedFiles = (cmp: MessageComposerComponent): readonly File[] =>
   cmp.staged().map((attachment) => attachment.file);
+
+/**
+ * Subscribe to `submitMedia`, record the filenames dispatched, and report every item as
+ * delivered — which is what drains the strip, exactly as the owner's batch outcome does.
+ */
+function collectSends(cmp: MessageComposerComponent): string[] {
+  const names: string[] = [];
+  cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+    names.push(...items.map((item) => item.file.name));
+    onOutcomes(items.map((item) => ({ id: item.id, failed: false })));
+  });
+  return names;
+}
+
+/** As above, but reports every item as FAILED, so they stay staged for a retry. */
+/**
+ * Like `collectSends`, but never reports outcomes — which is what an upload still running looks
+ * like to the composer. Reporting them synchronously drains the staging and would make the
+ * concurrency tests below pass for the wrong reason.
+ */
+function collectHeldSends(cmp: MessageComposerComponent): string[] {
+  const names: string[] = [];
+  cmp.submitMedia.subscribe(({ items }) => {
+    names.push(...items.map((item) => item.file.name));
+  });
+  return names;
+}
 
 describe('MessageComposerComponent', () => {
   let createObjectURL: Mock;
@@ -227,8 +256,11 @@ describe('MessageComposerComponent', () => {
     const { fixture, container } = await renderComposer();
     const cmp = fixture.componentInstance;
 
-    let emitted: { file: File; caption: string } | undefined;
-    cmp.submitMedia.subscribe((e) => (emitted = e));
+    let emitted: { items: readonly BatchItem[]; caption: string } | undefined;
+    cmp.submitMedia.subscribe((e) => {
+      emitted = e;
+      e.onOutcomes(e.items.map((i) => ({ id: i.id, failed: false })));
+    });
 
     const file = new File([new Uint8Array([1])], 'pic.png', {
       type: 'image/png',
@@ -250,7 +282,8 @@ describe('MessageComposerComponent', () => {
     // A caption + Enter sends the file and caption together, then clears.
     cmp.text.set('nice shot');
     cmp.submit();
-    expect(emitted).toMatchObject({ file, caption: 'nice shot' });
+    expect(emitted?.items.map((i) => i.file)).toEqual([file]);
+    expect(emitted?.caption).toBe('nice shot');
     expect(stagedFiles(cmp)).toEqual([]);
     expect(cmp.text()).toBe('');
   });
@@ -271,12 +304,12 @@ describe('MessageComposerComponent', () => {
   });
 
   it('toasts a clear message when the native attach is denied/fails', async () => {
-    // Stand in for the native picker: available, but pickImage errors (e.g. denied
-    // photo access) instead of resolving a file.
+    // Stand in for the native picker: available, but pickImages errors (e.g. denied
+    // photo access) instead of resolving files.
     const { fixture } = await renderComposer({}, [
       MockProvider(MediaPickerService, {
         available: true,
-        pickImage: () =>
+        pickImages: () =>
           throwError(
             () => new Error('Photo access is denied. Enable it in Settings.'),
           ),
@@ -295,7 +328,6 @@ describe('MessageComposerComponent', () => {
 
   it('shows a determinate upload progress bar while uploading and hides it when idle', async () => {
     const { fixture, container } = await renderComposer();
-    const cmp = fixture.componentInstance;
     const wrapper = () =>
       container.querySelector('[data-testid=upload-progress]');
     const bar = () =>
@@ -307,7 +339,11 @@ describe('MessageComposerComponent', () => {
     expect(wrapper()).toBeNull();
 
     // Mid-upload with a real fraction → determinate bar bound to the value.
-    fixture.componentRef.setInput('uploadProgress', 0.42);
+    fixture.componentRef.setInput('uploadProgress', {
+      index: 1,
+      total: 1,
+      fraction: 0.42,
+    });
     fixture.detectChanges();
     expect(wrapper()).not.toBeNull();
     expect(bar()).not.toBeNull();
@@ -315,10 +351,13 @@ describe('MessageComposerComponent', () => {
     // (helm/BrnProgress uses a 0–max scale with max defaulting to 100).
     expect(Number(bar()?.getAttribute('aria-valuenow'))).toBeCloseTo(42, 5);
     expect(wrapper()?.textContent).toContain('42%');
-    expect(cmp.uploadPercent()).toBe(42);
 
     // Just started (0, before the first real tick) → indeterminate, no percent.
-    fixture.componentRef.setInput('uploadProgress', 0);
+    fixture.componentRef.setInput('uploadProgress', {
+      index: 1,
+      total: 1,
+      fraction: 0,
+    });
     fixture.detectChanges();
     expect(wrapper()).not.toBeNull();
     // Indeterminate → no aria-valuenow.
@@ -331,7 +370,11 @@ describe('MessageComposerComponent', () => {
     expect(wrapper()).toBeNull();
   });
 
-  it('disables the attach action in the tray while an upload is in flight', async () => {
+  it('keeps the attach action usable while an upload is in flight', async () => {
+    // It used to be blocked, and that was right when a send took one file: staging during an
+    // upload would have had nowhere to go. A send now takes the whole staged batch, so a file
+    // added mid-upload simply waits for the next press — and refusing it means a user who
+    // remembers a fifth screenshot has to wait out the other four.
     const { fixture } = await renderComposer();
     (fixture.nativeElement as HTMLElement)
       .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
@@ -345,11 +388,11 @@ describe('MessageComposerComponent', () => {
 
     expect(disabled()).toBeNull();
 
-    fixture.componentRef.setInput('uploadProgress', 0.1);
-    fixture.detectChanges();
-    expect(disabled()).toBe('');
-
-    fixture.componentRef.setInput('uploadProgress', null);
+    fixture.componentRef.setInput('uploadProgress', {
+      index: 1,
+      total: 3,
+      fraction: 0.1,
+    });
     fixture.detectChanges();
     expect(disabled()).toBeNull();
   });
@@ -427,8 +470,11 @@ describe('MessageComposerComponent', () => {
     const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
-    let emitted: { file: File; caption: string } | undefined;
-    cmp.submitMedia.subscribe((e) => (emitted = e));
+    let emitted: { items: readonly BatchItem[]; caption: string } | undefined;
+    cmp.submitMedia.subscribe((e) => {
+      emitted = e;
+      e.onOutcomes(e.items.map((i) => ({ id: i.id, failed: false })));
+    });
     const file = new File([new Uint8Array([1])], 'paste.png', {
       type: 'image/png',
     });
@@ -441,7 +487,8 @@ describe('MessageComposerComponent', () => {
     expect(emitted).toBeUndefined();
 
     cmp.submit(); // no caption typed
-    expect(emitted).toMatchObject({ file, caption: '' });
+    expect(emitted?.items.map((i) => i.file)).toEqual([file]);
+    expect(emitted?.caption).toBe('');
   });
 
   it('stages a pasted image exposed only via clipboard items (WebKit fallback)', async () => {
@@ -496,8 +543,11 @@ describe('MessageComposerComponent', () => {
 
     let cancelledReply = false;
     cmp.cancelReply.subscribe(() => (cancelledReply = true));
-    let emitted: { file: File; caption: string } | undefined;
-    cmp.submitMedia.subscribe((e) => (emitted = e));
+    let emitted: { items: readonly BatchItem[]; caption: string } | undefined;
+    cmp.submitMedia.subscribe((e) => {
+      emitted = e;
+      e.onOutcomes(e.items.map((i) => ({ id: i.id, failed: false })));
+    });
 
     const file = new File([new Uint8Array([1])], 'pic.png', {
       type: 'image/png',
@@ -507,7 +557,8 @@ describe('MessageComposerComponent', () => {
 
     // Media carries no reply relation, so the reply banner must be cleared
     // (otherwise the next plain message would silently reply to Alice).
-    expect(emitted).toMatchObject({ file, caption: '' });
+    expect(emitted?.items.map((i) => i.file)).toEqual([file]);
+    expect(emitted?.caption).toBe('');
     expect(cancelledReply).toBe(true);
   });
 
@@ -734,44 +785,300 @@ describe('MessageComposerComponent', () => {
     expect(revokeObjectURL).toHaveBeenCalledTimes(2);
   });
 
-  it('sends the first staged file and keeps the rest, losing nothing', async () => {
-    // The send path is still single-file in this change. Clearing the whole batch after
-    // sending one would silently discard the others — staging three and pressing send would
-    // deliver one and drop two, with nothing on screen to say so.
+  it('sends every staged file in one press, in the order staged', async () => {
     const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
-    const sent: File[] = [];
-    cmp.submitMedia.subscribe((e) => sent.push(e.file));
+    const sent = collectSends(cmp);
     pickFiles(cmp, [png('one.png'), png('two.png'), png('three.png')]);
 
     cmp.submit();
 
-    expect(sent.map((f) => f.name)).toEqual(['one.png']);
+    expect(sent).toEqual(['one.png', 'two.png', 'three.png']);
+    // Delivered items leave the strip — and every preview with them.
+    expect(stagedFiles(cmp)).toEqual([]);
+    expect(revokeObjectURL).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps the files that failed, and only those', async () => {
+    // The reason the batch reports per item rather than throwing: a bad third file must not
+    // cost the other four, and what stays in the strip is exactly what to retry.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+      onOutcomes(
+        items.map((item) => ({
+          id: item.id,
+          failed: item.file.name === 'bad.png',
+        })),
+      );
+    });
+    pickFiles(cmp, [png('one.png'), png('bad.png'), png('three.png')]);
+
+    cmp.submit();
+
+    expect(stagedFiles(cmp).map((f) => f.name)).toEqual(['bad.png']);
+  });
+
+  it('marks the files that failed, and unmarks them when a retry succeeds', async () => {
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    let failNames: string[] = ['bad.png'];
+    cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+      onOutcomes(
+        items.map((item) => ({
+          id: item.id,
+          failed: failNames.includes(item.file.name),
+        })),
+      );
+    });
+    pickFiles(cmp, [png('one.png'), png('bad.png')]);
+
+    cmp.submit();
+    expect(stagedFiles(cmp).map((f) => f.name)).toEqual(['bad.png']);
+    expect(cmp.staged().map((a) => a.failed)).toEqual([true]);
+
+    // The row is not stuck failed: a successful retry clears the flag by leaving. No
+    // `uploadProgress` round-trip — outcomes landing is what releases the latch.
+    failNames = [];
+    cmp.submit();
+
+    expect(stagedFiles(cmp)).toEqual([]);
+  });
+
+  it('retries one failed file without re-sending the rest', async () => {
+    // Pressing send again retries everything staged, which is wrong once the user has added
+    // more files since — the per-row retry is what sends exactly the one that failed.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const batches: string[][] = [];
+    cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+      batches.push(items.map((item) => item.file.name));
+      onOutcomes(
+        items.map((item) => ({
+          id: item.id,
+          failed: item.file.name === 'bad.png',
+        })),
+      );
+    });
+    pickFiles(cmp, [png('one.png'), png('bad.png')]);
+    cmp.submit();
+    pickFiles(cmp, [png('later.png')]); // added after the failure
+
+    const failedId = cmp.staged().find((a) => a.failed)?.id ?? '';
+    cmp['retryStaged'](failedId);
+
+    expect(batches).toEqual([
+      ['one.png', 'bad.png'],
+      ['bad.png'], // just the one, not `later.png` too
+    ]);
     expect(stagedFiles(cmp).map((f) => f.name)).toEqual([
+      'bad.png',
+      'later.png',
+    ]);
+  });
+
+  it('gives the caption back when nothing carried it', async () => {
+    // `submit()` clears the box as soon as the batch is dispatched. If every file then fails,
+    // the caption rode nothing — and destroying what the user typed is a worse outcome than
+    // the failed upload that caused it.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+      onOutcomes(items.map((item) => ({ id: item.id, failed: true })));
+    });
+    pickFiles(cmp, [png('one.png'), png('two.png')]);
+    cmp.text.set('here are the photos');
+
+    cmp.submit();
+
+    expect(cmp.text()).toBe('here are the photos');
+  });
+
+  it('gives back a single file’s caption too, which rode the send that failed', async () => {
+    // One file's caption travels ON the media event (MSC2530), so a failed send takes it with
+    // it — there is no separate message left holding it.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+      onOutcomes(items.map((item) => ({ id: item.id, failed: true })));
+    });
+    pickFiles(cmp, [png('one.png')]);
+    cmp.text.set('the only one');
+
+    cmp.submit();
+
+    expect(cmp.text()).toBe('the only one');
+  });
+
+  it('does not clobber something typed while the batch was going out', async () => {
+    // Restoring is for the caption the user lost, not for overwriting the one they are in the
+    // middle of writing — outcomes land long after the box was cleared.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const finish: ((outcomes: readonly BatchOutcome[]) => void)[] = [];
+    cmp.submitMedia.subscribe(({ onOutcomes }) => finish.push(onOutcomes));
+    pickFiles(cmp, [png('one.png')]);
+    cmp.text.set('first caption');
+    cmp.submit();
+
+    cmp.text.set('second thoughts');
+    finish[0]?.([{ id: cmp.staged()[0]?.id ?? '', failed: true }]);
+
+    expect(cmp.text()).toBe('second thoughts');
+  });
+
+  it('carries the caption on a per-row retry', async () => {
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const captions: string[] = [];
+    cmp.submitMedia.subscribe(({ caption, items, onOutcomes }) => {
+      captions.push(caption);
+      onOutcomes(items.map((item) => ({ id: item.id, failed: true })));
+    });
+    pickFiles(cmp, [png('one.png')]);
+    cmp.submit();
+
+    cmp.text.set('trying again');
+    cmp['retryStaged'](cmp.staged()[0]?.id ?? '');
+
+    expect(captions).toEqual(['', 'trying again']);
+  });
+
+  it('leaves the other failed rows marked when one of them is retried', async () => {
+    // The flow the retry button exists for. Reporting one item's outcome must not restate the
+    // failure state of files that outcome says nothing about.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    let failNames = ['one.png', 'two.png', 'three.png'];
+    cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+      onOutcomes(
+        items.map((item) => ({
+          id: item.id,
+          failed: failNames.includes(item.file.name),
+        })),
+      );
+    });
+    pickFiles(cmp, [png('one.png'), png('two.png'), png('three.png')]);
+    cmp.submit();
+    expect(cmp.staged().map((a) => a.failed)).toEqual([true, true, true]);
+
+    failNames = []; // the retry succeeds
+    cmp['retryStaged'](cmp.staged()[0]?.id ?? '');
+
+    expect(cmp.staged().map((a) => a.file.name)).toEqual([
       'two.png',
       'three.png',
     ]);
-    // Only the sent file's preview is released; the survivors still need theirs.
-    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+    expect(cmp.staged().map((a) => a.failed)).toEqual([true, true]);
   });
 
-  it('refuses a second send while the first attachment is still uploading', async () => {
-    // Two in flight share one `uploadProgress` scalar — the first to finish nulls it, hiding
-    // the bar for the other — and each reaches `sendMessage` only after its OWN upload
-    // resolves, so the events land fastest-file-first rather than in the order staged.
+  it('leaves the failed rows marked when a GIF is sent past them', async () => {
+    // A GIF dispatches with a synthetic id that matches nothing staged, so an outcome handler
+    // that restates the whole list would wipe every marker in the strip.
     const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
-    const sent: File[] = [];
-    cmp.submitMedia.subscribe((e) => sent.push(e.file));
+    cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+      onOutcomes(
+        items.map((item) => ({
+          id: item.id,
+          failed: !item.id.startsWith('direct-'),
+        })),
+      );
+    });
+    pickFiles(cmp, [png('one.png')]);
+    cmp.submit();
+    expect(cmp.staged().map((a) => a.failed)).toEqual([true]);
+
+    // Exactly the call the attachments service's `sendMedia` hook makes for a chosen GIF.
+    cmp['dispatchMedia'](
+      [{ id: 'direct-cat.gif', file: png('cat.gif') }],
+      '',
+      [],
+    );
+
+    expect(cmp.staged().map((a) => a.failed)).toEqual([true]);
+  });
+
+  it('stops showing a retried file as failed while its retry is in flight', async () => {
+    // Otherwise the row you just pressed retry on still reads "Not sent" for the whole
+    // upload, which is indistinguishable from the press having done nothing.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    let hold = false;
+    cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+      if (hold) {
+        return; // in flight: outcomes have not landed yet
+      }
+      onOutcomes(items.map((item) => ({ id: item.id, failed: true })));
+    });
     pickFiles(cmp, [png('one.png'), png('two.png')]);
+    cmp.submit();
+    expect(cmp.staged().map((a) => a.failed)).toEqual([true, true]);
+
+    hold = true;
+    cmp['retryStaged'](cmp.staged()[0]?.id ?? '');
+
+    // The retried one is uploading; its sibling has not been touched.
+    expect(cmp.staged().map((a) => a.failed)).toEqual([false, true]);
+  });
+
+  it('sends a batch caption as its own message, after the files', async () => {
+    // Matrix has no multi-attachment event, so there is no first image for a batch caption to
+    // belong to, and repeating it on each would put the same sentence in the room N times.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const sent = collectSends(cmp);
+    const texts: string[] = [];
+    cmp.submitText.subscribe((e) => texts.push(e.text));
+    pickFiles(cmp, [png('one.png'), png('two.png')]);
+    cmp.text.set('both of these');
 
     cmp.submit();
-    fixture.componentRef.setInput('uploadProgress', 0.3); // the host reports it in flight
+
+    expect(sent).toEqual(['one.png', 'two.png']);
+    expect(texts).toEqual(['both of these']);
+  });
+
+  it('leaves a single file’s caption on the media event', async () => {
+    // One file keeps its MSC2530 caption, which is what the existing e2e round-trip asserts.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    let seen: string | undefined;
+    cmp.submitMedia.subscribe(({ items, caption, onOutcomes }) => {
+      seen = caption;
+      onOutcomes(items.map((item) => ({ id: item.id, failed: false })));
+    });
+    const texts: string[] = [];
+    cmp.submitText.subscribe((e) => texts.push(e.text));
+    pickFiles(cmp, [png('one.png')]);
+    cmp.text.set('just this one');
+
+    cmp.submit();
+
+    expect(seen).toBe('just this one');
+    expect(texts).toEqual([]); // no separate message
+  });
+
+  it('refuses a second batch while the first is still uploading', async () => {
+    // Two batches in flight share one `uploadProgress` — the first to finish nulls it, hiding
+    // the bar for the other — and interleave their events, so neither arrives in the order
+    // staged. Staging more mid-flight is allowed; starting a second batch is not.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const sent = collectHeldSends(cmp);
+    pickFiles(cmp, [png('one.png')]);
+
+    cmp.submit();
+    fixture.componentRef.setInput('uploadProgress', {
+      index: 1,
+      total: 1,
+      fraction: 0.3,
+    }); // the host reports it in flight
     fixture.detectChanges();
+    pickFiles(cmp, [png('two.png')]);
     cmp.submit();
 
-    expect(sent.map((f) => f.name)).toEqual(['one.png']);
-    expect(stagedFiles(cmp).map((f) => f.name)).toEqual(['two.png']);
+    expect(sent).toEqual(['one.png']);
   });
 
   it('guards the keyboard path too, and shows the button as disabled', async () => {
@@ -779,16 +1086,20 @@ describe('MessageComposerComponent', () => {
     // is what stops it — and the button has to SAY so, or the block reads as a dead control.
     const { fixture, container } = await renderComposer();
     const cmp = fixture.componentInstance;
-    const sent: File[] = [];
-    cmp.submitMedia.subscribe((e) => sent.push(e.file));
-    pickFiles(cmp, [png('one.png'), png('two.png')]);
+    const sent = collectHeldSends(cmp);
+    pickFiles(cmp, [png('one.png')]);
     cmp.submit();
-    fixture.componentRef.setInput('uploadProgress', 0.3);
+    fixture.componentRef.setInput('uploadProgress', {
+      index: 1,
+      total: 1,
+      fraction: 0.3,
+    });
     fixture.detectChanges();
+    pickFiles(cmp, [png('two.png')]);
 
     cmp.onEnter(new KeyboardEvent('keydown', { key: 'Enter' }));
 
-    expect(sent.map((f) => f.name)).toEqual(['one.png']);
+    expect(sent).toEqual(['one.png']);
     expect(
       container.querySelector<HTMLButtonElement>('[data-testid=composer-send]')
         ?.disabled,
@@ -803,7 +1114,11 @@ describe('MessageComposerComponent', () => {
     pickFiles(cmp, [png('one.png'), png('two.png')]);
 
     cmp.submit();
-    fixture.componentRef.setInput('uploadProgress', 0.3);
+    fixture.componentRef.setInput('uploadProgress', {
+      index: 1,
+      total: 1,
+      fraction: 0.3,
+    });
     fixture.detectChanges();
 
     expect(
@@ -839,46 +1154,68 @@ describe('MessageComposerComponent', () => {
     // cannot catch: that is a signal input fed two component layers up, and a signal input is
     // only written during the parent's change detection. Both presses would read `null`.
     // Deliberately no `detectChanges()` between them — inserting one is what made the earlier
-    // version of this test pass against the defect.
+    // version of this test pass against the defect. Outcomes are withheld for the same
+    // reason: in production they land when the batch ENDS, so until then the files that the
+    // second press would re-send are all still staged.
     const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
-    const sent: File[] = [];
-    cmp.submitMedia.subscribe((e) => sent.push(e.file));
+    const sent = collectHeldSends(cmp);
     pickFiles(cmp, [png('one.png'), png('two.png')]);
 
     cmp.submit();
     cmp.submit();
 
-    expect(sent.map((f) => f.name)).toEqual(['one.png']);
-    expect(stagedFiles(cmp).map((f) => f.name)).toEqual(['two.png']);
+    expect(sent).toEqual(['one.png', 'two.png']); // each file once, from the first press
   });
 
-  it('works through the batch once each upload finishes', async () => {
+  it('allows the next batch once the first one finishes', async () => {
     const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
-    const sent: File[] = [];
-    const finish: (() => void)[] = [];
-    cmp.submitMedia.subscribe((e) => {
-      sent.push(e.file);
-      finish.push(e.done); // held, the way a real upload holds it
+    const sent: string[] = [];
+    const finish: ((outcomes: readonly BatchOutcome[]) => void)[] = [];
+    cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+      sent.push(...items.map((item) => item.file.name));
+      finish.push(onOutcomes); // held, the way a real upload holds it
     });
-    pickFiles(cmp, [png('one.png'), png('two.png')]);
+    pickFiles(cmp, [png('one.png')]);
 
     cmp.submit();
     // The bar comes and goes, but it is the host's own report that releases the latch — the
     // bar's value is not always observable, and inferring from it is what stranded it before.
-    fixture.componentRef.setInput('uploadProgress', 0.3);
+    fixture.componentRef.setInput('uploadProgress', {
+      index: 1,
+      total: 1,
+      fraction: 0.3,
+    });
     fixture.detectChanges();
     cmp.submit();
-    expect(sent.map((f) => f.name)).toEqual(['one.png']); // still latched
+    expect(sent).toEqual(['one.png']); // still latched
 
     fixture.componentRef.setInput('uploadProgress', null);
     fixture.detectChanges();
-    finish[0]?.();
+    cmp.submit();
+    expect(sent).toEqual(['one.png']); // the bar clearing is NOT what releases it
+
+    finish[0]?.([{ id: cmp.staged()[0]?.id ?? '', failed: true }]);
     cmp.submit();
 
-    expect(sent.map((f) => f.name)).toEqual(['one.png', 'two.png']);
-    expect(stagedFiles(cmp)).toEqual([]);
+    expect(sent).toEqual(['one.png', 'one.png']); // failed, so still staged and resendable
+  });
+
+  it('keeps what you typed when a send is refused', async () => {
+    // A refusal must leave the composer exactly as it found it. Falling through would clear
+    // the caption for a send that never happened — the user's words, gone, with the files
+    // still sitting in the strip and nothing to say why.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    cmp.submitMedia.subscribe(() => undefined); // in flight: outcomes never arrive
+    pickFiles(cmp, [png('one.png')]);
+    cmp.submit();
+
+    cmp.text.set('a caption I typed');
+    cmp.submit(); // refused — a batch is already going out
+
+    expect(cmp.text()).toBe('a caption I typed');
   });
 
   it('shows the send button as blocked before the progress bar has caught up', async () => {
@@ -922,17 +1259,18 @@ describe('MessageComposerComponent', () => {
     // report is what makes the latch independent of whether that value was ever observable.
     const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
-    const sent: File[] = [];
-    cmp.submitMedia.subscribe((e) => {
-      sent.push(e.file);
-      e.done(); // the send completed before the emit returned
+    const sent: string[] = [];
+    cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+      sent.push(...items.map((item) => item.file.name));
+      // Settled before the emit returned; both files failed, so both stay staged.
+      onOutcomes(items.map((item) => ({ id: item.id, failed: true })));
     });
     pickFiles(cmp, [png('one.png'), png('two.png')]);
 
     cmp.submit();
     cmp.submit();
 
-    expect(sent.map((f) => f.name)).toEqual(['one.png', 'two.png']);
+    expect(sent).toEqual(['one.png', 'two.png', 'one.png', 'two.png']);
   });
 
   it('does not strand the latch when the room changes mid-upload', async () => {
@@ -940,8 +1278,7 @@ describe('MessageComposerComponent', () => {
     // holding the latch would mute the next room's composer for an upload it cannot see.
     const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
-    const sent: File[] = [];
-    cmp.submitMedia.subscribe((e) => sent.push(e.file));
+    const sent = collectSends(cmp);
     pickFiles(cmp, [png('one.png')]);
     cmp.submit();
 
@@ -950,7 +1287,7 @@ describe('MessageComposerComponent', () => {
     pickFiles(cmp, [png('elsewhere.png')]);
     cmp.submit();
 
-    expect(sent.map((f) => f.name)).toEqual(['one.png', 'elsewhere.png']);
+    expect(sent).toEqual(['one.png', 'elsewhere.png']);
   });
 
   it('clearStaged drops every staged attachment', async () => {
@@ -1000,12 +1337,14 @@ describe('MessageComposerComponent', () => {
     expect(preventDefault).not.toHaveBeenCalled();
   });
 
-  it('ignores a pasted image while an upload is already in flight', async () => {
-    const { fixture } = await renderComposer({ uploadProgress: 0.5 });
+  it('stages a pasted image even while an upload is in flight', async () => {
+    // Staging is not sending. The batch goes out on the next press, so a screenshot pasted
+    // mid-upload joins the queue instead of being silently swallowed.
+    const { fixture } = await renderComposer({
+      uploadProgress: { index: 1, total: 3, fraction: 0.5 },
+    });
     const cmp = fixture.componentInstance;
 
-    let count = 0;
-    cmp.submitMedia.subscribe(() => count++);
     const file = new File([new Uint8Array([1])], 'paste.png', {
       type: 'image/png',
     });
@@ -1013,7 +1352,40 @@ describe('MessageComposerComponent', () => {
 
     cmp.onPaste(event);
 
-    expect(count).toBe(0);
+    expect(stagedFiles(cmp).map((f) => f.name)).toEqual(['paste.png']);
+    expect(preventDefault).toHaveBeenCalled(); // and not also dropped into the textarea
+  });
+
+  it('stages dropped files, but not while editing', async () => {
+    // The overlay is hidden during an edit, so the user is not invited to drop — but the
+    // drop still fires, and an edit cannot become media. The refusal has to be here, where
+    // every route in shares it, rather than in the affordance that merely hides.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+
+    cmp.stageFiles([png('dropped.png')]);
+    expect(stagedFiles(cmp).map((f) => f.name)).toEqual(['dropped.png']);
+
+    cmp.clearStaged();
+    fixture.componentRef.setInput('editing', true);
+    fixture.detectChanges();
+    cmp.stageFiles([png('while-editing.png')]);
+
+    expect(stagedFiles(cmp)).toEqual([]);
+  });
+
+  it('still ignores a pasted image while editing', async () => {
+    // An edit cannot become media, so the paste belongs to the textarea.
+    const { fixture } = await renderComposer({ editing: true });
+    const cmp = fixture.componentInstance;
+    const file = new File([new Uint8Array([1])], 'paste.png', {
+      type: 'image/png',
+    });
+    const { event, preventDefault } = pasteEvent({ files: [file] });
+
+    cmp.onPaste(event);
+
+    expect(stagedFiles(cmp)).toEqual([]);
     expect(preventDefault).not.toHaveBeenCalled();
   });
 
@@ -1321,13 +1693,16 @@ describe('MessageComposerComponent', () => {
     const cmp = fixture.componentInstance;
     cmp.gifPickerOpen.set(true);
 
-    let emitted: { file: File; caption: string } | undefined;
-    cmp.submitMedia.subscribe((e) => (emitted = e));
+    let emitted: { items: readonly BatchItem[]; caption: string } | undefined;
+    cmp.submitMedia.subscribe((e) => {
+      emitted = e;
+      e.onOutcomes(e.items.map((i) => ({ id: i.id, failed: false })));
+    });
 
     cmp.onGifSelect(gifResult);
 
     expect(download).toHaveBeenCalledWith(gifResult);
-    expect(emitted?.file.type).toBe('image/gif');
+    expect(emitted?.items[0]?.file.type).toBe('image/gif');
     expect(emitted?.caption).toBe('');
     expect(cmp.gifPickerOpen()).toBe(false);
     expect(cmp.gifDownloading()).toBe(false);

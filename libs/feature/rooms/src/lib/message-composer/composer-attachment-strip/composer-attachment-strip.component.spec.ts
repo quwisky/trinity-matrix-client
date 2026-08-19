@@ -1,15 +1,22 @@
 import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { afterEach, describe, expect, it } from 'vitest';
+import { type StagedAttachment } from '../staged-attachment';
 import { ComposerAttachmentStripComponent } from './composer-attachment-strip.component';
 
-const png = () => new File(['x'], 'holiday.png', { type: 'image/png' });
+const png = (name = 'holiday.png') =>
+  new File(['x'], name, { type: 'image/png' });
 
 /** One staged item, in the shape the strip now takes. */
-const item = (file: File, previewUrl: string | null = 'blob:preview') => ({
+const item = (
+  file: File,
+  previewUrl: string | null = 'blob:preview',
+  failed = false,
+): StagedAttachment => ({
   id: `id-${file.name}`,
   file,
   previewUrl,
+  failed,
 });
 
 describe('ComposerAttachmentStripComponent', () => {
@@ -27,9 +34,7 @@ describe('ComposerAttachmentStripComponent', () => {
   it('exposes an in-flight upload as a determinate bar with a percentage', async () => {
     const { container } = await render(ComposerAttachmentStripComponent, {
       inputs: {
-        uploadProgress: 0.42,
-        uploadDeterminate: true,
-        uploadPercent: 42,
+        uploadProgress: { index: 1, total: 1, fraction: 0.42 },
       },
     });
 
@@ -49,7 +54,7 @@ describe('ComposerAttachmentStripComponent', () => {
   it('leaves the bar indeterminate and unlabelled before the first real fraction', async () => {
     // A metadata probe and a thumbnail upload come first; a pinned 0% reads as stalled.
     const { container } = await render(ComposerAttachmentStripComponent, {
-      inputs: { uploadProgress: 0, uploadDeterminate: false, uploadPercent: 0 },
+      inputs: { uploadProgress: { index: 1, total: 1, fraction: 0 } },
     });
 
     expect(
@@ -139,15 +144,46 @@ describe('ComposerAttachmentStripComponent', () => {
     expect(removed).toBe('id-two.png');
   });
 
+  it('says which file of how many, in both the text and the accessible name', async () => {
+    // A batch goes out one file at a time, so without the counter the bar sits at a fraction
+    // that keeps restarting with nothing on screen to say why.
+    const { container } = await render(ComposerAttachmentStripComponent, {
+      inputs: {
+        uploadProgress: { index: 2, total: 5, fraction: 0.5 },
+        uploadLabel: 'holiday.png',
+      },
+    });
+
+    expect(
+      container.querySelector('[data-testid=upload-progress]')?.textContent,
+    ).toContain('holiday.png (2 of 5)');
+    expect(
+      container
+        .querySelector('trn-progress [role="progressbar"]')
+        ?.getAttribute('aria-label'),
+    ).toBe('Uploading holiday.png (2 of 5)');
+  });
+
+  it('drops the counter for a single file, where "1 of 1" is only noise', async () => {
+    const { container } = await render(ComposerAttachmentStripComponent, {
+      inputs: {
+        uploadProgress: { index: 1, total: 1, fraction: 0.5 },
+        uploadLabel: 'holiday.png',
+      },
+    });
+
+    expect(
+      container.querySelector('[data-testid=upload-progress]')?.textContent,
+    ).not.toContain('1 of 1');
+  });
+
   it('puts the uploading file in the accessible name, not just the visible text', async () => {
     // The half a screen-reader user actually receives. Reverting this binding to the old
     // constant left the whole suite green, because the composer-side test reads the visible
     // span rather than the progressbar's name.
     const { container } = await render(ComposerAttachmentStripComponent, {
       inputs: {
-        uploadProgress: 0.5,
-        uploadDeterminate: true,
-        uploadPercent: 50,
+        uploadProgress: { index: 1, total: 1, fraction: 0.5 },
         uploadLabel: 'holiday.png',
       },
     });
@@ -159,12 +195,59 @@ describe('ComposerAttachmentStripComponent', () => {
     ).toBe('Uploading holiday.png');
   });
 
+  it('marks a failed row and offers it a retry, leaving the others alone', async () => {
+    const { container } = await render(ComposerAttachmentStripComponent, {
+      inputs: {
+        staged: [
+          item(png('one.png')),
+          item(png('bad.png'), 'blob:preview', true),
+        ],
+      },
+    });
+
+    const rows = container.querySelectorAll('[data-testid=composer-pending]');
+    expect(
+      rows[0]?.querySelector('[data-testid=composer-pending-failed]'),
+    ).toBeNull();
+    expect(
+      rows[1]?.querySelector('[data-testid=composer-pending-failed]')
+        ?.textContent,
+    ).toContain('Not sent');
+    // Only the failed row gets a retry — offering it on a file that has not been sent yet
+    // would be an action with no meaning.
+    expect(
+      container.querySelectorAll('[data-testid=composer-pending-retry]'),
+    ).toHaveLength(1);
+    expect(
+      rows[1]
+        ?.querySelector('[data-testid=composer-pending-retry]')
+        ?.getAttribute('aria-label'),
+    ).toBe('Retry bad.png');
+  });
+
+  it('emits the failed attachment’s id when its retry is pressed', async () => {
+    const retried: string[] = [];
+    const { container, fixture } = await render(
+      ComposerAttachmentStripComponent,
+      {
+        inputs: {
+          staged: [item(png('bad.png'), 'blob:preview', true)],
+        },
+      },
+    );
+    fixture.componentInstance.retryStaged.subscribe((id) => retried.push(id));
+
+    container
+      .querySelector<HTMLElement>('[data-testid=composer-pending-retry]')
+      ?.click();
+
+    expect(retried).toEqual(['id-bad.png']);
+  });
+
   it('names its controls and announces progress for screen readers', async () => {
     const { container } = await render(ComposerAttachmentStripComponent, {
       inputs: {
-        uploadProgress: 0.5,
-        uploadDeterminate: true,
-        uploadPercent: 50,
+        uploadProgress: { index: 1, total: 1, fraction: 0.5 },
         staged: [item(png())],
       },
     });

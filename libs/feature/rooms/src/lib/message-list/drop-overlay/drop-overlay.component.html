@@ -1,0 +1,11 @@
+<!--
+  `aria-hidden`, and deliberately: this is feedback for a pointer gesture that a screen-reader
+  user cannot be performing, and announcing it would interrupt whatever they are reading. The
+  outcome — files staged — is announced by the composer's own strip.
+-->
+<div class="drop-overlay" data-testid="drop-overlay" aria-hidden="true">
+  <div class="drop-overlay__card">
+    <trn-icon name="paperclip" />
+    <p class="drop-overlay__text">Drop to attach</p>
+  </div>
+</div>

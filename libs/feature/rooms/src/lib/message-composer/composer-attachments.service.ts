@@ -23,6 +23,7 @@ import {
   stageAttachment,
   type StagedAttachment,
 } from './staged-attachment';
+import { type BatchProgress } from '../shared/send-media-batch';
 
 /**
  * What the attachment workflows need back from the composer that owns them.
@@ -37,8 +38,8 @@ export interface ComposerAttachmentsHost {
   readonly roomId: Signal<string | null>;
   /** Whether the composer is in edit mode (an edit can't become media). */
   readonly editing: Signal<boolean>;
-  /** Upload fraction in [0, 1] while an attachment uploads, else null (idle). */
-  readonly uploadProgress: Signal<number | null>;
+  /** Which file of how many is uploading and how far along, else null (idle). */
+  readonly uploadProgress: Signal<BatchProgress | null>;
   /** Send a file as a media message, with `caption` as its caption. */
   sendMedia(file: File, caption: string): void;
   /** End any active reply — a media or voice send carries no reply relation. */
@@ -146,14 +147,10 @@ export class ComposerAttachmentsService {
   attach(): void {
     if (this.picker.available) {
       this.picker
-        .pickImage()
+        .pickImages()
         .pipe(takeUntilDestroyed(this.destroyRef))
         .subscribe({
-          next: (file) => {
-            if (file) {
-              this.stageAll([file]);
-            }
-          },
+          next: (files) => this.stageAll(files),
           // A user-cancel resolves to null above; this catches a denied photo
           // permission (or a genuine picker failure) instead of leaving it
           // unhandled, and shows the reason.
@@ -178,9 +175,11 @@ export class ComposerAttachmentsService {
    * paste is left untouched.
    */
   paste(event: ClipboardEvent): void {
-    // While editing, attachments are disabled (an edit can't become media), so
-    // let the paste fall through to the textarea. Also one upload at a time.
-    if (this.host.editing() || this.host.uploadProgress() !== null) {
+    // While editing, attachments are disabled (an edit can't become media), so let the paste
+    // fall through to the textarea. An upload in flight is NOT a reason to refuse any more:
+    // a send takes the whole batch at once, so anything staged during one simply waits for
+    // the next press instead of being lost to it.
+    if (this.host.editing()) {
       return;
     }
     const data = event.clipboardData;
@@ -213,6 +212,40 @@ export class ComposerAttachmentsService {
   }
 
   /** Drop one staged attachment (its × button), keeping the rest. */
+  /**
+   * Flag these items as failed. Anything not named keeps the flag it already has.
+   *
+   * Scoped deliberately, because a caller only ever knows about its own send: reporting one
+   * retried file's outcome must say nothing about the other files that failed alongside it,
+   * and a GIF — dispatched with a synthetic id that matches nothing staged — must say nothing
+   * about any of them.
+   */
+  markFailed(ids: readonly string[]): void {
+    this.setFailedFlag(ids, true);
+  }
+
+  /** Clear the failed flag on these items. Anything not named keeps the flag it has. */
+  clearFailed(ids: readonly string[]): void {
+    this.setFailedFlag(ids, false);
+  }
+
+  private setFailedFlag(ids: readonly string[], failed: boolean): void {
+    const targets = new Set(ids);
+    this._staged.update(
+      (current) =>
+        current.some(
+          (attachment) =>
+            targets.has(attachment.id) && attachment.failed !== failed,
+        )
+          ? current.map((attachment) =>
+              targets.has(attachment.id) && attachment.failed !== failed
+                ? { ...attachment, failed }
+                : attachment,
+            )
+          : current, // nothing changed: don't hand the strip a new array to re-render
+    );
+  }
+
   removeStaged(id: string): void {
     const current = this._staged();
     const doomed = current.find((attachment) => attachment.id === id);
@@ -362,6 +395,19 @@ export class ComposerAttachmentsService {
    * Hold picked/pasted files for a caption instead of sending immediately, appending to
    * whatever is already staged so a second pick adds rather than replaces.
    */
+  /**
+   * Stage files from a source outside the composer's own controls (a drop on the room).
+   *
+   * Same refusal as {@link paste}: an edit cannot become media. An upload in flight is not a
+   * refusal — the batch goes out on the next press, so these simply join the queue.
+   */
+  stageExternal(files: readonly File[]): void {
+    if (this.host.editing()) {
+      return;
+    }
+    this.stageAll(files);
+  }
+
   private stageAll(files: readonly File[]): void {
     if (!files.length) {
       return;

@@ -75,6 +75,7 @@ export const TRN_ICON_NAMES = [
   'plus',
   'quote',
   'reply',
+  'rotate-ccw',
   'search',
   'send',
   'server',

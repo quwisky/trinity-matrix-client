@@ -16,11 +16,10 @@
 
 <trn-composer-attachment-strip
   [uploadProgress]="uploadProgress()"
-  [uploadDeterminate]="uploadDeterminate()"
-  [uploadPercent]="uploadPercent()"
   [staged]="staged()"
   [uploadLabel]="uploadLabel()"
   (removeStaged)="removeStaged($event)"
+  (retryStaged)="retryStaged($event)"
 />
 
 <div class="composer">

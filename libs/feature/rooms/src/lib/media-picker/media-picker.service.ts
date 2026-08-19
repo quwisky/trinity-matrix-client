@@ -17,7 +17,7 @@ import {
 } from '@capacitor/camera';
 
 /**
- * Raised by {@link MediaPickerService.pickImage} when photo-library access is denied.
+ * Raised by {@link MediaPickerService.pickImages} when photo-library access is denied.
  * Carries a user-facing message so the composer can surface it verbatim.
  */
 export class GalleryPermissionDeniedError extends Error {
@@ -40,24 +40,35 @@ export class MediaPickerService {
   readonly available = Capacitor.isNativePlatform();
 
   /**
-   * Open the native gallery and resolve the chosen image as a File, or null. Gates
-   * on photo-library permission first, swallows a user-cancel (resolves null), and
-   * surfaces a denial as a {@link GalleryPermissionDeniedError} — so the composer
-   * shows feedback instead of an unhandled rejection.
+   * Open the native gallery and resolve every chosen image as a File — empty when the user
+   * picks nothing or dismisses. Gates on photo-library permission first, swallows a
+   * user-cancel (resolves empty), and surfaces a denial as a
+   * {@link GalleryPermissionDeniedError} — so the composer shows feedback instead of an
+   * unhandled rejection.
+   *
+   * Materializing runs in parallel, unlike the SEND: each is a local `fetch` of a
+   * `file://`/blob URL the WebView already holds, with none of the ordering, memory or
+   * scheduler constraints that make uploads sequential.
    */
-  pickImage(): Observable<File | null> {
+  pickImages(): Observable<File[]> {
     if (!this.available) {
-      return of(null);
+      return of([]);
     }
     return defer(() => from(this.ensurePhotoAccess())).pipe(
       switchMap(() =>
-        from(Camera.chooseFromGallery({ allowMultipleSelection: false })),
+        from(Camera.chooseFromGallery({ allowMultipleSelection: true })),
       ),
-      switchMap((res) => from(toFile(res.results[0]))),
+      switchMap((res) =>
+        from(
+          Promise.all(res.results.map((result) => toFile(result))).then(
+            (files) => files.filter((file): file is File => file !== null),
+          ),
+        ),
+      ),
       catchError((err: unknown) => {
         // Dismissing the picker is a user choice, not a failure → null, no error.
         if (errorCode(err) === CameraErrorCode.ChooseMediaCancelled) {
-          return of(null);
+          return of([]);
         }
         // A denial raised at pick time (rather than the gate) normalizes to the
         // same typed error, so there's a single clear message to show.

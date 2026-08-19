@@ -667,34 +667,123 @@ describe('RoomsPage panels, pins and media', () => {
       },
     );
 
+    const outcomes: unknown[] = [];
     shell.messages.onSendMedia({
-      file: pngFile(),
+      items: [{ id: 'a', file: pngFile() }],
       caption: '',
-      done: () => undefined,
+      onOutcomes: (result) => outcomes.push(...result),
     });
-    expect(shell.messages.uploadProgress()).toBe(0); // reset to 0 on start
+    // Which file of how many, not a bare fraction — a send is a batch now.
+    expect(shell.messages.uploadProgress()).toEqual({
+      index: 1,
+      total: 1,
+      fraction: 0,
+    });
 
     progressCb?.(0.5);
-    expect(shell.messages.uploadProgress()).toBe(0.5); // tracks the upload fraction
+    expect(shell.messages.uploadProgress()?.fraction).toBe(0.5);
 
+    stream.next();
     stream.complete();
-    expect(shell.messages.uploadProgress()).toBeNull(); // cleared by finalize on success
+    expect(shell.messages.uploadProgress()).toBeNull(); // cleared when the batch ends
+    expect(outcomes).toEqual([{ id: 'a', failed: false }]);
     expect(toastShow).not.toHaveBeenCalled(); // no error toast
   });
 
-  it('reports done even when the send completes synchronously', () => {
+  it('reports outcomes even when every send completes synchronously', () => {
     // What `TimelineActionsService.sendMedia` returns for a 0-byte file or a closed room
-    // context: `of(void 0)`, completing inside the subscribe. The composer cannot infer this
-    // from `uploadProgress` — it is back to null before anything can observe it — so the
-    // host has to say so, or the composer's send latch stays closed for good.
+    // context: `of(void 0)`, completing inside the subscribe — so `uploadProgress` goes
+    // non-null and back before anything downstream can observe it. `onOutcomes` is what
+    // releases the composer's send latch, and it has to arrive on this path too, or the
+    // composer is left unable to send anything for the rest of the room.
     const shell = build();
     sendMedia.mockReturnValue(of(undefined));
-    const done = vi.fn();
+    let outcomes: readonly { id: string; failed: boolean }[] | null = null;
 
-    shell.messages.onSendMedia({ file: pngFile(), caption: '', done });
+    shell.messages.onSendMedia({
+      items: [{ id: 'a', file: pngFile() }],
+      caption: '',
+      onOutcomes: (result) => (outcomes = result),
+    });
 
-    expect(done).toHaveBeenCalledTimes(1);
+    expect(outcomes).toEqual([{ id: 'a', failed: false }]);
     expect(shell.messages.uploadProgress()).toBeNull();
+  });
+
+  it('tells apart an upload that failed from one abandoned by leaving the room', () => {
+    // Both happen in the same batch, and they have different remedies: one file is still in
+    // the composer to retry, the other is gone with the staging the room change cleared.
+    const shell = build();
+    const timeline = TestBed.inject(TimelineService);
+    const context = (roomId: string) =>
+      ({ client: {}, room: { roomId } }) as ReturnType<
+        TimelineService['openContext']
+      >;
+    vi.mocked(timeline.openContext).mockReturnValue(context('!first:hs'));
+    let sent = 0;
+    sendMedia.mockImplementation(() => {
+      sent++;
+      if (sent === 1) {
+        return throwError(() => new Error('upload failed')); // a genuine failure
+      }
+      vi.mocked(timeline.openContext).mockReturnValue(context('!second:hs'));
+      return of(undefined);
+    });
+
+    shell.messages.onSendMedia({
+      items: [
+        { id: 'a', file: pngFile() },
+        { id: 'b', file: pngFile() },
+        { id: 'c', file: pngFile() },
+      ],
+      caption: '',
+      onOutcomes: () => undefined,
+    });
+
+    const message = String(toastShow.mock.calls[0]?.[0] ?? '');
+    expect(message).toContain('you left the room');
+    expect(message).toContain('could not be uploaded');
+    // One abandoned, one uploaded-and-failed — not "2 … you left the room".
+    expect(message).toMatch(/\b1\b.*you left the room/);
+  });
+
+  it('abandons the rest of a batch when the room changes under it, and says so', () => {
+    // `sendMedia` resolves the open room on SUBSCRIBE, and a batch subscribes its Nth item
+    // long after the press. This service belongs to the page and survives a room switch, so
+    // without the pin the remaining files would be delivered into whatever room is open now.
+    const shell = build();
+    const timeline = TestBed.inject(TimelineService);
+    const context = (roomId: string) =>
+      ({ client: {}, room: { roomId } }) as ReturnType<
+        TimelineService['openContext']
+      >;
+    vi.mocked(timeline.openContext).mockReturnValue(context('!first:hs'));
+    sendMedia.mockImplementation(() => {
+      vi.mocked(timeline.openContext).mockReturnValue(context('!second:hs'));
+      return of(undefined); // the first file goes out, then the user navigates
+    });
+
+    let outcomes: readonly { id: string; failed: boolean }[] = [];
+    shell.messages.onSendMedia({
+      items: [
+        { id: 'a', file: pngFile() },
+        { id: 'b', file: pngFile() },
+      ],
+      caption: '',
+      onOutcomes: (result) => (outcomes = result),
+    });
+
+    expect(sendMedia).toHaveBeenCalledTimes(1); // the second was never attempted
+    expect(outcomes).toEqual([
+      { id: 'a', failed: false },
+      { id: 'b', failed: true },
+    ]);
+    // Not "still in the composer" — the composer drops its staging on a room change, so
+    // that wording would send the user looking for a file that is not there.
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.stringContaining('you left the room'),
+      expect.anything(),
+    );
   });
 
   it('clears uploadProgress and toasts when a media send fails', () => {
@@ -702,16 +791,19 @@ describe('RoomsPage panels, pins and media', () => {
     const stream = new Subject<void>();
     sendMedia.mockReturnValue(stream.asObservable());
 
+    const outcomes: { id: string; failed: boolean }[] = [];
     shell.messages.onSendMedia({
-      file: pngFile(),
+      items: [{ id: 'a', file: pngFile() }],
       caption: '',
-      done: () => undefined,
+      onOutcomes: (result) => outcomes.push(...result),
     });
-    expect(shell.messages.uploadProgress()).toBe(0);
+    expect(shell.messages.uploadProgress()?.index).toBe(1);
 
     stream.error(new Error('upload failed'));
 
-    expect(shell.messages.uploadProgress()).toBeNull(); // finalize clears on error too
+    expect(shell.messages.uploadProgress()).toBeNull(); // cleared when the batch ends
+    // Reported per item rather than thrown, so the composer can keep it staged for a retry.
+    expect(outcomes).toEqual([{ id: 'a', failed: true }]);
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({ variant: 'destructive' }),

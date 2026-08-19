@@ -36,10 +36,9 @@ const ROOM_NAME = 'Media E2E';
 const SETUP_TIMEOUT = 90_000;
 
 // A 1×1 PNG — small, real, decodable bytes for the upload→decrypt round-trip.
-const PNG_1x1 = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-  'base64',
-);
+const PNG_1x1_B64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+const PNG_1x1 = Buffer.from(PNG_1x1_B64, 'base64');
 
 const log = (m) => console.log(`[send-media] ${m}`);
 
@@ -274,6 +273,101 @@ async function main() {
       throw new Error(`expected exactly 1 caption, found ${captionCount}`);
     }
     log('second (uncaptioned) media sent — no stray caption ✓');
+
+    // Third send: THREE files and a caption, on ONE press. The batch is what #159 asks for,
+    // and the parts a unit test cannot reach are here — that three real uploads to a real
+    // homeserver all land, in order, and that a batch caption becomes its own message rather
+    // than being repeated on each file or attached to an arbitrary one.
+    log('staging three files at once with a caption');
+    await page.getByTestId('composer-file-input').setInputFiles([
+      { name: 'batch-1.png', mimeType: 'image/png', buffer: PNG_1x1 },
+      { name: 'batch-2.png', mimeType: 'image/png', buffer: PNG_1x1 },
+      { name: 'batch-3.png', mimeType: 'image/png', buffer: PNG_1x1 },
+    ]);
+    await page.waitForFunction(
+      () =>
+        document.querySelectorAll('[data-testid="composer-pending"]').length ===
+        3,
+      undefined,
+      { timeout: 15_000, polling: 100 },
+    );
+    log('three files staged from one pick ✓');
+
+    const batchComposer = page.locator('textarea.composer__input');
+    await batchComposer.fill('three at once');
+    await batchComposer.press('Enter');
+
+    // 2 from the earlier sends + 3 from this batch.
+    await page.waitForFunction(
+      () =>
+        document.querySelectorAll(
+          '[data-testid="media-bubble"][data-media-state="ready"]',
+        ).length >= 5,
+      undefined,
+      { timeout: 90_000, polling: 250 },
+    );
+    log('all three uploads landed from a single press ✓');
+
+    await page
+      .getByTestId('composer-pending')
+      .first()
+      .waitFor({ state: 'detached', timeout: 15_000 });
+    log('strip emptied — nothing left behind ✓');
+
+    // Matrix has no multi-attachment event, so a batch caption has no file to belong to: it
+    // is posted once, as its own message, rather than repeated on all three.
+    // `.msg__text` rather than `.msg__text--html`: the latter is only for rendered markdown,
+    // and a batch caption is posted as a plain message. It matches both, since the rich
+    // variant carries both classes.
+    const batchCaptions = await page
+      .locator('.msg__text')
+      .filter({ hasText: 'three at once' })
+      .count();
+    if (batchCaptions !== 1) {
+      throw new Error(
+        `batch caption should be posted exactly once, found ${batchCaptions}`,
+      );
+    }
+    log('batch caption posted once, as its own message ✓');
+
+    // Fourth: drag-and-drop. jsdom implements neither `DragEvent` nor `DataTransfer`, so the
+    // unit tests duck-type both — this is the only place the real ones are exercised, against
+    // the real message list, with the real host bindings.
+    log('dropping two files onto the conversation');
+    const listSelector = (await page
+      .locator('trn-virtual-message-list')
+      .count())
+      ? 'trn-virtual-message-list'
+      : 'trn-simple-message-list';
+    const list = page.locator(listSelector);
+
+    const dropData = await page.evaluateHandle((base64) => {
+      const transfer = new DataTransfer();
+      const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+      for (const name of ['drop-1.png', 'drop-2.png']) {
+        transfer.items.add(new File([bytes], name, { type: 'image/png' }));
+      }
+      return transfer;
+    }, PNG_1x1_B64);
+
+    await list.dispatchEvent('dragenter', { dataTransfer: dropData });
+    await page
+      .getByTestId('drop-overlay')
+      .waitFor({ state: 'visible', timeout: 10_000 });
+    log('drop target shown while dragging ✓');
+
+    await list.dispatchEvent('drop', { dataTransfer: dropData });
+    await page
+      .getByTestId('drop-overlay')
+      .waitFor({ state: 'detached', timeout: 10_000 });
+    await page.waitForFunction(
+      () =>
+        document.querySelectorAll('[data-testid="composer-pending"]').length ===
+        2,
+      undefined,
+      { timeout: 15_000, polling: 100 },
+    );
+    log('both dropped files staged, target dismissed ✓');
 
     console.log('\nRESULT: PASS');
     exit = 0;

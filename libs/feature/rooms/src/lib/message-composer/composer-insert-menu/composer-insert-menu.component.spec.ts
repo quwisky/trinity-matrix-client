@@ -39,7 +39,7 @@ describe('ComposerInsertMenuComponent', () => {
     expect(attached).toBe(1);
   });
 
-  it('blocks the plain button while editing or uploading', async () => {
+  it('blocks the plain button while editing, but not while uploading', async () => {
     const { fixture, container } = await render(ComposerInsertMenuComponent, {
       inputs: { hasMenu: false },
     });
@@ -53,10 +53,12 @@ describe('ComposerInsertMenuComponent', () => {
     fixture.detectChanges();
     expect(button()?.disabled).toBe(true);
 
+    // Attaching during an upload is fine now: a send takes the whole staged batch, so the
+    // file waits for the next press rather than colliding with the one going out.
     fixture.componentRef.setInput('editing', false);
     fixture.componentRef.setInput('uploading', true);
     fixture.detectChanges();
-    expect(button()?.disabled).toBe(true);
+    expect(button()?.disabled).toBe(false);
   });
 
   it('offers every configured action in the tray, in order', async () => {
@@ -106,8 +108,10 @@ describe('ComposerInsertMenuComponent', () => {
     ]);
   });
 
-  it('lets an upload in flight block another attachment but not a poll', async () => {
-    // The trigger deliberately does not carry the union of the items' disabled states.
+  it('lets an upload in flight block the actions that send immediately, and only those', async () => {
+    // GIF and voice go straight out and would collide with the upload; attaching only stages,
+    // and a poll or a location has nothing to do with it. The trigger deliberately does not
+    // carry the union of the items' disabled states.
     const { fixture, container } = await render(ComposerInsertMenuComponent, {
       inputs: {
         hasMenu: true,
@@ -129,7 +133,7 @@ describe('ComposerInsertMenuComponent', () => {
       trayItems().map((el) => [el.getAttribute('data-testid'), el.disabled]),
     );
     expect(disabled).toEqual({
-      'insert-attach': true,
+      'insert-attach': false,
       'insert-gif': true,
       'insert-poll': false,
       'insert-location': false,

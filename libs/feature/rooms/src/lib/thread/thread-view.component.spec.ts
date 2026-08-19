@@ -74,6 +74,9 @@ async function build(
   const replyInThread = vi.fn().mockReturnValue(of(void 0));
   const toggleReactionInThread = vi.fn().mockReturnValue(of(void 0));
   const retryInThread = vi.fn();
+  const sendMediaToThread = vi.fn().mockReturnValue(of(void 0));
+  const openThreadRootIdSignal = signal<string | null>('$root');
+  const openThreadRootId = openThreadRootIdSignal.asReadonly();
   const sourceOpen = vi.fn();
   const dismiss = vi.fn().mockResolvedValue(true);
   // The thread composer's @-mention list comes from the room's member projection. The spec
@@ -109,6 +112,8 @@ async function build(
         replyInThread,
         toggleReactionInThread,
         retryInThread,
+        sendMediaToThread,
+        openThreadRootId,
       }),
       MockProvider(TimelineService, {
         canRedactOthers: signal(state.canRedactOthers ?? false).asReadonly(),
@@ -134,6 +139,8 @@ async function build(
     replyInThread,
     toggleReactionInThread,
     retryInThread,
+    sendMediaToThread,
+    openThreadRootIdSignal,
     sourceOpen,
     dismiss,
   };
@@ -398,5 +405,36 @@ describe('ThreadViewComponent members', () => {
         .members()
         .map((m) => m.userId),
     ).toEqual(['@ada:hs', '@bo:hs']);
+  });
+
+  it('abandons the rest of a batch when the open thread changes under it', () => {
+    // Same exposure as the room path: `sendMediaToThread` resolves the open thread on
+    // SUBSCRIBE, and a batch subscribes its Nth item long after the press, so opening
+    // another thread mid-batch would deliver the remainder into that one instead.
+    return build().then(
+      ({ fixture, sendMediaToThread, openThreadRootIdSignal }) => {
+        const png = () => new File(['x'], 'pic.png', { type: 'image/png' });
+        sendMediaToThread.mockImplementation(() => {
+          openThreadRootIdSignal.set('$other'); // the user opens another thread
+          return of(void 0);
+        });
+
+        let outcomes: readonly { id: string; failed: boolean }[] = [];
+        fixture.componentInstance.onSendMedia({
+          items: [
+            { id: 'a', file: png() },
+            { id: 'b', file: png() },
+          ],
+          caption: '',
+          onOutcomes: (result) => (outcomes = result),
+        });
+
+        expect(sendMediaToThread).toHaveBeenCalledTimes(1);
+        expect(outcomes).toEqual([
+          { id: 'a', failed: false },
+          { id: 'b', failed: true },
+        ]);
+      },
+    );
   });
 });
