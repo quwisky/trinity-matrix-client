@@ -31,9 +31,10 @@
   border-radius: var(--trinity-radius-sm);
   background: none;
 
-  // Glyph sizes stay px throughout this file. Every one of them sits in a button with a
-  // fixed box (32px, or 44px on a coarse pointer), so a size that scaled with the Text
-  // setting would outgrow its container rather than making anything more readable.
+  // Glyph sizes stay px throughout this file. `.toolbar__btn` below has a fixed 32px box
+  // that a scaling glyph would outgrow; this button is sized by its content instead, but it
+  // sits in the same strip, so a glyph that grew here while its neighbours did not would
+  // just make the row ragged. Both get 44px minimums on a coarse pointer.
   font-size: 18px;
   line-height: 1;
   cursor: pointer;

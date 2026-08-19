@@ -133,10 +133,14 @@ export class MediaBubbleComponent {
    * browser rather than in a component spec.
    */
   readonly placeholder = computed(() => {
-    // Read through a signal over the HASH, not over `item()`. The windowed timeline reuses
-    // component instances as it scrolls, so `item()` changes identity constantly while the
-    // hash usually does not — and a computed over `item()` would decode again on every
-    // recycle. Signal equality on the string means the decode happens once per picture.
+    // Read through a signal over the HASH, not over `item()`. A row re-renders for all sorts
+    // of reasons — a reaction, a receipt, an edit — and each gives `item()` a new identity
+    // while the hash is unchanged, so a computed over `item()` would re-decode every time.
+    //
+    // It is per INSTANCE, not per hash: the windowed timeline recycles instances, so
+    // scrolling away and back decodes the same picture again. That is deliberate — a 32x32
+    // decode is microseconds and a shared cache would need eviction to avoid holding every
+    // placeholder a long session ever saw.
     const url = blurhashToDataUrl(this.blurhash());
     return url ? `url("${url}")` : null;
   });

@@ -175,9 +175,15 @@ describe('MediaBubbleComponent', () => {
       join(import.meta.dirname, 'media-bubble.component.scss'),
       'utf8',
     );
+    // `background` OR `background-color`: these two rules must use the longhand, because the
+    // shorthand resets the `background-size` that positions the blurhash placeholder — see
+    // the note in the stylesheet. Matching only the shorthand made this test report
+    // `undefined` for both and fail on the wrong assertion.
     const backgroundOf = (selector: string) => {
       const block = new RegExp(`\\${selector}\\s*\\{([^}]*)\\}`).exec(scss);
-      return /background:\s*([^;]+);/.exec(block?.[1] ?? '')?.[1]?.trim();
+      return /background(?:-color)?:\s*([^;]+);/
+        .exec(block?.[1] ?? '')?.[1]
+        ?.trim();
     };
 
     const skeleton = backgroundOf('.media__skeleton');

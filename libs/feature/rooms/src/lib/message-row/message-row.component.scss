@@ -13,6 +13,11 @@ $lead-width: 40px;
 // a bare `52px` at three sites, each with its own comment re-deriving it — so deriving it
 // once is what stops a gap change leaving the reply preview, the thread affordance and the
 // retry link disagreeing about where the body is.
+
+// The `12px` is the row's `gap`, which is `var(--trinity-space-4)`. It is repeated as a
+// literal because sass resolves at build time and a CSS custom property does not exist
+// until the browser reads it — `$lead-width + var(--trinity-space-4)` is not a thing sass
+// can add. Changing the row gap means changing this too.
 $body-indent: $lead-width + 12px;
 
 // Transparent wrapper: the row participates in the list's layout as if `.msg`
@@ -82,10 +87,11 @@ $body-indent: $lead-width + 12px;
   overflow-wrap: anywhere;
 }
 
-// The "(edited)" marker opens the message's edit history. It keeps the muted, 12px
-// look of the label it replaced — the negative margins buy a ~44px touch target out of
-// the surrounding padding without moving the baseline, which matters because on a
-// touchscreen there is no hover toolbar and this is the only way in.
+// The "(edited)" marker opens the message's edit history. It keeps the muted, small-print
+// look of the label it replaced — now `--trinity-text-xs`, so it grows with the message —
+// and the negative margins buy a touch target out of the surrounding padding without moving
+// the baseline. That target matters because it is the only way into the edit history that
+// does not go through the hover toolbar.
 .msg__edited {
   margin: calc(-1 * var(--trinity-space-3)) 0 calc(-1 * var(--trinity-space-3))
     var(--trinity-space-2);
@@ -231,6 +237,11 @@ $body-indent: $lead-width + 12px;
   flex: 0 0 calc(100% - #{$body-indent});
   display: flex;
   align-items: center;
+
+  // Was 6px, which is off the 4px grid, so it had to move one way or the other. It went UP
+  // to 8 to match `.msg__head` — the reply preview is a line of the same kind, and the two
+  // sit directly above one another. The thread chip's identical 6px went DOWN to 4 instead:
+  // it is a compact pill, not a row. Same literal, different answers, on purpose.
   gap: var(--trinity-space-3);
   min-width: 0;
   margin: 0 0 var(--trinity-space-1) $body-indent;
