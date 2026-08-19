@@ -136,7 +136,7 @@
 }
 
 .composer__recording-send {
-  color: var(--trinity-accent);
+  color: var(--trinity-link);
 }
 
 .composer__recording-dot {
@@ -204,7 +204,7 @@
 // is one less thing to know. Accent-tinted, and dimmed rather than faded when
 // there is nothing to send.
 .composer__send {
-  color: var(--trinity-accent);
+  color: var(--trinity-link);
 
   &:disabled {
     color: var(--trinity-text-muted);

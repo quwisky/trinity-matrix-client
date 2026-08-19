@@ -77,8 +77,13 @@
   --warning-foreground: hsl(20deg 14% 4%);
 
   // --- Trinity brand (constant across modes in this palette) --------------------
-  --trinity-accent: #5865f2; // blurple
+  --trinity-accent: #5865f2; // blurple — a FILL. Not readable as text; see --trinity-link.
   --trinity-accent-hover: #4752c4;
+
+  // Accent-coloured TEXT, split from the fill because the two cannot be the same colour and
+  // both clear AA: blurple on the light row grounds is 3.19:1. Every `color:` that used to
+  // read the accent reads this instead; borders and fills still use the accent.
+  --trinity-link: #3f49b8; // 5.09:1 on the worst light surface (--trinity-active)
 
   // Readable text/icon colour on an accent fill — tracks the Helm on-primary token, so a
   // light-accent palette (e.g. Amethyst dark) gets dark on-accent text, not unreadable white.
@@ -183,7 +188,7 @@
 
   // --- Trinity text -------------------------------------------------------------
   --trinity-text: #313338;
-  --trinity-text-muted: #5c5e66;
+  --trinity-text-muted: #5b5d65; // 4.55:1 on --trinity-active (was #5c5e66, 4.48:1)
   --trinity-text-bright: #060607;
 
   // --- Helm surfaces (light) ----------------------------------------------------
@@ -229,7 +234,8 @@
 
   // Trinity text
   --trinity-text: #dbdee1;
-  --trinity-text-muted: #949ba4;
+  --trinity-text-muted: #aab0b7; // 4.59:1 on --trinity-active (was #949ba4, 3.57:1)
+  --trinity-link: #a4abf8; // 4.66:1 on the worst dark surface (blurple was 2.18:1)
   --trinity-text-bright: #f2f3f5;
 
   // Danger, lightened for the dark canvas (see :root for why --destructive is not used).
@@ -300,6 +306,7 @@
 :root[data-theme='amethyst'].dark {
   --trinity-accent: #a78bfa; // lighter violet reads better on the dark canvas
   --trinity-accent-hover: #8b5cf6;
+  --trinity-link: #b9a3fc; // 5.32:1 on the worst amethyst-dark surface (was 4.23:1)
 
   // The light accent needs dark on-accent text: white would be 2.7:1 (fails WCAG AA);
   // this dark violet is 6.3:1. --primary-foreground defaults to white in :root.
@@ -312,7 +319,7 @@
   --trinity-active: #3d3550;
   --trinity-divider: #1a1622;
   --trinity-text: #ddd8e6;
-  --trinity-text-muted: #a099b3;
+  --trinity-text-muted: #aaa3bd; // 4.76:1 on the worst amethyst-dark surface (was 4.22:1)
   --trinity-text-bright: #f5f2fa;
   --background: hsl(260deg 20% 8%);
   --foreground: hsl(260deg 20% 96%);

@@ -6,7 +6,10 @@
   width: min(90vw, 22rem);
   flex-direction: column;
   gap: 4px;
-  border-radius: var(--trinity-radius-lg);
+
+  // `--trinity-radius` is the one documented as "default / lg"; `--trinity-radius-lg` was
+  // never defined, so this declaration was invalid and the dialog shipped square corners.
+  border-radius: var(--trinity-radius);
   background: var(--trinity-surface);
   padding: 16px;
   color: var(--trinity-text);
@@ -61,7 +64,7 @@
   flex: 0 0 16px;
   align-items: center;
   justify-content: center;
-  color: var(--trinity-accent);
+  color: var(--trinity-link);
 }
 
 .account-pick__id {
