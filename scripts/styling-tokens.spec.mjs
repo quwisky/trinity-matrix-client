@@ -86,10 +86,20 @@ describe('styling tokens', () => {
       'libs/feature/rooms/src/lib/message-row/message-row.component.scss',
     );
 
+    // Brace DEPTH, not the first `}`. Slicing to the first one stops at the end of any
+    // nested rule, so a declaration written after `&:hover { … }` was invisible — and with a
+    // rem token the px ratchet below could not see it either, so the regression this whole
+    // guard exists for passed both checks in silence. Verified before and after.
     const rules = [];
     for (const match of source.matchAll(/^([^\n{]*\.msg__text[^\n{]*)\{/gm)) {
       const start = match.index + match[0].length;
-      const end = source.indexOf('}', start);
+      let depth = 1;
+      let end = start;
+      while (end < source.length && depth > 0) {
+        if (source[end] === '{') depth++;
+        else if (source[end] === '}') depth--;
+        if (depth > 0) end++;
+      }
       rules.push({ selector: match[1].trim(), body: source.slice(start, end) });
     }
 

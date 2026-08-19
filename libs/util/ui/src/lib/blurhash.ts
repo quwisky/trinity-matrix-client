@@ -28,17 +28,21 @@ import { decode, isBlurhashValid } from 'blurhash';
 const DECODE_SIZE = 32;
 
 /**
- * Cap on the hash we will hand to the decoder.
+ * Cap on the hash we will look at, in characters.
  *
- * This is attacker-controlled federated input: the sender picks the string. `decode` is
- * O(pixels × components) and a hostile string can claim the maximum 9×9 components, so the
- * length is bounded before the decoder ever sees it — the same treatment the received voice
- * waveform gets in `message-view.ts`. A legal 9×9 hash is 1 + 1 + 4 + 2 × 80 = 166 chars;
- * 200 leaves room for a spec that grows without admitting anything unbounded.
+ * Be precise about what this does, because it is easy to over-claim. It is NOT a correctness
+ * gate: `isBlurhashValid` compares the string's length against the component count its first
+ * character declares, so any over-long string is refused there anyway. A legal 9×9 hash is
+ * 1 + 1 + 4 + 2 × 80 = 166 characters, which means no structurally valid hash can exceed
+ * that — and therefore this cap can never be the sole reason a real hash is rejected.
  *
- * `isBlurhashValid` then checks the structure — that the declared component count matches
- * the string's actual length, and that every character is in the base83 alphabet — so a
- * malformed hash is ignored rather than throwing out of a getter.
+ * What it does is bound WORK on attacker-controlled input, and it earns its place by being
+ * FIRST. Below it, the alphabet check scans the whole string; without this, a hostile
+ * megabyte would be scanned in full before anything concluded it was nonsense. 200 rather
+ * than 166 leaves room for a spec that grows, since nothing depends on the exact value.
+ *
+ * The timeline never sends anything this long — `message-view.ts` caps what it will store —
+ * but this function is exported from the library, so it defends itself.
  */
 export const MAX_BLURHASH_LENGTH = 200;
 
@@ -67,6 +71,13 @@ export function blurhashToDataUrl(hash: string | undefined): string | null {
     !BASE83.test(hash) ||
     !isBlurhashValid(hash).result
   ) {
+    return null;
+  }
+
+  // Feature-detected like `mediaQuerySignal` in this library, which is the convention here:
+  // `type:util` may be imported by anything, and nothing about this module's signature says
+  // it needs a DOM.
+  if (typeof document === 'undefined') {
     return null;
   }
 

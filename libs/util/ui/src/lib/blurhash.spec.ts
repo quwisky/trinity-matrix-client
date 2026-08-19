@@ -87,15 +87,27 @@ describe('blurhashToDataUrl', () => {
     expect(blurhashToDataUrl('')).toBeNull();
   });
 
-  it('ignores a hash longer than the cap, without decoding it', () => {
-    // The cap is a bound on WORK, so the point is that nothing downstream runs. A canvas is
-    // stubbed in so that "returned null" cannot be explained by jsdom having no canvas.
+  it('refuses an over-long hash before scanning it', () => {
+    // The cap bounds WORK, and that is all it does — `isBlurhashValid` refuses any
+    // over-long string anyway, so no test can attribute a rejection to the cap alone. The
+    // first version of this test tried, and passed with the cap deleted.
+    //
+    // What IS attributable is the ordering: the length check runs before the alphabet scan,
+    // so a hostile megabyte is never scanned. Asserted by watching the regex rather than by
+    // timing it, which would be flaky.
     const canvas = stubCanvas();
-    const overlong = `${hashOfSolid(220, 30, 40)}${'0'.repeat(MAX_BLURHASH_LENGTH)}`;
+    const scan = vi.spyOn(RegExp.prototype, 'test');
+    const huge = 'L'.repeat(1_000_000);
+    expect(huge.length).toBeGreaterThan(MAX_BLURHASH_LENGTH);
 
-    expect(overlong.length).toBeGreaterThan(MAX_BLURHASH_LENGTH);
-    expect(blurhashToDataUrl(overlong)).toBeNull();
+    expect(blurhashToDataUrl(huge)).toBeNull();
     expect(canvas.pixels()).toBeNull();
+    expect(scan).not.toHaveBeenCalled();
+
+    // …and the scan does run for something short enough to be worth checking, so the
+    // assertion above is about ORDER and not about the spy never firing at all.
+    blurhashToDataUrl('LEHV6nWB2yk8pyo0adR*.7kCMdn!');
+    expect(scan).toHaveBeenCalled();
   });
 
   it('ignores a malformed hash rather than throwing', () => {
