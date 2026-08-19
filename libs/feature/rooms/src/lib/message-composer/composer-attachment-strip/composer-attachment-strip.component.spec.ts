@@ -225,6 +225,23 @@ describe('ComposerAttachmentStripComponent', () => {
     ).toBe('Retry bad.png');
   });
 
+  it('disables retry while a send is already going out', async () => {
+    // Otherwise it looks pressable and does nothing: the composer refuses a second dispatch,
+    // silently, which is the same dead-control shape the send button was fixed for twice.
+    const { container } = await render(ComposerAttachmentStripComponent, {
+      inputs: {
+        staged: [item(png('bad.png'), 'blob:preview', true)],
+        canRetry: false,
+      },
+    });
+
+    expect(
+      container.querySelector<HTMLButtonElement>(
+        '[data-testid=composer-pending-retry]',
+      )?.disabled,
+    ).toBe(true);
+  });
+
   it('emits the failed attachment’s id when its retry is pressed', async () => {
     const retried: string[] = [];
     const { container, fixture } = await render(

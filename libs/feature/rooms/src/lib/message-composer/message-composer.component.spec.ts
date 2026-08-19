@@ -877,6 +877,90 @@ describe('MessageComposerComponent', () => {
     ]);
   });
 
+  it('posts a batch caption as a plain message, never as the edit in progress', async () => {
+    // The window between dispatch and outcomes is the whole upload, and starting an edit in it
+    // is an ordinary ungated action. Routed through the composer's CURRENT state, the caption
+    // would be applied as the edit — silently rewriting a message already in the room.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const finish: (() => void)[] = [];
+    cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+      finish.push(() =>
+        onOutcomes(items.map((item, i) => ({ id: item.id, failed: i > 0 }))),
+      );
+    });
+    const captions: string[] = [];
+    const submits: string[] = [];
+    cmp.submitBatchCaption.subscribe((e) => captions.push(e.text));
+    cmp.submitText.subscribe((e) => submits.push(e.text));
+    pickFiles(cmp, [png('one.png'), png('two.png')]);
+    cmp.text.set('check these out');
+    cmp.submit();
+
+    // The user starts editing an earlier message while the files upload.
+    fixture.componentRef.setInput('editing', true);
+    fixture.detectChanges();
+    finish[0]?.();
+
+    // It goes out on the channel the host sends plainly — not the one it routes.
+    expect(captions).toEqual(['check these out']);
+    expect(submits).toEqual([]);
+  });
+
+  it('drops a batch caption whose room is no longer open, keeping it as that room’s draft', async () => {
+    // `send` resolves the open room on subscribe, so emitting after a switch posts into the
+    // NEW conversation. The files are already pinned to their room; the caption was not.
+    const { fixture } = await renderComposer({ roomId: '!a:hs' });
+    const cmp = fixture.componentInstance;
+    const finish: (() => void)[] = [];
+    cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+      finish.push(() =>
+        onOutcomes(items.map((item, i) => ({ id: item.id, failed: i > 0 }))),
+      );
+    });
+    const captions: string[] = [];
+    cmp.submitBatchCaption.subscribe((e) => captions.push(e.text));
+    pickFiles(cmp, [png('one.png'), png('two.png')]);
+    cmp.text.set('here are the photos');
+    cmp.submit();
+
+    fixture.componentRef.setInput('roomId', '!b:hs');
+    fixture.detectChanges();
+    finish[0]?.();
+
+    expect(captions).toEqual([]); // not posted into !b:hs
+    expect(cmp.text()).toBe(''); // nor dropped into its composer
+    // Not destroyed either: it is waiting where it was written.
+    fixture.componentRef.setInput('roomId', '!a:hs');
+    fixture.detectChanges();
+    expect(cmp.text()).toBe('here are the photos');
+  });
+
+  it('does not let Escape clear rows the batch is still reporting on', async () => {
+    // The rows stay staged until outcomes land, by design. Clearing them mid-flight leaves a
+    // failure with nowhere to go, and the host then promises files are "still in the
+    // composer" that the user has just discarded.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    cmp.submitMedia.subscribe(() => undefined); // in flight
+    pickFiles(cmp, [png('one.png'), png('two.png')]);
+    cmp.submit();
+
+    cmp.onEscape();
+
+    expect(stagedFiles(cmp).map((f) => f.name)).toEqual(['one.png', 'two.png']);
+  });
+
+  it('still lets Escape clear staging when nothing is going out', async () => {
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    pickFiles(cmp, [png('one.png')]);
+
+    cmp.onEscape();
+
+    expect(stagedFiles(cmp)).toEqual([]);
+  });
+
   it('gives the caption back when nothing carried it', async () => {
     // `submit()` clears the box as soon as the batch is dispatched. If every file then fails,
     // the caption rode nothing — and destroying what the user typed is a worse outcome than
@@ -1029,7 +1113,7 @@ describe('MessageComposerComponent', () => {
     const cmp = fixture.componentInstance;
     const sent = collectSends(cmp);
     const texts: string[] = [];
-    cmp.submitText.subscribe((e) => texts.push(e.text));
+    cmp.submitBatchCaption.subscribe((e) => texts.push(e.text));
     pickFiles(cmp, [png('one.png'), png('two.png')]);
     cmp.text.set('both of these');
 

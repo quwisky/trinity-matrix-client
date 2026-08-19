@@ -18,6 +18,7 @@
   [uploadProgress]="uploadProgress()"
   [staged]="staged()"
   [uploadLabel]="uploadLabel()"
+  [canRetry]="canSendMedia()"
   (removeStaged)="removeStaged($event)"
   (retryStaged)="retryStaged($event)"
 />

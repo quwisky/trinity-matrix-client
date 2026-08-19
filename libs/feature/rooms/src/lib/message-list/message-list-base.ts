@@ -602,6 +602,15 @@ export abstract class MessageListBase {
   }
 
   /** Composer submit — routes to an edit or reply when active, else a new send. */
+  /**
+   * A batch caption, posted plainly. Deliberately NOT routed through {@link onSubmit}: it was
+   * written before an upload that may have taken minutes, so the edit or reply the user has
+   * started since is not what it belongs to.
+   */
+  protected onBatchCaption({ text, mentions }: ComposerSubmit): void {
+    this.send.emit({ body: text, mentions });
+  }
+
   onSubmit({ text, mentions }: ComposerSubmit): void {
     const editId = this.editingId();
     const replyId = this.replyingToId();

@@ -147,3 +147,36 @@ describe('MessageListBase jump-to-unread scheduling', () => {
     expect(measure).not.toHaveBeenCalled();
   });
 });
+
+describe('MessageListBase batch caption routing', () => {
+  it('sends a batch caption plainly, even when an edit is in progress', async () => {
+    // The caption was typed before an upload that can take minutes. `onSubmit` routes by the
+    // composer's CURRENT state, so putting it through there would apply it as the edit the
+    // user has started since — rewriting a message already visible in the room.
+    const fixture = TestBed.createComponent(TestMessageListComponent);
+    fixture.componentRef.setInput('messages', [msg('$a')]);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+    const sent: string[] = [];
+    const edited: string[] = [];
+    const replied: string[] = [];
+    cmp.send.subscribe((e) => sent.push(e.body));
+    cmp.editMessage.subscribe((e) => edited.push(e.body));
+    cmp.reply.subscribe((e) => replied.push(e.body));
+
+    cmp.editingId.set('$a');
+    cmp['onBatchCaption']({ text: 'check these out', mentions: [] });
+
+    expect(sent).toEqual(['check these out']);
+    expect(edited).toEqual([]);
+    expect(cmp.editingId()).toBe('$a'); // and the edit the user is writing is untouched
+
+    // Same for a reply started while the files were going out.
+    cmp.editingId.set(null);
+    cmp.replyingToId.set('$a');
+    cmp['onBatchCaption']({ text: 'and these', mentions: [] });
+
+    expect(sent).toEqual(['check these out', 'and these']);
+    expect(replied).toEqual([]);
+  });
+});

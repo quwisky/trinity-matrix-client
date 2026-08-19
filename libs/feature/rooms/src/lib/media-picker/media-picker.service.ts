@@ -60,8 +60,15 @@ export class MediaPickerService {
       ),
       switchMap((res) =>
         from(
-          Promise.all(res.results.map((result) => toFile(result))).then(
-            (files) => files.filter((file): file is File => file !== null),
+          // `allSettled`, not `all`: one photo whose `webPath` will not fetch must cost you
+          // that photo, not the other nine — the same principle the batch send commits to.
+          Promise.allSettled(res.results.map((result) => toFile(result))).then(
+            (settled) =>
+              settled
+                .map((entry) =>
+                  entry.status === 'fulfilled' ? entry.value : null,
+                )
+                .filter((file): file is File => file !== null),
           ),
         ),
       ),

@@ -89,6 +89,38 @@ describe('MediaPickerService', () => {
     vi.unstubAllGlobals();
   });
 
+  it('keeps the photos that resolved when one of them cannot be fetched', async () => {
+    // One unreadable photo used to reject the whole selection, so picking ten and having one
+    // fail left the user with an error toast and nothing staged.
+    isNative.mockReturnValue(true);
+    chooseFromGallery.mockResolvedValue({
+      results: [
+        { webPath: 'blob:broken', type: 'photo' },
+        { webPath: 'blob:good', type: 'photo' },
+      ],
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((src: string) =>
+        src === 'blob:broken'
+          ? Promise.reject(new Error('cannot read'))
+          : Promise.resolve({
+              blob: () =>
+                Promise.resolve(
+                  new Blob([new Uint8Array([1])], { type: 'image/png' }),
+                ),
+            }),
+      ),
+    );
+
+    const svc = makeService();
+    const files = await firstValueFrom(svc.pickImages());
+
+    expect(files).toHaveLength(1);
+
+    vi.unstubAllGlobals();
+  });
+
   it('drops a result it cannot resolve to a URL, keeping the rest', async () => {
     // A gallery entry with neither `webPath` nor `uri` yields no File; one unusable photo
     // must not take the others with it, nor leave a null in the staged list.

@@ -168,6 +168,15 @@ export class MessageComposerComponent {
   /** Upload fraction in [0, 1] while an attachment uploads, else null (idle). */
   readonly uploadProgress = input<BatchProgress | null>(null);
   readonly submitText = output<ComposerSubmit>();
+  /**
+   * A batch caption, to be posted as its own message.
+   *
+   * Separate from {@link submitText} because that one is routed by the composer's CURRENT
+   * edit/reply state, and this text was written before an upload that can take minutes. By the
+   * time it lands the user may be editing something else — and routing it then would apply the
+   * caption as that edit, rewriting a message already in the room.
+   */
+  readonly submitBatchCaption = output<ComposerSubmit>();
   /** A staged attachment plus its optional caption, emitted on submit. */
   /**
    * Send these files, in this order, as N events.
@@ -1016,11 +1025,14 @@ export class MessageComposerComponent {
     }
     this.sendingItems.set(items);
     this.sendingMedia.set(true);
+    // Stamped with the room, like the files themselves are by the owner: a batch settles long
+    // after it was pressed, and by then this composer may be showing a different conversation.
+    const roomAtDispatch = this.roomId();
     this.submitMedia.emit({
       items,
       caption,
       onOutcomes: (outcomes) =>
-        this.onBatchOutcomes(outcomes, caption, mentions),
+        this.onBatchOutcomes(outcomes, caption, mentions, roomAtDispatch),
     });
     return true;
   }
@@ -1036,6 +1048,7 @@ export class MessageComposerComponent {
     outcomes: readonly BatchOutcome[],
     caption: string,
     mentions: readonly Mention[],
+    roomAtDispatch: string | null,
   ): void {
     // The batch is over the moment its outcomes land, and this is the ONLY release: inferring
     // it from `uploadProgress` returning to null cannot work, because a send that completes
@@ -1055,11 +1068,23 @@ export class MessageComposerComponent {
     if (!caption) {
       return;
     }
+    if (this.roomId() !== roomAtDispatch) {
+      // The conversation moved on. Posting would put these words in a room they were not
+      // written for, and restoring would leave them in that room's composer — the same leak
+      // the room-change effect above exists to prevent. Parked as the draft of the room they
+      // belong to instead, so they are neither misdelivered nor destroyed.
+      if (roomAtDispatch != null && !this.drafts.get(roomAtDispatch)) {
+        this.drafts.set(roomAtDispatch, caption);
+      }
+      return;
+    }
     const delivered = outcomes.filter((outcome) => !outcome.failed).length;
     if (delivered && outcomes.length > 1) {
       // No file for a batch caption to belong to, so it goes out on its own — after the
-      // files, and only if at least one of them actually arrived.
-      this.submitText.emit({ text: caption, mentions: [...mentions] });
+      // files, and only if at least one of them actually arrived. On its OWN output: by now
+      // the user may be part-way into an edit or a reply, and the ordinary submit path would
+      // route this into it.
+      this.submitBatchCaption.emit({ text: caption, mentions: [...mentions] });
       return;
     }
     if (!delivered && !this.text().trim()) {
@@ -1096,6 +1121,10 @@ export class MessageComposerComponent {
     // So the row reads as uploading rather than as still-failed. Only this one: the others
     // are still failed and have not been retried.
     this.attachments.clearFailed([id]);
+    // Clearing the flag unmounts the row's retry button — the element that currently has
+    // focus — which would strand a keyboard user at the top of the page. Same remedy, and the
+    // same reason, as `removeStaged`.
+    queueMicrotask(() => this.textarea()?.nativeElement.focus());
     // A retry is a send: it takes whatever caption is in the box and clears it the way
     // `submit()` does, before dispatching and for the same reason.
     const typed = this.text();
@@ -1158,7 +1187,10 @@ export class MessageComposerComponent {
       this.gifPickerOpen.set(false);
       return;
     }
-    if (this.hasStaged()) {
+    // Not while a batch is going out: those rows are what its outcomes will report on, and
+    // clearing them means a failure has nowhere to land — the toast would then promise files
+    // are "still in the composer" that are not.
+    if (this.hasStaged() && !this.sendingMedia()) {
       this.clearStaged();
       return;
     }

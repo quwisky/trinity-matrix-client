@@ -43,6 +43,7 @@
           <button
             type="button"
             class="composer__pending-retry"
+            [disabled]="!canRetry()"
             [attr.aria-label]="'Retry ' + attachment.file.name"
             data-testid="composer-pending-retry"
             (click)="retryStaged.emit(attachment.id)"

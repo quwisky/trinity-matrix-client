@@ -87,6 +87,7 @@
   [replyingTo]="replyingToName()"
   [uploadProgress]="uploadProgress()"
   (submitText)="onSubmit($event)"
+  (submitBatchCaption)="onBatchCaption($event)"
   (submitMedia)="sendMedia.emit($event)"
   (cancelEdit)="editingId.set(null)"
   (cancelReply)="replyingToId.set(null)"

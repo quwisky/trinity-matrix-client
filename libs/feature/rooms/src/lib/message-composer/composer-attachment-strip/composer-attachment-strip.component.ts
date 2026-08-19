@@ -35,6 +35,12 @@ export class ComposerAttachmentStripComponent {
    * describes them — it describes the one currently going out.
    */
   readonly uploadLabel = input<string | null>(null);
+  /**
+   * Whether a retry would be accepted. False while any send is in flight — the composer
+   * refuses one then, and a button that looks pressable and does nothing is worse than a
+   * disabled one.
+   */
+  readonly canRetry = input(true);
   /** Everything staged, in the order it will be sent. */
   readonly staged = input<readonly StagedAttachment[]>([]);
 
