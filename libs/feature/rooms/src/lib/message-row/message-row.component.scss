@@ -276,7 +276,10 @@
   white-space: pre-wrap;
 }
 
-.msg__text--cont {
+// Was a `msg__text--cont` class hand-applied at four sites in the continuation copy of the
+// body. Selecting on the row's own modifier instead is what let the two copies collapse into
+// one: the markup is now genuinely identical, so there is nothing left to keep in sync.
+.msg--cont .msg__text {
   margin: 0;
   flex: 1;
 }
