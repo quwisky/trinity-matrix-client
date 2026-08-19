@@ -30,7 +30,19 @@ const meta: Meta<TrnProgressComponent> = {
 };
 
 export default meta;
-type Story = StoryObj<TrnProgressComponent>;
+
+/**
+ * `aria-label` is an ALIASED input (`input(null, { alias: 'aria-label' })`), and the two halves
+ * of Storybook disagree about which name to use: the renderer sets inputs by the ALIAS, while
+ * `StoryObj`'s generated arg type only knows the property name. Following the type compiles and
+ * silently renders no accessible name at all — measured, not assumed: `ariaLabel` produces
+ * `aria-label=null` in the DOM, `'aria-label'` produces the label.
+ *
+ * So the alias is what the args use, and the type is widened to admit it rather than the other
+ * way round.
+ */
+type ProgressArgs = TrnProgressComponent & { 'aria-label': string | null };
+type Story = StoryObj<ProgressArgs>;
 
 export const Determinate: Story = {
   args: { value: 60, 'aria-label': 'Uploading holiday.png' },
