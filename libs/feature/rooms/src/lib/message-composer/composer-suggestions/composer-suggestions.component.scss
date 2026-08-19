@@ -12,7 +12,7 @@
   right: 16px;
   bottom: calc(100% + 4px);
   left: 16px;
-  z-index: 10;
+  z-index: var(--trinity-z-floating);
   max-height: 220px;
   margin: 0;
   padding: 4px;

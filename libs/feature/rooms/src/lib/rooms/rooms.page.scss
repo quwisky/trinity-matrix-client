@@ -154,7 +154,7 @@
     position: fixed;
     inset-block: 0;
     right: 0;
-    z-index: 40;
+    z-index: var(--trinity-z-panel);
     width: 240px;
     flex: none;
     box-shadow: -2px 0 12px rgb(0 0 0 / 30%);

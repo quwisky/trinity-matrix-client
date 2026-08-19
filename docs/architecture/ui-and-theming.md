@@ -394,20 +394,44 @@ so anything per-user has to reach it through CSS. What the markup may carry is
 content-derived only — a block records its own line count in `rows`, and the stylesheet
 decides what to do about it.
 
+### Seeing the tokens: Storybook
+
+`pnpm storybook` serves one Storybook covering the whole `libs/components/*` tier
+(`libs/components/storybook-host` is config only — the stories live beside the components they
+document). The toolbar carries the two theme axes, palette × light/dark, read from
+`TRINITY_PALETTES` rather than restated, so a newly registered palette appears there
+immediately.
+
+That is what it is for. A palette is meant to be a data change — a block of token overrides plus
+a registry entry — and before this the only way to know that held was to launch the app and
+navigate to every surface. **If a component looks wrong under a new palette, the token layer is
+incomplete; that is a bug in the tokens, not in the theme.**
+
+Stories are written per _state_ (default, hover, disabled, loading, empty, long content), not one
+per component: the default is the state least likely to be broken. They are not a substitute for
+a unit test — they are a substitute for launching the app and clicking to the one screen where a
+control appears.
+
 ### Two token families
 
 **Trinity tokens** (`--trinity-*`) are the app's own vocabulary, consumed directly by
 hand-authored component SCSS.
 
-| Group                               | Tokens                                                                                                                                              |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Surfaces, lightest to most recessed | `--trinity-rail`, `--trinity-sidebar`, `--trinity-sidebar-header`, `--trinity-chat`                                                                 |
-| Surface states                      | `--trinity-hover` (row hover), `--trinity-active` (selected row), `--trinity-divider`, `--trinity-surface` (floating controls), `--trinity-members` |
-| Text                                | `--trinity-text`, `--trinity-text-muted`, `--trinity-text-bright`                                                                                   |
-| Brand                               | `--trinity-accent`, `--trinity-accent-foreground`, `--trinity-green`, `--trinity-green-foreground`                                                  |
-| Danger                              | `--trinity-danger`, `--trinity-danger-solid`, `--trinity-danger-solid-foreground`                                                                   |
-| Radii                               | `--trinity-radius` (8px), `-sm` (4px), `-md` (6px), `-xl` (12px), `-pill` (9999px)                                                                  |
-| Syntax                              | eight `--trinity-syntax-*` roles plus `-plain`                                                                                                      |
+| Group                               | Tokens                                                                                                                                                                                                                                                                                                         |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Surfaces, lightest to most recessed | `--trinity-rail`, `--trinity-sidebar`, `--trinity-sidebar-header`, `--trinity-chat`                                                                                                                                                                                                                            |
+| Surface states                      | `--trinity-hover` (row hover), `--trinity-active` (selected row), `--trinity-divider`, `--trinity-surface` (floating controls), `--trinity-members`                                                                                                                                                            |
+| Text                                | `--trinity-text`, `--trinity-text-muted`, `--trinity-text-bright`                                                                                                                                                                                                                                              |
+| Brand                               | `--trinity-accent`, `--trinity-accent-foreground`, `--trinity-green`, `--trinity-green-foreground`                                                                                                                                                                                                             |
+| Link                                | `--trinity-link` — accent-coloured **text**. Split from `--trinity-accent`, which is a fill: a fill and a readable text colour cannot be the same value and both clear AA (blurple is 3.19:1 on the light row grounds). Every `color:` that reads as accent uses this; borders and backgrounds use the accent. |
+| Danger                              | `--trinity-danger`, `--trinity-danger-solid`, `--trinity-danger-solid-foreground`                                                                                                                                                                                                                              |
+| Radii                               | `--trinity-radius` (8px), `-sm` (4px), `-md` (6px), `-xl` (12px), `-pill` (9999px)                                                                                                                                                                                                                             |
+| Syntax                              | eight `--trinity-syntax-*` roles plus `-plain`                                                                                                                                                                                                                                                                 |
+| Typography                          | `--trinity-text-xs` / `-sm` / `-base` / `-lg`, each with a matching `--…--line-height`. Roles, not sizes: `-sm` is the message body and the sidebar row. In `rem`, so Settings → Appearance → Text size scales them.                                                                                           |
+| Spacing                             | `--trinity-space-1`…`-7` — a 4px rhythm (2, 4, 8, 12, 16, 24, 32)                                                                                                                                                                                                                                              |
+| Elevation                           | `--trinity-shadow-raised` / `-floating` / `-overlay`. Overridden per mode: a shadow tuned for white is invisible on `#313338`, so dark raises the alpha.                                                                                                                                                       |
+| Z-index layers                      | `--trinity-z-sticky` (5) → `-floating` (10) → `-overlay` (20) → `-panel` (40). **App-level only** — a component stacking its own children is local and stays a literal. The CDK overlay container sits above all of them at 1000.                                                                              |
+| Motion                              | `--trinity-duration-fast` / `-base` / `-slow`, `--trinity-ease-standard` / `-decelerate` / `-accelerate`. Collapsed to 0.01ms under `prefers-reduced-motion` at the bottom of `variables.scss` — which is why a literal duration is a bug, not a style.                                                        |
 
 **Helm and shadcn tokens** (`--background`, `--card`, `--primary`, `--muted-foreground`,
 `--border`, and the rest) are consumed by the generated Helm components through Tailwind
@@ -423,8 +447,17 @@ palette only has to set the value once:
 --input: var(--border);
 ```
 
-Mode-invariant bindings are declared once in the base `:root` block. Two palettes ship:
-`trinity` (blurple `#5865f2`) and `amethyst` (violet).
+Mode-invariant bindings are declared once in the base `:root` block. Three palettes ship:
+`trinity` (blurple `#5865f2`), `amethyst` (violet) and `onyx` (achromatic; dark is AMOLED
+true black).
+
+`onyx` is worth reading as the worked example of the contract: it overrides **surfaces only**.
+Every text role, the link, the danger colours, the accent and the whole syntax set are left
+unset and fall through to the `:root` / `:root.dark` defaults — and `contrast-matrix.spec.mjs`
+picks the palette up automatically and proves those inherited values still clear AA against the
+new grounds, which is exactly where an inherited colour is most likely to stop working. A
+palette that needed a component edited, or a role redefined to stay legible, would be telling
+you the token layer is incomplete.
 
 ### The danger versus destructive rule
 
@@ -628,7 +661,7 @@ attribute at all.
     `libs` and `apps` and confirm each exists in `variables.scss`. References that *do* supply
     a fallback are safe, since they render the fallback.
 
-    Running that check today finds one live instance:
+    Two specs enforce this now, so the check is no longer manual: `scripts/token-resolve.spec.mjs` fails on any `--trinity-*` token that is consumed but never defined (it found `--trinity-radius-lg`, which is why the mobile account picker shipped square corners), and `scripts/contrast-matrix.spec.mjs` measures every text role against every surface it can land on, per palette × mode.
     `libs/feature/rooms/src/lib/account-picker/account-picker.component.scss` uses
     `var(--trinity-radius-lg)`, which `variables.scss` does not define — the mobile
     account-picker dialog renders with square corners. The base 8px token is
