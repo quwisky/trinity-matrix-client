@@ -100,7 +100,7 @@
   position: absolute;
   right: 0;
   bottom: calc(100% + 4px);
-  z-index: 10;
+  z-index: var(--trinity-z-floating);
 }
 
 // Voice-recording bar, shown in place of the input row while capturing a clip.

@@ -48,6 +48,73 @@
   --trinity-radius-xl: 0.75rem; // 12px — cards / dialogs / menus
   --trinity-radius-pill: 9999px; // badges, chips, capsules
 
+  // --- Typography (mode- & palette-agnostic; a palette may override) -------------
+  // Roles, not sizes. `--trinity-text-sm` is the message body and the sidebar row —
+  // the workhorse — and is the same 13px the `text-13` utility emits, which stays as
+  // an alias until its call sites migrate. Each size carries its own line-height so a
+  // consumer cannot pair a size with the wrong leading.
+  // These are `rem`, so Settings → Appearance → Text size (a % on the root) scales
+  // them; a px value here would pin them and silently break that preference.
+  --trinity-text-xs: 0.6875rem; // 11px — timestamps, meta, badge text
+  --trinity-text-xs--line-height: 1.45;
+  --trinity-text-sm: 0.8125rem; // 13px — message body, sidebar rows, most chrome
+  --trinity-text-sm--line-height: 1.375;
+  --trinity-text-base: 0.9375rem; // 15px — dialog body, settings prose
+  --trinity-text-base--line-height: 1.5;
+  --trinity-text-lg: 1.25rem; // 20px — page and section headings
+  --trinity-text-lg--line-height: 1.3;
+
+  // --- Spacing (mode- & palette-agnostic) ---------------------------------------
+  // A 4px rhythm. Named by step rather than by use, because the same gap means
+  // different things in different components; what matters is that it is ON the grid.
+  --trinity-space-1: 2px;
+  --trinity-space-2: 4px;
+  --trinity-space-3: 8px;
+  --trinity-space-4: 12px;
+  --trinity-space-5: 16px;
+  --trinity-space-6: 24px;
+  --trinity-space-7: 32px;
+
+  // --- Elevation ----------------------------------------------------------------
+  // Overridden per mode: a shadow that reads on white is invisible on #313338, which
+  // is why the dark block below raises the alpha rather than reusing these.
+  --trinity-shadow-raised: 0 1px 2px rgb(0 0 0 / 8%);
+  --trinity-shadow-floating: 0 4px 12px rgb(0 0 0 / 12%);
+  --trinity-shadow-overlay: 0 12px 32px rgb(0 0 0 / 18%);
+
+  // --- Z-index layers -----------------------------------------------------------
+  // Named because the bare numbers in the tree (5, 10, 20, 40) carry no relation to
+  // each other and nothing said which was meant to sit over which. These govern
+  // APP-level stacking only — a component stacking its own two children is local and
+  // stays a literal. Above all of them sits the CDK overlay container (1000 by
+  // default), which is why a dialog covers everything here without being listed.
+  --trinity-z-sticky: 5; // pinned affordances inside a scroller (jump-to-unread)
+  --trinity-z-floating: 10; // a component's own popovers (emoji picker, suggestions)
+  --trinity-z-overlay: 20; // a sheet over one pane (the drag-and-drop target)
+  --trinity-z-panel: 40; // a panel over the shell (mobile room list)
+
+  // --- Motion -------------------------------------------------------------------
+  // One vocabulary, and one place to collapse it — see the reduced-motion block at
+  // the end of this file. A literal duration cannot be collapsed, which is why
+  // `global.scss` still needs its blanket `!important` override until the remaining
+  // hand-picked durations migrate.
+  --trinity-duration-fast: 120ms; // hover/focus tints — must not be perceptible as motion
+  --trinity-duration-base: 200ms; // the default for anything entering or leaving
+  --trinity-duration-slow: 320ms; // full-surface transitions (panels, sheets)
+  --trinity-ease-standard: cubic-bezier(0.2, 0, 0, 1); // most things
+  --trinity-ease-decelerate: cubic-bezier(
+    0,
+    0,
+    0,
+    1
+  ); // entering: fast in, settles
+  --trinity-ease-accelerate: cubic-bezier(
+    0.3,
+    0,
+    1,
+    1
+  ); // leaving: takes off, gone
+
   // --- Code size (mode- & palette-agnostic) -------------------------------------
   // A unitless MULTIPLIER, not a size. rendered-markdown.scss multiplies the 85%
   // optical correction by it, so code stays a proportion of whatever Settings →
@@ -234,6 +301,12 @@
 
   // Trinity text
   --trinity-text: #dbdee1;
+
+  // Shadows carry no weight on a dark ground at the light alphas, so dark raises them
+  // and leans on a hairline highlight rather than trying to out-darken the surface.
+  --trinity-shadow-raised: 0 1px 2px rgb(0 0 0 / 30%);
+  --trinity-shadow-floating: 0 4px 12px rgb(0 0 0 / 40%);
+  --trinity-shadow-overlay: 0 12px 32px rgb(0 0 0 / 55%);
   --trinity-text-muted: #aab0b7; // 4.59:1 on --trinity-active (was #949ba4, 3.57:1)
   --trinity-link: #a4abf8; // 4.66:1 on the worst dark surface (blurple was 2.18:1)
   --trinity-text-bright: #f2f3f5;
@@ -325,4 +398,21 @@
   --foreground: hsl(260deg 20% 96%);
   --muted-foreground: hsl(260deg 12% 66%);
   --border: #322c42;
+}
+
+// -----------------------------------------------------------------------------
+// Reduced motion — collapse the vocabulary rather than police each call site
+// -----------------------------------------------------------------------------
+// Anything built on the duration tokens stops moving here, with no `!important` and
+// no per-component opt-in. `global.scss` keeps its blanket override for now because
+// the hand-picked literal durations still in the tree cannot be reached this way;
+// that override becomes deletable when the last of them is migrated.
+// 0.01ms rather than 0s on purpose: a zero-duration transition never fires
+// `transitionend`, and code that waits for it would hang.
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --trinity-duration-fast: 0.01ms;
+    --trinity-duration-base: 0.01ms;
+    --trinity-duration-slow: 0.01ms;
+  }
 }

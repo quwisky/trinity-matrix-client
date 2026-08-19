@@ -43,7 +43,7 @@
   height: 0;
   background: var(--trinity-text-bright);
   border-radius: 0 4px 4px 0;
-  transition: height 0.15s ease;
+  transition: height var(--trinity-duration-fast) var(--trinity-ease-standard);
 }
 
 .item:hover .indicator {
@@ -92,8 +92,8 @@
   font-weight: 700;
   padding: 0;
   transition:
-    border-radius 0.15s ease,
-    background 0.15s ease;
+    border-radius var(--trinity-duration-fast) var(--trinity-ease-standard),
+    background var(--trinity-duration-fast) var(--trinity-ease-standard);
 }
 
 .pill:hover {

@@ -156,6 +156,9 @@
   // by default later siblings paint over earlier ones, which would bury the very account
   // whose name is displayed next to it.
   &:nth-child(1) {
+    // Local stacking: these three order this component's own children against each
+    // other, not against anything in the app. The z-index scale governs app-level
+    // layers, and pretending it governs this would make both harder to read.
     z-index: 3;
   }
 
