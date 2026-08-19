@@ -16,11 +16,10 @@
 .media--image {
   width: 100%;
 
-  // `max-height` deliberately does NOT clamp the declared aspect ratio any more. It used to
-  // fight it: a tall image reserved its true ratio, then got clipped to 20rem and cropped by
-  // `object-fit: cover` — so the box was reserved at one size and drawn at another, which is
-  // the layout shift the reservation exists to prevent. `contain` keeps the whole image
-  // inside whatever the ratio reserved.
+  // `max-height` still clamps a very tall image — what changed is that it no longer CROPS
+  // one. It used to pair with `object-fit: cover`, so a tall screenshot was clipped to 20rem
+  // and then had its edges cut off to fill the box: reserved at one shape, drawn at another.
+  // With `contain` the whole image stays inside whatever height survives the clamp.
   max-height: 20rem;
   border-radius: 0.5rem;
   overflow: hidden;

@@ -25,6 +25,12 @@
         [src]="src()"
         [alt]="filename()"
         (error)="imgFailed.set(true)"
+        (load)="
+          onNaturalSize(
+            $any($event.target).naturalWidth,
+            $any($event.target).naturalHeight
+          )
+        "
       />
     } @else {
       <span class="media__skeleton" aria-hidden="true"></span>
@@ -38,6 +44,12 @@
       controls
       [src]="src()"
       [attr.aria-label]="'Video: ' + filename()"
+      (loadedmetadata)="
+        onNaturalSize(
+          $any($event.target).videoWidth,
+          $any($event.target).videoHeight
+        )
+      "
     ></video>
   } @else {
     <span

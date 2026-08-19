@@ -67,6 +67,24 @@ export class MediaBubbleComponent {
   /** A local <img>-decode failure, combined with the input `error`. */
   readonly imgFailed = signal(false);
 
+  /**
+   * The real shape, once the bytes arrive and can be asked.
+   *
+   * The fallback below is a RESERVATION — a guess made before anything is known, so the row
+   * does not jump. Left bound after the file has loaded it stops being a guess and becomes
+   * the box: an image whose event omits `info.w`/`info.h` would be letterboxed into 16 / 9
+   * permanently, which is worse than the jump it was preventing. So the moment the element
+   * can report its own dimensions, they win.
+   */
+  private readonly loadedRatio = signal<string | null>(null);
+
+  /** Record the intrinsic shape an <img> or <video> reports once it has decoded. */
+  onNaturalSize(width: number, height: number): void {
+    if (width > 0 && height > 0) {
+      this.loadedRatio.set(`${width} / ${height}`);
+    }
+  }
+
   readonly showError = computed(() => this.error() || this.imgFailed());
 
   /** Coarse render state, surfaced as `data-media-state` for tests/styling. */
@@ -91,7 +109,11 @@ export class MediaBubbleComponent {
   readonly aspectRatio = computed(() => {
     const w = this.item().width;
     const h = this.item().height;
-    return w && h ? `${w} / ${h}` : DEFAULT_MEDIA_RATIO;
+    if (w && h) {
+      return `${w} / ${h}`;
+    }
+    // What the file itself says, if it has said anything yet; otherwise the reservation.
+    return this.loadedRatio() ?? DEFAULT_MEDIA_RATIO;
   });
 
   /** File-card subtitle: human-readable size, falling back to the MIME type. */
@@ -105,6 +127,9 @@ export class MediaBubbleComponent {
     effect(() => {
       this.src();
       this.imgFailed.set(false);
+      // The measured shape belongs to the previous file, and these instances are reused
+      // across rows — keeping it would size one attachment to another one's proportions.
+      this.loadedRatio.set(null);
     });
   }
 }
