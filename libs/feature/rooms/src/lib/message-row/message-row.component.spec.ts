@@ -674,12 +674,21 @@ describe('MessageRowComponent', () => {
     const menuOpen = () =>
       document.querySelectorAll('[data-testid=msg-copy]').length > 0;
 
+    // `isPrimary: true` is part of the DEFAULT on purpose. Only a primary pointer arms a
+    // press, so a helper that left it undefined would make every "nothing happened"
+    // assertion below pass for the wrong reason — the press would never have been armed at
+    // all, and the behaviour each test names would go unexercised.
     const pointer = (type: string, over: Partial<PointerEvent> = {}) =>
       Object.assign(
         new Event(type, { bubbles: true, cancelable: true }),
-        { pointerType: 'touch', clientX: 0, clientY: 0 },
+        { pointerType: 'touch', clientX: 0, clientY: 0, isPrimary: true },
         over,
       ) as unknown as PointerEvent;
+
+    /** The row pins its own action bar open; the bar is not in an overlay. */
+    const barRevealed = (container: HTMLElement) =>
+      container.querySelector('.msg')?.classList.contains('msg--revealed') ??
+      false;
 
     afterEach(() => {
       // The overlay outlives the fixture; leaving it attached leaks into the next test.
@@ -724,18 +733,124 @@ describe('MessageRowComponent', () => {
       vi.mocked(document.getSelection).mockRestore();
     });
 
-    it('opens the same actions after a long press on touch', async () => {
+    it('reveals the action bar after a long press on touch', async () => {
+      // NOT the overflow menu. Reply, Add reaction and Reply in thread are the bar's own
+      // buttons and are not in that menu, so opening it would leave a touch user unable to
+      // reach the three actions they use most.
       vi.useFakeTimers();
       const { container } = await renderRow({ row: row(), caps: caps() });
       const el = container.querySelector('.msg') as HTMLElement;
 
       el.dispatchEvent(pointer('pointerdown'));
-      expect(menuOpen()).toBe(false); // not yet — a tap is not a press
+      expect(barRevealed(container)).toBe(false); // not yet — a tap is not a press
       vi.advanceTimersByTime(600);
       await Promise.resolve();
 
-      expect(menuOpen()).toBe(true);
+      expect(barRevealed(container)).toBe(true);
       vi.useRealTimers();
+    });
+
+    it('does not let a second primary pointer leak the first press', async () => {
+      // A pen and a finger are BOTH primary (`isPrimary` is per pointer type), so the
+      // non-primary guard does not cover this: the second `pointerdown` used to overwrite the
+      // timer handle while the first timer stayed scheduled, and cancelling then cleared only
+      // the one still reachable. The orphan fired 500ms later and opened the bar with nothing
+      // held down. Only clearing the pending timer on the way in prevents it.
+      vi.useFakeTimers();
+      const { container } = await renderRow({ row: row(), caps: caps() });
+      const el = container.querySelector('.msg') as HTMLElement;
+
+      el.dispatchEvent(pointer('pointerdown'));
+      el.dispatchEvent(
+        pointer('pointerdown', { pointerType: 'pen', clientX: 80 }),
+      );
+      el.dispatchEvent(pointer('pointercancel'));
+      vi.advanceTimersByTime(1000);
+      await Promise.resolve();
+
+      expect(barRevealed(container)).toBe(false);
+      vi.useRealTimers();
+    });
+
+    it('lets a second finger land without restarting the press underway', async () => {
+      // The distinguishing case for the non-primary guard, which the test above cannot
+      // isolate because clearing the pending timer would also satisfy it. Here the first
+      // press is already 400ms along; treating the second finger as a new press would reset
+      // that clock and the press would never complete. A real pinch still cancels this, via
+      // the `pointercancel` the browser sends when it takes the gesture over.
+      vi.useFakeTimers();
+      const { container } = await renderRow({ row: row(), caps: caps() });
+      const el = container.querySelector('.msg') as HTMLElement;
+
+      el.dispatchEvent(pointer('pointerdown'));
+      vi.advanceTimersByTime(400);
+      el.dispatchEvent(
+        pointer('pointerdown', { isPrimary: false, clientX: 80 }),
+      );
+      vi.advanceTimersByTime(200);
+      await Promise.resolve();
+
+      expect(barRevealed(container)).toBe(true);
+      vi.useRealTimers();
+    });
+
+    it.each(['pointerup', 'pointercancel', 'pointerleave'])(
+      'ends the press on %s',
+      async (endEvent) => {
+        // Each of these is wired separately in the template, so each can be dropped
+        // separately — and a press that outlives the finger opens the bar on its own.
+        vi.useFakeTimers();
+        const { container } = await renderRow({ row: row(), caps: caps() });
+        const el = container.querySelector('.msg') as HTMLElement;
+
+        el.dispatchEvent(pointer('pointerdown'));
+        el.dispatchEvent(pointer(endEvent));
+        vi.advanceTimersByTime(1000);
+        await Promise.resolve();
+
+        expect(barRevealed(container)).toBe(false);
+        vi.useRealTimers();
+      },
+    );
+
+    it('puts the bar away again when something outside the row is pressed', async () => {
+      vi.useFakeTimers();
+      const { container } = await renderRow({ row: row(), caps: caps() });
+      const el = container.querySelector('.msg') as HTMLElement;
+
+      el.dispatchEvent(pointer('pointerdown'));
+      vi.advanceTimersByTime(600);
+      await Promise.resolve();
+      expect(barRevealed(container)).toBe(true);
+
+      document.body.dispatchEvent(
+        new Event('pointerdown', { bubbles: true, cancelable: true }),
+      );
+      await Promise.resolve();
+
+      expect(barRevealed(container)).toBe(false);
+      vi.useRealTimers();
+    });
+
+    it('leaves a right-click on a link to the browser', async () => {
+      // "Open link in new tab" and "Save image as…" exist nowhere else, so swallowing the
+      // native menu over a link or an attachment is a straight loss.
+      const { container } = await renderRow({
+        row: row({ html: '<a href="https://example.com">a link</a>' }),
+        caps: caps(),
+      });
+      const link = container.querySelector('a') as HTMLElement;
+      expect(link).not.toBeNull();
+
+      const event = new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+      });
+      link.dispatchEvent(event);
+      await Promise.resolve();
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(menuOpen()).toBe(false);
     });
 
     it('does not fire at the end of a scroll', async () => {
@@ -750,7 +865,7 @@ describe('MessageRowComponent', () => {
       vi.advanceTimersByTime(600);
       await Promise.resolve();
 
-      expect(menuOpen()).toBe(false);
+      expect(barRevealed(container)).toBe(false);
       vi.useRealTimers();
     });
 
@@ -763,7 +878,7 @@ describe('MessageRowComponent', () => {
       vi.advanceTimersByTime(600);
       await Promise.resolve();
 
-      expect(menuOpen()).toBe(false);
+      expect(barRevealed(container)).toBe(false);
       vi.useRealTimers();
     });
   });

@@ -149,16 +149,21 @@
 }
 
 .msg:hover .msg__toolbar,
-.msg:focus-within .msg__toolbar {
+.msg:focus-within .msg__toolbar,
+.msg--revealed .msg__toolbar {
   opacity: 1;
   pointer-events: auto;
 }
 
-// No `@media (hover: none)` override any more. It used to force the bar open on every row
-// of a touch device, because otherwise the actions were unreachable — which meant every
-// message permanently wore a toolbar. A long press now reaches the same menu (see
-// `onPointerDown`), so the bar can stay hidden until it is asked for, the way it is with a
-// pointer. Keyboard users still reveal it via `:focus-within` above.
+// `.msg--revealed` is what replaced the old `@media (hover: none)` override.
+
+// That override forced the bar open on EVERY row of a touch device, because otherwise the
+// actions were unreachable — so every message permanently wore a toolbar. Removing it is what
+// made the timeline quiet, but it cannot simply go: a touchscreen has no hover, and the long
+// press that stands in for right-click opens the OVERFLOW menu, which does not contain Reply,
+// Add reaction or Reply in thread. Those are the bar's own buttons. So a long press reveals
+// the bar for that one row (see `revealToolbar`), and its "⋯" still reaches the rest.
+// Keyboard users get there via `:focus-within` above.
 
 .msg__avatar {
   flex: 0 0 auto;
