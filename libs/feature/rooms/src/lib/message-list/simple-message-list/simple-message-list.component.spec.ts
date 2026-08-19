@@ -64,6 +64,25 @@ function eventRow(id: string, summary: string, ts: number): MessageView {
 const notAtBottom = (cmp: SimpleMessageListComponent): boolean =>
   (cmp as unknown as { notAtBottom: () => boolean }).notAtBottom();
 
+/**
+ * The element that follows a divider in the timeline.
+ *
+ * Dividers are a component now, so the `.day-divider` / `.new-divider` element the tests
+ * query sits inside a `<trn-timeline-divider>` host. The host is `display: contents`, so
+ * nothing moves on screen — but it IS in the DOM, and the row after the divider is the
+ * host's sibling rather than the div's. Walking out to the host keeps these assertions
+ * about timeline order rather than about which element happens to wrap what.
+ */
+const afterDivider = (el: Element | null | undefined): Element | null => {
+  const next =
+    (el?.closest('trn-timeline-divider') ?? el)?.nextElementSibling ?? null;
+  // Unwrap the next divider too, so a caller reading `data-testid` sees the divider itself
+  // rather than the host that carries it. A message row is returned untouched.
+  return next?.matches('trn-timeline-divider')
+    ? (next.firstElementChild ?? next)
+    : next;
+};
+
 describe('SimpleMessageListComponent', () => {
   it('renders a row per message and groups consecutive senders', async () => {
     const { container } = await render(SimpleMessageListComponent, {
@@ -893,7 +912,7 @@ describe('SimpleMessageListComponent', () => {
       expect(divider).not.toBeNull();
       // The divider sits immediately before the $2 row.
       expect(
-        divider?.nextElementSibling
+        afterDivider(divider)
           ?.querySelector('[data-mid]')
           ?.getAttribute('data-mid'),
       ).toBe('$2');
@@ -970,7 +989,7 @@ describe('SimpleMessageListComponent', () => {
       // On the day-2 row, not on the stranded one: the malformed row inherits the day
       // around it rather than opening one of its own.
       expect(
-        found[0]?.nextElementSibling
+        afterDivider(found[0])
           ?.querySelector('[data-mid]')
           ?.getAttribute('data-mid'),
       ).toBe('$2');
@@ -1006,7 +1025,7 @@ describe('SimpleMessageListComponent', () => {
       ]);
       expect(
         found.map((el) =>
-          el.nextElementSibling
+          afterDivider(el)
             ?.querySelector('[data-mid]')
             ?.getAttribute('data-mid'),
         ),
@@ -1034,10 +1053,10 @@ describe('SimpleMessageListComponent', () => {
 
       // "Today / New messages / the row" reads as a sentence; the other order says the day
       // changed after the unread boundary.
-      const unread = separators(container)[0]?.nextElementSibling;
+      const unread = afterDivider(separators(container)[0]);
       expect(unread?.getAttribute('data-testid')).toBe('new-messages-divider');
       expect(
-        unread?.nextElementSibling
+        afterDivider(unread)
           ?.querySelector('[data-mid]')
           ?.getAttribute('data-mid'),
       ).toBe('$2');
