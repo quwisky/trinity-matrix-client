@@ -14,8 +14,14 @@
 
   // Bleed into the scroll's horizontal padding so the hover highlight spans
   // the full width (Discord-style); content position is unchanged.
-  padding: 2px 16px;
-  margin: 0 -16px;
+  // The top value is the GROUP GAP, and it is padding rather than margin on purpose:
+  // `virtual-message-list` measures each row with `entry.borderBoxSize[0].blockSize`, which
+  // margins sit outside of. A `margin-top` here would be invisible to that measurement, so
+  // every group start would be undercounted by the gap and the windowed scroll would drift
+  // by 16px per group. `:host { display: contents }` means there is no host box to observe
+  // instead. Continuations reset it to 0 below, which is what makes a group read as a group.
+  padding: var(--trinity-space-5) var(--trinity-space-5) var(--trinity-space-1);
+  margin: 0 calc(-1 * var(--trinity-space-5));
 
   &:hover {
     background: var(--trinity-hover);

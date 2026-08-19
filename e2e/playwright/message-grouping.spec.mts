@@ -142,5 +142,43 @@ test.describe('Message grouping', () => {
     for (const left of textLeft) {
       expect(left).toBeCloseTo(textLeft[0], 1);
     }
+
+    // The group gap, measured rather than read off the stylesheet — and specifically as
+    // PADDING inside the border box. `virtual-message-list` sizes every row with
+    // `entry.borderBoxSize[0].blockSize`, which margins sit outside of, so a gap applied as
+    // `margin-top` would look identical on screen here and silently undercount the windowed
+    // scroll by the gap on every group start. Asserting the border box is what tells the two
+    // apart; jsdom cannot, because it does no layout at all.
+    const gap = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll('.msg')].filter((row) =>
+        row.querySelector('.msg__text'),
+      );
+      const start = rows.find((row) => !row.classList.contains('msg--cont'));
+      const cont = rows.find((row) => row.classList.contains('msg--cont'));
+      if (!start || !cont) {
+        return null;
+      }
+      const read = (el: Element) => {
+        const cs = getComputedStyle(el);
+        return {
+          paddingTop: parseFloat(cs.paddingTop),
+          marginTop: parseFloat(cs.marginTop),
+          // What the ResizeObserver would report for this row.
+          borderBox: el.getBoundingClientRect().height,
+        };
+      };
+      return { start: read(start), cont: read(cont) };
+    });
+
+    if (!gap) {
+      throw new Error('expected both a group start and a continuation row');
+    }
+    // The start carries the gap; the continuation carries none.
+    expect(gap.start.paddingTop).toBeGreaterThanOrEqual(16);
+    expect(gap.cont.paddingTop).toBe(0);
+    // And it is not margin — which is the half a screenshot could not tell you.
+    expect(gap.start.marginTop).toBe(0);
+    // So the measured height of a group start really does include it.
+    expect(gap.start.borderBox - gap.cont.borderBox).toBeGreaterThanOrEqual(15);
   });
 });
