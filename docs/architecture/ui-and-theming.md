@@ -447,8 +447,17 @@ palette only has to set the value once:
 --input: var(--border);
 ```
 
-Mode-invariant bindings are declared once in the base `:root` block. Two palettes ship:
-`trinity` (blurple `#5865f2`) and `amethyst` (violet).
+Mode-invariant bindings are declared once in the base `:root` block. Three palettes ship:
+`trinity` (blurple `#5865f2`), `amethyst` (violet) and `onyx` (achromatic; dark is AMOLED
+true black).
+
+`onyx` is worth reading as the worked example of the contract: it overrides **surfaces only**.
+Every text role, the link, the danger colours, the accent and the whole syntax set are left
+unset and fall through to the `:root` / `:root.dark` defaults — and `contrast-matrix.spec.mjs`
+picks the palette up automatically and proves those inherited values still clear AA against the
+new grounds, which is exactly where an inherited colour is most likely to stop working. A
+palette that needed a component edited, or a role redefined to stay legible, would be telling
+you the token layer is incomplete.
 
 ### The danger versus destructive rule
 

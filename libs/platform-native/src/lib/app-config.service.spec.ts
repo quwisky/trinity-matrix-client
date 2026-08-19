@@ -296,7 +296,7 @@ describe('AppConfigService', () => {
 
       expect(plan.ok).toBe(false);
       expect(plan.ok === false && plan.problems).toEqual([
-        "theme.palette: 'mauve' is not a known palette (expected trinity or amethyst)",
+        "theme.palette: 'mauve' is not a known palette (expected trinity, amethyst or onyx)",
       ]);
     });
 

@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **A third theme: Onyx.** A neutral, achromatic palette whose dark mode is true black — on an
+  OLED screen a black pixel is simply switched off, so it saves power and looks properly dark
+  rather than dark grey. Pick it under Settings → Appearance, in either light or dark mode.
+
 ### Fixed
 
 - **Muted text and links are readable everywhere now.** Timestamps, member names and other
