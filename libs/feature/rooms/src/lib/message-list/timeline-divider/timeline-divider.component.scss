@@ -22,8 +22,8 @@
 .day-divider {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 16px 0 8px;
+  gap: var(--trinity-space-3);
+  margin: var(--trinity-space-5) 0 var(--trinity-space-3);
 
   &::before,
   &::after {
@@ -43,8 +43,8 @@
 .new-divider {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 8px 0;
+  gap: var(--trinity-space-3);
+  margin: var(--trinity-space-3) 0;
   color: var(--trinity-link);
   font-size: 12px;
   font-weight: 600;

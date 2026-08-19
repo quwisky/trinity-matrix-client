@@ -15,10 +15,10 @@
 .toolbar__picker {
   position: absolute;
   right: 0;
-  bottom: calc(100% + 4px);
+  bottom: calc(100% + var(--trinity-space-2));
   display: flex;
-  gap: 2px;
-  padding: 4px;
+  gap: var(--trinity-space-1);
+  padding: var(--trinity-space-2);
   border: 1px solid var(--trinity-divider);
   border-radius: var(--trinity-radius);
   background: var(--trinity-sidebar);

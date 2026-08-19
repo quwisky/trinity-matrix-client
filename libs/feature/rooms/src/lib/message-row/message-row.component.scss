@@ -1,5 +1,20 @@
 @use '../styles/mixins' as *;
 
+// The timeline's lead column: the avatar a header row shows, and the empty gutter a
+// continuation shows in its place. They MUST measure the same, or a grouped message lands
+// out of line with the one above it — `e2e/playwright/message-grouping.spec.mts` asserts
+// that equality in a real browser, because it was a flex `min-content` bug jsdom cannot see.
+// The number therefore lives in three places that have to agree: here, the template's
+// `<trn-avatar [size]="40">` (the avatar sizes itself from its own input, not from CSS), and
+// that spec's `LEAD_WIDTH`.
+$lead-width: 40px;
+
+// Where the message body starts: the lead column plus the row's gap. It was written out as
+// a bare `52px` at three sites, each with its own comment re-deriving it — so deriving it
+// once is what stops a gap change leaving the reply preview, the thread affordance and the
+// retry link disagreeing about where the body is.
+$body-indent: $lead-width + 12px;
+
 // Transparent wrapper: the row participates in the list's layout as if `.msg`
 // were a direct child (so the full-width hover bleed and padding are unchanged).
 :host {
@@ -10,7 +25,7 @@
   position: relative;
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--trinity-space-4);
 
   // Bleed into the scroll's horizontal padding so the hover highlight spans
   // the full width (Discord-style); content position is unchanged.
@@ -71,8 +86,9 @@
 // the surrounding padding without moving the baseline, which matters because on a
 // touchscreen there is no hover toolbar and this is the only way in.
 .msg__edited {
-  margin: -8px 0 -8px 4px;
-  padding: 8px 4px;
+  margin: calc(-1 * var(--trinity-space-3)) 0 calc(-1 * var(--trinity-space-3))
+    var(--trinity-space-2);
+  padding: var(--trinity-space-3) var(--trinity-space-2);
   border: none;
   background: none;
   color: var(--trinity-text-muted);
@@ -101,8 +117,8 @@
 .msg__shield {
   flex: 0 0 auto;
   align-self: flex-start;
-  margin-top: 2px;
-  margin-left: 8px;
+  margin-top: var(--trinity-space-1);
+  margin-left: var(--trinity-space-3);
   color: var(--trinity-text-muted);
   font-size: 13px;
   cursor: help;
@@ -136,7 +152,7 @@
 
 .msg__shield-tip-detail {
   display: block;
-  margin-top: 2px;
+  margin-top: var(--trinity-space-1);
   opacity: 0.85;
 }
 
@@ -173,7 +189,7 @@
 
 .msg__avatar {
   flex: 0 0 auto;
-  margin-top: 2px;
+  margin-top: var(--trinity-space-1);
 }
 
 // Stands in for the avatar on a grouped row, so it must measure exactly as wide as
@@ -185,7 +201,7 @@
 // push the row right. Pinning it to 0 keeps the box at 40px and lets the timestamp —
 // hover-only, and right-aligned — spill into the row's own 16px padding instead.
 .msg__gutter {
-  flex: 0 0 40px;
+  flex: 0 0 $lead-width;
   min-width: 0;
   align-self: center;
   text-align: right;
@@ -211,12 +227,12 @@
 
   // Full row minus the 52px indent, so the margin-box stays within the row
   // (otherwise a long body overflows and adds a horizontal scrollbar).
-  flex: 0 0 calc(100% - 52px);
+  flex: 0 0 calc(100% - #{$body-indent});
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  margin: 0 0 2px 52px;
+  margin: 0 0 var(--trinity-space-1) $body-indent;
   padding: 0;
   border: none;
   background: none;
@@ -263,7 +279,7 @@
 .msg__head {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--trinity-space-3);
 }
 
 .msg__author {
@@ -277,7 +293,7 @@
 }
 
 .msg__text {
-  margin: 2px 0 0;
+  margin: var(--trinity-space-1) 0 0;
   color: var(--trinity-text);
   overflow-wrap: anywhere;
 }
@@ -307,7 +323,7 @@
 // state is perceivable, not just italic-muted text that blends into the timeline.
 .msg--failed .msg__text {
   display: inline-block;
-  padding: 8px 12px;
+  padding: var(--trinity-space-3) var(--trinity-space-4);
   border-left: 3px solid var(--trinity-accent);
   border-radius: var(--trinity-radius-sm);
   background: var(--trinity-sidebar);
@@ -322,8 +338,8 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin: 4px 0 0 52px;
-  padding: 4px 10px;
+  margin: var(--trinity-space-2) 0 0 $body-indent;
+  padding: var(--trinity-space-2) 10px;
   border: 1px solid var(--trinity-divider);
   border-radius: var(--trinity-radius-pill);
   background: var(--trinity-sidebar);
@@ -361,7 +377,7 @@
   flex: 0 0 auto;
   min-width: 16px;
   height: 16px;
-  margin-left: 2px;
+  margin-left: var(--trinity-space-1);
   padding: 0 5px;
   border-radius: var(--trinity-radius-pill);
   background: var(--trinity-accent);
@@ -392,7 +408,7 @@
 
 .msg__retry {
   flex-basis: 100%;
-  margin-left: 52px; // align under the message body (avatar 40 + gap 12)
+  margin-left: $body-indent;
   padding: 0;
   border: none;
   background: none;
@@ -430,7 +446,7 @@
 // stating something false about who saw what. Receipts stay on the event they belong to.
 .msg__receipts {
   display: flex;
-  gap: 2px;
+  gap: var(--trinity-space-1);
 
   // A <button> shrink-wraps to its content, so `justify-content: flex-end` had no free space
   // to push against — right-align the whole control with an auto margin.
@@ -446,7 +462,7 @@
 
 .msg__seen-by {
   display: block;
-  margin-top: 2px;
+  margin-top: var(--trinity-space-1);
   color: var(--trinity-text-muted);
   font-size: 12px;
   text-align: right;

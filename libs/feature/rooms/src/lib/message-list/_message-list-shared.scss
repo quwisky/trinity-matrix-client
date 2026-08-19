@@ -31,12 +31,12 @@
   // instead of growing the column.
   flex: 1;
   min-height: 0;
-  padding: 16px 16px 8px;
+  padding: var(--trinity-space-5) var(--trinity-space-5) var(--trinity-space-3);
 }
 
 .load-older {
   text-align: center;
-  padding: 8px 0 12px;
+  padding: var(--trinity-space-3) 0 var(--trinity-space-4);
   font-size: 13px;
   color: var(--trinity-text-muted);
 }
@@ -44,11 +44,11 @@
 .empty {
   color: var(--trinity-text-muted);
   text-align: center;
-  padding: 24px;
+  padding: var(--trinity-space-6);
 }
 
 .typing-indicator {
-  padding: 2px 16px 4px;
+  padding: var(--trinity-space-1) var(--trinity-space-5) var(--trinity-space-2);
   font-size: 13px;
   font-style: italic;
   line-height: 1.2rem;
@@ -61,10 +61,10 @@
 
 .jump-unread {
   position: absolute;
-  top: 8px;
+  top: var(--trinity-space-3);
   left: 50%;
   z-index: var(--trinity-z-sticky);
-  padding: 4px 12px;
+  padding: var(--trinity-space-2) var(--trinity-space-4);
   border: none;
   border-radius: var(--trinity-radius-pill);
   background: var(--trinity-accent);
@@ -78,8 +78,8 @@
 
 .jump-latest {
   position: absolute;
-  right: 16px;
-  bottom: 12px;
+  right: var(--trinity-space-5);
+  bottom: var(--trinity-space-4);
   z-index: var(--trinity-z-sticky);
   display: flex;
   align-items: center;
