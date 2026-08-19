@@ -356,6 +356,64 @@ async function main() {
       .waitFor({ state: 'visible', timeout: 10_000 });
     log('drop target shown while dragging ✓');
 
+    // Measured in Chromium because nothing else can: jsdom does not evaluate `color-mix()`,
+    // and an invalid one (mixing toward a token the theme never defines) drops the whole
+    // declaration silently — the overlay then renders with NO background, which is exactly
+    // how this shipped the first time.
+    const overlay = await page.evaluate((selector) => {
+      const list = document.querySelector(selector);
+      const sheet = document.querySelector('[data-testid="drop-overlay"]');
+      const frame = document.querySelector('.drop-overlay__frame');
+      if (!list || !sheet || !frame) {
+        return null;
+      }
+      const alphaOf = (color) => {
+        const inner = color.slice(
+          color.indexOf('(') + 1,
+          color.lastIndexOf(')'),
+        );
+        if (inner.includes('/')) {
+          return parseFloat(inner.split('/')[1]);
+        }
+        const parts = inner.split(',').map((p) => parseFloat(p));
+        return parts.length > 3 ? parts[3] : 1;
+      };
+      const l = list.getBoundingClientRect();
+      const s = sheet.getBoundingClientRect();
+      const f = frame.getBoundingClientRect();
+      return {
+        covers:
+          Math.abs(l.top - s.top) < 1 &&
+          Math.abs(l.left - s.left) < 1 &&
+          Math.abs(l.width - s.width) < 1 &&
+          Math.abs(l.height - s.height) < 1,
+        alpha: alphaOf(getComputedStyle(sheet).backgroundColor),
+        // The frame is what says "this whole region takes the drop", so it has to be most of
+        // the area rather than a label-sized box in the middle.
+        frameShare: (f.width * f.height) / (l.width * l.height),
+      };
+    }, listSelector);
+
+    if (!overlay) {
+      throw new Error('drop overlay or its frame is not in the DOM');
+    }
+    if (!overlay.covers) {
+      throw new Error('drop overlay does not cover the whole drop area');
+    }
+    if (!(overlay.alpha > 0.4 && overlay.alpha < 1)) {
+      throw new Error(
+        `drop overlay background should be translucent, alpha=${overlay.alpha}`,
+      );
+    }
+    if (overlay.frameShare < 0.8) {
+      throw new Error(
+        `drop frame covers only ${Math.round(overlay.frameShare * 100)}% of the area`,
+      );
+    }
+    log(
+      `overlay covers the list, alpha=${overlay.alpha}, frame=${Math.round(overlay.frameShare * 100)}% ✓`,
+    );
+
     await list.dispatchEvent('drop', { dataTransfer: dropData });
     await page
       .getByTestId('drop-overlay')

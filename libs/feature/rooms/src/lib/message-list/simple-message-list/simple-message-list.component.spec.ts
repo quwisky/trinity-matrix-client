@@ -1151,6 +1151,10 @@ describe('SimpleMessageListComponent', () => {
     expect(
       container.querySelector('[data-testid=drop-overlay]'),
     ).not.toBeNull();
+    // The frame is what marks out the droppable region. Its geometry and the sheet's tint are
+    // measured in Chromium by `pnpm e2e:media` — jsdom evaluates neither `color-mix()` nor
+    // layout, which is how a background that resolved to nothing at all once shipped.
+    expect(container.querySelector('.drop-overlay__frame')).not.toBeNull();
 
     fire('drop', [new File(['x'], 'dropped.png', { type: 'image/png' })]);
 
