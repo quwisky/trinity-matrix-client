@@ -1,4 +1,5 @@
 import {
+  DestroyRef,
   ChangeDetectionStrategy,
   Component,
   computed,
@@ -6,6 +7,7 @@ import {
   input,
   output,
   signal,
+  viewChild,
 } from '@angular/core';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { AvatarComponent } from '@trinity/components/avatar';
@@ -88,6 +90,11 @@ export type MessageRowAction =
  * hover toolbar and failed/retry affordance are suppressed (the view-only thread
  * panel), keeping reactions visible.
  */
+/** How long a press has to be held before it counts as one, in milliseconds. */
+const LONG_PRESS_MS = 500;
+/** How far the pointer may drift before the press is a scroll instead. */
+const LONG_PRESS_SLOP_PX = 10;
+
 @Component({
   selector: 'trn-message-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -111,6 +118,81 @@ export type MessageRowAction =
 export class MessageRowComponent {
   /** Timestamps go through the app-wide format preference, never a DatePipe. */
   readonly fmt = inject(DateTimeFormatService);
+  private readonly destroyRef = inject(DestroyRef);
+
+  private readonly toolbar = viewChild(MessageToolbarComponent);
+  private longPressTimer: ReturnType<typeof setTimeout> | null = null;
+  private longPressOrigin: { x: number; y: number } | null = null;
+
+  constructor() {
+    this.destroyRef.onDestroy(() => this.cancelLongPress());
+  }
+
+  /**
+   * Right-click opens the message's own actions instead of the browser's.
+   *
+   * Not suppressed over a selection: a user who has highlighted part of a message is asking
+   * for Copy, and taking that menu away to offer our own would be a downgrade. The native
+   * menu is only prevented where this row actually handles the event.
+   */
+  onContextMenu(event: MouseEvent): void {
+    if (this.hasTextSelection()) {
+      return;
+    }
+    const bar = this.toolbar();
+    if (!bar) {
+      return; // read-only rows and system events have no actions to offer
+    }
+    event.preventDefault();
+    bar.openMoreMenu();
+  }
+
+  /**
+   * Touch has no right-click, so a long press stands in for it — the same actions, reached
+   * the way every other app on the device reaches them.
+   */
+  onPointerDown(event: PointerEvent): void {
+    if (event.pointerType === 'mouse' || !this.toolbar()) {
+      return;
+    }
+    this.longPressOrigin = { x: event.clientX, y: event.clientY };
+    this.longPressTimer = setTimeout(() => {
+      this.longPressTimer = null;
+      if (!this.hasTextSelection()) {
+        this.toolbar()?.openMoreMenu();
+      }
+    }, LONG_PRESS_MS);
+  }
+
+  /**
+   * A press that travels is a scroll, and a timeline is mostly scrolled. Cancelling on
+   * movement is what keeps the menu from firing at the end of a flick.
+   */
+  onPointerMove(event: PointerEvent): void {
+    const origin = this.longPressOrigin;
+    if (!origin || this.longPressTimer === null) {
+      return;
+    }
+    const travelled =
+      Math.abs(event.clientX - origin.x) + Math.abs(event.clientY - origin.y);
+    if (travelled > LONG_PRESS_SLOP_PX) {
+      this.cancelLongPress();
+    }
+  }
+
+  /** Lifting, cancelling, or leaving all end the press without opening anything. */
+  cancelLongPress(): void {
+    if (this.longPressTimer !== null) {
+      clearTimeout(this.longPressTimer);
+      this.longPressTimer = null;
+    }
+    this.longPressOrigin = null;
+  }
+
+  /** Whether the user has text selected — their selection, their menu. */
+  private hasTextSelection(): boolean {
+    return (document.getSelection()?.toString().trim().length ?? 0) > 0;
+  }
 
   readonly row = input.required<MessageRow>();
   /** Thread summary for this row's event (main timeline only), else null. */

@@ -154,17 +154,11 @@
   pointer-events: auto;
 }
 
-// Touch devices have no hover, so the actions would be unreachable — keep them visible
-// there. (Keyboard users still reveal them via :focus-within above.)
-// An always-open bar on every row is still the wrong answer, and it goes when the context
-// menu lands: a long-press reaching the same actions is what makes this override deletable.
-// Until then it at least no longer covers the previous message.
-@media (hover: none) {
-  .msg__toolbar {
-    opacity: 1;
-    pointer-events: auto;
-  }
-}
+// No `@media (hover: none)` override any more. It used to force the bar open on every row
+// of a touch device, because otherwise the actions were unreachable — which meant every
+// message permanently wore a toolbar. A long press now reaches the same menu (see
+// `onPointerDown`), so the bar can stay hidden until it is asked for, the way it is with a
+// pointer. Keyboard users still reveal it via `:focus-within` above.
 
 .msg__avatar {
   flex: 0 0 auto;

@@ -8,11 +8,22 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Right-click or long-press a message for its actions.** The full set — pin, quote, copy,
+  copy link, forward, view source, report, edit, delete — is now a right-click away on desktop
+  and a long-press away on phones, instead of only reachable through the small "⋯" button that
+  appears on hover. Highlight some text first and you still get the browser's own menu, because
+  that is the one with Copy in it.
+
 - **A third theme: Onyx.** A neutral, achromatic palette whose dark mode is true black — on an
   OLED screen a black pixel is simply switched off, so it saves power and looks properly dark
   rather than dark grey. Pick it under Settings → Appearance, in either light or dark mode.
 
 ### Fixed
+
+- **Message actions no longer sit on top of the message above.** The hover toolbar was
+  positioned deliberately outside its own row, which on a phone — where it was always visible —
+  meant every message permanently covered the top of the one before it. It stays inside its own
+  message now, and on touch it stays out of the way until you long-press.
 
 - **Muted text and links are readable everywhere now.** Timestamps, member names, dialog
   captions and other secondary text failed the accessibility contrast floor the moment you

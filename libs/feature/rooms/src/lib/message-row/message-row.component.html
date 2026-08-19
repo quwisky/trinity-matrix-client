@@ -16,6 +16,12 @@
     [class.msg--sending]="r.status === 'sending'"
     [class.msg--sendfailed]="r.status === 'failed'"
     [attr.data-mid]="r.id"
+    (contextmenu)="onContextMenu($event)"
+    (pointerdown)="onPointerDown($event)"
+    (pointermove)="onPointerMove($event)"
+    (pointerup)="cancelLongPress()"
+    (pointercancel)="cancelLongPress()"
+    (pointerleave)="cancelLongPress()"
   >
     @if (r.replyTo) {
       <button

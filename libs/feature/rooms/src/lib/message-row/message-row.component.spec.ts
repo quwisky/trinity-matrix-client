@@ -668,4 +668,103 @@ describe('MessageRowComponent', () => {
     expect(container.querySelector('trn-message-toolbar')).toBeNull();
     expect(container.querySelector('.msg__retry')).toBeNull();
   });
+
+  describe('right-click and long-press', () => {
+    /** The menu is rendered into a CDK overlay, so it is found on `document`, not in the row. */
+    const menuOpen = () =>
+      document.querySelectorAll('[data-testid=msg-copy]').length > 0;
+
+    const pointer = (type: string, over: Partial<PointerEvent> = {}) =>
+      Object.assign(
+        new Event(type, { bubbles: true, cancelable: true }),
+        { pointerType: 'touch', clientX: 0, clientY: 0 },
+        over,
+      ) as unknown as PointerEvent;
+
+    afterEach(() => {
+      // The overlay outlives the fixture; leaving it attached leaks into the next test.
+      document
+        .querySelectorAll('.cdk-overlay-container')
+        .forEach((el) => el.remove());
+    });
+
+    it('opens the message actions on right-click, instead of the browser menu', async () => {
+      const { container } = await renderRow({ row: row(), caps: caps() });
+      const el = container.querySelector('.msg') as HTMLElement;
+
+      const event = new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+      });
+      el.dispatchEvent(event);
+      await Promise.resolve();
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(menuOpen()).toBe(true);
+    });
+
+    it('leaves the browser menu alone when text is selected', async () => {
+      // Their selection, their menu: a user who has highlighted part of a message is asking
+      // for Copy, and replacing that with ours would be a downgrade.
+      const { container } = await renderRow({ row: row(), caps: caps() });
+      const el = container.querySelector('.msg') as HTMLElement;
+      const selection = { toString: () => 'some highlighted words' };
+      vi.spyOn(document, 'getSelection').mockReturnValue(
+        selection as unknown as Selection,
+      );
+
+      const event = new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+      });
+      el.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(menuOpen()).toBe(false);
+      vi.mocked(document.getSelection).mockRestore();
+    });
+
+    it('opens the same actions after a long press on touch', async () => {
+      vi.useFakeTimers();
+      const { container } = await renderRow({ row: row(), caps: caps() });
+      const el = container.querySelector('.msg') as HTMLElement;
+
+      el.dispatchEvent(pointer('pointerdown'));
+      expect(menuOpen()).toBe(false); // not yet — a tap is not a press
+      vi.advanceTimersByTime(600);
+      await Promise.resolve();
+
+      expect(menuOpen()).toBe(true);
+      vi.useRealTimers();
+    });
+
+    it('does not fire at the end of a scroll', async () => {
+      // A press that travels is a flick, and a timeline is mostly flicked. Without this the
+      // menu would appear every time a scroll happened to start on a message.
+      vi.useFakeTimers();
+      const { container } = await renderRow({ row: row(), caps: caps() });
+      const el = container.querySelector('.msg') as HTMLElement;
+
+      el.dispatchEvent(pointer('pointerdown'));
+      el.dispatchEvent(pointer('pointermove', { clientY: 40 }));
+      vi.advanceTimersByTime(600);
+      await Promise.resolve();
+
+      expect(menuOpen()).toBe(false);
+      vi.useRealTimers();
+    });
+
+    it('ignores a long press from a mouse, which has a right button for this', async () => {
+      vi.useFakeTimers();
+      const { container } = await renderRow({ row: row(), caps: caps() });
+      const el = container.querySelector('.msg') as HTMLElement;
+
+      el.dispatchEvent(pointer('pointerdown', { pointerType: 'mouse' }));
+      vi.advanceTimersByTime(600);
+      await Promise.resolve();
+
+      expect(menuOpen()).toBe(false);
+      vi.useRealTimers();
+    });
+  });
 });
