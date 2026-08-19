@@ -76,7 +76,8 @@ $body-indent: $lead-width + 12px;
 .msg__event-text {
   min-width: 0;
   color: var(--trinity-text-muted);
-  font-size: 12px;
+  font-size: var(--trinity-text-xs);
+  line-height: var(--trinity-text-xs--line-height);
   text-align: center;
   overflow-wrap: anywhere;
 }
@@ -93,7 +94,7 @@ $body-indent: $lead-width + 12px;
   background: none;
   color: var(--trinity-text-muted);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--trinity-text-xs);
   line-height: inherit;
   cursor: pointer;
 
@@ -120,7 +121,7 @@ $body-indent: $lead-width + 12px;
   margin-top: var(--trinity-space-1);
   margin-left: var(--trinity-space-3);
   color: var(--trinity-text-muted);
-  font-size: 13px;
+  font-size: var(--trinity-text-sm);
   cursor: help;
 }
 
@@ -206,7 +207,7 @@ $body-indent: $lead-width + 12px;
   align-self: center;
   text-align: right;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: var(--trinity-text-xs);
   color: var(--trinity-text-muted);
   opacity: 0;
 }
@@ -230,14 +231,14 @@ $body-indent: $lead-width + 12px;
   flex: 0 0 calc(100% - #{$body-indent});
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--trinity-space-3);
   min-width: 0;
   margin: 0 0 var(--trinity-space-1) $body-indent;
   padding: 0;
   border: none;
   background: none;
   color: var(--trinity-text-muted);
-  font-size: 13px;
+  font-size: var(--trinity-text-sm);
   text-align: left;
   cursor: pointer;
 
@@ -288,7 +289,7 @@ $body-indent: $lead-width + 12px;
 }
 
 .msg__time {
-  font-size: 12px;
+  font-size: var(--trinity-text-xs);
   color: var(--trinity-text-muted);
 }
 
@@ -337,14 +338,14 @@ $body-indent: $lead-width + 12px;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--trinity-space-2);
   margin: var(--trinity-space-2) 0 0 $body-indent;
-  padding: var(--trinity-space-2) 10px;
+  padding: var(--trinity-space-2) var(--trinity-space-4);
   border: 1px solid var(--trinity-divider);
   border-radius: var(--trinity-radius-pill);
   background: var(--trinity-sidebar);
   color: var(--trinity-link);
-  font-size: 13px;
+  font-size: var(--trinity-text-sm);
   font-weight: 500;
   cursor: pointer;
 
@@ -359,7 +360,7 @@ $body-indent: $lead-width + 12px;
 }
 
 .msg__thread-icon {
-  font-size: 15px;
+  font-size: var(--trinity-text-base);
 }
 
 .msg__thread-sep {
@@ -375,16 +376,22 @@ $body-indent: $lead-width + 12px;
 // switching to the danger ramp when the thread holds a highlight (mention).
 .msg__thread-badge {
   flex: 0 0 auto;
-  min-width: 16px;
-  height: 16px;
+
+  // Sized in `em`, i.e. as a multiple of the badge's OWN text, so the pill grows with the
+  // digit inside it under Settings → Appearance → Text size. A fixed 16px box around a
+  // scaling number squeezes it, and this pill exists only to wrap that number — unlike the
+  // toolbar buttons and the jump-to-latest control, which are targets and stay put.
+  // 1.45 is the 16px-over-11px this has always been, to a fraction of a pixel.
+  min-width: 1.45em;
+  height: 1.45em;
   margin-left: var(--trinity-space-1);
-  padding: 0 5px;
+  padding: 0 var(--trinity-space-2);
   border-radius: var(--trinity-radius-pill);
   background: var(--trinity-accent);
   color: var(--trinity-accent-foreground);
-  font-size: 11px;
+  font-size: var(--trinity-text-xs);
   font-weight: 700;
-  line-height: 16px;
+  line-height: 1.45em;
   text-align: center;
 }
 
@@ -413,7 +420,7 @@ $body-indent: $lead-width + 12px;
   border: none;
   background: none;
   color: var(--trinity-danger);
-  font-size: 13px;
+  font-size: var(--trinity-text-sm);
   text-align: left;
   cursor: pointer;
 
@@ -464,6 +471,7 @@ $body-indent: $lead-width + 12px;
   display: block;
   margin-top: var(--trinity-space-1);
   color: var(--trinity-text-muted);
-  font-size: 12px;
+  font-size: var(--trinity-text-xs);
+  line-height: var(--trinity-text-xs--line-height);
   text-align: right;
 }

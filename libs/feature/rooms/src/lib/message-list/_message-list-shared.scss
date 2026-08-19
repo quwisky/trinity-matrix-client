@@ -37,7 +37,7 @@
 .load-older {
   text-align: center;
   padding: var(--trinity-space-3) 0 var(--trinity-space-4);
-  font-size: 13px;
+  font-size: var(--trinity-text-sm);
   color: var(--trinity-text-muted);
 }
 
@@ -49,9 +49,9 @@
 
 .typing-indicator {
   padding: var(--trinity-space-1) var(--trinity-space-5) var(--trinity-space-2);
-  font-size: 13px;
+  font-size: var(--trinity-text-sm);
   font-style: italic;
-  line-height: 1.2rem;
+  line-height: var(--trinity-text-sm--line-height);
   color: var(--trinity-text-muted);
 }
 
@@ -69,7 +69,7 @@
   border-radius: var(--trinity-radius-pill);
   background: var(--trinity-accent);
   color: var(--trinity-accent-foreground);
-  font-size: 12px;
+  font-size: var(--trinity-text-xs);
   font-weight: 600;
   cursor: pointer;
   box-shadow: 0 2px 8px rgb(0 0 0 / 30%);
@@ -90,6 +90,10 @@
   border-radius: var(--trinity-radius-pill);
   background: var(--trinity-surface);
   color: var(--trinity-text);
+
+  // Stays px: this is the ↓ glyph, sized to a button whose 36px box is fixed. A scaling
+  // glyph in a fixed box grows until it clips — the text around it scales, its container
+  // does not, so the two must be sized the same way.
   font-size: 18px;
   line-height: 1;
   cursor: pointer;

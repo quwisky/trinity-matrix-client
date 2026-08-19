@@ -72,6 +72,53 @@ describe('styling tokens', () => {
     expect(raw).toEqual([]);
   });
 
+  it('leaves the message body without a font-size of its own', () => {
+    // Settings → Appearance → Text size works by scaling the ROOT font size, so the message
+    // body must inherit. A component that hard-codes a size onto `.msg__text` silently opts
+    // the timeline out of the entire feature, and the app still looks correct until someone
+    // changes the setting.
+    //
+    // `e2e/playwright/text-scaling.spec.mts` proves this at runtime by measuring a real
+    // message before and after — the stronger check, and the one that would catch a size
+    // arriving from a parent or a utility class. It needs Docker, so this cheap reading of
+    // the stylesheet runs on every commit and fails in the second the regression is written.
+    const source = read(
+      'libs/feature/rooms/src/lib/message-row/message-row.component.scss',
+    );
+
+    const rules = [];
+    for (const match of source.matchAll(/^([^\n{]*\.msg__text[^\n{]*)\{/gm)) {
+      const start = match.index + match[0].length;
+      const end = source.indexOf('}', start);
+      rules.push({ selector: match[1].trim(), body: source.slice(start, end) });
+    }
+
+    // Four rules target it today. Without this, renaming the class would leave nothing to
+    // check and the sweep would pass by finding nothing at all.
+    expect(rules.length).toBeGreaterThanOrEqual(4);
+    expect(
+      rules
+        .filter((rule) => /font-size:/.test(rule.body))
+        .map((r) => r.selector),
+    ).toEqual([]);
+  });
+
+  it('does not let the px font-size count grow', () => {
+    // The text-size setting has a documented limit: chrome that hard-codes px does not
+    // scale. That limit is a NUMBER, and a number written in a comment goes stale in
+    // silence — this one was cited as 147 in the e2e while the tree held 155. So it lives
+    // here instead, as a ratchet.
+    //
+    // It may only fall. Converting a surface to the type tokens lowers it, which is a
+    // one-line diff in the right direction; adding a px font-size raises it, which is a
+    // visible edit to a shared file rather than an invisible default.
+    const declarations = files.flatMap(
+      (file) => read(file).match(/font-size:\s*[0-9.]+px/g) ?? [],
+    );
+
+    expect(declarations.length).toBeLessThanOrEqual(140);
+  });
+
   it('keeps the literal keyframe durations to the recorded ledger', () => {
     const raw = files.filter((file) =>
       /animation:[^;]*\d+(\.\d+)?m?s/.test(read(file)),

@@ -37,6 +37,11 @@
 .day-divider__label {
   @include category-label;
 
+  // Overrides the mixin's fixed 12px. The mixin is shared with the sidebar and the member
+  // list, which this phase does not touch, and the day divider can appear directly above
+  // the unread divider — two labels a few pixels apart, one scaling with Text size and one
+  // not, is more obviously wrong than either choice on its own.
+  font-size: var(--trinity-text-xs);
   flex: 0 0 auto;
 }
 
@@ -46,7 +51,7 @@
   gap: var(--trinity-space-3);
   margin: var(--trinity-space-3) 0;
   color: var(--trinity-link);
-  font-size: 12px;
+  font-size: var(--trinity-text-xs);
   font-weight: 600;
 
   &::before,

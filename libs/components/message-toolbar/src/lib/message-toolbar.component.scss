@@ -26,10 +26,14 @@
 }
 
 .toolbar__emoji {
-  padding: 3px 4px;
+  padding: var(--trinity-space-1) var(--trinity-space-2);
   border: none;
   border-radius: var(--trinity-radius-sm);
   background: none;
+
+  // Glyph sizes stay px throughout this file. Every one of them sits in a button with a
+  // fixed box (32px, or 44px on a coarse pointer), so a size that scaled with the Text
+  // setting would outgrow its container rather than making anything more readable.
   font-size: 18px;
   line-height: 1;
   cursor: pointer;

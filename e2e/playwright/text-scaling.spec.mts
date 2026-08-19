@@ -16,10 +16,16 @@ import { login, synapseSession, type SynapseSession } from './support/app.mts';
 // some component later hard-coded a size onto the message body, which is exactly the
 // regression this setting exists to avoid.
 //
-// It also pins the deliberate LIMIT: chrome that hard-codes px does not scale (147 such
-// declarations remain, to be converted surface by surface), so the setting's own note says
-// so. This asserts the sidebar room name stays fixed — if that ever changes, the note is
-// wrong and should be removed with it.
+// It also pins the deliberate LIMIT: chrome that hard-codes px does not scale, so the
+// setting's own note says so. This asserts the sidebar room name stays fixed — if that ever
+// changes, the note is wrong and should be removed with it. The timeline no longer belongs
+// to that group: its chrome moved onto the rem type tokens, so a message's timestamp,
+// "(edited)" marker and thread affordance now grow with the body they sit beside.
+//
+// How many px declarations are left is deliberately NOT written here. It used to be, as
+// "147 such declarations remain" — and by the time anyone read it the tree held 155, which
+// is what a number in a comment does. `scripts/styling-tokens.spec.mjs` holds it instead,
+// as a ratchet that may only fall.
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise.
 const session = synapseSession();
@@ -152,6 +158,12 @@ test.describe('Text size', () => {
 
     const before = await px(message);
     const chromeBefore = await px(roomNameEl);
+    // The timeline's own chrome, which used to be in the fixed group and no longer is. The
+    // timestamp is the one every message has; asserting it separately from `.msg__text` is
+    // the difference between "the words got bigger" and "the message got bigger", and only
+    // the second is what the setting promises.
+    const stampEl = page.locator('.msg__time').first();
+    const stampBefore = await px(stampEl);
     // The default must leave <html> untouched, so the browser's own setting still wins.
     expect(
       await page.evaluate(() => document.documentElement.style.fontSize),
@@ -173,6 +185,10 @@ test.describe('Text size', () => {
     const scaled = page.locator('.msg__text', { hasText: body }).first();
     await expect(scaled).toBeVisible({ timeout: 20_000 });
     expect(await px(scaled)).toBeGreaterThan(before);
+
+    expect(await px(page.locator('.msg__time').first())).toBeGreaterThan(
+      stampBefore,
+    );
 
     // The documented limit: sidebar chrome hard-codes px and deliberately does not scale.
     expect(await px(page.locator('.channel__name').first())).toBe(chromeBefore);

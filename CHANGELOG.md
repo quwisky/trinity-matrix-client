@@ -23,6 +23,14 @@ All notable changes to this project are documented here. The format is based on
   OLED screen a black pixel is simply switched off, so it saves power and looks properly dark
   rather than dark grey. Pick it under Settings → Appearance, in either light or dark mode.
 
+### Changed
+
+- **Text size now reaches the whole timeline, not just the message.** Settings → Appearance →
+  Text size moved the words in a message but left everything around them behind: timestamps,
+  the "(edited)" marker, the "N replies" affordance, the day and unread dividers and the
+  "seen by" line all stayed at their fixed size, so turning the setting up produced large
+  text wrapped in small chrome. They scale together now.
+
 ### Fixed
 
 - **Images and videos hold their place while they load.** The timeline used to jump as each
