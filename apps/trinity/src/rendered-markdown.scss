@@ -84,7 +84,11 @@
   pre {
     position: relative;
     margin: 4px 0;
-    padding: 8px 10px;
+
+    // The extra bottom padding is the caption's band. Generated content is painted over the
+    // element, not inside its flow, so without a reserved strip the caption sits on the last
+    // line of code — whichever corner it is put in.
+    padding: 8px 10px 20px;
     border-radius: var(--trinity-radius-sm);
     background: var(--trinity-rail);
     overflow-x: auto;
@@ -93,22 +97,24 @@
     // Generated content from the `language` attribute the sanitizer writes: that keeps the
     // caption out of the element's text, so it cannot be selected, copied, or picked up by
     // the edit-history diff (which compares the text of two rendered revisions).
-    // BOTTOM-right, not top-right, because the message's hover toolbar is anchored across
-    // the row's top edge (`.msg__toolbar` sits at `top: -16px`, so it spans roughly the
-    // first 16px of the message) and is right-aligned. Hovering the block necessarily
-    // hovers the message, so the two are always shown together — and on a continuation
-    // row, which has no author header to push the block down, a top-right caption lands
-    // underneath the toolbar. The shortest possible block still puts its bottom edge
-    // clear of that band.
-    // Bottom-LEFT, not bottom-right. The message's hover toolbar is right-aligned inside the
-    // row, so a right-aligned caption competes with it for the same corner and loses on a
-    // short block — which is what `message-markdown.spec.mts` measures. Separating them on
-    // the horizontal axis fixes that for every block height rather than for the one that
-    // happened to be measured.
+    // BOTTOM-RIGHT. Two things have to be avoided and they pull in opposite directions.
+
+    // Vertically: the message's hover toolbar now sits inside the row at its top edge, and
+    // the block is hovered whenever the message is, so the two are always shown together. A
+    // caption at the block's TOP lands under the toolbar on a continuation row, which has no
+    // author header to push the block down. Hence the bottom.
+
+    // Horizontally: the end of the last line is the one part of a code block that is
+    // reliably blank — code is left-aligned, and with line numbers on the left is where the
+    // gutter is. A caption on the left was tried in this branch and printed straight over
+    // the code. Hence the right.
+
+    // The `padding-bottom` above is what keeps it off the code entirely rather than merely
+    // usually: the caption gets a strip of its own that no line can reach into.
     &[language]::after {
       content: attr(language);
       position: absolute;
-      left: 8px;
+      right: 10px;
       bottom: 6px;
       color: var(--trinity-text-muted);
       font-family: ui-monospace, monospace;

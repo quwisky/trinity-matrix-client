@@ -29,19 +29,32 @@ const template = readFileSync(
   'utf8',
 );
 
-/** The bindings on one element, in source order, with the element name normalised away. */
+/**
+ * The bindings on one element, as a SET, with the element name normalised away.
+ *
+ * A set and not a list: what must not drift is which bindings exist, and comparing source
+ * order would also fail when someone reorders attributes on one element — a diff with no
+ * behavioural meaning, and the kind of false alarm that gets a guard deleted.
+ *
+ * The element's own tag must sit alone on its first line (prettier formats it that way) and
+ * the tag must self-close. Both are asserted rather than assumed: this reads source text, so
+ * every parsing assumption it makes is a way for it to stop guarding without saying so.
+ */
 function bindingsOf(elementName) {
   const open = template.indexOf(`<${elementName}`);
   if (open === -1) {
     return null;
   }
   const close = template.indexOf('/>', open);
-  return template
-    .slice(open, close)
-    .split('\n')
-    .slice(1) // drop the element name itself
-    .map((line) => line.trim())
-    .filter(Boolean);
+  if (close === -1) {
+    return null;
+  }
+  const [tagLine, ...bindingLines] = template.slice(open, close).split('\n');
+  // `<trn-x` and nothing else. A binding sharing the line would be silently dropped.
+  if (tagLine.trim() !== `<${elementName}`) {
+    return null;
+  }
+  return new Set(bindingLines.map((line) => line.trim()).filter(Boolean));
 }
 
 const virtual = bindingsOf('trn-virtual-message-list');
@@ -53,10 +66,18 @@ describe('message list bindings', () => {
     // then drift freely — the classic way a source-shape guard stops guarding in silence.
     expect(virtual).not.toBeNull();
     expect(simple).not.toBeNull();
-    expect(virtual?.length).toBeGreaterThan(20);
+    expect(virtual?.size).toBeGreaterThan(20);
   });
 
   it('binds the windowed and simple lists identically', () => {
-    expect(simple).toEqual(virtual);
+    // Set equality, so the report names the bindings that differ rather than dumping two
+    // thirty-line lists and leaving the reader to diff them by eye.
+    const onlyVirtual = [...(virtual ?? [])].filter((b) => !simple?.has(b));
+    const onlySimple = [...(simple ?? [])].filter((b) => !virtual?.has(b));
+
+    expect({ onlyVirtual, onlySimple }).toEqual({
+      onlyVirtual: [],
+      onlySimple: [],
+    });
   });
 });

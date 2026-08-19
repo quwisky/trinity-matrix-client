@@ -277,13 +277,16 @@ test.describe('Message markdown', () => {
       // would guarantee a horizontal overlap with anything right-aligned and make the
       // assertion unfalsifiable in the direction that matters.
       const ctx = document.createElement('canvas').getContext('2d');
-      let captionWidth = 0;
-      if (ctx) {
-        ctx.font = after.font || `${after.fontSize} ${after.fontFamily}`;
-        captionWidth = ctx.measureText(
-          pre.getAttribute('language') ?? '',
-        ).width;
+      if (!ctx) {
+        // Fail loudly. Defaulting the width to 0 here would shrink the caption to a point
+        // and quietly weaken the intersection test below, which is the failure mode this
+        // whole measurement exists to avoid.
+        throw new Error('no 2d context to measure the caption with');
       }
+      ctx.font = after.font || `${after.fontSize} ${after.fontFamily}`;
+      const captionWidth = ctx.measureText(
+        pre.getAttribute('language') ?? '',
+      ).width;
       const captionRight = captionLeft + captionWidth;
       return {
         isContinuation: row.classList.contains('msg--cont'),

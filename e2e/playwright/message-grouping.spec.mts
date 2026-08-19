@@ -176,10 +176,17 @@ test.describe('Message grouping', () => {
     // The start carries the gap; the continuation carries none.
     expect(gap.start.paddingTop).toBeGreaterThanOrEqual(16);
     expect(gap.cont.paddingTop).toBe(0);
-    // And it is not margin — which is the half a screenshot could not tell you.
+    // And it is not margin — which is the half a screenshot could not tell you, and the half
+    // that matters: `virtual-message-list` sizes rows from `borderBoxSize[0].blockSize`, and
+    // padding is inside the border box while margin is outside it. These two lines together
+    // ARE the proof; there is no third measurement to take.
+    //
+    // (There used to be one — `start.borderBox - cont.borderBox >= 15`, commented "so the
+    // measured height really does include it". It could not fail for that reason: a group
+    // start already carries an avatar and an author line, so it is ~36px taller than a
+    // continuation whatever the gap is. It has been removed rather than left to look like
+    // evidence.)
     expect(gap.start.marginTop).toBe(0);
-    // So the measured height of a group start really does include it.
-    expect(gap.start.borderBox - gap.cont.borderBox).toBeGreaterThanOrEqual(15);
 
     // The hover toolbar belongs to its own row. It used to be parked at `top: -16px`, i.e.
     // deliberately over the row ABOVE — which on a touch device, where the bar is always
@@ -195,13 +202,29 @@ test.describe('Message grouping', () => {
       }
       const r = row.getBoundingClientRect();
       const b = bar.getBoundingClientRect();
-      return { rowTop: r.top, barTop: b.top, overflowAbove: r.top - b.top };
+      return {
+        rowTop: r.top,
+        barTop: b.top,
+        overflowAbove: r.top - b.top,
+        overflowBelow: b.bottom - r.bottom,
+      };
     });
 
     if (!containment) {
       throw new Error('expected a message row carrying a toolbar');
     }
-    // Zero or negative: the bar starts at or below its row's top edge, never above it.
+    // Zero or negative: the bar starts at or below its row's top edge, never above it. That
+    // is the defect this replaced — a bar at `top: -16px` painted over the row before it.
     expect(containment.overflowAbove).toBeLessThanOrEqual(0);
+
+    // And the other direction, which the assertion above cannot see.
+    //
+    // The bar is 34px and a continuation row is 26px, so it cannot fit: at `top: 0` it hangs
+    // ~8px into the row below. That is a real residual, not an oversight — the alternatives
+    // are taller rows (undoing the density this phase is for) or smaller buttons (worse to
+    // hit), and 8px transiently on hover beats 16px permanently on every row, which is what
+    // it replaced. What must not happen is that number growing unnoticed, so it is bounded
+    // rather than left unmeasured.
+    expect(containment.overflowBelow).toBeLessThanOrEqual(8);
   });
 });
