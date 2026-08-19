@@ -27,6 +27,25 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Attach several images at once.** Pick more than one in the file dialog, paste a batch of
+  screenshots, select several photos in the phone gallery, or **drag them straight onto the
+  conversation** — the room is the drop target, and it says so while you are dragging.
+  Everything you have staged is listed above the message box, each with its own × so you can
+  drop one without starting over, and picking again adds to the list rather than replacing it.
+  You can keep adding while an earlier batch is still uploading; the new ones simply wait for
+  the next send.
+
+  One press sends the lot, in the order you staged them. They go out one at a time — the bar
+  above the message box says which file of how many is uploading — so a big photo can't
+  overtake a small one and land out of order. A caption written alongside a single image
+  stays attached to it; write one for a batch and it is posted as its own message once the
+  files are in.
+
+  If one file fails, the others still go. The one that didn't is kept in the list, marked
+  **Not sent**, with a retry button of its own — so a single bad file costs you that file
+  rather than the whole batch. Leaving the room mid-send stops the rest rather than
+  delivering them to wherever you went, and says so.
+
 - **See what your homeserver is running.** Settings gains a **Server** section listing every
   account you are signed in to, and for each one: the server software and version — `Synapse
 1.158.0` — the address it is reached at, the spec versions it supports, and, where the

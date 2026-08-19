@@ -1127,4 +1127,68 @@ describe('SimpleMessageListComponent', () => {
       expect(separators(container)[0]?.textContent?.trim()).toBe('Yesterday');
     });
   });
+
+  it('stages files dropped on the conversation, and shows the target while dragging', async () => {
+    // The drop target is the whole room, which this component owns — but staging belongs to
+    // the composer, two layers down. This is the wiring between them, and nothing else
+    // exercises it: the directive's own spec stops at the output.
+    const { fixture, container } = await render(SimpleMessageListComponent, {
+      inputs: { messages: [msg('$1', '@a:hs', 'Alice', 1000)] },
+    });
+    const host = fixture.nativeElement as HTMLElement;
+    const fire = (name: string, files: File[] = []) => {
+      const event = new Event(name, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'dataTransfer', {
+        value: { types: ['Files'], files, dropEffect: 'none' },
+      });
+      host.dispatchEvent(event);
+      fixture.detectChanges();
+    };
+
+    expect(container.querySelector('[data-testid=drop-overlay]')).toBeNull();
+
+    fire('dragenter');
+    expect(
+      container.querySelector('[data-testid=drop-overlay]'),
+    ).not.toBeNull();
+    // The frame is what marks out the droppable region. Its geometry and the sheet's tint are
+    // measured in Chromium by `pnpm e2e:media` — jsdom evaluates neither `color-mix()` nor
+    // layout, which is how a background that resolved to nothing at all once shipped.
+    expect(container.querySelector('.drop-overlay__frame')).not.toBeNull();
+
+    fire('drop', [new File(['x'], 'dropped.png', { type: 'image/png' })]);
+
+    expect(container.querySelector('[data-testid=drop-overlay]')).toBeNull();
+    expect(
+      Array.from(
+        container.querySelectorAll('[data-testid=composer-pending]'),
+      ).map((row) => row.textContent?.trim()),
+    ).toEqual([expect.stringContaining('dropped.png')]);
+  });
+
+  it('sends a batch caption plainly, and is actually wired to do so', async () => {
+    // Emitted from the COMPOSER so the template binding is what carries it. Calling
+    // `onBatchCaption()` directly passes even with the binding deleted — which is exactly how
+    // the thread shipped without one, since an unbound output is legal and the AOT build is
+    // silent about it.
+    const { fixture } = await render(SimpleMessageListComponent, {
+      inputs: { messages: [msg('$1', '@a:hs', 'Alice', 1000)] },
+    });
+    const cmp = fixture.componentInstance;
+    const sent: string[] = [];
+    const edited: string[] = [];
+    cmp.send.subscribe((e) => sent.push(e.body));
+    cmp.editMessage.subscribe((e) => edited.push(e.body));
+    cmp.editingId.set('$1'); // an edit started while the files were uploading
+
+    fixture.debugElement
+      .query(By.directive(MessageComposerComponent))
+      .componentInstance.submitBatchCaption.emit({
+        text: 'both of these',
+        mentions: [],
+      });
+
+    expect(sent).toEqual(['both of these']);
+    expect(edited).toEqual([]);
+  });
 });

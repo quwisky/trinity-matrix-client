@@ -18,6 +18,12 @@ import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { MediaPickerService } from '../media-picker/media-picker.service';
 import { CreatePollService } from '../poll/create-poll.service';
 import { LocationShareService } from '../location-share/location-share.service';
+import {
+  releaseAttachment,
+  stageAttachment,
+  type StagedAttachment,
+} from './staged-attachment';
+import { type BatchProgress } from '../shared/send-media-batch';
 
 /**
  * What the attachment workflows need back from the composer that owns them.
@@ -32,8 +38,8 @@ export interface ComposerAttachmentsHost {
   readonly roomId: Signal<string | null>;
   /** Whether the composer is in edit mode (an edit can't become media). */
   readonly editing: Signal<boolean>;
-  /** Upload fraction in [0, 1] while an attachment uploads, else null (idle). */
-  readonly uploadProgress: Signal<number | null>;
+  /** Which file of how many is uploading and how far along, else null (idle). */
+  readonly uploadProgress: Signal<BatchProgress | null>;
   /** Send a file as a media message, with `caption` as its caption. */
   sendMedia(file: File, caption: string): void;
   /** End any active reply — a media or voice send carries no reply relation. */
@@ -83,11 +89,18 @@ export class ComposerAttachmentsService {
   /** Set on teardown so an in-flight mic acquisition can abort instead of orphaning. */
   private destroyed = false;
 
-  /** A picked/pasted attachment held for a caption, sent on the next submit
-   * (Enter / send button) — not uploaded immediately. */
-  readonly pendingFile = signal<File | null>(null);
-  /** Object URL previewing a staged image, else null (revoked on clear/destroy). */
-  readonly pendingPreview = signal<string | null>(null);
+  private readonly _staged = signal<readonly StagedAttachment[]>([]);
+  /**
+   * Picked/pasted/dropped attachments held for a caption, sent on the next submit (Enter /
+   * send button) — not uploaded immediately. In the order they were staged, which is the
+   * order they are sent in.
+   *
+   * Read-only outward, unlike its scalar predecessors: the object URLs inside are owned by
+   * this service and a write from outside would leak them.
+   */
+  readonly staged = this._staged.asReadonly();
+  /** Whether anything is staged — the question nearly every caller actually asks. */
+  readonly hasStaged = computed(() => this._staged().length > 0);
   /** Whether the GIF search grid is open (mutually exclusive with the emoji picker). */
   readonly gifPickerOpen = signal(false);
   /** True while a chosen GIF is being fetched, before its media upload starts. */
@@ -107,8 +120,9 @@ export class ComposerAttachmentsService {
   readonly locationSharing = this.locationShare.sharing;
 
   constructor() {
-    // Revoke a staged image's preview object URL on teardown.
-    this.destroyRef.onDestroy(() => this.setPreview(null));
+    // Revoke EVERY staged preview on teardown. The scalar version revoked exactly one, which
+    // was sufficient only because at most one URL could be live at a time.
+    this.destroyRef.onDestroy(() => this.clearStaged());
     // Stop a running recording timer (and release the mic) if torn down mid-record.
     this.destroyRef.onDestroy(() => {
       this.destroyed = true;
@@ -133,14 +147,10 @@ export class ComposerAttachmentsService {
   attach(): void {
     if (this.picker.available) {
       this.picker
-        .pickImage()
+        .pickImages()
         .pipe(takeUntilDestroyed(this.destroyRef))
         .subscribe({
-          next: (file) => {
-            if (file) {
-              this.stagePending(file);
-            }
-          },
+          next: (files) => this.stageAll(files),
           // A user-cancel resolves to null above; this catches a denied photo
           // permission (or a genuine picker failure) instead of leaving it
           // unhandled, and shows the reason.
@@ -151,13 +161,10 @@ export class ComposerAttachmentsService {
     }
   }
 
-  /** Hidden file input change → stage the picked file, then reset for re-picking. */
+  /** Hidden file input change → stage every picked file, then reset for re-picking. */
   filePicked(event: Event): void {
     const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (file) {
-      this.stagePending(file);
-    }
+    this.stageAll(Array.from(input.files ?? []));
     input.value = ''; // let the same file be picked again
   }
 
@@ -168,35 +175,85 @@ export class ComposerAttachmentsService {
    * paste is left untouched.
    */
   paste(event: ClipboardEvent): void {
-    // While editing, attachments are disabled (an edit can't become media), so
-    // let the paste fall through to the textarea. Also one upload at a time.
-    if (this.host.editing() || this.host.uploadProgress() !== null) {
+    // While editing, attachments are disabled (an edit can't become media), so let the paste
+    // fall through to the textarea. An upload in flight is NOT a reason to refuse any more:
+    // a send takes the whole batch at once, so anything staged during one simply waits for
+    // the next press instead of being lost to it.
+    if (this.host.editing()) {
       return;
     }
     const data = event.clipboardData;
     if (!data) {
       return;
     }
-    let image: File | null =
-      Array.from(data.files).find((f) => f.type.startsWith('image/')) ?? null;
-    if (!image) {
-      for (const item of Array.from(data.items)) {
-        if (item.kind === 'file' && item.type.startsWith('image/')) {
-          image = item.getAsFile();
-          break;
-        }
-      }
+    let images: File[] = Array.from(data.files).filter((file) =>
+      file.type.startsWith('image/'),
+    );
+    if (!images.length) {
+      images = Array.from(data.items)
+        .filter(
+          (item) => item.kind === 'file' && item.type.startsWith('image/'),
+        )
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => file !== null);
     }
-    if (image) {
+    if (images.length) {
       event.preventDefault(); // don't also drop the raw image into the textarea
-      this.stagePending(image);
+      this.stageAll(images);
     }
   }
 
-  /** Drop the staged attachment (× button, Escape, or after it's sent). */
-  clearPending(): void {
-    this.setPreview(null);
-    this.pendingFile.set(null);
+  /** Drop every staged attachment (Escape, room change, or after they're sent). */
+  clearStaged(): void {
+    for (const attachment of this._staged()) {
+      releaseAttachment(attachment);
+    }
+    this._staged.set([]);
+  }
+
+  /** Drop one staged attachment (its × button), keeping the rest. */
+  /**
+   * Flag these items as failed. Anything not named keeps the flag it already has.
+   *
+   * Scoped deliberately, because a caller only ever knows about its own send: reporting one
+   * retried file's outcome must say nothing about the other files that failed alongside it,
+   * and a GIF — dispatched with a synthetic id that matches nothing staged — must say nothing
+   * about any of them.
+   */
+  markFailed(ids: readonly string[]): void {
+    this.setFailedFlag(ids, true);
+  }
+
+  /** Clear the failed flag on these items. Anything not named keeps the flag it has. */
+  clearFailed(ids: readonly string[]): void {
+    this.setFailedFlag(ids, false);
+  }
+
+  private setFailedFlag(ids: readonly string[], failed: boolean): void {
+    const targets = new Set(ids);
+    this._staged.update(
+      (current) =>
+        current.some(
+          (attachment) =>
+            targets.has(attachment.id) && attachment.failed !== failed,
+        )
+          ? current.map((attachment) =>
+              targets.has(attachment.id) && attachment.failed !== failed
+                ? { ...attachment, failed }
+                : attachment,
+            )
+          : current, // nothing changed: don't hand the strip a new array to re-render
+    );
+  }
+
+  removeStaged(id: string): void {
+    const current = this._staged();
+    const doomed = current.find((attachment) => attachment.id === id);
+    if (!doomed) {
+      return; // unknown id: leave the array identity alone rather than re-rendering the strip
+    }
+    releaseAttachment(doomed);
+    this._staged.set(current.filter((attachment) => attachment !== doomed));
   }
 
   /** Toggle the GIF grid. The caller closes the emoji picker (only one at a time). */
@@ -334,23 +391,30 @@ export class ComposerAttachmentsService {
     }
   }
 
-  /** Hold a picked/pasted file for a caption instead of sending immediately.
-   * A preview object URL is made for images and revoked when it's replaced. */
-  private stagePending(file: File): void {
-    this.setPreview(
-      file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
-    );
-    this.pendingFile.set(file);
-    this.host.focusInput();
+  /**
+   * Hold picked/pasted files for a caption instead of sending immediately, appending to
+   * whatever is already staged so a second pick adds rather than replaces.
+   */
+  /**
+   * Stage files from a source outside the composer's own controls (a drop on the room).
+   *
+   * Same refusal as {@link paste}: an edit cannot become media. An upload in flight is not a
+   * refusal — the batch goes out on the next press, so these simply join the queue.
+   */
+  stageExternal(files: readonly File[]): void {
+    if (this.host.editing()) {
+      return;
+    }
+    this.stageAll(files);
   }
 
-  /** Swap the preview object URL, revoking the previous one. */
-  private setPreview(url: string | null): void {
-    const prev = this.pendingPreview();
-    if (prev && prev !== url) {
-      URL.revokeObjectURL(prev);
+  private stageAll(files: readonly File[]): void {
+    if (!files.length) {
+      return;
     }
-    this.pendingPreview.set(url);
+    const added = files.map(stageAttachment); // outside the updater: it allocates object URLs
+    this._staged.update((current) => [...current, ...added]);
+    this.host.focusInput();
   }
 
   /** Surface a gallery-picker failure (notably denied photo access) as a toast. */

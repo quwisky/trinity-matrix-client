@@ -1,0 +1,50 @@
+// `display: contents` so the host takes no slot in the list's flex column — the sheet inside
+// positions against the list itself, which is `position: relative`.
+:host {
+  display: contents;
+}
+
+// `pointer-events: none` is load-bearing: the overlay sits under the pointer for the whole
+// drag, and without it the `dragleave`/`drop` would fire against THIS element rather than the
+// list beneath, so the counter would never settle and the drop would never be handled.
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+
+  // Tint, not a curtain: the conversation stays legible underneath, which is what tells the
+  // user WHICH room they are about to drop into. `--trinity-chat` because that is what the
+  // message list paints itself with — mixing toward a token the theme does not define makes
+  // the whole `color-mix()` invalid, and an invalid value drops the declaration silently, so
+  // the overlay renders with no background at all.
+  background: color-mix(in srgb, var(--trinity-chat) 82%, transparent);
+}
+
+// The dashed frame spans the whole droppable area rather than boxing a label in the middle:
+// what it outlines is exactly what will accept the drop. Inset a little so the dash reads as
+// a border rather than being shaved by the list's edges.
+.drop-overlay__frame {
+  position: absolute;
+  inset: 10px;
+  border: 2px dashed var(--trinity-accent);
+  border-radius: var(--trinity-radius-xl);
+}
+
+.drop-overlay__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--trinity-accent);
+}
+
+.drop-overlay__text {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--trinity-text);
+}

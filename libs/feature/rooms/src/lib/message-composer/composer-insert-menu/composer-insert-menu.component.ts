@@ -41,6 +41,11 @@ export class ComposerInsertMenuComponent {
   /** Edit mode disables the whole tray — an edit can't become an attachment. */
   readonly editing = input(false);
   /** Whether an attachment upload is in flight (blocks another attachment only). */
+  /**
+   * A media send is in flight. Gates the items that dispatch IMMEDIATELY — a GIF and a voice
+   * clip both go straight out and would collide with it. Attaching is deliberately not gated:
+   * a send takes the whole staged batch, so a file added during one waits for the next press.
+   */
   readonly uploading = input(false);
   /** Whether a GIF provider + API key are configured. */
   readonly gifEnabled = input(false);

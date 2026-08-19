@@ -23,14 +23,60 @@
 }
 
 // Staged attachment awaiting a caption (shown above the input until sent).
+// The margin that used to sit on each row moves to the list, so N rows stack tightly instead
+// of each carrying the full gap. Capped and scrollable because a batch is unbounded and the
+// composer must not grow until it pushes the timeline off screen.
+.composer__pending-list {
+  margin: 0 16px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  // Deliberately NOT a whole number of rows. Rows are 52px with a 4px gap, so they occupy
+  // 0-52, 56-108, 112-164, 168-220: a 168px cap lands exactly on the fourth row's top edge and
+  // leaves it entirely invisible, with no scrollbar gutter to hint otherwise. 190px shows
+  // three in full and 22px of the fourth, which is what says "there is more".
+  max-height: 190px;
+  overflow-y: auto;
+}
+
 .composer__pending {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 16px 8px;
   padding: 6px 8px;
   border-radius: var(--trinity-radius);
   background: var(--trinity-sidebar);
+}
+
+// A failed row has to be tellable from a pending one at a glance; the tint is the cue, and
+// the "Not sent" text is what carries it to a screen reader and past a colour deficiency.
+.composer__pending--failed {
+  background: color-mix(
+    in srgb,
+    var(--trinity-danger) 12%,
+    var(--trinity-sidebar)
+  );
+}
+
+.composer__pending-failed {
+  flex-shrink: 0;
+  font-size: 12px;
+
+  // Alert TEXT, so `--trinity-danger` — never Helm's `--destructive`, whose dark value is a
+  // near-black maroon meant for fills.
+  color: var(--trinity-danger);
+}
+
+.composer__pending-retry {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  font-size: 14px;
+  color: var(--trinity-danger);
+
+  &:hover {
+    color: var(--trinity-text);
+  }
 }
 
 .composer__pending-thumb {
@@ -72,7 +118,8 @@
 // Touch targets: the 44px minimum this project holds itself to. Split out of the composer's
 // own coarse-pointer block when this markup moved, so the rule travels with the button.
 @media (pointer: coarse) {
-  .composer__pending-remove {
+  .composer__pending-remove,
+  .composer__pending-retry {
     min-width: 44px;
     min-height: 44px;
   }

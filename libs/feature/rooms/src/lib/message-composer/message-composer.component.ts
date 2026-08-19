@@ -44,6 +44,11 @@ import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
 import { MatrixLinkDirective } from '../matrix-link/matrix-link.directive';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
 import { ComposerAttachmentsService } from './composer-attachments.service';
+import {
+  type BatchItem,
+  type BatchOutcome,
+  type BatchProgress,
+} from '../shared/send-media-batch';
 import { EmojiAutocomplete } from './emoji-autocomplete';
 import { TrnIconComponent } from '@trinity/components/icon';
 import {
@@ -161,10 +166,36 @@ export class MessageComposerComponent {
    */
   readonly richActions = input(true);
   /** Upload fraction in [0, 1] while an attachment uploads, else null (idle). */
-  readonly uploadProgress = input<number | null>(null);
+  readonly uploadProgress = input<BatchProgress | null>(null);
   readonly submitText = output<ComposerSubmit>();
+  /**
+   * A batch caption, to be posted as its own message.
+   *
+   * Separate from {@link submitText} because that one is routed by the composer's CURRENT
+   * edit/reply state, and this text was written before an upload that can take minutes. By the
+   * time it lands the user may be editing something else — and routing it then would apply the
+   * caption as that edit, rewriting a message already in the room.
+   */
+  readonly submitBatchCaption = output<ComposerSubmit>();
   /** A staged attachment plus its optional caption, emitted on submit. */
-  readonly submitMedia = output<{ file: File; caption: string }>();
+  /**
+   * Send these files, in this order, as N events.
+   *
+   * `onOutcomes` rather than a return value because an `output` cannot have one, and the
+   * composer has to learn which items failed: those stay staged so they can be retried,
+   * which is the whole reason the batch reports per-item rather than throwing.
+   *
+   * The host MUST call it when the batch settles — it also releases the one-at-a-time send
+   * latch, and being told is the point. Deriving that from `uploadProgress` is what broke
+   * before: a send can finish before the host's progress is ever observable, and a signal
+   * input, written only at change detection and skipped entirely when the value is
+   * `Object.is`-equal, never sees it move at all.
+   */
+  readonly submitMedia = output<{
+    items: readonly BatchItem[];
+    caption: string;
+    onOutcomes: (outcomes: readonly BatchOutcome[]) => void;
+  }>();
   readonly cancelEdit = output<void>();
   readonly cancelReply = output<void>();
   readonly editLast = output<void>();
@@ -215,7 +246,7 @@ export class MessageComposerComponent {
     // slash — so previewing `/spoiler x` concealed while replying would promise a
     // spoiler and send the literal text.
     const parsesCommands =
-      !this.editing() && !this.replyingTo() && !this.pendingFile();
+      !this.editing() && !this.replyingTo() && !this.hasStaged();
     const content = ((parsesCommands
       ? slashCommandContent(text, renderMarkdown, mentions)
       : null) ?? textMessageContent(text, renderMarkdown(text), mentions)) as {
@@ -249,11 +280,10 @@ export class MessageComposerComponent {
    */
   private readonly attachments = inject(ComposerAttachmentsService);
 
-  /** A picked/pasted attachment held for a caption, sent on the next submit
-   * (Enter / send button) — not uploaded immediately. */
-  readonly pendingFile = this.attachments.pendingFile;
-  /** Object URL previewing a staged image, else null (revoked on clear/destroy). */
-  readonly pendingPreview = this.attachments.pendingPreview;
+  /** Everything staged for the next submit, in the order it will be sent. */
+  readonly staged = this.attachments.staged;
+  /** Whether anything is staged. */
+  readonly hasStaged = this.attachments.hasStaged;
   readonly pickerOpen = signal(false);
   /** Whether the GIF search grid is open (mutually exclusive with the emoji picker). */
   readonly gifPickerOpen = this.attachments.gifPickerOpen;
@@ -302,13 +332,47 @@ export class MessageComposerComponent {
   readonly mentionOpen = this.mentionAutocomplete.open;
   /** Index of the highlighted member suggestion. */
   readonly mentionActiveIndex = this.mentionAutocomplete.activeIndex;
-  /** Whether to show a determinate bar — true once the first real fraction lands.
-   * Until then (metadata probe + thumbnail upload) the bar is indeterminate so it
-   * reads as "working" rather than a stalled 0%. */
-  readonly uploadDeterminate = computed(() => (this.uploadProgress() ?? 0) > 0);
-  /** Whole-percent upload progress for the determinate bar's label. */
-  readonly uploadPercent = computed(() =>
-    Math.round((this.uploadProgress() ?? 0) * 100),
+  /**
+   * The file the visible upload belongs to.
+   *
+   * The bar renders above the rows that are still staged, and without this it reads as though
+   * it describes them — it describes the one that just left the list. Written in the host's
+   * `sendMedia` hook rather than in `submit()`, because that hook is the single funnel every
+   * upload passes through: a GIF goes straight to it and never touches `submit()`, and naming
+   * the last *staged* file while a GIF uploads is worse than not naming anything.
+   */
+  private readonly sendingItems = signal<readonly BatchItem[]>([]);
+  /**
+   * The name of the file currently uploading, taken from the batch's own position rather than
+   * remembered separately — so it follows the batch through file 2, 3, … instead of naming
+   * whatever was dispatched first.
+   */
+  readonly uploadLabel = computed(() => {
+    const progress = this.uploadProgress();
+    return progress
+      ? (this.sendingItems()[progress.index - 1]?.file.name ?? null)
+      : null;
+  });
+  /**
+   * A media send has been dispatched and its upload has not finished.
+   *
+   * Separate from `uploadProgress` and written SYNCHRONOUSLY, which is the whole point:
+   * `uploadProgress` is a signal input fed from two component layers up, and a signal input
+   * is only written during the parent's change detection — which, zoneless, is scheduled on a
+   * rAF/timer race. Two `submit()` calls in one task (a held Enter key, while the first send's
+   * `encryptAttachment` janks the frame) would both read `null` and both dispatch. A local
+   * flag closes in the same statement that opens it, and is released by the `done` callback
+   * the host calls when the send settles.
+   */
+  private readonly sendingMedia = signal(false);
+  /**
+   * Whether a media send would be accepted right now — the same condition `dispatchMedia`
+   * enforces, exposed so the send button can SAY it is blocked rather than silently doing
+   * nothing. `sendingMedia` matters here and not just `uploadProgress`: the latch closes
+   * synchronously, while the input it mirrors lags by a change-detection tick.
+   */
+  protected readonly canSendMedia = computed(
+    () => this.uploadProgress() === null && !this.sendingMedia(),
   );
   private readonly textarea = viewChild<ElementRef<HTMLTextAreaElement>>('ta');
   private readonly fileInput =
@@ -342,7 +406,11 @@ export class MessageComposerComponent {
       roomId: this.roomId,
       editing: this.editing,
       uploadProgress: this.uploadProgress,
-      sendMedia: (file, caption) => this.submitMedia.emit({ file, caption }),
+      sendMedia: (file, caption) => {
+        // A GIF is a one-item batch with a synthetic id: it was never staged, so nothing in
+        // the strip has to be reconciled when its outcome lands.
+        this.dispatchMedia([{ id: `direct-${file.name}`, file }], caption, []);
+      },
       endReply: () => {
         if (this.replyingTo()) {
           this.cancelReply.emit();
@@ -363,7 +431,11 @@ export class MessageComposerComponent {
         const prev = this.wasRoomId;
         this.wasRoomId = id;
         untracked(() => {
-          this.clearPending();
+          this.clearStaged();
+          // The upload itself belongs to the page, not to this composer, and survives the
+          // switch — but nothing staged here does, so holding the latch would only mute the
+          // next room's composer.
+          this.sendingMedia.set(false);
           // A recording belongs to the room it was started in — cancel it on a
           // room/thread switch so the mic doesn't stay open and a later Send can't
           // post the clip to the wrong room.
@@ -692,17 +764,37 @@ export class MessageComposerComponent {
   submit(): void {
     // A staged attachment sends as media with the text as its caption. Never mixes
     // with an edit (attach is disabled while editing), so edit mode ignores it.
-    const file = this.editing() ? null : this.pendingFile();
-    if (file) {
-      this.submitMedia.emit({ file, caption: this.text().trim() });
+    const batch = this.editing() ? [] : this.staged();
+    if (batch.length) {
+      // Emptied BEFORE the dispatch, not after. A send can settle synchronously — a 0-byte
+      // file never reaches the network — and `onBatchOutcomes` gives the caption back when
+      // nothing carried it, so clearing afterwards would wipe what it had just restored.
+      const typed = this.text();
+      // Read BEFORE the box is emptied: `activeMentions()` matches the chosen users against
+      // the current text, so computing it afterwards matches them against nothing.
+      const mentions = this.activeMentions();
+      this.text.set('');
+      // One batch at a time — the check lives in `dispatchMedia`, so every route to a send is
+      // covered rather than just this one. Nothing below runs when it refuses: a blocked send
+      // must not clear the composer as though it had gone out.
+      if (
+        !this.dispatchMedia(
+          batch.map(({ id, file }) => ({ id, file })),
+          typed.trim(),
+          mentions,
+        )
+      ) {
+        this.text.set(typed); // refused, so nothing went out and nothing was cleared
+        return;
+      }
       // A media send carries no reply relation, so end any active reply — else
       // the banner lingers and the next plain message silently replies to a
       // now-stale target.
       if (this.replyingTo()) {
         this.cancelReply.emit();
       }
-      this.clearPending();
-      this.text.set('');
+      // The staged rows stay until their outcomes arrive: the ones that fail have to remain
+      // so they can be retried, which is the whole point of the batch reporting per item.
       this.resetMenus();
       this.regrowAfterRender();
       return;
@@ -741,6 +833,11 @@ export class MessageComposerComponent {
     this.emojiQuery.set(null);
     this.mentionQuery.set(null);
     this.mentionAutocomplete.clearChosen();
+    // A grid left open across a send is the one remaining route to two uploads at once: its
+    // items call `sendMedia` directly, and unlike the toolbar button they are not disabled
+    // while an upload runs. `dispatchMedia` refuses it either way; closing the grid means the
+    // user does not lose a chosen GIF to that refusal.
+    this.gifPickerOpen.set(false);
     // Leaving the preview on is a trap rather than a preference: it hides the textarea, so a
     // composer that lands in preview mode after a send or a room switch looks broken — an
     // empty box that swallows typing until you notice the eye button.
@@ -905,9 +1002,171 @@ export class MessageComposerComponent {
     this.attachments.filePicked(event);
   }
 
+  /**
+   * The single funnel every media send passes through: `submit()` for the staged batch, and
+   * the attachments service's `sendMedia` hook for a GIF. The in-flight list, the send latch
+   * and the one-at-a-time check all live here, so a path that does not go through `submit()`
+   * cannot miss any of them.
+   *
+   * Returns whether the batch was dispatched, so a caller with cleanup to do — `submit()`
+   * clears the text — can tell a refusal from a send.
+   */
+  private dispatchMedia(
+    items: readonly BatchItem[],
+    caption: string,
+    mentions: readonly Mention[],
+  ): boolean {
+    if (!items.length) {
+      return false;
+    }
+    // Guarded here rather than only on the send button, because `onEnter` calls `submit()`
+    // directly and never consults `[disabled]` — key auto-repeat alone is enough to fire it
+    // twice. Two batches in flight share one `uploadProgress` and interleave their events, so
+    // neither arrives in the order it was staged.
+    if (this.uploadProgress() !== null || this.sendingMedia()) {
+      return false;
+    }
+    this.sendingItems.set(items);
+    this.sendingMedia.set(true);
+    // Stamped with the room, like the files themselves are by the owner: a batch settles long
+    // after it was pressed, and by then this composer may be showing a different conversation.
+    const roomAtDispatch = this.roomId();
+    this.submitMedia.emit({
+      items,
+      caption,
+      onOutcomes: (outcomes) =>
+        this.onBatchOutcomes(outcomes, caption, mentions, roomAtDispatch),
+    });
+    return true;
+  }
+
+  /**
+   * What survives a batch: successes leave the strip, failures stay in it so the next send
+   * retries exactly them. A caption typed for a batch goes out as its own message afterwards
+   * — Matrix has no multi-attachment event, so there is no first image for it to belong to,
+   * and repeating it on each would put the same sentence in the room N times. A single file
+   * keeps its MSC2530 caption, which is what `sendMediaBatch` decides.
+   */
+  private onBatchOutcomes(
+    outcomes: readonly BatchOutcome[],
+    caption: string,
+    mentions: readonly Mention[],
+    roomAtDispatch: string | null,
+  ): void {
+    // The batch is over the moment its outcomes land, and this is the ONLY release: inferring
+    // it from `uploadProgress` returning to null cannot work, because a send that completes
+    // synchronously is back to null before a signal input can ever observe it move.
+    this.sendingMedia.set(false);
+    for (const outcome of outcomes) {
+      if (!outcome.failed) {
+        this.attachments.removeStaged(outcome.id);
+      }
+    }
+    // A staged file and a failed one look identical in the strip, so mark them rather than
+    // leaving the user to guess. Only this batch's failures — these outcomes say nothing
+    // about files that failed in an earlier round and have not been retried yet.
+    this.attachments.markFailed(
+      outcomes.filter((outcome) => outcome.failed).map((outcome) => outcome.id),
+    );
+    if (!caption) {
+      return;
+    }
+    if (this.roomId() !== roomAtDispatch) {
+      // The conversation moved on. Posting would put these words in a room they were not
+      // written for, and restoring would leave them in that room's composer — the same leak
+      // the room-change effect above exists to prevent. Parked as the draft of the room they
+      // belong to instead, so they are neither misdelivered nor destroyed.
+      if (roomAtDispatch != null && !this.drafts.get(roomAtDispatch)) {
+        this.drafts.set(roomAtDispatch, caption);
+      }
+      return;
+    }
+    const delivered = outcomes.filter((outcome) => !outcome.failed).length;
+    if (delivered && outcomes.length > 1) {
+      // No file for a batch caption to belong to, so it goes out on its own — after the
+      // files, and only if at least one of them actually arrived. On its OWN output: by now
+      // the user may be part-way into an edit or a reply, and the ordinary submit path would
+      // route this into it.
+      this.submitBatchCaption.emit({ text: caption, mentions: [...mentions] });
+      return;
+    }
+    if (!delivered && !this.text().trim()) {
+      // Nothing carried it: a single file's caption rides its media event (MSC2530) and went
+      // down with it, and a batch caption is never sent when the batch delivered nothing.
+      // `submit()` cleared the box on dispatch, so without this the words are simply gone.
+      // Skipped when something has been typed since — restoring is for what was lost, not
+      // for overwriting what replaced it.
+      this.text.set(caption);
+      this.regrowAfterRender();
+    }
+  }
+
+  /**
+   * Re-send one failed file on its own, leaving the rest of the batch staged.
+   *
+   * Pressing send again would also retry it — that is what the batch model gives you for
+   * free — but it retries *everything* staged, which is wrong when only one of five failed
+   * and the other four are files the user has since added.
+   */
+  protected retryStaged(id: string): void {
+    const attachment = this.attachments
+      .staged()
+      .find((candidate) => candidate.id === id);
+    if (!attachment) {
+      return;
+    }
+    // The one-at-a-time check is repeated here rather than left to `dispatchMedia`, because
+    // the flag is cleared BEFORE dispatching — a refusal would otherwise leave the row
+    // looking like it had been sent.
+    if (this.uploadProgress() !== null || this.sendingMedia()) {
+      return;
+    }
+    // So the row reads as uploading rather than as still-failed. Only this one: the others
+    // are still failed and have not been retried.
+    this.attachments.clearFailed([id]);
+    // Clearing the flag unmounts the row's retry button — the element that currently has
+    // focus — which would strand a keyboard user at the top of the page. Same remedy, and the
+    // same reason, as `removeStaged`.
+    queueMicrotask(() => this.textarea()?.nativeElement.focus());
+    // A retry is a send: it takes whatever caption is in the box and clears it the way
+    // `submit()` does, before dispatching and for the same reason.
+    const typed = this.text();
+    const mentions = this.activeMentions(); // before the box is emptied, as in `submit()`
+    this.text.set('');
+    if (
+      !this.dispatchMedia(
+        [{ id: attachment.id, file: attachment.file }],
+        typed.trim(),
+        mentions,
+      )
+    ) {
+      this.text.set(typed);
+    }
+  }
+
   /** Drop the staged attachment (× button, Escape, or after it's sent). */
-  clearPending(): void {
-    this.attachments.clearPending();
+  removeStaged(id: string): void {
+    this.attachments.removeStaged(id);
+    // Whatever removed the row — its × or a send — the element that had focus is about to be
+    // destroyed, which drops focus to <body> and strands a keyboard user at the top of the
+    // page. The textarea is where they were heading either way. Queued, like the staging
+    // path's own focus call: the row is still in the DOM until CD runs.
+    queueMicrotask(() => this.textarea()?.nativeElement.focus());
+  }
+
+  /**
+   * Stage files that came from outside the composer — today, a drop on the conversation.
+   *
+   * Public because the drop target is the whole room, which the message list owns; the
+   * refusal rules stay here so a drop cannot bypass what a paste respects.
+   */
+  stageFiles(files: readonly File[]): void {
+    this.attachments.stageExternal(files);
+  }
+
+  /** Drop every staged attachment. */
+  clearStaged(): void {
+    this.attachments.clearStaged();
   }
 
   /** Paste an image from the clipboard → stage it as an attachment (Discord-style). */
@@ -932,8 +1191,11 @@ export class MessageComposerComponent {
       this.gifPickerOpen.set(false);
       return;
     }
-    if (this.pendingFile()) {
-      this.clearPending();
+    // Not while a batch is going out: those rows are what its outcomes will report on, and
+    // clearing them means a failure has nowhere to land — the toast would then promise files
+    // are "still in the composer" that are not.
+    if (this.hasStaged() && !this.sendingMedia()) {
+      this.clearStaged();
       return;
     }
     if (this.replyingTo()) {
@@ -974,7 +1236,7 @@ export class MessageComposerComponent {
     }
     // Empty composer + Up arrow → edit the last message (Discord-style).
     // Otherwise (editing, typed text, or a staged attachment) move the cursor.
-    if (this.editing() || this.text().length > 0 || this.pendingFile()) {
+    if (this.editing() || this.text().length > 0 || this.hasStaged()) {
       return;
     }
     event.preventDefault();

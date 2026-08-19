@@ -16,11 +16,11 @@
 
 <trn-composer-attachment-strip
   [uploadProgress]="uploadProgress()"
-  [uploadDeterminate]="uploadDeterminate()"
-  [uploadPercent]="uploadPercent()"
-  [pendingFile]="pendingFile()"
-  [pendingPreview]="pendingPreview()"
-  (removePending)="clearPending()"
+  [staged]="staged()"
+  [uploadLabel]="uploadLabel()"
+  [canRetry]="canSendMedia()"
+  (removeStaged)="removeStaged($event)"
+  (retryStaged)="retryStaged($event)"
 />
 
 <div class="composer">
@@ -91,6 +91,7 @@
     type="file"
     class="composer__file-input"
     data-testid="composer-file-input"
+    multiple
     hidden
     (change)="onFilePicked($event)"
   />
@@ -141,7 +142,7 @@
       rows="1"
       [value]="text()"
       [placeholder]="
-        pendingFile()
+        hasStaged()
           ? 'Add a caption…'
           : editing()
             ? 'Edit message…'
@@ -193,7 +194,10 @@
         trnTooltip="Send"
         aria-label="Send message"
         data-testid="composer-send"
-        [disabled]="!text().trim() && !pendingFile()"
+        [disabled]="
+          (!text().trim() && !hasStaged()) ||
+          (!editing() && hasStaged() && !canSendMedia())
+        "
         (click)="submit()"
       >
         <trn-icon name="send" />

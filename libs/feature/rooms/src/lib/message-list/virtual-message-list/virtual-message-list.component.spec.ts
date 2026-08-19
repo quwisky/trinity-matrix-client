@@ -1,5 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { MockComponent } from 'ng-mocks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -725,5 +726,69 @@ describe('VirtualMessageListComponent', () => {
       // scrollTop = regionTop(0) + offsetOf($5 @ idx 10)=640 - anchorOffset(40) = 600.
       expect(st).toBe(600);
     });
+  });
+
+  it('is a drop target too — this is the list that ships', async () => {
+    // `DEFAULT_VIRTUAL_TIMELINE` is true, so this is the list users get. The drop wiring was
+    // covered only on the simple list, which means removing `hostDirectives` HERE would have
+    // shipped green. The composer is mocked, so `stageFiles` is the seam: proving it is
+    // called proves the directive, the subscription in the base and the viewChild together.
+    const { fixture, container } = await renderList({
+      messages: [msg('$1', '@a:hs', 'Alice', 1000)],
+    });
+    const host = fixture.nativeElement as HTMLElement;
+    const fire = (name: string, files: File[] = []) => {
+      const event = new Event(name, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'dataTransfer', {
+        value: { types: ['Files'], files, dropEffect: 'none' },
+      });
+      host.dispatchEvent(event);
+      fixture.detectChanges();
+    };
+    const composer = fixture.debugElement.query(
+      By.directive(MessageComposerComponent),
+    ).componentInstance as MessageComposerComponent;
+    const staged: readonly File[][] = [];
+    composer.stageFiles = (files: readonly File[]) => {
+      (staged as File[][]).push([...files]);
+    };
+
+    expect(container.querySelector('[data-testid=drop-overlay]')).toBeNull();
+    fire('dragenter');
+    expect(
+      container.querySelector('[data-testid=drop-overlay]'),
+    ).not.toBeNull();
+
+    const dropped = new File(['x'], 'dropped.png', { type: 'image/png' });
+    fire('drop', [dropped]);
+
+    expect(staged).toEqual([[dropped]]);
+    expect(container.querySelector('[data-testid=drop-overlay]')).toBeNull();
+  });
+
+  it('sends a batch caption plainly, and is actually wired to do so', async () => {
+    // Emitted from the COMPOSER so the template binding is what carries it. Calling
+    // `onBatchCaption()` directly passes even with the binding deleted — which is exactly how
+    // the thread shipped without one, since an unbound output is legal and the AOT build is
+    // silent about it.
+    const { fixture } = await renderList({
+      messages: [msg('$1', '@a:hs', 'Alice', 1000)],
+    });
+    const cmp = fixture.componentInstance;
+    const sent: string[] = [];
+    const edited: string[] = [];
+    cmp.send.subscribe((e) => sent.push(e.body));
+    cmp.editMessage.subscribe((e) => edited.push(e.body));
+    cmp.editingId.set('$1'); // an edit started while the files were uploading
+
+    fixture.debugElement
+      .query(By.directive(MessageComposerComponent))
+      .componentInstance.submitBatchCaption.emit({
+        text: 'both of these',
+        mentions: [],
+      });
+
+    expect(sent).toEqual(['both of these']);
+    expect(edited).toEqual([]);
   });
 });

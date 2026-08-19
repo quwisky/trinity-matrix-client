@@ -7,7 +7,7 @@ import {
   TimelineService,
 } from '@trinity/data-access/timeline';
 import { type Mention, type MatrixLinkTarget } from '@trinity/util/matrix';
-import { Observable, finalize } from 'rxjs';
+import { Observable, throwError } from 'rxjs';
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
 import { MessageSearchService } from '../message-search/message-search.service';
@@ -16,6 +16,12 @@ import { RoomShellStore } from './room-shell-store';
 import { AccountRoutingService } from './account-routing.service';
 import { MemberActionsService } from './member-actions.service';
 import { ShellStatusService } from './shell-status.service';
+import {
+  sendMediaBatch,
+  type BatchItem,
+  type BatchOutcome,
+  type BatchProgress,
+} from '../shared/send-media-batch';
 
 /**
  * Everything done to or from a message: sending, editing, deleting, reacting, replying,
@@ -41,8 +47,13 @@ export class MessageActionsService {
   private readonly messageSearch = inject(MessageSearchService);
   private readonly destroyRef = inject(DestroyRef);
 
-  /** Attachment upload fraction in [0, 1] while a send is uploading, else null. */
-  readonly uploadProgress = signal<number | null>(null);
+  /**
+   * Which file of how many is uploading, and how far along, or null when idle.
+   *
+   * A record rather than a bare fraction because a send is now a batch: without the position
+   * the bar restarts from zero per file with nothing saying it is the third of five.
+   */
+  readonly uploadProgress = signal<BatchProgress | null>(null);
 
   /**
    * Route a `matrix.to` permalink clicked in a message, in-app. A user shows a profile
@@ -150,21 +161,69 @@ export class MessageActionsService {
     );
   }
 
-  onSendMedia({ file, caption }: { file: File; caption: string }): void {
-    // The upload phase has no echo, so drive a determinate progress bar from the
-    // upload fraction and surface a failure as a toast. Once the event is sent the
-    // SDK echo + retry path takes over (like onSend). finalize() clears the bar on
-    // success, error, or unsubscribe — runAction has no such hook, so subscribe here.
-    this.uploadProgress.set(0);
-    this.timelineActions
-      .sendMedia(file, caption, (fraction) => this.uploadProgress.set(fraction))
-      .pipe(
-        finalize(() => this.uploadProgress.set(null)),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe({
-        error: () =>
-          void this.status.showError('Could not upload the attachment.'),
+  /**
+   * Send staged attachments as N events, one at a time and in order.
+   *
+   * The upload phase has no echo, so the batch drives a determinate bar from each file's
+   * fraction; once an event is sent the SDK's echo + retry path takes over (like `onSend`).
+   * `sendMediaBatch` resolves rather than throwing, so per-item failures arrive as outcomes
+   * and the composer keeps those files staged for a retry — nothing is lost by a bad third
+   * file, and `runAction`'s blanket toast would have told the user nothing about which.
+   */
+  onSendMedia({
+    items,
+    caption,
+    onOutcomes,
+  }: {
+    items: readonly BatchItem[];
+    caption: string;
+    onOutcomes: (outcomes: readonly BatchOutcome[]) => void;
+  }): void {
+    // Pinned for the whole batch. `sendMedia` resolves the open room on SUBSCRIBE — right for
+    // a single action, which subscribes as it is pressed — but a batch subscribes item N
+    // minutes later, so switching rooms mid-batch would deliver the rest into the new one.
+    // This service outlives a room change (it belongs to the page), so nothing else stops it.
+    const pinnedRoomId = this.timeline.openContext()?.room.roomId ?? null;
+    let abandoned = 0;
+    sendMediaBatch(
+      items,
+      caption,
+      (file, itemCaption, progress) => {
+        const roomId = this.timeline.openContext()?.room.roomId ?? null;
+        if (roomId !== pinnedRoomId) {
+          abandoned++;
+          return throwError(() => new Error('room changed mid-batch'));
+        }
+        return this.timelineActions.sendMedia(file, itemCaption, progress);
+      },
+      (progress) => this.uploadProgress.set(progress),
+    )
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      // `onOutcomes` also releases the composer's send latch, and it rides the value rather
+      // than a `finalize` because it carries which items failed. The one path that skips it
+      // is unsubscribe — and this service belongs to the page the composer lives in, so
+      // there is no composer left to strand when that happens.
+      .subscribe((outcomes) => {
+        onOutcomes(outcomes);
+        const failed = outcomes.filter((outcome) => outcome.failed).length;
+        if (!failed) {
+          return;
+        }
+        // Two different fates, and they are counted separately rather than lumped under
+        // whichever happened to occur: the composer drops its staging on a room change, so
+        // "still in the composer" is true for an upload that failed and false for one
+        // abandoned by leaving. Blaming a network failure on the room switch would send the
+        // user looking for a file that is not there.
+        const upload = failed - abandoned;
+        void this.status.showError(
+          abandoned && upload
+            ? `${abandoned} ${plural(abandoned, 'attachment', 'attachments')} not sent — you left the room before they went out — and ${upload} could not be uploaded.`
+            : abandoned
+              ? `${abandoned} ${plural(abandoned, 'attachment was', 'attachments were')} not sent — you left the room before they went out.`
+              : upload === 1
+                ? 'One attachment could not be sent. It is still in the composer.'
+                : `${upload} attachments could not be sent. They are still in the composer.`,
+        );
       });
   }
 
@@ -269,3 +328,8 @@ const JUMP_FAILURE_MESSAGE = {
   unsupported: 'This homeserver cannot jump to a date.',
   failed: 'Could not reach your homeserver. Try that date again.',
 } as const;
+
+/** Pick the singular or plural wording for a count. */
+function plural(count: number, one: string, many: string): string {
+  return count === 1 ? one : many;
+}
