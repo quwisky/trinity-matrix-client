@@ -150,32 +150,37 @@ test.describe('Read receipts (seen by)', () => {
     // the stylesheet: `position: absolute` is only half the claim — the other half is that
     // the row it sits in is no taller than one without receipts, which is what a reader
     // actually notices and what the windowed list measures.
-    const heights = await page.evaluate(() => {
-      const row = [...document.querySelectorAll('.scroll .msg')].find((r) =>
-        r.querySelector('[data-testid="read-receipts"]'),
-      );
-      const bar = row?.querySelector<HTMLElement>(
-        '[data-testid="read-receipts"]',
-      );
-      if (!row || !bar) {
+    // The cluster must not be painted over the message it belongs to.
+    //
+    // This replaced an assertion that the cluster was OUT of flow. That was the wrong thing
+    // to pin: taking it out of flow did remove the height it adds mid-group, and in doing so
+    // put the avatars on top of the row's own last line, because the row has 2px of bottom
+    // padding and the cluster is ~16px tall. The property that matters to a reader is not
+    // where the box sits in the flow — it is that the words stay visible.
+    //
+    // Measured as box intersection in a real browser: jsdom does no layout, so a unit test
+    // cannot tell the two arrangements apart at all.
+    const overlap = await page.evaluate(() => {
+      const bar = document.querySelector('[data-testid=read-receipts]');
+      const row = bar?.closest('.msg');
+      const text = row?.querySelector('.msg__text');
+      if (!bar || !row || !text) {
         return null;
       }
-      // A direct experiment rather than a comparison with some other row: put the cluster
-      // back in flow and see whether the row grows. If it does, it was genuinely out of it.
-      const outOfFlow = row.getBoundingClientRect().height;
-      const position = getComputedStyle(bar).position;
-      bar.style.position = 'static';
-      const inFlow = row.getBoundingClientRect().height;
-      bar.style.position = '';
-      return { position, outOfFlow, inFlow };
+      const b = bar.getBoundingClientRect();
+      const t = text.getBoundingClientRect();
+      return {
+        intersects:
+          b.left < t.right &&
+          b.right > t.left &&
+          b.top < t.bottom &&
+          b.bottom > t.top,
+      };
     });
 
-    if (!heights) {
+    if (!overlap) {
       throw new Error('expected a row carrying read receipts');
     }
-    expect(heights.position).toBe('absolute');
-    // Putting them back in flow makes the row taller — which is the height they are NOT
-    // adding in the middle of a sender's run today.
-    expect(heights.inFlow).toBeGreaterThan(heights.outOfFlow);
+    expect(overlap.intersects).toBe(false);
   });
 });

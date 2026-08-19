@@ -114,6 +114,19 @@
       } @else {
         <p class="msg__text">{{ r.body }}</p>
       }
+      @if (!r.showHeader) {
+        @if (showEditedMarker()) {
+          <button
+            type="button"
+            class="msg__edited"
+            data-testid="msg-edited"
+            aria-label="(edited) — show edit history"
+            (click)="action.emit({ type: 'edit-history' })"
+          >
+            (edited)
+          </button>
+        }
+      }
       @if (r.previewUrl) {
         <trn-link-preview
           [url]="r.previewUrl"
@@ -151,19 +164,6 @@
           <span class="msg__seen-by" data-testid="seen-by-list">
             {{ seenByLabel(r.readReceipts) }}
           </span>
-        }
-      }
-      @if (!r.showHeader) {
-        @if (showEditedMarker()) {
-          <button
-            type="button"
-            class="msg__edited"
-            data-testid="msg-edited"
-            aria-label="(edited) — show edit history"
-            (click)="action.emit({ type: 'edit-history' })"
-          >
-            (edited)
-          </button>
         }
       }
     </div>

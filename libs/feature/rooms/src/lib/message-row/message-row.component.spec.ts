@@ -712,15 +712,19 @@ describe('MessageRowComponent', () => {
       expect(menuOpen()).toBe(true);
     });
 
-    it('leaves the browser menu alone when text is selected', async () => {
+    /** Pretend the user has highlighted text, anchored at `anchorNode`. */
+    const selectText = (anchorNode: Node | null) =>
+      vi.spyOn(document, 'getSelection').mockReturnValue({
+        toString: () => 'some highlighted words',
+        anchorNode,
+      } as unknown as Selection);
+
+    it('leaves the browser menu alone when text in this row is selected', async () => {
       // Their selection, their menu: a user who has highlighted part of a message is asking
       // for Copy, and replacing that with ours would be a downgrade.
       const { container } = await renderRow({ row: row(), caps: caps() });
       const el = container.querySelector('.msg') as HTMLElement;
-      const selection = { toString: () => 'some highlighted words' };
-      vi.spyOn(document, 'getSelection').mockReturnValue(
-        selection as unknown as Selection,
-      );
+      selectText(el.querySelector('.msg__text'));
 
       const event = new MouseEvent('contextmenu', {
         bubbles: true,
@@ -731,6 +735,30 @@ describe('MessageRowComponent', () => {
       expect(event.defaultPrevented).toBe(false);
       expect(menuOpen()).toBe(false);
       vi.mocked(document.getSelection).mockRestore();
+    });
+
+    it('still offers its own actions when the selection is in a different row', async () => {
+      // A selection is a statement about ONE message. Reading the document-wide selection
+      // meant text highlighted anywhere in the timeline suppressed the context menu on every
+      // other row until it was cleared.
+      const { container } = await renderRow({ row: row(), caps: caps() });
+      const el = container.querySelector('.msg') as HTMLElement;
+      const elsewhere = document.createElement('p');
+      elsewhere.textContent = 'a different message';
+      document.body.append(elsewhere);
+      selectText(elsewhere.firstChild);
+
+      const event = new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+      });
+      el.dispatchEvent(event);
+      await Promise.resolve();
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(menuOpen()).toBe(true);
+      vi.mocked(document.getSelection).mockRestore();
+      elsewhere.remove();
     });
 
     it('reveals the action bar after a long press on touch', async () => {

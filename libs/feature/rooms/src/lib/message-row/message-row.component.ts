@@ -79,6 +79,11 @@ export type MessageRowAction =
   /** Show everyone who reacted — raised by the reaction pills' trailing chip. */
   | { type: 'reactors' };
 
+/** How long a press has to be held before it counts as one, in milliseconds. */
+const LONG_PRESS_MS = 500;
+/** How far the pointer may drift before the press is a scroll instead. */
+const LONG_PRESS_SLOP_PX = 10;
+
 /**
  * One presentational message row, shared by the main timeline ({@link
  * SimpleMessageListComponent} / {@link VirtualMessageListComponent}) and the thread
@@ -91,11 +96,6 @@ export type MessageRowAction =
  * hover toolbar and failed/retry affordance are suppressed (the view-only thread
  * panel), keeping reactions visible.
  */
-/** How long a press has to be held before it counts as one, in milliseconds. */
-const LONG_PRESS_MS = 500;
-/** How far the pointer may drift before the press is a scroll instead. */
-const LONG_PRESS_SLOP_PX = 10;
-
 @Component({
   selector: 'trn-message-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -265,9 +265,20 @@ export class MessageRowComponent {
     this.action.emit(event);
   }
 
-  /** Whether the user has text selected — their selection, their menu. */
+  /**
+   * Whether the user has text selected IN THIS ROW — their selection, their menu.
+   *
+   * Scoped to the row rather than the document: a selection is a statement about one
+   * message, and a document-wide check let text highlighted in one message suppress the
+   * context menu on every other row in the timeline until it was cleared.
+   */
   private hasTextSelection(): boolean {
-    return (document.getSelection()?.toString().trim().length ?? 0) > 0;
+    const selection = document.getSelection();
+    if (!selection || selection.toString().trim().length === 0) {
+      return false;
+    }
+    const anchor = selection.anchorNode;
+    return anchor !== null && this.host.nativeElement.contains(anchor);
   }
 
   readonly row = input.required<MessageRow>();

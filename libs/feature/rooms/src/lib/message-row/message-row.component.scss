@@ -50,6 +50,12 @@
 // A room state / membership change: a compact, centered, muted system line.
 .msg--event {
   justify-content: center;
+
+  // No group gap. `.msg--event` never gets `.msg--cont` — a state change is not somebody's
+  // message and has no sender to be grouped with — so without this it takes the full 16px
+  // meant to separate one person's run from the next, and a room where several people join
+  // and leave becomes a loose column of system lines with more space than the conversation.
+  padding-top: var(--trinity-space-1);
 }
 
 .msg__event-text {
@@ -400,24 +406,37 @@
   }
 }
 
-// "Seen by" read-receipt avatars, tucked at the trailing edge under the message.
-// Out of flow, so a reader part-way through a sender's run does not add height in the
-// middle of it and break the group's rhythm.
+// "Seen by" read-receipt avatars, at the message's trailing edge.
+
+// IN FLOW, which is where they started. Taking them out of flow was tried in this branch and
+// withdrawn, and the reason is worth keeping so it is not tried again the same way.
+
+// The goal was real: in flow the cluster is a block that adds ~19px wherever it lands, so a
+// reader part-way through a sender's run splits the run and the group rhythm the rest of this
+// phase builds disappears. Absolutely positioning it at `bottom: 0` removes that height — and
+// then paints the avatars ON TOP of the row's own last line, because `.msg` has 2px of bottom
+// padding and the cluster is ~16px tall. Any message whose final line reaches the trailing
+// edge is partly hidden behind them. Hidden text is worse than a gap. A float does not help
+// either: declared after the body, as it must be for reading order, it lands below the text
+// and costs exactly the height it was meant to save.
+
+// What actually solves it is a permanent right gutter — a fixed column reserved on EVERY row,
+// which is what the mature clients do precisely because of this. That is a timeline-wide
+// layout change rather than a receipt tweak, so it is not smuggled in here.
+
 // The alternative the redesign issue offered was to fold every reader onto the group's LAST
-// row. That was rejected: a Matrix receipt means "read up to THIS event", so moving it would
-// claim someone had read messages they had not — the app would be stating something false
-// about who saw what, which is worse than a gap in the spacing. Receipts stay on the event
-// they belong to; only their layout changed.
-// It therefore needs no `isGroupEnd` plumbing, which folding would have required (including
-// extending `RowCacheEntry`'s comparison, or rows would stop re-rendering when a group's
-// tail moved).
+// row. That was rejected on correctness, not layout: a Matrix receipt means "read up to THIS
+// event", so moving it would claim someone had read messages they had not — the app would be
+// stating something false about who saw what. Receipts stay on the event they belong to.
 .msg__receipts {
-  position: absolute;
-  right: var(--trinity-space-5);
-  bottom: 0;
   display: flex;
   gap: 2px;
+
+  // A <button> shrink-wraps to its content, so `justify-content: flex-end` had no free space
+  // to push against — right-align the whole control with an auto margin.
   width: fit-content;
+  margin-top: 3px;
+  margin-left: auto;
   padding: 0;
   border: none;
   background: none;
