@@ -34,12 +34,17 @@
   @if (src()) {
     <video
       class="media media--video"
+      [style.aspect-ratio]="aspectRatio()"
       controls
       [src]="src()"
       [attr.aria-label]="'Video: ' + filename()"
     ></video>
   } @else {
-    <span class="media media--video media__skeleton" aria-hidden="true"></span>
+    <span
+      class="media media--video media__skeleton"
+      [style.aspect-ratio]="aspectRatio()"
+      aria-hidden="true"
+    ></span>
   }
 } @else if (kind() === 'audio') {
   @if (src()) {

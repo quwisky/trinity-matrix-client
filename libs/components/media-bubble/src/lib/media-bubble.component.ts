@@ -32,6 +32,12 @@ export interface MediaBubbleItem {
  * metadata) — it performs no fetching/decryption and has no `@trinity/core`
  * dependency. A smart wrapper resolves the URL and feeds `loading`/`error`/`src`.
  */
+/**
+ * What to reserve when an event does not say. 16 / 9 is the shape most shared media is
+ * closest to, and being wrong here costs a small reflow rather than a full-height one.
+ */
+const DEFAULT_MEDIA_RATIO = '16 / 9';
+
 @Component({
   selector: 'trn-media-bubble',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -71,11 +77,21 @@ export class MediaBubbleComponent {
     return this.loading() || !this.src() ? 'loading' : 'ready';
   });
 
-  /** CSS aspect-ratio from intrinsic dimensions to avoid layout shift. */
+  /**
+   * CSS aspect-ratio from intrinsic dimensions, so the box is the right size before the
+   * bytes arrive and the timeline does not jump when they do.
+   *
+   * Falls back to 16 / 9 rather than to nothing. An event whose `info` omits `w`/`h` is
+   * common — plenty of clients send it, and an encrypted attachment may carry no dimensions
+   * at all — and reserving nothing means the row is one line tall until the image decodes
+   * and then several hundred pixels tall afterwards, which is the layout shift this computed
+   * exists to prevent. A wrong-but-reasonable reservation moves the content once by a little
+   * instead of once by everything.
+   */
   readonly aspectRatio = computed(() => {
     const w = this.item().width;
     const h = this.item().height;
-    return w && h ? `${w} / ${h}` : null;
+    return w && h ? `${w} / ${h}` : DEFAULT_MEDIA_RATIO;
   });
 
   /** File-card subtitle: human-readable size, falling back to the MIME type. */

@@ -20,6 +20,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Images and videos hold their place while they load.** The timeline used to jump as each
+  one arrived — a message would be one line tall, then several hundred pixels tall a moment
+  later, shoving everything you were reading down the screen. Every attachment now reserves
+  its shape up front, including videos and the ones whose sender did not say how big they
+  were. Tall images are no longer cropped to fit, either, and the placeholder shown while one
+  loads is finally a different colour from the box around it, so you can see it at all.
+
 - **Message actions no longer sit on top of the message above.** The hover toolbar was
   positioned deliberately outside its own row, which on a phone — where it was always visible —
   meant every message permanently covered the top of the one before it. It stays inside its own
