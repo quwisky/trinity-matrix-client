@@ -23,6 +23,14 @@
   background-size: 100% 100%;
 }
 
+// NOTE for anything editing the two rules below: they must stay `background-color`, not the
+// `background` shorthand. A shorthand re-initialises every longhand it does not name, and
+// these have the same specificity as the rule above and come later — so writing
+// `background: …` here silently resets `background-size` to `auto` and `background-repeat`
+// to `repeat`, and the 32x32 placeholder tiles across the box as a mosaic instead of
+// stretching to fill it. That shipped once; `media-blurhash.spec.mts` now asserts the
+// computed sizing so it cannot ship again.
+
 .media--image {
   width: 100%;
 
@@ -33,7 +41,7 @@
   max-height: 20rem;
   border-radius: 0.5rem;
   overflow: hidden;
-  background: var(--trinity-sidebar);
+  background-color: var(--trinity-sidebar);
 }
 
 .media__img {
@@ -70,7 +78,7 @@
   // Intentionally NOT a token: this is the letterbox behind a <video> whose
   // intrinsic aspect ratio rarely fills the box. Black is the neutral matte in
   // every theme — do not "re-theme" it in a future token sweep.
-  background: #000;
+  background-color: #000;
 }
 
 .media--file {

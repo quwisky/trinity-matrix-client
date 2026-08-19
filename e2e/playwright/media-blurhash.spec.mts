@@ -62,12 +62,73 @@ async function openRoom(page: Page, roomName: string): Promise<void> {
   });
 }
 
-/** The `background-image` on the box a given image message reserved. */
-const backgroundOf = (page: Page, filename: string) =>
+/** The box a given image message reserved. */
+const boxFor = (page: Page, filename: string) =>
   page
     .locator('.media--image', { has: page.locator(`img[alt="${filename}"]`) })
-    .first()
-    .evaluate((el) => getComputedStyle(el).backgroundImage);
+    .first();
+
+/** The `background-image` on that box. */
+const backgroundOf = (page: Page, filename: string) =>
+  boxFor(page, filename).evaluate((el) => getComputedStyle(el).backgroundImage);
+
+/**
+ * How the placeholder is DRAWN, and what colour it actually is.
+ *
+ * Asserting that a data URL is present is not enough, and both halves of this have already
+ * been wrong in this branch:
+ *
+ * - The sizing longhands were reset by a later `background:` shorthand, so the 32x32 decode
+ *   tiled across the box as a mosaic. The URL was correct throughout, so a check on
+ *   `backgroundImage` alone stayed green.
+ * - A prefix match on `data:image/png` is satisfied by a fully transparent PNG, so a decoder
+ *   that serialised the canvas before painting it would look identical to a working one.
+ *
+ * So the URL is loaded back into a canvas here and a real pixel is read out of it.
+ */
+async function placeholderOf(
+  page: Page,
+  filename: string,
+): Promise<{
+  size: string;
+  repeat: string;
+  centre: [number, number, number, number];
+}> {
+  return boxFor(page, filename).evaluate(async (el) => {
+    const style = getComputedStyle(el);
+    const url = style.backgroundImage.slice(5, -2); // strip url(" ")
+    const bitmap = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('placeholder did not decode'));
+      img.src = url;
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('no 2d context to read the placeholder back with');
+    }
+    context.drawImage(bitmap, 0, 0);
+    const middle = context.getImageData(
+      Math.floor(bitmap.width / 2),
+      Math.floor(bitmap.height / 2),
+      1,
+      1,
+    ).data;
+    return {
+      size: style.backgroundSize,
+      repeat: style.backgroundRepeat,
+      centre: [middle[0], middle[1], middle[2], middle[3]] as [
+        number,
+        number,
+        number,
+        number,
+      ],
+    };
+  });
+}
 
 test.describe('Blurhash placeholders', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
@@ -155,6 +216,18 @@ test.describe('Blurhash placeholders', () => {
     expect(await backgroundOf(page, withHash)).toMatch(
       /^url\("data:image\/png/,
     );
+
+    // …and it is drawn as ONE stretched image, carrying real colour.
+    const painted = await placeholderOf(page, withHash);
+    expect(painted.size).toBe('100% 100%');
+    expect(painted.repeat).toBe('no-repeat');
+    // Opaque, and not the black or white a blank canvas would give. `LEHV6nWB…` is the
+    // reference hash — a mid-tone image — so a generous band is enough to tell a decoded
+    // placeholder from an empty one without pinning the codec's exact output.
+    const [red, green, blue, alpha] = painted.centre;
+    expect(alpha).toBe(255);
+    expect(Math.max(red, green, blue)).toBeGreaterThan(20);
+    expect(Math.min(red, green, blue)).toBeLessThan(235);
 
     // Every rejection path, each of which must leave the box exactly as it was.
     //
