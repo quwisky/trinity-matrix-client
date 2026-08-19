@@ -15,6 +15,7 @@
     type="button"
     class="media media--image"
     [style.aspect-ratio]="aspectRatio()"
+    [style.background-image]="placeholder()"
     [attr.aria-label]="'Open image ' + filename()"
     (click)="openLightbox.emit()"
   >
@@ -32,7 +33,7 @@
           )
         "
       />
-    } @else {
+    } @else if (!placeholder()) {
       <span class="media__skeleton" aria-hidden="true"></span>
     }
   </button>
@@ -41,6 +42,7 @@
     <video
       class="media media--video"
       [style.aspect-ratio]="aspectRatio()"
+      [style.background-image]="placeholder()"
       controls
       [src]="src()"
       [attr.aria-label]="'Video: ' + filename()"
@@ -53,8 +55,10 @@
     ></video>
   } @else {
     <span
-      class="media media--video media__skeleton"
+      class="media media--video"
+      [class.media__skeleton]="!placeholder()"
       [style.aspect-ratio]="aspectRatio()"
+      [style.background-image]="placeholder()"
       aria-hidden="true"
     ></span>
   }

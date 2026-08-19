@@ -7,6 +7,7 @@ import {
   output,
   signal,
 } from '@angular/core';
+import { blurhashToDataUrl } from '@trinity/util/ui';
 
 /** Renderable media category (mirrors `@trinity/core` MediaKind). */
 export type MediaBubbleKind = 'image' | 'file' | 'video' | 'audio';
@@ -24,6 +25,8 @@ export interface MediaBubbleItem {
   size?: number;
   width?: number;
   height?: number;
+  /** MSC2448 blurhash, painted behind the image until the real bytes arrive. */
+  blurhash?: string;
 }
 
 /**
@@ -62,6 +65,7 @@ export class MediaBubbleComponent {
 
   /** Terse accessors so the template needn't unwrap `item()` repeatedly. */
   readonly kind = computed(() => this.item().kind);
+  private readonly blurhash = computed(() => this.item().blurhash);
   readonly filename = computed(() => this.item().filename);
 
   /** A local <img>-decode failure, combined with the input `error`. */
@@ -114,6 +118,27 @@ export class MediaBubbleComponent {
     }
     // What the file itself says, if it has said anything yet; otherwise the reservation.
     return this.loadedRatio() ?? DEFAULT_MEDIA_RATIO;
+  });
+
+  /**
+   * The blurhash placeholder as a ready-to-use `background-image` value, or null.
+   *
+   * Painted on the box itself rather than swapped out when the image arrives, so there is
+   * no second state change to coordinate: the real bytes simply draw over it. It also stays
+   * useful afterwards — `object-fit: contain` letterboxes an image whose true shape differs
+   * from the 16 / 9 fallback, and blurred colour in those bars reads better than grey.
+   *
+   * Decoding needs a canvas, so under jsdom this is null and the ordinary skeleton shows.
+   * That is the right degradation, and it is why the painting itself is asserted in a real
+   * browser rather than in a component spec.
+   */
+  readonly placeholder = computed(() => {
+    // Read through a signal over the HASH, not over `item()`. The windowed timeline reuses
+    // component instances as it scrolls, so `item()` changes identity constantly while the
+    // hash usually does not — and a computed over `item()` would decode again on every
+    // recycle. Signal equality on the string means the decode happens once per picture.
+    const url = blurhashToDataUrl(this.blurhash());
+    return url ? `url("${url}")` : null;
   });
 
   /** File-card subtitle: human-readable size, falling back to the MIME type. */

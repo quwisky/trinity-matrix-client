@@ -13,6 +13,16 @@
   cursor: pointer;
 }
 
+// The blurhash placeholder, when there is one, is bound as a `background-image` on the box
+// itself. `100% 100%` rather than `cover`: a blurhash encodes a UNIT SQUARE and carries no
+// aspect ratio of its own, so stretching it to whatever the box reserved is exactly right —
+// `cover` would crop away the edges of a picture that has no detail to crop.
+.media--image,
+.media--video {
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+}
+
 .media--image {
   width: 100%;
 

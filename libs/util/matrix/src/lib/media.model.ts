@@ -56,4 +56,10 @@ export interface MediaPayload {
   isVoice?: boolean;
   /** MSC1767 waveform amplitudes (`[0, 1024]`) for a voice message, else absent. */
   waveform?: number[];
+  /**
+   * MSC2448 `xyz.amorgan.blurhash` — a ~30-character DCT encoding of the image, used to
+   * paint a photo-shaped placeholder before the bytes arrive. Absent when the sender did
+   * not provide one, or provided one longer than we are willing to carry.
+   */
+  blurhash?: string;
 }

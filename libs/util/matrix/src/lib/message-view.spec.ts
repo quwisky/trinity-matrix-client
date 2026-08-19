@@ -1013,3 +1013,76 @@ describe('sanitizeMatrixHtml mention pills', () => {
     expect(sanitizeMatrixHtml(source, false)).not.toContain('mention--self');
   });
 });
+
+describe('media blurhash (MSC2448)', () => {
+  /**
+   * A minimal `m.image` event, driven through the real projection rather than through a
+   * direct call — `buildMediaPayload` is private, and what matters is that the field
+   * survives the whole way out to the view model the timeline renders.
+   */
+  function imageView(info: Record<string, unknown>): MessageView {
+    const event = {
+      getSender: () => '@them:hs',
+      getType: () => 'm.room.message',
+      isDecryptionFailure: () => false,
+      isRedacted: () => false,
+      getContent: () => ({
+        msgtype: 'm.image',
+        body: 'photo.png',
+        url: 'mxc://hs/abc',
+        info: { mimetype: 'image/png', ...info },
+      }),
+      getId: () => '$img',
+      getTs: () => 0,
+      replacingEvent: () => null,
+      replyEventId: undefined,
+      status: null,
+    } as unknown as MatrixEvent;
+    const room = {
+      getMember: () => null,
+      getUsersReadUpTo: () => [],
+      hasEncryptionStateEvent: () => false,
+      // Reactions are read off `room.relations`; without this the projection throws and
+      // `safeBuildMessageView` quietly degrades to an 'unsupported' row — which every
+      // assertion below would then read as "no blurhash".
+      relations: { getChildEventsForEvent: () => null },
+    } as unknown as Room;
+    const client = { getUserId: () => '@me:hs' } as unknown as MatrixClient;
+    const view = safeBuildMessageView(client, room, event);
+    // Fail loudly rather than silently: the fallback view has `media: null`, so a broken
+    // stub would make all four tests pass by finding nothing.
+    expect(view.kind).toBe('image');
+    return view;
+  }
+
+  it('carries the hash through to the view model', () => {
+    const view = imageView({ 'xyz.amorgan.blurhash': 'LEHV6nWB2yk8pyo0adR*' });
+
+    expect(view.media?.blurhash).toBe('LEHV6nWB2yk8pyo0adR*');
+  });
+
+  it('leaves it absent when the sender did not send one', () => {
+    expect(imageView({}).media?.blurhash).toBeUndefined();
+  });
+
+  it('drops a hash too long to be worth carrying', () => {
+    // The sender chooses this string and we would otherwise hold it on every media message
+    // in the timeline. A legal 9x9 hash is 166 characters; this is well past the cap.
+    const view = imageView({ 'xyz.amorgan.blurhash': 'L'.repeat(5_000) });
+
+    expect(view.media?.blurhash).toBeUndefined();
+    // The rest of the attachment must survive — a bad placeholder is not a bad image.
+    expect(view.media?.kind).toBe('image');
+    expect(view.media?.mxc).toBe('mxc://hs/abc');
+  });
+
+  it('ignores a hash that is not a string', () => {
+    expect(
+      imageView({ 'xyz.amorgan.blurhash': 42 }).media?.blurhash,
+    ).toBeUndefined();
+    expect(
+      imageView({ 'xyz.amorgan.blurhash': { toString: () => 'x' } }).media
+        ?.blurhash,
+    ).toBeUndefined();
+  });
+});

@@ -305,6 +305,19 @@ const MAX_RECEIPTS = 5;
  */
 const MAX_WAVEFORM_BARS = 512;
 
+/**
+ * Cap on a received MSC2448 blurhash, in characters.
+ *
+ * Same reasoning as the waveform above: the sender chooses this string and we would
+ * otherwise carry it, unbounded, on every media message in the timeline. A legal 9x9 hash
+ * is 166 characters, so 200 admits everything real. `blurhashToDataUrl` bounds what it will
+ * decode independently — this one bounds what we STORE, and neither relies on the other.
+ * That redundancy is deliberate, and it has a visible consequence: removing either cap on
+ * its own changes nothing observable, so each is pinned by a unit test rather than by the
+ * end-to-end one.
+ */
+const MAX_BLURHASH_CHARS = 200;
+
 /** User ids (excluding the local user) whose read receipt sits on this event, capped. */
 export function readReceiptUserIds(
   client: MatrixClient,
@@ -1556,6 +1569,14 @@ function buildMediaPayload(
         .slice(0, MAX_WAVEFORM_BARS)
         .filter((n): n is number => typeof n === 'number')
     : [];
+  // MSC2448: a tiny DCT encoding of the image, so the recipient can paint something
+  // photo-shaped before the bytes arrive. Still on its unstable prefix — the MSC has not
+  // landed, and every implementation in the wild sends this key.
+  const rawBlurhash = info['xyz.amorgan.blurhash'];
+  const blurhash =
+    typeof rawBlurhash === 'string' && rawBlurhash.length <= MAX_BLURHASH_CHARS
+      ? rawBlurhash
+      : undefined;
   return {
     kind,
     mxc,
@@ -1582,6 +1603,7 @@ function buildMediaPayload(
         ? (thumbInfo['mimetype'] as string)
         : undefined,
     ...(isVoice ? { isVoice: true, waveform } : {}),
+    ...(blurhash ? { blurhash } : {}),
   };
 }
 

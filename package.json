@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "author": "quwisky <quwisky@qwky.eu>",
   "scripts": {
-    "preinstall": "node -e \"if (!String(process.env.npm_config_user_agent).startsWith('pnpm')) { console.error('Use pnpm for this project \u2014 run: corepack enable && pnpm install'); process.exit(1); }\"",
+    "preinstall": "node -e \"if (!String(process.env.npm_config_user_agent).startsWith('pnpm')) { console.error('Use pnpm for this project — run: corepack enable && pnpm install'); process.exit(1); }\"",
     "prepare": "husky",
     "format": "nx format:write --all",
     "format:check": "nx format:check --all",
@@ -51,7 +51,7 @@
   },
   "private": true,
   "packageManager": "pnpm@11.19.0",
-  "//engines": "The `>= 26` half of this range was removed rather than gaining a CI leg: nothing has ever built, tested or packaged this workspace on Node 26, so the range was advertising support that no gate backed. Widening it again is a deliberate act \u2014 add the matrix leg first (the Electron job alone rebuilds a native binary), then the range.",
+  "//engines": "The `>= 26` half of this range was removed rather than gaining a CI leg: nothing has ever built, tested or packaged this workspace on Node 26, so the range was advertising support that no gate backed. Widening it again is a deliberate act — add the matrix leg first (the Electron job alone rebuilds a native binary), then the range.",
   "engines": {
     "node": "^24.15.0",
     "pnpm": ">=11"
@@ -98,6 +98,7 @@
     "@shikijs/engine-javascript": "4.4.1",
     "@shikijs/langs": "4.4.1",
     "@spartan-ng/brain": "1.3.0",
+    "blurhash": "^2.0.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dompurify": "^3.4.12",
@@ -168,5 +169,5 @@
     "vite-tsconfig-paths": "^6.1.1",
     "vitest": "4.1.10"
   },
-  "description": "Trinity \u2014 a cross-platform Matrix client with end-to-end encryption (Angular, spartan.ng, Capacitor, Electron)"
+  "description": "Trinity — a cross-platform Matrix client with end-to-end encryption (Angular, spartan.ng, Capacitor, Electron)"
 }

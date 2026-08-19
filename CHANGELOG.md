@@ -19,6 +19,11 @@ All notable changes to this project are documented here. The format is based on
   with Copy in it — and right-clicking a link or an image still gets you "Open link in new tab"
   and "Save image as…".
 
+- **A blurred preview of a photo appears before the photo does.** When the sender's client
+  provides one, an incoming image now shows a soft, correctly-coloured impression of itself
+  while the real file downloads, instead of an empty grey box — so a slow connection shows
+  you roughly what is arriving rather than nothing at all.
+
 - **A third theme: Onyx.** A neutral, achromatic palette whose dark mode is true black — on an
   OLED screen a black pixel is simply switched off, so it saves power and looks properly dark
   rather than dark grey. Pick it under Settings → Appearance, in either light or dark mode.
