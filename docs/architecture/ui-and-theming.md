@@ -394,6 +394,24 @@ so anything per-user has to reach it through CSS. What the markup may carry is
 content-derived only — a block records its own line count in `rows`, and the stylesheet
 decides what to do about it.
 
+### Seeing the tokens: Storybook
+
+`pnpm storybook` serves one Storybook covering the whole `libs/components/*` tier
+(`libs/components/storybook-host` is config only — the stories live beside the components they
+document). The toolbar carries the two theme axes, palette × light/dark, read from
+`TRINITY_PALETTES` rather than restated, so a newly registered palette appears there
+immediately.
+
+That is what it is for. A palette is meant to be a data change — a block of token overrides plus
+a registry entry — and before this the only way to know that held was to launch the app and
+navigate to every surface. **If a component looks wrong under a new palette, the token layer is
+incomplete; that is a bug in the tokens, not in the theme.**
+
+Stories are written per _state_ (default, hover, disabled, loading, empty, long content), not one
+per component: the default is the state least likely to be broken. They are not a substitute for
+a unit test — they are a substitute for launching the app and clicking to the one screen where a
+control appears.
+
 ### Two token families
 
 **Trinity tokens** (`--trinity-*`) are the app's own vocabulary, consumed directly by

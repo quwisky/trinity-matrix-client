@@ -33,6 +33,8 @@ Run `corepack enable` once; it picks up the pinned pnpm version.
 | `pnpm lint`                    | ESLint + Nx module boundaries, all projects                           |
 | `pnpm stylelint`               | Stylelint (SCSS) — **not** part of `pnpm lint`; run separately        |
 | `pnpm format` / `format:check` | Prettier write / verify (CI uses `format:check`)                      |
+| `pnpm storybook`               | Storybook for the whole `libs/components/*` tier (one host project)  |
+| `pnpm storybook:build`         | Static Storybook build                                              |
 
 **Single project / single test** — Vitest runs via an `nx:run-commands` target (`vitest run`,
 `cwd` = the project dir), so forward Vitest args after `--`. Note the argument is the **Nx
