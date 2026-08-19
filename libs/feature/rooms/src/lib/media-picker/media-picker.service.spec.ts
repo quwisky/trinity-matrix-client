@@ -47,18 +47,23 @@ describe('MediaPickerService', () => {
       .mockResolvedValue({ camera: 'granted', photos: 'granted' });
   });
 
-  it('is unavailable on web; pickImage resolves null without opening the gallery', async () => {
+  it('is unavailable on web; pickImages resolves empty without opening the gallery', async () => {
     const svc = makeService();
 
     expect(svc.available).toBe(false);
-    expect(await firstValueFrom(svc.pickImage())).toBeNull();
+    expect(await firstValueFrom(svc.pickImages())).toEqual([]);
     expect(chooseFromGallery).not.toHaveBeenCalled();
   });
 
-  it('opens the native gallery and materializes the choice into a File', async () => {
+  it('opens the native gallery and materializes EVERY choice into a File', async () => {
+    // The gallery has supported multi-select all along; the flag was the only thing stopping
+    // a batch from a phone, which is where most of the screenshots are.
     isNative.mockReturnValue(true);
     chooseFromGallery.mockResolvedValue({
-      results: [{ webPath: 'blob:pic', type: 'photo' }],
+      results: [
+        { webPath: 'blob:one', type: 'photo' },
+        { webPath: 'blob:two', type: 'photo' },
+      ],
     });
     const fetchMock = vi.fn().mockResolvedValue({
       blob: () =>
@@ -69,15 +74,42 @@ describe('MediaPickerService', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const svc = makeService();
-    const file = await firstValueFrom(svc.pickImage());
+    const files = await firstValueFrom(svc.pickImages());
 
     expect(svc.available).toBe(true);
     expect(chooseFromGallery).toHaveBeenCalledWith({
-      allowMultipleSelection: false,
+      allowMultipleSelection: true,
     });
-    expect(fetchMock).toHaveBeenCalledWith('blob:pic');
-    expect(file).toBeInstanceOf(File);
-    expect(file?.type).toBe('image/png');
+    expect(fetchMock).toHaveBeenCalledWith('blob:one');
+    expect(fetchMock).toHaveBeenCalledWith('blob:two');
+    expect(files).toHaveLength(2);
+    expect(files[0]).toBeInstanceOf(File);
+    expect(files[0]?.type).toBe('image/png');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('drops a result it cannot resolve to a URL, keeping the rest', async () => {
+    // A gallery entry with neither `webPath` nor `uri` yields no File; one unusable photo
+    // must not take the others with it, nor leave a null in the staged list.
+    isNative.mockReturnValue(true);
+    chooseFromGallery.mockResolvedValue({
+      results: [{ type: 'photo' }, { webPath: 'blob:good', type: 'photo' }],
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        blob: () =>
+          Promise.resolve(
+            new Blob([new Uint8Array([1])], { type: 'image/png' }),
+          ),
+      }),
+    );
+
+    const svc = makeService();
+    const files = await firstValueFrom(svc.pickImages());
+
+    expect(files).toHaveLength(1);
 
     vi.unstubAllGlobals();
   });
@@ -103,13 +135,13 @@ describe('MediaPickerService', () => {
     );
 
     const svc = makeService();
-    const file = await firstValueFrom(svc.pickImage());
+    const files = await firstValueFrom(svc.pickImages());
 
     expect(requestPermissions).toHaveBeenCalledWith({
       permissions: ['photos'],
     });
     expect(chooseFromGallery).toHaveBeenCalled();
-    expect(file).toBeInstanceOf(File);
+    expect(files[0]).toBeInstanceOf(File);
 
     vi.unstubAllGlobals();
   });
@@ -120,20 +152,20 @@ describe('MediaPickerService', () => {
 
     const svc = makeService();
 
-    await expect(firstValueFrom(svc.pickImage())).rejects.toThrow(
+    await expect(firstValueFrom(svc.pickImages())).rejects.toThrow(
       /photo access is denied/i,
     );
     expect(requestPermissions).not.toHaveBeenCalled(); // already denied → no prompt
     expect(chooseFromGallery).not.toHaveBeenCalled();
   });
 
-  it('resolves null (no error) when the user cancels the picker', async () => {
+  it('resolves empty (no error) when the user cancels the picker', async () => {
     isNative.mockReturnValue(true);
     chooseFromGallery.mockRejectedValue({ code: 'OS-PLUG-CAMR-0020' });
 
     const svc = makeService();
 
-    expect(await firstValueFrom(svc.pickImage())).toBeNull();
+    expect(await firstValueFrom(svc.pickImages())).toEqual([]);
   });
 
   it('surfaces a denial raised at pick time as the permission error', async () => {
@@ -142,7 +174,7 @@ describe('MediaPickerService', () => {
 
     const svc = makeService();
 
-    await expect(firstValueFrom(svc.pickImage())).rejects.toThrow(
+    await expect(firstValueFrom(svc.pickImages())).rejects.toThrow(
       /photo access is denied/i,
     );
   });

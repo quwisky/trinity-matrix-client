@@ -304,12 +304,12 @@ describe('MessageComposerComponent', () => {
   });
 
   it('toasts a clear message when the native attach is denied/fails', async () => {
-    // Stand in for the native picker: available, but pickImage errors (e.g. denied
-    // photo access) instead of resolving a file.
+    // Stand in for the native picker: available, but pickImages errors (e.g. denied
+    // photo access) instead of resolving files.
     const { fixture } = await renderComposer({}, [
       MockProvider(MediaPickerService, {
         available: true,
-        pickImage: () =>
+        pickImages: () =>
           throwError(
             () => new Error('Photo access is denied. Enable it in Settings.'),
           ),
@@ -370,7 +370,11 @@ describe('MessageComposerComponent', () => {
     expect(wrapper()).toBeNull();
   });
 
-  it('disables the attach action in the tray while an upload is in flight', async () => {
+  it('keeps the attach action usable while an upload is in flight', async () => {
+    // It used to be blocked, and that was right when a send took one file: staging during an
+    // upload would have had nowhere to go. A send now takes the whole staged batch, so a file
+    // added mid-upload simply waits for the next press — and refusing it means a user who
+    // remembers a fifth screenshot has to wait out the other four.
     const { fixture } = await renderComposer();
     (fixture.nativeElement as HTMLElement)
       .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
@@ -384,11 +388,11 @@ describe('MessageComposerComponent', () => {
 
     expect(disabled()).toBeNull();
 
-    fixture.componentRef.setInput('uploadProgress', 0.1);
-    fixture.detectChanges();
-    expect(disabled()).toBe('');
-
-    fixture.componentRef.setInput('uploadProgress', null);
+    fixture.componentRef.setInput('uploadProgress', {
+      index: 1,
+      total: 3,
+      fraction: 0.1,
+    });
     fixture.detectChanges();
     expect(disabled()).toBeNull();
   });
@@ -1333,14 +1337,14 @@ describe('MessageComposerComponent', () => {
     expect(preventDefault).not.toHaveBeenCalled();
   });
 
-  it('ignores a pasted image while an upload is already in flight', async () => {
+  it('stages a pasted image even while an upload is in flight', async () => {
+    // Staging is not sending. The batch goes out on the next press, so a screenshot pasted
+    // mid-upload joins the queue instead of being silently swallowed.
     const { fixture } = await renderComposer({
-      uploadProgress: { index: 1, total: 1, fraction: 0.5 },
+      uploadProgress: { index: 1, total: 3, fraction: 0.5 },
     });
     const cmp = fixture.componentInstance;
 
-    let count = 0;
-    cmp.submitMedia.subscribe(() => count++);
     const file = new File([new Uint8Array([1])], 'paste.png', {
       type: 'image/png',
     });
@@ -1348,7 +1352,40 @@ describe('MessageComposerComponent', () => {
 
     cmp.onPaste(event);
 
-    expect(count).toBe(0);
+    expect(stagedFiles(cmp).map((f) => f.name)).toEqual(['paste.png']);
+    expect(preventDefault).toHaveBeenCalled(); // and not also dropped into the textarea
+  });
+
+  it('stages dropped files, but not while editing', async () => {
+    // The overlay is hidden during an edit, so the user is not invited to drop — but the
+    // drop still fires, and an edit cannot become media. The refusal has to be here, where
+    // every route in shares it, rather than in the affordance that merely hides.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+
+    cmp.stageFiles([png('dropped.png')]);
+    expect(stagedFiles(cmp).map((f) => f.name)).toEqual(['dropped.png']);
+
+    cmp.clearStaged();
+    fixture.componentRef.setInput('editing', true);
+    fixture.detectChanges();
+    cmp.stageFiles([png('while-editing.png')]);
+
+    expect(stagedFiles(cmp)).toEqual([]);
+  });
+
+  it('still ignores a pasted image while editing', async () => {
+    // An edit cannot become media, so the paste belongs to the textarea.
+    const { fixture } = await renderComposer({ editing: true });
+    const cmp = fixture.componentInstance;
+    const file = new File([new Uint8Array([1])], 'paste.png', {
+      type: 'image/png',
+    });
+    const { event, preventDefault } = pasteEvent({ files: [file] });
+
+    cmp.onPaste(event);
+
+    expect(stagedFiles(cmp)).toEqual([]);
     expect(preventDefault).not.toHaveBeenCalled();
   });
 

@@ -1,0 +1,38 @@
+// `display: contents` so the host takes no slot in the list's flex column — the sheet inside
+// positions against the list itself, which is `position: relative`.
+:host {
+  display: contents;
+}
+
+// `pointer-events: none` is load-bearing: the overlay sits under the pointer for the whole
+// drag, and without it the `dragleave`/`drop` would fire against THIS element rather than the
+// list beneath, so the counter would never settle and the drop would never be handled.
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--trinity-background) 78%, transparent);
+}
+
+.drop-overlay__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 24px 32px;
+  border: 2px dashed var(--trinity-accent);
+  border-radius: var(--trinity-radius);
+  background: var(--trinity-sidebar);
+  color: var(--trinity-accent);
+}
+
+.drop-overlay__text {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--trinity-text);
+}
