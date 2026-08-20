@@ -583,3 +583,59 @@ keys its browser cache on the lockfile hash, so a moved lockfile necessarily mis
 The release pipeline runs no browser or Electron end-to-end test at all — see
 [CI and releases](ci-and-releases.md) for what does gate a tag, and for the
 repository-level invariant specs that guard configuration a green run cannot see.
+
+## The styling blind spot, and what closes it
+
+Three separate blocking bugs in the redesign phases were invisible to a completely green
+suite, for one reason: **nothing asserted appearance or layout.** jsdom applies no CSS, so no
+unit test can see a styling bug at all; and the Playwright specs are written as user journeys
+that assert `data-testid` and text, which is exactly the part that stays correct when styling
+breaks.
+
+The three, and what each needed:
+
+| Bug                                                                                                   | Why nothing caught it                                             | What catches it now                             |
+| ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------- |
+| Extracting the timeline dividers left their CSS behind, so both rendered unstyled                     | The markup, testids and text were all still correct               | `scripts/component-styling.spec.mjs` — static   |
+| A `background:` shorthand reset the `background-size` positioning the blurhash, tiling it as a mosaic | The end-to-end test asserted the image URL, which was never wrong | `scripts/shorthand-overrides.spec.mjs` — static |
+| A delayed loading strip outlived the prepend it accompanied, moving the reader's content              | No test related the strip's lifetime to the scroll restore        | A targeted invariant test — see below           |
+
+**Two of the three are decidable from the source**, and are now build failures. Both were
+validated by running them against the revisions that shipped the bugs: each reports the exact
+defect there and nothing on a fixed tree. That is the bar for a guard like this — a check
+that has never been shown to fail against a real bug is a check nobody should trust.
+
+**The third is not automatable**, and pretending otherwise would be worse than admitting it.
+A relationship between _when_ something is removed and _when_ something else is measured is
+semantic. What replaces the linter is a habit:
+
+> When a change alters **when** a piece of UI appears or disappears, and anything measures
+> layout, the test is the relationship — not the appearance.
+
+Concretely: assert with no timer advance at all after the triggering state clears, because
+anything that needs one is by definition still on screen when the dependent measurement runs.
+
+### Writing an appearance assertion
+
+Reach for a real browser and read computed style. It is the only place these are visible:
+
+```ts
+const styling = await el.evaluate((node) => ({
+  display: getComputedStyle(node).display,
+  ruleFlexGrow: getComputedStyle(node, '::before').flexGrow,
+}));
+expect(styling).toEqual({ display: 'flex', ruleFlexGrow: '1' });
+```
+
+Prefer a property that is _generated_ by the rule you care about — a `::before` that only
+exists because a stylesheet reached the element is a sharper probe than a colour, which can
+be inherited from somewhere else and look right by accident.
+
+### Sweeps that read source
+
+Several guards here read source text. Two rules, both learned the hard way:
+
+- **Strip comments first.** A guard's own explanation quotes the thing it forbids, and more
+  than one sweep in this repo has reported its own prose as a violation.
+- **Prove the sweep found something.** Every one of these carries a non-vacuity assertion,
+  because the failure mode is not a false alarm — it is going quiet.
