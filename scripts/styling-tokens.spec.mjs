@@ -52,6 +52,20 @@ const files = ['libs/**/*.scss', 'apps/**/*.scss']
 
 const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
 
+/**
+ * A stylesheet with its comments removed.
+ *
+ * Prose is not code. The reduced-motion note in `variables.scss` has to quote
+ * `animation: … infinite` to explain why collapsing a duration does not stop one, and the
+ * sweeps below read that sentence as a violation — the same trap `scroll-behaviour.spec.mjs`
+ * hit. Naive on purpose: over-removing text before searching for something that must not
+ * appear at all is the safe direction.
+ */
+const code = (file) =>
+  read(file)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|\s)\/\/.*$/gm, '$1');
+
 describe('styling tokens', () => {
   it('reads the stylesheets at all, so an empty sweep cannot pass as a clean one', () => {
     expect(files.length).toBeGreaterThan(50);
@@ -60,7 +74,7 @@ describe('styling tokens', () => {
   it('uses the z-index scale for every app-level layer', () => {
     const raw = files
       .filter((file) => !LOCAL_STACKING.includes(file))
-      .filter((file) => /z-index:\s*\d/.test(read(file)));
+      .filter((file) => /z-index:\s*\d/.test(code(file)));
 
     expect(raw).toEqual([]);
   });
@@ -70,7 +84,7 @@ describe('styling tokens', () => {
     // so it keeps moving for a user who asked it not to — the blanket `!important` in
     // global.scss is what still catches those, and it is meant to go away.
     const raw = files.filter((file) =>
-      /transition:[^;]*\d+(\.\d+)?m?s/.test(read(file)),
+      /transition:[^;]*\d+(\.\d+)?m?s/.test(code(file)),
     );
 
     expect(raw).toEqual([]);
@@ -78,12 +92,17 @@ describe('styling tokens', () => {
 
   it('keeps the literal keyframe durations to the recorded ledger', () => {
     const raw = files.filter((file) =>
-      /animation:[^;]*\d+(\.\d+)?m?s/.test(read(file)),
+      /animation:[^;]*\d+(\.\d+)?m?s/.test(code(file)),
     );
 
     // Equality, not a subset: an entry that gets migrated must leave the ledger, or the
     // ledger stops describing the tree and starts excusing it. It is empty now, so this
-    // reads as "no stylesheet may hand-pick an animation duration".
+    // reads as "no SCSS stylesheet may hand-pick an animation duration".
+    //
+    // SCSS only: `files` globs `*.scss`, so `theme/spartan.css` — which is hand-written
+    // wiring and does carry keyframes — is outside it. Nothing there hand-picks a duration
+    // today, so this is a gap in reach rather than a miss, and widening the glob is a
+    // separate change because the CSS file's `@theme` blocks are a different kind of thing.
     expect(raw).toEqual([...LITERAL_ANIMATIONS].sort());
   });
 });
