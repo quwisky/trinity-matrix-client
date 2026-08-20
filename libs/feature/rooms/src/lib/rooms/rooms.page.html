@@ -389,11 +389,12 @@
             />
           }
           @if (store.membersOpen()) {
-            <!-- Below 1100px the member list is an overlay drawer; a backdrop (shown
-               only at that width) dismisses it. At ≥1100px it stays a static column
+            <!-- Below the `members` breakpoint the member list is an overlay drawer; a
+               backdrop (shown only at that width) dismisses it. At or above it the list
+               stays a static column
                and the backdrop is display:none. -->
             <div
-              class="fixed inset-0 z-[var(--trinity-z-scrim)] hidden bg-black/50 max-[1100px]:block"
+              class="fixed inset-0 z-[var(--trinity-z-scrim)] hidden bg-black/50 max-members:block"
               (click)="closeMembers()"
               aria-hidden="true"
               data-testid="members-backdrop"

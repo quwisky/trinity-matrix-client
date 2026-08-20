@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { DestroyRef, Injectable, inject } from '@angular/core';
 import { MediaService } from '@trinity/data-access/media';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
@@ -9,9 +9,9 @@ import {
   type RoomSummary,
 } from '@trinity/data-access/rooms';
 import { ThreadsService, TimelineService } from '@trinity/data-access/timeline';
+import { BELOW_MEMBERS_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { MruRoomsService } from '../shortcuts/mru-rooms.service';
 import { RoomShellStore } from './room-shell-store';
-import { membersShownAsDrawer } from './shell-layout';
 
 /**
  * Moving around the shell: which scope the sidebar shows, and which room is open.
@@ -37,6 +37,15 @@ export class RoomShellNavigationService {
   private readonly threads = inject(ThreadsService);
   private readonly timeline = inject(TimelineService);
   private readonly mru = inject(MruRoomsService);
+  /**
+   * Whether the member list is currently the overlay drawer rather than the static column.
+   * Live, and created once against this service's `DestroyRef` — see the same field in
+   * `MemberActionsService`.
+   */
+  private readonly membersAreDrawer = mediaQuerySignal(
+    BELOW_MEMBERS_QUERY,
+    inject(DestroyRef),
+  );
 
   /**
    * Focuses the mobile master-detail pane that just became active.
@@ -136,7 +145,7 @@ export class RoomShellNavigationService {
     // On mobile the member list is an overlay drawer; don't carry an open one over
     // to the next room (it would slide in unrequested). The wide static column keeps
     // its persisted open/closed state.
-    if (membersShownAsDrawer()) {
+    if (this.membersAreDrawer()) {
       this.store.membersOpen.set(false);
     }
     this.store.activeRoomId.set(null);

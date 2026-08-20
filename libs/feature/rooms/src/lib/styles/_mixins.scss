@@ -2,6 +2,14 @@
 // Color tokens are global CSS custom properties — see
 // apps/trinity/src/theme/variables.scss.
 
+// The `members` breakpoint, restated for SCSS. A media query cannot read a custom
+// property, so this cannot come from `--breakpoint-members` in
+// apps/trinity/src/theme/spartan.css the way a colour would — it is a genuine third copy,
+// alongside that one and `BELOW_MEMBERS_QUERY` in @trinity/util/ui.
+// `scripts/breakpoints.spec.mjs` asserts all three agree, so the duplication is checked
+// rather than trusted.
+$below-members: '(max-width: 1099.98px)';
+
 /// Truncate a single line of text with an ellipsis.
 @mixin ellipsis {
   overflow: hidden;

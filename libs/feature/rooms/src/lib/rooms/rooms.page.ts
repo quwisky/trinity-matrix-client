@@ -7,6 +7,7 @@ import '@trinity/util/matrix/code-highlight';
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
   Injector,
   OnDestroy,
@@ -21,6 +22,11 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { map } from 'rxjs';
 import { HlmButton } from '@trinity/helm/button';
+import {
+  BELOW_MD_QUERY,
+  BELOW_MEMBERS_QUERY,
+  mediaQuerySignal,
+} from '@trinity/util/ui';
 import {
   HlmDropdownMenu,
   HlmDropdownMenuItem,
@@ -76,7 +82,6 @@ import { ReadStateService } from './read-state.service';
 import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
-import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
 import { TrnIconComponent } from '@trinity/components/icon';
 
 /**
@@ -136,6 +141,21 @@ import { TrnIconComponent } from '@trinity/components/icon';
   },
 })
 export class RoomsPage implements OnInit, OnDestroy {
+  /**
+   * The two viewport predicates the shell branches on, live for the page's lifetime.
+   *
+   * Fields rather than call-time reads: `mediaQuerySignal` registers a listener bound to the
+   * `DestroyRef` handed to it, so creating one per call would leak one per invocation.
+   */
+  private readonly mobileMasterDetail = mediaQuerySignal(
+    BELOW_MD_QUERY,
+    inject(DestroyRef),
+  );
+  private readonly membersAreDrawer = mediaQuerySignal(
+    BELOW_MEMBERS_QUERY,
+    inject(DestroyRef),
+  );
+
   readonly rooms = inject(RoomsService);
   readonly spaces = inject(SpacesService);
   private readonly mixedRooms = inject(MixedRoomsService);
@@ -313,7 +333,7 @@ export class RoomsPage implements OnInit, OnDestroy {
    * pages are always visible, so focus is left where it is.
    */
   private focusActiveView(): void {
-    if (!isMobileMasterDetail()) {
+    if (!this.mobileMasterDetail()) {
       return;
     }
     afterNextRender(
@@ -343,7 +363,7 @@ export class RoomsPage implements OnInit, OnDestroy {
    * info panel is a CDK dialog that closes the drawer as it opens, so there's no clash.
    */
   onEscapeKey(): void {
-    if (this.store.membersOpen() && membersShownAsDrawer()) {
+    if (this.store.membersOpen() && this.membersAreDrawer()) {
       this.closeMembers();
     }
   }

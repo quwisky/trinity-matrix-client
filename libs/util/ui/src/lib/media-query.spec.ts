@@ -7,7 +7,14 @@ import {
 } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BELOW_MD_QUERY, MD_QUERY, mediaQuerySignal } from './media-query';
+import {
+  BELOW_MD_QUERY,
+  BELOW_MEMBERS_QUERY,
+  MD_QUERY,
+  MEMBERS_QUERY,
+  matchesQuery,
+  mediaQuerySignal,
+} from './media-query';
 
 /** A controllable MediaQueryList double: `emit` fires a `change` at every listener. */
 function fakeList(matches: boolean) {
@@ -21,6 +28,9 @@ function fakeList(matches: boolean) {
         _type: string,
         fn: (e: MediaQueryListEvent) => void,
       ) => listeners.delete(fn),
+    },
+    get listenerCount() {
+      return listeners.size;
     },
     emit(next: boolean) {
       for (const fn of listeners) {
@@ -65,6 +75,42 @@ describe('media queries', () => {
   it('exposes complementary breakpoints that cannot both match', () => {
     expect(MD_QUERY).toBe('(min-width: 768px)');
     expect(BELOW_MD_QUERY).toBe('(max-width: 767.98px)');
+    expect(MEMBERS_QUERY).toBe('(min-width: 1100px)');
+    expect(BELOW_MEMBERS_QUERY).toBe('(max-width: 1099.98px)');
+  });
+
+  // These literals are restated in two other languages — the Tailwind theme and the rooms
+  // feature's SCSS — because a media query cannot read a custom property.
+  // `scripts/breakpoints.spec.mjs` is what checks all three agree; this only pins the pair
+  // that TypeScript owns.
+  describe('matchesQuery', () => {
+    it('reads the query once, with no listener to clean up', () => {
+      const list = fakeList(true);
+      const matchMedia = vi.fn().mockReturnValue(list.list);
+      vi.stubGlobal('matchMedia', matchMedia);
+
+      expect(matchesQuery(MEMBERS_QUERY)).toBe(true);
+      expect(matchMedia).toHaveBeenCalledWith(MEMBERS_QUERY);
+    });
+
+    it('registers no listener, which is the whole difference from the signal', () => {
+      // Not a style point. `RoomShellStore.membersOpen` SEEDS from this, and a listener here
+      // would keep overwriting a state the user owns — reopening the member column on every
+      // rotation across the breakpoint. Asserted as listener count rather than as "the
+      // returned boolean did not change", which a primitive cannot do anyway.
+      const list = fakeList(false);
+      vi.stubGlobal('matchMedia', vi.fn().mockReturnValue(list.list));
+
+      matchesQuery(MEMBERS_QUERY);
+
+      expect(list.listenerCount).toBe(0);
+    });
+
+    it('reads false where matchMedia does not exist at all', () => {
+      vi.stubGlobal('matchMedia', undefined);
+
+      expect(matchesQuery(MEMBERS_QUERY)).toBe(false);
+    });
   });
 
   it('seeds from the current match', () => {

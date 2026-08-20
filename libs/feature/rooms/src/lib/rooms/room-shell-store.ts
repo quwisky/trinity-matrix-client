@@ -1,5 +1,5 @@
 import { Injectable, linkedSignal, signal } from '@angular/core';
-import { membersColumnDefaultsOpen } from './shell-layout';
+import { BELOW_MEMBERS_QUERY, matchesQuery } from '@trinity/util/ui';
 
 /**
  * The rooms shell's own selection and pane state.
@@ -52,12 +52,22 @@ export class RoomShellStore {
   });
 
   /**
-   * Whether the member list is shown. At the wide (≥1100px) layout it's the static
-   * right column, shown by default; below that it's an overlay drawer that must start
-   * closed. Seeded from the viewport so the drawer doesn't render open on a mobile
-   * load, while the wide layout keeps the column visible by default.
+   * Whether the member list is shown. At or above the `members` breakpoint it's the static
+   * right column, shown by default; below it an overlay drawer that must start closed.
+   * Seeded from the viewport so the drawer doesn't render open on a mobile load, while the
+   * wide layout keeps the column visible by default.
+   *
+   * A one-shot `matchesQuery` and deliberately NOT `mediaQuerySignal`: this is a SEED for a
+   * state the user then owns. A live signal would re-evaluate on every rotation across the
+   * boundary and reopen a column the user had explicitly closed.
+   *
+   * Negated rather than asking `MEMBERS_QUERY` directly, because `matchesQuery` answers
+   * `false` where `matchMedia` does not exist and the two directions disagree about what
+   * that should mean. Asking the BELOW query makes the unknown case the static column, which
+   * is what this has always done — asking the min-width one would silently make a context
+   * with no `matchMedia` start with the list hidden.
    */
-  readonly membersOpen = signal(membersColumnDefaultsOpen());
+  readonly membersOpen = signal(!matchesQuery(BELOW_MEMBERS_QUERY));
 
   /**
    * Event id the message list should scroll to, set by in-room search, a reply

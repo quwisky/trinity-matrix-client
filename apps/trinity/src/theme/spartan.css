@@ -67,6 +67,26 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+
+  /*
+   * The shell's two breakpoints, named so a template can say what it means.
+   *
+   * `md` is Tailwind's own 768px restated, not changed: declaring it makes the pairing with
+   * `MD_QUERY` in @trinity/util/ui visible instead of implicit, and `scripts/breakpoints.spec.mjs`
+   * asserts the two agree. `members` is the boundary at which there is room for a third
+   * column — below it the member list becomes an overlay drawer. It replaces an
+   * arbitrary-value variant at that width, duplicated across a template, a stylesheet and
+   * three TypeScript predicates with no definition relating them.
+   *
+   * Do not write an arbitrary-value class in a comment here. Tailwind extracts candidates
+   * from the raw text of every scanned file, comments included, so naming one in prose is
+   * enough to emit the utility — this block did exactly that and shipped a dead rule.
+   *
+   * A media query cannot read a custom property, so these values are inlined by Tailwind and
+   * genuinely restated in SCSS and TypeScript. The guard spec is what keeps the copies equal.
+   */
+  --breakpoint-md: 768px;
+  --breakpoint-members: 1100px;
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
