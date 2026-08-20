@@ -19,7 +19,7 @@
 
 <div class="list">
   <div class="scroll" #scroll (scroll)="onScroll()">
-    @if (loadingOlder()) {
+    @if (showLoadingOlder()) {
       <div class="load-older">Loading older messages…</div>
     }
 

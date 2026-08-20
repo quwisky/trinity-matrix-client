@@ -3,6 +3,7 @@ import {
   ElementRef,
   computed,
   effect,
+  Injector,
   inject,
   input,
   output,
@@ -34,6 +35,7 @@ import {
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { DayBoundaryService } from './day-boundary.service';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
+import { delayedBusy } from '@trinity/util/ui';
 import {
   type BatchItem,
   type BatchOutcome,
@@ -103,6 +105,17 @@ export abstract class MessageListBase {
   /** Currently-pinned event ids, for the per-row pinned state. */
   readonly pinnedIds = input<readonly string[]>([]);
   readonly loadingOlder = input(false);
+  /**
+   * `loadingOlder`, shaped for the eye: nothing for a fast backfill, and long enough to read
+   * when there is something to read. Backfilling a page of history is usually well under the
+   * threshold, so binding the raw input flashed the strip on most scrolls back — motion at
+   * the top of the timeline, in the exact spot the reader is looking, for a load they never
+   * noticed was happening.
+   */
+  protected readonly showLoadingOlder = delayedBusy(
+    this.loadingOlder,
+    inject(Injector),
+  );
   readonly canLoadOlder = input(false);
   /** Oldest RAW event in the loaded window — the backfill progress marker (see
    * TimelineService.oldestEventId). Not the oldest rendered row: rows can be filtered out. */
