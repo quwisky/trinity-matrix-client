@@ -114,6 +114,12 @@
       } @else {
         <p class="msg__text">{{ r.body }}</p>
       }
+      @if (r.previewUrl) {
+        <trn-link-preview
+          [url]="r.previewUrl"
+          [encrypted]="r.previewEncrypted ?? true"
+        />
+      }
       @if (!r.showHeader) {
         @if (showEditedMarker()) {
           <button
@@ -126,12 +132,6 @@
             (edited)
           </button>
         }
-      }
-      @if (r.previewUrl) {
-        <trn-link-preview
-          [url]="r.previewUrl"
-          [encrypted]="r.previewEncrypted ?? true"
-        />
       }
       @if (r.reactions.length) {
         <trn-message-reactions

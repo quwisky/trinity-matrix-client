@@ -108,17 +108,23 @@ export abstract class MessageListBase {
   /**
    * Gates the appearance of the "Loading older messages…" strip, and nothing else.
    *
-   * `minimumMs: 0` is load-bearing, not a tuning choice. The strip is IN FLOW above the rows,
-   * and `VirtualMessageListComponent.rowsRegionTop()` folds its height into the scroll
-   * restore that keeps the reader's place across a prepend. `TimelineService.loadOlder`
-   * prepends the rows and clears `loadingOlder` in one synchronous block, so the strip has
-   * always vanished in the same change-detection pass that the new history arrives — which
-   * is what lets that restore measure the layout the reader is actually left with.
+   * `minimumMs: 0` is load-bearing, not a tuning choice — but not on the way OUT, which is
+   * what it looks like. The AND in {@link showLoadingOlder} is what makes the strip vanish
+   * in the same change-detection pass the prepend lands in, and it does that whatever this
+   * is set to. What a minimum hold changes is the NEXT backfill: scrolling back is
+   * repetitive, one slow page is routinely followed by several fast ones, and a
+   * `delayedBusy` still serving out a hold is still "visible" — so the load after it skips
+   * the delay entirely and flashes the strip for a page nobody noticed was fetched, which is
+   * the exact flicker the delay exists to prevent. Zero ends the hold with the load, so
+   * every backfill is judged on its own duration.
    *
-   * Holding the strip past that point measures 36px that is about to disappear, and
-   * `.scroll` sets `overflow-anchor: none`, so nothing compensates when it does: the content
-   * jumps up by the strip's height a quarter-second after the history lands, in the exact
-   * spot being read. That is worse than the flicker this was fixing.
+   * Why the removal has to be synchronous at all: the strip is IN FLOW above the rows, and
+   * `VirtualMessageListComponent.rowsRegionTop()` folds its height into the scroll restore
+   * that keeps the reader's place across a prepend. `TimelineService.loadOlder` prepends the
+   * rows and clears `loadingOlder` in one synchronous block, so a strip held past that point
+   * has the restore measure 36px that is about to disappear — and `.scroll` sets
+   * `overflow-anchor: none`, so nothing compensates when it does: the content jumps up by
+   * the strip's height, in the exact spot being read.
    */
   private readonly loadingOlderSettled = delayedBusy(
     this.loadingOlder,

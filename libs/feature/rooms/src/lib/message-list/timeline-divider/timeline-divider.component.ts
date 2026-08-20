@@ -17,7 +17,6 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './timeline-divider.component.html',
   styleUrl: './timeline-divider.component.scss',
-  host: { style: 'display: contents' },
 })
 export class TimelineDividerComponent {
   /**

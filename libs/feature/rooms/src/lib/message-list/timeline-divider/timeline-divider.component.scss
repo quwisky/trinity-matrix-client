@@ -1,5 +1,15 @@
 @use '../../styles/mixins' as *;
 
+// `display: contents` so the host takes no slot in the list's flex column — the divider
+// inside it is what participates in the layout. Here rather than as an inline host style
+// because every sibling (drop-overlay, message-row, the composer parts) does it this way,
+// and this component HAS a stylesheet, so `:host` is stamped and matches. (A style-LESS
+// component would not stamp it — see the note below, which is the same trap from the
+// other side.)
+:host {
+  display: contents;
+}
+
 // These rules live HERE, with the markup, and not in `_message-list-shared.scss` where they
 // used to sit.
 

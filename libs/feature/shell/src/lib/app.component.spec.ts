@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { inject, signal } from '@angular/core';
 import { Location } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
@@ -497,14 +497,20 @@ describe('AppComponent boot screen', () => {
   });
 
   it('does not linger through the redirect a guard performs', async () => {
-    // A guard that sends a signed-out user to /login CANCELS the first navigation and
-    // starts another. Treating the cancel as "done" would drop the boot screen into the gap
-    // between the two and show a blank frame — so the wait is for NavigationEnd, and this
-    // pins that a cancelled-then-redirected navigation still ends with the screen gone.
+    // Shaped like the real `authGuard`, which returns `true` or a UrlTree for /login and
+    // NEVER a bare `false`. That distinction is the test: a UrlTree CANCELS the first
+    // navigation and has the router start a second one of its own, so treating the cancel
+    // as "done" would drop the boot screen into the gap between the two and show a blank
+    // frame. `false` merely ends the navigation, and asserting against it proved nothing
+    // about the path a signed-out user actually takes.
     const { container, fixture } = await render(AppComponent, {
       providers: [
         provideRouter([
-          { path: 'guarded', children: [], canActivate: [() => false] },
+          {
+            path: 'guarded',
+            children: [],
+            canActivate: [() => inject(Router).createUrlTree(['/login'])],
+          },
           { path: 'login', children: [] },
         ]),
         provideServiceWorker('ngsw-worker.js', { enabled: false }),
@@ -515,10 +521,35 @@ describe('AppComponent boot screen', () => {
 
     await router.navigate(['/guarded']);
     fixture.detectChanges();
-    // Still booting: nothing has rendered, which is the whole point.
-    expect(bootScreen(container)).not.toBeNull();
 
-    await router.navigate(['/login']);
+    // The redirect really happened, so the assertion below is about the second navigation
+    // ending rather than about the first one never starting.
+    expect(router.url).toBe('/login');
+    expect(bootScreen(container)).toBeNull();
+  });
+
+  it('gets out of the way when the route fails to load', async () => {
+    // The everyday version: a lazy chunk that 404s after a deploy. That navigation ends in
+    // NavigationError and never in NavigationEnd, so a boot screen waiting only for the
+    // latter never leaves — the user is left staring at "Restoring your session…" with no
+    // way to tell that anything went wrong. Hence `navigated` accepting both.
+    const { container, fixture } = await render(AppComponent, {
+      providers: [
+        provideRouter([
+          {
+            path: 'broken',
+            loadComponent: () => Promise.reject(new Error('chunk load failed')),
+          },
+        ]),
+        provideServiceWorker('ngsw-worker.js', { enabled: false }),
+        ...hostProviders,
+      ],
+    });
+    const router = TestBed.inject(Router);
+
+    await expect(router.navigate(['/broken'])).rejects.toThrow(
+      'chunk load failed',
+    );
     fixture.detectChanges();
 
     expect(bootScreen(container)).toBeNull();

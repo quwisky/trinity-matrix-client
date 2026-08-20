@@ -54,8 +54,9 @@ All notable changes to this project are documented here. The format is based on
   hovered or selected the row they sat on — the exact moment you were most likely to be reading
   them. Links were worse: on the dark theme they sat at 2.18:1 against 4.5:1 required, which is
   closer to decoration than to text. Both are repaired across every theme in both light and
-  dark, and a test now measures every text colour against every background it can land on so it
-  cannot drift back.
+  dark, down to the "Get a free API key" link on Settings → GIFs, which was the last one still
+  too faint to read against a dark background. A test now measures the theme's text colours
+  against every background they can land on, so they cannot drift back.
 
 - **The account switcher has its corners back.** On phones the dialog referred to a rounded
   corner that was never defined, so the browser dropped the rule and it rendered as a square.

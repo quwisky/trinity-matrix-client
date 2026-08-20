@@ -50,6 +50,16 @@
    * to the measured text role instead. See docs/architecture/ui-and-theming.md.
    */
   --color-danger: var(--trinity-danger);
+
+  /*
+   * `text-link` for accent-coloured TEXT, exactly as `text-danger` above. `text-primary`
+   * reads --primary, which aliases --trinity-accent — a FILL. `:root.dark` never overrides
+   * it, so blurple text lands at 2.74:1 on the settings canvas against the 4.5:1 floor this
+   * theme sets. The SCSS half of that split was migrated to --trinity-link when the token
+   * was introduced; this is the Tailwind half, which was missed because the utility names
+   * the Helm token rather than the Trinity one.
+   */
+  --color-link: var(--trinity-link);
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);

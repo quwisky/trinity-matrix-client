@@ -1,5 +1,6 @@
 import { type Meta, type StoryObj } from '@storybook/angular-vite';
 import { TrnIconComponent } from '@trinity/components/icon';
+import { HlmButton } from '@trinity/helm/button';
 import { BannerComponent } from './banner.component';
 
 /**
@@ -14,7 +15,10 @@ const meta: Meta<BannerComponent> = {
   decorators: [
     (story) => ({
       ...story(),
-      moduleMetadata: { imports: [TrnIconComponent] },
+      // `HlmButton` as well as the icon: the projected actions are plain <button hlmBtn>
+      // elements, and without the directive here they render as unstyled browser buttons —
+      // which is precisely the part of the layout these stories exist to show.
+      moduleMetadata: { imports: [TrnIconComponent, HlmButton] },
     }),
   ],
 };
@@ -27,7 +31,7 @@ export const Neutral: Story = {
   render: () => ({
     template: `
       <trn-banner tone="neutral">
-        <trn-icon trnBannerIcon name="wifi-off" />
+        <trn-icon trnBannerIcon name="cloud-off" />
         You are offline. Messages will send when the connection returns.
       </trn-banner>`,
   }),
@@ -53,7 +57,7 @@ export const LongMessage: Story = {
   render: () => ({
     template: `
       <trn-banner tone="neutral">
-        <trn-icon trnBannerIcon name="triangle-alert" />
+        <trn-icon trnBannerIcon name="eye-off" />
         This room's history is only visible to members who joined before you, so the messages
         above may be missing context that other people in the room can see.
         <span trnBannerActions>
@@ -67,7 +71,7 @@ export const NoActions: Story = {
   render: () => ({
     template: `
       <trn-banner tone="neutral">
-        <trn-icon trnBannerIcon name="info" />
+        <trn-icon trnBannerIcon name="loader-circle" />
         Reconnecting…
       </trn-banner>`,
   }),

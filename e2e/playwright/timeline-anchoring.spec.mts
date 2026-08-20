@@ -66,7 +66,7 @@ test.describe('Timeline anchoring', () => {
     page,
     request,
   }) => {
-    // EXPECTED TO FAIL — this is a reproducer for a bug it found, not a bug it caused.
+    // A REPRODUCER for a bug it found, not a bug it caused. It passes while the bug is open.
     //
     // Measured on the redesign epic branch, with none of the phase work applied: paging in
     // older history moves the anchored message up by exactly 42px, reproducibly (16 -> -26
@@ -75,10 +75,12 @@ test.describe('Timeline anchoring', () => {
     // height to suggest the anchor is captured with it on screen and restored without it,
     // but it is NOT root-caused and should not be guessed at in a comment.
     //
-    // `test.fail()` rather than deletion or a loosened tolerance: the suite stays green while
-    // the invariant is documented and reproducible, and the day someone fixes the anchoring
-    // this test fails for passing unexpectedly — which is the prompt to delete this line.
-    test.fail();
+    // The drift is PINNED AS A RANGE below rather than marked `test.fail()`. Both keep the
+    // suite green while the bug is open and both go red the day it is fixed, but `test.fail()`
+    // is green for EVERY failure — a rotted selector, a registration timeout, the anchored
+    // message leaving the DOM — so the reproducer could stop reproducing and still report
+    // success. A range fails on anything that is not the ~42px this documents, in either
+    // direction, which is the whole reason to keep a reproducer rather than a note.
 
     const hs = session.hs as string;
     const runId = `${Date.now().toString(36)}an`;
@@ -173,10 +175,22 @@ test.describe('Timeline anchoring', () => {
 
     const after = await offsetOf(anchor!.id as string);
     expect(after, 'the anchored message left the DOM').not.toBeNull();
-    // A few pixels of tolerance for sub-pixel layout; the regression this catches was 36.
+
+    const drift = Math.abs((after as number) - anchor!.top);
+    const moved = `anchored message moved from ${anchor!.top} to ${after} (${drift}px)`;
+
+    // THE BUG, pinned. 8px is the sub-pixel tolerance the invariant would use once this is
+    // fixed; 80px is loose enough for the measured 42 to sit comfortably inside and tight
+    // enough that a materially different drift is a different bug and deserves to be looked
+    // at rather than absorbed.
+    //
+    // When someone fixes the anchoring, the first assertion goes red. That is the prompt to
+    // delete both of these and restore the real invariant:
+    //   expect(drift, moved).toBeLessThan(8);
     expect(
-      Math.abs((after as number) - anchor!.top),
-      `anchored message moved from ${anchor!.top} to ${after}`,
-    ).toBeLessThan(8);
+      drift,
+      `FIXED? ${moved} — see the note at the top of this test`,
+    ).toBeGreaterThan(8);
+    expect(drift, `WORSE: ${moved}`).toBeLessThan(80);
   });
 });

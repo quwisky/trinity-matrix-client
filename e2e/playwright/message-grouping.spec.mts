@@ -192,9 +192,13 @@ test.describe('Message grouping', () => {
     // deliberately over the row ABOVE — which on a touch device, where the bar is always
     // open, meant every row permanently covered the top of its predecessor. Measured as a
     // box containment rather than read off the stylesheet, because that is the actual claim.
+    // A CONTINUATION row specifically, not the first row that happens to carry a bar. A group
+    // start is ~60px — taller than the 34px bar — so the residual measured on one is 0 no
+    // matter how tall the bar grows, and the bound below would pass by construction. The
+    // 26px continuation is the row the reasoning is about and the only one that can fail.
     const containment = await page.evaluate(() => {
-      const row = [...document.querySelectorAll('.msg')].find((candidate) =>
-        candidate.querySelector('.msg__toolbar'),
+      const row = [...document.querySelectorAll('.msg--cont')].find(
+        (candidate) => candidate.querySelector('.msg__toolbar'),
       );
       const bar = row?.querySelector('.msg__toolbar');
       if (!row || !bar) {
@@ -211,7 +215,7 @@ test.describe('Message grouping', () => {
     });
 
     if (!containment) {
-      throw new Error('expected a message row carrying a toolbar');
+      throw new Error('expected a continuation row carrying a toolbar');
     }
     // Zero or negative: the bar starts at or below its row's top edge, never above it. That
     // is the defect this replaced — a bar at `top: -16px` painted over the row before it.

@@ -27,17 +27,17 @@ export interface MediaBubbleItem {
 }
 
 /**
- * Presentational media attachment: renders an image/video/audio inline or a
- * download file-card, driven entirely by inputs (a resolved `src` object URL plus
- * metadata) — it performs no fetching/decryption and has no `@trinity/core`
- * dependency. A smart wrapper resolves the URL and feeds `loading`/`error`/`src`.
- */
-/**
  * What to reserve when an event does not say. 16 / 9 is the shape most shared media is
  * closest to, and being wrong here costs a small reflow rather than a full-height one.
  */
 const DEFAULT_MEDIA_RATIO = '16 / 9';
 
+/**
+ * Presentational media attachment: renders an image/video/audio inline or a
+ * download file-card, driven entirely by inputs (a resolved `src` object URL plus
+ * metadata) — it performs no fetching/decryption and has no `@trinity/core`
+ * dependency. A smart wrapper resolves the URL and feeds `loading`/`error`/`src`.
+ */
 @Component({
   selector: 'trn-media-bubble',
   changeDetection: ChangeDetectionStrategy.OnPush,

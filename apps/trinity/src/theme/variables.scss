@@ -91,6 +91,7 @@
   --trinity-z-sticky: 5; // pinned affordances inside a scroller (jump-to-unread)
   --trinity-z-floating: 10; // a component's own popovers (emoji picker, suggestions)
   --trinity-z-overlay: 20; // a sheet over one pane (the drag-and-drop target)
+  --trinity-z-scrim: 30; // the dimmer behind a panel — under it, over everything else
   --trinity-z-panel: 40; // a panel over the shell (mobile room list)
 
   // --- Motion -------------------------------------------------------------------
@@ -367,6 +368,13 @@
 :root[data-theme='amethyst']:not(.dark) {
   --trinity-accent: #7c3aed;
   --trinity-accent-hover: #6d28d9;
+
+  // Violet-800, two steps down the same scale the accent is violet-600 of — the same
+  // derivation the default palette makes when it darkens blurple to #3f49b8. Without it this
+  // block inherited the DEFAULT link, so amethyst light painted violet fills beside indigo
+  // text: `.settings__item--active` draws both on one row. 6.08:1 on --trinity-active
+  // #dccfef, the darkest ground this palette puts text on.
+  --trinity-link: #5b21b6;
   --trinity-rail: #e7e2f0;
   --trinity-sidebar: #f4f1fa;
   --trinity-sidebar-header: #ece6f5;

@@ -84,11 +84,7 @@
   pre {
     position: relative;
     margin: 4px 0;
-
-    // The extra bottom padding is the caption's band. Generated content is painted over the
-    // element, not inside its flow, so without a reserved strip the caption sits on the last
-    // line of code — whichever corner it is put in.
-    padding: 8px 10px 20px;
+    padding: 8px 10px;
     border-radius: var(--trinity-radius-sm);
     background: var(--trinity-rail);
     overflow-x: auto;
@@ -111,6 +107,15 @@
 
     // The `padding-bottom` above is what keeps it off the code entirely rather than merely
     // usually: the caption gets a strip of its own that no line can reach into.
+    // The caption's band, reserved only where a caption can appear. Generated content is
+    // painted over the element rather than inside its flow, so without a strip of its own
+    // the caption sits on the last line of code — whichever corner it is put in. A block
+    // with no `language` attribute renders no caption and so needs no band; giving every
+    // `pre` one padded the fenced blocks that carry no language for nothing.
+    &[language] {
+      padding-bottom: 20px;
+    }
+
     &[language]::after {
       content: attr(language);
       position: absolute;
