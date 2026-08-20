@@ -37,6 +37,13 @@ All notable changes to this project are documented here. The format is based on
   meant every message permanently covered the top of the one before it. It stays inside its own
   message now, and on touch it stays out of the way until you long-press.
 
+- **Starting the app no longer shows a blank screen.** Trinity has to open its local
+  database, load the encryption engine and reconnect before it can show you anything, and
+  until now it showed nothing at all while it did — on a cold start, or a slow phone, that
+  was several seconds of blank white or black that looked like a crash. There is a startup
+  screen now, from the first frame the browser paints through to the moment your rooms
+  appear.
+
 - **"Reduce motion" now reaches the timeline.** If your device is set to minimise animation,
   jumping to a reply, a search result, a pinned message or the first unread one used to
   animate the whole screen anyway — the setting was honoured everywhere except the place that

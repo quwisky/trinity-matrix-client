@@ -1,4 +1,20 @@
 <div class="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
+  <!-- Covers the window between the root component rendering (which clears index.html's
+       splash) and the first route resolving. That gap is the session restore: IndexedDB,
+       the crypto WASM, initRustCrypto and a first sync. -->
+  @if (booting()) {
+    <div
+      class="flex flex-1 flex-col items-center justify-center gap-4"
+      role="status"
+      aria-live="polite"
+      data-testid="app-booting"
+    >
+      <trn-spinner class="text-2xl" />
+      <span class="text-sm text-[var(--trinity-text-muted)]">
+        Restoring your session…
+      </span>
+    </div>
+  }
   <router-outlet></router-outlet>
   <trn-verification-host />
 </div>
