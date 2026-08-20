@@ -55,55 +55,9 @@
   color: var(--trinity-text-muted);
 }
 
-// Marks where the local calendar day changes. Neutral tokens deliberately: this is
-// wayfinding chrome, not an alert, and it has to sit quieter than the accent-coloured
-// unread divider it can appear directly above. Extra top margin so the day reads as
-// opening the block below it rather than floating between two rows.
-.day-divider {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 16px 0 8px;
-
-  &::before,
-  &::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--trinity-divider);
-  }
-}
-
-.day-divider__label {
-  @include category-label;
-
-  flex: 0 0 auto;
-}
-
-.new-divider {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 8px 0;
-  color: var(--trinity-link);
-  font-size: 12px;
-  font-weight: 600;
-
-  &::before,
-  &::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--trinity-accent);
-    opacity: 0.5;
-  }
-}
-
-.new-divider__label {
-  flex: 0 0 auto;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
+// The day and unread dividers are styled by `trn-timeline-divider`, which owns their markup.
+// Their rules used to live here; under emulated encapsulation that left them scoped to these
+// two list components while the elements belonged to another, so they matched nothing.
 
 .jump-unread {
   position: absolute;

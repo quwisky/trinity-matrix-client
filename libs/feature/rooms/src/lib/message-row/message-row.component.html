@@ -15,7 +15,14 @@
     [class.msg--failed]="r.decryptionFailed"
     [class.msg--sending]="r.status === 'sending'"
     [class.msg--sendfailed]="r.status === 'failed'"
+    [class.msg--revealed]="revealed()"
     [attr.data-mid]="r.id"
+    (contextmenu)="onContextMenu($event)"
+    (pointerdown)="onPointerDown($event)"
+    (pointermove)="onPointerMove($event)"
+    (pointerup)="cancelLongPress()"
+    (pointercancel)="cancelLongPress()"
+    (pointerleave)="cancelLongPress()"
   >
     @if (r.replyTo) {
       <button
@@ -35,6 +42,8 @@
         <span class="msg__reply-body">{{ r.replyTo.body }}</span>
       </button>
     }
+    <!-- The lead slot is the only thing the header/continuation split still owns: an
+         avatar on a group start, the hover-revealed timestamp on a continuation. -->
     @if (r.showHeader) {
       <trn-avatar
         class="msg__avatar"
@@ -43,7 +52,16 @@
         [name]="r.senderName"
         [size]="40"
       />
-      <div class="msg__body">
+    } @else {
+      <span class="msg__gutter">{{ fmt.time(r.timestamp) }}</span>
+    }
+
+    <!-- One body for both layouts. It used to be written twice, character-identical
+         apart from a `msg__text--cont` class and where the (edited) marker sits, so
+         every change to a message had to be made in both copies or it was made in
+         neither. The class is now a `.msg--cont .msg__text` rule in the stylesheet. -->
+    <div class="msg__body">
+      @if (r.showHeader) {
         <div class="msg__head">
           <span class="msg__author">{{ r.senderName }}</span>
           <span class="msg__time">{{ fmt.dateTime(r.timestamp) }}</span>
@@ -59,127 +77,44 @@
             </button>
           }
         </div>
-        @if (r.poll; as poll) {
-          <trn-poll
-            [poll]="poll"
-            [canEnd]="r.isOwn"
-            [pending]="!!r.status"
-            (vote)="pollVote.emit({ pollId: poll.id, answerId: $event })"
-            (end)="pollEnd.emit(poll.id)"
-          />
-        } @else if (r.location; as location) {
-          <trn-location [location]="location" />
-        } @else if (r.media?.isVoice) {
-          <trn-voice-message [media]="r.media!" />
-        } @else if (r.media) {
-          <trn-media-attachment class="msg__media" [media]="r.media" />
-          @if (r.captionHtml) {
-            <div
-              class="msg__text msg__text--html"
-              trnSpoilerReveal
-              trnMatrixLink
-              (matrixLink)="matrixLink.emit($event)"
-              [innerHTML]="r.captionHtml"
-            ></div>
-          } @else if (r.caption) {
-            <p class="msg__text">{{ r.caption }}</p>
-          }
-        } @else if (r.html) {
+      }
+      @if (r.poll; as poll) {
+        <trn-poll
+          [poll]="poll"
+          [canEnd]="r.isOwn"
+          [pending]="!!r.status"
+          (vote)="pollVote.emit({ pollId: poll.id, answerId: $event })"
+          (end)="pollEnd.emit(poll.id)"
+        />
+      } @else if (r.location; as location) {
+        <trn-location [location]="location" />
+      } @else if (r.media?.isVoice) {
+        <trn-voice-message [media]="r.media!" />
+      } @else if (r.media) {
+        <trn-media-attachment class="msg__media" [media]="r.media" />
+        @if (r.captionHtml) {
           <div
             class="msg__text msg__text--html"
             trnSpoilerReveal
             trnMatrixLink
             (matrixLink)="matrixLink.emit($event)"
-            [innerHTML]="r.html"
+            [innerHTML]="r.captionHtml"
           ></div>
-        } @else {
-          <p class="msg__text">{{ r.body }}</p>
+        } @else if (r.caption) {
+          <p class="msg__text">{{ r.caption }}</p>
         }
-        @if (r.previewUrl) {
-          <trn-link-preview
-            [url]="r.previewUrl"
-            [encrypted]="r.previewEncrypted ?? true"
-          />
-        }
-        @if (r.reactions.length) {
-          <trn-message-reactions
-            [reactions]="r.reactions"
-            (toggleReaction)="action.emit({ type: 'react', key: $event })"
-            (showReactors)="action.emit({ type: 'reactors' })"
-          />
-        }
-        @if (r.readReceipts.length) {
-          <button
-            type="button"
-            class="msg__receipts"
-            data-testid="read-receipts"
-            [attr.aria-label]="seenByLabel(r.readReceipts)"
-            [title]="seenByLabel(r.readReceipts)"
-            (click)="seenByOpen.set(!seenByOpen())"
-          >
-            @for (receipt of r.readReceipts; track receipt.userId) {
-              <trn-avatar
-                class="msg__receipt"
-                aria-hidden="true"
-                [mxc]="receipt.avatarMxc"
-                [initial]="receipt.initial"
-                [name]="receipt.name"
-                [size]="16"
-              />
-            }
-          </button>
-          @if (seenByOpen()) {
-            <span class="msg__seen-by" data-testid="seen-by-list">
-              {{ seenByLabel(r.readReceipts) }}
-            </span>
-          }
-        }
-      </div>
-    } @else {
-      <span class="msg__gutter">{{ fmt.time(r.timestamp) }}</span>
-      <div class="msg__body">
-        @if (r.poll; as poll) {
-          <trn-poll
-            [poll]="poll"
-            [canEnd]="r.isOwn"
-            [pending]="!!r.status"
-            (vote)="pollVote.emit({ pollId: poll.id, answerId: $event })"
-            (end)="pollEnd.emit(poll.id)"
-          />
-        } @else if (r.location; as location) {
-          <trn-location [location]="location" />
-        } @else if (r.media?.isVoice) {
-          <trn-voice-message [media]="r.media!" />
-        } @else if (r.media) {
-          <trn-media-attachment class="msg__media" [media]="r.media" />
-          @if (r.captionHtml) {
-            <div
-              class="msg__text msg__text--cont msg__text--html"
-              trnSpoilerReveal
-              trnMatrixLink
-              (matrixLink)="matrixLink.emit($event)"
-              [innerHTML]="r.captionHtml"
-            ></div>
-          } @else if (r.caption) {
-            <p class="msg__text msg__text--cont">{{ r.caption }}</p>
-          }
-        } @else if (r.html) {
-          <div
-            class="msg__text msg__text--cont msg__text--html"
-            trnSpoilerReveal
-            trnMatrixLink
-            (matrixLink)="matrixLink.emit($event)"
-            [innerHTML]="r.html"
-          ></div>
-        } @else {
-          <p class="msg__text msg__text--cont">{{ r.body }}</p>
-        }
-        @if (r.previewUrl) {
-          <trn-link-preview
-            [url]="r.previewUrl"
-            [encrypted]="r.previewEncrypted ?? true"
-          />
-        }
+      } @else if (r.html) {
+        <div
+          class="msg__text msg__text--html"
+          trnSpoilerReveal
+          trnMatrixLink
+          (matrixLink)="matrixLink.emit($event)"
+          [innerHTML]="r.html"
+        ></div>
+      } @else {
+        <p class="msg__text">{{ r.body }}</p>
+      }
+      @if (!r.showHeader) {
         @if (showEditedMarker()) {
           <button
             type="button"
@@ -191,42 +126,47 @@
             (edited)
           </button>
         }
-        @if (r.reactions.length) {
-          <trn-message-reactions
-            [reactions]="r.reactions"
-            (toggleReaction)="action.emit({ type: 'react', key: $event })"
-            (showReactors)="action.emit({ type: 'reactors' })"
-          />
-        }
-        @if (r.readReceipts.length) {
-          <button
-            type="button"
-            class="msg__receipts"
-            data-testid="read-receipts"
-            [attr.aria-label]="seenByLabel(r.readReceipts)"
-            [title]="seenByLabel(r.readReceipts)"
-            (click)="seenByOpen.set(!seenByOpen())"
-          >
-            @for (receipt of r.readReceipts; track receipt.userId) {
-              <trn-avatar
-                class="msg__receipt"
-                aria-hidden="true"
-                [mxc]="receipt.avatarMxc"
-                [initial]="receipt.initial"
-                [name]="receipt.name"
-                [size]="16"
-              />
-            }
-          </button>
-          @if (seenByOpen()) {
-            <span class="msg__seen-by" data-testid="seen-by-list">
-              {{ seenByLabel(r.readReceipts) }}
-            </span>
+      }
+      @if (r.previewUrl) {
+        <trn-link-preview
+          [url]="r.previewUrl"
+          [encrypted]="r.previewEncrypted ?? true"
+        />
+      }
+      @if (r.reactions.length) {
+        <trn-message-reactions
+          [reactions]="r.reactions"
+          (toggleReaction)="action.emit({ type: 'react', key: $event })"
+          (showReactors)="action.emit({ type: 'reactors' })"
+        />
+      }
+      @if (r.readReceipts.length) {
+        <button
+          type="button"
+          class="msg__receipts"
+          data-testid="read-receipts"
+          [attr.aria-label]="seenByLabel(r.readReceipts)"
+          [title]="seenByLabel(r.readReceipts)"
+          (click)="seenByOpen.set(!seenByOpen())"
+        >
+          @for (receipt of r.readReceipts; track receipt.userId) {
+            <trn-avatar
+              class="msg__receipt"
+              aria-hidden="true"
+              [mxc]="receipt.avatarMxc"
+              [initial]="receipt.initial"
+              [name]="receipt.name"
+              [size]="16"
+            />
           }
+        </button>
+        @if (seenByOpen()) {
+          <span class="msg__seen-by" data-testid="seen-by-list">
+            {{ seenByLabel(r.readReceipts) }}
+          </span>
         }
-      </div>
-    }
-
+      }
+    </div>
     <!-- A row-level property, not part of the text: one shield for both the header and
          grouped layouts, parked at the row's trailing edge. The icon alone says something
          is off but not what, so it carries a tooltip that names the finding and explains
@@ -289,7 +229,7 @@
       <trn-message-toolbar
         class="msg__toolbar"
         [caps]="toolbarCaps()"
-        (action)="action.emit($event)"
+        (action)="onToolbarAction($event)"
       />
     }
   </div>

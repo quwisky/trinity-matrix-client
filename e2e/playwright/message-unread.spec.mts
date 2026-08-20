@@ -170,6 +170,32 @@ test.describe('Unread divider + jump-to-unread', () => {
     const divider = page.getByTestId('new-messages-divider');
     await expect(divider).toHaveText(/New messages/i, { timeout: 20_000 });
 
+    // The divider is actually STYLED, not merely present.
+    //
+    // This exists because it once was not. When the markup moved into `trn-timeline-divider`
+    // its rules stayed behind in the two list stylesheets, and Angular's emulated
+    // encapsulation scopes rules to the component that DECLARES them — so the selectors kept
+    // the lists' id, the elements carried the divider's, and every rule silently stopped
+    // matching. The divider rendered as bare unstyled text on the app's main screen and the
+    // whole suite stayed green, because presence and text were all anything checked.
+    //
+    // Computed style, in a real browser: jsdom applies no CSS, so a unit test cannot see this
+    // class of bug at all. `flexGrow` on `::before` is the sharpest single probe — the rules
+    // either side of the label are generated content, so if the stylesheet is not reaching
+    // this element there is nothing there to measure.
+    const styling = await divider.evaluate((el) => ({
+      display: getComputedStyle(el).display,
+      alignItems: getComputedStyle(el).alignItems,
+      fontWeight: getComputedStyle(el).fontWeight,
+      ruleFlexGrow: getComputedStyle(el, '::before').flexGrow,
+    }));
+    expect(styling).toEqual({
+      display: 'flex',
+      alignItems: 'center',
+      fontWeight: '600',
+      ruleFlexGrow: '1',
+    });
+
     // On open the timeline pins to the bottom, so the divider is off-screen and the
     // jump pill appears; clicking it brings the divider into view and hides the pill.
     const jump = page.getByTestId('jump-to-unread');

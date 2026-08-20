@@ -1,11 +1,14 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
+  ElementRef,
   computed,
   inject,
   input,
   output,
   signal,
+  viewChild,
 } from '@angular/core';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { AvatarComponent } from '@trinity/components/avatar';
@@ -76,6 +79,11 @@ export type MessageRowAction =
   /** Show everyone who reacted — raised by the reaction pills' trailing chip. */
   | { type: 'reactors' };
 
+/** How long a press has to be held before it counts as one, in milliseconds. */
+const LONG_PRESS_MS = 500;
+/** How far the pointer may drift before the press is a scroll instead. */
+const LONG_PRESS_SLOP_PX = 10;
+
 /**
  * One presentational message row, shared by the main timeline ({@link
  * SimpleMessageListComponent} / {@link VirtualMessageListComponent}) and the thread
@@ -111,6 +119,167 @@ export type MessageRowAction =
 export class MessageRowComponent {
   /** Timestamps go through the app-wide format preference, never a DatePipe. */
   readonly fmt = inject(DateTimeFormatService);
+  private readonly destroyRef = inject(DestroyRef);
+
+  private readonly host = inject(ElementRef<HTMLElement>);
+
+  private readonly toolbar = viewChild(MessageToolbarComponent);
+  private longPressTimer: ReturnType<typeof setTimeout> | null = null;
+  private longPressOrigin: { x: number; y: number } | null = null;
+  private dismissReveal: (() => void) | null = null;
+
+  /**
+   * Whether this row's action bar is pinned open, which is how touch reaches it.
+   *
+   * The bar is revealed on hover, and a touchscreen has no hover. It used to be forced open
+   * on every row under `@media (hover: none)` — which is why each row permanently wore a
+   * toolbar — and removing that is what made the timeline quiet. But the long press that
+   * replaced it opens the OVERFLOW menu, and Reply, Add reaction and Reply in thread are not
+   * in that menu: they are the bar's own buttons. So the long press reveals the bar itself,
+   * and its "⋯" still reaches everything else. One row at a time, gone on the next tap.
+   */
+  readonly revealed = signal(false);
+
+  constructor() {
+    this.destroyRef.onDestroy(() => {
+      this.cancelLongPress();
+      this.hideToolbar();
+    });
+  }
+
+  /**
+   * Right-click opens the message's own actions instead of the browser's.
+   *
+   * Not suppressed over a selection: a user who has highlighted part of a message is asking
+   * for Copy, and taking that menu away to offer our own would be a downgrade. The native
+   * menu is only prevented where this row actually handles the event.
+   */
+  onContextMenu(event: MouseEvent): void {
+    if (this.hasTextSelection()) {
+      return;
+    }
+    // A right-click on a link or an attachment wants the BROWSER's menu — "Open link in new
+    // tab", "Save image as…". Those live nowhere else, so taking them away to offer message
+    // actions is a straight loss. Same reasoning as the selection guard above.
+    if ((event.target as HTMLElement | null)?.closest('a, img, video, audio')) {
+      return;
+    }
+    const bar = this.toolbar();
+    if (!bar) {
+      return; // read-only rows and system events have no actions to offer
+    }
+    event.preventDefault();
+    bar.openMoreMenu();
+  }
+
+  /**
+   * Touch has no right-click, so a long press stands in for it — the same actions, reached
+   * the way every other app on the device reaches them.
+   */
+  onPointerDown(event: PointerEvent): void {
+    if (event.pointerType === 'mouse' || !this.toolbar()) {
+      return;
+    }
+    // Only the first finger arms a press, and any press already pending is cleared first.
+    // Without both, a second pointer overwrote the timer handle while the first timer stayed
+    // scheduled: pinch-zooming a message cancelled the one that could be cancelled and let
+    // the orphan fire, opening the bar mid-gesture with nothing held down. The overwrite also
+    // measured finger one's travel against finger two's origin.
+    if (!event.isPrimary) {
+      return;
+    }
+    this.cancelLongPress();
+    this.longPressOrigin = { x: event.clientX, y: event.clientY };
+    this.longPressTimer = setTimeout(() => {
+      this.longPressTimer = null;
+      if (!this.hasTextSelection()) {
+        this.revealToolbar();
+      }
+    }, LONG_PRESS_MS);
+  }
+
+  /**
+   * A press that travels is a scroll, and a timeline is mostly scrolled. Cancelling on
+   * movement is what keeps the menu from firing at the end of a flick.
+   */
+  onPointerMove(event: PointerEvent): void {
+    const origin = this.longPressOrigin;
+    if (!origin || this.longPressTimer === null) {
+      return;
+    }
+    const travelled =
+      Math.abs(event.clientX - origin.x) + Math.abs(event.clientY - origin.y);
+    if (travelled > LONG_PRESS_SLOP_PX) {
+      this.cancelLongPress();
+    }
+  }
+
+  /** Lifting, cancelling, or leaving all end the press without opening anything. */
+  cancelLongPress(): void {
+    if (this.longPressTimer !== null) {
+      clearTimeout(this.longPressTimer);
+      this.longPressTimer = null;
+    }
+    this.longPressOrigin = null;
+  }
+
+  /**
+   * Pin the action bar open, until the next tap outside this row or the next scroll.
+   *
+   * Both dismissals are captured at the document, because the thing that should close it is
+   * usually not inside this component — and the listeners exist only while a row is actually
+   * revealed, so the timeline is not carrying one per row.
+   */
+  private revealToolbar(): void {
+    if (this.revealed()) {
+      return;
+    }
+    this.revealed.set(true);
+
+    const onPointerDown = (event: Event) => {
+      if (!this.host.nativeElement.contains(event.target as Node)) {
+        this.hideToolbar();
+      }
+    };
+    const onScroll = () => this.hideToolbar();
+    // Capture phase, and `scroll` does not bubble — without `true` a scroll inside the
+    // timeline's own scroller would never reach a listener on the document.
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('scroll', onScroll, true);
+    this.dismissReveal = () => {
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('scroll', onScroll, true);
+    };
+  }
+
+  /** Unpin the bar and drop the listeners that were watching for a reason to. */
+  hideToolbar(): void {
+    this.dismissReveal?.();
+    this.dismissReveal = null;
+    this.revealed.set(false);
+  }
+
+  /** An action was chosen, so the bar has done its job. */
+  onToolbarAction(event: MessageRowAction): void {
+    this.hideToolbar();
+    this.action.emit(event);
+  }
+
+  /**
+   * Whether the user has text selected IN THIS ROW — their selection, their menu.
+   *
+   * Scoped to the row rather than the document: a selection is a statement about one
+   * message, and a document-wide check let text highlighted in one message suppress the
+   * context menu on every other row in the timeline until it was cleared.
+   */
+  private hasTextSelection(): boolean {
+    const selection = document.getSelection();
+    if (!selection || selection.toString().trim().length === 0) {
+      return false;
+    }
+    const anchor = selection.anchorNode;
+    return anchor !== null && this.host.nativeElement.contains(anchor);
+  }
 
   readonly row = input.required<MessageRow>();
   /** Thread summary for this row's event (main timeline only), else null. */

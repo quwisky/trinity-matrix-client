@@ -310,7 +310,17 @@
           />
           <!-- The experimental flag swaps in the windowed timeline. Both take the
              same inputs/outputs (MessageListBase); flipping the flag re-creates the
-             chosen component fresh. -->
+             chosen component fresh.
+
+             The two binding lists are identical and must stay that way — an input added
+             to one and forgotten on the other gives a timeline that behaves differently
+             depending on a flag most people never touch, and nothing fails.
+             `scripts/message-list-bindings.spec.mjs` is what fails instead.
+
+             Not de-duplicated with `*ngComponentOutlet`: it can pass inputs but cannot
+             bind outputs, and half of these thirty are outputs. The real fix is for
+             windowing to be a MODE of one list rather than a second component, which is a
+             larger change than this phase. -->
           @if (flags.virtualTimeline()) {
             <trn-virtual-message-list
               [messages]="timeline.messages()"

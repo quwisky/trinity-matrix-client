@@ -142,5 +142,89 @@ test.describe('Message grouping', () => {
     for (const left of textLeft) {
       expect(left).toBeCloseTo(textLeft[0], 1);
     }
+
+    // The group gap, measured rather than read off the stylesheet — and specifically as
+    // PADDING inside the border box. `virtual-message-list` sizes every row with
+    // `entry.borderBoxSize[0].blockSize`, which margins sit outside of, so a gap applied as
+    // `margin-top` would look identical on screen here and silently undercount the windowed
+    // scroll by the gap on every group start. Asserting the border box is what tells the two
+    // apart; jsdom cannot, because it does no layout at all.
+    const gap = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll('.msg')].filter((row) =>
+        row.querySelector('.msg__text'),
+      );
+      const start = rows.find((row) => !row.classList.contains('msg--cont'));
+      const cont = rows.find((row) => row.classList.contains('msg--cont'));
+      if (!start || !cont) {
+        return null;
+      }
+      const read = (el: Element) => {
+        const cs = getComputedStyle(el);
+        return {
+          paddingTop: parseFloat(cs.paddingTop),
+          marginTop: parseFloat(cs.marginTop),
+          // What the ResizeObserver would report for this row.
+          borderBox: el.getBoundingClientRect().height,
+        };
+      };
+      return { start: read(start), cont: read(cont) };
+    });
+
+    if (!gap) {
+      throw new Error('expected both a group start and a continuation row');
+    }
+    // The start carries the gap; the continuation carries none.
+    expect(gap.start.paddingTop).toBeGreaterThanOrEqual(16);
+    expect(gap.cont.paddingTop).toBe(0);
+    // And it is not margin — which is the half a screenshot could not tell you, and the half
+    // that matters: `virtual-message-list` sizes rows from `borderBoxSize[0].blockSize`, and
+    // padding is inside the border box while margin is outside it. These two lines together
+    // ARE the proof; there is no third measurement to take.
+    //
+    // (There used to be one — `start.borderBox - cont.borderBox >= 15`, commented "so the
+    // measured height really does include it". It could not fail for that reason: a group
+    // start already carries an avatar and an author line, so it is ~36px taller than a
+    // continuation whatever the gap is. It has been removed rather than left to look like
+    // evidence.)
+    expect(gap.start.marginTop).toBe(0);
+
+    // The hover toolbar belongs to its own row. It used to be parked at `top: -16px`, i.e.
+    // deliberately over the row ABOVE — which on a touch device, where the bar is always
+    // open, meant every row permanently covered the top of its predecessor. Measured as a
+    // box containment rather than read off the stylesheet, because that is the actual claim.
+    const containment = await page.evaluate(() => {
+      const row = [...document.querySelectorAll('.msg')].find((candidate) =>
+        candidate.querySelector('.msg__toolbar'),
+      );
+      const bar = row?.querySelector('.msg__toolbar');
+      if (!row || !bar) {
+        return null;
+      }
+      const r = row.getBoundingClientRect();
+      const b = bar.getBoundingClientRect();
+      return {
+        rowTop: r.top,
+        barTop: b.top,
+        overflowAbove: r.top - b.top,
+        overflowBelow: b.bottom - r.bottom,
+      };
+    });
+
+    if (!containment) {
+      throw new Error('expected a message row carrying a toolbar');
+    }
+    // Zero or negative: the bar starts at or below its row's top edge, never above it. That
+    // is the defect this replaced — a bar at `top: -16px` painted over the row before it.
+    expect(containment.overflowAbove).toBeLessThanOrEqual(0);
+
+    // And the other direction, which the assertion above cannot see.
+    //
+    // The bar is 34px and a continuation row is 26px, so it cannot fit: at `top: 0` it hangs
+    // ~8px into the row below. That is a real residual, not an oversight — the alternatives
+    // are taller rows (undoing the density this phase is for) or smaller buttons (worse to
+    // hit), and 8px transiently on hover beats 16px permanently on every row, which is what
+    // it replaced. What must not happen is that number growing unnoticed, so it is bounded
+    // rather than left unmeasured.
+    expect(containment.overflowBelow).toBeLessThanOrEqual(8);
   });
 });
