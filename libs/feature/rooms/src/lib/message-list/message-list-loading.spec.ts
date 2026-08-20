@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SimpleMessageListComponent } from './simple-message-list/simple-message-list.component';
+import { VirtualMessageListComponent } from './virtual-message-list/virtual-message-list.component';
 
 /**
  * The "Loading older messages…" strip, and when it is allowed to appear.
@@ -16,7 +17,20 @@ import { SimpleMessageListComponent } from './simple-message-list/simple-message
  * now, and these pin the two ends of that: nothing for a quick load, and once shown it stays
  * long enough to be read.
  */
-describe('message list — loading older', () => {
+/**
+ * Both lists, and the windowed one is not optional.
+ *
+ * `DEFAULT_VIRTUAL_TIMELINE` is true, so `VirtualMessageListComponent` is what ships. An
+ * earlier version of this file tested only the simple list — the whole binding could be
+ * reverted on the virtual one with the entire workspace still green, which is exactly how a
+ * scroll-anchoring regression got through review.
+ */
+const LISTS = [
+  ['simple', SimpleMessageListComponent],
+  ['virtual (the default)', VirtualMessageListComponent],
+] as const;
+
+describe.each(LISTS)('message list — loading older (%s)', (_label, List) => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
@@ -29,7 +43,7 @@ describe('message list — loading older', () => {
     container.querySelector('.load-older');
 
   async function create() {
-    const result = await render(SimpleMessageListComponent, {
+    const result = await render(List, {
       inputs: { messages: [], loadingOlder: false },
     });
     TestBed.tick();
@@ -62,7 +76,16 @@ describe('message list — loading older', () => {
     expect(container.textContent).toContain('Loading older messages…');
   });
 
-  it('keeps it up long enough to read when the backfill finishes right after', async () => {
+  it('disappears in the same pass the backfill finishes, not later', async () => {
+    // THE property, and it is about layout rather than about looks. The strip is in flow
+    // above the rows, and the windowed list's scroll restore folds its height into the
+    // calculation that keeps the reader's place across a prepend. `TimelineService` prepends
+    // the rows and clears `loadingOlder` together, so the strip has to go with them — held
+    // even a moment longer, the restore measures 36px that is about to vanish and the
+    // content jumps up by that much once it does.
+    //
+    // Asserted with no timer advance at all after the flag clears: anything that needs one
+    // is, by definition, still on screen when the prepend lands.
     const { container, fixture } = await create();
 
     fixture.componentRef.setInput('loadingOlder', true);
@@ -72,10 +95,7 @@ describe('message list — loading older', () => {
 
     fixture.componentRef.setInput('loadingOlder', false);
     TestBed.tick();
-    advance(100);
-    expect(strip(container)).not.toBeNull();
 
-    advance(500);
     expect(strip(container)).toBeNull();
   });
 });
