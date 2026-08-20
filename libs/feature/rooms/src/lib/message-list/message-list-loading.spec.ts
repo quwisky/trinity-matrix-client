@@ -98,4 +98,33 @@ describe.each(LISTS)('message list — loading older (%s)', (_label, List) => {
 
     expect(strip(container)).toBeNull();
   });
+
+  it('judges the next backfill on its own duration, rather than flashing the strip at it', async () => {
+    // What `minimumMs: 0` buys, and the ONLY thing about it that is observable. The AND in
+    // `showLoadingOlder` already removes the strip with the prepend whatever the minimum is,
+    // so a hold could never be seen on the way out — it would be seen on the way back in.
+    // Scrolling back is repetitive: one slow page is routinely followed by several fast
+    // ones, and a `delayedBusy` still serving out a hold is still "visible", so the next
+    // backfill would skip the delay entirely and flash the strip for a page nobody noticed
+    // was fetched. Set the minimum to anything above zero and this goes red.
+    const { container, fixture } = await create();
+
+    // A slow page: long enough to earn the strip.
+    fixture.componentRef.setInput('loadingOlder', true);
+    TestBed.tick();
+    advance(200);
+    expect(strip(container)).not.toBeNull();
+
+    fixture.componentRef.setInput('loadingOlder', false);
+    TestBed.tick();
+    advance(50);
+
+    // A second page, requested well inside any minimum hold and answered faster than the
+    // delay. It has earned nothing, so it shows nothing.
+    fixture.componentRef.setInput('loadingOlder', true);
+    TestBed.tick();
+    advance(100);
+
+    expect(strip(container)).toBeNull();
+  });
 });

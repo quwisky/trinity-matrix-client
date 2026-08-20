@@ -50,6 +50,18 @@ const files = ['libs/**/*.scss', 'apps/**/*.scss']
   .filter((file) => !file.includes('node_modules'))
   .sort();
 
+/**
+ * The other half of the surface. Tailwind utilities carry the same decisions as the
+ * stylesheets — `z-30` is a z-index and `text-primary` is a colour — but they live in
+ * templates, so a sweep that reads only `.scss` calls a rule "enforced everywhere" while the
+ * one place it is broken sits in a file it never opens. Both escapees below were found that
+ * way.
+ */
+const templates = ['libs/**/*.html', 'apps/**/*.html']
+  .flatMap((pattern) => globSync(pattern, { cwd: workspaceRoot }))
+  .filter((file) => !file.includes('node_modules'))
+  .sort();
+
 const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
 
 /**
@@ -104,5 +116,33 @@ describe('styling tokens', () => {
     // today, so this is a gap in reach rather than a miss, and widening the glob is a
     // separate change because the CSS file's `@theme` blocks are a different kind of thing.
     expect(raw).toEqual([...LITERAL_ANIMATIONS].sort());
+  });
+
+  it('reads the templates at all, so an empty sweep cannot pass as a clean one', () => {
+    expect(templates.length).toBeGreaterThan(50);
+  });
+
+  it('uses the z-index scale in templates too, not a raw Tailwind layer', () => {
+    // `z-30` on the mobile scrim was the one escapee, and it is exactly the shape that
+    // matters: nothing related it to `--trinity-z-panel: 40`, the panel it must sit behind,
+    // so renumbering the scale would have tied them with source order deciding.
+    const raw = templates.filter((file) =>
+      /class="[^"]*\bz-\d+\b/.test(read(file)),
+    );
+
+    expect(raw).toEqual([]);
+  });
+
+  it('paints accent TEXT with text-link, never with the text-primary fill', () => {
+    // `--primary` aliases `--trinity-accent`, a fill: `:root.dark` never overrides it, so
+    // `text-primary` renders blurple at 2.74:1 on the settings canvas. `text-link` maps to
+    // the measured text role (see the note in theme/spartan.css). The negative lookahead is
+    // load-bearing — `text-primary-foreground` is the ON-accent colour, a correct and
+    // unrelated utility that sits on `bg-primary` fills.
+    const offenders = templates.filter((file) =>
+      /\btext-primary\b(?!-)/.test(read(file)),
+    );
+
+    expect(offenders).toEqual([]);
   });
 });

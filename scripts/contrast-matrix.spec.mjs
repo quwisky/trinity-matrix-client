@@ -187,8 +187,13 @@ function resolve(token, palette, mode, seen = new Set()) {
     const isDark = selector.replace(/:not\([^)]*\)/g, '').includes('.dark');
     const themed = /\[data-theme='([a-z0-9-]+)'\]/.exec(selector);
     if (themed && themed[1] !== palette) return false;
-    if (!themed && palette !== 'trinity' && isDark !== (mode === 'dark'))
-      return false;
+    // NO palette filter on an un-themed block. `:root` applies in EVERY palette — that is
+    // what makes it the base — and a filter that dropped it for named palettes in dark mode
+    // silently unmeasured every role those palettes inherit rather than override, which is
+    // precisely the set most likely to stop working on a new ground. It reported nothing,
+    // because `pairs()` discards a pair whose value fails to resolve, and the
+    // "can measure every role" guard only catches a value it cannot PARSE, not one it never
+    // found. The two lines below are the whole of the mode filter, and always were.
     if (isDark && mode !== 'dark') return false;
     if (!isDark && mode === 'dark' && selector.includes(':not(.dark)'))
       return false;

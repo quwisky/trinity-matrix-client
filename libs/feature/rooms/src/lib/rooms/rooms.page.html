@@ -393,7 +393,7 @@
                only at that width) dismisses it. At ≥1100px it stays a static column
                and the backdrop is display:none. -->
             <div
-              class="fixed inset-0 z-30 hidden bg-black/50 max-[1100px]:block"
+              class="fixed inset-0 z-[var(--trinity-z-scrim)] hidden bg-black/50 max-[1100px]:block"
               (click)="closeMembers()"
               aria-hidden="true"
               data-testid="members-backdrop"

@@ -650,29 +650,28 @@ attribute at all.
 
 ### Verifying a token change
 
-!!! warning "Nothing checks that a consumed token exists"
+!!! note "Two specs check that a consumed token resolves"
 
-    There is no lint rule, no test and no build check. `.stylelintrc.json` sets
-    `custom-property-pattern: null` and does no cross-file resolution. A `var(--x)` with **no
-    fallback** whose custom property is undefined causes the browser to drop the whole
-    declaration — the page still renders, just wrong, with nothing logged.
+    A `var(--x)` with **no fallback** whose custom property is undefined makes the browser drop
+    the whole declaration — the page still renders, just wrong, with nothing logged. Stylelint
+    cannot see it: the `custom-property-pattern` in `.stylelintrc.json` constrains how a token is
+    *named*, and nothing there resolves one across files.
 
-    The manual check is to grep every `var(--trinity-…)` used without a fallback across
-    `libs` and `apps` and confirm each exists in `variables.scss`. References that *do* supply
-    a fallback are safe, since they render the fallback.
+    `scripts/token-resolve.spec.mjs` does. It collects every `var(--trinity-…)` in `libs` and
+    `apps` — stylesheets, templates and TypeScript — and fails on any token nothing defines. It
+    was written from a shipped bug: the mobile account picker asked for `var(--trinity-radius-lg)`,
+    which no palette defines, so the declaration was invalid and the dialog rendered with square
+    corners. The base 8px token is `--trinity-radius`; `spartan.css` *does* define a Tailwind
+    `--radius-lg`, but that is a different namespace and would not have helped.
 
-    Two specs enforce this now, so the check is no longer manual: `scripts/token-resolve.spec.mjs` fails on any `--trinity-*` token that is consumed but never defined (it found `--trinity-radius-lg`, which is why the mobile account picker shipped square corners), and `scripts/contrast-matrix.spec.mjs` measures every text role against every surface it can land on, per palette × mode.
-    `libs/feature/rooms/src/lib/account-picker/account-picker.component.scss` uses
-    `var(--trinity-radius-lg)`, which `variables.scss` does not define — the mobile
-    account-picker dialog renders with square corners. The base 8px token is
-    `--trinity-radius`. Note that `spartan.css` *does* define a Tailwind `--radius-lg`, which
-    is a different namespace.
+    `scripts/contrast-matrix.spec.mjs` checks the other half — that a token which resolves is
+    also readable. It measures every text role against every surface it can land on, per palette
+    × mode, including the nine `--trinity-syntax-*` colours against `--trinity-rail`. A palette
+    that retunes a ground now passes or fails instead of needing to be re-measured by hand.
 
-    In the other direction, `--trinity-accent-hover` is defined in all three palette blocks
-    and consumed by nothing.
-
-The same class of unchecked invariant applies to the eight `--trinity-syntax-*` contrast
-ratios whenever a palette changes `--trinity-rail`.
+    Both are one-directional on purpose: they fail on a token that is used and never defined, and
+    say nothing about one that is defined and unused, because a palette block legitimately
+    defines the whole vocabulary whether or not today's components reach for all of it.
 
 ## Rendered markdown is styled globally
 

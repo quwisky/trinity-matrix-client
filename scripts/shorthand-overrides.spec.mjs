@@ -92,14 +92,59 @@ function rulesOf(text) {
   return found;
 }
 
-/** The class tokens a selector list mentions: `.a, .b .c` -> {.a, .b, .c} */
+/**
+ * The class tokens a selector list mentions: `.a, .b .c` -> {.a, .b, .c}
+ *
+ * Pseudo-classes and pseudo-elements are stripped, because they do not change WHICH element
+ * the rule lands on — only when. Leaving them attached made `.x:hover` a different token
+ * from `.x`, so the commonest shape of the bug this file exists to catch, a base rule and
+ * its own hover, scored zero shared classes and went unreported.
+ */
 const classesOf = (selector) =>
   new Set(
     selector
       .split(',')
       .flatMap((part) => part.trim().split(/[\s>+~]+/))
-      .filter((token) => token.startsWith('.')),
+      .filter((token) => token.startsWith('.'))
+      .map((token) => token.replace(/::?[a-zA-Z-]+(\([^)]*\))?/g, '')),
   );
+
+/**
+ * Class pairs that some template puts on the SAME element.
+ *
+ * The other half of the miss. `.media { background-size } .media--image { background }` is
+ * the identical defect to writing both on one selector — every element is
+ * `class="media media--image"`, the specificities tie and the later rule wins — but the two
+ * rules share no class token, so a name-equality test cannot see it. The markup is what
+ * relates them, so the markup is what is read.
+ *
+ * Restricted to pairs where BOTH classes are styled somewhere in the corpus: templates are
+ * full of Tailwind utilities, and pairing those with everything would swamp the comparison
+ * with elements no component stylesheet targets.
+ */
+function coOccurringClasses(files, styled) {
+  const pairs = new Map();
+  const add = (a, b) => {
+    if (!pairs.has(a)) pairs.set(a, new Set());
+    pairs.get(a).add(b);
+  };
+  for (const file of files) {
+    const source = readFileSync(join(workspaceRoot, file), 'utf8');
+    for (const [, value] of source.matchAll(/class="([^"]*)"/g)) {
+      const names = value
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((name) => `.${name}`)
+        .filter((name) => styled.has(name));
+      for (const a of names) {
+        for (const b of names) {
+          if (a !== b) add(a, b);
+        }
+      }
+    }
+  }
+  return pairs;
+}
 
 const declares = (body, property) =>
   new RegExp(`(^|[;{\\s])${property}\\s*:`).test(body);
@@ -108,6 +153,29 @@ const stylesheets = globSync(
   ['libs/**/*.scss', 'apps/**/*.scss', 'apps/**/*.css'],
   { cwd: workspaceRoot },
 ).filter((file) => !file.includes('node_modules'));
+
+/** Every class token any rule in the corpus targets. */
+const styledClasses = new Set(
+  stylesheets.flatMap((file) =>
+    rulesOf(strip(readFileSync(join(workspaceRoot, file), 'utf8'))).flatMap(
+      (rule) => [...classesOf(rule.selector)],
+    ),
+  ),
+);
+
+const templateFiles = ['libs/**/*.html', 'apps/**/*.html']
+  .flatMap((pattern) => globSync(pattern, { cwd: workspaceRoot }))
+  .filter((file) => !file.includes('node_modules'));
+
+const coOccurring = coOccurringClasses(templateFiles, styledClasses);
+
+/** Do these two selectors land on the same element — by name, or by the markup? */
+const overlaps = (earlier, later) =>
+  [...later].filter(
+    (token) =>
+      earlier.has(token) ||
+      [...(coOccurring.get(token) ?? [])].some((mate) => earlier.has(mate)),
+  );
 
 describe('shorthand overrides', () => {
   it('reads the stylesheets at all, so an empty sweep cannot pass', () => {
@@ -142,9 +210,7 @@ describe('shorthand overrides', () => {
             if (!declares(rules[j].body, shorthand)) {
               continue;
             }
-            const shared = [...classesOf(rules[j].selector)].filter((token) =>
-              earlier.has(token),
-            );
+            const shared = overlaps(earlier, classesOf(rules[j].selector));
             if (!shared.length) {
               continue;
             }

@@ -384,6 +384,32 @@ describe('MessageRowComponent', () => {
     },
   );
 
+  // ORDER, not presence. On a continuation row the marker sits BELOW the link preview; on a
+  // group start it sits inside `.msg__head`. Folding the two hand-maintained copies of the
+  // body into one template moved it above the preview, and every other assertion here is a
+  // presence check, so the whole suite stayed green through a visible change.
+  it('keeps the (edited) marker below the link preview on a continuation row', async () => {
+    const { container } = await render(MessageRowComponent, {
+      inputs: {
+        row: row({
+          showHeader: false,
+          edited: true,
+          previewUrl: 'https://example.com',
+        }),
+        caps: caps(),
+      },
+    });
+
+    const body = container.querySelector('.msg__body') as HTMLElement;
+    const children = Array.prototype.slice.call(body.children) as Element[];
+    const preview = body.querySelector('trn-link-preview') as Element;
+    const marker = body.querySelector('[data-testid=msg-edited]') as Element;
+
+    expect(preview).not.toBeNull();
+    expect(marker).not.toBeNull();
+    expect(children.indexOf(preview)).toBeLessThan(children.indexOf(marker));
+  });
+
   it('offers no marker on a message that was never edited', async () => {
     const { container } = await render(MessageRowComponent, {
       inputs: { row: row(), caps: caps() },
