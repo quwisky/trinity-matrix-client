@@ -30,16 +30,20 @@ const LOCAL_STACKING = [
 ];
 
 /**
- * Keyframe animations still carry literal durations. They are not transitions — each is a
- * one-off with a duration chosen for that specific motion (a 1.6s highlight flash, a 1s
- * recording pulse) — and the motion scale does not yet have a vocabulary for them. Phase 3
- * of the redesign gives them one; until then this records that they were considered.
+ * Keyframe animations carry no literal durations any more.
+ *
+ * They used to, and this was a ledger of the three that did — a recording-pulse, a drawer
+ * entrance and an attention flash — deferred because the fast/base/slow scale had no word
+ * for them. It does now: `--trinity-duration-pulse` and `--trinity-duration-flash` name the
+ * two kinds of motion that are not transitions, and the drawer turned out to be plain
+ * `--trinity-duration-base` all along.
+ *
+ * The ledger is empty and the assertion stays, so it is a floor rather than a description:
+ * a new `animation:` with a hand-picked duration re-opens it, and that value cannot be
+ * collapsed by the reduced-motion block in `variables.scss` — which is the whole reason to
+ * care.
  */
-const LITERAL_ANIMATIONS = [
-  'libs/feature/rooms/src/lib/message-composer/message-composer.component.scss',
-  'libs/feature/rooms/src/lib/rooms/rooms.page.scss',
-  'libs/feature/rooms/src/lib/message-row/message-row.component.scss',
-];
+const LITERAL_ANIMATIONS = [];
 
 const files = ['libs/**/*.scss', 'apps/**/*.scss']
   .flatMap((pattern) => globSync(pattern, { cwd: workspaceRoot }))
@@ -78,7 +82,8 @@ describe('styling tokens', () => {
     );
 
     // Equality, not a subset: an entry that gets migrated must leave the ledger, or the
-    // ledger stops describing the tree and starts excusing it.
+    // ledger stops describing the tree and starts excusing it. It is empty now, so this
+    // reads as "no stylesheet may hand-pick an animation duration".
     expect(raw).toEqual([...LITERAL_ANIMATIONS].sort());
   });
 });

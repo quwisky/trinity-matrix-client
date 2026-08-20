@@ -162,7 +162,8 @@
     // Clear the status bar / home indicator on notched devices (inert elsewhere).
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
-    animation: members-drawer-in 0.2s ease;
+    animation: members-drawer-in var(--trinity-duration-base)
+      var(--trinity-ease-decelerate);
   }
 }
 

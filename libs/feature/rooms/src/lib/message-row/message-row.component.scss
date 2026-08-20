@@ -30,7 +30,8 @@
 
 // Brief attention flash when a jump (reply / search / pinned panel) lands on a row.
 .msg--flash {
-  animation: msg-flash 1.6s ease-out;
+  animation: msg-flash var(--trinity-duration-flash)
+    var(--trinity-ease-decelerate);
 }
 
 @keyframes msg-flash {
