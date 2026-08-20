@@ -35,6 +35,7 @@ import { InviteActionsService } from './invite-actions.service';
 import { SpaceActionsService } from './space-actions.service';
 import { RoomActionsService } from './room-actions.service';
 import { ReadStateService } from './read-state.service';
+import { encodeRoomSegment } from '@trinity/util/matrix';
 import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
@@ -57,10 +58,31 @@ export function setRouteQueryParams(params: Record<string, string>): void {
   queryParamMap.next(convertToParamMap(params));
 }
 
+/**
+ * `ActivatedRoute.paramMap`, which is where the open room now lives: `/rooms/:roomId`.
+ *
+ * A BehaviorSubject for the same reason as the query params above — `RoomShellStore` reads
+ * this through `toSignal` in a field initializer, so a stream that did not replay would leave
+ * every store constructed in a test with `activeRoomId` stuck at its initial value.
+ */
+const paramMap = new BehaviorSubject<ParamMap>(convertToParamMap({}));
+
+/**
+ * Open a room BY URL, the way the router does — the only way to open one now.
+ *
+ * Takes the room id and encodes it here, so specs read in room ids rather than in base64:
+ * `setRouteRoom('!a:hs')`, not `setRouteRoom('IWE6aHM')`. Pass `null` to close.
+ */
+export function setRouteRoom(roomId: string | null): void {
+  paramMap.next(
+    convertToParamMap(roomId ? { roomId: encodeRoomSegment(roomId) } : {}),
+  );
+}
+
 /** The ActivatedRoute stub, for the one block that builds RoomsPage without SHARED_MOCKS. */
 export const ROUTE_PROVIDER: Provider = {
   provide: ActivatedRoute,
-  useValue: { queryParamMap } as unknown as ActivatedRoute,
+  useValue: { queryParamMap, paramMap } as unknown as ActivatedRoute,
 };
 
 /**
@@ -96,7 +118,26 @@ export const SHARED_MOCKS: Provider[] = [
   MockProvider(CryptoService),
   MockProvider(PinnedMessagesService),
   MockProvider(PinnedPanelService),
-  MockProvider(Router),
+  // A Router whose `navigate` actually MOVES the route, because the store now reads the room
+  // from `paramMap` and every "opening a room opens it" assertion in these specs depends on
+  // that round trip. A bare auto-stub swallows the call, which would leave `activeRoomId`
+  // null forever and tempt each spec into asserting `navigate` was called instead — a
+  // strictly weaker test that passes just as well when the route parameter is misspelled.
+  //
+  // Only `/rooms` is interpreted; every other destination is swallowed as before, since no
+  // spec here asserts on those.
+  MockProvider(Router, {
+    // `vi.fn` wrapping the behaviour, not a bare function: several specs assert on the
+    // navigation itself (`expect(router.navigate).toHaveBeenCalledWith(...)`), and a plain
+    // function fails those with "is not a spy" rather than with anything informative.
+    navigate: vi.fn((commands: unknown[]) => {
+      const [head, segment] = commands as [string, string | undefined];
+      if (head === '/rooms') {
+        paramMap.next(convertToParamMap(segment ? { roomId: segment } : {}));
+      }
+      return Promise.resolve(true);
+    }) as unknown as Router['navigate'],
+  }),
   ROUTE_PROVIDER,
   MockProvider(ThreadPanelService),
   MockProvider(TrnActionSheetService),

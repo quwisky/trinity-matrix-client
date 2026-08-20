@@ -2,7 +2,7 @@ import {
   SHARED_MOCKS,
   clientStub,
   invitesProvider,
-  setRouteQueryParams,
+  setRouteRoom,
   shellFrom,
   stubNarrowLayout,
 } from './rooms-page.spec-harness';
@@ -52,6 +52,12 @@ import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { MessageSearchService } from '../message-search/message-search.service';
+
+// The open room is the URL now, and the route the store reads outlives any one TestBed —
+// it is one stream in the harness, shared by every block in this file. Without this reset a
+// test that opens a room hands it to the next test, where "no room is open" then silently
+// asserts against the previous test's room.
+beforeEach(() => setRouteRoom(null));
 
 // The quick switcher (Ctrl/Cmd+K) presents a modal and, on a selection, jumps per
 // kind: room/dm open the room, space selects it in the rail, a directory person
@@ -127,6 +133,7 @@ describe('RoomsPage quick switcher', () => {
     pick.mockResolvedValue({ kind: 'room', id: '!r:hs' });
 
     await shell.shortcuts.openSwitcher();
+    TestBed.tick(); // the projections follow the URL from an effect
 
     expect(shell.store.activeRoomId()).toBe('!r:hs');
     expect(timelineOpen).toHaveBeenCalledWith('!r:hs');
@@ -189,6 +196,7 @@ describe('RoomsPage quick switcher', () => {
     pick.mockResolvedValue(null);
 
     await shell.shortcuts.openSwitcher();
+    TestBed.tick(); // flush, so "nothing opened" outlives the projection effect
 
     expect(shell.store.activeRoomId()).toBeNull();
     expect(timelineOpen).not.toHaveBeenCalled();
@@ -325,9 +333,15 @@ describe('RoomsPage mobile navigation', () => {
   it('backToList closes the open room, returning to the list page', () => {
     const shell = build();
     shell.nav.onSelectRoom('!r:hs');
+    TestBed.tick(); // open the projections FIRST, so the closes below can only come from backToList
     expect(shell.store.activeRoomId()).toBe('!r:hs');
+    // Both halves, or the test passes on an effect that never opened anything and then
+    // "closed" it from the same single null run.
+    expect(TestBed.inject(TimelineService).open).toHaveBeenCalledWith('!r:hs');
+    expect(TestBed.inject(TimelineService).close).not.toHaveBeenCalled();
 
     shell.page.backToList();
+    TestBed.tick();
 
     expect(shell.store.activeRoomId()).toBeNull();
     expect(TestBed.inject(TimelineService).close).toHaveBeenCalled();
@@ -390,6 +404,7 @@ describe('RoomsPage mobile navigation', () => {
     const shell = build();
 
     shell.nav.onSelectRoom('!r:hs');
+    TestBed.tick(); // the projections follow the URL from an effect
 
     expect(shell.store.activeRoomId()).toBe('!r:hs');
     expect(timelineOpen).toHaveBeenCalledWith('!r:hs');
@@ -655,9 +670,11 @@ describe('RoomsPage keyboard room switching', () => {
     const shell = build();
     keyboardRooms.set([roomSummary('!only:hs')]);
     shell.nav.onSelectRoom('!only:hs');
+    TestBed.tick(); // let the room actually open (this is the releaseAll we allow)
     releaseAll.mockClear();
 
     shell.page.onGlobalKeydown(key({ key: 'ArrowDown', altKey: true }));
+    TestBed.tick(); // without the flush the assertion would hold for any implementation
 
     expect(releaseAll).not.toHaveBeenCalled();
   });
@@ -829,11 +846,11 @@ describe('RoomsPage keyboard room switching', () => {
 });
 
 // A notification tap (web Notification, Electron toast, or an FCM/APNs tap) navigates to
-// `/rooms?room=<id>`; the shell is what has to turn that into an open room. These drive the
-// real query param through to `activeRoomId` — the producer side was already asserted
-// against a mocked Router in the notifications lib, which stayed green for the whole time
-// nothing consumed the param.
-describe('RoomsPage notification deep link', () => {
+// `/rooms/<segment>`; the shell is what has to turn that URL into an open room. These drive
+// the real route parameter through to `activeRoomId` and the projections behind it — the
+// producer side was already asserted against a mocked Router in the notifications lib, which
+// stayed green for the whole time nothing consumed what it sent.
+describe('RoomsPage room-in-URL deep link', () => {
   let timelineOpen: Mock;
 
   function build() {
@@ -872,65 +889,68 @@ describe('RoomsPage notification deep link', () => {
     return shellFrom();
   }
 
-  afterEach(() => setRouteQueryParams({})); // never leak a deep link into the next test
-
-  it('opens the room named by ?room= when the page is created with it', () => {
-    setRouteQueryParams({ room: '!notified:hs' });
+  it('opens the room the URL names when the page is created on it', () => {
+    setRouteRoom('!notified:hs'); // a cold start on /rooms/:roomId — a tap, a reload, a pasted link
     const shell = build();
 
-    TestBed.tick(); // run the deep-link effect
+    TestBed.tick(); // run the projection effect
 
     expect(shell.store.activeRoomId()).toBe('!notified:hs');
     expect(timelineOpen).toHaveBeenCalledWith('!notified:hs');
   });
 
-  it('opens it when the param arrives on the already-active /rooms route', () => {
+  it('opens it when the URL changes on the already-active /rooms route', () => {
     // THE case: tapping a notification while the shell is open does not re-create the
     // component, so a route snapshot read sees nothing. Only the stream fires.
     const shell = build();
     TestBed.tick();
     expect(shell.store.activeRoomId()).toBeNull();
 
-    setRouteQueryParams({ room: '!notified:hs' });
+    setRouteRoom('!notified:hs');
     TestBed.tick();
 
     expect(shell.store.activeRoomId()).toBe('!notified:hs');
     expect(timelineOpen).toHaveBeenCalledWith('!notified:hs');
   });
 
-  it('strips the param with replaceUrl so Back does not re-open the room', () => {
-    setRouteQueryParams({ room: '!notified:hs' });
-    build();
+  it('follows the URL without writing it back', () => {
+    // What is left of "strips the param with replaceUrl": there is no `?room=` to strip now
+    // — the URL IS the open room. The other half of that test still has to hold, though: the
+    // shell must not navigate while merely FOLLOWING the route, or every tap would push a
+    // second history entry and Back would land the user on the room they just left.
+    setRouteRoom('!notified:hs');
+    const shell = build();
+    const router = TestBed.inject(Router);
+    vi.mocked(router.navigate).mockClear(); // the harness spy is shared across this file
 
     TestBed.tick();
 
-    expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(
-      [],
-      expect.objectContaining({
-        queryParams: { room: null },
-        replaceUrl: true,
-      }),
-    );
+    expect(shell.store.activeRoomId()).toBe('!notified:hs');
+    expect(timelineOpen).toHaveBeenCalledWith('!notified:hs');
+    expect(router.navigate).not.toHaveBeenCalled();
   });
 
   it('does not re-open the room that is already open', () => {
     const shell = build();
     shell.nav.onSelectRoom('!notified:hs');
+    TestBed.tick();
     timelineOpen.mockClear();
 
-    setRouteQueryParams({ room: '!notified:hs' });
+    setRouteRoom('!notified:hs'); // the same room named again — a second tap on the same chat
     TestBed.tick();
 
     expect(shell.store.activeRoomId()).toBe('!notified:hs');
     expect(timelineOpen).not.toHaveBeenCalled();
   });
 
-  it('ignores a route with no room param', () => {
+  it('ignores a route with no room segment', () => {
     const shell = build();
+    const router = TestBed.inject(Router);
+    vi.mocked(router.navigate).mockClear();
 
     TestBed.tick();
 
     expect(shell.store.activeRoomId()).toBeNull();
-    expect(TestBed.inject(Router).navigate).not.toHaveBeenCalled();
+    expect(router.navigate).not.toHaveBeenCalled();
   });
 });

@@ -2,6 +2,7 @@ import {
   SHARED_MOCKS,
   clientStub,
   invitesProvider,
+  setRouteRoom,
   shellFrom,
   stubNarrowLayout,
 } from './rooms-page.spec-harness';
@@ -35,13 +36,18 @@ import {
 } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
-import { describe, expect, it, type Mock, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { UserCardService } from '../user-card/user-card.service';
 import { MemberInfoService } from '../member-info/member-info.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { MessageSearchService } from '../message-search/message-search.service';
+
+// The open room lives in the URL, and the harness's route is module state that outlives a
+// single TestBed — so a room one test opens is still in the URL when the next one builds.
+// Start every test on a bare `/rooms`, the way a fresh load of the shell arrives.
+beforeEach(() => setRouteRoom(null));
 
 // Create-space / create-channel / leave-space: the page prompts via TrnAlertService
 // and delegates to SpacesService, handling the success navigation + error state.
@@ -275,10 +281,17 @@ describe('RoomsPage space actions', () => {
     const pinned = TestBed.inject(PinnedMessagesService);
     shell.nav.onSelectRoom('!r:hs');
     expect(shell.store.activeRoomId()).toBe('!r:hs');
+    // Opening is a navigation now and the projections follow the URL from an effect, so
+    // flush before switching: without this the room is never actually open, and the
+    // teardown below would be asserted against a shell that had nothing to tear down.
+    TestBed.tick();
+    expect(timeline.open).toHaveBeenCalledWith('!r:hs');
 
     shell.session.switchAccount('@other:hs');
 
     expect(shell.store.activeRoomId()).toBeNull();
+    TestBed.tick(); // and again for the teardown the closed URL triggers
+
     expect(timeline.close).toHaveBeenCalled();
     expect(threads.close).toHaveBeenCalled();
     expect(threads.closeThread).toHaveBeenCalled();
@@ -487,7 +500,7 @@ describe('RoomsPage room / DM / invite actions', () => {
 
   it('opens a member info panel and starts a DM only if messaged', async () => {
     const shell = build();
-    shell.store.activeRoomId.set('!r:hs');
+    setRouteRoom('!r:hs');
     const bob = {
       userId: '@bob:hs',
       name: 'Bob',
@@ -527,7 +540,7 @@ describe('RoomsPage room / DM / invite actions', () => {
       isCreator: false,
     };
     const shell = build();
-    shell.store.activeRoomId.set('!dm:hs');
+    setRouteRoom('!dm:hs');
     directIds.set(new Set(['!dm:hs']));
 
     shell.members.onSelectMember(bob);
@@ -543,7 +556,7 @@ describe('RoomsPage room / DM / invite actions', () => {
 
   it('opens no member info panel without an active room', () => {
     const shell = build();
-    shell.store.activeRoomId.set(null);
+    setRouteRoom(null);
 
     shell.members.onSelectMember({
       userId: '@bob:hs',
@@ -563,7 +576,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     const restore = stubNarrowLayout();
     try {
       const shell = build();
-      shell.store.activeRoomId.set('!r:hs');
+      setRouteRoom('!r:hs');
       shell.store.membersOpen.set(true);
       expect(shell.store.membersOpen()).toBe(true);
 
@@ -587,7 +600,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     // The base matchMedia stub reports non-drawer (matches:false) — i.e. the wide
     // static column, the desktop-protected path. onSelectMember must NOT collapse it.
     const shell = build();
-    shell.store.activeRoomId.set('!r:hs');
+    setRouteRoom('!r:hs');
     shell.store.membersOpen.set(true);
 
     shell.members.onSelectMember({
@@ -605,7 +618,7 @@ describe('RoomsPage room / DM / invite actions', () => {
 
   it('opens no conversation when the member panel is dismissed', async () => {
     const shell = build();
-    shell.store.activeRoomId.set('!r:hs');
+    setRouteRoom('!r:hs');
     memberInfoOpen.mockResolvedValue(null); // dismissed
 
     shell.members.onSelectMember({
@@ -625,7 +638,7 @@ describe('RoomsPage room / DM / invite actions', () => {
 
   it('invites the picked user to the active room and toasts success', async () => {
     const shell = build();
-    shell.store.activeRoomId.set('!r:hs');
+    setRouteRoom('!r:hs');
     pick.mockResolvedValue('@bob:hs');
 
     await shell.rooms.onInviteToRoom();
@@ -639,7 +652,7 @@ describe('RoomsPage room / DM / invite actions', () => {
 
   it('captures an invite failure in spaceError without a success toast', async () => {
     const shell = build();
-    shell.store.activeRoomId.set('!r:hs');
+    setRouteRoom('!r:hs');
     pick.mockResolvedValue('@bob:hs');
     inviteUser.mockReturnValue(throwError(() => new Error('forbidden')));
 
@@ -670,7 +683,7 @@ describe('RoomsPage room / DM / invite actions', () => {
 
   it('does not invite when the picker is cancelled', async () => {
     const shell = build();
-    shell.store.activeRoomId.set('!r:hs');
+    setRouteRoom('!r:hs');
     pick.mockResolvedValue(null);
 
     await shell.rooms.onInviteToRoom();

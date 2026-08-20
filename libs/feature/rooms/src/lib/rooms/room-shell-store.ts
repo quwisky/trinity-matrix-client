@@ -1,4 +1,8 @@
-import { Injectable, linkedSignal, signal } from '@angular/core';
+import { Injectable, inject, linkedSignal, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ActivatedRoute } from '@angular/router';
+import { map } from 'rxjs';
+import { decodeRoomSegment } from '@trinity/util/matrix';
 import { BELOW_MEMBERS_QUERY, matchesQuery } from '@trinity/util/ui';
 
 /**
@@ -29,7 +33,32 @@ export class RoomShellStore {
    * space) shows direct messages only; Recent, a space, or this view clears the others. */
   readonly roomsView = signal(false);
 
-  readonly activeRoomId = signal<string | null>(null);
+  /**
+   * The open room — DERIVED from the URL, never assigned.
+   *
+   * `/rooms/:roomId` is the single source of truth, which is what makes a room linkable,
+   * bookmarkable and survivable across a reload, and what makes Android's hardware Back close
+   * the room instead of walking out of the shell. Opening a room is therefore a NAVIGATION
+   * (`RoomShellNavigationService.onSelectRoom`), and this follows; nothing writes it.
+   *
+   * That direction matters beyond tidiness. When this was a writable signal the URL and the
+   * open room could disagree, and did: a notification tap wrote `?room=` and the page then
+   * stripped the param back off, so the address bar described a room the shell was not
+   * showing for as long as the strip took to land.
+   *
+   * `decodeRoomSegment` answers `null` for a segment that is not one of ours — a hand-typed
+   * or truncated URL — so a bad link lands on the room list rather than asking the SDK for a
+   * room id that cannot exist.
+   */
+  readonly activeRoomId = toSignal(
+    inject(ActivatedRoute).paramMap.pipe(
+      map((params) => {
+        const segment = params.get('roomId');
+        return segment ? decodeRoomSegment(segment) : null;
+      }),
+    ),
+    { initialValue: null },
+  );
 
   /**
    * The sidebar's in-place room filter.

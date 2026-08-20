@@ -2,6 +2,7 @@ import {
   SHARED_MOCKS,
   clientStub,
   invitesProvider,
+  setRouteRoom,
   shellFrom,
 } from './rooms-page.spec-harness';
 import { signal, type WritableSignal } from '@angular/core';
@@ -47,6 +48,12 @@ import { RoomDirectoryComponent } from '../room-directory/room-directory.compone
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { MessageSearchService } from '../message-search/message-search.service';
 import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
+
+// The open room is the URL now, and the route the store reads outlives any one TestBed —
+// it is one stream in the harness, shared by every test in this file. Without this reset a
+// test that opens a room hands it to the next one, where "no room is open" then silently
+// asserts against the previous test's room.
+beforeEach(() => setRouteRoom(null));
 
 describe('RoomsPage panels, pins and media', () => {
   let edit: Mock;
@@ -199,7 +206,7 @@ describe('RoomsPage panels, pins and media', () => {
         lowPriority: false,
       },
     ]);
-    shell.store.activeRoomId.set('!r:hs');
+    setRouteRoom('!r:hs'); // the open room comes from /rooms/:roomId now
     editableFields.mockReturnValue({
       name: true,
       topic: false,
@@ -488,7 +495,7 @@ describe('RoomsPage panels, pins and media', () => {
 
   it('opens the threads-list panel for the active room', () => {
     const shell = build();
-    shell.store.activeRoomId.set('!r:hs');
+    setRouteRoom('!r:hs');
     const panel = TestBed.inject(ThreadPanelService);
 
     shell.messages.openThreadsList();
@@ -498,7 +505,7 @@ describe('RoomsPage panels, pins and media', () => {
 
   it('does not open the threads-list panel without an active room', () => {
     const shell = build();
-    shell.store.activeRoomId.set(null);
+    setRouteRoom(null);
     const panel = TestBed.inject(ThreadPanelService);
 
     shell.messages.openThreadsList();
@@ -566,7 +573,7 @@ describe('RoomsPage panels, pins and media', () => {
 
   it('jumpToDate scrolls to the event the date resolved to', async () => {
     const shell = build();
-    shell.store.activeRoomId.set('!a:hs'); // jumpToDate is a no-op with no room open
+    setRouteRoom('!a:hs'); // jumpToDate is a no-op with no room open
     const picker = TestBed.inject(JumpToDateService);
     const timeline = TestBed.inject(TimelineService);
     vi.mocked(picker.pick).mockResolvedValue(1_700_000_000_000);
@@ -584,7 +591,7 @@ describe('RoomsPage panels, pins and media', () => {
 
   it('jumpToDate does nothing at all when the picker is cancelled', async () => {
     const shell = build();
-    shell.store.activeRoomId.set('!a:hs');
+    setRouteRoom('!a:hs');
     const picker = TestBed.inject(JumpToDateService);
     const timeline = TestBed.inject(TimelineService);
     vi.mocked(picker.pick).mockResolvedValue(null);
@@ -608,7 +615,7 @@ describe('RoomsPage panels, pins and media', () => {
     for (const [kind, expected] of cases) {
       TestBed.resetTestingModule();
       const shell = build();
-      shell.store.activeRoomId.set('!a:hs');
+      setRouteRoom('!a:hs');
       const picker = TestBed.inject(JumpToDateService);
       const timeline = TestBed.inject(TimelineService);
       vi.mocked(picker.pick).mockResolvedValue(1_700_000_000_000);

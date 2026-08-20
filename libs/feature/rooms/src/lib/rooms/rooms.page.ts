@@ -15,12 +15,9 @@ import {
   afterNextRender,
   effect,
   inject,
-  untracked,
   viewChild,
 } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
-import { map } from 'rxjs';
 import { HlmButton } from '@trinity/helm/button';
 import {
   BELOW_MD_QUERY,
@@ -205,19 +202,6 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly listView = viewChild<ElementRef<HTMLElement>>('listView');
   private readonly mainView = viewChild<ElementRef<HTMLElement>>('mainView');
 
-  /**
-   * The room a notification tap asked for: `/rooms?room=<id>`, written by
-   * `NotificationService`/`PushService` after they switch to the owning account.
-   *
-   * Read as a STREAM, not from the route snapshot. `/rooms` is normally already the
-   * active route when a notification is tapped, so the router reuses this component and
-   * a snapshot read would only ever see the value the page was first created with —
-   * which is how every tap ended up landing on whatever room was already open.
-   */
-  private readonly requestedRoomId = toSignal(
-    this.route.queryParamMap.pipe(map((params) => params.get('room'))),
-    { initialValue: null },
-  );
   constructor() {
     // The service cannot read the page's viewChild refs, so hand it the focus call.
     // In the constructor, not ngOnInit: `TestBed.inject(RoomsPage)` never runs lifecycle
@@ -248,25 +232,9 @@ export class RoomsPage implements OnInit, OnDestroy {
       this.mixedSpaces.setAccounts(accounts);
       this.mixedInvites.setAccounts(accounts);
     });
-    // Open the room a notification tap asked for, then strip the param so Back (or a
-    // reload) does not re-open it. `activeRoomId` is read untracked: this must react to
-    // the URL only — tracking it would re-run on every ordinary room switch and, if the
-    // strip had not landed yet, yank the user back to the notified room.
-    effect(() => {
-      const roomId = this.requestedRoomId();
-      if (!roomId) {
-        return;
-      }
-      if (roomId !== untracked(() => this.store.activeRoomId())) {
-        this.nav.onSelectRoom(roomId);
-      }
-      void this.router.navigate([], {
-        relativeTo: this.route,
-        queryParams: { room: null },
-        queryParamsHandling: 'merge',
-        replaceUrl: true,
-      });
-    });
+    // The `?room=` deep link is gone. A notification tap now navigates to `/rooms/:roomId`
+    // like everything else, so the room it asked for arrives through `paramMap` and needs no
+    // handling here — and none of the strip-the-param-afterwards dance that went with it.
   }
 
   /**
@@ -313,7 +281,10 @@ export class RoomsPage implements OnInit, OnDestroy {
    * symmetric nor load-bearing — one owner, not one and a half.
    */
   ngOnDestroy(): void {
-    this.nav.closeOpenRoom();
+    // `releaseOpenRoom`, not `closeOpenRoom`: closing NAVIGATES now, and the router is
+    // already on its way to wherever the user actually went. This only has to stop the
+    // root-scoped projections following a room nobody is looking at.
+    this.nav.releaseOpenRoom();
   }
 
   /**

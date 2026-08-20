@@ -1,4 +1,6 @@
-import { DestroyRef, Injectable, inject } from '@angular/core';
+import { DestroyRef, Injectable, effect, inject } from '@angular/core';
+import { Router } from '@angular/router';
+import { encodeRoomSegment } from '@trinity/util/matrix';
 import { MediaService } from '@trinity/data-access/media';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
@@ -37,6 +39,34 @@ export class RoomShellNavigationService {
   private readonly threads = inject(ThreadsService);
   private readonly timeline = inject(TimelineService);
   private readonly mru = inject(MruRoomsService);
+  private readonly router = inject(Router);
+
+  /**
+   * The open room's projections, driven by the URL.
+   *
+   * One reaction rather than a call at each entry point: a room can now be opened by a click,
+   * a keyboard hop, a notification tap, a pasted link, a reload or the Back button, and every
+   * one of those is the same paramMap change. When this was a method the entry points had to
+   * each remember the same five calls, and `closeOpenRoom` existed precisely because they had
+   * already drifted apart once.
+   *
+   * `media.releaseAll()` runs on every transition including to `null`, because the blobs
+   * belong to the room being left in both cases.
+   */
+  private readonly projectOpenRoom = effect(() => {
+    const roomId = this.store.activeRoomId();
+    this.media.releaseAll();
+    if (!roomId) {
+      this.timeline.close();
+      this.threads.close();
+      this.threads.closeThread();
+      this.pinned.close();
+      return;
+    }
+    this.timeline.open(roomId);
+    this.threads.open(roomId); // thread summaries, for the per-message indicators
+    this.pinned.open(roomId);
+  });
   /**
    * Whether the member list is currently the overlay drawer rather than the static column.
    * Live, and created once against this service's `DestroyRef` — see the same field in
@@ -88,13 +118,17 @@ export class RoomShellNavigationService {
     this.store.roomsView.set(true);
   }
 
+  /**
+   * Open a room by NAVIGATING to it. The projections follow the URL, not this call.
+   *
+   * Everything this used to do inline — releasing the previous room's media, opening the
+   * timeline, threads and pinned projections — now happens in {@link projectOpenRoom}, which
+   * reacts to `store.activeRoomId`. That is what makes the URL authoritative: a room opened
+   * by a link, a reload or the Back button goes through exactly the same path as a click,
+   * instead of each entry point having to remember the same five calls.
+   */
   onSelectRoom(id: string, source: 'user' | 'hop' = 'user'): void {
-    // Drop the previous room's resolved media URLs before switching timelines.
-    this.media.releaseAll();
-    this.store.activeRoomId.set(id);
-    this.timeline.open(id);
-    this.threads.open(id); // project this room's thread summaries for indicators
-    this.pinned.open(id); // project this room's pinned messages
+    void this.router.navigate(['/rooms', encodeRoomSegment(id)]);
     if (source === 'user') {
       this.mru.record(id);
     }
@@ -148,7 +182,19 @@ export class RoomShellNavigationService {
     if (this.membersAreDrawer()) {
       this.store.membersOpen.set(false);
     }
-    this.store.activeRoomId.set(null);
+    void this.router.navigate(['/rooms']);
+  }
+
+  /**
+   * The teardown half of closing a room, without the navigation.
+   *
+   * Exists for `RoomsPage.ngOnDestroy`, and only for it. Leaving `/rooms` for settings
+   * destroys the page and with it {@link projectOpenRoom}, so nothing would otherwise close
+   * the timeline, thread and pinned projections — they are ROOT-scoped and would keep
+   * projecting a room nobody is looking at. Navigating from `ngOnDestroy` is not an option:
+   * the router is already mid-navigation to wherever the user actually went.
+   */
+  releaseOpenRoom(): void {
     this.timeline.close();
     this.threads.close();
     this.threads.closeThread();
