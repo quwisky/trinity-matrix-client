@@ -11,4 +11,5 @@
 // needs an injection context and nothing here can throw NG0203.
 export * from './lib/with-busy';
 export * from './lib/media-query';
+export * from './lib/reduced-motion';
 export * from './lib/internal-url';

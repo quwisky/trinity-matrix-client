@@ -199,8 +199,62 @@ test.describe('Unread divider + jump-to-unread', () => {
     // On open the timeline pins to the bottom, so the divider is off-screen and the
     // jump pill appears; clicking it brings the divider into view and hides the pill.
     const jump = page.getByTestId('jump-to-unread');
+    const scroll = page.locator('.scroll').first();
     await expect(jump).toBeVisible({ timeout: 20_000 });
+
+    // Record what the app asks for when it scrolls itself. The jump goes through
+    // `scrollIntoView`, and the behaviour it passes is the only observable difference
+    // between honouring reduced motion and ignoring it — "did it animate?" is a statement
+    // about frames over time, which is how a test like this goes flaky.
+    await page.evaluate(() => {
+      const w = window as unknown as { __scrolls: string[] };
+      w.__scrolls = [];
+      const original = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = function (
+        this: Element,
+        ...args: unknown[]
+      ) {
+        const options = args[0] as ScrollIntoViewOptions | undefined;
+        if (options && typeof options === 'object' && options.behavior) {
+          w.__scrolls.push(options.behavior);
+        }
+        return (original as (...a: unknown[]) => void).apply(this, args);
+      } as typeof Element.prototype.scrollIntoView;
+    });
+
     await jump.click();
     await expect(jump).toBeHidden({ timeout: 20_000 });
+
+    const readScrolls = () =>
+      page.evaluate(
+        () => (window as unknown as { __scrolls: string[] }).__scrolls,
+      );
+    expect(await readScrolls()).toContain('smooth');
+
+    // Now the same jump for a reader who asked the operating system for less motion.
+    //
+    // The `prefers-reduced-motion` reset in `global.scss` sets
+    // `scroll-behavior: auto !important` and cannot reach this: the behaviour is passed as
+    // an ARGUMENT to `scrollIntoView`, which beats any stylesheet. The app has to read the
+    // media query itself, and this is the only place that path is exercised by real code —
+    // every unit test in the workspace stubs `matchMedia` to `matches: false`.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    expect(
+      await page.evaluate(
+        () => matchMedia('(prefers-reduced-motion: reduce)').matches,
+      ),
+    ).toBe(true);
+
+    await scroll.evaluate((el) => el.scrollBy(0, -600));
+    await expect(jump).toBeVisible({ timeout: 20_000 });
+    await page.evaluate(() => {
+      (window as unknown as { __scrolls: string[] }).__scrolls = [];
+    });
+    await jump.click();
+    await expect(jump).toBeHidden({ timeout: 20_000 });
+
+    const reduced = await readScrolls();
+    expect(reduced.length).toBeGreaterThan(0);
+    expect([...new Set(reduced)]).toEqual(['auto']);
   });
 });

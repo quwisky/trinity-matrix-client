@@ -37,6 +37,11 @@ All notable changes to this project are documented here. The format is based on
   meant every message permanently covered the top of the one before it. It stays inside its own
   message now, and on touch it stays out of the way until you long-press.
 
+- **"Reduce motion" now reaches the timeline.** If your device is set to minimise animation,
+  jumping to a reply, a search result, a pinned message or the first unread one used to
+  animate the whole screen anyway — the setting was honoured everywhere except the place that
+  moves the most. Those jumps are instant now.
+
 - **Muted text and links are readable everywhere now.** Timestamps, member names, dialog
   captions and other secondary text failed the accessibility contrast floor the moment you
   hovered or selected the row they sat on — the exact moment you were most likely to be reading
