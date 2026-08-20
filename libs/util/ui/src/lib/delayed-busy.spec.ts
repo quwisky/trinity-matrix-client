@@ -151,3 +151,40 @@ describe('delayedBusy', () => {
     expect(visible()).toBe(false);
   });
 });
+
+describe('delayedBusy and the wall clock', () => {
+  let injector: Injector;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    TestBed.configureTestingModule({});
+    injector = TestBed.inject(Injector);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('is not stranded by a clock correction going backwards', () => {
+    // The minimum is measured with `Date.now()` while `setTimeout` runs on a monotonic
+    // clock, so an NTP correction mid-operation makes the elapsed time negative. Unclamped,
+    // the indicator stays for roughly the size of the jump: a 30s correction left the
+    // "Loading older messages…" strip on screen for half a minute after the load finished.
+    const busy = signal(false);
+    const visible = delayedBusy(busy, injector);
+    TestBed.tick();
+
+    busy.set(true);
+    TestBed.tick();
+    vi.advanceTimersByTime(150);
+    TestBed.tick();
+    expect(visible()).toBe(true);
+
+    // The clock jumps back 30 seconds while the work is still running.
+    vi.setSystemTime(new Date(Date.now() - 30_000));
+
+    busy.set(false);
+    TestBed.tick();
+    vi.advanceTimersByTime(400);
+    TestBed.tick();
+
+    expect(visible()).toBe(false);
+  });
+});

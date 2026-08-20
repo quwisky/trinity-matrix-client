@@ -41,8 +41,10 @@ export interface DelayedBusyOptions {
  * This library's contract is that nothing in it needs an INJECTION CONTEXT — the reason
  * `runWithBusy` and `mediaQuerySignal` take a `DestroyRef` rather than reaching for one. An
  * `Injector` passed as an argument keeps that property exactly: the effect below is created
- * with an explicit injector, so this can be called from a method, a `computed`, anywhere,
- * and can never throw NG0203. It is also what ties the timers to the caller's lifetime —
+ * with an explicit injector, so this can be called from a field initializer or a method
+ * rather than only from a constructor, and can never throw NG0203. Not from inside a
+ * `computed`, though — `effect()` refuses to be created in a reactive context, and no
+ * injector argument changes that. It is also what ties the timers to the caller's lifetime —
  * when the injector's scope is destroyed the effect is torn down and the cleanup runs.
  */
 export function delayedBusy(
@@ -81,7 +83,15 @@ export function delayedBusy(
         }
       } else if (visible()) {
         // Already on screen: it owes the reader the rest of its minimum before leaving.
-        const remaining = minimumMs - (Date.now() - shownAt);
+        //
+        // Clamped to `minimumMs`, because this reads the WALL clock while `setTimeout` runs
+        // on a monotonic one. An NTP correction backwards mid-operation makes the elapsed
+        // time negative, and without the clamp the indicator would sit there for roughly the
+        // size of the jump — half a minute, for a half-minute correction.
+        const remaining = Math.min(
+          minimumMs,
+          minimumMs - (Date.now() - shownAt),
+        );
         if (remaining <= 0) {
           visible.set(false);
         } else {

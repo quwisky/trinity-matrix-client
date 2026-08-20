@@ -9,7 +9,11 @@
       aria-live="polite"
       data-testid="app-booting"
     >
-      <trn-spinner class="text-2xl" />
+      <!-- No size class: `HlmSpinner` pins `text-[length:--spacing(4)]` on its own host, and
+           that utility lands later in the built stylesheet than any `text-*` written here, so
+           anything set at this level is inert. `trn-spinner` exposes no size input on
+           purpose — see its own note on public inputs being promises. -->
+      <trn-spinner />
       <span class="text-sm text-[var(--trinity-text-muted)]">
         Restoring your session…
       </span>
