@@ -3,6 +3,7 @@ import {
   ElementRef,
   computed,
   effect,
+  Injector,
   inject,
   input,
   output,
@@ -34,6 +35,7 @@ import {
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { DayBoundaryService } from './day-boundary.service';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
+import { delayedBusy } from '@trinity/util/ui';
 import {
   type BatchItem,
   type BatchOutcome,
@@ -103,6 +105,43 @@ export abstract class MessageListBase {
   /** Currently-pinned event ids, for the per-row pinned state. */
   readonly pinnedIds = input<readonly string[]>([]);
   readonly loadingOlder = input(false);
+  /**
+   * Gates the appearance of the "Loading older messages…" strip, and nothing else.
+   *
+   * `minimumMs: 0` is load-bearing, not a tuning choice. The strip is IN FLOW above the rows,
+   * and `VirtualMessageListComponent.rowsRegionTop()` folds its height into the scroll
+   * restore that keeps the reader's place across a prepend. `TimelineService.loadOlder`
+   * prepends the rows and clears `loadingOlder` in one synchronous block, so the strip has
+   * always vanished in the same change-detection pass that the new history arrives — which
+   * is what lets that restore measure the layout the reader is actually left with.
+   *
+   * Holding the strip past that point measures 36px that is about to disappear, and
+   * `.scroll` sets `overflow-anchor: none`, so nothing compensates when it does: the content
+   * jumps up by the strip's height a quarter-second after the history lands, in the exact
+   * spot being read. That is worse than the flicker this was fixing.
+   */
+  private readonly loadingOlderSettled = delayedBusy(
+    this.loadingOlder,
+    inject(Injector),
+    { minimumMs: 0 },
+  );
+
+  /**
+   * `loadingOlder`, shaped for the eye: nothing at all for a fast backfill.
+   *
+   * Backfilling a page of history is usually quicker than a person can register, so binding
+   * the raw input flashed the strip on most scrolls back — motion at the top of the timeline,
+   * in the exact spot the reader is looking, for a load they never noticed was happening.
+   *
+   * The raw input is ANDed in deliberately: it makes the strip's removal synchronous with the
+   * prepend, exactly as it was before any of this, while the delayed signal decides only
+   * whether it was ever worth showing. The residual is a load landing just past the delay,
+   * which shows the strip briefly — much rarer than the flicker it replaced, and the only
+   * alternative moves the reader's content.
+   */
+  protected readonly showLoadingOlder = computed(
+    () => this.loadingOlder() && this.loadingOlderSettled(),
+  );
   readonly canLoadOlder = input(false);
   /** Oldest RAW event in the loaded window — the backfill progress marker (see
    * TimelineService.oldestEventId). Not the oldest rendered row: rows can be filtered out. */

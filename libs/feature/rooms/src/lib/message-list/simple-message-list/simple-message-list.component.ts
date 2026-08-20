@@ -10,6 +10,7 @@ import { MessageListBase } from '../message-list-base';
 import { TrnFileDropDirective } from '../../shared/file-drop.directive';
 import { DropOverlayComponent } from '../drop-overlay/drop-overlay.component';
 import { TimelineDividerComponent } from '../timeline-divider/timeline-divider.component';
+import { scrollBehavior } from '@trinity/util/ui';
 
 /** Trigger older-history loading when the scroll top gets within this many px. */
 const AUTO_LOAD_THRESHOLD_PX = 150;
@@ -219,7 +220,7 @@ export class SimpleMessageListComponent extends MessageListBase {
     if (!el) {
       return;
     }
-    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    el.scrollTo({ top: el.scrollHeight, behavior: scrollBehavior() });
     this.atBottom = true;
     this.notAtBottom.set(false);
   }
@@ -230,7 +231,7 @@ export class SimpleMessageListComponent extends MessageListBase {
     const el = this.scrollEl()?.nativeElement.querySelector(
       `[data-mid="${messageId}"]`,
     );
-    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el?.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
     this.flash(el);
   }
 }

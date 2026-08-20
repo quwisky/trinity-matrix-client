@@ -148,7 +148,8 @@
   // A filled shape, not text, so it takes the solid fill rather than the
   // `--trinity-danger` text/icon role.
   background: var(--trinity-danger-solid);
-  animation: composer-recording-pulse 1s ease-in-out infinite;
+  animation: composer-recording-pulse var(--trinity-duration-pulse) ease-in-out
+    infinite;
 }
 
 .composer__recording-time {

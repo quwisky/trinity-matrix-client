@@ -101,6 +101,14 @@
   --trinity-duration-fast: 120ms; // hover/focus tints — must not be perceptible as motion
   --trinity-duration-base: 200ms; // the default for anything entering or leaving
   --trinity-duration-slow: 320ms; // full-surface transitions (panels, sheets)
+
+  // Two durations for motion that is not a transition. They are named by role rather than
+  // by length because they are not points on the same scale as the three above: those say
+  // how fast something moves between two states, these say how long an attention gesture
+  // lasts. Putting them on the fast/base/slow ramp would invite someone to use `slow` for a
+  // pulse and get a strobe.
+  --trinity-duration-pulse: 1s; // an ambient loop — must read as alive, not as urgent
+  --trinity-duration-flash: 1.6s; // a one-shot cue, long enough to find with your eye
   --trinity-ease-standard: cubic-bezier(0.2, 0, 0, 1); // most things
   --trinity-ease-decelerate: cubic-bezier(
     0,
@@ -458,16 +466,31 @@
 // -----------------------------------------------------------------------------
 // Reduced motion — collapse the vocabulary rather than police each call site
 // -----------------------------------------------------------------------------
-// Anything built on the duration tokens stops moving here, with no `!important` and
-// no per-component opt-in. `global.scss` keeps its blanket override for now because
-// the hand-picked literal durations still in the tree cannot be reached this way;
-// that override becomes deletable when the last of them is migrated.
-// 0.01ms rather than 0s on purpose: a zero-duration transition never fires
-// `transitionend`, and code that waits for it would hang.
+// Anything built on the duration tokens slows to a stop here, with no `!important` and no
+// per-component opt-in. 0.01ms rather than 0s on purpose: a zero-duration transition never
+// fires `transitionend`, and code that waits for one would hang.
+
+// "Stop" is not quite true for an INFINITE animation, and the difference matters: collapsing
+// the duration of `animation: … infinite` does not end it, it makes it repeat every 0.01ms.
+// Measured in Chromium, that is a per-frame loop — 29 iterations in half a second. What
+// actually stops the recording pulse is `animation-iteration-count: 1` in the blanket below,
+// which is a second reason that blanket is not going anywhere.
+
+// This block used to say `global.scss`'s blanket `!important` override "becomes deletable
+// when the last literal duration is migrated". They are all migrated now, and it is NOT
+// deletable — the reasoning missed that the override also covers CSS this file does not
+// own. `tw-animate-css` ships no reduced-motion guard of its own, and the vendored kit is
+// inconsistent about adding one: `hlm-dropdown-menu` writes `motion-safe:animate-in`, while
+// `hlm-select-content` writes a bare `data-open:animate-in` and the progress indicator's
+// `animate-indeterminate` is unguarded. Until those carry their own guards, the blanket is
+// what stops a select panel animating open for someone who asked it not to — and, per the
+// note above, what stops the infinite ones spinning.
 @media (prefers-reduced-motion: reduce) {
   :root {
     --trinity-duration-fast: 0.01ms;
     --trinity-duration-base: 0.01ms;
     --trinity-duration-slow: 0.01ms;
+    --trinity-duration-pulse: 0.01ms;
+    --trinity-duration-flash: 0.01ms;
   }
 }

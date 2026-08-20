@@ -1,0 +1,101 @@
+import { TestBed } from '@angular/core/testing';
+import { render } from '@trinity/testing';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SimpleMessageListComponent } from './simple-message-list/simple-message-list.component';
+import { VirtualMessageListComponent } from './virtual-message-list/virtual-message-list.component';
+
+/**
+ * The "Loading older messages…" strip, and when it is allowed to appear.
+ *
+ * A new file rather than more tests in `simple-message-list.component.spec.ts`: that one is
+ * already at 48 TestBed tests, and a TestBed test retains enough that a single file has
+ * previously died part-way through and reported the rest as never run.
+ *
+ * Backfilling a page of history is usually faster than a person can register, so binding
+ * `loadingOlder` straight to the template flashed this strip on most scrolls back — motion
+ * at the top of the timeline, in exactly the spot being read. It goes through `delayedBusy`
+ * now, and these pin the two ends of that: nothing for a quick load, and once shown it stays
+ * long enough to be read.
+ */
+/**
+ * Both lists, and the windowed one is not optional.
+ *
+ * `DEFAULT_VIRTUAL_TIMELINE` is true, so `VirtualMessageListComponent` is what ships. An
+ * earlier version of this file tested only the simple list — the whole binding could be
+ * reverted on the virtual one with the entire workspace still green, which is exactly how a
+ * scroll-anchoring regression got through review.
+ */
+const LISTS = [
+  ['simple', SimpleMessageListComponent],
+  ['virtual (the default)', VirtualMessageListComponent],
+] as const;
+
+describe.each(LISTS)('message list — loading older (%s)', (_label, List) => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const advance = (ms: number) => {
+    vi.advanceTimersByTime(ms);
+    TestBed.tick();
+  };
+
+  const strip = (container: HTMLElement) =>
+    container.querySelector('.load-older');
+
+  async function create() {
+    const result = await render(List, {
+      inputs: { messages: [], loadingOlder: false },
+    });
+    TestBed.tick();
+    return result;
+  }
+
+  it('shows nothing for a backfill that returns quickly', async () => {
+    const { container, fixture } = await create();
+
+    fixture.componentRef.setInput('loadingOlder', true);
+    TestBed.tick();
+    advance(100);
+    expect(strip(container)).toBeNull();
+
+    fixture.componentRef.setInput('loadingOlder', false);
+    TestBed.tick();
+    advance(2000);
+
+    expect(strip(container)).toBeNull();
+  });
+
+  it('shows the strip once the backfill is slow enough to be worth mentioning', async () => {
+    const { container, fixture } = await create();
+
+    fixture.componentRef.setInput('loadingOlder', true);
+    TestBed.tick();
+    advance(200);
+
+    expect(strip(container)).not.toBeNull();
+    expect(container.textContent).toContain('Loading older messages…');
+  });
+
+  it('disappears in the same pass the backfill finishes, not later', async () => {
+    // THE property, and it is about layout rather than about looks. The strip is in flow
+    // above the rows, and the windowed list's scroll restore folds its height into the
+    // calculation that keeps the reader's place across a prepend. `TimelineService` prepends
+    // the rows and clears `loadingOlder` together, so the strip has to go with them — held
+    // even a moment longer, the restore measures 36px that is about to vanish and the
+    // content jumps up by that much once it does.
+    //
+    // Asserted with no timer advance at all after the flag clears: anything that needs one
+    // is, by definition, still on screen when the prepend lands.
+    const { container, fixture } = await create();
+
+    fixture.componentRef.setInput('loadingOlder', true);
+    TestBed.tick();
+    advance(200);
+    expect(strip(container)).not.toBeNull();
+
+    fixture.componentRef.setInput('loadingOlder', false);
+    TestBed.tick();
+
+    expect(strip(container)).toBeNull();
+  });
+});
