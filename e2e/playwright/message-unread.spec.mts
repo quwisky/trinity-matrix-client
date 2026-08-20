@@ -245,7 +245,11 @@ test.describe('Unread divider + jump-to-unread', () => {
       ),
     ).toBe(true);
 
-    await scroll.evaluate((el) => el.scrollBy(0, -600));
+    // Back to the newest message, which puts the divider off-screen ABOVE and brings the
+    // pill back. Deliberately not scrolling up by a fixed amount: that heads towards the
+    // top, and crossing the auto-load threshold starts a backfill whose re-rendering leaves
+    // the pill never stable enough for Playwright to click.
+    await scroll.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
     await expect(jump).toBeVisible({ timeout: 20_000 });
     await page.evaluate(() => {
       (window as unknown as { __scrolls: string[] }).__scrolls = [];
