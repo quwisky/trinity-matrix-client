@@ -1,0 +1,16 @@
+@if (kind() === 'day') {
+  <div
+    class="day-divider"
+    role="separator"
+    [attr.aria-label]="label()"
+    data-testid="day-separator"
+  >
+    <!-- aria-hidden: the label is already the separator's accessible name, and announcing
+         it twice is how a date gets read out to a screen reader as a stutter. -->
+    <span class="day-divider__label" aria-hidden="true">{{ label() }}</span>
+  </div>
+} @else {
+  <div class="new-divider" data-testid="new-messages-divider">
+    <span class="new-divider__label">New messages</span>
+  </div>
+}

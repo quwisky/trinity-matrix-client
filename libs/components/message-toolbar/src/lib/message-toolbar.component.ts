@@ -4,7 +4,9 @@ import {
   input,
   output,
   signal,
+  viewChild,
 } from '@angular/core';
+import { CdkMenuTrigger } from '@angular/cdk/menu';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import { TrnIconComponent } from '@trinity/components/icon';
 import {
@@ -86,10 +88,31 @@ export class MessageToolbarComponent {
   });
   readonly action = output<MessageAction>();
 
+  /**
+   * The overflow menu's trigger, so a consumer can open the SAME menu from somewhere else —
+   * the message row opens it on right-click and long-press. Exposed rather than duplicating
+   * the item list: a second menu would drift from this one the first time an action is added
+   * to either, and the two would disagree about what a message can do.
+   */
+  // Queried as the CDK trigger rather than the Helm wrapper: `HlmDropdownMenuTrigger`
+  // composes `CdkMenuTrigger` as a host directive and does not re-expose its `open()`.
+  // Naming a vendor is allowed here — this tier is a wrapper layer, which is the point of
+  // the `ui:public` / `ui:vendor-wrapper` split.
+  private readonly moreTrigger = viewChild(CdkMenuTrigger);
+
   readonly quickEmojis = QUICK_EMOJIS;
   readonly pickerOpen = signal(false);
   /** Unique id linking the reaction toggle to its picker via aria-controls. */
   readonly pickerId = `trn-reaction-picker-${nextPickerId++}`;
+
+  /**
+   * Open the overflow menu programmatically. Anchored to the "⋯" button rather than to the
+   * pointer, which is deliberate: the menu keeps one predictable position however it was
+   * summoned, and on touch it does not land under the finger that opened it.
+   */
+  openMoreMenu(): void {
+    this.moreTrigger()?.open();
+  }
 
   pick(emoji: string): void {
     this.action.emit({ type: 'react', key: emoji });

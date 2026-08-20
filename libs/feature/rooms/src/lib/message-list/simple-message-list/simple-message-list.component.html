@@ -25,19 +25,10 @@
 
     @for (row of rows(); track row.id) {
       @if (row.daySeparator; as day) {
-        <div
-          class="day-divider"
-          role="separator"
-          [attr.aria-label]="day"
-          data-testid="day-separator"
-        >
-          <span class="day-divider__label" aria-hidden="true">{{ day }}</span>
-        </div>
+        <trn-timeline-divider kind="day" [label]="day" />
       }
       @if (row.id === firstUnreadId()) {
-        <div class="new-divider" data-testid="new-messages-divider">
-          <span class="new-divider__label">New messages</span>
-        </div>
+        <trn-timeline-divider kind="unread" />
       }
       <trn-message-row
         [row]="row"

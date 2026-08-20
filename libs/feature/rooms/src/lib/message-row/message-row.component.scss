@@ -14,8 +14,14 @@
 
   // Bleed into the scroll's horizontal padding so the hover highlight spans
   // the full width (Discord-style); content position is unchanged.
-  padding: 2px 16px;
-  margin: 0 -16px;
+  // The top value is the GROUP GAP, and it is padding rather than margin on purpose:
+  // `virtual-message-list` measures each row with `entry.borderBoxSize[0].blockSize`, which
+  // margins sit outside of. A `margin-top` here would be invisible to that measurement, so
+  // every group start would be undercounted by the gap and the windowed scroll would drift
+  // by 16px per group. `:host { display: contents }` means there is no host box to observe
+  // instead. Continuations reset it to 0 below, which is what makes a group read as a group.
+  padding: var(--trinity-space-5) var(--trinity-space-5) var(--trinity-space-1);
+  margin: 0 calc(-1 * var(--trinity-space-5));
 
   &:hover {
     background: var(--trinity-hover);
@@ -44,6 +50,12 @@
 // A room state / membership change: a compact, centered, muted system line.
 .msg--event {
   justify-content: center;
+
+  // No group gap. `.msg--event` never gets `.msg--cont` — a state change is not somebody's
+  // message and has no sender to be grouped with — so without this it takes the full 16px
+  // meant to separate one person's run from the next, and a room where several people join
+  // and leave becomes a loose column of system lines with more space than the conversation.
+  padding-top: var(--trinity-space-1);
 }
 
 .msg__event-text {
@@ -128,29 +140,36 @@
   opacity: 0.85;
 }
 
+// Anchored INSIDE the row's own box. It used to sit at `top: -16px`, i.e. deliberately
+// parked over the row above — so the actions for one message floated across its
+// predecessor, and on a touch device (where the bar is always open, below) every row
+// permanently covered the top of the one before it. The group gap this phase added is what
+// buys the room to keep it in-box without crowding the text.
 .msg__toolbar {
   position: absolute;
-  top: -16px;
-  right: 24px;
+  top: 0;
+  right: var(--trinity-space-6);
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--trinity-duration-fast) var(--trinity-ease-standard);
 }
 
 .msg:hover .msg__toolbar,
-.msg:focus-within .msg__toolbar {
+.msg:focus-within .msg__toolbar,
+.msg--revealed .msg__toolbar {
   opacity: 1;
   pointer-events: auto;
 }
 
-// Touch devices have no hover, so the actions would be unreachable — keep them
-// visible there. (Keyboard users still reveal them via :focus-within above.)
-@media (hover: none) {
-  .msg__toolbar {
-    opacity: 1;
-    pointer-events: auto;
-  }
-}
+// `.msg--revealed` is what replaced the old `@media (hover: none)` override.
+
+// That override forced the bar open on EVERY row of a touch device, because otherwise the
+// actions were unreachable — so every message permanently wore a toolbar. Removing it is what
+// made the timeline quiet, but it cannot simply go: a touchscreen has no hover, and the long
+// press that stands in for right-click opens the OVERFLOW menu, which does not contain Reply,
+// Add reaction or Reply in thread. Those are the bar's own buttons. So a long press reveals
+// the bar for that one row (see `revealToolbar`), and its "⋯" still reaches the rest.
+// Keyboard users get there via `:focus-within` above.
 
 .msg__avatar {
   flex: 0 0 auto;
@@ -276,7 +295,10 @@
   white-space: pre-wrap;
 }
 
-.msg__text--cont {
+// Was a `msg__text--cont` class hand-applied at four sites in the continuation copy of the
+// body. Selecting on the row's own modifier instead is what let the two copies collapse into
+// one: the markup is now genuinely identical, so there is nothing left to keep in sync.
+.msg--cont .msg__text {
   margin: 0;
   flex: 1;
 }
@@ -384,13 +406,34 @@
   }
 }
 
-// "Seen by" read-receipt avatars, tucked at the trailing edge under the message.
+// "Seen by" read-receipt avatars, at the message's trailing edge.
+
+// IN FLOW, which is where they started. Taking them out of flow was tried in this branch and
+// withdrawn, and the reason is worth keeping so it is not tried again the same way.
+
+// The goal was real: in flow the cluster is a block that adds ~19px wherever it lands, so a
+// reader part-way through a sender's run splits the run and the group rhythm the rest of this
+// phase builds disappears. Absolutely positioning it at `bottom: 0` removes that height — and
+// then paints the avatars ON TOP of the row's own last line, because `.msg` has 2px of bottom
+// padding and the cluster is ~16px tall. Any message whose final line reaches the trailing
+// edge is partly hidden behind them. Hidden text is worse than a gap. A float does not help
+// either: declared after the body, as it must be for reading order, it lands below the text
+// and costs exactly the height it was meant to save.
+
+// What actually solves it is a permanent right gutter — a fixed column reserved on EVERY row,
+// which is what the mature clients do precisely because of this. That is a timeline-wide
+// layout change rather than a receipt tweak, so it is not smuggled in here.
+
+// The alternative the redesign issue offered was to fold every reader onto the group's LAST
+// row. That was rejected on correctness, not layout: a Matrix receipt means "read up to THIS
+// event", so moving it would claim someone had read messages they had not — the app would be
+// stating something false about who saw what. Receipts stay on the event they belong to.
 .msg__receipts {
   display: flex;
   gap: 2px;
 
-  // A <button> shrink-wraps to its content, so `justify-content: flex-end` had no
-  // free space to push against — right-align the whole control with an auto margin.
+  // A <button> shrink-wraps to its content, so `justify-content: flex-end` had no free space
+  // to push against — right-align the whole control with an auto margin.
   width: fit-content;
   margin-top: 3px;
   margin-left: auto;

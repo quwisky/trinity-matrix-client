@@ -8,11 +8,34 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Right-click or long-press a message for its actions.** The full set — pin, quote, copy,
+  copy link, forward, view source, report, edit, delete — is now a right-click away on desktop,
+  instead of only reachable through the small "⋯" button that appears on hover. On a phone,
+  where there is no hover and no right-click, a long press brings up that message's action bar
+  — reply, react, thread and "⋯" — and the next tap anywhere else puts it away again, so the
+  bar is there when you want it instead of sitting on every message all the time.
+
+  Highlight some text first and you still get the browser's own menu, because that is the one
+  with Copy in it — and right-clicking a link or an image still gets you "Open link in new tab"
+  and "Save image as…".
+
 - **A third theme: Onyx.** A neutral, achromatic palette whose dark mode is true black — on an
   OLED screen a black pixel is simply switched off, so it saves power and looks properly dark
   rather than dark grey. Pick it under Settings → Appearance, in either light or dark mode.
 
 ### Fixed
+
+- **Images and videos hold their place while they load.** The timeline used to jump as each
+  one arrived — a message would be one line tall, then several hundred pixels tall a moment
+  later, shoving everything you were reading down the screen. Every attachment now reserves
+  its shape up front, including videos and the ones whose sender did not say how big they
+  were. Tall images are no longer cropped to fit, either, and the placeholder shown while one
+  loads is finally a different colour from the box around it, so you can see it at all.
+
+- **Message actions no longer sit on top of the message above.** The hover toolbar was
+  positioned deliberately outside its own row, which on a phone — where it was always visible —
+  meant every message permanently covered the top of the one before it. It stays inside its own
+  message now, and on touch it stays out of the way until you long-press.
 
 - **Muted text and links are readable everywhere now.** Timestamps, member names, dialog
   captions and other secondary text failed the accessibility contrast floor the moment you
