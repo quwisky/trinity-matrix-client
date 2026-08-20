@@ -30,16 +30,20 @@ const LOCAL_STACKING = [
 ];
 
 /**
- * Keyframe animations still carry literal durations. They are not transitions — each is a
- * one-off with a duration chosen for that specific motion (a 1.6s highlight flash, a 1s
- * recording pulse) — and the motion scale does not yet have a vocabulary for them. Phase 3
- * of the redesign gives them one; until then this records that they were considered.
+ * Keyframe animations carry no literal durations any more.
+ *
+ * They used to, and this was a ledger of the three that did — a recording-pulse, a drawer
+ * entrance and an attention flash — deferred because the fast/base/slow scale had no word
+ * for them. It does now: `--trinity-duration-pulse` and `--trinity-duration-flash` name the
+ * two kinds of motion that are not transitions, and the drawer turned out to be plain
+ * `--trinity-duration-base` all along.
+ *
+ * The ledger is empty and the assertion stays, so it is a floor rather than a description:
+ * a new `animation:` with a hand-picked duration re-opens it, and that value cannot be
+ * collapsed by the reduced-motion block in `variables.scss` — which is the whole reason to
+ * care.
  */
-const LITERAL_ANIMATIONS = [
-  'libs/feature/rooms/src/lib/message-composer/message-composer.component.scss',
-  'libs/feature/rooms/src/lib/rooms/rooms.page.scss',
-  'libs/feature/rooms/src/lib/message-row/message-row.component.scss',
-];
+const LITERAL_ANIMATIONS = [];
 
 const files = ['libs/**/*.scss', 'apps/**/*.scss']
   .flatMap((pattern) => globSync(pattern, { cwd: workspaceRoot }))
@@ -47,6 +51,20 @@ const files = ['libs/**/*.scss', 'apps/**/*.scss']
   .sort();
 
 const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
+
+/**
+ * A stylesheet with its comments removed.
+ *
+ * Prose is not code. The reduced-motion note in `variables.scss` has to quote
+ * `animation: … infinite` to explain why collapsing a duration does not stop one, and the
+ * sweeps below read that sentence as a violation — the same trap `scroll-behaviour.spec.mjs`
+ * hit. Naive on purpose: over-removing text before searching for something that must not
+ * appear at all is the safe direction.
+ */
+const code = (file) =>
+  read(file)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|\s)\/\/.*$/gm, '$1');
 
 describe('styling tokens', () => {
   it('reads the stylesheets at all, so an empty sweep cannot pass as a clean one', () => {
@@ -56,7 +74,7 @@ describe('styling tokens', () => {
   it('uses the z-index scale for every app-level layer', () => {
     const raw = files
       .filter((file) => !LOCAL_STACKING.includes(file))
-      .filter((file) => /z-index:\s*\d/.test(read(file)));
+      .filter((file) => /z-index:\s*\d/.test(code(file)));
 
     expect(raw).toEqual([]);
   });
@@ -66,7 +84,7 @@ describe('styling tokens', () => {
     // so it keeps moving for a user who asked it not to — the blanket `!important` in
     // global.scss is what still catches those, and it is meant to go away.
     const raw = files.filter((file) =>
-      /transition:[^;]*\d+(\.\d+)?m?s/.test(read(file)),
+      /transition:[^;]*\d+(\.\d+)?m?s/.test(code(file)),
     );
 
     expect(raw).toEqual([]);
@@ -74,11 +92,17 @@ describe('styling tokens', () => {
 
   it('keeps the literal keyframe durations to the recorded ledger', () => {
     const raw = files.filter((file) =>
-      /animation:[^;]*\d+(\.\d+)?m?s/.test(read(file)),
+      /animation:[^;]*\d+(\.\d+)?m?s/.test(code(file)),
     );
 
     // Equality, not a subset: an entry that gets migrated must leave the ledger, or the
-    // ledger stops describing the tree and starts excusing it.
+    // ledger stops describing the tree and starts excusing it. It is empty now, so this
+    // reads as "no SCSS stylesheet may hand-pick an animation duration".
+    //
+    // SCSS only: `files` globs `*.scss`, so `theme/spartan.css` — which is hand-written
+    // wiring and does carry keyframes — is outside it. Nothing there hand-picks a duration
+    // today, so this is a gap in reach rather than a miss, and widening the glob is a
+    // separate change because the CSS file's `@theme` blocks are a different kind of thing.
     expect(raw).toEqual([...LITERAL_ANIMATIONS].sort());
   });
 });

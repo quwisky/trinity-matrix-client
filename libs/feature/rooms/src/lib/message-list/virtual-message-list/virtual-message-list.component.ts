@@ -18,6 +18,7 @@ import { MessageListBase } from '../message-list-base';
 import { TrnFileDropDirective } from '../../shared/file-drop.directive';
 import { DropOverlayComponent } from '../drop-overlay/drop-overlay.component';
 import { TimelineDividerComponent } from '../timeline-divider/timeline-divider.component';
+import { scrollBehavior } from '@trinity/util/ui';
 import {
   buildPrefixSums,
   computeWindow,
@@ -515,7 +516,7 @@ export class VirtualMessageListComponent extends MessageListBase {
     this.atBottomSig.set(false);
     const existing = el.querySelector(`[data-mid="${messageId}"]`);
     if (existing) {
-      existing.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      existing.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
       this.flash(existing);
       return;
     }
@@ -529,7 +530,7 @@ export class VirtualMessageListComponent extends MessageListBase {
     afterNextRender(
       () => {
         const target = el.querySelector(`[data-mid="${messageId}"]`);
-        target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target?.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
         this.flash(target);
       },
       { injector: this.injector },

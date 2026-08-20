@@ -452,3 +452,75 @@ function stubLocation() {
     },
   };
 }
+
+describe('AppComponent boot screen', () => {
+  /** A route that resolves immediately, so navigation completes within the test. */
+  async function create() {
+    const result = await render(AppComponent, {
+      providers: [
+        provideRouter([{ path: '**', children: [] }]),
+        provideServiceWorker('ngsw-worker.js', { enabled: false }),
+        ...hostProviders,
+      ],
+    });
+    return result;
+  }
+
+  const bootScreen = (container: HTMLElement) =>
+    container.querySelector('[data-testid=app-booting]');
+
+  it('shows a boot screen before any route has resolved', async () => {
+    // The gap this fills: Angular clears index.html's splash as soon as the ROOT component
+    // renders, which is well before `authGuard` has finished restoring the session. Without
+    // this the app went straight from a splash to an empty screen.
+    const { container } = await create();
+
+    expect(bootScreen(container)).not.toBeNull();
+    expect(container.textContent).toContain('Restoring your session…');
+  });
+
+  it('announces itself to assistive tech rather than being a silent blank', async () => {
+    const { container } = await create();
+
+    expect(bootScreen(container)?.getAttribute('role')).toBe('status');
+    expect(bootScreen(container)?.getAttribute('aria-live')).toBe('polite');
+  });
+
+  it('gets out of the way once a route has rendered', async () => {
+    const { container, fixture } = await create();
+    expect(bootScreen(container)).not.toBeNull();
+
+    await TestBed.inject(Router).navigate(['/anything']);
+    fixture.detectChanges();
+
+    expect(bootScreen(container)).toBeNull();
+  });
+
+  it('does not linger through the redirect a guard performs', async () => {
+    // A guard that sends a signed-out user to /login CANCELS the first navigation and
+    // starts another. Treating the cancel as "done" would drop the boot screen into the gap
+    // between the two and show a blank frame — so the wait is for NavigationEnd, and this
+    // pins that a cancelled-then-redirected navigation still ends with the screen gone.
+    const { container, fixture } = await render(AppComponent, {
+      providers: [
+        provideRouter([
+          { path: 'guarded', children: [], canActivate: [() => false] },
+          { path: 'login', children: [] },
+        ]),
+        provideServiceWorker('ngsw-worker.js', { enabled: false }),
+        ...hostProviders,
+      ],
+    });
+    const router = TestBed.inject(Router);
+
+    await router.navigate(['/guarded']);
+    fixture.detectChanges();
+    // Still booting: nothing has rendered, which is the whole point.
+    expect(bootScreen(container)).not.toBeNull();
+
+    await router.navigate(['/login']);
+    fixture.detectChanges();
+
+    expect(bootScreen(container)).toBeNull();
+  });
+});
