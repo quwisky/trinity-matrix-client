@@ -38,11 +38,25 @@ const tokens = readFileSync(
  */
 const markup = html.replace(/<!--[\s\S]*?-->/g, '');
 
-/** The markup between `<trn-root>` and its closing tag. */
-const insideRoot = markup.slice(
-  markup.indexOf('<trn-root>') + '<trn-root>'.length,
-  markup.indexOf('</trn-root>'),
-);
+/**
+ * The markup between `<trn-root>` and its closing tag.
+ *
+ * Matched as `<trn-root` rather than `<trn-root>` so an attribute added to the element does
+ * not turn every assertion below into a slice of the wrong region — and a miss THROWS rather
+ * than yielding a plausible-looking string, because a silent -1 makes `slice` return a prefix
+ * of the document and the checks start passing for no reason.
+ */
+function markupInsideRoot() {
+  const open = markup.indexOf('<trn-root');
+  const close = markup.indexOf('</trn-root>');
+  if (open === -1 || close === -1) {
+    throw new Error('index.html has no <trn-root> element to inspect');
+  }
+  const contentStart = markup.indexOf('>', open) + 1;
+  return markup.slice(contentStart, close);
+}
+
+const insideRoot = markupInsideRoot();
 
 describe('boot splash', () => {
   it('exists at all', () => {
@@ -109,7 +123,16 @@ describe('boot splash', () => {
     expect(light).toBeDefined();
     expect(dark).toBeDefined();
 
-    expect(html).toContain(`background: ${light}`);
-    expect(html).toContain(`background: ${dark}`);
+    // Scoped to the block each value belongs in, not merely "appears somewhere". Asserting
+    // presence alone passes with the two swapped, which is the one drift that would be
+    // visible to every user rather than to none.
+    const darkAt = html.indexOf('@media (prefers-color-scheme: dark)');
+    expect(darkAt).toBeGreaterThan(-1);
+    const beforeDark = html.slice(0, darkAt);
+    const inDark = html.slice(darkAt);
+
+    expect(beforeDark).toContain(`background: ${light}`);
+    expect(inDark).toContain(`background: ${dark}`);
+    expect(inDark).not.toContain(`background: ${light}`);
   });
 });
