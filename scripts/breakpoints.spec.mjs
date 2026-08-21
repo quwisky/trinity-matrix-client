@@ -20,9 +20,15 @@ const workspaceRoot = join(import.meta.dirname, '..');
  *
  * It also asserts the complement convention, because that is the half that fails quietly: a
  * min/max pair written as `768` and `768` leaves a width where both match, and one written as
- * `768` and `767` leaves a fractional width where neither does. Tailwind's own `max-*`
- * variants use `value - 0.02px`, so matching that is what makes `max-members:` and
- * `BELOW_MEMBERS_QUERY` one boundary rather than two a pixel apart.
+ * `768` and `767` leaves a fractional width where neither does.
+ *
+ * `0.02px` is THIS WORKSPACE'S convention, inherited from Tailwind v3 and from the existing
+ * `MD_QUERY` pair — it is NOT what Tailwind v4 emits. v4's `max-*` compiles to a strict range
+ * (`@media (width < 1100px)`), so the CSS variant and `BELOW_MEMBERS_QUERY` differ on the open
+ * interval between 1099.98 and 1100. That residue is deliberate rather than unnoticed: closing
+ * it means writing `(max-width: 1099.999…px)` or moving the TypeScript to a range query that
+ * `matchMedia` does not accept in the same form. It is narrower than the disagreement it
+ * replaced, which sat at exactly 1100 — a reachable integer width.
  */
 const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
 
@@ -54,24 +60,31 @@ function tsQueries() {
 
 /**
  * The pairs this workspace maintains: a Tailwind breakpoint name, and the two TypeScript
- * constants that must agree with it. Adding a breakpoint without adding it here is caught by
- * the coverage assertion below, not by silence.
+ * constants that must agree with it. Declaring a `--breakpoint-*` without adding it here fails
+ * the coverage assertion below — which compares the KEYS, not a count, because a count only
+ * ever grew and so let a new breakpoint arrive unchecked.
  */
 const PAIRS = [
   { theme: 'md', min: 'MD_QUERY', max: 'BELOW_MD_QUERY' },
   { theme: 'members', min: 'MEMBERS_QUERY', max: 'BELOW_MEMBERS_QUERY' },
 ];
 
-/** Tailwind's own complement offset for `max-*` variants. */
+/** The offset a `max-` complement is written with here. See the note above: ours, not v4's. */
 const COMPLEMENT_PX = 0.02;
 
 describe('shell breakpoints', () => {
   it('finds all three definitions at all, so an empty sweep cannot pass as a clean one', () => {
     // Every assertion below is a comparison between two parsed values. A regex that stopped
     // matching would compare undefined with undefined and report agreement.
-    expect(themeBreakpoints().size).toBeGreaterThanOrEqual(PAIRS.length);
+    // Keys, not a count. `>= PAIRS.length` passes for any table at least as big as this one,
+    // so a third breakpoint declared with its own pair of constants sailed through unchecked —
+    // which is exactly what #179 plans to add next.
+    expect([...themeBreakpoints().keys()].sort()).toEqual(
+      PAIRS.map((pair) => pair.theme).sort(),
+    );
     expect(tsQueries().size).toBeGreaterThanOrEqual(PAIRS.length * 2);
     expect(read(MIXINS)).toContain('$below-members:');
+    expect(read(MIXINS)).toContain('$below-md:');
   });
 
   it.each(PAIRS)(
@@ -102,16 +115,22 @@ describe('shell breakpoints', () => {
     },
   );
 
-  it('states the members breakpoint identically in SCSS', () => {
-    // The one the stylesheet reads. `rooms.page.scss` interpolates this variable rather than
-    // writing the number, so this is the only place SCSS can drift from the other two.
-    const scss = /\$below-members:\s*'([^']+)'/.exec(read(MIXINS));
+  it.each([
+    ['members', 'below-members', 'BELOW_MEMBERS_QUERY'],
+    ['md', 'below-md', 'BELOW_MD_QUERY'],
+  ])(
+    'states the %s breakpoint identically in SCSS',
+    (_label, variable, constant) => {
+      // Both, not just `members`. PAIRS presents the two as equally guarded, and for a while
+      // only one of them actually had its SCSS copy checked.
+      const scss = new RegExp(`\\$${variable}:\\s*'([^']+)'`).exec(
+        read(MIXINS),
+      );
 
-    expect(scss, `$below-members is not declared in ${MIXINS}`).not.toBeNull();
-    expect(scss[1]).toBe(
-      `(max-width: ${tsQueries().get('BELOW_MEMBERS_QUERY').px}px)`,
-    );
-  });
+      expect(scss, `$${variable} is not declared in ${MIXINS}`).not.toBeNull();
+      expect(scss[1]).toBe(`(max-width: ${tsQueries().get(constant).px}px)`);
+    },
+  );
 
   it('keeps ad-hoc pixel breakpoints out of everything Tailwind scans', () => {
     // An arbitrary-value variant reads as a local styling choice, so nothing relates it to
@@ -125,17 +144,25 @@ describe('shell breakpoints', () => {
     // enough to emit it, and this repo shipped a dead rule that way — the comment in the
     // theme block explaining what the named breakpoint replaced named the old class, so
     // Tailwind kept generating it.
+    // Matches what Tailwind is actually pointed at: `@source '…/libs'` and `@source '…/apps'`
+    // in the theme name DIRECTORIES, so every file type in them is scanned — `.ts` included,
+    // and components really do set utilities from there (`host: { class: 'contents' }` in
+    // page-header.component.ts is a live example). A sweep that stopped at markup and
+    // stylesheets called itself "everything Tailwind scans" while missing a whole language.
     const scanned = [
       'libs/**/*.html',
       'apps/**/*.html',
+      'libs/**/*.ts',
+      'apps/**/*.ts',
       'libs/**/*.scss',
       'apps/**/*.scss',
+      'libs/**/*.css',
       'apps/**/*.css',
     ]
       .flatMap((pattern) => globSync(pattern, { cwd: workspaceRoot }))
       .filter((file) => !file.includes('node_modules'));
 
-    expect(scanned.length).toBeGreaterThan(100);
+    expect(scanned.length).toBeGreaterThan(300);
 
     const adHoc = scanned.filter((file) =>
       /\b(?:max|min)-\[\d+(?:\.\d+)?px\]:/.test(read(file)),
