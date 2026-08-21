@@ -13,6 +13,7 @@ export * from './lib/system-line-settings.service';
 export * from './lib/composer-settings.service';
 export * from './lib/theme.service';
 export * from './lib/shell-layout.service';
+export * from './lib/back-interceptor.service';
 export * from './lib/date-time-format.service';
 export * from './lib/mobile-badge.service';
 export * from './lib/trinity-desktop-bridge';

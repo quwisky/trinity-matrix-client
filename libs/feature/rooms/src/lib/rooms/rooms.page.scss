@@ -212,9 +212,11 @@
     flex: none;
     box-shadow: -2px 0 12px rgb(0 0 0 / 30%);
 
-    // Clear the status bar / home indicator on notched devices (inert elsewhere).
+    // Clear the status bar on notched devices (inert elsewhere). The BOTTOM inset is not
+    // here: the four panel templates carry `safe-bottom` themselves, because their content
+    // reaches the bottom edge — a thread composer, a member-info action row — and padding
+    // the host as well would double it. `.chat-members` gets its own below.
     padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
     animation: members-drawer-in var(--trinity-duration-base)
       var(--trinity-ease-decelerate);
   }

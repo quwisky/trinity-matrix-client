@@ -56,6 +56,7 @@ import {
   TimelineService,
 } from '@trinity/data-access/timeline';
 import {
+  BackInterceptorService,
   FeatureFlagsService,
   ShellLayoutService,
 } from '@trinity/platform-native';
@@ -173,6 +174,24 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   /** Persisted pane widths, bound into the shell's CSS custom properties. */
   readonly layout = inject(ShellLayoutService);
+
+  /**
+   * Android's hardware Back closes the right-hand panel before it leaves the room.
+   *
+   * Registered rather than reached for: `AppComponent` owns the Back chain and cannot import
+   * this feature, and the panel is an inline block rather than a CDK dialog, so the chain's
+   * `dialog.hasOpen()` check has never seen it. Only claims the press when something is
+   * actually open, so Back still leaves the room when the slot is empty.
+   */
+  private readonly backRegistration = inject(BackInterceptorService).register(
+    () => {
+      if (!this.store.rightPanel()) {
+        return false;
+      }
+      this.closeRightPanel();
+      return true;
+    },
+  );
 
   readonly rooms = inject(RoomsService);
   readonly spaces = inject(SpacesService);
@@ -302,6 +321,7 @@ export class RoomsPage implements OnInit, OnDestroy {
    * symmetric nor load-bearing — one owner, not one and a half.
    */
   ngOnDestroy(): void {
+    this.backRegistration();
     // `releaseOpenRoom`, not `closeOpenRoom`: closing NAVIGATES now, and the router is
     // already on its way to wherever the user actually went. This only has to stop the
     // root-scoped projections following a room nobody is looking at.
