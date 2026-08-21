@@ -37,9 +37,6 @@ function fakeList(matches: boolean) {
         fn({ matches: next } as MediaQueryListEvent);
       }
     },
-    get listenerCount() {
-      return listeners.size;
-    },
   };
 }
 
