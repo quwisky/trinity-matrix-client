@@ -72,6 +72,7 @@ describe('shell breakpoints', () => {
     expect(themeBreakpoints().size).toBeGreaterThanOrEqual(PAIRS.length);
     expect(tsQueries().size).toBeGreaterThanOrEqual(PAIRS.length * 2);
     expect(read(MIXINS)).toContain('$below-members:');
+    expect(read(MIXINS)).toContain('$md:');
   });
 
   it.each(PAIRS)(
@@ -101,6 +102,13 @@ describe('shell breakpoints', () => {
       expect(upper.px).toBeCloseTo(lower.px - COMPLEMENT_PX, 5);
     },
   );
+
+  it('states the md breakpoint identically in SCSS', () => {
+    const scss = /\$md:\s*'([^']+)'/.exec(read(MIXINS));
+
+    expect(scss, `$md is not declared in ${MIXINS}`).not.toBeNull();
+    expect(scss[1]).toBe(`(min-width: ${tsQueries().get('MD_QUERY').px}px)`);
+  });
 
   it('states the members breakpoint identically in SCSS', () => {
     // The one the stylesheet reads. `rooms.page.scss` interpolates this variable rather than

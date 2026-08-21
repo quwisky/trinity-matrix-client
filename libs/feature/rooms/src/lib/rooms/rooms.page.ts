@@ -55,7 +55,10 @@ import {
   TimelineActionsService,
   TimelineService,
 } from '@trinity/data-access/timeline';
-import { FeatureFlagsService } from '@trinity/platform-native';
+import {
+  FeatureFlagsService,
+  ShellLayoutService,
+} from '@trinity/platform-native';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { PageHeaderComponent } from '@trinity/components/page-header';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
@@ -66,6 +69,7 @@ import { ThreadViewComponent } from '../thread/thread-view.component';
 import { PinnedMessagesPanelComponent } from '../pinned/pinned-messages-panel.component';
 import { MessageSearchComponent } from '../message-search/message-search.component';
 import { MemberInfoComponent } from '../member-info/member-info.component';
+import { PaneHandleComponent } from './pane-handle.component';
 import { SimpleMessageListComponent } from '../message-list/simple-message-list/simple-message-list.component';
 import { VirtualMessageListComponent } from '../message-list/virtual-message-list/virtual-message-list.component';
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
@@ -134,6 +138,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
     PinnedMessagesPanelComponent,
     MessageSearchComponent,
     MemberInfoComponent,
+    PaneHandleComponent,
     SimpleMessageListComponent,
     VirtualMessageListComponent,
     EncryptionBannerComponent,
@@ -165,6 +170,9 @@ export class RoomsPage implements OnInit, OnDestroy {
     BELOW_MEMBERS_QUERY,
     inject(DestroyRef),
   );
+
+  /** Persisted pane widths, bound into the shell's CSS custom properties. */
+  readonly layout = inject(ShellLayoutService);
 
   readonly rooms = inject(RoomsService);
   readonly spaces = inject(SpacesService);

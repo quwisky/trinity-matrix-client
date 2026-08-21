@@ -5,8 +5,15 @@
   <trn-connectivity-banner />
   <trn-encryption-banner />
 
+  <!-- `data-shell-root` is what a pane handle writes its custom property on during a drag.
+       The two properties are seeded from the persisted widths and read by rooms.page.scss;
+       a drag overrides one inline for the length of the gesture and removes it on release,
+       so the committed value below is what the layout goes back to reading. -->
   <div
     class="flex min-h-0 flex-1"
+    data-shell-root
+    [style.--shell-sidebar-w.px]="layout.sidebarWidth()"
+    [style.--shell-right-panel-w.px]="layout.rightPanelWidth()"
     [attr.data-mobile-view]="store.activeRoomId() ? 'chat' : 'list'"
   >
     <!-- Below md the rail + sidebar (room list) and the chat are separate full-screen
@@ -20,13 +27,7 @@
          asserts the two edges meet at every text size. -->
     <!-- The rule below only sees that 352px equals w-88's 22rem at the default root size;
          the paragraph above is why the two are not interchangeable here. -->
-    <!-- eslint-disable tailwindcss/no-unnecessary-arbitrary-value -->
-    <aside
-      #listView
-      tabindex="-1"
-      class="shell-side w-full shrink-0 md:w-[352px]"
-    >
-      <!-- eslint-enable tailwindcss/no-unnecessary-arbitrary-value -->
+    <aside #listView tabindex="-1" class="shell-side w-full shrink-0">
       <trn-server-rail
         [spaces]="vm.railSpaces()"
         [activeSpaceId]="store.activeSpaceId()"
@@ -92,6 +93,18 @@
         (setSortMode)="spaceActions.onSetSpaceSort($event)"
       />
     </aside>
+
+    <!-- Only at md+: below it the sidebar and the chat are separate full-screen pages, so
+         there is no divider between them to drag. -->
+    <trn-pane-handle
+      class="hidden md:block"
+      cssVariable="--shell-sidebar-w"
+      label="Room list width"
+      [value]="layout.sidebarWidth()"
+      [min]="layout.sidebarBounds.min"
+      [max]="layout.sidebarBounds.max"
+      (committed)="layout.setSidebarWidth($event)"
+    />
 
     <div #mainView tabindex="-1" class="main">
       <trn-page-header variant="chat">
@@ -389,6 +402,20 @@
             />
           }
           @if (store.rightPanel(); as panel) {
+            <!-- Between the timeline and the slot. Hidden below the `members` breakpoint,
+                 where the slot is an overlay drawer rather than a column sharing the row —
+                 there is nothing to trade width with. `invert` because this handle grows the
+                 pane to its RIGHT: dragging left makes the panel wider. -->
+            <trn-pane-handle
+              class="hidden members:block"
+              cssVariable="--shell-right-panel-w"
+              label="Panel width"
+              [invert]="true"
+              [value]="layout.rightPanelWidth()"
+              [min]="layout.rightPanelBounds.min"
+              [max]="layout.rightPanelBounds.max"
+              (committed)="layout.setRightPanelWidth($event)"
+            />
             <!-- Below the `members` breakpoint the slot is an overlay drawer; a backdrop
                (shown only at that width) dismisses it. At or above it the slot is a static
                column and the backdrop is display:none. One backdrop for every surface,

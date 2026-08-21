@@ -8,7 +8,18 @@ import {
   isTimeFormat,
 } from '@trinity/util/matrix';
 import { provideConfigEntries, type ConfigEntry } from './config-schema';
-import { choiceSetting, flagSetting } from './config-validation';
+import {
+  boundedNumberSetting,
+  choiceSetting,
+  flagSetting,
+} from './config-validation';
+import {
+  DEFAULT_RIGHT_PANEL_WIDTH,
+  DEFAULT_SIDEBAR_WIDTH,
+  RIGHT_PANEL_WIDTH_BOUNDS,
+  SIDEBAR_WIDTH_BOUNDS,
+  ShellLayoutService,
+} from './shell-layout.service';
 import {
   ComposerSettingsService,
   DEFAULT_SHOW_FORMATTING_TOOLBAR,
@@ -67,6 +78,7 @@ function idsOf(options: readonly { readonly id: string }[]): readonly string[] {
 export function providePlatformConfigEntries(): EnvironmentProviders {
   return provideConfigEntries(() => [
     ...themeEntries(inject(ThemeService)),
+    ...shellEntries(inject(ShellLayoutService)),
     ...privacyEntries(inject(PrivacySettingsService)),
     ...timelineEntries(inject(SystemLineSettingsService)),
     ...formatEntries(inject(DateTimeFormatService)),
@@ -143,6 +155,38 @@ function themeEntries(theme: ThemeService): readonly ConfigEntry[] {
         options: idsOf(TRINITY_CODE_LINE_MODES),
         noun: 'a line-number mode',
         set: (value) => theme.setCodeLines(value),
+      }),
+    },
+  ];
+}
+
+/** The rooms shell's draggable pane widths. */
+function shellEntries(shell: ShellLayoutService): ConfigEntry[] {
+  return [
+    {
+      path: 'shell.sidebarWidth',
+      key: 'trinity.shell.sidebar-width',
+      description:
+        'Width of the rail and room-list column, in pixels. Drag its edge in the app.',
+      read: () => shell.sidebarWidth(),
+      reset: () => shell.setSidebarWidth(DEFAULT_SIDEBAR_WIDTH),
+      ...boundedNumberSetting({
+        ...SIDEBAR_WIDTH_BOUNDS,
+        noun: `a width between ${SIDEBAR_WIDTH_BOUNDS.min} and ${SIDEBAR_WIDTH_BOUNDS.max}`,
+        set: (value) => shell.setSidebarWidth(value),
+      }),
+    },
+    {
+      path: 'shell.rightPanelWidth',
+      key: 'trinity.shell.right-panel-width',
+      description:
+        'Width of the right-hand panel — threads, pinned messages, search — in pixels.',
+      read: () => shell.rightPanelWidth(),
+      reset: () => shell.setRightPanelWidth(DEFAULT_RIGHT_PANEL_WIDTH),
+      ...boundedNumberSetting({
+        ...RIGHT_PANEL_WIDTH_BOUNDS,
+        noun: `a width between ${RIGHT_PANEL_WIDTH_BOUNDS.min} and ${RIGHT_PANEL_WIDTH_BOUNDS.max}`,
+        set: (value) => shell.setRightPanelWidth(value),
       }),
     },
   ];

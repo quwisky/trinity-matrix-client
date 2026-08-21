@@ -236,6 +236,16 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
   // — privacy-settings.service.ts —
   {
     disposition: 'exported',
+    key: 'trinity.shell.sidebar-width',
+    owner: 'platform-native',
+  },
+  {
+    disposition: 'exported',
+    key: 'trinity.shell.right-panel-width',
+    owner: 'platform-native',
+  },
+  {
+    disposition: 'exported',
     key: 'trinity.privacy.send-read-receipts',
     owner: 'platform-native',
   },

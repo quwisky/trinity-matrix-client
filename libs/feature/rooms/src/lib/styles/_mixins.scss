@@ -10,6 +10,10 @@
 // rather than trusted.
 $below-members: '(max-width: 1099.98px)';
 
+// The `md` breakpoint, restated for SCSS on the same terms — see the note above. Matches
+// `MD_QUERY` in @trinity/util/ui and `--breakpoint-md` in the theme.
+$md: '(min-width: 768px)';
+
 /// Truncate a single line of text with an ellipsis.
 @mixin ellipsis {
   overflow: hidden;

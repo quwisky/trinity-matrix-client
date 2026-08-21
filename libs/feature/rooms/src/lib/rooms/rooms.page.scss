@@ -9,10 +9,45 @@
 
 // Server rail (72) + channel sidebar (280) = 352px. A static column at md+ and the
 // full-screen room-list page below md.
+// Width comes from `--shell-sidebar-w` on the shell root, seeded from the persisted setting
+// and overridden inline for the length of a drag. It used to be `md:w-[352px]` with an
+// eight-line note on why it was px and not `w-88` — the reasoning survives in
+// `ShellLayoutService`, which owns the default and the bounds. `text-scaling.spec.mts` still
+// asserts the rail and sidebar edges meet at every text size, and they still must.
+// The draggable dividers. 4px of visible line with a wider invisible grab area, because a
+// 4px hit target is a fair-weather one — `pointer-events` on the padding is what makes it
+// forgiving without making the line thick.
+.pane-handle {
+  position: relative;
+  z-index: var(--trinity-z-sticky);
+  flex: 0 0 auto;
+  width: 4px;
+  margin: 0 -2px;
+  cursor: col-resize;
+  background: transparent;
+  touch-action: none;
+
+  &:hover,
+  &:focus-visible,
+  &.pane-handle--dragging {
+    background: var(--trinity-accent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--trinity-accent);
+    outline-offset: 1px;
+  }
+}
+
 .shell-side {
   display: flex;
   height: 100%;
   background: var(--trinity-rail);
+
+  @media #{$md} {
+    width: var(--shell-sidebar-w, 352px);
+    flex: 0 0 auto;
+  }
 
   // Outer-left column: clear the left cutout on a landscape notch (left) and the home
   // indicator (bottom, where the user footer sits). The top inset is on .rooms-shell.
@@ -158,7 +193,7 @@
 // re-applies it when the scroller's width actually changes, so the resize is survivable and
 // the panels can take their space.
 .chat-panel {
-  flex: 0 0 480px;
+  flex: 0 0 var(--shell-right-panel-w, 480px);
   min-width: 0;
 }
 
