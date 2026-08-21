@@ -34,8 +34,9 @@ const SEGMENT_PATTERN = /^[A-Za-z0-9_-]+$/;
  * Checked on the way OUT of {@link decodeRoomSegment} rather than trusted. A path segment is
  * user input — hand-typed, truncated by a chat client, or stale — and base64url decodes plenty
  * of arbitrary strings into plausible-looking text. Handing that to the SDK as a room id turns
- * a bad URL into a failed request with a confusing message; rejecting it here turns the same
- * URL into the router's not-found path.
+ * a bad URL into a failed request with a confusing message; rejecting it here makes the shell
+ * treat the URL as naming no room, so it shows the room list instead. The URL itself is left
+ * alone — the route has already matched by the time this runs, and nothing rewrites it.
  */
 const ROOM_SIGILS = ['!', '#'];
 
@@ -44,6 +45,10 @@ const ROOM_SIGILS = ['!', '#'];
  *
  * Encodes the UTF-8 bytes, not the UTF-16 code units: `btoa` throws on any character above
  * U+00FF, and an alias localpart may legitimately hold one.
+ *
+ * A LONE SURROGATE does not survive the trip: `TextEncoder` substitutes U+FFFD, so the
+ * segment names a different string than it was given. Unreachable for a real room id or
+ * alias, and the alternative is validating UTF-16 well-formedness on every encode.
  */
 export function encodeRoomSegment(roomIdOrAlias: string): string {
   const bytes = new TextEncoder().encode(roomIdOrAlias);
