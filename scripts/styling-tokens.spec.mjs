@@ -145,4 +145,24 @@ describe('styling tokens', () => {
 
     expect(offenders).toEqual([]);
   });
+
+  it('contains sideways scrolling wherever a surface scrolls sideways', () => {
+    // iOS now has the WebView's back/forward swipe enabled, so a horizontal scroll that
+    // reaches its end continues into the gesture and navigates away. Every `overflow-x`
+    // surface therefore has to say the scroll stops with it. Checked as a pairing rather
+    // than by eye, because the failure only shows on a device with the gesture — every
+    // desktop browser looks fine.
+    // COUNTED, not "does the file mention it anywhere". A file with two scrolling surfaces
+    // and one containment reads as clean to a presence check, which is exactly the state
+    // this guard's own first draft passed in.
+    const offenders = files.filter((file) => {
+      const source = code(file);
+      const scrolls = (source.match(/overflow-x:\s*(?:auto|scroll)/g) ?? [])
+        .length;
+      const contained = (source.match(/overscroll-behavior-x/g) ?? []).length;
+      return scrolls > contained;
+    });
+
+    expect(offenders).toEqual([]);
+  });
 });

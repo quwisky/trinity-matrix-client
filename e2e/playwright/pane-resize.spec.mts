@@ -47,8 +47,16 @@ test.describe('Resizable panes', () => {
     await page.mouse.move(box.x + 80, y);
     await page.mouse.up();
 
+    // POLLED, not read once. The commit goes signal -> change detection -> layout, so the
+    // box read immediately after `mouse.up()` is a race — it was, and this spec was flaky
+    // for exactly that reason on the run that introduced it.
+    await expect
+      .poll(async () => (await sidebar.boundingBox())?.width ?? 0, {
+        timeout: 10_000,
+      })
+      .toBeGreaterThan(before + 50);
+
     const after = (await sidebar.boundingBox())?.width ?? 0;
-    expect(after).toBeGreaterThan(before + 50);
 
     // The committed width is announced, so a screen reader is not left describing the old one.
     await expect(handle).toHaveAttribute(

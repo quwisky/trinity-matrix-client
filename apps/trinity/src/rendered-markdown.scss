@@ -89,6 +89,12 @@
     background: var(--trinity-rail);
     overflow-x: auto;
 
+    // Keep a sideways scroll inside the code block. iOS now has the WebView's back/forward
+    // swipe enabled (see ios/App/App/MainViewController.swift), and without this, flicking a
+    // wide code line to its end continues into the gesture and navigates out of the room —
+    // a horizontal scroll that reads as "go back" is the exact failure this prevents.
+    overscroll-behavior-x: contain;
+
     // The fenced block's declared language, captioned on hover the way GitHub does it.
     // Generated content from the `language` attribute the sanitizer writes: that keeps the
     // caption out of the element's text, so it cannot be selected, copied, or picked up by
@@ -291,8 +297,10 @@
     margin: 4px 0;
     border-collapse: collapse;
 
-    // A wide table scrolls itself rather than stretching the message row.
+    // A wide table scrolls itself rather than stretching the message row, and that scroll
+    // stays inside it — see the note on `pre` above; the same back-swipe applies here.
     overflow-x: auto;
+    overscroll-behavior-x: contain;
   }
 
   th,
