@@ -38,6 +38,23 @@ export type RightPanel =
   | null;
 
 /**
+ * What the slot shows with nothing else asked for: the member list at the wide layout,
+ * closed below it — which is what the member column has always done.
+ *
+ * A one-shot `matchesQuery` and deliberately NOT `mediaQuerySignal`: this SEEDS a state the
+ * user then owns, and a live signal would re-evaluate on every rotation across the boundary
+ * and reopen a panel the user had explicitly closed.
+ *
+ * Negated rather than asking `MEMBERS_QUERY` directly, because `matchesQuery` answers
+ * `false` where `matchMedia` does not exist and the two directions disagree about what that
+ * should mean. Asking the BELOW query makes the unknown case the static column, which is
+ * what this has always done.
+ */
+function seedRightPanel(): RightPanel {
+  return matchesQuery(BELOW_MEMBERS_QUERY) ? null : { kind: 'members' };
+}
+
+/**
  * The rooms shell's own selection and pane state.
  *
  * Deliberately `@Injectable()` with no `providedIn`: this is listed in `RoomsPage`'s
@@ -127,18 +144,25 @@ export class RoomShellStore {
    * `'thread' | null` would have to be shadowed by a second signal holding the id, which is
    * the invalid-state-is-representable shape this exists to avoid.
    */
-  readonly rightPanel = signal<RightPanel>(
-    // Seeded to the member list at the wide layout, closed below it — which is what the
-    // member column has always done. `matchesQuery` and deliberately NOT `mediaQuerySignal`:
-    // this SEEDS a state the user then owns, and a live signal would re-evaluate on every
-    // rotation across the boundary and reopen a panel the user had explicitly closed.
-    //
-    // Negated rather than asking `MEMBERS_QUERY` directly, because `matchesQuery` answers
-    // `false` where `matchMedia` does not exist and the two directions disagree about what
-    // that should mean. Asking the BELOW query makes the unknown case the static column,
-    // which is what this has always done.
-    matchesQuery(BELOW_MEMBERS_QUERY) ? null : { kind: 'members' },
-  );
+  readonly rightPanel = linkedSignal<string | null, RightPanel>({
+    // Keyed on the OPEN ROOM, because four of the six surfaces are about a particular room
+    // and cannot follow the user out of it. A thread names a root event, pinned and search
+    // hand back an event id, and member info carries both its subject and the caps resolved
+    // against the room whose row was clicked — while the template binds every panel to
+    // `room.id`, the room that is open NOW. Left to persist, switching rooms with member
+    // info open pointed "Remove from room" at a room the user never opened it for.
+    source: this.activeRoomId,
+    computation: (_roomId, previous) => {
+      const panel = previous?.value;
+      // The roster and "nothing" are the column's own open/closed state, which the user owns
+      // and which has always survived a room change — the list re-projects itself onto the
+      // new room. Everything else goes back to whatever this width shows by default. (On the
+      // very first read `previous` is undefined, which falls through to the seed.)
+      return panel === null || panel?.kind === 'members'
+        ? panel
+        : seedRightPanel();
+    },
+  });
 
   /** Whether the member list is the surface currently in the slot. */
   readonly membersOpen = computed(() => this.rightPanel()?.kind === 'members');

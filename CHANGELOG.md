@@ -23,6 +23,17 @@ All notable changes to this project are documented here. The format is based on
   OLED screen a black pixel is simply switched off, so it saves power and looks properly dark
   rather than dark grey. Pick it under Settings → Appearance, in either light or dark mode.
 
+### Changed
+
+- **One panel at a time down the right-hand side.** Threads, a thread, pinned messages and
+  in-room search used to open as floating panels _over_ the member list, so you could end up
+  with two lists stacked on each other and no clear way back. There is now a single
+  right-hand space, and whatever you ask for takes it: pressing Threads while the member list
+  is up swaps to threads rather than covering it. Clicking someone in the member list opens
+  their info in that same space — closing it puts the member list back, so you can watch a
+  role change land in the list you were reading. Escape closes whatever is showing, and
+  closing it hands the keyboard back to the button you opened it with.
+
 ### Fixed
 
 - **Images and videos hold their place while they load.** The timeline used to jump as each

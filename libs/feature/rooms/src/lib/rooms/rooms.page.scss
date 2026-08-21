@@ -231,21 +231,22 @@
     flex: none;
     box-shadow: -2px 0 12px rgb(0 0 0 / 30%);
 
-    // Clear the status bar / home indicator on notched devices (inert elsewhere).
-    padding-top: env(safe-area-inset-top);
+    // Clear the home indicator on notched devices (inert elsewhere).
     padding-bottom: env(safe-area-inset-bottom);
     animation: members-drawer-in var(--trinity-duration-base)
       var(--trinity-ease-decelerate);
   }
 
-  // The roster fits a 240px drawer; a thread or a search result does not, so the two part
-  // company on width even though they share everything else about being a drawer here. The
-  // panels were full-screen (`w-screen`) as dialogs at this width and stay so — `max-width`
-  // does it, since 480px exceeds the viewport. The dragged width is deliberately NOT read
-  // here: there is no divider to drag at this breakpoint, and a width chosen on a desktop
-  // has nothing to say about a phone.
+  // Where the two drawers part company, on width and on the top inset.
+  // The roster fits 240px; a thread or a search result does not, and those were full-screen
+  // (`w-screen`) as dialogs at this width, so `max-width` keeps them so — 480px exceeds the
+  // viewport here. The dragged width is deliberately not read at this breakpoint: there is no
+  // divider to drag, and a width chosen on a desktop has nothing to say about a phone.
+  // Every panel surface carries `safe-top` on its own header, so padding the notch here too
+  // would clear it twice; the member list has no header of its own and needs it.
   .chat-members {
     width: 240px;
+    padding-top: env(safe-area-inset-top);
   }
 
   .chat-panel {
