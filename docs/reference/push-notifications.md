@@ -92,11 +92,15 @@ registration when a service worker controls the page, because mobile browsers th
 `new Notification()`, and through the constructor otherwise.
 
 A click focuses the window, switches to the owning account if it is not already active,
-and navigates to `/rooms?room=<room_id>`. The rooms shell consumes that parameter and
-opens the room, then strips it with a `replaceUrl` navigation so Back does not re-open it.
-It reads `queryParamMap` as a stream rather than from the route snapshot, because `/rooms`
-is usually already the active route when a notification is tapped — the component is not
-re-created, so a snapshot read would only ever see the URL the shell was first opened with.
+and navigates to `/rooms/<segment>`, where the segment is the room id encoded with
+`encodeRoomSegment` (base64url — the raw id ends in a dotted server name, which both SPA
+fallbacks refuse to answer with `index.html`).
+
+Nothing consumes and strips a parameter any more: the open room IS the URL.
+`RoomShellStore.activeRoomId` derives from `ActivatedRoute.paramMap`, so a tap arriving
+while `/rooms` is already the active route still lands — the component is not re-created,
+but `paramMap` is a stream and fires anyway. Back closing the room is now the intended
+behaviour rather than something to prevent.
 
 !!! warning "macOS silently drops notifications from unsigned builds"
 

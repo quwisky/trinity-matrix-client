@@ -1288,6 +1288,62 @@ describe('TimelineService', () => {
       expect(typingCalls(sent)).toContainEqual(['typing', false]);
     });
 
+    // Both halves of the bookkeeping `stopTypingOnConnectedClient` shares with `setTyping`.
+    // Without the first, a close sends a stop we never started; without the second, the flag
+    // survives into the next room and its first real keystroke is swallowed as a duplicate.
+    it('sends nothing when the room closes without anyone having typed', () => {
+      const { svc, sent } = setupTyping();
+
+      svc.close();
+
+      expect(typingCalls(sent)).toEqual([]);
+    });
+
+    it('clears the typing flag on close, so the next room can start again', () => {
+      const { svc, sent } = setupTyping();
+      svc.setTyping(true);
+      svc.close();
+
+      svc.open('!other:hs');
+      svc.setTyping(true);
+
+      expect(typingCalls(sent)).toEqual([
+        ['typing', true],
+        ['typing', false],
+        ['typing', true],
+      ]);
+    });
+
+    // Closing is DEFERRED now: it follows the URL through the shell's projection effect,
+    // so an account switch has already flipped the active client by the time close() runs.
+    // The stop has to go to the account that started typing — the outgoing one — or that
+    // account stays marked typing for the server's whole timeout while the incoming one
+    // PUTs typing into a room it may not even be in.
+    it('sends the closing typing-stop to the account that was typing', () => {
+      const outgoingSent: unknown[][] = [];
+      const incomingSent: unknown[][] = [];
+      const room = fakeRoom([], {}, false, []);
+      const outgoing = fakeClient(room, outgoingSent);
+      const incoming = fakeClient(room, incomingSent);
+      const active = { client: outgoing as unknown };
+      TestBed.configureTestingModule({
+        providers: [
+          TimelineService,
+          switchableMatrixProvider(active),
+          mediaProvider(),
+        ],
+      });
+      const svc = TestBed.inject(TimelineService);
+      svc.open('!r:hs');
+      svc.setTyping(true);
+
+      active.client = incoming; // the switch lands before the deferred close
+      svc.close();
+
+      expect(typingCalls(outgoingSent)).toContainEqual(['typing', false]);
+      expect(typingCalls(incomingSent)).toEqual([]);
+    });
+
     it('projects other typing members into typingNames, excluding self', () => {
       const { svc, client } = setupTyping([
         fakeMember('@alice:hs', true, 'Alice'),
