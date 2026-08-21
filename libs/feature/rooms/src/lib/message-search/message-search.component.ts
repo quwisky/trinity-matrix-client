@@ -3,7 +3,6 @@ import {
   Component,
   DestroyRef,
   ElementRef,
-  Injector,
   afterNextRender,
   computed,
   inject,
@@ -83,7 +82,6 @@ export class MessageSearchComponent {
   private readonly search = inject(SearchService);
   private readonly timeline = inject(TimelineService);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly injector = inject(Injector);
   private readonly queryField =
     viewChild<ElementRef<HTMLInputElement>>('queryField');
 
@@ -91,9 +89,7 @@ export class MessageSearchComponent {
     // After the first render, not on construction: the input does not exist yet at
     // construction time, and `afterNextRender` is the zoneless-safe hook for reaching into
     // the DOM once.
-    afterNextRender(() => this.queryField()?.nativeElement.focus(), {
-      injector: this.injector,
-    });
+    afterNextRender(() => this.queryField()?.nativeElement.focus());
   }
 
   /** Active room the search is scoped to, bound by whoever hosts the panel. */

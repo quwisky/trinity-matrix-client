@@ -1,14 +1,10 @@
-import { DestroyRef, Injectable, inject } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import {
   RoomModerationService,
   RoomsService,
   type MemberSummary,
 } from '@trinity/data-access/rooms';
-import {
-  BELOW_MEMBERS_QUERY,
-  mediaQuerySignal,
-  runWithBusy,
-} from '@trinity/util/ui';
+import { runWithBusy } from '@trinity/util/ui';
 import { MemberInfoService } from '../member-info/member-info.service';
 import { UserCardService } from '../user-card/user-card.service';
 import { RoomShellStore } from './room-shell-store';
@@ -34,17 +30,6 @@ export class MemberActionsService {
   private readonly moderation = inject(RoomModerationService);
   private readonly memberInfo = inject(MemberInfoService);
   private readonly userCard = inject(UserCardService);
-  /**
-   * Whether the member list is currently the overlay drawer rather than the static column.
-   *
-   * Live rather than read at call time, and a field rather than a local: `mediaQuerySignal`
-   * keeps a listener for the caller's lifetime, so it has to be created once against this
-   * service's `DestroyRef` instead of per invocation.
-   */
-  private readonly membersAreDrawer = mediaQuerySignal(
-    BELOW_MEMBERS_QUERY,
-    inject(DestroyRef),
-  );
 
   /** Member-list row: open the member's info panel; "Message" opens/reuses a DM. */
   onSelectMember(member: MemberSummary): void {

@@ -170,13 +170,23 @@
   right: 0;
   z-index: var(--trinity-z-panel);
   width: 480px;
+
+  // The roster fits a 240px drawer; a thread or a search result does not. Below the
+  // `members` breakpoint these were full-screen (`w-screen`) as dialogs and stay so, because
+  // 480px exceeds the viewport there.
   max-width: 100%;
   flex: none;
   box-shadow: -2px 0 12px rgb(0 0 0 / 30%);
 
-  // Clear the status bar / home indicator on notched devices (inert elsewhere).
-  padding-top: env(safe-area-inset-top);
+  // Clear the home indicator on notched devices (inert elsewhere). The TOP inset is not
+  // padded here: all five surfaces carry `safe-top` on their own header, and doing both
+  // pads a notched device twice.
   padding-bottom: env(safe-area-inset-bottom);
+
+  // Slides in like the members drawer does, at every width — it is the same movement, and
+  // the global reduced-motion rule flattens it for anyone who asked.
+  animation: members-drawer-in var(--trinity-duration-base)
+    var(--trinity-ease-decelerate);
 }
 
 // Below the `members` breakpoint the static column would crowd the chat, so present the
@@ -199,10 +209,6 @@
     animation: members-drawer-in var(--trinity-duration-base)
       var(--trinity-ease-decelerate);
   }
-
-  // The roster fits a 240px drawer; a thread or a search result does not. These were
-  // full-screen (`w-screen`) as dialogs at this width and stay so — `max-width: 100%` above
-  // does it, since 480px exceeds the viewport here.
 }
 
 @keyframes members-drawer-in {
