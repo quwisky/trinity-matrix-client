@@ -6,6 +6,7 @@ import {
   inject,
   input,
   linkedSignal,
+  output,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { switchMap, type Observable } from 'rxjs';
@@ -70,8 +71,41 @@ export class MemberInfoComponent {
   /** The viewer's own power level — caps which roles they can assign. */
   readonly myPower = input(0);
 
-  private readonly dialogRef =
-    inject<TrnDialogRef<string | null>>(TrnDialogRef);
+  /**
+   * Present when this is a DIALOG, absent when it is the shell's right-hand panel.
+   *
+   * The one surface that has to work both ways. Member info opened from a room member's row
+   * belongs in the slot beside the timeline; the same panel opened from the space-members
+   * dialog carries a SPACE id (`space-actions.service.ts`), where there is no open room and
+   * therefore no slot — so it stays a dialog there. Rather than fork the component, every
+   * exit goes through {@link finish}, which closes the ref if there is one and otherwise
+   * announces itself for the host to act on.
+   */
+  private readonly dialogRef = inject<TrnDialogRef<string | null>>(
+    TrnDialogRef,
+    { optional: true },
+  );
+
+  /** The viewer picked "Message": open (or reuse) a DM with them. Panel mode only. */
+  readonly messageUser = output<string>();
+  /** Closed without picking anything. Panel mode only. */
+  readonly dismissed = output<void>();
+
+  /**
+   * The single exit. `userId` is set only for "Message"; everything else — closing, a
+   * moderation write landing, verification starting — ends with `null`.
+   */
+  private finish(userId: string | null): void {
+    if (this.dialogRef) {
+      this.dialogRef.close(userId);
+      return;
+    }
+    if (userId) {
+      this.messageUser.emit(userId);
+      return;
+    }
+    this.dismissed.emit();
+  }
   private readonly presence = inject(PresenceService);
   private readonly toast = inject(TrnToastService);
   private readonly matrix = inject(MatrixClientService);
@@ -115,7 +149,7 @@ export class MemberInfoComponent {
 
   /** Start (or reuse) a direct message with this member — the host does the navigation. */
   message(): void {
-    this.dialogRef.close(this.member().userId);
+    this.finish(this.member().userId);
   }
 
   /**
@@ -134,7 +168,7 @@ export class MemberInfoComponent {
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
-        next: () => this.dialogRef.close(null),
+        next: () => this.finish(null),
         error: () =>
           this.toast.show('Could not start verification.', {
             duration: 4000,
@@ -246,13 +280,13 @@ export class MemberInfoComponent {
   }
 
   close(): void {
-    this.dialogRef.close(null);
+    this.finish(null);
   }
 
   /** Run a moderation write: close the panel on success (the row leaves via sync), toast on failure. */
   private run(action: Observable<void>, failure: string): void {
     action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: () => this.dialogRef.close(null),
+      next: () => this.finish(null),
       error: () =>
         this.toast.show(failure, { duration: 4000, variant: 'destructive' }),
     });

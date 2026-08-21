@@ -65,6 +65,7 @@ import { ThreadsListComponent } from '../thread/threads-list.component';
 import { ThreadViewComponent } from '../thread/thread-view.component';
 import { PinnedMessagesPanelComponent } from '../pinned/pinned-messages-panel.component';
 import { MessageSearchComponent } from '../message-search/message-search.component';
+import { MemberInfoComponent } from '../member-info/member-info.component';
 import { SimpleMessageListComponent } from '../message-list/simple-message-list/simple-message-list.component';
 import { VirtualMessageListComponent } from '../message-list/virtual-message-list/virtual-message-list.component';
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
@@ -132,6 +133,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
     ThreadViewComponent,
     PinnedMessagesPanelComponent,
     MessageSearchComponent,
+    MemberInfoComponent,
     SimpleMessageListComponent,
     VirtualMessageListComponent,
     EncryptionBannerComponent,

@@ -9,6 +9,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { map } from 'rxjs';
 import { decodeRoomSegment } from '@trinity/util/matrix';
+import type { MemberSummary, ModerationCaps } from '@trinity/data-access/rooms';
 import { BELOW_MEMBERS_QUERY, matchesQuery } from '@trinity/util/ui';
 
 /**
@@ -24,6 +25,16 @@ export type RightPanel =
   | { readonly kind: 'thread'; readonly rootEventId: string }
   | { readonly kind: 'pinned' }
   | { readonly kind: 'search' }
+  // Member info carries its subject AND the viewer's power over them, because the caps are
+  // resolved against the room at the moment the row is clicked. Recomputing them from the
+  // slot later would ask a different question — "can I moderate them now" — which is the
+  // same answer today and not the one the panel was opened with.
+  | {
+      readonly kind: 'member';
+      readonly member: MemberSummary;
+      readonly caps: ModerationCaps;
+      readonly direct: boolean;
+    }
   | null;
 
 /**

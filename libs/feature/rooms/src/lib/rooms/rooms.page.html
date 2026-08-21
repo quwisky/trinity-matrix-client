@@ -439,6 +439,20 @@
                   (dismissed)="closeRightPanel()"
                 />
               }
+              @case ('member') {
+                <trn-member-info
+                  class="chat-panel"
+                  [member]="panel.member"
+                  [roomId]="room.id"
+                  [canKick]="panel.caps.kick"
+                  [canBan]="panel.caps.ban"
+                  [canSetPower]="panel.caps.setPower"
+                  [myPower]="panel.caps.myPower"
+                  [direct]="panel.direct"
+                  (messageUser)="memberActions.onMemberMessage($event)"
+                  (dismissed)="memberActions.onMemberPanelDismissed()"
+                />
+              }
             }
           }
         } @else {
