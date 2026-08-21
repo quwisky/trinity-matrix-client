@@ -139,5 +139,39 @@ test.describe('Member info panel', () => {
     await expect(panel).toContainText(memberB.userId);
     await expect(panel).toContainText('Member');
     await expect(panel.getByTestId('member-info-message')).toBeVisible();
+
+    // The slot supplies position and size only, so the component has to paint its own
+    // surface — otherwise this is a transparent 480px column with a small card floating in
+    // it, swallowing every click on the timeline behind. Measured in a real browser because
+    // that is the only place `:host` and the page's `.chat-panel` rule meet.
+    const surface = await page.locator('trn-member-info').evaluate((host) => {
+      const style = getComputedStyle(host);
+      return {
+        display: style.display,
+        background: style.backgroundColor,
+        height: host.getBoundingClientRect().height,
+        // The row the panel shares with the timeline, which is what "full height" means for
+        // a pane IN FLOW. Not the viewport: the row starts below the room header, so a
+        // viewport-relative bound would be measuring the header, and would answer
+        // differently again if the panel ever went back to being an overlay.
+        row: host.closest('.chat-body')?.getBoundingClientRect().height ?? 0,
+      };
+    });
+    expect(surface.display).toBe('flex');
+    expect(surface.background).not.toMatch(/rgba\(0, 0, 0, 0\)|transparent/);
+    // As tall as the pane beside it, not a content-sized card floating in the slot.
+    expect(surface.row).toBeGreaterThan(0);
+    expect(Math.abs(surface.height - surface.row)).toBeLessThanOrEqual(1);
+
+    // And it can be closed. As a dialog the backdrop and Escape do that; in the slot at this
+    // width there is neither, so without the header's button the panel is a dead end.
+    // From the page, not the panel: the header is a SIBLING of `member-info`, which is the
+    // body card — the component's host is what wraps both.
+    await page.getByTestId('member-info-close').click();
+    await expect(panel).toBeHidden({ timeout: 10_000 });
+    // Closing member info gives the roster back rather than emptying the slot.
+    await expect(
+      page.locator('[data-testid="member-row"]').first(),
+    ).toBeVisible({ timeout: 10_000 });
   });
 });

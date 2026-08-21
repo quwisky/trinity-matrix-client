@@ -14,28 +14,38 @@
 // eight-line note on why it was px and not `w-88` — the reasoning survives in
 // `ShellLayoutService`, which owns the default and the bounds. `text-scaling.spec.mts` still
 // asserts the rail and sidebar edges meet at every text size, and they still must.
-// The draggable dividers. 4px of visible line with a wider invisible grab area, because a
-// 4px hit target is a fair-weather one — `pointer-events` on the padding is what makes it
-// forgiving without making the line thick.
+
+// The draggable dividers: 4px of visible line inside a 12px grab area, because a 4px hit
+// target is a fair-weather one. The padding is what widens the target; `background-clip:
+// content-box` keeps the highlight on the 4px content box, so the line stays thin while the
+// thing you can grab is three times as wide. The negative margin cancels the whole 12px
+// again, so the handle costs the layout nothing and `--shell-sidebar-w` is the width the pane
+// actually gets. Positioned and lifted so it sits over the two panes it straddles rather than
+// under them — otherwise the padding that makes it forgiving is covered by whatever is
+// beside it.
 .pane-handle {
   position: relative;
   z-index: var(--trinity-z-sticky);
   flex: 0 0 auto;
-  width: 4px;
-  margin: 0 -2px;
+  box-sizing: border-box;
+  width: 12px;
+  padding: 0 4px;
+  margin: 0 -6px;
   cursor: col-resize;
   background: transparent;
+  background-clip: content-box;
   touch-action: none;
 
   &:hover,
   &:focus-visible,
   &.pane-handle--dragging {
     background: var(--trinity-accent);
+    background-clip: content-box;
   }
 
   &:focus-visible {
     outline: 2px solid var(--trinity-accent);
-    outline-offset: 1px;
+    outline-offset: -3px;
   }
 }
 
@@ -65,7 +75,14 @@
 
 .main {
   flex: 1;
-  min-width: 0;
+
+  // A floor rather than 0, so the conversation cannot be squeezed out of existence: the two
+  // pane bounds are per-pane, and their maxima add up to more than a 1280px window. With the
+  // panel shrinkable (below) flexbox resolves the violation by taking the space back from the
+  // panel instead. `min()` so this never exceeds the row itself — below the `members`
+  // breakpoint the panel leaves the flow and a wide sidebar can make the row narrower than
+  // the floor, which would otherwise overflow the shell.
+  min-width: min(320px, 100%);
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -200,7 +217,10 @@
 // re-applies it when the scroller's width actually changes, so the resize is survivable and
 // the panels can take their space.
 .chat-panel {
-  flex: 0 0 var(--shell-right-panel-w, 480px);
+  // Shrinkable, not fixed: the stored width is what the user chose, but on a window too
+  // narrow to honour it AND leave the timeline its floor, the panel is the one that gives.
+  // The stored value is untouched, so widening the window restores it.
+  flex: 0 1 var(--shell-right-panel-w, 480px);
   min-width: 0;
 }
 
@@ -215,15 +235,11 @@
     inset-block: 0;
     right: 0;
     z-index: var(--trinity-z-panel);
-    width: 240px;
     flex: none;
     box-shadow: -2px 0 12px rgb(0 0 0 / 30%);
 
-    // Clear the status bar on notched devices (inert elsewhere). The BOTTOM inset is not
-    // here: the four panel templates carry `safe-bottom` themselves, because their content
-    // reaches the bottom edge — a thread composer, a member-info action row — and padding
-    // the host as well would double it. `.chat-members` gets its own below.
-    padding-top: env(safe-area-inset-top);
+    // NEITHER inset is padded here — both are per-surface now, and which surface needs
+    // which is the split below.
     animation: members-drawer-in var(--trinity-duration-base)
       var(--trinity-ease-decelerate);
 
@@ -233,9 +249,28 @@
     transform: translateX(var(--drawer-drag, 0));
   }
 
-  // The roster fits a 240px drawer; a thread or a search result does not. These were
-  // full-screen (`w-screen`) as dialogs at this width and stay so — `max-width: 100%` above
-  // does it, since 480px exceeds the viewport here.
+  // Where the two drawers part company, on width and on the safe-area insets.
+  // WIDTH: the roster fits 240px; a thread or a search result does not, and those were
+  // full-screen (`w-screen`) as dialogs at this width, so `max-width` keeps them so — 480px
+  // exceeds the viewport here. The dragged width is deliberately not read at this breakpoint:
+  // there is no divider to drag, and a width chosen on a desktop has nothing to say about a
+  // phone.
+  // INSETS: the four panels pad themselves at BOTH ends — `safe-top` on the header they all
+  // carry, `safe-bottom` on the root — because their content reaches both edges (a thread
+  // composer, a member-info action row), and padding the host as well would clear the notch
+  // twice. The member list has neither, so the host does both for it; without the bottom one
+  // its last row sits under the home indicator, which is the bug the panels' `safe-bottom`
+  // was added to fix.
+  .chat-members {
+    width: 240px;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .chat-panel {
+    width: 480px;
+    max-width: 100%;
+  }
 }
 
 @keyframes members-drawer-in {

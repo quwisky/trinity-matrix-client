@@ -28,6 +28,7 @@ import {
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { VerificationService } from '@trinity/data-access/crypto';
 import { AvatarComponent } from '@trinity/components/avatar';
+import { TrnIconComponent } from '@trinity/components/icon';
 import { MEMBER_ROLE_LABEL, memberRole } from '../shared/member-role';
 
 /**
@@ -54,9 +55,13 @@ const ROLE_PRESETS = [
 @Component({
   selector: 'trn-member-info',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, HlmButton],
+  imports: [AvatarComponent, HlmButton, TrnIconComponent],
   templateUrl: './member-info.component.html',
   styleUrl: './member-info.component.scss',
+  host: {
+    // Drives the panel presentation in the stylesheet — see the note on {@link isPanel}.
+    '[class.member-info--panel]': 'isPanel',
+  },
 })
 export class MemberInfoComponent {
   readonly member = input.required<MemberSummary>();
@@ -92,20 +97,16 @@ export class MemberInfoComponent {
   readonly dismissed = output<void>();
 
   /**
-   * The single exit. `userId` is set only for "Message"; everything else — closing, a
-   * moderation write landing, verification starting — ends with `null`.
+   * Whether this is the shell's right-hand panel rather than a dialog.
+   *
+   * The two presentations are genuinely different surfaces, not a skin: a dialog is a
+   * centred profile card that the backdrop and Escape dismiss, while the slot is a
+   * full-height panel with no backdrop and — above the `members` breakpoint — no Escape
+   * either, so it has to carry its own header and close button or there is no way out of
+   * it. Read from the ref rather than passed in, so the two can never disagree.
    */
-  private finish(userId: string | null): void {
-    if (this.dialogRef) {
-      this.dialogRef.close(userId);
-      return;
-    }
-    if (userId) {
-      this.messageUser.emit(userId);
-      return;
-    }
-    this.dismissed.emit();
-  }
+  readonly isPanel = !this.dialogRef;
+
   private readonly presence = inject(PresenceService);
   private readonly toast = inject(TrnToastService);
   private readonly matrix = inject(MatrixClientService);
@@ -281,6 +282,22 @@ export class MemberInfoComponent {
 
   close(): void {
     this.finish(null);
+  }
+
+  /**
+   * The single exit. `userId` is set only for "Message"; everything else — closing, a
+   * moderation write landing, verification starting — ends with `null`.
+   */
+  private finish(userId: string | null): void {
+    if (this.dialogRef) {
+      this.dialogRef.close(userId);
+      return;
+    }
+    if (userId) {
+      this.messageUser.emit(userId);
+      return;
+    }
+    this.dismissed.emit();
   }
 
   /** Run a moderation write: close the panel on success (the row leaves via sync), toast on failure. */

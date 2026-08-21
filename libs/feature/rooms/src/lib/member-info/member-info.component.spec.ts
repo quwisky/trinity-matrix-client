@@ -118,8 +118,89 @@ async function build(
   };
 }
 
+/**
+ * The same component with NO `TrnDialogRef` — the shell's right-hand panel rather than a
+ * dialog. Everything it announces goes through outputs here, and it has to carry its own
+ * way out: there is no backdrop, and above the `members` breakpoint no Escape either.
+ */
+async function buildPanel(m: MemberSummary = member()) {
+  const messaged: string[] = [];
+  let dismissals = 0;
+  const { container } = await render(MemberInfoComponent, {
+    inputs: { member: m, roomId: '!r:hs' },
+    on: {
+      messageUser: (userId: string) => messaged.push(userId),
+      dismissed: () => {
+        dismissals += 1;
+      },
+    },
+    providers: [
+      MockProvider(TrnToastService),
+      {
+        provide: PresenceService,
+        useValue: { presenceFor: () => signal('online') },
+      },
+      MockProvider(MatrixClientService, {
+        activeUserId: signal<string | null>('@me:hs').asReadonly(),
+      }),
+      MockProvider(RoomModerationService),
+      MockProvider(RoomsService, {
+        createDirectMessage: vi.fn(() => of('!dm:hs')),
+      }),
+      MockProvider(VerificationService),
+      MockProvider(IgnoredUsersService, { isIgnored: () => false }),
+      MockProvider(TrnAlertService),
+    ],
+  });
+  return { container, messaged, dismissals: () => dismissals };
+}
+
 describe('MemberInfoComponent', () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it('carries its own close button as the panel, where nothing else closes it', async () => {
+    // In the slot there is no backdrop, and above the `members` breakpoint no Escape either
+    // — without this the panel was a dead end: the roster it replaced is gone, so there is
+    // nothing left to click.
+    const { container } = await buildPanel();
+
+    expect(
+      container.querySelector('[data-testid="member-info-close"]'),
+    ).not.toBeNull();
+  });
+
+  it('has no close button as a dialog, where the backdrop and Escape do it', async () => {
+    // The pair to the test above, and the reason the header is conditional rather than
+    // always on: a dialog that grew a second dismissal would be the odd one out among them.
+    const { container } = await build();
+
+    expect(
+      container.querySelector('[data-testid="member-info-close"]'),
+    ).toBeNull();
+  });
+
+  it('announces a dismissal from the panel close button', async () => {
+    const { container, dismissals, messaged } = await buildPanel();
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="member-info-close"]')!
+      .click();
+
+    expect(dismissals()).toBe(1);
+    expect(messaged).toEqual([]);
+  });
+
+  it('announces the user id for "Message" rather than resolving a ref', async () => {
+    const { container, dismissals, messaged } = await buildPanel();
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="member-info-message"]')!
+      .click();
+
+    // A pick is a pick, not a bare close: the host distinguishes the two.
+    expect(messaged).toEqual(['@bob:hs']);
+    expect(dismissals()).toBe(0);
+  });
 
   it('shows the member name, id, and role', async () => {
     const { container } = await build(member({ powerLevel: 100 }));

@@ -1,6 +1,7 @@
 import {
   SHARED_MOCKS,
   clientStub,
+  flushPanelJump,
   invitesProvider,
   setMediaQuery,
   setRouteRoom,
@@ -246,11 +247,7 @@ describe('RoomsPage quick switcher', () => {
 
     shell.messages.onPanelJump('$evt:hs');
 
-    // The jump is deferred to `afterNextRender` so it measures the layout the closing
-
-    // panel leaves behind — see `onPanelJump`. Flush it.
-
-    TestBed.tick();
+    flushPanelJump();
 
     expect(shell.store.messageSearchTarget()).toBe('$evt:hs');
     expect(shell.store.jumpRequest()).toBe(1);
@@ -270,20 +267,12 @@ describe('RoomsPage quick switcher', () => {
 
     shell.messages.onPanelJump('$evt:hs');
 
-    // The jump is deferred to `afterNextRender` so it measures the layout the closing
-
-    // panel leaves behind — see `onPanelJump`. Flush it.
-
-    TestBed.tick();
+    flushPanelJump();
     expect(shell.store.jumpRequest()).toBe(1);
 
     shell.messages.onPanelJump('$evt:hs');
 
-    // The jump is deferred to `afterNextRender` so it measures the layout the closing
-
-    // panel leaves behind — see `onPanelJump`. Flush it.
-
-    TestBed.tick();
+    flushPanelJump();
 
     expect(shell.store.messageSearchTarget()).toBe('$evt:hs');
     expect(shell.store.jumpRequest()).toBe(2);
@@ -426,6 +415,107 @@ describe('RoomsPage mobile navigation', () => {
 
     shell.page.closeRightPanel();
     expect(shell.store.membersOpen()).toBe(false);
+  });
+
+  it('Escape closes a panel at the WIDE layout, where nothing else does', () => {
+    // The base matchMedia stub reports non-drawer, i.e. the wide layout. These are plain
+    // components now, so nothing gives them the Escape a CDK dialog answered for free — and
+    // the guard that used to read `membersAreDrawer()` alone made Escape a no-op here.
+    const shell = build();
+    setRouteRoom('!r:hs');
+    shell.store.rightPanel.set({ kind: 'threads' });
+
+    shell.page.onEscapeKey();
+
+    expect(shell.store.rightPanel()).toBeNull();
+  });
+
+  it('Escape leaves the wide roster alone (the composer owns Escape there)', () => {
+    // This is a DOCUMENT listener: an unguarded Escape would close the member column every
+    // time someone pressed Escape to cancel an edit in the composer. As the narrow drawer it
+    // is an overlay like the rest and goes — covered by the drawer test above.
+    const shell = build();
+    setRouteRoom('!r:hs');
+    shell.store.rightPanel.set({ kind: 'members' });
+
+    shell.page.onEscapeKey();
+
+    expect(shell.store.rightPanel()).toEqual({ kind: 'members' });
+  });
+
+  it('Escape on member info goes back to the roster, like its close button', () => {
+    // Escape is the keyboard spelling of pressing the panel's own close button, so it has to
+    // land in the same place. Only the mobile backdrop empties the slot outright.
+    const shell = build();
+    setRouteRoom('!r:hs');
+    shell.store.rightPanel.set({
+      kind: 'member',
+      member: {
+        userId: '@bob:hs',
+        name: 'Bob',
+        initial: 'B',
+        avatarMxc: null,
+        powerLevel: 0,
+        isCreator: false,
+      },
+      caps: { kick: false, ban: false, setPower: false, myPower: 0 },
+      direct: false,
+    });
+
+    shell.page.onEscapeKey();
+
+    expect(shell.store.rightPanel()).toEqual({ kind: 'members' });
+  });
+
+  it('gives focus back to whatever opened the slot once it empties', () => {
+    // CDK did this for the four dialogs these panels replaced. Without it a keyboard user who
+    // opens Threads, reads the list and closes it lands on `<body>` — and in-room search is
+    // worse, because it deliberately takes focus when it opens.
+    const shell = build();
+    setRouteRoom('!r:hs');
+    shell.page.closeRightPanel();
+    const trigger = document.createElement('button');
+    document.body.append(trigger);
+    try {
+      trigger.focus();
+
+      shell.store.rightPanel.set({ kind: 'threads' });
+      TestBed.tick();
+      trigger.blur(); // the panel took focus, then its removal orphans it
+      shell.page.closeRightPanel();
+      TestBed.tick();
+      TestBed.tick(); // the restore is deferred to after the render that removes the panel
+
+      expect(document.activeElement).toBe(trigger);
+    } finally {
+      trigger.remove();
+    }
+  });
+
+  it('leaves focus alone when something else has claimed it', () => {
+    // The room-change handoff, or a DM the panel just opened, has a better idea than a
+    // remembered button does — so the restore only fires when the removal orphaned focus.
+    const shell = build();
+    setRouteRoom('!r:hs');
+    shell.page.closeRightPanel();
+    const trigger = document.createElement('button');
+    const elsewhere = document.createElement('button');
+    document.body.append(trigger, elsewhere);
+    try {
+      trigger.focus();
+      shell.store.rightPanel.set({ kind: 'threads' });
+      TestBed.tick();
+
+      shell.page.closeRightPanel();
+      elsewhere.focus();
+      TestBed.tick();
+      TestBed.tick();
+
+      expect(document.activeElement).toBe(elsewhere);
+    } finally {
+      trigger.remove();
+      elsewhere.remove();
+    }
   });
 
   it('onSelectRoom opens the room (switching to the mobile chat page)', () => {
@@ -868,6 +958,23 @@ describe('RoomsPage keyboard room switching', () => {
     expect(shell.store.activeRoomId()).toBe('!b:hs'); // the new chord does
 
     TestBed.inject(KeyboardShortcutsService).resetAll(); // don't leak into other specs
+  });
+
+  it('ignores a chord while a panel owns the screen, but not while the roster does', () => {
+    // The guard used to be `dialog.hasOpen()` alone, and that answered the question for as
+    // long as these surfaces were dialogs. Inline in the slot they are invisible to it, so a
+    // chord typed into the search field walked to another room. The roster stays exempt: it
+    // is a column beside the timeline, not over it.
+    const shell = build();
+    visitABC(shell); // in c, MRU [c, b, a]
+
+    shell.store.rightPanel.set({ kind: 'search' });
+    shell.shortcuts.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
+    expect(shell.store.activeRoomId()).toBe('!c:hs'); // suppressed
+
+    shell.store.rightPanel.set({ kind: 'members' });
+    shell.shortcuts.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
+    expect(shell.store.activeRoomId()).toBe('!b:hs'); // still hops
   });
 });
 

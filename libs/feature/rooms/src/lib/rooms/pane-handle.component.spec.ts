@@ -14,25 +14,28 @@ import { PaneHandleComponent } from './pane-handle.component';
  * during the drag, and `committed` stays silent until the pointer comes up.
  */
 @Component({
-  standalone: true,
   imports: [PaneHandleComponent],
   template: `
     <div data-shell-root>
-      <trn-pane-handle
-        cssVariable="--w"
-        label="Room list width"
-        [value]="value()"
-        [min]="200"
-        [max]="560"
-        [invert]="invert()"
-        (committed)="committed.push($event)"
-      />
+      @if (show()) {
+        <trn-pane-handle
+          cssVariable="--w"
+          label="Room list width"
+          [value]="value()"
+          [min]="200"
+          [max]="560"
+          [invert]="invert()"
+          (committed)="committed.push($event)"
+        />
+      }
     </div>
   `,
 })
 class HostComponent {
   readonly value = signal(352);
   readonly invert = signal(false);
+  /** So a test can take the handle away mid-gesture, as closing the slot does. */
+  readonly show = signal(true);
   readonly committed: number[] = [];
 }
 
@@ -88,10 +91,11 @@ describe('PaneHandleComponent', () => {
 
     handle.dispatchEvent(pointer('pointerup', 180));
 
-    // One commit for the whole gesture, and the inline override handed back so the bound
-    // value is what the layout reads again.
+    // One commit for the whole gesture, and the property left at the width being committed:
+    // the host binds this same inline property, so clearing it here would drop the pane to
+    // the stylesheet default until Angular rendered the new value.
     expect(host.committed).toEqual([432]);
-    expect(shell.style.getPropertyValue('--w')).toBe('');
+    expect(shell.style.getPropertyValue('--w')).toBe('432px');
   });
 
   it('clamps a drag to the bounds rather than following the pointer out of them', async () => {
@@ -119,7 +123,7 @@ describe('PaneHandleComponent', () => {
     handle.dispatchEvent(pointer('pointerup', 60));
 
     expect(host.committed).toEqual([392]);
-    expect(shell.style.getPropertyValue('--w')).toBe('');
+    expect(shell.style.getPropertyValue('--w')).toBe('392px');
   });
 
   it('resizes from the keyboard, which a pointer drag cannot be emulated with', async () => {
@@ -160,6 +164,37 @@ describe('PaneHandleComponent', () => {
       new KeyboardEvent('keydown', { key: 'a', bubbles: true }),
     );
 
+    expect(host.committed).toEqual([]);
+  });
+
+  it('takes focus on press, so the keyboard can finish what the pointer started', async () => {
+    // `preventDefault` on pointerdown — which stops the browser starting a text selection —
+    // also suppresses the focus the press would have given. This is the one control whose
+    // whole point is that arrows continue the drag.
+    const { handle } = await build();
+
+    handle.dispatchEvent(pointer('pointerdown', 100));
+
+    expect(document.activeElement).toBe(handle);
+  });
+
+  it('hands the property back when it is destroyed mid-drag', async () => {
+    // The right-hand handle lives inside the slot's `@if`, and Escape closes the slot from a
+    // document listener — so it can be destroyed with the pointer still down and `pointerup`
+    // never delivered. Left behind, the inline override wins over the binding for good.
+    const { handle, shell, host } = await build();
+
+    handle.dispatchEvent(pointer('pointerdown', 100));
+    handle.dispatchEvent(pointer('pointermove', 150));
+    expect(shell.style.getPropertyValue('--w')).toBe('402px');
+
+    host.show.set(false);
+    TestBed.tick();
+
+    // Back to the width the binding still holds — not removed, which would fall through to
+    // the stylesheet default, and not left at the abandoned drag's value.
+    expect(shell.style.getPropertyValue('--w')).toBe('352px');
+    // And nothing is committed: the gesture never ended.
     expect(host.committed).toEqual([]);
   });
 

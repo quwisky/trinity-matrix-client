@@ -22,9 +22,11 @@ const RIGHT_PANEL_KEY = 'trinity.shell.right-panel-width';
 /**
  * The rail (72px) plus the room list (280px), as the shell has always shipped it.
  *
- * `rooms.page.html` carries this same number as `md:w-[352px]` with an eight-line comment
- * explaining why it is px rather than `w-88`, and `text-scaling.spec.mts` asserts the rail
- * and sidebar edges meet at every text size. The default has to keep matching it.
+ * Px, not a rem slot like `w-88`: the column's contents are hard-coded px — the rail's icon
+ * rail and the room list's chrome — so a slot that grew with the root font size would grow
+ * away from what sits in it, leaving a gap that widens with every notch of text scaling.
+ * `text-scaling.spec.mts` asserts the rail and room-list edges meet at every text size, and
+ * this default is what makes that true out of the box.
  */
 export const DEFAULT_SIDEBAR_WIDTH = 352;
 
@@ -94,12 +96,6 @@ export class ShellLayoutService {
       this._rightPanelWidth,
       clamp(px, RIGHT_PANEL_WIDTH_BOUNDS),
     );
-  }
-
-  /** Both back to what the shell ships with. */
-  reset(): void {
-    this.setSidebarWidth(DEFAULT_SIDEBAR_WIDTH);
-    this.setRightPanelWidth(DEFAULT_RIGHT_PANEL_WIDTH);
   }
 
   private async read(

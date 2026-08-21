@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
   inject,
   input,
@@ -90,16 +91,49 @@ export class PaneHandleComponent {
   private startX = 0;
   private startValue = 0;
   private latest = 0;
+  /**
+   * The element carrying the custom property, resolved once when the gesture starts.
+   *
+   * Not looked up per event, and deliberately not looked up during teardown: `closest` walks
+   * the DOM, and by the time a destroy hook runs the handle may already be detached — which
+   * would answer `null` at exactly the moment the override has to come off.
+   */
+  private shellEl: HTMLElement | null = null;
+
+  constructor() {
+    // A gesture can outlive the handle: the right-hand one lives inside the slot's `@if`, and
+    // Escape closes the slot from a document listener — so it is destroyed mid-drag with the
+    // pointer still down and `onPointerUp` never reached. The inline override would then be
+    // left on the shell for good, which is exactly the state that rule warns about: the
+    // binding stops reaching the layout and a change from the settings editor does nothing.
+    inject(DestroyRef).onDestroy(() => {
+      if (this.dragging) {
+        // Nothing is committed, so put the property back to the width the binding still
+        // holds. REMOVING it would be worse than leaving the drag's value: the stylesheet
+        // falls through to its own default, which is not the user's persisted width and not
+        // what Angular thinks it has written either.
+        this.shellEl?.style.setProperty(
+          this.cssVariable(),
+          `${this.value()}px`,
+        );
+        this.endGesture();
+      }
+    });
+  }
 
   onPointerDown(event: PointerEvent): void {
     if (event.button !== 0) {
       return; // a right-click on a divider is not a drag
     }
     event.preventDefault(); // stop the browser starting a text selection instead
+    // preventDefault also suppresses the focus the press would have given, and this is the
+    // one control whose whole point is that the keyboard can finish what the pointer started.
+    this.host.nativeElement.focus();
     this.dragging = true;
     this.startX = event.clientX;
     this.startValue = this.value();
     this.latest = this.startValue;
+    this.shellEl = this.host.nativeElement.closest('[data-shell-root]');
     // Pointer capture, so a fast drag that leaves the 4px handle keeps sending moves here
     // rather than to whatever it flew over. It also gives us `pointerup` unconditionally,
     // including when the pointer is released outside the window.
@@ -121,12 +155,30 @@ export class PaneHandleComponent {
     );
     // The whole gesture, in one line: a style write on an ancestor. No signal, no change
     // detection, no component re-render.
-    this.shell()?.style.setProperty(this.cssVariable(), `${this.latest}px`);
+    this.shellEl?.style.setProperty(this.cssVariable(), `${this.latest}px`);
   };
 
   private readonly onPointerUp = (event: PointerEvent): void => {
-    this.dragging = false;
     this.host.nativeElement.releasePointerCapture?.(event.pointerId);
+    const width = this.latest;
+    this.endGesture();
+    // The property is left where the drag put it, deliberately. It is not a competing
+    // declaration to be cleaned up: the host BINDS this same inline property, so the commit
+    // below arrives as an ordinary binding write to the very value already there. Removing
+    // it first would drop the pane to the stylesheet's `var()` fallback for however long
+    // Angular takes to render — a visible snap back to the default on every release, and a
+    // race the pane-resize e2e catches from time to time.
+    this.committed.emit(width);
+  };
+
+  /**
+   * Unwind the drag: listeners off, gesture state cleared.
+   *
+   * Separate from {@link onPointerUp} because teardown also has to run when the handle is
+   * destroyed mid-gesture, where there is no event and nothing to commit.
+   */
+  private endGesture(): void {
+    this.dragging = false;
     this.host.nativeElement.removeEventListener(
       'pointermove',
       this.onPointerMove,
@@ -136,12 +188,8 @@ export class PaneHandleComponent {
       'pointercancel',
       this.onPointerUp,
     );
-    // Clear the inline override so the committed value — which arrives as a normal binding —
-    // is what the layout reads. Leaving it would make the inline style win forever, and a
-    // later change from the settings editor would appear to do nothing.
-    this.shell()?.style.removeProperty(this.cssVariable());
-    this.committed.emit(this.latest);
-  };
+    this.shellEl = null;
+  }
 
   onKeyDown(event: KeyboardEvent): void {
     const step = event.shiftKey ? COARSE_STEP_PX : STEP_PX;
@@ -171,10 +219,5 @@ export class PaneHandleComponent {
 
   private clamp(px: number): number {
     return Math.min(this.max(), Math.max(this.min(), Math.round(px)));
-  }
-
-  /** The element carrying the custom property: the shell, not this handle. */
-  private shell(): HTMLElement | null {
-    return this.host.nativeElement.closest('[data-shell-root]');
   }
 }

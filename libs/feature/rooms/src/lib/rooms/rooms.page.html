@@ -410,24 +410,39 @@
             />
           }
           @if (store.rightPanel(); as panel) {
-            <!-- Between the timeline and the slot. Hidden below the `members` breakpoint,
-                 where the slot is an overlay drawer rather than a column sharing the row —
-                 there is nothing to trade width with. `invert` because this handle grows the
-                 pane to its RIGHT: dragging left makes the panel wider. -->
-            <trn-pane-handle
-              class="hidden members:block"
-              cssVariable="--shell-right-panel-w"
-              label="Panel width"
-              [invert]="true"
-              [value]="layout.rightPanelWidth()"
-              [min]="layout.rightPanelBounds.min"
-              [max]="layout.rightPanelBounds.max"
-              (committed)="layout.setRightPanelWidth($event)"
-            />
+            @if (panel.kind !== 'members') {
+              <!-- Between the timeline and the slot. Hidden below the `members` breakpoint,
+                   where the slot is an overlay drawer rather than a column sharing the row —
+                   there is nothing to trade width with. `invert` because this handle grows
+                   the pane to its RIGHT: dragging left makes the panel wider.
+
+                   Not for the roster: `.chat-members` is a fixed 240px navigation column
+                   that does not read `--shell-right-panel-w` (and 240 is below this
+                   handle's own minimum). Rendered there it was a divider that highlighted,
+                   moved its `aria-valuenow` and rewrote the stored width while the pane
+                   beside it stayed put — and the roster is what the slot is seeded to, so
+                   that was the first divider anyone met. -->
+              <trn-pane-handle
+                class="hidden members:block"
+                cssVariable="--shell-right-panel-w"
+                label="Panel width"
+                [invert]="true"
+                [value]="layout.rightPanelWidth()"
+                [min]="layout.rightPanelBounds.min"
+                [max]="layout.rightPanelBounds.max"
+                (committed)="layout.setRightPanelWidth($event)"
+              />
+            }
             <!-- Below the `members` breakpoint the slot is an overlay drawer; a backdrop
                (shown only at that width) dismisses it. At or above it the slot is a static
                column and the backdrop is display:none. One backdrop for every surface,
-               because there is one slot. -->
+               because there is one slot.
+
+               Each surface names itself with role/aria-label: these are plain components
+               now, so the `ariaLabel` the deleted dialog services passed has to come from
+               somewhere. `complementary` rather than `dialog` — nothing here traps focus or
+               marks the rest of the page inert, and claiming modality a screen reader then
+               cannot rely on is worse than not claiming it. -->
             <div
               class="fixed inset-0 z-[var(--trinity-z-scrim)] hidden bg-black/50 max-members:block"
               (click)="closeRightPanel()"
@@ -446,6 +461,8 @@
               @case ('threads') {
                 <trn-threads-list
                   class="chat-panel"
+                  role="complementary"
+                  aria-label="Threads"
                   [roomId]="room.id"
                   (selected)="messageActions.onThreadPicked($event)"
                   (dismissed)="closeRightPanel()"
@@ -454,6 +471,8 @@
               @case ('thread') {
                 <trn-thread-view
                   class="chat-panel"
+                  role="complementary"
+                  aria-label="Thread"
                   [roomId]="room.id"
                   [rootEventId]="panel.rootEventId"
                   (dismissed)="closeRightPanel()"
@@ -462,6 +481,8 @@
               @case ('pinned') {
                 <trn-pinned-messages-panel
                   class="chat-panel"
+                  role="complementary"
+                  aria-label="Pinned messages"
                   (selected)="messageActions.onPanelJump($event)"
                   (dismissed)="closeRightPanel()"
                 />
@@ -469,6 +490,8 @@
               @case ('search') {
                 <trn-message-search
                   class="chat-panel"
+                  role="complementary"
+                  aria-label="Search messages"
                   [roomId]="room.id"
                   (selected)="messageActions.onPanelJump($event)"
                   (dismissed)="closeRightPanel()"
@@ -477,6 +500,8 @@
               @case ('member') {
                 <trn-member-info
                   class="chat-panel"
+                  role="complementary"
+                  aria-label="Member info"
                   [member]="panel.member"
                   [roomId]="room.id"
                   [canKick]="panel.caps.kick"

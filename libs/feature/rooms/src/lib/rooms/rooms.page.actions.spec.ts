@@ -646,6 +646,28 @@ describe('RoomsPage room / DM / invite actions', () => {
     expect(shell.store.rightPanel()).toEqual({ kind: 'members' });
   });
 
+  it('does not carry a member panel into the next room', () => {
+    // The sharpest case of the slot being room-scoped. `caps` are resolved against the room
+    // whose row was clicked, but the template binds the panel to the room that is open NOW —
+    // so a panel that survived a switch offered "Remove from room" for a room the viewer
+    // never opened it for, and `MemberInfoComponent.kick()` would have aimed there.
+    const shell = build();
+    setRouteRoom('!r:hs');
+    shell.members.onSelectMember({
+      userId: '@bob:hs',
+      name: 'Bob',
+      initial: 'B',
+      avatarMxc: null,
+      powerLevel: 0,
+      isCreator: false,
+    });
+    expect(shell.store.rightPanel()).toMatchObject({ kind: 'member' });
+
+    setRouteRoom('!other:hs');
+
+    expect(shell.store.rightPanel()).toEqual({ kind: 'members' });
+  });
+
   it('stays a DIALOG for a member who is not the open room\u2019s (the space path)', async () => {
     // `space-actions.service.ts` opens member info from inside the space-members dialog
     // with a SPACE id. There is no slot for a space — and the shell behind it may have a

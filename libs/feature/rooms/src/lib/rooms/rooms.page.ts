@@ -15,6 +15,7 @@ import {
   afterNextRender,
   effect,
   inject,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
@@ -286,6 +287,55 @@ export class RoomsPage implements OnInit, OnDestroy {
     // The `?room=` deep link is gone. A notification tap now navigates to `/rooms/:roomId`
     // like everything else, so the room it asked for arrives through `paramMap` and needs no
     // handling here — and none of the strip-the-param-afterwards dance that went with it.
+    this.restoreFocusWhenTheSlotEmpties();
+  }
+
+  /**
+   * Give focus back to whatever opened the right-hand slot once it closes.
+   *
+   * CDK did this for the four dialogs these panels replaced. Without it a keyboard user who
+   * presses "Threads", reads the list and closes it lands on `<body>` and has to tab in from
+   * the top of the document again — and in-room search makes it worse, because it
+   * deliberately takes focus when it opens.
+   *
+   * Two deliberate narrowings. Only a transition THROUGH `null` restores: swapping the
+   * threads list for a thread keeps the original trigger, since the slot never emptied. And
+   * it only fires when the removal actually orphaned focus — anything that has claimed it
+   * since (the room-change handoff, a DM the panel just opened) has a better idea than a
+   * remembered button does.
+   */
+  private restoreFocusWhenTheSlotEmpties(): void {
+    let trigger: HTMLElement | null = null;
+    effect(() => {
+      const panel = this.store.rightPanel();
+      untracked(() => {
+        if (panel) {
+          trigger ??=
+            document.activeElement instanceof HTMLElement &&
+            document.activeElement !== document.body
+              ? document.activeElement
+              : null;
+          return;
+        }
+        const target = trigger;
+        trigger = null;
+        if (!target) {
+          return;
+        }
+        // After the render that removes the panel, or the element is still in the way.
+        afterNextRender(
+          () => {
+            if (
+              target.isConnected &&
+              document.activeElement === document.body
+            ) {
+              target.focus();
+            }
+          },
+          { injector: this.injector },
+        );
+      });
+    });
   }
 
   /**
@@ -382,7 +432,7 @@ export class RoomsPage implements OnInit, OnDestroy {
     );
   }
 
-  /** Close whatever the slot is showing — used by the mobile drawer's backdrop. */
+  /** Empty the slot — the mobile drawer's backdrop, and every panel's own close button. */
   closeRightPanel(): void {
     this.store.rightPanel.set(null);
   }
@@ -406,13 +456,35 @@ export class RoomsPage implements OnInit, OnDestroy {
   }
 
   /**
-   * Escape dismisses the mobile members drawer (its backdrop is mouse-only). Scoped to
-   * when the drawer is actually open so it never swallows Escape elsewhere; a member's
-   * info panel is a CDK dialog that closes the drawer as it opens, so there's no clash.
+   * Do what the current surface's own close button does.
+   *
+   * Not the same as {@link closeRightPanel} for member info, which goes BACK to the roster
+   * it replaced rather than to an empty slot. Escape is the keyboard spelling of pressing
+   * that button, so it has to land in the same place; the mobile backdrop is the one
+   * gesture that genuinely means "get this overlay off my screen" and keeps emptying it.
+   */
+  dismissRightPanel(): void {
+    if (this.store.rightPanel()?.kind === 'member') {
+      this.memberActions.onMemberPanelDismissed();
+      return;
+    }
+    this.closeRightPanel();
+  }
+
+  /**
+   * Escape dismisses whatever the slot is showing — the panels are plain components now, so
+   * nothing else offers the Escape that CDK gave them for free as dialogs.
+   *
+   * The roster is the exception, and only at the wide layout, where it is a persistent
+   * column rather than an overlay: this is a DOCUMENT listener, so an unguarded Escape there
+   * would close the member list every time someone pressed Escape to cancel an edit in the
+   * composer. As the narrow drawer it is an overlay like the rest and goes with them.
    */
   onEscapeKey(): void {
-    if (this.store.rightPanel() && this.membersAreDrawer()) {
-      this.closeRightPanel();
+    const panel = this.store.rightPanel();
+    if (!panel || (panel.kind === 'members' && !this.membersAreDrawer())) {
+      return;
     }
+    this.dismissRightPanel();
   }
 }

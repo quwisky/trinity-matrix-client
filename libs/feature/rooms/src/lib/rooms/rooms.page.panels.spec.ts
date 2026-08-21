@@ -1,6 +1,7 @@
 import {
   SHARED_MOCKS,
   clientStub,
+  flushPanelJump,
   invitesProvider,
   setRouteRoom,
   shellFrom,
@@ -540,6 +541,40 @@ describe('RoomsPage panels, pins and media', () => {
     expect(shell.store.rightPanel()).toBe(before);
   });
 
+  it('drops a room-scoped panel when the open room changes', () => {
+    // Four of the six surfaces are ABOUT a room — a thread root, a pinned/search hit, a
+    // member and the caps resolved against their room — while the template binds each of
+    // them to the room that is open NOW. Left to persist across a switch they describe one
+    // room beside another room's timeline. Back to what this width shows by default.
+    const shell = build();
+    setRouteRoom('!a:hs');
+    shell.messages.onOpenThread('$root');
+    expect(shell.store.rightPanel()).toEqual({
+      kind: 'thread',
+      rootEventId: '$root',
+    });
+
+    setRouteRoom('!b:hs');
+
+    expect(shell.store.rightPanel()).toEqual({ kind: 'members' });
+  });
+
+  it('carries the roster — and a closed slot — across a room change', () => {
+    // The other half, and why this is not just `set(null)` on every switch: whether the
+    // member column is up is a preference the user owns, and the list re-projects itself
+    // onto the new room. Closing it and switching rooms must not reopen it.
+    const shell = build();
+    setRouteRoom('!a:hs');
+    shell.page.closeRightPanel();
+
+    setRouteRoom('!b:hs');
+    expect(shell.store.rightPanel()).toBeNull();
+
+    shell.store.rightPanel.set({ kind: 'members' });
+    setRouteRoom('!c:hs');
+    expect(shell.store.rightPanel()).toEqual({ kind: 'members' });
+  });
+
   it('onTogglePin pins an unpinned message', () => {
     const shell = build();
     const pinned = TestBed.inject(PinnedMessagesService);
@@ -597,11 +632,7 @@ describe('RoomsPage panels, pins and media', () => {
 
     shell.messages.onPanelJump('$evt:hs');
 
-    // The jump is deferred to `afterNextRender` so it measures the layout the closing
-
-    // panel leaves behind — see `onPanelJump`. Flush it.
-
-    TestBed.tick();
+    flushPanelJump();
 
     expect(shell.store.messageSearchTarget()).toBe('$evt:hs');
     expect(shell.store.jumpRequest()).toBe(1);
@@ -683,20 +714,12 @@ describe('RoomsPage panels, pins and media', () => {
 
     shell.messages.onPanelJump('$evt:hs');
 
-    // The jump is deferred to `afterNextRender` so it measures the layout the closing
-
-    // panel leaves behind — see `onPanelJump`. Flush it.
-
-    TestBed.tick();
+    flushPanelJump();
     expect(shell.store.jumpRequest()).toBe(1);
 
     shell.messages.onPanelJump('$evt:hs');
 
-    // The jump is deferred to `afterNextRender` so it measures the layout the closing
-
-    // panel leaves behind — see `onPanelJump`. Flush it.
-
-    TestBed.tick();
+    flushPanelJump();
 
     expect(shell.store.messageSearchTarget()).toBe('$evt:hs');
     expect(shell.store.jumpRequest()).toBe(2);
