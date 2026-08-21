@@ -330,6 +330,21 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **The room you have open is now in the address bar, and the panels share the window.**
+  Opening a room puts it in the URL, so you can bookmark a conversation, send someone a link
+  straight to it, and reload without landing back on the room list. Your browser's Back
+  button — and Back on Android — now closes the open room instead of leaving Trinity
+  altogether.
+
+  Threads, the thread you are reading, pinned messages, search results and member info now
+  take turns in one panel beside the conversation rather than stacking up, so opening one
+  puts the previous one away.
+
+  That panel and the room list can both be **dragged wider or narrower**, and Trinity
+  remembers the widths for next time. Drag the divider between them, or focus it and use the
+  arrow keys — Home and End jump to the narrowest and widest, so a layout dragged somewhere
+  unhelpful is one keystroke from being usable again.
+
 - **The emoji picker follows your theme.** It came from a third-party library that only knew
   "light or dark", so it showed its own purple accent and its own greys whichever Trinity
   theme and palette you had chosen. It now uses the same colours as the rest of the app, in
