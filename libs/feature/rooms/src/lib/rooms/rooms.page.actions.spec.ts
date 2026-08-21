@@ -42,7 +42,6 @@ import { UserPickerService } from '../user-picker/user-picker.service';
 import { UserCardService } from '../user-card/user-card.service';
 import { MemberInfoService } from '../member-info/member-info.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
-import { MessageSearchService } from '../message-search/message-search.service';
 
 // The open room lives in the URL, and the harness's route is module state that outlives a
 // single TestBed — so a room one test opens is still in the URL when the next one builds.
@@ -96,7 +95,6 @@ describe('RoomsPage space actions', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(MessageSearchService),
         MockProvider(AuthService, {
           logout: vi.fn(() => of(undefined)),
           switchAccount: vi.fn(() => of(undefined)),
@@ -409,7 +407,6 @@ describe('RoomsPage room / DM / invite actions', () => {
         MockProvider(MemberInfoService, { open: memberInfoOpen }),
         MockProvider(RoomModerationService, { canModerate }),
         MockProvider(QuickSwitcherService),
-        MockProvider(MessageSearchService),
         MockProvider(TimelineService),
         MockProvider(TimelineActionsService),
         MockProvider(MediaService),
@@ -577,7 +574,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     try {
       const shell = build();
       setRouteRoom('!r:hs');
-      shell.store.membersOpen.set(true);
+      shell.store.rightPanel.set({ kind: 'members' });
       expect(shell.store.membersOpen()).toBe(true);
 
       shell.members.onSelectMember({
@@ -601,7 +598,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     // static column, the desktop-protected path. onSelectMember must NOT collapse it.
     const shell = build();
     setRouteRoom('!r:hs');
-    shell.store.membersOpen.set(true);
+    shell.store.rightPanel.set({ kind: 'members' });
 
     shell.members.onSelectMember({
       userId: '@bob:hs',
@@ -870,7 +867,6 @@ describe('RoomsPage space hierarchy actions', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(MessageSearchService),
         MockProvider(AuthService),
         MockProvider(TrnDialogService),
         MockProvider(TrnAlertService, { confirm: alertConfirm }),

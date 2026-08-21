@@ -61,6 +61,10 @@ import { PageHeaderComponent } from '@trinity/components/page-header';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { MemberListComponent } from '../member-list/member-list.component';
+import { ThreadsListComponent } from '../thread/threads-list.component';
+import { ThreadViewComponent } from '../thread/thread-view.component';
+import { PinnedMessagesPanelComponent } from '../pinned/pinned-messages-panel.component';
+import { MessageSearchComponent } from '../message-search/message-search.component';
 import { SimpleMessageListComponent } from '../message-list/simple-message-list/simple-message-list.component';
 import { VirtualMessageListComponent } from '../message-list/virtual-message-list/virtual-message-list.component';
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
@@ -121,6 +125,13 @@ import { TrnIconComponent } from '@trinity/components/icon';
     ServerRailComponent,
     ChannelSidebarComponent,
     MemberListComponent,
+    // The five surfaces the right-hand slot can show. Imported by the page rather than
+    // opened by a service, which is the whole of this change: presentation is the shell's
+    // decision, and each panel just announces what the user did.
+    ThreadsListComponent,
+    ThreadViewComponent,
+    PinnedMessagesPanelComponent,
+    MessageSearchComponent,
     SimpleMessageListComponent,
     VirtualMessageListComponent,
     EncryptionBannerComponent,
@@ -320,12 +331,17 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   /** Show/hide the member list from the toolbar / overflow menu. */
   toggleMembers(): void {
-    this.store.membersOpen.update((open) => !open);
+    // Toggling OFF only when the member list is what is showing. With one slot, pressing
+    // "Members" while a thread is open means "show me members instead", not "close the
+    // thread" — the button is a destination, not a switch.
+    this.store.rightPanel.update((panel) =>
+      panel?.kind === 'members' ? null : { kind: 'members' },
+    );
   }
 
-  /** Close the member list — used by the mobile drawer's backdrop. */
-  closeMembers(): void {
-    this.store.membersOpen.set(false);
+  /** Close whatever the slot is showing — used by the mobile drawer's backdrop. */
+  closeRightPanel(): void {
+    this.store.rightPanel.set(null);
   }
 
   /**
@@ -334,8 +350,8 @@ export class RoomsPage implements OnInit, OnDestroy {
    * info panel is a CDK dialog that closes the drawer as it opens, so there's no clash.
    */
   onEscapeKey(): void {
-    if (this.store.membersOpen() && this.membersAreDrawer()) {
-      this.closeMembers();
+    if (this.store.rightPanel() && this.membersAreDrawer()) {
+      this.closeRightPanel();
     }
   }
 }

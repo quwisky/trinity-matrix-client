@@ -6,7 +6,7 @@ import { EditHistoryComponent } from './edit-history.component';
 /**
  * Presents {@link EditHistoryComponent} for a message and resolves a permalink the reader
  * followed out of it (or null), which the host then routes — mirroring
- * {@link MessageSearchService}, which resolves the event to jump to.
+ * the in-room search panel, which announces the event to jump to.
  *
  * Named for the dialog it opens, not the data it shows: the fetching
  * `EditHistoryService` lives in `@trinity/data-access/timeline`.

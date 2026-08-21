@@ -53,7 +53,7 @@ export class MemberActionsService {
       // On the narrow layout the list is an overlay drawer — close it so the info
       // panel isn't stacked behind it. The wide static column stays put.
       if (this.membersAreDrawer()) {
-        this.store.membersOpen.set(false);
+        this.store.rightPanel.set(null);
       }
       void this.openMemberInfo(member, roomId);
     }

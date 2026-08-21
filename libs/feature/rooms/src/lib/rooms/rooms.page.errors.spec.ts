@@ -47,7 +47,6 @@ import { ManageSpaceRoomsComponent } from '../manage-space-rooms/manage-space-ro
 import { SpaceMembersComponent } from '../space-members/space-members.component';
 import { SpaceSettingsComponent } from '../space-settings/space-settings.component';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
-import { MessageSearchService } from '../message-search/message-search.service';
 import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
 
 // The open room lives in the URL, and the harness's route is module state that outlives a
@@ -180,7 +179,6 @@ describe('RoomsPage action error feedback', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(MessageSearchService),
         MockProvider(JumpToDateService),
         MockProvider(AuthService),
         MockProvider(TrnDialogService),

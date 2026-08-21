@@ -39,8 +39,6 @@ import { encodeRoomSegment } from '@trinity/util/matrix';
 import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
-import { ThreadPanelService } from '../thread/thread-panel.service';
-import { PinnedPanelService } from '../pinned/pinned-panel.service';
 
 /**
  * The `?room=` deep link a notification tap produces, as the stream the page subscribes
@@ -117,7 +115,6 @@ export const SHARED_MOCKS: Provider[] = [
   SessionActionsService,
   MockProvider(CryptoService),
   MockProvider(PinnedMessagesService),
-  MockProvider(PinnedPanelService),
   // A Router whose `navigate` actually MOVES the route, because the store now reads the room
   // from `paramMap` and every "opening a room opens it" assertion in these specs depends on
   // that round trip. A bare auto-stub swallows the call, which would leave `activeRoomId`
@@ -139,7 +136,6 @@ export const SHARED_MOCKS: Provider[] = [
     }) as unknown as Router['navigate'],
   }),
   ROUTE_PROVIDER,
-  MockProvider(ThreadPanelService),
   MockProvider(TrnActionSheetService),
 ];
 

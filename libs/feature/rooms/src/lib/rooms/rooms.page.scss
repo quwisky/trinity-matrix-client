@@ -148,6 +148,37 @@
   flex: 0 0 240px;
 }
 
+// The other four surfaces the slot can show — threads, a thread, pinned, search. 480px is
+// the width they already had as `md:w-120` dialog cards, so this is the same measurement,
+// moved from the card to the slot that now owns it.
+// OVERLAID, not in flow, and that is a deliberate deferral rather than the end state. #179
+// wants these sharing the layout with the timeline instead of stacking over it, and the
+// state machine for that is done — one slot, one value, no stacking. What is not done is the
+// consequence: a panel that takes layout space RESIZES the timeline, and the message list's
+// jump does not survive that re-measure. Picking a pinned message closes the panel and
+// scrolls to it, and with the panel in flow the row gets its flash but lands off screen,
+// because the scroll is computed against a timeline that is about to grow 480px wider.
+// Measured both ways — `pin-messages.spec.mts` "re-jumping to the SAME pinned message" fails
+// in flow and passes overlaid.
+// That is the same problem #179 records as a risk for the resizable-panes slice ("a live drag
+// re-flows every row width and will fire a measurement storm; the drag must commit-then-
+// measure, or throttle"). It belongs there, with the machinery that has to solve it, rather
+// than half-solved here.
+.chat-panel {
+  position: fixed;
+  inset-block: 0;
+  right: 0;
+  z-index: var(--trinity-z-panel);
+  width: 480px;
+  max-width: 100%;
+  flex: none;
+  box-shadow: -2px 0 12px rgb(0 0 0 / 30%);
+
+  // Clear the status bar / home indicator on notched devices (inert elsewhere).
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
 // Below the `members` breakpoint the static column would crowd the chat, so present the
 // member list as a slide-in drawer over the content instead (dismissed by the template's
 // backdrop). The inner .members is a fixed 240px column, so the drawer host matches that
@@ -168,6 +199,10 @@
     animation: members-drawer-in var(--trinity-duration-base)
       var(--trinity-ease-decelerate);
   }
+
+  // The roster fits a 240px drawer; a thread or a search result does not. These were
+  // full-screen (`w-screen`) as dialogs at this width and stay so — `max-width: 100%` above
+  // does it, since 480px exceeds the viewport here.
 }
 
 @keyframes members-drawer-in {

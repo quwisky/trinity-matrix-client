@@ -51,7 +51,6 @@ import {
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
-import { MessageSearchService } from '../message-search/message-search.service';
 
 // The open room is the URL now, and the route the store reads outlives any one TestBed —
 // it is one stream in the harness, shared by every block in this file. Without this reset a
@@ -64,7 +63,6 @@ beforeEach(() => setRouteRoom(null));
 // opens a DM, an invite runs the page's accept path.
 describe('RoomsPage quick switcher', () => {
   let pick: Mock;
-  let messageSearch: Mock;
   let createDirectMessage: Mock;
   let acceptInvite: Mock;
   let openSpace: Mock;
@@ -74,7 +72,6 @@ describe('RoomsPage quick switcher', () => {
 
   function build() {
     pick = vi.fn();
-    messageSearch = vi.fn();
     createDirectMessage = vi.fn(() => of('!dm:hs'));
     acceptInvite = vi.fn(() => of(undefined));
     openSpace = vi.fn();
@@ -102,7 +99,6 @@ describe('RoomsPage quick switcher', () => {
         }),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService, { pick }),
-        MockProvider(MessageSearchService, { search: messageSearch }),
         MockProvider(TimelineService, { open: timelineOpen }),
         MockProvider(TimelineActionsService),
         MockProvider(MediaService),
@@ -234,52 +230,81 @@ describe('RoomsPage quick switcher', () => {
     expect(pick).not.toHaveBeenCalled();
   });
 
-  it('opens in-room message search for the active room and jumps to the hit', async () => {
+  it('shows in-room search in the slot, and a hit jumps the timeline', () => {
+    // Two steps now instead of one awaited dialog: the panel goes into the shell's one
+    // right-hand slot, and a picked row arrives back through `onPanelJump` — which is what
+    // the template binds the panel's `(selected)` output to.
     const shell = build();
     shell.nav.onSelectRoom('!r:hs');
-    messageSearch.mockResolvedValue('$evt:hs');
 
-    await shell.messages.openMessageSearch();
+    shell.messages.openMessageSearch();
+    expect(shell.store.rightPanel()).toEqual({ kind: 'search' });
 
-    expect(messageSearch).toHaveBeenCalledWith('!r:hs');
+    shell.messages.onPanelJump('$evt:hs');
+
+    // The jump is deferred to `afterNextRender` so it measures the layout the closing
+
+    // panel leaves behind — see `onPanelJump`. Flush it.
+
+    TestBed.tick();
+
     expect(shell.store.messageSearchTarget()).toBe('$evt:hs');
     expect(shell.store.jumpRequest()).toBe(1);
+    // And the slot closes, as the dialog it replaced did: on the drawer layout it covers
+    // the timeline, so jumping with it open scrolls a message nobody can see.
+    expect(shell.store.rightPanel()).toBeNull();
   });
 
-  it('in-room search bumps jumpRequest again when the SAME hit is re-picked', async () => {
+  it('in-room search bumps jumpRequest again when the SAME hit is re-picked', () => {
     // Same crux as the pinned panel: picking the identical hit twice must still
     // re-fire the jump, which only happens because jumpRequest keeps incrementing.
+    // Easier to reach now — the panel stays open, so the second pick is just another row
+    // click rather than reopening the whole dialog.
     const shell = build();
     shell.nav.onSelectRoom('!r:hs');
-    messageSearch.mockResolvedValue('$evt:hs');
+    shell.messages.openMessageSearch();
 
-    await shell.messages.openMessageSearch();
+    shell.messages.onPanelJump('$evt:hs');
+
+    // The jump is deferred to `afterNextRender` so it measures the layout the closing
+
+    // panel leaves behind — see `onPanelJump`. Flush it.
+
+    TestBed.tick();
     expect(shell.store.jumpRequest()).toBe(1);
 
-    await shell.messages.openMessageSearch();
+    shell.messages.onPanelJump('$evt:hs');
+
+    // The jump is deferred to `afterNextRender` so it measures the layout the closing
+
+    // panel leaves behind — see `onPanelJump`. Flush it.
+
+    TestBed.tick();
 
     expect(shell.store.messageSearchTarget()).toBe('$evt:hs');
     expect(shell.store.jumpRequest()).toBe(2);
   });
 
-  it('does not jump when in-room search is cancelled', async () => {
+  it('does not jump when in-room search is dismissed without a pick', () => {
     const shell = build();
     shell.nav.onSelectRoom('!r:hs');
-    messageSearch.mockResolvedValue(null);
 
-    await shell.messages.openMessageSearch();
+    shell.messages.openMessageSearch();
+    shell.page.closeRightPanel();
 
     expect(shell.store.messageSearchTarget()).toBeNull();
     expect(shell.store.jumpRequest()).toBe(0);
+    expect(shell.store.rightPanel()).toBeNull();
   });
 
-  it('does not open in-room search when no room is active', async () => {
+  it('does not open in-room search when no room is active', () => {
     const shell = build();
-    messageSearch.mockResolvedValue('$evt:hs');
+    const before = shell.store.rightPanel();
 
-    await shell.messages.openMessageSearch();
+    shell.messages.openMessageSearch();
 
-    expect(messageSearch).not.toHaveBeenCalled();
+    // Reference identity, so this fails for ANY write to the slot, not only for search.
+    expect(shell.store.rightPanel()).toBe(before);
     expect(shell.store.messageSearchTarget()).toBeNull();
   });
 });
@@ -321,7 +346,6 @@ describe('RoomsPage mobile navigation', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(MessageSearchService),
         MockProvider(AuthService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
@@ -355,7 +379,7 @@ describe('RoomsPage mobile navigation', () => {
     try {
       const shell = build();
       shell.nav.onSelectRoom('!a:hs');
-      shell.store.membersOpen.set(true); // the drawer is open in room A
+      shell.store.rightPanel.set({ kind: 'members' }); // the drawer is open in room A
       expect(shell.store.membersOpen()).toBe(true);
 
       shell.page.backToList();
@@ -391,12 +415,12 @@ describe('RoomsPage mobile navigation', () => {
     }
   });
 
-  it('closeMembers closes the member list (the mobile drawer backdrop)', () => {
+  it('closeRightPanel empties the slot (the mobile drawer backdrop)', () => {
     const shell = build();
-    shell.store.membersOpen.set(true);
+    shell.store.rightPanel.set({ kind: 'members' });
     expect(shell.store.membersOpen()).toBe(true);
 
-    shell.page.closeMembers();
+    shell.page.closeRightPanel();
     expect(shell.store.membersOpen()).toBe(false);
   });
 
@@ -478,7 +502,6 @@ describe('RoomsPage account switcher summary', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(MessageSearchService),
         MockProvider(AuthService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
@@ -628,7 +651,6 @@ describe('RoomsPage keyboard room switching', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(MessageSearchService),
         MockProvider(AuthService),
         MockProvider(TrnDialogService, { hasOpen: () => dialogOpen }),
         MockProvider(TrnToastService),
@@ -880,7 +902,6 @@ describe('RoomsPage room-in-URL deep link', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(MessageSearchService),
         MockProvider(AuthService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),

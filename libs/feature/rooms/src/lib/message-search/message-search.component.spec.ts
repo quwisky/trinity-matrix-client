@@ -1,7 +1,6 @@
-import { ApplicationRef, signal } from '@angular/core';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { TrnDialogRef, TrnDialogService } from '@trinity/components/overlay';
-import { render } from '@trinity/testing';
+import { signal } from '@angular/core';
+import { type ComponentFixture } from '@angular/core/testing';
+import { fireEvent, render } from '@trinity/testing';
 import {
   SearchService,
   type LoadedMessageSearch,
@@ -14,7 +13,6 @@ import { MockComponent, MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { MessageSearchComponent } from './message-search.component';
-import { MessageSearchService } from './message-search.service';
 
 function hit(over: Partial<MessageHit> = {}): MessageHit {
   return {
@@ -41,7 +39,9 @@ function loaded(over: Partial<LoadedMessageSearch> = {}): LoadedMessageSearch {
 }
 
 describe('MessageSearchComponent', () => {
-  let dismiss: Mock;
+  /** What the panel announced: it is presentational, so these ARE its contract. */
+  let selected: string[];
+  let dismissals: number;
   let searchLoadedMessages: Mock;
   let searchServerMessages: Mock;
   let loadMoreHistory: Mock;
@@ -54,9 +54,14 @@ describe('MessageSearchComponent', () => {
     searchLoadedMessages.mockReturnValue(state);
     const { fixture, container } = await render(MessageSearchComponent, {
       inputs: { roomId: '!r:hs' },
+      on: {
+        selected: (eventId: string) => selected.push(eventId),
+        dismissed: () => {
+          dismissals += 1;
+        },
+      },
       imports: [MockComponent(AvatarComponent)],
       providers: [
-        MockProvider(TrnDialogRef, { close: dismiss }),
         MockProvider(SearchService, {
           searchLoadedMessages,
           searchServerMessages,
@@ -73,7 +78,8 @@ describe('MessageSearchComponent', () => {
   }
 
   beforeEach(() => {
-    dismiss = vi.fn().mockResolvedValue(true);
+    selected = [];
+    dismissals = 0;
     searchLoadedMessages = vi.fn(() => loaded());
     searchServerMessages = vi.fn(() =>
       of<ServerMessageSearch>({ hits: [], count: 0, nextBatch: null }),
@@ -81,44 +87,16 @@ describe('MessageSearchComponent', () => {
     loadMoreHistory = vi.fn(() => of(0));
   });
 
-  it('marks the query field as the dialog’s autofocus target', async () => {
-    // MessageSearchService opens with `autoFocus: '[data-autofocus]'`; CDK focuses
-    // nothing at all if that selector matches nothing, so the two must stay paired.
+  it('lands focus in the query field as soon as the panel renders', async () => {
+    // The panel is rendered inline in the shell's slot now, so nothing else focuses it.
+    // As a dialog this was CDK's job (`autoFocus: '[data-autofocus]'`); the conversion
+    // would silently have left a keyboard user tabbing into the field they just asked for.
     const { container } = await build(loaded());
-    const focusTarget = container.querySelector('[data-autofocus]');
-    expect(focusTarget?.tagName).toBe('INPUT');
-    expect(focusTarget?.getAttribute('placeholder')).toBe(
-      'Search this conversation',
-    );
-  });
 
-  it('lands focus in the query field when opened through the service', async () => {
-    // The full production path in one test — real MessageSearchService, real
-    // TrnDialogService, real CDK dialog — because that is where the bug lived: the
-    // component's own focus() ran first and CDK's focus pass then overrode it with the
-    // header's close button. Only the search/timeline backends are stubbed.
-    searchLoadedMessages.mockReturnValue(loaded());
-    TestBed.configureTestingModule({
-      providers: [
-        MockProvider(SearchService, {
-          searchLoadedMessages,
-          searchServerMessages,
-          loadMoreHistory,
-        }),
-        MockProvider(TimelineService, { messages: signal([]) }),
-      ],
-    });
-    const searched = TestBed.inject(MessageSearchService).search('!r:hs');
-    const appRef = TestBed.inject(ApplicationRef);
-    appRef.tick();
-    await appRef.whenStable();
-
-    const query = document.querySelector('[data-autofocus]');
-    expect(query).not.toBeNull();
+    const query = container.querySelector('[data-autofocus]');
+    expect(query?.tagName).toBe('INPUT');
+    expect(query?.getAttribute('placeholder')).toBe('Search this conversation');
     expect(document.activeElement).toBe(query);
-
-    TestBed.inject(TrnDialogService).closeAll();
-    expect(await searched).toBeNull();
   });
 
   it('renders the loaded-timeline matches as result rows', async () => {
@@ -156,20 +134,43 @@ describe('MessageSearchComponent', () => {
     expect(container.querySelector('[data-testid="e2ee-note"]')).toBeNull();
   });
 
-  it('dismisses with the chosen event id when a result is selected', async () => {
-    const { c } = await build(loaded({ hits: [hit({ eventId: '$jump' })] }));
+  it('emits the chosen event id when a result row is clicked', async () => {
+    const { container } = await build(
+      loaded({ hits: [hit({ eventId: '$jump' })] }),
+    );
 
-    c.select(hit({ eventId: '$jump' }));
+    fireEvent.click(
+      container.querySelector<HTMLButtonElement>('[data-testid="result"]')!,
+    );
 
-    expect(dismiss).toHaveBeenCalledWith('$jump');
+    // The id — not just "something happened" — is the whole contract with the host.
+    expect(selected).toEqual(['$jump']);
+    // A pick is a pick, not a bare close: the host distinguishes the two.
+    expect(dismissals).toBe(0);
   });
 
-  it('cancel dismisses with null', async () => {
-    const { c } = await build(loaded());
+  it('cancel emits dismissed, with nothing selected', async () => {
+    const { container } = await build(loaded());
 
-    c.dismiss();
+    fireEvent.click(
+      container.querySelector<HTMLButtonElement>(
+        '[aria-label="Close search"]',
+      )!,
+    );
 
-    expect(dismiss).toHaveBeenCalledWith(null);
+    expect(dismissals).toBe(1);
+    expect(selected).toEqual([]);
+  });
+
+  it('Escape in the query field emits dismissed', async () => {
+    const { container } = await build(loaded());
+
+    fireEvent.keyDown(container.querySelector('[data-autofocus]')!, {
+      key: 'Escape',
+    });
+
+    expect(dismissals).toBe(1);
+    expect(selected).toEqual([]);
   });
 
   it('"load older messages" pages in history via the service', async () => {

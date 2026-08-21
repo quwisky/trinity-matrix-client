@@ -394,9 +394,10 @@ test.describe('Pin messages', () => {
     await expect(targetRow.first()).toHaveClass(/msg--flash/, {
       timeout: 1_500,
     });
-    // The panel's dialog resolves on jump, closing it — and PinnedPanelService's
-    // re-entrancy guard (`this.open`) only clears once that resolve's `finally`
-    // runs, so wait for it to be fully hidden before re-opening it below.
+    // Picking a row closes the slot, so wait for it to be fully hidden before re-opening
+    // it below. (It used to be a dialog whose `openAndWait` resolved on jump, with a
+    // re-entrancy guard that cleared in the resolve's `finally`; the slot needs no guard
+    // because there is one of it.)
     await expect(heading).toBeHidden({ timeout: 10_000 });
     await expect(targetRow.first()).toBeInViewport({ timeout: 15_000 });
 

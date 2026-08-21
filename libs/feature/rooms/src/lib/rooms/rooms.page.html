@@ -388,23 +388,58 @@
               (pollEnd)="messageActions.onPollEnd($event)"
             />
           }
-          @if (store.membersOpen()) {
-            <!-- Below the `members` breakpoint the member list is an overlay drawer; a
-               backdrop (shown only at that width) dismisses it. At or above it the list
-               stays a static column
-               and the backdrop is display:none. -->
+          @if (store.rightPanel(); as panel) {
+            <!-- Below the `members` breakpoint the slot is an overlay drawer; a backdrop
+               (shown only at that width) dismisses it. At or above it the slot is a static
+               column and the backdrop is display:none. One backdrop for every surface,
+               because there is one slot. -->
             <div
               class="fixed inset-0 z-[var(--trinity-z-scrim)] hidden bg-black/50 max-members:block"
-              (click)="closeMembers()"
+              (click)="closeRightPanel()"
               aria-hidden="true"
               data-testid="members-backdrop"
             ></div>
-            <trn-member-list
-              class="chat-members"
-              [members]="vm.members()"
-              [direct]="vm.activeRoomIsDirect()"
-              (selectMember)="memberActions.onSelectMember($event)"
-            />
+            @switch (panel.kind) {
+              @case ('members') {
+                <trn-member-list
+                  class="chat-members"
+                  [members]="vm.members()"
+                  [direct]="vm.activeRoomIsDirect()"
+                  (selectMember)="memberActions.onSelectMember($event)"
+                />
+              }
+              @case ('threads') {
+                <trn-threads-list
+                  class="chat-panel"
+                  [roomId]="room.id"
+                  (selected)="messageActions.onThreadPicked($event)"
+                  (dismissed)="closeRightPanel()"
+                />
+              }
+              @case ('thread') {
+                <trn-thread-view
+                  class="chat-panel"
+                  [roomId]="room.id"
+                  [rootEventId]="panel.rootEventId"
+                  (dismissed)="closeRightPanel()"
+                />
+              }
+              @case ('pinned') {
+                <trn-pinned-messages-panel
+                  class="chat-panel"
+                  (selected)="messageActions.onPanelJump($event)"
+                  (dismissed)="closeRightPanel()"
+                />
+              }
+              @case ('search') {
+                <trn-message-search
+                  class="chat-panel"
+                  [roomId]="room.id"
+                  (selected)="messageActions.onPanelJump($event)"
+                  (dismissed)="closeRightPanel()"
+                />
+              }
+            }
           }
         } @else {
           <div class="chat-empty">

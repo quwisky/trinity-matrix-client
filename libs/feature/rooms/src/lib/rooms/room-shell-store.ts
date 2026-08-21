@@ -1,9 +1,30 @@
-import { Injectable, inject, linkedSignal, signal } from '@angular/core';
+import {
+  Injectable,
+  computed,
+  inject,
+  linkedSignal,
+  signal,
+} from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { map } from 'rxjs';
 import { decodeRoomSegment } from '@trinity/util/matrix';
 import { BELOW_MEMBERS_QUERY, matchesQuery } from '@trinity/util/ui';
+
+/**
+ * The surfaces that can occupy the shell's right-hand slot.
+ *
+ * `null` is "nothing showing", which on the narrow layout is the only honest state — the slot
+ * is an overlay drawer there, and an overlay that is always open is what the member list used
+ * to be before this phase.
+ */
+export type RightPanel =
+  | { readonly kind: 'members' }
+  | { readonly kind: 'threads' }
+  | { readonly kind: 'thread'; readonly rootEventId: string }
+  | { readonly kind: 'pinned' }
+  | { readonly kind: 'search' }
+  | null;
 
 /**
  * The rooms shell's own selection and pane state.
@@ -81,22 +102,35 @@ export class RoomShellStore {
   });
 
   /**
-   * Whether the member list is shown. At or above the `members` breakpoint it's the static
-   * right column, shown by default; below it an overlay drawer that must start closed.
-   * Seeded from the viewport so the drawer doesn't render open on a mobile load, while the
-   * wide layout keeps the column visible by default.
+   * What the right-hand slot is showing, if anything.
    *
-   * A one-shot `matchesQuery` and deliberately NOT `mediaQuerySignal`: this is a SEED for a
-   * state the user then owns. A live signal would re-evaluate on every rotation across the
-   * boundary and reopen a column the user had explicitly closed.
+   * ONE slot, not five independent flags. The member list was a column with its own boolean
+   * while threads, the threads list, pinned messages and search were CDK dialogs with
+   * `side: 'end'` — so they stacked OVER the member list rather than sharing the layout with
+   * it, and only one could be open at a time by accident (each service kept its own
+   * re-entrancy guard) rather than by design. A single slot makes "only one" structural:
+   * opening threads while members is showing replaces it, because there is one value.
    *
-   * Negated rather than asking `MEMBERS_QUERY` directly, because `matchesQuery` answers
-   * `false` where `matchMedia` does not exist and the two directions disagree about what
-   * that should mean. Asking the BELOW query makes the unknown case the static column, which
-   * is what this has always done — asking the min-width one would silently make a context
-   * with no `matchMedia` start with the list hidden.
+   * A discriminated union rather than a string, because two of the surfaces carry data —
+   * a thread needs its root event, a member card needs its member — and a bare
+   * `'thread' | null` would have to be shadowed by a second signal holding the id, which is
+   * the invalid-state-is-representable shape this exists to avoid.
    */
-  readonly membersOpen = signal(!matchesQuery(BELOW_MEMBERS_QUERY));
+  readonly rightPanel = signal<RightPanel>(
+    // Seeded to the member list at the wide layout, closed below it — which is what the
+    // member column has always done. `matchesQuery` and deliberately NOT `mediaQuerySignal`:
+    // this SEEDS a state the user then owns, and a live signal would re-evaluate on every
+    // rotation across the boundary and reopen a panel the user had explicitly closed.
+    //
+    // Negated rather than asking `MEMBERS_QUERY` directly, because `matchesQuery` answers
+    // `false` where `matchMedia` does not exist and the two directions disagree about what
+    // that should mean. Asking the BELOW query makes the unknown case the static column,
+    // which is what this has always done.
+    matchesQuery(BELOW_MEMBERS_QUERY) ? null : { kind: 'members' },
+  );
+
+  /** Whether the member list is the surface currently in the slot. */
+  readonly membersOpen = computed(() => this.rightPanel()?.kind === 'members');
 
   /**
    * Event id the message list should scroll to, set by in-room search, a reply

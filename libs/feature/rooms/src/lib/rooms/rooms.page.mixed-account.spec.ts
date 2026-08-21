@@ -35,7 +35,6 @@ import { describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
-import { MessageSearchService } from '../message-search/message-search.service';
 
 // Mixed-account view (issue #10): the global "All accounts" scope spans every signed-in
 // account across ALL surfaces — Recent, Home's DMs, the Rooms list and the rail spaces —
@@ -182,7 +181,6 @@ describe('RoomsPage mixed-account view', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(MessageSearchService),
         MockProvider(AuthService, { switchAccount }),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
