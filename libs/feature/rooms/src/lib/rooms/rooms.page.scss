@@ -45,7 +45,7 @@
 // Below md the rail + sidebar (room list) and the chat are separate full-screen
 // pages — show only the one matching the current view. At md+ this media query
 // doesn't apply, so both columns stay static and side by side.
-@media (max-width: 767.98px) {
+@media #{$below-md} {
   [data-mobile-view='chat'] .shell-side {
     display: none;
   }
