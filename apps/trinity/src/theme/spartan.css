@@ -87,10 +87,12 @@
    * The cost, stated plainly: `md:` no longer tracks the user's default font size. Text
    * scaling is served by `--trinity-text-scale` instead, which scales the CONTENTS. If that
    * trade is ever revisited, all three copies move together and
-   * `scripts/breakpoints.spec.mjs` has to normalise rem against a root size before comparing. `members` is the boundary at which there is room for a third
-   * column — below it the member list becomes an overlay drawer. It replaces an
-   * arbitrary-value variant at that width, duplicated across a template, a stylesheet and
-   * three TypeScript predicates with no definition relating them.
+   * `scripts/breakpoints.spec.mjs` has to normalise rem against a root size before comparing.
+   *
+   * `members` is the boundary at which there is room for a third column — below it the member
+   * list becomes an overlay drawer. It replaces an arbitrary-value variant at that width,
+   * duplicated across a template, a stylesheet and three TypeScript predicates with no
+   * definition relating them.
    *
    * Do not write an arbitrary-value class in a comment here. Tailwind extracts candidates
    * from the raw text of every scanned file, comments included, so naming one in prose is
