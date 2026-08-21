@@ -1,8 +1,10 @@
+import { type Type } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SimpleMessageListComponent } from './simple-message-list/simple-message-list.component';
 import { VirtualMessageListComponent } from './virtual-message-list/virtual-message-list.component';
+import type { MessageListBase } from './message-list-base';
 
 /**
  * The "Loading older messages…" strip, and when it is allowed to appear.
@@ -25,10 +27,15 @@ import { VirtualMessageListComponent } from './virtual-message-list/virtual-mess
  * reverted on the virtual one with the entire workspace still green, which is exactly how a
  * scroll-anchoring regression got through review.
  */
-const LISTS = [
+// Typed as the shared BASE rather than left to inference. `describe.each` widens the pair to
+// a union of the two classes, and `render<T>(component: Type<T>, …)` cannot infer one `T` from
+// a union — the two lists are not structurally compatible (`atBottom` exists on one only). The
+// base is also the honest type: what this file tests is `MessageListBase.showLoadingOlder`,
+// which is why both lists belong in the same table.
+const LISTS: readonly (readonly [string, Type<MessageListBase>])[] = [
   ['simple', SimpleMessageListComponent],
   ['virtual (the default)', VirtualMessageListComponent],
-] as const;
+];
 
 describe.each(LISTS)('message list — loading older (%s)', (_label, List) => {
   beforeEach(() => vi.useFakeTimers());
