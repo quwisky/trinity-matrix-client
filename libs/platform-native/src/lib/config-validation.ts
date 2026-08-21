@@ -146,7 +146,7 @@ export function boundedNumberSetting(spec: {
         ? { ok: true, value: clamp(value) }
         : {
             ok: false,
-            problem: `${describeConfigValue(value)} is not ${spec.noun} in pixels`,
+            problem: `${describeConfigValue(value)} is not ${spec.noun}`,
           },
     write: (value) => {
       if (typeof value === 'number' && Number.isFinite(value)) {

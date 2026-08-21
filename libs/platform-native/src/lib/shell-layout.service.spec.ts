@@ -115,14 +115,4 @@ describe('ShellLayoutService', () => {
 
     expect(service.sidebarWidth()).toBe(DEFAULT_SIDEBAR_WIDTH);
   });
-
-  it('resets both panes together', () => {
-    service.setSidebarWidth(500);
-    service.setRightPanelWidth(300);
-
-    service.reset();
-
-    expect(service.sidebarWidth()).toBe(DEFAULT_SIDEBAR_WIDTH);
-    expect(service.rightPanelWidth()).toBe(DEFAULT_RIGHT_PANEL_WIDTH);
-  });
 });

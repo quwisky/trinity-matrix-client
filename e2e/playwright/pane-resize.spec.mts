@@ -19,6 +19,9 @@ import { login, synapseSession } from './support/app.mts';
  */
 const session = synapseSession();
 
+/** The server rail is a fixed column; everything the drag adds goes to the room list. */
+const RAIL_WIDTH = 72;
+
 test.describe('Resizable panes', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
@@ -49,6 +52,14 @@ test.describe('Resizable panes', () => {
 
     const after = (await sidebar.boundingBox())?.width ?? 0;
     expect(after).toBeGreaterThan(before + 50);
+
+    // The ROOM LIST, not just the column around it. `.shell-side` is a flex row holding a
+    // fixed 72px rail and the list; if the list does not absorb the difference, dragging out
+    // opens a strip of bare rail colour and dragging in paints the list over the timeline,
+    // while this test's `.shell-side` measurement moves exactly as it should.
+    const list =
+      (await page.locator('.sidebar').first().boundingBox())?.width ?? 0;
+    expect(Math.round(list)).toBe(Math.round(after - RAIL_WIDTH));
 
     // The committed width is announced, so a screen reader is not left describing the old one.
     await expect(handle).toHaveAttribute(
@@ -96,5 +107,11 @@ test.describe('Resizable panes', () => {
 
     const narrow = (await sidebar.boundingBox())?.width ?? 0;
     expect(Math.abs(narrow - min)).toBeLessThanOrEqual(2);
+
+    // And the list came with it rather than overflowing the column it lives in — the failure
+    // that reads as the room list sitting on top of the conversation.
+    const list =
+      (await page.locator('.sidebar').first().boundingBox())?.width ?? 0;
+    expect(Math.round(list)).toBe(Math.round(narrow - RAIL_WIDTH));
   });
 });

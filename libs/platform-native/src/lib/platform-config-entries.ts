@@ -161,7 +161,7 @@ function themeEntries(theme: ThemeService): readonly ConfigEntry[] {
 }
 
 /** The rooms shell's draggable pane widths. */
-function shellEntries(shell: ShellLayoutService): ConfigEntry[] {
+function shellEntries(shell: ShellLayoutService): readonly ConfigEntry[] {
   return [
     {
       path: 'shell.sidebarWidth',
@@ -172,7 +172,7 @@ function shellEntries(shell: ShellLayoutService): ConfigEntry[] {
       reset: () => shell.setSidebarWidth(DEFAULT_SIDEBAR_WIDTH),
       ...boundedNumberSetting({
         ...SIDEBAR_WIDTH_BOUNDS,
-        noun: `a width between ${SIDEBAR_WIDTH_BOUNDS.min} and ${SIDEBAR_WIDTH_BOUNDS.max}`,
+        noun: `a width between ${SIDEBAR_WIDTH_BOUNDS.min} and ${SIDEBAR_WIDTH_BOUNDS.max} pixels`,
         set: (value) => shell.setSidebarWidth(value),
       }),
     },
@@ -185,7 +185,7 @@ function shellEntries(shell: ShellLayoutService): ConfigEntry[] {
       reset: () => shell.setRightPanelWidth(DEFAULT_RIGHT_PANEL_WIDTH),
       ...boundedNumberSetting({
         ...RIGHT_PANEL_WIDTH_BOUNDS,
-        noun: `a width between ${RIGHT_PANEL_WIDTH_BOUNDS.min} and ${RIGHT_PANEL_WIDTH_BOUNDS.max}`,
+        noun: `a width between ${RIGHT_PANEL_WIDTH_BOUNDS.min} and ${RIGHT_PANEL_WIDTH_BOUNDS.max} pixels`,
         set: (value) => shell.setRightPanelWidth(value),
       }),
     },
