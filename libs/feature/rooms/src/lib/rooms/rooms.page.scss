@@ -126,7 +126,14 @@
   text-align: center;
 }
 
+// The chat area owns the drawer gesture, so a swipe that starts over the timeline is heard.
+// `touch-action: pan-y` keeps vertical scrolling native while claiming the horizontal axis —
+// without it the browser consumes the sideways drag as a scroll or an overscroll navigation
+// and the directive never sees a move. `pan-y` rather than `none`, because the timeline must
+// still scroll.
 .chat-body {
+  touch-action: pan-y;
+  overscroll-behavior-x: contain;
   flex: 1;
   display: flex;
   min-height: 0;
@@ -219,6 +226,11 @@
     padding-top: env(safe-area-inset-top);
     animation: members-drawer-in var(--trinity-duration-base)
       var(--trinity-ease-decelerate);
+
+    // Follows the finger. `--drawer-drag` is written by `DrawerSwipeDirective` for the length
+    // of a gesture and removed on release, so the drawer settles back to its CSS position
+    // without the directive having to animate anything itself. Zero when nobody is dragging.
+    transform: translateX(var(--drawer-drag, 0));
   }
 
   // The roster fits a 240px drawer; a thread or a search result does not. These were

@@ -16,6 +16,7 @@ export * from './lib/shell-layout.service';
 export * from './lib/back-interceptor.service';
 export * from './lib/date-time-format.service';
 export * from './lib/mobile-badge.service';
+export * from './lib/haptics.service';
 export * from './lib/trinity-desktop-bridge';
 export * from './lib/shortcuts/chord';
 export * from './lib/shortcuts/keyboard-shortcuts.service';

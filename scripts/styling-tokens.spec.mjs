@@ -165,4 +165,39 @@ describe('styling tokens', () => {
 
     expect(offenders).toEqual([]);
   });
+
+  it('claims an axis wherever a swipe gesture is attached', () => {
+    // A horizontal gesture the browser has not been told about is a gesture the browser
+    // eats: it treats the drag as a scroll or an overscroll navigation and the handler never
+    // sees a move. `touch-action` is what claims the axis, and it is invisible to jsdom and
+    // to every desktop run — the gesture simply works with a mouse and silently does not on a
+    // phone. So the pairing is checked here instead: a template that hosts a swipe must have
+    // a stylesheet that declares it.
+    const GESTURE_HOSTS = [
+      {
+        template: 'libs/feature/rooms/src/lib/rooms/rooms.page.html',
+        directive: 'trnDrawerSwipe',
+        styles: 'libs/feature/rooms/src/lib/rooms/rooms.page.scss',
+        selector: '.chat-body',
+      },
+    ];
+
+    // Scoped to the HOST RULE, not the file. `.pane-handle` in the same stylesheet declares
+    // `touch-action` too, so a file-level check stays green after the gesture surface loses
+    // its own — which is exactly what this guard's first draft did.
+    const ruleFor = (styles, selector) => {
+      const at = code(styles).indexOf(`${selector} {`);
+      return at < 0
+        ? ''
+        : code(styles).slice(at, code(styles).indexOf('}', at));
+    };
+
+    const unclaimed = GESTURE_HOSTS.filter(
+      ({ template, directive, styles, selector }) =>
+        read(template).includes(directive) &&
+        !ruleFor(styles, selector).includes('touch-action'),
+    );
+
+    expect(unclaimed).toEqual([]);
+  });
 });

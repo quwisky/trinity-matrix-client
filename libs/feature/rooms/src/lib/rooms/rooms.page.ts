@@ -56,6 +56,7 @@ import {
   TimelineService,
 } from '@trinity/data-access/timeline';
 import {
+  HapticsService,
   BackInterceptorService,
   FeatureFlagsService,
   ShellLayoutService,
@@ -71,6 +72,7 @@ import { PinnedMessagesPanelComponent } from '../pinned/pinned-messages-panel.co
 import { MessageSearchComponent } from '../message-search/message-search.component';
 import { MemberInfoComponent } from '../member-info/member-info.component';
 import { PaneHandleComponent } from './pane-handle.component';
+import { DrawerSwipeDirective } from './drawer-swipe.directive';
 import { SimpleMessageListComponent } from '../message-list/simple-message-list/simple-message-list.component';
 import { VirtualMessageListComponent } from '../message-list/virtual-message-list/virtual-message-list.component';
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
@@ -140,6 +142,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
     MessageSearchComponent,
     MemberInfoComponent,
     PaneHandleComponent,
+    DrawerSwipeDirective,
     SimpleMessageListComponent,
     VirtualMessageListComponent,
     EncryptionBannerComponent,
@@ -167,13 +170,22 @@ export class RoomsPage implements OnInit, OnDestroy {
     BELOW_MD_QUERY,
     inject(DestroyRef),
   );
-  private readonly membersAreDrawer = mediaQuerySignal(
+  /**
+   * Whether the slot is currently the overlay drawer rather than a column.
+   *
+   * `protected` rather than private: the template reads it to tell `DrawerSwipeDirective`
+   * whether there is a drawer to swipe at all.
+   */
+  protected readonly membersAreDrawer = mediaQuerySignal(
     BELOW_MEMBERS_QUERY,
     inject(DestroyRef),
   );
 
   /** Persisted pane widths, bound into the shell's CSS custom properties. */
   readonly layout = inject(ShellLayoutService);
+
+  /** A tick when a drag lands, on a phone. Silent everywhere else. */
+  private readonly haptics = inject(HapticsService);
 
   /**
    * Android's hardware Back closes the right-hand panel before it leaves the room.
@@ -372,6 +384,24 @@ export class RoomsPage implements OnInit, OnDestroy {
   /** Close whatever the slot is showing — used by the mobile drawer's backdrop. */
   closeRightPanel(): void {
     this.store.rightPanel.set(null);
+  }
+
+  /**
+   * A swipe in from the right edge opens the member list.
+   *
+   * The roster and not, say, threads, because the gesture has to mean ONE thing and this is
+   * what the toolbar's own button opens — a gesture that guessed differently from the button
+   * beside it would be a gesture nobody could predict.
+   */
+  onDrawerSwipedOpen(): void {
+    this.store.rightPanel.set({ kind: 'members' });
+    this.haptics.gestureCommitted();
+  }
+
+  /** A swipe away dismisses whatever the slot was showing. */
+  onDrawerSwipedClosed(): void {
+    this.closeRightPanel();
+    this.haptics.gestureCommitted();
   }
 
   /**
