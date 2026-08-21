@@ -190,8 +190,25 @@ test.describe('Who reacted', () => {
       new RegExp(`^👍 reacted by You and .*${seeded.otherName}`),
       { timeout: 20_000 },
     );
-    await thumbsUp.hover();
-    await expect(page.getByRole('tooltip')).toContainText('reacted by You');
+    // Hover and assert as ONE retried unit, not two statements.
+    //
+    // The tooltip opens 150ms after the pointer settles (brn's `showDelay`), and this pill
+    // lives inside the virtual scroller, which re-measures rows as images resolve and as
+    // later events arrive. A row that shifts inside that window leaves the pointer over
+    // something else, brn cancels the pending show on the mouseleave, and a bare `hover()`
+    // followed by a separate wait then blocks on a tooltip that is never coming — which is
+    // what this line did, intermittently, at the default 5s.
+    //
+    // `toPass` re-hovers at the element's CURRENT position on every attempt, so a shifted
+    // row costs a retry instead of the test. The inner timeout is short on purpose: it is a
+    // per-attempt budget, and a long one here would spend the whole run inside one doomed
+    // attempt rather than re-hovering.
+    await expect(async () => {
+      await thumbsUp.hover();
+      await expect(page.getByRole('tooltip')).toContainText('reacted by You', {
+        timeout: 1_000,
+      });
+    }).toPass({ timeout: 20_000 });
 
     // The trailing chip opens the full list.
     await row.first().getByTestId('reactions-who').click();
