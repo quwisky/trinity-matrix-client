@@ -18,7 +18,7 @@
     </button>
   </div>
 
-  <div class="thread flex-1 overflow-y-auto" #scroll>
+  <div class="thread flex-1 overflow-y-auto max-members:touch-pan-y" #scroll>
     @if (loadingOlder()) {
       <div class="thread__load-older">Loading older replies…</div>
     } @else if (canLoadOlder()) {

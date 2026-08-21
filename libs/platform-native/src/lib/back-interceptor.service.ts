@@ -1,4 +1,4 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable } from '@angular/core';
 
 /**
  * Things Android's hardware Back should close before it leaves the page.
@@ -26,15 +26,6 @@ export class BackInterceptorService {
   private readonly interceptors: BackInterceptor[] = [];
 
   /**
-   * Whether anything is currently registered.
-   *
-   * A signal so a template can reflect it — and so a test can assert registration happened
-   * without reaching into the private stack.
-   */
-  private readonly _count = signal(0);
-  readonly count = this._count.asReadonly();
-
-  /**
    * Offer something Back can close. Returns the function that stops offering it.
    *
    * The interceptor returns `true` if it handled the press — it had something open and closed
@@ -42,12 +33,12 @@ export class BackInterceptorService {
    */
   register(interceptor: BackInterceptor): () => void {
     this.interceptors.push(interceptor);
-    this._count.set(this.interceptors.length);
     return () => {
+      // `lastIndexOf`, and guarded: the same function may be registered twice by two pages
+      // mid-transition, and calling a removal twice must not drop somebody else's.
       const at = this.interceptors.lastIndexOf(interceptor);
       if (at >= 0) {
         this.interceptors.splice(at, 1);
-        this._count.set(this.interceptors.length);
       }
     };
   }

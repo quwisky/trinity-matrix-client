@@ -321,7 +321,7 @@
         trnDrawerSwipe
         [drawerEnabled]="membersAreDrawer()"
         [drawerOpen]="!!store.rightPanel()"
-        [drawerWidth]="layout.rightPanelWidth()"
+        [drawerWidth]="drawerWidth()"
         (opened)="onDrawerSwipedOpen()"
         (closed)="onDrawerSwipedClosed()"
       >

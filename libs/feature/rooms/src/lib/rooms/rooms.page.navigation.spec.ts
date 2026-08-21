@@ -518,6 +518,39 @@ describe('RoomsPage mobile navigation', () => {
     }
   });
 
+  it('measures the swipe against the drawer that is actually on screen', () => {
+    // NOT `layout.rightPanelWidth()`, which is the width the pane handle drags on a DESKTOP
+    // and which the stylesheet ignores at this breakpoint. Passing it measured a 240px roster
+    // against a 480px default — 80% of its travel to commit, where the rule is 40% — and a
+    // user who had dragged the panel to its 720px maximum made the distance threshold
+    // physically unreachable on a phone.
+    const shell = build();
+    setRouteRoom('!r:hs');
+    const widthOf = () =>
+      (shell.page as unknown as { drawerWidth(): number }).drawerWidth();
+
+    shell.store.rightPanel.set({ kind: 'members' });
+    expect(widthOf()).toBe(240);
+
+    shell.store.rightPanel.set(null);
+    expect(widthOf()).toBe(240); // an opening swipe measures the roster it will open
+
+    shell.store.rightPanel.set({ kind: 'threads' });
+    expect(widthOf()).toBe(Math.min(480, window.innerWidth));
+  });
+
+  it('a swipe with no room open opens nothing', () => {
+    // The slot's template is gated on an open room, so writing the state without one leaves
+    // a roster queued for whichever room is opened next.
+    const shell = build();
+    setRouteRoom(null);
+    const before = shell.store.rightPanel();
+
+    shell.page.onDrawerSwipedOpen();
+
+    expect(shell.store.rightPanel()).toBe(before);
+  });
+
   it('onSelectRoom opens the room (switching to the mobile chat page)', () => {
     const shell = build();
 

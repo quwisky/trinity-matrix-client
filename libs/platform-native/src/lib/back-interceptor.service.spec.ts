@@ -74,15 +74,17 @@ describe('BackInterceptorService', () => {
     expect(below).toHaveBeenCalled();
   });
 
-  it('counts what is registered, so a caller can tell without reaching inside', () => {
-    expect(service.count()).toBe(0);
+  it('tolerates a removal called twice, without dropping somebody else', () => {
+    // Two pages mid-transition can both hold a registration, and a destroy hook is not
+    // guaranteed to run once — a second removal must be a no-op, not a shot at a neighbour.
+    const other = vi.fn(() => true);
+    service.register(other);
     const remove = service.register(() => false);
-    expect(service.count()).toBe(1);
 
     remove();
-    expect(service.count()).toBe(0);
-    // Removing twice must not go negative or drop somebody else's registration.
     remove();
-    expect(service.count()).toBe(0);
+
+    expect(service.handle()).toBe(true);
+    expect(other).toHaveBeenCalledTimes(1);
   });
 });

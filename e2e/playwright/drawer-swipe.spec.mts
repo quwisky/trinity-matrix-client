@@ -16,9 +16,10 @@ import { login, synapseSession, type SynapseSession } from './support/app.mts';
 // — which the directive ignores on purpose, since a mouse has the toolbar button.
 //
 // The unit spec pins the arithmetic against synthetic events. What only a real device profile
-// can show is whether the gesture is REACHABLE: whether the browser hands us the horizontal
-// moves at all, or consumes them as a scroll. That is what `touch-action: pan-y` on the chat
-// body is for, and it is invisible to jsdom.
+// and REAL touch input can show is whether the gesture is REACHABLE: whether the browser hands
+// the horizontal moves to the page at all, or consumes them as a scroll. That is what
+// `touch-action: pan-y` on the chat body is for; it is invisible to jsdom, and invisible to a
+// synthetic `dispatchEvent` too — see `swipe` below.
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise.
 const session = synapseSession();
@@ -42,31 +43,39 @@ async function registerUser(
   });
 }
 
-/** A touch drag, delivered as several moves so the directive sees the gesture. */
+/**
+ * A REAL touch drag, through the browser's own input pipeline.
+ *
+ * Not `page.dispatchEvent`: that constructs a `PointerEvent` inside the page and dispatches it
+ * from JavaScript, so it never passes hit-testing and never consults `touch-action`. A
+ * synthetic swipe proves nothing about the one thing this spec exists for — it stays green
+ * with `touch-action` deleted from `.chat-body`, which is exactly the regression the pairing
+ * guard in `styling-tokens.spec.mjs` is there to catch and this spec claimed to.
+ *
+ * CDP `Input.dispatchTouchEvent` goes in the way a device touch does, so the browser gets to
+ * decide whether to hand the moves to the page or eat them as a scroll. Chromium-only, which
+ * is the only project this suite runs.
+ */
 async function swipe(page: Page, fromX: number, toX: number, y: number) {
-  await page.dispatchEvent('.chat-body', 'pointerdown', {
-    clientX: fromX,
-    clientY: y,
-    pointerType: 'touch',
-    pointerId: 1,
-    isPrimary: true,
+  const cdp = await page.context().newCDPSession(page);
+  const STEPS = 10;
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: fromX, y, id: 1 }],
   });
-  for (const x of [fromX + (toX - fromX) / 2, toX]) {
-    await page.dispatchEvent('.chat-body', 'pointermove', {
-      clientX: x,
-      clientY: y,
-      pointerType: 'touch',
-      pointerId: 1,
-      isPrimary: true,
+  for (let step = 1; step <= STEPS; step++) {
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [
+        { x: Math.round(fromX + ((toX - fromX) * step) / STEPS), y, id: 1 },
+      ],
     });
   }
-  await page.dispatchEvent('.chat-body', 'pointerup', {
-    clientX: toX,
-    clientY: y,
-    pointerType: 'touch',
-    pointerId: 1,
-    isPrimary: true,
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchEnd',
+    touchPoints: [],
   });
+  await cdp.detach();
 }
 
 test.use({ ...devices['Pixel 5'] });

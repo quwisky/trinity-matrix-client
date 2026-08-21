@@ -14,7 +14,6 @@ import { DrawerSwipeDirective } from './drawer-swipe.directive';
  * Playwright spec is what sees that.
  */
 @Component({
-  standalone: true,
   imports: [DrawerSwipeDirective],
   template: `
     <div data-shell-root>
@@ -153,6 +152,38 @@ describe('DrawerSwipeDirective', () => {
       target.dispatchEvent(touch('pointermove', 280, 160, 200));
       target.dispatchEvent(touch('pointerup', 280, 160, 200));
 
+      expect(host.events).toEqual([]);
+    });
+  });
+
+  describe('one pointer, held for the whole gesture', () => {
+    it('captures the pointer, so a release outside the host still arrives', () => {
+      // Without capture a drag that leaves this element — sideways into the sidebar column,
+      // which is a sibling between `md` and `members` — never gets its `pointerup`, and the
+      // drawer is left translated mid-drag until the next press.
+      const capture = vi.fn();
+      target.setPointerCapture = capture;
+
+      target.dispatchEvent(touch('pointerdown', 390, 100, 0));
+
+      expect(capture).toHaveBeenCalledWith(1);
+    });
+
+    it('ignores a second finger landing mid-gesture', () => {
+      target.dispatchEvent(touch('pointerdown', 390, 100, 0));
+      target.dispatchEvent(touch('pointermove', 330, 100, 100));
+      expect(shell.style.getPropertyValue('--drawer-drag')).toBe('60px');
+
+      // A different pointer id: another finger, not this swipe.
+      const other = touch('pointermove', 200, 100, 120);
+      Object.defineProperty(other, 'pointerId', { value: 2 });
+      target.dispatchEvent(other);
+
+      // Unmoved by it, and its release commits nothing.
+      expect(shell.style.getPropertyValue('--drawer-drag')).toBe('60px');
+      const otherUp = touch('pointerup', 200, 100, 130);
+      Object.defineProperty(otherUp, 'pointerId', { value: 2 });
+      target.dispatchEvent(otherUp);
       expect(host.events).toEqual([]);
     });
   });

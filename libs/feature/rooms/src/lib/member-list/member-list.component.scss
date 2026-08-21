@@ -3,6 +3,7 @@
 .members {
   @include column(var(--trinity-members));
   @include scrollable;
+  @include swipe-through;
 
   width: 240px;
   padding: 16px 8px;

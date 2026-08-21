@@ -154,7 +154,10 @@ describe('styling tokens', () => {
     // desktop browser looks fine.
     // COUNTED, not "does the file mention it anywhere". A file with two scrolling surfaces
     // and one containment reads as clean to a presence check, which is exactly the state
-    // this guard's own first draft passed in.
+    // this guard's own first draft passed in. Counting is still not pairing: two
+    // containments on the SAME surface would satisfy it for two scrollers. Scoping each
+    // declaration to its rule is what would close that, and is more machinery than the
+    // failure so far justifies — this catches the one that actually happened.
     const offenders = files.filter((file) => {
       const source = code(file);
       const scrolls = (source.match(/overflow-x:\s*(?:auto|scroll)/g) ?? [])
@@ -180,6 +183,26 @@ describe('styling tokens', () => {
         styles: 'libs/feature/rooms/src/lib/rooms/rooms.page.scss',
         selector: '.chat-body',
       },
+      // The gesture host is not where the touch LANDS. `touch-action` is resolved by walking
+      // up from the touch point and stopping at the nearest scroll container, so the claim on
+      // `.chat-body` never reaches a finger that starts on the timeline or on the drawer's own
+      // list — both scrollers. Measured: with only the host declaring it, the browser sent one
+      // `pointermove` and then `pointercancel`, and the gesture never ran on a device. These
+      // two are the surfaces the swipe actually begins on.
+      {
+        template: 'libs/feature/rooms/src/lib/rooms/rooms.page.html',
+        directive: 'trnDrawerSwipe',
+        styles:
+          'libs/feature/rooms/src/lib/message-list/_message-list-shared.scss',
+        selector: '.scroll',
+      },
+      {
+        template: 'libs/feature/rooms/src/lib/rooms/rooms.page.html',
+        directive: 'trnDrawerSwipe',
+        styles:
+          'libs/feature/rooms/src/lib/member-list/member-list.component.scss',
+        selector: '.members',
+      },
     ];
 
     // Scoped to the HOST RULE, not the file. `.pane-handle` in the same stylesheet declares
@@ -192,10 +215,14 @@ describe('styling tokens', () => {
         : code(styles).slice(at, code(styles).indexOf('}', at));
     };
 
+    // `swipe-through` is the mixin that declares it; either spelling counts.
+    const claims = (rule) =>
+      rule.includes('touch-action') || rule.includes('swipe-through');
+
     const unclaimed = GESTURE_HOSTS.filter(
       ({ template, directive, styles, selector }) =>
         read(template).includes(directive) &&
-        !ruleFor(styles, selector).includes('touch-action'),
+        !claims(ruleFor(styles, selector)),
     );
 
     expect(unclaimed).toEqual([]);

@@ -19,7 +19,7 @@
     </button>
   </div>
 
-  <div class="pinned flex-1 overflow-y-auto">
+  <div class="pinned flex-1 overflow-y-auto max-members:touch-pan-y">
     @for (p of pinned(); track p.id) {
       <div class="pin-item">
         <button

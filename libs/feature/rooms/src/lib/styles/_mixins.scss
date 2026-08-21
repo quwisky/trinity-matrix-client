@@ -17,6 +17,27 @@ $below-members: '(max-width: 1099.98px)';
 $md: '(min-width: 768px)';
 $below-md: '(max-width: 767.98px)';
 
+/// Let the drawer swipe be heard over a scroll container.
+///
+/// `touch-action` is resolved by walking up from the touch point and STOPPING at the nearest
+/// scroll container, so a claim on an ancestor never reaches a touch that lands inside one.
+/// `.chat-body` declaring it is not enough: the drawer gesture starts over the timeline and
+/// ends over the drawer's own list, and both of those are scrollers. Measured — without this
+/// the browser delivers one `pointermove` and then `pointercancel`, having taken the drag as
+/// a scroll, so the gesture never ran on a device at all.
+///
+/// `pan-y`, so vertical scrolling stays native. A horizontally scrollable DESCENDANT — a code
+/// block, a wide table — is its own scroll container and keeps its own axis; also measured,
+/// against the worry that this would freeze them.
+///
+/// Scoped to the breakpoint that has a drawer: above it the slot is a column and there is no
+/// gesture to make room for.
+@mixin swipe-through {
+  @media #{$below-members} {
+    touch-action: pan-y;
+  }
+}
+
 /// Truncate a single line of text with an ellipsis.
 @mixin ellipsis {
   overflow: hidden;

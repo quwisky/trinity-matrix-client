@@ -100,6 +100,16 @@ import { TrnIconComponent } from '@trinity/components/icon';
  * timeline, and a member list.
  * Wired to live synced rooms via `RoomsService` + `TimelineService`.
  */
+/**
+ * The drawer widths at the `members` breakpoint, mirroring `rooms.page.scss`.
+ *
+ * Duplicated rather than read from CSS because a gesture threshold has to exist before the
+ * drawer does — the opening swipe is measured while there is nothing on screen to measure.
+ * The stylesheet is the one that renders them, so these two must not drift from it.
+ */
+const MEMBERS_DRAWER_PX = 240;
+const PANEL_DRAWER_PX = 480;
+
 @Component({
   selector: 'trn-rooms',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -187,6 +197,28 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   /** A tick when a drag lands, on a phone. Silent everywhere else. */
   private readonly haptics = inject(HapticsService);
+
+  /**
+   * How wide the drawer actually is at the drawer breakpoint, for the swipe's threshold.
+   *
+   * NOT `layout.rightPanelWidth()`, which is the width the pane handle drags on a DESKTOP and
+   * which `rooms.page.scss` deliberately ignores below the `members` breakpoint. Passing it
+   * made the gesture measure a 240px roster against a 480px default — 80% of its travel to
+   * commit, where the rule is 40% — and a user who had dragged the panel to its 720px maximum
+   * made the distance threshold unreachable on a phone, leaving only the flick.
+   *
+   * A method rather than a computed: it reads `innerWidth`, which is not a signal, and a
+   * template call is re-evaluated each pass so a rotation is picked up.
+   */
+  protected drawerWidth(): number {
+    const panel = this.store.rightPanel();
+    if (!panel || panel.kind === 'members') {
+      return MEMBERS_DRAWER_PX;
+    }
+    // The panels are `width: 480px; max-width: 100%` at this breakpoint, so on a phone the
+    // viewport is what they actually get.
+    return Math.min(PANEL_DRAWER_PX, window.innerWidth);
+  }
 
   /**
    * Android's hardware Back closes the right-hand panel before it leaves the room.
@@ -445,6 +477,9 @@ export class RoomsPage implements OnInit, OnDestroy {
    * beside it would be a gesture nobody could predict.
    */
   onDrawerSwipedOpen(): void {
+    if (!this.store.activeRoomId()) {
+      return; // no room, no roster to show — the slot's template is gated on one
+    }
     this.store.rightPanel.set({ kind: 'members' });
     this.haptics.gestureCommitted();
   }

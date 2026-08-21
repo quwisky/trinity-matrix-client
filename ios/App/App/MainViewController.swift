@@ -24,6 +24,14 @@ import UIKit
  * alternative is reimplementing the gesture to route through `BackInterceptorService`, which
  * trades a correct platform gesture for a worse one to fix a second-order case; the in-app
  * close button is unaffected, and Android keeps the full chain.
+ *
+ * SECOND GAP, also to be checked on a device: this property enables BOTH edges — left to go
+ * back, right to go FORWARD — and the shell's drawer swipe (`DrawerSwipeDirective`) opens
+ * from the right edge. The two only compete when there is forward history, i.e. after the
+ * user has already gone back once, and `touch-action` does not govern WKWebView's edge
+ * recognisers, so CSS cannot arbitrate between them. If it does misbehave, moving the
+ * drawer's opening affordance off the extreme edge is the cheaper fix than giving up the
+ * platform gesture.
  */
 class MainViewController: CAPBridgeViewController {
     override func viewDidLoad() {

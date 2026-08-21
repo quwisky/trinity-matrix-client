@@ -243,9 +243,15 @@
     animation: members-drawer-in var(--trinity-duration-base)
       var(--trinity-ease-decelerate);
 
-    // Follows the finger. `--drawer-drag` is written by `DrawerSwipeDirective` for the length
-    // of a gesture and removed on release, so the drawer settles back to its CSS position
-    // without the directive having to animate anything itself. Zero when nobody is dragging.
+    // Follows the finger while it is being DISMISSED. `--drawer-drag` is written by
+    // `DrawerSwipeDirective` for the length of a gesture and removed on release, so the
+    // drawer settles back to its CSS position without the directive having to animate
+    // anything itself. Zero when nobody is dragging.
+    // Only the closing direction can track, and that is a real gap rather than a choice: an
+    // OPENING swipe is measured before the slot has anything in it, so there is no element
+    // here to translate and the drawer arrives at the end of the gesture with its entrance
+    // animation. Painting the open drag means mounting the drawer at the first qualifying
+    // move and suppressing that animation, which is a bigger change than this slice.
     transform: translateX(var(--drawer-drag, 0));
   }
 

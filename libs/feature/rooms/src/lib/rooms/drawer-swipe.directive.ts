@@ -24,6 +24,11 @@ import { prefersReducedMotion } from '@trinity/util/ui';
  * gesture. So the drag writes one custom property and nothing else; the slot's own state is
  * written once, at the end, when the gesture has decided.
  *
+ * The property only has a consumer in the CLOSING direction: an opening swipe is measured
+ * before the slot holds anything, so there is no drawer on screen to translate and it arrives
+ * at the end of the gesture instead of tracking the finger. Recorded on the rule that reads
+ * it, in `rooms.page.scss`.
+ *
  * ## Deciding
  *
  * Distance OR speed, because both are things people mean. A slow deliberate drag past the
@@ -70,6 +75,7 @@ export class DrawerSwipeDirective {
   readonly closed = output<void>();
 
   private tracking = false;
+  private pointerId: number | null = null;
   private startX = 0;
   private startY = 0;
   private startedAt = 0;
@@ -86,10 +92,20 @@ export class DrawerSwipeDirective {
       return;
     }
     this.tracking = true;
+    this.pointerId = event.pointerId;
     this.startX = event.clientX;
     this.startY = event.clientY;
     this.startedAt = event.timeStamp;
     this.latest = 0;
+    // Captured, for the same two reasons `PaneHandleComponent` captures: a drag that leaves
+    // this element keeps reporting here rather than to whatever it crossed, and `pointerup`
+    // arrives unconditionally. Without it a gesture released outside the host — sideways into
+    // the sidebar column, which is a sibling between `md` and `members` — never completes,
+    // and the drawer is left translated mid-drag until the next press.
+    //
+    // Capture also binds the gesture to ONE pointer, which the `pointerId` guards below
+    // finish: a second finger landing mid-drag must not be read as the same swipe.
+    this.host.nativeElement.setPointerCapture?.(event.pointerId);
     this.host.nativeElement.addEventListener('pointermove', this.onPointerMove);
     this.host.nativeElement.addEventListener('pointerup', this.onPointerUp);
     this.host.nativeElement.addEventListener(
@@ -103,7 +119,7 @@ export class DrawerSwipeDirective {
    * would be a new function object each time and so could never be removed.
    */
   private readonly onPointerMove = (event: PointerEvent): void => {
-    if (!this.tracking) {
+    if (!this.tracking || event.pointerId !== this.pointerId) {
       return;
     }
     if (Math.abs(event.clientY - this.startY) > VERTICAL_SLOP_PX) {
@@ -123,7 +139,7 @@ export class DrawerSwipeDirective {
   }
 
   private readonly onPointerUp = (event: PointerEvent): void => {
-    if (!this.tracking) {
+    if (!this.tracking || event.pointerId !== this.pointerId) {
       return;
     }
     // The release point is the final position, not just the last move: a fast gesture can end
@@ -152,6 +168,10 @@ export class DrawerSwipeDirective {
 
   /** Stop tracking and hand the layout back to CSS. */
   private cancel(): void {
+    if (this.pointerId !== null) {
+      this.host.nativeElement.releasePointerCapture?.(this.pointerId);
+      this.pointerId = null;
+    }
     this.tracking = false;
     this.paint(null);
     this.host.nativeElement.removeEventListener(
