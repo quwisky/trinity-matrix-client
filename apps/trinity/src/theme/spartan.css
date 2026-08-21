@@ -71,9 +71,23 @@
   /*
    * The shell's two breakpoints, named so a template can say what it means.
    *
-   * `md` is Tailwind's own 768px restated, not changed: declaring it makes the pairing with
-   * `MD_QUERY` in @trinity/util/ui visible instead of implicit, and `scripts/breakpoints.spec.mjs`
-   * asserts the two agree. `members` is the boundary at which there is room for a third
+   * `md` is CONVERTED here, not restated. Tailwind's own default is `48rem`
+   * (node_modules/tailwindcss/theme.css), which equals 768px only while the root font size is
+   * 16px — and nothing in this app pins it. So every `md:` and `max-md:` utility in the
+   * workspace now turns on a fixed 768px rather than on 48 times the user's font size.
+   *
+   * Deliberate, and it resolves an existing split rather than creating one: `MD_QUERY`,
+   * `rooms.page.scss` and `settings.page.scss` were ALREADY px, so at a 20px default font a
+   * 900px window put the shell in its desktop SCSS layout while the Tailwind-driven header
+   * affordances were still mobile. One of the three had to move; px is the side the layout
+   * itself is on, because the rail and the room list inside that slot are hand-authored px
+   * (see the note on the sidebar width in rooms.page.html) and a slot that scaled while its
+   * contents did not is what broke it last time.
+   *
+   * The cost, stated plainly: `md:` no longer tracks the user's default font size. Text
+   * scaling is served by `--trinity-text-scale` instead, which scales the CONTENTS. If that
+   * trade is ever revisited, all three copies move together and
+   * `scripts/breakpoints.spec.mjs` has to normalise rem against a root size before comparing. `members` is the boundary at which there is room for a third
    * column — below it the member list becomes an overlay drawer. It replaces an
    * arbitrary-value variant at that width, duplicated across a template, a stylesheet and
    * three TypeScript predicates with no definition relating them.

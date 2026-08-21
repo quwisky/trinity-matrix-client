@@ -10,6 +10,11 @@
 // rather than trusted.
 $below-members: '(max-width: 1099.98px)';
 
+// The `md` boundary, on the same terms — matching `BELOW_MD_QUERY` in @trinity/util/ui and
+// `--breakpoint-md` in the theme. Restated for the same reason: a media query cannot read a
+// custom property, so this is a genuine third copy that `scripts/breakpoints.spec.mjs` checks.
+$below-md: '(max-width: 767.98px)';
+
 /// Truncate a single line of text with an ellipsis.
 @mixin ellipsis {
   overflow: hidden;
