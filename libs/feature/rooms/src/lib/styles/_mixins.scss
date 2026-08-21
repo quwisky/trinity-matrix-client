@@ -10,9 +10,12 @@
 // rather than trusted.
 $below-members: '(max-width: 1099.98px)';
 
-// The `md` breakpoint, restated for SCSS on the same terms — see the note above. Matches
-// `MD_QUERY` in @trinity/util/ui and `--breakpoint-md` in the theme.
+// The `md` breakpoint, restated for SCSS on the same terms — see the note above. Both
+// directions are needed: the sidebar sizes itself above it, the master-detail layout collapses
+// below it. They match `MD_QUERY` / `BELOW_MD_QUERY` in @trinity/util/ui and `--breakpoint-md`
+// in the theme, and `scripts/breakpoints.spec.mjs` checks each copy.
 $md: '(min-width: 768px)';
+$below-md: '(max-width: 767.98px)';
 
 /// Truncate a single line of text with an ellipsis.
 @mixin ellipsis {

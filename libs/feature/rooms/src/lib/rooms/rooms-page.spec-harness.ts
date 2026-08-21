@@ -177,8 +177,17 @@ export function invitesProvider(over: Partial<InvitesService> = {}) {
   });
 }
 
-/** Stub matchMedia so every query matches — the narrow layout where the member list is
- * the overlay drawer. Returns a restore function to reinstate the previous stub. */
+/**
+ * Stub matchMedia so every query matches — the narrow layout where the member list is the
+ * overlay drawer. Returns a restore function to reinstate the previous stub.
+ *
+ * CALL IT BEFORE `build()`, not after. The shell's viewport predicates are now read at
+ * construction: `RoomShellStore` SEEDS `membersOpen` from a one-shot `matchesQuery`, and the
+ * page and its coordinators create their `mediaQuerySignal` fields in their initialisers, each
+ * of which takes its value from `matchMedia` at that moment. Stubbing afterwards changes what
+ * a later call would return and nothing that has already been built — the test then asserts
+ * against the wide layout while reading as though it asked for the narrow one.
+ */
 export function stubNarrowLayout(): () => void {
   const previous = window.matchMedia;
   vi.stubGlobal('matchMedia', (query: string) => ({
