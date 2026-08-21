@@ -2,6 +2,7 @@ import {
   SHARED_MOCKS,
   clientStub,
   invitesProvider,
+  setRouteRoom,
   shellFrom,
 } from './rooms-page.spec-harness';
 import { computed, signal, type WritableSignal } from '@angular/core';
@@ -36,6 +37,11 @@ import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { MessageSearchService } from '../message-search/message-search.service';
+
+// The route outlives any one TestBed — it is one stream in the harness, shared by every
+// block in this file. Without the reset a test that opens a room hands it to the next one,
+// where "no room is open" would then assert against the previous test's room.
+beforeEach(() => setRouteRoom(null));
 
 // Mixed-account view (issue #10): the global "All accounts" scope spans every signed-in
 // account across ALL surfaces — Recent, Home's DMs, the Rooms list and the rail spaces —

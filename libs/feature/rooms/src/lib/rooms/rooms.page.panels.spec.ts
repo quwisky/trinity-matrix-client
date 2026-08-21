@@ -150,7 +150,14 @@ describe('RoomsPage panels, pins and media', () => {
           spaces: railSpacesSignal,
           createSpace,
         }),
-        MockProvider(AccountScopeService, { mixing: signal(false) }),
+        // `selected` as well as `mixing`: the page's cross-account effect reads it and
+        // hands the result to `MixedRoomsService.setAccounts`, which dereferences `.size`.
+        // ng-mocks does not invent signal members, so an unstubbed one arrives as
+        // `undefined` — invisible until something in this file actually flushes effects.
+        MockProvider(AccountScopeService, {
+          selected: signal(new Set<string>()),
+          mixing: signal(false),
+        }),
         MockProvider(SpaceChildrenService, { canCurate, addExistingRoom }),
         MockProvider(TrnAlertService, { confirm: alertConfirm }),
         MockProvider(TimelineService),
@@ -367,15 +374,34 @@ describe('RoomsPage panels, pins and media', () => {
   });
 
   it('clears the flag whenever a room is opened, however it was opened', () => {
-    // The clear is wired to selection rather than to the focus-gated ack, so every
-    // opener has to go through it — a permalink hop included.
+    // The clear is wired to the room BECOMING OPEN rather than to the focus-gated ack, so
+    // every opener goes through it — a permalink hop included, and equally a notification
+    // tap or a pasted link, neither of which calls `onSelectRoom` at all.
+    //
+    // Flushed between the two: opening is a navigation now, and two navigations issued in
+    // one tick coalesce in the real router as well, so a room that was never actually
+    // shown is not a room that was opened.
     const shell = build();
 
     shell.nav.onSelectRoom('!r:hs');
+    TestBed.tick();
     shell.nav.onSelectRoom('!h:hs', 'hop');
+    TestBed.tick();
 
     expect(clearMarkedUnreadFn).toHaveBeenCalledWith('!r:hs');
     expect(clearMarkedUnreadFn).toHaveBeenCalledWith('!h:hs');
+  });
+
+  // The half `onSelectRoom` cannot cover, and the reason the clear moved: these arrive as
+  // a URL change with no call into the shell at all.
+  it('clears the flag for a room opened by URL alone', () => {
+    const shell = build();
+
+    setRouteRoom('!tapped:hs');
+    TestBed.tick();
+
+    expect(shell.store.activeRoomId()).toBe('!tapped:hs');
+    expect(clearMarkedUnreadFn).toHaveBeenCalledWith('!tapped:hs');
   });
 
   it('applies a notification level on every account joined to a merged row', () => {

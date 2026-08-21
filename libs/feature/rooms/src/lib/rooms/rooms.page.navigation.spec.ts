@@ -2,12 +2,16 @@ import {
   SHARED_MOCKS,
   clientStub,
   invitesProvider,
+  setMediaQuery,
   setRouteRoom,
+  setRouteSegment,
   shellFrom,
+  stubLiveLayout,
   stubNarrowLayout,
 } from './rooms-page.spec-harness';
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { Router } from '@angular/router';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
 import { AuthService } from '@trinity/data-access/auth';
@@ -852,16 +856,21 @@ describe('RoomsPage keyboard room switching', () => {
 // stayed green for the whole time nothing consumed what it sent.
 describe('RoomsPage room-in-URL deep link', () => {
   let timelineOpen: Mock;
+  let timelineClose: Mock;
 
   function build() {
     timelineOpen = vi.fn();
+    timelineClose = vi.fn();
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
         MockProvider(RoomsService),
         MockProvider(SpacesService),
-        MockProvider(TimelineService, { open: timelineOpen }),
+        MockProvider(TimelineService, {
+          open: timelineOpen,
+          close: timelineClose,
+        }),
         MockProvider(TimelineActionsService),
         MockProvider(MediaService),
         MockProvider(MatrixClientService, {
@@ -952,5 +961,76 @@ describe('RoomsPage room-in-URL deep link', () => {
 
     expect(shell.store.activeRoomId()).toBeNull();
     expect(router.navigate).not.toHaveBeenCalled();
+  });
+  // A segment that is not one of ours must land on the room list, not be handed to the SDK
+  // as a room id. Every other route helper encodes first, so this is the only place the
+  // null branch of `decodeRoomSegment` is reachable from a spec at all.
+  it('ignores a segment that is not a room reference', () => {
+    // `aGVsbG8` is valid base64url over valid UTF-8 ("hello"), so it reaches the sigil
+    // check rather than short-circuiting on the alphabet test or the decode's catch —
+    // the guard this is about is the one that asks whether the result is a room reference.
+    setRouteSegment('aGVsbG8');
+    const shell = build();
+
+    TestBed.tick();
+
+    expect(shell.store.activeRoomId()).toBeNull();
+    expect(timelineOpen).not.toHaveBeenCalled();
+  });
+
+  // The projection effect must depend on the OPEN ROOM and nothing else. `focusActiveView`
+  // reads the md media query and `clearMarkedUnread` reads `matrix.accountIds()`, and an
+  // effect tracks every signal its body reads through a callee — so calling either without
+  // `untracked` puts them in this effect's dependency set. A window crossing 768px would
+  // then re-run the whole projection, and `media.releaseAll()` would revoke the object URLs
+  // of every image on screen; they do not come back, because the memoised MessageView keeps
+  // the attachment's input identity stable so nothing re-resolves.
+  //
+  // Two flushes before the assertion on purpose: the dependency only appears from the
+  // effect's SECOND run, since `hasProjected` skips the focus call on the first.
+  it('does not re-project when only the layout breakpoint changes', () => {
+    const restore = stubLiveLayout({ [BELOW_MD_QUERY]: false });
+    const shell = build();
+    setRouteRoom('!a:hs');
+    TestBed.tick();
+    setRouteRoom('!b:hs');
+    TestBed.tick();
+    expect(shell.store.activeRoomId()).toBe('!b:hs');
+
+    const media = TestBed.inject(MediaService);
+    vi.mocked(media.releaseAll).mockClear();
+
+    setMediaQuery(BELOW_MD_QUERY, true);
+    TestBed.tick();
+
+    expect(media.releaseAll).not.toHaveBeenCalled();
+    restore();
+  });
+
+  // `releaseOpenRoom` is the teardown half of closing, and the ONLY thing that stops the
+  // root-scoped projections following a room nobody is looking at once the page is gone.
+  // `closeOpenRoom` cannot do it here: it navigates, and the router is already on its way
+  // to wherever the user actually went.
+  it('stops the projections when the page is destroyed', () => {
+    setRouteRoom('!open:hs');
+    const shell = build();
+    TestBed.tick();
+    expect(timelineOpen).toHaveBeenCalledWith('!open:hs');
+
+    const threads = TestBed.inject(ThreadsService);
+    const pinned = TestBed.inject(PinnedMessagesService);
+    const media = TestBed.inject(MediaService);
+    timelineClose.mockClear();
+    // The effect already called releaseAll on the way in, so without this the assertion
+    // below could not fail — deleting it from `releaseOpenRoom` left the suite green.
+    vi.mocked(media.releaseAll).mockClear();
+
+    shell.page.ngOnDestroy();
+
+    expect(timelineClose).toHaveBeenCalled();
+    expect(threads.close).toHaveBeenCalled();
+    expect(threads.closeThread).toHaveBeenCalled();
+    expect(pinned.close).toHaveBeenCalled();
+    expect(media.releaseAll).toHaveBeenCalled();
   });
 });

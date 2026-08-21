@@ -43,20 +43,11 @@ import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
 
 /**
- * The `?room=` deep link a notification tap produces, as the stream the page subscribes
- * to (`ActivatedRoute.queryParamMap`). A BehaviorSubject because the real one replays its
- * current value to a late subscriber, which is exactly the case that matters: `/rooms` is
- * already active when the tap arrives.
- *
- * Every block needs it since every block constructs the page; only the deep-link tests
- * push to it, and they reset it afterwards with {@link setRouteQueryParams}.
+ * `ActivatedRoute.queryParamMap`, kept only because the stub has to answer it: nothing in
+ * the rooms feature reads query params any more. The `?room=` deep link it used to carry
+ * became `/rooms/:roomId` — see {@link setRouteRoom}.
  */
 const queryParamMap = new BehaviorSubject<ParamMap>(convertToParamMap({}));
-
-/** Drive `ActivatedRoute.queryParamMap`. Reset with `{}` after a test that sets it. */
-export function setRouteQueryParams(params: Record<string, string>): void {
-  queryParamMap.next(convertToParamMap(params));
-}
 
 /**
  * `ActivatedRoute.paramMap`, which is where the open room now lives: `/rooms/:roomId`.
@@ -77,6 +68,18 @@ export function setRouteRoom(roomId: string | null): void {
   paramMap.next(
     convertToParamMap(roomId ? { roomId: encodeRoomSegment(roomId) } : {}),
   );
+}
+
+/**
+ * The same route parameter, written RAW — no encoding step.
+ *
+ * For the one case {@link setRouteRoom} cannot express: a segment that is not one of ours.
+ * Because that helper encodes, `decodeRoomSegment` succeeds in every spec that uses it, so
+ * its `null` branch — the guard that keeps a hand-typed or mangled URL from reaching the
+ * SDK as a room id — is otherwise unreachable from a test.
+ */
+export function setRouteSegment(segment: string): void {
+  paramMap.next(convertToParamMap({ roomId: segment }));
 }
 
 /** The ActivatedRoute stub, for the one block that builds RoomsPage without SHARED_MOCKS. */
@@ -192,6 +195,63 @@ export function invitesProvider(over: Partial<InvitesService> = {}) {
  * a later call would return and nothing that has already been built — the test then asserts
  * against the wide layout while reading as though it asked for the narrow one.
  */
+/**
+ * A LIVE matchMedia stub: it keeps its `change` listeners, so {@link setMediaQuery} can move
+ * a breakpoint mid-test and `mediaQuerySignal` actually updates.
+ *
+ * {@link stubNarrowLayout} answers `true` to everything and drops its listeners on the floor,
+ * which is all a fixed-layout test needs. Nothing could move a breakpoint under a built
+ * shell — and a projection effect that re-ran on a resize was invisible because of it.
+ *
+ * Install it BEFORE `build()`, like `stubNarrowLayout`: the predicates are read at
+ * construction.
+ */
+const mediaListeners = new Map<
+  string,
+  ((event: { matches: boolean }) => void)[]
+>();
+const mediaMatches = new Map<string, boolean>();
+
+export function stubLiveLayout(
+  initial: Record<string, boolean> = {},
+): () => void {
+  const previous = window.matchMedia;
+  mediaListeners.clear();
+  mediaMatches.clear();
+  for (const [query, matches] of Object.entries(initial)) {
+    mediaMatches.set(query, matches);
+  }
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    get matches() {
+      return mediaMatches.get(query) ?? false;
+    },
+    media: query,
+    onchange: null,
+    addEventListener: (
+      _type: string,
+      listener: (event: { matches: boolean }) => void,
+    ) => {
+      mediaListeners.set(query, [
+        ...(mediaListeners.get(query) ?? []),
+        listener,
+      ]);
+    },
+    removeEventListener: () => undefined,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    dispatchEvent: () => false,
+  }));
+  return () => vi.stubGlobal('matchMedia', previous);
+}
+
+/** Move a breakpoint under a shell built with {@link stubLiveLayout}. */
+export function setMediaQuery(query: string, matches: boolean): void {
+  mediaMatches.set(query, matches);
+  for (const listener of mediaListeners.get(query) ?? []) {
+    listener({ matches });
+  }
+}
+
 export function stubNarrowLayout(): () => void {
   const previous = window.matchMedia;
   vi.stubGlobal('matchMedia', (query: string) => ({
