@@ -17,7 +17,7 @@ import {
   inject,
   viewChild,
 } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import { Router } from '@angular/router';
 import { HlmButton } from '@trinity/helm/button';
 import {
   BELOW_MD_QUERY,
@@ -193,7 +193,6 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly push = inject(PushService);
   private readonly notifications = inject(NotificationService);
   private readonly router = inject(Router);
-  private readonly route = inject(ActivatedRoute);
   private readonly injector = inject(Injector);
   readonly store = inject(RoomShellStore);
   readonly status = inject(ShellStatusService);
@@ -314,8 +313,10 @@ export class RoomsPage implements OnInit, OnDestroy {
    * (keyed off `activeRoomId`); at md+ both columns are static and this is unused.
    */
   backToList(): void {
+    // Focus is not handed off here: closing navigates, and `projectOpenRoom` focuses the
+    // pane that became visible once the URL lands. Doing it here as well would schedule a
+    // second `afterNextRender` against the page we are leaving.
     this.nav.closeOpenRoom();
-    this.focusActiveView();
   }
 
   /**

@@ -195,7 +195,7 @@ describe('app route guards', () => {
         '/rooms/IWM6aHM',
       ]);
 
-      // Five navigations, one shell. With two sibling entries this is 5 and 4.
+      // Five navigations, one shell. Measured against two sibling entries: 4 and 3.
       expect(constructed).toBe(1);
       expect(destroyed).toBe(0);
     });
