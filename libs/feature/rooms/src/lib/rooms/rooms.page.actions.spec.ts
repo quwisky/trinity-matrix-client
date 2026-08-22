@@ -2,6 +2,7 @@ import {
   SHARED_MOCKS,
   clientStub,
   invitesProvider,
+  setRouteRoom,
   shellFrom,
   stubNarrowLayout,
 } from './rooms-page.spec-harness';
@@ -35,13 +36,17 @@ import {
 } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
-import { describe, expect, it, type Mock, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { UserCardService } from '../user-card/user-card.service';
 import { MemberInfoService } from '../member-info/member-info.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
-import { MessageSearchService } from '../message-search/message-search.service';
+
+// The open room lives in the URL, and the harness's route is module state that outlives a
+// single TestBed — so a room one test opens is still in the URL when the next one builds.
+// Start every test on a bare `/rooms`, the way a fresh load of the shell arrives.
+beforeEach(() => setRouteRoom(null));
 
 // Create-space / create-channel / leave-space: the page prompts via TrnAlertService
 // and delegates to SpacesService, handling the success navigation + error state.
@@ -90,7 +95,6 @@ describe('RoomsPage space actions', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(MessageSearchService),
         MockProvider(AuthService, {
           logout: vi.fn(() => of(undefined)),
           switchAccount: vi.fn(() => of(undefined)),
@@ -275,10 +279,17 @@ describe('RoomsPage space actions', () => {
     const pinned = TestBed.inject(PinnedMessagesService);
     shell.nav.onSelectRoom('!r:hs');
     expect(shell.store.activeRoomId()).toBe('!r:hs');
+    // Opening is a navigation now and the projections follow the URL from an effect, so
+    // flush before switching: without this the room is never actually open, and the
+    // teardown below would be asserted against a shell that had nothing to tear down.
+    TestBed.tick();
+    expect(timeline.open).toHaveBeenCalledWith('!r:hs');
 
     shell.session.switchAccount('@other:hs');
 
     expect(shell.store.activeRoomId()).toBeNull();
+    TestBed.tick(); // and again for the teardown the closed URL triggers
+
     expect(timeline.close).toHaveBeenCalled();
     expect(threads.close).toHaveBeenCalled();
     expect(threads.closeThread).toHaveBeenCalled();
@@ -396,7 +407,6 @@ describe('RoomsPage room / DM / invite actions', () => {
         MockProvider(MemberInfoService, { open: memberInfoOpen }),
         MockProvider(RoomModerationService, { canModerate }),
         MockProvider(QuickSwitcherService),
-        MockProvider(MessageSearchService),
         MockProvider(TimelineService),
         MockProvider(TimelineActionsService),
         MockProvider(MediaService),
@@ -487,7 +497,7 @@ describe('RoomsPage room / DM / invite actions', () => {
 
   it('opens a member info panel and starts a DM only if messaged', async () => {
     const shell = build();
-    shell.store.activeRoomId.set('!r:hs');
+    setRouteRoom('!r:hs');
     const bob = {
       userId: '@bob:hs',
       name: 'Bob',
@@ -496,21 +506,25 @@ describe('RoomsPage room / DM / invite actions', () => {
       powerLevel: 0,
       isCreator: false,
     };
-    memberInfoOpen.mockResolvedValue('@bob:hs'); // the viewer chose "Message"
-
     shell.members.onSelectMember(bob);
-    await Promise.resolve();
     await Promise.resolve();
 
     expect(canModerate).toHaveBeenCalledWith('!r:hs', '@bob:hs');
-    // The trailing flag says whether this room is a DM — the panel must not name an
-    // owner in a 1:1 chat, where both people sit at power level 100.
-    expect(memberInfoOpen).toHaveBeenCalledWith(
-      bob,
-      '!r:hs',
-      { kick: false, ban: false, setPower: false, myPower: 0 },
-      false,
-    );
+    // Into the slot, not a dialog: this member belongs to the OPEN room. `direct` says
+    // whether the room is a DM — the panel must not name an owner in a 1:1 chat, where
+    // both people sit at power level 100 — and the caps are resolved at click time.
+    expect(shell.store.rightPanel()).toEqual({
+      kind: 'member',
+      member: bob,
+      caps: { kick: false, ban: false, setPower: false, myPower: 0 },
+      direct: false,
+    });
+    expect(memberInfoOpen).not.toHaveBeenCalled();
+
+    // "Message" is announced by the panel's output rather than resolved by a dialog.
+    shell.members.onMemberMessage('@bob:hs');
+    await Promise.resolve();
+
     expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
     expect(shell.store.activeRoomId()).toBe('!dm:hs');
   });
@@ -527,23 +541,24 @@ describe('RoomsPage room / DM / invite actions', () => {
       isCreator: false,
     };
     const shell = build();
-    shell.store.activeRoomId.set('!dm:hs');
+    setRouteRoom('!dm:hs');
     directIds.set(new Set(['!dm:hs']));
 
     shell.members.onSelectMember(bob);
     await Promise.resolve();
 
-    expect(memberInfoOpen).toHaveBeenCalledWith(
-      bob,
-      '!dm:hs',
-      expect.anything(),
-      true,
-    );
+    expect(shell.store.rightPanel()).toMatchObject({
+      kind: 'member',
+      direct: true,
+    });
   });
 
   it('opens no member info panel without an active room', () => {
     const shell = build();
-    shell.store.activeRoomId.set(null);
+    setRouteRoom(null);
+    // Whatever the slot happens to be seeded with at this width — the roster, here — must
+    // be left exactly as it is. Reference identity, so any write to it fails this.
+    const before = shell.store.rightPanel();
 
     shell.members.onSelectMember({
       userId: '@bob:hs',
@@ -555,16 +570,19 @@ describe('RoomsPage room / DM / invite actions', () => {
     });
 
     expect(memberInfoOpen).not.toHaveBeenCalled();
+    expect(shell.store.rightPanel()).toBe(before);
   });
 
-  it('closes the members drawer when a member is selected on the narrow layout', () => {
-    // On the narrow (drawer) layout the list seeds closed, so open it first; selecting a
-    // member must then slide it shut.
+  it('replaces the roster with the member panel on the narrow layout', () => {
+    // BEHAVIOUR CHANGE, and the point of the slice. This used to close the drawer, because
+    // member info was a dialog that would otherwise stack on top of it. There is one slot
+    // now, so the member panel takes the roster's place — the roster is no longer showing,
+    // which is what the old assertion was really protecting, but the slot is not empty.
     const restore = stubNarrowLayout();
     try {
       const shell = build();
-      shell.store.activeRoomId.set('!r:hs');
-      shell.store.membersOpen.set(true);
+      setRouteRoom('!r:hs');
+      shell.store.rightPanel.set({ kind: 'members' });
       expect(shell.store.membersOpen()).toBe(true);
 
       shell.members.onSelectMember({
@@ -577,18 +595,20 @@ describe('RoomsPage room / DM / invite actions', () => {
       });
 
       expect(shell.store.membersOpen()).toBe(false);
-      expect(memberInfoOpen).toHaveBeenCalled();
+      expect(shell.store.rightPanel()).toMatchObject({ kind: 'member' });
+      expect(memberInfoOpen).not.toHaveBeenCalled();
     } finally {
       restore();
     }
   });
 
-  it('keeps the members column open when a member is selected on the wide layout', () => {
-    // The base matchMedia stub reports non-drawer (matches:false) — i.e. the wide
-    // static column, the desktop-protected path. onSelectMember must NOT collapse it.
+  it('replaces the roster with the member panel on the wide layout too', () => {
+    // The same on desktop, and deliberately so: one slot means one surface, at every width.
+    // Previously the wide column stayed put and the info panel opened as a dialog over the
+    // timeline; keeping both would be the stacking this slice exists to remove.
     const shell = build();
-    shell.store.activeRoomId.set('!r:hs');
-    shell.store.membersOpen.set(true);
+    setRouteRoom('!r:hs');
+    shell.store.rightPanel.set({ kind: 'members' });
 
     shell.members.onSelectMember({
       userId: '@bob:hs',
@@ -599,14 +619,85 @@ describe('RoomsPage room / DM / invite actions', () => {
       isCreator: false,
     });
 
-    expect(shell.store.membersOpen()).toBe(true);
+    expect(shell.store.membersOpen()).toBe(false);
+    expect(shell.store.rightPanel()).toMatchObject({ kind: 'member' });
+    expect(memberInfoOpen).not.toHaveBeenCalled();
+  });
+
+  it('returns to the roster when the member panel closes, not to an empty slot', () => {
+    // You reached member info by clicking a row in the member list, and it took that list's
+    // place in the slot. Closing has to give the list back — most visibly after a moderation
+    // write, where the panel closes itself and the whole point is seeing the change land in
+    // the roster. `promote-member.spec.mts` proves that end to end in a real browser.
+    const shell = build();
+    setRouteRoom('!r:hs');
+    shell.members.onSelectMember({
+      userId: '@bob:hs',
+      name: 'Bob',
+      initial: 'B',
+      avatarMxc: null,
+      powerLevel: 0,
+      isCreator: false,
+    });
+    expect(shell.store.rightPanel()).toMatchObject({ kind: 'member' });
+
+    shell.members.onMemberPanelDismissed();
+
+    expect(shell.store.rightPanel()).toEqual({ kind: 'members' });
+  });
+
+  it('does not carry a member panel into the next room', () => {
+    // The sharpest case of the slot being room-scoped. `caps` are resolved against the room
+    // whose row was clicked, but the template binds the panel to the room that is open NOW —
+    // so a panel that survived a switch offered "Remove from room" for a room the viewer
+    // never opened it for, and `MemberInfoComponent.kick()` would have aimed there.
+    const shell = build();
+    setRouteRoom('!r:hs');
+    shell.members.onSelectMember({
+      userId: '@bob:hs',
+      name: 'Bob',
+      initial: 'B',
+      avatarMxc: null,
+      powerLevel: 0,
+      isCreator: false,
+    });
+    expect(shell.store.rightPanel()).toMatchObject({ kind: 'member' });
+
+    setRouteRoom('!other:hs');
+
+    expect(shell.store.rightPanel()).toEqual({ kind: 'members' });
+  });
+
+  it('stays a DIALOG for a member who is not the open room\u2019s (the space path)', async () => {
+    // `space-actions.service.ts` opens member info from inside the space-members dialog
+    // with a SPACE id. There is no slot for a space — and the shell behind it may have a
+    // different room open — so putting it there would show one room's member beside another
+    // room's timeline. The discriminator is the id, not "is a room open at all".
+    const shell = build();
+    setRouteRoom('!r:hs');
+    const before = shell.store.rightPanel();
+    memberInfoOpen.mockResolvedValue(null);
+
+    await shell.members.openMemberInfo(
+      {
+        userId: '@bob:hs',
+        name: 'Bob',
+        initial: 'B',
+        avatarMxc: null,
+        powerLevel: 0,
+        isCreator: false,
+      },
+      '!space:hs',
+    );
+
     expect(memberInfoOpen).toHaveBeenCalled();
+    // And the open room's slot is left exactly as it was.
+    expect(shell.store.rightPanel()).toBe(before);
   });
 
   it('opens no conversation when the member panel is dismissed', async () => {
     const shell = build();
-    shell.store.activeRoomId.set('!r:hs');
-    memberInfoOpen.mockResolvedValue(null); // dismissed
+    setRouteRoom('!r:hs');
 
     shell.members.onSelectMember({
       userId: '@bob:hs',
@@ -617,15 +708,15 @@ describe('RoomsPage room / DM / invite actions', () => {
       isCreator: false,
     });
     await Promise.resolve();
-    await Promise.resolve();
+    shell.page.closeRightPanel();
 
-    expect(memberInfoOpen).toHaveBeenCalled();
+    expect(shell.store.rightPanel()).toBeNull();
     expect(createDirectMessage).not.toHaveBeenCalled();
   });
 
   it('invites the picked user to the active room and toasts success', async () => {
     const shell = build();
-    shell.store.activeRoomId.set('!r:hs');
+    setRouteRoom('!r:hs');
     pick.mockResolvedValue('@bob:hs');
 
     await shell.rooms.onInviteToRoom();
@@ -639,7 +730,7 @@ describe('RoomsPage room / DM / invite actions', () => {
 
   it('captures an invite failure in spaceError without a success toast', async () => {
     const shell = build();
-    shell.store.activeRoomId.set('!r:hs');
+    setRouteRoom('!r:hs');
     pick.mockResolvedValue('@bob:hs');
     inviteUser.mockReturnValue(throwError(() => new Error('forbidden')));
 
@@ -670,7 +761,7 @@ describe('RoomsPage room / DM / invite actions', () => {
 
   it('does not invite when the picker is cancelled', async () => {
     const shell = build();
-    shell.store.activeRoomId.set('!r:hs');
+    setRouteRoom('!r:hs');
     pick.mockResolvedValue(null);
 
     await shell.rooms.onInviteToRoom();
@@ -857,7 +948,6 @@ describe('RoomsPage space hierarchy actions', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(MessageSearchService),
         MockProvider(AuthService),
         MockProvider(TrnDialogService),
         MockProvider(TrnAlertService, { confirm: alertConfirm }),

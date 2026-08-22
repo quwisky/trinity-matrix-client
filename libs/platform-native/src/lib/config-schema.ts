@@ -233,6 +233,18 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     owner: 'platform-native',
   },
 
+  // — shell-layout.service.ts —
+  {
+    disposition: 'exported',
+    key: 'trinity.shell.sidebar-width',
+    owner: 'platform-native',
+  },
+  {
+    disposition: 'exported',
+    key: 'trinity.shell.right-panel-width',
+    owner: 'platform-native',
+  },
+
   // — privacy-settings.service.ts —
   {
     disposition: 'exported',

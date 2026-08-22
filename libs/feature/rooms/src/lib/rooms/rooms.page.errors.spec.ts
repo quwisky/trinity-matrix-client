@@ -2,6 +2,7 @@ import {
   SHARED_MOCKS,
   clientStub,
   invitesProvider,
+  setRouteRoom,
   shellFrom,
 } from './rooms-page.spec-harness';
 import { signal, type WritableSignal } from '@angular/core';
@@ -36,7 +37,7 @@ import {
 } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
-import { expect, it, type Mock, vi } from 'vitest';
+import { beforeEach, expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { MemberInfoService } from '../member-info/member-info.service';
@@ -46,8 +47,12 @@ import { ManageSpaceRoomsComponent } from '../manage-space-rooms/manage-space-ro
 import { SpaceMembersComponent } from '../space-members/space-members.component';
 import { SpaceSettingsComponent } from '../space-settings/space-settings.component';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
-import { MessageSearchService } from '../message-search/message-search.service';
 import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
+
+// The open room lives in the URL, and the harness's route is module state that outlives a
+// single TestBed — so a room one test opens is still in the URL when the next one builds.
+// Start every test on a bare `/rooms`, the way a fresh load of the shell arrives.
+beforeEach(() => setRouteRoom(null));
 
 describe('RoomsPage action error feedback', () => {
   let edit: Mock;
@@ -144,7 +149,15 @@ describe('RoomsPage action error feedback', () => {
           spaces: railSpacesSignal,
           createSpace,
         }),
-        MockProvider(AccountScopeService, { mixing: signal(false) }),
+        MockProvider(AccountScopeService, {
+          // `selected` as well as `mixing`: the page points the cross-account projections
+          // at it from a constructor effect, and this block now flushes effects, so an
+          // unstubbed one reaches MixedRoomsService.setAccounts as `undefined`.
+          selected: signal<ReadonlySet<string>>(
+            new Set(['@me:hs']),
+          ).asReadonly(),
+          mixing: signal(false),
+        }),
         MockProvider(SpaceChildrenService, { canCurate, addExistingRoom }),
         MockProvider(TrnAlertService, { confirm: alertConfirm }),
         MockProvider(TimelineService),
@@ -166,7 +179,6 @@ describe('RoomsPage action error feedback', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(MessageSearchService),
         MockProvider(JumpToDateService),
         MockProvider(AuthService),
         MockProvider(TrnDialogService),
@@ -224,19 +236,28 @@ describe('RoomsPage action error feedback', () => {
 
   it('leaves a room after confirmation and clears it if it was the open one', async () => {
     const shell = build();
-    shell.store.activeRoomId.set('!r:hs');
+    setRouteRoom('!r:hs');
+    // The projections follow the URL from an effect, so flush to actually open them —
+    // otherwise the teardown below would be asserted against a shell where nothing was
+    // ever open, and the first thing the effect did was close everything anyway.
+    TestBed.tick();
+    const media = TestBed.inject(MediaService);
+    // That opening transition already released the *previous* room's blobs; forget it, so
+    // the assertion below can only be satisfied by the release that leaving performs.
+    (media.releaseAll as Mock).mockClear();
 
     await shell.rooms.onLeaveRoom({ roomId: '!r:hs' });
 
     expect(alertConfirm).toHaveBeenCalled();
     expect(leaveRoom).toHaveBeenCalledWith('!r:hs', undefined);
     expect(shell.store.activeRoomId()).toBeNull();
+    TestBed.tick(); // run the teardown the now-roomless URL triggers
     // Tear every open-room projection down so none keeps listening on it.
     expect(TestBed.inject(TimelineService).close).toHaveBeenCalled();
     expect(TestBed.inject(ThreadsService).close).toHaveBeenCalled();
     expect(TestBed.inject(ThreadsService).closeThread).toHaveBeenCalled();
     expect(TestBed.inject(PinnedMessagesService).close).toHaveBeenCalled();
-    expect(TestBed.inject(MediaService).releaseAll).toHaveBeenCalled();
+    expect(media.releaseAll).toHaveBeenCalled();
   });
 
   // Leaving is irreversible for a private room, so a mixed-in row must leave on ITS
@@ -251,12 +272,17 @@ describe('RoomsPage action error feedback', () => {
 
   it('leaves a room but keeps a different open room selected', async () => {
     const shell = build();
-    shell.store.activeRoomId.set('!other:hs');
+    setRouteRoom('!other:hs');
+    TestBed.tick(); // open !other:hs for real, so "stays put" has something to stay
+    expect(TestBed.inject(TimelineService).open).toHaveBeenCalledWith(
+      '!other:hs',
+    );
 
     await shell.rooms.onLeaveRoom({ roomId: '!r:hs' });
 
     expect(leaveRoom).toHaveBeenCalledWith('!r:hs', undefined);
     expect(shell.store.activeRoomId()).toBe('!other:hs');
+    TestBed.tick(); // flush before the negative assertion, or it passes vacuously
     // The open room wasn't the one left, so its projections stay put.
     expect(TestBed.inject(TimelineService).close).not.toHaveBeenCalled();
   });
@@ -565,7 +591,7 @@ describe('RoomsPage action error feedback', () => {
         lowPriority: false,
       },
     ]);
-    shell.store.activeRoomId.set('!r:hs');
+    setRouteRoom('!r:hs');
     railSpacesSignal.set([
       {
         id: '!s:hs',

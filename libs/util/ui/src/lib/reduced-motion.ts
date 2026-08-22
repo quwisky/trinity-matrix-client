@@ -1,3 +1,5 @@
+import { matchesQuery } from './media-query';
+
 /**
  * The one motion decision CSS cannot make for us.
  *
@@ -23,16 +25,12 @@ const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
  * reading now means a preference changed mid-session takes effect on the next scroll rather
  * than at the next reload.
  *
- * `matchMedia` is feature-detected, matching `mediaQuerySignal` next door: a context without
- * it reads `false`, and `false` is the safe answer here because it yields the behaviour the
- * app had before this existed.
+ * Reads through `matchesQuery` next door, which feature-detects `matchMedia`: a context
+ * without it reads `false`, and `false` is the safe answer here because it yields the
+ * behaviour the app had before this existed.
  */
 export function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia(REDUCED_MOTION_QUERY).matches
-  );
+  return matchesQuery(REDUCED_MOTION_QUERY);
 }
 
 /**

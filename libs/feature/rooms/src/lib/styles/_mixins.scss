@@ -2,6 +2,42 @@
 // Color tokens are global CSS custom properties — see
 // apps/trinity/src/theme/variables.scss.
 
+// The `members` breakpoint, restated for SCSS. A media query cannot read a custom
+// property, so this cannot come from `--breakpoint-members` in
+// apps/trinity/src/theme/spartan.css the way a colour would — it is a genuine third copy,
+// alongside that one and `BELOW_MEMBERS_QUERY` in @trinity/util/ui.
+// `scripts/breakpoints.spec.mjs` asserts all three agree, so the duplication is checked
+// rather than trusted.
+$below-members: '(max-width: 1099.98px)';
+
+// The `md` breakpoint, restated for SCSS on the same terms — see the note above. Both
+// directions are needed: the sidebar sizes itself above it, the master-detail layout collapses
+// below it. They match `MD_QUERY` / `BELOW_MD_QUERY` in @trinity/util/ui and `--breakpoint-md`
+// in the theme, and `scripts/breakpoints.spec.mjs` checks each copy.
+$md: '(min-width: 768px)';
+$below-md: '(max-width: 767.98px)';
+
+/// Let the drawer swipe be heard over a scroll container.
+///
+/// `touch-action` is resolved by walking up from the touch point and STOPPING at the nearest
+/// scroll container, so a claim on an ancestor never reaches a touch that lands inside one.
+/// `.chat-body` declaring it is not enough: the drawer gesture starts over the timeline and
+/// ends over the drawer's own list, and both of those are scrollers. Measured — without this
+/// the browser delivers one `pointermove` and then `pointercancel`, having taken the drag as
+/// a scroll, so the gesture never ran on a device at all.
+///
+/// `pan-y`, so vertical scrolling stays native. A horizontally scrollable DESCENDANT — a code
+/// block, a wide table — is its own scroll container and keeps its own axis; also measured,
+/// against the worry that this would freeze them.
+///
+/// Scoped to the breakpoint that has a drawer: above it the slot is a column and there is no
+/// gesture to make room for.
+@mixin swipe-through {
+  @media #{$below-members} {
+    touch-action: pan-y;
+  }
+}
+
 /// Truncate a single line of text with an ellipsis.
 @mixin ellipsis {
   overflow: hidden;

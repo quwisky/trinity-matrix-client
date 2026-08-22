@@ -1,4 +1,11 @@
-import { DestroyRef, Injectable, inject, signal } from '@angular/core';
+import {
+  DestroyRef,
+  Injectable,
+  Injector,
+  afterNextRender,
+  inject,
+  signal,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import { RoomsService } from '@trinity/data-access/rooms';
@@ -8,9 +15,6 @@ import {
 } from '@trinity/data-access/timeline';
 import { type Mention, type MatrixLinkTarget } from '@trinity/util/matrix';
 import { Observable, throwError } from 'rxjs';
-import { ThreadPanelService } from '../thread/thread-panel.service';
-import { PinnedPanelService } from '../pinned/pinned-panel.service';
-import { MessageSearchService } from '../message-search/message-search.service';
 import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
 import { RoomShellStore } from './room-shell-store';
 import { AccountRoutingService } from './account-routing.service';
@@ -42,10 +46,8 @@ export class MessageActionsService {
   private readonly timeline = inject(TimelineService);
   private readonly timelineActions = inject(TimelineActionsService);
   private readonly pinned = inject(PinnedMessagesService);
-  private readonly threadPanel = inject(ThreadPanelService);
-  private readonly pinnedPanel = inject(PinnedPanelService);
-  private readonly messageSearch = inject(MessageSearchService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
 
   /**
    * Which file of how many is uploading, and how far along, or null when idle.
@@ -75,20 +77,66 @@ export class MessageActionsService {
       });
   }
 
-  /** Open the thread rooted at `rootEventId` (raised by a message's indicator). */
+  /**
+   * Open the thread rooted at `rootEventId` (raised by a message's indicator).
+   *
+   * Writes the shell's one right-hand slot rather than opening a dialog. The three
+   * services that used to wrap `TrnDialogService` for these surfaces are gone: with the
+   * presentation decided by the slot, their whole remaining job was indirection, and each
+   * carried a re-entrancy guard that only existed because two dialogs could stack. One
+   * slot makes "only one at a time" structural — there is one value.
+   */
   onOpenThread(rootEventId: string): void {
-    const roomId = this.store.activeRoomId();
-    if (roomId) {
-      void this.threadPanel.open(roomId, rootEventId);
+    if (this.store.activeRoomId()) {
+      this.store.rightPanel.set({ kind: 'thread', rootEventId });
     }
   }
 
   /** Open the threads-list panel for the active room (header "Threads" button). */
   openThreadsList(): void {
-    const roomId = this.store.activeRoomId();
-    if (roomId) {
-      void this.threadPanel.openList(roomId);
+    if (this.store.activeRoomId()) {
+      this.store.rightPanel.set({ kind: 'threads' });
     }
+  }
+
+  /**
+   * A row picked in the threads list: show that thread.
+   *
+   * The list and the view never stack — picking a row REPLACES the list in the slot, which
+   * is what the old `openAndWait`-then-open dance achieved by closing one dialog before
+   * opening the next.
+   */
+  onThreadPicked(rootEventId: string): void {
+    this.onOpenThread(rootEventId);
+  }
+
+  /**
+   * A row picked in the pinned panel or in search: jump the timeline to it.
+   *
+   * Bumping `jumpRequest` guarantees the list's jump effect re-fires even when the same
+   * message is picked twice — the target alone would not change, so nothing would happen.
+   *
+   * The slot CLOSES on a pick, which is what the dialog it replaced did. Leaving it open was
+   * tried and is wrong: below the `members` breakpoint the slot is a full-width drawer over
+   * the timeline, so jumping with it open scrolls a message the user cannot see — the jump
+   * appears to do nothing. Closing is also what `pin-messages.spec.mts` has always asserted.
+   *
+   * CLOSE FIRST, THEN JUMP, and the order is load-bearing. The list scrolls by looking the
+   * row up in the DOM, so a jump issued while the panel is still laid out measures a
+   * timeline that is about to get ~480px wider — the row is scrolled to a position it no
+   * longer occupies once the panel goes, and lands off screen with only its flash to show
+   * for it. `afterNextRender` puts the jump after the layout it depends on. The dialog got
+   * this for free: `openAndWait` resolved a microtask AFTER the overlay was torn down.
+   */
+  onPanelJump(eventId: string): void {
+    this.store.rightPanel.set(null);
+    afterNextRender(
+      () => {
+        this.store.messageSearchTarget.set(eventId);
+        this.store.jumpRequest.update((n) => n + 1);
+      },
+      { injector: this.injector },
+    );
   }
 
   /** Pin or unpin a message from its overflow menu, resolving which by current state. */
@@ -111,18 +159,9 @@ export class MessageActionsService {
     });
   }
 
-  /**
-   * Open the pinned-messages panel for the active room and, on a chosen row, jump the
-   * timeline to that event. Bumping jumpRequest guarantees the list's jump effect
-   * re-fires even when the same message is picked again (as in-room search does).
-   */
-  async openPinnedPanel(): Promise<void> {
-    const eventId = await this.pinnedPanel.openPanel();
-    if (!eventId) {
-      return; // cancelled / already open / just closed
-    }
-    this.store.messageSearchTarget.set(eventId);
-    this.store.jumpRequest.update((n) => n + 1);
+  /** Show the pinned-messages panel in the slot; rows arrive back via {@link onPanelJump}. */
+  openPinnedPanel(): void {
+    this.store.rightPanel.set({ kind: 'pinned' });
   }
 
   loadOlder(): void {
@@ -265,21 +304,12 @@ export class MessageActionsService {
   }
 
   /**
-   * Open in-room message search for the active room and, on a chosen hit, jump the
-   * timeline to that event. Bumping jumpRequest guarantees the list's jump effect
-   * re-fires even when the same message is picked again.
+   * Show in-room message search in the slot; hits arrive back via {@link onPanelJump}.
    */
-  async openMessageSearch(): Promise<void> {
-    const roomId = this.store.activeRoomId();
-    if (!roomId) {
-      return;
+  openMessageSearch(): void {
+    if (this.store.activeRoomId()) {
+      this.store.rightPanel.set({ kind: 'search' });
     }
-    const eventId = await this.messageSearch.search(roomId);
-    if (!eventId) {
-      return; // cancelled / already open
-    }
-    this.store.messageSearchTarget.set(eventId);
-    this.store.jumpRequest.update((n) => n + 1);
   }
 
   /**

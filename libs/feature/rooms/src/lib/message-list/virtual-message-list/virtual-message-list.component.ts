@@ -304,6 +304,7 @@ export class VirtualMessageListComponent extends MessageListBase {
         }
       });
       this.containerRo.observe(el);
+      this.watchScrollerWidth();
       this.reconcileObserved(this.rowHosts());
     });
 
@@ -513,6 +514,9 @@ export class VirtualMessageListComponent extends MessageListBase {
     if (idx < 0) {
       return; // not loaded → no-op
     }
+    // Remembered so a width change can re-aim it: every branch below ends in a measurement
+    // that is only correct for the layout at this instant. See `notePendingJump`.
+    this.notePendingJump(messageId);
     this.atBottomSig.set(false);
     const existing = el.querySelector(`[data-mid="${messageId}"]`);
     if (existing) {

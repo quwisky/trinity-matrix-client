@@ -23,3 +23,4 @@ export * from './lib/room-avatar';
 export * from './lib/room-create';
 export * from './lib/room-state';
 export * from './lib/crypto-wasm-loader';
+export * from './lib/room-url';

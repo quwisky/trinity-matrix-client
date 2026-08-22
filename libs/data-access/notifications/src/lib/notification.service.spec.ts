@@ -9,6 +9,7 @@ import { NotificationService } from './notification.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { TimelineService } from '@trinity/data-access/timeline';
 import { SessionStorageService } from '@trinity/platform-native';
+import { encodeRoomSegment } from '@trinity/util/matrix';
 
 const cap = vi.hoisted(() => ({ native: false }));
 vi.mock('@capacitor/core', () => ({
@@ -353,9 +354,10 @@ describe('NotificationService', () => {
     MockNotification.instances[0].onclick?.();
 
     expect(focus).toHaveBeenCalled();
-    expect(router.navigate).toHaveBeenCalledWith(['/rooms'], {
-      queryParams: { room: '!r:hs' },
-    });
+    expect(router.navigate).toHaveBeenCalledWith([
+      '/rooms',
+      encodeRoomSegment('!r:hs'),
+    ]);
   });
 
   it('swallows errors so a notification failure cannot disrupt sync', () => {
@@ -507,9 +509,10 @@ describe('NotificationService', () => {
 
       expect(setActive).toHaveBeenCalledWith('@bg:hs');
       expect(storageSetActive).toHaveBeenCalledWith('@bg:hs');
-      expect(router.navigate).toHaveBeenCalledWith(['/rooms'], {
-        queryParams: { room: '!r:hs' },
-      });
+      expect(router.navigate).toHaveBeenCalledWith([
+        '/rooms',
+        encodeRoomSegment('!r:hs'),
+      ]);
     });
 
     it('attaches to and notifies for an account that goes live after connect()', () => {
@@ -789,9 +792,10 @@ describe('NotificationService', () => {
       harness.emitClick('!r:hs');
 
       expect(focus).toHaveBeenCalled();
-      expect(router.navigate).toHaveBeenCalledWith(['/rooms'], {
-        queryParams: { room: '!r:hs' },
-      });
+      expect(router.navigate).toHaveBeenCalledWith([
+        '/rooms',
+        encodeRoomSegment('!r:hs'),
+      ]);
     });
 
     it('switches accounts when a forwarded click carries a userId', () => {

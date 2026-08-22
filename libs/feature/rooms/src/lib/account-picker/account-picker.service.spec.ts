@@ -45,7 +45,7 @@ describe('AccountPickerService', () => {
   });
 
   // A repeat trigger while it is already up must be a no-op, not a second stacked dialog —
-  // the same guard ReactionsDialogService and MessageSearchService carry.
+  // the same guard ReactionsDialogService carries.
   it('ignores a repeat trigger while it is already showing', async () => {
     const first = svc().open({ accounts: ACCOUNTS, activeUserId: null });
     await Promise.resolve();
