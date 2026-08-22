@@ -20,11 +20,7 @@ import {
   type BatchOutcome,
   type BatchProgress,
 } from '../shared/send-media-batch';
-import {
-  TrnDialogRef,
-  TrnAlertService,
-  TrnToastService,
-} from '@trinity/components/overlay';
+import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import {
@@ -82,9 +78,10 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
  *
  * Orchestration mirrors {@link SimpleMessageListComponent} but routes every action
  * through {@link ThreadsService}'s thread-scoped methods, which carry the thread
- * relation so sends/edits/replies stay in the thread. Presented via
- * {@link ThreadPanelService} as a full-height, right-aligned {@link TrnDialogService}
- * side panel (full-screen on mobile); `roomId`/`rootEventId` arrive as signal inputs.
+ * relation so sends/edits/replies stay in the thread. Presentational: rendered in the
+ * rooms shell's right-hand panel slot, with `roomId`/`rootEventId` as signal inputs; it
+ * closes nothing itself, it announces {@link ThreadViewComponent.dismissed} and the
+ * rooms page empties the slot.
  */
 @Component({
   selector: 'trn-thread-view',
@@ -110,15 +107,14 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   private readonly reactionsDialog = inject(ReactionsDialogService);
   private readonly timeline = inject(TimelineService);
   private readonly timelineActions = inject(TimelineActionsService);
-  private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef);
   private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly roomId = input.required<string>();
   readonly rootEventId = input.required<string>();
-  /** Notifies any @Output-bound host that the view closed (for symmetry/tests). */
-  readonly closed = output<void>();
+  /** The user closed the thread. There is nothing to pick here, so no `selected`. */
+  readonly dismissed = output<void>();
 
   /** The room's members, for the thread composer's @-mention autocomplete. */
   readonly members = computed(() => {
@@ -179,10 +175,9 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
     this.threads.closeThread();
   }
 
-  /** Close the host dialog (Output bindings aren't wired on dialog components). */
+  /** Announce the close; the rooms page owns the slot and empties it. */
   close(): void {
-    this.closed.emit();
-    this.dialogRef.close();
+    this.dismissed.emit();
   }
 
   /** Page in older replies for this thread (mirrors the timeline's load-older). */

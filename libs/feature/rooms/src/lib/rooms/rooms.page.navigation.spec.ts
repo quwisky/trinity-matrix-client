@@ -1,6 +1,7 @@
 import {
   SHARED_MOCKS,
   clientStub,
+  flushPanelJump,
   invitesProvider,
   setMediaQuery,
   setRouteRoom,
@@ -55,7 +56,6 @@ import {
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
-import { MessageSearchService } from '../message-search/message-search.service';
 
 // The open room is the URL now, and the route the store reads outlives any one TestBed —
 // it is one stream in the harness, shared by every block in this file. Without this reset a
@@ -68,7 +68,6 @@ beforeEach(() => setRouteRoom(null));
 // opens a DM, an invite runs the page's accept path.
 describe('RoomsPage quick switcher', () => {
   let pick: Mock;
-  let messageSearch: Mock;
   let createDirectMessage: Mock;
   let acceptInvite: Mock;
   let openSpace: Mock;
@@ -78,7 +77,6 @@ describe('RoomsPage quick switcher', () => {
 
   function build() {
     pick = vi.fn();
-    messageSearch = vi.fn();
     createDirectMessage = vi.fn(() => of('!dm:hs'));
     acceptInvite = vi.fn(() => of(undefined));
     openSpace = vi.fn();
@@ -106,7 +104,6 @@ describe('RoomsPage quick switcher', () => {
         }),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService, { pick }),
-        MockProvider(MessageSearchService, { search: messageSearch }),
         MockProvider(TimelineService, { open: timelineOpen }),
         MockProvider(TimelineActionsService),
         MockProvider(MediaService),
@@ -238,52 +235,69 @@ describe('RoomsPage quick switcher', () => {
     expect(pick).not.toHaveBeenCalled();
   });
 
-  it('opens in-room message search for the active room and jumps to the hit', async () => {
+  it('shows in-room search in the slot, and a hit jumps the timeline', () => {
+    // Two steps now instead of one awaited dialog: the panel goes into the shell's one
+    // right-hand slot, and a picked row arrives back through `onPanelJump` — which is what
+    // the template binds the panel's `(selected)` output to.
     const shell = build();
     shell.nav.onSelectRoom('!r:hs');
-    messageSearch.mockResolvedValue('$evt:hs');
 
-    await shell.messages.openMessageSearch();
+    shell.messages.openMessageSearch();
+    expect(shell.store.rightPanel()).toEqual({ kind: 'search' });
 
-    expect(messageSearch).toHaveBeenCalledWith('!r:hs');
+    shell.messages.onPanelJump('$evt:hs');
+
+    flushPanelJump();
+
     expect(shell.store.messageSearchTarget()).toBe('$evt:hs');
     expect(shell.store.jumpRequest()).toBe(1);
+    // And the slot closes, as the dialog it replaced did: on the drawer layout it covers
+    // the timeline, so jumping with it open scrolls a message nobody can see.
+    expect(shell.store.rightPanel()).toBeNull();
   });
 
-  it('in-room search bumps jumpRequest again when the SAME hit is re-picked', async () => {
+  it('in-room search bumps jumpRequest again when the SAME hit is re-picked', () => {
     // Same crux as the pinned panel: picking the identical hit twice must still
     // re-fire the jump, which only happens because jumpRequest keeps incrementing.
+    // Easier to reach now — the panel stays open, so the second pick is just another row
+    // click rather than reopening the whole dialog.
     const shell = build();
     shell.nav.onSelectRoom('!r:hs');
-    messageSearch.mockResolvedValue('$evt:hs');
+    shell.messages.openMessageSearch();
 
-    await shell.messages.openMessageSearch();
+    shell.messages.onPanelJump('$evt:hs');
+
+    flushPanelJump();
     expect(shell.store.jumpRequest()).toBe(1);
 
-    await shell.messages.openMessageSearch();
+    shell.messages.onPanelJump('$evt:hs');
+
+    flushPanelJump();
 
     expect(shell.store.messageSearchTarget()).toBe('$evt:hs');
     expect(shell.store.jumpRequest()).toBe(2);
   });
 
-  it('does not jump when in-room search is cancelled', async () => {
+  it('does not jump when in-room search is dismissed without a pick', () => {
     const shell = build();
     shell.nav.onSelectRoom('!r:hs');
-    messageSearch.mockResolvedValue(null);
 
-    await shell.messages.openMessageSearch();
+    shell.messages.openMessageSearch();
+    shell.page.closeRightPanel();
 
     expect(shell.store.messageSearchTarget()).toBeNull();
     expect(shell.store.jumpRequest()).toBe(0);
+    expect(shell.store.rightPanel()).toBeNull();
   });
 
-  it('does not open in-room search when no room is active', async () => {
+  it('does not open in-room search when no room is active', () => {
     const shell = build();
-    messageSearch.mockResolvedValue('$evt:hs');
+    const before = shell.store.rightPanel();
 
-    await shell.messages.openMessageSearch();
+    shell.messages.openMessageSearch();
 
-    expect(messageSearch).not.toHaveBeenCalled();
+    // Reference identity, so this fails for ANY write to the slot, not only for search.
+    expect(shell.store.rightPanel()).toBe(before);
     expect(shell.store.messageSearchTarget()).toBeNull();
   });
 });
@@ -325,7 +339,6 @@ describe('RoomsPage mobile navigation', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(MessageSearchService),
         MockProvider(AuthService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
@@ -359,7 +372,7 @@ describe('RoomsPage mobile navigation', () => {
     try {
       const shell = build();
       shell.nav.onSelectRoom('!a:hs');
-      shell.store.membersOpen.set(true); // the drawer is open in room A
+      shell.store.rightPanel.set({ kind: 'members' }); // the drawer is open in room A
       expect(shell.store.membersOpen()).toBe(true);
 
       shell.page.backToList();
@@ -395,13 +408,147 @@ describe('RoomsPage mobile navigation', () => {
     }
   });
 
-  it('closeMembers closes the member list (the mobile drawer backdrop)', () => {
+  it('closeRightPanel empties the slot (the mobile drawer backdrop)', () => {
     const shell = build();
-    shell.store.membersOpen.set(true);
+    shell.store.rightPanel.set({ kind: 'members' });
     expect(shell.store.membersOpen()).toBe(true);
 
-    shell.page.closeMembers();
+    shell.page.closeRightPanel();
     expect(shell.store.membersOpen()).toBe(false);
+  });
+
+  it('Escape closes a panel at the WIDE layout, where nothing else does', () => {
+    // The base matchMedia stub reports non-drawer, i.e. the wide layout. These are plain
+    // components now, so nothing gives them the Escape a CDK dialog answered for free — and
+    // the guard that used to read `membersAreDrawer()` alone made Escape a no-op here.
+    const shell = build();
+    setRouteRoom('!r:hs');
+    shell.store.rightPanel.set({ kind: 'threads' });
+
+    shell.page.onEscapeKey();
+
+    expect(shell.store.rightPanel()).toBeNull();
+  });
+
+  it('Escape leaves the wide roster alone (the composer owns Escape there)', () => {
+    // This is a DOCUMENT listener: an unguarded Escape would close the member column every
+    // time someone pressed Escape to cancel an edit in the composer. As the narrow drawer it
+    // is an overlay like the rest and goes — covered by the drawer test above.
+    const shell = build();
+    setRouteRoom('!r:hs');
+    shell.store.rightPanel.set({ kind: 'members' });
+
+    shell.page.onEscapeKey();
+
+    expect(shell.store.rightPanel()).toEqual({ kind: 'members' });
+  });
+
+  it('Escape on member info goes back to the roster, like its close button', () => {
+    // Escape is the keyboard spelling of pressing the panel's own close button, so it has to
+    // land in the same place. Only the mobile backdrop empties the slot outright.
+    const shell = build();
+    setRouteRoom('!r:hs');
+    shell.store.rightPanel.set({
+      kind: 'member',
+      member: {
+        userId: '@bob:hs',
+        name: 'Bob',
+        initial: 'B',
+        avatarMxc: null,
+        powerLevel: 0,
+        isCreator: false,
+      },
+      caps: { kick: false, ban: false, setPower: false, myPower: 0 },
+      direct: false,
+    });
+
+    shell.page.onEscapeKey();
+
+    expect(shell.store.rightPanel()).toEqual({ kind: 'members' });
+  });
+
+  it('gives focus back to whatever opened the slot once it empties', () => {
+    // CDK did this for the four dialogs these panels replaced. Without it a keyboard user who
+    // opens Threads, reads the list and closes it lands on `<body>` — and in-room search is
+    // worse, because it deliberately takes focus when it opens.
+    const shell = build();
+    setRouteRoom('!r:hs');
+    shell.page.closeRightPanel();
+    const trigger = document.createElement('button');
+    document.body.append(trigger);
+    try {
+      trigger.focus();
+
+      shell.store.rightPanel.set({ kind: 'threads' });
+      TestBed.tick();
+      trigger.blur(); // the panel took focus, then its removal orphans it
+      shell.page.closeRightPanel();
+      TestBed.tick();
+      TestBed.tick(); // the restore is deferred to after the render that removes the panel
+
+      expect(document.activeElement).toBe(trigger);
+    } finally {
+      trigger.remove();
+    }
+  });
+
+  it('leaves focus alone when something else has claimed it', () => {
+    // The room-change handoff, or a DM the panel just opened, has a better idea than a
+    // remembered button does — so the restore only fires when the removal orphaned focus.
+    const shell = build();
+    setRouteRoom('!r:hs');
+    shell.page.closeRightPanel();
+    const trigger = document.createElement('button');
+    const elsewhere = document.createElement('button');
+    document.body.append(trigger, elsewhere);
+    try {
+      trigger.focus();
+      shell.store.rightPanel.set({ kind: 'threads' });
+      TestBed.tick();
+
+      shell.page.closeRightPanel();
+      elsewhere.focus();
+      TestBed.tick();
+      TestBed.tick();
+
+      expect(document.activeElement).toBe(elsewhere);
+    } finally {
+      trigger.remove();
+      elsewhere.remove();
+    }
+  });
+
+  it('measures the swipe against the drawer that is actually on screen', () => {
+    // NOT `layout.rightPanelWidth()`, which is the width the pane handle drags on a DESKTOP
+    // and which the stylesheet ignores at this breakpoint. Passing it measured a 240px roster
+    // against a 480px default — 80% of its travel to commit, where the rule is 40% — and a
+    // user who had dragged the panel to its 720px maximum made the distance threshold
+    // physically unreachable on a phone.
+    const shell = build();
+    setRouteRoom('!r:hs');
+    const widthOf = () =>
+      (shell.page as unknown as { drawerWidth(): number }).drawerWidth();
+
+    shell.store.rightPanel.set({ kind: 'members' });
+    expect(widthOf()).toBe(240);
+
+    shell.store.rightPanel.set(null);
+    expect(widthOf()).toBe(240); // an opening swipe measures the roster it will open
+
+    shell.store.rightPanel.set({ kind: 'threads' });
+    expect(widthOf()).toBe(Math.min(480, window.innerWidth));
+  });
+
+  it('a swipe with no room open opens nothing', () => {
+    // The slot's template is gated on an open room, so writing the state without one leaves
+    // a roster queued for whichever room is opened next.
+    const shell = build();
+    setRouteRoom(null);
+    const before = shell.store.rightPanel();
+
+    shell.page.onDrawerSwipedOpen();
+
+    expect(shell.store.rightPanel()).toBe(before);
   });
 
   it('onSelectRoom opens the room (switching to the mobile chat page)', () => {
@@ -482,7 +629,6 @@ describe('RoomsPage account switcher summary', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(MessageSearchService),
         MockProvider(AuthService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
@@ -632,7 +778,6 @@ describe('RoomsPage keyboard room switching', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(MessageSearchService),
         MockProvider(AuthService),
         MockProvider(TrnDialogService, { hasOpen: () => dialogOpen }),
         MockProvider(TrnToastService),
@@ -847,6 +992,23 @@ describe('RoomsPage keyboard room switching', () => {
 
     TestBed.inject(KeyboardShortcutsService).resetAll(); // don't leak into other specs
   });
+
+  it('ignores a chord while a panel owns the screen, but not while the roster does', () => {
+    // The guard used to be `dialog.hasOpen()` alone, and that answered the question for as
+    // long as these surfaces were dialogs. Inline in the slot they are invisible to it, so a
+    // chord typed into the search field walked to another room. The roster stays exempt: it
+    // is a column beside the timeline, not over it.
+    const shell = build();
+    visitABC(shell); // in c, MRU [c, b, a]
+
+    shell.store.rightPanel.set({ kind: 'search' });
+    shell.shortcuts.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
+    expect(shell.store.activeRoomId()).toBe('!c:hs'); // suppressed
+
+    shell.store.rightPanel.set({ kind: 'members' });
+    shell.shortcuts.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
+    expect(shell.store.activeRoomId()).toBe('!b:hs'); // still hops
+  });
 });
 
 // A notification tap (web Notification, Electron toast, or an FCM/APNs tap) navigates to
@@ -889,7 +1051,6 @@ describe('RoomsPage room-in-URL deep link', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(MessageSearchService),
         MockProvider(AuthService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),

@@ -1,6 +1,7 @@
 import {
   SHARED_MOCKS,
   clientStub,
+  flushPanelJump,
   invitesProvider,
   setRouteRoom,
   shellFrom,
@@ -39,14 +40,11 @@ import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
 import { expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
-import { ThreadPanelService } from '../thread/thread-panel.service';
-import { PinnedPanelService } from '../pinned/pinned-panel.service';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { MemberInfoService } from '../member-info/member-info.service';
 import { RoomSettingsComponent } from '../room-settings/room-settings.component';
 import { RoomDirectoryComponent } from '../room-directory/room-directory.component';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
-import { MessageSearchService } from '../message-search/message-search.service';
 import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
 
 // The open room is the URL now, and the route the store reads outlives any one TestBed —
@@ -155,8 +153,8 @@ describe('RoomsPage panels, pins and media', () => {
         // ng-mocks does not invent signal members, so an unstubbed one arrives as
         // `undefined` — invisible until something in this file actually flushes effects.
         MockProvider(AccountScopeService, {
-          selected: signal(new Set<string>()),
           mixing: signal(false),
+          selected: signal(new Set(['@me:hs'])),
         }),
         MockProvider(SpaceChildrenService, { canCurate, addExistingRoom }),
         MockProvider(TrnAlertService, { confirm: alertConfirm }),
@@ -179,7 +177,6 @@ describe('RoomsPage panels, pins and media', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(MessageSearchService),
         MockProvider(JumpToDateService),
         MockProvider(AuthService),
         MockProvider(TrnDialogService),
@@ -522,21 +519,60 @@ describe('RoomsPage panels, pins and media', () => {
   it('opens the threads-list panel for the active room', () => {
     const shell = build();
     setRouteRoom('!r:hs');
-    const panel = TestBed.inject(ThreadPanelService);
 
     shell.messages.openThreadsList();
 
-    expect(panel.openList).toHaveBeenCalledWith('!r:hs');
+    // The slot itself, not a spy on a service that no longer exists: the shell's one
+    // right-hand slot IS the presentation now, so this is what the user sees. Asserting a
+    // call would still pass if the value never reached the layout.
+    expect(shell.store.rightPanel()).toEqual({ kind: 'threads' });
   });
 
   it('does not open the threads-list panel without an active room', () => {
     const shell = build();
     setRouteRoom(null);
-    const panel = TestBed.inject(ThreadPanelService);
+    // Whatever the slot was showing before the press (the member list, seeded at this
+    // width). Identity, so "opened threads" and "re-opened members" both fail: nothing at
+    // all may be written when there is no room for the list to be about.
+    const before = shell.store.rightPanel();
 
     shell.messages.openThreadsList();
 
-    expect(panel.openList).not.toHaveBeenCalled();
+    expect(shell.store.rightPanel()).toBe(before);
+  });
+
+  it('drops a room-scoped panel when the open room changes', () => {
+    // Four of the six surfaces are ABOUT a room — a thread root, a pinned/search hit, a
+    // member and the caps resolved against their room — while the template binds each of
+    // them to the room that is open NOW. Left to persist across a switch they describe one
+    // room beside another room's timeline. Back to what this width shows by default.
+    const shell = build();
+    setRouteRoom('!a:hs');
+    shell.messages.onOpenThread('$root');
+    expect(shell.store.rightPanel()).toEqual({
+      kind: 'thread',
+      rootEventId: '$root',
+    });
+
+    setRouteRoom('!b:hs');
+
+    expect(shell.store.rightPanel()).toEqual({ kind: 'members' });
+  });
+
+  it('carries the roster — and a closed slot — across a room change', () => {
+    // The other half, and why this is not just `set(null)` on every switch: whether the
+    // member column is up is a preference the user owns, and the list re-projects itself
+    // onto the new room. Closing it and switching rooms must not reopen it.
+    const shell = build();
+    setRouteRoom('!a:hs');
+    shell.page.closeRightPanel();
+
+    setRouteRoom('!b:hs');
+    expect(shell.store.rightPanel()).toBeNull();
+
+    shell.store.rightPanel.set({ kind: 'members' });
+    setRouteRoom('!c:hs');
+    expect(shell.store.rightPanel()).toEqual({ kind: 'members' });
   });
 
   it('onTogglePin pins an unpinned message', () => {
@@ -585,16 +621,26 @@ describe('RoomsPage panels, pins and media', () => {
     );
   });
 
-  it('openPinnedPanel jumps the timeline to the chosen pinned message', async () => {
+  it('openPinnedPanel jumps the timeline to the chosen pinned message', () => {
+    // Two steps rather than one awaited dialog result: the panel goes into the slot, and a
+    // picked row comes back through `onPanelJump` — which is what the template binds the
+    // panel's (selected) output to.
     const shell = build();
-    const panel = TestBed.inject(PinnedPanelService);
-    vi.mocked(panel.openPanel).mockResolvedValue('$evt:hs');
 
-    await shell.messages.openPinnedPanel();
+    shell.messages.openPinnedPanel();
+    expect(shell.store.rightPanel()).toEqual({ kind: 'pinned' });
 
-    expect(panel.openPanel).toHaveBeenCalled();
+    shell.messages.onPanelJump('$evt:hs');
+
+    flushPanelJump();
+
     expect(shell.store.messageSearchTarget()).toBe('$evt:hs');
     expect(shell.store.jumpRequest()).toBe(1);
+    // And the slot closes, exactly as the dialog it replaced did. Below the `members`
+    // breakpoint the slot is a full-width drawer over the timeline, so jumping with it open
+    // scrolls to a message the user cannot see — `pin-messages.spec.mts` pins this in a real
+    // browser and caught it when this briefly stayed open.
+    expect(shell.store.rightPanel()).toBeNull();
   });
 
   it('jumpToDate scrolls to the event the date resolved to', async () => {
@@ -658,30 +704,37 @@ describe('RoomsPage panels, pins and media', () => {
     }
   });
 
-  it('openPinnedPanel bumps jumpRequest again when the SAME message is re-picked', async () => {
+  it('openPinnedPanel bumps jumpRequest again when the SAME message is re-picked', () => {
     // The bug: re-selecting the same pinned row must still re-trigger a jump —
     // messageSearchTarget alone is a no-op signal write (Object.is), so the list
-    // only re-fires because jumpRequest keeps incrementing.
+    // only re-fires because jumpRequest keeps incrementing. Re-picking is cheaper to do
+    // now than it was against a dialog, not rarer: the panel never closed.
     const shell = build();
-    const panel = TestBed.inject(PinnedPanelService);
-    vi.mocked(panel.openPanel).mockResolvedValue('$evt:hs');
+    shell.messages.openPinnedPanel();
 
-    await shell.messages.openPinnedPanel();
+    shell.messages.onPanelJump('$evt:hs');
+
+    flushPanelJump();
     expect(shell.store.jumpRequest()).toBe(1);
 
-    await shell.messages.openPinnedPanel();
+    shell.messages.onPanelJump('$evt:hs');
+
+    flushPanelJump();
 
     expect(shell.store.messageSearchTarget()).toBe('$evt:hs');
     expect(shell.store.jumpRequest()).toBe(2);
   });
 
-  it('openPinnedPanel does not jump when the panel is cancelled', async () => {
+  it('openPinnedPanel does not jump when the panel is dismissed without a pick', () => {
+    // "Cancelled" is a dismissal now — the panel's (dismissed) output, which the page
+    // handles by emptying the slot. Opening and closing it must leave the timeline exactly
+    // where it was: no target, no bump.
     const shell = build();
-    const panel = TestBed.inject(PinnedPanelService);
-    vi.mocked(panel.openPanel).mockResolvedValue(null);
+    shell.messages.openPinnedPanel();
 
-    await shell.messages.openPinnedPanel();
+    shell.page.closeRightPanel();
 
+    expect(shell.store.rightPanel()).toBeNull();
     expect(shell.store.messageSearchTarget()).toBeNull();
     expect(shell.store.jumpRequest()).toBe(0);
   });

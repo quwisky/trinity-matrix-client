@@ -2,12 +2,15 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
+  afterNextRender,
   computed,
   inject,
   input,
+  output,
   signal,
+  viewChild,
 } from '@angular/core';
-import { TrnDialogRef } from '@trinity/components/overlay';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import {
   SearchService,
@@ -30,9 +33,8 @@ interface HighlightPart {
 
 /**
  * In-room message search, presented from the room header (parallel to the threads
- * list) by {@link MessageSearchService} as a full-height, right-aligned
- * {@link TrnDialogService} side panel. Scoped to the active room's `roomId` (a signal
- * input set from the dialog's `inputs`). Injects {@link SearchService} +
+ * list) in the rooms shell's right-hand panel slot. Scoped to the active room's
+ * `roomId`, a signal input the host binds. Injects {@link SearchService} +
  * {@link TimelineService} directly so the matching logic stays in core and nothing is
  * threaded through props.
  *
@@ -46,10 +48,20 @@ interface HighlightPart {
  *    full-text search ({@link SearchService.searchServerMessages}) over the whole
  *    history, paged via `next_batch`.
  *
- * Selecting a result closes with its event id; `RoomsPage` jumps the timeline to it.
- * The query field takes focus on open through the dialog's `autoFocus` selector (see
- * {@link MessageSearchService}) — CDK focuses after attach, so anything the component
- * focuses itself is immediately overridden.
+ * Presentational: it owns no panel state. Selecting a result emits {@link selected}
+ * with the matched event id and closing emits {@link dismissed}; the host owns the
+ * slot and decides what to do (jump the timeline, close the panel).
+ *
+ * The query field is focused when the panel appears, by this component.
+ *
+ * That used to be CDK's job: search was a dialog, and `TrnDialogService` was passed
+ * `autoFocus: '[data-autofocus]'`. Rendered inline in the shell's panel slot there is no CDK
+ * focus pass, so without the call below opening search would leave focus wherever it was and
+ * a keyboard user would have to tab into the field they just asked for. The marker attribute
+ * stays as the selector, so there is still one definition of "the field to focus".
+ *
+ * The original comment here warned that a `focus()` in the component would be overridden by
+ * CDK's pass — true then, and the reason the call did not exist. It is exactly inverted now.
  */
 @Component({
   selector: 'trn-message-search',
@@ -69,12 +81,24 @@ export class MessageSearchComponent {
   readonly fmt = inject(DateTimeFormatService);
   private readonly search = inject(SearchService);
   private readonly timeline = inject(TimelineService);
-  private readonly dialogRef =
-    inject<TrnDialogRef<string | null>>(TrnDialogRef);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly queryField =
+    viewChild<ElementRef<HTMLInputElement>>('queryField');
 
-  /** Active room, populated from the dialog's `inputs` (app sets `useSetInputAPI`). */
+  constructor() {
+    // After the first render, not on construction: the input does not exist yet at
+    // construction time, and `afterNextRender` is the zoneless-safe hook for reaching into
+    // the DOM once.
+    afterNextRender(() => this.queryField()?.nativeElement.focus());
+  }
+
+  /** Active room the search is scoped to, bound by whoever hosts the panel. */
   readonly roomId = input.required<string>();
+
+  /** The user picked a result: the matched event id, for the host to jump to. */
+  readonly selected = output<string>();
+  /** The user closed search without picking a result. */
+  readonly dismissed = output<void>();
 
   /** Current query text. */
   readonly query = signal('');
@@ -174,14 +198,14 @@ export class MessageSearchComponent {
     }).subscribe();
   }
 
-  /** Click on a row: close with the matched event id for the page to jump to. */
+  /** Click on a row: announce the matched event id for the host to jump to. */
   select(hit: MessageHit): void {
-    this.dialogRef.close(hit.eventId);
+    this.selected.emit(hit.eventId);
   }
 
-  /** Cancel / Escape: close without a selection. */
+  /** Cancel / Escape: announce the close without a selection. */
   dismiss(): void {
-    this.dialogRef.close(null);
+    this.dismissed.emit();
   }
 
   /** Split a snippet into matched / unmatched runs for the highlighted render. */

@@ -45,10 +45,21 @@ export class ShellShortcutsService {
    * user's custom bindings and the desktop-only gate — and dispatches it. The bindings
    * themselves live in the registry (and the settings page); this only maps an id to its
    * action.
+   *
+   * "An overlay owns the screen" is two questions since the shell grew its right-hand slot.
+   * `hasOpen()` used to answer both, because threads, pinned messages and in-room search
+   * were dialogs; they are plain components in the slot now, so a chord fired while typing
+   * in the search field would walk to another room — leaving a panel behind that is about
+   * the room you just left. The roster is deliberately NOT counted: it is a column beside
+   * the timeline, not something over it, and hopping rooms with it open has always worked.
    */
   onGlobalKeydown(event: Event): void {
     const e = event as KeyboardEvent;
-    if ((!e.ctrlKey && !e.metaKey && !e.altKey) || this.dialog.hasOpen()) {
+    if (
+      (!e.ctrlKey && !e.metaKey && !e.altKey) ||
+      this.dialog.hasOpen() ||
+      this.panelOwnsTheScreen()
+    ) {
       return;
     }
     const hit = this.shortcuts.resolve(e);
@@ -98,6 +109,12 @@ export class ShellShortcutsService {
         }
         break;
     }
+  }
+
+  /** Whether the shell's right-hand slot is showing something ON TOP of the timeline. */
+  private panelOwnsTheScreen(): boolean {
+    const panel = this.store.rightPanel();
+    return panel !== null && panel.kind !== 'members';
   }
 
   private hopRoom(direction: 'back' | 'forward'): void {
@@ -154,10 +171,15 @@ export class ShellShortcutsService {
    * it in the rail, a directory person opens (or reuses) a DM, an invite runs the
    * page's existing accept path. Also the header search button's handler.
    *
-   * Bail when an overlay already owns the screen: the Cmd/Ctrl+K shortcut fires even
-   * while a thread/search/verification modal is open (RoomsPage isn't destroyed), so
-   * without this it would stack the switcher over that modal — and picking a result
-   * runs onSelectRoom() → media.releaseAll(), revoking the open modal's pinned blobs.
+   * Bail when an overlay already owns the screen: the Cmd/Ctrl+K shortcut fires even while
+   * a verification or settings modal is open (RoomsPage isn't destroyed), so without this it
+   * would stack the switcher over that modal — and picking a result runs onSelectRoom() →
+   * media.releaseAll(), revoking the open modal's pinned blobs.
+   *
+   * The right-hand slot is deliberately not part of this guard, unlike
+   * {@link onGlobalKeydown}'s: this is also the header search button's handler, reachable
+   * while a panel is open, and a button that silently does nothing is worse than a switch.
+   * Picking a room takes the slot with it — `rightPanel` is keyed on the open room.
    */
   async openSwitcher(): Promise<void> {
     if (this.dialog.hasOpen()) {

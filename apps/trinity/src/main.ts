@@ -39,6 +39,7 @@ import {
   StoragePersistenceService,
   SystemLineSettingsService,
   ComposerSettingsService,
+  ShellLayoutService,
   ThemeService,
   TrinityErrorHandler,
   isElectronRenderer,
@@ -100,6 +101,9 @@ bootstrapApplication(AppComponent, {
     ),
     // Apply the saved light/dark preference before the first paint.
     provideAppInitializer(() => inject(ThemeService).init()),
+    // Load the dragged pane widths before the shell first paints, so a customised layout is
+    // what renders rather than the default flashing first.
+    provideAppInitializer(() => inject(ShellLayoutService).init()),
     // Load persisted experimental feature flags (e.g. virtualized timeline).
     provideAppInitializer(() => inject(FeatureFlagsService).init()),
     // Load persisted privacy preferences (e.g. whether to send read receipts)

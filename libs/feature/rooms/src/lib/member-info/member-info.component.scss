@@ -3,9 +3,35 @@
 .member-info {
   @include profile-card;
 
-  // The panel mounts in the CDK overlay (outside .members), so tell the avatar's
-  // presence dot what surface it rings against — else the ring halos (see member-list).
+  // Mounted outside .members either way — the CDK overlay as a dialog, the shell's slot as
+  // a panel — so tell the avatar's presence dot what surface it rings against, else the ring
+  // halos (see member-list).
   --trn-presence-ring: var(--card);
+}
+
+// Two presentations, one component (see `isPanel`). A dialog is the centred profile card
+// above; the shell's right-hand slot needs a full-height panel like the four beside it.
+// `.chat-panel` supplies only position and size, so without this the slot renders a
+// transparent 480px column with a small card floating in it — the timeline showing through,
+// the shadow drawn around nothing, and every click in the empty part swallowed.
+:host(.member-info--panel) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--card);
+  color: var(--card-foreground);
+  border-left: 1px solid var(--border);
+
+  .member-info {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    width: 100%;
+    max-width: none;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
 }
 
 .member-info__avatar {

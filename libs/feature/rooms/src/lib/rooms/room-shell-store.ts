@@ -1,9 +1,58 @@
-import { Injectable, inject, linkedSignal, signal } from '@angular/core';
+import {
+  Injectable,
+  computed,
+  inject,
+  linkedSignal,
+  signal,
+} from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { map } from 'rxjs';
 import { decodeRoomSegment } from '@trinity/util/matrix';
+import type { MemberSummary, ModerationCaps } from '@trinity/data-access/rooms';
 import { BELOW_MEMBERS_QUERY, matchesQuery } from '@trinity/util/ui';
+
+/**
+ * The surfaces that can occupy the shell's right-hand slot.
+ *
+ * `null` is "nothing showing", which on the narrow layout is the only honest state — the slot
+ * is an overlay drawer there, and an overlay that is always open is what the member list used
+ * to be before this phase.
+ */
+export type RightPanel =
+  | { readonly kind: 'members' }
+  | { readonly kind: 'threads' }
+  | { readonly kind: 'thread'; readonly rootEventId: string }
+  | { readonly kind: 'pinned' }
+  | { readonly kind: 'search' }
+  // Member info carries its subject AND the viewer's power over them, because the caps are
+  // resolved against the room at the moment the row is clicked. Recomputing them from the
+  // slot later would ask a different question — "can I moderate them now" — which is the
+  // same answer today and not the one the panel was opened with.
+  | {
+      readonly kind: 'member';
+      readonly member: MemberSummary;
+      readonly caps: ModerationCaps;
+      readonly direct: boolean;
+    }
+  | null;
+
+/**
+ * What the slot shows with nothing else asked for: the member list at the wide layout,
+ * closed below it — which is what the member column has always done.
+ *
+ * A one-shot `matchesQuery` and deliberately NOT `mediaQuerySignal`: this SEEDS a state the
+ * user then owns, and a live signal would re-evaluate on every rotation across the boundary
+ * and reopen a panel the user had explicitly closed.
+ *
+ * Negated rather than asking `MEMBERS_QUERY` directly, because `matchesQuery` answers
+ * `false` where `matchMedia` does not exist and the two directions disagree about what that
+ * should mean. Asking the BELOW query makes the unknown case the static column, which is
+ * what this has always done.
+ */
+function seedRightPanel(): RightPanel {
+  return matchesQuery(BELOW_MEMBERS_QUERY) ? null : { kind: 'members' };
+}
 
 /**
  * The rooms shell's own selection and pane state.
@@ -81,22 +130,42 @@ export class RoomShellStore {
   });
 
   /**
-   * Whether the member list is shown. At or above the `members` breakpoint it's the static
-   * right column, shown by default; below it an overlay drawer that must start closed.
-   * Seeded from the viewport so the drawer doesn't render open on a mobile load, while the
-   * wide layout keeps the column visible by default.
+   * What the right-hand slot is showing, if anything.
    *
-   * A one-shot `matchesQuery` and deliberately NOT `mediaQuerySignal`: this is a SEED for a
-   * state the user then owns. A live signal would re-evaluate on every rotation across the
-   * boundary and reopen a column the user had explicitly closed.
+   * ONE slot, not five independent flags. The member list was a column with its own boolean
+   * while threads, the threads list, pinned messages and search were CDK dialogs with
+   * `side: 'end'` — so they stacked OVER the member list rather than sharing the layout with
+   * it, and only one could be open at a time by accident (each service kept its own
+   * re-entrancy guard) rather than by design. A single slot makes "only one" structural:
+   * opening threads while members is showing replaces it, because there is one value.
    *
-   * Negated rather than asking `MEMBERS_QUERY` directly, because `matchesQuery` answers
-   * `false` where `matchMedia` does not exist and the two directions disagree about what
-   * that should mean. Asking the BELOW query makes the unknown case the static column, which
-   * is what this has always done — asking the min-width one would silently make a context
-   * with no `matchMedia` start with the list hidden.
+   * A discriminated union rather than a string, because two of the surfaces carry data —
+   * a thread needs its root event, a member card needs its member — and a bare
+   * `'thread' | null` would have to be shadowed by a second signal holding the id, which is
+   * the invalid-state-is-representable shape this exists to avoid.
    */
-  readonly membersOpen = signal(!matchesQuery(BELOW_MEMBERS_QUERY));
+  readonly rightPanel = linkedSignal<string | null, RightPanel>({
+    // Keyed on the OPEN ROOM, because four of the six surfaces are about a particular room
+    // and cannot follow the user out of it. A thread names a root event, pinned and search
+    // hand back an event id, and member info carries both its subject and the caps resolved
+    // against the room whose row was clicked — while the template binds every panel to
+    // `room.id`, the room that is open NOW. Left to persist, switching rooms with member
+    // info open pointed "Remove from room" at a room the user never opened it for.
+    source: this.activeRoomId,
+    computation: (_roomId, previous) => {
+      const panel = previous?.value;
+      // The roster and "nothing" are the column's own open/closed state, which the user owns
+      // and which has always survived a room change — the list re-projects itself onto the
+      // new room. Everything else goes back to whatever this width shows by default. (On the
+      // very first read `previous` is undefined, which falls through to the seed.)
+      return panel === null || panel?.kind === 'members'
+        ? panel
+        : seedRightPanel();
+    },
+  });
+
+  /** Whether the member list is the surface currently in the slot. */
+  readonly membersOpen = computed(() => this.rightPanel()?.kind === 'members');
 
   /**
    * Event id the message list should scroll to, set by in-room search, a reply

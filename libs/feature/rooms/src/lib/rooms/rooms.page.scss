@@ -9,10 +9,55 @@
 
 // Server rail (72) + channel sidebar (280) = 352px. A static column at md+ and the
 // full-screen room-list page below md.
+// Width comes from `--shell-sidebar-w` on the shell root, seeded from the persisted setting
+// and overridden inline for the length of a drag. It used to be `md:w-[352px]` with an
+// eight-line note on why it was px and not `w-88` — the reasoning survives in
+// `ShellLayoutService`, which owns the default and the bounds. `text-scaling.spec.mts` still
+// asserts the rail and sidebar edges meet at every text size, and they still must.
+
+// The draggable dividers: 4px of visible line inside a 12px grab area, because a 4px hit
+// target is a fair-weather one. The padding is what widens the target; `background-clip:
+// content-box` keeps the highlight on the 4px content box, so the line stays thin while the
+// thing you can grab is three times as wide. The negative margin cancels the whole 12px
+// again, so the handle costs the layout nothing and `--shell-sidebar-w` is the width the pane
+// actually gets. Positioned and lifted so it sits over the two panes it straddles rather than
+// under them — otherwise the padding that makes it forgiving is covered by whatever is
+// beside it.
+.pane-handle {
+  position: relative;
+  z-index: var(--trinity-z-sticky);
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 12px;
+  padding: 0 4px;
+  margin: 0 -6px;
+  cursor: col-resize;
+  background: transparent;
+  background-clip: content-box;
+  touch-action: none;
+
+  &:hover,
+  &:focus-visible,
+  &.pane-handle--dragging {
+    background: var(--trinity-accent);
+    background-clip: content-box;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--trinity-accent);
+    outline-offset: -3px;
+  }
+}
+
 .shell-side {
   display: flex;
   height: 100%;
   background: var(--trinity-rail);
+
+  @media #{$md} {
+    width: var(--shell-sidebar-w, 352px);
+    flex: 0 0 auto;
+  }
 
   // Outer-left column: clear the left cutout on a landscape notch (left) and the home
   // indicator (bottom, where the user footer sits). The top inset is on .rooms-shell.
@@ -30,7 +75,14 @@
 
 .main {
   flex: 1;
-  min-width: 0;
+
+  // A floor rather than 0, so the conversation cannot be squeezed out of existence: the two
+  // pane bounds are per-pane, and their maxima add up to more than a 1280px window. With the
+  // panel shrinkable (below) flexbox resolves the violation by taking the space back from the
+  // panel instead. `min()` so this never exceeds the row itself — below the `members`
+  // breakpoint the panel leaves the flow and a wide sidebar can make the row narrower than
+  // the floor, which would otherwise overflow the shell.
+  min-width: min(320px, 100%);
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -91,7 +143,14 @@
   text-align: center;
 }
 
+// The chat area owns the drawer gesture, so a swipe that starts over the timeline is heard.
+// `touch-action: pan-y` keeps vertical scrolling native while claiming the horizontal axis —
+// without it the browser consumes the sideways drag as a scroll or an overscroll navigation
+// and the directive never sees a move. `pan-y` rather than `none`, because the timeline must
+// still scroll.
 .chat-body {
+  touch-action: pan-y;
+  overscroll-behavior-x: contain;
   flex: 1;
   display: flex;
   min-height: 0;
@@ -148,25 +207,75 @@
   flex: 0 0 240px;
 }
 
+// The other surfaces the slot can show — threads, a thread, pinned, search, member info.
+// 480px is the width they had as `md:w-120` dialog cards, so this is the same measurement
+// moved from the card to the slot that now owns it.
+// IN FLOW, sharing the row with the timeline rather than covering it, which is what #179
+// asks for. That was deferred once, because a panel taking layout space resizes the timeline
+// and a jump issued across that resize landed off screen — the scroll was computed against a
+// width the timeline no longer had. `MessageListBase` now remembers a recent jump and
+// re-applies it when the scroller's width actually changes, so the resize is survivable and
+// the panels can take their space.
+.chat-panel {
+  // Shrinkable, not fixed: the stored width is what the user chose, but on a window too
+  // narrow to honour it AND leave the timeline its floor, the panel is the one that gives.
+  // The stored value is untouched, so widening the window restores it.
+  flex: 0 1 var(--shell-right-panel-w, 480px);
+  min-width: 0;
+}
+
 // Below the `members` breakpoint the static column would crowd the chat, so present the
 // member list as a slide-in drawer over the content instead (dismissed by the template's
 // backdrop). The inner .members is a fixed 240px column, so the drawer host matches that
 // width. `$below-members` is the shared definition — see its note in _mixins.scss.
 @media #{$below-members} {
-  .chat-members {
+  .chat-members,
+  .chat-panel {
     position: fixed;
     inset-block: 0;
     right: 0;
     z-index: var(--trinity-z-panel);
-    width: 240px;
     flex: none;
     box-shadow: -2px 0 12px rgb(0 0 0 / 30%);
 
-    // Clear the status bar / home indicator on notched devices (inert elsewhere).
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
+    // NEITHER inset is padded here — both are per-surface now, and which surface needs
+    // which is the split below.
     animation: members-drawer-in var(--trinity-duration-base)
       var(--trinity-ease-decelerate);
+
+    // Follows the finger while it is being DISMISSED. `--drawer-drag` is written by
+    // `DrawerSwipeDirective` for the length of a gesture and removed on release, so the
+    // drawer settles back to its CSS position without the directive having to animate
+    // anything itself. Zero when nobody is dragging.
+    // Only the closing direction can track, and that is a real gap rather than a choice: an
+    // OPENING swipe is measured before the slot has anything in it, so there is no element
+    // here to translate and the drawer arrives at the end of the gesture with its entrance
+    // animation. Painting the open drag means mounting the drawer at the first qualifying
+    // move and suppressing that animation, which is a bigger change than this slice.
+    transform: translateX(var(--drawer-drag, 0));
+  }
+
+  // Where the two drawers part company, on width and on the safe-area insets.
+  // WIDTH: the roster fits 240px; a thread or a search result does not, and those were
+  // full-screen (`w-screen`) as dialogs at this width, so `max-width` keeps them so — 480px
+  // exceeds the viewport here. The dragged width is deliberately not read at this breakpoint:
+  // there is no divider to drag, and a width chosen on a desktop has nothing to say about a
+  // phone.
+  // INSETS: the four panels pad themselves at BOTH ends — `safe-top` on the header they all
+  // carry, `safe-bottom` on the root — because their content reaches both edges (a thread
+  // composer, a member-info action row), and padding the host as well would clear the notch
+  // twice. The member list has neither, so the host does both for it; without the bottom one
+  // its last row sits under the home indicator, which is the bug the panels' `safe-bottom`
+  // was added to fix.
+  .chat-members {
+    width: 240px;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .chat-panel {
+    width: 480px;
+    max-width: 100%;
   }
 }
 

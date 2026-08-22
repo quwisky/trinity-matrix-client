@@ -231,7 +231,7 @@ export class RoomShellNavigationService {
     // to the next room (it would slide in unrequested). The wide static column keeps
     // its persisted open/closed state.
     if (this.membersAreDrawer()) {
-      this.store.membersOpen.set(false);
+      this.store.rightPanel.set(null);
     }
     void this.router.navigate(['/rooms']);
   }

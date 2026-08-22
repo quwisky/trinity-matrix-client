@@ -39,8 +39,6 @@ import { encodeRoomSegment } from '@trinity/util/matrix';
 import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
-import { ThreadPanelService } from '../thread/thread-panel.service';
-import { PinnedPanelService } from '../pinned/pinned-panel.service';
 
 /**
  * `ActivatedRoute.queryParamMap`, kept only because the stub has to answer it: nothing in
@@ -64,6 +62,17 @@ const paramMap = new BehaviorSubject<ParamMap>(convertToParamMap({}));
  * Takes the room id and encodes it here, so specs read in room ids rather than in base64:
  * `setRouteRoom('!a:hs')`, not `setRouteRoom('IWE6aHM')`. Pass `null` to close.
  */
+/**
+ * Run `MessageActionsService.onPanelJump`'s deferred jump.
+ *
+ * The jump is deferred to `afterNextRender` so it measures the layout the closing panel
+ * leaves behind — see the note on `onPanelJump`. Nothing flushes render hooks on its own in
+ * a `TestBed.inject`-driven spec, so the assertions have to ask for it.
+ */
+export function flushPanelJump(): void {
+  TestBed.tick();
+}
+
 export function setRouteRoom(roomId: string | null): void {
   paramMap.next(
     convertToParamMap(roomId ? { roomId: encodeRoomSegment(roomId) } : {}),
@@ -120,7 +129,6 @@ export const SHARED_MOCKS: Provider[] = [
   SessionActionsService,
   MockProvider(CryptoService),
   MockProvider(PinnedMessagesService),
-  MockProvider(PinnedPanelService),
   // A Router whose `navigate` actually MOVES the route, because the store now reads the room
   // from `paramMap` and every "opening a room opens it" assertion in these specs depends on
   // that round trip. A bare auto-stub swallows the call, which would leave `activeRoomId`
@@ -142,7 +150,6 @@ export const SHARED_MOCKS: Provider[] = [
     }) as unknown as Router['navigate'],
   }),
   ROUTE_PROVIDER,
-  MockProvider(ThreadPanelService),
   MockProvider(TrnActionSheetService),
 ];
 
@@ -188,12 +195,13 @@ export function invitesProvider(over: Partial<InvitesService> = {}) {
  * Stub matchMedia so every query matches — the narrow layout where the member list is the
  * overlay drawer. Returns a restore function to reinstate the previous stub.
  *
- * CALL IT BEFORE `build()`, not after. The shell's viewport predicates are now read at
- * construction: `RoomShellStore` SEEDS `membersOpen` from a one-shot `matchesQuery`, and the
+ * CALL IT BEFORE `build()`, not after. The shell's viewport predicates are read early: the
  * page and its coordinators create their `mediaQuerySignal` fields in their initialisers, each
- * of which takes its value from `matchMedia` at that moment. Stubbing afterwards changes what
- * a later call would return and nothing that has already been built — the test then asserts
- * against the wide layout while reading as though it asked for the narrow one.
+ * of which takes its value from `matchMedia` at that moment, and `RoomShellStore` SEEDS
+ * `rightPanel` from a one-shot `matchesQuery` the first time anything reads it. Stubbing
+ * afterwards changes what a later call would return and nothing that has already been built —
+ * the test then asserts against the wide layout while reading as though it asked for the
+ * narrow one.
  */
 /**
  * A LIVE matchMedia stub: it keeps its `change` listeners, so {@link setMediaQuery} can move
