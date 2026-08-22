@@ -469,6 +469,32 @@ describe('MessageComposerComponent', () => {
     expect(cmp.pickerOpen()).toBe(false);
   });
 
+  it('closes the picker with the button that opened it', async () => {
+    // The two halves meet here, and neither one alone is wrong. The trigger lives INSIDE the
+    // row the picker is anchored to, so a press on it reaches CDK's outside-press dispatcher
+    // as well as the button's own handler — and both write `pickerOpen`. Unexcluded, the
+    // second click left the state saying open with nothing rendered and `aria-expanded="true"`
+    // on a button controlling an element no longer in the document.
+    const { fixture, container } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const trigger = container.querySelector<HTMLElement>('.composer__emoji')!;
+    const clickTrigger = () => {
+      trigger.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      trigger.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      TestBed.tick();
+    };
+
+    clickTrigger();
+    expect(cmp.pickerOpen()).toBe(true);
+    expect(document.querySelector('trn-emoji-picker')).not.toBeNull();
+
+    clickTrigger();
+
+    // Both, because the failure was them disagreeing.
+    expect(cmp.pickerOpen()).toBe(false);
+    expect(document.querySelector('trn-emoji-picker')).toBeNull();
+  });
+
   it('points the emoji trigger at the panel that actually exists', async () => {
     // Two independent string literals — `pickerId` on the panel and `aria-controls` on the
     // trigger — with nothing tying them together. A typo in either leaves a button
@@ -489,7 +515,10 @@ describe('MessageComposerComponent', () => {
     const controls = trigger?.getAttribute('aria-controls');
     expect(trigger?.getAttribute('aria-expanded')).toBe('true');
     expect(controls).toBeTruthy();
-    expect(container.querySelector(`#${controls}`)).not.toBeNull();
+    // `document`, not the fixture: the picker renders in the CDK overlay container now. That
+    // is also what `aria-controls` actually requires — an id resolvable in the document, not
+    // one inside any particular subtree — so this is the more faithful assertion of the two.
+    expect(document.querySelector(`#${controls}`)).not.toBeNull();
   });
 
   function pasteEvent(opts: { files?: File[]; items?: unknown[] }): {
@@ -1586,8 +1615,16 @@ describe('MessageComposerComponent', () => {
     return ta;
   }
 
-  const menu = (fixture: ComponentFixture<MessageComposerComponent>) =>
-    fixture.nativeElement.querySelector('[data-testid=emoji-autocomplete]');
+  /**
+   * `document`, not the fixture: the suggestion menus render in the CDK overlay container now,
+   * so they are no longer inside the component's own DOM. Same reason the insert tray below is
+   * asserted this way — it has been a CDK menu all along.
+   *
+   * The fixture argument is unused and kept only so the twelve call sites read unchanged —
+   * the lookup happens whenever this is called, with or without it.
+   */
+  const menu = (_fixture: ComponentFixture<MessageComposerComponent>) =>
+    document.querySelector('[data-testid=emoji-autocomplete]');
 
   it('opens the emoji menu while typing a :shortcode and ranks an exact match first', async () => {
     const { fixture } = await renderComposer();
@@ -1669,7 +1706,7 @@ describe('MessageComposerComponent', () => {
     const cmp = fixture.componentInstance;
 
     type(fixture, ':fire');
-    const option = menu(fixture).querySelector('button') as HTMLButtonElement;
+    const option = menu(fixture)!.querySelector('button') as HTMLButtonElement;
     option.click();
 
     expect(cmp.text()).toBe('🔥');
@@ -1784,12 +1821,12 @@ describe('MessageComposerComponent', () => {
     const { fixture } = await renderComposer();
 
     type(fixture, ':joy');
-    const first = menu(fixture).querySelector('.composer__emoji-suggestion');
+    const first = menu(fixture)!.querySelector('.composer__emoji-suggestion')!;
     expect(
-      first.querySelector('.composer__emoji-suggestion-char').textContent,
+      first.querySelector('.composer__emoji-suggestion-char')?.textContent,
     ).toContain('😂');
     expect(
-      first.querySelector('.composer__emoji-suggestion-code').textContent,
+      first.querySelector('.composer__emoji-suggestion-code')?.textContent,
     ).toContain(':joy:');
   });
 

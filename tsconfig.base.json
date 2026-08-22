@@ -117,7 +117,18 @@
       "@trinity/components/tooltip": ["./libs/components/tooltip/src/index.ts"],
       "@trinity/components/textarea": [
         "./libs/components/textarea/src/index.ts"
-      ]
+      ],
+      "@trinity/components/toggle-group": [
+        "./libs/components/toggle-group/src/index.ts"
+      ],
+      "@trinity/components/separator": [
+        "./libs/components/separator/src/index.ts"
+      ],
+      "@trinity/helm/toggle-group": [
+        "./libs/spartan/toggle-group/src/index.ts"
+      ],
+      "@trinity/helm/toggle": ["./libs/spartan/toggle/src/index.ts"],
+      "@trinity/helm/separator": ["./libs/spartan/separator/src/index.ts"]
     },
     "noUncheckedSideEffectImports": false,
     "types": ["*"]
