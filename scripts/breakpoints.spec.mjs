@@ -84,6 +84,7 @@ describe('shell breakpoints', () => {
     );
     expect(tsQueries().size).toBeGreaterThanOrEqual(PAIRS.length * 2);
     expect(read(MIXINS)).toContain('$below-members:');
+    expect(read(MIXINS)).toContain('$md:');
     expect(read(MIXINS)).toContain('$below-md:');
   });
 
@@ -115,20 +116,29 @@ describe('shell breakpoints', () => {
     },
   );
 
+  /**
+   * Every SCSS copy, both directions.
+   *
+   * `$md` is a min-width (the sidebar reads it to size itself at desktop) and `$below-md` a
+   * max-width (the mobile master-detail block); `$below-members` is the drawer boundary. For a
+   * while only `members` was checked at all, while PAIRS presented the two breakpoints as
+   * equally guarded.
+   */
   it.each([
-    ['members', 'below-members', 'BELOW_MEMBERS_QUERY'],
-    ['md', 'below-md', 'BELOW_MD_QUERY'],
+    ['md (min)', 'md', 'MD_QUERY', 'min'],
+    ['md (max)', 'below-md', 'BELOW_MD_QUERY', 'max'],
+    ['members (max)', 'below-members', 'BELOW_MEMBERS_QUERY', 'max'],
   ])(
     'states the %s breakpoint identically in SCSS',
-    (_label, variable, constant) => {
-      // Both, not just `members`. PAIRS presents the two as equally guarded, and for a while
-      // only one of them actually had its SCSS copy checked.
+    (_label, variable, constant, direction) => {
       const scss = new RegExp(`\\$${variable}:\\s*'([^']+)'`).exec(
         read(MIXINS),
       );
 
       expect(scss, `$${variable} is not declared in ${MIXINS}`).not.toBeNull();
-      expect(scss[1]).toBe(`(max-width: ${tsQueries().get(constant).px}px)`);
+      expect(scss[1]).toBe(
+        `(${direction}-width: ${tsQueries().get(constant).px}px)`,
+      );
     },
   );
 

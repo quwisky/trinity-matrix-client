@@ -150,13 +150,18 @@ test.describe('Member info panel', () => {
         display: style.display,
         background: style.backgroundColor,
         height: host.getBoundingClientRect().height,
-        viewport: window.innerHeight,
+        // The row the panel shares with the timeline, which is what "full height" means for
+        // a pane IN FLOW. Not the viewport: the row starts below the room header, so a
+        // viewport-relative bound would be measuring the header, and would answer
+        // differently again if the panel ever went back to being an overlay.
+        row: host.closest('.chat-body')?.getBoundingClientRect().height ?? 0,
       };
     });
     expect(surface.display).toBe('flex');
     expect(surface.background).not.toMatch(/rgba\(0, 0, 0, 0\)|transparent/);
-    // Full height, like the four panels beside it — not a content-sized card.
-    expect(surface.height).toBeGreaterThan(surface.viewport * 0.9);
+    // As tall as the pane beside it, not a content-sized card floating in the slot.
+    expect(surface.row).toBeGreaterThan(0);
+    expect(Math.abs(surface.height - surface.row)).toBeLessThanOrEqual(1);
 
     // And it can be closed. As a dialog the backdrop and Escape do that; in the slot at this
     // width there is neither, so without the header's button the panel is a dead end.

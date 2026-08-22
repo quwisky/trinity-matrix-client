@@ -1,4 +1,5 @@
 import {
+  DestroyRef,
   Directive,
   ElementRef,
   computed,
@@ -51,6 +52,14 @@ import {
   type ComposerSubmit,
   type MentionMember,
 } from '../message-composer/message-composer.component';
+
+/**
+ * How long after a jump a width change still counts as "the same jump".
+ *
+ * Long enough to cover a panel closing and a pane being dragged, short enough that resizing
+ * the window later is not answered by scrolling somewhere the reader left behind.
+ */
+const JUMP_REAPPLY_MS = 3_000;
 
 /** Fallback caps for a row not present in the memoized map (defensive; unreached). */
 const DEFAULT_ROW_CAPS: MessageRowCaps = {
@@ -495,6 +504,72 @@ export abstract class MessageListBase {
     void navigator.clipboard?.writeText(
       messagePermalink(this.roomId() ?? '', row.id),
     );
+  }
+
+  /**
+   * The row a jump most recently aimed at, and the scroller width it was aimed at.
+   *
+   * A jump ends in `scrollIntoView`, which is a measurement: it resolves to a scrollTop that
+   * is only correct for the layout at that instant. Change the scroller's WIDTH afterwards
+   * and every row re-wraps to a new height, so the position the jump computed now belongs to
+   * a different message — the reader is left somewhere near, or nowhere near, with only the
+   * flash to say the jump happened.
+   *
+   * That is not hypothetical: it is what closing a right-hand panel does, since the panel and
+   * the timeline share the row, and it is what a pane drag will do continuously. Rather than
+   * time the jump against the reflow — which cannot be done reliably, because the browser
+   * lays out and fires `ResizeObserver` on its own schedule — the jump is remembered and
+   * RE-APPLIED when the width actually changes.
+   *
+   * Bounded by {@link JUMP_REAPPLY_MS} so a width change minutes later does not yank someone
+   * back to a message they have long scrolled past.
+   */
+  private pendingJumpId: string | null = null;
+  private pendingJumpAt = 0;
+  private lastScrollerWidth = 0;
+  private widthRo?: ResizeObserver;
+  private readonly listDestroyRef = inject(DestroyRef);
+
+  /**
+   * Remember a jump so a width change can re-apply it. Called BY the subclasses' `jumpTo`,
+   * not instead of it — the base cannot know how each strategy scrolls.
+   */
+  protected notePendingJump(messageId: string): void {
+    this.pendingJumpId = messageId;
+    this.pendingJumpAt = Date.now();
+  }
+
+  /**
+   * Watch the scroller's width and re-apply a recent jump when it changes.
+   *
+   * Width only: a height change is the keyboard opening or the composer growing, and
+   * re-jumping there would fight the reader rather than help them. Started by the subclasses
+   * once they have a scroll element, and torn down with the component.
+   */
+  protected watchScrollerWidth(): void {
+    const el = this.scrollEl()?.nativeElement;
+    if (!el || typeof ResizeObserver === 'undefined' || this.widthRo) {
+      return;
+    }
+    this.lastScrollerWidth = el.clientWidth;
+    this.widthRo = new ResizeObserver(() => {
+      const width = el.clientWidth;
+      if (width === this.lastScrollerWidth) {
+        return;
+      }
+      this.lastScrollerWidth = width;
+      const id = this.pendingJumpId;
+      if (id && Date.now() - this.pendingJumpAt <= JUMP_REAPPLY_MS) {
+        // Re-aim at the same row against the layout that now exists. `jumpTo` calls
+        // `notePendingJump` again, which refreshes the deadline — deliberately, so a drag
+        // that resizes continuously keeps the reader on their row for its whole duration.
+        this.jumpTo(id);
+      } else {
+        this.pendingJumpId = null;
+      }
+    });
+    this.widthRo.observe(el);
+    this.listDestroyRef.onDestroy(() => this.widthRo?.disconnect());
   }
 
   /** Scroll a message into view (each scroll strategy implements it differently). */

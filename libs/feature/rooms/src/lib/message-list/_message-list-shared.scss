@@ -26,6 +26,7 @@
 
 .scroll {
   @include scrollable;
+  @include swipe-through;
 
   // Allow the flex child to shrink below its content height so it scrolls
   // instead of growing the column.

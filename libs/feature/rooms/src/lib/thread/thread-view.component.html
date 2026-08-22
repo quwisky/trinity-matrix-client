@@ -1,5 +1,5 @@
 <div
-  class="flex h-full flex-col overflow-hidden border-l border-solid border-border bg-card text-card-foreground shadow-lg"
+  class="safe-bottom flex h-full flex-col overflow-hidden border-l border-solid border-border bg-card text-card-foreground shadow-lg"
   data-testid="thread-view"
 >
   <div
@@ -18,7 +18,7 @@
     </button>
   </div>
 
-  <div class="thread flex-1 overflow-y-auto" #scroll>
+  <div class="thread flex-1 overflow-y-auto max-members:touch-pan-y" #scroll>
     @if (loadingOlder()) {
       <div class="thread__load-older">Loading older replies…</div>
     } @else if (canLoadOlder()) {

@@ -119,6 +119,44 @@ export function flagSetting(
 }
 
 /**
+ * A whole number inside a range — a pane width, and anything else measured in pixels.
+ *
+ * Clamps rather than rejects an out-of-range number, which is the opposite of what the
+ * other helpers do and is deliberate. A bad *kind* (a string, a list) is a typo the user
+ * must see; a width of 5000 is a number they meant, on a screen the config was not written
+ * on, and answering it with a rejection would leave the pane at whatever it was while
+ * telling them nothing useful. The clamped value is what validation reports, so the change
+ * summary shows what will actually be stored.
+ *
+ * Non-integers are rounded for the same reason: a pane is laid out in whole pixels, so
+ * storing 341.7 would report one number and apply another.
+ */
+export function boundedNumberSetting(spec: {
+  min: number;
+  max: number;
+  noun: string;
+  set: (value: number) => void;
+}): Pick<ConfigEntry, 'validate' | 'write' | 'type'> {
+  const clamp = (value: number): number =>
+    Math.min(spec.max, Math.max(spec.min, Math.round(value)));
+  return {
+    type: 'number',
+    validate: (value) =>
+      typeof value === 'number' && Number.isFinite(value)
+        ? { ok: true, value: clamp(value) }
+        : {
+            ok: false,
+            problem: `${describeConfigValue(value)} is not ${spec.noun}`,
+          },
+    write: (value) => {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        spec.set(clamp(value));
+      }
+    },
+  };
+}
+
+/**
  * A setting the user types. Trimmed on the way in — the value validation reports is the
  * value that gets stored, so the change summary cannot promise something else.
  */

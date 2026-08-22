@@ -56,7 +56,12 @@ import {
   TimelineActionsService,
   TimelineService,
 } from '@trinity/data-access/timeline';
-import { FeatureFlagsService } from '@trinity/platform-native';
+import {
+  HapticsService,
+  BackInterceptorService,
+  FeatureFlagsService,
+  ShellLayoutService,
+} from '@trinity/platform-native';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { PageHeaderComponent } from '@trinity/components/page-header';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
@@ -67,6 +72,8 @@ import { ThreadViewComponent } from '../thread/thread-view.component';
 import { PinnedMessagesPanelComponent } from '../pinned/pinned-messages-panel.component';
 import { MessageSearchComponent } from '../message-search/message-search.component';
 import { MemberInfoComponent } from '../member-info/member-info.component';
+import { PaneHandleComponent } from './pane-handle.component';
+import { DrawerSwipeDirective } from './drawer-swipe.directive';
 import { SimpleMessageListComponent } from '../message-list/simple-message-list/simple-message-list.component';
 import { VirtualMessageListComponent } from '../message-list/virtual-message-list/virtual-message-list.component';
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
@@ -93,6 +100,16 @@ import { TrnIconComponent } from '@trinity/components/icon';
  * timeline, and a member list.
  * Wired to live synced rooms via `RoomsService` + `TimelineService`.
  */
+/**
+ * The drawer widths at the `members` breakpoint, mirroring `rooms.page.scss`.
+ *
+ * Duplicated rather than read from CSS because a gesture threshold has to exist before the
+ * drawer does — the opening swipe is measured while there is nothing on screen to measure.
+ * The stylesheet is the one that renders them, so these two must not drift from it.
+ */
+const MEMBERS_DRAWER_PX = 240;
+const PANEL_DRAWER_PX = 480;
+
 @Component({
   selector: 'trn-rooms',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -135,6 +152,8 @@ import { TrnIconComponent } from '@trinity/components/icon';
     PinnedMessagesPanelComponent,
     MessageSearchComponent,
     MemberInfoComponent,
+    PaneHandleComponent,
+    DrawerSwipeDirective,
     SimpleMessageListComponent,
     VirtualMessageListComponent,
     EncryptionBannerComponent,
@@ -162,9 +181,61 @@ export class RoomsPage implements OnInit, OnDestroy {
     BELOW_MD_QUERY,
     inject(DestroyRef),
   );
-  private readonly membersAreDrawer = mediaQuerySignal(
+  /**
+   * Whether the slot is currently the overlay drawer rather than a column.
+   *
+   * `protected` rather than private: the template reads it to tell `DrawerSwipeDirective`
+   * whether there is a drawer to swipe at all.
+   */
+  protected readonly membersAreDrawer = mediaQuerySignal(
     BELOW_MEMBERS_QUERY,
     inject(DestroyRef),
+  );
+
+  /** Persisted pane widths, bound into the shell's CSS custom properties. */
+  readonly layout = inject(ShellLayoutService);
+
+  /** A tick when a drag lands, on a phone. Silent everywhere else. */
+  private readonly haptics = inject(HapticsService);
+
+  /**
+   * How wide the drawer actually is at the drawer breakpoint, for the swipe's threshold.
+   *
+   * NOT `layout.rightPanelWidth()`, which is the width the pane handle drags on a DESKTOP and
+   * which `rooms.page.scss` deliberately ignores below the `members` breakpoint. Passing it
+   * made the gesture measure a 240px roster against a 480px default — 80% of its travel to
+   * commit, where the rule is 40% — and a user who had dragged the panel to its 720px maximum
+   * made the distance threshold unreachable on a phone, leaving only the flick.
+   *
+   * A method rather than a computed: it reads `innerWidth`, which is not a signal, and a
+   * template call is re-evaluated each pass so a rotation is picked up.
+   */
+  protected drawerWidth(): number {
+    const panel = this.store.rightPanel();
+    if (!panel || panel.kind === 'members') {
+      return MEMBERS_DRAWER_PX;
+    }
+    // The panels are `width: 480px; max-width: 100%` at this breakpoint, so on a phone the
+    // viewport is what they actually get.
+    return Math.min(PANEL_DRAWER_PX, window.innerWidth);
+  }
+
+  /**
+   * Android's hardware Back closes the right-hand panel before it leaves the room.
+   *
+   * Registered rather than reached for: `AppComponent` owns the Back chain and cannot import
+   * this feature, and the panel is an inline block rather than a CDK dialog, so the chain's
+   * `dialog.hasOpen()` check has never seen it. Only claims the press when something is
+   * actually open, so Back still leaves the room when the slot is empty.
+   */
+  private readonly backRegistration = inject(BackInterceptorService).register(
+    () => {
+      if (!this.store.rightPanel()) {
+        return false;
+      }
+      this.closeRightPanel();
+      return true;
+    },
   );
 
   readonly rooms = inject(RoomsService);
@@ -343,6 +414,7 @@ export class RoomsPage implements OnInit, OnDestroy {
    * symmetric nor load-bearing — one owner, not one and a half.
    */
   ngOnDestroy(): void {
+    this.backRegistration();
     // `releaseOpenRoom`, not `closeOpenRoom`: closing NAVIGATES now, and the router is
     // already on its way to wherever the user actually went. This only has to stop the
     // root-scoped projections following a room nobody is looking at.
@@ -395,6 +467,27 @@ export class RoomsPage implements OnInit, OnDestroy {
   /** Empty the slot — the mobile drawer's backdrop, and every panel's own close button. */
   closeRightPanel(): void {
     this.store.rightPanel.set(null);
+  }
+
+  /**
+   * A swipe in from the right edge opens the member list.
+   *
+   * The roster and not, say, threads, because the gesture has to mean ONE thing and this is
+   * what the toolbar's own button opens — a gesture that guessed differently from the button
+   * beside it would be a gesture nobody could predict.
+   */
+  onDrawerSwipedOpen(): void {
+    if (!this.store.activeRoomId()) {
+      return; // no room, no roster to show — the slot's template is gated on one
+    }
+    this.store.rightPanel.set({ kind: 'members' });
+    this.haptics.gestureCommitted();
+  }
+
+  /** A swipe away dismisses whatever the slot was showing. */
+  onDrawerSwipedClosed(): void {
+    this.closeRightPanel();
+    this.haptics.gestureCommitted();
   }
 
   /**

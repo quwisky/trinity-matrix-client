@@ -19,7 +19,10 @@ import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 import { SwUpdate, type VersionReadyEvent } from '@angular/service-worker';
 import { filter, fromEvent, map, take } from 'rxjs';
-import { getTrinityDesktopBridge } from '@trinity/platform-native';
+import {
+  BackInterceptorService,
+  getTrinityDesktopBridge,
+} from '@trinity/platform-native';
 import { HlmToaster } from '@trinity/helm/sonner';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
@@ -43,6 +46,7 @@ export class AppComponent implements OnInit {
   private readonly toast = inject(TrnToastService);
   private readonly location = inject(Location);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly backInterceptors = inject(BackInterceptorService);
 
   /**
    * True until the first route has actually rendered something.
@@ -115,6 +119,13 @@ export class AppComponent implements OnInit {
     void App.addListener('backButton', ({ canGoBack }) => {
       if (this.dialog.hasOpen()) {
         this.dialog.closeTopmost();
+        return;
+      }
+      // Then whatever a feature has registered — the rooms shell's right-hand panel, which
+      // is an inline block rather than a CDK dialog and so is invisible to `hasOpen()`
+      // above. Without this Back walks past an open panel and out of the room, which it has
+      // always done for the members drawer.
+      if (this.backInterceptors.handle()) {
         return;
       }
       if (canGoBack) {
