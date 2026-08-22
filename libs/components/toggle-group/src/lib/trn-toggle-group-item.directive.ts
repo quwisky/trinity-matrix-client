@@ -7,8 +7,12 @@ import { HlmToggleGroupItem } from '@trinity/helm/toggle-group';
  * Nothing is listed for re-publication, and `value`/`disabled` are still bindable on the
  * button: Angular re-publishes a host directive's inputs one level only, so naming them here
  * throws NG0311, while HlmToggleGroupItem already publishes them onto this same host element
- * from BrnToggleGroupItem. `variant` and `size` are omitted because the group sets both for
- * the whole bar — an item that could disagree with its neighbours is a bar that looks broken.
+ * from BrnToggleGroupItem.
+ *
+ * `variant` and `size` are left off, so an item falls back to HlmToggleGroupItem's own
+ * defaults unless the group sets them — which is how a bar stays visually of a piece without
+ * this having to enforce anything. Nothing stops a caller reaching for the kit's names on the
+ * button; the tier's boundary is what it can IMPORT, not what it can type.
  *
  * `aria-label` stays the caller's own binding rather than something this re-publishes, so a
  * call site labels one of these buttons the way it labels every other button.
@@ -31,6 +35,13 @@ import { HlmToggleGroupItem } from '@trinity/helm/toggle-group';
   },
 })
 export class TrnToggleGroupItemDirective {
+  /**
+   * The button itself, for the group to move focus and the tab stop with.
+   *
+   * Public because the group is a separate class and has no other way to reach it — not an
+   * invitation. Nothing outside {@link TrnToggleGroupComponent} should be reading it: a
+   * consumer holding this holds the DOM node this tier exists to keep out of call sites.
+   */
   readonly element: HTMLElement =
     inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
 }
