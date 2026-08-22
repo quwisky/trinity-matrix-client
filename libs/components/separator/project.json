@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "components-separator",
+  "projectType": "library",
+  "sourceRoot": "libs/components/separator/src",
+  "prefix": "trn",
+  "tags": ["type:ui", "scope:shared", "ui:public"],
+  "targets": { "test": {}, "typecheck": {} }
+}

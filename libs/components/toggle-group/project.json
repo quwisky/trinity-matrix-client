@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "components-toggle-group",
+  "projectType": "library",
+  "sourceRoot": "libs/components/toggle-group/src",
+  "prefix": "trn",
+  "tags": ["type:ui", "scope:shared", "ui:public"],
+  "targets": { "test": {}, "typecheck": {} }
+}
