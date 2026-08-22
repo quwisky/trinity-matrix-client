@@ -2,6 +2,7 @@ import {
   SHARED_MOCKS,
   clientStub,
   invitesProvider,
+  setRouteRoom,
   shellFrom,
 } from './rooms-page.spec-harness';
 import { signal, type WritableSignal } from '@angular/core';
@@ -30,7 +31,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
-import { MessageSearchService } from '../message-search/message-search.service';
+
+// The route outlives any one TestBed — it is one stream in the harness, shared by every
+// block in this file. Without the reset a test that opens a room hands it to the next one,
+// where "no room is open" would then assert against the previous test's room.
+beforeEach(() => setRouteRoom(null));
 
 // The channel sidebar is fed by `visibleRooms()`: Home shows only direct messages, the
 // Rooms view shows non-DM rooms, a selected space shows only its joined children.
@@ -117,7 +122,6 @@ describe('RoomsPage space filtering', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(MessageSearchService),
         MockProvider(AuthService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
@@ -550,7 +554,6 @@ describe('RoomsPage space ordering', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(MessageSearchService),
         MockProvider(AuthService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
@@ -765,7 +768,6 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(MessageSearchService),
         MockProvider(AuthService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),

@@ -13,6 +13,7 @@ import { VerificationService } from '@trinity/data-access/crypto';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { render } from '@trinity/testing';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import { BackInterceptorService } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
 import { Subject } from 'rxjs';
 import {
@@ -240,6 +241,48 @@ describe('AppComponent', () => {
       expect(closeTopmost).toHaveBeenCalled();
       expect(locationBack).not.toHaveBeenCalled();
       expect(App.minimizeApp).not.toHaveBeenCalled();
+    });
+
+    it('closes a registered panel after a dialog, and before leaving the page', async () => {
+      // The chain has a third rung now: a feature can register something Back should close.
+      // The rooms shell's right-hand panel is an inline block, not a CDK dialog, so
+      // `hasOpen()` above cannot see it — Back used to walk straight past an open panel and
+      // out of the room, which it has always done for the members drawer.
+      const listener = await create();
+      const panel = vi.fn(() => true);
+      TestBed.inject(BackInterceptorService).register(panel);
+
+      listener({ canGoBack: true });
+
+      expect(panel).toHaveBeenCalled();
+      expect(locationBack).not.toHaveBeenCalled();
+      expect(App.minimizeApp).not.toHaveBeenCalled();
+    });
+
+    it('leaves the page when the registered panel has nothing open', async () => {
+      // The other half, and the one that keeps Back usable: an interceptor that declines
+      // must not swallow the press.
+      const listener = await create();
+      TestBed.inject(BackInterceptorService).register(() => false);
+
+      listener({ canGoBack: true });
+
+      expect(locationBack).toHaveBeenCalled();
+    });
+
+    it('asks a dialog before a registered panel, not the other way round', async () => {
+      // Ordering, asserted rather than assumed: a dialog opened OVER a panel is the more
+      // recent thing, so it goes first.
+      const listener = await create();
+      const panel = vi.fn(() => true);
+      TestBed.inject(BackInterceptorService).register(panel);
+      hasOpen.mockReturnValue(true);
+      closeTopmost.mockReturnValue(true);
+
+      listener({ canGoBack: true });
+
+      expect(closeTopmost).toHaveBeenCalled();
+      expect(panel).not.toHaveBeenCalled();
     });
 
     it('swallows the press when an overlay refuses to close, rather than navigating under it', async () => {

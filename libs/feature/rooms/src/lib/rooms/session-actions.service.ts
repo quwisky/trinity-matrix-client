@@ -31,11 +31,16 @@ export class SessionActionsService {
     if (userId === this.matrix.activeUserId()) {
       return;
     }
-    // Close the open room FIRST. Its panes are bound to this account's client and Room
-    // objects, and timeline/threads/pinned all early-return on `open(sameRoomId)` — so
-    // leaving it open would keep projecting the outgoing account's data (including its
-    // decryption) with no way to re-bind short of a reload. The user re-picks a room on
-    // the new account, which opens it cleanly.
+    // Close the open room. Its panes are bound to this account's client and Room objects,
+    // and timeline/threads/pinned all early-return on `open(sameRoomId)` — so leaving it
+    // open would keep projecting the outgoing account's data (including its decryption)
+    // with no way to re-bind short of a reload. The user re-picks a room on the new
+    // account, which opens it cleanly.
+    //
+    // "First" only in statement order: closing NAVIGATES, so the teardown lands after the
+    // switch below has already flipped the active client. That is safe because each
+    // service's close() detaches from the client it opened on, not from `matrix.instance`
+    // — but it does mean nothing here may assume the panes are down by the next line.
     this.nav.closeOpenRoom();
     this.nav.resetViewScope();
     this.auth

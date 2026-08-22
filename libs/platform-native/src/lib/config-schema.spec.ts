@@ -49,7 +49,7 @@ describe('config key ledger', () => {
     expect(exportedKeysFor('data-access/notifications')).toEqual([
       'trinity.push.gateway',
     ]);
-    expect(exportedKeysFor('platform-native')).toHaveLength(16);
+    expect(exportedKeysFor('platform-native')).toHaveLength(18);
   });
 
   it('tells the user what the export leaves out, starting with their accounts', () => {

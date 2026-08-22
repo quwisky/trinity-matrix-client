@@ -3,8 +3,8 @@ import {
   Component,
   inject,
   input,
+  output,
 } from '@angular/core';
-import { TrnDialogRef } from '@trinity/components/overlay';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { HlmButton } from '@trinity/helm/button';
@@ -25,11 +25,11 @@ const MAX_AVATARS = 4;
  * {@link ThreadsService.threadList} (already projected for the active room by the
  * rooms shell), so it reacts to new threads, replies, and unread changes.
  *
- * Presented via {@link ThreadPanelService} as a right-aligned side panel (desktop) /
- * full-screen (mobile) {@link TrnDialogService} dialog; `roomId` arrives as a signal
- * input. Tapping a row closes this dialog with the chosen root id, and the panel
- * service re-opens it as a {@link ThreadViewComponent} — keeping this component free
- * of any thread-open dependency (and the two panels from stacking).
+ * Presentational: rendered in the rooms shell's right-hand panel slot, with `roomId`
+ * as a signal input. It opens nothing itself — tapping a row announces the chosen root
+ * id via {@link ThreadsListComponent.selected} and the rooms page swaps the slot to a
+ * {@link ThreadViewComponent}, keeping this component free of any thread-open
+ * dependency (and the two surfaces from stacking).
  */
 @Component({
   selector: 'trn-threads-list',
@@ -43,11 +43,14 @@ export class ThreadsListComponent {
   readonly fmt = inject(DateTimeFormatService);
 
   private readonly threadsSvc = inject(ThreadsService);
-  private readonly dialogRef =
-    inject<TrnDialogRef<string | undefined>>(TrnDialogRef);
 
-  /** The room whose threads are listed (used by the panel to re-open a thread). */
+  /** The room whose threads are listed (used by the page to open a thread). */
   readonly roomId = input.required<string>();
+
+  /** The user picked a thread: its root event id. */
+  readonly selected = output<string>();
+  /** The user closed the list without picking a thread. */
+  readonly dismissed = output<void>();
 
   /** The active room's threads, newest activity first. */
   readonly threads = this.threadsSvc.threadList;
@@ -55,14 +58,14 @@ export class ThreadsListComponent {
   /** Avatars shown per row, capped — the rest collapse into a "+N" chip. */
   readonly maxAvatars = MAX_AVATARS;
 
-  /** Close this list, handing the chosen thread root back to the panel service. */
+  /** Announce the chosen thread root; the page decides what the slot shows next. */
   openThread(rootEventId: string): void {
-    this.dialogRef.close(rootEventId);
+    this.selected.emit(rootEventId);
   }
 
-  /** Close the panel without opening a thread. */
+  /** Announce a close with no thread picked. */
   close(): void {
-    this.dialogRef.close();
+    this.dismissed.emit();
   }
 
   /** Accessible label for a row's unread badge. */

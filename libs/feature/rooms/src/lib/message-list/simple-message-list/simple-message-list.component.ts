@@ -3,6 +3,7 @@ import {
   Component,
   effect,
   signal,
+  untracked,
 } from '@angular/core';
 import { MessageComposerComponent } from '../../message-composer/message-composer.component';
 import { MessageRowComponent } from '../../message-row/message-row.component';
@@ -88,6 +89,15 @@ export class SimpleMessageListComponent extends MessageListBase {
 
   constructor() {
     super();
+
+    // Start the width watcher as soon as there IS a scroller. An effect rather than
+    // `afterNextRender` because this list's scroll element only exists once a room is open,
+    // so there is no single render to hang it on; `watchScrollerWidth` is idempotent.
+    effect(() => {
+      if (this.scrollEl()) {
+        untracked(() => this.watchScrollerWidth());
+      }
+    });
 
     effect(() => {
       const msgs = this.messages();
@@ -231,6 +241,9 @@ export class SimpleMessageListComponent extends MessageListBase {
     const el = this.scrollEl()?.nativeElement.querySelector(
       `[data-mid="${messageId}"]`,
     );
+    // Remembered so a width change can re-aim it — a row re-wraps to a different height at a
+    // different width, so this scroll position stops meaning this row. See `notePendingJump`.
+    this.notePendingJump(messageId);
     el?.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
     this.flash(el);
   }

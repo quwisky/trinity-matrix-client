@@ -7,6 +7,7 @@ import '@trinity/util/matrix/code-highlight';
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
   Injector,
   OnDestroy,
@@ -17,10 +18,13 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router } from '@angular/router';
-import { map } from 'rxjs';
+import { Router } from '@angular/router';
 import { HlmButton } from '@trinity/helm/button';
+import {
+  BELOW_MD_QUERY,
+  BELOW_MEMBERS_QUERY,
+  mediaQuerySignal,
+} from '@trinity/util/ui';
 import {
   HlmDropdownMenu,
   HlmDropdownMenuItem,
@@ -52,12 +56,24 @@ import {
   TimelineActionsService,
   TimelineService,
 } from '@trinity/data-access/timeline';
-import { FeatureFlagsService } from '@trinity/platform-native';
+import {
+  HapticsService,
+  BackInterceptorService,
+  FeatureFlagsService,
+  ShellLayoutService,
+} from '@trinity/platform-native';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { PageHeaderComponent } from '@trinity/components/page-header';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { MemberListComponent } from '../member-list/member-list.component';
+import { ThreadsListComponent } from '../thread/threads-list.component';
+import { ThreadViewComponent } from '../thread/thread-view.component';
+import { PinnedMessagesPanelComponent } from '../pinned/pinned-messages-panel.component';
+import { MessageSearchComponent } from '../message-search/message-search.component';
+import { MemberInfoComponent } from '../member-info/member-info.component';
+import { PaneHandleComponent } from './pane-handle.component';
+import { DrawerSwipeDirective } from './drawer-swipe.directive';
 import { SimpleMessageListComponent } from '../message-list/simple-message-list/simple-message-list.component';
 import { VirtualMessageListComponent } from '../message-list/virtual-message-list/virtual-message-list.component';
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
@@ -76,7 +92,6 @@ import { ReadStateService } from './read-state.service';
 import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
-import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
 import { TrnIconComponent } from '@trinity/components/icon';
 
 /**
@@ -85,6 +100,16 @@ import { TrnIconComponent } from '@trinity/components/icon';
  * timeline, and a member list.
  * Wired to live synced rooms via `RoomsService` + `TimelineService`.
  */
+/**
+ * The drawer widths at the `members` breakpoint, mirroring `rooms.page.scss`.
+ *
+ * Duplicated rather than read from CSS because a gesture threshold has to exist before the
+ * drawer does — the opening swipe is measured while there is nothing on screen to measure.
+ * The stylesheet is the one that renders them, so these two must not drift from it.
+ */
+const MEMBERS_DRAWER_PX = 240;
+const PANEL_DRAWER_PX = 480;
+
 @Component({
   selector: 'trn-rooms',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -119,6 +144,16 @@ import { TrnIconComponent } from '@trinity/components/icon';
     ServerRailComponent,
     ChannelSidebarComponent,
     MemberListComponent,
+    // The five surfaces the right-hand slot can show. Imported by the page rather than
+    // opened by a service, which is the whole of this change: presentation is the shell's
+    // decision, and each panel just announces what the user did.
+    ThreadsListComponent,
+    ThreadViewComponent,
+    PinnedMessagesPanelComponent,
+    MessageSearchComponent,
+    MemberInfoComponent,
+    PaneHandleComponent,
+    DrawerSwipeDirective,
     SimpleMessageListComponent,
     VirtualMessageListComponent,
     EncryptionBannerComponent,
@@ -136,6 +171,73 @@ import { TrnIconComponent } from '@trinity/components/icon';
   },
 })
 export class RoomsPage implements OnInit, OnDestroy {
+  /**
+   * The two viewport predicates the shell branches on, live for the page's lifetime.
+   *
+   * Fields rather than call-time reads: `mediaQuerySignal` registers a listener bound to the
+   * `DestroyRef` handed to it, so creating one per call would leak one per invocation.
+   */
+  private readonly mobileMasterDetail = mediaQuerySignal(
+    BELOW_MD_QUERY,
+    inject(DestroyRef),
+  );
+  /**
+   * Whether the slot is currently the overlay drawer rather than a column.
+   *
+   * `protected` rather than private: the template reads it to tell `DrawerSwipeDirective`
+   * whether there is a drawer to swipe at all.
+   */
+  protected readonly membersAreDrawer = mediaQuerySignal(
+    BELOW_MEMBERS_QUERY,
+    inject(DestroyRef),
+  );
+
+  /** Persisted pane widths, bound into the shell's CSS custom properties. */
+  readonly layout = inject(ShellLayoutService);
+
+  /** A tick when a drag lands, on a phone. Silent everywhere else. */
+  private readonly haptics = inject(HapticsService);
+
+  /**
+   * How wide the drawer actually is at the drawer breakpoint, for the swipe's threshold.
+   *
+   * NOT `layout.rightPanelWidth()`, which is the width the pane handle drags on a DESKTOP and
+   * which `rooms.page.scss` deliberately ignores below the `members` breakpoint. Passing it
+   * made the gesture measure a 240px roster against a 480px default — 80% of its travel to
+   * commit, where the rule is 40% — and a user who had dragged the panel to its 720px maximum
+   * made the distance threshold unreachable on a phone, leaving only the flick.
+   *
+   * A method rather than a computed: it reads `innerWidth`, which is not a signal, and a
+   * template call is re-evaluated each pass so a rotation is picked up.
+   */
+  protected drawerWidth(): number {
+    const panel = this.store.rightPanel();
+    if (!panel || panel.kind === 'members') {
+      return MEMBERS_DRAWER_PX;
+    }
+    // The panels are `width: 480px; max-width: 100%` at this breakpoint, so on a phone the
+    // viewport is what they actually get.
+    return Math.min(PANEL_DRAWER_PX, window.innerWidth);
+  }
+
+  /**
+   * Android's hardware Back closes the right-hand panel before it leaves the room.
+   *
+   * Registered rather than reached for: `AppComponent` owns the Back chain and cannot import
+   * this feature, and the panel is an inline block rather than a CDK dialog, so the chain's
+   * `dialog.hasOpen()` check has never seen it. Only claims the press when something is
+   * actually open, so Back still leaves the room when the slot is empty.
+   */
+  private readonly backRegistration = inject(BackInterceptorService).register(
+    () => {
+      if (!this.store.rightPanel()) {
+        return false;
+      }
+      this.closeRightPanel();
+      return true;
+    },
+  );
+
   readonly rooms = inject(RoomsService);
   readonly spaces = inject(SpacesService);
   private readonly mixedRooms = inject(MixedRoomsService);
@@ -155,7 +257,6 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly push = inject(PushService);
   private readonly notifications = inject(NotificationService);
   private readonly router = inject(Router);
-  private readonly route = inject(ActivatedRoute);
   private readonly injector = inject(Injector);
   readonly store = inject(RoomShellStore);
   readonly status = inject(ShellStatusService);
@@ -185,19 +286,6 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly listView = viewChild<ElementRef<HTMLElement>>('listView');
   private readonly mainView = viewChild<ElementRef<HTMLElement>>('mainView');
 
-  /**
-   * The room a notification tap asked for: `/rooms?room=<id>`, written by
-   * `NotificationService`/`PushService` after they switch to the owning account.
-   *
-   * Read as a STREAM, not from the route snapshot. `/rooms` is normally already the
-   * active route when a notification is tapped, so the router reuses this component and
-   * a snapshot read would only ever see the value the page was first created with —
-   * which is how every tap ended up landing on whatever room was already open.
-   */
-  private readonly requestedRoomId = toSignal(
-    this.route.queryParamMap.pipe(map((params) => params.get('room'))),
-    { initialValue: null },
-  );
   constructor() {
     // The service cannot read the page's viewChild refs, so hand it the focus call.
     // In the constructor, not ngOnInit: `TestBed.inject(RoomsPage)` never runs lifecycle
@@ -228,23 +316,56 @@ export class RoomsPage implements OnInit, OnDestroy {
       this.mixedSpaces.setAccounts(accounts);
       this.mixedInvites.setAccounts(accounts);
     });
-    // Open the room a notification tap asked for, then strip the param so Back (or a
-    // reload) does not re-open it. `activeRoomId` is read untracked: this must react to
-    // the URL only — tracking it would re-run on every ordinary room switch and, if the
-    // strip had not landed yet, yank the user back to the notified room.
+    // The `?room=` deep link is gone. A notification tap now navigates to `/rooms/:roomId`
+    // like everything else, so the room it asked for arrives through `paramMap` and needs no
+    // handling here — and none of the strip-the-param-afterwards dance that went with it.
+    this.restoreFocusWhenTheSlotEmpties();
+  }
+
+  /**
+   * Give focus back to whatever opened the right-hand slot once it closes.
+   *
+   * CDK did this for the four dialogs these panels replaced. Without it a keyboard user who
+   * presses "Threads", reads the list and closes it lands on `<body>` and has to tab in from
+   * the top of the document again — and in-room search makes it worse, because it
+   * deliberately takes focus when it opens.
+   *
+   * Two deliberate narrowings. Only a transition THROUGH `null` restores: swapping the
+   * threads list for a thread keeps the original trigger, since the slot never emptied. And
+   * it only fires when the removal actually orphaned focus — anything that has claimed it
+   * since (the room-change handoff, a DM the panel just opened) has a better idea than a
+   * remembered button does.
+   */
+  private restoreFocusWhenTheSlotEmpties(): void {
+    let trigger: HTMLElement | null = null;
     effect(() => {
-      const roomId = this.requestedRoomId();
-      if (!roomId) {
-        return;
-      }
-      if (roomId !== untracked(() => this.store.activeRoomId())) {
-        this.nav.onSelectRoom(roomId);
-      }
-      void this.router.navigate([], {
-        relativeTo: this.route,
-        queryParams: { room: null },
-        queryParamsHandling: 'merge',
-        replaceUrl: true,
+      const panel = this.store.rightPanel();
+      untracked(() => {
+        if (panel) {
+          trigger ??=
+            document.activeElement instanceof HTMLElement &&
+            document.activeElement !== document.body
+              ? document.activeElement
+              : null;
+          return;
+        }
+        const target = trigger;
+        trigger = null;
+        if (!target) {
+          return;
+        }
+        // After the render that removes the panel, or the element is still in the way.
+        afterNextRender(
+          () => {
+            if (
+              target.isConnected &&
+              document.activeElement === document.body
+            ) {
+              target.focus();
+            }
+          },
+          { injector: this.injector },
+        );
       });
     });
   }
@@ -293,7 +414,11 @@ export class RoomsPage implements OnInit, OnDestroy {
    * symmetric nor load-bearing — one owner, not one and a half.
    */
   ngOnDestroy(): void {
-    this.nav.closeOpenRoom();
+    this.backRegistration();
+    // `releaseOpenRoom`, not `closeOpenRoom`: closing NAVIGATES now, and the router is
+    // already on its way to wherever the user actually went. This only has to stop the
+    // root-scoped projections following a room nobody is looking at.
+    this.nav.releaseOpenRoom();
   }
 
   /**
@@ -302,8 +427,10 @@ export class RoomsPage implements OnInit, OnDestroy {
    * (keyed off `activeRoomId`); at md+ both columns are static and this is unused.
    */
   backToList(): void {
+    // Focus is not handed off here: closing navigates, and `projectOpenRoom` focuses the
+    // pane that became visible once the URL lands. Doing it here as well would schedule a
+    // second `afterNextRender` against the page we are leaving.
     this.nav.closeOpenRoom();
-    this.focusActiveView();
   }
 
   /**
@@ -313,7 +440,7 @@ export class RoomsPage implements OnInit, OnDestroy {
    * pages are always visible, so focus is left where it is.
    */
   private focusActiveView(): void {
-    if (!isMobileMasterDetail()) {
+    if (!this.mobileMasterDetail()) {
       return;
     }
     afterNextRender(
@@ -329,22 +456,70 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   /** Show/hide the member list from the toolbar / overflow menu. */
   toggleMembers(): void {
-    this.store.membersOpen.update((open) => !open);
+    // Toggling OFF only when the member list is what is showing. With one slot, pressing
+    // "Members" while a thread is open means "show me members instead", not "close the
+    // thread" — the button is a destination, not a switch.
+    this.store.rightPanel.update((panel) =>
+      panel?.kind === 'members' ? null : { kind: 'members' },
+    );
   }
 
-  /** Close the member list — used by the mobile drawer's backdrop. */
-  closeMembers(): void {
-    this.store.membersOpen.set(false);
+  /** Empty the slot — the mobile drawer's backdrop, and every panel's own close button. */
+  closeRightPanel(): void {
+    this.store.rightPanel.set(null);
   }
 
   /**
-   * Escape dismisses the mobile members drawer (its backdrop is mouse-only). Scoped to
-   * when the drawer is actually open so it never swallows Escape elsewhere; a member's
-   * info panel is a CDK dialog that closes the drawer as it opens, so there's no clash.
+   * A swipe in from the right edge opens the member list.
+   *
+   * The roster and not, say, threads, because the gesture has to mean ONE thing and this is
+   * what the toolbar's own button opens — a gesture that guessed differently from the button
+   * beside it would be a gesture nobody could predict.
+   */
+  onDrawerSwipedOpen(): void {
+    if (!this.store.activeRoomId()) {
+      return; // no room, no roster to show — the slot's template is gated on one
+    }
+    this.store.rightPanel.set({ kind: 'members' });
+    this.haptics.gestureCommitted();
+  }
+
+  /** A swipe away dismisses whatever the slot was showing. */
+  onDrawerSwipedClosed(): void {
+    this.closeRightPanel();
+    this.haptics.gestureCommitted();
+  }
+
+  /**
+   * Do what the current surface's own close button does.
+   *
+   * Not the same as {@link closeRightPanel} for member info, which goes BACK to the roster
+   * it replaced rather than to an empty slot. Escape is the keyboard spelling of pressing
+   * that button, so it has to land in the same place; the mobile backdrop is the one
+   * gesture that genuinely means "get this overlay off my screen" and keeps emptying it.
+   */
+  dismissRightPanel(): void {
+    if (this.store.rightPanel()?.kind === 'member') {
+      this.memberActions.onMemberPanelDismissed();
+      return;
+    }
+    this.closeRightPanel();
+  }
+
+  /**
+   * Escape dismisses whatever the slot is showing — the panels are plain components now, so
+   * nothing else offers the Escape that CDK gave them for free as dialogs.
+   *
+   * The roster is the exception, and only at the wide layout, where it is a persistent
+   * column rather than an overlay: this is a DOCUMENT listener, so an unguarded Escape there
+   * would close the member list every time someone pressed Escape to cancel an edit in the
+   * composer. As the narrow drawer it is an overlay like the rest and goes with them.
    */
   onEscapeKey(): void {
-    if (this.store.membersOpen() && membersShownAsDrawer()) {
-      this.closeMembers();
+    const panel = this.store.rightPanel();
+    if (!panel || (panel.kind === 'members' && !this.membersAreDrawer())) {
+      return;
     }
+    this.dismissRightPanel();
   }
 }

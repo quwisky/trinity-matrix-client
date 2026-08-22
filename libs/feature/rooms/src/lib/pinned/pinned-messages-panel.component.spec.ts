@@ -1,7 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { render, fireEvent } from '@trinity/testing';
-import { TrnDialogRef } from '@trinity/components/overlay';
 import {
   PinnedMessagesService,
   type PinnedMessageView,
@@ -23,25 +22,32 @@ function pin(over: Partial<PinnedMessageView> = {}): PinnedMessageView {
 }
 
 /**
- * Render the panel with a stubbed PinnedMessagesService. The panel reads the live
- * projection directly (the shell has already opened it for the active room), so the
- * signals ARE the inputs — there is nothing to thread in.
+ * Render the panel with a stubbed PinnedMessagesService, capturing what it announces.
+ * The panel reads the live projection directly (the shell has already opened it for
+ * the active room), so the signals ARE the inputs — there is nothing to thread in.
+ * It is presentational: `selected` / `dismissed` are the whole contract with the host.
  */
 async function renderPanel(
   options: { pinned?: PinnedMessageView[]; canPin?: boolean } = {},
 ) {
-  const close = vi.fn();
+  const selected: string[] = [];
+  let dismissals = 0;
   const { container } = await render(PinnedMessagesPanelComponent, {
+    on: {
+      selected: (eventId: string) => selected.push(eventId),
+      dismissed: () => {
+        dismissals += 1;
+      },
+    },
     providers: [
       MockProvider(PinnedMessagesService, {
         pinnedMessages: signal(options.pinned ?? []).asReadonly(),
         canPin: signal(options.canPin ?? true).asReadonly(),
         unpin: vi.fn(() => of(void 0)),
       }),
-      { provide: TrnDialogRef, useValue: { close } },
     ],
   });
-  return { container, close };
+  return { container, selected, dismissals: () => dismissals };
 }
 
 /** The row buttons, identified by the aria-label the template builds. */
@@ -81,19 +87,23 @@ describe('PinnedMessagesPanelComponent', () => {
     expect(container.querySelectorAll('.pin-item')).toHaveLength(0);
   });
 
-  it('closes with the chosen event id so the shell can jump the timeline', async () => {
-    const { container, close } = await renderPanel({
+  it('emits the chosen event id so the host can jump the timeline', async () => {
+    const { container, selected, dismissals } = await renderPanel({
       pinned: [pin({ id: '$target', senderName: 'Alice' })],
     });
 
     fireEvent.click(jumpButton(container, 'Alice')!);
 
-    // The id — not just `close()` — is the whole contract with PinnedPanelService.
-    expect(close).toHaveBeenCalledWith('$target');
+    // The id — not just "something happened" — is the whole contract with the host.
+    expect(selected).toEqual(['$target']);
+    // A pick is a pick, not a bare close: the host distinguishes the two.
+    expect(dismissals()).toBe(0);
   });
 
-  it('closes with no id when dismissed', async () => {
-    const { container, close } = await renderPanel({ pinned: [pin()] });
+  it('emits dismissed, with no id, when closed', async () => {
+    const { container, selected, dismissals } = await renderPanel({
+      pinned: [pin()],
+    });
 
     fireEvent.click(
       container.querySelector<HTMLButtonElement>(
@@ -101,11 +111,12 @@ describe('PinnedMessagesPanelComponent', () => {
       )!,
     );
 
-    expect(close).toHaveBeenCalledWith(); // undefined → no jump
+    expect(dismissals()).toBe(1);
+    expect(selected).toEqual([]); // nothing picked → no jump
   });
 
-  it('unpins in place without closing the panel', async () => {
-    const { container, close } = await renderPanel({
+  it('unpins in place without announcing anything', async () => {
+    const { container, selected, dismissals } = await renderPanel({
       pinned: [pin({ id: '$a', senderName: 'Alice' })],
       canPin: true,
     });
@@ -114,7 +125,9 @@ describe('PinnedMessagesPanelComponent', () => {
     fireEvent.click(unpinButton(container, 'Alice')!);
 
     expect(svc.unpin).toHaveBeenCalledWith('$a');
-    expect(close).not.toHaveBeenCalled(); // the live projection drops the row instead
+    // The live projection drops the row; the panel must not ask the host to close it.
+    expect(dismissals()).toBe(0);
+    expect(selected).toEqual([]);
   });
 
   it('hides Unpin from a user without permission', async () => {

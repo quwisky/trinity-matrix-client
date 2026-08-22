@@ -23,6 +23,17 @@ All notable changes to this project are documented here. The format is based on
   OLED screen a black pixel is simply switched off, so it saves power and looks properly dark
   rather than dark grey. Pick it under Settings → Appearance, in either light or dark mode.
 
+### Changed
+
+- **One panel at a time down the right-hand side.** Threads, a thread, pinned messages and
+  in-room search used to open as floating panels _over_ the member list, so you could end up
+  with two lists stacked on each other and no clear way back. There is now a single
+  right-hand space, and whatever you ask for takes it: pressing Threads while the member list
+  is up swaps to threads rather than covering it. Clicking someone in the member list opens
+  their info in that same space — closing it puts the member list back, so you can watch a
+  role change land in the list you were reading. Escape closes whatever is showing, and
+  closing it hands the keyboard back to the button you opened it with.
+
 ### Fixed
 
 - **Images and videos hold their place while they load.** The timeline used to jump as each
@@ -329,6 +340,30 @@ All notable changes to this project are documented here. The format is based on
   waits for you to say so.
 
 ### Changed
+
+- **The room you have open is now in the address bar, and the panels share the window.**
+  Opening a room puts it in the URL, so you can bookmark a conversation, send someone a link
+  straight to it, and reload without landing back on the room list. Your browser's Back
+  button — and Back on Android — now closes the open room instead of leaving Trinity
+  altogether.
+
+  Threads, the thread you are reading, pinned messages, search results and member info now
+  take turns in one panel beside the conversation rather than stacking up, so opening one
+  puts the previous one away.
+
+  That panel and the room list can both be **dragged wider or narrower**, and Trinity
+  remembers the widths for next time. Drag the divider between them, or focus it and use the
+  arrow keys — Home and End jump to the narrowest and widest, so a layout dragged somewhere
+  unhelpful is one keystroke from being usable again.
+
+  On a phone that panel is a drawer, and it now **swipes**: in from the right edge to bring up
+  the member list, away again to put it back. Android's Back button closes it too, instead of
+  walking straight past it and out of the room. On iPhone the swipe-from-the-left-edge that
+  goes back in every other app finally works in Trinity as well.
+
+- **Nothing sits under the notch or the home indicator any more.** On a phone with a rounded
+  screen the thread composer and a member's action buttons ran underneath the bar at the
+  bottom, because the panels only cleared the top edge. They clear both ends now.
 
 - **The emoji picker follows your theme.** It came from a third-party library that only knew
   "light or dark", so it showed its own purple accent and its own greys whichever Trinity

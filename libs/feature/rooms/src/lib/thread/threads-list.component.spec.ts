@@ -1,5 +1,4 @@
 import { signal } from '@angular/core';
-import { TrnDialogRef } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
 import {
   ThreadsService,
@@ -7,7 +6,7 @@ import {
 } from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { MockComponent, MockProvider } from 'ng-mocks';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { ThreadsListComponent } from './threads-list.component';
 
 function summary(overrides: Partial<ThreadSummary> = {}): ThreadSummary {
@@ -29,16 +28,17 @@ function summary(overrides: Partial<ThreadSummary> = {}): ThreadSummary {
 
 async function build(threads: ThreadSummary[] = []) {
   const threadList = signal<ThreadSummary[]>(threads);
-  const dismiss = vi.fn().mockResolvedValue(true);
   const { fixture, container } = await render(ThreadsListComponent, {
     inputs: { roomId: '!r:hs' },
     imports: [MockComponent(AvatarComponent)],
-    providers: [
-      MockProvider(ThreadsService, { threadList }),
-      MockProvider(TrnDialogRef, { close: dismiss }),
-    ],
+    providers: [MockProvider(ThreadsService, { threadList })],
   });
-  return { fixture, container, dismiss };
+  /** Everything this panel announces, in order, so a test can pin both channels. */
+  const picked: string[] = [];
+  let dismissals = 0;
+  fixture.componentInstance.selected.subscribe((id) => picked.push(id));
+  fixture.componentInstance.dismissed.subscribe(() => (dismissals += 1));
+  return { fixture, container, picked, dismissals: () => dismissals };
 }
 
 describe('ThreadsListComponent', () => {
@@ -96,22 +96,25 @@ describe('ThreadsListComponent', () => {
     expect(container.querySelector('.thread-item__badge')).toBeNull();
   });
 
-  it('closes with the chosen thread-root id when a row is tapped', async () => {
-    const { container, dismiss } = await build([
+  it('announces the chosen thread-root id when a row is tapped', async () => {
+    const { container, picked, dismissals } = await build([
       summary({ rootEventId: '$pick' }),
     ]);
 
     container.querySelector<HTMLElement>('.thread-item')!.click();
 
-    expect(dismiss).toHaveBeenCalledWith('$pick');
+    expect(picked).toEqual(['$pick']);
+    // Picking is not a dismissal: the page keeps the slot, it just swaps what is in it.
+    expect(dismissals()).toBe(0);
   });
 
-  it('closes with no payload when closed', async () => {
-    const { fixture, dismiss } = await build([summary()]);
+  it('announces a dismissal, with nothing picked, when closed', async () => {
+    const { fixture, picked, dismissals } = await build([summary()]);
 
     fixture.componentInstance.close();
 
-    expect(dismiss).toHaveBeenCalledWith();
+    expect(dismissals()).toBe(1);
+    expect(picked).toEqual([]);
   });
 
   it('shows an empty state when there are no threads', async () => {

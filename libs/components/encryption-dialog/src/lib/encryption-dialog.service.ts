@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import type { Type } from '@angular/core';
 import { TrnDialogService } from '@trinity/components/overlay';
-import { MD_QUERY } from '@trinity/util/ui';
+import { MD_QUERY, matchesQuery } from '@trinity/util/ui';
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
   type EncryptionDialogKind,
@@ -95,14 +95,11 @@ export class EncryptionDialogService {
    *
    * A one-shot read, deliberately: this decides how to PRESENT the flow at the moment it
    * opens. A dialog does not become a route because the window was dragged narrower
-   * afterwards, so the live `mediaQuerySignal` next to `MD_QUERY` would be the wrong tool
-   * — the shared constant is the part worth having.
+   * afterwards, so the live `mediaQuerySignal` next to `MD_QUERY` would be the wrong tool.
+   * `matchesQuery` is that one-shot read, shared — this used to open-code the same three
+   * feature-detected clauses.
    */
   private isDesktopLayout(): boolean {
-    return (
-      typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia(MD_QUERY).matches
-    );
+    return matchesQuery(MD_QUERY);
   }
 }

@@ -7,6 +7,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { SessionStorageService } from '@trinity/platform-native';
 import { DEFAULT_APP_ID } from './push-config';
 import { PushGatewayService } from './push-gateway.service';
+import { encodeRoomSegment } from '@trinity/util/matrix';
 
 /** Pusher `data` key carrying the owning account's user id (see docs/reference/push-notifications.md). The
  * gateway must forward this from `devices[].data` into the delivered push payload so
@@ -418,7 +419,7 @@ export class PushService {
       this.storage.setActive(userId).subscribe({ error: () => undefined });
     }
     const navigate = roomId
-      ? this.router.navigate(['/rooms'], { queryParams: { room: roomId } })
+      ? this.router.navigate(['/rooms', encodeRoomSegment(roomId)])
       : this.router.navigate(['/rooms']);
     void navigate.catch(() => undefined);
   }
