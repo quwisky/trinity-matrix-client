@@ -22,6 +22,7 @@ import {
 } from './shell-layout.service';
 import {
   ComposerSettingsService,
+  DEFAULT_FORMAT_ON_SELECTION,
   DEFAULT_SHOW_FORMATTING_TOOLBAR,
 } from './composer-settings.service';
 import { DateTimeFormatService } from './date-time-format.service';
@@ -298,11 +299,24 @@ function composerEntries(
     {
       path: 'composer.showFormattingToolbar',
       key: 'trinity.composer.show-toolbar',
-      description: 'Whether the message box shows its formatting toolbar.',
+      // Reworded, because the behaviour it names changed: the bar can now also appear on
+      // demand, so "shows its formatting toolbar" would no longer say which of the two this
+      // is. The key and the path are unchanged, so an exported config keeps working.
+      description:
+        'Whether the message box keeps its formatting toolbar pinned open.',
       read: () => composer.showFormattingToolbar(),
       reset: () =>
         composer.setShowFormattingToolbar(DEFAULT_SHOW_FORMATTING_TOOLBAR),
       ...flagSetting((on) => composer.setShowFormattingToolbar(on)),
+    },
+    {
+      path: 'composer.formatOnSelection',
+      key: 'trinity.composer.format-on-selection',
+      description:
+        'Whether selecting text raises the formatting toolbar while it is unpinned.',
+      read: () => composer.formatOnSelection(),
+      reset: () => composer.setFormatOnSelection(DEFAULT_FORMAT_ON_SELECTION),
+      ...flagSetting((on) => composer.setFormatOnSelection(on)),
     },
   ];
 }
