@@ -108,6 +108,18 @@ export class TrnAnchoredOverlayDirective {
    */
   readonly matchAnchorWidth = input(false);
 
+  /**
+   * Whether a press outside the layer closes it.
+   *
+   * On for the layers a person opens and closes — a picker, a menu. Off for one whose
+   * openness is DERIVED: the composer's suggestion menus are open exactly when the current
+   * query has matches (`computed(() => this.matches().length > 0)`), so there is no flag for
+   * the write-back to land in. Bound one-way against a computed, a self-closing layer
+   * disappears while its host still believes it is showing — and the host is the one
+   * answering Enter and pointing `aria-activedescendant` at a row nobody can see.
+   */
+  readonly closeOnOutsidePress = input(true);
+
   private ref: OverlayRef | null = null;
 
   constructor() {
@@ -162,7 +174,11 @@ export class TrnAnchoredOverlayDirective {
     );
     // `outsidePointerEvents`, not a backdrop — see the class note. Written back through the
     // model so the host's own signal agrees with what is on screen.
-    ref.outsidePointerEvents().subscribe(() => this.open.set(false));
+    ref.outsidePointerEvents().subscribe(() => {
+      if (this.closeOnOutsidePress()) {
+        this.open.set(false);
+      }
+    });
     this.ref = ref;
     this.followResizes(ref, anchor);
   }

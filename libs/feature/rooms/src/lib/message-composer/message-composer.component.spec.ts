@@ -489,7 +489,10 @@ describe('MessageComposerComponent', () => {
     const controls = trigger?.getAttribute('aria-controls');
     expect(trigger?.getAttribute('aria-expanded')).toBe('true');
     expect(controls).toBeTruthy();
-    expect(container.querySelector(`#${controls}`)).not.toBeNull();
+    // `document`, not the fixture: the picker renders in the CDK overlay container now. That
+    // is also what `aria-controls` actually requires — an id resolvable in the document, not
+    // one inside any particular subtree — so this is the more faithful assertion of the two.
+    expect(document.querySelector(`#${controls}`)).not.toBeNull();
   });
 
   function pasteEvent(opts: { files?: File[]; items?: unknown[] }): {
@@ -1586,8 +1589,16 @@ describe('MessageComposerComponent', () => {
     return ta;
   }
 
-  const menu = (fixture: ComponentFixture<MessageComposerComponent>) =>
-    fixture.nativeElement.querySelector('[data-testid=emoji-autocomplete]');
+  /**
+   * `document`, not the fixture: the suggestion menus render in the CDK overlay container now,
+   * so they are no longer inside the component's own DOM. Same reason the insert tray below is
+   * asserted this way — it has been a CDK menu all along.
+   *
+   * The fixture argument is kept so every call site reads unchanged; it is what makes the
+   * lookup happen after the render rather than before.
+   */
+  const menu = (_fixture: ComponentFixture<MessageComposerComponent>) =>
+    document.querySelector('[data-testid=emoji-autocomplete]');
 
   it('opens the emoji menu while typing a :shortcode and ranks an exact match first', async () => {
     const { fixture } = await renderComposer();
@@ -1669,7 +1680,7 @@ describe('MessageComposerComponent', () => {
     const cmp = fixture.componentInstance;
 
     type(fixture, ':fire');
-    const option = menu(fixture).querySelector('button') as HTMLButtonElement;
+    const option = menu(fixture)!.querySelector('button') as HTMLButtonElement;
     option.click();
 
     expect(cmp.text()).toBe('🔥');
@@ -1784,12 +1795,12 @@ describe('MessageComposerComponent', () => {
     const { fixture } = await renderComposer();
 
     type(fixture, ':joy');
-    const first = menu(fixture).querySelector('.composer__emoji-suggestion');
+    const first = menu(fixture)!.querySelector('.composer__emoji-suggestion')!;
     expect(
-      first.querySelector('.composer__emoji-suggestion-char').textContent,
+      first.querySelector('.composer__emoji-suggestion-char')?.textContent,
     ).toContain('😂');
     expect(
-      first.querySelector('.composer__emoji-suggestion-code').textContent,
+      first.querySelector('.composer__emoji-suggestion-code')?.textContent,
     ).toContain(':joy:');
   });
 

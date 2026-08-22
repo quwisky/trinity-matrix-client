@@ -1,4 +1,14 @@
-@if (emojiOpen()) {
+<!-- Anchored, not absolute: see the component's note. `closeOnOutsidePress` is off because
+     `emojiOpen` is a computed over the query's matches — there is nothing for a self-close to
+     write to. -->
+<ng-template
+  [trnAnchoredOverlay]="anchor()"
+  [open]="emojiOpen()"
+  [closeOnOutsidePress]="false"
+  [matchAnchorWidth]="true"
+  side="top"
+  align="start"
+>
   <ul
     id="emoji-suggestions"
     class="composer__emoji-menu"
@@ -28,8 +38,15 @@
       </li>
     }
   </ul>
-}
-@if (mentionOpen()) {
+</ng-template>
+<ng-template
+  [trnAnchoredOverlay]="anchor()"
+  [open]="mentionOpen()"
+  [closeOnOutsidePress]="false"
+  [matchAnchorWidth]="true"
+  side="top"
+  align="start"
+>
   <ul
     id="mention-suggestions"
     class="composer__emoji-menu"
@@ -58,4 +75,4 @@
       </li>
     }
   </ul>
-}
+</ng-template>
