@@ -26,11 +26,12 @@
 <div class="composer">
   @if (!recordingVoice() && showToolbar()) {
     <trn-composer-toolbar
-      [narrow]="narrowLayout()"
       [previewing]="previewing()"
       [disabled]="uploadProgress() !== null"
+      [pinned]="toolbarPinned()"
       (format)="onFormat($event)"
       (togglePreview)="onTogglePreview()"
+      (togglePinned)="onTogglePinned()"
     />
   }
   <!-- Both pickers render in the CDK overlay container, anchored to the input row. They were
@@ -187,6 +188,9 @@
       (keydown.arrowDown)="onArrowDown($event)"
       (keydown.tab)="onTab($event)"
       (blur)="onBlur()"
+      (select)="onSelectionChange()"
+      (keyup)="onSelectionChange()"
+      (pointerup)="onSelectionChange()"
       (paste)="onPaste($event)"
     ></textarea>
     <button

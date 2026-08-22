@@ -41,6 +41,16 @@ All notable changes to this project are documented here. The format is based on
   role change land in the list you were reading. Escape closes whatever is showing, and
   closing it hands the keyboard back to the button you opened it with.
 
+- **The formatting toolbar comes when you need it.** It used to be a row that was either always
+  there or never there, with four buttons out and the other five hidden behind a "⋯". Now
+  selecting some text brings up all nine — bold, italic, strikethrough, inline code, code
+  block, quote, link, bullets and a task list — grouped by what they do, and it goes away again
+  when the selection does. If you would rather it simply stayed put, **Aa** on the bar keeps it,
+  and Settings → Appearance has both switches: keep it open, and bring it up on a selection.
+  Turning both off means the buttons never appear, which is what people who had already hidden
+  the toolbar were asking for and what they will still get. The keyboard shortcuts work either
+  way, as they always have.
+
 ### Fixed
 
 - **A room that has been upgraded no longer squashes the conversation.** In a room with a "this

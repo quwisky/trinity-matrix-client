@@ -387,12 +387,27 @@ export class MessageComposerComponent {
   }
   private readonly drafts = inject(DraftStoreService);
   private readonly composerSettings = inject(ComposerSettingsService);
+  /** Whether the bar is pinned open (Settings → Appearance, or the bar's own `Aa`). */
+  readonly toolbarPinned = this.composerSettings.showFormattingToolbar;
+
+  /** Whether there is a non-empty selection in the textarea right now. */
+  private readonly hasSelection = signal(false);
+
   /**
-   * Whether the formatting toolbar is shown (Settings → Appearance). Hiding it is a screen
-   * space choice, so it takes away the ROW only: {@link onKeydown} still resolves the
-   * formatting chords, and Shift+Enter still continues a list.
+   * Whether the formatting bar is on screen.
+   *
+   * Pinned, or raised by a selection while the second preference allows it. Both are a screen
+   * space choice and neither takes anything away but the ROW: {@link onKeydown} still resolves
+   * the formatting chords with no bar in sight, and Shift+Enter still continues a list.
+   *
+   * Raised by a SELECTION rather than by focus, because the bar's nine actions all act on one
+   * — a bar offered against a bare caret is offering to wrap nothing.
    */
-  readonly showToolbar = this.composerSettings.showFormattingToolbar;
+  readonly showToolbar = computed(
+    () =>
+      this.toolbarPinned() ||
+      (this.composerSettings.formatOnSelection() && this.hasSelection()),
+  );
   /** Resolves the user's (rebindable) formatting chords — see {@link onKeydown}. */
   private readonly shortcuts = inject(KeyboardShortcutsService);
   private wasEditing = false;
@@ -932,6 +947,30 @@ export class MessageComposerComponent {
     // options cancel their `mousedown` for the same reason.
     event.preventDefault();
     this.textarea()?.nativeElement.focus();
+  }
+
+  /**
+   * Track whether anything is selected, which is what raises the unpinned bar.
+   *
+   * Three events rather than one, because a selection arrives three ways: `select` covers the
+   * browser's own (a double-click, a drag, Select All), `keyup` covers Shift+arrow, and
+   * `pointerup` covers a drag that ends without changing the selection — where `select` has
+   * already fired but the bar has to notice the release. The element-level `selectionchange`
+   * would replace all three and is not yet everywhere this app runs.
+   */
+  protected onSelectionChange(): void {
+    const el = this.textarea()?.nativeElement;
+    this.hasSelection.set(!!el && el.selectionStart !== el.selectionEnd);
+  }
+
+  /**
+   * The bar's `Aa`: keep it, or stop keeping it.
+   *
+   * Writes the same preference the settings checkbox does, because it is the same question —
+   * asked where someone actually notices they want the answer changed.
+   */
+  protected onTogglePinned(): void {
+    this.composerSettings.setShowFormattingToolbar(!this.toolbarPinned());
   }
 
   /** Toggle the emoji picker, closing the other overlays (only one at a time). */

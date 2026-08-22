@@ -108,18 +108,44 @@ test.describe('Composer formatting', () => {
     await expect(composer).toHaveValue('say **hello** there');
   });
 
-  test('the overflow carries the actions the toolbar does not show', async ({
+  test('every action is on the bar, with nothing behind a menu', async ({
     page,
     request,
   }) => {
+    // This used to open the kebab first. The overflow existed because the bar was always
+    // there and had to earn its row; a bar that appears when you select something can afford
+    // to show all nine, and an action behind a menu is one nobody discovers.
     const { composer } = await openComposer(page, request, 'ov');
 
     await composer.fill('one');
     await selectWord(page, 'one');
-    await page.getByTestId('format-more').click();
+
+    await expect(page.getByTestId('format-more')).toHaveCount(0);
     await page.getByTestId('format-quote').click();
 
     await expect(composer).toHaveValue('> one');
+  });
+
+  test('unpinned, the bar comes and goes with the selection', async ({
+    page,
+    request,
+  }) => {
+    // The contextual behaviour, end to end. Unpinning is now "stop keeping it open" rather
+    // than "never show it": the second preference decides whether a selection still raises it,
+    // and it defaults on for anyone who had not already opted out.
+    const { composer } = await openComposer(page, request, 'ct');
+    await composer.fill('say hello there');
+
+    // Unpin from the bar itself — the `Aa` control, which is where you notice you want it.
+    await page.getByTestId('format-pin').click();
+    await expect(page.getByTestId('format-bold')).toHaveCount(0);
+
+    await selectWord(page, 'hello');
+    await expect(page.getByTestId('format-bold')).toBeVisible();
+
+    // And it applies to the selection that raised it.
+    await page.getByTestId('format-bold').click();
+    await expect(composer).toHaveValue('say **hello** there');
   });
 
   test('a keyboard chord formats, and the rebound one takes over', async ({
@@ -272,8 +298,9 @@ test.describe('Composer formatting', () => {
     await page.goto('/rooms');
     const back = await openRoom();
 
+    // Unchecking the settings box unpins it, and with no selection there is nothing to raise
+    // it — so the row is gone, which is what this test has always been about.
     await expect(page.getByTestId('format-bold')).toHaveCount(0);
-    await expect(page.getByTestId('format-more')).toHaveCount(0);
     // The preview toggle lives on the toolbar and goes with it.
     await expect(page.getByTestId('composer-preview-toggle')).toHaveCount(0);
 
