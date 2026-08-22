@@ -160,6 +160,21 @@ describe('TrnAnchoredOverlayDirective', () => {
     expect(layer()).not.toBeNull();
   });
 
+  it('leaves a press on the ANCHOR alone, so a trigger can toggle', async () => {
+    // The anchor is where a trigger for this layer lives. Treating a press there as "outside"
+    // races the trigger's own click handler: one wins, and the layer either reopens at once or
+    // ends up gone while the button still reports `aria-expanded="true"`.
+    const { container, host } = await build();
+    host.open.set(true);
+    TestBed.tick();
+
+    press(container.querySelector('[data-t="anchor"]')!);
+    TestBed.tick();
+
+    expect(host.open()).toBe(true);
+    expect(layer()).not.toBeNull();
+  });
+
   it('leaves a press INSIDE the layer alone', async () => {
     // A picker is made of things to click; closing on the first of them would make it
     // unusable.

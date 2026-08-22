@@ -81,6 +81,39 @@ async function openRoom(page: Page, roomName: string): Promise<void> {
 test.describe('Full emoji reaction picker', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
+  test('opens and closes the composer’s own picker from its button', async ({
+    page,
+    request,
+  }) => {
+    // The composer's emoji picker had NO e2e coverage at all, which is how it shipped
+    // unclosable: it moved into the CDK overlay container, its trigger stayed in the row the
+    // overlay anchors to, and a press there reached CDK's outside-press dispatcher as well as
+    // the button's own handler. Both wrote the same signal. The second click left the state
+    // saying open with nothing rendered — and 202 e2e tests passed, because none of them ever
+    // closed it.
+    const runId = `${Date.now().toString(36)}p`;
+    const { user, roomName } = await seedRoom(
+      request,
+      session.hs as string,
+      runId,
+    );
+
+    await login(page, user);
+    await openRoom(page, roomName);
+
+    const trigger = page.getByRole('button', { name: 'Insert emoji' });
+    const picker = page.locator('trn-emoji-picker');
+
+    await trigger.click();
+    await expect(picker).toBeVisible({ timeout: 20_000 });
+    // The trigger has to agree with what is on screen, which is the half that desynced.
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+    await trigger.click();
+    await expect(picker).toBeHidden({ timeout: 10_000 });
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+
   test('reacts with an emoji chosen from the full picker', async ({
     page,
     request,

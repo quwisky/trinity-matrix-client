@@ -174,10 +174,21 @@ export class TrnAnchoredOverlayDirective {
     );
     // `outsidePointerEvents`, not a backdrop — see the class note. Written back through the
     // model so the host's own signal agrees with what is on screen.
-    ref.outsidePointerEvents().subscribe(() => {
-      if (this.closeOnOutsidePress()) {
-        this.open.set(false);
+    ref.outsidePointerEvents().subscribe((event) => {
+      if (!this.closeOnOutsidePress()) {
+        return;
       }
+      // A press on the ANCHOR is not an outside press, whatever CDK thinks. The anchor is
+      // where a trigger for this layer lives — the composer's emoji button sits in the row the
+      // picker is anchored to — and closing here would race that button's own click handler:
+      // one of them wins, and the layer either reopens immediately or ends up gone while its
+      // trigger still says `aria-expanded="true"`. CDK's own overlay triggers exclude their
+      // origin for the same reason.
+      const target = event.target;
+      if (target instanceof Node && anchor.contains(target)) {
+        return;
+      }
+      this.open.set(false);
     });
     this.ref = ref;
     this.followResizes(ref, anchor);

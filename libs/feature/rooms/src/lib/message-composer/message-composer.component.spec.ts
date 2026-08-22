@@ -469,6 +469,32 @@ describe('MessageComposerComponent', () => {
     expect(cmp.pickerOpen()).toBe(false);
   });
 
+  it('closes the picker with the button that opened it', async () => {
+    // The two halves meet here, and neither one alone is wrong. The trigger lives INSIDE the
+    // row the picker is anchored to, so a press on it reaches CDK's outside-press dispatcher
+    // as well as the button's own handler — and both write `pickerOpen`. Unexcluded, the
+    // second click left the state saying open with nothing rendered and `aria-expanded="true"`
+    // on a button controlling an element no longer in the document.
+    const { fixture, container } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const trigger = container.querySelector<HTMLElement>('.composer__emoji')!;
+    const clickTrigger = () => {
+      trigger.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      trigger.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      TestBed.tick();
+    };
+
+    clickTrigger();
+    expect(cmp.pickerOpen()).toBe(true);
+    expect(document.querySelector('trn-emoji-picker')).not.toBeNull();
+
+    clickTrigger();
+
+    // Both, because the failure was them disagreeing.
+    expect(cmp.pickerOpen()).toBe(false);
+    expect(document.querySelector('trn-emoji-picker')).toBeNull();
+  });
+
   it('points the emoji trigger at the panel that actually exists', async () => {
     // Two independent string literals — `pickerId` on the panel and `aria-controls` on the
     // trigger — with nothing tying them together. A typo in either leaves a button
@@ -1594,8 +1620,8 @@ describe('MessageComposerComponent', () => {
    * so they are no longer inside the component's own DOM. Same reason the insert tray below is
    * asserted this way — it has been a CDK menu all along.
    *
-   * The fixture argument is kept so every call site reads unchanged; it is what makes the
-   * lookup happen after the render rather than before.
+   * The fixture argument is unused and kept only so the twelve call sites read unchanged —
+   * the lookup happens whenever this is called, with or without it.
    */
   const menu = (_fixture: ComponentFixture<MessageComposerComponent>) =>
     document.querySelector('[data-testid=emoji-autocomplete]');

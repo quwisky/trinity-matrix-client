@@ -11,12 +11,6 @@ import { type MentionMember } from '../mention-autocomplete';
  * rather than the fixture. That is the one thing this move changes for a consumer's spec, and
  * it changes it for every one of them.
  */
-const overlay = {
-  querySelector: <T extends Element>(selector: string) =>
-    document.querySelector<T>(selector),
-  querySelectorAll: (selector: string) => document.querySelectorAll(selector),
-};
-
 /**
  * A host, because the menus now need something to anchor to.
  *
@@ -92,10 +86,10 @@ describe('ComposerSuggestionsComponent', () => {
     await build();
 
     expect(
-      overlay.querySelector('[data-testid=emoji-autocomplete]'),
+      document.querySelector('[data-testid=emoji-autocomplete]'),
     ).toBeNull();
     expect(
-      overlay.querySelector('[data-testid=mention-autocomplete]'),
+      document.querySelector('[data-testid=mention-autocomplete]'),
     ).toBeNull();
   });
 
@@ -105,7 +99,7 @@ describe('ComposerSuggestionsComponent', () => {
       emojiMatches: [emoji('smile', '😄'), emoji('smirk', '😏')],
     });
 
-    const menu = overlay.querySelector('[data-testid=emoji-autocomplete]');
+    const menu = document.querySelector('[data-testid=emoji-autocomplete]');
     expect(menu?.getAttribute('role')).toBe('listbox');
     expect(menu?.getAttribute('aria-label')).toBe('Emoji suggestions');
     const options = menu?.querySelectorAll('[role=option]') ?? [];
@@ -124,10 +118,10 @@ describe('ComposerSuggestionsComponent', () => {
       mentionMatches: members,
     });
 
-    expect(overlay.querySelector('#emoji-suggestions')).not.toBeNull();
-    expect(overlay.querySelector('#mention-suggestions')).not.toBeNull();
-    expect(overlay.querySelector('#emoji-suggestion-1')).not.toBeNull();
-    expect(overlay.querySelector('#mention-suggestion-1')).not.toBeNull();
+    expect(document.querySelector('#emoji-suggestions')).not.toBeNull();
+    expect(document.querySelector('#mention-suggestions')).not.toBeNull();
+    expect(document.querySelector('#emoji-suggestion-1')).not.toBeNull();
+    expect(document.querySelector('#mention-suggestion-1')).not.toBeNull();
   });
 
   it('marks only the highlighted option as selected', async () => {
@@ -137,7 +131,7 @@ describe('ComposerSuggestionsComponent', () => {
       mentionActiveIndex: 1,
     });
 
-    const options = overlay.querySelectorAll('[role=option]');
+    const options = document.querySelectorAll('[role=option]');
     expect(options[0].getAttribute('aria-selected')).toBe('false');
     expect(options[1].getAttribute('aria-selected')).toBe('true');
     expect(
@@ -150,7 +144,7 @@ describe('ComposerSuggestionsComponent', () => {
       emojiOpen: true,
       emojiMatches: [emoji('smile', '😄'), emoji('smirk', '😏')],
     });
-    const second = overlay.querySelector<HTMLElement>('#emoji-suggestion-1');
+    const second = document.querySelector<HTMLElement>('#emoji-suggestion-1');
     second?.dispatchEvent(new MouseEvent('mouseenter'));
     second?.click();
 
@@ -165,7 +159,7 @@ describe('ComposerSuggestionsComponent', () => {
       mentionOpen: true,
       mentionMatches: members,
     });
-    const first = overlay.querySelector<HTMLElement>('#mention-suggestion-0');
+    const first = document.querySelector<HTMLElement>('#mention-suggestion-0');
     first?.dispatchEvent(new MouseEvent('mouseenter'));
     first?.click();
 
@@ -180,7 +174,7 @@ describe('ComposerSuggestionsComponent', () => {
     await build({ mentionOpen: true, mentionMatches: members });
 
     const event = new MouseEvent('mousedown', { cancelable: true });
-    overlay.querySelector('#mention-suggestion-0')?.dispatchEvent(event);
+    document.querySelector('#mention-suggestion-0')?.dispatchEvent(event);
 
     expect(event.defaultPrevented).toBe(true);
   });
