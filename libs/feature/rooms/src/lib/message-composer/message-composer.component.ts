@@ -51,6 +51,7 @@ import {
 } from '../shared/send-media-batch';
 import { EmojiAutocomplete } from './emoji-autocomplete';
 import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnAnchoredOverlayDirective } from '@trinity/components/overlay';
 import {
   TrnEmojiIndex,
   TrnEmojiPickerComponent,
@@ -114,6 +115,7 @@ let nextPickerId = 0;
     ComposerAttachmentStripComponent,
     ComposerInsertMenuComponent,
     ComposerSuggestionsComponent,
+    TrnAnchoredOverlayDirective,
     SpoilerRevealDirective,
     MatrixLinkDirective,
   ],
