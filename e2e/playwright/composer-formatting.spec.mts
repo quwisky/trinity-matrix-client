@@ -308,26 +308,61 @@ test.describe('Composer formatting', () => {
     await expect(page.getByTestId('composer-preview-toggle')).toBeVisible();
   });
 
-  test('the toolbar lines up with the text it formats', async ({
+  test('the toolbar lines up with the field it formats', async ({
     page,
     request,
   }) => {
-    // The toolbar sits above the input row, which is led by the `+` button — so laid out
-    // naively its first button starts a whole button-width left of the first character.
+    // Rewritten rather than deleted, and against the FIELD rather than the textarea.
+    //
+    // It used to assert the first button aligned with the input's own left edge, because the
+    // `+`/emoji/send buttons flanked the input from outside and the toolbar indented past them
+    // with two hand-computed custom properties (44px, 88px, restated at the touch breakpoint).
+    // The buttons are inside the field now, so the field's edge IS the input's box and the
+    // indent is zero — which is exactly what makes the arithmetic unnecessary, and exactly why
+    // dropping the test rather than re-aiming it would have left the alignment unguarded.
     const { composer } = await openComposer(page, request, 'al');
+    await expect(composer).toBeVisible();
 
-    const input = await composer.boundingBox();
+    const field = await page.locator('.composer__field').boundingBox();
     const firstButton = await page.getByTestId('format-bold').boundingBox();
     const previewToggle = await page
       .getByTestId('composer-preview-toggle')
       .boundingBox();
-    if (!input || !firstButton || !previewToggle) {
-      throw new Error('composer, first button or preview toggle not laid out');
+    if (!field || !firstButton || !previewToggle) {
+      throw new Error('field, first button or preview toggle not laid out');
     }
 
-    expect(Math.abs(firstButton.x - input.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(firstButton.x - field.x)).toBeLessThanOrEqual(1);
     expect(
-      Math.abs(previewToggle.x + previewToggle.width - (input.x + input.width)),
+      Math.abs(previewToggle.x + previewToggle.width - (field.x + field.width)),
     ).toBeLessThanOrEqual(1);
+  });
+
+  test('toggling the preview does not resize the composer', async ({
+    page,
+    request,
+  }) => {
+    // The acceptance criterion for the field, and it could only ever be a browser assertion.
+    //
+    // The preview used to be the textarea's SIBLING with a `min-height: 40px` guessing at its
+    // resting height — which is 43px (a 21px line plus 11px of padding each side), so every
+    // toggle shrank the composer by 3px and everything below it moved.
+    //
+    // Sharing a grid cell removes the second column that could disagree, but not the whole
+    // problem: the textarea is `display: none` while previewing, so the cell measures the
+    // preview alone and it still has to carry the same vertical padding and type. That is
+    // stated once in the stylesheet and checked here — a mutation putting the preview's
+    // padding back to 8px reports exactly the historical numbers, 43 against 40.
+    const { composer } = await openComposer(page, request, 'ph');
+    await composer.fill('**bold** and `code`');
+
+    const field = page.locator('.composer__field');
+    const before = (await field.boundingBox())?.height ?? 0;
+    expect(before).toBeGreaterThan(0);
+
+    await page.getByTestId('composer-preview-toggle').click();
+    await expect(page.getByTestId('composer-preview')).toBeVisible();
+
+    expect((await field.boundingBox())?.height).toBe(before);
   });
 });

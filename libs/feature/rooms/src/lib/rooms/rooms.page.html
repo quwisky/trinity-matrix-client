@@ -316,6 +316,17 @@
         </ng-container>
       </trn-page-header>
 
+      <!-- A room-level notice belongs in this COLUMN, above the row — not inside it. As a child
+           of `.chat-body`, which is a flex row of [timeline, panel], it was a third item
+           competing for horizontal space: measured at 779px of a 928px row, leaving the
+           timeline 149px and the composer's text column nothing at all. It only rendered in a
+           tombstoned room, which is why it survived so long. -->
+      @if (vm.activeRoom()) {
+        <trn-tombstone-banner
+          (goToRoom)="roomActions.onGoToUpgradedRoom($event)"
+        />
+      }
+
       <div
         class="chat-body"
         trnDrawerSwipe
@@ -326,9 +337,6 @@
         (closed)="onDrawerSwipedClosed()"
       >
         @if (vm.activeRoom(); as room) {
-          <trn-tombstone-banner
-            (goToRoom)="roomActions.onGoToUpgradedRoom($event)"
-          />
           <!-- The experimental flag swaps in the windowed timeline. Both take the
              same inputs/outputs (MessageListBase); flipping the flag re-creates the
              chosen component fresh.

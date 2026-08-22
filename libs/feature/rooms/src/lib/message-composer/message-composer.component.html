@@ -39,7 +39,7 @@
        `overflow: hidden` ancestor cut one in half. `[(open)]` because these two are opened
        and closed by the person using them, so an outside press is theirs to answer. -->
   <ng-template
-    [trnAnchoredOverlay]="composerRow"
+    [trnAnchoredOverlay]="composerField"
     [(open)]="pickerOpen"
     side="top"
     align="end"
@@ -47,7 +47,7 @@
     <trn-emoji-picker [pickerId]="pickerId" (picked)="onPickerSelect($event)" />
   </ng-template>
   <ng-template
-    [trnAnchoredOverlay]="composerRow"
+    [trnAnchoredOverlay]="composerField"
     [(open)]="gifPickerOpen"
     side="top"
     align="end"
@@ -83,7 +83,7 @@
   <!-- The option ids this stamps are what the textarea's `aria-activedescendant` below points
        at, and what `scrollSuggestionIntoView` looks up — see the child's own note. -->
   <trn-composer-suggestions
-    [anchor]="composerRow"
+    [anchor]="composerField"
     [emojiOpen]="emojiOpen()"
     [emojiMatches]="emojiMatches()"
     [emojiActiveIndex]="emojiActiveIndex()"
@@ -104,11 +104,14 @@
     hidden
     (change)="onFilePicked($event)"
   />
-  <!-- The input row, and what all four floating layers anchor to. It is the row rather than
-       `.composer` because the row is the thing they belong above — the old rule anchored them
-       to `.composer`, which meant they also cleared the toolbar, which is why the toolbar had
-       to live inside it. -->
-  <div class="composer__row" #composerRow>
+  <!-- The FIELD: one box holding the insert button, the input and the emoji/send buttons, and
+       what all four floating layers anchor to. A grid rather than a flex row, so the preview
+       can occupy the textarea's own cell instead of standing beside it — see the stylesheet.
+
+       It is the field rather than `.composer` because the field is the thing the layers belong
+       above; the old rule anchored them to `.composer`, which meant they cleared the toolbar
+       too, which is why the toolbar had to live inside it. -->
+  <div class="composer__field" #composerField>
     <trn-composer-insert-menu
       [hasMenu]="hasInsertMenu()"
       [editing]="editing()"

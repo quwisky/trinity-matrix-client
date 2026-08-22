@@ -9,14 +9,11 @@
   gap: 2px;
   padding-bottom: 2px;
 
-  // Line the row up with the INPUT, not with the composer's edge: the first button sits over
-  // the first character it would format, and the preview toggle over the input's right edge.
-  // The two gutters are published by `.composer` (see its stylesheet) so they track the
-  // button size across the touch breakpoint instead of being hard-coded here; they differ
-  // because the input row has one button before it and two after. Both fall back to 0 if the
-  // toolbar is ever hosted outside that container.
-  padding-left: var(--trn-composer-gutter-start, 0);
-  padding-right: var(--trn-composer-gutter-end, 0);
+  // No indent. The two custom properties this used to read from `.composer` existed to line the
+  // row up with the input while the buttons flanked it from OUTSIDE — 44px in from the left,
+  // 88px from the right, restated again at the touch breakpoint where the buttons grow. The
+  // buttons are inside the field now, so the field's edge is the input's edge and the indent is
+  // zero: four declarations and two hand-computed sums, gone rather than updated.
 }
 
 .toolbar__spacer {

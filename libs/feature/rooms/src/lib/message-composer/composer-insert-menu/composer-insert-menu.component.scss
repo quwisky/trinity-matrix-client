@@ -1,5 +1,7 @@
-// No box of its own, so the `+` stays a direct flex item of `.composer__row` and the row's
-// `align-items: flex-end` keeps it on the last line as the textarea grows.
+// No box of its own, so the `+` stays a direct GRID item of `.composer__field` — a host that
+// generated a box would take the field's first column for itself and leave the button laid out
+// inside it. The field's `align-items: end` is what keeps it on the last line as the textarea
+// grows.
 :host {
   display: contents;
 }

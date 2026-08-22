@@ -35,17 +35,9 @@
   // The four floating layers used to be `position: absolute` children anchored against this
   // element, which is what made it their containing block AND what forced the toolbar inside
   // it — anything outside would have been covered. They render in the CDK overlay container
-  // now, anchored to `.composer__row`, so this is a plain column again.
+  // now, anchored to `.composer__field`, so this is a plain column again.
   display: flex;
   flex-direction: column;
-
-  // How far the input sits in from the composer's edges, so the toolbar above can line up
-  // with it. Asymmetric because the row is: [+] input [emoji] [send] — one leading button,
-  // two trailing. Published as custom properties because the toolbar is a CHILD COMPONENT
-  // and indents itself by them; custom properties inherit through the DOM, which is what
-  // lets this cross the style-encapsulation boundary a shared class could not.
-  --trn-composer-gutter-start: 44px; // 40px button + 4px gap
-  --trn-composer-gutter-end: 88px; //  2 × (40px button + 4px gap)
 
   // Bottom padding clears the home indicator (safe-area-inset-bottom). env() is 0
   // off notched devices and, with the keyboard's native resize mode, while the soft
@@ -54,28 +46,60 @@
   padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
 }
 
-// Lay the attach button, input and emoji/send buttons out as a single row.
-// `flex-end` keeps the buttons pinned to the last line as the textarea grows
-// (Discord-style), and on a single row their matched height centres them on the
-// text — no hand-measured offsets.
-.composer__row {
-  display: flex;
-  align-items: flex-end;
+// The field: one box with the insert button, the input and the emoji/send buttons inside it.
+// A GRID rather than a flex row, and the reason is the preview. As flex children the preview
+// and the textarea were siblings that had to be told to look alike — a `min-height` guessed at
+// the textarea's resting height, which was 3px out, so toggling preview resized the composer.
+// In a grid they occupy the SAME CELL, so the drift cannot exist: whichever is showing is
+// measured by the same track.
+// `align-items: end` is what commit 4b489ebb bought and must not be given back: the buttons pin
+// to the last line as the textarea grows, with no hand-measured offsets. The moment anything
+// here gets a `position: absolute` or a fixed `height`, that regression is back.
+// Four columns because the trailing side has two buttons, and `auto` so the fourth collapses
+// to nothing while recording, when send is withheld.
+.composer__field {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: end;
   gap: 4px;
+
+  // The box lives here now rather than on the textarea, which is what puts the buttons INSIDE
+  // it. The textarea keeps only its vertical padding; the horizontal inset is this padding
+  // plus the button beside it, so nothing encodes a button's width as a number.
+  padding-inline: 6px;
+  border-radius: var(--trinity-radius);
+  background: var(--trinity-sidebar);
+
+  // The ring moves with the box. `trnTextarea` draws one on the textarea itself, which would
+  // now outline a bare input sitting inside a filled box; it is suppressed below and redrawn
+  // here, so focus outlines the thing that looks like the control.
+  &:focus-within {
+    outline: 2px solid var(--trinity-accent);
+    outline-offset: -2px;
+  }
 }
 
-// The preview stands in for the textarea, so it carries the same box: the row's flex child,
-// with a matching minimum height so toggling does not resize the composer.
-.composer__preview {
-  flex: 1;
+// The preview and the textarea share one grid cell, so the preview needs no box of its own —
+// the field's is already around it. It used to carry a `min-height`, a padding and a border
+// that approximated the textarea's; the approximation was 3px out and toggling preview shrank
+// the composer by that much. Matching by construction rather than by number.
+.composer__preview,
+.composer__input {
+  grid-column: 2;
+  grid-row: 1;
   min-width: 0;
-  min-height: 40px;
-  padding: 8px 12px;
-  border: 1px solid var(--trinity-divider);
-  border-radius: var(--trinity-radius-md);
+}
+
+.composer__preview {
   overflow-y: auto;
   max-height: 200px;
+  padding-block: 11px;
   color: var(--trinity-text);
+
+  // The same type as the textarea, because it stands in for it: a different size or leading
+  // would change the cell's height on toggle, which is the drift this arrangement removes.
+  font-size: 0.9375rem;
+  line-height: 1.4;
 }
 
 // A plain message keeps its line breaks; rendered markdown carries its own block structure and
@@ -205,9 +229,6 @@
 }
 
 .composer__input {
-  flex: 1;
-  min-width: 0;
-  box-sizing: border-box;
   resize: none;
   max-height: 200px;
 
@@ -219,12 +240,12 @@
   display: block;
   field-sizing: fixed;
 
-  // The attach/emoji buttons are flex siblings now, not overlays, so the input
-  // only needs its own comfortable padding.
-  padding: 11px 14px;
+  // Vertical only. The horizontal inset comes from the field's own padding and the button
+  // beside it, so no rule here encodes how wide a button is.
+  padding-block: 11px;
+  padding-inline: 0;
   border: none;
-  border-radius: var(--trinity-radius);
-  background: var(--trinity-sidebar);
+  background: transparent;
   color: var(--trinity-text);
   font: inherit;
 
@@ -239,20 +260,18 @@
     color: var(--trinity-text-muted);
   }
 
-  // Focus ring comes from trnTextarea (spartan focus-visible:ring), consistent
-  // with the app's other inputs — no bespoke outline here.
+  // The ring is the FIELD's now (see `:focus-within` above). trnTextarea's own would outline a
+  // bare textarea sitting inside a filled box, which reads as two controls. Unlayered, so it
+  // wins over hlm's `@layer utilities` exactly as the sizing neutralisers above do.
+  &:focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
 }
 
 // Touch targets: enlarge the composer action buttons to the 44px minimum on touch
 // devices only (inert on a mouse, so desktop keeps its 36/40px buttons).
 @media (pointer: coarse) {
-  // The buttons grow to the 44px touch minimum, so the indent has to grow with them or the
-  // toolbar stops lining up on exactly the devices where the row is widest.
-  .composer {
-    --trn-composer-gutter-start: 48px; // 44px button + 4px gap
-    --trn-composer-gutter-end: 96px; //  2 × (44px button + 4px gap)
-  }
-
   .composer__emoji,
   .composer__send,
   .composer__recording-cancel,
