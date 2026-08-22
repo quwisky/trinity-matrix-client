@@ -190,6 +190,24 @@ describe('TrnAnchoredOverlayDirective', () => {
     expect(pane()?.style.width).toBe('800px');
   });
 
+  it('gives the width back when matching is turned off', async () => {
+    // The other direction, and the one that is easy to miss: `updateSize` is the only thing
+    // that clears a width CDK already holds, so an implementation that only calls it while
+    // matching leaves the layer pinned at the last measurement for good.
+    const { container, host } = await build();
+    host.matchWidth.set(true);
+    const anchor = container.querySelector('[data-t="anchor"]') as HTMLElement;
+    anchor.getBoundingClientRect = () => ({ width: 500 }) as DOMRect;
+    host.open.set(true);
+    TestBed.tick();
+    expect(pane()?.style.width).toBe('500px');
+
+    host.matchWidth.set(false);
+    TestBed.tick();
+
+    expect(pane()?.style.width).toBe('');
+  });
+
   it('disposes the layer when the host that owns it is destroyed', async () => {
     // Asserted on the PANE, not on the content, and that distinction is the test.
     //

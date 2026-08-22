@@ -200,9 +200,15 @@ export class TrnAnchoredOverlayDirective {
     if (!ref || !anchor) {
       return;
     }
-    if (this.matchAnchorWidth()) {
-      ref.updateSize({ width: anchor.getBoundingClientRect().width });
-    }
+    // Both directions, not just the setting one: `updateSize` is the only thing that clears
+    // a width CDK has already been given, so skipping the call when matching is off would
+    // leave a layer pinned at whatever the anchor measured last — the setting turns off and
+    // nothing happens.
+    ref.updateSize({
+      width: this.matchAnchorWidth()
+        ? anchor.getBoundingClientRect().width
+        : undefined,
+    });
     ref.updatePosition();
   }
 
