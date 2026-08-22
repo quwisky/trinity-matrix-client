@@ -14,6 +14,7 @@ import { TimelineService } from '@trinity/data-access/timeline';
 import { SessionStorageService } from '@trinity/platform-native';
 import { NotificationSoundService } from './notification-sound.service';
 import { getTrinityDesktopBridge } from '@trinity/platform-native';
+import { encodeRoomSegment } from '@trinity/util/matrix';
 
 /** Max characters of message body shown in a notification. */
 const PREVIEW_LIMIT = 140;
@@ -454,7 +455,7 @@ export class NotificationService {
       this.storage.setActive(userId).subscribe({ error: () => undefined });
     }
     void this.router
-      .navigate(['/rooms'], { queryParams: { room: roomId } })
+      .navigate(['/rooms', encodeRoomSegment(roomId)])
       .catch(() => undefined);
   }
 

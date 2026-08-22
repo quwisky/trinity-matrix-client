@@ -139,7 +139,11 @@ export interface TimelineContext {
  * Deliberately not a `projectFromClient` projection: this service is scoped to the OPEN
  * ROOM, binding to a `Room` as well as to the client, so its lifetime is open()/close()
  * rather than the client's. That is also why it needs no account-switch re-projection —
- * a switch closes the open room first (`rooms.page.ts`, `runOnAccount`). It does take the
+ * a switch closes the open room. Note it closes it ASYNCHRONOUSLY: closing navigates to
+ * `/rooms`, and the teardown follows the URL through `projectOpenRoom`, so `close()` runs
+ * after `matrix.setActive` has already flipped the active client. Everything here that
+ * touches the client on the way out therefore addresses `connectedClient`, never
+ * `matrix.instance` — the listener detach and the typing-stop both. It does take the
  * shared `coalesce`, which is the half that applies.
  */
 @Injectable({ providedIn: 'root' })
@@ -414,8 +418,15 @@ export class TimelineService {
 
   /** Detach listeners and clear the timeline. */
   close(): void {
-    // Don't leave ourselves marked as typing in a room we're navigating away from.
-    this.setTyping(false);
+    // Don't leave ourselves marked as typing in a room we're navigating away from —
+    // addressed to the client this room was OPENED on, for the same reason the listener
+    // detach below is. `setTyping` resolves through `openContext()`, i.e. `matrix.instance`,
+    // which is right for the composer but wrong here: closing is deferred through the
+    // URL-driven effect that opens rooms, so an account switch has already made
+    // `matrix.instance` the incoming client by the time this runs. Sending there PUTs
+    // typing into a room the new account may not be in, and leaves the outgoing account
+    // marked typing until the server's own timeout expires.
+    this.stopTypingOnConnectedClient();
     if (typeof window !== 'undefined') {
       window.removeEventListener('focus', this.onFocus);
     }
@@ -662,6 +673,29 @@ export class TimelineService {
       this.typingSentAt = 0;
       void ctx.client.sendTyping(ctx.room.roomId, false, 0);
     }
+  }
+
+  /**
+   * The typing-stop {@link close} sends, bound to {@link connectedClient} rather than the
+   * active one. Shares `typingSentAt` with {@link setTyping} so a close cannot send a stop
+   * we never started, and cannot leave the flag set for the next room.
+   */
+  private stopTypingOnConnectedClient(): void {
+    const client = this.connectedClient;
+    const room = this.room;
+    // `isInitialized` is kept from the `openContext()` guard this replaced, and it is not
+    // redundant: `connectedClient` is cleared only by close() itself, so after a sign-out
+    // tears every account down it still holds a stopped, logged-out client — and we would
+    // PUT typing on a revoked token. An account SWITCH leaves it true (the incoming account
+    // is active), so the account-pinning this method exists for is unaffected.
+    if (!client || !room || !this.typingSentAt || !this.matrix.isInitialized) {
+      return;
+    }
+    this.typingSentAt = 0;
+    // Caught, unlike the composer's `setTyping`: this fires during teardown, where the room
+    // may already be one the account has left, and there is no longer any surface to report
+    // it on. Same shape as `setRoomReadMarkers` in RoomsService.
+    void client.sendTyping(room.roomId, false, 0).catch(() => undefined);
   }
 
   /** Re-read the open room's typing set into `typingNames`, excluding the local user. */

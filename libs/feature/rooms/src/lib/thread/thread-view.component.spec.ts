@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
+import { TrnToastService } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
 import {
   ThreadsService,
@@ -79,7 +79,6 @@ async function build(
   const openThreadRootIdSignal = signal<string | null>('$root');
   const openThreadRootId = openThreadRootIdSignal.asReadonly();
   const sourceOpen = vi.fn();
-  const dismiss = vi.fn().mockResolvedValue(true);
   // The thread composer's @-mention list comes from the room's member projection. The spec
   // supplied no RoomsService at all, so `return []` in the component went unnoticed — only
   // a `throw` failed, and that was the template crashing rather than an assertion.
@@ -122,10 +121,12 @@ async function build(
       MockProvider(TimelineActionsService),
       MockProvider(RoomsService, { membersFor }),
       MockProvider(MessageSourceService, { open: sourceOpen }),
-      MockProvider(TrnDialogRef, { close: dismiss }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
   });
+  /** How many times the panel announced a close, for the dismissal assertions. */
+  let dismissals = 0;
+  fixture.componentInstance.dismissed.subscribe(() => (dismissals += 1));
   return {
     fixture,
     container,
@@ -145,7 +146,7 @@ async function build(
     openThreadRootIdSignal,
     toastShow,
     sourceOpen,
-    dismiss,
+    dismissals: () => dismissals,
   };
 }
 
@@ -198,11 +199,11 @@ describe('ThreadViewComponent', () => {
     expect(container.querySelector('.thread__empty')).toBeTruthy();
   });
 
-  it('closes the host dialog on close', async () => {
-    const { fixture, dismiss } = await build();
+  it('announces a dismissal on close', async () => {
+    const { fixture, dismissals } = await build();
 
     fixture.componentInstance.close();
-    expect(dismiss).toHaveBeenCalled();
+    expect(dismissals()).toBe(1);
   });
 
   it('closes the thread projection when destroyed', async () => {

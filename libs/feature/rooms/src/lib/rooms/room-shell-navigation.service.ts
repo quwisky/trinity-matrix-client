@@ -1,4 +1,12 @@
-import { DestroyRef, Injectable, inject } from '@angular/core';
+import {
+  DestroyRef,
+  Injectable,
+  effect,
+  inject,
+  untracked,
+} from '@angular/core';
+import { Router } from '@angular/router';
+import { encodeRoomSegment } from '@trinity/util/matrix';
 import { MediaService } from '@trinity/data-access/media';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
@@ -37,6 +45,80 @@ export class RoomShellNavigationService {
   private readonly threads = inject(ThreadsService);
   private readonly timeline = inject(TimelineService);
   private readonly mru = inject(MruRoomsService);
+  private readonly router = inject(Router);
+
+  /**
+   * The open room's projections, driven by the URL.
+   *
+   * One reaction rather than a call at each entry point: a room can now be opened by a click,
+   * a keyboard hop, a notification tap, a pasted link, a reload or the Back button, and every
+   * one of those is the same paramMap change. When this was a method the entry points had to
+   * each remember the same five calls, and `closeOpenRoom` existed precisely because they had
+   * already drifted apart once.
+   *
+   * `media.releaseAll()` runs on every transition including to `null`, because the blobs
+   * belong to the room being left in both cases.
+   *
+   * `clearMarkedUnread` and `focusActiveView` live here rather than in {@link onSelectRoom}
+   * for the same reason the projections do: they are properties of a room BECOMING open,
+   * not of the click that opened it. A notification tap, a pasted link, a reload and Back
+   * all change the URL without going through `onSelectRoom`, and while these were in the
+   * click path every one of those left the come-back-to-it flag set and focus on `<body>`.
+   *
+   * MRU is the one that stays put: recording on every paramMap change would overwrite the
+   * stack mid-cycle, which is exactly what `source: 'hop'` exists to prevent.
+   *
+   * Both of them run inside `untracked`, and that is load-bearing rather than tidiness. An
+   * effect tracks every signal read during its synchronous body, CALLEES INCLUDED, and both
+   * reach signals that have nothing to do with which room is open: `focusActiveView` reads
+   * the `md` media query, `clearMarkedUnread` reads `matrix.accountIds()`. Tracked, this
+   * effect would re-run — `media.releaseAll()` and all — on a window resize across 768px or
+   * on an account being added, revoking the object URLs of every image currently on screen.
+   * `MediaAttachmentComponent` re-resolves only when its input changes, and the memoised
+   * `MessageView` keeps that identity stable, so those images would stay broken until the
+   * room was closed and re-opened.
+   */
+  private readonly projectOpenRoom = effect(() => {
+    const roomId = this.store.activeRoomId();
+    // The focus handoff is about the pane that just BECAME visible. On the effect's first
+    // run nothing became anything — the page simply rendered — and moving focus there
+    // would scroll the list under the reader and announce it on every cold start.
+    const isFirstRun = !this.hasProjected;
+    this.hasProjected = true;
+    this.media.releaseAll();
+    if (!roomId) {
+      this.timeline.close();
+      this.threads.close();
+      this.threads.closeThread();
+      this.pinned.close();
+      if (!isFirstRun) {
+        untracked(() => this.focusActiveView());
+      }
+      return;
+    }
+    // All three no-op when `client.getRoom(roomId)` is null, and nothing retries — this
+    // effect is their only caller and `activeRoomId` does not change again. What makes a
+    // reload into /rooms/<segment> work is that the route does not activate until
+    // `authGuard` has restored the client, by which point the room resolves. Measured with
+    // the sync store deleted, so the room could only arrive over the network: the timeline
+    // rendered. That ordering is load-bearing — if a guard is ever relaxed, this needs a
+    // retry rather than silence.
+    this.timeline.open(roomId);
+    this.threads.open(roomId); // thread summaries, for the per-message indicators
+    this.pinned.open(roomId);
+    // Opening the room is the user dealing with it, so the come-back-to-it flag goes.
+    // Cleared HERE rather than on the auto-ack in TimelineService: that path is gated on
+    // the window having focus and dedupes repeat acks, so a room opened in a background
+    // window — or re-opened after being acked once — would stay flagged for good.
+    untracked(() => this.rooms.clearMarkedUnread(roomId));
+    // On the mobile master-detail layout the chat and the list are separate pages, so the
+    // one that just became visible has to take focus or it falls to `<body>`. A cold start
+    // straight onto /rooms/<segment> is exempt for the reason above — but only the FOCUS
+    // is; the room still opens and the flag above is still cleared.
+    if (!isFirstRun) {
+      untracked(() => this.focusActiveView());
+    }
+  });
   /**
    * Whether the member list is currently the overlay drawer rather than the static column.
    * Live, and created once against this service's `DestroyRef` — see the same field in
@@ -56,6 +138,9 @@ export class RoomShellNavigationService {
    * test and no focus — keyboard and screen-reader users simply landed on `<body>`.
    */
   private focusActiveView!: () => void;
+
+  /** Whether {@link projectOpenRoom} has run at least once — see the note there. */
+  private hasProjected = false;
 
   bindFocus(focus: () => void): void {
     this.focusActiveView = focus;
@@ -88,23 +173,23 @@ export class RoomShellNavigationService {
     this.store.roomsView.set(true);
   }
 
+  /**
+   * Open a room by NAVIGATING to it. The projections follow the URL, not this call.
+   *
+   * Everything this used to do inline — releasing the previous room's media, opening the
+   * timeline, threads and pinned projections — now happens in {@link projectOpenRoom}, which
+   * reacts to `store.activeRoomId`. That is what makes the URL authoritative: a room opened
+   * by a link, a reload or the Back button goes through exactly the same path as a click,
+   * instead of each entry point having to remember the same five calls.
+   */
   onSelectRoom(id: string, source: 'user' | 'hop' = 'user'): void {
-    // Drop the previous room's resolved media URLs before switching timelines.
-    this.media.releaseAll();
-    this.store.activeRoomId.set(id);
-    this.timeline.open(id);
-    this.threads.open(id); // project this room's thread summaries for indicators
-    this.pinned.open(id); // project this room's pinned messages
+    void this.router.navigate(['/rooms', encodeRoomSegment(id)]);
+    // The only part that cannot move into {@link projectOpenRoom}: the effect cannot tell
+    // a deliberate pick from an alt-tab hop, and recording a hop would destroy the stack
+    // it is walking.
     if (source === 'user') {
       this.mru.record(id);
     }
-    // Opening the room is the user dealing with it, so the come-back-to-it flag goes.
-    // Cleared HERE rather than on the auto-ack in TimelineService: that path is gated on
-    // the window having focus and dedupes repeat acks, so a room opened in a background
-    // window — or re-opened after being acked once — would stay flagged for good.
-    this.rooms.clearMarkedUnread(id);
-    // On mobile, setting activeRoomId switches from the room-list page to the chat.
-    this.focusActiveView();
   }
 
   /**
@@ -146,9 +231,21 @@ export class RoomShellNavigationService {
     // to the next room (it would slide in unrequested). The wide static column keeps
     // its persisted open/closed state.
     if (this.membersAreDrawer()) {
-      this.store.membersOpen.set(false);
+      this.store.rightPanel.set(null);
     }
-    this.store.activeRoomId.set(null);
+    void this.router.navigate(['/rooms']);
+  }
+
+  /**
+   * The teardown half of closing a room, without the navigation.
+   *
+   * Exists for `RoomsPage.ngOnDestroy`, and only for it. Leaving `/rooms` for settings
+   * destroys the page and with it {@link projectOpenRoom}, so nothing would otherwise close
+   * the timeline, thread and pinned projections — they are ROOT-scoped and would keep
+   * projecting a room nobody is looking at. Navigating from `ngOnDestroy` is not an option:
+   * the router is already mid-navigation to wherever the user actually went.
+   */
+  releaseOpenRoom(): void {
     this.timeline.close();
     this.threads.close();
     this.threads.closeThread();

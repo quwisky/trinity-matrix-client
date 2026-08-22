@@ -1,6 +1,12 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import {
+  ActivatedRoute,
+  convertToParamMap,
+  type ParamMap,
+} from '@angular/router';
 import { MockProvider } from 'ng-mocks';
+import { BehaviorSubject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
@@ -18,6 +24,7 @@ import {
   UnreadAggregatorService,
   type MemberSummary,
 } from '@trinity/data-access/rooms';
+import { encodeRoomSegment } from '@trinity/util/matrix';
 import { AccountBadgesService } from '../shared/account-badges.service';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
@@ -67,6 +74,17 @@ function build(opts: { members?: Record<string, MemberSummary[]> } = {}) {
   const membersFor = vi.fn(
     (roomId: string | null) => rosters.get(roomId ?? '')?.asReadonly() ?? empty,
   );
+  /**
+   * `ActivatedRoute.paramMap` — the open room, which now lives in the URL as
+   * `/rooms/:roomId`. `RoomShellStore.activeRoomId` derives from it and nothing writes it,
+   * so the only way to open a room is to push the segment the router would.
+   *
+   * Built here rather than borrowed from the page harness: this spec provides the store
+   * directly, and one subject per `build()` keeps the two describes from inheriting each
+   * other's URL. It has to REPLAY — the store reads it through `toSignal` in a field
+   * initializer, so a stream with no current value would leave `activeRoomId` at `null`.
+   */
+  const paramMap = new BehaviorSubject<ParamMap>(convertToParamMap({}));
 
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
@@ -95,12 +113,19 @@ function build(opts: { members?: Record<string, MemberSummary[]> } = {}) {
         profileOf: (userId: string) =>
           profiles().get(userId) ?? profile(userId, userId),
       }),
+      {
+        provide: ActivatedRoute,
+        useValue: { paramMap } as unknown as ActivatedRoute,
+      },
     ],
   });
 
   return {
     vm: TestBed.inject(RoomShellViewModel),
-    store: TestBed.inject(RoomShellStore),
+    // Open a room by URL, taking the room id and encoding it here so the tests below read
+    // in room ids rather than in base64.
+    openRoom: (roomId: string) =>
+      paramMap.next(convertToParamMap({ roomId: encodeRoomSegment(roomId) })),
     profiles,
     activeUserId,
     accountIds,
@@ -161,10 +186,10 @@ describe('RoomShellViewModel account profile', () => {
 
 describe('RoomShellViewModel members', () => {
   it('reads the open room, and follows it without the room changing', () => {
-    const { vm, store, rosters, membersFor } = build({
+    const { vm, openRoom, rosters, membersFor } = build({
       members: { '!a:hs': [member('@a:hs', 'Ada')] },
     });
-    store.activeRoomId.set('!a:hs');
+    openRoom('!a:hs');
     expect(vm.members().map((m) => m.userId)).toEqual(['@a:hs']);
 
     rosters.get('!a:hs')?.set([member('@a:hs', 'Ada'), member('@b:hs', 'Bo')]);
@@ -174,16 +199,16 @@ describe('RoomShellViewModel members', () => {
   });
 
   it('switches to the room that becomes active', () => {
-    const { vm, store } = build({
+    const { vm, openRoom } = build({
       members: {
         '!a:hs': [member('@a:hs', 'Ada')],
         '!b:hs': [member('@b:hs', 'Bo')],
       },
     });
-    store.activeRoomId.set('!a:hs');
+    openRoom('!a:hs');
     expect(vm.members().map((m) => m.userId)).toEqual(['@a:hs']);
 
-    store.activeRoomId.set('!b:hs');
+    openRoom('!b:hs');
 
     expect(vm.members().map((m) => m.userId)).toEqual(['@b:hs']);
   });
