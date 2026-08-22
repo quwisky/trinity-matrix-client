@@ -338,6 +338,47 @@ test.describe('Composer formatting', () => {
     ).toBeLessThanOrEqual(1);
   });
 
+  test('the field forwards a press on itself, and rings only for the input', async ({
+    page,
+    request,
+  }) => {
+    // Both follow from the box moving off the textarea onto a container bigger than it, and
+    // neither is visible to a unit test: one needs layout to have a dead zone at all, the
+    // other needs a real focus ring.
+    const { composer } = await openComposer(page, request, 'fp');
+    await composer.fill('one\ntwo\nthree\nfour\nfive');
+
+    const zone = await page.evaluate(() => {
+      const field = document
+        .querySelector('.composer__field')!
+        .getBoundingClientRect();
+      const emoji = document
+        .querySelector('.composer__emoji')!
+        .getBoundingClientRect();
+      return {
+        // Inside the field, in the emoji button's column, well above the button itself —
+        // empty field that looks like part of the input. Measured at 87px tall on this draft.
+        x: Math.round(emoji.x + emoji.width / 2),
+        y: Math.round(field.y + 8),
+      };
+    });
+
+    await page.getByTestId('composer-send').focus();
+    // A focused BUTTON inside the field must not draw the input's ring: `:focus-within` would.
+    await expect(page.locator('.composer__field')).not.toHaveCSS(
+      'outline-style',
+      'solid',
+    );
+
+    await page.mouse.click(zone.x, zone.y);
+
+    await expect(composer).toBeFocused();
+    await expect(page.locator('.composer__field')).toHaveCSS(
+      'outline-style',
+      'solid',
+    );
+  });
+
   test('toggling the preview does not resize the composer', async ({
     page,
     request,
@@ -353,6 +394,11 @@ test.describe('Composer formatting', () => {
     // preview alone and it still has to carry the same vertical padding and type. That is
     // stated once in the stylesheet and checked here — a mutation putting the preview's
     // padding back to 8px reports exactly the historical numbers, 43 against 40.
+    // A ONE-LINE draft, deliberately. The preview renders markdown, so a multi-line raw text
+    // and its rendered form legitimately differ in line count and therefore in height — the
+    // drift this guards is the structural one, where the same content measured differently
+    // depending on which element was showing. Tightening this into "any draft keeps the
+    // height" would assert something that must not hold.
     const { composer } = await openComposer(page, request, 'ph');
     await composer.fill('**bold** and `code`');
 

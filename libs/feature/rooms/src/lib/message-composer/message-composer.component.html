@@ -111,7 +111,11 @@
        It is the field rather than `.composer` because the field is the thing the layers belong
        above; the old rule anchored them to `.composer`, which meant they cleared the toolbar
        too, which is why the toolbar had to live inside it. -->
-  <div class="composer__field" #composerField>
+  <div
+    class="composer__field"
+    #composerField
+    (pointerdown)="onFieldPress($event)"
+  >
     <trn-composer-insert-menu
       [hasMenu]="hasInsertMenu()"
       [editing]="editing()"

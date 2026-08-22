@@ -910,6 +910,30 @@ export class MessageComposerComponent {
     this.attachments.shareLocation();
   }
 
+  /**
+   * A press on the field's own padding is a press on the input it draws.
+   *
+   * The box belongs to the field now, and the field is bigger than the textarea: with
+   * `align-items: end` the buttons sit at the bottom, so a grown input leaves empty field
+   * above them — 87px of it on a five-line draft, measured. That area shares the input's
+   * background and reads as part of it, and before the box moved it was outside the box
+   * entirely. Every other chat client forwards the click; dropping it is the surprise.
+   *
+   * `target === currentTarget` is what keeps this from stealing presses aimed at the buttons
+   * inside the field: only a press that landed on the field ITSELF gets forwarded.
+   */
+  protected onFieldPress(event: Event): void {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+    // `preventDefault` before the focus, not after, and not optional: a press's DEFAULT action
+    // sets focus, and it runs after this handler — so focusing here and letting the default
+    // through moves focus straight back off the textarea and onto nothing. The suggestion
+    // options cancel their `mousedown` for the same reason.
+    event.preventDefault();
+    this.textarea()?.nativeElement.focus();
+  }
+
   /** Toggle the emoji picker, closing the other overlays (only one at a time). */
   toggleEmojiPicker(): void {
     this.gifPickerOpen.set(false);
