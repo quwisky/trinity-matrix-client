@@ -33,19 +33,27 @@
       (togglePreview)="onTogglePreview()"
     />
   }
-  @if (pickerOpen()) {
-    <trn-emoji-picker
-      class="composer__picker"
-      [pickerId]="pickerId"
-      (picked)="onPickerSelect($event)"
-    />
-  }
-  @if (gifPickerOpen()) {
-    <trn-gif-picker
-      class="composer__gif-picker"
-      (gifSelect)="onGifSelect($event)"
-    />
-  }
+  <!-- Both pickers render in the CDK overlay container, anchored to the input row. They were
+       `position: absolute` children pinned at `bottom: calc(100% + 4px)`, which is what made
+       `.composer` have to stay `position: relative` and what would have let any
+       `overflow: hidden` ancestor cut one in half. `[(open)]` because these two are opened
+       and closed by the person using them, so an outside press is theirs to answer. -->
+  <ng-template
+    [trnAnchoredOverlay]="composerRow"
+    [(open)]="pickerOpen"
+    side="top"
+    align="end"
+  >
+    <trn-emoji-picker [pickerId]="pickerId" (picked)="onPickerSelect($event)" />
+  </ng-template>
+  <ng-template
+    [trnAnchoredOverlay]="composerRow"
+    [(open)]="gifPickerOpen"
+    side="top"
+    align="end"
+  >
+    <trn-gif-picker (gifSelect)="onGifSelect($event)" />
+  </ng-template>
   @if (recordingVoice()) {
     <div class="composer__recording" data-testid="composer-voice-recording">
       <button
@@ -75,6 +83,7 @@
   <!-- The option ids this stamps are what the textarea's `aria-activedescendant` below points
        at, and what `scrollSuggestionIntoView` looks up — see the child's own note. -->
   <trn-composer-suggestions
+    [anchor]="composerRow"
     [emojiOpen]="emojiOpen()"
     [emojiMatches]="emojiMatches()"
     [emojiActiveIndex]="emojiActiveIndex()"
@@ -95,11 +104,11 @@
     hidden
     (change)="onFilePicked($event)"
   />
-  <!-- The input row. A child of `.composer` rather than `.composer` itself, so the toolbar
-       above can share the container the floating pickers and autocompletes anchor to — they
-       are positioned `bottom: calc(100% + 4px)` against `.composer`, so anything outside it
-       would be covered by them. -->
-  <div class="composer__row">
+  <!-- The input row, and what all four floating layers anchor to. It is the row rather than
+       `.composer` because the row is the thing they belong above — the old rule anchored them
+       to `.composer`, which meant they also cleared the toolbar, which is why the toolbar had
+       to live inside it. -->
+  <div class="composer__row" #composerRow>
     <trn-composer-insert-menu
       [hasMenu]="hasInsertMenu()"
       [editing]="editing()"

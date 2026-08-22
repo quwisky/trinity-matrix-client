@@ -108,6 +108,18 @@ export class TrnAnchoredOverlayDirective {
    */
   readonly matchAnchorWidth = input(false);
 
+  /**
+   * Whether a press outside the layer closes it.
+   *
+   * On for the layers a person opens and closes — a picker, a menu. Off for one whose
+   * openness is DERIVED: the composer's suggestion menus are open exactly when the current
+   * query has matches (`computed(() => this.matches().length > 0)`), so there is no flag for
+   * the write-back to land in. Bound one-way against a computed, a self-closing layer
+   * disappears while its host still believes it is showing — and the host is the one
+   * answering Enter and pointing `aria-activedescendant` at a row nobody can see.
+   */
+  readonly closeOnOutsidePress = input(true);
+
   private ref: OverlayRef | null = null;
 
   constructor() {
@@ -162,7 +174,22 @@ export class TrnAnchoredOverlayDirective {
     );
     // `outsidePointerEvents`, not a backdrop — see the class note. Written back through the
     // model so the host's own signal agrees with what is on screen.
-    ref.outsidePointerEvents().subscribe(() => this.open.set(false));
+    ref.outsidePointerEvents().subscribe((event) => {
+      if (!this.closeOnOutsidePress()) {
+        return;
+      }
+      // A press on the ANCHOR is not an outside press, whatever CDK thinks. The anchor is
+      // where a trigger for this layer lives — the composer's emoji button sits in the row the
+      // picker is anchored to — and closing here would race that button's own click handler:
+      // one of them wins, and the layer either reopens immediately or ends up gone while its
+      // trigger still says `aria-expanded="true"`. CDK's own overlay triggers exclude their
+      // origin for the same reason.
+      const target = event.target;
+      if (target instanceof Node && anchor.contains(target)) {
+        return;
+      }
+      this.open.set(false);
+    });
     this.ref = ref;
     this.followResizes(ref, anchor);
   }

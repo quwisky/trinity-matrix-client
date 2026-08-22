@@ -30,13 +30,12 @@
 }
 
 .composer {
-  position: relative;
-
-  // A column of [formatting toolbar, input row]. The toolbar lives INSIDE this element on
-  // purpose: the floating pickers and suggestion menus are `position: absolute` children
-  // anchored `bottom: calc(100% + 4px)` against it, so they clear whatever it contains —
-  // a toolbar placed outside would be covered by them. It also inherits the 16px horizontal
-  // padding the menus' own `left/right: 16px` align to.
+  // A column of [formatting toolbar, input row].
+  // No `position: relative` any more, and the toolbar is no longer trapped in here by it.
+  // The four floating layers used to be `position: absolute` children anchored against this
+  // element, which is what made it their containing block AND what forced the toolbar inside
+  // it — anything outside would have been covered. They render in the CDK overlay container
+  // now, anchored to `.composer__row`, so this is a plain column again.
   display: flex;
   flex-direction: column;
 
@@ -93,14 +92,6 @@
 // timeline's white-space rules had.
 .composer__input.composer__input--hidden {
   display: none;
-}
-
-.composer__picker,
-.composer__gif-picker {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 4px);
-  z-index: var(--trinity-z-floating);
 }
 
 // Voice-recording bar, shown in place of the input row while capturing a clip.

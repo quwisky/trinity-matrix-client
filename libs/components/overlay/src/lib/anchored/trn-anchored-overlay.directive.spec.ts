@@ -24,6 +24,7 @@ import { TrnAnchoredOverlayDirective } from './trn-anchored-overlay.directive';
         [side]="side()"
         [align]="'end'"
         [matchAnchorWidth]="matchWidth()"
+        [closeOnOutsidePress]="closeOnOutside()"
       >
         <div data-t="layer">picker</div>
       </ng-template>
@@ -34,6 +35,7 @@ class HostComponent {
   readonly open = signal(false);
   readonly side = signal<'top' | 'bottom'>('top');
   readonly matchWidth = signal(false);
+  readonly closeOnOutside = signal(true);
   readonly mounted = signal(true);
 }
 
@@ -140,6 +142,37 @@ describe('TrnAnchoredOverlayDirective', () => {
 
     expect(host.open()).toBe(false);
     expect(layer()).toBeNull();
+  });
+
+  it('stays open on an outside press when the host says its openness is derived', async () => {
+    // For a layer whose `open` is a `computed` — the composer's suggestion menus are open
+    // exactly when the query has matches — there is no flag for a write-back to land in.
+    // Closing itself would hide the menu while the host still answered Enter for it.
+    const { host } = await build();
+    host.closeOnOutside.set(false);
+    host.open.set(true);
+    TestBed.tick();
+
+    press(document.body);
+    TestBed.tick();
+
+    expect(host.open()).toBe(true);
+    expect(layer()).not.toBeNull();
+  });
+
+  it('leaves a press on the ANCHOR alone, so a trigger can toggle', async () => {
+    // The anchor is where a trigger for this layer lives. Treating a press there as "outside"
+    // races the trigger's own click handler: one wins, and the layer either reopens at once or
+    // ends up gone while the button still reports `aria-expanded="true"`.
+    const { container, host } = await build();
+    host.open.set(true);
+    TestBed.tick();
+
+    press(container.querySelector('[data-t="anchor"]')!);
+    TestBed.tick();
+
+    expect(host.open()).toBe(true);
+    expect(layer()).not.toBeNull();
   });
 
   it('leaves a press INSIDE the layer alone', async () => {
