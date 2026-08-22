@@ -56,6 +56,12 @@ export type TrnAnchoredAlign = 'start' | 'center' | 'end';
  * text field is usually the click that puts the caret back. An outside pointer press closes
  * it instead, and that click lands where it was aimed.
  *
+ * **It labels nothing.** No `role` on the layer, and nothing is written to the anchor's
+ * `aria-expanded` or `aria-controls`. A picker, a listbox and a menu want three different
+ * roles, and the composer's suggestion menus already manage `aria-controls` and
+ * `aria-activedescendant` against their textarea — a primitive guessing here would have to be
+ * argued with. Naming the layer and announcing its expanded state belong to the host.
+ *
  * **It is a z-index citizen, not a top-layer one.** `provideTrnOverlayDefaults()` turns off
  * CDK's `usePopover` app-wide so overlays stop covering the toaster, so this competes on
  * z-index like everything else. A layer that must sit above another overlay has to say so in
@@ -70,7 +76,14 @@ export class TrnAnchoredOverlayDirective {
   private readonly viewContainer = inject(ViewContainerRef);
   private readonly injector = inject(Injector);
 
-  /** The element the layer is positioned against. */
+  /**
+   * The element the layer is positioned against.
+   *
+   * Required AND `| undefined`, which reads as a contradiction and is not one: the binding
+   * has to be given, but the usual thing to give it is a `#ref` on a sibling element, and a
+   * template reference is undefined on the pass that creates it. Nothing opens until it
+   * resolves, which is the honest behaviour rather than a crash on the first render.
+   */
   readonly anchor = input.required<HTMLElement | undefined>({
     alias: 'trnAnchoredOverlay',
   });
@@ -98,42 +111,46 @@ export class TrnAnchoredOverlayDirective {
   private ref: OverlayRef | null = null;
 
   constructor() {
+    // WHETHER there is a layer, and what it is anchored to. Only these two re-create it,
+    // because re-creating destroys the view inside — an emoji picker would lose the text
+    // typed into its search field and the focus that was in it.
     effect(() => {
       const open = this.open();
       const anchor = this.anchor();
-      const side = this.side();
-      const align = this.align();
-      const matchWidth = this.matchAnchorWidth();
       untracked(() => {
         this.close();
         if (open && anchor) {
-          this.attach(anchor, side, align, matchWidth);
+          this.attach(anchor);
         }
       });
     });
+
+    // WHERE it sits, which is a different question and is answered in place. A `side` that
+    // flips with the viewport, or a `matchAnchorWidth` that comes from a signal, moves the
+    // layer rather than replacing it.
+    effect(() => {
+      this.side();
+      this.align();
+      this.matchAnchorWidth();
+      untracked(() => this.reposition());
+    });
+
     inject(DestroyRef).onDestroy(() => this.close());
   }
 
-  private attach(
-    anchor: HTMLElement,
-    side: TrnAnchoredSide,
-    align: TrnAnchoredAlign,
-    matchWidth: boolean,
-  ): void {
+  private attach(anchor: HTMLElement): void {
     const ref = this.overlay.create({
       // `createMenuPosition` rather than a hand-rolled ConnectedPosition[]: it returns the
       // primary position AND its mirror, which is what makes a layer near the viewport edge
       // flip to the other side instead of being pushed half off it. The kit's dropdown menu
       // positions itself with the same helper.
-      positionStrategy: this.overlay
-        .position()
-        .flexibleConnectedTo(anchor)
-        .withPositions(createMenuPosition(align, side))
-        .withViewportMargin(8),
+      positionStrategy: this.positionStrategy(anchor),
       // Reposition, not close: an ancestor scrolling is not a decision to dismiss, and the
       // composer's layers sit above a timeline that scrolls constantly.
       scrollStrategy: this.overlay.scrollStrategies.reposition(),
-      ...(matchWidth ? { width: anchor.getBoundingClientRect().width } : {}),
+      ...(this.matchAnchorWidth()
+        ? { width: anchor.getBoundingClientRect().width }
+        : {}),
     });
     ref.attach(
       new TemplatePortal(
@@ -145,10 +162,71 @@ export class TrnAnchoredOverlayDirective {
     );
     // `outsidePointerEvents`, not a backdrop — see the class note. Written back through the
     // model so the host's own signal agrees with what is on screen.
-    ref
-      .outsidePointerEvents()
-      .subscribe(() => untracked(() => this.open.set(false)));
+    ref.outsidePointerEvents().subscribe(() => this.open.set(false));
     this.ref = ref;
+    this.followResizes(ref, anchor);
+  }
+
+  /**
+   * Keep the layer with its anchor when the anchor changes SHAPE.
+   *
+   * CDK recomputes a connected position on scroll and on nothing else — there is no observer
+   * on the origin — and `width` is read once into the config. So an anchor that grows in
+   * place takes the layer with it in neither respect, and absolute positioning, which this
+   * replaces, tracked both for free. It is not hypothetical for the first consumer: the
+   * composer's textarea auto-grows as you type, so a suggestion menu above it comes unstuck
+   * the moment the input wraps to a second line — measured at 162px of overlap — and a pane
+   * drag changes its width under an already-open layer.
+   */
+  private followResizes(ref: OverlayRef, anchor: HTMLElement): void {
+    if (typeof ResizeObserver === 'undefined') {
+      return;
+    }
+    const watcher = new ResizeObserver(() => this.remeasure());
+    watcher.observe(anchor);
+    ref.detachments().subscribe(() => watcher.disconnect());
+  }
+
+  /**
+   * The anchor moved or changed size: re-read it and re-run the position we already have.
+   *
+   * Separate from {@link reposition} because this one is on a hot path — a pane drag fires
+   * the observer at animation frequency — and `updatePositionStrategy` disposes and rebuilds
+   * the strategy each time, where `updatePosition` reuses it.
+   */
+  private remeasure(): void {
+    const ref = this.ref;
+    const anchor = this.anchor();
+    if (!ref || !anchor) {
+      return;
+    }
+    if (this.matchAnchorWidth()) {
+      ref.updateSize({ width: anchor.getBoundingClientRect().width });
+    }
+    ref.updatePosition();
+  }
+
+  /**
+   * The requested side or alignment changed: swap the strategy, keeping the layer.
+   *
+   * Rare — a responsive `side`, or a `matchAnchorWidth` driven by a signal — so the cost of
+   * rebuilding the strategy is the right trade against re-creating the view inside.
+   */
+  private reposition(): void {
+    const anchor = this.anchor();
+    if (!this.ref || !anchor) {
+      return;
+    }
+    this.ref.updatePositionStrategy(this.positionStrategy(anchor));
+    this.remeasure();
+  }
+
+  private positionStrategy(anchor: HTMLElement) {
+    return this.overlay
+      .position()
+      .flexibleConnectedTo(anchor)
+      .withPositions(createMenuPosition(this.align(), this.side()))
+      .withViewportMargin(8);
   }
 
   private close(): void {

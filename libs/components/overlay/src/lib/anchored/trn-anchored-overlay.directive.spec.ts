@@ -1,7 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TrnAnchoredOverlayDirective } from './trn-anchored-overlay.directive';
 
 /**
@@ -21,7 +21,7 @@ import { TrnAnchoredOverlayDirective } from './trn-anchored-overlay.directive';
       <ng-template
         [trnAnchoredOverlay]="anchor"
         [(open)]="open"
-        [side]="'top'"
+        [side]="side()"
         [align]="'end'"
         [matchAnchorWidth]="matchWidth()"
       >
@@ -32,6 +32,7 @@ import { TrnAnchoredOverlayDirective } from './trn-anchored-overlay.directive';
 })
 class HostComponent {
   readonly open = signal(false);
+  readonly side = signal<'top' | 'bottom'>('top');
   readonly matchWidth = signal(false);
   readonly mounted = signal(true);
 }
@@ -41,6 +42,18 @@ const layer = () => document.querySelector('[data-t="layer"]');
 
 /** How many overlay panes CDK is holding open, content or not. */
 const panes = () => document.querySelectorAll('.cdk-overlay-pane').length;
+
+/** The pane element itself, which is what carries the size CDK was given. */
+const pane = () =>
+  document.querySelector<HTMLElement>('.cdk-overlay-pane') ?? undefined;
+
+/**
+ * jsdom implements no `ResizeObserver`, so the directive's guard would skip the whole path.
+ * Stubbed and fired by hand — what is being pinned is the DECISION to re-measure, not the
+ * browser's ability to notice.
+ */
+let resizeCallbacks: (() => void)[] = [];
+const fireResize = () => resizeCallbacks.forEach((cb) => cb());
 
 /**
  * A whole press, both halves.
@@ -60,7 +73,23 @@ async function build() {
 }
 
 describe('TrnAnchoredOverlayDirective', () => {
+  beforeEach(() => {
+    resizeCallbacks = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(private readonly cb: () => void) {
+          resizeCallbacks.push(this.cb);
+        }
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+      },
+    );
+  });
+
   afterEach(() => {
+    vi.unstubAllGlobals();
     document
       .querySelectorAll('.cdk-overlay-container')
       .forEach((node) => node.remove());
@@ -125,6 +154,40 @@ describe('TrnAnchoredOverlayDirective', () => {
 
     expect(host.open()).toBe(true);
     expect(layer()).not.toBeNull();
+  });
+
+  it('moves the open layer rather than replacing it when only geometry changes', async () => {
+    // Re-creating destroys the view inside: an emoji picker would lose the text typed into
+    // its search field and the focus that was in it. Only `open` and `anchor` may re-create.
+    const { host } = await build();
+    host.open.set(true);
+    TestBed.tick();
+    const before = layer();
+
+    host.side.set('bottom');
+    TestBed.tick();
+
+    expect(layer()).toBe(before); // the same element, moved — not a new one
+  });
+
+  it('follows the anchor when the anchor changes shape', async () => {
+    // CDK recomputes a connected position on scroll and on nothing else, and reads `width`
+    // once — so an anchor that grows in place takes the layer with it in neither respect.
+    // Absolute positioning, which this replaces, tracked both for free. The composer's
+    // textarea auto-grows as you type, which is exactly this case.
+    const { container, host } = await build();
+    host.matchWidth.set(true);
+    const anchor = container.querySelector('[data-t="anchor"]') as HTMLElement;
+    anchor.getBoundingClientRect = () => ({ width: 500 }) as DOMRect;
+    host.open.set(true);
+    TestBed.tick();
+    expect(pane()?.style.width).toBe('500px');
+
+    // The anchor grows, and the only thing that hears about it is the observer.
+    anchor.getBoundingClientRect = () => ({ width: 800 }) as DOMRect;
+    fireResize();
+
+    expect(pane()?.style.width).toBe('800px');
   });
 
   it('disposes the layer when the host that owns it is destroyed', async () => {

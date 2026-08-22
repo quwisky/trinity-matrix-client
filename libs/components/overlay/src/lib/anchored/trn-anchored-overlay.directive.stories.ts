@@ -114,6 +114,41 @@ export const FlipsAtTheViewportEdge: Story = {
 };
 
 /**
+ * The anchor changes shape and the layer stays with it — in width and in position.
+ *
+ * Type into the field: it grows a line, its top edge moves, and the layer moves with it. Drag
+ * the handle at the corner to widen it and the layer widens too. Neither is free — CDK
+ * recomputes a connected position on scroll and on nothing else, and reads `width` once — and
+ * both matter for the first consumer, whose textarea auto-grows as you type and whose pane
+ * can be dragged wider underneath an open layer.
+ *
+ * Before the `ResizeObserver` behind this, growing the field by one line left the layer 162px
+ * from where it should have been, overlapping the very thing it was anchored to.
+ */
+export const FollowsAResizingAnchor: Story = {
+  render: () => ({
+    props: { open: true },
+    template: `
+      <div class="flex h-72 items-end">
+        <textarea
+          #anchor
+          rows="1"
+          class="w-96 resize rounded-md border border-border bg-transparent p-2 text-sm"
+        >Type more, or drag the corner.</textarea>
+        <ng-template
+          [trnAnchoredOverlay]="anchor"
+          [(open)]="open"
+          side="top"
+          align="start"
+          [matchAnchorWidth]="true"
+        >
+          ${layer('Still exactly as wide as the field, and still just above it.')}
+        </ng-template>
+      </div>`,
+  }),
+};
+
+/**
  * The problem this exists to solve, shown rather than described.
  *
  * The layer here is a plain `position: absolute` child, the way the composer's pickers are
