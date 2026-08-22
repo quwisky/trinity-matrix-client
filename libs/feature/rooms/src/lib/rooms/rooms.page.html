@@ -316,7 +316,15 @@
         </ng-container>
       </trn-page-header>
 
-      <div class="chat-body">
+      <div
+        class="chat-body"
+        trnDrawerSwipe
+        [drawerEnabled]="membersAreDrawer()"
+        [drawerOpen]="!!store.rightPanel()"
+        [drawerWidth]="drawerWidth()"
+        (opened)="onDrawerSwipedOpen()"
+        (closed)="onDrawerSwipedClosed()"
+      >
         @if (vm.activeRoom(); as room) {
           <trn-tombstone-banner
             (goToRoom)="roomActions.onGoToUpgradedRoom($event)"

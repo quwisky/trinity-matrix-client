@@ -154,4 +154,24 @@ describe('component styling reach', () => {
 
     expect(unreachable).toEqual([]);
   });
+
+  it('pads both ends of every surface that reaches the screen edge', () => {
+    // `.safe-bottom` sat in global.scss with ZERO call sites while four full-height panels
+    // padded only their top, so on a notched phone the thread composer and the member-info
+    // action row sat under the home indicator. Nothing could catch that: the utility is inert
+    // off a notched device, so it renders identically everywhere a test runs.
+    const panels = [
+      'libs/feature/rooms/src/lib/message-search/message-search.component.html',
+      'libs/feature/rooms/src/lib/pinned/pinned-messages-panel.component.html',
+      'libs/feature/rooms/src/lib/thread/thread-view.component.html',
+      'libs/feature/rooms/src/lib/thread/threads-list.component.html',
+      'libs/feature/rooms/src/lib/member-info/member-info.component.html',
+    ];
+
+    const unpadded = panels.filter(
+      (file) => !read(file).includes('safe-bottom'),
+    );
+
+    expect(unpadded).toEqual([]);
+  });
 });

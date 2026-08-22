@@ -145,4 +145,86 @@ describe('styling tokens', () => {
 
     expect(offenders).toEqual([]);
   });
+
+  it('contains sideways scrolling wherever a surface scrolls sideways', () => {
+    // iOS now has the WebView's back/forward swipe enabled, so a horizontal scroll that
+    // reaches its end continues into the gesture and navigates away. Every `overflow-x`
+    // surface therefore has to say the scroll stops with it. Checked as a pairing rather
+    // than by eye, because the failure only shows on a device with the gesture — every
+    // desktop browser looks fine.
+    // COUNTED, not "does the file mention it anywhere". A file with two scrolling surfaces
+    // and one containment reads as clean to a presence check, which is exactly the state
+    // this guard's own first draft passed in. Counting is still not pairing: two
+    // containments on the SAME surface would satisfy it for two scrollers. Scoping each
+    // declaration to its rule is what would close that, and is more machinery than the
+    // failure so far justifies — this catches the one that actually happened.
+    const offenders = files.filter((file) => {
+      const source = code(file);
+      const scrolls = (source.match(/overflow-x:\s*(?:auto|scroll)/g) ?? [])
+        .length;
+      const contained = (source.match(/overscroll-behavior-x/g) ?? []).length;
+      return scrolls > contained;
+    });
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('claims an axis wherever a swipe gesture is attached', () => {
+    // A horizontal gesture the browser has not been told about is a gesture the browser
+    // eats: it treats the drag as a scroll or an overscroll navigation and the handler never
+    // sees a move. `touch-action` is what claims the axis, and it is invisible to jsdom and
+    // to every desktop run — the gesture simply works with a mouse and silently does not on a
+    // phone. So the pairing is checked here instead: a template that hosts a swipe must have
+    // a stylesheet that declares it.
+    const GESTURE_HOSTS = [
+      {
+        template: 'libs/feature/rooms/src/lib/rooms/rooms.page.html',
+        directive: 'trnDrawerSwipe',
+        styles: 'libs/feature/rooms/src/lib/rooms/rooms.page.scss',
+        selector: '.chat-body',
+      },
+      // The gesture host is not where the touch LANDS. `touch-action` is resolved by walking
+      // up from the touch point and stopping at the nearest scroll container, so the claim on
+      // `.chat-body` never reaches a finger that starts on the timeline or on the drawer's own
+      // list — both scrollers. Measured: with only the host declaring it, the browser sent one
+      // `pointermove` and then `pointercancel`, and the gesture never ran on a device. These
+      // two are the surfaces the swipe actually begins on.
+      {
+        template: 'libs/feature/rooms/src/lib/rooms/rooms.page.html',
+        directive: 'trnDrawerSwipe',
+        styles:
+          'libs/feature/rooms/src/lib/message-list/_message-list-shared.scss',
+        selector: '.scroll',
+      },
+      {
+        template: 'libs/feature/rooms/src/lib/rooms/rooms.page.html',
+        directive: 'trnDrawerSwipe',
+        styles:
+          'libs/feature/rooms/src/lib/member-list/member-list.component.scss',
+        selector: '.members',
+      },
+    ];
+
+    // Scoped to the HOST RULE, not the file. `.pane-handle` in the same stylesheet declares
+    // `touch-action` too, so a file-level check stays green after the gesture surface loses
+    // its own — which is exactly what this guard's first draft did.
+    const ruleFor = (styles, selector) => {
+      const at = code(styles).indexOf(`${selector} {`);
+      return at < 0
+        ? ''
+        : code(styles).slice(at, code(styles).indexOf('}', at));
+    };
+
+    // `swipe-through` is the mixin that declares it; either spelling counts.
+    const claims = (rule) =>
+      rule.includes('touch-action') || rule.includes('swipe-through');
+
+    const unclaimed = GESTURE_HOSTS.filter(
+      ({ template, directive, styles, selector }) =>
+        read(template).includes(directive) &&
+        !claims(ruleFor(styles, selector)),
+    );
+
+    expect(unclaimed).toEqual([]);
+  });
 });

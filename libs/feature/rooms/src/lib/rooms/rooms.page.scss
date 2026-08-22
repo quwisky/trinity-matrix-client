@@ -143,7 +143,14 @@
   text-align: center;
 }
 
+// The chat area owns the drawer gesture, so a swipe that starts over the timeline is heard.
+// `touch-action: pan-y` keeps vertical scrolling native while claiming the horizontal axis —
+// without it the browser consumes the sideways drag as a scroll or an overscroll navigation
+// and the directive never sees a move. `pan-y` rather than `none`, because the timeline must
+// still scroll.
 .chat-body {
+  touch-action: pan-y;
+  overscroll-behavior-x: contain;
   flex: 1;
   display: flex;
   min-height: 0;
@@ -231,22 +238,39 @@
     flex: none;
     box-shadow: -2px 0 12px rgb(0 0 0 / 30%);
 
-    // Clear the home indicator on notched devices (inert elsewhere).
-    padding-bottom: env(safe-area-inset-bottom);
+    // NEITHER inset is padded here — both are per-surface now, and which surface needs
+    // which is the split below.
     animation: members-drawer-in var(--trinity-duration-base)
       var(--trinity-ease-decelerate);
+
+    // Follows the finger while it is being DISMISSED. `--drawer-drag` is written by
+    // `DrawerSwipeDirective` for the length of a gesture and removed on release, so the
+    // drawer settles back to its CSS position without the directive having to animate
+    // anything itself. Zero when nobody is dragging.
+    // Only the closing direction can track, and that is a real gap rather than a choice: an
+    // OPENING swipe is measured before the slot has anything in it, so there is no element
+    // here to translate and the drawer arrives at the end of the gesture with its entrance
+    // animation. Painting the open drag means mounting the drawer at the first qualifying
+    // move and suppressing that animation, which is a bigger change than this slice.
+    transform: translateX(var(--drawer-drag, 0));
   }
 
-  // Where the two drawers part company, on width and on the top inset.
-  // The roster fits 240px; a thread or a search result does not, and those were full-screen
-  // (`w-screen`) as dialogs at this width, so `max-width` keeps them so — 480px exceeds the
-  // viewport here. The dragged width is deliberately not read at this breakpoint: there is no
-  // divider to drag, and a width chosen on a desktop has nothing to say about a phone.
-  // Every panel surface carries `safe-top` on its own header, so padding the notch here too
-  // would clear it twice; the member list has no header of its own and needs it.
+  // Where the two drawers part company, on width and on the safe-area insets.
+  // WIDTH: the roster fits 240px; a thread or a search result does not, and those were
+  // full-screen (`w-screen`) as dialogs at this width, so `max-width` keeps them so — 480px
+  // exceeds the viewport here. The dragged width is deliberately not read at this breakpoint:
+  // there is no divider to drag, and a width chosen on a desktop has nothing to say about a
+  // phone.
+  // INSETS: the four panels pad themselves at BOTH ends — `safe-top` on the header they all
+  // carry, `safe-bottom` on the root — because their content reaches both edges (a thread
+  // composer, a member-info action row), and padding the host as well would clear the notch
+  // twice. The member list has neither, so the host does both for it; without the bottom one
+  // its last row sits under the home indicator, which is the bug the panels' `safe-bottom`
+  // was added to fix.
   .chat-members {
     width: 240px;
     padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   .chat-panel {

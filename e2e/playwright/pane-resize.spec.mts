@@ -50,8 +50,16 @@ test.describe('Resizable panes', () => {
     await page.mouse.move(box.x + 80, y);
     await page.mouse.up();
 
+    // POLLED, not read once. The commit goes signal -> change detection -> layout, so the
+    // box read immediately after `mouse.up()` is a race — it was, and this spec was flaky
+    // for exactly that reason on the run that introduced it.
+    await expect
+      .poll(async () => (await sidebar.boundingBox())?.width ?? 0, {
+        timeout: 10_000,
+      })
+      .toBeGreaterThan(before + 50);
+
     const after = (await sidebar.boundingBox())?.width ?? 0;
-    expect(after).toBeGreaterThan(before + 50);
 
     // The ROOM LIST, not just the column around it. `.shell-side` is a flex row holding a
     // fixed 72px rail and the list; if the list does not absorb the difference, dragging out
