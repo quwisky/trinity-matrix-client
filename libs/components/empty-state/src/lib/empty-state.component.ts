@@ -116,6 +116,12 @@ export class EmptyStateComponent {
    * strings rather than assembled from fragments, so the Tailwind classes stay statically
    * scannable; that is what decides whether they are generated at all.
    *
+   * `text-13` at every size, which is a NORMALISATION rather than a preservation: the fifteen
+   * rules this replaced ran 12px, 13px, 14px and — for the four that set no size at all and so
+   * inherited the document's — 16px. Nine of the fifteen therefore move. The visible ones are
+   * those four panels, which come down 16 to 13; that is deliberate and is in the changelog,
+   * because "one component" is worth little if it still renders four sizes.
+   *
    * `empty:hidden` is load-bearing rather than tidiness: with neither `body` set nor content
    * projected, this paragraph holds only an anchor, and without the rule it would still
    * contribute a line box under a heading that should be the last thing on the panel.
