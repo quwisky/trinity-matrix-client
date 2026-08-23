@@ -56,9 +56,7 @@
       </button>
     } @empty {
       @if (!searching()) {
-        <div class="picker-empty">
-          <span class="text-xs text-muted-foreground">{{ emptyHint() }}</span>
-        </div>
+        <trn-empty-state size="line" [body]="emptyHint()" />
       }
     }
   </div>

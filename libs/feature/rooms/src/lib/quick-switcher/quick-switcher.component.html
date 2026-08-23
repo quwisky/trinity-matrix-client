@@ -80,13 +80,15 @@
         }}</span>
       </button>
     } @empty {
-      <div class="qs-empty" aria-live="polite">
-        @if (searching()) {
-          <trn-spinner />
-        } @else {
-          <span class="text-xs text-muted-foreground">{{ emptyHint() }}</span>
-        }
-      </div>
+      <!-- A spinner where the sentence goes while a directory lookup is in flight. Branched
+           OUTSIDE the component rather than projecting an `@if`: the projected slot wins over
+           `body`, and an `@if` that renders nothing still counts as content — so the fallback
+           would never appear and the hint would be silently lost. -->
+      @if (searching()) {
+        <trn-empty-state aria-live="polite"><trn-spinner /></trn-empty-state>
+      } @else {
+        <trn-empty-state aria-live="polite" [body]="emptyHint()" />
+      }
     }
   </div>
 </div>

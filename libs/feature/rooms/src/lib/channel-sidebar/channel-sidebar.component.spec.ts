@@ -1433,7 +1433,14 @@ describe('ChannelSidebarComponent', () => {
     signals.childrenLoading.set(false);
     signals.childrenError.set('nope');
     fixture.detectChanges();
-    expect(container.querySelector('.empty--error')).not.toBeNull();
+    // The error text and its danger tone, rather than the class that used to carry both.
+    // `text-danger`, never `text-destructive` — the latter is a fill token whose dark
+    // value is a near-black maroon, so as a foreground it hides the error it announces.
+    expect(container.textContent).toContain(
+      'Couldn’t load this space’s channels.',
+    );
+    expect(container.querySelector('.text-danger')).not.toBeNull();
+    expect(container.querySelector('.text-destructive')).toBeNull();
     // No joinable rows render while erroring.
     expect(container.querySelector('.joinable')).toBeNull();
   });

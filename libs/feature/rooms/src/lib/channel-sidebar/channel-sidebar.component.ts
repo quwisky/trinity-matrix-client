@@ -20,6 +20,7 @@ import {
   HlmDropdownMenuSubTrigger,
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
+import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnInput } from '@trinity/components/input';
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { AvatarComponent, type AccountBadge } from '@trinity/components/avatar';
@@ -62,6 +63,7 @@ export type { AccountSummary };
   selector: 'trn-channel-sidebar',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    EmptyStateComponent,
     SidebarUserPanelComponent,
     SidebarRoomListComponent,
     AvatarComponent,
