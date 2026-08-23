@@ -51,6 +51,13 @@ All notable changes to this project are documented here. The format is based on
   the toolbar were asking for and what they will still get. The keyboard shortcuts work either
   way, as they always have.
 
+- **The composer now tells you which slash commands exist.** Typing `/` at the start of a
+  message brings up the list — `/me`, `/shrug`, `/plain`, `/spoiler` — each with what it does
+  and what it takes, so you no longer have to already know the name to use one. Typing more
+  narrows it, the arrow keys move through it, Enter or Tab fills the command in, and Escape
+  puts it away. It only offers a command where one would actually work: at the start of the
+  message, never mid-sentence, because that is the only place they are read.
+
 ### Fixed
 
 - **A room that has been upgraded no longer squashes the conversation.** In a room with a "this

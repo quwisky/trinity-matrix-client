@@ -53,7 +53,15 @@ export class SlashAutocomplete {
    */
   sync(text: string, caret: number): void {
     const trigger = SLASH_TRIGGER.exec(text.slice(0, caret));
-    this.query.set(trigger ? trigger[1].toLowerCase() : null);
+    const next = trigger ? trigger[1].toLowerCase() : null;
+    if (next === this.query()) {
+      return; // same fragment, same list — leave the highlight where the user put it
+    }
+    this.query.set(next);
+    // A different fragment is a different list, so an index into the old one means nothing.
+    // Left alone it can point past the end, and then `accept` returns null while the menu is
+    // open: Enter is swallowed and the message neither completes nor sends.
+    this.activeIndex.set(0);
   }
 
   /**

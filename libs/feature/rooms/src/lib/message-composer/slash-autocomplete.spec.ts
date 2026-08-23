@@ -93,4 +93,35 @@ describe('SlashAutocomplete', () => {
       expect(command.description, command.name).toBeTruthy();
     }
   });
+
+  it('returns the highlight to the top when the fragment narrows the list', () => {
+    // Otherwise the index outlives the list it indexed: highlight the last command on a bare
+    // `/`, type one more letter, and `accept` looks up a match that no longer exists — Enter
+    // is swallowed by the open menu and nothing happens at all.
+    const engine = new SlashAutocomplete();
+    engine.sync('/', 1);
+    engine.move(-1);
+    expect(engine.activeIndex()).toBe(SLASH_COMMANDS.length - 1);
+
+    engine.sync('/sh', 3);
+
+    expect(engine.activeIndex()).toBe(0);
+    expect(engine.accept('/sh', 3, engine.activeIndex())).toEqual({
+      start: 0,
+      end: 3,
+      insert: '/shrug ',
+    });
+  });
+
+  it('keeps the highlight while the fragment is unchanged', () => {
+    // A caret move or a toolbar edit elsewhere in the message re-syncs the same fragment;
+    // that must not yank the highlight back from wherever the user arrowed it to.
+    const engine = new SlashAutocomplete();
+    engine.sync('/', 1);
+    engine.move(1);
+
+    engine.sync('/', 1);
+
+    expect(engine.activeIndex()).toBe(1);
+  });
 });

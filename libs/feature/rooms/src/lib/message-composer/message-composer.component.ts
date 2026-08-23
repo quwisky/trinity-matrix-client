@@ -48,6 +48,7 @@ import {
   type BatchProgress,
 } from '../shared/send-media-batch';
 import { EmojiAutocomplete } from './emoji-autocomplete';
+import { SlashAutocomplete } from './slash-autocomplete';
 import { TrnIconComponent } from '@trinity/components/icon';
 import { TrnAnchoredOverlayDirective } from '@trinity/components/overlay';
 import {
@@ -313,6 +314,16 @@ export class MessageComposerComponent {
     inject(TrnEmojiIndex),
   );
   private readonly mentionAutocomplete = new MentionAutocomplete(this.members);
+
+  /**
+   * The `/command` menu.
+   *
+   * Third in the ladder rather than first, and that ordering is the only thing that makes the
+   * three safe together: a slash only triggers at the start of the message, where neither of
+   * the others can be open, so in practice they never compete — but stating an order beats
+   * relying on that.
+   */
+  private readonly slashAutocomplete = new SlashAutocomplete();
   /** The `:shortcode` fragment under the caret, or null when the menu is closed. */
   readonly emojiQuery = this.emojiAutocomplete.query;
   /** Ranked emoji suggestions for the current query (from emoji-mart's index). */
@@ -327,6 +338,12 @@ export class MessageComposerComponent {
   readonly mentionMatches = this.mentionAutocomplete.matches;
   /** The mention menu shows only when a query yields at least one member. */
   readonly mentionOpen = this.mentionAutocomplete.open;
+  /** Commands matching the `/fragment` at the start of the message. */
+  readonly slashMatches = this.slashAutocomplete.matches;
+  /** Whether the slash menu is showing. */
+  readonly slashOpen = this.slashAutocomplete.open;
+  /** Index of the highlighted command. */
+  readonly slashActiveIndex = this.slashAutocomplete.activeIndex;
   /** Index of the highlighted member suggestion. */
   readonly mentionActiveIndex = this.mentionAutocomplete.activeIndex;
   /**
@@ -559,6 +576,7 @@ export class MessageComposerComponent {
     if (!(event as InputEvent).isComposing) {
       this.syncEmojiAutocomplete();
       this.syncMentionAutocomplete();
+      this.slashAutocomplete.sync(this.text(), this.caret());
     }
   }
 
@@ -697,6 +715,7 @@ export class MessageComposerComponent {
     // — and a message begun entirely from the toolbar never announces that anyone is typing.
     this.syncEmojiAutocomplete();
     this.syncMentionAutocomplete();
+    this.slashAutocomplete.sync(this.text(), this.caret());
     this.typing.emit(result.text.trim().length > 0);
     queueMicrotask(() => {
       const settled = this.textarea()?.nativeElement;
@@ -738,6 +757,11 @@ export class MessageComposerComponent {
       this.acceptEmoji();
       return;
     }
+    if (this.slashOpen()) {
+      keyEvent.preventDefault();
+      this.acceptSlash();
+      return;
+    }
     if (keyEvent.shiftKey) {
       return; // Shift+Enter → newline (default textarea behavior)
     }
@@ -753,6 +777,9 @@ export class MessageComposerComponent {
     } else if (this.emojiOpen()) {
       event.preventDefault();
       this.acceptEmoji();
+    } else if (this.slashOpen()) {
+      event.preventDefault();
+      this.acceptSlash();
     }
   }
 
@@ -764,6 +791,9 @@ export class MessageComposerComponent {
     } else if (this.emojiOpen()) {
       event.preventDefault();
       this.moveEmojiSelection(1);
+    } else if (this.slashOpen()) {
+      event.preventDefault();
+      this.moveSlashSelection(1);
     }
   }
 
@@ -771,6 +801,7 @@ export class MessageComposerComponent {
   onBlur(): void {
     this.emojiQuery.set(null);
     this.mentionQuery.set(null);
+    this.slashAutocomplete.close();
   }
 
   /** Send on Enter / the send button: a staged attachment (with the text as its
@@ -891,6 +922,27 @@ export class MessageComposerComponent {
     const next = this.mentionAutocomplete.move(delta);
     if (next !== null) {
       this.scrollSuggestionIntoView(`mention-suggestion-${next}`);
+    }
+  }
+
+  /** Accept a command: swap the `/fragment` for `/name ` and close the menu. */
+  acceptSlash(index = this.slashActiveIndex()): void {
+    const replacement = this.slashAutocomplete.accept(
+      this.text(),
+      this.caret(),
+      index,
+    );
+    if (!replacement) {
+      return;
+    }
+    this.replaceRange(replacement.start, replacement.end, replacement.insert);
+    this.slashAutocomplete.close();
+  }
+
+  private moveSlashSelection(delta: number): void {
+    const next = this.slashAutocomplete.move(delta);
+    if (next !== null) {
+      this.scrollSuggestionIntoView(`slash-suggestion-${next}`);
     }
   }
 
@@ -1271,6 +1323,10 @@ export class MessageComposerComponent {
       this.emojiQuery.set(null);
       return;
     }
+    if (this.slashOpen()) {
+      this.slashAutocomplete.close();
+      return;
+    }
     if (this.pickerOpen()) {
       this.pickerOpen.set(false);
       return;
@@ -1320,6 +1376,11 @@ export class MessageComposerComponent {
     if (this.emojiOpen()) {
       event.preventDefault();
       this.moveEmojiSelection(-1);
+      return;
+    }
+    if (this.slashOpen()) {
+      event.preventDefault();
+      this.moveSlashSelection(-1);
       return;
     }
     // Empty composer + Up arrow → edit the last message (Discord-style).

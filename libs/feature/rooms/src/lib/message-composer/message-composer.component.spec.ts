@@ -16,6 +16,7 @@ import {
   type GifProviderId,
   type GifResult,
 } from '@trinity/data-access/gif';
+import { SLASH_COMMANDS } from '@trinity/util/matrix';
 import { TrnToastService } from '@trinity/components/overlay';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import {
@@ -2514,6 +2515,129 @@ describe('MessageComposerComponent', () => {
       cmp.onEnter(enter());
 
       expect(submit?.mentions).toEqual([]); // the old room's tracking was dropped
+    });
+  });
+
+  describe('slash autocomplete', () => {
+    /** Type `value` into the real textarea and put the caret at its end. */
+    function typeSlash(
+      cmp: MessageComposerComponent,
+      ta: HTMLTextAreaElement,
+      value: string,
+    ): void {
+      ta.value = value;
+      ta.selectionStart = ta.selectionEnd = value.length;
+      cmp.onInput({ target: ta } as unknown as Event);
+    }
+
+    it('opens on a bare slash at the start and completes the pick with a trailing space', async () => {
+      const { fixture, container } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+
+      typeSlash(cmp, ta, '/');
+      expect(cmp.slashOpen()).toBe(true);
+      expect(cmp.slashMatches().length).toBe(SLASH_COMMANDS.length);
+
+      typeSlash(cmp, ta, '/shr');
+      expect(cmp.slashMatches().map((c) => c.name)).toEqual(['shrug']);
+
+      cmp.onEnter(enter());
+
+      // The trailing space matters: `parseSlashCommand` needs it before it reads an argument.
+      expect(cmp.text()).toBe('/shrug ');
+      expect(cmp.slashOpen()).toBe(false);
+    });
+
+    it('does not send the message while the menu is open', async () => {
+      const { fixture, container } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+      let sent = 0;
+      cmp.submitText.subscribe(() => sent++);
+
+      typeSlash(cmp, ta, '/me');
+      cmp.onEnter(enter());
+      expect(sent).toBe(0);
+
+      // …and once accepted, the next Enter sends as normal.
+      typeSlash(cmp, ta, '/me waves');
+      cmp.onEnter(enter());
+      expect(sent).toBe(1);
+    });
+
+    it('never offers a command mid-message, where the send path would not parse one', async () => {
+      const { fixture, container } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+
+      typeSlash(cmp, ta, 'and/or');
+      expect(cmp.slashOpen()).toBe(false);
+
+      typeSlash(cmp, ta, 'see /me');
+      expect(cmp.slashOpen()).toBe(false);
+    });
+
+    it('moves the highlight with both arrow keys before accepting', async () => {
+      const { fixture, container } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+
+      typeSlash(cmp, ta, '/');
+      cmp.onArrowDown(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+      expect(cmp.slashActiveIndex()).toBe(1);
+      cmp.onArrowUp(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
+      expect(cmp.slashActiveIndex()).toBe(0);
+
+      cmp.onTab(new KeyboardEvent('keydown', { key: 'Tab' }));
+      expect(cmp.text()).toBe(`/${SLASH_COMMANDS[0].name} `);
+    });
+
+    it('ArrowUp claims the key from the textarea while the menu is open', async () => {
+      // Unclaimed, ArrowUp is the textarea's own "move up a line", which moves the caret off
+      // the fragment the menu is anchored to — so the highlight has to consume the key.
+      const { fixture, container } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+
+      typeSlash(cmp, ta, '/');
+      const event = new KeyboardEvent('keydown', {
+        key: 'ArrowUp',
+        cancelable: true,
+      });
+      cmp.onArrowUp(event);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(cmp.slashActiveIndex()).toBe(SLASH_COMMANDS.length - 1);
+    });
+
+    it('closes on Escape before anything else the key would cancel', async () => {
+      const { fixture, container } = await renderComposer({
+        replyingTo: 'Alice',
+      });
+      const cmp = fixture.componentInstance;
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+      let cancelled = 0;
+      cmp.cancelReply.subscribe(() => cancelled++);
+
+      typeSlash(cmp, ta, '/sh');
+      cmp.onEscape();
+      expect(cmp.slashOpen()).toBe(false);
+      expect(cancelled).toBe(0);
+
+      cmp.onEscape();
+      expect(cancelled).toBe(1);
+    });
+
+    it('closes when the field loses focus', async () => {
+      const { fixture, container } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+
+      typeSlash(cmp, ta, '/');
+      cmp.onBlur();
+
+      expect(cmp.slashOpen()).toBe(false);
     });
   });
 

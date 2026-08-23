@@ -95,6 +95,11 @@
     (emojiAccept)="acceptEmoji($event)"
     (mentionHighlight)="mentionActiveIndex.set($event)"
     (mentionAccept)="acceptMention($event)"
+    [slashOpen]="slashOpen()"
+    [slashMatches]="slashMatches()"
+    [slashActiveIndex]="slashActiveIndex()"
+    (slashHighlight)="slashActiveIndex.set($event)"
+    (slashAccept)="acceptSlash($event)"
   />
   <input
     #fileInput
@@ -172,14 +177,18 @@
           ? 'mention-suggestions'
           : emojiOpen()
             ? 'emoji-suggestions'
-            : null
+            : slashOpen()
+              ? 'slash-suggestions'
+              : null
       "
       [attr.aria-activedescendant]="
         mentionOpen()
           ? 'mention-suggestion-' + mentionActiveIndex()
           : emojiOpen()
             ? 'emoji-suggestion-' + emojiActiveIndex()
-            : null
+            : slashOpen()
+              ? 'slash-suggestion-' + slashActiveIndex()
+              : null
       "
       (input)="onInput($event)"
       (keydown)="onKeydown($event)"
