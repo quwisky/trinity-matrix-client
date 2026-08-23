@@ -439,7 +439,7 @@ describe('VirtualMessageListComponent', () => {
     expect(cmp.windowedRows()).toEqual([]);
     expect(cmp.topPad()).toBe(0);
     expect(cmp.bottomPad()).toBe(0);
-    expect(container.querySelector('.empty')).not.toBeNull();
+    expect(container.textContent).toContain('No messages yet.');
   });
 
   it('jumps synchronously to an already-rendered row', async () => {
