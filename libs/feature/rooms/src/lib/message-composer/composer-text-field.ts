@@ -8,9 +8,13 @@ import {
 import { type EditResult } from '@trinity/util/matrix';
 
 /**
- * The tallest the input grows before it scrolls. Must stay in agreement with the
- * `max-height` in `message-composer.component.scss`; nothing enforces that but this comment,
- * because jsdom reports `scrollHeight: 0` and cannot see either number.
+ * The tallest the input grows before it scrolls.
+ *
+ * Must stay in agreement with `.composer__input`'s `max-height` in
+ * `message-composer.component.scss` — which now lives a file away from this constant, so the
+ * pairing is worth naming precisely. Nothing enforces it but this comment: jsdom reports
+ * `scrollHeight: 0` for everything, so no unit test can see either number, and the browser
+ * tests that could measure it assert the field's height rather than its ceiling.
  */
 const MAX_HEIGHT_PX = 200;
 

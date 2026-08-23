@@ -305,6 +305,14 @@ export class MessageComposerComponent {
    * Each engine owns its own trigger and list; the façade owns the caret handover and the
    * order the three are consulted in. The template and the specs read its signals directly —
    * forwarding them through this component would only restate them.
+   *
+   * PUBLIC rather than `protected`, which the template alone would have allowed. Three spec
+   * files assert on `menus.emojiOpen()`, `menus.slashMatches()` and the rest, and those read
+   * exactly what the menus decided; going through the DOM instead would assert something
+   * weaker at 44 call sites. It is also not a widening in practice — `text`, `previewing`,
+   * `pickerOpen`, `submit()` and most of the key handlers are already public, because this
+   * component is driven from its specs as much as from its template. Narrowing this one
+   * member would be a rule nothing else here follows.
    */
   readonly menus: ComposerAutocompletes;
   /** Staging → outgoing batches, and what comes back. */
