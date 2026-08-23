@@ -10,9 +10,11 @@
   </div>
 
   @if (sections().length === 0) {
-    <p class="empty" data-testid="reactions-empty">
-      Nobody has reacted to this message.
-    </p>
+    <trn-empty-state
+      size="line"
+      body="Nobody has reacted to this message."
+      data-testid="reactions-empty"
+    />
   } @else {
     <!-- One chip per emoji; the selected one's reactors are listed below. -->
     <div class="keys" role="tablist" aria-label="Reactions">
