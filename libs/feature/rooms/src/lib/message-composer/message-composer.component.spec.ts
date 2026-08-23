@@ -3054,4 +3054,71 @@ describe('MessageComposerComponent', () => {
       });
     });
   });
+
+  describe('pressing the field', () => {
+    // jsdom has no PointerEvent, and the handler only reads target/currentTarget and calls
+    // preventDefault — so a cancelable Event dispatched at the right node exercises exactly
+    // the branch that matters. The geometry half (that there IS a dead zone above the
+    // buttons) needs a real browser and lives in `composer-formatting.spec.mts`.
+    const press = () =>
+      new Event('pointerdown', { bubbles: true, cancelable: true });
+
+    function parts(container: HTMLElement) {
+      const field = container.querySelector<HTMLElement>(
+        '[data-testid="composer-field"]',
+      );
+      const input = container.querySelector<HTMLTextAreaElement>(
+        '[data-testid="composer-input"]',
+      );
+      if (!field || !input) {
+        throw new Error('composer field or input not rendered');
+      }
+      return { field, input };
+    }
+
+    it('forwards a press on the field itself to the input', async () => {
+      const { fixture, container } = await renderComposer();
+      const { field, input } = parts(container);
+
+      const event = press();
+      field.dispatchEvent(event);
+      fixture.detectChanges();
+
+      expect(document.activeElement).toBe(input);
+      // Before the focus, not after: a press's DEFAULT action sets focus and runs after this
+      // handler, so letting it through moves focus straight back off the textarea.
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('leaves a press that started on the input alone', async () => {
+      // The guard is what keeps the browser's own caret placement and drag-selection working:
+      // cancel the press that lands IN the textarea and clicking mid-draft stops moving the
+      // caret. The event bubbles to the field, so only `target === currentTarget` separates
+      // the two cases.
+      const { fixture, container } = await renderComposer();
+      const { input } = parts(container);
+
+      const event = press();
+      input.dispatchEvent(event);
+      fixture.detectChanges();
+
+      expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('leaves a press that started on a button inside the field alone', async () => {
+      const { fixture, container } = await renderComposer();
+      const { field } = parts(container);
+      const send = container.querySelector<HTMLElement>(
+        '[data-testid="composer-send"]',
+      );
+      expect(send).not.toBeNull();
+      expect(field.contains(send)).toBe(true);
+
+      const event = press();
+      send?.dispatchEvent(event);
+      fixture.detectChanges();
+
+      expect(event.defaultPrevented).toBe(false);
+    });
+  });
 });

@@ -55,8 +55,9 @@
 // `align-items: end` is what commit 4b489ebb bought and must not be given back: the buttons pin
 // to the last line as the textarea grows, with no hand-measured offsets. The moment anything
 // here gets a `position: absolute` or a fixed `height`, that regression is back.
-// Four columns because the trailing side has two buttons, and `auto` so the fourth collapses
-// to nothing while recording, when send is withheld.
+// Four columns because the trailing side has two buttons. The fourth is dropped outright in
+// the recording state (below) rather than left to size to nothing, because an empty track
+// still gets its gutter.
 .composer__field {
   display: grid;
   grid-template-columns: auto 1fr auto auto;
@@ -68,11 +69,21 @@
   // plus the button beside it, so nothing encodes a button's width as a number.
   // 6px is breathing room for the buttons against the box's edge, not a measurement of
   // anything: the 40px buttons carry their own hit area and the radius needs a little space
-  // inside it. The text consequently starts 50px in (6 + 40 + the 4px gap) where it used to
-  // start at 74px — a deliberate shift, and the visible half of moving the buttons inside.
+  // inside it. It is also what the formatting toolbar indents itself by, so the two rows line
+  // up on their controls — the one number this file publishes by being copied, and the reason
+  // it is worth keeping at one.
+  // The text consequently starts 50px into the FIELD (6 + 40 + the 4px gap) where it started
+  // 58px into the old row (40 + 4 + the textarea's own 14px). Both measured from the same
+  // edge, that is an 8px shift left — the visible half of moving the buttons inside.
   padding-inline: 6px;
   border-radius: var(--trinity-radius);
   background: var(--trinity-sidebar);
+
+  // The field's own area is a press target for the input it draws (see `onFieldPress`), and
+  // it shares the input's fill, so it has to read as one: without this the dead zone shows an
+  // arrow while the textarea a pixel away shows an I-beam. The three buttons inside set their
+  // own `cursor`, so only the forwarded area changes.
+  cursor: text;
 
   // The ring moves with the box. `trnTextarea` draws one on the textarea itself, which would
   // now outline a bare input sitting inside a filled box; it is suppressed below and redrawn
@@ -84,6 +95,16 @@
   &:has(.composer__input:focus-visible) {
     outline: 2px solid var(--trinity-accent);
     outline-offset: -2px;
+  }
+
+  // Send is withheld while recording, and an empty fourth track is still a track: `gap` lays
+  // out the gutter between columns 3 and 4 whether or not anything is in column 4, so the
+  // trailing inset would be 10px against a 6px leading one. Declare three columns for that
+  // one state instead — the three auto items still land in 1, 3 and (with the input placed at
+  // 2) nothing wraps. Shortening the base template is not an option: with three columns
+  // declared and four items, the fourth would wrap to an implicit row 2.
+  &:not(:has(.composer__send)) {
+    grid-template-columns: auto 1fr auto;
   }
 }
 
@@ -102,6 +123,20 @@
   overflow-y: auto;
   max-height: 200px;
   padding-block: 11px;
+
+  // One line of floor. An empty draft renders `html: ''` — no line box at all, so the cell
+  // would be 22px of padding and the row would fall back to the 40px buttons: the same 43->40
+  // toggle drift, arriving from the other side. `em` resolves against this rule's own
+  // `font-size`, so the line tracks the type rather than restating it; the padding has to be
+  // added because `box-sizing` is `border-box` (preflight), which makes a bare `1.4em` floor
+  // inert — 22px of padding already clears it.
+  min-height: calc(1.4em + 2 * 11px);
+
+  // The timeline breaks an unbreakable token (`message-row.component.scss:283`) and so does a
+  // textarea (the UA sheet gives it `overflow-wrap: break-word`). A plain div does neither, so
+  // without this a long URL or hash scrolls sideways here and wraps once sent — the one thing
+  // a preview may not do.
+  overflow-wrap: anywhere;
 
   // Deliberately no border of its own. It used to have one, which was the only cue that a
   // toggle had happened; the cue is now the toolbar's own pressed state on the preview button,
@@ -199,13 +234,13 @@
   }
 }
 
-// Emoji and send are the composer row's inline controls (the `+` matches them from its own
+// Emoji and send are the field's trailing grid items (the `+` matches them from its own
 // stylesheet). Each is sized to the textarea's single-row resting height so its icon centres
-// on one line; the row's `align-items: flex-end` then keeps them on the last line as the
-// textarea grows. They carry no background, so the box is just the hit target.
+// on one line; the field's `align-items: end` then keeps them on the last line as the textarea
+// grows. Their columns come from auto-placement around the input's explicit `grid-column: 2`,
+// not from any flex behaviour. They carry no background, so the box is just the hit target.
 .composer__emoji,
 .composer__send {
-  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -274,8 +309,9 @@
     color: var(--trinity-text-muted);
   }
 
-  // The ring is the FIELD's now (see `:focus-within` above). trnTextarea's own would outline a
-  // bare textarea sitting inside a filled box, which reads as two controls. Unlayered, so it
+  // The ring is the FIELD's now (see its `:has(…:focus-visible)` above). trnTextarea's own
+  // would outline a bare textarea sitting inside a filled box, which reads as two controls.
+  // Unlayered, so it
   // wins over hlm's `@layer utilities` exactly as the sizing neutralisers above do.
   &:focus-visible {
     outline: none;

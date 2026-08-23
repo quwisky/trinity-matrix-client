@@ -9,11 +9,18 @@
   gap: 2px;
   padding-bottom: 2px;
 
-  // No indent. The two custom properties this used to read from `.composer` existed to line the
-  // row up with the input while the buttons flanked it from OUTSIDE — 44px in from the left,
-  // 88px from the right, restated again at the touch breakpoint where the buttons grow. The
-  // buttons are inside the field now, so the field's edge is the input's edge and the indent is
-  // zero: four declarations and two hand-computed sums, gone rather than updated.
+  // Line the row up with the field's CONTROLS: the first button over the `+`, the preview
+  // toggle over send. That is the field's own `padding-inline`, one number copied from one
+  // place — not the two hand-computed sums this used to carry (44px and 88px, restated as
+  // 48/96 at the touch breakpoint), each of which added up a button width the toolbar could
+  // not see and had to be corrected whenever that width moved.
+  // It does NOT line up with the first character, and that is a deliberate reversal of
+  // `971f95ae`, which indented past buttons that flanked the input from OUTSIDE so the bold
+  // button sat over the text it would format. The buttons are inside the field now, so the
+  // field IS the control: its edge is what the row belongs against, and the text starts a
+  // button-width further in. `composer-formatting.spec.mts` asserts the new alignment against
+  // the buttons themselves, so a drift in either padding fails rather than passing quietly.
+  padding-inline: 6px;
 }
 
 .toolbar__spacer {

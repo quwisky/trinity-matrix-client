@@ -308,33 +308,39 @@ test.describe('Composer formatting', () => {
     await expect(page.getByTestId('composer-preview-toggle')).toBeVisible();
   });
 
-  test('the toolbar lines up with the field it formats', async ({
+  test('the toolbar lines up with the controls it sits above', async ({
     page,
     request,
   }) => {
-    // Rewritten rather than deleted, and against the FIELD rather than the textarea.
+    // Rewritten rather than deleted, and re-aimed at the field's BUTTONS.
     //
-    // It used to assert the first button aligned with the input's own left edge, because the
-    // `+`/emoji/send buttons flanked the input from outside and the toolbar indented past them
-    // with two hand-computed custom properties (44px, 88px, restated at the touch breakpoint).
-    // The buttons are inside the field now, so the field's edge IS the input's box and the
-    // indent is zero — which is exactly what makes the arithmetic unnecessary, and exactly why
-    // dropping the test rather than re-aiming it would have left the alignment unguarded.
+    // It used to assert the first format button aligned with the textarea's own left edge:
+    // `971f95ae` added two hand-computed custom properties (44px and 88px, restated as 48/96
+    // at the touch breakpoint) to indent the row past buttons that flanked the input from
+    // OUTSIDE, so bold sat over the first character it would format.
+    //
+    // The buttons are inside the field now, so the field is the control and the text starts a
+    // button-width into it. That reversal is deliberate: bold no longer sits over the first
+    // character, it sits over the `+`. What replaces the arithmetic is the field's own
+    // `padding-inline`, which the toolbar copies — so the invariant worth guarding is that the
+    // two rows agree on their controls, and it fails if either padding drifts.
     const { composer } = await openComposer(page, request, 'al');
     await expect(composer).toBeVisible();
 
-    const field = await page.locator('.composer__field').boundingBox();
+    const insert = await page.getByTestId('composer-insert').boundingBox();
+    const send = await page.getByTestId('composer-send').boundingBox();
     const firstButton = await page.getByTestId('format-bold').boundingBox();
     const previewToggle = await page
       .getByTestId('composer-preview-toggle')
       .boundingBox();
-    if (!field || !firstButton || !previewToggle) {
-      throw new Error('field, first button or preview toggle not laid out');
+    if (!insert || !send || !firstButton || !previewToggle) {
+      throw new Error('composer controls or toolbar buttons not laid out');
     }
 
-    expect(Math.abs(firstButton.x - field.x)).toBeLessThanOrEqual(1);
+    // Leading: bold over the `+`. Trailing: the preview toggle over send.
+    expect(Math.abs(firstButton.x - insert.x)).toBeLessThanOrEqual(1);
     expect(
-      Math.abs(previewToggle.x + previewToggle.width - (field.x + field.width)),
+      Math.abs(previewToggle.x + previewToggle.width - (send.x + send.width)),
     ).toBeLessThanOrEqual(1);
   });
 
@@ -350,7 +356,7 @@ test.describe('Composer formatting', () => {
 
     const zone = await page.evaluate(() => {
       const field = document
-        .querySelector('.composer__field')!
+        .querySelector('[data-testid="composer-field"]')!
         .getBoundingClientRect();
       const emoji = document
         .querySelector('.composer__emoji')!
@@ -363,20 +369,19 @@ test.describe('Composer formatting', () => {
       };
     });
 
+    const field = page.getByTestId('composer-field');
+
     await page.getByTestId('composer-send').focus();
+    // Assert the focus landed before asserting what it does NOT draw: `.focus()` on a disabled
+    // button is a silent no-op, and the negative below would then pass for the wrong reason.
+    await expect(page.getByTestId('composer-send')).toBeFocused();
     // A focused BUTTON inside the field must not draw the input's ring: `:focus-within` would.
-    await expect(page.locator('.composer__field')).not.toHaveCSS(
-      'outline-style',
-      'solid',
-    );
+    await expect(field).not.toHaveCSS('outline-style', 'solid');
 
     await page.mouse.click(zone.x, zone.y);
 
     await expect(composer).toBeFocused();
-    await expect(page.locator('.composer__field')).toHaveCSS(
-      'outline-style',
-      'solid',
-    );
+    await expect(field).toHaveCSS('outline-style', 'solid');
   });
 
   test('toggling the preview does not resize the composer', async ({
@@ -399,16 +404,35 @@ test.describe('Composer formatting', () => {
     // drift this guards is the structural one, where the same content measured differently
     // depending on which element was showing. Tightening this into "any draft keeps the
     // height" would assert something that must not hold.
+    //
+    // The EMPTY draft is the second case, and it is not a corner: the toggle carries no
+    // `disabled`, and an empty draft renders no line box at all, so without the preview's
+    // `min-height` the row falls back to the 40px buttons and reports the same historical 43
+    // against 40 from the other side.
     const { composer } = await openComposer(page, request, 'ph');
-    await composer.fill('**bold** and `code`');
+    const field = page.getByTestId('composer-field');
+    const toggle = page.getByTestId('composer-preview-toggle');
 
-    const field = page.locator('.composer__field');
-    const before = (await field.boundingBox())?.height ?? 0;
-    expect(before).toBeGreaterThan(0);
+    /** Height across one preview round trip. Tolerance is sub-pixel rounding, not slack in
+     *  the invariant: `autoGrow` writes an integer `scrollHeight` while the preview's box is
+     *  a computed `line-height`, so at a non-16px root the two land either side of a pixel. */
+    const heightAcrossToggle = async (draft: string) => {
+      await composer.fill(draft);
+      const writing = (await field.boundingBox())?.height ?? 0;
+      expect(writing).toBeGreaterThan(0);
 
-    await page.getByTestId('composer-preview-toggle').click();
-    await expect(page.getByTestId('composer-preview')).toBeVisible();
+      await toggle.click();
+      await expect(page.getByTestId('composer-preview')).toBeVisible();
+      const previewing = (await field.boundingBox())?.height ?? 0;
 
-    expect((await field.boundingBox())?.height).toBe(before);
+      await toggle.click();
+      await expect(composer).toBeVisible();
+      return { writing, previewing };
+    };
+
+    for (const draft of ['**bold** and `code`', '']) {
+      const { writing, previewing } = await heightAcrossToggle(draft);
+      expect(Math.abs(previewing - writing)).toBeLessThan(1);
+    }
   });
 });

@@ -25,6 +25,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **The composer's buttons live inside the message box.** The `+`, emoji and send buttons used
+  to sit outside the box you type in, flanking it. They are inside it now, so the whole thing
+  reads as one control: pressing anywhere in it — including the empty space beside the buttons
+  on a long draft — puts the cursor in the text, and the focus outline is drawn around the box
+  rather than around a bare field sitting in it. Switching to the preview no longer nudges the
+  composer up and down by a few pixels.
+
 - **One panel at a time down the right-hand side.** Threads, a thread, pinned messages and
   in-room search used to open as floating panels _over_ the member list, so you could end up
   with two lists stacked on each other and no clear way back. There is now a single
@@ -35,6 +42,12 @@ All notable changes to this project are documented here. The format is based on
   closing it hands the keyboard back to the button you opened it with.
 
 ### Fixed
+
+- **A room that has been upgraded no longer squashes the conversation.** In a room with a "this
+  room has been replaced" notice, the notice was sharing a row with the message list instead of
+  sitting above it, so the messages were squeezed into a narrow strip down the side and the
+  composer had nowhere to put your text. The notice now spans the width above the conversation,
+  which is where it was always meant to be.
 
 - **Images and videos hold their place while they load.** The timeline used to jump as each
   one arrived — a message would be one line tall, then several hundred pixels tall a moment
