@@ -11,6 +11,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, FormRoot, form } from '@angular/forms/signals';
 import { HlmButton } from '@trinity/helm/button';
+import { TrnSelectComponent } from '@trinity/components/select';
 import { TrnInput } from '@trinity/components/input';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import { JoinRule, RoomSettingsService } from '@trinity/data-access/rooms';
@@ -61,6 +62,7 @@ const OTHER_RULE_LABELS: Partial<Record<JoinRule, string>> = {
   selector: 'trn-space-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    TrnSelectComponent,
     FormField,
     FormRoot,
     HlmButton,
@@ -113,21 +115,29 @@ export class SpaceSettingsComponent implements OnInit {
    * setting at all for a space that has one, and turning any pick into a silent change of
    * who can join. A space created elsewhere can carry `knock` or `restricted`.
    */
-  readonly joinRuleOptions = computed<{ value: JoinRule; label: string }[]>(
-    () => {
-      const options: { value: JoinRule; label: string }[] = [
-        ...JOIN_RULE_OPTIONS,
-      ];
-      const current = this.joinRule();
-      if (options.some((option) => option.value === current)) {
-        return options;
-      }
-      return [
-        ...options,
-        { value: current, label: OTHER_RULE_LABELS[current] ?? current },
-      ];
-    },
-  );
+  readonly joinRuleOptions = computed<
+    { value: JoinRule; label: string; testId: string }[]
+  >(() => {
+    const options: { value: JoinRule; label: string }[] = [
+      ...JOIN_RULE_OPTIONS,
+    ];
+    const current = this.joinRule();
+    // `testId` derived from the value, the convention every other `trn-select` call site
+    // follows: the options render in a portal now, so an e2e reaches them by id rather
+    // than by `selectOption`, which only ever drove a native `<select>`.
+    const withTestIds = (list: { value: JoinRule; label: string }[]) =>
+      list.map((option) => ({
+        ...option,
+        testId: `join-rule-${option.value}`,
+      }));
+    if (options.some((option) => option.value === current)) {
+      return withTestIds(options);
+    }
+    return withTestIds([
+      ...options,
+      { value: current, label: OTHER_RULE_LABELS[current] ?? current },
+    ]);
+  });
 
   private readonly model = signal<RoomBasics>({
     name: '',

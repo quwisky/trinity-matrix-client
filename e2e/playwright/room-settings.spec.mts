@@ -200,10 +200,12 @@ test.describe('Room settings', () => {
     });
 
     // Open the room up: anyone can join, and history is world-readable.
-    await page.getByTestId('room-settings-join-rule').selectOption('public');
-    await page
-      .getByTestId('room-settings-history')
-      .selectOption('world_readable');
+    // `selectOption` only ever drove a native `<select>`; this is a `trn-select` now, whose
+    // options live in a CDK portal. Open the trigger, then pick by the id the option carries.
+    await page.getByTestId('room-settings-join-rule').click();
+    await page.getByTestId('join-rule-public').click();
+    await page.getByTestId('room-settings-history').click();
+    await page.getByTestId('history-world_readable').click();
     await page.getByTestId('room-settings-save').click();
 
     // Both state events round-trip to the homeserver.
@@ -278,9 +280,8 @@ test.describe('Room settings', () => {
     });
     // The option only exists because the room sits in a space AND its version can enforce
     // the rule — selecting by value proves both held.
-    await page
-      .getByTestId('room-settings-join-rule')
-      .selectOption('restricted');
+    await page.getByTestId('room-settings-join-rule').click();
+    await page.getByTestId('join-rule-restricted').click();
     // Selecting the rule reveals a tickbox per parent space, pre-ticked — the allow list
     // is editable state, so the dialog shows it rather than deriving it out of sight.
     await expect(

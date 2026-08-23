@@ -11,6 +11,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, FormRoot, disabled, form } from '@angular/forms/signals';
 import { HlmButton } from '@trinity/helm/button';
+import { TrnSelectComponent } from '@trinity/components/select';
 import { TrnCheckboxComponent } from '@trinity/components/checkbox';
 import { TrnInput } from '@trinity/components/input';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
@@ -48,15 +49,25 @@ const JOIN_RULE_OPTIONS = [
 
 /** The history-visibility choices offered, from most to least open. */
 const HISTORY_OPTIONS = [
-  { value: HistoryVisibility.Shared, label: 'Members — all history' },
+  {
+    value: HistoryVisibility.Shared,
+    label: 'Members — all history',
+    testId: 'history-shared',
+  },
   {
     value: HistoryVisibility.Invited,
     label: 'Members — since they were invited',
+    testId: 'history-invited',
   },
-  { value: HistoryVisibility.Joined, label: 'Members — since they joined' },
+  {
+    value: HistoryVisibility.Joined,
+    label: 'Members — since they joined',
+    testId: 'history-joined',
+  },
   {
     value: HistoryVisibility.WorldReadable,
     label: 'Anyone, even without joining',
+    testId: 'history-world_readable',
   },
 ] as const;
 
@@ -73,6 +84,7 @@ const HISTORY_OPTIONS = [
   selector: 'trn-room-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    TrnSelectComponent,
     FormField,
     FormRoot,
     HlmButton,
@@ -153,7 +165,13 @@ export class RoomSettingsComponent implements OnInit {
         label: 'Space members can join',
       });
     }
-    return withCurrentRule(options, this.joinRule());
+    // `testId` derived from the value, the convention every other `trn-select` call site
+    // follows: the options render in a portal now, so an e2e reaches them by id rather than
+    // by `selectOption`, which only ever drove a native `<select>`.
+    return withCurrentRule(options, this.joinRule()).map((option) => ({
+      ...option,
+      testId: `join-rule-${option.value}`,
+    }));
   });
 
   readonly historyOptions = HISTORY_OPTIONS;

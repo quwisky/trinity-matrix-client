@@ -36,16 +36,12 @@
 
     <label class="space-settings__field">
       <span class="space-settings__label">Who can join</span>
-      <select
-        trnInput
-        class="w-full"
+      <trn-select
+        [options]="joinRuleOptions()"
         [formField]="form.joinRule"
+        triggerClass="w-full"
         data-testid="space-settings-join-rule"
-      >
-        @for (option of joinRuleOptions(); track option.value) {
-          <option [value]="option.value">{{ option.label }}</option>
-        }
-      </select>
+      />
       <!-- Rooms inside a space keep their own join rules; this governs the space itself. -->
       <span class="space-settings__hint">
         This controls the space. The rooms inside it keep their own settings.

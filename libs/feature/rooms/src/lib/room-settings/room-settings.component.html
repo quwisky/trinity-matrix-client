@@ -36,16 +36,12 @@
 
     <label class="room-settings__field">
       <span class="room-settings__label">Who can join</span>
-      <select
-        trnInput
-        class="w-full"
+      <trn-select
+        [options]="joinRuleOptions()"
         [formField]="form.joinRule"
+        triggerClass="w-full"
         data-testid="room-settings-join-rule"
-      >
-        @for (option of joinRuleOptions(); track option.value) {
-          <option [value]="option.value">{{ option.label }}</option>
-        }
-      </select>
+      />
     </label>
 
     @if (showSpaceChoices()) {
@@ -73,16 +69,12 @@
 
     <label class="room-settings__field">
       <span class="room-settings__label">Who can read history</span>
-      <select
-        trnInput
-        class="w-full"
+      <trn-select
+        [options]="historyOptions"
         [formField]="form.historyVisibility"
+        triggerClass="w-full"
         data-testid="room-settings-history"
-      >
-        @for (option of historyOptions; track option.value) {
-          <option [value]="option.value">{{ option.label }}</option>
-        }
-      </select>
+      />
     </label>
 
     @if (!canSave() && !canEditAvatar()) {

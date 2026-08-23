@@ -172,7 +172,10 @@ test.describe('Space settings', () => {
     });
     await page.getByTestId('space-settings-name').fill(newName);
     await page.getByTestId('space-settings-topic').fill(newTopic);
-    await page.getByTestId('space-settings-join-rule').selectOption('public');
+    // `selectOption` only ever drove a native `<select>`; this is a `trn-select` now, whose
+    // options live in a CDK portal.
+    await page.getByTestId('space-settings-join-rule').click();
+    await page.getByTestId('join-rule-public').click();
     await page.getByTestId('space-settings-save').click();
 
     const read = (type: string, key: string) =>
@@ -218,6 +221,17 @@ test.describe('Space settings', () => {
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.room.topic/`,
       { headers: { Authorization: `Bearer ${token}` }, data: { topic } },
     );
+    // Deliberately NOT the invite-only rule `preset: private_chat` created: the form model
+    // seeds `joinRule: JoinRule.Invite` itself, so asserting "invite" proved nothing — a
+    // dialog that read the rule off nothing at all would have passed. Open the space up
+    // first, and the assertion below can only hold if the dialog read the real state event.
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.room.join_rules/`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { join_rule: 'public' },
+      },
+    );
 
     await login(page, { available: true, hs, user, pass } as SynapseSession);
     await openSpaceMenu(page, spaceName);
@@ -228,9 +242,11 @@ test.describe('Space settings', () => {
       { timeout: 10_000 },
     );
     await expect(page.getByTestId('space-settings-topic')).toHaveValue(topic);
-    // Invite-only is what `preset: private_chat` created, not the field's default value.
-    await expect(page.getByTestId('space-settings-join-rule')).toHaveValue(
-      'invite',
+    // A `trn-select` collapsed trigger renders the chosen option's LABEL, not its value —
+    // there is no form control to call `toHaveValue` on any more.
+    await expect(page.getByTestId('space-settings-join-rule')).toHaveText(
+      /Anyone can find and join/,
+      { timeout: 10_000 },
     );
   });
 
