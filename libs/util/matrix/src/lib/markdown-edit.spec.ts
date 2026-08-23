@@ -17,7 +17,15 @@ function show({ text, selectionStart, selectionEnd }: EditResult): string {
     : `${text.slice(0, selectionStart)}[${text.slice(selectionStart, selectionEnd)}]${text.slice(selectionEnd)}`;
 }
 
-/** Apply an action to `input`, where `[…]` marks the selection and `|` an empty one. */
+/**
+ * Apply an action to `input`, where `[…]` marks the selection and `|` an empty one.
+ *
+ * Strips the FIRST bracket pair, so it cannot express a fixture whose own text contains
+ * brackets — a markdown link, or a task box. `'- [ ] [one]'` silently decodes to `'-   [one]'`
+ * with a single space selected, which is how one invariant fixture spent a while covering
+ * nothing. Where the text has brackets of its own, pass explicit offsets instead, as the
+ * contract block at the bottom of this file does.
+ */
 function at(input: string, action: FormatAction): string {
   const caret = input.indexOf('|');
   if (caret !== -1) {
@@ -381,24 +389,27 @@ describe('detectFormat', () => {
   });
 
   describe('agrees with applyFormat, which is the whole contract', () => {
-    // The invariant `detectFormat` is defined by: reported means applying REMOVES. Asserted
-    // per action against the same fixtures rather than trusting the shared helpers, because
-    // "by construction" is a claim about today's code and this is what would catch a drift.
-    const CASES = [
-      'say [hello] there',
-      'say **[hello]** there',
-      'say [**hello**] there',
-      'say *[hello]* there',
-      'say ~~[hello]~~ there',
-      'say `[hello]` there',
-      '> [one]',
-      '- [one]',
-      '- [ ] [one]',
-      '[one]',
+    // Explicit offsets, NOT the `[…]` helper the tests above use. That helper strips the
+    // first bracket PAIR, which in `- [ ] one` is the markdown task box rather than the
+    // selection marker — the fixture silently decoded to `-   [one]` with a single space
+    // selected, and passed for all nine actions because both sides agreed on nonsense. The
+    // one case that most needed covering was the one covering nothing.
+    const CASES: [text: string, start: number, end: number][] = [
+      ['say hello there', 4, 9],
+      ['say **hello** there', 6, 11],
+      ['say **hello** there', 4, 13],
+      ['say *hello* there', 5, 10],
+      ['say ~~hello~~ there', 6, 11],
+      ['say `hello` there', 5, 10],
+      ['say ***hello*** there', 7, 12],
+      ['> one', 2, 5],
+      ['- one', 2, 5],
+      ['- [ ] one', 6, 9],
+      ['1. one', 3, 6],
+      ['> - [ ] a', 6, 7],
+      ['one', 0, 3],
+      ['', 0, 0],
     ];
-    // All NINE, not just the seven toggles. `link` and `codeblock` belong here precisely
-    // because they can only ever add: the invariant then reads "never reported", which is
-    // the property that would break if someone gave them a pressed state later.
     const ACTIONS: FormatAction[] = [
       'bold',
       'italic',
@@ -411,18 +422,58 @@ describe('detectFormat', () => {
       'codeblock',
     ];
 
-    it.each(ACTIONS)('holds for %s', (action) => {
-      for (const input of CASES) {
-        const start = input.indexOf('[');
-        const end = input.indexOf(']') - 1;
-        const text = input.replace('[', '').replace(']', '');
-        const reported = detectFormat(text, start, end).includes(action);
-        const shorter =
-          applyFormat(text, start, end, action).text.length < text.length;
+    it.each(ACTIONS)('a lit %s unlights when it is applied', (action) => {
+      // The property `aria-pressed` actually promises, and the only one true in every case:
+      // press a button that reads as pressed and it stops reading as pressed.
+      //
+      // NOT the converse. Pressing an UNLIT toggle usually lights it, but not always, and the
+      // exceptions are deliberate: `italic` over `**hello**` nests to `***hello***`, which the
+      // exact-run-length rule then reports as neither bold nor italic. And NOT "applying makes
+      // the text shorter", which an earlier version of this test used as a proxy for removal —
+      // `list` on `- [ ] one` gives `- one`, shorter without removing anything, because
+      // `applyLinePrefix` CONVERTS between kinds of list. Add, remove, convert: three
+      // outcomes, and only the middle one is ever reported.
+      for (const [text, start, end] of CASES) {
+        if (!detectFormat(text, start, end).includes(action)) {
+          continue;
+        }
+        const applied = applyFormat(text, start, end, action);
         expect(
-          reported,
-          `${action} on ${JSON.stringify(input)}: reported=${reported} but applying ${shorter ? 'removed' : 'added'}`,
-        ).toBe(shorter);
+          detectFormat(
+            applied.text,
+            applied.selectionStart,
+            applied.selectionEnd,
+          ),
+          `${action} on ${JSON.stringify(text)} read as pressed, and still does after applying it (${JSON.stringify(applied.text)})`,
+        ).not.toContain(action);
+      }
+    });
+
+    it('reports something to unlight, so the case above is not vacuous', () => {
+      // A guard on the guard: the loop skips every unreported pair, so a `detectFormat` that
+      // reported nothing at all would pass all nine cases in silence.
+      const lit = CASES.flatMap(([text, start, end]) =>
+        detectFormat(text, start, end),
+      );
+      expect(lit.length).toBeGreaterThanOrEqual(9);
+      expect(new Set(lit)).toEqual(
+        new Set([
+          'bold',
+          'italic',
+          'strike',
+          'code',
+          'quote',
+          'list',
+          'tasklist',
+        ]),
+      );
+    });
+
+    it('never reports link or codeblock, which only ever insert', () => {
+      for (const [text, start, end] of CASES) {
+        const reported = detectFormat(text, start, end);
+        expect(reported).not.toContain('link');
+        expect(reported).not.toContain('codeblock');
       }
     });
   });

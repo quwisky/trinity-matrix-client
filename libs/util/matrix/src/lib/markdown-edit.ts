@@ -102,14 +102,22 @@ function runLength(
  * This is what lets the formatting bar say `aria-pressed` and mean it. The definition is
  * deliberately not "does the text look bold" but the sharper one:
  *
- * > `detectFormat(text, start, end).includes(action)` exactly when
- * > `applyFormat(text, start, end, action)` would REMOVE that formatting rather than add it.
+ * > A reported action is one that {@link applyFormat} would REMOVE. Press a lit button and it
+ * > goes out.
  *
  * Written that way round because the two must never disagree — a button that reads as pressed
  * and then adds a second pair of markers is worse than one that never lights up at all. Both
  * sides share `wrappedOutside`/`wrappedInside` and `carries` rather than re-deriving the
- * question, so the invariant holds by construction; `markdown-edit.spec.ts` pins it anyway,
- * for every action against every case, because "by construction" is a claim about today's code.
+ * question, so it holds by construction; `markdown-edit.spec.ts` pins it anyway, because "by
+ * construction" is a claim about today's code.
+ *
+ * **Three outcomes, and only the middle one is reported.** Applying an action adds, removes,
+ * or CONVERTS: `list` on `- [ ] one` gives `- one`, which is neither an add nor a remove —
+ * `applyLinePrefix` swaps one kind of list for another, and `carries` deliberately treats the
+ * three kinds as different things, so Bulleted list does not read as pressed on a task item it
+ * would convert. The converse of the rule is therefore NOT true and must not be assumed:
+ * pressing an unlit button usually lights it, but `italic` over `**hello**` nests to
+ * `***hello***`, which the exact-run-length rule reports as neither bold nor italic.
  *
  * **Seven of the nine, and the two left out are not an oversight.** `link` and `codeblock`
  * are one-shot INSERTS: `applyLink` always writes `[text]()` and `applyCodeBlock` always
