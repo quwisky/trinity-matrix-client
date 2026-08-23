@@ -73,7 +73,7 @@ function switches(fixture: {
 describe('NotificationsSectionComponent', () => {
   it('seeds each toggle from the service’s on/off state', async () => {
     const { fixture } = await build();
-    // Scoped to the RULE toggles: the sound switch is a third checkbox in the same list
+    // Scoped to the RULE toggles: the sound one is a third switch in the same list
     // but is not one of them, so counting every switch would couple this to it.
     const boxes = ruleSwitches(fixture);
     expect(boxes).toHaveLength(2);
