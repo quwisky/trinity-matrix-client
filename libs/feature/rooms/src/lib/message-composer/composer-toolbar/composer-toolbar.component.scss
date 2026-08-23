@@ -9,14 +9,18 @@
   gap: 2px;
   padding-bottom: 2px;
 
-  // Line the row up with the INPUT, not with the composer's edge: the first button sits over
-  // the first character it would format, and the preview toggle over the input's right edge.
-  // The two gutters are published by `.composer` (see its stylesheet) so they track the
-  // button size across the touch breakpoint instead of being hard-coded here; they differ
-  // because the input row has one button before it and two after. Both fall back to 0 if the
-  // toolbar is ever hosted outside that container.
-  padding-left: var(--trn-composer-gutter-start, 0);
-  padding-right: var(--trn-composer-gutter-end, 0);
+  // Line the row up with the field's CONTROLS: the first button over the `+`, the preview
+  // toggle over send. That is the field's own `padding-inline`, one number copied from one
+  // place — not the two hand-computed sums this used to carry (44px and 88px, restated as
+  // 48/96 at the touch breakpoint), each of which added up a button width the toolbar could
+  // not see and had to be corrected whenever that width moved.
+  // It does NOT line up with the first character, and that is a deliberate reversal of
+  // `971f95ae`, which indented past buttons that flanked the input from OUTSIDE so the bold
+  // button sat over the text it would format. The buttons are inside the field now, so the
+  // field IS the control: its edge is what the row belongs against, and the text starts a
+  // button-width further in. `composer-formatting.spec.mts` asserts the new alignment against
+  // the buttons themselves, so a drift in either padding fails rather than passing quietly.
+  padding-inline: 6px;
 }
 
 .toolbar__spacer {
@@ -59,10 +63,45 @@
   color: var(--trinity-text-bright);
 }
 
-// The tray's items render through a CDK overlay at the document root, so they are not nested
-// under `.toolbar` — the same reason the composer's own insert items are declared standalone.
-.toolbar__menu-item {
-  gap: 8px;
+// The nine actions, as one group. `trn-toggle-group` brings its own `w-fit` and gap; both are
+// overridden because this is a bar inside a row, not a segmented control sized to its content.
+// WRAPS, and it has to. Nine buttons at the 44px touch minimum plus two rules is 470px of
+// content; a phone gives the bar about 358px. Without this the row overflowed by ~176px and
+// `.chat-body`'s `overflow: hidden` cut the tail off — taking the pin and the preview toggle
+// with it, which is the only way to reach a preview on a phone. `min-width: 0` is what lets
+// the group shrink below its content in the first place; a flex item defaults to
+// `min-width: auto` and would refuse.
+// Wrapped rather than scrolled sideways: an action you have to swipe to find is the same
+// problem as one behind a kebab, and deleting the kebab is what this bar is for. The cost is
+// vertical — the bar is two rows on a phone (92px at 390, three rows at 360) against one row
+// at 46px — which is the trade the old `narrow` variant made in the other direction by
+// showing only two of the nine.
+// Only the ACTIONS wrap, not `.toolbar` itself: the pin and the preview toggle stay on the
+// first row where they are always in the same place, instead of being pushed to a line of
+// their own.
+.toolbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  width: auto;
+  min-width: 0;
+}
+
+// The rules between the three groups. Sized against the 32px buttons rather than stretched:
+// `align-self: stretch` on a vertical separator in a taller row draws a line past the buttons
+// it divides.
+.toolbar__rule {
+  align-self: center;
+  height: 18px;
+  margin: 0 4px;
+}
+
+// `Aa` in place of an icon, so it needs the weight an icon would have carried.
+.toolbar__pin {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
 }
 
 // Touch targets. Not inherited from the composer's block: these are different elements in a
@@ -70,10 +109,6 @@
 @media (pointer: coarse) {
   .toolbar__button {
     min-width: 44px;
-    min-height: 44px;
-  }
-
-  .toolbar__menu-item {
     min-height: 44px;
   }
 }

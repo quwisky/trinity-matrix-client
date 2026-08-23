@@ -1,52 +1,66 @@
-<div class="toolbar" role="group" aria-label="Formatting">
-  @for (entry of primary(); track entry.action) {
-    <button
-      type="button"
-      class="toolbar__button"
-      [disabled]="formatDisabled()"
-      [trnTooltip]="entry.label"
-      [attr.aria-label]="entry.label"
-      [attr.data-testid]="'format-' + entry.action"
-      (click)="format.emit(entry.action)"
-    >
-      <trn-icon [name]="entry.icon" />
-    </button>
-  }
+<div class="toolbar">
+  <!-- One tab stop for the nine, with the arrows moving between them — the reason these are a
+       toggle group rather than nine buttons in a div. `[value]` is the formatting the
+       selection already carries, so `aria-pressed` is true of the text: see `active`. -->
+  <trn-toggle-group
+    class="toolbar__actions"
+    type="multiple"
+    aria-label="Formatting"
+    [value]="active()"
+  >
+    <!-- `[aria-label]` below is the INPUT, not `[attr.aria-label]`. BrnToggleGroupItem
+         host-binds that attribute from an input of its own, so an attr binding is written and
+         then overwritten with null — the button ends up with no accessible name at all, and
+         nothing says so. -->
+    @for (group of groups; track $index; let last = $last) {
+      @for (entry of group; track entry.action) {
+        <button
+          trnToggleGroupItem
+          type="button"
+          class="toolbar__button"
+          [value]="entry.action"
+          [disabled]="formatDisabled()"
+          [trnTooltip]="entry.label"
+          [aria-label]="entry.label"
+          [attr.data-testid]="'format-' + entry.action"
+          (click)="apply(entry.action)"
+        >
+          <trn-icon [name]="entry.icon" />
+        </button>
+      }
+      @if (!last) {
+        <!-- Announced rather than decorative: the rule is what tells a screen reader that
+             these nine are three kinds of thing, which is the only place that grouping is
+             stated. -->
+        <div
+          trnSeparator
+          orientation="vertical"
+          [decorative]="false"
+          class="toolbar__rule"
+        ></div>
+      }
+    }
+  </trn-toggle-group>
 
-  <!-- side="top": the composer is pinned to the bottom of the viewport, so a menu opening
-       downward from it would be off-screen. (The insert tray next door omits this and takes
-       the config default, which is why it opens the way it does.) -->
+  <span class="toolbar__spacer"></span>
+
+  <!-- `Aa` keeps the bar. Unpinned it is here only while a selection lasts, so this is the
+       control that says "stop taking it away" — the same preference the settings checkbox
+       writes, reachable from where you notice you want it. -->
   <button
     type="button"
     class="toolbar__button"
-    [hlmDropdownMenuTrigger]="moreMenu"
-    side="top"
-    align="start"
-    [disabled]="formatDisabled()"
-    trnTooltip="More formatting"
-    aria-label="More formatting"
-    data-testid="format-more"
+    [class.toolbar__button--on]="pinned()"
+    [attr.aria-pressed]="pinned()"
+    [trnTooltip]="pinned() ? 'Unpin formatting' : 'Keep formatting open'"
+    [attr.aria-label]="pinned() ? 'Unpin formatting' : 'Keep formatting open'"
+    data-testid="format-pin"
+    (click)="togglePinned.emit()"
   >
-    <trn-icon name="ellipsis" />
+    <!-- Two letters rather than an icon. There is no glyph for "keep this row", the icon
+         registry has none close, and `Aa` is what every editor uses for exactly this. -->
+    <span class="toolbar__pin" aria-hidden="true">Aa</span>
   </button>
-
-  <ng-template #moreMenu>
-    <div hlmDropdownMenu aria-label="More formatting">
-      @for (entry of overflow(); track entry.action) {
-        <button
-          hlmDropdownMenuItem
-          class="toolbar__menu-item"
-          (triggered)="format.emit(entry.action)"
-          [attr.data-testid]="'format-' + entry.action"
-        >
-          <trn-icon [name]="entry.icon" />
-          {{ entry.label }}
-        </button>
-      }
-    </div>
-  </ng-template>
-
-  <span class="toolbar__spacer"></span>
 
   <!-- aria-pressed rather than a toggle component: there is no Helm toggle, and this is the
        precedent the reaction pills already set. -->

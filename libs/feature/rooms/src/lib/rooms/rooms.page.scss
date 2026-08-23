@@ -148,6 +148,12 @@
 // without it the browser consumes the sideways drag as a scroll or an overscroll navigation
 // and the directive never sees a move. `pan-y` rather than `none`, because the timeline must
 // still scroll.
+// A flex ROW of [timeline, right-hand panel], and that is all it may hold.
+// Its children are sized by content, so anything else added here competes with the timeline
+// for horizontal space rather than stacking above it. That is not hypothetical: the tombstone
+// banner sat here and took 779px of a 928px row, leaving the timeline 149px and the composer's
+// text column nothing — visible only in a tombstoned room, which is why it survived. A
+// room-level notice belongs in `.main`, the COLUMN this row sits in, beside the page header.
 .chat-body {
   touch-action: pan-y;
   overscroll-behavior-x: contain;

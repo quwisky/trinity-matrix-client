@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyFormat,
+  detectFormat,
   continueList,
   type FormatAction,
   type EditResult,
@@ -16,7 +17,15 @@ function show({ text, selectionStart, selectionEnd }: EditResult): string {
     : `${text.slice(0, selectionStart)}[${text.slice(selectionStart, selectionEnd)}]${text.slice(selectionEnd)}`;
 }
 
-/** Apply an action to `input`, where `[…]` marks the selection and `|` an empty one. */
+/**
+ * Apply an action to `input`, where `[…]` marks the selection and `|` an empty one.
+ *
+ * Strips the FIRST bracket pair, so it cannot express a fixture whose own text contains
+ * brackets — a markdown link, or a task box. `'- [ ] [one]'` silently decodes to `'-   [one]'`
+ * with a single space selected, which is how one invariant fixture spent a while covering
+ * nothing. Where the text has brackets of its own, pass explicit offsets instead, as the
+ * contract block at the bottom of this file does.
+ */
 function at(input: string, action: FormatAction): string {
   const caret = input.indexOf('|');
   if (caret !== -1) {
@@ -283,5 +292,189 @@ describe('continueList', () => {
 
   it('ends the list from a caret anywhere in an empty item', () => {
     expect(after('- one\n- | ')).toBe('- one\n|');
+  });
+});
+
+describe('detectFormat', () => {
+  /** Detect against `input`, where `[…]` marks the selection and `|` an empty one. */
+  function marks(input: string): FormatAction[] {
+    const caret = input.indexOf('|');
+    if (caret !== -1) {
+      return detectFormat(input.replace('|', ''), caret, caret);
+    }
+    const start = input.indexOf('[');
+    const end = input.indexOf(']') - 1;
+    return detectFormat(
+      input.replace('[', '').replace(']', ''),
+      start,
+      end,
+    ).sort();
+  }
+
+  it.each([
+    ['bold', '**'],
+    ['italic', '*'],
+    ['strike', '~~'],
+    ['code', '`'],
+  ] as const)(
+    'reports %s when the markers sit outside the selection',
+    (action, marker) => {
+      expect(marks(`say ${marker}[hello]${marker} there`)).toContain(action);
+    },
+  );
+
+  it.each([
+    ['bold', '**'],
+    ['italic', '*'],
+    ['strike', '~~'],
+    ['code', '`'],
+  ] as const)(
+    'reports %s when the selection contains the markers',
+    (action, marker) => {
+      expect(marks(`say [${marker}hello${marker}] there`)).toContain(action);
+    },
+  );
+
+  it('does not read the inner asterisk of bold as italic', () => {
+    // The prefix trap `applyInline` documents: `*` is a prefix of `**`, so a prefix test
+    // would report italic here and pressing it would strip a bold marker.
+    expect(marks('say **[hello]** there')).toEqual(['bold']);
+  });
+
+  it('reports nothing for unformatted text', () => {
+    expect(marks('say [hello] there')).toEqual([]);
+  });
+
+  it.each([
+    ['quote', '> one'],
+    ['list', '- one'],
+    ['tasklist', '- [ ] one'],
+  ] as const)(
+    'reports %s from the line the selection touches',
+    (action, line) => {
+      // The middle of the line, not the marker — a block action is about the line.
+      const at = line.indexOf('one');
+      expect(detectFormat(line, at + 1, at + 2)).toContain(action);
+    },
+  );
+
+  it('reports a block action only when EVERY line carries it', () => {
+    const text = '> one\ntwo';
+    expect(detectFormat(text, 0, text.length)).not.toContain('quote');
+    expect(detectFormat('> one\n> two', 0, 10)).toContain('quote');
+  });
+
+  it('keeps a task item distinct from a plain bullet', () => {
+    // `carries` treats the three kinds of list item as different things, and detection has
+    // to agree or Bulleted list reads as pressed on a task item it would convert.
+    expect(detectFormat('- [ ] one', 7, 8)).toEqual(['tasklist']);
+    expect(detectFormat('- one', 3, 4)).toEqual(['list']);
+  });
+
+  it('never reports link or codeblock, which cannot unwrap', () => {
+    expect(marks('[say hello](https://x.test)')).not.toContain('link');
+    expect(detectFormat('```\nhello\n```', 4, 9)).not.toContain('codeblock');
+  });
+
+  it('clamps an out-of-range selection to the text', () => {
+    // Same clamp `applyFormat` opens with, so a stale selection arriving from the textarea
+    // reads as the nearest real one rather than throwing or reporting nonsense. Clamped,
+    // `(-5, 999)` over `**hi**` is the whole string — which really is bold, from the inside.
+    expect(detectFormat('**hi**', -5, 999)).toEqual(
+      detectFormat('**hi**', 0, 6),
+    );
+    expect(detectFormat('**hi**', -5, 999)).toEqual(['bold']);
+    // And a selection entirely past the end is empty rather than out of bounds.
+    expect(detectFormat('**hi**', 999, 1000)).toEqual([]);
+  });
+
+  describe('agrees with applyFormat, which is the whole contract', () => {
+    // Explicit offsets, NOT the `[…]` helper the tests above use. That helper strips the
+    // first bracket PAIR, which in `- [ ] one` is the markdown task box rather than the
+    // selection marker — the fixture silently decoded to `-   [one]` with a single space
+    // selected, and passed for all nine actions because both sides agreed on nonsense. The
+    // one case that most needed covering was the one covering nothing.
+    const CASES: [text: string, start: number, end: number][] = [
+      ['say hello there', 4, 9],
+      ['say **hello** there', 6, 11],
+      ['say **hello** there', 4, 13],
+      ['say *hello* there', 5, 10],
+      ['say ~~hello~~ there', 6, 11],
+      ['say `hello` there', 5, 10],
+      ['say ***hello*** there', 7, 12],
+      ['> one', 2, 5],
+      ['- one', 2, 5],
+      ['- [ ] one', 6, 9],
+      ['1. one', 3, 6],
+      ['> - [ ] a', 6, 7],
+      ['one', 0, 3],
+      ['', 0, 0],
+    ];
+    const ACTIONS: FormatAction[] = [
+      'bold',
+      'italic',
+      'strike',
+      'code',
+      'quote',
+      'list',
+      'tasklist',
+      'link',
+      'codeblock',
+    ];
+
+    it.each(ACTIONS)('a lit %s unlights when it is applied', (action) => {
+      // The property `aria-pressed` actually promises, and the only one true in every case:
+      // press a button that reads as pressed and it stops reading as pressed.
+      //
+      // NOT the converse. Pressing an UNLIT toggle usually lights it, but not always, and the
+      // exceptions are deliberate: `italic` over `**hello**` nests to `***hello***`, which the
+      // exact-run-length rule then reports as neither bold nor italic. And NOT "applying makes
+      // the text shorter", which an earlier version of this test used as a proxy for removal —
+      // `list` on `- [ ] one` gives `- one`, shorter without removing anything, because
+      // `applyLinePrefix` CONVERTS between kinds of list. Add, remove, convert: three
+      // outcomes, and only the middle one is ever reported.
+      for (const [text, start, end] of CASES) {
+        if (!detectFormat(text, start, end).includes(action)) {
+          continue;
+        }
+        const applied = applyFormat(text, start, end, action);
+        expect(
+          detectFormat(
+            applied.text,
+            applied.selectionStart,
+            applied.selectionEnd,
+          ),
+          `${action} on ${JSON.stringify(text)} read as pressed, and still does after applying it (${JSON.stringify(applied.text)})`,
+        ).not.toContain(action);
+      }
+    });
+
+    it('reports something to unlight, so the case above is not vacuous', () => {
+      // A guard on the guard: the loop skips every unreported pair, so a `detectFormat` that
+      // reported nothing at all would pass all nine cases in silence.
+      const lit = CASES.flatMap(([text, start, end]) =>
+        detectFormat(text, start, end),
+      );
+      expect(lit.length).toBeGreaterThanOrEqual(9);
+      expect(new Set(lit)).toEqual(
+        new Set([
+          'bold',
+          'italic',
+          'strike',
+          'code',
+          'quote',
+          'list',
+          'tasklist',
+        ]),
+      );
+    });
+
+    it('never reports link or codeblock, which only ever insert', () => {
+      for (const [text, start, end] of CASES) {
+        const reported = detectFormat(text, start, end);
+        expect(reported).not.toContain('link');
+        expect(reported).not.toContain('codeblock');
+      }
+    });
   });
 });
