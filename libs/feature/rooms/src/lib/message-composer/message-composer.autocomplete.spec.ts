@@ -31,14 +31,16 @@ describe('MessageComposerComponent — the @mention and /command autocompletes',
       cmp.onInput({ target: ta } as unknown as Event);
 
       // Only Alice matches "al"; the menu is open.
-      expect(cmp.mentionOpen()).toBe(true);
-      expect(cmp.mentionMatches().map((m) => m.userId)).toEqual(['@alice:hs']);
+      expect(cmp.menus.mentionOpen()).toBe(true);
+      expect(cmp.menus.mentionMatches().map((m) => m.userId)).toEqual([
+        '@alice:hs',
+      ]);
 
       ta.selectionStart = 7;
-      cmp.acceptMention();
+      cmp.menus.acceptMention();
 
       expect(cmp.text()).toBe('hey @Alice ');
-      expect(cmp.mentionOpen()).toBe(false);
+      expect(cmp.menus.mentionOpen()).toBe(false);
     });
 
     it('emits the @-mentioned users on submit', async () => {
@@ -52,7 +54,7 @@ describe('MessageComposerComponent — the @mention and /command autocompletes',
       ta.selectionStart = ta.selectionEnd = 6;
       cmp.onInput({ target: ta } as unknown as Event);
       ta.selectionStart = 6;
-      cmp.acceptMention();
+      cmp.menus.acceptMention();
 
       cmp.onEnter(enter());
 
@@ -73,7 +75,7 @@ describe('MessageComposerComponent — the @mention and /command autocompletes',
       ta.selectionStart = ta.selectionEnd = 3;
       cmp.onInput({ target: ta } as unknown as Event);
       ta.selectionStart = 3;
-      cmp.acceptMention(); // text = "@Alice "
+      cmp.menus.acceptMention(); // text = "@Alice "
 
       // The user deletes the mention text before sending.
       cmp.text.set('never mind');
@@ -92,7 +94,7 @@ describe('MessageComposerComponent — the @mention and /command autocompletes',
       ta.selectionStart = ta.selectionEnd = ta.value.length;
       cmp.onInput({ target: ta } as unknown as Event);
 
-      expect(cmp.mentionOpen()).toBe(false); // '@' not at a word boundary
+      expect(cmp.menus.mentionOpen()).toBe(false); // '@' not at a word boundary
     });
 
     it('navigates the menu with the arrow keys and accepts with Tab', async () => {
@@ -103,10 +105,13 @@ describe('MessageComposerComponent — the @mention and /command autocompletes',
       ta.value = '@';
       ta.selectionStart = ta.selectionEnd = 1;
       cmp.onInput({ target: ta } as unknown as Event);
-      expect(cmp.mentionMatches().map((m) => m.name)).toEqual(['Alice', 'Bob']);
+      expect(cmp.menus.mentionMatches().map((m) => m.name)).toEqual([
+        'Alice',
+        'Bob',
+      ]);
 
       cmp.onArrowDown(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
-      expect(cmp.mentionActiveIndex()).toBe(1); // Bob highlighted
+      expect(cmp.menus.mentionActiveIndex()).toBe(1); // Bob highlighted
 
       ta.selectionStart = 1;
       cmp.onTab(new KeyboardEvent('keydown', { key: 'Tab' }));
@@ -127,7 +132,7 @@ describe('MessageComposerComponent — the @mention and /command autocompletes',
       ta.selectionStart = ta.selectionEnd = 3;
       cmp.onInput({ target: ta } as unknown as Event);
       ta.selectionStart = 3;
-      cmp.acceptMention(); // tracks @Alice for room A
+      cmp.menus.acceptMention(); // tracks @Alice for room A
 
       // Switch rooms, then type similar text by hand (not via the menu).
       fixture.componentRef.setInput('roomId', '!b:hs');
@@ -157,17 +162,17 @@ describe('MessageComposerComponent — the @mention and /command autocompletes',
       const ta = container.querySelector('textarea') as HTMLTextAreaElement;
 
       typeSlash(cmp, ta, '/');
-      expect(cmp.slashOpen()).toBe(true);
-      expect(cmp.slashMatches().length).toBe(SLASH_COMMANDS.length);
+      expect(cmp.menus.slashOpen()).toBe(true);
+      expect(cmp.menus.slashMatches().length).toBe(SLASH_COMMANDS.length);
 
       typeSlash(cmp, ta, '/shr');
-      expect(cmp.slashMatches().map((c) => c.name)).toEqual(['shrug']);
+      expect(cmp.menus.slashMatches().map((c) => c.name)).toEqual(['shrug']);
 
       cmp.onEnter(enter());
 
       // The trailing space matters: `parseSlashCommand` needs it before it reads an argument.
       expect(cmp.text()).toBe('/shrug ');
-      expect(cmp.slashOpen()).toBe(false);
+      expect(cmp.menus.slashOpen()).toBe(false);
     });
 
     it('does not send the message while the menu is open', async () => {
@@ -193,10 +198,10 @@ describe('MessageComposerComponent — the @mention and /command autocompletes',
       const ta = container.querySelector('textarea') as HTMLTextAreaElement;
 
       typeSlash(cmp, ta, 'and/or');
-      expect(cmp.slashOpen()).toBe(false);
+      expect(cmp.menus.slashOpen()).toBe(false);
 
       typeSlash(cmp, ta, 'see /me');
-      expect(cmp.slashOpen()).toBe(false);
+      expect(cmp.menus.slashOpen()).toBe(false);
     });
 
     it('moves the highlight with both arrow keys before accepting', async () => {
@@ -206,9 +211,9 @@ describe('MessageComposerComponent — the @mention and /command autocompletes',
 
       typeSlash(cmp, ta, '/');
       cmp.onArrowDown(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
-      expect(cmp.slashActiveIndex()).toBe(1);
+      expect(cmp.menus.slashActiveIndex()).toBe(1);
       cmp.onArrowUp(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
-      expect(cmp.slashActiveIndex()).toBe(0);
+      expect(cmp.menus.slashActiveIndex()).toBe(0);
 
       cmp.onTab(new KeyboardEvent('keydown', { key: 'Tab' }));
       expect(cmp.text()).toBe(`/${SLASH_COMMANDS[0].name} `);
@@ -229,7 +234,7 @@ describe('MessageComposerComponent — the @mention and /command autocompletes',
       cmp.onArrowUp(event);
 
       expect(event.defaultPrevented).toBe(true);
-      expect(cmp.slashActiveIndex()).toBe(SLASH_COMMANDS.length - 1);
+      expect(cmp.menus.slashActiveIndex()).toBe(SLASH_COMMANDS.length - 1);
     });
 
     it('closes on Escape before anything else the key would cancel', async () => {
@@ -245,7 +250,7 @@ describe('MessageComposerComponent — the @mention and /command autocompletes',
 
       typeSlash(cmp, ta, '/sh');
       cmp.onEscape();
-      expect(cmp.slashOpen()).toBe(false);
+      expect(cmp.menus.slashOpen()).toBe(false);
       expect(cmp.pickerOpen()).toBe(true);
 
       cmp.onEscape();
@@ -260,7 +265,7 @@ describe('MessageComposerComponent — the @mention and /command autocompletes',
       typeSlash(cmp, ta, '/');
       cmp.onBlur();
 
-      expect(cmp.slashOpen()).toBe(false);
+      expect(cmp.menus.slashOpen()).toBe(false);
     });
 
     it.each([
@@ -278,7 +283,7 @@ describe('MessageComposerComponent — the @mention and /command autocompletes',
 
         typeSlash(cmp, ta, '/');
 
-        expect(cmp.slashOpen()).toBe(false);
+        expect(cmp.menus.slashOpen()).toBe(false);
       },
     );
 
@@ -293,7 +298,7 @@ describe('MessageComposerComponent — the @mention and /command autocompletes',
 
       typeSlash(cmp, ta, '/');
 
-      expect(cmp.slashOpen()).toBe(false);
+      expect(cmp.menus.slashOpen()).toBe(false);
     });
 
     it('lets Enter send normally in a state that offers no commands', async () => {
@@ -324,12 +329,12 @@ describe('MessageComposerComponent — the @mention and /command autocompletes',
       const ta = container.querySelector('textarea') as HTMLTextAreaElement;
 
       typeSlash(cmp, ta, '/me');
-      expect(cmp.slashOpen()).toBe(true);
+      expect(cmp.menus.slashOpen()).toBe(true);
 
       cmp.submit();
 
       expect(cmp.text()).toBe('');
-      expect(cmp.slashOpen()).toBe(false);
+      expect(cmp.menus.slashOpen()).toBe(false);
     });
   });
 });

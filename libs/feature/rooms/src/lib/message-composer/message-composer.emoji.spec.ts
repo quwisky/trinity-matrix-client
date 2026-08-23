@@ -16,9 +16,9 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
 
     type(fixture, ':joy');
 
-    expect(cmp.emojiQuery()).toBe('joy');
+    expect(cmp.menus.emojiQuery()).toBe('joy');
     expect(menu(fixture)).not.toBeNull();
-    expect(cmp.emojiMatches()[0].native).toBe('😂');
+    expect(cmp.menus.emojiMatches()[0].native).toBe('😂');
   });
 
   it('accepts the highlighted emoji on Enter without sending the message', async () => {
@@ -33,7 +33,7 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
 
     expect(cmp.text()).toBe('😂');
     expect(sent).toBe(0);
-    expect(cmp.emojiOpen()).toBe(false);
+    expect(cmp.menus.emojiOpen()).toBe(false);
   });
 
   it('replaces only the :shortcode token, preserving surrounding text', async () => {
@@ -51,9 +51,9 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
     const cmp = fixture.componentInstance;
 
     type(fixture, ':joy');
-    const second = cmp.emojiMatches()[1].native;
+    const second = cmp.menus.emojiMatches()[1].native;
     cmp.onArrowDown(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
-    expect(cmp.emojiActiveIndex()).toBe(1);
+    expect(cmp.menus.emojiActiveIndex()).toBe(1);
     cmp.onEnter(enter());
 
     expect(cmp.text()).toBe(second);
@@ -68,7 +68,7 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
 
     type(fixture, ':joy');
     cmp.onEscape();
-    expect(cmp.emojiOpen()).toBe(false);
+    expect(cmp.menus.emojiOpen()).toBe(false);
     expect(cancelled).toBe(0);
 
     cmp.onEscape(); // menu already closed → now cancels the reply
@@ -82,7 +82,7 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
     type(fixture, 'party :tada:');
 
     expect(cmp.text()).toBe('party 🎉');
-    expect(cmp.emojiOpen()).toBe(false);
+    expect(cmp.menus.emojiOpen()).toBe(false);
   });
 
   it('inserts the emoji when a suggestion is clicked', async () => {
@@ -94,7 +94,7 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
     option.click();
 
     expect(cmp.text()).toBe('🔥');
-    expect(cmp.emojiOpen()).toBe(false);
+    expect(cmp.menus.emojiOpen()).toBe(false);
   });
 
   it('does not trigger on a colon that is not a shortcode boundary', async () => {
@@ -102,11 +102,11 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
     const cmp = fixture.componentInstance;
 
     type(fixture, '8:30');
-    expect(cmp.emojiOpen()).toBe(false);
+    expect(cmp.menus.emojiOpen()).toBe(false);
     expect(menu(fixture)).toBeNull();
 
     type(fixture, 'http://');
-    expect(cmp.emojiOpen()).toBe(false);
+    expect(cmp.menus.emojiOpen()).toBe(false);
   });
 
   it('accepts on Tab when open and leaves Tab alone when closed', async () => {
@@ -119,7 +119,7 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
     cmp.onTab(open);
 
     expect(cmp.text()).toBe('😂');
-    expect(cmp.emojiOpen()).toBe(false);
+    expect(cmp.menus.emojiOpen()).toBe(false);
     expect(openPrevent).toHaveBeenCalled();
 
     // Menu closed → Tab must keep its native focus-moving behaviour.
@@ -145,11 +145,11 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
 
     type(fixture, ':joy');
     cmp.onArrowDown(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
-    expect(cmp.emojiActiveIndex()).toBe(1);
+    expect(cmp.menus.emojiActiveIndex()).toBe(1);
 
     type(fixture, ':grin'); // different matches → effect resets the index
-    expect(cmp.emojiMatches().length).toBeGreaterThan(1);
-    expect(cmp.emojiActiveIndex()).toBe(0);
+    expect(cmp.menus.emojiMatches().length).toBeGreaterThan(1);
+    expect(cmp.menus.emojiActiveIndex()).toBe(0);
   });
 
   it('does not open the menu while an IME composition is in progress', async () => {
@@ -164,11 +164,11 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
     ta.dispatchEvent(composing);
     fixture.detectChanges();
 
-    expect(cmp.emojiOpen()).toBe(false);
+    expect(cmp.menus.emojiOpen()).toBe(false);
 
     // Once composition ends, the next (non-composing) input opens it.
     type(fixture, ':joy');
-    expect(cmp.emojiOpen()).toBe(true);
+    expect(cmp.menus.emojiOpen()).toBe(true);
   });
 
   it('lets an IME-confirming Enter pass through without accepting or sending', async () => {
@@ -185,7 +185,7 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
 
     expect(cmp.text()).toBe(':joy'); // not accepted
     expect(sent).toBe(0); // not sent
-    expect(cmp.emojiOpen()).toBe(true); // menu still open
+    expect(cmp.menus.emojiOpen()).toBe(true); // menu still open
 
     cmp.onEnter(enter()); // a real Enter then accepts
     expect(cmp.text()).toBe('😂');
@@ -196,7 +196,7 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
     const cmp = fixture.componentInstance;
 
     type(fixture, ':+1');
-    expect(cmp.emojiMatches()[0].native).toBe('👍');
+    expect(cmp.menus.emojiMatches()[0].native).toBe('👍');
     cmp.onEnter(enter());
     expect(cmp.text()).toBe('👍');
   });

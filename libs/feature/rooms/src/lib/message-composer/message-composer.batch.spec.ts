@@ -235,7 +235,7 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     ta.selectionStart = ta.selectionEnd = 11;
     cmp.onInput({ target: ta } as unknown as Event);
     ta.selectionStart = 11;
-    cmp.acceptMention();
+    cmp.menus.acceptMention();
 
     cmp.submit();
 
@@ -358,7 +358,7 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     expect(cmp.staged().map((a) => a.failed)).toEqual([true]);
 
     // Exactly the call the attachments service's `sendMedia` hook makes for a chosen GIF.
-    cmp['dispatchMedia'](
+    cmp['batches'].dispatch(
       [{ id: 'direct-cat.gif', file: png('cat.gif') }],
       '',
       [],
