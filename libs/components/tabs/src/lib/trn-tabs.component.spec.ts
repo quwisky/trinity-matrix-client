@@ -25,10 +25,18 @@ import { TrnTabsComponent, type TrnTabOption } from './trn-tabs.component';
         [orientation]="orientation()"
         (tabActivated)="activated.push($event)"
       >
-        <trn-tab-panel value="general" data-t="panel-general">
+        <trn-tab-panel
+          value="general"
+          panelClass="flex flex-col"
+          data-t="panel-general"
+        >
           General body
         </trn-tab-panel>
-        <trn-tab-panel value="access" data-t="panel-access">
+        <trn-tab-panel
+          value="access"
+          panelClass="flex flex-col"
+          data-t="panel-access"
+        >
           Access body
         </trn-tab-panel>
       </trn-tabs>

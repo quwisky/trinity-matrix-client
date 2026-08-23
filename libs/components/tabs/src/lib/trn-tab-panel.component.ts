@@ -20,13 +20,34 @@ import { HlmTabsContent } from '@trinity/helm/tabs';
   selector: 'trn-tab-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [HlmTabsContent],
-  styles: [':host { display: contents; }'],
+  styles: [
+    ':host { display: contents; }',
+    // The panel is the caller's to lay out, and `panelClass` is usually a display utility.
+    // That collides with how the kit hides an inactive panel: `hidden` is an ATTRIBUTE, and
+    // the UA rule behind it — `[hidden] { display: none }` — has the same specificity as a
+    // single class, so `flex` or `grid` wins on source order and the inactive panel stays on
+    // screen with the active one. `!important` is the honest fix; the alternative is a
+    // call-site convention nobody can enforce.
+    //
+    // Pinned in `e2e/playwright/room-settings.spec.mts`, not in the unit suite: jsdom does
+    // not cascade a class rule against the UA `[hidden]` rule, so the assertion held there
+    // with the guard REMOVED. It takes a real browser to tell the two apart.
+    '[hidden] { display: none !important; }',
+  ],
   template: `
-    <div [hlmTabsContent]="value()">
+    <div [hlmTabsContent]="value()" [class]="panelClass()">
       <ng-content />
     </div>
   `,
 })
 export class TrnTabPanelComponent {
   readonly value = input.required<string>();
+
+  /**
+   * Classes for the panel element itself.
+   *
+   * Not `class` on the host: the host is `display: contents` and boxes nothing, so a layout
+   * class there would do nothing at all. Same shape as `trn-select`'s `triggerClass`.
+   */
+  readonly panelClass = input<string>('');
 }
