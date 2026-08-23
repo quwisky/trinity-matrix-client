@@ -2,14 +2,26 @@
      from a 280px sidebar to a full chat pane, and a fixed measure that reads well in one is
      wrong in the other. -->
 <div [class]="layoutClass()">
+  @if (badge(); as glyph) {
+    <!-- The disc the hero already drew, moved off `.hero__badge`. A `<span>` with
+         `aria-hidden`: it is decoration for a title that says the same thing in words. -->
+    <span
+      class="mb-2 flex size-[68px] items-center justify-center rounded-full bg-[var(--trinity-sidebar)] text-[34px] text-muted-foreground"
+      aria-hidden="true"
+      >{{ glyph }}</span
+    >
+  }
+
   @if (icon(); as name) {
     <trn-icon [name]="name" class="text-2xl text-muted-foreground" />
   }
 
   @if (title(); as heading) {
-    <p class="text-sm font-semibold text-balance text-foreground">
-      {{ heading }}
-    </p>
+    @if (titleAs() === 'h2') {
+      <h2 [class]="titleClass()">{{ heading }}</h2>
+    } @else {
+      <p [class]="titleClass()">{{ heading }}</p>
+    }
   }
 
   <!-- The projected slot and `body` occupy the same place, and content wins. `ng-content`

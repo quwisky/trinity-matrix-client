@@ -87,7 +87,26 @@ export class EmptyStateComponent {
    * Two, not three: 8px and 12px are near enough to consolidate, and consolidating drift is
    * the point of the component. 24px against 32px is not — that is a panel's worth.
    */
-  readonly size = input<'panel' | 'line'>('panel');
+  readonly size = input<'panel' | 'line' | 'hero'>('panel');
+
+  /**
+   * A short glyph in a circle above the text — `#` for a room, an initial for a person.
+   *
+   * Its own input rather than {@link icon} because it is not an icon: the one site that has
+   * one puts a literal `#` in a 68px disc, and the registry has no glyph for "a room in the
+   * abstract". Rendered at any size, though only the hero has ever wanted it.
+   */
+  readonly badge = input<string>();
+
+  /**
+   * What element the title is.
+   *
+   * `p` by default, because most of these panels sit inside a section that already has its
+   * heading. The hero is the exception and says so at the call site: it is the only content
+   * on the pane, and its `<h2>` is deliberate — `trn-page-header` owns the page's single
+   * `<h1>`, so promoting this to one would give the document two.
+   */
+  readonly titleAs = input<'p' | 'h2'>('p');
 
   /**
    * Whole class strings, never a static `class` beside a `[class]` binding.
@@ -118,10 +137,25 @@ export class EmptyStateComponent {
    * the first version of this component shipped `py-8`, which matched none of the fifteen and
    * would have changed every one of them.
    */
-  protected readonly layoutClass = computed(() =>
-    this.size() === 'line'
-      ? 'flex flex-col items-center gap-1 px-2 py-2 text-center'
-      : 'flex flex-col items-center gap-2 px-4 py-6 text-center',
+  protected readonly layoutClass = computed(() => {
+    switch (this.size()) {
+      case 'line':
+        return 'flex flex-col items-center gap-1 px-2 py-2 text-center';
+      case 'hero':
+        // `max-w-[420px] mx-auto` is the measure the hero already had. It does NOT centre
+        // itself in the pane — that is the container's job, the same way `.chat-empty` was a
+        // separate flex wrapper around `.hero`.
+        return 'mx-auto flex max-w-[420px] flex-col items-center gap-2 px-6 py-6 text-center';
+      default:
+        return 'flex flex-col items-center gap-2 px-4 py-6 text-center';
+    }
+  });
+
+  /** The title's type. A hero's is the pane's own headline; the rest are a label. */
+  protected readonly titleClass = computed(() =>
+    this.size() === 'hero'
+      ? 'text-[22px] font-bold text-balance text-foreground'
+      : 'text-sm font-semibold text-balance text-foreground',
   );
 
   /** `empty:hidden` so a panel with no action contributes neither the row nor its margin. */

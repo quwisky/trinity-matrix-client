@@ -173,6 +173,33 @@ describe('EmptyStateComponent', () => {
     expect(column()?.className).not.toContain('py-6');
   });
 
+  it('renders the title as an h2 when the call site asks for one', async () => {
+    // The hero is the only content on its pane and its heading is deliberate: `trn-page-header`
+    // owns the page's single `<h1>`, so this is an `<h2>` and must not silently become a `<p>`
+    // on the way into this component.
+    const { fixture, container } = await render(EmptyStateComponent, {
+      inputs: { title: 'Trinity', size: 'hero' as const },
+    });
+    expect(container.querySelector('h2')).toBeNull();
+
+    fixture.componentRef.setInput('titleAs', 'h2');
+    fixture.detectChanges();
+
+    expect(container.querySelector('h2')?.textContent).toContain('Trinity');
+    expect(container.querySelector('p.text-\\[22px\\]')).toBeNull();
+  });
+
+  it('draws a badge glyph, hidden from the screen reader', async () => {
+    // Decoration for a title that says the same thing in words — the `#` disc over "Trinity"
+    // is not information a screen reader needs read out.
+    const { container } = await render(EmptyStateComponent, {
+      inputs: { badge: '#', title: 'Trinity' },
+    });
+
+    const badge = container.querySelector('[aria-hidden=true]');
+    expect(badge?.textContent?.trim()).toBe('#');
+  });
+
   it('is a block, so its padding survives a non-flex parent', async () => {
     // Asserted as a class rather than through getComputedStyle: Tailwind does not compute in
     // jsdom, and a wrapper with no host display drops its padding only where the parent is

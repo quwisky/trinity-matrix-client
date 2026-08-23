@@ -30,6 +30,7 @@ import {
   HlmDropdownMenuItem,
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
+import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import { CryptoService } from '@trinity/data-access/crypto';
 import {
@@ -133,6 +134,7 @@ const PANEL_DRAWER_PX = 480;
   templateUrl: 'rooms.page.html',
   styleUrls: ['rooms.page.scss'],
   imports: [
+    EmptyStateComponent,
     PageHeaderComponent,
     HlmButton,
     HlmDropdownMenu,
