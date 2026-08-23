@@ -1,0 +1,26 @@
+<!-- Centred column. `text-balance` on the copy rather than a width cap: these sit in panels
+     from a 280px sidebar to a full chat pane, and a fixed measure that reads well in one is
+     wrong in the other. -->
+<div class="flex flex-col items-center gap-2 px-4 py-8 text-center">
+  @if (icon(); as name) {
+    <trn-icon [name]="name" class="text-2xl text-muted-foreground" />
+  }
+
+  @if (title(); as heading) {
+    <p class="text-sm font-semibold text-balance text-foreground">
+      {{ heading }}
+    </p>
+  }
+
+  <!-- The projected slot and `body` occupy the same place, and content wins. `ng-content`
+       cannot be asked whether it received anything, so the fallback is expressed the other way
+       round: `body` renders only when it is set, and a call site that projects simply does not
+       set it. -->
+  <p class="text-13 text-balance" [class]="toneClass()">
+    <ng-content>{{ body() }}</ng-content>
+  </p>
+
+  <div class="empty-state__actions mt-1 flex items-center gap-2 empty:hidden">
+    <ng-content select="[trnEmptyStateActions]" />
+  </div>
+</div>
