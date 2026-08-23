@@ -193,10 +193,24 @@
     [checked]="composer.showFormattingToolbar()"
     (checkedChange)="composer.setShowFormattingToolbar($event)"
   />
-  Show the formatting toolbar
+  Keep the formatting toolbar open
 </label>
 <p class="block px-4 pb-4 text-13 text-muted-foreground">
-  The row of bold, italic and link buttons above the message box. Hiding it only
-  takes away the buttons — the keyboard shortcuts still work, and Shift+Enter
-  still continues a list.
+  The row of bold, italic and link buttons above the message box, kept in view
+  whether or not you are using it.
+</p>
+<label
+  class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
+  data-testid="composer-format-on-selection"
+>
+  <trn-checkbox
+    [checked]="composer.formatOnSelection()"
+    (checkedChange)="composer.setFormatOnSelection($event)"
+  />
+  Show it when you select text
+</label>
+<p class="block px-4 pb-4 text-13 text-muted-foreground">
+  With the toolbar closed, selecting some text brings it up for as long as the
+  selection lasts. Turn both off and the buttons never appear — the keyboard
+  shortcuts still work either way, and Shift+Enter still continues a list.
 </p>

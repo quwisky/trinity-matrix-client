@@ -63,10 +63,45 @@
   color: var(--trinity-text-bright);
 }
 
-// The tray's items render through a CDK overlay at the document root, so they are not nested
-// under `.toolbar` — the same reason the composer's own insert items are declared standalone.
-.toolbar__menu-item {
-  gap: 8px;
+// The nine actions, as one group. `trn-toggle-group` brings its own `w-fit` and gap; both are
+// overridden because this is a bar inside a row, not a segmented control sized to its content.
+// WRAPS, and it has to. Nine buttons at the 44px touch minimum plus two rules is 470px of
+// content; a phone gives the bar about 358px. Without this the row overflowed by ~176px and
+// `.chat-body`'s `overflow: hidden` cut the tail off — taking the pin and the preview toggle
+// with it, which is the only way to reach a preview on a phone. `min-width: 0` is what lets
+// the group shrink below its content in the first place; a flex item defaults to
+// `min-width: auto` and would refuse.
+// Wrapped rather than scrolled sideways: an action you have to swipe to find is the same
+// problem as one behind a kebab, and deleting the kebab is what this bar is for. The cost is
+// vertical — the bar is two rows on a phone (92px at 390, three rows at 360) against one row
+// at 46px — which is the trade the old `narrow` variant made in the other direction by
+// showing only two of the nine.
+// Only the ACTIONS wrap, not `.toolbar` itself: the pin and the preview toggle stay on the
+// first row where they are always in the same place, instead of being pushed to a line of
+// their own.
+.toolbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  width: auto;
+  min-width: 0;
+}
+
+// The rules between the three groups. Sized against the 32px buttons rather than stretched:
+// `align-self: stretch` on a vertical separator in a taller row draws a line past the buttons
+// it divides.
+.toolbar__rule {
+  align-self: center;
+  height: 18px;
+  margin: 0 4px;
+}
+
+// `Aa` in place of an icon, so it needs the weight an icon would have carried.
+.toolbar__pin {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
 }
 
 // Touch targets. Not inherited from the composer's block: these are different elements in a
@@ -74,10 +109,6 @@
 @media (pointer: coarse) {
   .toolbar__button {
     min-width: 44px;
-    min-height: 44px;
-  }
-
-  .toolbar__menu-item {
     min-height: 44px;
   }
 }

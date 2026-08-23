@@ -108,18 +108,44 @@ test.describe('Composer formatting', () => {
     await expect(composer).toHaveValue('say **hello** there');
   });
 
-  test('the overflow carries the actions the toolbar does not show', async ({
+  test('every action is on the bar, with nothing behind a menu', async ({
     page,
     request,
   }) => {
+    // This used to open the kebab first. The overflow existed because the bar was always
+    // there and had to earn its row; a bar that appears when you select something can afford
+    // to show all nine, and an action behind a menu is one nobody discovers.
     const { composer } = await openComposer(page, request, 'ov');
 
     await composer.fill('one');
     await selectWord(page, 'one');
-    await page.getByTestId('format-more').click();
+
+    await expect(page.getByTestId('format-more')).toHaveCount(0);
     await page.getByTestId('format-quote').click();
 
     await expect(composer).toHaveValue('> one');
+  });
+
+  test('unpinned, the bar comes and goes with the selection', async ({
+    page,
+    request,
+  }) => {
+    // The contextual behaviour, end to end. Unpinning is now "stop keeping it open" rather
+    // than "never show it": the second preference decides whether a selection still raises it,
+    // and it defaults on for anyone who had not already opted out.
+    const { composer } = await openComposer(page, request, 'ct');
+    await composer.fill('say hello there');
+
+    // Unpin from the bar itself — the `Aa` control, which is where you notice you want it.
+    await page.getByTestId('format-pin').click();
+    await expect(page.getByTestId('format-bold')).toHaveCount(0);
+
+    await selectWord(page, 'hello');
+    await expect(page.getByTestId('format-bold')).toBeVisible();
+
+    // And it applies to the selection that raised it.
+    await page.getByTestId('format-bold').click();
+    await expect(composer).toHaveValue('say **hello** there');
   });
 
   test('a keyboard chord formats, and the rebound one takes over', async ({
@@ -272,8 +298,9 @@ test.describe('Composer formatting', () => {
     await page.goto('/rooms');
     const back = await openRoom();
 
+    // Unchecking the settings box unpins it, and with no selection there is nothing to raise
+    // it — so the row is gone, which is what this test has always been about.
     await expect(page.getByTestId('format-bold')).toHaveCount(0);
-    await expect(page.getByTestId('format-more')).toHaveCount(0);
     // The preview toggle lives on the toolbar and goes with it.
     await expect(page.getByTestId('composer-preview-toggle')).toHaveCount(0);
 
@@ -384,6 +411,34 @@ test.describe('Composer formatting', () => {
     await expect(field).toHaveCSS('outline-style', 'solid');
   });
 
+  test('the bar shows what the selection already carries', async ({
+    page,
+    request,
+  }) => {
+    // `aria-pressed` on the nine is derived from the marks around the selection, so it says
+    // something true about the text rather than about the last button pressed. Only a real
+    // browser has a real selection, and only the rendered attribute proves the whole chain:
+    // textarea event -> composer `detectFormat` -> toggle group -> the DOM.
+    const { composer } = await openComposer(page, request, 'mk');
+    const bold = page.getByTestId('format-bold');
+    const italic = page.getByTestId('format-italic');
+
+    await composer.fill('say hello there');
+    await selectWord(page, 'hello');
+    await expect(bold).toHaveAttribute('aria-pressed', 'false');
+
+    // Bolding the selection makes Bold true of it — and the button follows the text.
+    await bold.click();
+    await expect(composer).toHaveValue('say **hello** there');
+    await expect(bold).toHaveAttribute('aria-pressed', 'true');
+    await expect(italic).toHaveAttribute('aria-pressed', 'false');
+
+    // And pressing it again removes the marks, which is exactly what "pressed" promised.
+    await bold.click();
+    await expect(composer).toHaveValue('say hello there');
+    await expect(bold).toHaveAttribute('aria-pressed', 'false');
+  });
+
   test('toggling the preview does not resize the composer', async ({
     page,
     request,
@@ -434,5 +489,61 @@ test.describe('Composer formatting', () => {
       const { writing, previewing } = await heightAcrossToggle(draft);
       expect(Math.abs(previewing - writing)).toBeLessThan(1);
     }
+  });
+});
+
+// The bar at phone size, which the suite above structurally cannot see: the project is
+// Desktop Chrome at 1280, and the 44px touch minimums only apply under `(pointer: coarse)` —
+// so `hasTouch` here is not decoration, it is the half that makes the buttons big enough to
+// overflow. Nine of them plus two rules is 470px of content against about 358px of bar.
+test.describe('Composer formatting on a phone', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  test.describe.configure({ timeout: 60_000 });
+
+  test('the whole bar stays on screen, including the pin and the preview toggle', async ({
+    page,
+    request,
+  }) => {
+    // `.chat-body` is `overflow: hidden`, so anything past the right edge is not merely
+    // off-screen but unreachable — and the two that fall off the end are the pin and the
+    // preview toggle, the second of which is the only way to reach a preview on a phone.
+    await openComposer(page, request, 'ph-narrow');
+
+    const width = page.viewportSize()?.width ?? 0;
+    expect(width).toBeGreaterThan(0);
+
+    const controls = [
+      'format-bold',
+      'format-italic',
+      'format-strike',
+      'format-code',
+      'format-codeblock',
+      'format-quote',
+      'format-link',
+      'format-list',
+      'format-tasklist',
+      'format-pin',
+      'composer-preview-toggle',
+    ];
+    for (const id of controls) {
+      const box = await page.getByTestId(id).boundingBox();
+      if (!box) {
+        throw new Error(`${id} is not laid out`);
+      }
+      // Half a pixel of slack for sub-pixel rounding, not for a button hanging off the edge.
+      expect(
+        box.x + box.width,
+        `${id} runs past the right edge`,
+      ).toBeLessThanOrEqual(width + 0.5);
+      expect(box.x, `${id} runs past the left edge`).toBeGreaterThanOrEqual(
+        -0.5,
+      );
+    }
+
+    // And it wrapped rather than scrolled: the row is taller than one button, which is the
+    // mechanism the assertions above depend on.
+    const bar = await page.locator('.toolbar').boundingBox();
+    expect(bar?.height ?? 0).toBeGreaterThan(50);
   });
 });
