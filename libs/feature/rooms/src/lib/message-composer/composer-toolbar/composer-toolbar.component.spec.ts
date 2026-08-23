@@ -7,7 +7,12 @@ import { type FormatAction } from '@trinity/util/matrix';
 import { ComposerToolbarComponent } from './composer-toolbar.component';
 
 async function renderToolbar(
-  inputs: { previewing?: boolean; disabled?: boolean; pinned?: boolean } = {},
+  inputs: {
+    previewing?: boolean;
+    disabled?: boolean;
+    pinned?: boolean;
+    active?: FormatAction[];
+  } = {},
 ) {
   return render(ComposerToolbarComponent, { inputs });
 }
@@ -67,18 +72,60 @@ describe('ComposerToolbarComponent', () => {
     expect(actions.filter((el) => el.tabIndex === 0).length).toBe(1);
   });
 
-  it('leaves every action unpressed, because a format is a command', async () => {
-    // `BrnToggleGroupItem` stamps `aria-pressed` from the group's value. Pressing Bold does
-    // not put the bar in a bold state, so the value stays empty and nothing reads as stuck on.
-    const { container } = await renderToolbar();
-    const bold = container.querySelector<HTMLElement>(
-      '[data-testid=format-bold]',
-    );
-
-    bold?.click();
+  it('presses the actions the selection already carries', async () => {
+    // `aria-pressed` now means what it says: the composer derives this from the marks around
+    // the selection, so Bold is pressed exactly when pressing it would REMOVE the bold.
+    const { container } = await renderToolbar({ active: ['bold', 'quote'] });
     TestBed.tick();
 
-    expect(bold?.getAttribute('aria-pressed')).toBe('false');
+    const pressed = (testid: string) =>
+      container
+        .querySelector<HTMLElement>(`[data-testid=${testid}]`)
+        ?.getAttribute('aria-pressed');
+
+    expect(pressed('format-bold')).toBe('true');
+    expect(pressed('format-quote')).toBe('true');
+    expect(pressed('format-italic')).toBe('false');
+    expect(pressed('format-tasklist')).toBe('false');
+  });
+
+  it('leaves everything unpressed when the selection carries nothing', async () => {
+    const { container } = await renderToolbar({ active: [] });
+    TestBed.tick();
+
+    const items = [
+      ...container.querySelectorAll<HTMLElement>('[trnToggleGroupItem]'),
+    ];
+    expect(items).toHaveLength(9);
+    for (const item of items) {
+      expect(item.getAttribute('aria-pressed'), item.outerHTML).toBe('false');
+    }
+  });
+
+  it('lets a re-derived value overrule the press that flipped the button', async () => {
+    // `BrnToggleGroupItem` binds `(click)="toggle()"` on its own host, so an item flips
+    // ITSELF the moment it is clicked, before anyone has looked at the text. That flip is
+    // corrected by the NEXT value the composer derives — which is why `activeFormats` is a
+    // `computed` returning a fresh array: a value re-set to the same reference would not
+    // fire, and the stale flip would stand.
+    //
+    // The flip landing on the right answer most of the time is a coincidence worth not
+    // relying on: pressing a toggle inverts it, and applying a format inverts the
+    // formatting, so the two usually agree. They do not for `link` and `codeblock`, which
+    // flip to pressed and are never reported — those are righted only by this overrule.
+    const { fixture, container } = await renderToolbar({ active: [] });
+    const link = container.querySelector<HTMLElement>(
+      '[data-testid=format-link]',
+    );
+
+    link?.click();
+    TestBed.tick();
+    expect(link?.getAttribute('aria-pressed')).toBe('true'); // the kit's own doing
+
+    fixture.componentRef.setInput('active', []); // a fresh array, as the computed gives
+    TestBed.tick();
+
+    expect(link?.getAttribute('aria-pressed')).toBe('false');
   });
 
   it('reports the pinned state on Aa, and emits when pressed', async () => {

@@ -1,12 +1,12 @@
 <div class="toolbar">
   <!-- One tab stop for the nine, with the arrows moving between them — the reason these are a
-       toggle group rather than nine buttons in a div. `[value]` is pinned empty on purpose:
-       see `applied`. -->
+       toggle group rather than nine buttons in a div. `[value]` is the formatting the
+       selection already carries, so `aria-pressed` is true of the text: see `active`. -->
   <trn-toggle-group
     class="toolbar__actions"
     type="multiple"
     aria-label="Formatting"
-    [value]="applied()"
+    [value]="active()"
   >
     <!-- `[aria-label]` below is the INPUT, not `[attr.aria-label]`. BrnToggleGroupItem
          host-binds that attribute from an input of its own, so an attr binding is written and
