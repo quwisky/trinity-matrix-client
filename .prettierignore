@@ -19,6 +19,7 @@ pnpm-lock.yaml
 # Agent skills + tool-managed config (vendored / generated — don't reformat)
 .agents
 .claude
+.remember
 CLAUDE.md
 skills-lock.json
 
