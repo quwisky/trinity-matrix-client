@@ -45,6 +45,9 @@ const BLOCK_MARKER: Record<BlockAction, string> = {
   tasklist: '- [ ] ',
 };
 
+/** The block actions, as a list — {@link detectFormat} asks each of them in turn. */
+const BLOCK_ACTIONS: readonly BlockAction[] = ['quote', 'list', 'tasklist'];
+
 /**
  * A list or quote marker at the start of a line: leading indent, then a bullet (`-`/`*`/`+`),
  * an ordered marker (`1.`/`1)`) or a quote (`>`), then at least one space.
@@ -93,6 +96,63 @@ function runLength(
   return count;
 }
 
+/**
+ * Which actions `text[start, end)` ALREADY carries.
+ *
+ * This is what lets the formatting bar say `aria-pressed` and mean it. The definition is
+ * deliberately not "does the text look bold" but the sharper one:
+ *
+ * > `detectFormat(text, start, end).includes(action)` exactly when
+ * > `applyFormat(text, start, end, action)` would REMOVE that formatting rather than add it.
+ *
+ * Written that way round because the two must never disagree — a button that reads as pressed
+ * and then adds a second pair of markers is worse than one that never lights up at all. Both
+ * sides share `wrappedOutside`/`wrappedInside` and `carries` rather than re-deriving the
+ * question, so the invariant holds by construction; `markdown-edit.spec.ts` pins it anyway,
+ * for every action against every case, because "by construction" is a claim about today's code.
+ *
+ * **Seven of the nine, and the two left out are not an oversight.** `link` and `codeblock`
+ * are one-shot INSERTS: `applyLink` always writes `[text]()` and `applyCodeBlock` always
+ * opens a fence, neither ever unwraps. There is no state for them to be in, so they are never
+ * reported — a pressed state on a button that cannot unpress is a lie the user has to
+ * discover by pressing it twice.
+ */
+export function detectFormat(
+  text: string,
+  start: number,
+  end: number,
+): FormatAction[] {
+  const from = Math.max(0, Math.min(start, text.length));
+  const to = Math.max(from, Math.min(end, text.length));
+  const active: FormatAction[] = [];
+
+  for (const [action, marker] of Object.entries(INLINE_MARKER)) {
+    if (
+      wrappedOutside(text, from, to, marker) ||
+      wrappedInside(text, from, to, marker)
+    ) {
+      active.push(action as FormatAction);
+    }
+  }
+
+  // A block action reads the LINES the selection touches, the same span `applyLinePrefix`
+  // rewrites — selecting the middle of a quoted line still means "this line is quoted".
+  const lineStart = lineStartAt(text, from);
+  const nextBreak = text.indexOf('\n', to);
+  const lines = text
+    .slice(lineStart, nextBreak === -1 ? text.length : nextBreak)
+    .split('\n');
+  for (const action of BLOCK_ACTIONS) {
+    // EVERY line, matching `rewriteBlock`'s strip condition: a selection spanning a quoted
+    // line and a plain one is not quoted, and pressing Quote there quotes both.
+    if (lines.every((line) => carries(line, action))) {
+      active.push(action);
+    }
+  }
+
+  return active;
+}
+
 /** Apply `action` to `text[start, end)`, returning the new text and where to leave the caret. */
 export function applyFormat(
   text: string,
@@ -121,6 +181,42 @@ export function applyFormat(
  * selection (the user selected the word) as well as just inside it (they selected the markup
  * too). With no selection, the markers are inserted and the caret is left between them.
  */
+/**
+ * Whether `marker` sits immediately OUTSIDE `text[start, end)` — `**|bold|**`.
+ *
+ * Runs, not prefixes. Every marker is a repeat of one character, and `*` is a prefix of `**`
+ * — so a prefix test would read the inner asterisk of `**bold**` as italic and strip it.
+ * Requiring the run to be EXACTLY this wide keeps the markers distinguishable: italic over
+ * `**bold**` nests to `***bold***`, while bold over it unwraps.
+ */
+function wrappedOutside(
+  text: string,
+  start: number,
+  end: number,
+  marker: string,
+): boolean {
+  const char = marker[0];
+  return (
+    runLength(text, start, -1, char) === marker.length &&
+    runLength(text, end, 1, char) === marker.length
+  );
+}
+
+/** Whether `marker` sits immediately INSIDE the selection — `|**bold**|`. */
+function wrappedInside(
+  text: string,
+  start: number,
+  end: number,
+  marker: string,
+): boolean {
+  const char = marker[0];
+  return (
+    end - start >= marker.length * 2 &&
+    runLength(text, start, 1, char) === marker.length &&
+    runLength(text, end, -1, char) === marker.length
+  );
+}
+
 function applyInline(
   text: string,
   start: number,
@@ -128,16 +224,8 @@ function applyInline(
   marker: string,
 ): EditResult {
   const width = marker.length;
-  const char = marker[0];
 
-  // Runs, not prefixes. Every marker is a repeat of one character, and `*` is a prefix of
-  // `**` — so a prefix test would read the inner asterisk of `**bold**` as italic and strip
-  // it. Requiring the run to be EXACTLY this wide keeps the markers distinguishable: italic
-  // over `**bold**` nests to `***bold***`, while bold over it unwraps.
-  const outsideWrapped =
-    runLength(text, start, -1, char) === width &&
-    runLength(text, end, 1, char) === width;
-  if (outsideWrapped) {
+  if (wrappedOutside(text, start, end, marker)) {
     const stripped =
       text.slice(0, start - width) +
       text.slice(start, end) +
@@ -149,11 +237,7 @@ function applyInline(
     };
   }
 
-  const insideWrapped =
-    end - start >= width * 2 &&
-    runLength(text, start, 1, char) === width &&
-    runLength(text, end, -1, char) === width;
-  if (insideWrapped) {
+  if (wrappedInside(text, start, end, marker)) {
     const stripped =
       text.slice(0, start) +
       text.slice(start + width, end - width) +

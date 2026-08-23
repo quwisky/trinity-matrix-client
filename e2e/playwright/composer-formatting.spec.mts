@@ -411,6 +411,34 @@ test.describe('Composer formatting', () => {
     await expect(field).toHaveCSS('outline-style', 'solid');
   });
 
+  test('the bar shows what the selection already carries', async ({
+    page,
+    request,
+  }) => {
+    // `aria-pressed` on the nine is derived from the marks around the selection, so it says
+    // something true about the text rather than about the last button pressed. Only a real
+    // browser has a real selection, and only the rendered attribute proves the whole chain:
+    // textarea event -> composer `detectFormat` -> toggle group -> the DOM.
+    const { composer } = await openComposer(page, request, 'mk');
+    const bold = page.getByTestId('format-bold');
+    const italic = page.getByTestId('format-italic');
+
+    await composer.fill('say hello there');
+    await selectWord(page, 'hello');
+    await expect(bold).toHaveAttribute('aria-pressed', 'false');
+
+    // Bolding the selection makes Bold true of it — and the button follows the text.
+    await bold.click();
+    await expect(composer).toHaveValue('say **hello** there');
+    await expect(bold).toHaveAttribute('aria-pressed', 'true');
+    await expect(italic).toHaveAttribute('aria-pressed', 'false');
+
+    // And pressing it again removes the marks, which is exactly what "pressed" promised.
+    await bold.click();
+    await expect(composer).toHaveValue('say hello there');
+    await expect(bold).toHaveAttribute('aria-pressed', 'false');
+  });
+
   test('toggling the preview does not resize the composer', async ({
     page,
     request,

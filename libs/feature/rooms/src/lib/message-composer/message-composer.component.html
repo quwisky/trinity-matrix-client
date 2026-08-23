@@ -29,6 +29,7 @@
       [previewing]="previewing()"
       [disabled]="uploadProgress() !== null"
       [pinned]="toolbarPinned()"
+      [active]="activeFormats()"
       (format)="onFormat($event)"
       (togglePreview)="onTogglePreview()"
       (togglePinned)="onTogglePinned()"

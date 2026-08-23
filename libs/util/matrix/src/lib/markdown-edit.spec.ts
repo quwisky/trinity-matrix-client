@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyFormat,
+  detectFormat,
   continueList,
   type FormatAction,
   type EditResult,
@@ -283,5 +284,146 @@ describe('continueList', () => {
 
   it('ends the list from a caret anywhere in an empty item', () => {
     expect(after('- one\n- | ')).toBe('- one\n|');
+  });
+});
+
+describe('detectFormat', () => {
+  /** Detect against `input`, where `[…]` marks the selection and `|` an empty one. */
+  function marks(input: string): FormatAction[] {
+    const caret = input.indexOf('|');
+    if (caret !== -1) {
+      return detectFormat(input.replace('|', ''), caret, caret);
+    }
+    const start = input.indexOf('[');
+    const end = input.indexOf(']') - 1;
+    return detectFormat(
+      input.replace('[', '').replace(']', ''),
+      start,
+      end,
+    ).sort();
+  }
+
+  it.each([
+    ['bold', '**'],
+    ['italic', '*'],
+    ['strike', '~~'],
+    ['code', '`'],
+  ] as const)(
+    'reports %s when the markers sit outside the selection',
+    (action, marker) => {
+      expect(marks(`say ${marker}[hello]${marker} there`)).toContain(action);
+    },
+  );
+
+  it.each([
+    ['bold', '**'],
+    ['italic', '*'],
+    ['strike', '~~'],
+    ['code', '`'],
+  ] as const)(
+    'reports %s when the selection contains the markers',
+    (action, marker) => {
+      expect(marks(`say [${marker}hello${marker}] there`)).toContain(action);
+    },
+  );
+
+  it('does not read the inner asterisk of bold as italic', () => {
+    // The prefix trap `applyInline` documents: `*` is a prefix of `**`, so a prefix test
+    // would report italic here and pressing it would strip a bold marker.
+    expect(marks('say **[hello]** there')).toEqual(['bold']);
+  });
+
+  it('reports nothing for unformatted text', () => {
+    expect(marks('say [hello] there')).toEqual([]);
+  });
+
+  it.each([
+    ['quote', '> one'],
+    ['list', '- one'],
+    ['tasklist', '- [ ] one'],
+  ] as const)(
+    'reports %s from the line the selection touches',
+    (action, line) => {
+      // The middle of the line, not the marker — a block action is about the line.
+      const at = line.indexOf('one');
+      expect(detectFormat(line, at + 1, at + 2)).toContain(action);
+    },
+  );
+
+  it('reports a block action only when EVERY line carries it', () => {
+    const text = '> one\ntwo';
+    expect(detectFormat(text, 0, text.length)).not.toContain('quote');
+    expect(detectFormat('> one\n> two', 0, 10)).toContain('quote');
+  });
+
+  it('keeps a task item distinct from a plain bullet', () => {
+    // `carries` treats the three kinds of list item as different things, and detection has
+    // to agree or Bulleted list reads as pressed on a task item it would convert.
+    expect(detectFormat('- [ ] one', 7, 8)).toEqual(['tasklist']);
+    expect(detectFormat('- one', 3, 4)).toEqual(['list']);
+  });
+
+  it('never reports link or codeblock, which cannot unwrap', () => {
+    expect(marks('[say hello](https://x.test)')).not.toContain('link');
+    expect(detectFormat('```\nhello\n```', 4, 9)).not.toContain('codeblock');
+  });
+
+  it('clamps an out-of-range selection to the text', () => {
+    // Same clamp `applyFormat` opens with, so a stale selection arriving from the textarea
+    // reads as the nearest real one rather than throwing or reporting nonsense. Clamped,
+    // `(-5, 999)` over `**hi**` is the whole string — which really is bold, from the inside.
+    expect(detectFormat('**hi**', -5, 999)).toEqual(
+      detectFormat('**hi**', 0, 6),
+    );
+    expect(detectFormat('**hi**', -5, 999)).toEqual(['bold']);
+    // And a selection entirely past the end is empty rather than out of bounds.
+    expect(detectFormat('**hi**', 999, 1000)).toEqual([]);
+  });
+
+  describe('agrees with applyFormat, which is the whole contract', () => {
+    // The invariant `detectFormat` is defined by: reported means applying REMOVES. Asserted
+    // per action against the same fixtures rather than trusting the shared helpers, because
+    // "by construction" is a claim about today's code and this is what would catch a drift.
+    const CASES = [
+      'say [hello] there',
+      'say **[hello]** there',
+      'say [**hello**] there',
+      'say *[hello]* there',
+      'say ~~[hello]~~ there',
+      'say `[hello]` there',
+      '> [one]',
+      '- [one]',
+      '- [ ] [one]',
+      '[one]',
+    ];
+    // All NINE, not just the seven toggles. `link` and `codeblock` belong here precisely
+    // because they can only ever add: the invariant then reads "never reported", which is
+    // the property that would break if someone gave them a pressed state later.
+    const ACTIONS: FormatAction[] = [
+      'bold',
+      'italic',
+      'strike',
+      'code',
+      'quote',
+      'list',
+      'tasklist',
+      'link',
+      'codeblock',
+    ];
+
+    it.each(ACTIONS)('holds for %s', (action) => {
+      for (const input of CASES) {
+        const start = input.indexOf('[');
+        const end = input.indexOf(']') - 1;
+        const text = input.replace('[', '').replace(']', '');
+        const reported = detectFormat(text, start, end).includes(action);
+        const shorter =
+          applyFormat(text, start, end, action).text.length < text.length;
+        expect(
+          reported,
+          `${action} on ${JSON.stringify(input)}: reported=${reported} but applying ${shorter ? 'removed' : 'added'}`,
+        ).toBe(shorter);
+      }
+    });
   });
 });
