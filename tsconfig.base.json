@@ -116,6 +116,7 @@
         "./libs/components/radio-group/src/index.ts"
       ],
       "@trinity/components/select": ["./libs/components/select/src/index.ts"],
+      "@trinity/components/switch": ["./libs/components/switch/src/index.ts"],
       "@trinity/components/input": ["./libs/components/input/src/index.ts"],
       "@trinity/components/tooltip": ["./libs/components/tooltip/src/index.ts"],
       "@trinity/components/textarea": [
@@ -131,7 +132,8 @@
         "./libs/spartan/toggle-group/src/index.ts"
       ],
       "@trinity/helm/toggle": ["./libs/spartan/toggle/src/index.ts"],
-      "@trinity/helm/separator": ["./libs/spartan/separator/src/index.ts"]
+      "@trinity/helm/separator": ["./libs/spartan/separator/src/index.ts"],
+      "@trinity/helm/switch": ["./libs/spartan/switch/src/index.ts"]
     },
     "noUncheckedSideEffectImports": false,
     "types": ["*"]
