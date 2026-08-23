@@ -4,7 +4,6 @@ import {
   computed,
   input,
   output,
-  signal,
 } from '@angular/core';
 import { TrnSeparatorDirective } from '@trinity/components/separator';
 import {
@@ -110,34 +109,26 @@ export class ComposerToolbarComponent {
   );
 
   /**
-   * What the toggle group holds as "selected": nothing, ever.
+   * What the toggle group holds as "selected": the formatting the selection already carries.
    *
-   * `BrnToggleGroupItem` stamps `aria-pressed` from the group's value, and a formatting action
-   * is a one-shot COMMAND rather than a selection — pressing Bold does not put the toolbar in
-   * a bold state, it wraps some text. Left to accumulate, Bold would read as pressed for the
-   * rest of the session; #180 calls that out as the trap in building on this primitive.
+   * Derived by the composer from the marks around the selection (`detectFormat`), so
+   * `aria-pressed` means what it says — Bold reads as pressed exactly when pressing it would
+   * REMOVE the bold, because that is how `detectFormat` is defined against `applyFormat`.
    *
-   * The honest alternative is deriving the value from the marks around the caret, which is
-   * what Discord and Slack do and what would make `aria-pressed` mean something. It needs mark
-   * detection the composer does not have, and #180 sanctions either answer — so the value is
-   * pinned empty here and the derived version is a separate piece of work, not something to
-   * half-do inside a layout change.
+   * This replaces a value pinned permanently empty. `BrnToggleGroupItem` stamps `aria-pressed`
+   * from the group's value and binds `(click)="toggle()"` on its own host, so an item flips
+   * ITSELF whatever it is told; the old code cleared the value after each apply to beat that
+   * back, which left nine buttons announcing themselves as toggles that were always off. The
+   * self-flip still happens, and is still overwritten — but now by the truth rather than by a
+   * blank, and the input is a fresh array from a `computed` each time so the binding fires.
    */
   // Mutable, not `readonly FormatAction[]`: the kit's `ToggleValue<T>` is `T | T[] | null`, and
   // a readonly array is not assignable to it. Template type-checking is what says so, which the
   // spec typecheck target does not do — `pnpm build` is the gate that catches this.
-  protected readonly applied = signal<FormatAction[]>([]);
+  readonly active = input<FormatAction[]>([]);
 
-  /**
-   * Apply an action, then put the group back to holding nothing.
-   *
-   * A NEW empty array each time, and that is the mechanism rather than an accident:
-   * `BrnToggleGroupItem` binds `(click)="toggle()"` on its own host, so the item flips itself
-   * whatever this component thinks — and a binding re-set to the same array by reference would
-   * not fire, leaving Bold pressed for the rest of the session.
-   */
+  /** Apply an action. What the group shows afterwards follows from the text, not from here. */
   protected apply(action: FormatAction): void {
     this.format.emit(action);
-    this.applied.set([]);
   }
 }

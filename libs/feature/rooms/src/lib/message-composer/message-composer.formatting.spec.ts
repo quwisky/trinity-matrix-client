@@ -522,4 +522,65 @@ describe('MessageComposerComponent — quoting, the formatting actions and the p
       });
     });
   });
+
+  describe('what the bar reports as pressed', () => {
+    // End to end through the DOM, because the value is derived in the composer and rendered
+    // by the toolbar — asserting the signal would test neither half of the wiring.
+    async function withSelection(text: string, start: number, end: number) {
+      const { fixture, container } = await renderComposer({}, [
+        MockProvider(ComposerSettingsService, {
+          // Pinned, so the bar is up regardless of the selection and this tests the pressed
+          // state rather than the raising.
+          showFormattingToolbar: signal(true).asReadonly(),
+          formatOnSelection: signal(true).asReadonly(),
+        }),
+      ]);
+      fixture.componentInstance.text.set(text);
+      fixture.detectChanges();
+
+      const ta = container.querySelector<HTMLTextAreaElement>(
+        '[data-testid=composer-input]',
+      );
+      if (!ta) {
+        throw new Error('composer input not rendered');
+      }
+      ta.value = text;
+      ta.setSelectionRange(start, end);
+      ta.dispatchEvent(new Event('select', { bubbles: true }));
+      fixture.detectChanges();
+
+      return (testid: string) =>
+        container
+          .querySelector<HTMLElement>(`[data-testid=${testid}]`)
+          ?.getAttribute('aria-pressed');
+    }
+
+    it('presses Bold over bold text', async () => {
+      const pressed = await withSelection('say **hello** there', 6, 11);
+
+      expect(pressed('format-bold')).toBe('true');
+      expect(pressed('format-italic')).toBe('false');
+    });
+
+    it('presses nothing over plain text', async () => {
+      const pressed = await withSelection('say hello there', 4, 9);
+
+      expect(pressed('format-bold')).toBe('false');
+      expect(pressed('format-quote')).toBe('false');
+    });
+
+    it('presses Quote from anywhere on a quoted line', async () => {
+      // A block action is about the line, so the middle of it counts.
+      const pressed = await withSelection('> one', 3, 4);
+
+      expect(pressed('format-quote')).toBe('true');
+    });
+
+    it('presses nothing when there is no selection', async () => {
+      // The nine act on a selection, so a bare caret has nothing to be in a state about.
+      const pressed = await withSelection('say **hello** there', 6, 6);
+
+      expect(pressed('format-bold')).toBe('false');
+    });
+  });
 });

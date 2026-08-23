@@ -25,6 +25,7 @@ import { type GifResult } from '@trinity/data-access/gif';
 import {
   applyFormat,
   continueList,
+  detectFormat,
   escapeHtml,
   linkifyText,
   renderMarkdown,
@@ -351,8 +352,35 @@ export class MessageComposerComponent {
   /** Whether the bar is pinned open (Settings → Appearance, or the bar's own `Aa`). */
   readonly toolbarPinned = this.composerSettings.showFormattingToolbar;
 
-  /** Whether there is a non-empty selection in the textarea right now. */
-  private readonly hasSelection = signal(false);
+  /**
+   * The textarea's selection, or null when there is none to speak of.
+   *
+   * A range rather than the boolean this used to be: the bar's pressed state is derived from
+   * the marks around the selection, and that needs the offsets. `hasSelection` survives as a
+   * computed so the "is the bar up" question reads the same as before.
+   */
+  private readonly selection = signal<{ start: number; end: number } | null>(
+    null,
+  );
+  private readonly hasSelection = computed(() => this.selection() !== null);
+
+  /**
+   * Which formatting actions the current selection already carries, for the bar to show as
+   * pressed. Empty with no selection: the nine act on one, so there is nothing to be in a
+   * state about.
+   *
+   * Derived rather than remembered, which is the point — `detectFormat` is defined as the
+   * exact inverse of what `applyFormat` would do, so a button reads as pressed when pressing
+   * it would REMOVE that formatting. The bar previously pinned this to empty and cleared it
+   * after every apply, which meant `aria-pressed` was permanently "false" on nine buttons
+   * that announce themselves as toggles.
+   */
+  protected readonly activeFormats = computed<FormatAction[]>(() => {
+    const range = this.selection();
+    return range === null
+      ? []
+      : detectFormat(this.text(), range.start, range.end);
+  });
   /** This component's own element — {@link onComposerFocusOut} asks it what focus left. */
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
@@ -773,7 +801,7 @@ export class MessageComposerComponent {
     // nothing would tell the bar its selection is gone. Enter happens to self-correct on the
     // following `keyup`; pressing Send with the mouse does not, and left the bar hanging over
     // an empty composer.
-    this.hasSelection.set(false);
+    this.selection.set(null);
     if (!this.editing()) {
       // Edits clear via editing → false; new messages clear here.
       this.text.set('');
@@ -847,7 +875,11 @@ export class MessageComposerComponent {
    */
   protected onSelectionChange(): void {
     const el = this.textarea()?.nativeElement;
-    this.hasSelection.set(!!el && el.selectionStart !== el.selectionEnd);
+    this.selection.set(
+      el && el.selectionStart !== el.selectionEnd
+        ? { start: el.selectionStart, end: el.selectionEnd }
+        : null,
+    );
   }
 
   /**
@@ -868,7 +900,7 @@ export class MessageComposerComponent {
     if (next instanceof Node && this.host.nativeElement.contains(next)) {
       return;
     }
-    this.hasSelection.set(false);
+    this.selection.set(null);
   }
 
   /**
