@@ -7,6 +7,7 @@ import {
 import type { TrnEmojiSuggestion } from '@trinity/components/emoji-picker';
 import { TrnAnchoredOverlayDirective } from '@trinity/components/overlay';
 import { type MentionMember } from '../mention-autocomplete';
+import { type SlashCommand } from '@trinity/util/matrix';
 
 /**
  * The two autocomplete menus floated above the composer input: `:shortcode` emoji and
@@ -60,6 +61,17 @@ export class ComposerSuggestionsComponent {
   readonly mentionMatches = input<readonly MentionMember[]>([]);
   /** Index of the highlighted member suggestion. */
   readonly mentionActiveIndex = input(0);
+  /** Whether the `/command` menu is shown. */
+  readonly slashOpen = input(false);
+  /** Commands matching the current `/fragment`. */
+  readonly slashMatches = input<readonly SlashCommand[]>([]);
+  /** Index of the highlighted command. */
+  readonly slashActiveIndex = input(0);
+
+  /** The pointer moved onto a command — highlight it. */
+  readonly slashHighlight = output<number>();
+  /** A command was chosen. */
+  readonly slashAccept = output<number>();
 
   /** The pointer moved onto an emoji suggestion — highlight it. */
   readonly emojiHighlight = output<number>();

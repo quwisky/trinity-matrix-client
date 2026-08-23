@@ -5,6 +5,7 @@ import { render } from '@trinity/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ComposerSuggestionsComponent } from './composer-suggestions.component';
 import { type MentionMember } from '../mention-autocomplete';
+import { SLASH_COMMANDS, type SlashCommand } from '@trinity/util/matrix';
 
 /**
  * Both menus render in the CDK overlay container, so every lookup here is against `document`
@@ -34,6 +35,11 @@ import { type MentionMember } from '../mention-autocomplete';
       (emojiAccept)="events.push(['emojiAccept', $event])"
       (mentionHighlight)="events.push(['mentionHighlight', $event])"
       (mentionAccept)="events.push(['mentionAccept', $event])"
+      [slashOpen]="slashOpen()"
+      [slashMatches]="slashMatches()"
+      [slashActiveIndex]="slashActiveIndex()"
+      (slashHighlight)="events.push(['slashHighlight', $event])"
+      (slashAccept)="events.push(['slashAccept', $event])"
     />
   `,
 })
@@ -44,6 +50,9 @@ class HostComponent {
   readonly mentionOpen = signal(false);
   readonly mentionMatches = signal<readonly MentionMember[]>([]);
   readonly mentionActiveIndex = signal(0);
+  readonly slashOpen = signal(false);
+  readonly slashMatches = signal<readonly SlashCommand[]>([]);
+  readonly slashActiveIndex = signal(0);
   readonly events: [string, number][] = [];
 }
 
@@ -56,7 +65,10 @@ async function build(
       | 'emojiActiveIndex'
       | 'mentionOpen'
       | 'mentionMatches'
-      | 'mentionActiveIndex',
+      | 'mentionActiveIndex'
+      | 'slashOpen'
+      | 'slashMatches'
+      | 'slashActiveIndex',
       unknown
     >
   > = {},
@@ -76,6 +88,10 @@ async function build(
 const emoji = (id: string, native: string) =>
   ({ id, native, colons: `:${id}:` }) satisfies TrnEmojiSuggestion;
 
+const commands = SLASH_COMMANDS.filter((command) =>
+  ['shrug', 'me'].includes(command.name),
+);
+
 const members: MentionMember[] = [
   { userId: '@ada:x', name: 'Ada' },
   { userId: '@bob:x', name: 'Bob' },
@@ -90,6 +106,9 @@ describe('ComposerSuggestionsComponent', () => {
     ).toBeNull();
     expect(
       document.querySelector('[data-testid=mention-autocomplete]'),
+    ).toBeNull();
+    expect(
+      document.querySelector('[data-testid=slash-autocomplete]'),
     ).toBeNull();
   });
 
@@ -122,6 +141,39 @@ describe('ComposerSuggestionsComponent', () => {
     expect(document.querySelector('#mention-suggestions')).not.toBeNull();
     expect(document.querySelector('#emoji-suggestion-1')).not.toBeNull();
     expect(document.querySelector('#mention-suggestion-1')).not.toBeNull();
+  });
+
+  it('offers the commands as a labelled listbox naming each one and what it does', async () => {
+    await build({ slashOpen: true, slashMatches: commands });
+
+    const menu = document.querySelector('[data-testid=slash-autocomplete]');
+    expect(menu?.getAttribute('role')).toBe('listbox');
+    expect(menu?.getAttribute('aria-label')).toBe('Commands');
+    expect(menu?.id).toBe('slash-suggestions');
+    const options = menu?.querySelectorAll('[role=option]') ?? [];
+    expect(options.length).toBe(commands.length);
+    // The name carries the leading slash and, where the command takes one, its argument —
+    // otherwise the menu reads as a list of words with no hint of how to call them.
+    const me = [...options].find(
+      (option) => option.id === 'slash-suggestion-0',
+    );
+    expect(me?.textContent).toContain(`/${commands[0].name}`);
+    expect(me?.textContent).toContain(commands[0].description);
+    if (commands[0].argument) {
+      expect(me?.textContent).toContain(commands[0].argument);
+    }
+  });
+
+  it('reports a hovered or clicked command by index', async () => {
+    const { host } = await build({ slashOpen: true, slashMatches: commands });
+    const second = document.querySelector<HTMLElement>('#slash-suggestion-1');
+    second?.dispatchEvent(new MouseEvent('mouseenter'));
+    second?.click();
+
+    expect(host.events).toEqual([
+      ['slashHighlight', 1],
+      ['slashAccept', 1],
+    ]);
   });
 
   it('marks only the highlighted option as selected', async () => {

@@ -29,6 +29,7 @@
       [previewing]="previewing()"
       [disabled]="uploadProgress() !== null"
       [pinned]="toolbarPinned()"
+      [active]="activeFormats()"
       (format)="onFormat($event)"
       (togglePreview)="onTogglePreview()"
       (togglePinned)="onTogglePinned()"
@@ -85,16 +86,21 @@
        at, and what `scrollSuggestionIntoView` looks up — see the child's own note. -->
   <trn-composer-suggestions
     [anchor]="composerField"
-    [emojiOpen]="emojiOpen()"
-    [emojiMatches]="emojiMatches()"
-    [emojiActiveIndex]="emojiActiveIndex()"
-    [mentionOpen]="mentionOpen()"
-    [mentionMatches]="mentionMatches()"
-    [mentionActiveIndex]="mentionActiveIndex()"
-    (emojiHighlight)="emojiActiveIndex.set($event)"
-    (emojiAccept)="acceptEmoji($event)"
-    (mentionHighlight)="mentionActiveIndex.set($event)"
-    (mentionAccept)="acceptMention($event)"
+    [emojiOpen]="menus.emojiOpen()"
+    [emojiMatches]="menus.emojiMatches()"
+    [emojiActiveIndex]="menus.emojiActiveIndex()"
+    [mentionOpen]="menus.mentionOpen()"
+    [mentionMatches]="menus.mentionMatches()"
+    [mentionActiveIndex]="menus.mentionActiveIndex()"
+    (emojiHighlight)="menus.emojiActiveIndex.set($event)"
+    (emojiAccept)="menus.acceptEmoji($event)"
+    (mentionHighlight)="menus.mentionActiveIndex.set($event)"
+    (mentionAccept)="menus.acceptMention($event)"
+    [slashOpen]="menus.slashOpen()"
+    [slashMatches]="menus.slashMatches()"
+    [slashActiveIndex]="menus.slashActiveIndex()"
+    (slashHighlight)="menus.slashActiveIndex.set($event)"
+    (slashAccept)="menus.acceptSlash($event)"
   />
   <input
     #fileInput
@@ -168,18 +174,22 @@
       "
       aria-autocomplete="list"
       [attr.aria-controls]="
-        mentionOpen()
+        menus.mentionOpen()
           ? 'mention-suggestions'
-          : emojiOpen()
+          : menus.emojiOpen()
             ? 'emoji-suggestions'
-            : null
+            : menus.slashOpen()
+              ? 'slash-suggestions'
+              : null
       "
       [attr.aria-activedescendant]="
-        mentionOpen()
-          ? 'mention-suggestion-' + mentionActiveIndex()
-          : emojiOpen()
-            ? 'emoji-suggestion-' + emojiActiveIndex()
-            : null
+        menus.mentionOpen()
+          ? 'mention-suggestion-' + menus.mentionActiveIndex()
+          : menus.emojiOpen()
+            ? 'emoji-suggestion-' + menus.emojiActiveIndex()
+            : menus.slashOpen()
+              ? 'slash-suggestion-' + menus.slashActiveIndex()
+              : null
       "
       (input)="onInput($event)"
       (keydown)="onKeydown($event)"

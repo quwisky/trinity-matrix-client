@@ -41,6 +41,12 @@ All notable changes to this project are documented here. The format is based on
   role change land in the list you were reading. Escape closes whatever is showing, and
   closing it hands the keyboard back to the button you opened it with.
 
+- **The formatting buttons show what your selection already is.** Select some bold text and
+  the **B** is lit; select plain text and it is not. Pressing a lit button takes that
+  formatting off again, so the bar reads as the state of what you have selected rather than as
+  a record of the last button you pressed. Link and code block do not light up, because there
+  is nothing to switch off — pressing them always inserts.
+
 - **The formatting toolbar comes when you need it.** It used to be a row that was either always
   there or never there, with four buttons out and the other five hidden behind a "⋯". Now
   selecting some text brings up all nine — bold, italic, strikethrough, inline code, code
@@ -50,6 +56,14 @@ All notable changes to this project are documented here. The format is based on
   Turning both off means the buttons never appear, which is what people who had already hidden
   the toolbar were asking for and what they will still get. The keyboard shortcuts work either
   way, as they always have.
+
+- **The composer now tells you which slash commands exist.** Typing `/` at the start of a
+  message brings up the list — `/me`, `/shrug`, `/plain`, `/spoiler` — each with what it does
+  and what it takes, so you no longer have to already know the name to use one. Typing more
+  narrows it, the arrow keys move through it, Enter or Tab fills the command in, and Escape
+  puts it away. It only offers a command where one would actually work — at the start of a new
+  message, never mid-sentence, and not while you are replying, editing, or captioning an
+  attachment, because those are sent as written.
 
 ### Fixed
 
