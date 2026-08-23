@@ -243,9 +243,7 @@ export class MessageComposerComponent {
     // `editMessageContent` / `mediaCaptionFields`, none of which look at a leading
     // slash — so previewing `/spoiler x` concealed while replying would promise a
     // spoiler and send the literal text.
-    const parsesCommands =
-      !this.editing() && !this.replyingTo() && !this.hasStaged();
-    const content = ((parsesCommands
+    const content = ((this.parsesCommands()
       ? slashCommandContent(text, renderMarkdown, mentions)
       : null) ?? textMessageContent(text, renderMarkdown(text), mentions)) as {
       formatted_body?: string;
@@ -324,6 +322,22 @@ export class MessageComposerComponent {
    * relying on that.
    */
   private readonly slashAutocomplete = new SlashAutocomplete();
+
+  /**
+   * Whether a leading slash is READ as a command on the way out.
+   *
+   * Only `TimelineActionsService.send` and `ThreadsService.sendThreadMessage` run
+   * `slashCommandContent`. A reply, an edit and an attachment caption route through
+   * `replyMessageContent` / `editMessageContent` / `mediaCaptionFields`, none of which look at
+   * a leading slash — so in those three states `/me waves` goes out as those nine characters.
+   *
+   * One computed, read by BOTH {@link preview} and {@link slashOpen}, because they have to
+   * agree: the preview refusing to conceal a `/spoiler` while a menu is busy offering to
+   * complete it is the worst of the two answers.
+   */
+  private readonly parsesCommands = computed(
+    () => !this.editing() && !this.replyingTo() && !this.hasStaged(),
+  );
   /** The `:shortcode` fragment under the caret, or null when the menu is closed. */
   readonly emojiQuery = this.emojiAutocomplete.query;
   /** Ranked emoji suggestions for the current query (from emoji-mart's index). */
@@ -340,8 +354,17 @@ export class MessageComposerComponent {
   readonly mentionOpen = this.mentionAutocomplete.open;
   /** Commands matching the `/fragment` at the start of the message. */
   readonly slashMatches = this.slashAutocomplete.matches;
-  /** Whether the slash menu is showing. */
-  readonly slashOpen = this.slashAutocomplete.open;
+  /**
+   * Whether the slash menu is showing.
+   *
+   * Gated on {@link parsesCommands}, not just on having matches: offering a command where the
+   * send path will not read one teaches a feature that then silently does not happen — the
+   * user completes `/me`, types a message and watches nine literal characters arrive in the
+   * room. The engine still tracks its query underneath; this only decides whether to show it.
+   */
+  readonly slashOpen = computed(
+    () => this.parsesCommands() && this.slashAutocomplete.open(),
+  );
   /** Index of the highlighted command. */
   readonly slashActiveIndex = this.slashAutocomplete.activeIndex;
   /** Index of the highlighted member suggestion. */
@@ -878,11 +901,18 @@ export class MessageComposerComponent {
     afterNextRender(() => this.autoGrow(), { injector: this.injector });
   }
 
-  /** Close both autocomplete menus and forget the tracked mentions. */
+  /** Close all three autocomplete menus and forget the tracked mentions. */
   private resetMenus(): void {
     this.emojiQuery.set(null);
     this.mentionQuery.set(null);
     this.mentionAutocomplete.clearChosen();
+    // The slash engine's state is decoupled from the text — `matches` reads `query`, not the
+    // textarea — so emptying the box on a send does NOT close this menu. Left open it is worse
+    // than untidy: `accept` finds no trigger in the empty text and returns null while `open`
+    // stays true, so `onEnter` cancels the key and returns, and Enter does nothing at all
+    // until the next keystroke re-syncs. Today a blur beats the Send button's click and hides
+    // that; this is what makes it not depend on the order of two DOM events.
+    this.slashAutocomplete.close();
     // A grid left open across a send is the one remaining route to two uploads at once: its
     // items call `sendMedia` directly, and unlike the toolbar button they are not disabled
     // while an upload runs. `dispatchMedia` refuses it either way; closing the grid means the

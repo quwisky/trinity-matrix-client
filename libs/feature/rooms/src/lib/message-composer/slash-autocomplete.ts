@@ -41,7 +41,17 @@ export class SlashAutocomplete {
   /** The menu is shown only when a query yields at least one command. */
   readonly open = computed(() => this.matches().length > 0);
 
-  /** Index of the highlighted command. */
+  /**
+   * Index of the highlighted command.
+   *
+   * Reset in {@link sync} rather than by an effect on `matches`, which is how the composer
+   * does it for the emoji and mention engines. The difference is deliberate and rests on a
+   * property only this engine has: `matches` is a pure function of `query` over a module
+   * constant, so the same fragment always yields the same list and the highlight can safely
+   * survive a re-sync the user did not ask for — a caret move, a toolbar edit further along
+   * the message. Mention's list can change underneath an unchanged query (members arrive), so
+   * it cannot make that promise and resets on every change instead.
+   */
   readonly activeIndex = signal(0);
 
   /**
@@ -94,7 +104,9 @@ export class SlashAutocomplete {
     if (n === 0) {
       return null;
     }
-    const next = (this.activeIndex() + delta + n) % n;
+    // Modulo twice: `+ n` alone only rescues a delta within one lap, so a page-sized jump
+    // would go negative and index nothing.
+    const next = (((this.activeIndex() + delta) % n) + n) % n;
     this.activeIndex.set(next);
     return next;
   }

@@ -2612,21 +2612,23 @@ describe('MessageComposerComponent', () => {
     });
 
     it('closes on Escape before anything else the key would cancel', async () => {
-      const { fixture, container } = await renderComposer({
-        replyingTo: 'Alice',
-      });
+      // Against the emoji PICKER rather than a reply, which is what this used to use: a reply
+      // is now one of the three states that offers no commands at all, so the menu could never
+      // have been open to be closed first. The rung order is the same claim either way — the
+      // slash menu sits above the picker, and one Escape takes exactly one thing away.
+      const { fixture, container } = await renderComposer();
       const cmp = fixture.componentInstance;
       const ta = container.querySelector('textarea') as HTMLTextAreaElement;
-      let cancelled = 0;
-      cmp.cancelReply.subscribe(() => cancelled++);
+      cmp.toggleEmojiPicker();
+      expect(cmp.pickerOpen()).toBe(true);
 
       typeSlash(cmp, ta, '/sh');
       cmp.onEscape();
       expect(cmp.slashOpen()).toBe(false);
-      expect(cancelled).toBe(0);
+      expect(cmp.pickerOpen()).toBe(true);
 
       cmp.onEscape();
-      expect(cancelled).toBe(1);
+      expect(cmp.pickerOpen()).toBe(false);
     });
 
     it('closes when the field loses focus', async () => {
@@ -2637,6 +2639,75 @@ describe('MessageComposerComponent', () => {
       typeSlash(cmp, ta, '/');
       cmp.onBlur();
 
+      expect(cmp.slashOpen()).toBe(false);
+    });
+
+    it.each([
+      ['replying', { replyingTo: 'Alice' }],
+      ['editing', { editing: true }],
+    ])(
+      'offers nothing while %s, where the send path would not parse one',
+      async (_label, inputs) => {
+        // The other half of "only where the send path would parse one". `send` runs
+        // `slashCommandContent`; `replyMessageContent` and `editMessageContent` never see it,
+        // so a completed `/me waves` would arrive in the room as those nine characters.
+        const { fixture, container } = await renderComposer(inputs);
+        const cmp = fixture.componentInstance;
+        const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+
+        typeSlash(cmp, ta, '/');
+
+        expect(cmp.slashOpen()).toBe(false);
+      },
+    );
+
+    it('offers nothing once a file is staged, where the caption is sent as written', async () => {
+      const { fixture, container } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+
+      pickFiles(cmp, [png('shot.png')]);
+      fixture.detectChanges();
+      expect(cmp.hasStaged()).toBe(true);
+
+      typeSlash(cmp, ta, '/');
+
+      expect(cmp.slashOpen()).toBe(false);
+    });
+
+    it('lets Enter send normally in a state that offers no commands', async () => {
+      // The gate must not swallow the key: with no menu, `/me waves` is an ordinary message
+      // and Enter has to send it rather than being cancelled by a ladder rung.
+      const { fixture, container } = await renderComposer({
+        replyingTo: 'Alice',
+      });
+      const cmp = fixture.componentInstance;
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+      const sent: string[] = [];
+      cmp.submitText.subscribe((e) => sent.push(e.text));
+
+      typeSlash(cmp, ta, '/me waves');
+      cmp.onEnter(enter());
+
+      expect(sent).toEqual(['/me waves']);
+    });
+
+    it('closes the menu when a send clears the composer', async () => {
+      // The engine reads its own `query`, not the textarea, so emptying the box does not close
+      // it. Left open, `accept` finds no trigger in the empty text and returns null while
+      // `open` stays true — `onEnter` then cancels the key and returns, and Enter does nothing
+      // at all until the next keystroke. Driven through `submit()` rather than a click,
+      // because a click blurs first and blur closes it for a different reason.
+      const { fixture, container } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+
+      typeSlash(cmp, ta, '/me');
+      expect(cmp.slashOpen()).toBe(true);
+
+      cmp.submit();
+
+      expect(cmp.text()).toBe('');
       expect(cmp.slashOpen()).toBe(false);
     });
   });

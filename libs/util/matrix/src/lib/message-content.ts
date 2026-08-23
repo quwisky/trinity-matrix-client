@@ -378,8 +378,13 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   },
 ];
 
+// Escaped, because the names are public API now. As a private tuple of four literals they
+// could only ever be `[a-z]+`; exported behind `name: string`, a future `foo.bar` would land
+// in this alternation as a wildcard and quietly widen what the parser accepts.
 const SLASH_RE = new RegExp(
-  `^/(${SLASH_COMMANDS.map((command) => command.name).join('|')})(?:[ \\t]+([\\s\\S]*))?$`,
+  `^/(${SLASH_COMMANDS.map((command) =>
+    command.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+  ).join('|')})(?:[ \\t]+([\\s\\S]*))?$`,
   'i',
 );
 
