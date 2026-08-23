@@ -3121,4 +3121,97 @@ describe('MessageComposerComponent', () => {
       expect(event.defaultPrevented).toBe(false);
     });
   });
+
+  describe('the bar a selection raises', () => {
+    // Unpinned, so the bar is on screen only while there is something to format. Driven
+    // through real events rather than the handlers, because what is being tested is that
+    // something tells the bar the selection has gone — and the bug was that nothing did.
+    function unpinned() {
+      return renderComposer({}, [
+        MockProvider(ComposerSettingsService, {
+          showFormattingToolbar: signal(false).asReadonly(),
+          formatOnSelection: signal(true).asReadonly(),
+        }),
+      ]);
+    }
+
+    function selectSomething(container: HTMLElement): HTMLTextAreaElement {
+      const ta = container.querySelector<HTMLTextAreaElement>(
+        '[data-testid=composer-input]',
+      );
+      if (!ta) {
+        throw new Error('composer input not rendered');
+      }
+      ta.value = 'say hello there';
+      ta.setSelectionRange(4, 9);
+      ta.dispatchEvent(new Event('select', { bubbles: true }));
+      return ta;
+    }
+
+    it('raises the bar while text is selected', async () => {
+      const { fixture, container } = await unpinned();
+      expect(fixture.componentInstance.showToolbar()).toBe(false);
+
+      selectSomething(container);
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.showToolbar()).toBe(true);
+    });
+
+    it('drops the bar when focus leaves the composer', async () => {
+      // A textarea keeps its selection after it blurs, and none of select/keyup/pointerup
+      // fire when the press lands elsewhere — so without the focusout the bar stayed up for
+      // good once you clicked away into the timeline.
+      const { fixture, container } = await unpinned();
+      const ta = selectSomething(container);
+      fixture.detectChanges();
+      expect(fixture.componentInstance.showToolbar()).toBe(true);
+
+      const elsewhere = document.createElement('button');
+      document.body.appendChild(elsewhere);
+      ta.dispatchEvent(
+        new FocusEvent('focusout', {
+          bubbles: true,
+          relatedTarget: elsewhere,
+        }),
+      );
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.showToolbar()).toBe(false);
+      elsewhere.remove();
+    });
+
+    it('keeps the bar when focus moves to a control inside the composer', async () => {
+      // The press that opens a formatting button blurs the textarea BEFORE the click lands.
+      // Clearing unconditionally would unmount the bar in between, and the button you aimed
+      // at would never fire.
+      const { fixture, container } = await unpinned();
+      const ta = selectSomething(container);
+      fixture.detectChanges();
+
+      const send = container.querySelector('[data-testid=composer-send]');
+      expect(send).not.toBeNull();
+      ta.dispatchEvent(
+        new FocusEvent('focusout', { bubbles: true, relatedTarget: send }),
+      );
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.showToolbar()).toBe(true);
+    });
+
+    it('drops the bar when the message is sent', async () => {
+      // Sending empties the box through the signal, which fires no `select`. Enter happens to
+      // self-correct on the following keyup; pressing Send with the mouse does not.
+      const { fixture, container } = await unpinned();
+      selectSomething(container);
+      fixture.componentInstance.text.set('say hello there');
+      fixture.detectChanges();
+      expect(fixture.componentInstance.showToolbar()).toBe(true);
+
+      fixture.componentInstance.submit();
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.showToolbar()).toBe(false);
+    });
+  });
 });

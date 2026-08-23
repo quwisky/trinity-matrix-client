@@ -58,8 +58,13 @@ export class ComposerSettingsService {
       const { value: pinned } = await Preferences.get({
         key: SHOW_TOOLBAR_KEY,
       });
-      if (pinned !== null) {
-        this._showFormattingToolbar.set(pinned === 'true');
+      // Parsed once and reused, so the migration below asks the same question the signal did.
+      // Comparing the raw string against `'false'` there instead would let a value that is
+      // neither `'true'` nor `'false'` unpin the bar (it is not `'true'`) while skipping the
+      // inheritance (it is not `'false'`) — the one combination this is meant to prevent.
+      const storedPin = pinned === null ? null : pinned === 'true';
+      if (storedPin !== null) {
+        this._showFormattingToolbar.set(storedPin);
       }
 
       const { value: onSelection } = await Preferences.get({
@@ -69,7 +74,7 @@ export class ComposerSettingsService {
         this._formatOnSelection.set(onSelection === 'true');
         return;
       }
-      if (pinned === 'false') {
+      if (storedPin === false) {
         this.setFormatOnSelection(false);
       }
     } catch {

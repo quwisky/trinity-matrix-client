@@ -65,11 +65,27 @@
 
 // The nine actions, as one group. `trn-toggle-group` brings its own `w-fit` and gap; both are
 // overridden because this is a bar inside a row, not a segmented control sized to its content.
+// WRAPS, and it has to. Nine buttons at the 44px touch minimum plus two rules is 470px of
+// content; a phone gives the bar about 358px. Without this the row overflowed by ~176px and
+// `.chat-body`'s `overflow: hidden` cut the tail off — taking the pin and the preview toggle
+// with it, which is the only way to reach a preview on a phone. `min-width: 0` is what lets
+// the group shrink below its content in the first place; a flex item defaults to
+// `min-width: auto` and would refuse.
+// Wrapped rather than scrolled sideways: an action you have to swipe to find is the same
+// problem as one behind a kebab, and deleting the kebab is what this bar is for. The cost is
+// vertical — the bar is two rows on a phone (92px at 390, three rows at 360) against one row
+// at 46px — which is the trade the old `narrow` variant made in the other direction by
+// showing only two of the nine.
+// Only the ACTIONS wrap, not `.toolbar` itself: the pin and the preview toggle stay on the
+// first row where they are always in the same place, instead of being pushed to a line of
+// their own.
 .toolbar__actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 2px;
   width: auto;
+  min-width: 0;
 }
 
 // The rules between the three groups. Sized against the 32px buttons rather than stretched:

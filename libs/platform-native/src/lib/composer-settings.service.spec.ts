@@ -83,6 +83,18 @@ describe('ComposerSettingsService', () => {
     expect(stored[ON_SELECTION]).toBeUndefined(); // nothing to migrate, nothing written
   });
 
+  it('inherits from a stored value that is neither true nor false', async () => {
+    // A corrupt or hand-edited value is not `'true'`, so the bar reads as unpinned — and the
+    // inheritance has to agree with that rather than testing the raw string for `'false'`.
+    stored[PIN] = 'nope';
+    const svc = build();
+
+    await svc.init();
+
+    expect(svc.showFormattingToolbar()).toBe(false);
+    expect(svc.formatOnSelection()).toBe(false);
+  });
+
   it('lets the two disagree once both are stored', async () => {
     // The state the split exists to make expressible: no pinned row, but a bar on selection.
     stored[PIN] = 'false';

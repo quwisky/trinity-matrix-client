@@ -463,3 +463,59 @@ test.describe('Composer formatting', () => {
     }
   });
 });
+
+// The bar at phone size, which the suite above structurally cannot see: the project is
+// Desktop Chrome at 1280, and the 44px touch minimums only apply under `(pointer: coarse)` —
+// so `hasTouch` here is not decoration, it is the half that makes the buttons big enough to
+// overflow. Nine of them plus two rules is 470px of content against about 358px of bar.
+test.describe('Composer formatting on a phone', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  test.describe.configure({ timeout: 60_000 });
+
+  test('the whole bar stays on screen, including the pin and the preview toggle', async ({
+    page,
+    request,
+  }) => {
+    // `.chat-body` is `overflow: hidden`, so anything past the right edge is not merely
+    // off-screen but unreachable — and the two that fall off the end are the pin and the
+    // preview toggle, the second of which is the only way to reach a preview on a phone.
+    await openComposer(page, request, 'ph-narrow');
+
+    const width = page.viewportSize()?.width ?? 0;
+    expect(width).toBeGreaterThan(0);
+
+    const controls = [
+      'format-bold',
+      'format-italic',
+      'format-strike',
+      'format-code',
+      'format-codeblock',
+      'format-quote',
+      'format-link',
+      'format-list',
+      'format-tasklist',
+      'format-pin',
+      'composer-preview-toggle',
+    ];
+    for (const id of controls) {
+      const box = await page.getByTestId(id).boundingBox();
+      if (!box) {
+        throw new Error(`${id} is not laid out`);
+      }
+      // Half a pixel of slack for sub-pixel rounding, not for a button hanging off the edge.
+      expect(
+        box.x + box.width,
+        `${id} runs past the right edge`,
+      ).toBeLessThanOrEqual(width + 0.5);
+      expect(box.x, `${id} runs past the left edge`).toBeGreaterThanOrEqual(
+        -0.5,
+      );
+    }
+
+    // And it wrapped rather than scrolled: the row is taller than one button, which is the
+    // mechanism the assertions above depend on.
+    const bar = await page.locator('.toolbar').boundingBox();
+    expect(bar?.height ?? 0).toBeGreaterThan(50);
+  });
+});

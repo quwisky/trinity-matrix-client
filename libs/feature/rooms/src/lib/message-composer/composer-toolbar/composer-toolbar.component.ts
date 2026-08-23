@@ -97,7 +97,7 @@ export class ComposerToolbarComponent {
   /** The pin was pressed; the new state is the opposite of {@link pinned}. */
   readonly togglePinned = output<void>();
 
-  readonly groups = GROUPS;
+  protected readonly groups = GROUPS;
 
   /**
    * Whether the formatting actions are unavailable. Previewing counts: the textarea is hidden,
@@ -123,10 +123,10 @@ export class ComposerToolbarComponent {
    * pinned empty here and the derived version is a separate piece of work, not something to
    * half-do inside a layout change.
    */
-  // `string[]`, not `readonly string[]`: the kit's `ToggleValue<T>` is `T | T[] | null`, and a
-  // readonly array is not assignable to it. Template type-checking is what says so, which the
+  // Mutable, not `readonly FormatAction[]`: the kit's `ToggleValue<T>` is `T | T[] | null`, and
+  // a readonly array is not assignable to it. Template type-checking is what says so, which the
   // spec typecheck target does not do — `pnpm build` is the gate that catches this.
-  protected readonly applied = signal<string[]>([]);
+  protected readonly applied = signal<FormatAction[]>([]);
 
   /**
    * Apply an action, then put the group back to holding nothing.

@@ -3,7 +3,6 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
-  DestroyRef,
   effect,
   ElementRef,
   inject,
@@ -35,7 +34,6 @@ import {
   type FormatAction,
   type Mention,
 } from '@trinity/util/matrix';
-import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { ComposerToolbarComponent } from './composer-toolbar/composer-toolbar.component';
 import { ComposerAttachmentStripComponent } from './composer-attachment-strip/composer-attachment-strip.component';
 import { ComposerInsertMenuComponent } from './composer-insert-menu/composer-insert-menu.component';
@@ -128,7 +126,14 @@ let nextPickerId = 0;
   // pickers render inside this component, so the keystroke reaches here from anywhere in
   // the composer. Bound once: a second binding on the textarea would double-fire and
   // close two things per press.
-  host: { '(keydown.escape)': 'onEscape()' },
+  // `focusout` alongside Escape, and on the HOST for the same reason: the bar is raised by a
+  // selection that outlives the focus, so something has to notice the focus going. It has to be
+  // the whole composer rather than the textarea, or moving focus onto a toolbar button would
+  // dismiss the bar out from under the click that is about to land on it.
+  host: {
+    '(keydown.escape)': 'onEscape()',
+    '(focusout)': 'onComposerFocusOut($event)',
+  },
   templateUrl: './message-composer.component.html',
   styleUrl: './message-composer.component.scss',
 })
@@ -210,16 +215,6 @@ export class MessageComposerComponent {
   readonly typing = output<boolean>();
 
   readonly text = signal('');
-
-  /**
-   * True on the narrow single-pane layout, where the toolbar keeps fewer buttons outside its
-   * overflow. Owned here rather than in the toolbar so that stays presentational, the same
-   * division the sidebar's user panel uses.
-   */
-  protected readonly narrowLayout = mediaQuerySignal(
-    BELOW_MD_QUERY,
-    inject(DestroyRef),
-  );
 
   /** Whether the preview is showing in place of the input. */
   readonly previewing = signal(false);
@@ -392,6 +387,8 @@ export class MessageComposerComponent {
 
   /** Whether there is a non-empty selection in the textarea right now. */
   private readonly hasSelection = signal(false);
+  /** This component's own element — {@link onComposerFocusOut} asks it what focus left. */
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   /**
    * Whether the formatting bar is on screen.
@@ -823,6 +820,11 @@ export class MessageComposerComponent {
     this.submitText.emit({ text: value, mentions: this.activeMentions() });
     this.typing.emit(false); // a sent message ends the typing notification
     this.resetMenus();
+    // Emptying the box below is a signal write, and writing `value` fires no `select` — so
+    // nothing would tell the bar its selection is gone. Enter happens to self-correct on the
+    // following `keyup`; pressing Send with the mouse does not, and left the bar hanging over
+    // an empty composer.
+    this.hasSelection.set(false);
     if (!this.editing()) {
       // Edits clear via editing → false; new messages clear here.
       this.text.set('');
@@ -961,6 +963,27 @@ export class MessageComposerComponent {
   protected onSelectionChange(): void {
     const el = this.textarea()?.nativeElement;
     this.hasSelection.set(!!el && el.selectionStart !== el.selectionEnd);
+  }
+
+  /**
+   * Focus left the composer, so the bar it raised goes with it.
+   *
+   * A textarea keeps `selectionStart !== selectionEnd` after it blurs, and none of the three
+   * events above fire when the press lands somewhere else — so without this an unpinned bar
+   * raised by a selection stays up indefinitely once you click away into the timeline.
+   *
+   * `relatedTarget` is what makes it safe: it is the element about to receive focus, and a
+   * press on one of the bar's own buttons blurs the textarea BEFORE the click is delivered.
+   * Clearing unconditionally would unmount the bar between the press and the click, so the
+   * button you aimed at would never fire. Null means focus is leaving the document entirely
+   * (another window, the URL bar), which counts as leaving.
+   */
+  protected onComposerFocusOut(event: FocusEvent): void {
+    const next = event.relatedTarget;
+    if (next instanceof Node && this.host.nativeElement.contains(next)) {
+      return;
+    }
+    this.hasSelection.set(false);
   }
 
   /**

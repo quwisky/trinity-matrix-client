@@ -122,7 +122,10 @@ describe('ComposerToolbarComponent', () => {
     expect(toggled).toBe(1);
   });
 
-  it('disables every action while the composer is busy', async () => {
+  it('disables every formatting action while the composer is busy', async () => {
+    // The nine only. `format-pin` and the preview toggle are deliberately still live: they
+    // change what the composer SHOWS, which is a fair thing to ask for mid-upload, where
+    // wrapping text in a box you cannot type into is not.
     const { container } = await renderToolbar({ disabled: true });
 
     for (const testid of ['format-bold', 'format-italic', 'format-tasklist']) {
