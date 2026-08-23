@@ -14,6 +14,7 @@ import { EmptyStateComponent } from './empty-state.component';
     <trn-empty-state
       title="Nothing here"
       body="a string that must lose"
+      class="mt-4"
       data-testid="threads-empty"
       aria-live="polite"
     >
@@ -73,14 +74,16 @@ describe('EmptyStateComponent', () => {
     expect(action?.closest('.empty-state__actions')).not.toBeNull();
   });
 
-  it('passes an attribute written on the element straight through', async () => {
-    // `data-testid` and `aria-live` are how the call sites are found and announced. Neither
-    // needs an input of its own, and both would be lost if the host rewrote its attributes.
+  it("adds its own host class rather than replacing the call site's", async () => {
+    // `host: { class: 'block' }` and a `class` written at the call site have to coexist: the
+    // adopting sites need their own spacing utilities, and `block` is what stops this dropping
+    // its padding in a non-flex parent. An earlier version of this test asserted that
+    // `data-testid` survives, which is true of every Angular component and could not fail.
     const { container } = await render(ProjectingHostComponent);
 
     const host = container.querySelector('[data-testid=threads-empty]');
-    expect(host?.tagName.toLowerCase()).toBe('trn-empty-state');
-    expect(host?.getAttribute('aria-live')).toBe('polite');
+    expect(host?.classList.contains('block')).toBe(true);
+    expect(host?.classList.contains('mt-4')).toBe(true);
   });
 
   it('renders an icon only when one is named', async () => {
@@ -110,6 +113,43 @@ describe('EmptyStateComponent', () => {
       "Couldn't load rooms",
     );
     expect(container.querySelector('.text-destructive')).toBeNull();
+  });
+
+  it('leaves nothing inside the body paragraph when there is neither a string nor projected content', async () => {
+    // The title is guarded by an `@if` and the body is not — it is a slot whose fallback is
+    // the interpolation, so the element always exists and `empty:hidden` is what keeps a
+    // heading-only panel from carrying a line box under it.
+    //
+    // Asserted as "no meaningful child nodes" rather than through `:empty`, because jsdom and
+    // the browsers disagree about that selector: jsdom implements Selectors 3, where a comment
+    // counts as content, while Chromium and WebKit implement Selectors 4, where it does not.
+    // Measured in both engines — the rule really does hide this in a browser, and asserting
+    // `:empty` here would fail against a component that works.
+    //
+    // What is left to guard is the precondition: nothing but anchors inside that element.
+    // Reformatting the template is NOT the risk — Angular's default `preserveWhitespaces:
+    // false` collapses indentation before it reaches the DOM, checked by reflowing this
+    // element across lines and watching the tests stay green. The risk is content: a stray
+    // `&nbsp;`, a wrapper element, an `@if` that renders a space. That mutation does fail.
+    const { container } = await render(EmptyStateComponent, {
+      inputs: { title: 'Search this room' },
+    });
+
+    const body = container.querySelector('p.text-13');
+    expect(body?.className).toContain('empty:hidden');
+    const meaningful = [...(body?.childNodes ?? [])].filter(
+      (node) => node.nodeType !== Node.COMMENT_NODE && node.textContent !== '',
+    );
+    expect(meaningful, body?.outerHTML).toEqual([]);
+  });
+
+  it('keeps the body paragraph filled when there is a string to put in it', async () => {
+    const { container } = await render(EmptyStateComponent, {
+      inputs: { body: 'No pinned messages in this room.' },
+    });
+
+    const body = container.querySelector('p.text-13');
+    expect(body?.textContent?.trim()).toBe('No pinned messages in this room.');
   });
 
   it('is a block, so its padding survives a non-flex parent', async () => {

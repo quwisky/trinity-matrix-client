@@ -76,11 +76,28 @@ export class EmptyStateComponent {
   readonly tone = input<'muted' | 'danger'>('muted');
 
   /**
+   * Whole class strings, never a static `class` beside a `[class]` binding.
+   *
+   * `page-header` — the model this component follows for styling — puts the entire recipe in
+   * its computed, and nothing else in the workspace mixes the two forms. Kept as full literal
+   * strings rather than assembled from fragments, so the Tailwind classes stay statically
+   * scannable; that is what decides whether they are generated at all.
+   *
+   * `empty:hidden` is load-bearing rather than tidiness: with neither `body` set nor content
+   * projected, this paragraph holds only an anchor, and without the rule it would still
+   * contribute a line box under a heading that should be the last thing on the panel.
+   *
    * `text-danger`, never `text-destructive`: the latter is a fill/tint token whose dark value
    * is a near-black maroon, so using it as a foreground makes the error unreadable in exactly
    * the theme where an error matters most.
    */
-  protected readonly toneClass = computed(() =>
-    this.tone() === 'danger' ? 'text-danger' : 'text-muted-foreground',
+  protected readonly bodyClass = computed(() =>
+    this.tone() === 'danger'
+      ? 'text-13 text-balance text-danger empty:hidden'
+      : 'text-13 text-balance text-muted-foreground empty:hidden',
   );
+
+  /** `empty:hidden` so a panel with no action contributes neither the row nor its margin. */
+  protected readonly actionsClass =
+    'empty-state__actions mt-1 flex items-center gap-2 empty:hidden';
 }
