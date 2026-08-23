@@ -1,7 +1,7 @@
 <!-- Centred column. `text-balance` on the copy rather than a width cap: these sit in panels
      from a 280px sidebar to a full chat pane, and a fixed measure that reads well in one is
      wrong in the other. -->
-<div class="flex flex-col items-center gap-2 px-4 py-8 text-center">
+<div [class]="layoutClass()">
   @if (icon(); as name) {
     <trn-icon [name]="name" class="text-2xl text-muted-foreground" />
   }

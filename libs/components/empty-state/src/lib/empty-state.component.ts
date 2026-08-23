@@ -76,6 +76,20 @@ export class EmptyStateComponent {
   readonly tone = input<'muted' | 'danger'>('muted');
 
   /**
+   * How much room it takes.
+   *
+   * The fifteen rules this replaces are not one size, which only adoption revealed: four are
+   * centred panels at 24px (the timeline, a thread, the quick switcher, in-room search), and
+   * the rest are lines inside a list — 8px in the two sidebars and the reactions dialog, 12px
+   * in the three that sit inside a `<ul>`. A single size would have grown the compact ones
+   * roughly fourfold in a 280px column.
+   *
+   * Two, not three: 8px and 12px are near enough to consolidate, and consolidating drift is
+   * the point of the component. 24px against 32px is not — that is a panel's worth.
+   */
+  readonly size = input<'panel' | 'line'>('panel');
+
+  /**
    * Whole class strings, never a static `class` beside a `[class]` binding.
    *
    * `page-header` — the model this component follows for styling — puts the entire recipe in
@@ -95,6 +109,19 @@ export class EmptyStateComponent {
     this.tone() === 'danger'
       ? 'text-13 text-balance text-danger empty:hidden'
       : 'text-13 text-balance text-muted-foreground empty:hidden',
+  );
+
+  /**
+   * The outer column's own padding, which is the whole of what {@link size} decides.
+   *
+   * `py-6` for a panel — 24px, matching the four sites that already used it. Worth naming:
+   * the first version of this component shipped `py-8`, which matched none of the fifteen and
+   * would have changed every one of them.
+   */
+  protected readonly layoutClass = computed(() =>
+    this.size() === 'line'
+      ? 'flex flex-col items-center gap-1 px-2 py-2 text-center'
+      : 'flex flex-col items-center gap-2 px-4 py-6 text-center',
   );
 
   /** `empty:hidden` so a panel with no action contributes neither the row nor its margin. */

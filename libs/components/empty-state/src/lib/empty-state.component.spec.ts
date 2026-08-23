@@ -152,6 +152,27 @@ describe('EmptyStateComponent', () => {
     expect(body?.textContent?.trim()).toBe('No pinned messages in this room.');
   });
 
+  it("takes a panel's padding by default and a line's when asked", async () => {
+    // The fifteen rules this replaces were three sizes: 24px panels, and 8-12px lines inside
+    // a list. A single size would have grown the compact ones roughly fourfold in a 280px
+    // sidebar column, which is the thing adoption revealed and the component had missed.
+    const { fixture } = await render(EmptyStateComponent, {
+      inputs: { body: 'nothing' },
+    });
+    // `render` makes the component the fixture root, so the host is `nativeElement` itself
+    // rather than something inside `container`.
+    const column = () =>
+      (fixture.nativeElement as HTMLElement).querySelector('div');
+
+    expect(column()?.className).toContain('py-6');
+
+    fixture.componentRef.setInput('size', 'line');
+    fixture.detectChanges();
+
+    expect(column()?.className).toContain('py-2');
+    expect(column()?.className).not.toContain('py-6');
+  });
+
   it('is a block, so its padding survives a non-flex parent', async () => {
     // Asserted as a class rather than through getComputedStyle: Tailwind does not compute in
     // jsdom, and a wrapper with no host display drops its padding only where the parent is
