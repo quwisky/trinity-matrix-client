@@ -57,7 +57,10 @@ const MENU: readonly SettingsMenuItem[] = [
   selector: 'trn-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './settings.page.html',
-  styleUrl: './settings.page.scss',
+  // The page sits on the app's content surface, matching the rooms main pane and thread
+  // panels; painting the host covers the transparent header + panes (else it falls back to
+  // the darker shell background, which is wrong in dark mode).
+  host: { class: 'flex h-full flex-col bg-[var(--trinity-chat)]' },
   imports: [
     PageHeaderComponent,
     TrnIconComponent,

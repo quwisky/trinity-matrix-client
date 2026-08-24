@@ -83,6 +83,29 @@ test.describe('Settings', () => {
       'aria-current',
       'page',
     );
+
+    // Two panes SIDE BY SIDE, and the active link visibly marked. Both used to come from
+    // `settings.page.scss` media queries and now come from md-prefixed utilities, which
+    // jsdom cannot evaluate at all — it applies no cascade and no media queries, so the
+    // unit suite can only see that a class string is present. Measured here instead.
+    const nav = page.locator('nav[aria-label="Settings sections"]');
+    const navBox = await nav.boundingBox();
+    const detailBox = await page
+      .locator('section:has(> router-outlet), section')
+      .first()
+      .boundingBox();
+    expect(navBox).not.toBeNull();
+    expect(detailBox).not.toBeNull();
+    // Beside, not stacked: the detail starts after the nav ends.
+    expect(detailBox!.x).toBeGreaterThanOrEqual(navBox!.x + navBox!.width - 1);
+    expect(navBox!.width).toBe(240);
+
+    // The active cue is an inset accent bar, and it has to differ from plain hover —
+    // which uses the same background token, so background alone would say nothing.
+    const shadow = await page
+      .getByTestId('settings-nav-profile')
+      .evaluate((el) => getComputedStyle(el).boxShadow);
+    expect(shadow).not.toBe('none');
   });
 
   test('desktop: back leaves settings without retracing visited sections', async ({

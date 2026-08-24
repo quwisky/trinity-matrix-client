@@ -12,25 +12,51 @@
   </button>
 </trn-page-header>
 
-<div class="settings" [class.settings--detail]="sectionActive()">
-  <nav class="settings__menu" aria-label="Settings sections">
+<!-- Narrow: one pane at a time — the index lists the categories, opening one swaps to its
+     detail, and the header's back returns to the list. Wide: both, side by side. -->
+<div class="flex min-h-0 flex-1 flex-col md:flex-row">
+  <nav
+    class="flex flex-col gap-0.5 p-2 md:w-60 md:flex-none md:overflow-y-auto md:border-r md:border-[var(--trinity-divider)]"
+    aria-label="Settings sections"
+    [class.max-md:hidden]="sectionActive()"
+  >
     @for (item of menu; track item.path) {
+      <!-- `is-active` carries no styles of its own; it is the hook the icon's
+           `group-[.is-active]` variant keys on, since a child cannot see its parent's
+           state any other way. The active cues are md-only: on a narrow screen the list
+           is gone the moment a section opens, so there is nothing to mark. -->
       <a
-        class="settings__item"
+        class="group flex cursor-pointer items-center gap-3 rounded-[var(--trinity-radius)] px-3 py-2.5 text-sm font-medium text-[var(--trinity-text)] no-underline hover:bg-[var(--trinity-hover)]"
         [routerLink]="item.path"
         [replaceUrl]="wide()"
-        routerLinkActive="settings__item--active"
+        routerLinkActive="is-active md:bg-[var(--trinity-hover)] md:shadow-[inset_3px_0_0_var(--trinity-accent)]"
         ariaCurrentWhenActive="page"
         [attr.data-testid]="'settings-nav-' + item.path"
       >
-        <trn-icon [name]="item.icon" class="settings__item-icon" />
-        <span class="settings__item-label">{{ item.label }}</span>
-        <trn-icon name="chevron-right" class="settings__item-chevron" />
+        <trn-icon
+          [name]="item.icon"
+          class="flex-none text-lg text-[var(--trinity-text-muted)] md:group-[.is-active]:text-link"
+        />
+        <span class="min-w-0 flex-1">{{ item.label }}</span>
+        <!-- A mobile drill-in affordance; the sidebar shows the active highlight instead. -->
+        <trn-icon
+          name="chevron-right"
+          class="flex-none text-base text-[var(--trinity-text-muted)] md:hidden"
+        />
       </a>
     }
-    <p class="settings__build" data-testid="settings-build">{{ buildLabel }}</p>
+    <!-- Version + commit of the running build, tucked below the section list. -->
+    <p
+      class="mt-auto mb-0 px-3 pt-2.5 pb-1 text-xs text-[var(--trinity-text-muted)] select-text"
+      data-testid="settings-build"
+    >
+      {{ buildLabel }}
+    </p>
   </nav>
-  <section class="settings__detail">
+  <section
+    class="min-w-0 flex-1 overflow-y-auto"
+    [class.max-md:hidden]="!sectionActive()"
+  >
     <router-outlet />
   </section>
 </div>

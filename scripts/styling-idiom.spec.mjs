@@ -104,13 +104,8 @@ const LEDGER = [
   'libs/feature/rooms/src/lib/user-card/user-card.component.scss',
   'libs/feature/rooms/src/lib/user-picker/user-picker.component.scss',
   'libs/feature/rooms/src/lib/voice-message/voice-message.component.scss',
-  'libs/feature/settings/src/lib/advanced/advanced-settings.component.scss',
   'libs/feature/settings/src/lib/advanced/config-editor/config-editor.component.scss',
-  'libs/feature/settings/src/lib/devices/devices-section.component.scss',
-  'libs/feature/settings/src/lib/gifs/gifs-section.component.scss',
   'libs/feature/settings/src/lib/server/homeserver-block.component.scss',
-  'libs/feature/settings/src/lib/settings/settings.page.scss',
-  'libs/feature/settings/src/lib/shortcuts/shortcuts-section.component.scss',
 ];
 
 describe('styling idiom', () => {

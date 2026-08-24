@@ -188,9 +188,13 @@ describe('SettingsPage (shell)', () => {
 
     const active = el.querySelector('[data-testid="settings-nav-appearance"]');
     const other = el.querySelector('[data-testid="settings-nav-profile"]');
-    expect(active?.classList.contains('settings__item--active')).toBe(true);
+    // `is-active` is the marker `routerLinkActive` applies; it carries no styles of its
+    // own and exists so the icon's `group-[.is-active]` variant has something to key on —
+    // a child cannot see its parent's active state any other way. The visible cues sit in
+    // the same `routerLinkActive` string as md-prefixed utilities.
+    expect(active?.classList.contains('is-active')).toBe(true);
     expect(active?.getAttribute('aria-current')).toBe('page');
-    expect(other?.classList.contains('settings__item--active')).toBe(false);
+    expect(other?.classList.contains('is-active')).toBe(false);
     expect(other?.getAttribute('aria-current')).toBeNull();
   });
 
@@ -219,8 +223,14 @@ describe('SettingsPage (shell)', () => {
     const { harness, shell } = await harnessAt('/settings/appearance');
 
     expect(shell.sectionActive()).toBe(true);
+    // Which pane shows is now a `max-md:hidden` on each pane rather than a modifier class
+    // on their parent, so assert the panes themselves — narrower markup, and a stronger
+    // claim: the old check only said a class was present somewhere.
     const el = harness.fixture.nativeElement as HTMLElement;
-    expect(el.querySelector('.settings--detail')).not.toBeNull();
+    const nav = el.querySelector('nav')!;
+    const detail = el.querySelector('section')!;
+    expect(nav.classList.contains('max-md:hidden')).toBe(true);
+    expect(detail.classList.contains('max-md:hidden')).toBe(false);
   });
 
   it('leaves settings via history when the header back button is clicked at the index', async () => {
