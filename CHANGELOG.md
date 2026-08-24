@@ -31,6 +31,12 @@ All notable changes to this project are documented here. The format is based on
   announces them as switches too, which is the same thing said out loud. The four places that
   really are "pick some of these" keep their tick boxes: adding rooms to a space, managing a
   space's rooms, the room history options, and confirming you have saved a recovery key.
+- **The "nothing here yet" messages all look the same now.** Fourteen places tell you a list is
+  empty — no messages in a channel, no threads, no pinned messages, no search results, nobody in
+  a space — and each had drifted into its own size and spacing. They are one panel now, at one
+  size. The wording is unchanged everywhere; what moves is that the largest of them (the empty
+  channel, an empty thread) are set at the same size as the rest rather than a few pixels larger,
+  and the tightest gain a little breathing room.
 
 - **The composer's buttons live inside the message box.** The `+`, emoji and send buttons used
   to sit outside the box you type in, flanking it. They are inside it now, so the whole thing

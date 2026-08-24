@@ -12,6 +12,7 @@ import { ActivatedRoute, Router, type ParamMap } from '@angular/router';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { AuthService } from '@trinity/data-access/auth';
+import { AuthCardComponent } from '../auth-card/auth-card.component';
 import { SsoStateStore } from '../sso-state.store';
 import { OidcStateStore } from '../oidc-state.store';
 
@@ -33,7 +34,7 @@ import { OidcStateStore } from '../oidc-state.store';
   selector: 'trn-sso-callback',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './sso-callback.page.html',
-  imports: [HlmButton, TrnSpinnerComponent],
+  imports: [HlmButton, TrnSpinnerComponent, AuthCardComponent],
 })
 export class SsoCallbackPage implements OnInit {
   private readonly auth = inject(AuthService);

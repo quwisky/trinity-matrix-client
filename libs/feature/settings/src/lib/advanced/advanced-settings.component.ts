@@ -100,7 +100,7 @@ function exportFileName(now: Date): string {
   selector: 'trn-advanced-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './advanced-settings.component.html',
-  styleUrl: './advanced-settings.component.scss',
+  host: { class: 'block' },
   imports: [ConfigEditorOutletDirective, HlmButton, TrnLabel, TrnTextarea],
 })
 export class AdvancedSettingsComponent {

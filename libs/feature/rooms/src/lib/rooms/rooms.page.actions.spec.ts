@@ -473,12 +473,18 @@ describe('RoomsPage room / DM / invite actions', () => {
   it('shows a user card for a mention link, starting a DM only if messaged', async () => {
     const shell = build();
     userCardOpen.mockResolvedValue('@bob:hs'); // the viewer chose "Message"
+    const mention = document.createElement('a');
 
-    shell.messages.onMatrixLink({ kind: 'user', userId: '@bob:hs' });
+    shell.messages.onMatrixLink({
+      target: { kind: 'user', userId: '@bob:hs' },
+      anchor: mention,
+    });
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(userCardOpen).toHaveBeenCalledWith('@bob:hs');
+    // The anchor is forwarded, not dropped: it is what pins the card to the mention
+    // instead of centring it over the sentence the mention is part of.
+    expect(userCardOpen).toHaveBeenCalledWith('@bob:hs', mention);
     expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
     expect(shell.store.activeRoomId()).toBe('!dm:hs');
   });
@@ -487,11 +493,14 @@ describe('RoomsPage room / DM / invite actions', () => {
     const shell = build();
     userCardOpen.mockResolvedValue(null); // dismissed
 
-    shell.messages.onMatrixLink({ kind: 'user', userId: '@bob:hs' });
+    // No anchor — the edit-history route, where the dialog holding the link has closed.
+    shell.messages.onMatrixLink({
+      target: { kind: 'user', userId: '@bob:hs' },
+    });
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(userCardOpen).toHaveBeenCalledWith('@bob:hs');
+    expect(userCardOpen).toHaveBeenCalledWith('@bob:hs', undefined);
     expect(createDirectMessage).not.toHaveBeenCalled();
   });
 

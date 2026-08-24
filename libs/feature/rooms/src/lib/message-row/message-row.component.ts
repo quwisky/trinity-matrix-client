@@ -19,15 +19,14 @@ import {
 } from '@trinity/components/message-toolbar';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import { type ThreadSummary } from '@trinity/data-access/timeline';
-import {
-  type MatrixLinkTarget,
-  type MessageView,
-  type ReceiptView,
-} from '@trinity/util/matrix';
+import { type MessageView, type ReceiptView } from '@trinity/util/matrix';
 import { MessageReactionsComponent } from '../message-reactions/message-reactions.component';
 import { MediaAttachmentComponent } from '../media-attachment/media-attachment.component';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
-import { MatrixLinkDirective } from '../matrix-link/matrix-link.directive';
+import {
+  type MatrixLinkClick,
+  MatrixLinkDirective,
+} from '../matrix-link/matrix-link.directive';
 import { PollComponent } from '../poll/poll.component';
 import { LinkPreviewComponent } from '../link-preview/link-preview.component';
 import { LocationComponent } from '../location-share/location.component';
@@ -302,7 +301,7 @@ export class MessageRowComponent {
   readonly action = output<MessageRowAction>();
 
   /** A `matrix.to` permalink clicked in the message body, for the host to route in-app. */
-  readonly matrixLink = output<MatrixLinkTarget>();
+  readonly matrixLink = output<MatrixLinkClick>();
 
   /** A vote cast on this row's poll (the host sends the m.poll.response). */
   readonly pollVote = output<{ pollId: string; answerId: string }>();

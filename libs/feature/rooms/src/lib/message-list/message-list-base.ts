@@ -14,6 +14,7 @@ import {
 } from '@angular/core';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { ReactionPickerService } from '../reaction-picker/reaction-picker.service';
+import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import { ForwardService } from '../forward/forward.service';
 import { ReportService } from '../report/report.service';
 import { MessageSourceService } from '../message-source/message-source.service';
@@ -29,7 +30,6 @@ import {
   messagePermalink,
   quoteBlock,
   startOfLocalDay,
-  type MatrixLinkTarget,
   type MessageView,
   type Mention,
 } from '@trinity/util/matrix';
@@ -219,7 +219,7 @@ export abstract class MessageListBase {
   /** The composer's typing state changed — host debounces it into a typing notification. */
   readonly typing = output<boolean>();
   /** A `matrix.to` permalink clicked in a message body, for the host to route in-app. */
-  readonly matrixLink = output<MatrixLinkTarget>();
+  readonly matrixLink = output<MatrixLinkClick>();
   /** A vote cast on a poll (the host sends the response). */
   readonly pollVote = output<{ pollId: string; answerId: string }>();
   /** A request to close a poll (the host sends the end event). */
@@ -697,7 +697,9 @@ export abstract class MessageListBase {
       id,
     );
     if (followed) {
-      this.matrixLink.emit(followed);
+      // No anchor: the dialog that held the link has already closed, so a user card from
+      // here is centred rather than pinned to an element that no longer exists.
+      this.matrixLink.emit({ target: followed });
     }
   }
 

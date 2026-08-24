@@ -19,6 +19,7 @@ import {
 } from '@trinity/data-access/search';
 import { TimelineService } from '@trinity/data-access/timeline';
 import { runWithBusy } from '@trinity/util/ui';
+import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnInput } from '@trinity/components/input';
@@ -67,6 +68,7 @@ interface HighlightPart {
   selector: 'trn-message-search',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    EmptyStateComponent,
     TrnIconComponent,
     AvatarComponent,
     TrnSpinnerComponent,

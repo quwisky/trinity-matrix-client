@@ -54,6 +54,7 @@ const LEDGER = [
   'libs/components/emoji-picker/src/lib/trn-emoji-picker/trn-emoji-picker.component.scss',
   'libs/components/media-bubble/src/lib/media-bubble.component.scss',
   'libs/components/message-toolbar/src/lib/message-toolbar.component.scss',
+  'libs/feature/auth/src/lib/auth-card/auth-card.component.scss',
   'libs/feature/auth/src/lib/login/login.page.scss',
   'libs/feature/crypto/src/lib/encryption-setup/encryption-setup.page.scss',
   'libs/feature/crypto/src/lib/encryption-unlock/encryption-unlock.page.scss',
@@ -104,13 +105,8 @@ const LEDGER = [
   'libs/feature/rooms/src/lib/user-card/user-card.component.scss',
   'libs/feature/rooms/src/lib/user-picker/user-picker.component.scss',
   'libs/feature/rooms/src/lib/voice-message/voice-message.component.scss',
-  'libs/feature/settings/src/lib/advanced/advanced-settings.component.scss',
   'libs/feature/settings/src/lib/advanced/config-editor/config-editor.component.scss',
-  'libs/feature/settings/src/lib/devices/devices-section.component.scss',
-  'libs/feature/settings/src/lib/gifs/gifs-section.component.scss',
   'libs/feature/settings/src/lib/server/homeserver-block.component.scss',
-  'libs/feature/settings/src/lib/settings/settings.page.scss',
-  'libs/feature/settings/src/lib/shortcuts/shortcuts-section.component.scss',
 ];
 
 describe('styling idiom', () => {

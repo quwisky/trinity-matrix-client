@@ -6,23 +6,3 @@
   (openLightbox)="openLightbox()"
   (download)="download()"
 />
-
-@if (lightboxSrc(); as full) {
-  <div
-    #lightbox
-    class="lightbox"
-    role="dialog"
-    aria-modal="true"
-    tabindex="-1"
-    [attr.aria-label]="media().filename"
-    (click)="closeLightbox()"
-    (keydown.escape)="closeLightbox()"
-  >
-    <img
-      decoding="async"
-      class="lightbox__img"
-      [src]="full"
-      [alt]="media().filename"
-    />
-  </div>
-}

@@ -125,6 +125,7 @@
       "@trinity/components/toggle-group": [
         "./libs/components/toggle-group/src/index.ts"
       ],
+      "@trinity/components/tabs": ["./libs/components/tabs/src/index.ts"],
       "@trinity/components/separator": [
         "./libs/components/separator/src/index.ts"
       ],
@@ -133,6 +134,7 @@
       ],
       "@trinity/helm/toggle": ["./libs/spartan/toggle/src/index.ts"],
       "@trinity/helm/separator": ["./libs/spartan/separator/src/index.ts"],
+      "@trinity/helm/tabs": ["./libs/spartan/tabs/src/index.ts"],
       "@trinity/helm/switch": ["./libs/spartan/switch/src/index.ts"]
     },
     "noUncheckedSideEffectImports": false,

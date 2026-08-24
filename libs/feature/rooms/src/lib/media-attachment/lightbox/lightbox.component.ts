@@ -1,0 +1,50 @@
+import {
+  ChangeDetectionStrategy,
+  Component,
+  inject,
+  input,
+} from '@angular/core';
+import { TrnDialogRef } from '@trinity/components/overlay';
+
+/**
+ * A full-resolution image, filling the viewport over a dark backdrop.
+ *
+ * Opened through {@link TrnDialogService} rather than rendered inline in the timeline row
+ * that owns the attachment, which is what the row used to do. That version worked, and every
+ * part of it that worked was hand-rolled: a `position: fixed` element at `z-index: 1000`, a
+ * `tabindex="-1"` host focused by an effect, an Escape binding, and a remembered element to
+ * hand focus back to. All four are the CDK dialog's job, and the CDK's versions are better —
+ * a real focus trap rather than one focused element, the page behind it inert, and an overlay
+ * at the top of the stacking order rather than one living inside a row whose ancestors are
+ * free to clip it or open a stacking context around it.
+ *
+ * The image is the dialog's whole surface: clicking it closes, which is what `zoom-out` has
+ * always promised, and clicking beside it is a backdrop click that CDK closes for us.
+ */
+@Component({
+  selector: 'trn-lightbox',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    class:
+      'flex h-screen w-screen cursor-zoom-out items-center justify-center p-6',
+    '(click)': 'close()',
+  },
+  template: `
+    <img
+      decoding="async"
+      class="max-h-full max-w-full object-contain"
+      [src]="src()"
+      [alt]="filename()"
+    />
+  `,
+})
+export class LightboxComponent {
+  readonly src = input.required<string>();
+  readonly filename = input<string>('');
+
+  private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef);
+
+  protected close(): void {
+    this.dialogRef.close();
+  }
+}

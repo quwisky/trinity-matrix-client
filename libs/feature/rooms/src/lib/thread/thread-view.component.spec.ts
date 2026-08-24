@@ -196,7 +196,7 @@ describe('ThreadViewComponent', () => {
   it('shows an empty state when the thread has no messages', async () => {
     const { container } = await build([]);
 
-    expect(container.querySelector('.thread__empty')).toBeTruthy();
+    expect(container.textContent).toContain('No replies in this thread yet.');
   });
 
   it('announces a dismissal on close', async () => {

@@ -5,12 +5,6 @@
   background: var(--trinity-chat);
 }
 
-.thread__empty {
-  color: var(--trinity-text-muted);
-  text-align: center;
-  padding: 24px;
-}
-
 // "Load older replies" affordance / loading note, centered above the replies.
 .thread__load-older {
   display: block;

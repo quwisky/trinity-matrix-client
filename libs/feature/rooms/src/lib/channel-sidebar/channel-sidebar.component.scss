@@ -166,19 +166,6 @@
   padding: 12px 8px 4px;
 }
 
-// Used by this component's "Loading channels…" / "Couldn’t load…" lines. The room list's
-// own empty state carries the same class and is styled in ITS stylesheet, for the same
-// encapsulation reason as `.category` above.
-.empty {
-  color: var(--trinity-text-muted);
-  font-size: 13px;
-  padding: 8px;
-}
-
-.empty--error {
-  color: var(--trinity-danger);
-}
-
 // Touch targets: the small sidebar action / filter-clear buttons are below the touch
 // minimum — lift them to 44px on touch only (desktop keeps 22–30px).
 // The invite and room-kebab buttons used to be listed here too. They moved out with the

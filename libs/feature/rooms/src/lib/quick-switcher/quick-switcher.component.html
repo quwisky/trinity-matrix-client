@@ -80,11 +80,21 @@
         }}</span>
       </button>
     } @empty {
-      <div class="qs-empty" aria-live="polite">
+      <!-- The live region is the WRAPPER, and stays mounted across the switch. Putting
+           `aria-live` on each branch instead makes every state a different element, and a
+           region that is inserted already carrying the attribute is not reliably announced —
+           what screen readers act on is a mutation inside a region they already knew about.
+           The hint after a search would simply go unread.
+
+           The branch itself stays outside the component: the projected slot wins over `body`,
+           and an `@if` that renders nothing still counts as content, so projecting the
+           spinner conditionally would swallow the fallback and lose the hint on the page as
+           well as off it. -->
+      <div aria-live="polite">
         @if (searching()) {
-          <trn-spinner />
+          <trn-empty-state><trn-spinner /></trn-empty-state>
         } @else {
-          <span class="text-xs text-muted-foreground">{{ emptyHint() }}</span>
+          <trn-empty-state [body]="emptyHint()" />
         }
       </div>
     }

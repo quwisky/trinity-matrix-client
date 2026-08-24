@@ -1,3 +1,4 @@
+import { EmptyStateComponent } from '@trinity/components/empty-state';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -62,6 +63,7 @@ const SMALL_LIST_ROWS = 80;
   selector: 'trn-virtual-message-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    EmptyStateComponent,
     MessageComposerComponent,
     MessageRowComponent,
     DropOverlayComponent,

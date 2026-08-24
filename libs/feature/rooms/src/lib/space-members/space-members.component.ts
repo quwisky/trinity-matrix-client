@@ -6,6 +6,7 @@ import {
   input,
 } from '@angular/core';
 import { HlmButton } from '@trinity/helm/button';
+import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { RoomsService, type MemberSummary } from '@trinity/data-access/rooms';
 import { AvatarComponent } from '@trinity/components/avatar';
@@ -29,7 +30,7 @@ import { MEMBER_ROLE_LABEL, memberRole } from '../shared/member-role';
 @Component({
   selector: 'trn-space-members',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmButton, AvatarComponent],
+  imports: [EmptyStateComponent, HlmButton, AvatarComponent],
   templateUrl: './space-members.component.html',
   styleUrl: './space-members.component.scss',
 })
