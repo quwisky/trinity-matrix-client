@@ -39,15 +39,17 @@ const TABS = [
   { value: 'members', label: 'Members' },
 ];
 
+// The padding goes on the projected content, not on `<trn-tab-panel>`: the panel host is
+// `display: contents` and generates no box, so a class there is silently dropped.
 const body = `
-  <trn-tab-panel value="general" class="p-4">
-    <p>Name, topic and photo.</p>
+  <trn-tab-panel value="general">
+    <p class="p-4">Name, topic and photo.</p>
   </trn-tab-panel>
-  <trn-tab-panel value="access" class="p-4">
-    <p>Who can join, and how much history they see.</p>
+  <trn-tab-panel value="access">
+    <p class="p-4">Who can join, and how much history they see.</p>
   </trn-tab-panel>
-  <trn-tab-panel value="members" class="p-4">
-    <p>Who is here, and who is banned.</p>
+  <trn-tab-panel value="members">
+    <p class="p-4">Who is here, and who is banned.</p>
   </trn-tab-panel>
 `;
 

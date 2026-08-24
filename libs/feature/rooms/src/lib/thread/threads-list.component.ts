@@ -6,6 +6,7 @@ import {
   output,
 } from '@angular/core';
 import { DateTimeFormatService } from '@trinity/platform-native';
+import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
@@ -34,7 +35,13 @@ const MAX_AVATARS = 4;
 @Component({
   selector: 'trn-threads-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnIconComponent, AvatarComponent, HlmButton, TrnTooltip],
+  imports: [
+    EmptyStateComponent,
+    TrnIconComponent,
+    AvatarComponent,
+    HlmButton,
+    TrnTooltip,
+  ],
   templateUrl: './threads-list.component.html',
   styleUrl: './threads-list.component.scss',
 })

@@ -13,9 +13,10 @@ import {
   TimelineActionsService,
   TimelineService,
 } from '@trinity/data-access/timeline';
-import { type Mention, type MatrixLinkTarget } from '@trinity/util/matrix';
+import { type Mention } from '@trinity/util/matrix';
 import { Observable, throwError } from 'rxjs';
 import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
+import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import { RoomShellStore } from './room-shell-store';
 import { AccountRoutingService } from './account-routing.service';
 import { MemberActionsService } from './member-actions.service';
@@ -63,9 +64,11 @@ export class MessageActionsService {
    * we're joined — opens it, then jumps to a linked event. A room we haven't joined
    * surfaces a toast rather than navigating.
    */
-  onMatrixLink(target: MatrixLinkTarget): void {
+  onMatrixLink({ target, anchor }: MatrixLinkClick): void {
     if (target.kind === 'user') {
-      void this.memberActions.openUserCard(target.userId);
+      // The anchor travels through so the card is pinned to the mention that was clicked
+      // rather than centred over the conversation it is about.
+      void this.memberActions.openUserCard(target.userId, anchor);
       return;
     }
     this.rooms

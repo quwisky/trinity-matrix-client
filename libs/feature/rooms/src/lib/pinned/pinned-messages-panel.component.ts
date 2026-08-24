@@ -8,6 +8,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { HlmButton } from '@trinity/helm/button';
+import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import { TrnToastService } from '@trinity/components/overlay';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
@@ -29,7 +30,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
 @Component({
   selector: 'trn-pinned-messages-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnIconComponent, HlmButton, TrnTooltip],
+  imports: [EmptyStateComponent, TrnIconComponent, HlmButton, TrnTooltip],
   templateUrl: './pinned-messages-panel.component.html',
   styleUrl: './pinned-messages-panel.component.scss',
 })

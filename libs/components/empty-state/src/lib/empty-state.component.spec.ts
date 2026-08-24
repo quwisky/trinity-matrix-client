@@ -152,6 +152,54 @@ describe('EmptyStateComponent', () => {
     expect(body?.textContent?.trim()).toBe('No pinned messages in this room.');
   });
 
+  it("takes a panel's padding by default and a line's when asked", async () => {
+    // The fifteen rules this replaces were three sizes: 24px panels, and 8-12px lines inside
+    // a list. A single size would have grown the compact ones roughly fourfold in a 280px
+    // sidebar column, which is the thing adoption revealed and the component had missed.
+    const { fixture } = await render(EmptyStateComponent, {
+      inputs: { body: 'nothing' },
+    });
+    // `render` makes the component the fixture root, so the host is `nativeElement` itself
+    // rather than something inside `container`.
+    const column = () =>
+      (fixture.nativeElement as HTMLElement).querySelector('div');
+
+    expect(column()?.className).toContain('py-6');
+
+    fixture.componentRef.setInput('size', 'line');
+    fixture.detectChanges();
+
+    expect(column()?.className).toContain('py-2');
+    expect(column()?.className).not.toContain('py-6');
+  });
+
+  it('renders the title as an h2 when the call site asks for one', async () => {
+    // The hero is the only content on its pane and its heading is deliberate: `trn-page-header`
+    // owns the page's single `<h1>`, so this is an `<h2>` and must not silently become a `<p>`
+    // on the way into this component.
+    const { fixture, container } = await render(EmptyStateComponent, {
+      inputs: { title: 'Trinity', size: 'hero' as const },
+    });
+    expect(container.querySelector('h2')).toBeNull();
+
+    fixture.componentRef.setInput('titleAs', 'h2');
+    fixture.detectChanges();
+
+    expect(container.querySelector('h2')?.textContent).toContain('Trinity');
+    expect(container.querySelector('p.text-\\[22px\\]')).toBeNull();
+  });
+
+  it('draws a badge glyph, hidden from the screen reader', async () => {
+    // Decoration for a title that says the same thing in words — the `#` disc over "Trinity"
+    // is not information a screen reader needs read out.
+    const { container } = await render(EmptyStateComponent, {
+      inputs: { badge: '#', title: 'Trinity' },
+    });
+
+    const badge = container.querySelector('[aria-hidden=true]');
+    expect(badge?.textContent?.trim()).toBe('#');
+  });
+
   it('is a block, so its padding survives a non-flex parent', async () => {
     // Asserted as a class rather than through getComputedStyle: Tailwind does not compute in
     // jsdom, and a wrapper with no host display drops its padding only where the parent is

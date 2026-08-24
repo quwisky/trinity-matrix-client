@@ -1,3 +1,4 @@
+import { EmptyStateComponent } from '@trinity/components/empty-state';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -40,6 +41,7 @@ const MAX_BACKFILL_ROUNDS = 20;
   selector: 'trn-simple-message-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    EmptyStateComponent,
     MessageComposerComponent,
     MessageRowComponent,
     DropOverlayComponent,

@@ -29,7 +29,7 @@ import {
   selector: 'trn-gifs-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './gifs-section.component.html',
-  styleUrl: './gifs-section.component.scss',
+  host: { class: 'block' },
   imports: [
     TitleCasePipe,
     HlmButton,

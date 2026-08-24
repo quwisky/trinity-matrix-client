@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HlmButton } from '@trinity/helm/button';
+import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnCheckboxComponent } from '@trinity/components/checkbox';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import {
@@ -59,7 +60,13 @@ export interface ManagedChild {
 @Component({
   selector: 'trn-manage-space-rooms',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmButton, TrnCheckboxComponent, AvatarComponent, TrnIconComponent],
+  imports: [
+    EmptyStateComponent,
+    HlmButton,
+    TrnCheckboxComponent,
+    AvatarComponent,
+    TrnIconComponent,
+  ],
   templateUrl: './manage-space-rooms.component.html',
   styleUrl: './manage-space-rooms.component.scss',
 })

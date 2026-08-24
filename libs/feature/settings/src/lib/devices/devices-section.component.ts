@@ -25,7 +25,6 @@ import { TrnIconComponent } from '@trinity/components/icon';
   selector: 'trn-devices-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './devices-section.component.html',
-  styleUrl: './devices-section.component.scss',
   imports: [TrnIconComponent, TrnBadge, HlmButton, TrnTooltip],
 })
 export class DevicesSectionComponent {
