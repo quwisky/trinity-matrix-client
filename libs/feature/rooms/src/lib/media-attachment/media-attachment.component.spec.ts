@@ -147,6 +147,37 @@ describe('MediaAttachmentComponent', () => {
     expect(mediaService.unpin).toHaveBeenCalledWith('blob:full');
   });
 
+  it('opens one lightbox however many times the image is tapped', async () => {
+    // `resolveMedia` hands every caller the same in-flight observable, so without a guard
+    // a second tap during the resolve reaches `next` twice: two dialogs, one remembered
+    // ref, and closing the remembered one unpins a URL the other is still showing.
+    mediaService.resolveMedia.mockImplementation(
+      (_m: MediaPayload, variant: string) =>
+        of(variant === 'full' ? 'blob:full' : 'blob:thumb'),
+    );
+    const { fixture } = await renderMedia(imageMedia());
+    const cmp = fixture.componentInstance;
+
+    cmp.openLightbox();
+    cmp.openLightbox();
+    TestBed.tick();
+
+    expect(
+      document.querySelectorAll('.cdk-overlay-container trn-lightbox').length,
+    ).toBe(1);
+
+    // And once it is dismissed, a later tap opens one again — the guard must not latch.
+    mediaService.unpin.mockClear();
+    cmp.closeLightbox();
+    TestBed.tick();
+    cmp.openLightbox();
+    TestBed.tick();
+
+    expect(
+      document.querySelectorAll('.cdk-overlay-container trn-lightbox').length,
+    ).toBe(1);
+  });
+
   it('releases the pin when the reader dismisses the overlay themselves', async () => {
     // Escape and a backdrop click are CDK's to handle, so nothing in this component runs on
     // that path — the unpin has to hang off `closed`, not off `closeLightbox()`. Hanging it

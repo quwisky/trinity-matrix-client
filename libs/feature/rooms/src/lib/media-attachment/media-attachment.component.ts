@@ -55,6 +55,17 @@ export class MediaAttachmentComponent {
   private lightboxPinnedUrl: string | null = null;
   private thumbnailSub?: Subscription;
   private lightboxRef: TrnDialogRef<void> | null = null;
+  /**
+   * Whether a lightbox is open or on its way.
+   *
+   * The guard is not defensive tidiness. `resolveMedia` hands every caller the SAME
+   * in-flight observable, so a second tap while the full-resolution bytes are still
+   * arriving reaches `next` twice: two dialogs open, `lightboxRef` keeps only the second,
+   * and closing THAT one unpins a URL the first is still displaying — after which the
+   * cache is free to revoke it under a visible image. The inline version this replaced was
+   * idempotent by accident (setting a signal twice is one lightbox); an overlay is not.
+   */
+  private lightboxPending = false;
 
   constructor() {
     // Re-resolve whenever the bound message changes — instances are recycled
@@ -102,9 +113,10 @@ export class MediaAttachmentComponent {
 
   /** Open the full-resolution image over the app, in a modal dialog. */
   openLightbox(): void {
-    if (this.media().kind !== 'image') {
+    if (this.media().kind !== 'image' || this.lightboxPending) {
       return;
     }
+    this.lightboxPending = true;
     this.mediaService
       .resolveMedia(this.media(), 'full')
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -127,9 +139,13 @@ export class MediaAttachmentComponent {
           this.lightboxRef.closed.subscribe(() => {
             this.pinLightbox(null);
             this.lightboxRef = null;
+            this.lightboxPending = false;
           });
         },
-        error: () => this.errorMsg.set('Could not open image'),
+        error: () => {
+          this.lightboxPending = false;
+          this.errorMsg.set('Could not open image');
+        },
       });
   }
 
