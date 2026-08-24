@@ -19,6 +19,7 @@ import {
   SystemLineSettingsService,
   ThemeService,
   type Palette,
+  type Density,
   type TextScale,
   type ThemePreference,
 } from '@trinity/platform-native';
@@ -90,6 +91,13 @@ export class AppearanceSettingsComponent {
       label: scale.label,
       testId: `text-scale-${scale.id}`,
     }));
+
+  readonly densityOptions: readonly TrnSelectOption<string>[] =
+    this.theme.densities.map((density) => ({
+      value: density.id,
+      label: density.label,
+      testId: `density-${density.id}`,
+    }));
   readonly paletteOptions: readonly TrnSelectOption<string>[] =
     this.theme.palettes.map((palette) => ({
       value: palette.id,
@@ -132,6 +140,15 @@ export class AppearanceSettingsComponent {
     }));
 
   /** Apply + persist how large text is. */
+  onDensityChange(value: string | null | undefined): void {
+    // Guarded like every other choice here: the select is ours, but `valueChange` is a
+    // string and the setter takes a union — narrowing against the registered list is what
+    // keeps a stale saved value or a typo out of the token attribute.
+    if (this.theme.densities.some((density) => density.id === value)) {
+      this.theme.setDensity(value as Density);
+    }
+  }
+
   onTextScaleChange(value: string | null | undefined): void {
     if (this.theme.textScales.some((scale) => scale.id === value)) {
       this.theme.setTextScale(value as TextScale);
