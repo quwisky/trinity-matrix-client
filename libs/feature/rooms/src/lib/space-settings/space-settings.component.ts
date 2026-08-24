@@ -116,12 +116,6 @@ export class SpaceSettingsComponent implements OnInit {
     () => this.canEditName() || this.canEditTopic() || this.canEditJoinRule(),
   );
 
-  /**
-   * The two space rules, plus whatever this space is ACTUALLY set to if that is neither.
-   * A `<select>` seeded with a value it has no option for renders blank — showing no
-   * setting at all for a space that has one, and turning any pick into a silent change of
-   * who can join. A space created elsewhere can carry `knock` or `restricted`.
-   */
   /** Mirrors {@link RoomSettingsComponent}: `Bans` only exists where there is a list behind it. */
   readonly settingsTabs = computed<TrnTabOption[]>(() => [
     {
@@ -141,6 +135,12 @@ export class SpaceSettingsComponent implements OnInit {
       : []),
   ]);
 
+  /**
+   * The two space rules, plus whatever this space is ACTUALLY set to if that is neither.
+   * A `trn-select` seeded with a value it has no option for shows its placeholder — showing no
+   * setting at all for a space that has one, and turning any pick into a silent change of
+   * who can join. A space created elsewhere can carry `knock` or `restricted`.
+   */
   readonly joinRuleOptions = computed<
     { value: JoinRule; label: string; testId: string }[]
   >(() => {
