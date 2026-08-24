@@ -114,9 +114,7 @@
           </span>
         </button>
       } @empty {
-        <div class="ms-empty" aria-live="polite">
-          <span class="text-xs text-muted-foreground">{{ emptyHint() }}</span>
-        </div>
+        <trn-empty-state [body]="emptyHint()" aria-live="polite" />
       }
     </div>
 

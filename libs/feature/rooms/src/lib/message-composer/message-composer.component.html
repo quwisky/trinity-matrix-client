@@ -26,11 +26,13 @@
 <div class="composer">
   @if (!recordingVoice() && showToolbar()) {
     <trn-composer-toolbar
-      [narrow]="narrowLayout()"
       [previewing]="previewing()"
       [disabled]="uploadProgress() !== null"
+      [pinned]="toolbarPinned()"
+      [active]="activeFormats()"
       (format)="onFormat($event)"
       (togglePreview)="onTogglePreview()"
+      (togglePinned)="onTogglePinned()"
     />
   }
   <!-- Both pickers render in the CDK overlay container, anchored to the input row. They were
@@ -39,7 +41,7 @@
        `overflow: hidden` ancestor cut one in half. `[(open)]` because these two are opened
        and closed by the person using them, so an outside press is theirs to answer. -->
   <ng-template
-    [trnAnchoredOverlay]="composerRow"
+    [trnAnchoredOverlay]="composerField"
     [(open)]="pickerOpen"
     side="top"
     align="end"
@@ -47,7 +49,7 @@
     <trn-emoji-picker [pickerId]="pickerId" (picked)="onPickerSelect($event)" />
   </ng-template>
   <ng-template
-    [trnAnchoredOverlay]="composerRow"
+    [trnAnchoredOverlay]="composerField"
     [(open)]="gifPickerOpen"
     side="top"
     align="end"
@@ -83,17 +85,22 @@
   <!-- The option ids this stamps are what the textarea's `aria-activedescendant` below points
        at, and what `scrollSuggestionIntoView` looks up — see the child's own note. -->
   <trn-composer-suggestions
-    [anchor]="composerRow"
-    [emojiOpen]="emojiOpen()"
-    [emojiMatches]="emojiMatches()"
-    [emojiActiveIndex]="emojiActiveIndex()"
-    [mentionOpen]="mentionOpen()"
-    [mentionMatches]="mentionMatches()"
-    [mentionActiveIndex]="mentionActiveIndex()"
-    (emojiHighlight)="emojiActiveIndex.set($event)"
-    (emojiAccept)="acceptEmoji($event)"
-    (mentionHighlight)="mentionActiveIndex.set($event)"
-    (mentionAccept)="acceptMention($event)"
+    [anchor]="composerField"
+    [emojiOpen]="menus.emojiOpen()"
+    [emojiMatches]="menus.emojiMatches()"
+    [emojiActiveIndex]="menus.emojiActiveIndex()"
+    [mentionOpen]="menus.mentionOpen()"
+    [mentionMatches]="menus.mentionMatches()"
+    [mentionActiveIndex]="menus.mentionActiveIndex()"
+    (emojiHighlight)="menus.emojiActiveIndex.set($event)"
+    (emojiAccept)="menus.acceptEmoji($event)"
+    (mentionHighlight)="menus.mentionActiveIndex.set($event)"
+    (mentionAccept)="menus.acceptMention($event)"
+    [slashOpen]="menus.slashOpen()"
+    [slashMatches]="menus.slashMatches()"
+    [slashActiveIndex]="menus.slashActiveIndex()"
+    (slashHighlight)="menus.slashActiveIndex.set($event)"
+    (slashAccept)="menus.acceptSlash($event)"
   />
   <input
     #fileInput
@@ -104,11 +111,19 @@
     hidden
     (change)="onFilePicked($event)"
   />
-  <!-- The input row, and what all four floating layers anchor to. It is the row rather than
-       `.composer` because the row is the thing they belong above — the old rule anchored them
-       to `.composer`, which meant they also cleared the toolbar, which is why the toolbar had
-       to live inside it. -->
-  <div class="composer__row" #composerRow>
+  <!-- The FIELD: one box holding the insert button, the input and the emoji/send buttons, and
+       what all four floating layers anchor to. A grid rather than a flex row, so the preview
+       can occupy the textarea's own cell instead of standing beside it — see the stylesheet.
+
+       It is the field rather than `.composer` because the field is the thing the layers belong
+       above; the old rule anchored them to `.composer`, which meant they cleared the toolbar
+       too, which is why the toolbar had to live inside it. -->
+  <div
+    class="composer__field"
+    #composerField
+    data-testid="composer-field"
+    (pointerdown)="onFieldPress($event)"
+  >
     <trn-composer-insert-menu
       [hasMenu]="hasInsertMenu()"
       [editing]="editing()"
@@ -159,18 +174,22 @@
       "
       aria-autocomplete="list"
       [attr.aria-controls]="
-        mentionOpen()
+        menus.mentionOpen()
           ? 'mention-suggestions'
-          : emojiOpen()
+          : menus.emojiOpen()
             ? 'emoji-suggestions'
-            : null
+            : menus.slashOpen()
+              ? 'slash-suggestions'
+              : null
       "
       [attr.aria-activedescendant]="
-        mentionOpen()
-          ? 'mention-suggestion-' + mentionActiveIndex()
-          : emojiOpen()
-            ? 'emoji-suggestion-' + emojiActiveIndex()
-            : null
+        menus.mentionOpen()
+          ? 'mention-suggestion-' + menus.mentionActiveIndex()
+          : menus.emojiOpen()
+            ? 'emoji-suggestion-' + menus.emojiActiveIndex()
+            : menus.slashOpen()
+              ? 'slash-suggestion-' + menus.slashActiveIndex()
+              : null
       "
       (input)="onInput($event)"
       (keydown)="onKeydown($event)"
@@ -179,6 +198,9 @@
       (keydown.arrowDown)="onArrowDown($event)"
       (keydown.tab)="onTab($event)"
       (blur)="onBlur()"
+      (select)="onSelectionChange()"
+      (keyup)="onSelectionChange()"
+      (pointerup)="onSelectionChange()"
       (paste)="onPaste($event)"
     ></textarea>
     <button

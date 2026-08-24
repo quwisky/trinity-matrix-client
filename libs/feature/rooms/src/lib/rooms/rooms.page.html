@@ -316,6 +316,17 @@
         </ng-container>
       </trn-page-header>
 
+      <!-- A room-level notice belongs in this COLUMN, above the row — not inside it. As a child
+           of `.chat-body`, which is a flex row of [timeline, panel], it was a third item
+           competing for horizontal space: measured at 779px of a 928px row, leaving the
+           timeline 149px and the composer's text column nothing at all. It only rendered in a
+           tombstoned room, which is why it survived so long. -->
+      @if (vm.activeRoom()) {
+        <trn-tombstone-banner
+          (goToRoom)="roomActions.onGoToUpgradedRoom($event)"
+        />
+      }
+
       <div
         class="chat-body"
         trnDrawerSwipe
@@ -326,9 +337,6 @@
         (closed)="onDrawerSwipedClosed()"
       >
         @if (vm.activeRoom(); as room) {
-          <trn-tombstone-banner
-            (goToRoom)="roomActions.onGoToUpgradedRoom($event)"
-          />
           <!-- The experimental flag swaps in the windowed timeline. Both take the
              same inputs/outputs (MessageListBase); flipping the flag re-creates the
              chosen component fresh.
@@ -516,16 +524,20 @@
             }
           }
         } @else {
-          <div class="chat-empty">
-            <div class="hero">
-              <div class="hero__badge">#</div>
-              <!-- h2, not h1: the toolbar (trn-page-header) already owns the page's
-                 single <h1> ("Trinity" here when no room is active). -->
-              <h2 class="hero__title">{{ vm.syncLabel() }}</h2>
-              <p class="hero__meta">
-                Select a channel on the left to get started.
-              </p>
-            </div>
+          <!-- The centring wrapper stays at the call site: filling the pane and centring in
+               it is this container's job, not the panel's — the same split `.chat-empty`
+               around `.hero` already had. `titleAs="h2"` because the toolbar
+               (trn-page-header) already owns the page's single <h1> ("Trinity" here when no
+               room is active). -->
+          <div class="flex flex-1 items-center justify-center p-6">
+            <trn-empty-state
+              size="hero"
+              titleAs="h2"
+              badge="#"
+              [title]="vm.syncLabel()"
+              body="Select a channel on the left to get started."
+              data-testid="chat-empty"
+            />
           </div>
         }
       </div>

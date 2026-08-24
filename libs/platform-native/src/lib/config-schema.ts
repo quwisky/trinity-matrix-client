@@ -297,6 +297,11 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     key: 'trinity.composer.show-toolbar',
     owner: 'platform-native',
   },
+  {
+    disposition: 'exported',
+    key: 'trinity.composer.format-on-selection',
+    owner: 'platform-native',
+  },
 
   // — feature-flags.service.ts —
   {

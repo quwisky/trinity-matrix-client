@@ -120,6 +120,8 @@ describe('ThreadsListComponent', () => {
   it('shows an empty state when there are no threads', async () => {
     const { container } = await build([]);
 
-    expect(container.querySelector('.threads__empty')).toBeTruthy();
+    // The text, not the class: the panel is a `trn-empty-state` now, and what this test
+    // has always been about is that the reader is told there is nothing here.
+    expect(container.textContent).toContain('No threads in this channel yet.');
   });
 });

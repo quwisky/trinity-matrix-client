@@ -148,6 +148,12 @@
 // without it the browser consumes the sideways drag as a scroll or an overscroll navigation
 // and the directive never sees a move. `pan-y` rather than `none`, because the timeline must
 // still scroll.
+// A flex ROW of [timeline, right-hand panel], and that is all it may hold.
+// Its children are sized by content, so anything else added here competes with the timeline
+// for horizontal space rather than stacking above it. That is not hypothetical: the tombstone
+// banner sat here and took 779px of a 928px row, leaving the timeline 149px and the composer's
+// text column nothing — visible only in a tombstoned room, which is why it survived. A
+// room-level notice belongs in `.main`, the COLUMN this row sits in, beside the page header.
 .chat-body {
   touch-action: pan-y;
   overscroll-behavior-x: contain;
@@ -156,51 +162,6 @@
   min-height: 0;
   overflow: hidden; // bound the row so message-list/member-list scroll internally
   background: var(--trinity-chat);
-}
-
-.chat-empty {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-}
-
-.hero {
-  text-align: center;
-  max-width: 420px;
-  color: var(--trinity-text);
-}
-
-.hero__badge {
-  width: 68px;
-  height: 68px;
-  border-radius: 50%;
-  background: var(--trinity-sidebar);
-  color: var(--trinity-text-muted);
-  font-size: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 16px;
-}
-
-.hero__title {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--trinity-text-bright);
-  margin: 0 0 8px;
-}
-
-.hero__topic {
-  color: var(--trinity-text);
-  margin: 0 0 8px;
-}
-
-.hero__meta {
-  color: var(--trinity-text-muted);
-  font-size: 13px;
-  margin: 0;
 }
 
 .chat-members {

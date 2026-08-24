@@ -3,7 +3,6 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
-  DestroyRef,
   effect,
   ElementRef,
   inject,
@@ -11,6 +10,7 @@ import {
   input,
   output,
   signal,
+  type Signal,
   untracked,
   viewChild,
 } from '@angular/core';
@@ -25,6 +25,7 @@ import { type GifResult } from '@trinity/data-access/gif';
 import {
   applyFormat,
   continueList,
+  detectFormat,
   escapeHtml,
   linkifyText,
   renderMarkdown,
@@ -35,7 +36,6 @@ import {
   type FormatAction,
   type Mention,
 } from '@trinity/util/matrix';
-import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { ComposerToolbarComponent } from './composer-toolbar/composer-toolbar.component';
 import { ComposerAttachmentStripComponent } from './composer-attachment-strip/composer-attachment-strip.component';
 import { ComposerInsertMenuComponent } from './composer-insert-menu/composer-insert-menu.component';
@@ -49,7 +49,9 @@ import {
   type BatchOutcome,
   type BatchProgress,
 } from '../shared/send-media-batch';
-import { EmojiAutocomplete } from './emoji-autocomplete';
+import { ComposerTextField } from './composer-text-field';
+import { ComposerBatchSender } from './composer-batch-sender';
+import { ComposerAutocompletes } from './composer-autocompletes';
 import { TrnIconComponent } from '@trinity/components/icon';
 import { TrnAnchoredOverlayDirective } from '@trinity/components/overlay';
 import {
@@ -57,10 +59,7 @@ import {
   TrnEmojiPickerComponent,
   type TrnEmojiPick,
 } from '@trinity/components/emoji-picker';
-import {
-  MentionAutocomplete,
-  type MentionMember,
-} from './mention-autocomplete';
+import { type MentionMember } from './mention-autocomplete';
 
 /**
  * A room member offered by the @-mention autocomplete. Re-exported here because it is the
@@ -73,8 +72,6 @@ export interface ComposerSubmit {
   text: string;
   mentions: Mention[];
 }
-
-const MAX_HEIGHT_PX = 200;
 
 /**
  * Which formatting action each shortcut applies. An explicit table rather than deriving the
@@ -128,7 +125,14 @@ let nextPickerId = 0;
   // pickers render inside this component, so the keystroke reaches here from anywhere in
   // the composer. Bound once: a second binding on the textarea would double-fire and
   // close two things per press.
-  host: { '(keydown.escape)': 'onEscape()' },
+  // `focusout` alongside Escape, and on the HOST for the same reason: the bar is raised by a
+  // selection that outlives the focus, so something has to notice the focus going. It has to be
+  // the whole composer rather than the textarea, or moving focus onto a toolbar button would
+  // dismiss the bar out from under the click that is about to land on it.
+  host: {
+    '(keydown.escape)': 'onEscape()',
+    '(focusout)': 'onComposerFocusOut($event)',
+  },
   templateUrl: './message-composer.component.html',
   styleUrl: './message-composer.component.scss',
 })
@@ -211,16 +215,6 @@ export class MessageComposerComponent {
 
   readonly text = signal('');
 
-  /**
-   * True on the narrow single-pane layout, where the toolbar keeps fewer buttons outside its
-   * overflow. Owned here rather than in the toolbar so that stays presentational, the same
-   * division the sidebar's user panel uses.
-   */
-  protected readonly narrowLayout = mediaQuerySignal(
-    BELOW_MD_QUERY,
-    inject(DestroyRef),
-  );
-
   /** Whether the preview is showing in place of the input. */
   readonly previewing = signal(false);
 
@@ -240,16 +234,14 @@ export class MessageComposerComponent {
     if (!text) {
       return { html: '', rich: false };
     }
-    const mentions = untracked(() => this.activeMentions());
+    const mentions = untracked(() => this.menus.activeMentions());
     // Slash commands only where they are actually parsed on send:
     // `TimelineActionsService.send` and `ThreadsService.sendThreadMessage`. A reply,
     // an edit and an attachment caption route through `replyMessageContent` /
     // `editMessageContent` / `mediaCaptionFields`, none of which look at a leading
     // slash — so previewing `/spoiler x` concealed while replying would promise a
     // spoiler and send the literal text.
-    const parsesCommands =
-      !this.editing() && !this.replyingTo() && !this.hasStaged();
-    const content = ((parsesCommands
+    const content = ((this.parsesCommands()
       ? slashCommandContent(text, renderMarkdown, mentions)
       : null) ?? textMessageContent(text, renderMarkdown(text), mentions)) as {
       formatted_body?: string;
@@ -309,77 +301,47 @@ export class MessageComposerComponent {
     () => this.richActions() || this.gifEnabled(),
   );
   /**
-   * The two autocomplete engines. Each owns its trigger detection, suggestion list,
-   * highlighted index and the caret splice an acceptance resolves to; this component owns
-   * the textarea, so it reads the caret, hands it over, and applies whatever comes back.
-   * That is the boundary the two used to lack — they shared one caret model in-line here.
-   */
-  private readonly emojiAutocomplete = new EmojiAutocomplete(
-    inject(TrnEmojiIndex),
-  );
-  private readonly mentionAutocomplete = new MentionAutocomplete(this.members);
-  /** The `:shortcode` fragment under the caret, or null when the menu is closed. */
-  readonly emojiQuery = this.emojiAutocomplete.query;
-  /** Ranked emoji suggestions for the current query (from emoji-mart's index). */
-  readonly emojiMatches = this.emojiAutocomplete.matches;
-  /** The menu is shown only when a query yields at least one match. */
-  readonly emojiOpen = this.emojiAutocomplete.open;
-  /** Index of the highlighted suggestion. */
-  readonly emojiActiveIndex = this.emojiAutocomplete.activeIndex;
-  /** The `@mention` query under the caret, or null when the menu is closed. */
-  readonly mentionQuery = this.mentionAutocomplete.query;
-  /** Members matching the current query (prefix matches first), capped for the menu. */
-  readonly mentionMatches = this.mentionAutocomplete.matches;
-  /** The mention menu shows only when a query yields at least one member. */
-  readonly mentionOpen = this.mentionAutocomplete.open;
-  /** Index of the highlighted member suggestion. */
-  readonly mentionActiveIndex = this.mentionAutocomplete.activeIndex;
-  /**
-   * The file the visible upload belongs to.
+   * The three autocomplete menus: `:shortcode`, `@mention` and `/command`.
    *
-   * The bar renders above the rows that are still staged, and without this it reads as though
-   * it describes them — it describes the one that just left the list. Written in the host's
-   * `sendMedia` hook rather than in `submit()`, because that hook is the single funnel every
-   * upload passes through: a GIF goes straight to it and never touches `submit()`, and naming
-   * the last *staged* file while a GIF uploads is worse than not naming anything.
-   */
-  private readonly sendingItems = signal<readonly BatchItem[]>([]);
-  /**
-   * The name of the file currently uploading, taken from the batch's own position rather than
-   * remembered separately — so it follows the batch through file 2, 3, … instead of naming
-   * whatever was dispatched first.
-   */
-  readonly uploadLabel = computed(() => {
-    const progress = this.uploadProgress();
-    return progress
-      ? (this.sendingItems()[progress.index - 1]?.file.name ?? null)
-      : null;
-  });
-  /**
-   * A media send has been dispatched and its upload has not finished.
+   * Each engine owns its own trigger and list; the façade owns the caret handover and the
+   * order the three are consulted in. The template and the specs read its signals directly —
+   * forwarding them through this component would only restate them.
    *
-   * Separate from `uploadProgress` and written SYNCHRONOUSLY, which is the whole point:
-   * `uploadProgress` is a signal input fed from two component layers up, and a signal input
-   * is only written during the parent's change detection — which, zoneless, is scheduled on a
-   * rAF/timer race. Two `submit()` calls in one task (a held Enter key, while the first send's
-   * `encryptAttachment` janks the frame) would both read `null` and both dispatch. A local
-   * flag closes in the same statement that opens it, and is released by the `done` callback
-   * the host calls when the send settles.
+   * PUBLIC rather than `protected`, which the template alone would have allowed. Three spec
+   * files assert on `menus.emojiOpen()`, `menus.slashMatches()` and the rest, and those read
+   * exactly what the menus decided; going through the DOM instead would assert something
+   * weaker at 44 call sites. It is also not a widening in practice — `text`, `previewing`,
+   * `pickerOpen`, `submit()` and most of the key handlers are already public, because this
+   * component is driven from its specs as much as from its template. Narrowing this one
+   * member would be a rule nothing else here follows.
    */
-  private readonly sendingMedia = signal(false);
+  readonly menus: ComposerAutocompletes;
+  /** Staging → outgoing batches, and what comes back. */
+  private readonly batches: ComposerBatchSender;
+  /** The name of the file the progress bar is describing, or null when idle. */
+  readonly uploadLabel: Signal<string | null>;
+  /** Whether a media send would be accepted right now (the send button says so). */
+  protected readonly canSendMedia: Signal<boolean>;
   /**
-   * Whether a media send would be accepted right now — the same condition `dispatchMedia`
-   * enforces, exposed so the send button can SAY it is blocked rather than silently doing
-   * nothing. `sendingMedia` matters here and not just `uploadProgress`: the latch closes
-   * synchronously, while the input it mirrors lags by a change-detection tick.
+   * Whether a leading slash is READ as a command on the way out.
+   *
+   * One computed read by BOTH {@link preview} and the slash menu (through the
+   * `commandsParsed` port), because the two disagreeing is the worst of the available
+   * answers: a preview that refuses to conceal a `/spoiler` while a menu offers to complete
+   * one. Only `send` and `sendThreadMessage` run `slashCommandContent`; a reply, an edit and
+   * an attachment caption never do.
    */
-  protected readonly canSendMedia = computed(
-    () => this.uploadProgress() === null && !this.sendingMedia(),
+  private readonly parsesCommands = computed(
+    () => !this.editing() && !this.replyingTo() && !this.hasStaged(),
   );
+
   private readonly textarea = viewChild<ElementRef<HTMLTextAreaElement>>('ta');
+  /** Caret reads, splices, focus and auto-grow — everything that touches the textarea. */
+  private readonly field: ComposerTextField;
   private readonly fileInput =
     viewChild<ElementRef<HTMLInputElement>>('fileInput');
   private readonly injector = inject(Injector);
+  private readonly emojiIndex = inject(TrnEmojiIndex);
 
   /** Whether this device can record voice (mic + MediaRecorder present). */
   get voiceSupported(): boolean {
@@ -387,12 +349,56 @@ export class MessageComposerComponent {
   }
   private readonly drafts = inject(DraftStoreService);
   private readonly composerSettings = inject(ComposerSettingsService);
+  /** Whether the bar is pinned open (Settings → Appearance, or the bar's own `Aa`). */
+  readonly toolbarPinned = this.composerSettings.showFormattingToolbar;
+
   /**
-   * Whether the formatting toolbar is shown (Settings → Appearance). Hiding it is a screen
-   * space choice, so it takes away the ROW only: {@link onKeydown} still resolves the
-   * formatting chords, and Shift+Enter still continues a list.
+   * The textarea's selection, or null when there is none to speak of.
+   *
+   * A range rather than the boolean this used to be: the bar's pressed state is derived from
+   * the marks around the selection, and that needs the offsets. `hasSelection` survives as a
+   * computed so the "is the bar up" question reads the same as before.
    */
-  readonly showToolbar = this.composerSettings.showFormattingToolbar;
+  private readonly selection = signal<{ start: number; end: number } | null>(
+    null,
+  );
+  private readonly hasSelection = computed(() => this.selection() !== null);
+
+  /**
+   * Which formatting actions the current selection already carries, for the bar to show as
+   * pressed. Empty with no selection: the nine act on one, so there is nothing to be in a
+   * state about.
+   *
+   * Derived rather than remembered, which is the point — `detectFormat` is defined as the
+   * exact inverse of what `applyFormat` would do, so a button reads as pressed when pressing
+   * it would REMOVE that formatting. The bar previously pinned this to empty and cleared it
+   * after every apply, which meant `aria-pressed` was permanently "false" on nine buttons
+   * that announce themselves as toggles.
+   */
+  protected readonly activeFormats = computed<FormatAction[]>(() => {
+    const range = this.selection();
+    return range === null
+      ? []
+      : detectFormat(this.text(), range.start, range.end);
+  });
+  /** This component's own element — {@link onComposerFocusOut} asks it what focus left. */
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+
+  /**
+   * Whether the formatting bar is on screen.
+   *
+   * Pinned, or raised by a selection while the second preference allows it. Both are a screen
+   * space choice and neither takes anything away but the ROW: {@link onKeydown} still resolves
+   * the formatting chords with no bar in sight, and Shift+Enter still continues a list.
+   *
+   * Raised by a SELECTION rather than by focus, because the bar's nine actions all act on one
+   * — a bar offered against a bare caret is offering to wrap nothing.
+   */
+  readonly showToolbar = computed(
+    () =>
+      this.toolbarPinned() ||
+      (this.composerSettings.formatOnSelection() && this.hasSelection()),
+  );
   /** Resolves the user's (rebindable) formatting chords — see {@link onKeydown}. */
   private readonly shortcuts = inject(KeyboardShortcutsService);
   private wasEditing = false;
@@ -402,6 +408,30 @@ export class MessageComposerComponent {
   private wasRoomId: string | null | undefined = undefined;
 
   constructor() {
+    this.field = new ComposerTextField(this.textarea, this.text, this.injector);
+    this.menus = new ComposerAutocompletes(this.emojiIndex, this.members, {
+      text: this.text,
+      caret: () => this.field.caret(),
+      replaceRange: (start, end, insert) =>
+        this.field.replaceRange(start, end, insert),
+      scrollIntoView: (id) => this.field.scrollSuggestionIntoView(id),
+      insertAtCursor: (text) => this.insertEmoji(text),
+      commandsParsed: this.parsesCommands,
+    });
+    this.batches = new ComposerBatchSender({
+      uploadProgress: this.uploadProgress,
+      roomId: this.roomId,
+      text: this.text,
+      send: (event) => this.submitMedia.emit(event),
+      sendCaption: (event) => this.submitBatchCaption.emit(event),
+      removeStaged: (id) => this.attachments.removeStaged(id),
+      markFailed: (ids) => this.attachments.markFailed(ids),
+      drafts: this.drafts,
+      regrow: () => this.field.regrowAfterRender(),
+    });
+    this.uploadLabel = this.batches.uploadLabel;
+    this.canSendMedia = this.batches.canSend;
+
     // Before anything else: the attachment workflows call straight back through this, and
     // the room-change effect below can already ask them to drop a staged file.
     this.attachments.connect({
@@ -411,15 +441,18 @@ export class MessageComposerComponent {
       sendMedia: (file, caption) => {
         // A GIF is a one-item batch with a synthetic id: it was never staged, so nothing in
         // the strip has to be reconciled when its outcome lands.
-        this.dispatchMedia([{ id: `direct-${file.name}`, file }], caption, []);
+        this.batches.dispatch(
+          [{ id: `direct-${file.name}`, file }],
+          caption,
+          [],
+        );
       },
       endReply: () => {
         if (this.replyingTo()) {
           this.cancelReply.emit();
         }
       },
-      focusInput: () =>
-        queueMicrotask(() => this.textarea()?.nativeElement.focus()),
+      focusInput: () => queueMicrotask(() => this.field.focus()),
       leavePreview: () => this.previewing.set(false),
       openFileDialog: () => this.fileInput()?.nativeElement.click(),
     });
@@ -434,17 +467,14 @@ export class MessageComposerComponent {
         this.wasRoomId = id;
         untracked(() => {
           this.clearStaged();
-          // The upload itself belongs to the page, not to this composer, and survives the
-          // switch — but nothing staged here does, so holding the latch would only mute the
-          // next room's composer.
-          this.sendingMedia.set(false);
+          this.batches.release();
           // A recording belongs to the room it was started in — cancel it on a
           // room/thread switch so the mic doesn't stay open and a later Send can't
           // post the clip to the wrong room.
           if (this.recordingVoice()) {
             this.cancelVoiceRecording();
           }
-          this.mentionAutocomplete.clearChosen(); // they belong to the old conversation
+          this.menus.clearChosen(); // they belong to the old conversation
           this.previewing.set(false); // the new room opens ready to write, not to read
           // Drafts only apply to compose mode; in edit mode `text` is the edit body.
           if (!this.editing()) {
@@ -452,7 +482,7 @@ export class MessageComposerComponent {
               this.drafts.set(prev, this.text());
             }
             this.text.set(id != null ? this.drafts.get(id) : '');
-            queueMicrotask(() => this.autoGrow());
+            queueMicrotask(() => this.field.autoGrow());
           }
         });
       }
@@ -469,12 +499,12 @@ export class MessageComposerComponent {
 
     // Highlight the first suggestion whenever either result set changes.
     effect(() => {
-      this.emojiMatches();
-      this.emojiActiveIndex.set(0);
+      this.menus.emojiMatches();
+      this.menus.emojiActiveIndex.set(0);
     });
     effect(() => {
-      this.mentionMatches();
-      this.mentionActiveIndex.set(0);
+      this.menus.mentionMatches();
+      this.menus.mentionActiveIndex.set(0);
     });
     // Focus the input when a reply is started.
     effect(() => {
@@ -483,7 +513,7 @@ export class MessageComposerComponent {
         // A preview hides the textarea, so the focus() below would land on nothing and
         // leave the composer swallowing every keystroke of the reply being typed.
         this.previewing.set(false);
-        queueMicrotask(() => this.textarea()?.nativeElement.focus());
+        queueMicrotask(() => this.field.focus());
       }
       this.wasReplying = replying;
     });
@@ -506,7 +536,7 @@ export class MessageComposerComponent {
           const el = this.textarea()?.nativeElement;
           el?.focus();
           el?.setSelectionRange(el.value.length, el.value.length);
-          this.autoGrow();
+          this.field.autoGrow();
         });
       } else if (!editing && this.wasEditing) {
         // Leaving edit mode restores the conversation's compose draft (empty when
@@ -514,7 +544,7 @@ export class MessageComposerComponent {
         const id = untracked(() => this.roomId());
         this.text.set(id != null ? this.drafts.get(id) : '');
         this.previewing.set(false);
-        queueMicrotask(() => this.autoGrow());
+        queueMicrotask(() => this.field.autoGrow());
       }
       this.wasEditing = editing;
       this.wasEditTargetId = targetId;
@@ -537,7 +567,7 @@ export class MessageComposerComponent {
   onInput(event: Event): void {
     const value = (event.target as HTMLTextAreaElement).value;
     this.text.set(value);
-    this.autoGrow();
+    this.field.autoGrow();
     // Broadcast typing while there's something to send; an empty field stops it. The
     // host throttles the "start"s, so emitting on every keystroke is fine.
     this.typing.emit(value.trim().length > 0);
@@ -545,8 +575,7 @@ export class MessageComposerComponent {
     // transient ASCII that would mis-trigger `:shortcode` matching, and
     // rewriting the value/caret during composition drops characters.
     if (!(event as InputEvent).isComposing) {
-      this.syncEmojiAutocomplete();
-      this.syncMentionAutocomplete();
+      this.menus.sync();
     }
   }
 
@@ -662,36 +691,14 @@ export class MessageComposerComponent {
     this.applyEdit(applyFormat(value, start, end, action));
   }
 
-  /**
-   * Adopt an edit's text and selection.
-   *
-   * The DOM is written synchronously as well as the signal. These edits replace a keystroke we
-   * cancelled — Shift+Enter's newline, a formatting chord — so the textarea has to show the
-   * result before the *next* keystroke arrives. Leaving it to change detection opens a window
-   * in which a fast typist's next character is read back off a stale value and the edit is
-   * silently undone. The selection is re-asserted in a microtask as well, because Angular's own
-   * `[value]` write lands somewhere in there and setting `value` resets the caret to the end.
-   */
+  /** Land an edit in the field, then do the bookkeeping a keystroke would have done. */
   private applyEdit(result: EditResult): void {
-    this.text.set(result.text);
-    const el = this.textarea()?.nativeElement;
-    if (el) {
-      el.value = result.text;
-      el.setSelectionRange(result.selectionStart, result.selectionEnd);
-    }
-    this.autoGrow();
-    // The same bookkeeping a keystroke would have done. Without it an open mention menu keeps
-    // a query anchored to a caret that has moved — accepting it then splices at a stale offset
-    // — and a message begun entirely from the toolbar never announces that anyone is typing.
-    this.syncEmojiAutocomplete();
-    this.syncMentionAutocomplete();
+    this.field.write(result);
+    // Without this an open mention menu keeps a query anchored to a caret that has moved —
+    // accepting it then splices at a stale offset — and a message begun entirely from the
+    // toolbar never announces that anyone is typing.
+    this.menus.sync();
     this.typing.emit(result.text.trim().length > 0);
-    queueMicrotask(() => {
-      const settled = this.textarea()?.nativeElement;
-      settled?.focus();
-      settled?.setSelectionRange(result.selectionStart, result.selectionEnd);
-      this.autoGrow();
-    });
   }
 
   /** Swap between writing and previewing, returning focus to the input on the way back. */
@@ -699,13 +706,7 @@ export class MessageComposerComponent {
     const next = !this.previewing();
     this.previewing.set(next);
     if (!next) {
-      // afterNextRender, NOT queueMicrotask: the app is zoneless, so setting the signal only
-      // schedules change detection (rAF). A microtask runs first, while the textarea is still
-      // `display: none` — and focus() on a hidden element is a no-op, so the caret would end
-      // up on <body> and the next keystroke would go nowhere.
-      afterNextRender(() => this.textarea()?.nativeElement?.focus(), {
-        injector: this.injector,
-      });
+      this.field.focusAfterRender();
     }
   }
 
@@ -716,14 +717,8 @@ export class MessageComposerComponent {
     if (keyEvent.isComposing) {
       return;
     }
-    if (this.mentionOpen()) {
+    if (this.menus.acceptHighlighted()) {
       keyEvent.preventDefault();
-      this.acceptMention();
-      return;
-    }
-    if (this.emojiOpen()) {
-      keyEvent.preventDefault();
-      this.acceptEmoji();
       return;
     }
     if (keyEvent.shiftKey) {
@@ -735,30 +730,21 @@ export class MessageComposerComponent {
 
   /** Tab accepts the highlighted suggestion when a menu is open. */
   onTab(event: Event): void {
-    if (this.mentionOpen()) {
+    if (this.menus.acceptHighlighted()) {
       event.preventDefault();
-      this.acceptMention();
-    } else if (this.emojiOpen()) {
-      event.preventDefault();
-      this.acceptEmoji();
     }
   }
 
   /** Arrow Down moves the highlight when a menu is open. */
   onArrowDown(event: Event): void {
-    if (this.mentionOpen()) {
+    if (this.menus.moveHighlight(1)) {
       event.preventDefault();
-      this.moveMentionSelection(1);
-    } else if (this.emojiOpen()) {
-      event.preventDefault();
-      this.moveEmojiSelection(1);
     }
   }
 
   /** Closing the field hides any open menu; a menu click keeps focus (see template). */
   onBlur(): void {
-    this.emojiQuery.set(null);
-    this.mentionQuery.set(null);
+    this.menus.closeAll();
   }
 
   /** Send on Enter / the send button: a staged attachment (with the text as its
@@ -774,13 +760,13 @@ export class MessageComposerComponent {
       const typed = this.text();
       // Read BEFORE the box is emptied: `activeMentions()` matches the chosen users against
       // the current text, so computing it afterwards matches them against nothing.
-      const mentions = this.activeMentions();
+      const mentions = this.menus.activeMentions();
       this.text.set('');
       // One batch at a time — the check lives in `dispatchMedia`, so every route to a send is
       // covered rather than just this one. Nothing below runs when it refuses: a blocked send
       // must not clear the composer as though it had gone out.
       if (
-        !this.dispatchMedia(
+        !this.batches.dispatch(
           batch.map(({ id, file }) => ({ id, file })),
           typed.trim(),
           mentions,
@@ -798,43 +784,34 @@ export class MessageComposerComponent {
       // The staged rows stay until their outcomes arrive: the ones that fail have to remain
       // so they can be retried, which is the whole point of the batch reporting per item.
       this.resetMenus();
-      this.regrowAfterRender();
+      this.field.regrowAfterRender();
       return;
     }
     const value = this.text().trim();
     if (!value) {
       return;
     }
-    this.submitText.emit({ text: value, mentions: this.activeMentions() });
+    this.submitText.emit({
+      text: value,
+      mentions: this.menus.activeMentions(),
+    });
     this.typing.emit(false); // a sent message ends the typing notification
     this.resetMenus();
+    // Emptying the box below is a signal write, and writing `value` fires no `select` — so
+    // nothing would tell the bar its selection is gone. Enter happens to self-correct on the
+    // following `keyup`; pressing Send with the mouse does not, and left the bar hanging over
+    // an empty composer.
+    this.selection.set(null);
     if (!this.editing()) {
       // Edits clear via editing → false; new messages clear here.
       this.text.set('');
-      this.regrowAfterRender();
+      this.field.regrowAfterRender();
     }
-  }
-
-  /**
-   * Re-measure the input once the DOM reflects the signals just written.
-   *
-   * `afterNextRender`, NOT `queueMicrotask`, for the reason {@link onTogglePreview} records:
-   * this runs in an event handler, where the app being zoneless means a signal write only
-   * schedules change detection (a rAF/timeout race) — a microtask beats it. `resetMenus`
-   * leaves the preview, so the microtask measured a textarea still `display: none`,
-   * `scrollHeight` read 0, and the input was pinned to `height: 0px` (it has `min-height: 0`
-   * and `box-sizing: border-box`) until the next keystroke grew it again. Not reachable by a
-   * unit test: jsdom reports `scrollHeight: 0` for everything.
-   */
-  private regrowAfterRender(): void {
-    afterNextRender(() => this.autoGrow(), { injector: this.injector });
   }
 
   /** Close both autocomplete menus and forget the tracked mentions. */
   private resetMenus(): void {
-    this.emojiQuery.set(null);
-    this.mentionQuery.set(null);
-    this.mentionAutocomplete.clearChosen();
+    this.menus.reset();
     // A grid left open across a send is the one remaining route to two uploads at once: its
     // items call `sendMedia` directly, and unlike the toolbar button they are not disabled
     // while an upload runs. `dispatchMedia` refuses it either way; closing the grid means the
@@ -844,53 +821,6 @@ export class MessageComposerComponent {
     // composer that lands in preview mode after a send or a room switch looks broken — an
     // empty box that swallows typing until you notice the eye button.
     this.previewing.set(false);
-  }
-
-  /** Caret offset in the textarea, or the end of the text when it isn't rendered. */
-  private caret(): number {
-    return this.textarea()?.nativeElement.selectionStart ?? this.text().length;
-  }
-
-  /** Recompute the mention menu from the `@query` under the caret. */
-  private syncMentionAutocomplete(): void {
-    this.mentionAutocomplete.sync(this.text(), this.caret());
-  }
-
-  /** Accept a member: swap the `@query` for `@Name ` and record the mention. */
-  acceptMention(index = this.mentionActiveIndex()): void {
-    const replacement = this.mentionAutocomplete.accept(
-      this.text(),
-      this.caret(),
-      index,
-    );
-    if (!replacement) {
-      return;
-    }
-    this.replaceRange(replacement.start, replacement.end, replacement.insert);
-    this.mentionQuery.set(null);
-  }
-
-  private moveMentionSelection(delta: number): void {
-    const next = this.mentionAutocomplete.move(delta);
-    if (next !== null) {
-      this.scrollSuggestionIntoView(`mention-suggestion-${next}`);
-    }
-  }
-
-  /** Chosen mentions still present in the text (deleted ones dropped), deduped. */
-  private activeMentions(): Mention[] {
-    return this.mentionAutocomplete.active(this.text());
-  }
-
-  /**
-   * Recompute the emoji menu from the text before the caret, applying the inline
-   * `:shortcode:` → emoji replacement the engine resolves when one is complete.
-   */
-  private syncEmojiAutocomplete(): void {
-    const replacement = this.emojiAutocomplete.sync(this.text(), this.caret());
-    if (replacement) {
-      this.replaceRange(replacement.start, replacement.end, replacement.insert);
-    }
   }
 
   /** The emoji picker chose an emoji → insert its native character at the cursor. */
@@ -908,6 +838,79 @@ export class MessageComposerComponent {
   /** Share the device's current location to the active room. */
   shareLocation(): void {
     this.attachments.shareLocation();
+  }
+
+  /**
+   * A press on the field's own padding is a press on the input it draws.
+   *
+   * The box belongs to the field now, and the field is bigger than the textarea: with
+   * `align-items: end` the buttons sit at the bottom, so a grown input leaves empty field
+   * above them — 87px of it on a five-line draft, measured. That area shares the input's
+   * background and reads as part of it, and before the box moved it was outside the box
+   * entirely. Every other chat client forwards the click; dropping it is the surprise.
+   *
+   * `target === currentTarget` is what keeps this from stealing presses aimed at the buttons
+   * inside the field: only a press that landed on the field ITSELF gets forwarded.
+   */
+  protected onFieldPress(event: Event): void {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+    // `preventDefault` before the focus, not after, and not optional: a press's DEFAULT action
+    // sets focus, and it runs after this handler — so focusing here and letting the default
+    // through moves focus straight back off the textarea and onto nothing. The suggestion
+    // options cancel their `mousedown` for the same reason.
+    event.preventDefault();
+    this.field.focus();
+  }
+
+  /**
+   * Track whether anything is selected, which is what raises the unpinned bar.
+   *
+   * Three events rather than one, because a selection arrives three ways: `select` covers the
+   * browser's own (a double-click, a drag, Select All), `keyup` covers Shift+arrow, and
+   * `pointerup` covers a drag that ends without changing the selection — where `select` has
+   * already fired but the bar has to notice the release. The element-level `selectionchange`
+   * would replace all three and is not yet everywhere this app runs.
+   */
+  protected onSelectionChange(): void {
+    const el = this.textarea()?.nativeElement;
+    this.selection.set(
+      el && el.selectionStart !== el.selectionEnd
+        ? { start: el.selectionStart, end: el.selectionEnd }
+        : null,
+    );
+  }
+
+  /**
+   * Focus left the composer, so the bar it raised goes with it.
+   *
+   * A textarea keeps `selectionStart !== selectionEnd` after it blurs, and none of the three
+   * events above fire when the press lands somewhere else — so without this an unpinned bar
+   * raised by a selection stays up indefinitely once you click away into the timeline.
+   *
+   * `relatedTarget` is what makes it safe: it is the element about to receive focus, and a
+   * press on one of the bar's own buttons blurs the textarea BEFORE the click is delivered.
+   * Clearing unconditionally would unmount the bar between the press and the click, so the
+   * button you aimed at would never fire. Null means focus is leaving the document entirely
+   * (another window, the URL bar), which counts as leaving.
+   */
+  protected onComposerFocusOut(event: FocusEvent): void {
+    const next = event.relatedTarget;
+    if (next instanceof Node && this.host.nativeElement.contains(next)) {
+      return;
+    }
+    this.selection.set(null);
+  }
+
+  /**
+   * The bar's `Aa`: keep it, or stop keeping it.
+   *
+   * Writes the same preference the settings checkbox does, because it is the same question —
+   * asked where someone actually notices they want the answer changed.
+   */
+  protected onTogglePinned(): void {
+    this.composerSettings.setShowFormattingToolbar(!this.toolbarPinned());
   }
 
   /** Toggle the emoji picker, closing the other overlays (only one at a time). */
@@ -942,58 +945,6 @@ export class MessageComposerComponent {
     this.attachments.gifSelected(gif);
   }
 
-  /** Accept a suggestion: swap the `:fragment` under the caret for the emoji. */
-  acceptEmoji(index = this.emojiActiveIndex()): void {
-    const acceptance = this.emojiAutocomplete.accept(
-      this.text(),
-      this.caret(),
-      index,
-    );
-    if (!acceptance) {
-      return;
-    }
-    if (acceptance.kind === 'replace') {
-      const { start, end, insert } = acceptance.replacement;
-      this.replaceRange(start, end, insert);
-    } else {
-      // Caret drifted off the fragment — fall back to a plain cursor insert.
-      this.insertEmoji(acceptance.native);
-    }
-    this.emojiQuery.set(null);
-  }
-
-  private moveEmojiSelection(delta: number): void {
-    const next = this.emojiAutocomplete.move(delta);
-    if (next !== null) {
-      this.scrollSuggestionIntoView(`emoji-suggestion-${next}`);
-    }
-  }
-
-  /**
-   * Keep the highlighted option in view: `aria-activedescendant` doesn't auto-scroll the
-   * listbox, and the result set can overflow the menu's max-height. `id` must be the one
-   * `ComposerSuggestionsComponent` stamps on the option — the same id
-   * `aria-activedescendant` points at.
-   */
-  private scrollSuggestionIntoView(id: string): void {
-    queueMicrotask(() =>
-      document.getElementById(id)?.scrollIntoView?.({ block: 'nearest' }),
-    );
-  }
-
-  /** Replace text[start, end) with `insert`, then restore focus and the caret. */
-  private replaceRange(start: number, end: number, insert: string): void {
-    const value = this.text();
-    this.text.set(value.slice(0, start) + insert + value.slice(end));
-    queueMicrotask(() => {
-      const el = this.textarea()?.nativeElement;
-      const pos = start + insert.length;
-      el?.focus();
-      el?.setSelectionRange(pos, pos);
-      this.autoGrow();
-    });
-  }
-
   /** Attach button: native gallery picker on device, else the hidden file input. */
   onAttach(): void {
     this.attachments.attach();
@@ -1002,105 +953,6 @@ export class MessageComposerComponent {
   /** Hidden file input change → stage the picked file, then reset for re-picking. */
   onFilePicked(event: Event): void {
     this.attachments.filePicked(event);
-  }
-
-  /**
-   * The single funnel every media send passes through: `submit()` for the staged batch, and
-   * the attachments service's `sendMedia` hook for a GIF. The in-flight list, the send latch
-   * and the one-at-a-time check all live here, so a path that does not go through `submit()`
-   * cannot miss any of them.
-   *
-   * Returns whether the batch was dispatched, so a caller with cleanup to do — `submit()`
-   * clears the text — can tell a refusal from a send.
-   */
-  private dispatchMedia(
-    items: readonly BatchItem[],
-    caption: string,
-    mentions: readonly Mention[],
-  ): boolean {
-    if (!items.length) {
-      return false;
-    }
-    // Guarded here rather than only on the send button, because `onEnter` calls `submit()`
-    // directly and never consults `[disabled]` — key auto-repeat alone is enough to fire it
-    // twice. Two batches in flight share one `uploadProgress` and interleave their events, so
-    // neither arrives in the order it was staged.
-    if (this.uploadProgress() !== null || this.sendingMedia()) {
-      return false;
-    }
-    this.sendingItems.set(items);
-    this.sendingMedia.set(true);
-    // Stamped with the room, like the files themselves are by the owner: a batch settles long
-    // after it was pressed, and by then this composer may be showing a different conversation.
-    const roomAtDispatch = this.roomId();
-    this.submitMedia.emit({
-      items,
-      caption,
-      onOutcomes: (outcomes) =>
-        this.onBatchOutcomes(outcomes, caption, mentions, roomAtDispatch),
-    });
-    return true;
-  }
-
-  /**
-   * What survives a batch: successes leave the strip, failures stay in it so the next send
-   * retries exactly them. A caption typed for a batch goes out as its own message afterwards
-   * — Matrix has no multi-attachment event, so there is no first image for it to belong to,
-   * and repeating it on each would put the same sentence in the room N times. A single file
-   * keeps its MSC2530 caption, which is what `sendMediaBatch` decides.
-   */
-  private onBatchOutcomes(
-    outcomes: readonly BatchOutcome[],
-    caption: string,
-    mentions: readonly Mention[],
-    roomAtDispatch: string | null,
-  ): void {
-    // The batch is over the moment its outcomes land, and this is the ONLY release: inferring
-    // it from `uploadProgress` returning to null cannot work, because a send that completes
-    // synchronously is back to null before a signal input can ever observe it move.
-    this.sendingMedia.set(false);
-    for (const outcome of outcomes) {
-      if (!outcome.failed) {
-        this.attachments.removeStaged(outcome.id);
-      }
-    }
-    // A staged file and a failed one look identical in the strip, so mark them rather than
-    // leaving the user to guess. Only this batch's failures — these outcomes say nothing
-    // about files that failed in an earlier round and have not been retried yet.
-    this.attachments.markFailed(
-      outcomes.filter((outcome) => outcome.failed).map((outcome) => outcome.id),
-    );
-    if (!caption) {
-      return;
-    }
-    if (this.roomId() !== roomAtDispatch) {
-      // The conversation moved on. Posting would put these words in a room they were not
-      // written for, and restoring would leave them in that room's composer — the same leak
-      // the room-change effect above exists to prevent. Parked as the draft of the room they
-      // belong to instead, so they are neither misdelivered nor destroyed.
-      if (roomAtDispatch != null && !this.drafts.get(roomAtDispatch)) {
-        this.drafts.set(roomAtDispatch, caption);
-      }
-      return;
-    }
-    const delivered = outcomes.filter((outcome) => !outcome.failed).length;
-    if (delivered && outcomes.length > 1) {
-      // No file for a batch caption to belong to, so it goes out on its own — after the
-      // files, and only if at least one of them actually arrived. On its OWN output: by now
-      // the user may be part-way into an edit or a reply, and the ordinary submit path would
-      // route this into it.
-      this.submitBatchCaption.emit({ text: caption, mentions: [...mentions] });
-      return;
-    }
-    if (!delivered && !this.text().trim()) {
-      // Nothing carried it: a single file's caption rides its media event (MSC2530) and went
-      // down with it, and a batch caption is never sent when the batch delivered nothing.
-      // `submit()` cleared the box on dispatch, so without this the words are simply gone.
-      // Skipped when something has been typed since — restoring is for what was lost, not
-      // for overwriting what replaced it.
-      this.text.set(caption);
-      this.regrowAfterRender();
-    }
   }
 
   /**
@@ -1120,7 +972,7 @@ export class MessageComposerComponent {
     // The one-at-a-time check is repeated here rather than left to `dispatchMedia`, because
     // the flag is cleared BEFORE dispatching — a refusal would otherwise leave the row
     // looking like it had been sent.
-    if (this.uploadProgress() !== null || this.sendingMedia()) {
+    if (!this.canSendMedia()) {
       return;
     }
     // So the row reads as uploading rather than as still-failed. Only this one: the others
@@ -1129,14 +981,14 @@ export class MessageComposerComponent {
     // Clearing the flag unmounts the row's retry button — the element that currently has
     // focus — which would strand a keyboard user at the top of the page. Same remedy, and the
     // same reason, as `removeStaged`.
-    queueMicrotask(() => this.textarea()?.nativeElement.focus());
+    queueMicrotask(() => this.field.focus());
     // A retry is a send: it takes whatever caption is in the box and clears it the way
     // `submit()` does, before dispatching and for the same reason.
     const typed = this.text();
-    const mentions = this.activeMentions(); // before the box is emptied, as in `submit()`
+    const mentions = this.menus.activeMentions(); // before the box is emptied, as in `submit()`
     this.text.set('');
     if (
-      !this.dispatchMedia(
+      !this.batches.dispatch(
         [{ id: attachment.id, file: attachment.file }],
         typed.trim(),
         mentions,
@@ -1153,7 +1005,7 @@ export class MessageComposerComponent {
     // destroyed, which drops focus to <body> and strands a keyboard user at the top of the
     // page. The textarea is where they were heading either way. Queued, like the staging
     // path's own focus call: the row is still in the DOM until CD runs.
-    queueMicrotask(() => this.textarea()?.nativeElement.focus());
+    queueMicrotask(() => this.field.focus());
   }
 
   /**
@@ -1177,12 +1029,7 @@ export class MessageComposerComponent {
   }
 
   onEscape(): void {
-    if (this.mentionOpen()) {
-      this.mentionQuery.set(null);
-      return;
-    }
-    if (this.emojiOpen()) {
-      this.emojiQuery.set(null);
+    if (this.menus.closeTopmost()) {
       return;
     }
     if (this.pickerOpen()) {
@@ -1196,7 +1043,7 @@ export class MessageComposerComponent {
     // Not while a batch is going out: those rows are what its outcomes will report on, and
     // clearing them means a failure has nowhere to land — the toast would then promise files
     // are "still in the composer" that are not.
-    if (this.hasStaged() && !this.sendingMedia()) {
+    if (this.hasStaged() && !this.batches.inFlight()) {
       this.clearStaged();
       return;
     }
@@ -1221,19 +1068,13 @@ export class MessageComposerComponent {
       const pos = start + emoji.length;
       el?.focus();
       el?.setSelectionRange(pos, pos);
-      this.autoGrow();
+      this.field.autoGrow();
     });
   }
 
   onArrowUp(event: Event): void {
-    if (this.mentionOpen()) {
+    if (this.menus.moveHighlight(-1)) {
       event.preventDefault();
-      this.moveMentionSelection(-1);
-      return;
-    }
-    if (this.emojiOpen()) {
-      event.preventDefault();
-      this.moveEmojiSelection(-1);
       return;
     }
     // Empty composer + Up arrow → edit the last message (Discord-style).
@@ -1243,14 +1084,5 @@ export class MessageComposerComponent {
     }
     event.preventDefault();
     this.editLast.emit();
-  }
-
-  private autoGrow(): void {
-    const el = this.textarea()?.nativeElement;
-    if (!el) {
-      return;
-    }
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT_PX)}px`;
   }
 }

@@ -1,0 +1,12 @@
+{
+  "name": "components-empty-state",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/components/empty-state/src",
+  "prefix": "trn",
+  "projectType": "library",
+  "tags": ["type:ui", "scope:shared", "ui:public"],
+  "targets": {
+    "test": {},
+    "typecheck": {}
+  }
+}

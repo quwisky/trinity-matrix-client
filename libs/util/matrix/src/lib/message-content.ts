@@ -340,10 +340,51 @@ export function textMessageContent(
 /** The classic shrug the `/shrug` command appends. */
 const SHRUG = '¯\\_(ツ)_/¯';
 
-/** The IRC-style commands the composer recognizes. */
-const SLASH_COMMANDS = ['me', 'shrug', 'plain', 'spoiler'] as const;
+/** One IRC-style command the composer recognises, and what to tell someone about it. */
+export interface SlashCommand {
+  /** The word after the slash, lower case. */
+  readonly name: string;
+  /** What it does, in the words a menu would use. */
+  readonly description: string;
+  /** What follows it, if anything — shown after the name so the shape is visible. */
+  readonly argument?: string;
+}
+
+/**
+ * The IRC-style commands the composer recognises, with the descriptions any UI should use.
+ *
+ * Exported as data rather than as a bare list of names because the two consumers need
+ * different things from it and must not disagree: {@link parseSlashCommand} needs the names,
+ * and the composer's autocomplete needs to say what each one does. Redeclaring the
+ * descriptions in the feature would let a command be renamed here and go on being offered
+ * under its old name there.
+ */
+export const SLASH_COMMANDS: readonly SlashCommand[] = [
+  {
+    name: 'me',
+    description: 'Send as an action, in the third person',
+    argument: '<message>',
+  },
+  { name: 'shrug', description: 'Append ¯\\_(ツ)_/¯', argument: '[message]' },
+  {
+    name: 'plain',
+    description: 'Send without formatting, markdown and all',
+    argument: '<message>',
+  },
+  {
+    name: 'spoiler',
+    description: 'Hide the message until it is clicked',
+    argument: '<message>',
+  },
+];
+
+// Escaped, because the names are public API now. As a private tuple of four literals they
+// could only ever be `[a-z]+`; exported behind `name: string`, a future `foo.bar` would land
+// in this alternation as a wildcard and quietly widen what the parser accepts.
 const SLASH_RE = new RegExp(
-  `^/(${SLASH_COMMANDS.join('|')})(?:[ \\t]+([\\s\\S]*))?$`,
+  `^/(${SLASH_COMMANDS.map((command) =>
+    command.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+  ).join('|')})(?:[ \\t]+([\\s\\S]*))?$`,
   'i',
 );
 

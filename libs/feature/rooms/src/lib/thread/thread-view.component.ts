@@ -20,6 +20,7 @@ import {
   type BatchOutcome,
   type BatchProgress,
 } from '../shared/send-media-batch';
+import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
@@ -87,6 +88,7 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
   selector: 'trn-thread-view',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    EmptyStateComponent,
     TrnIconComponent,
     HlmButton,
     TrnTooltip,

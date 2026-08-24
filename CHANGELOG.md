@@ -25,6 +25,20 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **The "nothing here yet" messages all look the same now.** Fourteen places tell you a list is
+  empty — no messages in a channel, no threads, no pinned messages, no search results, nobody in
+  a space — and each had drifted into its own size and spacing. They are one panel now, at one
+  size. The wording is unchanged everywhere; what moves is that the largest of them (the empty
+  channel, an empty thread) are set at the same size as the rest rather than a few pixels larger,
+  and the tightest gain a little breathing room.
+
+- **The composer's buttons live inside the message box.** The `+`, emoji and send buttons used
+  to sit outside the box you type in, flanking it. They are inside it now, so the whole thing
+  reads as one control: pressing anywhere in it — including the empty space beside the buttons
+  on a long draft — puts the cursor in the text, and the focus outline is drawn around the box
+  rather than around a bare field sitting in it. Switching to the preview no longer nudges the
+  composer up and down by a few pixels.
+
 - **One panel at a time down the right-hand side.** Threads, a thread, pinned messages and
   in-room search used to open as floating panels _over_ the member list, so you could end up
   with two lists stacked on each other and no clear way back. There is now a single
@@ -34,7 +48,37 @@ All notable changes to this project are documented here. The format is based on
   role change land in the list you were reading. Escape closes whatever is showing, and
   closing it hands the keyboard back to the button you opened it with.
 
+- **The formatting buttons show what your selection already is.** Select some bold text and
+  the **B** is lit; select plain text and it is not. Pressing a lit button takes that
+  formatting off again, so the bar reads as the state of what you have selected rather than as
+  a record of the last button you pressed. Link and code block do not light up, because there
+  is nothing to switch off — pressing them always inserts.
+
+- **The formatting toolbar comes when you need it.** It used to be a row that was either always
+  there or never there, with four buttons out and the other five hidden behind a "⋯". Now
+  selecting some text brings up all nine — bold, italic, strikethrough, inline code, code
+  block, quote, link, bullets and a task list — grouped by what they do, and it goes away again
+  when the selection does. If you would rather it simply stayed put, **Aa** on the bar keeps it,
+  and Settings → Appearance has both switches: keep it open, and bring it up on a selection.
+  Turning both off means the buttons never appear, which is what people who had already hidden
+  the toolbar were asking for and what they will still get. The keyboard shortcuts work either
+  way, as they always have.
+
+- **The composer now tells you which slash commands exist.** Typing `/` at the start of a
+  message brings up the list — `/me`, `/shrug`, `/plain`, `/spoiler` — each with what it does
+  and what it takes, so you no longer have to already know the name to use one. Typing more
+  narrows it, the arrow keys move through it, Enter or Tab fills the command in, and Escape
+  puts it away. It only offers a command where one would actually work — at the start of a new
+  message, never mid-sentence, and not while you are replying, editing, or captioning an
+  attachment, because those are sent as written.
+
 ### Fixed
+
+- **A room that has been upgraded no longer squashes the conversation.** In a room with a "this
+  room has been replaced" notice, the notice was sharing a row with the message list instead of
+  sitting above it, so the messages were squeezed into a narrow strip down the side and the
+  composer had nowhere to put your text. The notice now spans the width above the conversation,
+  which is where it was always meant to be.
 
 - **Images and videos hold their place while they load.** The timeline used to jump as each
   one arrived — a message would be one line tall, then several hundred pixels tall a moment
