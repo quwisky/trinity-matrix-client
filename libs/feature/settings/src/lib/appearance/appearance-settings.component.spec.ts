@@ -45,6 +45,8 @@ describe('AppearanceSettingsComponent', () => {
   let setDefault: Mock;
   let showFormattingToolbar: ReturnType<typeof signal<boolean>>;
   let setShowFormattingToolbar: Mock;
+  let formatOnSelection: ReturnType<typeof signal<boolean>>;
+  let setFormatOnSelection: Mock;
 
   beforeEach(() => {
     preference = signal<ThemePreference>('system');
@@ -63,6 +65,8 @@ describe('AppearanceSettingsComponent', () => {
     setDefault = vi.fn();
     showFormattingToolbar = signal(true);
     setShowFormattingToolbar = vi.fn();
+    formatOnSelection = signal(true);
+    setFormatOnSelection = vi.fn();
   });
 
   function renderPage() {
@@ -83,6 +87,8 @@ describe('AppearanceSettingsComponent', () => {
         MockProvider(ComposerSettingsService, {
           showFormattingToolbar,
           setShowFormattingToolbar,
+          formatOnSelection,
+          setFormatOnSelection,
         }),
         MockProvider(SystemLineSettingsService, {
           showMembership,
@@ -469,5 +475,19 @@ describe('AppearanceSettingsComponent', () => {
 
     toggle.componentInstance.checkedChange.emit(true);
     expect(setShowFormattingToolbar).toHaveBeenCalledWith(true);
+  });
+
+  it('reflects and sets the raise-on-selection preference', async () => {
+    // Its own checkbox and its own setter. The two are separate preferences precisely so they
+    // can disagree, so a test that only drove the pinned one would not notice them re-merged.
+    formatOnSelection.set(false);
+    const { fixture } = await renderPage();
+
+    const toggle = checkboxFor(fixture, 'composer-format-on-selection')!;
+    expect(toggle.componentInstance.checked()).toBe(false);
+
+    toggle.componentInstance.checkedChange.emit(true);
+    expect(setFormatOnSelection).toHaveBeenCalledWith(true);
+    expect(setShowFormattingToolbar).not.toHaveBeenCalled();
   });
 });

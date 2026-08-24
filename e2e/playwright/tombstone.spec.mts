@@ -105,6 +105,31 @@ test.describe('Room tombstone', () => {
       timeout: 20_000,
     });
 
+    // And it stacks ABOVE the chat row rather than sharing it. `.chat-body` is a flex row of
+    // [timeline, right-hand panel] whose children are sized by content, so a full-width notice
+    // put in there competes with the timeline for horizontal space instead of sitting over it:
+    // measured at 779px of a 928px row, which left the timeline 149px and the composer's text
+    // column nothing at all. `openRoom` above does catch that today — a collapsed composer is
+    // not `toBeVisible()` — but only as a side effect of a gate that is there for sync timing.
+    // This says what is actually being guarded, so it survives a refactor of that helper.
+    const banner = page.getByTestId('tombstone-banner');
+    expect(await banner.evaluate((host) => !!host.closest('.chat-body'))).toBe(
+      false,
+    );
+    const timelineShare = await page.evaluate(() => {
+      const row = document.querySelector('.chat-body')?.getBoundingClientRect();
+      const list = document
+        .querySelector(
+          '.chat-body trn-simple-message-list, .chat-body trn-virtual-message-list',
+        )
+        ?.getBoundingClientRect();
+      return row && list && row.width > 0 ? list.width / row.width : 0;
+    });
+    // Half, not most: the right-hand panel is a legitimate row citizen and takes about a
+    // quarter at this viewport (measured 0.74 with the member list up). The bug left the
+    // timeline 149px of 928 — 0.16 — so half separates the two with room to spare either way.
+    expect(timelineShare).toBeGreaterThan(0.5);
+
     // Go to the successor: the banner clears (the live successor has no tombstone).
     await page.getByTestId('tombstone-go').click();
     await expect(page.getByTestId('tombstone-banner')).toBeHidden({

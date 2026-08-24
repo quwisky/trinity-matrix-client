@@ -54,7 +54,13 @@ $below-md: '(max-width: 767.98px)';
   color: var(--trinity-text-muted);
 }
 
-/// Centred profile-card container (user hover card, member-info panel).
+/// Profile-card container (user card, member-info panel).
+///
+/// Carries the overlay shadow because the user card is presented as a POPOVER pinned to
+/// the mention that was clicked, over a transparent backdrop — nothing dims the timeline
+/// behind it, so the border alone leaves it reading as part of the message rather than
+/// above it. The token, not a literal: it is re-cut per mode (18% on light, 55% on dark),
+/// and a fixed rgba that reads on white disappears on #313338.
 @mixin profile-card {
   display: flex;
   flex-direction: column;
@@ -66,6 +72,7 @@ $below-md: '(max-width: 767.98px)';
   border: 1px solid var(--trinity-divider);
   border-radius: var(--trinity-radius-xl);
   background: var(--card);
+  box-shadow: var(--trinity-shadow-overlay);
   text-align: center;
 }
 

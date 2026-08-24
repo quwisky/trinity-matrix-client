@@ -27,6 +27,10 @@ const workspaceRoot = join(import.meta.dirname, '..');
 const LOCAL_STACKING = [
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-user-panel/sidebar-user-panel.component.scss',
   'apps/trinity/src/rendered-markdown.scss',
+  // The member list's sticky filter, over that same list's own rows. It has to out-stack
+  // the rows it scrolls above and nothing else — the panel it sits in is placed by the
+  // shell, and giving this an app-level layer would claim a relationship it does not have.
+  'libs/feature/rooms/src/lib/member-list/member-list.component.scss',
 ];
 
 /**

@@ -1,0 +1,45 @@
+<!-- Centred column. `text-balance` on the copy rather than a width cap: these sit in panels
+     from a 280px sidebar to a full chat pane, and a fixed measure that reads well in one is
+     wrong in the other. -->
+<div [class]="layoutClass()">
+  @if (badge(); as glyph) {
+    <!-- The disc the hero already drew, moved off `.hero__badge`. A `<span>` with
+         `aria-hidden`: it is decoration for a title that says the same thing in words. -->
+    <span
+      class="mb-2 flex size-[68px] items-center justify-center rounded-full bg-[var(--trinity-sidebar)] text-[34px] text-muted-foreground"
+      aria-hidden="true"
+      >{{ glyph }}</span
+    >
+  }
+
+  @if (icon(); as name) {
+    <trn-icon [name]="name" class="text-2xl text-muted-foreground" />
+  }
+
+  @if (title(); as heading) {
+    @if (titleAs() === 'h2') {
+      <h2 [class]="titleClass()">{{ heading }}</h2>
+    } @else {
+      <p [class]="titleClass()">{{ heading }}</p>
+    }
+  }
+
+  <!-- The projected slot and `body` occupy the same place, and content wins. `ng-content`
+       cannot be asked whether it received anything, so the precedence is expressed the other
+       way round: the interpolation is the slot's FALLBACK, and a call site that projects
+       simply does not set `body`.
+
+       `empty:hidden` is what makes the third case work — neither set. The title above is
+       guarded by an `@if` and this is not, so without it a heading-only panel rendered an
+       empty `<p>`: a line box plus a `gap-2` beneath a heading that should have been the last
+       thing. Several of the adopting sites are heading-only. Verified in Chromium and WebKit
+       that `:empty` still matches with only a comment anchor or an empty text node inside,
+       which is exactly what Angular leaves here. -->
+  <p [class]="bodyClass()">
+    <ng-content>{{ body() }}</ng-content>
+  </p>
+
+  <div [class]="actionsClass">
+    <ng-content select="[trnEmptyStateActions]" />
+  </div>
+</div>

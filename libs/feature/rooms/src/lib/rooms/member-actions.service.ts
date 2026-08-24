@@ -101,8 +101,8 @@ export class MemberActionsService {
   }
 
   /** Show the user card; if they pick "Message", open (or reuse) a DM with the user. */
-  async openUserCard(userId: string): Promise<void> {
-    const messageUserId = await this.userCard.open(userId);
+  async openUserCard(userId: string, anchor?: HTMLElement): Promise<void> {
+    const messageUserId = await this.userCard.open(userId, anchor);
     if (messageUserId) {
       this.startDirectMessage(messageUserId);
     }

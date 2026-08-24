@@ -37,12 +37,17 @@
         </label>
       </li>
     } @empty {
-      <li class="add-to-space__empty">
-        @if (candidates().length) {
-          No rooms match that search.
-        } @else {
-          Every room you are in is already here.
-        }
+      <li>
+        <!-- Two messages rather than one: "nothing matches your search" and "there is
+             nothing left to add" are different facts, and the second is the happier one. -->
+        <trn-empty-state
+          size="line"
+          [body]="
+            candidates().length
+              ? 'No rooms match that search.'
+              : 'Every room you are in is already here.'
+          "
+        />
       </li>
     }
   </ul>

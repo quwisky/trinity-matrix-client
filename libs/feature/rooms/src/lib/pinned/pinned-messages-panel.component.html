@@ -52,9 +52,10 @@
         }
       </div>
     } @empty {
-      <div class="pinned__empty" data-testid="pinned-empty">
-        No pinned messages in this channel yet.
-      </div>
+      <trn-empty-state
+        body="No pinned messages in this channel yet."
+        data-testid="pinned-empty"
+      />
     }
   </div>
 </div>

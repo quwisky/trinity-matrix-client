@@ -37,9 +37,9 @@ interface ShortcutGroup {
   selector: 'trn-shortcuts-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './shortcuts-section.component.html',
-  styleUrl: './shortcuts-section.component.scss',
   imports: [HlmButton],
   host: {
+    class: 'block',
     // Active only while capturing (guarded inside the handler), so it never intercepts
     // ordinary keys. `window` so a chord is caught wherever focus sits in the section.
     '(window:keydown)': 'onCapture($event)',

@@ -57,6 +57,7 @@ describe('config key ledger', () => {
     expect([...exportedKeysFor('platform-native')].sort()).toEqual([
       'trinity.code-lines',
       'trinity.code-scale',
+      'trinity.composer.format-on-selection',
       'trinity.composer.show-toolbar',
       'trinity.density',
       'trinity.flags.virtual-timeline',

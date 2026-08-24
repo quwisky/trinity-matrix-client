@@ -83,6 +83,41 @@ test.describe('Settings', () => {
       'aria-current',
       'page',
     );
+
+    // Two panes SIDE BY SIDE, and the active link visibly marked. Both used to come from
+    // `settings.page.scss` media queries and now come from md-prefixed utilities, which
+    // jsdom cannot evaluate at all — it applies no cascade and no media queries, so the
+    // unit suite can only see that a class string is present. Measured here instead.
+    const nav = page.locator('nav[aria-label="Settings sections"]');
+    const navBox = await nav.boundingBox();
+    const detailBox = await page
+      .locator('section:has(> router-outlet), section')
+      .first()
+      .boundingBox();
+    expect(navBox).not.toBeNull();
+    expect(detailBox).not.toBeNull();
+    // Beside, not stacked: the detail starts after the nav ends.
+    expect(detailBox!.x).toBeGreaterThanOrEqual(navBox!.x + navBox!.width - 1);
+    expect(navBox!.width).toBe(240);
+
+    // The mobile drill-in chevron is suppressed in the sidebar — and it is suppressed by
+    // NOT BEING RENDERED, which is why this asserts absence rather than a computed style.
+    // It was `md:hidden` first, and that class is inert here: Tailwind's utilities live in
+    // `@layer utilities` while a `trn-*` component's own `:host { display: … }` is
+    // unlayered, and an unlayered author declaration beats a layered one whatever the
+    // specificity. Chromium reported `flex` with the class applied.
+    await expect(
+      page
+        .getByTestId('settings-nav-profile')
+        .locator('trn-icon[name="chevron-right"]'),
+    ).toHaveCount(0);
+
+    // The active cue is an inset accent bar, and it has to differ from plain hover —
+    // which uses the same background token, so background alone would say nothing.
+    const shadow = await page
+      .getByTestId('settings-nav-profile')
+      .evaluate((el) => getComputedStyle(el).boxShadow);
+    expect(shadow).not.toBe('none');
   });
 
   test('desktop: back leaves settings without retracing visited sections', async ({
@@ -228,10 +263,18 @@ test.describe('Settings', () => {
       timeout: 20_000,
     });
 
+    // The detail pane is the scroller. It used to be `.settings__detail`; that class went
+    // when the page moved to utilities, and a `querySelector` for it returned null — which
+    // made `!!pane && …` short-circuit to false and BOTH assertions below pass whatever
+    // the pane did. Located structurally now, and thrown on rather than defaulted, so the
+    // check cannot go quiet again.
     const detailOverflows = () =>
       page.evaluate(() => {
-        const pane = document.querySelector('.settings__detail');
-        return !!pane && pane.scrollHeight > pane.clientHeight + 1;
+        const pane = document.querySelector('[data-testid="settings-detail"]');
+        if (!pane) {
+          throw new Error('settings detail pane not found');
+        }
+        return pane.scrollHeight > pane.clientHeight + 1;
       });
 
     expect(await detailOverflows()).toBe(false);

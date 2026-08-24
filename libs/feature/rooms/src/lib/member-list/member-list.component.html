@@ -1,5 +1,39 @@
-<aside class="members" aria-label="Members">
-  @for (section of sections(); track section.role) {
+<aside class="members" aria-label="Members" #scrollHost (scroll)="onScroll()">
+  <label class="members__filter">
+    <span class="sr-only">Filter members</span>
+    <input
+      trnInput
+      type="search"
+      class="w-full"
+      placeholder="Filter members"
+      autocomplete="off"
+      [value]="query()"
+      (input)="onQuery($any($event.target).value)"
+      data-testid="member-filter"
+    />
+  </label>
+
+  <!-- Always rendered, never behind an @if: a live region that is created at the moment
+       its text appears is a region the screen reader was not yet watching, so nothing is
+       announced. Only the text changes. Silent until a filter is actually typed. -->
+  <p
+    class="sr-only"
+    role="status"
+    aria-live="polite"
+    data-testid="member-filter-status"
+  >
+    {{ filterStatus() }}
+  </p>
+
+  <!-- Spacers stand in for the rows outside the window so the scrollbar keeps its true
+       length; without them the list would shrink to whatever is rendered. -->
+  <div
+    class="members__pad"
+    aria-hidden="true"
+    [style.height.px]="topPadPx()"
+  ></div>
+
+  @for (section of windowedSections(); track section.role) {
     <div
       class="members__section"
       role="group"
@@ -7,10 +41,12 @@
     >
       <!-- The group's aria-label already names the role and count, so hide the
            visual header (icon included) from assistive tech to avoid a double read. -->
-      <span class="category members__section-label" aria-hidden="true">
-        <trn-icon class="members__section-icon" [name]="section.icon" />
-        {{ section.label }} — {{ section.rows.length }}
-      </span>
+      @if (section.showHeader) {
+        <span class="category members__section-label" aria-hidden="true">
+          <trn-icon class="members__section-icon" [name]="section.icon" />
+          {{ section.label }} — {{ section.totalRows }}
+        </span>
+      }
       <ul class="members__list" role="list">
         @for (row of section.rows; track row.member.userId) {
           <li class="members__item">
@@ -36,5 +72,19 @@
         }
       </ul>
     </div>
+  } @empty {
+    @if (filtering()) {
+      <trn-empty-state
+        size="line"
+        body="No members match that."
+        data-testid="member-filter-empty"
+      />
+    }
   }
+
+  <div
+    class="members__pad"
+    aria-hidden="true"
+    [style.height.px]="bottomPadPx()"
+  ></div>
 </aside>

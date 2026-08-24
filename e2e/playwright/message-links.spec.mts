@@ -176,10 +176,26 @@ test.describe('matrix.to link navigation', () => {
     await openRoom(page, roomName);
 
     // Clicking the mention opens a user card — it does not navigate anywhere.
-    await page.locator('.scroll a', { hasText: bobName }).first().click();
+    const mention = page.locator('.scroll a', { hasText: bobName }).first();
+    const mentionBox = await mention.boundingBox();
+    await mention.click();
     const card = page.getByTestId('user-card');
     await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card.getByTestId('user-card-name')).toHaveText(bobName);
+
+    // And it is a POPOVER pinned to that mention, not a modal centred over the room it
+    // refers to. Two independent signals, because either alone can hold by accident: CDK
+    // builds this wrapper only for a flexibly-connected overlay (a global centred strategy
+    // has none), and the card hangs BELOW the mention it came from rather than at the
+    // viewport's vertical middle.
+    await expect(
+      page.locator('.cdk-overlay-connected-position-bounding-box'),
+    ).toBeVisible();
+    const cardBox = await card.boundingBox();
+    expect(mentionBox).not.toBeNull();
+    expect(cardBox).not.toBeNull();
+    expect(cardBox!.y).toBeGreaterThanOrEqual(mentionBox!.y);
+    expect(Math.abs(cardBox!.x - mentionBox!.x)).toBeLessThan(120);
     // Still in the same room (no empty room opened behind the card).
     await expect(page.getByTestId('composer-input')).toHaveAttribute(
       'placeholder',
