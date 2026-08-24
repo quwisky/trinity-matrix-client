@@ -2,21 +2,24 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  ElementRef,
   computed,
   effect,
   inject,
   input,
   signal,
-  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subscription, finalize, switchMap } from 'rxjs';
 import { runWithBusy } from '@trinity/util/ui';
 import { MediaBubbleComponent } from '@trinity/components/media-bubble';
+import {
+  TrnDialogService,
+  type TrnDialogRef,
+} from '@trinity/components/overlay';
 import { MediaService } from '@trinity/data-access/media';
 import { type MediaPayload } from '@trinity/util/matrix';
 import { FileSaveService } from '../media-save/file-save.service';
+import { LightboxComponent } from './lightbox/lightbox.component';
 
 /**
  * Smart wrapper bridging the timeline's {@link MediaPayload} to the presentational
@@ -29,31 +32,12 @@ import { FileSaveService } from '../media-save/file-save.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [MediaBubbleComponent],
   templateUrl: './media-attachment.component.html',
-  styles: [
-    `
-      .lightbox {
-        position: fixed;
-        inset: 0;
-        z-index: 1000;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 1.5rem;
-        background: rgba(0, 0, 0, 0.85);
-        cursor: zoom-out;
-      }
-      .lightbox__img {
-        max-width: 100%;
-        max-height: 100%;
-        object-fit: contain;
-      }
-    `,
-  ],
 })
 export class MediaAttachmentComponent {
   readonly media = input.required<MediaPayload>();
 
   private readonly mediaService = inject(MediaService);
+  private readonly dialogs = inject(TrnDialogService);
   private readonly fileSave = inject(FileSaveService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -61,7 +45,6 @@ export class MediaAttachmentComponent {
   readonly loading = signal(false);
   readonly errorMsg = signal<string | null>(null);
   readonly hasError = computed(() => this.errorMsg() !== null);
-  readonly lightboxSrc = signal<string | null>(null);
   /** Guards against a second save starting while one is in flight (native Share
    * rejects a concurrent invocation, and it would write the file twice). */
   private readonly saving = signal(false);
@@ -71,9 +54,7 @@ export class MediaAttachmentComponent {
   /** Currently-pinned full-resolution URL while the lightbox is open. */
   private lightboxPinnedUrl: string | null = null;
   private thumbnailSub?: Subscription;
-  private readonly lightboxEl = viewChild<ElementRef<HTMLElement>>('lightbox');
-  /** The element to return focus to when the lightbox closes (its trigger). */
-  private lightboxReturnFocus: HTMLElement | null = null;
+  private lightboxRef: TrnDialogRef<void> | null = null;
 
   constructor() {
     // Re-resolve whenever the bound message changes — instances are recycled
@@ -84,10 +65,12 @@ export class MediaAttachmentComponent {
       this.src.set(null);
       this.errorMsg.set(null);
       this.repin(null);
-      // A recycled row may carry an open lightbox from the previous message —
-      // unpin its full URL and close it so it can't leak or show stale bytes.
-      // restoreFocus:false — this is a background close, not a user action.
-      this.closeLightbox(false);
+      // Note what is NOT here any more: a force-close of the lightbox. While it rendered
+      // inside this row, a recycled instance would have shown the previous message's image,
+      // so the row had to slam it shut and skip the focus restore to avoid moving focus to
+      // an unrelated button. An overlay is not inside the row — it holds its own URL, pinned
+      // for as long as it is open — so a message arriving under it is no longer its problem,
+      // and the image the reader opened stays open.
       // A file card is a pure download affordance — it never binds `src`. Skip
       // thumbnail resolution for it: otherwise an encrypted file would be fetched
       // and fully AES-decrypted into pinned memory on every render, just to be
@@ -108,25 +91,20 @@ export class MediaAttachmentComponent {
       });
     });
 
-    // Move focus into the lightbox when it opens, so Escape works and screen
-    // readers enter the dialog; closeLightbox() returns focus to the trigger.
-    effect(() => {
-      this.lightboxEl()?.nativeElement.focus();
-    });
-
     this.destroyRef.onDestroy(() => {
       this.repin(null);
-      this.pinLightbox(null);
+      // The overlay outlives this component's element, so closing it here is not tidiness:
+      // the full-resolution URL is unpinned on the way out and would be revoked under an
+      // image still on screen.
+      this.closeLightbox();
     });
   }
 
-  /** Open the full-resolution image in an inline lightbox. */
+  /** Open the full-resolution image over the app, in a modal dialog. */
   openLightbox(): void {
     if (this.media().kind !== 'image') {
       return;
     }
-    // Remember the trigger so focus returns to it on close.
-    this.lightboxReturnFocus = document.activeElement as HTMLElement | null;
     this.mediaService
       .resolveMedia(this.media(), 'full')
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -136,24 +114,34 @@ export class MediaAttachmentComponent {
           // (store() → evict(), 64-entry cap) would otherwise revoke it while
           // it's still on screen. Unpinned on close / destroy.
           this.pinLightbox(url);
-          this.lightboxSrc.set(url);
+          this.lightboxRef = this.dialogs.open<void, LightboxComponent>(
+            LightboxComponent,
+            {
+              inputs: { src: url, filename: this.media().filename },
+              ariaLabel: this.media().filename,
+              // The image, not the first tabbable thing: there is nothing to tab to, and
+              // 'first-tabbable' would leave focus on the dialog container unnamed.
+              autoFocus: 'dialog',
+            },
+          );
+          this.lightboxRef.closed.subscribe(() => {
+            this.pinLightbox(null);
+            this.lightboxRef = null;
+          });
         },
         error: () => this.errorMsg.set('Could not open image'),
       });
   }
 
-  closeLightbox(restoreFocus = true): void {
-    this.lightboxSrc.set(null);
-    this.pinLightbox(null);
-    // Return focus to the trigger only on a genuine user close (Escape / backdrop
-    // click). Skip it when a row recycle force-closes in the background: the
-    // captured element is recycled and now belongs to a different message, so
-    // restoring would move focus (and scroll) to an unrelated media button.
-    // preventScroll keeps the restore from jumping the timeline.
-    if (restoreFocus) {
-      this.lightboxReturnFocus?.focus?.({ preventScroll: true });
-    }
-    this.lightboxReturnFocus = null;
+  /**
+   * Close the lightbox if it is open.
+   *
+   * Unpinning is the `closed` subscription's job rather than this method's, so that a close
+   * the CDK performs on its own — Escape, a backdrop click — releases the URL too. This is
+   * only the programmatic route.
+   */
+  closeLightbox(): void {
+    this.lightboxRef?.close();
   }
 
   /** Save the full-resolution attachment — native share sheet or web download. */

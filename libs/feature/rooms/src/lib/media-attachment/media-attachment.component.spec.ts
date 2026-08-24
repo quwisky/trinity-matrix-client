@@ -1,7 +1,16 @@
+import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
-import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type Mock,
+} from 'vitest';
 import { MediaService } from '@trinity/data-access/media';
 import { type MediaPayload } from '@trinity/util/matrix';
 import { MediaAttachmentComponent } from './media-attachment.component';
@@ -27,9 +36,21 @@ interface MediaServiceStub {
   releaseAll: Mock;
 }
 
+/** The lightbox renders into the CDK overlay container, outside the fixture's own DOM. */
+function lightboxImage(): HTMLImageElement | null {
+  return document.querySelector('.cdk-overlay-container trn-lightbox img');
+}
+
 describe('MediaAttachmentComponent', () => {
   let mediaService: MediaServiceStub;
   let fileSave: { save: Mock };
+
+  afterEach(() => {
+    // The overlay outlives the fixture; leaving it attached leaks into the next test.
+    document
+      .querySelectorAll('.cdk-overlay-container')
+      .forEach((el) => el.remove());
+  });
 
   beforeEach(() => {
     mediaService = {
@@ -98,7 +119,7 @@ describe('MediaAttachmentComponent', () => {
     expect(fixture.componentInstance.loading()).toBe(false);
   });
 
-  it('pins the full-res URL when the lightbox opens and unpins it on close', async () => {
+  it('shows the full-res image in an overlay, pinned while it is open', async () => {
     // Distinct URLs per variant so the lightbox pin is observable apart from the
     // thumbnail's.
     mediaService.resolveMedia.mockImplementation(
@@ -109,14 +130,64 @@ describe('MediaAttachmentComponent', () => {
     const cmp = fixture.componentInstance;
 
     cmp.openLightbox();
-    expect(cmp.lightboxSrc()).toBe('blob:full');
+    // The dialog's own view is created by the overlay, outside this fixture — nothing has
+    // rendered it until change detection runs.
+    TestBed.tick();
+
+    // In the OVERLAY container, not the component's own DOM — that relocation is the whole
+    // change, and asserting it here is what would catch a revert to the inline element.
+    expect(lightboxImage()?.getAttribute('src')).toBe('blob:full');
     // Pinned so a burst of live media can't evict/revoke it while it's on screen.
     expect(mediaService.pin).toHaveBeenCalledWith('blob:full');
 
     mediaService.unpin.mockClear();
     cmp.closeLightbox();
-    expect(cmp.lightboxSrc()).toBeNull();
+
+    expect(lightboxImage()).toBeNull();
     expect(mediaService.unpin).toHaveBeenCalledWith('blob:full');
+  });
+
+  it('releases the pin when the reader dismisses the overlay themselves', async () => {
+    // Escape and a backdrop click are CDK's to handle, so nothing in this component runs on
+    // that path — the unpin has to hang off `closed`, not off `closeLightbox()`. Hanging it
+    // off the method would leak the URL on every dismissal that is not programmatic.
+    mediaService.resolveMedia.mockImplementation(
+      (_m: MediaPayload, variant: string) =>
+        of(variant === 'full' ? 'blob:full' : 'blob:thumb'),
+    );
+    const { fixture } = await renderMedia(imageMedia());
+    fixture.componentInstance.openLightbox();
+    TestBed.tick();
+    mediaService.unpin.mockClear();
+
+    (lightboxImage()?.parentElement as HTMLElement).click();
+
+    expect(lightboxImage()).toBeNull();
+    expect(mediaService.unpin).toHaveBeenCalledWith('blob:full');
+  });
+
+  it('leaves the lightbox open when a new message recycles the row underneath it', async () => {
+    // The inline version had to force-close here: a recycled row would have gone on
+    // rendering the PREVIOUS message's image. An overlay holds its own URL, pinned until it
+    // closes, so the image the reader opened is theirs to dismiss.
+    mediaService.resolveMedia.mockImplementation(
+      (_m: MediaPayload, variant: string) =>
+        of(variant === 'full' ? 'blob:full' : 'blob:thumb'),
+    );
+    const { fixture } = await renderMedia(imageMedia());
+    fixture.componentInstance.openLightbox();
+    TestBed.tick();
+    mediaService.unpin.mockClear();
+
+    fixture.componentRef.setInput('media', {
+      ...imageMedia(),
+      mxc: 'mxc://hs/other',
+      filename: 'other.png',
+    });
+    TestBed.tick();
+
+    expect(lightboxImage()?.getAttribute('src')).toBe('blob:full');
+    expect(mediaService.unpin).not.toHaveBeenCalledWith('blob:full');
   });
 
   it('unpins the full-res URL when destroyed with the lightbox still open', async () => {
