@@ -126,9 +126,16 @@
     />
     @if (spaceActive()) {
       @if (childrenLoading()) {
-        <p class="empty">Loading channels…</p>
+        <!-- Pending and failed, not empty — the same line in the same place, which is why the
+             one rule styled all three. `tone="danger"` is what makes the failure read as one
+             without reaching for `--destructive`, whose dark value is a near-black maroon. -->
+        <trn-empty-state size="line" body="Loading channels…" />
       } @else if (childrenError()) {
-        <p class="empty empty--error">Couldn’t load this space’s channels.</p>
+        <trn-empty-state
+          size="line"
+          tone="danger"
+          body="Couldn’t load this space’s channels."
+        />
       } @else {
         @if (filteredJoinableRooms().length) {
           <div class="category">More Channels</div>

@@ -18,6 +18,7 @@ import {
   HlmDropdownMenuSubTrigger,
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
+import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { AvatarComponent, type AccountBadge } from '@trinity/components/avatar';
 import { unreadBadgeLabel } from '../../shared/unread-badge';
 import { RoomsService, type RoomSummary } from '@trinity/data-access/rooms';
@@ -50,6 +51,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
   templateUrl: 'sidebar-room-list.component.html',
   styleUrls: ['sidebar-room-list.component.scss'],
   imports: [
+    EmptyStateComponent,
     AvatarComponent,
     TrnIconComponent,
     NgTemplateOutlet,

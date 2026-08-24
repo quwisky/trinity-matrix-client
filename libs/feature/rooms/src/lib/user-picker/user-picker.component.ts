@@ -21,6 +21,7 @@ import {
   type UserSearchResult,
 } from '@trinity/data-access/rooms';
 import { isValidUserId } from '@trinity/util/matrix';
+import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
@@ -47,7 +48,13 @@ const MIN_SEARCH_LENGTH = 2;
 @Component({
   selector: 'trn-user-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, TrnSpinnerComponent, HlmButton, TrnInput],
+  imports: [
+    EmptyStateComponent,
+    AvatarComponent,
+    TrnSpinnerComponent,
+    HlmButton,
+    TrnInput,
+  ],
   templateUrl: './user-picker.component.html',
   styleUrl: './user-picker.component.scss',
 })

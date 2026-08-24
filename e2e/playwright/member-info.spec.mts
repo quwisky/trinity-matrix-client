@@ -130,6 +130,25 @@ test.describe('Member info panel', () => {
       hasText: memberName,
     });
     await memberRow.first().waitFor({ state: 'visible', timeout: 20_000 });
+
+    // The member list windows itself, and its spacer heights come from a ROW_PX constant
+    // rather than a measurement — jsdom has no layout, so the unit tests can only check
+    // that the arithmetic is self-consistent, not that the number is right. If a row stops
+    // being 44px the spacers drift and the scrollbar lies about how long the list is, with
+    // nothing in the unit suite to say so. Measured here, where there is a real cascade.
+    const rowBox = await memberRow.first().boundingBox();
+    expect(rowBox?.height).toBe(44);
+
+    // The header height too, and for a sharper reason: the unit test that checks the
+    // spacer arithmetic is algebraically blind to it — the bottom spacer comes out of the
+    // same total, so the header's height cancels whatever value it is given. Nothing but a
+    // real cascade can say whether HEADER_PX matches what the stylesheet renders.
+    const headerBox = await page
+      .locator('.members__section-label')
+      .first()
+      .boundingBox();
+    expect(headerBox?.height).toBe(34);
+
     await memberRow.first().click();
 
     // The info panel opens with their name, id, role, and a Message action.

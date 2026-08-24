@@ -58,7 +58,14 @@
         </button>
       </li>
     } @empty {
-      <li class="manage-rooms__empty">This space has no rooms in it yet.</li>
+      <!-- The `<li>` stays here: it is the only valid child of the `<ul>` above, and the
+           panel goes inside it. -->
+      <li>
+        <trn-empty-state
+          size="line"
+          body="This space has no rooms in it yet."
+        />
+      </li>
     }
   </ul>
 

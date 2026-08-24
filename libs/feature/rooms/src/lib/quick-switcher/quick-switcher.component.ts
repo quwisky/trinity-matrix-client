@@ -15,6 +15,7 @@ import {
 } from '@trinity/data-access/search';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AccountBadgesService } from '../shared/account-badges.service';
+import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { AvatarComponent, type AccountBadge } from '@trinity/components/avatar';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
@@ -69,6 +70,7 @@ const KIND_ICON: Record<SwitcherKind, TrnIconName> = {
   selector: 'trn-quick-switcher',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    EmptyStateComponent,
     TrnIconComponent,
     AvatarComponent,
     TrnSpinnerComponent,
