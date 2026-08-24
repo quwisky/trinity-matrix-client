@@ -1,78 +1,13 @@
-// Login page — Discord-inspired card layout.
-// Mobile-first: the card fills the entire viewport (edge-to-edge), blending
-// into the page background so the login surface feels native.
-// >= 480 px (tablet / desktop / PWA): a centered fixed-width card floats over
-// a darker backdrop, matching the Discord desktop login aesthetic.
-// All colours come from the theme tokens in apps/trinity/src/theme/variables.scss
-// so both the light and dark palettes work without any duplication here.
+// The login form's own fields, on the surface `auth-card.component.scss` paints.
 
-// Page background:
-// On mobile the background matches the card surface (seamless full-bleed).
-// On desktop we switch to the darker rail colour so the card reads as elevated.
-.login-page {
-  --background: var(--trinity-sidebar);
+// The split is the styling guard's doing and it is right: a component may only style what
+// it renders, and the card is now a separate component. What is left here is everything
+// the page itself draws INTO the card.
 
-  @media (min-width: 480px) {
-    --background: var(--trinity-rail);
-  }
-}
-
-// Centering wrapper — stretches the full scroll-container height so the card
-// can be vertically placed. On desktop the card is centered with comfortable
-// padding.
-.login-wrapper {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  min-height: 100%;
-
-  @media (min-width: 480px) {
-    align-items: center;
-    justify-content: center;
-    padding: 48px 24px;
-  }
-}
-
-// Card surface (spartan hlmCard):
-// The hlm card supplies the surface (bg-card / ring / rounded / padding); we
-// override it to the Discord palette and drive its internal rhythm via
-// --card-spacing (header + content horizontal padding, card vertical padding,
-// and the header↔content gap all read this token).
-// Mobile: fills the viewport — no radius, no ring/shadow (edge-to-edge).
-// Desktop: fixed-width rounded card with a subtle elevation shadow.
-.login-card {
-  --card-spacing: 24px;
-
-  background: var(--trinity-sidebar);
-  flex: 1;
-  border-radius: 0;
-  box-shadow: none; // drop the hlm 1px ring on the full-bleed mobile surface
-
-  @media (min-width: 480px) {
-    --card-spacing: 32px;
-
-    width: 420px;
-    max-width: 100%;
-    flex: none;
-    border-radius: var(--trinity-radius);
-    box-shadow: 0 8px 32px rgb(0 0 0 / 24%); // elevation; also replaces the ring
-  }
-}
-
-// Branding: Trinity wordmark + dynamic subtitle. Spacing to the form below is
-// handled by the hlm card's header↔content gap.
-.login-card__brand {
-  text-align: center;
-}
-
-.login-card__wordmark {
-  margin: 0 0 8px;
-  font-size: 1.75rem;
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  color: var(--trinity-text-bright);
-}
-
+// The line under the wordmark, projected into the card's header. Styled HERE and not in
+// the card, because the card does not write it: the login page's is four conditional
+// branches, and the callback leg's is one line of utilities. Emulated encapsulation scopes
+// this to whoever declared the element, which is the same rule the styling guard enforces.
 .login-card__subtitle {
   margin: 0;
   font-size: 1rem;

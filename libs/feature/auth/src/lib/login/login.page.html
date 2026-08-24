@@ -1,199 +1,198 @@
-<main class="login-page flex-1 overflow-y-auto">
+<trn-auth-card>
   <!-- Visually hidden page title for assistive technology. -->
   <h1 class="sr-only">Sign in to Trinity</h1>
 
-  <div class="login-wrapper">
-    <section trnCard class="login-card">
-      <!-- ── Branding ───────────────────────────────────────── -->
-      <div trnCardHeader class="login-card__brand">
-        <h2 trnCardTitle class="login-card__wordmark">Trinity</h2>
-        @if (!baseUrl()) {
-          <p trnCardDescription class="login-card__subtitle">
-            @if (reauthUserId()) {
-              Reconnecting your account…
-            } @else if (addMode) {
-              Add another account — enter its homeserver to continue.
-            } @else {
-              Welcome back! Enter your homeserver to continue.
-            }
-          </p>
+  <!-- ── Branding ───────────────────────────────────────── -->
+  <!-- Projected into the card's header, beneath the wordmark it draws. The branches are
+       why this is markup rather than a string input on the card. -->
+  <ng-container trnAuthCardSubtitle>
+    @if (!baseUrl()) {
+      <p trnCardDescription class="login-card__subtitle">
+        @if (reauthUserId()) {
+          Reconnecting your account…
+        } @else if (addMode) {
+          Add another account — enter its homeserver to continue.
         } @else {
-          <p trnCardDescription class="login-card__subtitle">
-            @if (reauthUserId()) {
-              Sign in again to reconnect this account
-            } @else {
-              {{
-                addMode
-                  ? 'Sign in to the account to add'
-                  : 'Sign in to your account'
-              }}
-            }
-          </p>
-          <p class="login-card__homeserver">{{ baseUrl() }}</p>
+          Welcome back! Enter your homeserver to continue.
         }
+      </p>
+    } @else {
+      <p trnCardDescription class="login-card__subtitle">
+        @if (reauthUserId()) {
+          Sign in again to reconnect this account
+        } @else {
+          {{
+            addMode
+              ? 'Sign in to the account to add'
+              : 'Sign in to your account'
+          }}
+        }
+      </p>
+      <p class="login-card__homeserver">{{ baseUrl() }}</p>
+    }
+  </ng-container>
+
+  <div trnCardContent>
+    @if (!baseUrl() && !reauthUserId()) {
+      <!-- ── Step 1: Homeserver (skipped in re-auth: the HS is known) ── -->
+      <div class="login-card__field">
+        <label trnLabel for="homeserver" class="login-card__label"
+          >Homeserver</label
+        >
+        <input
+          trnInput
+          id="homeserver"
+          autofocus
+          autocapitalize="off"
+          autocorrect="off"
+          placeholder="matrix.org"
+          [formField]="homeserverForm.homeserver"
+          (keyup.enter)="discover()"
+        />
       </div>
 
-      <div trnCardContent>
-        @if (!baseUrl() && !reauthUserId()) {
-          <!-- ── Step 1: Homeserver (skipped in re-auth: the HS is known) ── -->
-          <div class="login-card__field">
-            <label trnLabel for="homeserver" class="login-card__label"
-              >Homeserver</label
-            >
+      <button
+        hlmBtn
+        class="login-card__submit w-full"
+        [disabled]="busy()"
+        (click)="discover()"
+      >
+        Continue
+      </button>
+    } @else {
+      <!-- ── Step 2: Username + Password ────────────────── -->
+      @if (passwordSupported()) {
+        <div class="login-card__field">
+          <label trnLabel for="username" class="login-card__label"
+            >Username</label
+          >
+          <input
+            #usernameInput
+            trnInput
+            id="username"
+            autofocus
+            autocapitalize="off"
+            autocorrect="off"
+            [formField]="credentialsForm.username"
+            (keyup.enter)="loginPassword()"
+          />
+        </div>
+
+        <div class="login-card__field">
+          <label trnLabel for="password" class="login-card__label"
+            >Password</label
+          >
+          <div class="relative">
             <input
               trnInput
-              id="homeserver"
-              autofocus
-              autocapitalize="off"
-              autocorrect="off"
-              placeholder="matrix.org"
-              [formField]="homeserverForm.homeserver"
-              (keyup.enter)="discover()"
+              id="password"
+              [type]="passwordVisible() ? 'text' : 'password'"
+              class="pr-10"
+              [formField]="credentialsForm.password"
+              (keyup.enter)="loginPassword()"
             />
+            <button
+              hlmBtn
+              variant="ghost"
+              size="icon"
+              type="button"
+              class="absolute inset-y-0 right-0 text-muted-foreground"
+              [attr.aria-label]="
+                passwordVisible() ? 'Hide password' : 'Show password'
+              "
+              [attr.aria-pressed]="passwordVisible()"
+              [disabled]="busy()"
+              (click)="passwordVisible.set(!passwordVisible())"
+            >
+              <trn-icon [name]="passwordVisible() ? 'eye-off' : 'eye'" />
+            </button>
           </div>
+        </div>
 
+        <button
+          hlmBtn
+          class="login-card__submit w-full"
+          [disabled]="busy()"
+          (click)="loginPassword()"
+        >
+          Sign in
+        </button>
+      }
+
+      <!-- ── Step 2b: SSO ───────────────────────────────── -->
+      @if (ssoSupported()) {
+        <button
+          hlmBtn
+          variant="outline"
+          class="login-card__sso w-full"
+          [disabled]="busy()"
+          (click)="startSso()"
+        >
+          Continue with SSO
+        </button>
+      }
+
+      <!-- ── Step 2c: OIDC (next-gen auth) ──────────────── -->
+      @if (oidcSupported()) {
+        <button
+          hlmBtn
+          class="login-card__submit w-full"
+          [disabled]="busy()"
+          (click)="startOidc()"
+          data-testid="oidc-continue"
+        >
+          Continue
+        </button>
+
+        @if (oidcRegistrationSupported() && !reauthUserId()) {
           <button
             hlmBtn
-            class="login-card__submit w-full"
+            variant="outline"
+            class="w-full"
             [disabled]="busy()"
-            (click)="discover()"
+            (click)="startOidc('create')"
+            data-testid="oidc-register"
           >
-            Continue
-          </button>
-        } @else {
-          <!-- ── Step 2: Username + Password ────────────────── -->
-          @if (passwordSupported()) {
-            <div class="login-card__field">
-              <label trnLabel for="username" class="login-card__label"
-                >Username</label
-              >
-              <input
-                #usernameInput
-                trnInput
-                id="username"
-                autofocus
-                autocapitalize="off"
-                autocorrect="off"
-                [formField]="credentialsForm.username"
-                (keyup.enter)="loginPassword()"
-              />
-            </div>
-
-            <div class="login-card__field">
-              <label trnLabel for="password" class="login-card__label"
-                >Password</label
-              >
-              <div class="relative">
-                <input
-                  trnInput
-                  id="password"
-                  [type]="passwordVisible() ? 'text' : 'password'"
-                  class="pr-10"
-                  [formField]="credentialsForm.password"
-                  (keyup.enter)="loginPassword()"
-                />
-                <button
-                  hlmBtn
-                  variant="ghost"
-                  size="icon"
-                  type="button"
-                  class="absolute inset-y-0 right-0 text-muted-foreground"
-                  [attr.aria-label]="
-                    passwordVisible() ? 'Hide password' : 'Show password'
-                  "
-                  [attr.aria-pressed]="passwordVisible()"
-                  [disabled]="busy()"
-                  (click)="passwordVisible.set(!passwordVisible())"
-                >
-                  <trn-icon [name]="passwordVisible() ? 'eye-off' : 'eye'" />
-                </button>
-              </div>
-            </div>
-
-            <button
-              hlmBtn
-              class="login-card__submit w-full"
-              [disabled]="busy()"
-              (click)="loginPassword()"
-            >
-              Sign in
-            </button>
-          }
-
-          <!-- ── Step 2b: SSO ───────────────────────────────── -->
-          @if (ssoSupported()) {
-            <button
-              hlmBtn
-              variant="outline"
-              class="login-card__sso w-full"
-              [disabled]="busy()"
-              (click)="startSso()"
-            >
-              Continue with SSO
-            </button>
-          }
-
-          <!-- ── Step 2c: OIDC (next-gen auth) ──────────────── -->
-          @if (oidcSupported()) {
-            <button
-              hlmBtn
-              class="login-card__submit w-full"
-              [disabled]="busy()"
-              (click)="startOidc()"
-              data-testid="oidc-continue"
-            >
-              Continue
-            </button>
-
-            @if (oidcRegistrationSupported() && !reauthUserId()) {
-              <button
-                hlmBtn
-                variant="outline"
-                class="w-full"
-                [disabled]="busy()"
-                (click)="startOidc('create')"
-                data-testid="oidc-register"
-              >
-                Create account
-              </button>
-            }
-          }
-        }
-
-        <!-- ── Loading state ──────────────────────────────────── -->
-        @if (busy()) {
-          <div
-            class="login-card__busy text-center"
-            role="status"
-            aria-live="polite"
-          >
-            <trn-spinner />
-            <p class="text-muted-foreground">Working…</p>
-          </div>
-        }
-
-        <!-- ── Error state ────────────────────────────────────── -->
-        @if (error(); as message) {
-          <p class="login-card__error text-danger" role="alert">
-            {{ message }}
-          </p>
-        }
-
-        <!-- ── Add / re-auth: cancel back to the app ──────────── -->
-        @if (addMode || reauthUserId()) {
-          <button
-            hlmBtn
-            variant="ghost"
-            class="login-card__cancel w-full"
-            [disabled]="busy()"
-            (click)="cancelAdd()"
-            data-testid="cancel-add"
-          >
-            Cancel
+            Create account
           </button>
         }
+      }
+    }
 
-        <!-- ── The way out of a wedged install ─────────────────
+    <!-- ── Loading state ──────────────────────────────────── -->
+    @if (busy()) {
+      <div
+        class="login-card__busy text-center"
+        role="status"
+        aria-live="polite"
+      >
+        <trn-spinner />
+        <p class="text-muted-foreground">Working…</p>
+      </div>
+    }
+
+    <!-- ── Error state ────────────────────────────────────── -->
+    @if (error(); as message) {
+      <p class="login-card__error text-danger" role="alert">
+        {{ message }}
+      </p>
+    }
+
+    <!-- ── Add / re-auth: cancel back to the app ──────────── -->
+    @if (addMode || reauthUserId()) {
+      <button
+        hlmBtn
+        variant="ghost"
+        class="login-card__cancel w-full"
+        [disabled]="busy()"
+        (click)="cancelAdd()"
+        data-testid="cancel-add"
+      >
+        Cancel
+      </button>
+    }
+
+    <!-- ── The way out of a wedged install ─────────────────
              Styled destructive because it is: it erases every account, key and cached
              message on this device. Kept ghost and `sm` beneath the sign-in actions so it
              reads as the last resort rather than this screen's primary action.
@@ -217,18 +216,16 @@
              tint is emitted as `color-mix(in oklab, …)`: read those three components as if
              they were sRGB and the resting tint comes out ~4.41:1, which is both wrong and
              plausible. Pinned by clear-all-data.spec.mts. -->
-        <button
-          hlmBtn
-          variant="ghost"
-          size="sm"
-          class="mt-4 w-full text-danger hover:text-danger"
-          [disabled]="erasing()"
-          (click)="clearAllData()"
-          data-testid="clear-all-data"
-        >
-          Erase all data on this device
-        </button>
-      </div>
-    </section>
+    <button
+      hlmBtn
+      variant="ghost"
+      size="sm"
+      class="mt-4 w-full text-danger hover:text-danger"
+      [disabled]="erasing()"
+      (click)="clearAllData()"
+      data-testid="clear-all-data"
+    >
+      Erase all data on this device
+    </button>
   </div>
-</main>
+</trn-auth-card>

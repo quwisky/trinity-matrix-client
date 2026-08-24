@@ -54,6 +54,7 @@ const LEDGER = [
   'libs/components/emoji-picker/src/lib/trn-emoji-picker/trn-emoji-picker.component.scss',
   'libs/components/media-bubble/src/lib/media-bubble.component.scss',
   'libs/components/message-toolbar/src/lib/message-toolbar.component.scss',
+  'libs/feature/auth/src/lib/auth-card/auth-card.component.scss',
   'libs/feature/auth/src/lib/login/login.page.scss',
   'libs/feature/crypto/src/lib/encryption-setup/encryption-setup.page.scss',
   'libs/feature/crypto/src/lib/encryption-unlock/encryption-unlock.page.scss',

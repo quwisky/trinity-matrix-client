@@ -1,0 +1,85 @@
+// The signed-out surface, shared by every leg of the auth flow.
+
+// Split out of login.page.scss when the redirect leg started wearing it too: the styling
+// guard forbids a component styling a class it does not render, and it is right to — two
+// components pointing at one stylesheet is how a rule outlives the markup it was written
+// for. Each half now owns what it draws. The page keeps its FIELDS; the card keeps the
+// SURFACE they sit on.
+
+// Mobile-first: the card fills the viewport edge-to-edge, blending into the page so the
+// login surface feels native. From 480px up it is a centred fixed-width card floating over
+// a darker backdrop. All colours come from the theme tokens, so both palettes work with no
+// duplication here.
+
+// Page background:
+// On mobile the background matches the card surface (seamless full-bleed).
+// On desktop we switch to the darker rail colour so the card reads as elevated.
+.login-page {
+  --background: var(--trinity-sidebar);
+
+  @media (min-width: 480px) {
+    --background: var(--trinity-rail);
+  }
+}
+
+// Centering wrapper — stretches the full scroll-container height so the card
+// can be vertically placed. On desktop the card is centered with comfortable
+// padding.
+.login-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-height: 100%;
+
+  @media (min-width: 480px) {
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+  }
+}
+
+// Card surface (spartan hlmCard):
+// The hlm card supplies the surface (bg-card / ring / rounded / padding); we
+// override it to the Discord palette and drive its internal rhythm via
+// --card-spacing (header + content horizontal padding, card vertical padding,
+// and the header↔content gap all read this token).
+// Mobile: fills the viewport — no radius, no ring/shadow (edge-to-edge).
+// Desktop: fixed-width rounded card with a subtle elevation shadow.
+.login-card {
+  --card-spacing: 24px;
+
+  background: var(--trinity-sidebar);
+  flex: 1;
+  border-radius: 0;
+  box-shadow: none; // drop the hlm 1px ring on the full-bleed mobile surface
+
+  @media (min-width: 480px) {
+    --card-spacing: 32px;
+
+    width: 420px;
+    max-width: 100%;
+    flex: none;
+    border-radius: var(--trinity-radius);
+
+    // The elevation TOKEN, not a literal. The literal was a fixed 24% black that never
+    // re-cut per mode: it reads as a soft lift on the light rail and as very nearly
+    // nothing against the dark one, where the surrounding surface is already almost that
+    // colour. `--trinity-shadow-overlay` is 18% on light and 55% on dark for exactly this
+    // reason. Still also replaces the hlm ring, which the `box-shadow: none` above drops.
+    box-shadow: var(--trinity-shadow-overlay);
+  }
+}
+
+// Branding: Trinity wordmark + dynamic subtitle. Spacing to the form below is
+// handled by the hlm card's header↔content gap.
+.login-card__brand {
+  text-align: center;
+}
+
+.login-card__wordmark {
+  margin: 0 0 8px;
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--trinity-text-bright);
+}

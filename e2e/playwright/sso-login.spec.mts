@@ -124,6 +124,16 @@ test.describe('SSO sign-in', () => {
     await expect(page.getByText('Completing sign in…')).toBeVisible({
       timeout: 30_000,
     });
+
+    // And it lands on the SAME surface the sign-in started from. This leg used to be a
+    // bare spinner on a centred <main> — no card, no wordmark, on the app's own
+    // background — so coming back from a homeserver's SSO page looked like arriving
+    // somewhere else, at the one moment a reader is unsure the redirect worked. jsdom
+    // cannot see any of that, so the card's geometry is measured here.
+    await expect(page.getByRole('heading', { name: 'Trinity' })).toBeVisible();
+    const card = page.locator('.login-card');
+    const cardBox = await card.boundingBox();
+    expect(cardBox?.width).toBe(420);
     await expect(page.getByText('could not be verified')).toHaveCount(0);
     expect(page.url()).not.toContain('/rooms');
 
