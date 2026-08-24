@@ -49,7 +49,32 @@ describe('config key ledger', () => {
     expect(exportedKeysFor('data-access/notifications')).toEqual([
       'trinity.push.gateway',
     ]);
-    expect(exportedKeysFor('platform-native')).toHaveLength(19);
+    // The KEYS, not a count. A bare length is a merge hazard: two branches that each add
+    // one key each bump it by one, the merge is clean because they touched the same line
+    // identically, and the suite then fails with an opaque off-by-one that points at
+    // neither change. A list conflicts visibly and resolves additively — which is what
+    // happened when this phase's density preference met the composer's selection toggle.
+    expect(exportedKeysFor('platform-native').sort()).toEqual([
+      'trinity.code-lines',
+      'trinity.code-scale',
+      'trinity.composer.show-toolbar',
+      'trinity.density',
+      'trinity.flags.virtual-timeline',
+      'trinity.format.date',
+      'trinity.format.time',
+      'trinity.palette',
+      'trinity.privacy.link-previews',
+      'trinity.privacy.link-previews-encrypted',
+      'trinity.privacy.send-read-receipts',
+      'trinity.shell.right-panel-width',
+      'trinity.shell.sidebar-width',
+      'trinity.shortcuts.overrides',
+      'trinity.text-scale',
+      'trinity.theme',
+      'trinity.timeline.show-membership',
+      'trinity.timeline.show-profile',
+      'trinity.timeline.show-room-changes',
+    ]);
   });
 
   it('tells the user what the export leaves out, starting with their accounts', () => {
