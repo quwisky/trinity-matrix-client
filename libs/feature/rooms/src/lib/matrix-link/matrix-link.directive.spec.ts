@@ -1,14 +1,16 @@
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it, vi } from 'vitest';
-import { type MatrixLinkTarget } from '@trinity/util/matrix';
-import { MatrixLinkDirective } from './matrix-link.directive';
+import {
+  type MatrixLinkClick,
+  MatrixLinkDirective,
+} from './matrix-link.directive';
 
 /** A fresh directive (output() needs an injection context) plus its emitted targets. */
 function setup() {
   const directive = TestBed.runInInjectionContext(
     () => new MatrixLinkDirective(),
   );
-  const emitted: MatrixLinkTarget[] = [];
+  const emitted: MatrixLinkClick[] = [];
   directive.matrixLink.subscribe((t) => emitted.push(t));
   return { directive, emitted };
 }
@@ -36,7 +38,11 @@ describe('MatrixLinkDirective', () => {
 
     directive.onClick(event);
 
-    expect(emitted[0]).toEqual({ kind: 'room', roomIdOrAlias: '!room:hs' });
+    expect(emitted[0]).toEqual({
+      target: { kind: 'room', roomIdOrAlias: '!room:hs' },
+      // The clicked element travels with the target, so a user card can be pinned to it.
+      anchor,
+    });
     expect(event.preventDefault).toHaveBeenCalled();
   });
 
@@ -79,7 +85,10 @@ describe('MatrixLinkDirective', () => {
       'a',
     );
     directive.onClick(clickOn(anchor));
-    expect(emitted[0]).toEqual({ kind: 'user', userId: '@a:hs' });
+    expect(emitted[0]).toEqual({
+      target: { kind: 'user', userId: '@a:hs' },
+      anchor,
+    });
   });
 
   it('ignores a click that is not on a link', () => {
