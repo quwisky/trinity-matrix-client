@@ -8,26 +8,65 @@
   width: 240px;
   padding: 16px 8px;
 
+  // Windowing changes the rendered height on every scroll step, and the browser's scroll
+  // anchoring treats that as content shifting under the reader and compensates — which
+  // moves the scroll position, which moves the window again. The timeline's windowed
+  // scroller turns it off for exactly this reason.
+  overflow-anchor: none;
+
   // The avatar presence dot rings itself in the surrounding surface so it reads as an
   // overlay — tell it what this panel's surface actually is (else it halos).
   --trn-presence-ring: var(--trinity-members);
+}
+
+// The spacers standing in for the rows outside the window. `.members` is a FLEX column, so
+// a spacer with only an inline `height` has `flex-shrink: 1` and an automatic minimum size
+// of zero — the browser collapses both of them to nothing to fit the rendered rows, and the
+// scrollbar then measures only the slice. The timeline's windowed list guards the same way.
+.members__pad {
+  flex: 0 0 auto;
+}
+
+// The section blocks must not be squeezed either: with the spacers pinned, any remaining
+// negative free space would come out of these instead.
+.members__section {
+  flex: 0 0 auto;
+}
+
+// The filter sits above the sections and does not scroll away with them: it is short, and
+// a filter you have to scroll back up to reach is one people stop using.
+.members__filter {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: block;
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+  background: var(--trinity-members);
+}
+
+.members__empty {
+  padding: 12px 8px;
+  font-size: 13px;
+  color: var(--trinity-text-muted);
 }
 
 .category {
   @include category-label;
 }
 
-// A role group ("Admin — 2", "Moderator — 1", …). Space groups apart so the
-// section headers read as distinct bands rather than crowding the rows above.
-.members__section + .members__section {
-  margin-top: 16px;
-}
-
+// A role group ("Admin — 2", "Moderator — 1", …). The space between groups lives in the
+// HEADER's own padding rather than in an adjacent-sibling margin, and applies to every
+// header including the first. That is a windowing requirement, not a taste: an
+// `.members__section + .members__section` margin exists only between two RENDERED
+// siblings, so it appeared and disappeared as sections entered and left the window, and
+// no per-row height model could account for it. Uniform padding is one number the model
+// can name — see HEADER_PX.
 .members__section-label {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 8px 4px;
+  padding: 12px 8px 4px;
 }
 
 // The role icon inherits the label's muted colour (currentColor) and sits a touch
