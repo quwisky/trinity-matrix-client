@@ -134,6 +134,15 @@ test.describe('SSO sign-in', () => {
     const card = page.locator('.login-card');
     const cardBox = await card.boundingBox();
     expect(cardBox?.width).toBe(420);
+
+    // Exactly one `main` landmark, and the body actually inset from the card's edge. The
+    // first version of this page had neither: it projected past `trnCardContent`, so its
+    // error text and button ran edge to edge, and the `<main>` the old bare page carried
+    // was lost when the card took over the host.
+    await expect(page.locator('main')).toHaveCount(1);
+    const bodyBox = await page.getByTestId('sso-callback-body').boundingBox();
+    expect(bodyBox).not.toBeNull();
+    expect(bodyBox!.x).toBeGreaterThan(cardBox!.x + 8);
     await expect(page.getByText('could not be verified')).toHaveCount(0);
     expect(page.url()).not.toContain('/rooms');
 

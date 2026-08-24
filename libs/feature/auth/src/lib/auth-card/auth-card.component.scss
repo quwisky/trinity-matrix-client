@@ -11,16 +11,13 @@
 // a darker backdrop. All colours come from the theme tokens, so both palettes work with no
 // duplication here.
 
-// Page background:
-// On mobile the background matches the card surface (seamless full-bleed).
-// On desktop we switch to the darker rail colour so the card reads as elevated.
-.login-page {
-  --background: var(--trinity-sidebar);
-
-  @media (min-width: 480px) {
-    --background: var(--trinity-rail);
-  }
-}
+// There is deliberately no `.login-page` rule. One lived here, setting `--background` per
+// breakpoint, and it was dead twice over: the class arrives via `host: { class: … }`, and
+// emulated encapsulation rewrites a stylesheet selector with the CONTENT attribute while
+// the host carries the HOST one — so `.login-page` could not match its own host. Styling
+// the host takes `:host`. And the token had no consumer either: the only `bg-background`
+// is the shell's root div, an ANCESTOR that resolved its value before this ever applied.
+// Restoring the intended two-tone page background is a visual change, not a port.
 
 // Centering wrapper — stretches the full scroll-container height so the card
 // can be vertically placed. On desktop the card is centered with comfortable

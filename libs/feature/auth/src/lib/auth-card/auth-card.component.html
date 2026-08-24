@@ -1,9 +1,15 @@
-<div class="login-wrapper">
+<main class="login-wrapper">
   <section trnCard class="login-card">
     <div trnCardHeader class="login-card__brand">
       <h2 trnCardTitle class="login-card__wordmark">Trinity</h2>
       <ng-content select="[trnAuthCardSubtitle]" />
     </div>
-    <ng-content />
+    <!-- `trnCardContent` lives HERE, not at each call site: it supplies the card's
+         horizontal padding (`px-(--card-spacing)`), and the redirect leg shipped without
+         it once already — its error text and button ran edge to edge on a 420px card.
+         One wrapper, and no leg can forget it. -->
+    <div trnCardContent>
+      <ng-content />
+    </div>
   </section>
-</div>
+</main>

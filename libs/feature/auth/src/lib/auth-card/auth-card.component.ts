@@ -1,5 +1,10 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
-import { TrnCard, TrnCardHeader, TrnCardTitle } from '@trinity/components/card';
+import {
+  TrnCard,
+  TrnCardContent,
+  TrnCardHeader,
+  TrnCardTitle,
+} from '@trinity/components/card';
 
 /**
  * The signed-out surface: the Trinity wordmark, a caller-supplied line under it, and
@@ -18,7 +23,7 @@ import { TrnCard, TrnCardHeader, TrnCardTitle } from '@trinity/components/card';
 @Component({
   selector: 'trn-auth-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnCard, TrnCardHeader, TrnCardTitle],
+  imports: [TrnCard, TrnCardHeader, TrnCardTitle, TrnCardContent],
   templateUrl: './auth-card.component.html',
   styleUrl: './auth-card.component.scss',
   host: { class: 'login-page block flex-1 overflow-y-auto' },
