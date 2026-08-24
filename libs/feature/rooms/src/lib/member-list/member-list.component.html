@@ -74,9 +74,11 @@
     </div>
   } @empty {
     @if (filtering()) {
-      <p class="members__empty" data-testid="member-filter-empty">
-        No members match that.
-      </p>
+      <trn-empty-state
+        size="line"
+        body="No members match that."
+        data-testid="member-filter-empty"
+      />
     }
   }
 
