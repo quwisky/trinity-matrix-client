@@ -313,7 +313,7 @@ test.describe('Settings', () => {
 
     const checkbox = page
       .getByTestId('flag-virtual-timeline')
-      .locator('trn-checkbox');
+      .locator('trn-switch');
     await expect(checkbox).toBeVisible();
     // The virtualized timeline is on by default (163fcc4) and nothing is persisted
     // until the flag is toggled, so the first click turns it OFF and writes 'false'.
@@ -325,14 +325,14 @@ test.describe('Settings', () => {
     // Survives a reload — the deep-linked sub-page restores and the flag reads back.
     await page.reload();
     await expect(
-      page.getByTestId('flag-virtual-timeline').locator('trn-checkbox'),
+      page.getByTestId('flag-virtual-timeline').locator('trn-switch'),
     ).toBeVisible({ timeout: 20_000 });
     expect(await read()).toBe('false');
 
     // Toggling back on persists too.
     await page
       .getByTestId('flag-virtual-timeline')
-      .locator('trn-checkbox')
+      .locator('trn-switch')
       .click();
     await expect.poll(read).toBe('true');
   });

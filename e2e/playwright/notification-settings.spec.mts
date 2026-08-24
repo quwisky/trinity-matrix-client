@@ -74,9 +74,7 @@ test.describe('Notification settings', () => {
     await page.getByTestId('settings-nav-notifications').click();
     await page.waitForURL(/\/settings\/notifications$/, { timeout: 20_000 });
 
-    const checkbox = page
-      .getByTestId(`notif-${RULE_ID}`)
-      .locator('trn-checkbox');
+    const checkbox = page.getByTestId(`notif-${RULE_ID}`).locator('trn-switch');
     await expect(checkbox).toBeVisible({ timeout: 15_000 });
     await checkbox.click();
 

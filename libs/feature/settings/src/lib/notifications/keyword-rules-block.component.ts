@@ -10,7 +10,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, form } from '@angular/forms/signals';
 import { HlmButton } from '@trinity/helm/button';
-import { TrnCheckboxComponent } from '@trinity/components/checkbox';
+import { TrnSwitchComponent } from '@trinity/components/switch';
 import { TrnInput } from '@trinity/components/input';
 import { TrnToastService } from '@trinity/components/overlay';
 import {
@@ -34,7 +34,7 @@ import {
   selector: 'trn-keyword-rules',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './keyword-rules-block.component.html',
-  imports: [FormField, HlmButton, TrnCheckboxComponent, TrnInput],
+  imports: [FormField, HlmButton, TrnSwitchComponent, TrnInput],
 })
 export class KeywordRulesBlockComponent implements OnInit {
   private readonly keywordsSvc = inject(KeywordRulesService);
@@ -63,11 +63,11 @@ export class KeywordRulesBlockComponent implements OnInit {
    * Sound states shown ahead of the server, keyed by rule id — the same optimistic shape
    * the section's own toggles use (see NotificationsSectionComponent).
    *
-   * `TrnCheckboxComponent` flips itself on click and holds that in a `linkedSignal` over its
+   * `TrnSwitchComponent` flips itself on click and holds that in a `linkedSignal` over its
    * `checked` input, which only recomputes when the INPUT changes. Binding the input to
    * this map means a rejected write moves it back to the server's value, which IS a
    * transition, so the control resyncs — without reaching into Helm internals or relying
-   * on a row's position, which any extra checkbox in this template would shift.
+   * on a row's position, which any extra switch in this template would shift.
    */
   private readonly optimisticSound = signal<ReadonlyMap<string, boolean>>(
     new Map(),

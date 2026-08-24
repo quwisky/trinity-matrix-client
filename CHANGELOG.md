@@ -25,6 +25,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Settings toggles are switches now.** Every preference you can turn on and off — appearance,
+  privacy, notifications, the experimental flags — is a switch rather than a tick box, because
+  each takes effect the moment you touch it and there is nothing to submit. A screen reader now
+  announces them as switches too, which is the same thing said out loud. The four places that
+  really are "pick some of these" keep their tick boxes: adding rooms to a space, managing a
+  space's rooms, the room history options, and confirming you have saved a recovery key.
+
 - **The composer's buttons live inside the message box.** The `+`, emoji and send buttons used
   to sit outside the box you type in, flanking it. They are inside it now, so the whole thing
   reads as one control: pressing anywhere in it — including the empty space beside the buttons

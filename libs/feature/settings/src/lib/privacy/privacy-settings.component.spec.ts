@@ -4,7 +4,7 @@ import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { TrnCheckboxComponent } from '@trinity/components/checkbox';
+import { TrnSwitchComponent } from '@trinity/components/switch';
 import { PrivacySettingsService } from '@trinity/platform-native';
 import { UrlPreviewService } from '@trinity/data-access/timeline';
 import { PrivacySettingsComponent } from './privacy-settings.component';
@@ -35,37 +35,33 @@ describe('PrivacySettingsComponent', () => {
     });
   }
 
-  /** The `trn-checkbox` inside the labelled toggle with the given testid. */
-  function checkboxFor(
-    container: HTMLElement,
-    fixture: unknown,
-    testid: string,
-  ) {
+  /** The `trn-switch` inside the labelled toggle with the given testid. */
+  function switchFor(container: HTMLElement, fixture: unknown, testid: string) {
     return (
       fixture as { debugElement: { queryAll: (p: unknown) => unknown[] } }
     ).debugElement
-      .queryAll(By.directive(TrnCheckboxComponent))
+      .queryAll(By.directive(TrnSwitchComponent))
       .find((c) =>
         (c as { nativeElement: HTMLElement }).nativeElement.closest(
           `[data-testid=${testid}]`,
         ),
-      ) as { componentInstance: TrnCheckboxComponent } | undefined;
+      ) as { componentInstance: TrnSwitchComponent } | undefined;
   }
 
   it('reflects and toggles the send-read-receipts preference', async () => {
     const { fixture, container } = await renderPage();
-    const checkbox = checkboxFor(
+    const control = switchFor(
       container,
       fixture,
       'privacy-send-read-receipts',
     )!;
-    expect(checkbox.componentInstance.checked()).toBe(true);
+    expect(control.componentInstance.checked()).toBe(true);
 
     sendReadReceipts.set(false);
     fixture.detectChanges();
-    expect(checkbox.componentInstance.checked()).toBe(false);
+    expect(control.componentInstance.checked()).toBe(false);
 
-    checkbox.componentInstance.checkedChange.emit(true);
+    control.componentInstance.checkedChange.emit(true);
     expect(
       TestBed.inject(PrivacySettingsService).setSendReadReceipts,
     ).toHaveBeenCalledWith(true);
@@ -76,10 +72,10 @@ describe('PrivacySettingsComponent', () => {
     expect(
       container.querySelector('[data-testid=privacy-link-previews]'),
     ).not.toBeNull();
-    const checkbox = checkboxFor(container, fixture, 'privacy-link-previews')!;
-    expect(checkbox.componentInstance.checked()).toBe(true);
+    const control = switchFor(container, fixture, 'privacy-link-previews')!;
+    expect(control.componentInstance.checked()).toBe(true);
 
-    checkbox.componentInstance.checkedChange.emit(false);
+    control.componentInstance.checkedChange.emit(false);
     expect(
       TestBed.inject(PrivacySettingsService).setLinkPreviews,
     ).toHaveBeenCalledWith(false);
@@ -100,18 +96,18 @@ describe('PrivacySettingsComponent', () => {
 
   it('reflects and toggles the encrypted-rooms previews preference', async () => {
     const { fixture, container } = await renderPage();
-    const checkbox = checkboxFor(
+    const control = switchFor(
       container,
       fixture,
       'privacy-link-previews-encrypted',
     )!;
-    expect(checkbox.componentInstance.checked()).toBe(false);
+    expect(control.componentInstance.checked()).toBe(false);
 
     linkPreviewsInEncrypted.set(true);
     fixture.detectChanges();
-    expect(checkbox.componentInstance.checked()).toBe(true);
+    expect(control.componentInstance.checked()).toBe(true);
 
-    checkbox.componentInstance.checkedChange.emit(true);
+    control.componentInstance.checkedChange.emit(true);
     expect(
       TestBed.inject(PrivacySettingsService).setLinkPreviewsInEncrypted,
     ).toHaveBeenCalledWith(true);

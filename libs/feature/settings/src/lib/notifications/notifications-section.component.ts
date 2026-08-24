@@ -8,7 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnCheckboxComponent } from '@trinity/components/checkbox';
+import { TrnSwitchComponent } from '@trinity/components/switch';
 import { TrnToastService } from '@trinity/components/overlay';
 import {
   NotificationSoundService,
@@ -29,7 +29,7 @@ import { PushGatewayBlockComponent } from './push-gateway-block.component';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './notifications-section.component.html',
   imports: [
-    TrnCheckboxComponent,
+    TrnSwitchComponent,
     KeywordRulesBlockComponent,
     PushGatewayBlockComponent,
   ],

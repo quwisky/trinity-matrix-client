@@ -4,7 +4,7 @@ import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
-import { TrnCheckboxComponent } from '@trinity/components/checkbox';
+import { TrnSwitchComponent } from '@trinity/components/switch';
 import {
   KeywordRulesService,
   KeywordValidationError,
@@ -85,11 +85,11 @@ const text = (fixture: { nativeElement: HTMLElement }) =>
 const rows = (fixture: { nativeElement: HTMLElement }) =>
   fixture.nativeElement.querySelectorAll('[data-testid="keyword-row"]');
 
-/** The rendered checkbox instances, so a test asserts pixels rather than the model. */
-const checkboxes = (fixture: {
+/** The rendered switch instances, so a test asserts pixels rather than the model. */
+const switches = (fixture: {
   debugElement: DebugElement;
-}): { componentInstance: TrnCheckboxComponent }[] =>
-  fixture.debugElement.queryAll(By.directive(TrnCheckboxComponent));
+}): { componentInstance: TrnSwitchComponent }[] =>
+  fixture.debugElement.queryAll(By.directive(TrnSwitchComponent));
 
 describe('KeywordRulesBlockComponent', () => {
   it('lists the account’s keywords', async () => {
@@ -302,8 +302,8 @@ describe('KeywordRulesBlockComponent', () => {
     expect(remove).not.toHaveBeenCalled();
   });
 
-  it('puts the RENDERED checkbox back when the write fails', async () => {
-    // The bug this exists for: TrnCheckboxComponent flips itself on click and holds that in a
+  it('puts the RENDERED switch back when the write fails', async () => {
+    // The bug this exists for: TrnSwitchComponent flips itself on click and holds that in a
     // linkedSignal over its `checked` INPUT, which only recomputes when the input
     // changes. Re-reading the unchanged server value therefore cannot un-flip it — the
     // binding has to genuinely transition. Asserting the component's model instead of
@@ -317,10 +317,10 @@ describe('KeywordRulesBlockComponent', () => {
       keywords: [[LOUD, QUIET]],
       setSound: vi.fn(() => pending),
     });
-    const box = () => checkboxes(fixture)[0].componentInstance;
+    const box = () => switches(fixture)[0].componentInstance;
     expect(box().checked()).toBe(true);
 
-    // `toggleSound` IS the real interaction — it is what the checkbox's own
+    // `toggleSound` IS the real interaction — it is what the switch's own
     // `(checkedChange)` calls. The wrapper's `checked` mirrors the parent's state rather
     // than keeping an optimistic copy of its own, so there is nothing to flip by hand.
     cmp.toggleSound(LOUD, false);
@@ -343,11 +343,11 @@ describe('KeywordRulesBlockComponent', () => {
     fixture.detectChanges();
 
     // Still in flight, so the row must NOT be rebuilt out from under the click.
-    expect(checkboxes(fixture)[0].componentInstance.checked()).toBe(false);
+    expect(switches(fixture)[0].componentInstance.checked()).toBe(false);
   });
 
   it('labels each row’s controls with the keyword they act on', async () => {
-    // Five rows of "Sound, checkbox" and "Remove, button" are indistinguishable to a
+    // Five rows of "Sound, switch" and "Remove, button" are indistinguishable to a
     // screen reader, and removing the wrong keyword is one keystroke with no undo.
     const { fixture } = await build();
     const el = fixture.nativeElement as HTMLElement;
@@ -357,7 +357,7 @@ describe('KeywordRulesBlockComponent', () => {
         .querySelector('[data-testid="keyword-remove"]')
         ?.getAttribute('aria-label'),
     ).toBe('Remove keyword oncall');
-    // TrnCheckboxComponent nulls its own host aria-label by design and forwards an input to the
+    // TrnSwitchComponent nulls its own host aria-label by design and forwards an input to the
     // inner control, so the label is asserted wherever it actually lands in the row.
     expect(
       el.querySelector('[aria-label="Play a sound for oncall"]'),
@@ -370,7 +370,7 @@ describe('KeywordRulesBlockComponent', () => {
     const el = (fixture: { nativeElement: HTMLElement }) =>
       fixture.nativeElement as HTMLElement;
 
-    /** BrnCheckbox renders the interactive control as a button inside the host. */
+    /** BrnSwitch renders the interactive control as a button inside the host. */
     const soundControls = (fixture: { nativeElement: HTMLElement }) =>
       el(fixture).querySelectorAll<HTMLButtonElement>(
         '[data-testid="keyword-sound"] button',
@@ -478,12 +478,12 @@ describe('KeywordRulesBlockComponent', () => {
     });
 
     it('restores the row that failed and leaves the others alone', async () => {
-      // Every other checkbox test uses row 0, where a per-row lookup and a hardcoded
+      // Every other switch test uses row 0, where a per-row lookup and a hardcoded
       // first row agree — so the scoping itself would otherwise be unpinned.
       const pending = new Subject<void>();
       const { cmp, fixture } = await build({ setSound: vi.fn(() => pending) });
-      const boxes = () => checkboxes(fixture).map((b) => b.componentInstance);
-      // QUIET starts false; toggling it on is what clicking its checkbox calls.
+      const boxes = () => switches(fixture).map((b) => b.componentInstance);
+      // QUIET starts false; toggling it on is what clicking its switch calls.
       cmp.toggleSound(QUIET, true);
       fixture.detectChanges();
       pending.error(new Error('nope'));
