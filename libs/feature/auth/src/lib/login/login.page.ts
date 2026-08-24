@@ -50,6 +50,7 @@ import {
   CLEAR_DATA_RESIDUE_WARNING,
   confirmClearDataIntent,
 } from './clear-all-data';
+import { AuthCardComponent } from '../auth-card/auth-card.component';
 import { OidcStateStore } from '../oidc-state.store';
 import { TrnIconComponent } from '@trinity/components/icon';
 
@@ -59,6 +60,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
   templateUrl: 'login.page.html',
   styleUrl: 'login.page.scss',
   imports: [
+    AuthCardComponent,
     FormField,
     HlmButton,
     TrnCardImports,
