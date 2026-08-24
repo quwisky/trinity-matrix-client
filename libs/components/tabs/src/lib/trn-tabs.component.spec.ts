@@ -38,7 +38,6 @@ import { TrnTabsComponent, type TrnTabOption } from './trn-tabs.component';
 class HostComponent {
   readonly tab = signal('general');
   readonly orientation = signal<'horizontal' | 'vertical'>('horizontal');
-  readonly accessOff = signal(false);
   readonly tabs = signal<readonly TrnTabOption[]>([
     { value: 'general', label: 'General', testId: 'tab-general' },
     { value: 'access', label: 'Access', testId: 'tab-access' },
