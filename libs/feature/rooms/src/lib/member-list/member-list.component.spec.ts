@@ -619,6 +619,86 @@ describe('MemberListComponent — windowing', () => {
     expect(Number(firstAfterScroll?.replace('User ', ''))).toBeGreaterThan(100);
   });
 
+  it('renders every section a multi-section room has, headers included', async () => {
+    // Every other windowing fixture is one flat Member section, which cannot exercise the
+    // section-boundary arithmetic at all: with one section `headerIndex` is 0 and
+    // `firstRow` is 1, so the guard's two forms differ only when the window ENDS at index
+    // 0 — never at a 400px viewport. Real rooms always have at least two sections, and a
+    // section dropped at the window's edge leaves the rendered content HEADER_PX shorter
+    // than the spacers assume, so the scrollbar drifts as the reader scrolls past it.
+    const mixed = [
+      ...Array.from({ length: 3 }, (_, i) =>
+        member({
+          userId: `@admin${i}:hs`,
+          name: `Admin ${i}`,
+          powerLevel: 100,
+        }),
+      ),
+      ...Array.from({ length: 2 }, (_, i) =>
+        member({ userId: `@mod${i}:hs`, name: `Mod ${i}`, powerLevel: 50 }),
+      ),
+      ...crowd(200),
+    ];
+    const { container } = await render(MemberListComponent, {
+      inputs: { members: mixed },
+      ...opts,
+    });
+    setViewport(container, 400);
+
+    // The window starts at the top, so all three headers are inside it.
+    expect(sectionLabels(container)).toEqual([
+      'Admin — 3',
+      'Moderator — 2',
+      'Member — 200',
+    ]);
+
+    const [top, bottom] = spacers(container);
+    const renderedPx =
+      rowCount(container) * ROW_PX +
+      container.querySelectorAll('.members__section-label').length * HEADER_PX;
+    expect(top + renderedPx + bottom).toBe(3 * HEADER_PX + 205 * ROW_PX);
+  });
+
+  it("renders a section whose header is the window's last row", async () => {
+    // The one arrangement that separates the boundary guard's two forms. Flat indices for
+    // 3 admins + 2 moderators + members are: 0 Admin header, 1-3 admins, 4 Moderator
+    // header, 5-6 moderators, 7 Member header, 8+ members — so the Member header sits at
+    // 288..322px. A viewport small enough that 0 + viewport + 320px of overscan lands
+    // inside that band makes `endIndex` exactly 7.
+    //
+    // Testing the first MEMBER row (index 8 > 7) instead of the header (7 > 7 is false)
+    // drops the whole section, header included, while `computeWindow` has already counted
+    // that header's height as rendered — leaving the content HEADER_PX shorter than the
+    // spacers claim.
+    const mixed = [
+      ...Array.from({ length: 3 }, (_, i) =>
+        member({
+          userId: `@admin${i}:hs`,
+          name: `Admin ${i}`,
+          powerLevel: 100,
+        }),
+      ),
+      ...Array.from({ length: 2 }, (_, i) =>
+        member({ userId: `@mod${i}:hs`, name: `Mod ${i}`, powerLevel: 50 }),
+      ),
+      ...crowd(200),
+    ];
+    const { container } = await render(MemberListComponent, {
+      inputs: { members: mixed },
+      ...opts,
+    });
+    setViewport(container, 1);
+
+    expect(sectionLabels(container)).toContain('Member — 200');
+
+    // And the spacers still account for exactly the whole list.
+    const [top, bottom] = spacers(container);
+    const renderedPx =
+      rowCount(container) * ROW_PX +
+      container.querySelectorAll('.members__section-label').length * HEADER_PX;
+    expect(top + renderedPx + bottom).toBe(3 * HEADER_PX + 205 * ROW_PX);
+  });
+
   it('keeps a section reachable when its header has scrolled away', async () => {
     // A group whose header is outside the window still renders its rows, and still
     // carries the accessible name — the header is visual, the group's name is not.
