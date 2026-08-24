@@ -268,6 +268,52 @@ describe('SpaceSettingsComponent', () => {
     ).not.toBeNull();
   });
 
+  it('splits the dialog into General and Access, mirroring room settings', async () => {
+    const { cmp, container } = await build({ canManageBans: false });
+
+    expect(cmp.settingsTabs().map((tab) => tab.value)).toEqual([
+      'general',
+      'access',
+    ]);
+    expect(
+      container.querySelector('[data-testid=space-settings-tab-bans]'),
+    ).toBeNull();
+  });
+
+  it('adds a Bans tab only where there is a list behind it', async () => {
+    const { cmp, container } = await build({ canManageBans: true });
+
+    expect(cmp.settingsTabs().map((tab) => tab.value)).toEqual([
+      'general',
+      'access',
+      'bans',
+    ]);
+    expect(
+      container.querySelector('[data-testid=space-settings-tab-bans]'),
+    ).not.toBeNull();
+  });
+
+  it('puts each field on the panel its tab names', async () => {
+    // Eager panels mean an inactive one is only `hidden`, so a dialog-wide query finds every
+    // field either way; containment is what distinguishes a real split from added chrome.
+    const { container } = await build({
+      canManageBans: true,
+      canManageAliases: true,
+    });
+    const panel = (name: string) =>
+      container.querySelector(`[data-testid=space-settings-panel-${name}]`)!;
+    const holds = (name: string, testId: string) =>
+      panel(name).querySelector(`[data-testid=${testId}]`) !== null;
+
+    expect(holds('general', 'space-settings-name')).toBe(true);
+    expect(holds('general', 'space-settings-topic')).toBe(true);
+    expect(holds('access', 'space-settings-join-rule')).toBe(true);
+    expect(holds('access', 'room-aliases')).toBe(true);
+    expect(holds('bans', 'banned-members')).toBe(true);
+    expect(holds('general', 'space-settings-join-rule')).toBe(false);
+    expect(holds('access', 'space-settings-name')).toBe(false);
+  });
+
   it('closes resolving false on cancel', async () => {
     const { cmp, close } = await build();
 

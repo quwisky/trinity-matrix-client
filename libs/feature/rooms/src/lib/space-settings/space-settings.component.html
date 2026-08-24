@@ -2,69 +2,91 @@
   <h2 class="space-settings__title">Space settings</h2>
 
   <form [formRoot]="form" class="space-settings__form" (submit)="save()">
-    <trn-avatar-field
-      [roomId]="spaceId()"
-      [name]="name()"
-      [avatarMxc]="avatarMxc()"
-      [initial]="avatarInitial()"
-      [editable]="canEditAvatar()"
-      noun="space"
-      testid="space-settings-avatar"
-    />
-
-    <label class="space-settings__field">
-      <span class="space-settings__label">Name</span>
-      <input
-        trnInput
-        class="w-full"
-        [formField]="form.name"
-        autocomplete="off"
-        data-testid="space-settings-name"
-      />
-    </label>
-
-    <label class="space-settings__field">
-      <span class="space-settings__label">Topic</span>
-      <textarea
-        trnInput
-        class="w-full"
-        rows="3"
-        [formField]="form.topic"
-        data-testid="space-settings-topic"
-      ></textarea>
-    </label>
-
-    <label class="space-settings__field">
-      <span class="space-settings__label">Who can join</span>
-      <select
-        trnInput
-        class="w-full"
-        [formField]="form.joinRule"
-        data-testid="space-settings-join-rule"
-      >
-        @for (option of joinRuleOptions(); track option.value) {
-          <option [value]="option.value">{{ option.label }}</option>
-        }
-      </select>
-      <!-- Rooms inside a space keep their own join rules; this governs the space itself. -->
-      <span class="space-settings__hint">
-        This controls the space. The rooms inside it keep their own settings.
-      </span>
-    </label>
-
     @if (!canSave() && !canEditAvatar()) {
       <p class="space-settings__note">
         You don’t have permission to change this space’s settings.
       </p>
     }
 
-    @if (canManageAliases()) {
-      <trn-room-aliases [roomId]="spaceId()" />
-    }
+    <trn-tabs
+      tab="general"
+      variant="line"
+      [tabs]="settingsTabs()"
+      class="space-settings__tabs"
+    >
+      <trn-tab-panel
+        value="general"
+        panelClass="flex flex-col gap-3 pt-3"
+        data-testid="space-settings-panel-general"
+      >
+        <trn-avatar-field
+          [roomId]="spaceId()"
+          [name]="name()"
+          [avatarMxc]="avatarMxc()"
+          [initial]="avatarInitial()"
+          [editable]="canEditAvatar()"
+          noun="space"
+          testid="space-settings-avatar"
+        />
 
-    @if (canManageBans()) {
-      <trn-banned-members [roomId]="spaceId()" />
-    }
+        <label class="space-settings__field">
+          <span class="space-settings__label">Name</span>
+          <input
+            trnInput
+            class="w-full"
+            [formField]="form.name"
+            autocomplete="off"
+            data-testid="space-settings-name"
+          />
+        </label>
+
+        <label class="space-settings__field">
+          <span class="space-settings__label">Topic</span>
+          <textarea
+            trnInput
+            class="w-full"
+            rows="3"
+            [formField]="form.topic"
+            data-testid="space-settings-topic"
+          ></textarea>
+        </label>
+      </trn-tab-panel>
+
+      <trn-tab-panel
+        value="access"
+        panelClass="flex flex-col gap-3 pt-3"
+        data-testid="space-settings-panel-access"
+      >
+        <label class="space-settings__field">
+          <span class="space-settings__label">Who can join</span>
+          <trn-select
+            [options]="joinRuleOptions()"
+            [formField]="form.joinRule"
+            triggerClass="w-full"
+            data-testid="space-settings-join-rule"
+          />
+          <!-- Rooms inside a space keep their own join rules; this governs the space itself. -->
+          <span class="space-settings__hint">
+            This controls the space. The rooms inside it keep their own
+            settings.
+          </span>
+        </label>
+
+        @if (canManageAliases()) {
+          <trn-room-aliases [roomId]="spaceId()" />
+        }
+      </trn-tab-panel>
+
+      @if (canManageBans()) {
+        <trn-tab-panel
+          value="bans"
+          panelClass="flex flex-col gap-3 pt-3"
+          data-testid="space-settings-panel-bans"
+        >
+          <trn-banned-members [roomId]="spaceId()" />
+        </trn-tab-panel>
+      }
+    </trn-tabs>
 
     <div class="space-settings__actions">
       <button
