@@ -32,7 +32,12 @@
   // instead of growing the column.
   flex: 1;
   min-height: 0;
-  padding: 16px 16px 8px;
+
+  // The horizontal value is the TOKEN because `message-row` bleeds against it: the row
+  // carries `margin: 0 calc(-1 * var(--trinity-space-5))` so its hover highlight spans the
+  // full width. Left hard-coded at 16px, compact density would shrink the row's margin to
+  // -12px while this stayed 16px, and the highlight would stop 4px short on each side.
+  padding: var(--trinity-space-5) var(--trinity-space-5) var(--trinity-space-3);
 }
 
 .load-older {

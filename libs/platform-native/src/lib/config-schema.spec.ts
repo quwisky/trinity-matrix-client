@@ -54,7 +54,7 @@ describe('config key ledger', () => {
     // identically, and the suite then fails with an opaque off-by-one that points at
     // neither change. A list conflicts visibly and resolves additively — which is what
     // happened when this phase's density preference met the composer's selection toggle.
-    expect(exportedKeysFor('platform-native').sort()).toEqual([
+    expect([...exportedKeysFor('platform-native')].sort()).toEqual([
       'trinity.code-lines',
       'trinity.code-scale',
       'trinity.composer.show-toolbar',

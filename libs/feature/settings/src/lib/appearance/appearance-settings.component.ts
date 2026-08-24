@@ -139,7 +139,7 @@ export class AppearanceSettingsComponent {
       testId: `space-order-${option.id}`,
     }));
 
-  /** Apply + persist how large text is. */
+  /** Apply + persist how much room the app leaves around things. */
   onDensityChange(value: string | null | undefined): void {
     // Guarded like every other choice here: the select is ours, but `valueChange` is a
     // string and the setter takes a union — narrowing against the registered list is what
@@ -149,6 +149,7 @@ export class AppearanceSettingsComponent {
     }
   }
 
+  /** Apply + persist how large text is. */
   onTextScaleChange(value: string | null | undefined): void {
     if (this.theme.textScales.some((scale) => scale.id === value)) {
       this.theme.setTextScale(value as TextScale);

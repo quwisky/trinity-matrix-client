@@ -141,6 +141,8 @@ const THEME_KEY = 'trinity.theme';
 const PALETTE_KEY = 'trinity.palette';
 const TEXT_SCALE_KEY = 'trinity.text-scale';
 const DENSITY_KEY = 'trinity.density';
+/** Attribute on <html> naming the active density; absent for the default (cosy). */
+const DENSITY_ATTR = 'data-density';
 const CODE_SCALE_KEY = 'trinity.code-scale';
 const CODE_LINES_KEY = 'trinity.code-lines';
 /** Custom property on <html> the rendered-markdown stylesheet multiplies by. */
@@ -157,12 +159,15 @@ const DARK_CLASS = 'dark';
 const PALETTE_ATTR = 'data-theme';
 
 /**
- * Owns the app's appearance across five orthogonal axes, each reflected on <html>:
+ * Owns the app's appearance across six orthogonal axes, each reflected on <html>:
  *   • mode       — light/dark: persists the user's preference, resolves `system` against
  *     `prefers-color-scheme`, and toggles {@link DARK_CLASS} on the document root;
  *   • palette    — the named colour scheme: persists the choice and reflects it as the
  *     {@link PALETTE_ATTR} attribute (absent for the default palette);
  *   • text size  — a percentage written as `font-size` on the root;
+ *   • density    — how much room the app leaves around things, as the
+ *     {@link DENSITY_ATTR} attribute (absent for the default), re-cutting the
+ *     `--trinity-space-*` scale rather than overriding any component;
  *   • code size  — a factor written as {@link CODE_SCALE_PROP}, multiplying the size of
  *     code inside rendered messages;
  *   • code line numbers — when a block shows a numbering gutter, as the
@@ -354,12 +359,6 @@ export class ThemeService {
   }
 
   /**
-   * Reflect the active text scale on the document root.
-   *
-   * The DEFAULT clears the inline style rather than writing `100%`, so an unscaled app leaves
-   * no footprint on <html> at all and whatever the browser or a user stylesheet says wins.
-   */
-  /**
    * Reflect the active density on the document root.
    *
    * The DEFAULT removes the attribute rather than writing `cosy`, so an untouched install
@@ -376,12 +375,18 @@ export class ThemeService {
     }
     const density = this._density();
     if (density === DEFAULT_DENSITY) {
-      document.documentElement.removeAttribute('data-density');
+      document.documentElement.removeAttribute(DENSITY_ATTR);
       return;
     }
-    document.documentElement.setAttribute('data-density', density);
+    document.documentElement.setAttribute(DENSITY_ATTR, density);
   }
 
+  /**
+   * Reflect the active text scale on the document root.
+   *
+   * The DEFAULT clears the inline style rather than writing `100%`, so an unscaled app leaves
+   * no footprint on <html> at all and whatever the browser or a user stylesheet says wins.
+   */
   private applyTextScale(): void {
     if (typeof document === 'undefined') {
       return;

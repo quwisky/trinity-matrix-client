@@ -375,12 +375,20 @@ Every colour and radius in the app is defined once, in
 | Text size         | an inline `font-size` **percentage**                      | 100%, written as no inline style at all          |
 | Code size         | the `--trinity-code-scale` **custom property** (a factor) | `1`, declared in `variables.scss` and unset here |
 | Code line numbers | the `data-code-lines` **attribute**                       | `auto`, which sets no attribute at all           |
+| Density           | the `data-density` **attribute**                          | `cosy`, which sets no attribute at all           |
 
 All are owned by
 [`ThemeService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/platform-native/src/lib/theme.service.ts)
 and persisted under `trinity.theme`, `trinity.palette`, `trinity.text-scale`,
-`trinity.code-scale` and `trinity.code-lines`. The axes compose: any palette works in either
-mode, and code size multiplies text size rather than replacing it.
+`trinity.code-scale`, `trinity.code-lines` and `trinity.density`. The axes compose: any
+palette works in either mode, and code size multiplies text size rather than replacing it.
+
+Density is the odd one in what it drives: rather than styling anything itself, it re-cuts
+the `--trinity-space-*` scale, so any stylesheet already reading those tokens follows
+without knowing the preference exists. `:root[data-density='compact']` is (0,2,0) — the
+same tie with `:root.dark` the palette section below describes. The two do not overlap
+today (mode re-cuts colour, density re-cuts spacing); a colour added to the density block,
+or a spacing token to a mode block, would be decided by source order alone.
 
 **Every axis writes nothing at its default.** An untouched app leaves no footprint on
 `<html>` at all, so the stylesheet is the single definition of what "Default" means and
