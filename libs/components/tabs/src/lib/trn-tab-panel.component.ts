@@ -20,20 +20,7 @@ import { HlmTabsContent } from '@trinity/helm/tabs';
   selector: 'trn-tab-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [HlmTabsContent],
-  styles: [
-    ':host { display: contents; }',
-    // The panel is the caller's to lay out, and `panelClass` is usually a display utility.
-    // That collides with how the kit hides an inactive panel: `hidden` is an ATTRIBUTE, and
-    // the UA rule behind it — `[hidden] { display: none }` — has the same specificity as a
-    // single class, so `flex` or `grid` wins on source order and the inactive panel stays on
-    // screen with the active one. `!important` is the honest fix; the alternative is a
-    // call-site convention nobody can enforce.
-    //
-    // Pinned in `e2e/playwright/room-settings.spec.mts`, not in the unit suite: jsdom does
-    // not cascade a class rule against the UA `[hidden]` rule, so the assertion held there
-    // with the guard REMOVED. It takes a real browser to tell the two apart.
-    '[hidden] { display: none !important; }',
-  ],
+  styles: [':host { display: contents; }'],
   template: `
     <div [hlmTabsContent]="value()" [class]="panelClass()">
       <ng-content />
@@ -45,6 +32,16 @@ export class TrnTabPanelComponent {
 
   /**
    * Classes for the panel element itself.
+   *
+   * Usually a display utility, which raises the obvious worry: the kit hides an inactive
+   * panel with the `hidden` ATTRIBUTE, and a bare UA `[hidden] { display: none }` carries the
+   * same specificity as one class, so `flex` would win on source order and both panels would
+   * paint at once. It does not happen here, and the reason is worth recording so nobody
+   * "fixes" it twice: Tailwind v4's preflight ships
+   * `[hidden]:where(:not([hidden='until-found'])) { display: none !important }`, which
+   * settles it globally. A duplicate `!important` rule was written here first and then
+   * removed — with it deleted, the Chromium assertion in `room-settings.spec.mts` still
+   * passes, which is what proves the preflight rule is the one doing the work.
    *
    * Not `class` on the host: the host is `display: contents` and boxes nothing, so a layout
    * class there would do nothing at all. Same shape as `trn-select`'s `triggerClass`.
