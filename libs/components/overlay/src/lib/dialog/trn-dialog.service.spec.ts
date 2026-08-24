@@ -2,7 +2,7 @@ import { ApplicationRef, Component, inject, input } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { firstValueFrom } from 'rxjs';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TrnAlertService } from '../alert/trn-alert.service';
 import { TrnDialogRef } from './trn-dialog-ref';
 import { TrnDialogService } from './trn-dialog.service';
@@ -227,5 +227,84 @@ describe('TrnDialogService', () => {
 
     svc.closeAll();
     expect(svc.hasOpen()).toBe(false);
+  });
+});
+
+describe('TrnDialogService — anchored presentation', () => {
+  /** A real, laid-out element to hang the popover off. */
+  function anchorElement(): HTMLElement {
+    const anchor = document.createElement('a');
+    anchor.textContent = '@bob';
+    document.body.append(anchor);
+    return anchor;
+  }
+
+  afterEach(() => {
+    document
+      .querySelectorAll('.cdk-overlay-container, body > a')
+      .forEach((el) => el.remove());
+    vi.restoreAllMocks();
+  });
+
+  it('positions against the anchor instead of centring', () => {
+    const svc = TestBed.inject(TrnDialogService);
+
+    svc.open(TestDialogComponent, { anchor: anchorElement() });
+    TestBed.inject(ApplicationRef).tick();
+
+    // CDK wraps a flexible connected overlay in this box and nothing else does, so its
+    // presence is what distinguishes an anchored panel from the global centred strategy.
+    expect(
+      document.querySelector('.cdk-overlay-connected-position-bounding-box'),
+    ).not.toBeNull();
+  });
+
+  it('drops the scrim for an anchored panel', () => {
+    // A dark backdrop over the thing the popover is ABOUT defeats the point of anchoring
+    // it. The backdrop stays — an outside click still closes — it just stops dimming.
+    const svc = TestBed.inject(TrnDialogService);
+
+    svc.open(TestDialogComponent, { anchor: anchorElement() });
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(
+      document.querySelector('.cdk-overlay-transparent-backdrop'),
+    ).not.toBeNull();
+    expect(document.querySelector('.cdk-overlay-dark-backdrop')).toBeNull();
+  });
+
+  it('keeps the centred modal on a touch pointer', () => {
+    // A card pinned to a mention halfway down a phone screen has nowhere to go and lands
+    // under a thumb. Coarse pointers ignore the anchor entirely.
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query: string) =>
+        ({
+          matches: query === '(pointer: coarse)',
+          media: query,
+          addEventListener: () => undefined,
+          removeEventListener: () => undefined,
+        }) as unknown as MediaQueryList,
+    );
+    const svc = TestBed.inject(TrnDialogService);
+
+    svc.open(TestDialogComponent, { anchor: anchorElement() });
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(
+      document.querySelector('.cdk-overlay-connected-position-bounding-box'),
+    ).toBeNull();
+    expect(document.querySelector('.cdk-overlay-dark-backdrop')).not.toBeNull();
+  });
+
+  it('still centres when no anchor is given', () => {
+    const svc = TestBed.inject(TrnDialogService);
+
+    svc.open(TestDialogComponent);
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(
+      document.querySelector('.cdk-overlay-connected-position-bounding-box'),
+    ).toBeNull();
+    expect(document.querySelector('.cdk-overlay-dark-backdrop')).not.toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Dialog, DialogConfig, DialogRef } from '@angular/cdk/dialog';
-import { Overlay } from '@angular/cdk/overlay';
+import { Overlay, type ConnectedPosition } from '@angular/cdk/overlay';
 import type { ComponentType } from '@angular/cdk/portal';
 import { firstValueFrom } from 'rxjs';
 import { TrnDialogRef } from './trn-dialog-ref';
@@ -32,6 +32,66 @@ export interface DialogOptions {
    * (`'[data-autofocus]'`), `'first-heading'`, `'dialog'` or `false`.
    */
   autoFocus?: DialogConfig['autoFocus'];
+  /**
+   * Present beside this element instead of centred — a popover rather than a modal.
+   *
+   * The panel is positioned against the anchor and flips to the other side rather than
+   * going off-screen. It stays a CDK dialog in every other respect, which is the point:
+   * the focus trap, Escape, focus restore and the inert page behind it are all still
+   * there. Only the geometry changes, plus a transparent backdrop — a dark scrim over
+   * the thing the popover is *about* would defeat the reason for anchoring it.
+   *
+   * Ignored under `(pointer: coarse)`. A card pinned to a mention halfway down a phone
+   * screen has nowhere to go and lands under a thumb; touch keeps the centred modal.
+   */
+  anchor?: HTMLElement;
+}
+
+/**
+ * Where a popover sits relative to its anchor, in preference order.
+ *
+ * Below-start first because these hang off inline text and a reader's eye is already
+ * travelling down; the other three are the fallbacks CDK flips through as the viewport
+ * runs out. Written out rather than taken from `createMenuPosition()` (the helper
+ * `TrnAnchoredOverlayDirective` uses) because that one is built for a menu hugging a
+ * button edge-to-edge, and a card wants the 8px of daylight below.
+ */
+const POPOVER_POSITIONS: ConnectedPosition[] = [
+  {
+    originX: 'start',
+    originY: 'bottom',
+    overlayX: 'start',
+    overlayY: 'top',
+    offsetY: 8,
+  },
+  {
+    originX: 'start',
+    originY: 'top',
+    overlayX: 'start',
+    overlayY: 'bottom',
+    offsetY: -8,
+  },
+  {
+    originX: 'end',
+    originY: 'bottom',
+    overlayX: 'end',
+    overlayY: 'top',
+    offsetY: 8,
+  },
+  {
+    originX: 'end',
+    originY: 'top',
+    overlayX: 'end',
+    overlayY: 'bottom',
+    offsetY: -8,
+  },
+];
+
+/** Touch pointers get the centred modal; see {@link DialogOptions.anchor}. */
+function prefersCentred(): boolean {
+  return (
+    typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
+  );
 }
 
 /**
@@ -56,8 +116,11 @@ export class TrnDialogService {
     // workspace — here, styled by nothing. Same reason `DialogOptions.data` went in #151.
     // Every dialog paints its own surface (see the `dialog-surface()` mixin), so there is
     // no shared panel styling for a hook to carry. Re-add it with a real consumer.
+    const anchor = opts.anchor && !prefersCentred() ? opts.anchor : null;
     const ref = this.dialog.open<R, unknown, C>(component, {
-      backdropClass: ['cdk-overlay-dark-backdrop'],
+      backdropClass: anchor
+        ? ['cdk-overlay-transparent-backdrop']
+        : ['cdk-overlay-dark-backdrop'],
       disableClose: opts.disableClose ?? false,
       ariaLabel: opts.ariaLabel,
       // Spelled out rather than left off: CDK merges the config over its defaults with
@@ -66,8 +129,14 @@ export class TrnDialogService {
       autoFocus: opts.autoFocus ?? 'first-tabbable',
       // Default (undefined) lets CDK center the card; `'end'` pins it top-right
       // and full-height (the panel's own h-screen fills the axis).
-      positionStrategy:
-        opts.side === 'end'
+      positionStrategy: anchor
+        ? this.overlay
+            .position()
+            .flexibleConnectedTo(anchor)
+            .withPositions(POPOVER_POSITIONS)
+            .withFlexibleDimensions(false)
+            .withPush(true)
+        : opts.side === 'end'
           ? this.overlay.position().global().top('0').right('0')
           : undefined,
       // What lets a modal'd component `inject(TrnDialogRef)` instead of CDK's own class.
