@@ -12,6 +12,11 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, FormRoot, form } from '@angular/forms/signals';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnSelectComponent } from '@trinity/components/select';
+import {
+  TrnTabPanelComponent,
+  TrnTabsComponent,
+  type TrnTabOption,
+} from '@trinity/components/tabs';
 import { TrnInput } from '@trinity/components/input';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import { JoinRule, RoomSettingsService } from '@trinity/data-access/rooms';
@@ -63,6 +68,8 @@ const OTHER_RULE_LABELS: Partial<Record<JoinRule, string>> = {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     TrnSelectComponent,
+    TrnTabsComponent,
+    TrnTabPanelComponent,
     FormField,
     FormRoot,
     HlmButton,
@@ -109,9 +116,28 @@ export class SpaceSettingsComponent implements OnInit {
     () => this.canEditName() || this.canEditTopic() || this.canEditJoinRule(),
   );
 
+  /** Mirrors {@link RoomSettingsComponent}: `Bans` only exists where there is a list behind it. */
+  readonly settingsTabs = computed<TrnTabOption[]>(() => [
+    {
+      value: 'general',
+      label: 'General',
+      testId: 'space-settings-tab-general',
+    },
+    { value: 'access', label: 'Access', testId: 'space-settings-tab-access' },
+    ...(this.canManageBans()
+      ? [
+          {
+            value: 'bans',
+            label: 'Bans',
+            testId: 'space-settings-tab-bans',
+          },
+        ]
+      : []),
+  ]);
+
   /**
    * The two space rules, plus whatever this space is ACTUALLY set to if that is neither.
-   * A `<select>` seeded with a value it has no option for renders blank — showing no
+   * A `trn-select` seeded with a value it has no option for shows its placeholder — showing no
    * setting at all for a space that has one, and turning any pick into a silent change of
    * who can join. A space created elsewhere can carry `knock` or `restricted`.
    */

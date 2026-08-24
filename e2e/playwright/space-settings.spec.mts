@@ -5,7 +5,12 @@ import {
   type APIRequestContext,
   type Page,
 } from '@playwright/test';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import {
+  login,
+  openSettingsTab,
+  synapseSession,
+  type SynapseSession,
+} from './support/app.mts';
 
 // Covers editing a SPACE's settings, which had no surface at all before #40: a space was
 // configured once at creation and never again. The space overflow menu
@@ -172,6 +177,9 @@ test.describe('Space settings', () => {
     });
     await page.getByTestId('space-settings-name').fill(newName);
     await page.getByTestId('space-settings-topic').fill(newTopic);
+    // Name and topic are General; the join rule is behind Access. Saving spans both, which
+    // is the point of the eager panels — one form, one Save.
+    await openSettingsTab(page, 'space-settings', 'access');
     // `selectOption` only ever drove a native `<select>`; this is a `trn-select` now, whose
     // options live in a CDK portal.
     await page.getByTestId('space-settings-join-rule').click();
@@ -242,6 +250,7 @@ test.describe('Space settings', () => {
       { timeout: 10_000 },
     );
     await expect(page.getByTestId('space-settings-topic')).toHaveValue(topic);
+    await openSettingsTab(page, 'space-settings', 'access');
     // A `trn-select` collapsed trigger renders the chosen option's LABEL, not its value —
     // there is no form control to call `toHaveValue` on any more.
     await expect(page.getByTestId('space-settings-join-rule')).toHaveText(
@@ -305,6 +314,7 @@ test.describe('Space settings', () => {
     );
     await expect(page.getByTestId('space-settings-name')).toBeDisabled();
     await expect(page.getByTestId('space-settings-topic')).toBeDisabled();
+    await openSettingsTab(page, 'space-settings', 'access');
     await expect(page.getByTestId('space-settings-join-rule')).toBeDisabled();
     await expect(page.getByTestId('space-settings-save')).toBeDisabled();
   });
@@ -332,6 +342,7 @@ test.describe('Space settings', () => {
     await login(page, { available: true, hs, user, pass } as SynapseSession);
     await openSpaceMenu(page, spaceName);
     await page.getByTestId('open-space-settings').click();
+    await openSettingsTab(page, 'space-settings', 'access');
     await expect(page.getByTestId('room-aliases')).toBeVisible({
       timeout: 10_000,
     });
@@ -342,7 +353,9 @@ test.describe('Space settings', () => {
     await page.getByTestId('room-alias-input').press('Enter');
 
     // The dialog is still open (Enter must not have submitted it) and the address is live.
-    await expect(page.getByTestId('space-settings-name')).toBeVisible();
+    // The DIALOG, not the name field: that field lives on the General tab, and this test is
+    // standing on Access — a still-open dialog would have failed a visibility check on it.
+    await expect(page.getByTestId('space-settings')).toBeVisible();
     await expect(
       page.getByTestId('room-alias').filter({ hasText: alias }),
     ).toBeVisible({ timeout: 15_000 });
