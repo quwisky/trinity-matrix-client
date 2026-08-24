@@ -38,11 +38,18 @@
           class="flex-none text-lg text-[var(--trinity-text-muted)] md:group-[.is-active]:text-link"
         />
         <span class="min-w-0 flex-1">{{ item.label }}</span>
-        <!-- A mobile drill-in affordance; the sidebar shows the active highlight instead. -->
-        <trn-icon
-          name="chevron-right"
-          class="flex-none text-base text-[var(--trinity-text-muted)] md:hidden"
-        />
+        <!-- A mobile drill-in affordance; the sidebar shows the active highlight instead.
+             NOT rendered rather than hidden with `md:hidden`: Tailwind's utilities live in
+             `@layer utilities` and a component's own `:host { display: … }` is unlayered,
+             and an unlayered author declaration beats a layered one whatever the
+             specificity — so the class applies and does nothing. `wide()` is the same
+             768px boundary the `md:` variant compiles to (both read MD_QUERY). -->
+        @if (!wide()) {
+          <trn-icon
+            name="chevron-right"
+            class="flex-none text-base text-[var(--trinity-text-muted)]"
+          />
+        }
       </a>
     }
     <!-- Version + commit of the running build, tucked below the section list. -->
@@ -56,6 +63,7 @@
   <section
     class="min-w-0 flex-1 overflow-y-auto"
     [class.max-md:hidden]="!sectionActive()"
+    data-testid="settings-detail"
   >
     <router-outlet />
   </section>
