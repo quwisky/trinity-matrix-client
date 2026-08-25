@@ -2,7 +2,10 @@
 
 This directory configures **Claude Code** for the Trinity workspace. It holds two kinds of thing:
 
-- **Skills** (`skills/`) — capability packs Claude loads on demand when a task matches their triggers.
+- **Skills** (`skills/` → [`../.agents/skills/`](../.agents/skills)) — capability packs Claude
+  loads on demand when a task matches their triggers. They live under `.agents/` so any agent
+  can read them; `skills/` here is a symlink so Claude Code still discovers them at the path it
+  looks for. Add a skill to `.agents/skills/`, not through the link.
 - **Rules** (`rules/`) — always-on conventions applied to every change.
 
 The always-loaded instructions live in [`AGENTS.md`](../AGENTS.md) (project) and
@@ -12,10 +15,10 @@ the task to the descriptions below.
 
 ---
 
-## Skills (`skills/`)
+## Skills (`.agents/skills/`)
 
 Skills are loaded on demand — Claude reads a skill's `SKILL.md` when a task matches its triggers.
-Two kinds live here.
+Two kinds live there.
 
 ### Local skills
 
