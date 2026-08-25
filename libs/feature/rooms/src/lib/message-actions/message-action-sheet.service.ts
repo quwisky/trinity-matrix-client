@@ -26,6 +26,15 @@ const QUICK_SHEET_REACTIONS = ['👍', '❤️', '😂', '🎉', '😮', '😢']
  * `onReact(row.id, undefined)` — and a cast to `MessageRowAction` makes that compile. This
  * excludes them instead, so the mistake is a type error at the call below rather than the
  * one hole in each consumer's `never` exhaustiveness guard.
+ *
+ * Two limits worth knowing before extending `MessageRowAction`:
+ *
+ *  - `dispatch({ type })` with a union-typed discriminant typechecks through TypeScript's
+ *    discriminant cross-product expansion, which is CAPPED AT 25 combinations. The union has
+ *    15 payload-free members, so there is headroom for ten more; the 26th turns this line
+ *    into a baffling "not assignable to type '{ type: … }'" error with no mention of the cap.
+ *  - Exclusion is by REQUIRED property name. A future `{ type: 'react'; key?: string }` would
+ *    survive `Exclude` and silently reopen exactly the gap this closes.
  */
 type PayloadFreeAction = Exclude<
   MessageRowAction,
@@ -183,7 +192,7 @@ export class MessageActionSheetService {
 
     this.dismiss();
     this.owner = owner;
-    this.ref = this.sheet.open(
+    const ref = this.sheet.open(
       {
         buttons,
         reactions: QUICK_SHEET_REACTIONS.map((key) => ({
@@ -193,6 +202,20 @@ export class MessageActionSheetService {
       },
       'Message actions',
     );
+    this.ref = ref;
+
+    // Let go once the sheet closes ITSELF — a pick, a backdrop tap, Escape. Without this the
+    // dead ref is retained until the next `open()` or the owner's own destroy, and through
+    // CDK's `config.data` it holds the button handlers, their `dispatch` closure, and so the
+    // row. Harmless (one row, and the opener is alive by definition) but pointless. Compared
+    // against the captured local rather than by identity: `open()` may have replaced it, and
+    // `TrnDialogRef`'s own docblock says its identity carries no meaning.
+    ref.closed.subscribe(() => {
+      if (this.ref === ref) {
+        this.ref = null;
+        this.owner = null;
+      }
+    });
   }
 
   /**

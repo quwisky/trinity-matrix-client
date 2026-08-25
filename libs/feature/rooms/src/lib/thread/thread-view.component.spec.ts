@@ -3,6 +3,7 @@ import { type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { TrnToastService } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
+import { TrnActionSheetService } from '@trinity/components/overlay';
 import {
   ThreadsService,
   TimelineActionsService,
@@ -92,6 +93,12 @@ async function build(
       isCreator: false,
     },
   ]);
+  const sheetClose = vi.fn();
+  // `closed` too: the real `TrnDialogRef` has it, and the service subscribes to release
+  // the dead ref. A stub missing part of the API turns a correct change into a red suite.
+  const sheetOpen = vi
+    .fn()
+    .mockReturnValue({ close: sheetClose, closed: new Subject() });
   const membersFor = vi.fn((roomId: string | null) =>
     roomId === '!r:hs'
       ? roster.asReadonly()
@@ -122,6 +129,7 @@ async function build(
       MockProvider(RoomsService, { membersFor }),
       MockProvider(MessageSourceService, { open: sourceOpen }),
       MockProvider(TrnToastService, { show: toastShow }),
+      { provide: TrnActionSheetService, useValue: { open: sheetOpen } },
     ],
   });
   /** How many times the panel announced a close, for the dismissal assertions. */
@@ -131,6 +139,8 @@ async function build(
     fixture,
     container,
     roster,
+    sheetOpen,
+    sheetClose,
     membersFor,
     canPaginateThread,
     loadingOlderThread,
@@ -544,5 +554,29 @@ describe('ThreadViewComponent members', () => {
       expect.stringContaining('you left the thread'),
       expect.anything(),
     );
+  });
+
+  it('closes its own action sheet when the panel is destroyed', async () => {
+    // The asymmetric consumer, and the reason `MessageActionSheetService` exists at all:
+    // this panel renders `trn-message-row` but does NOT extend `MessageListBase`, so it
+    // inherits none of that wiring and every guarantee has to be re-made here.
+    //
+    // The sheet is a CDK overlay living outside the router outlet, so it outlives the panel.
+    // Without this, closing the thread leaves a modal standing whose every row dispatches
+    // into a destroyed component. The mirror test on the list side cannot cover it — that
+    // one exercises two `MessageListBase` instances, which is the mechanism, not this
+    // configuration.
+    const { fixture, sheetOpen, sheetClose } = await build([
+      msg('$1', '@ada:hs', 'a reply'),
+    ]);
+
+    fixture.componentInstance.onRowLongPress(
+      fixture.componentInstance.rows()[0],
+    );
+    expect(sheetOpen).toHaveBeenCalledTimes(1);
+
+    fixture.destroy();
+
+    expect(sheetClose).toHaveBeenCalledTimes(1);
   });
 });

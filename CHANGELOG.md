@@ -23,14 +23,15 @@ All notable changes to this project are documented here. The format is based on
   render far fewer rows at a time, so opening the member list in a busy room no longer
   builds thousands of rows up front.
 
-- **Right-click or long-press a message for its actions.** The full set — pin, quote, copy,
+- **Right-click or long-press a message for its actions.** The overflow set — pin, quote, copy,
   copy link, forward, view source, report, edit, delete — is now a right-click away on desktop,
-  instead of only reachable through the small "⋯" button that appears on hover. On a phone or
+  instead of only reachable through the small "⋯" button that appears on hover. (Reply, react
+  and Reply in thread stay on the hover bar; the long-press sheet below carries all of them.) On a phone or
   tablet, where there is no hover and no right-click, a long press brings that same full set up
   as a sheet from the bottom of the screen: thumb-sized rows you can read, the six most-used
-  reactions along the top, and a way to reach any other emoji. It scrolls if your permissions
-  make the list long, it never covers the message it acts on, and picking something or tapping
-  outside it puts it away.
+  reactions along the top, and a way to reach any other emoji. It rises from the bottom edge
+  rather than floating over the timeline, it scrolls if your permissions make the list long,
+  and picking something or tapping outside it puts it away.
 
   Highlight some text first and you still get the browser's own menu, because that is the one
   with Copy in it — and right-clicking a link or an image still gets you "Open link in new tab"
@@ -110,6 +111,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **The message menu no longer lingers after you leave the room.** On a phone, opening a
+  message's action sheet and then navigating away — to Settings, or by following a link, or
+  by signing out — left the sheet on screen over whatever came next, and picking anything
+  from it did nothing at all.
+
 - **Tabs, separators and toggles show their state too.** The same defect as the switches
   below, found by sweeping the rest of the design kit: the open tab in Room and Space
   settings drew no underline and no brighter label, so all three tabs looked alike; and every
@@ -118,18 +124,18 @@ All notable changes to this project are documented here. The format is based on
   open again.
 
 - **Switches and checkboxes show which way they are set.** Every toggle in Settings —
-  read receipts, link previews, notification rules, the experimental flags — rendered
-  identically whether it was on or off: same grey track, thumb never moving. Checkboxes had
-  it too, staying unfilled when ticked, as did the check marks in the right-click menus. The
+  read receipts, link previews, notification rules, the experimental flag — rendered
+  identically whether it was on or off: the track never took its colour, and the thumb never
+  moved. Checkboxes had it too, staying unfilled when ticked. The
   controls were reporting their state correctly to screen readers and to the app the whole
   time; only the part you look at was missing, so a setting you had just changed looked
   untouched.
 
 - **The side panels have their heading back.** Threads, a thread, pinned messages, search and
   member info all drew their top bar with the title jammed against the left edge and the bar
-  itself a few pixels shorter than the room header beside it, so the two never lined up. The
-  padding was being silently dropped rather than applied; all five now match the room header
-  exactly, and grow to clear the notch on a phone instead of being clipped into it.
+  itself 11px shorter than the room header beside it (45px against 56), so the two never
+  lined up. The padding was being silently dropped rather than applied; all five now match the
+  room header exactly, and still grow to clear the notch on a phone.
 
 - **A room that has been upgraded no longer squashes the conversation.** In a room with a "this
   room has been replaced" notice, the notice was sharing a row with the message list instead of

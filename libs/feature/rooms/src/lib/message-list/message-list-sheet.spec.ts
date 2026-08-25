@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Subject } from 'rxjs';
 import { TrnActionSheetService } from '@trinity/components/overlay';
 import { type MessageView } from '@trinity/util/matrix';
 import { MessageListBase } from './message-list-base';
@@ -65,7 +66,7 @@ function lastSheet(open: ReturnType<typeof vi.fn>) {
 
 function build() {
   const close = vi.fn();
-  const open = vi.fn().mockReturnValue({ close });
+  const open = vi.fn().mockReturnValue({ close, closed: new Subject() });
   TestBed.configureTestingModule({
     providers: [{ provide: TrnActionSheetService, useValue: { open } }],
   });
@@ -160,7 +161,7 @@ describe('MessageListBase — the mobile action sheet', () => {
   it('closes the open sheet before opening another', () => {
     // Two long presses in a row, or a press while a sheet is already up: one sheet.
     const close = vi.fn();
-    const open = vi.fn().mockReturnValue({ close });
+    const open = vi.fn().mockReturnValue({ close, closed: new Subject() });
     TestBed.configureTestingModule({
       providers: [{ provide: TrnActionSheetService, useValue: { open } }],
     });
@@ -181,7 +182,7 @@ describe('MessageListBase — the mobile action sheet', () => {
     // A sheet is about one message in one room; left standing over a different timeline it
     // offers actions against an event that is no longer on screen.
     const close = vi.fn();
-    const open = vi.fn().mockReturnValue({ close });
+    const open = vi.fn().mockReturnValue({ close, closed: new Subject() });
     TestBed.configureTestingModule({
       providers: [{ provide: TrnActionSheetService, useValue: { open } }],
     });
@@ -263,7 +264,9 @@ describe('MessageListBase — the mobile action sheet', () => {
     cmp.onRowLongPress(cmp.rows()[0]);
     fixture.destroy();
 
-    expect(close).toHaveBeenCalled();
+    // Exactly once: `this.ref` is null at the first `open`, so its internal `dismiss()` is a
+    // no-op and the only call is the teardown's.
+    expect(close).toHaveBeenCalledTimes(1);
   });
 
   it('does not close a sheet another list opened', () => {

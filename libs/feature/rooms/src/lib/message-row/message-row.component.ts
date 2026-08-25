@@ -190,10 +190,13 @@ export class MessageRowComponent {
     // is a straight loss. `onContextMenu` has always guarded this; the touch path did not,
     // which meant the same press that raised the OS menu also opened ours behind it.
     //
-    // `img` also catches the sender avatar, which `trn-avatar` renders as one — so a press
-    // on the 40px avatar column gets the browser's image menu and no sheet. Deliberate: the
-    // rule is "whatever the OS offers on this element wins", and a per-element exception
-    // list is the thing that rots. The message body either side of it is a large target.
+    // `img` also catches the sender avatar — but only sometimes, which is worth stating
+    // precisely: `trn-avatar` renders an `<img>` only once the image has LOADED, and falls
+    // back to a `<span>` with the initial otherwise. So a press on the 40px avatar column
+    // gets the browser's image menu and no sheet for a sender who has one, and opens the
+    // sheet for a sender who does not. Deliberate, because the rule is "whatever the OS
+    // offers on this element wins" and a per-element exception list is the thing that rots —
+    // but not uniform, and the message body either side of it is a much larger target.
     if ((event.target as HTMLElement | null)?.closest('a, img, video, audio')) {
       return;
     }

@@ -358,6 +358,15 @@ export abstract class MessageListBase {
     return result;
   });
 
+  /**
+   * Declared ABOVE the constructor on purpose. The constructor registers an `onDestroy` on
+   * it, which works wherever the field sits — every initializer runs before the constructor
+   * body — but TS2729 only guards field initializers, not constructor bodies, so the
+   * compiler would not catch it if this drifted below a subclass. Keeping the two adjacent
+   * removes the question.
+   */
+  private readonly listDestroyRef = inject(DestroyRef);
+
   constructor() {
     // A host directive's outputs are not template-bound, so the subscription IS the wiring.
     // No teardown: an `OutputEmitterRef` drops its subscribers when its own directive is
@@ -540,7 +549,6 @@ export abstract class MessageListBase {
   private pendingJumpAt = 0;
   private lastScrollerWidth = 0;
   private widthRo?: ResizeObserver;
-  private readonly listDestroyRef = inject(DestroyRef);
 
   /**
    * Remember a jump so a width change can re-apply it. Called BY the subclasses' `jumpTo`,
