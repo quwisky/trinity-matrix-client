@@ -12,7 +12,12 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { TrnAlertService } from '@trinity/components/overlay';
+import {
+  TrnActionSheetService,
+  TrnDialogRef,
+  type ActionSheetButton,
+  TrnAlertService,
+} from '@trinity/components/overlay';
 import { ReactionPickerService } from '../reaction-picker/reaction-picker.service';
 import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import { ForwardService } from '../forward/forward.service';
@@ -62,6 +67,15 @@ import {
 const JUMP_REAPPLY_MS = 3_000;
 
 /** Fallback caps for a row not present in the memoized map (defensive; unreached). */
+/**
+ * The one-tap reactions the sheet offers, mirroring the hover toolbar's quick set.
+ *
+ * Restated rather than imported from `@trinity/components/message-toolbar`: that constant
+ * is private to the component, and the two surfaces are free to diverge — a phone strip
+ * has room for six, a hover row could grow.
+ */
+const QUICK_SHEET_REACTIONS = ['👍', '❤️', '😂', '🎉', '😮', '😢'] as const;
+
 const DEFAULT_ROW_CAPS: MessageRowCaps = {
   editable: false,
   deletable: false,
@@ -261,6 +275,14 @@ export abstract class MessageListBase {
   private readonly sourceSvc = inject(MessageSourceService);
   private readonly editHistorySvc = inject(EditHistoryDialogService);
   private readonly reactionsDialog = inject(ReactionsDialogService);
+  private readonly actionSheet = inject(TrnActionSheetService);
+  /**
+   * The open message sheet, if any.
+   *
+   * Held so it can be closed: a sheet the opener cannot dismiss outlives the row it acts
+   * on, and every one of its rows would then dispatch against a message that is gone.
+   */
+  private actionSheetRef: TrnDialogRef<void> | null = null;
   protected readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
 
   /**
@@ -423,6 +445,9 @@ export abstract class MessageListBase {
 
   /** Reset per-room state on a room switch. Subclasses override to add scroll state. */
   protected resetOnRoomChange(): void {
+    // A sheet is about ONE message in ONE room; leaving it standing over a different
+    // room's timeline would offer actions against an event that is no longer on screen.
+    this.closeActionSheet();
     this.editingId.set(null);
     this.replyingToId.set(null);
     this.announcement.set('');
@@ -620,6 +645,128 @@ export abstract class MessageListBase {
   /** Per-row capabilities/state for {@link MessageRowComponent} in the main timeline. */
   rowCaps(row: MessageRow): MessageRowCaps {
     return this.rowCapsById().get(row.id) ?? DEFAULT_ROW_CAPS;
+  }
+
+  /**
+   * A long press on a row, on a phone or tablet: offer its actions as a bottom sheet.
+   *
+   * Owned HERE and not by the row, which is the whole point. The row is destroyed by any
+   * of the things that routinely happen to a message — a redaction, an edit, the
+   * local-echo id swap when your own send lands, or simply scrolling out of the virtual
+   * window — and its `action` output goes silent the moment it is. A sheet holding the
+   * row's handlers would then be a menu where every tap does nothing, with no error and
+   * nothing to see. This class outlives all of that: it owns the window the rows are
+   * drawn from, and `row` below is a plain snapshot from the `@for`, not a component.
+   *
+   * `onRowAction` is the same method the hover toolbar routes through, so there is one
+   * dispatch and one place to add the next action.
+   */
+  /** Dismiss the message sheet, if one is open. */
+  protected closeActionSheet(): void {
+    this.actionSheetRef?.close();
+    this.actionSheetRef = null;
+  }
+
+  onRowLongPress(row: MessageRow): void {
+    const caps = this.rowCaps(row);
+    const act = (type: MessageRowAction['type']) => () =>
+      this.onRowAction(row, { type } as MessageRowAction);
+
+    const buttons: ActionSheetButton[] = [
+      {
+        text: 'Reply',
+        icon: 'reply',
+        testId: 'sheet-reply',
+        handler: act('reply'),
+      },
+    ];
+    if (caps.canThread) {
+      buttons.push({
+        text: 'Reply in thread',
+        icon: 'messages-square',
+        testId: 'sheet-thread',
+        handler: act('thread'),
+      });
+    }
+    if (caps.canQuote) {
+      buttons.push({
+        text: 'Quote',
+        icon: 'quote',
+        testId: 'sheet-quote',
+        handler: act('quote'),
+      });
+    }
+    if (caps.canPin) {
+      buttons.push({
+        text: caps.pinned ? 'Unpin message' : 'Pin message',
+        icon: 'pin',
+        testId: 'sheet-pin',
+        handler: act('pin'),
+      });
+    }
+    buttons.push(
+      {
+        text: 'Copy text',
+        icon: 'copy',
+        testId: 'sheet-copy',
+        handler: act('copy'),
+      },
+      {
+        text: 'Copy link',
+        icon: 'link',
+        testId: 'sheet-copy-link',
+        handler: act('copy-link'),
+      },
+      {
+        text: 'Forward',
+        icon: 'forward',
+        testId: 'sheet-forward',
+        handler: act('forward'),
+      },
+      {
+        text: 'View source',
+        icon: 'code',
+        testId: 'sheet-view-source',
+        handler: act('view-source'),
+      },
+      {
+        text: 'Report message',
+        icon: 'flag',
+        testId: 'sheet-report',
+        handler: act('report'),
+      },
+    );
+    if (caps.editable) {
+      buttons.push({
+        text: 'Edit message',
+        icon: 'pencil',
+        testId: 'sheet-edit',
+        handler: act('edit'),
+      });
+    }
+    if (caps.deletable) {
+      buttons.push({
+        text: 'Delete message',
+        icon: 'trash-2',
+        role: 'destructive',
+        separatorBefore: true,
+        testId: 'sheet-delete',
+        handler: act('delete'),
+      });
+    }
+    buttons.push({ text: 'Cancel', role: 'cancel' });
+
+    this.actionSheetRef?.close();
+    this.actionSheetRef = this.actionSheet.open(
+      {
+        buttons,
+        reactions: QUICK_SHEET_REACTIONS.map((key) => ({
+          key,
+          handler: () => this.onRowAction(row, { type: 'react', key }),
+        })),
+      },
+      'Message actions',
+    );
   }
 
   /** Route a single row action to its handler / upward output. */

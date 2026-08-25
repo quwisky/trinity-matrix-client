@@ -37,6 +37,7 @@
         [threadSummary]="threadSummaries()[row.id] ?? null"
         [caps]="rowCaps(row)"
         (action)="onRowAction(row, $event)"
+        (longPress)="onRowLongPress(row)"
         (matrixLink)="matrixLink.emit($event)"
         (pollVote)="pollVote.emit($event)"
         (pollEnd)="pollEnd.emit($event)"
