@@ -59,6 +59,34 @@ router-outlet + * {
   padding-right: env(safe-area-inset-right);
 }
 
+/*
+ * A right-hand panel's top bar (threads, a thread, pinned, search, member info).
+ *
+ * It exists because the obvious spelling is broken: `class="safe-top safe-left safe-right
+ * p-3"` looks like padding plus an inset and is neither. The `.safe-*` rules above are
+ * UNLAYERED — this file is a plain stylesheet — while Tailwind's `p-3` lives in
+ * `@layer utilities`, and an unlayered author declaration beats a layered one whatever the
+ * specificity. So each `.safe-*` class REPLACED the padding on its side rather than adding
+ * to it, and all five panel headers rendered with `padding: 0 0 12px`: a 45px bar with its
+ * title flush against the border, beside a 56px room header with a 12px inset title.
+ *
+ * Here the two are composed in one declaration, so there is nothing to lose a cascade
+ * fight with — and the bar is built the way the room header beside it is built, which is
+ * what "aligned" has to mean: a FIXED 3.5rem (the room header's `h-14`) with the content
+ * centred in it, rather than vertical padding around a 32px button. Padding around it came
+ * to 57px against the room header's 56 — a one-pixel step where the two bottom borders
+ * meet. The horizontal 0.75rem matches the room header's own 12px inset.
+ *
+ * The height grows by the top inset rather than being eaten by it, so on a notched device
+ * the bar sits below the cutout at full height instead of being clipped into it.
+ */
+.panel-header {
+  height: calc(3.5rem + env(safe-area-inset-top));
+  padding-top: env(safe-area-inset-top);
+  padding-right: calc(0.75rem + env(safe-area-inset-right));
+  padding-left: calc(0.75rem + env(safe-area-inset-left));
+}
+
 /* Respect users who prefer reduced motion. */
 @media (prefers-reduced-motion: reduce) {
   *,
