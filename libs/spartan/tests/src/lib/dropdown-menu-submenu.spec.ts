@@ -217,7 +217,7 @@ describe('HlmDropdownMenu — menu aim', () => {
 //
 // Helm's `--destructive` is a fill/tint token. Its dark value is hsl(0 62.8% 30.6%), a
 // near-black maroon, which on the dark popover surface measures 1.38:1 — so "Leave room" read
-// as an empty strip. CLAUDE.md states the rule ("never use Helm's --destructive as a
+// as an empty strip. AGENTS.md states the rule ("never use Helm's --destructive as a
 // foreground"); this pins it, because a regenerate would silently put the maroon back and
 // nothing else in the suite would fail.
 @Component({
