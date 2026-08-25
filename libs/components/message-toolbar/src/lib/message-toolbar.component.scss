@@ -72,8 +72,16 @@
   color: var(--trinity-danger);
 }
 
-// Touch targets: the message hover toolbar is the highest-frequency chat action
-// surface — lift its buttons to 44px on touch only (desktop keeps 32px).
+// Touch targets: 44px wherever a finger can reach these buttons, 32px otherwise.
+
+// Still keyed on `(pointer: coarse)` after #220 moved phones and tablets to a bottom
+// sheet, and the two predicates are not in conflict — they answer different questions.
+// `isMobileOs()` picks the INTERACTION MODEL: a sheet is an iOS/Android convention, and a
+// Windows laptop with a touchscreen should not be given one. `(pointer: coarse)` asks
+// whether a finger is driving, which is what decides how big a target has to be.
+
+// So on a phone this block is inert (the bar is never revealed there) and on a hybrid
+// laptop it is load-bearing (the bar IS revealed, and can be tapped). Right in both.
 @media (pointer: coarse) {
   .toolbar__btn,
   .toolbar__emoji,
