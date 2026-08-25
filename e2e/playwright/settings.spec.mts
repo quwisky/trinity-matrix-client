@@ -142,6 +142,44 @@ test.describe('Settings', () => {
     await expect.poll(() => hasDarkPalette(page)).toBe(false);
   });
 
+  test('compact density tightens the spacing scale itself', async ({
+    page,
+  }) => {
+    await openSection(page, 'appearance');
+
+    const spaceToken = () =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue('--trinity-space-5')
+          .trim(),
+      );
+    const densityAttr = () =>
+      page.evaluate(() =>
+        document.documentElement.getAttribute('data-density'),
+      );
+
+    // The default leaves no attribute, and the scale is the 4px rhythm's 16px step.
+    expect(await densityAttr()).toBeNull();
+    expect(await spaceToken()).toBe('16px');
+
+    const trigger = page.getByTestId('density-select').locator('button');
+    await trigger.click();
+    await page.getByTestId('density-compact').click();
+
+    // The TOKEN moves, not a component override — which is the whole design: anything
+    // reading `--trinity-space-*` follows without knowing the preference exists. Only a
+    // real cascade can show this; jsdom resolves no custom properties through a
+    // `[data-density]` selector, so the unit spec can only see the attribute.
+    await expect.poll(densityAttr).toBe('compact');
+    await expect.poll(spaceToken).toBe('12px');
+
+    // Back to cosy → the attribute goes and the scale returns.
+    await trigger.click();
+    await page.getByTestId('density-cosy').click();
+    await expect.poll(densityAttr).toBeNull();
+    await expect.poll(spaceToken).toBe('16px');
+  });
+
   test('selects a colour palette from the dropdown', async ({ page }) => {
     await openSection(page, 'appearance');
 

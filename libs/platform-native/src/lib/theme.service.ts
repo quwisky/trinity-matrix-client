@@ -64,6 +64,28 @@ export type TextScale = (typeof TRINITY_TEXT_SCALES)[number]['id'];
 export const DEFAULT_TEXT_SCALE: TextScale = 'default';
 
 /**
+ * How much room the app leaves around things.
+ *
+ * Two steps, not a scale: the useful question is "fit more on screen or not", and a
+ * four-step spacing slider asks the reader to tune something they cannot see the units of.
+ *
+ * What it reaches today is worth stating plainly, because the name promises more than it
+ * currently delivers: density re-cuts the `--trinity-space-*` tokens, and the only
+ * stylesheet reading those today is the message row. So compact tightens the timeline —
+ * which is the thing a chat client's density setting is actually about — and everything
+ * else is unchanged until it adopts the tokens, at which point it follows for free. That
+ * is the reason this drives TOKENS rather than a per-component override.
+ */
+export const TRINITY_DENSITIES = [
+  { id: 'cosy', label: 'Cosy' },
+  { id: 'compact', label: 'Compact' },
+] as const;
+/** The id of a registered density. */
+export type Density = (typeof TRINITY_DENSITIES)[number]['id'];
+/** The spacing an untouched install uses. */
+export const DEFAULT_DENSITY: Density = 'cosy';
+
+/**
  * How large code is, as a multiplier on the optical correction already applied to it.
  *
  * A FACTOR, not a size, and deliberately not a second text scale. Code in a message is
@@ -118,6 +140,9 @@ export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'system';
 const THEME_KEY = 'trinity.theme';
 const PALETTE_KEY = 'trinity.palette';
 const TEXT_SCALE_KEY = 'trinity.text-scale';
+const DENSITY_KEY = 'trinity.density';
+/** Attribute on <html> naming the active density; absent for the default (cosy). */
+const DENSITY_ATTR = 'data-density';
 const CODE_SCALE_KEY = 'trinity.code-scale';
 const CODE_LINES_KEY = 'trinity.code-lines';
 /** Custom property on <html> the rendered-markdown stylesheet multiplies by. */
@@ -134,12 +159,15 @@ const DARK_CLASS = 'dark';
 const PALETTE_ATTR = 'data-theme';
 
 /**
- * Owns the app's appearance across five orthogonal axes, each reflected on <html>:
+ * Owns the app's appearance across six orthogonal axes, each reflected on <html>:
  *   • mode       — light/dark: persists the user's preference, resolves `system` against
  *     `prefers-color-scheme`, and toggles {@link DARK_CLASS} on the document root;
  *   • palette    — the named colour scheme: persists the choice and reflects it as the
  *     {@link PALETTE_ATTR} attribute (absent for the default palette);
  *   • text size  — a percentage written as `font-size` on the root;
+ *   • density    — how much room the app leaves around things, as the
+ *     {@link DENSITY_ATTR} attribute (absent for the default), re-cutting the
+ *     `--trinity-space-*` scale rather than overriding any component;
  *   • code size  — a factor written as {@link CODE_SCALE_PROP}, multiplying the size of
  *     code inside rendered messages;
  *   • code line numbers — when a block shows a numbering gutter, as the
@@ -160,10 +188,14 @@ export class ThemeService {
   readonly resolved = this._resolved.asReadonly();
 
   private readonly _textScale = signal<TextScale>(DEFAULT_TEXT_SCALE);
+  private readonly _density = signal<Density>(DEFAULT_DENSITY);
   /** The user's chosen text size. */
   readonly textScale = this._textScale.asReadonly();
+  /** How much room the app leaves around things. */
+  readonly density = this._density.asReadonly();
   /** The registered scales, for the settings picker. */
   readonly textScales = TRINITY_TEXT_SCALES;
+  readonly densities = TRINITY_DENSITIES;
 
   private readonly _codeScale = signal<CodeScale>(DEFAULT_CODE_SCALE);
   /** The user's chosen code size. */
@@ -223,6 +255,15 @@ export class ThemeService {
     } catch {
       // No stored text scale → keep the default.
     }
+
+    try {
+      const { value } = await Preferences.get({ key: DENSITY_KEY });
+      if (isDensity(value)) {
+        this._density.set(value);
+      }
+    } catch {
+      // No stored value (or storage unavailable) → keep the default (cosy).
+    }
     try {
       const { value } = await Preferences.get({ key: CODE_SCALE_KEY });
       if (isCodeScale(value)) {
@@ -242,6 +283,7 @@ export class ThemeService {
     this.apply();
     this.applyPalette();
     this.applyTextScale();
+    this.applyDensity();
     this.applyCodeScale();
     this.applyCodeLines();
   }
@@ -260,6 +302,15 @@ export class ThemeService {
     this._textScale.set(scale);
     this.applyTextScale();
     void Preferences.set({ key: TEXT_SCALE_KEY, value: scale }).catch(
+      () => undefined,
+    );
+  }
+
+  /** Change + persist the density, applying it immediately. */
+  setDensity(density: Density): void {
+    this._density.set(density);
+    this.applyDensity();
+    void Preferences.set({ key: DENSITY_KEY, value: density }).catch(
       () => undefined,
     );
   }
@@ -305,6 +356,29 @@ export class ThemeService {
       );
     }
     this.applyNativeChrome(resolved);
+  }
+
+  /**
+   * Reflect the active density on the document root.
+   *
+   * The DEFAULT removes the attribute rather than writing `cosy`, so an untouched install
+   * leaves no footprint on `<html>` — the same rule `applyTextScale` follows above.
+   *
+   * `:root[data-density='compact']` is (0,2,0), the same specificity as the `:root.dark`
+   * blocks in `variables.scss`, so the two are decided by source order. They do not
+   * overlap — the mode blocks re-cut COLOUR, this re-cuts SPACING — but the tie is worth
+   * knowing before a rule is added to either.
+   */
+  private applyDensity(): void {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    const density = this._density();
+    if (density === DEFAULT_DENSITY) {
+      document.documentElement.removeAttribute(DENSITY_ATTR);
+      return;
+    }
+    document.documentElement.setAttribute(DENSITY_ATTR, density);
   }
 
   /**
@@ -421,6 +495,11 @@ export function isPalette(value: string | null): value is Palette {
 /** True when `value` is a registered text scale id. */
 export function isTextScale(value: string | null): value is TextScale {
   return TRINITY_TEXT_SCALES.some((s) => s.id === value);
+}
+
+/** True when `value` is a registered density id. */
+export function isDensity(value: string | null): value is Density {
+  return TRINITY_DENSITIES.some((d) => d.id === value);
 }
 
 /** True when `value` is a registered code scale id. */

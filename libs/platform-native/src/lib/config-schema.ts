@@ -222,6 +222,7 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     key: 'trinity.text-scale',
     owner: 'platform-native',
   },
+  { disposition: 'exported', key: 'trinity.density', owner: 'platform-native' },
   {
     disposition: 'exported',
     key: 'trinity.code-scale',

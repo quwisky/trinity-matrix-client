@@ -468,3 +468,81 @@ describe('ThemeService code scale', () => {
     expect(codeScaleProp()).toBe('');
   });
 });
+
+describe('ThemeService — density', () => {
+  function service(): ThemeService {
+    TestBed.configureTestingModule({});
+    return TestBed.inject(ThemeService);
+  }
+  const densityAttr = () =>
+    document.documentElement.getAttribute('data-density');
+
+  beforeEach(() => {
+    get.mockReset();
+    set.mockReset();
+    get.mockResolvedValue({ value: null });
+    set.mockResolvedValue(undefined);
+    document.documentElement.removeAttribute('data-density');
+  });
+  afterEach(() => document.documentElement.removeAttribute('data-density'));
+
+  it('leaves the root untouched at the default density', async () => {
+    const svc = service();
+    await svc.init();
+
+    expect(svc.density()).toBe('cosy');
+    // No attribute at all rather than data-density="cosy": an untouched install must
+    // leave no footprint on <html>, the same rule the text scale follows.
+    expect(densityAttr()).toBeNull();
+  });
+
+  it('applies and persists compact', async () => {
+    const svc = service();
+    await svc.init();
+
+    svc.setDensity('compact');
+
+    expect(svc.density()).toBe('compact');
+    expect(densityAttr()).toBe('compact');
+    expect(set).toHaveBeenCalledWith({
+      key: 'trinity.density',
+      value: 'compact',
+    });
+  });
+
+  it('clears the attribute again when set back to cosy', async () => {
+    const svc = service();
+    await svc.init();
+    svc.setDensity('compact');
+
+    svc.setDensity('cosy');
+
+    expect(densityAttr()).toBeNull();
+  });
+
+  it('restores a saved density at startup', async () => {
+    get.mockImplementation(async ({ key }: { key: string }) =>
+      key === 'trinity.density' ? { value: 'compact' } : { value: null },
+    );
+    const svc = service();
+
+    await svc.init();
+
+    expect(svc.density()).toBe('compact');
+    expect(densityAttr()).toBe('compact');
+  });
+
+  it('ignores a stored value that is not a density', async () => {
+    // Storage is not a schema: a hand-edited preference, or one left by a build that
+    // offered a third step, must not reach the attribute.
+    get.mockImplementation(async ({ key }: { key: string }) =>
+      key === 'trinity.density' ? { value: 'ultra' } : { value: null },
+    );
+    const svc = service();
+
+    await svc.init();
+
+    expect(svc.density()).toBe('cosy');
+    expect(densityAttr()).toBeNull();
+  });
+});

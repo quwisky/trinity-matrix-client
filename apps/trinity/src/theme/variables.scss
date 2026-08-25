@@ -502,3 +502,25 @@
     --trinity-duration-flash: 0.01ms;
   }
 }
+
+// --- Density ---------------------------------------------------------------------
+// Compact tightens the SPACING SCALE, so anything reading `--trinity-space-*` follows
+// without knowing the preference exists. Today that is the message row, which is what a
+// chat client's density setting is really about; everything else is unchanged until it
+// adopts the tokens.
+
+// The five smallest steps only. 24px and 32px are section-level gaps — squeezing those
+// makes a settings page look broken rather than dense — and the 4px rhythm is kept: the
+// compact scale is the same grid one step down, not a set of arbitrary numbers.
+
+// `:root[data-density='compact']` is (0,2,0), which TIES the `:root.dark` blocks above.
+// They are decided by source order and do not overlap (mode re-cuts colour, this re-cuts
+// spacing) — but a colour added here, or a spacing token added there, would be a silent
+// coin toss. Keep the split.
+:root[data-density='compact'] {
+  --trinity-space-1: 1px;
+  --trinity-space-2: 2px;
+  --trinity-space-3: 4px;
+  --trinity-space-4: 8px;
+  --trinity-space-5: 12px;
+}
