@@ -92,4 +92,36 @@ describe('TrnSelectComponent', () => {
 
     expect(getComputedStyle(host).display).toBe('block');
   });
+
+  it('is a Signal Forms control, so `[formField]` drives it', async () => {
+    // The contract is one thing — `value` must be a `model()` kept in sync with the bound
+    // field — and satisfying it is what lets the three room/space settings selects keep their
+    // schema gating instead of hand-bridging `[value]`/`(valueChange)` and a `[disabled]`
+    // that would be NG8022 beside a `[formField]`.
+    //
+    // Asserted structurally rather than by wiring a whole form: what breaks the contract is
+    // `value` going back to an `input()`, and `set` is the method an input does not have.
+    const { fixture } = await render(TrnSelectComponent<string>, {
+      inputs: { options: [{ value: 'a', label: 'A' }] },
+    });
+    const cmp = fixture.componentInstance;
+
+    expect(typeof (cmp.value as unknown as { set?: unknown }).set).toBe(
+      'function',
+    );
+    cmp.value.set('a');
+    expect(cmp.value()).toBe('a');
+  });
+
+  it('takes disabled, which is how the schema gate reaches the control', async () => {
+    const { fixture, container } = await render(TrnSelectComponent<string>, {
+      inputs: { options: [{ value: 'a', label: 'A' }] },
+    });
+    expect(container.querySelector('[disabled]')).toBeNull();
+
+    fixture.componentRef.setInput('disabled', true);
+    fixture.detectChanges();
+
+    expect(container.querySelector('[disabled]')).not.toBeNull();
+  });
 });

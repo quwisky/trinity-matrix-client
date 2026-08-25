@@ -2,101 +2,129 @@
   <h2 class="room-settings__title">Room settings</h2>
 
   <form [formRoot]="form" class="room-settings__form" (submit)="save()">
-    <trn-avatar-field
-      [roomId]="roomId()"
-      [name]="name()"
-      [avatarMxc]="avatarMxc()"
-      [initial]="avatarInitial()"
-      [editable]="canEditAvatar()"
-      noun="room"
-      testid="room-settings-avatar"
-    />
-
-    <label class="room-settings__field">
-      <span class="room-settings__label">Name</span>
-      <input
-        trnInput
-        class="w-full"
-        [formField]="form.name"
-        autocomplete="off"
-        data-testid="room-settings-name"
-      />
-    </label>
-
-    <label class="room-settings__field">
-      <span class="room-settings__label">Topic</span>
-      <textarea
-        trnInput
-        class="room-settings__topic w-full"
-        [formField]="form.topic"
-        rows="3"
-        data-testid="room-settings-topic"
-      ></textarea>
-    </label>
-
-    <label class="room-settings__field">
-      <span class="room-settings__label">Who can join</span>
-      <select
-        trnInput
-        class="w-full"
-        [formField]="form.joinRule"
-        data-testid="room-settings-join-rule"
-      >
-        @for (option of joinRuleOptions(); track option.value) {
-          <option [value]="option.value">{{ option.label }}</option>
-        }
-      </select>
-    </label>
-
-    @if (showSpaceChoices()) {
-      <fieldset class="room-settings__spaces">
-        <legend class="room-settings__label">
-          Spaces whose members can join
-        </legend>
-        @for (space of parentSpaces(); track space.id) {
-          <label class="room-settings__space">
-            <trn-checkbox
-              [checked]="isSpaceChecked(space.id)"
-              (checkedChange)="toggleSpace(space.id, $event)"
-              [attr.data-testid]="'room-settings-space-' + space.id"
-            />
-            {{ space.name }}
-          </label>
-        }
-        @if (noSpaceChosen()) {
-          <p class="room-settings__hint text-danger">
-            Choose at least one space, or nobody will be able to join.
-          </p>
-        }
-      </fieldset>
-    }
-
-    <label class="room-settings__field">
-      <span class="room-settings__label">Who can read history</span>
-      <select
-        trnInput
-        class="w-full"
-        [formField]="form.historyVisibility"
-        data-testid="room-settings-history"
-      >
-        @for (option of historyOptions; track option.value) {
-          <option [value]="option.value">{{ option.label }}</option>
-        }
-      </select>
-    </label>
-
     @if (!canSave() && !canEditAvatar()) {
       <p class="room-settings__note">
         You don’t have permission to change this room’s settings.
       </p>
     }
 
-    @if (canManageAliases()) {
-      <trn-room-aliases [roomId]="roomId()" />
-    }
+    <trn-tabs
+      tab="general"
+      variant="line"
+      [tabs]="settingsTabs()"
+      class="room-settings__tabs"
+    >
+      <trn-tab-panel
+        value="general"
+        panelClass="flex flex-col gap-3 pt-3"
+        data-testid="room-settings-panel-general"
+      >
+        <trn-avatar-field
+          [roomId]="roomId()"
+          [name]="name()"
+          [avatarMxc]="avatarMxc()"
+          [initial]="avatarInitial()"
+          [editable]="canEditAvatar()"
+          noun="room"
+          testid="room-settings-avatar"
+        />
 
-    @if (canManageBans()) {
-      <trn-banned-members [roomId]="roomId()" />
+        <label class="room-settings__field">
+          <span class="room-settings__label">Name</span>
+          <input
+            trnInput
+            class="w-full"
+            [formField]="form.name"
+            autocomplete="off"
+            data-testid="room-settings-name"
+          />
+        </label>
+
+        <label class="room-settings__field">
+          <span class="room-settings__label">Topic</span>
+          <textarea
+            trnInput
+            class="room-settings__topic w-full"
+            [formField]="form.topic"
+            rows="3"
+            data-testid="room-settings-topic"
+          ></textarea>
+        </label>
+      </trn-tab-panel>
+
+      <trn-tab-panel
+        value="access"
+        panelClass="flex flex-col gap-3 pt-3"
+        data-testid="room-settings-panel-access"
+      >
+        <label class="room-settings__field">
+          <span class="room-settings__label">Who can join</span>
+          <trn-select
+            [options]="joinRuleOptions()"
+            [formField]="form.joinRule"
+            triggerClass="w-full"
+            data-testid="room-settings-join-rule"
+          />
+        </label>
+
+        @if (showSpaceChoices()) {
+          <fieldset class="room-settings__spaces">
+            <legend class="room-settings__label">
+              Spaces whose members can join
+            </legend>
+            @for (space of parentSpaces(); track space.id) {
+              <label class="room-settings__space">
+                <trn-checkbox
+                  [checked]="isSpaceChecked(space.id)"
+                  (checkedChange)="toggleSpace(space.id, $event)"
+                  [attr.data-testid]="'room-settings-space-' + space.id"
+                />
+                {{ space.name }}
+              </label>
+            }
+            @if (noSpaceChosen()) {
+              <p class="room-settings__hint text-danger">
+                Choose at least one space, or nobody will be able to join.
+              </p>
+            }
+          </fieldset>
+        }
+
+        <label class="room-settings__field">
+          <span class="room-settings__label">Who can read history</span>
+          <trn-select
+            [options]="historyOptions"
+            [formField]="form.historyVisibility"
+            triggerClass="w-full"
+            data-testid="room-settings-history"
+          />
+        </label>
+
+        @if (canManageAliases()) {
+          <trn-room-aliases [roomId]="roomId()" />
+        }
+      </trn-tab-panel>
+
+      @if (canManageBans()) {
+        <trn-tab-panel
+          value="bans"
+          panelClass="flex flex-col gap-3 pt-3"
+          data-testid="room-settings-panel-bans"
+        >
+          <trn-banned-members [roomId]="roomId()" />
+        </trn-tab-panel>
+      }
+    </trn-tabs>
+
+    @if (noSpaceChosen()) {
+      <!-- The field this blocks on lives behind the Access tab, so the reason Save is off
+           has to be sayable from wherever the reader is standing. -->
+      <p
+        class="room-settings__hint text-danger"
+        data-testid="room-settings-blocked"
+      >
+        Choose at least one space under Access before saving.
+      </p>
     }
 
     <div class="room-settings__actions">
