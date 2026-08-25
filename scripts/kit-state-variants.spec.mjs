@@ -24,8 +24,13 @@ import { describe, expect, it } from 'vitest';
  * `custom-variant` means the theme redefines it, `attribute` means a real bare attribute
  * carries it. Adding a bare variant that is neither is how this shipped.
  *
- * `switch-state.spec.mts` measures the result in a real browser; this keeps the declaration
- * from being deleted without the browser test being the only thing that notices.
+ * The sweep found six more of the same defect beyond the switch, all measured in a browser:
+ * the open tab drew no underline and no brighter label (`data-state="active"`), every
+ * separator rendered `width: 0px` (`data-orientation="vertical"`), and the dropdown menu
+ * never animated in (`data-state="open"`).
+ *
+ * `switch-state.spec.mts` and `kit-state-styling.spec.mts` measure the results in a real
+ * browser; this keeps a declaration from being deleted with those as the only witnesses.
  */
 
 const workspaceRoot = join(import.meta.dirname, '..');
@@ -39,26 +44,26 @@ const THEME = 'apps/trinity/src/theme/spartan.css';
  * `custom-variant` — the theme maps it onto the attribute the DOM really has.
  * `attribute`      — a Brn component emits that exact attribute, so presence works.
  *
- * NOT a claim that every `attribute` entry is styled correctly, and one is worth naming:
- * `data-disabled` is emitted as `data-disabled="false"` on an ENABLED control, which a
- * presence test still matches. `hlm-switch` sidesteps it with `data-[disabled=true]:`;
- * `hlm-button`, `hlm-select-item` and `hlm-dropdown-menu` use the bare form and have not
- * been measured in a browser. Recorded here rather than quietly "fixed" — changing a
- * variant is global, and each one needs its own evidence.
+ * All twelve were swept against what the components actually render. Seven were mismatched
+ * and are remapped in the theme; the remaining five are correct as presence tests, because
+ * every emitter writes them `condition ? "" : null` — absent when false, which is exactly
+ * what Tailwind compiles. The one control that writes `data-disabled="false"` is
+ * `brn-switch`, and the kit styles that one with the explicit `data-[disabled=true]:`, so
+ * it was never affected.
  */
 const LEDGER = {
   'data-checked': 'custom-variant',
   'data-unchecked': 'custom-variant',
-  'data-active': 'attribute',
-  'data-closed': 'attribute',
+  'data-active': 'custom-variant',
+  'data-open': 'custom-variant',
+  'data-closed': 'custom-variant',
+  'data-vertical': 'custom-variant',
+  'data-horizontal': 'custom-variant',
   'data-disabled': 'attribute',
   'data-hidden': 'attribute',
   'data-highlighted': 'attribute',
-  'data-horizontal': 'attribute',
   'data-inset': 'attribute',
-  'data-open': 'attribute',
   'data-placeholder': 'attribute',
-  'data-vertical': 'attribute',
 };
 
 /** Bare `data-*` variants only: `data-[state=checked]:` is an explicit value test already. */
@@ -111,15 +116,32 @@ describe('kit state variants', () => {
     expect(missing).toEqual([]);
   });
 
-  it('maps the checked pair onto the attribute the controls really publish', () => {
+  it('maps each variant onto the attribute the controls really publish', () => {
     // The specific defect, pinned to its specific cause. A declaration that survives but
     // points at the wrong attribute is the same bug wearing the guard's own uniform.
     const theme = read(THEME);
-    expect(theme).toMatch(
-      /@custom-variant\s+data-checked\s+\(&\[data-state=['"]checked['"]\]\)/,
-    );
-    expect(theme).toMatch(
-      /@custom-variant\s+data-unchecked\s+\(&\[data-state=['"]unchecked['"]\]\)/,
-    );
+    const PAIRS = {
+      'data-checked': ['data-state', 'checked'],
+      'data-unchecked': ['data-state', 'unchecked'],
+      'data-active': ['data-state', 'active'],
+      'data-open': ['data-state', 'open'],
+      'data-closed': ['data-state', 'closed'],
+      'data-vertical': ['data-orientation', 'vertical'],
+      'data-horizontal': ['data-orientation', 'horizontal'],
+    };
+
+    const wrong = Object.entries(PAIRS)
+      .filter(
+        ([variant, [attribute, value]]) =>
+          !new RegExp(
+            `@custom-variant\\s+${variant}\\s+\\(&\\[${attribute}=['"]${value}['"]\\]\\)`,
+          ).test(theme),
+      )
+      .map(
+        ([variant, [attribute, value]]) =>
+          `${variant} must map onto [${attribute}="${value}"]`,
+      );
+
+    expect(wrong).toEqual([]);
   });
 });

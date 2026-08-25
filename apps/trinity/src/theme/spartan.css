@@ -48,6 +48,41 @@
 @custom-variant data-checked (&[data-state='checked']);
 @custom-variant data-unchecked (&[data-state='unchecked']);
 
+/*
+ * The rest of the same mismatch, found by sweeping every bare `data-*:` the kit uses.
+ *
+ * `data-state` carries more than checkedness, and `data-orientation` is a second attribute
+ * with the same shape — one name, several values — against classes written as if each value
+ * were its own attribute. All measured in a browser rather than reasoned about:
+ *
+ *  - **The open tab was not highlighted.** `brn-tabs` publishes
+ *    `data-state="active" | "inactive"`; `hlm-tabs-trigger` styles `data-active:bg-background`.
+ *    All three Room-settings tabs — General, Access, Bans — computed to
+ *    `rgba(0, 0, 0, 0)`, so nothing said which one you were on.
+ *  - **Separators had no width.** `BrnSeparator` publishes `data-orientation="vertical"`;
+ *    `hlm-separator` styles `data-vertical:w-px`. The composer's formatting bar measured
+ *    `width: 0px` on the rules that, per its own template comment, are "the only place that
+ *    grouping is stated". The same pairing drives `data-vertical:flex-col` on the toggle
+ *    group.
+ *  - **The dropdown menu never animated in.** `HlmDropdownMenu` sets
+ *    `data-state="open" | "closed"` and styles `data-open:animate-in`.
+ *
+ * `data-disabled`, `data-inset`, `data-hidden`, `data-highlighted` and `data-placeholder`
+ * are NOT here, and deliberately: every emitter writes them as `condition ? "" : null`, so
+ * the attribute is absent when false and Tailwind's presence test is exactly right. The one
+ * control that writes `data-disabled="false"` is `brn-switch`, and the kit styles that one
+ * with `data-[disabled=true]:` — the explicit form — so it was never affected.
+ *
+ * Tooltip and select content also style `data-open:`/`data-closed:` but publish no state
+ * attribute at all, so their animations stay inert. That is upstream's bug to fix, and
+ * nothing here makes it worse.
+ */
+@custom-variant data-active (&[data-state='active']);
+@custom-variant data-open (&[data-state='open']);
+@custom-variant data-closed (&[data-state='closed']);
+@custom-variant data-vertical (&[data-orientation='vertical']);
+@custom-variant data-horizontal (&[data-orientation='horizontal']);
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

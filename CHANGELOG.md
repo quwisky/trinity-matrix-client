@@ -110,6 +110,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Tabs, separators and toggles show their state too.** The same defect as the switches
+  below, found by sweeping the rest of the design kit: the open tab in Room and Space
+  settings drew no underline and no brighter label, so all three tabs looked alike; and every
+  divider rule — including the ones separating the composer's formatting buttons into groups
+  — rendered with no width at all, which is to say invisibly. Dropdown menus also animate
+  open again.
+
 - **Switches and checkboxes show which way they are set.** Every toggle in Settings —
   read receipts, link previews, notification rules, the experimental flags — rendered
   identically whether it was on or off: same grey track, thumb never moving. Checkboxes had
