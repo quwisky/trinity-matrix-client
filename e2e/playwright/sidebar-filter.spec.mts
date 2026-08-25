@@ -32,9 +32,6 @@ interface ApiUser {
   headers: { Authorization: string };
 }
 
-/** Register a user via Synapse's shared-secret admin endpoint (idempotent —
- * "already exists" is treated as success, mirrors the other specs). */
-
 async function apiLogin(
   request: APIRequestContext,
   hs: string,

@@ -29,8 +29,6 @@ interface Participant extends ApiUser {
   power: number;
 }
 
-/** Register a user via Synapse's shared-secret admin endpoint (idempotent). */
-
 async function apiLogin(
   request: APIRequestContext,
   hs: string,

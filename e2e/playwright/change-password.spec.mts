@@ -15,8 +15,6 @@ import { registerUser } from './support/account.mts';
 // in again with the new one). Needs a Synapse homeserver (Docker); self-skips.
 const session = synapseSession();
 
-/** Register a user via Synapse's shared-secret admin endpoint (idempotent). */
-
 /** The HTTP status a password login returns — 200 when the password is accepted. */
 async function loginStatus(
   request: APIRequestContext,
