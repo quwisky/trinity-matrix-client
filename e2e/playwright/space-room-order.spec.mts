@@ -170,6 +170,24 @@ async function chooseSort(page: Page, option: string): Promise<void> {
   await page.getByTestId('space-sort').click();
   const item = page.getByTestId(option);
   await item.waitFor({ state: 'visible', timeout: 15_000 });
+
+  // The tick on whichever row is CURRENTLY selected has to be visible, and this is the only
+  // place in the suite where one is on screen. It reads a real `[data-checked]` presence
+  // attribute through `group-data-checked/dropdown-menu-radio:opacity-100`, which a theme
+  // remap onto `data-state` silently switches off for every menu in the app — emitting a
+  // rule that looks correct and matches nothing. jsdom cannot see it (no CSS) and the
+  // existing unit test asserts only `hasAttribute('data-checked')`, which stays true.
+  const checked = page.locator('[data-checked]:not([data-checked="false"])');
+  await expect(checked.first()).toBeVisible({ timeout: 5_000 });
+  await expect
+    .poll(() =>
+      checked
+        .first()
+        .locator('ng-icon')
+        .evaluate((icon) => getComputedStyle(icon.parentElement!).opacity),
+    )
+    .toBe('1');
+
   await item.click();
   await expect(item).toHaveCount(0); // the overlay closed
 }

@@ -28,6 +28,7 @@
           "reference"
         ]
       }
-    ]
+    ],
+    "nesting-selector-no-missing-scoping-root": null
   }
 }

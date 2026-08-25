@@ -66,19 +66,42 @@ const LEDGER = {
   'data-placeholder': 'attribute',
 };
 
-/** Bare `data-*` variants only: `data-[state=checked]:` is an explicit value test already. */
-const VARIANT = /(?:^|[\s"'`:])(?:group-|peer-)?(data-[a-z][a-z0-9-]*):/g;
+/**
+ * Bare `data-*` variants: `data-[state=checked]:` is an explicit value test and is skipped.
+ *
+ * The terminator is `[:/]`, not `:`, because the NAMED group form puts the group name
+ * between the two — `group-data-checked/dropdown-menu-checkbox:opacity-100`. The first
+ * version required a colon immediately after the name and so swept none of the five such
+ * classes in the kit, which is how a live regression got past this guard: the dropdown
+ * menu's check indicator reads a real `[data-checked]` presence attribute, and a remap that
+ * ignored it turned every tick mark off while the ledger certified the mapping as correct.
+ *
+ * The lookbehind replaces the leading delimiter group so that stacked variants
+ * (`data-open:data-checked:x`) are both seen — a consuming group would have eaten the
+ * delimiter the second one needs.
+ *
+ * The slash branch requires the `group-`/`peer-` prefix AND a group name AND the trailing
+ * colon. Accepting a bare `data-x/` swept `'data-access/rooms'` — an Nx library path in a
+ * comment — as a Tailwind variant, which is the sort of false positive that gets a guard
+ * deleted rather than fixed.
+ */
+const VARIANT =
+  /(?<![\w/-])(?:(?:group-|peer-)(data-[a-z][a-z0-9-]*)\/[a-z0-9-]+:|(data-[a-z][a-z0-9-]*):)/g;
 
-const sources = globSync(['libs/spartan/**/*.ts', 'libs/components/**/*.ts'], {
-  cwd: workspaceRoot,
-}).filter(
+// Templates and feature code too, not just the kit's `.ts`: Tailwind's `@source` covers all
+// of `libs` and `apps`, so a feature template writing `data-open:` would be styled by these
+// declarations while being invisible to a kit-only sweep.
+const sources = globSync(
+  ['libs/**/*.ts', 'libs/**/*.html', 'apps/**/*.ts', 'apps/**/*.html'],
+  { cwd: workspaceRoot },
+).filter(
   (file) => !file.includes('node_modules') && !file.endsWith('.spec.ts'),
 );
 
 const used = new Set();
 for (const file of sources) {
-  for (const [, name] of read(file).matchAll(VARIANT)) {
-    used.add(name);
+  for (const [, named, bare] of read(file).matchAll(VARIANT)) {
+    used.add(named ?? bare);
   }
 }
 
@@ -130,18 +153,78 @@ describe('kit state variants', () => {
       'data-horizontal': ['data-orientation', 'horizontal'],
     };
 
+    // The DECLARATION BODY is what is asserted, not one spelling of it. Pinning the
+    // parenthesised one-liner would have rejected the correct fix: the kit's own preset
+    // uses the block form with two branches, and this file adopted it after the one-liner
+    // was found to drop the presence branch some controls actually publish.
+    const bodyOf = (variant) =>
+      new RegExp(
+        `@custom-variant\\s+${variant}\\s*(\\([\\s\\S]*?\\)\\s*;|\\{[\\s\\S]*?\\n\\})`,
+      ).exec(theme)?.[1];
+
     const wrong = Object.entries(PAIRS)
-      .filter(
-        ([variant, [attribute, value]]) =>
-          !new RegExp(
-            `@custom-variant\\s+${variant}\\s+\\(&\\[${attribute}=['"]${value}['"]\\]\\)`,
-          ).test(theme),
-      )
+      .filter(([variant, [attribute, value]]) => {
+        const body = bodyOf(variant);
+        return (
+          !body || !new RegExp(`\\[${attribute}=['"]${value}['"]\\]`).test(body)
+        );
+      })
       .map(
         ([variant, [attribute, value]]) =>
           `${variant} must map onto [${attribute}="${value}"]`,
       );
 
     expect(wrong).toEqual([]);
+  });
+
+  it('keeps the presence branch for the variants a control publishes directly', () => {
+    // The half that a `data-state` remap silently deletes. `HlmDropdownMenuCheckboxItem`
+    // and its radio sibling bind `[attr.data-checked]="checked ? '' : null"` and style the
+    // indicator `group-data-checked/dropdown-menu-checkbox:opacity-100`, so dropping this
+    // branch turns off every tick mark and radio dot in the app's own menus — with jsdom
+    // unable to see it, because it applies no CSS.
+    const theme = read(THEME);
+    const missing = ['checked', 'unchecked', 'active', 'open', 'closed'].filter(
+      (name) =>
+        !new RegExp(
+          `\\[data-${name}\\]:not\\(\\[data-${name}=['"]false['"]\\]\\)`,
+        ).test(theme),
+    );
+
+    expect(missing).toEqual([]);
+  });
+
+  it('classifies an attribute-style variant only when it is absent while false', () => {
+    // Without this, the ORIGINAL bug could have been "fixed" by writing
+    // `'data-checked': 'attribute'` in the ledger, and all the tests above stay green.
+    // A presence test is only correct when the emitter omits the attribute rather than
+    // writing it out as "false", so that is what gets read.
+    const emitters = globSync(
+      ['libs/spartan/**/*.ts', 'node_modules/@spartan-ng/brain/fesm2022/*.mjs'],
+      { cwd: workspaceRoot },
+    ).filter((file) => !file.endsWith('.spec.ts'));
+
+    const bindings = new Map();
+    for (const file of emitters) {
+      const source = read(file);
+      for (const [, name, expr] of source.matchAll(
+        /\[?attr\.(data-[a-z-]+)\]?['"]?\s*:\s*['"]([^'"]*)['"]/g,
+      )) {
+        if (!bindings.has(name)) bindings.set(name, new Set());
+        bindings.get(name).add(expr);
+      }
+    }
+
+    // Only the names the kit styles with a BARE variant matter; a `data-[x=true]:` consumer
+    // reads the value explicitly and is unaffected by how the attribute is written.
+    const bare = Object.entries(LEDGER)
+      .filter(([, how]) => how === 'attribute')
+      .map(([name]) => name);
+
+    // Every one of them is consumed somewhere, so an empty read here would be vacuous.
+    expect(bare.length).toBeGreaterThan(0);
+    for (const name of bare) {
+      expect(bindings.has(name)).toBe(true);
+    }
   });
 });

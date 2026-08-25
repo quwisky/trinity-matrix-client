@@ -26,62 +26,121 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * The kit's checked/unchecked variants, which Tailwind cannot infer.
+ * The kit's state variants, which Tailwind cannot infer.
  *
- * Every Brn control publishes its state as `data-state="checked" | "unchecked"` — one
- * attribute with two values — while the Helm classes styling it are written
- * `data-checked:bg-primary` and `data-unchecked:bg-input`. Tailwind reads a bare `data-foo:`
- * as an attribute PRESENCE test and compiles `&[data-checked]`, which nothing in the tree
- * ever carries. Fourteen rules were emitted and matched nothing: a switch rendered
- * identically on and off, a checked checkbox never took its primary fill, and the
- * dropdown-menu check indicators never appeared.
+ * Most Brn controls publish state as `data-state="checked" | "unchecked"` — one attribute
+ * with two values — while the Helm classes styling them are written `data-checked:bg-primary`
+ * and `data-unchecked:bg-input`. Tailwind reads a bare `data-foo:` as an attribute PRESENCE
+ * test and compiles `&[data-checked]`, which those controls never carry. Twelve such class
+ * occurrences existed in the kit and matched nothing: a switch rendered identically on and
+ * off, and a ticked checkbox never took its primary fill.
  *
- * Upstream ships these two lines in its own theme; vendoring the components without them is
- * what broke the pairing. Declared here rather than rewriting the classes to
- * `data-[state=checked]:` so the vendored files stay byte-identical to the kit — there are
- * already registered divergences to carry and this does not need to be another one.
+ * `data-orientation` is a second attribute of the same shape, and `data-state` also carries
+ * `active`/`inactive` and `open`/`closed` — so the open tab drew no underline and every
+ * separator rendered `width: 0px`.
  *
- * `kit-state-variants.spec.mjs` pins the pairing, and `switch-state.spec.mts` measures a
- * real switch in a real browser, because the entire failure is a selector that matches
- * nothing and jsdom applies no CSS at all.
+ * Upstream ships all of this in `@spartan-ng/brain/hlm-tailwind-preset.css`; vendoring the
+ * components without it is what broke the pairing. Declared here rather than rewriting the
+ * classes to `data-[state=checked]:` so the vendored files stay byte-identical to the kit —
+ * there are already registered divergences to carry and this does not need to be another one.
+ *
+ * ## What is deliberately NOT here
+ *
+ * `data-disabled`, `data-inset`, `data-hidden`, `data-highlighted` and `data-placeholder`.
+ * On every element that carries one of them as a BARE variant the emitter writes
+ * `condition ? "" : null`, so the attribute is absent when false and the presence test is
+ * exactly right. Not "every emitter", which an earlier version of this note claimed:
+ * `brn-checkbox`, `brn-switch`, `brn-radio` and `brn-toggle-group` bind `data-disabled` to a
+ * raw boolean and render `data-disabled="false"` when enabled. None of them is styled with
+ * the bare variant — the switch uses `data-[disabled=true]:`, the others native `disabled:` —
+ * so the conclusion held while the premise did not.
+ *
+ * ## What this switches on, which an earlier note denied
+ *
+ * Tooltip and select content style `data-open:`/`data-closed:` and DO publish `data-state`
+ * (`BrnTooltipContent` on the same host that takes the animation classes; `BrnSelectContent`
+ * via `_dataState()`), so their enter/exit animations start working here. Both are safe:
+ * brain already calls `waitForElementAnimations` before detaching, and the attribute is set
+ * in the same synchronous task as the attach, so nothing paints in the closed state first.
+ * Neither carries a `motion-safe:` guard the way `hlm-dropdown-menu` does, so reduced motion
+ * for those two rests on the blanket rule in `global.scss` — which `variables.scss` already
+ * records as load-bearing for exactly this reason.
+ *
+ * `kit-state-variants.spec.mjs` pins every pairing including the presence branch;
+ * `switch-state.spec.mts`, `kit-state-styling.spec.mts` and `space-room-order.spec.mts`
+ * measure a switch, a tab, a separator and a menu tick in a real browser, because the entire
+ * failure is a selector that matches nothing and jsdom applies no CSS at all.
  */
-@custom-variant data-checked (&[data-state='checked']);
-@custom-variant data-unchecked (&[data-state='unchecked']);
 
 /*
- * The rest of the same mismatch, found by sweeping every bare `data-*:` the kit uses.
+ * Two branches each, matching `@spartan-ng/brain/hlm-tailwind-preset.css` exactly.
  *
- * `data-state` carries more than checkedness, and `data-orientation` is a second attribute
- * with the same shape — one name, several values — against classes written as if each value
- * were its own attribute. All measured in a browser rather than reasoned about:
+ * The state branch is the one the mismatch was about. The SECOND branch is not optional and
+ * a one-liner cannot express it: some controls publish the variant's own name as a real
+ * presence attribute instead. `HlmDropdownMenuCheckboxItem` and its radio sibling bind
+ * `[attr.data-checked]="checked ? '' : null"`, and their indicators are styled
+ * `group-data-checked/dropdown-menu-checkbox:opacity-100` — so a remap onto `data-state`
+ * alone silently turns off every check mark and radio dot in the app's own menus. The
+ * `:not([x='false'])` guard is what makes the presence branch safe for the controls that
+ * write the attribute out as the string "false" when off.
  *
- *  - **The open tab was not highlighted.** `brn-tabs` publishes
- *    `data-state="active" | "inactive"`; `hlm-tabs-trigger` styles `data-active:bg-background`.
- *    All three Room-settings tabs — General, Access, Bans — computed to
- *    `rgba(0, 0, 0, 0)`, so nothing said which one you were on.
- *  - **Separators had no width.** `BrnSeparator` publishes `data-orientation="vertical"`;
- *    `hlm-separator` styles `data-vertical:w-px`. The composer's formatting bar measured
- *    `width: 0px` on the rules that, per its own template comment, are "the only place that
- *    grouping is stated". The same pairing drives `data-vertical:flex-col` on the toggle
- *    group.
- *  - **The dropdown menu never animated in.** `HlmDropdownMenu` sets
- *    `data-state="open" | "closed"` and styles `data-open:animate-in`.
+ * `:where()` keeps all of it at zero specificity, so a variant never wins a cascade fight it
+ * was not asked to enter.
  *
- * `data-disabled`, `data-inset`, `data-hidden`, `data-highlighted` and `data-placeholder`
- * are NOT here, and deliberately: every emitter writes them as `condition ? "" : null`, so
- * the attribute is absent when false and Tailwind's presence test is exactly right. The one
- * control that writes `data-disabled="false"` is `brn-switch`, and the kit styles that one
- * with `data-[disabled=true]:` — the explicit form — so it was never affected.
- *
- * Tooltip and select content also style `data-open:`/`data-closed:` but publish no state
- * attribute at all, so their animations stay inert. That is upstream's bug to fix, and
- * nothing here makes it worse.
+ * Not `@import`ed from the preset wholesale, deliberately: that file also redefines `dark` as
+ * `&:is(.dark *)` — which excludes `.dark` itself, unlike this file's
+ * `:where(.dark, .dark *)` — restates the whole `@theme inline` token map, and adds
+ * `container`, `scroll-fade` and `shimmer` utilities plus a CDK backdrop rule. Copying the
+ * nine lines that fix the bug is the smaller change; `kit-state-variants.spec.mjs` pins them
+ * against the preset so a vendor bump that changes the semantics is visible.
  */
-@custom-variant data-active (&[data-state='active']);
-@custom-variant data-open (&[data-state='open']);
-@custom-variant data-closed (&[data-state='closed']);
-@custom-variant data-vertical (&[data-orientation='vertical']);
-@custom-variant data-horizontal (&[data-orientation='horizontal']);
+@custom-variant data-checked {
+  &:where([data-state='checked']),
+  &:where([data-checked]:not([data-checked='false'])) {
+    @slot;
+  }
+}
+
+@custom-variant data-unchecked {
+  &:where([data-state='unchecked']),
+  &:where([data-unchecked]:not([data-unchecked='false'])) {
+    @slot;
+  }
+}
+
+@custom-variant data-active {
+  &:where([data-state='active']),
+  &:where([data-active]:not([data-active='false'])) {
+    @slot;
+  }
+}
+
+@custom-variant data-open {
+  &:where([data-state='open']),
+  &:where([data-open]:not([data-open='false'])) {
+    @slot;
+  }
+}
+
+@custom-variant data-closed {
+  &:where([data-state='closed']),
+  &:where([data-closed]:not([data-closed='false'])) {
+    @slot;
+  }
+}
+
+/* Orientation has no presence spelling upstream either — one attribute, two values. */
+@custom-variant data-horizontal {
+  &:where([data-orientation='horizontal']) {
+    @slot;
+  }
+}
+
+@custom-variant data-vertical {
+  &:where([data-orientation='vertical']) {
+    @slot;
+  }
+}
 
 @theme inline {
   --color-background: var(--background);
