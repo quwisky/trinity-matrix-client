@@ -657,14 +657,6 @@ export abstract class MessageListBase {
   }
 
   /**
-   * A long press on a row, on a phone or tablet: offer its actions as a bottom sheet.
-   *
-   * The sheet is built and held by {@link MessageActionSheetService}, not here, because
-   * `trn-message-row` has a third consumer that does not extend this class — see that
-   * service. What this method contributes is its caps and a dispatch closing over the row,
-   * routed through `onRowAction` — the same path the hover toolbar takes.
-   */
-  /**
    * A committed sideways drag on a row: edit it if it can be edited, reply to it otherwise.
    *
    * Read from `rowCaps`, not from `isEditable`, and the distinction is the point: `rowCaps`
@@ -684,6 +676,14 @@ export abstract class MessageListBase {
     this.startReply(row);
   }
 
+  /**
+   * A long press on a row, on a phone or tablet: offer its actions as a bottom sheet.
+   *
+   * The sheet is built and held by {@link MessageActionSheetService}, not here, because
+   * `trn-message-row` has a third consumer that does not extend this class — see that
+   * service. What this method contributes is its caps and a dispatch closing over the row,
+   * routed through `onRowAction` — the same path the hover toolbar takes.
+   */
   onRowLongPress(row: MessageRow): void {
     this.messageSheet.open(this, this.rowCaps(row), (action) =>
       this.onRowAction(row, action),

@@ -13,8 +13,12 @@
   gap: 12px;
 
   // The swipe offset, written straight to the element by `paintSwipe` on every pointermove.
-  // Absent until a drag arms, so an untouched row carries no transform at all.
-  translate: var(--swipe-drag, 0);
+  // The fallback is `none`, not `0`: `0` is a valid length, so every untouched row in the
+  // timeline would compute a non-`none` `translate` — which opens a stacking context AND
+  // makes the row a containing block for any `position: fixed` descendant. That is the trap
+  // the lightbox was moved into a CDK dialog to escape, and it would have been re-armed for
+  // every future row descendant. `none` interpolates as 0, so the spring-back still animates.
+  translate: var(--swipe-drag, none);
 
   // Only the spring-back is animated. While the finger is down the row must track it 1:1 —
   // an eased follow reads as lag — so `.msg--swiping` turns the transition off for the drag
@@ -478,12 +482,16 @@
   position: absolute;
   inset-block: 0;
 
-  // Sits in the padding `.msg` bleeds into, on whichever side the row comes from. Both edges
-  // are given a box; only the one the row uncovers is ever seen.
-  inset-inline: var(--trinity-space-5);
+  // Spans the row, and the icon is parked at whichever end the row is about to uncover. The
+  // first version said "both edges are given a box; only the one the row uncovers is seen" —
+  // which was wrong twice over: there is one child, and `space-between` puts a lone child at
+  // the inline START whichever way the row moves. Measured in Chromium at 390px: on a
+  // leftward drag the icon stayed at the row's original left edge, painting over the message
+  // text, while the strip that actually opened on the right got nothing.
+  inset-inline: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   translate: calc(-1 * var(--swipe-drag, 0));
   color: var(--trinity-text-muted);
   pointer-events: none;
@@ -491,6 +499,11 @@
   // Nothing to reveal until the row has actually moved. `.msg` is transparent except on
   // hover, so an always-visible icon would sit in the timeline's margin on every row.
   opacity: 0;
+}
+
+// A leftward drag uncovers the right-hand end, so the icon waits there instead.
+.msg__swipe--end {
+  justify-content: flex-end;
 }
 
 .msg--swiping .msg__swipe {

@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Swipe a message to reply to it — or to edit it.** On a phone, drag a message sideways
+  and it replies to that message, or opens it for editing if it is one of yours you can
+  still change. The icon that appears behind the message says which you will get before you
+  let go, and letting the message go back where it came from abandons it. It is **off until
+  you turn it on**, under Settings → Appearance → Message gestures, where you also choose
+  which way to drag: your phone already uses both screen edges for its own back gesture, so
+  there is no direction that is free for everyone.
+
 - **Room and space settings are tabbed.** Everything a room has used to be one long column
   in a narrow dialog; it is now General, Access and Bans, so finding the join rule no
   longer means scrolling past the topic. Saving still covers every tab at once — the Save
@@ -115,14 +123,6 @@ All notable changes to this project are documented here. The format is based on
   message's action sheet and then navigating away — to Settings, or by following a link, or
   by signing out — left the sheet on screen over whatever came next, and picking anything
   from it did nothing at all.
-
-- **Swipe a message to reply to it — or to edit it.** On a phone, drag a message sideways
-  and it replies to that message, or opens it for editing if it is one of yours you can
-  still change. The icon that appears behind the message says which you will get before you
-  let go, and letting the message go back where it came from abandons it. It is **off until
-  you turn it on**, under Settings → Appearance → Message gestures, where you also choose
-  which way to drag: your phone already uses both screen edges for its own back gesture, so
-  there is no direction that is free for everyone.
 
 - **Tabs, separators and toggles show their state too.** The same defect as the switches
   below, found by sweeping the rest of the design kit: the open tab in Room and Space

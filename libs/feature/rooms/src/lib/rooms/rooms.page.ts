@@ -201,11 +201,16 @@ export class RoomsPage implements OnInit, OnDestroy {
   /**
    * Which way a message row is dragged to act on it, HERE and not in the list.
    *
-   * The preference is only half the answer. Below the members breakpoint the shell's drawer
-   * arms on any `pointerdown` anywhere on `.chat-body` once it is open — no edge zone — so a
-   * row gesture in the main timeline would be competing with it for every drag. This page is
-   * the only place that knows both, which is why it resolves the direction rather than
-   * passing the preference through.
+   * The preference is only half the answer, and this page is the only place that knows the
+   * other halves — which is why it resolves the direction rather than passing the preference
+   * through.
+   *
+   * `store.rightPanel()` is the literal expression `[drawerOpen]` is bound to below, so the
+   * two cannot drift. It is NOT what stops the row gesture competing with the drawer: while
+   * a panel is open a `fixed inset-0` backdrop covers the viewport, so no `pointerdown`
+   * reaches a timeline row in that state at all. This clause is a mirror of the drawer's own
+   * arming condition, kept because a gesture that is off should be off for a stated reason
+   * rather than by a side effect of somebody else's markup.
    *
    * The thread panel is the deliberate exception and is handled at the row: it only EXISTS
    * while the drawer is open, so this rule would make the gesture permanently dead there. It

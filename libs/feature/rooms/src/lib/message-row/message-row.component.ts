@@ -298,7 +298,6 @@ export class MessageRowComponent {
     }
   }
 
-  /** Lifting, cancelling, or leaving all end the press without opening anything. */
   /** A finger lifting ends both gestures — the press without firing, the drag by deciding. */
   onPointerUp(event: PointerEvent): void {
     this.releaseSwipe(event);
@@ -311,6 +310,7 @@ export class MessageRowComponent {
     this.cancelLongPress();
   }
 
+  /** Lifting, cancelling, or leaving all end the press without opening anything. */
   cancelLongPress(): void {
     if (this.longPressTimer !== null) {
       clearTimeout(this.longPressTimer);
@@ -341,6 +341,13 @@ export class MessageRowComponent {
     if (this.swipeDirection() === 'off') {
       return false;
     }
+    // Both outcomes are unavailable on a read-only row — there is no composer to reply or
+    // edit into. Unreachable today (all three consumers hard-code `readOnly: false`), and
+    // stated anyway: `toolbar()` gates on it, and this gesture deliberately does not use
+    // `toolbar()`, so the exemption has to be re-made here rather than inherited.
+    if (this.caps().readOnly) {
+      return false;
+    }
     // Measured at the START, in viewport coordinates, because that is where the competitors
     // live. A drag that begins in the middle and travels INTO an edge is fine: these are
     // edge-start recognisers, so nothing takes it away mid-gesture.
@@ -358,9 +365,17 @@ export class MessageRowComponent {
     };
     this.swiping = false;
     // Without capture, a drag that drifts off a one-line continuation row never sees its
-    // `pointerup` and leaves the row translated with nothing to put it back. jsdom has no
-    // pointer capture at all, hence the optional call.
-    (event.target as Element | null)?.setPointerCapture?.(event.pointerId);
+    // `pointerup` and leaves the row translated with nothing to put it back.
+    //
+    // `currentTarget`, not `target`: the latter is the deepest hit element — a link, an
+    // avatar, a reaction pill — and capture dies with it. `trn-avatar` swaps its `<span>`
+    // initial for an `<img>` the moment the image loads, so a finger that went down on an
+    // initial would lose its capture mid-drag, never see `pointerup`, and park the row
+    // translated. `currentTarget` is `.msg`, which is what the release path assumes anyway.
+    // jsdom has no pointer capture at all, hence the optional call.
+    (event.currentTarget as Element | null)?.setPointerCapture?.(
+      event.pointerId,
+    );
     return true;
   }
 
@@ -382,9 +397,14 @@ export class MessageRowComponent {
         ? Math.max(0, -delta)
         : Math.max(0, delta);
     if (travelled > LONG_PRESS_SLOP_PX) {
-      // This is a swipe, so it is not a press. Without this a slow drag — press, pause past
-      // 500ms, then move — opens the action sheet AND commits the swipe behind its backdrop.
-      this.cancelLongPress();
+      // Not cancelling the press here, deliberately. `onPointerMove` runs the press's own
+      // slop check immediately below, on the MANHATTAN sum against the same constant — and
+      // that sum can never be smaller than this directional travel, so a cancel here could
+      // never fire when the press's own did not. A test naming it was green with it deleted,
+      // which is what a redundant guard looks like from the outside.
+      //
+      // The press → pause → drag case is handled the other way round, by the timer
+      // disarming the swipe when it fires. That one IS load-bearing.
       this.swiping = true;
     }
     this.paintSwipe(travelled);
@@ -554,6 +574,18 @@ export class MessageRowComponent {
    * this row drew its icon from, so the affordance and the action cannot disagree.
    */
   readonly swipe = output<void>();
+
+  /**
+   * What a committed swipe would do to this row — the affordance and the action in one value.
+   *
+   * Bound to both the icon's name and the row's `data-swipe-action`, so a test that reads
+   * either is reading the same expression. Two parallel ternaries in the template would have
+   * been two things that could disagree, which is the defect this whole gesture is designed
+   * around.
+   */
+  readonly swipeAction = computed<'edit' | 'reply'>(() =>
+    this.caps().editable ? 'edit' : 'reply',
+  );
 
   /** A `matrix.to` permalink clicked in the message body, for the host to route in-app. */
   readonly matrixLink = output<MatrixLinkClick>();

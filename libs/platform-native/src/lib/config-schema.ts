@@ -298,6 +298,7 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     key: 'trinity.message-swipe',
     owner: 'platform-native',
   },
+
   // — composer-settings.service.ts —
   {
     disposition: 'exported',

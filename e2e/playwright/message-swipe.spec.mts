@@ -67,6 +67,8 @@ async function openRoom(
   request: APIRequestContext,
   tag: string,
   direction: string | null,
+  /** Extra filler messages, for the one test that needs a timeline long enough to scroll. */
+  filler = 0,
 ): Promise<{ own: string; other: string; roomName: string }> {
   const hs = session.hs as string;
   const runId = `${Date.now().toString(36)}${tag}`;
@@ -115,6 +117,12 @@ async function openRoom(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/send/m.room.message/m-${runId}`,
     { headers: auth, data: { msgtype: 'm.text', body: `mine ${runId}` } },
   );
+  for (let i = 0; i < filler; i++) {
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/send/m.room.message/f-${runId}-${i}`,
+      { headers: auth, data: { msgtype: 'm.text', body: `filler ${i}` } },
+    );
+  }
 
   if (direction) {
     // Capacitor Preferences is localStorage on the web, and this runs before the app boots —
@@ -193,22 +201,40 @@ test.describe('Swipe a message', () => {
     );
   });
 
-  test('says which action it will take before you let go', async ({
+  test('shows which action it will take, part-way through the drag', async ({
     page,
     request,
   }) => {
     const { own, other } = await openRoom(page, request, 'a', 'right');
 
-    // The whole cost of "one gesture, two outcomes" is paid here: the reader has to know
-    // which they will get, and the icon behind the row is where that is said.
-    await expect(page.locator(`${own} .msg__swipe`)).toHaveAttribute(
-      'data-swipe-action',
-      'edit',
-    );
-    await expect(page.locator(`${other} .msg__swipe`)).toHaveAttribute(
-      'data-swipe-action',
-      'reply',
-    );
+    // The whole cost of "one gesture, two outcomes" is paid here, so this has to be measured
+    // rather than read off an attribute. The icon is `opacity: 0` until `.msg--swiping`
+    // lands, and `toHaveAttribute` does not consult visibility — an earlier version of this
+    // test stayed green with the reveal rule deleted. It also asserts the ICON, since the
+    // attribute and the glyph are two expressions that could disagree.
+    const halfway = async (selector: string) => {
+      const box = (await page.locator(selector).boundingBox())!;
+      const y = box.y + box.height / 2;
+      // Short of the 25% commit threshold: the drag is still abandonable, which is the
+      // criterion — "early enough in the drag to abandon it".
+      await swipe(
+        page,
+        { x: box.x + box.width * 0.4, y },
+        { x: box.x + box.width * 0.5, y },
+      );
+    };
+
+    await halfway(own);
+    const ownIcon = page.locator(`${own} .msg__swipe`);
+    await expect(ownIcon).toBeVisible();
+    // The attribute is enough: it and the icon's `[name]` are bound from the SAME
+    // `swipeAction()` computed, so they cannot disagree. (`ng-reflect-*` would have been the
+    // other way to read the glyph, and it does not exist in a production build.)
+    await expect(ownIcon).toHaveAttribute('data-swipe-action', 'edit');
+
+    await halfway(other);
+    const otherIcon = page.locator(`${other} .msg__swipe`);
+    await expect(otherIcon).toHaveAttribute('data-swipe-action', 'reply');
   });
 
   test('does nothing at all while the setting is off', async ({
@@ -248,19 +274,55 @@ test.describe('Swipe a message', () => {
     );
   });
 
-  test('a drag that turns vertical is a scroll, not an action', async ({
+  test('a drag that turns vertical abandons the action', async ({
     page,
     request,
   }) => {
-    const { other } = await openRoom(page, request, 'v', 'right');
+    const { other } = await openRoom(page, request, 'v', 'right', 30);
+    await page.locator(other).scrollIntoViewIfNeeded();
     const box = (await page.locator(other).boundingBox())!;
 
+    // Starts horizontal, then turns. Note this cannot ALSO scroll, and that is the browser's
+    // doing rather than ours: `touch-action: pan-y` hands the horizontal axis to the page, so
+    // once a drag opens horizontally the browser has already declined to pan it. What the
+    // gesture owes here is to abandon — not to act, and not to leave the row parked.
     await swipe(
       page,
       { x: box.x + box.width * 0.35, y: box.y + box.height / 2 },
-      { x: box.x + box.width * 0.95, y: box.y + box.height / 2 + 120 },
+      { x: box.x + box.width * 0.95, y: box.y + box.height / 2 - 150 },
     );
 
+    await expect(page.locator('.composer__banner')).toHaveCount(0);
+    expect(
+      await page
+        .locator(other)
+        .evaluate((el) => el.style.getPropertyValue('--swipe-drag')),
+    ).toBe('');
+  });
+
+  test('a vertical drag still scrolls the timeline', async ({
+    page,
+    request,
+  }) => {
+    // The other half of the same criterion, and the one that needs a real browser: the row
+    // gesture must not have taken the vertical axis away from the scroller.
+    const { other } = await openRoom(page, request, 's', 'right', 30);
+    await page.locator(other).scrollIntoViewIfNeeded();
+    const box = (await page.locator(other).boundingBox())!;
+    const scrollTop = () =>
+      page
+        .locator('.scroll')
+        .first()
+        .evaluate((el) => el.scrollTop);
+    const before = await scrollTop();
+
+    await swipe(
+      page,
+      { x: box.x + box.width * 0.5, y: box.y + box.height / 2 },
+      { x: box.x + box.width * 0.5, y: box.y + box.height / 2 - 200 },
+    );
+
+    await expect.poll(scrollTop, { timeout: 5_000 }).not.toBe(before);
     await expect(page.locator('.composer__banner')).toHaveCount(0);
   });
 
@@ -280,9 +342,51 @@ test.describe('Swipe a message', () => {
     await swipe(page, { x: 4, y }, { x: size.width * 0.8, y });
     await expect(page.locator('.composer__banner')).toHaveCount(0);
 
+    // The positive control, in the same test. Without it every assertion here would pass
+    // just as happily against a gesture that was broken outright, a seed that never applied,
+    // or a room that never opened.
+    await swipe(page, { x: 48, y }, { x: size.width * 0.9, y });
+    await expect(page.locator('.composer__banner')).toContainText(
+      'Replying to',
+      { timeout: 10_000 },
+    );
+
+    // The right-hand probe goes LAST, because `width - 4` is inside the drawer's own 24px
+    // opening zone: it correctly opens the drawer, and the backdrop that comes with it then
+    // covers every row for the rest of the test. That it opens is the point — the swipe
+    // declined the gesture and left it to the drawer.
     await swipe(page, { x: size.width - 4, y }, { x: size.width * 0.2, y });
-    await expect(page.locator('.composer__banner')).toHaveCount(0);
+    await expect(page.locator('.chat-members')).toBeVisible({
+      timeout: 10_000,
+    });
   });
+
+  for (const setting of ['left', 'off'] as const) {
+    test(`leaves the drawer gesture working with the setting ${setting}`, async ({
+      page,
+      request,
+    }) => {
+      // #222 asks for the drawer to still work "in both directions and with the setting
+      // Off". Covering only one direction would leave the two settings most likely to
+      // interfere — Left, which drags the same way the drawer closes — untested.
+      await openRoom(
+        page,
+        request,
+        setting[0],
+        setting === 'off' ? null : setting,
+      );
+      const size = page.viewportSize()!;
+      const members = page.locator('.chat-members');
+      const y = size.height / 2;
+
+      await expect(members).toBeHidden();
+      await swipe(page, { x: size.width - 4, y }, { x: size.width * 0.3, y });
+      await expect(members).toBeVisible({ timeout: 10_000 });
+
+      await swipe(page, { x: size.width * 0.4, y }, { x: size.width - 4, y });
+      await expect(members).toBeHidden({ timeout: 10_000 });
+    });
+  }
 
   test('leaves the drawer gesture working', async ({ page, request }) => {
     // A positive assertion, not the absence of a failure: with the setting ON, the drawer's
@@ -326,17 +430,21 @@ test.describe('Swipe a message', () => {
     // throughout — a `goto` would be a reload and would not establish the claim at all.
     // Twice, because below the members breakpoint a section is its own sub-page: the first
     // Back leaves Appearance for the section list, the second leaves settings.
-    await expect
-      .poll(
-        async () => {
-          if (/\/settings/.test(page.url())) {
-            await page.getByRole('button', { name: 'Back' }).click();
-          }
-          return page.url();
-        },
-        { timeout: 30_000 },
-      )
-      .not.toMatch(/\/settings/);
+    // Twice, each awaited. A click inside `expect.poll` reads the URL before the SPA
+    // navigation settles, so it fires again and pops PAST the room — the repo's own
+    // read-once-while-converging flake shape.
+    // Out of settings by history, bounded. `page.goBack()` is a popstate the Angular router
+    // handles — no document load, so the "without a reload" claim is preserved; a `goto`
+    // would have destroyed the very thing under test. Looping because how many entries
+    // settings pushed depends on the layout, and asserting after so a silent no-op fails.
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (!/\/settings/.test(new URL(page.url()).pathname)) {
+        break;
+      }
+      await page.goBack();
+    }
+    expect(new URL(page.url()).pathname).not.toMatch(/\/settings/);
+
     await page.getByTestId('rail-rooms').click();
     const channel = page.locator('.channel', { hasText: roomName });
     await channel.first().waitFor({ state: 'visible', timeout: 30_000 });

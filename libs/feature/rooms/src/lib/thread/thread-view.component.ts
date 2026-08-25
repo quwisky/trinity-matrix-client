@@ -27,7 +27,6 @@ import {
 } from '@trinity/platform-native';
 import { MessageActionSheetService } from '../message-actions/message-action-sheet.service';
 import { type SwipeDirection } from '../message-row/message-row.component';
-import { BELOW_MEMBERS_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
@@ -62,7 +61,11 @@ import { MessageSourceService } from '../message-source/message-source.service';
 import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
 import { TrnIconComponent } from '@trinity/components/icon';
-import { scrollBehavior } from '@trinity/util/ui';
+import {
+  scrollBehavior,
+  BELOW_MEMBERS_QUERY,
+  mediaQuerySignal,
+} from '@trinity/util/ui';
 
 /** Group consecutive messages from the same sender within this window (Discord-style). */
 const GROUP_GAP_MS = 5 * 60 * 1000;
@@ -190,15 +193,6 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * A long press on a thread reply, on a phone or tablet.
-   *
-   * Present for the same reason the timeline has one, and easy to forget: this component
-   * renders `trn-message-row` but does NOT extend `MessageListBase`, so it inherits none of
-   * that wiring. Without this the row emitted `longPress` into nothing and — the Android
-   * `contextmenu` fallback having gone with it — every action on a thread reply was
-   * unreachable by touch.
-   */
-  /**
    * Which way a thread reply is dragged to act on it.
    *
    * Read from the preference DIRECTLY, unlike the main timeline, whose page forces the
@@ -237,6 +231,15 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
     this.startReply(row);
   }
 
+  /**
+   * A long press on a thread reply, on a phone or tablet.
+   *
+   * Present for the same reason the timeline has one, and easy to forget: this component
+   * renders `trn-message-row` but does NOT extend `MessageListBase`, so it inherits none of
+   * that wiring. Without this the row emitted `longPress` into nothing and — the Android
+   * `contextmenu` fallback having gone with it — every action on a thread reply was
+   * unreachable by touch.
+   */
   onRowLongPress(row: MessageRow): void {
     this.messageSheet.open(this, this.rowCaps(row), (action) =>
       this.onRowAction(row, action),

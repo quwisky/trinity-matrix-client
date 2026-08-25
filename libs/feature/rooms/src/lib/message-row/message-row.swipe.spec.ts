@@ -315,6 +315,17 @@ describe('MessageRowComponent — the sideways swipe', () => {
       expect(swiped.length).toBe(1);
     });
 
+    it('does not swipe a read-only row', async () => {
+      // The one row where NEITHER outcome exists: no composer to reply or edit into. The
+      // long press skips it via `toolbar()`, which this gesture deliberately does not use,
+      // so the exemption is re-made rather than inherited.
+      const { msg, swiped } = await renderRow('right', { readOnly: true });
+
+      drag(msg, 300, 300 + FAR);
+
+      expect(swiped.length).toBe(0);
+    });
+
     it('still swipes a redacted row', async () => {
       const { msg, swiped } = await renderRow(
         'right',
@@ -329,7 +340,7 @@ describe('MessageRowComponent — the sideways swipe', () => {
   });
 
   describe('against the long press', () => {
-    it('cancels a pending press once the drag is real', async () => {
+    it('does not fire the press when the drag moves off', async () => {
       vi.useFakeTimers();
       const { msg, swiped, pressed } = await renderRow('right');
 
@@ -360,6 +371,84 @@ describe('MessageRowComponent — the sideways swipe', () => {
     });
   });
 
+  it('captures the pointer on the row, not on whatever was under the finger', async () => {
+    // `event.target` is the DEEPEST hit element — a link, a reaction pill, an avatar — and a
+    // capture dies with its target. `trn-avatar` swaps its `<span>` initial for an `<img>`
+    // the moment the image loads, so a finger that went down on an initial would lose the
+    // capture mid-drag, never see `pointerup`, and leave the row parked. Dispatching from a
+    // descendant is what makes the distinction visible at all: dispatching on `.msg`, as
+    // every other test here does, makes `target` and `currentTarget` the same element.
+    const { msg, capture } = await renderRow('right');
+    const child = msg.querySelector('.msg__body') ?? msg.firstElementChild;
+    const childCapture = vi.fn();
+    (child as HTMLElement).setPointerCapture = childCapture;
+
+    child?.dispatchEvent(touch('pointerdown', 300));
+
+    expect(capture).toHaveBeenCalledWith(1);
+    expect(childCapture).not.toHaveBeenCalled();
+  });
+
+  describe('the commit threshold', () => {
+    // `FAR` alone does not pin it: at 2x the threshold, raising the fraction from a quarter
+    // to a HALF left every test green — so the effort the gesture demands could have been
+    // doubled silently. These two straddle it against the stubbed 400px row.
+    it('commits at exactly the threshold', async () => {
+      const { msg, swiped } = await renderRow('right');
+
+      drag(msg, 100, 200);
+
+      expect(swiped.length).toBe(1);
+    });
+
+    it('does not commit one pixel short of it', async () => {
+      const { msg, swiped } = await renderRow('right');
+
+      drag(msg, 100, 199);
+
+      expect(swiped.length).toBe(0);
+    });
+  });
+
+  describe('what the drawer sees', () => {
+    // The row sits inside the drawer's gesture host, which arms on ANY `pointerdown` while
+    // it is open. Stopping propagation is what keeps a thread reply's swipe from also
+    // closing the drawer — and it must not be stopped in any other case, or the drawer
+    // becomes unreachable from the timeline.
+    async function pointerDownReachesParent(
+      direction: SwipeDirection,
+      x: number,
+      over = {},
+    ): Promise<boolean> {
+      const { msg } = await renderRow(direction);
+      let reached = false;
+      const parent = msg.parentElement as HTMLElement;
+      parent.addEventListener('pointerdown', () => {
+        reached = true;
+      });
+      msg.dispatchEvent(touch('pointerdown', x, 100, over));
+      return reached;
+    }
+
+    it('takes the press away from the drawer once the swipe arms', async () => {
+      expect(await pointerDownReachesParent('right', 300)).toBe(false);
+    });
+
+    it('leaves it alone while the gesture is off', async () => {
+      expect(await pointerDownReachesParent('off', 300)).toBe(true);
+    });
+
+    it('leaves it alone inside the dead zone', async () => {
+      expect(await pointerDownReachesParent('right', 4)).toBe(true);
+    });
+
+    it('leaves it alone for a mouse', async () => {
+      expect(
+        await pointerDownReachesParent('right', 300, { pointerType: 'mouse' }),
+      ).toBe(true);
+    });
+  });
+
   describe('the affordance', () => {
     it('offers the pencil on a row that can be edited', async () => {
       const { container } = await renderRow('right', { editable: true });
@@ -382,6 +471,34 @@ describe('MessageRowComponent — the sideways swipe', () => {
           .querySelector('.msg__swipe')
           ?.getAttribute('data-swipe-action'),
       ).toBe('reply');
+    });
+
+    // A leftward drag opens a strip on the RIGHT, so the icon has to park there. The first
+    // version used `justify-content: space-between` with a single child, which pins it to
+    // the inline start whichever way the row moves — measured in a browser as the icon
+    // painting over the message text while the opened strip stayed empty. jsdom applies no
+    // CSS, so the class is as far as this level can go; the geometry is the browser's job.
+    const parksAtEnd = (container: HTMLElement) =>
+      container
+        .querySelector('.msg__swipe')
+        ?.classList.contains('msg__swipe--end');
+
+    it('waits at the right-hand end for a leftward drag', async () => {
+      const { container } = await renderRow('left');
+
+      expect(parksAtEnd(container)).toBe(true);
+    });
+
+    it('waits at the left-hand end for a rightward drag', async () => {
+      const { container } = await renderRow('right');
+
+      expect(parksAtEnd(container)).toBe(false);
+    });
+
+    it('renders nothing on a read-only row', async () => {
+      const { container } = await renderRow('right', { readOnly: true });
+
+      expect(container.querySelector('.msg__swipe')).toBeNull();
     });
 
     it('renders no icon at all while the gesture is off', async () => {

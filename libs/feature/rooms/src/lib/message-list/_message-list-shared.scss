@@ -25,6 +25,12 @@
 }
 
 .scroll {
+  // A swiped row translates past the scroller's right edge, which `overflow-x: auto` — the
+  // computed value when only `overflow-y` is set — turns into real scrollable overflow.
+  // Measured: a 60px rightward drag took `scrollWidth` 390 → 450. `clip` rather than
+  // `hidden` so this does not become a second scroll container.
+  overflow-x: clip;
+
   @include scrollable;
   @include swipe-through;
 

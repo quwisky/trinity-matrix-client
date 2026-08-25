@@ -3,6 +3,14 @@ import { type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { TrnToastService } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
+
+// `isMobileOs` is a plain exported function, so the barrel is mocked and the rest passed
+// through — the same shape `message-row.mobile.spec.ts` uses, and hoisted for the same reason.
+const platform = vi.hoisted(() => ({ mobile: true }));
+vi.mock('@trinity/platform-native', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@trinity/platform-native')>()),
+  isMobileOs: () => platform.mobile,
+}));
 import { TrnActionSheetService } from '@trinity/components/overlay';
 import {
   ThreadsService,
@@ -554,6 +562,49 @@ describe('ThreadViewComponent members', () => {
       expect.stringContaining('you left the thread'),
       expect.anything(),
     );
+  });
+
+  describe('the sideways swipe', () => {
+    it('edits a reply it can edit, and replies to anything else', async () => {
+      // The mirror of `MessageListBase.onRowSwipe`, hand-copied because this panel does not
+      // extend that class — which is exactly how `(longPress)` was once missed here.
+      const { fixture } = await build([msg('$1', '@ada:hs', 'a reply')]);
+      const cmp = fixture.componentInstance;
+
+      cmp.onRowSwipe(cmp.rows()[0]);
+
+      // Not ours, so it replies rather than edits.
+      expect(cmp.replyingToId()).toBe('$1');
+      expect(cmp.editingId()).toBeNull();
+    });
+
+    it('is off above the members breakpoint', async () => {
+      // The base `matchMedia` stub reports non-drawer, i.e. the wide layout — where the
+      // scroller does not claim the horizontal axis and the browser eats the drag.
+      const { fixture } = await build([msg('$1', '@ada:hs', 'a reply')]);
+
+      expect(
+        (
+          fixture.componentInstance as unknown as {
+            swipeDirection: () => string;
+          }
+        ).swipeDirection(),
+      ).toBe('off');
+    });
+
+    it('is off when the platform is not a mobile one', async () => {
+      platform.mobile = false;
+      const { fixture } = await build([msg('$1', '@ada:hs', 'a reply')]);
+
+      expect(
+        (
+          fixture.componentInstance as unknown as {
+            swipeDirection: () => string;
+          }
+        ).swipeDirection(),
+      ).toBe('off');
+      platform.mobile = true;
+    });
   });
 
   it('closes its own action sheet when the panel is destroyed', async () => {
