@@ -5,7 +5,7 @@ This directory configures **Claude Code** for the Trinity workspace. It holds tw
 - **Skills** (`skills/`) — capability packs Claude loads on demand when a task matches their triggers.
 - **Rules** (`rules/`) — always-on conventions applied to every change.
 
-The always-loaded instructions live in [`CLAUDE.md`](../CLAUDE.md) (project) and
+The always-loaded instructions live in [`AGENTS.md`](../AGENTS.md) (project) and
 [`.claude/CLAUDE.md`](CLAUDE.md) (Angular/TypeScript style guide). This file is a catalog of the
 _optional_ tooling around them — nothing here needs manual wiring; Claude selects skills by matching
 the task to the descriptions below.
@@ -67,4 +67,4 @@ Always-on conventions — no invocation needed; they apply to every change.
 
 > **Commit types.** Enforced by `@commitlint/config-conventional` through the `commit-msg` hook:
 > allowed types are `feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert` — see
-> [`CLAUDE.md`](../CLAUDE.md) and `git/conventional-commits.md`.
+> [`AGENTS.md`](../AGENTS.md) and `git/conventional-commits.md`.

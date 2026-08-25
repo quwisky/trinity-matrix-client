@@ -195,7 +195,7 @@ export default defineConfig([
   },
   {
     // "Components never import matrix-js-sdk directly" is the core architectural rule
-    // (CLAUDE.md), and until this block existed nothing enforced it:
+    // (AGENTS.md), and until this block existed nothing enforced it:
     // `@nx/enforce-module-boundaries` only polices `@trinity/*` edges between projects
     // and has nothing to say about a third-party package, so the rule survived on review
     // discipline alone — and three spec files had already drifted past it.

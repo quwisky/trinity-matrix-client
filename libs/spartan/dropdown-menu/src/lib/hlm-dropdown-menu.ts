@@ -27,7 +27,7 @@ import { type BooleanInput, type NumberInput } from '@angular/cdk/coercion';
  *      upstream's `text-destructive`. Helm's `--destructive` is a fill/tint token whose dark
  *      value is a near-black maroon (hsl(0 62.8% 30.6%)); on the dark popover surface that
  *      measured 1.38:1, so "Leave room" read as an empty strip. The `bg-destructive/10`
- *      hover tints are left alone — that IS the sanctioned use of the token. See CLAUDE.md
+ *      hover tints are left alone — that IS the sanctioned use of the token. See AGENTS.md
  *      ("never use Helm's --destructive as a foreground") and docs/architecture/ui-and-theming.md.
  *
  * The register lives in docs/architecture/ui-and-theming.md. Note this file is already a fork in shape as
