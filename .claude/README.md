@@ -6,7 +6,10 @@ This directory configures **Claude Code** for the Trinity workspace. It holds tw
   loads on demand when a task matches their triggers. They live under `.agents/` so any agent
   can read them; `skills/` here is a symlink so Claude Code still discovers them at the path it
   looks for. Add a skill to `.agents/skills/`, not through the link.
-- **Rules** (`rules/`) — always-on conventions applied to every change.
+- **Rules** (`rules/` → [`../.agents/rules/`](../.agents/rules)) — always-on conventions
+  applied to every change. Same arrangement as the skills above: they live under `.agents/`
+  so any agent can read them, and `rules/` here is a symlink so Claude Code still loads them
+  from the path it looks for. Edit them in `.agents/rules/`.
 
 The always-loaded instructions live in [`AGENTS.md`](../AGENTS.md) (project) and
 [`.claude/CLAUDE.md`](CLAUDE.md) (Angular/TypeScript style guide). This file is a catalog of the
@@ -55,7 +58,7 @@ through the skills tooling, don't hand-edit** the copied files.
 
 ---
 
-## Rules (`rules/`)
+## Rules (`.agents/rules/`)
 
 Always-on conventions — no invocation needed; they apply to every change.
 

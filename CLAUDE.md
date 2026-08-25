@@ -10,4 +10,5 @@ Still Claude-specific, and still loaded automatically:
 
 - [`.claude/CLAUDE.md`](.claude/CLAUDE.md) — the Angular/TypeScript style guide.
 - [`.claude/README.md`](.claude/README.md) — the skills and rules catalog.
-- [`.claude/rules/`](.claude/rules/) — commit conventions, changelog, branch protection.
+- [`.agents/rules/`](.agents/rules/) — commit conventions, changelog, branch protection.
+  (`.claude/rules` is a symlink to it, so Claude Code loads them from where it expects.)
