@@ -20,6 +20,7 @@ import {
   type BatchOutcome,
   type BatchProgress,
 } from '../shared/send-media-batch';
+import { MessageActionSheetService } from '../message-actions/message-action-sheet.service';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
@@ -100,6 +101,7 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
 })
 export class ThreadViewComponent implements OnInit, OnDestroy {
   private readonly threads = inject(ThreadsService);
+  private readonly messageSheet = inject(MessageActionSheetService);
   private readonly rooms = inject(RoomsService);
   private readonly reactionPicker = inject(ReactionPickerService);
   private readonly forwardSvc = inject(ForwardService);
@@ -174,7 +176,25 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    // The sheet is a modal over this panel; leaving it standing would dispatch against a
+    // thread that is no longer open.
+    this.messageSheet.close();
     this.threads.closeThread();
+  }
+
+  /**
+   * A long press on a thread reply, on a phone or tablet.
+   *
+   * Present for the same reason the timeline has one, and easy to forget: this component
+   * renders `trn-message-row` but does NOT extend `MessageListBase`, so it inherits none of
+   * that wiring. Without this the row emitted `longPress` into nothing and — the Android
+   * `contextmenu` fallback having gone with it — every action on a thread reply was
+   * unreachable by touch.
+   */
+  onRowLongPress(row: MessageRow): void {
+    this.messageSheet.open(row, this.rowCaps(row), (action) =>
+      this.onRowAction(row, action),
+    );
   }
 
   /** Announce the close; the rooms page owns the slot and empties it. */

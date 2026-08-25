@@ -11,6 +11,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { DateTimeFormatService } from '@trinity/platform-native';
+import { isMobileOs } from '@trinity/platform-native';
 import { AvatarComponent } from '@trinity/components/avatar';
 import {
   MessageToolbarComponent,
@@ -168,6 +169,12 @@ export class MessageRowComponent {
       return; // read-only rows and system events have no actions to offer
     }
     event.preventDefault();
+    // Android fires `contextmenu` at the end of a long press, so on a mobile OS this
+    // arrives right after the sheet has opened. Swallowing the native menu is still
+    // wanted; opening a SECOND menu on top of the sheet is not.
+    if (isMobileOs()) {
+      return;
+    }
     bar.openMoreMenu();
   }
 
@@ -177,6 +184,13 @@ export class MessageRowComponent {
    */
   onPointerDown(event: PointerEvent): void {
     if (event.pointerType === 'mouse' || !this.toolbar()) {
+      return;
+    }
+    // A long press on a link or an attachment belongs to the BROWSER — "Open in new tab",
+    // "Save image". Those live nowhere else, so taking them away to offer message actions
+    // is a straight loss. `onContextMenu` has always guarded this; the touch path did not,
+    // which meant the same press that raised the OS menu also opened ours behind it.
+    if ((event.target as HTMLElement | null)?.closest('a, img, video, audio')) {
       return;
     }
     // Only the first finger arms a press, and any press already pending is cleared first.
@@ -191,9 +205,18 @@ export class MessageRowComponent {
     this.longPressOrigin = { x: event.clientX, y: event.clientY };
     this.longPressTimer = setTimeout(() => {
       this.longPressTimer = null;
-      if (!this.hasTextSelection()) {
-        this.revealToolbar();
+      if (this.hasTextSelection()) {
+        return;
       }
+      // On a phone or tablet the actions are a bottom sheet, which is what those
+      // platforms do for a long press — and which cannot cover the message it acts on,
+      // be dismissed by a stray scroll, or open a picker off the top of the scroller.
+      // Everywhere else the hover bar is right, and is left exactly as it was.
+      if (isMobileOs()) {
+        this.longPress.emit();
+        return;
+      }
+      this.revealToolbar();
     }, LONG_PRESS_MS);
   }
 
@@ -299,6 +322,17 @@ export class MessageRowComponent {
    * jump-to-quoted-message. The host pairs it with `row` to run the effect.
    */
   readonly action = output<MessageRowAction>();
+
+  /**
+   * A long press on a phone or tablet — the host offers this row's actions as a sheet.
+   *
+   * An output rather than a sheet opened here, and the distinction is the design: this
+   * component is destroyed by a redaction, an edit, the local-echo id swap when a send
+   * lands, or simply scrolling out of the virtual window. A sheet holding handlers that
+   * call back into it would go silent the moment that happened, with every row still
+   * tappable and nothing to see. The list owns the sheet; see `onRowLongPress` there.
+   */
+  readonly longPress = output<void>();
 
   /** A `matrix.to` permalink clicked in the message body, for the host to route in-app. */
   readonly matrixLink = output<MatrixLinkClick>();

@@ -13,6 +13,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { TrnAlertService } from '@trinity/components/overlay';
+import { MessageActionSheetService } from '../message-actions/message-action-sheet.service';
 import { ReactionPickerService } from '../reaction-picker/reaction-picker.service';
 import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import { ForwardService } from '../forward/forward.service';
@@ -261,6 +262,7 @@ export abstract class MessageListBase {
   private readonly sourceSvc = inject(MessageSourceService);
   private readonly editHistorySvc = inject(EditHistoryDialogService);
   private readonly reactionsDialog = inject(ReactionsDialogService);
+  private readonly messageSheet = inject(MessageActionSheetService);
   protected readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
 
   /**
@@ -423,6 +425,9 @@ export abstract class MessageListBase {
 
   /** Reset per-room state on a room switch. Subclasses override to add scroll state. */
   protected resetOnRoomChange(): void {
+    // A sheet is about ONE message in ONE room; leaving it standing over a different
+    // room's timeline would offer actions against an event that is no longer on screen.
+    this.messageSheet.close();
     this.editingId.set(null);
     this.replyingToId.set(null);
     this.announcement.set('');
@@ -620,6 +625,20 @@ export abstract class MessageListBase {
   /** Per-row capabilities/state for {@link MessageRowComponent} in the main timeline. */
   rowCaps(row: MessageRow): MessageRowCaps {
     return this.rowCapsById().get(row.id) ?? DEFAULT_ROW_CAPS;
+  }
+
+  /**
+   * A long press on a row, on a phone or tablet: offer its actions as a bottom sheet.
+   *
+   * The sheet is built and held by {@link MessageActionSheetService}, not here, because
+   * `trn-message-row` has a third consumer that does not extend this class — see that
+   * service. What this method contributes is the row snapshot, its caps, and a dispatch
+   * that routes through `onRowAction`, the same path the hover toolbar takes.
+   */
+  onRowLongPress(row: MessageRow): void {
+    this.messageSheet.open(row, this.rowCaps(row), (action) =>
+      this.onRowAction(row, action),
+    );
   }
 
   /** Route a single row action to its handler / upward output. */
