@@ -25,10 +25,12 @@ All notable changes to this project are documented here. The format is based on
 
 - **Right-click or long-press a message for its actions.** The full set — pin, quote, copy,
   copy link, forward, view source, report, edit, delete — is now a right-click away on desktop,
-  instead of only reachable through the small "⋯" button that appears on hover. On a phone,
-  where there is no hover and no right-click, a long press brings up that message's action bar
-  — reply, react, thread and "⋯" — and the next tap anywhere else puts it away again, so the
-  bar is there when you want it instead of sitting on every message all the time.
+  instead of only reachable through the small "⋯" button that appears on hover. On a phone or
+  tablet, where there is no hover and no right-click, a long press brings that same full set up
+  as a sheet from the bottom of the screen: thumb-sized rows you can read, the six most-used
+  reactions along the top, and a way to reach any other emoji. It scrolls if your permissions
+  make the list long, it never covers the message it acts on, and picking something or tapping
+  outside it puts it away.
 
   Highlight some text first and you still get the browser's own menu, because that is the one
   with Copy in it — and right-clicking a link or an image still gets you "Open link in new tab"
@@ -108,6 +110,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **The side panels have their heading back.** Threads, a thread, pinned messages, search and
+  member info all drew their top bar with the title jammed against the left edge and the bar
+  itself a few pixels shorter than the room header beside it, so the two never lined up. The
+  padding was being silently dropped rather than applied; all five now match the room header
+  exactly, and grow to clear the notch on a phone instead of being clipped into it.
+
 - **A room that has been upgraded no longer squashes the conversation.** In a room with a "this
   room has been replaced" notice, the notice was sharing a row with the message list instead of
   sitting above it, so the messages were squeezed into a narrow strip down the side and the
@@ -124,7 +132,8 @@ All notable changes to this project are documented here. The format is based on
 - **Message actions no longer sit on top of the message above.** The hover toolbar was
   positioned deliberately outside its own row, which on a phone — where it was always visible —
   meant every message permanently covered the top of the one before it. It stays inside its own
-  message now, and on touch it stays out of the way until you long-press.
+  message now, and on a phone or tablet the actions arrive as a bottom sheet on a long press
+  rather than as a floating bar at all.
 
 - **Starting the app no longer shows a blank screen.** Trinity has to open its local
   database, load the encryption engine and reconnect before it can show you anything, and
