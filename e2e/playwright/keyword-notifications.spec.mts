@@ -1,6 +1,6 @@
-import { createHmac } from 'node:crypto';
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // Covers keyword notification rules (Settings → Notifications → Keywords). Adding a word
 // writes a `content` push rule keyed by the word itself, and a message containing it must
@@ -13,37 +13,12 @@ import { login, synapseSession, type SynapseSession } from './support/app.mts';
 // Needs a Synapse homeserver (Docker); self-skips otherwise like the other web specs.
 const session = synapseSession();
 
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
-
 /** A word no other rule could match, so the highlight can only come from our keyword. */
 const KEYWORD = 'zarquon';
 
 interface ApiUser {
   userId: string;
   headers: { Authorization: string };
-}
-
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const { nonce } = await request
-    .get(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`)
-    .then((r) => r.json());
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
 }
 
 async function apiLogin(

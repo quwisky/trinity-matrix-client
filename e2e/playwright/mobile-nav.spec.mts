@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto';
+import { REGISTRATION_SHARED_SECRET, SYNAPSE_HTTP } from '../synapse/start.mjs';
 import { test, expect, type Page } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 
@@ -26,8 +27,6 @@ const ROOM_NAME = `Mobile drawer ${Date.now()}`;
 // timeline-virtualization) that seed rooms into it, so under full-suite load its
 // initial /sync was slow enough that ROOM_NAME took >30s (sometimes >90s) to appear —
 // the root cause of this file's flakiness. A fresh user syncs a single room, fast.
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
 const runId = `${Date.now().toString(36)}mn`;
 const MOBILE_USER = `mobile-user-${runId}`;
 const MOBILE_PASS = `${MOBILE_USER}-pass`;
@@ -40,11 +39,19 @@ const mobileSession: SynapseSession = {
 const ROOM_ATTACH_TIMEOUT = 30_000;
 
 /** Register a fresh user via Synapse's shared-secret admin API (idempotent). */
+/**
+ * The one local copy left, and the reason it is not the shared `support/account.mts` one.
+ *
+ * This file registers in `beforeAll`, where Playwright's `request` fixture does not exist —
+ * it is test-scoped, and `beforeAll` receives worker-scoped fixtures only. So this one uses
+ * global `fetch` and takes no context. Everything it signs still comes from the same place;
+ * only the transport differs.
+ */
 async function registerUser(username: string, password: string): Promise<void> {
   const { nonce } = await fetch(
     `${SYNAPSE_HTTP}/_synapse/admin/v1/register`,
   ).then((r) => r.json());
-  const mac = createHmac('sha1', REG_SECRET)
+  const mac = createHmac('sha1', REGISTRATION_SHARED_SECRET)
     .update(`${nonce}\0${username}\0${password}\0notadmin`)
     .digest('hex');
   const res = await fetch(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {

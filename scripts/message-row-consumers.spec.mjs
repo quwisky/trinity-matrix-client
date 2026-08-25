@@ -26,9 +26,27 @@ const workspaceRoot = join(import.meta.dirname, '..');
  */
 const OUTPUTS = ['action', 'longPress'];
 
-/** A binding with something in it. `(longPress)=""` is a binding the compiler accepts. */
-const bindsOutput = (source, output) =>
-  new RegExp(`\\(${output}\\)\\s*=\\s*"[^"]+"`).test(source);
+/**
+ * Expressions that bind the output to nothing in particular.
+ *
+ * `(longPress)=""` is a binding the Angular compiler accepts, and so is one wired to a
+ * no-op. Neither behaves differently from the omission this guard exists to catch — the
+ * press still reaches nothing — and neither is visible to AOT, which only checks that the
+ * expression RESOLVES.
+ *
+ * A denylist and not an analysis, deliberately. Proving a handler does something needs the
+ * component's symbol table and its call graph, which is a different tool; what this catches
+ * is the shape someone reaches for when they want the guard to stop complaining. A handler
+ * that is genuinely empty three calls down is out of reach, and saying so here is better
+ * than implying it is covered.
+ */
+const INERT = /^(?:\s*|noop\(\)|undefined|null|''|""|0|false)$/;
+
+/** A binding whose expression does something. */
+const bindsOutput = (source, output) => {
+  const match = new RegExp(`\\(${output}\\)\\s*=\\s*"([^"]*)"`).exec(source);
+  return match !== null && !INERT.test(match[1].trim());
+};
 
 describe('trn-message-row consumers', () => {
   const templates = globSync(
@@ -61,16 +79,18 @@ describe('trn-message-row consumers', () => {
     expect(missing).toEqual([]);
   });
 
-  it('does not count an empty binding as a binding', () => {
+  it('does not count an inert binding as a binding', () => {
     // The parser is the guard. `includes('(longPress)')` — the first spelling here — scores
     // a hit on the attribute alone, so a consumer that wired the output to nothing would
     // have passed while behaving exactly like the one that omitted it.
     expect(
       bindsOutput('<trn-message-row (longPress)="x()" />', 'longPress'),
     ).toBe(true);
-    expect(bindsOutput('<trn-message-row (longPress)="" />', 'longPress')).toBe(
-      false,
-    );
+    for (const inert of ['', ' ', 'noop()', 'undefined', 'null', '0']) {
+      expect(
+        bindsOutput(`<trn-message-row (longPress)="${inert}" />`, 'longPress'),
+      ).toBe(false);
+    }
     expect(bindsOutput('<trn-message-row />', 'longPress')).toBe(false);
   });
 });

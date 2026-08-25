@@ -1,12 +1,6 @@
-import { createHmac } from 'node:crypto';
-import {
-  test,
-  expect,
-  devices,
-  type APIRequestContext,
-  type Page,
-} from '@playwright/test';
+import { test, expect, devices, type Page } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // The drawer gesture, on the only kind of device that has one.
 //
@@ -23,25 +17,6 @@ import { login, synapseSession, type SynapseSession } from './support/app.mts';
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise.
 const session = synapseSession();
-
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
-
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const { nonce } = await request
-    .get(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`)
-    .then((r) => r.json());
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-}
 
 /**
  * A REAL touch drag, through the browser's own input pipeline.

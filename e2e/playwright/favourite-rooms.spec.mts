@@ -1,4 +1,3 @@
-import { createHmac } from 'node:crypto';
 import {
   test,
   expect,
@@ -6,6 +5,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // Covers the two room-tag features, which share one fixture and one menu:
 // SidebarRoomListComponent renders a hover-revealed kebab (`.channel__menu`) on
@@ -34,8 +34,6 @@ const session = synapseSession();
 // helpers (e2e/features/rooms.mjs, search.mjs, room-list.spec.mts) and
 // e2e/synapse/start.mjs. The server name ('localhost') is implicit in `hs` and
 // every user id below.
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
 
 interface ApiUser {
   token: string;
@@ -46,28 +44,6 @@ interface ApiUser {
 /** Register a user via Synapse's shared-secret admin endpoint (idempotent —
  * "already exists" is treated as success, mirrors rooms.mjs/search.mjs and
  * room-list.spec.mts). */
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const nonceRes = await request.get(
-    `${SYNAPSE_HTTP}/_synapse/admin/v1/register`,
-  );
-  const { nonce } = await nonceRes.json();
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
-}
 
 async function apiLogin(
   request: APIRequestContext,

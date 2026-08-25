@@ -1,11 +1,6 @@
-import { createHmac } from 'node:crypto';
-import {
-  test,
-  expect,
-  devices,
-  type APIRequestContext,
-} from '@playwright/test';
+import { test, expect, devices } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // Covers the sidebar's touch affordances, which no other spec can see: every other
 // authenticated spec runs the desktop Chromium project, where `hover: hover` and
@@ -21,31 +16,6 @@ import { login, synapseSession, type SynapseSession } from './support/app.mts';
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise.
 const session = synapseSession();
-
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
-
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const { nonce } = await request
-    .get(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`)
-    .then((r) => r.json());
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
-}
 
 // A mobile descriptor, which is what makes Chromium report `hover: none` and
 // `pointer: coarse` — the two media features the rules under test key off.

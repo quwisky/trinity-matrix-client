@@ -1,4 +1,3 @@
-import { createHmac } from 'node:crypto';
 import {
   test,
   expect,
@@ -7,6 +6,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // End-to-end for member role sections: the room member list groups joined members
 // under "Owner" / "Admin" / "Moderator" / "Member" headers — the first from the room's
@@ -17,9 +17,6 @@ import { login, synapseSession, type SynapseSession } from './support/app.mts';
 // path — SDK power levels → data-access projection → the grouped member list.
 // Needs a Synapse homeserver (Docker); self-skips otherwise like the other web specs.
 const session = synapseSession();
-
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
 
 interface ApiUser {
   userId: string;
@@ -33,28 +30,6 @@ interface Participant extends ApiUser {
 }
 
 /** Register a user via Synapse's shared-secret admin endpoint (idempotent). */
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const nonceRes = await request.get(
-    `${SYNAPSE_HTTP}/_synapse/admin/v1/register`,
-  );
-  const { nonce } = await nonceRes.json();
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
-}
 
 async function apiLogin(
   request: APIRequestContext,
