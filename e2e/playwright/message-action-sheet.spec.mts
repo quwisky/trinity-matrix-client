@@ -51,13 +51,18 @@ async function longPress(page: Page, selector: string): Promise<void> {
   if (!box) {
     throw new Error(`no box for ${selector}`);
   }
-  await page.dispatchEvent(selector, 'pointerdown', {
+  const point = {
     isPrimary: true,
     pointerType: 'touch',
     clientX: box.x + box.width / 2,
     clientY: box.y + box.height / 2,
-  });
+  };
+  await page.dispatchEvent(selector, 'pointerdown', point);
   await page.waitForTimeout(700);
+  // A finger LIFTS. Without the release the page is left with a pointer down forever —
+  // a state no gesture can produce, and one that made an earlier probe report a defect
+  // that did not exist (see the correction on #220).
+  await page.dispatchEvent(selector, 'pointerup', point);
 }
 
 /** A room with one message, opened, with that row's selector handed back. */
@@ -134,15 +139,27 @@ test.describe('Message actions on a phone', () => {
       page.locator('[role=dialog][aria-label="Message actions"]'),
     ).toHaveCount(1);
 
-    // Every row is reachable: the list scrolls inside the sheet rather than being clipped
-    // by the viewport, which is what it did before it had a max-height and a scroller.
+    // Every row is REACHABLE — which for a list this long means reachable by scrolling
+    // INSIDE the sheet, not all visible at once. Two things to hold: the sheet itself sits
+    // within the viewport (it is bounded by 80svh, so it cannot run off the screen), and
+    // the last row can be scrolled to. Asserting that every row fits unscrolled was the
+    // earlier version of this check, and it started failing the moment a row was added —
+    // which is the behaviour the scroller exists to provide, not a regression.
     const sheetBox = await sheet.boundingBox();
-    const cancel = sheet.getByText('Cancel');
-    const cancelBox = await cancel.boundingBox();
+    const viewportHeight = page.viewportSize()?.height ?? 0;
     expect(sheetBox).not.toBeNull();
+    expect(sheetBox!.y).toBeGreaterThanOrEqual(0);
+    expect(sheetBox!.y + sheetBox!.height).toBeLessThanOrEqual(
+      viewportHeight + 1,
+    );
+
+    const cancel = sheet.getByText('Cancel');
+    await cancel.scrollIntoViewIfNeeded();
+    await expect(cancel).toBeVisible();
+    const cancelBox = await cancel.boundingBox();
     expect(cancelBox).not.toBeNull();
     expect(cancelBox!.y + cancelBox!.height).toBeLessThanOrEqual(
-      (page.viewportSize()?.height ?? 0) + 1,
+      viewportHeight + 1,
     );
 
     // And it does the thing. Reply is the cheapest action to observe end to end.

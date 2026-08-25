@@ -225,6 +225,10 @@ describe('MessageListBase — the mobile action sheet', () => {
   it('marks Delete destructive and rules it off from the rest', () => {
     // Two 44px targets flush against each other, one of them irreversible, is the shape
     // this separator exists to break up.
+    //
+    // Asserted with `toBeDefined()` first, deliberately: an earlier version fell back to
+    // "then Delete must be absent" when it could not find the row, so BOTH branches passed
+    // and removing the row from the sheet entirely left it green.
     const { fixture, cmp, open } = build();
     fixture.componentRef.setInput('canRedactOthers', true);
     fixture.detectChanges();
@@ -234,15 +238,9 @@ describe('MessageListBase — the mobile action sheet', () => {
     const remove = lastSheet(open).buttons.find(
       (b) => b.text === 'Delete message',
     ) as { role?: string; separatorBefore?: boolean } | undefined;
-    if (remove) {
-      expect(remove.role).toBe('destructive');
-      expect(remove.separatorBefore).toBe(true);
-    } else {
-      // Caps did not grant deletion here; the assertion above is what matters when they do.
-      expect(lastSheet(open).buttons.map((b) => b.text)).not.toContain(
-        'Delete message',
-      );
-    }
+    expect(remove).toBeDefined();
+    expect(remove?.role).toBe('destructive');
+    expect(remove?.separatorBefore).toBe(true);
   });
 
   it('gives every row a harness hook', () => {

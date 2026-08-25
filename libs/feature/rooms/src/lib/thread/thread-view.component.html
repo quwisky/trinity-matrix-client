@@ -32,6 +32,7 @@
         [row]="row"
         [caps]="rowCaps(row)"
         (action)="onRowAction(row, $event)"
+        (longPress)="onRowLongPress(row)"
         (pollVote)="onPollVote($event)"
         (pollEnd)="onPollEnd($event)"
       />
