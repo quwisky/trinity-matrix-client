@@ -4,7 +4,7 @@ import { MockProvider } from 'ng-mocks';
 import { signal, type DebugElement } from '@angular/core';
 import { NEVER, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
-import { TrnCheckboxComponent } from '@trinity/components/checkbox';
+import { TrnSwitchComponent } from '@trinity/components/switch';
 import {
   KeywordRulesService,
   NotificationSoundService,
@@ -56,26 +56,26 @@ async function build(over: { setOn?: Mock } = {}) {
   return { cmp: fixture.componentInstance, fixture, setOn, toastShow };
 }
 
-/** Only the checkboxes rendered for push-rule toggles (excludes the sound switch). */
-function ruleCheckboxes(fixture: {
+/** Only the switches rendered for push-rule toggles (excludes the sound one). */
+function ruleSwitches(fixture: {
   debugElement: DebugElement;
   nativeElement: HTMLElement;
 }) {
-  return checkboxes(fixture).slice(0, TOGGLES.length);
+  return switches(fixture).slice(0, TOGGLES.length);
 }
 
-function checkboxes(fixture: {
+function switches(fixture: {
   debugElement: DebugElement;
-}): { componentInstance: TrnCheckboxComponent }[] {
-  return fixture.debugElement.queryAll(By.directive(TrnCheckboxComponent));
+}): { componentInstance: TrnSwitchComponent }[] {
+  return fixture.debugElement.queryAll(By.directive(TrnSwitchComponent));
 }
 
 describe('NotificationsSectionComponent', () => {
   it('seeds each toggle from the service’s on/off state', async () => {
     const { fixture } = await build();
-    // Scoped to the RULE toggles: the sound switch is a third checkbox in the same list
-    // but is not one of them, so counting every checkbox would couple this to it.
-    const boxes = ruleCheckboxes(fixture);
+    // Scoped to the RULE toggles: the sound one is a third switch in the same list
+    // but is not one of them, so counting every switch would couple this to it.
+    const boxes = ruleSwitches(fixture);
     expect(boxes).toHaveLength(2);
     expect(boxes[0].componentInstance.checked()).toBe(true); // master isOn → true
     expect(boxes[1].componentInstance.checked()).toBe(false);
@@ -173,7 +173,7 @@ describe('NotificationsSectionComponent', () => {
   it('contains the keyword list', async () => {
     // Deleting `<trn-keyword-rules />` from the section removes the whole feature from
     // the app, and every other unit test still passes: the mocked service yields no
-    // keywords, so the block contributes no checkboxes either way.
+    // keywords, so the block contributes no switches either way.
     const { fixture } = await build();
 
     expect(

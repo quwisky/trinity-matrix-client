@@ -23,11 +23,6 @@ All notable changes to this project are documented here. The format is based on
   render far fewer rows at a time, so opening the member list in a busy room no longer
   builds thousands of rows up front.
 
-- **Preference toggles are switches.** The twelve on/off settings across Appearance,
-  Privacy, Notifications and Experimental now look like switches rather than checkboxes,
-  which is what they have always been: they take effect immediately, with nothing to
-  confirm.
-
 - **Right-click or long-press a message for its actions.** The full set — pin, quote, copy,
   copy link, forward, view source, report, edit, delete — is now a right-click away on desktop,
   instead of only reachable through the small "⋯" button that appears on hover. On a phone,
@@ -57,6 +52,13 @@ All notable changes to this project are documented here. The format is based on
 - **Signing in through your homeserver looks like signing in.** The page you land on
   while the redirect completes now wears the same card and wordmark as the sign-in form,
   rather than a bare spinner on a blank background.
+
+- **Settings toggles are switches now.** Every preference you can turn on and off — appearance,
+  privacy, notifications, the experimental flags — is a switch rather than a tick box, because
+  each takes effect the moment you touch it and there is nothing to submit. A screen reader now
+  announces them as switches too, which is the same thing said out loud. The four places that
+  really are "pick some of these" keep their tick boxes: adding rooms to a space, managing a
+  space's rooms, the room history options, and confirming you have saved a recovery key.
 - **The "nothing here yet" messages all look the same now.** Fourteen places tell you a list is
   empty — no messages in a channel, no threads, no pinned messages, no search results, nobody in
   a space — and each had drifted into its own size and spacing. They are one panel now, at one

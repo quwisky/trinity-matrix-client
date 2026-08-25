@@ -164,7 +164,7 @@
   class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
   data-testid="timeline-show-membership"
 >
-  <trn-checkbox
+  <trn-switch
     [checked]="systemLines.showMembership()"
     (checkedChange)="systemLines.setShowMembership($event)"
   />
@@ -178,7 +178,7 @@
   class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
   data-testid="timeline-show-profile"
 >
-  <trn-checkbox
+  <trn-switch
     [checked]="systemLines.showProfile()"
     (checkedChange)="systemLines.setShowProfile($event)"
   />
@@ -189,7 +189,7 @@
   class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
   data-testid="timeline-show-room-changes"
 >
-  <trn-checkbox
+  <trn-switch
     [checked]="systemLines.showRoomChanges()"
     (checkedChange)="systemLines.setShowRoomChanges($event)"
   />
@@ -211,7 +211,7 @@
   class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
   data-testid="composer-show-toolbar"
 >
-  <trn-checkbox
+  <trn-switch
     [checked]="composer.showFormattingToolbar()"
     (checkedChange)="composer.setShowFormattingToolbar($event)"
   />
@@ -225,7 +225,7 @@
   class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
   data-testid="composer-format-on-selection"
 >
-  <trn-checkbox
+  <trn-switch
     [checked]="composer.formatOnSelection()"
     (checkedChange)="composer.setFormatOnSelection($event)"
   />

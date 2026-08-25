@@ -12,7 +12,7 @@ import {
   TrnSelectComponent,
   type TrnSelectOption,
 } from '@trinity/components/select';
-import { TrnCheckboxComponent } from '@trinity/components/checkbox';
+import { TrnSwitchComponent } from '@trinity/components/switch';
 import {
   DateTimeFormatService,
   ComposerSettingsService,
@@ -46,7 +46,7 @@ import { CodeAppearanceBlockComponent } from './code-appearance-block.component'
   imports: [
     TrnRadioGroupComponent,
     TrnSelectComponent,
-    TrnCheckboxComponent,
+    TrnSwitchComponent,
     CodeAppearanceBlockComponent,
   ],
 })

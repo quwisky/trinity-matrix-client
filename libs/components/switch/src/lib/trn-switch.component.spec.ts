@@ -1,12 +1,12 @@
 import { Component, signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { describe, expect, it } from 'vitest';
-import { TrnCheckboxComponent } from './trn-checkbox.component';
+import { TrnSwitchComponent } from './trn-switch.component';
 
 @Component({
-  imports: [TrnCheckboxComponent],
+  imports: [TrnSwitchComponent],
   template: `
-    <trn-checkbox
+    <trn-switch
       [checked]="checked()"
       [disabled]="disabled()"
       aria-label="Send read receipts"
@@ -20,12 +20,11 @@ class HostComponent {
   readonly last = signal<boolean | null>(null);
 }
 
-const box = (container: Element) =>
-  container.querySelector('[role="checkbox"]');
+const box = (container: Element) => container.querySelector('[role="switch"]');
 
-describe('TrnCheckboxComponent', () => {
+describe('TrnSwitchComponent', () => {
   it('reflects the bound state onto the rendered control', async () => {
-    // The defect control: `role="checkbox"` and `aria-checked` come from the kit component
+    // The defect control: `role="switch"` and `aria-checked` come from the kit component
     // this wraps, so they exist only if the composition happened. Asserted through ARIA
     // rather than a class, because ARIA is what both a screen reader and the e2e suite read
     // (`notification-sound.spec.mts` asserts exactly this attribute).
@@ -48,13 +47,11 @@ describe('TrnCheckboxComponent', () => {
   });
 
   it('emits when the control is operated, which is the whole job', async () => {
-    // The host has wired `last` since this spec was written and nothing ever read it, so
-    // deleting `(checkedChange)` from the template left the suite green — a checkbox that
-    // does not emit does nothing at all. Found while mirroring this file for `trn-switch`,
-    // where the same gap would have shipped again.
-    //
-    // Driven through a real click rather than by calling the output, so the kit's own event
-    // plumbing is part of what is under test.
+    // A settings toggle that does not emit does nothing at all, and the host's `last` signal
+    // was already wired for this and going unread — the checkbox wrapper this was modelled on
+    // has the same gap, and dropping `(checkedChange)` from either template leaves its suite
+    // green. Driven through a real click rather than by calling the output, so the kit's own
+    // event plumbing is part of what is under test.
     const { container, fixture } = await render(HostComponent);
     expect(fixture.componentInstance.last()).toBeNull();
 
@@ -65,18 +62,20 @@ describe('TrnCheckboxComponent', () => {
   });
 
   it('forwards disabled, which is what stops the click', async () => {
-    // Expressed as `data-disabled` on the host and a native `disabled` on the inner
-    // control, not `aria-disabled` — asserted against what the kit actually renders rather
-    // than what a wrapper author would assume. The native property is the load-bearing
-    // half: it is what makes the click a no-op and what Playwright's actionability waits on.
+    // Asserted against what the kit ACTUALLY renders, not against what the checkbox wrapper
+    // renders: `hlm-checkbox` carries `data-disabled` on its own element, `hlm-switch` does
+    // not — it puts it on the inner `brn-switch` and on the button. Copying the checkbox's
+    // assertion across gave a green-looking test that failed for the right reason.
+    //
+    // The native `disabled` is the load-bearing half either way: it is what makes the click a
+    // no-op and what Playwright's actionability check waits on. `data-disabled` is what the
+    // kit's own `data-[disabled=true]:` classes key off, so both are worth pinning.
     const { container, fixture } = await render(HostComponent);
     fixture.componentInstance.disabled.set(true);
     fixture.detectChanges();
 
-    const host = container.querySelector('trn-checkbox > hlm-checkbox');
-    expect(host?.hasAttribute('data-disabled')).toBe(true);
-    expect(
-      container.querySelector<HTMLButtonElement>('[role="checkbox"]')?.disabled,
-    ).toBe(true);
+    const control = box(container) as HTMLButtonElement | null;
+    expect(control?.disabled).toBe(true);
+    expect(control?.getAttribute('data-disabled')).toBe('true');
   });
 });

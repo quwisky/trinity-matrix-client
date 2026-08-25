@@ -4,7 +4,7 @@ import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { TrnCheckboxComponent } from '@trinity/components/checkbox';
+import { TrnSwitchComponent } from '@trinity/components/switch';
 import { FeatureFlagsService } from '@trinity/platform-native';
 import { ExperimentalSettingsComponent } from './experimental-settings.component';
 
@@ -27,18 +27,18 @@ describe('ExperimentalSettingsComponent', () => {
     expect(
       container.querySelector('[data-testid=flag-virtual-timeline]'),
     ).not.toBeNull();
-    const checkbox = fixture.debugElement.query(
-      By.directive(TrnCheckboxComponent),
+    const control = fixture.debugElement.query(
+      By.directive(TrnSwitchComponent),
     );
-    expect(checkbox.componentInstance.checked()).toBe(false); // off by default
+    expect(control.componentInstance.checked()).toBe(false); // off by default
 
-    // The checkbox reflects the persisted signal.
+    // The switch reflects the persisted signal.
     virtualTimeline.set(true);
     fixture.detectChanges();
-    expect(checkbox.componentInstance.checked()).toBe(true);
+    expect(control.componentInstance.checked()).toBe(true);
 
     // Toggling emits checkedChange → the flag is persisted.
-    checkbox.componentInstance.checkedChange.emit(false);
+    control.componentInstance.checkedChange.emit(false);
     expect(
       TestBed.inject(FeatureFlagsService).setVirtualTimeline,
     ).toHaveBeenCalledWith(false);

@@ -290,7 +290,7 @@ test.describe('Composer formatting', () => {
     await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
     const toolbarToggle = page
       .getByTestId('composer-show-toolbar')
-      .locator('trn-checkbox');
+      .locator('trn-switch');
     await expect(toolbarToggle).toBeVisible({ timeout: 15_000 });
     await toolbarToggle.click();
 
