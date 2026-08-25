@@ -150,4 +150,78 @@ describe('MessageRowComponent — the long press on a mobile OS', () => {
     expect(pressed.length).toBe(0);
     expect(revealed(container)).toBe(false);
   });
+
+  it('leaves a link its own menu rather than opening ours behind it', async () => {
+    // A long press on a link or an attachment belongs to the browser — "Open in new tab",
+    // "Save image" live nowhere else. `onContextMenu` has always guarded this; the touch
+    // path did not, so the same press raised the OS menu AND opened ours underneath.
+    state.mobile = true;
+    vi.useFakeTimers();
+    const { container, pressed } = await renderRow();
+    const msg = container.querySelector('.msg') as HTMLElement;
+    const link = document.createElement('a');
+    link.href = 'https://example.invalid';
+    msg.append(link);
+
+    link.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        isPrimary: true,
+        pointerType: 'touch',
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    );
+    vi.advanceTimersByTime(LONG_PRESS_MS + 10);
+    TestBed.tick();
+
+    expect(pressed.length).toBe(0);
+    expect(revealed(container)).toBe(false);
+  });
+
+  it('swallows the native menu without opening a second one', async () => {
+    // Android fires `contextmenu` at the end of a long press, so it lands right after the
+    // sheet has. Suppressing the browser's own menu is still wanted; stacking the overflow
+    // menu on top of the sheet is not.
+    state.mobile = true;
+    const { container, fixture } = await renderRow();
+    // `toolbar` is a private viewChild; reached the same way `message-list-base.spec.ts`
+    // reaches its protected members, because what is being asserted is the collaboration.
+    const bar = (
+      fixture.componentInstance as unknown as {
+        toolbar: () => { openMoreMenu: () => void } | undefined;
+      }
+    ).toolbar();
+    const openMore = vi.spyOn(bar!, 'openMoreMenu');
+    const event = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+    });
+
+    container.querySelector('.msg')?.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(openMore).not.toHaveBeenCalled();
+  });
+
+  it('still opens the overflow menu on a right-click everywhere else', async () => {
+    state.mobile = false;
+    const { container, fixture } = await renderRow();
+    // `toolbar` is a private viewChild; reached the same way `message-list-base.spec.ts`
+    // reaches its protected members, because what is being asserted is the collaboration.
+    const bar = (
+      fixture.componentInstance as unknown as {
+        toolbar: () => { openMoreMenu: () => void } | undefined;
+      }
+    ).toolbar();
+    const openMore = vi.spyOn(bar!, 'openMoreMenu');
+
+    container
+      .querySelector('.msg')
+      ?.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+      );
+
+    expect(openMore).toHaveBeenCalledTimes(1);
+  });
 });

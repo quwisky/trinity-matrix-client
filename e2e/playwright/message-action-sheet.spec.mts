@@ -60,6 +60,54 @@ async function longPress(page: Page, selector: string): Promise<void> {
   await page.waitForTimeout(700);
 }
 
+/** A room with one message, opened, with that row's selector handed back. */
+async function openRoomWithMessage(
+  page: Page,
+  request: APIRequestContext,
+  tag: string,
+): Promise<string> {
+  const hs = session.hs as string;
+  const runId = `${Date.now().toString(36)}${tag}`;
+  const user = `sheet-${runId}`;
+  const pass = `${user}-pass`;
+  const roomName = `Sheet ${runId}`;
+
+  await registerUser(request, user, pass);
+  const { access_token } = await request
+    .post(`${hs}/_matrix/client/v3/login`, {
+      data: {
+        type: 'm.login.password',
+        identifier: { type: 'm.id.user', user },
+        password: pass,
+      },
+    })
+    .then((r) => r.json());
+  const headers = { Authorization: `Bearer ${access_token}` };
+  const { room_id } = await request
+    .post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers,
+      data: { name: roomName, preset: 'private_chat' },
+    })
+    .then((r) => r.json());
+  await request.put(
+    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/send/m.room.message/s-${runId}`,
+    { headers, data: { msgtype: 'm.text', body: `act on me ${runId}` } },
+  );
+
+  await login(page, { available: true, hs, user, pass } as SynapseSession);
+  await page.getByTestId('rail-rooms').click();
+  const channel = page.locator('.channel', { hasText: roomName });
+  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
+  await channel.first().click();
+  await expect(page.getByTestId('composer-input')).toBeVisible({
+    timeout: 20_000,
+  });
+
+  const row = page.locator('.msg[data-mid]').last();
+  await row.waitFor({ state: 'visible', timeout: 30_000 });
+  return `.msg[data-mid="${await row.getAttribute('data-mid')}"]`;
+}
+
 test.use({ ...devices['Pixel 5'] });
 
 test.describe('Message actions on a phone', () => {
@@ -70,48 +118,7 @@ test.describe('Message actions on a phone', () => {
     page,
     request,
   }) => {
-    const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}as`;
-    const user = `sheet-${runId}`;
-    const pass = `${user}-pass`;
-    const roomName = `Sheet ${runId}`;
-    const body = `act on me ${runId}`;
-
-    await registerUser(request, user, pass);
-    const { access_token } = await request
-      .post(`${hs}/_matrix/client/v3/login`, {
-        data: {
-          type: 'm.login.password',
-          identifier: { type: 'm.id.user', user },
-          password: pass,
-        },
-      })
-      .then((r) => r.json());
-    const headers = { Authorization: `Bearer ${access_token}` };
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers,
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((r) => r.json());
-    await request.put(
-      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/send/m.room.message/s-${runId}`,
-      { headers, data: { msgtype: 'm.text', body } },
-    );
-
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
-    await page.getByTestId('rail-rooms').click();
-    const channel = page.locator('.channel', { hasText: roomName });
-    await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-    await channel.first().click();
-    await expect(page.getByTestId('composer-input')).toBeVisible({
-      timeout: 20_000,
-    });
-
-    const row = page.locator('.msg[data-mid]').last();
-    await row.waitFor({ state: 'visible', timeout: 30_000 });
-    const mid = await row.getAttribute('data-mid');
-    const rowSel = `.msg[data-mid="${mid}"]`;
+    const rowSel = await openRoomWithMessage(page, request, 'a');
 
     await longPress(page, rowSel);
 
@@ -147,5 +154,47 @@ test.describe('Message actions on a phone', () => {
         timeout: 10_000,
       },
     );
+  });
+
+  test('reacting from the sheet puts the reaction on the message', async ({
+    page,
+    request,
+  }) => {
+    // The quick strip exists because reacting is the highest-frequency message action and
+    // six full-width text rows would push everything else off the screen. It is also the
+    // one part of the sheet that is not a plain button row, so it gets its own check.
+    const rowSel = await openRoomWithMessage(page, request, 'b');
+    await longPress(page, rowSel);
+    await expect(page.locator('trn-action-sheet')).toBeVisible({
+      timeout: 10_000,
+    });
+
+    await page.locator('[data-testid^="sheet-react-"]').first().click();
+
+    await expect(page.locator('trn-action-sheet')).toHaveCount(0);
+    await expect(page.locator(`${rowSel} trn-message-reactions`)).toContainText(
+      '👍',
+      { timeout: 15_000 },
+    );
+  });
+
+  test('tapping outside closes the sheet without acting', async ({
+    page,
+    request,
+  }) => {
+    // The backdrop is the way out on a phone — there is no Escape key and no hover to
+    // move away. Nothing must fire on the way.
+    const rowSel = await openRoomWithMessage(page, request, 'c');
+    await longPress(page, rowSel);
+    const sheet = page.locator('trn-action-sheet');
+    await expect(sheet).toBeVisible({ timeout: 10_000 });
+
+    await page
+      .locator('.cdk-overlay-backdrop')
+      .click({ position: { x: 5, y: 5 } });
+
+    await expect(sheet).toHaveCount(0);
+    // No reply started, no reaction added — dismissing is not choosing.
+    await expect(page.locator('.composer__banner')).toHaveCount(0);
   });
 });

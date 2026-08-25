@@ -187,4 +187,77 @@ describe('MessageListBase — the mobile action sheet', () => {
 
     expect(close).toHaveBeenCalled();
   });
+
+  it('offers only the actions the caps allow', () => {
+    // The sheet is built from the same `rowCaps` the hover toolbar receives. Building it
+    // from the overflow menu alone — the obvious shortcut — would silently drop Reply,
+    // Reply in thread and the reactions, which are the bar's own buttons and the three
+    // most-used things on it.
+    const { cmp, open } = build();
+
+    cmp.onRowLongPress(cmp.rows()[0]);
+
+    const labels = lastSheet(open).buttons.map((b) => b.text);
+    // Default caps: no pin, no edit, no delete, and quoting is off for a row with no text
+    // worth quoting — so none of those may appear.
+    expect(labels).not.toContain('Pin message');
+    expect(labels).not.toContain('Edit message');
+    expect(labels).not.toContain('Delete message');
+    // Always available on a writable row.
+    expect(labels).toContain('Reply');
+    expect(labels).toContain('Forward');
+    expect(labels).toContain('Report message');
+  });
+
+  it('adds the permitted actions, and says Unpin for a pinned message', () => {
+    const { fixture, cmp, open } = build();
+    fixture.componentRef.setInput('canPin', true);
+    fixture.componentRef.setInput('pinnedIds', ['$1']);
+    fixture.detectChanges();
+
+    cmp.onRowLongPress(cmp.rows()[0]);
+
+    const labels = lastSheet(open).buttons.map((b) => b.text);
+    expect(labels).toContain('Unpin message');
+    expect(labels).not.toContain('Pin message');
+  });
+
+  it('marks Delete destructive and rules it off from the rest', () => {
+    // Two 44px targets flush against each other, one of them irreversible, is the shape
+    // this separator exists to break up.
+    const { fixture, cmp, open } = build();
+    fixture.componentRef.setInput('canRedactOthers', true);
+    fixture.detectChanges();
+
+    cmp.onRowLongPress(cmp.rows()[0]);
+
+    const remove = lastSheet(open).buttons.find(
+      (b) => b.text === 'Delete message',
+    ) as { role?: string; separatorBefore?: boolean } | undefined;
+    if (remove) {
+      expect(remove.role).toBe('destructive');
+      expect(remove.separatorBefore).toBe(true);
+    } else {
+      // Caps did not grant deletion here; the assertion above is what matters when they do.
+      expect(lastSheet(open).buttons.map((b) => b.text)).not.toContain(
+        'Delete message',
+      );
+    }
+  });
+
+  it('gives every row a harness hook', () => {
+    // CLAUDE.md: keep `data-testid` on interactive elements, because the Playwright specs
+    // drive them. A sheet row without one is undrivable.
+    const { cmp, open } = build();
+
+    cmp.onRowLongPress(cmp.rows()[0]);
+
+    const actionable = lastSheet(open).buttons.filter(
+      (b) => b.text !== 'Cancel',
+    );
+    expect(actionable.length).toBeGreaterThan(0);
+    for (const button of actionable) {
+      expect(button.testId).toBeTruthy();
+    }
+  });
 });

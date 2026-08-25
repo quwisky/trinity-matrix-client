@@ -186,6 +186,13 @@ export class MessageRowComponent {
     if (event.pointerType === 'mouse' || !this.toolbar()) {
       return;
     }
+    // A long press on a link or an attachment belongs to the BROWSER — "Open in new tab",
+    // "Save image". Those live nowhere else, so taking them away to offer message actions
+    // is a straight loss. `onContextMenu` has always guarded this; the touch path did not,
+    // which meant the same press that raised the OS menu also opened ours behind it.
+    if ((event.target as HTMLElement | null)?.closest('a, img, video, audio')) {
+      return;
+    }
     // Only the first finger arms a press, and any press already pending is cleared first.
     // Without both, a second pointer overwrote the timer handle while the first timer stayed
     // scheduled: pinch-zooming a message cancelled the one that could be cancelled and let
