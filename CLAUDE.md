@@ -50,6 +50,26 @@ pnpm exec nx affected -t lint test            # only what changed vs. the base b
 pnpm exec nx reset                            # clear Nx cache if results look stale
 ```
 
+**`pnpm test` does not typecheck.** Vitest transpiles specs without checking them, so a type
+error in a spec passes the test run and only fails `nx run-many -t typecheck`. Run both before
+claiming a tree is green, and check exit codes rather than grepping output — Nx prints
+`✘ [ERROR]` and `Failed tasks:` in forms a naive grep misses.
+
+**jsdom has no layout and evaluates no media queries.** It cannot see a rendered size, an element
+covering another, a cascade result, or anything behind a `@media` rule — a unit test asserting
+those passes for the wrong reason. Those claims belong in `e2e/playwright/`, and a mobile one
+needs a real device profile (`devices['Pixel 5']`), not `hasTouch`: a touch-emulated desktop
+Chromium keeps its desktop user agent and silently takes the desktop path. Note also that
+Playwright counts `opacity: 0` as **visible**, so assert on the class that hides a thing rather
+than on its visibility.
+
+**`scripts/*.spec.mjs` are source-shape guards** (17 of them) encoding decisions the type system
+cannot: the module boundaries, the styling idiom LEDGER, the breakpoint copies, the
+`hostDirectives` contract, the config-key ledger, the `trn-message-row` consumer list. When one
+fails, read its docstring before changing the code — it usually knows something you do not.
+Deleting a component stylesheet means pruning `styling-idiom.spec.mjs`, which asserts exact
+equality.
+
 **Native (Capacitor)** — each `*:run`/`*:build` rebuilds `www/` and `cap sync`s first; re-run a
 `*:sync` after any web change. Android needs `ANDROID_HOME`; iOS needs macOS + Xcode.
 
@@ -191,6 +211,19 @@ Electron's `trinity://` scheme, which broke the desktop dark theme.
   is a near-black maroon (in a template the alert-text utility is `text-danger`, **not**
   `text-destructive`). Rendered `[innerHTML]` markdown is styled globally in
   `apps/trinity/src/rendered-markdown.scss` (not `::ng-deep`). See [docs/architecture/ui-and-theming.md](docs/architecture/ui-and-theming.md).
+- **A Tailwind utility loses to an unlayered rule, whatever the specificity.** `theme/spartan.css`
+  imports Tailwind into `@layer utilities`; Angular component styles and `global.scss` are
+  UNLAYERED, and an unlayered author declaration always wins. So `md:hidden` on a component with
+  its own `:host { display: … }` does nothing, and pairing `.safe-*` with `p-3` REPLACES the
+  padding on that side instead of adding to it. Three separate bugs came from this. If a utility
+  "does nothing", check the layer before anything else — and compose an inset with its padding in
+  one declaration (see `.panel-header` in `global.scss`) rather than stacking the two classes.
+- **Platform vs capability are different questions, and both predicates exist.** `isMobileOs()`
+  (`@trinity/platform-native`) asks the OS and picks the INTERACTION MODEL — a bottom sheet is an
+  iOS/Android convention, and a touchscreen Windows laptop should not be handed one. A
+  `(pointer: coarse)` media query asks whether a finger is driving, which is what decides how big
+  a target must be. Use the one that matches the question; they are not interchangeable and are
+  not in conflict.
 - **Desktop detection**: Capacitor's `isNativePlatform()` is `false` in the Electron shell — branch on
   the `trinityDesktop` preload marker to treat desktop like web (service worker off, push off).
 
