@@ -178,7 +178,7 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     // The sheet is a modal over this panel; leaving it standing would dispatch against a
     // thread that is no longer open.
-    this.messageSheet.close();
+    this.messageSheet.close(this);
     this.threads.closeThread();
   }
 
@@ -192,7 +192,7 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
    * unreachable by touch.
    */
   onRowLongPress(row: MessageRow): void {
-    this.messageSheet.open(row, this.rowCaps(row), (action) =>
+    this.messageSheet.open(this, this.rowCaps(row), (action) =>
       this.onRowAction(row, action),
     );
   }

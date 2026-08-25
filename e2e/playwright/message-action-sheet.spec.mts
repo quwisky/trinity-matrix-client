@@ -186,7 +186,10 @@ test.describe('Message actions on a phone', () => {
       timeout: 10_000,
     });
 
-    await page.locator('[data-testid^="sheet-react-"]').first().click();
+    // The exact id, not the `^=` prefix: `sheet-react-more` matches that prefix too, and
+    // `.first()` only misses it because the strip happens to render above the button list.
+    // Reordering the sheet would silently start clicking "More reactions…" instead.
+    await page.locator('[data-testid="sheet-react-👍"]').click();
 
     await expect(page.locator('trn-action-sheet')).toHaveCount(0);
     await expect(page.locator(`${rowSel} trn-message-reactions`)).toContainText(

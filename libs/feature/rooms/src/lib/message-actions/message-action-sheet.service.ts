@@ -5,7 +5,6 @@ import {
   type ActionSheetButton,
 } from '@trinity/components/overlay';
 import {
-  type MessageRow,
   type MessageRowAction,
   type MessageRowCaps,
 } from '../message-row/message-row.component';
@@ -20,6 +19,20 @@ import {
 const QUICK_SHEET_REACTIONS = ['👍', '❤️', '😂', '🎉', '😮', '😢'] as const;
 
 /**
+ * The action variants carrying nothing but their `type`.
+ *
+ * `react` needs a `key` and `jump` needs an `id`. Building either from a bare type string
+ * yields a half-formed action — `{ type: 'react' }` with no key, dispatched into an
+ * `onReact(row.id, undefined)` — and a cast to `MessageRowAction` makes that compile. This
+ * excludes them instead, so the mistake is a type error at the call below rather than the
+ * one hole in each consumer's `never` exhaustiveness guard.
+ */
+type PayloadFreeAction = Exclude<
+  MessageRowAction,
+  { key: string } | { id: string }
+>;
+
+/**
  * A message's actions as a bottom sheet, for the long press on a phone or tablet.
  *
  * ## Why a service, and not the component that was pressed
@@ -30,8 +43,10 @@ const QUICK_SHEET_REACTIONS = ['👍', '❤️', '😂', '🎉', '😮', '😢']
  * it. An `output()` on a destroyed component is a SILENT no-op, so a sheet holding the row's
  * handlers would be a menu where every row is still tappable and nothing happens.
  *
- * So the caller hands over a row SNAPSHOT and a dispatch function of its own, and neither
- * depends on the pressed component surviving.
+ * So the caller hands over a `dispatch` function of its own, which closes over the row it
+ * was pressed on. That closure is the snapshot — nothing here depends on the pressed
+ * component surviving, and `message-list-sheet.spec.ts` proves it by removing the row from
+ * the list before picking an action.
  *
  * ## Why a service, and not a method on the list
  *
@@ -42,28 +57,36 @@ const QUICK_SHEET_REACTIONS = ['👍', '❤️', '😂', '🎉', '😮', '😢']
  * fallback removed as well. Shared here so a fourth consumer inherits the behaviour instead
  * of having to remember it.
  *
- * One sheet at a time: opening closes whatever was open. Callers close it on their own
- * destroy, and when the room changes.
+ * ## Why `open` and `close` take an owner
+ *
+ * One sheet at a time, in a `root` singleton with two consumers that outlive each other in
+ * either order. Without a token, `close()` is "shut whatever is open", and a thread panel
+ * closing shuts the timeline's sheet standing behind it. With one, a consumer can only
+ * dismiss the sheet it opened, so both can call it unconditionally from their own teardown —
+ * which is what makes an orphaned sheet impossible: the overlay lives outside the router
+ * outlet and survives the route change that destroys its opener.
  */
 @Injectable({ providedIn: 'root' })
 export class MessageActionSheetService {
   private readonly sheet = inject(TrnActionSheetService);
   private ref: TrnDialogRef<void> | null = null;
+  private owner: object | null = null;
 
   /**
-   * Offer `row`'s actions, dispatching the chosen one through `dispatch`.
+   * Offer the pressed row's actions, dispatching the chosen one through `dispatch`.
    *
    * `caps` decides what is on offer, exactly as it decides what the hover toolbar shows —
    * building the list from the overflow menu instead would silently drop Reply, Reply in
    * thread and the reactions, which are the bar's own buttons.
+   *
+   * `owner` is the consumer opening it, and the only thing that may close it again.
    */
   open(
-    row: MessageRow,
+    owner: object,
     caps: MessageRowCaps,
     dispatch: (action: MessageRowAction) => void,
   ): void {
-    const act = (type: MessageRowAction['type']) => () =>
-      dispatch({ type } as MessageRowAction);
+    const act = (type: PayloadFreeAction['type']) => () => dispatch({ type });
 
     const buttons: ActionSheetButton[] = [
       {
@@ -158,7 +181,8 @@ export class MessageActionSheetService {
     }
     buttons.push({ text: 'Cancel', role: 'cancel' });
 
-    this.close();
+    this.dismiss();
+    this.owner = owner;
     this.ref = this.sheet.open(
       {
         buttons,
@@ -171,9 +195,22 @@ export class MessageActionSheetService {
     );
   }
 
-  /** Dismiss the sheet, if one is open. */
-  close(): void {
+  /**
+   * Dismiss the sheet, if `owner` is the consumer that opened it.
+   *
+   * A no-op otherwise, which is the point: both consumers call this from their own teardown
+   * and from a room change, and the one whose sheet is not showing must not shut the other's.
+   */
+  close(owner: object): void {
+    if (this.owner === owner) {
+      this.dismiss();
+    }
+  }
+
+  /** Shut whatever is open, whoever opened it. Only `open` may do that. */
+  private dismiss(): void {
     this.ref?.close();
     this.ref = null;
+    this.owner = null;
   }
 }

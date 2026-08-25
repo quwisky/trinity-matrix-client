@@ -10,8 +10,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { DateTimeFormatService } from '@trinity/platform-native';
-import { isMobileOs } from '@trinity/platform-native';
+import { DateTimeFormatService, isMobileOs } from '@trinity/platform-native';
 import { AvatarComponent } from '@trinity/components/avatar';
 import {
   MessageToolbarComponent,
@@ -190,6 +189,11 @@ export class MessageRowComponent {
     // "Save image". Those live nowhere else, so taking them away to offer message actions
     // is a straight loss. `onContextMenu` has always guarded this; the touch path did not,
     // which meant the same press that raised the OS menu also opened ours behind it.
+    //
+    // `img` also catches the sender avatar, which `trn-avatar` renders as one — so a press
+    // on the 40px avatar column gets the browser's image menu and no sheet. Deliberate: the
+    // rule is "whatever the OS offers on this element wins", and a per-element exception
+    // list is the thing that rots. The message body either side of it is a large target.
     if ((event.target as HTMLElement | null)?.closest('a, img, video, audio')) {
       return;
     }

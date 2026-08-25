@@ -364,6 +364,13 @@ export abstract class MessageListBase {
     // destroyed, and a host directive is destroyed with the component it is attached to.
     this.fileDrop.filesDropped.subscribe((files) => this.onFilesDropped(files));
 
+    // The sheet is a CDK overlay, which lives OUTSIDE the router outlet and so outlives
+    // this list. `resetOnRoomChange` cannot be the only place it is shut: a route to
+    // settings, a logout redirect and a deep link all destroy the timeline WITHOUT the
+    // room id changing, leaving a modal standing whose every row dispatches into a
+    // destroyed component. Scoped to `this`, so it never shuts the thread panel's sheet.
+    this.listDestroyRef.onDestroy(() => this.messageSheet.close(this));
+
     // Reset per-room state when the active room changes. Created here — before any
     // scroll effect a subclass adds in its own constructor — so it runs FIRST
     // (effects fire in creation order), letting the scroll effect treat the new room
@@ -427,7 +434,7 @@ export abstract class MessageListBase {
   protected resetOnRoomChange(): void {
     // A sheet is about ONE message in ONE room; leaving it standing over a different
     // room's timeline would offer actions against an event that is no longer on screen.
-    this.messageSheet.close();
+    this.messageSheet.close(this);
     this.editingId.set(null);
     this.replyingToId.set(null);
     this.announcement.set('');
@@ -632,11 +639,11 @@ export abstract class MessageListBase {
    *
    * The sheet is built and held by {@link MessageActionSheetService}, not here, because
    * `trn-message-row` has a third consumer that does not extend this class — see that
-   * service. What this method contributes is the row snapshot, its caps, and a dispatch
-   * that routes through `onRowAction`, the same path the hover toolbar takes.
+   * service. What this method contributes is its caps and a dispatch closing over the row,
+   * routed through `onRowAction` — the same path the hover toolbar takes.
    */
   onRowLongPress(row: MessageRow): void {
-    this.messageSheet.open(row, this.rowCaps(row), (action) =>
+    this.messageSheet.open(this, this.rowCaps(row), (action) =>
       this.onRowAction(row, action),
     );
   }

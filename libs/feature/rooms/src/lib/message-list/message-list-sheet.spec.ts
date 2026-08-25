@@ -64,7 +64,8 @@ function lastSheet(open: ReturnType<typeof vi.fn>) {
 }
 
 function build() {
-  const open = vi.fn().mockReturnValue({ close: vi.fn() });
+  const close = vi.fn();
+  const open = vi.fn().mockReturnValue({ close });
   TestBed.configureTestingModule({
     providers: [{ provide: TrnActionSheetService, useValue: { open } }],
   });
@@ -72,7 +73,16 @@ function build() {
   fixture.componentRef.setInput('roomId', '!r:hs');
   fixture.componentRef.setInput('messages', [msg('$1')]);
   fixture.detectChanges();
-  return { fixture, cmp: fixture.componentInstance, open };
+  return { fixture, cmp: fixture.componentInstance, open, close };
+}
+
+/** A second list on the SAME root service — the shape that makes ownership matter. */
+function buildSecond() {
+  const fixture = TestBed.createComponent(TestListComponent);
+  fixture.componentRef.setInput('roomId', '!r:hs');
+  fixture.componentRef.setInput('messages', [msg('$2')]);
+  fixture.detectChanges();
+  return fixture;
 }
 
 describe('MessageListBase — the mobile action sheet', () => {
@@ -243,8 +253,35 @@ describe('MessageListBase — the mobile action sheet', () => {
     expect(remove?.separatorBefore).toBe(true);
   });
 
+  it('closes the sheet when the list itself is destroyed', () => {
+    // The gap `resetOnRoomChange` cannot cover. A route to settings, a logout redirect and
+    // a deep link all destroy the timeline WITHOUT the room id changing, so that effect
+    // never re-runs — and the sheet is a CDK overlay, which lives outside the router outlet
+    // and stays on screen. Every row on it then dispatches into a destroyed component.
+    const { fixture, cmp, close } = build();
+
+    cmp.onRowLongPress(cmp.rows()[0]);
+    fixture.destroy();
+
+    expect(close).toHaveBeenCalled();
+  });
+
+  it('does not close a sheet another list opened', () => {
+    // The other half of the same fix, and the reason `close` takes an owner. The service is
+    // a `root` singleton with more than one consumer, so an unscoped "shut whatever is
+    // open" makes the thread panel's teardown dismiss the timeline's sheet standing behind
+    // it — a modal that vanishes because an unrelated panel closed.
+    const { cmp, close } = build();
+    const other = buildSecond();
+
+    cmp.onRowLongPress(cmp.rows()[0]);
+    other.destroy();
+
+    expect(close).not.toHaveBeenCalled();
+  });
+
   it('gives every row a harness hook', () => {
-    // CLAUDE.md: keep `data-testid` on interactive elements, because the Playwright specs
+    // AGENTS.md: keep `data-testid` on interactive elements, because the Playwright specs
     // drive them. A sheet row without one is undrivable.
     const { cmp, open } = build();
 
