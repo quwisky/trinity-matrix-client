@@ -9,6 +9,6 @@ meant every other tool started from nothing. There is one copy, and it is that o
 Still Claude-specific, and still loaded automatically:
 
 - [`.claude/CLAUDE.md`](.claude/CLAUDE.md) — the Angular/TypeScript style guide.
-- [`.claude/README.md`](.claude/README.md) — the skills and rules catalog.
+- [`.agents/README.md`](.agents/README.md) — the skills and rules catalog.
 - [`.agents/rules/`](.agents/rules/) — commit conventions, changelog, branch protection.
   (`.claude/rules` is a symlink to it, so Claude Code loads them from where it expects.)
