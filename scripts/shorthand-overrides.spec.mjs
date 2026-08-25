@@ -1,6 +1,7 @@
 import { globSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { inlineStyleSheets } from './inline-styles.mjs';
 
 /**
  * A shorthand must not silently undo a longhand set earlier in the same file.
@@ -23,6 +24,10 @@ import { describe, expect, it } from 'vitest';
  * also names, so `.a` after `.a, .b` counts and `.a` after `.c` does not. That is precise
  * enough to have zero false positives on this tree while still catching the real case, which
  * is what keeps a guard like this alive.
+ *
+ * The corpus is every stylesheet AND every inline `styles: [...]` array, because the rule is
+ * about CSS rather than about files: ten wrapper components declare their rules on the
+ * component, and reading `.scss` alone left all of them unswept.
  *
  * Validated against the revision that shipped the mosaic: two hits there, none now.
  */
@@ -149,17 +154,26 @@ function coOccurringClasses(files, styled) {
 const declares = (body, property) =>
   new RegExp(`(^|[;{\\s])${property}\\s*:`).test(body);
 
-const stylesheets = globSync(
-  ['libs/**/*.scss', 'apps/**/*.scss', 'apps/**/*.css'],
-  { cwd: workspaceRoot },
-).filter((file) => !file.includes('node_modules'));
+/** Every source of CSS in the tree, as `{ label, text }` — a file, or a component's array. */
+const sheets = [
+  ...globSync(['libs/**/*.scss', 'apps/**/*.scss', 'apps/**/*.css'], {
+    cwd: workspaceRoot,
+  })
+    .filter((file) => !file.includes('node_modules'))
+    .map((file) => ({
+      label: file,
+      text: strip(readFileSync(join(workspaceRoot, file), 'utf8')),
+    })),
+  ...inlineStyleSheets().map(({ file, css }) => ({
+    label: `${file} (inline styles)`,
+    text: strip(css),
+  })),
+];
 
 /** Every class token any rule in the corpus targets. */
 const styledClasses = new Set(
-  stylesheets.flatMap((file) =>
-    rulesOf(strip(readFileSync(join(workspaceRoot, file), 'utf8'))).flatMap(
-      (rule) => [...classesOf(rule.selector)],
-    ),
+  sheets.flatMap(({ text }) =>
+    rulesOf(text).flatMap((rule) => [...classesOf(rule.selector)]),
   ),
 );
 
@@ -179,12 +193,14 @@ const overlaps = (earlier, later) =>
 
 describe('shorthand overrides', () => {
   it('reads the stylesheets at all, so an empty sweep cannot pass', () => {
-    expect(stylesheets.length).toBeGreaterThan(50);
+    expect(sheets.length).toBeGreaterThan(50);
+    // Including the inline idiom, which was invisible to this guard entirely.
+    expect(
+      sheets.filter(({ label }) => label.endsWith('(inline styles)')).length,
+    ).toBeGreaterThanOrEqual(10);
     // And the parser finds rules in them, rather than returning nothing on every file.
-    const parsed = stylesheets.reduce(
-      (total, file) =>
-        total +
-        rulesOf(strip(readFileSync(join(workspaceRoot, file), 'utf8'))).length,
+    const parsed = sheets.reduce(
+      (total, { text }) => total + rulesOf(text).length,
       0,
     );
     expect(parsed).toBeGreaterThan(200);
@@ -193,10 +209,8 @@ describe('shorthand overrides', () => {
   it('never lets a later shorthand reset an earlier longhand', () => {
     const resets = [];
 
-    for (const file of stylesheets) {
-      const rules = rulesOf(
-        strip(readFileSync(join(workspaceRoot, file), 'utf8')),
-      );
+    for (const { label, text } of sheets) {
+      const rules = rulesOf(text);
       for (let i = 0; i < rules.length; i++) {
         for (const [shorthand, longhands] of Object.entries(SHORTHANDS)) {
           const set = longhands.filter((longhand) =>
@@ -215,7 +229,7 @@ describe('shorthand overrides', () => {
               continue;
             }
             resets.push(
-              `${file}: "${rules[j].selector.replace(/\s+/g, ' ')}" sets \`${shorthand}\`, ` +
+              `${label}: "${rules[j].selector.replace(/\s+/g, ' ')}" sets \`${shorthand}\`, ` +
                 `resetting ${set.join(', ')} from "${rules[i].selector.replace(/\s+/g, ' ')}" on ${shared.join(', ')}`,
             );
           }

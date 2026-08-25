@@ -19,12 +19,25 @@ const workspaceRoot = join(import.meta.dirname, '..');
  * A source-shape guard rather than a behavioural test on purpose: what failed was not logic
  * but COVERAGE of a list of call sites, and the next consumer will be added by someone who
  * does not know this list exists.
+ *
+ * `.ts` files are swept alongside `.html`, and `apps/` alongside `libs/`: a fourth consumer
+ * with an inline `template:` — the idiom every wrapper component in `libs/components` uses —
+ * would otherwise be invisible to the guard written to find exactly that omission.
  */
-const OUTPUTS = ['(action)', '(longPress)'];
+const OUTPUTS = ['action', 'longPress'];
+
+/** A binding with something in it. `(longPress)=""` is a binding the compiler accepts. */
+const bindsOutput = (source, output) =>
+  new RegExp(`\\(${output}\\)\\s*=\\s*"[^"]+"`).test(source);
 
 describe('trn-message-row consumers', () => {
-  const templates = globSync('libs/**/*.html', { cwd: workspaceRoot }).filter(
+  const templates = globSync(
+    ['libs/**/*.html', 'libs/**/*.ts', 'apps/**/*.html', 'apps/**/*.ts'],
+    { cwd: workspaceRoot },
+  ).filter(
     (file) =>
+      !file.includes('node_modules') &&
+      !file.endsWith('.spec.ts') &&
       readFileSync(join(workspaceRoot, file), 'utf8').includes(
         '<trn-message-row',
       ),
@@ -40,11 +53,24 @@ describe('trn-message-row consumers', () => {
   it('binds every interaction output in every one of them', () => {
     const missing = templates.flatMap((file) => {
       const source = readFileSync(join(workspaceRoot, file), 'utf8');
-      return OUTPUTS.filter((output) => !source.includes(output)).map(
-        (output) => `${file} does not bind ${output}`,
+      return OUTPUTS.filter((output) => !bindsOutput(source, output)).map(
+        (output) => `${file} does not bind (${output})`,
       );
     });
 
     expect(missing).toEqual([]);
+  });
+
+  it('does not count an empty binding as a binding', () => {
+    // The parser is the guard. `includes('(longPress)')` — the first spelling here — scores
+    // a hit on the attribute alone, so a consumer that wired the output to nothing would
+    // have passed while behaving exactly like the one that omitted it.
+    expect(
+      bindsOutput('<trn-message-row (longPress)="x()" />', 'longPress'),
+    ).toBe(true);
+    expect(bindsOutput('<trn-message-row (longPress)="" />', 'longPress')).toBe(
+      false,
+    );
+    expect(bindsOutput('<trn-message-row />', 'longPress')).toBe(false);
   });
 });

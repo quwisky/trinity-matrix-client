@@ -1,6 +1,7 @@
 import { globSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { inlineStyleSheets } from './inline-styles.mjs';
 
 /**
  * Trinity styles components two ways, and the redesign wants one.
@@ -17,6 +18,12 @@ import { describe, expect, it } from 'vitest';
  *
  * It lives in `scripts` for the same reason `confirmation-words.spec.mjs` does: the files span
  * libraries that the Nx module boundaries stop any single project from importing.
+ *
+ * There is a THIRD idiom, and it was counted by nothing: an inline `styles: [...]` array on
+ * the component. Ten wrapper components use it, so it is ledgered here on the same terms —
+ * the set may shrink, and growing it is a visible line in a shared file rather than an
+ * invisible default. Without this, a rule could be added anywhere in `libs/components`
+ * without any styling guard in the tree reading it.
  */
 
 const workspaceRoot = join(import.meta.dirname, '..');
@@ -109,6 +116,28 @@ const LEDGER = [
   'libs/feature/settings/src/lib/server/homeserver-block.component.scss',
 ];
 
+/**
+ * The ledger's counterpart for the inline idiom: components declaring `styles: [...]`.
+ *
+ * Every entry is in `libs/components` by construction — the wrapper tier ships one-rule
+ * escapes from a kit default, which is the case inline styles are actually good for. A
+ * feature component appearing here would be the thing worth a conversation.
+ */
+const INLINE_LEDGER = [
+  'libs/components/avatar/src/lib/avatar.component.ts',
+  'libs/components/checkbox/src/lib/trn-checkbox.component.ts',
+  'libs/components/icon/src/lib/trn-icon/trn-icon.component.ts',
+  'libs/components/overlay/src/lib/action-sheet/trn-action-sheet.component.ts',
+  'libs/components/progress/src/lib/trn-progress.component.ts',
+  'libs/components/radio-group/src/lib/trn-radio-group.component.ts',
+  'libs/components/select/src/lib/trn-select.component.ts',
+  'libs/components/spinner/src/lib/trn-spinner.component.ts',
+  'libs/components/switch/src/lib/trn-switch.component.ts',
+  'libs/components/tabs/src/lib/trn-tab-panel.component.ts',
+];
+
+const inlineStyled = inlineStyleSheets();
+
 describe('styling idiom', () => {
   it('reads the tree at all, so an empty sweep cannot pass as a clean one', () => {
     expect(stylesheets.length).toBeGreaterThan(50);
@@ -155,5 +184,18 @@ describe('styling idiom', () => {
     );
 
     expect(orphans).toEqual([]);
+  });
+
+  it('has a ledger for the inline idiom too, and it still describes the tree', () => {
+    expect(inlineStyled.map(({ file }) => file)).toEqual(INLINE_LEDGER);
+  });
+
+  it('actually extracts the CSS, so an empty parse cannot pass as an empty idiom', () => {
+    // The failure this catches is the quiet one: a parser that stops matching reports every
+    // component as having no inline CSS, and both this ledger and `shorthand-overrides`
+    // then sweep nothing while staying green.
+    const css = inlineStyled.map(({ css }) => css).join('\n');
+    expect(css).toContain('safe-area-inset-bottom');
+    expect(css.match(/\{/g)?.length ?? 0).toBeGreaterThan(10);
   });
 });
