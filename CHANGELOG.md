@@ -110,6 +110,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Switches and checkboxes show which way they are set.** Every toggle in Settings —
+  read receipts, link previews, notification rules, the experimental flags — rendered
+  identically whether it was on or off: same grey track, thumb never moving. Checkboxes had
+  it too, staying unfilled when ticked, as did the check marks in the right-click menus. The
+  controls were reporting their state correctly to screen readers and to the app the whole
+  time; only the part you look at was missing, so a setting you had just changed looked
+  untouched.
+
 - **The side panels have their heading back.** Threads, a thread, pinned messages, search and
   member info all drew their top bar with the title jammed against the left edge and the bar
   itself a few pixels shorter than the room header beside it, so the two never lined up. The

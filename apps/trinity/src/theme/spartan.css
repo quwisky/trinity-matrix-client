@@ -25,6 +25,29 @@
 /* Dark mode keyed to the class ThemeService toggles on <html>. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+ * The kit's checked/unchecked variants, which Tailwind cannot infer.
+ *
+ * Every Brn control publishes its state as `data-state="checked" | "unchecked"` — one
+ * attribute with two values — while the Helm classes styling it are written
+ * `data-checked:bg-primary` and `data-unchecked:bg-input`. Tailwind reads a bare `data-foo:`
+ * as an attribute PRESENCE test and compiles `&[data-checked]`, which nothing in the tree
+ * ever carries. Fourteen rules were emitted and matched nothing: a switch rendered
+ * identically on and off, a checked checkbox never took its primary fill, and the
+ * dropdown-menu check indicators never appeared.
+ *
+ * Upstream ships these two lines in its own theme; vendoring the components without them is
+ * what broke the pairing. Declared here rather than rewriting the classes to
+ * `data-[state=checked]:` so the vendored files stay byte-identical to the kit — there are
+ * already registered divergences to carry and this does not need to be another one.
+ *
+ * `kit-state-variants.spec.mjs` pins the pairing, and `switch-state.spec.mts` measures a
+ * real switch in a real browser, because the entire failure is a selector that matches
+ * nothing and jsdom applies no CSS at all.
+ */
+@custom-variant data-checked (&[data-state='checked']);
+@custom-variant data-unchecked (&[data-state='unchecked']);
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
