@@ -193,11 +193,13 @@ const overlaps = (earlier, later) =>
 
 describe('shorthand overrides', () => {
   it('reads the stylesheets at all, so an empty sweep cannot pass', () => {
-    expect(sheets.length).toBeGreaterThan(50);
-    // Including the inline idiom, which was invisible to this guard entirely.
-    expect(
-      sheets.filter(({ label }) => label.endsWith('(inline styles)')).length,
-    ).toBeGreaterThanOrEqual(10);
+    // Each corpus floored separately. A single combined floor let the FILE count quietly
+    // drop to 40 the moment ten inline sheets joined the total.
+    const inline = sheets.filter(({ label }) =>
+      label.endsWith('(inline styles)'),
+    );
+    expect(sheets.length - inline.length).toBeGreaterThan(50);
+    expect(inline.length).toBeGreaterThanOrEqual(10);
     // And the parser finds rules in them, rather than returning nothing on every file.
     const parsed = sheets.reduce(
       (total, { text }) => total + rulesOf(text).length,

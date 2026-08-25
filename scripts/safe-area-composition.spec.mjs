@@ -28,6 +28,17 @@ import { describe, expect, it } from 'vitest';
  *
  * Validated against the revision that shipped #219: this reports all five panel headers there,
  * and nothing on this tree.
+ *
+ * ## Two shapes it deliberately does not see
+ *
+ * **Cross-file composition.** `<trn-x class="safe-bottom">` where `trn-x`'s own host adds
+ * `class="p-4"` is the identical cascade fight on the identical element, written in two
+ * files. This reads one class list at a time, so it sees two unrelated strings. The wrapper
+ * tier makes that reachable, and closing it means resolving host metadata — a different tool.
+ *
+ * **Variant-gated helpers.** A hypothetical `md:safe-top` paired with `max-md:pt-2` never
+ * co-applies, but would be reported. No such usage exists today; if one appears, the fix is
+ * to compare variant prefixes rather than to delete the check.
  */
 
 const workspaceRoot = join(import.meta.dirname, '..');
@@ -83,7 +94,15 @@ function safeHelpers() {
 
 const HELPERS = safeHelpers();
 
-/** Strip Tailwind variant prefixes (`md:`, `hover:`, `max-sm:`) and `!` importance. */
+/**
+ * Strip Tailwind variant prefixes (`md:`, `hover:`, `max-sm:`) and `!` importance.
+ *
+ * The `.*` is greedy on purpose: it has to take the LAST colon so that a functional variant
+ * carrying one of its own — `supports-[padding:1px]:p-3` — reduces to `p-3` rather than to
+ * `1px]:p-3`. The cost is that an arbitrary value containing `://` mangles too
+ * (`bg-[url(https://x)]` → `//x)]`), which is harmless here because nothing that survives it
+ * can match the padding prefix.
+ */
 const bare = (token) => token.replace(/^.*:/, '').replace(/^!/, '');
 
 /** Which padding sides a class token sets, if it is a padding utility at all. */

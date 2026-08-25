@@ -25,7 +25,22 @@ const workspaceRoot = join(import.meta.dirname, '..');
  * a stylesheet. The scan tracks quote state — all three forms — so a bracket inside the CSS
  * does not close the array either.
  */
-export function inlineStylesOf(source) {
+/**
+ * Blank out comments, preserving offsets so the scan below still lines up.
+ *
+ * The scanner tracks quote state, and an apostrophe inside a comment opened a string that
+ * never closed — so the array's `]` was swallowed and the scan ran to EOF. It was live:
+ * `trn-icon.component.ts` says "the strut's half-leading" in a `//` comment inside its
+ * `styles:` array, and the extracted "CSS" was 400 characters of class names and TypeScript.
+ * Nothing noticed, because the self-checks could only detect under-capture.
+ */
+const blankComments = (source) =>
+  source
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/\/\/[^\n]*/g, (m) => ' '.repeat(m.length));
+
+export function inlineStylesOf(rawSource) {
+  const source = blankComments(rawSource);
   const blocks = [];
   for (const match of source.matchAll(/\bstyles\s*:\s*\[/g)) {
     let index = match.index + match[0].length;
@@ -55,7 +70,9 @@ export function inlineStylesOf(source) {
     const css = [
       ...source
         .slice(start, index)
-        .matchAll(/`([\s\S]*?)`|'([^'\n]*)'|"([^"\n]*)"/g),
+        .matchAll(
+          /`((?:[^`\\]|\\.)*)`|'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"/g,
+        ),
     ]
       .map(([, backtick, single, double]) => backtick ?? single ?? double ?? '')
       .join('\n');

@@ -32,26 +32,43 @@ const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
 
 /** The literals that must appear only where they are defined. */
 const RESTATED = [
+  // Unquoted, so a backtick or double-quoted copy is caught too. `127.0.0.1` is included
+  // because it is the spelling someone reaches for the day `localhost` resolves to ::1.
   {
     what: 'the registration shared secret',
-    pattern: /'trinity-e2e-shared-secret'/,
+    pattern: /trinity-e2e-shared-secret/,
   },
-  { what: "Synapse's base URL", pattern: /'http:\/\/localhost:8008'/ },
+  { what: "Synapse's base URL", pattern: /(?:localhost|127\.0\.0\.1):8008/ },
 ];
 
 /** The one file allowed to define them: the harness that writes them into homeserver.yaml. */
 const DEFINITION = 'e2e/synapse/start.mjs';
 
 /** Where the shared helpers live — `registerUser`'s home, not a copy of it. */
-const SUPPORT = 'e2e/playwright/support/';
+const EXEMPT = ['e2e/playwright/support/', 'e2e/synapse/'];
 
-const specs = globSync('e2e/playwright/**/*.mts', { cwd: workspaceRoot })
-  .filter((file) => !file.includes('node_modules') && !file.startsWith(SUPPORT))
+/**
+ * The whole e2e tree, not just the Playwright specs.
+ *
+ * The first version of this guard globbed `e2e/playwright/**` and its docblock claimed the
+ * constants had "one definition" — while `e2e/features/rooms.mjs` and `search.mjs`, both
+ * live and both documented in `docs/contributing/testing.md`, restated BOTH literals and
+ * carried a third `registerUser`. A guard narrower than the invariant it states is worse
+ * than no guard: it reads as tree-wide and is not.
+ */
+const specs = globSync('e2e/**/*.{mts,mjs}', { cwd: workspaceRoot })
+  .filter(
+    (file) =>
+      !file.includes('node_modules') &&
+      !EXEMPT.some((prefix) => file.startsWith(prefix)),
+  )
   .sort();
 
 describe('e2e harness constants', () => {
   it('finds the specs at all, so an empty sweep cannot pass', () => {
     expect(specs.length).toBeGreaterThan(80);
+    // Both file kinds are in reach, or the widened glob is decorative.
+    expect(specs.some((file) => file.endsWith('.mjs'))).toBe(true);
     // And the definition really does define them, so the assertion below is about
     // duplication rather than about a value that has been renamed out of existence.
     const source = read(DEFINITION);
@@ -77,12 +94,23 @@ describe('e2e harness constants', () => {
   });
 
   it('registers through the shared helper, bar the one documented exception', () => {
-    // A second local `registerUser` is how the first eighty-two happened. The exception is
-    // named rather than pattern-matched, so adding a third is a visible line here.
+    // A second local `registerUser` is how the first eighty-two happened. The exceptions are
+    // named rather than pattern-matched, so adding another is a visible line here.
+    //
+    // The two that remain are the standalone `.mjs` runners, which drive Playwright's
+    // library API directly and so have no `request` fixture to hand — they register over
+    // plain `fetch`. They import both constants, which is the half that actually drifts.
+    //
+    // `mobile-nav.spec.mts` is NOT among them any more. It used to be, on the stated
+    // grounds that `beforeAll` has no `request` fixture; that was simply false — Playwright
+    // provisions one for the hook and only forbids reusing it inside a test.
     const local = specs.filter((file) =>
-      /\bfunction registerUser\(/.test(read(file)),
+      /\b(?:function registerUser\(|const registerUser\s*=)/.test(read(file)),
     );
 
-    expect(local).toEqual(['e2e/playwright/mobile-nav.spec.mts']);
+    expect(local).toEqual([
+      'e2e/features/rooms.mjs',
+      'e2e/features/search.mjs',
+    ]);
   });
 });

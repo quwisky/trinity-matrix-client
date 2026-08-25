@@ -197,5 +197,30 @@ describe('styling idiom', () => {
     const css = inlineStyled.map(({ css }) => css).join('\n');
     expect(css).toContain('safe-area-inset-bottom');
     expect(css.match(/\{/g)?.length ?? 0).toBeGreaterThan(10);
+
+    // OVER-capture is the failure the checks above cannot see, and the one the tree was
+    // actually in: an apostrophe in a `//` comment opened a string that never closed, the
+    // array's `]` was swallowed, and the scan returned 412 characters of class names and
+    // markup as "CSS". Balanced braces do NOT catch it — the soup was 1-open/1-close — so
+    // what is asserted is that nothing outside a declaration block looks like anything but
+    // a selector.
+    for (const { file, css: block } of inlineStyled) {
+      // Template markup is never valid at CSS top level; the soup carried `<ng-icon>`.
+      expect(`${file}: ${/<[a-zA-Z]/.test(block)}`).toBe(`${file}: false`);
+
+      // Every line outside braces must be a selector — it may not be a bare utility token.
+      const outside = block.replace(/\{[^{}]*\}/g, '');
+      const stray = outside
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(
+          (line) =>
+            line.length > 0 &&
+            !/[{},]$/.test(line) &&
+            !/^[.#:[&@*]/.test(line) &&
+            !/^[a-z-]+\s*[.#:[]/.test(line),
+        );
+      expect(`${file}: ${stray.slice(0, 3).join(' | ')}`).toBe(`${file}: `);
+    }
   });
 });

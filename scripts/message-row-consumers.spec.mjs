@@ -42,10 +42,24 @@ const OUTPUTS = ['action', 'longPress'];
  */
 const INERT = /^(?:\s*|noop\(\)|undefined|null|''|""|0|false)$/;
 
-/** A binding whose expression does something. */
-const bindsOutput = (source, output) => {
-  const match = new RegExp(`\\(${output}\\)\\s*=\\s*"([^"]*)"`).exec(source);
-  return match !== null && !INERT.test(match[1].trim());
+/**
+ * Every `<trn-message-row …>` opening tag in a source.
+ *
+ * Scoped to the tag, not the file. A file-wide search answers "does this file bind
+ * `(action)` anywhere", which is a different question: `message-row.component.html:232`
+ * already binds `(action)` on the TOOLBAR, so a future consumer composing a toolbar beside
+ * the row would satisfy a file-wide check with zero bindings on the row itself. It also
+ * misses a second `<trn-message-row>` in another `@if` branch that binds nothing.
+ */
+const rowTags = (source) =>
+  [...source.matchAll(/<trn-message-row\b[^>]*>/g)].map(([tag]) => tag);
+
+/** A binding whose expression does something. Both attribute quotings are accepted. */
+const bindsOutput = (tag, output) => {
+  const match = new RegExp(
+    `\\(${output}\\)\\s*=\\s*(?:"([^"]*)"|'([^']*)')`,
+  ).exec(tag);
+  return match !== null && !INERT.test((match[1] ?? match[2] ?? '').trim());
 };
 
 describe('trn-message-row consumers', () => {
@@ -66,13 +80,22 @@ describe('trn-message-row consumers', () => {
     // would mean the glob or the marker changed, and every assertion below would hold
     // vacuously — the classic way a source-shape guard stops guarding in silence.
     expect(templates.length).toBeGreaterThanOrEqual(3);
+    // And each really yields a tag to inspect, or the per-tag loop below runs zero times
+    // and reports nothing missing on every file.
+    for (const file of templates) {
+      expect(
+        rowTags(readFileSync(join(workspaceRoot, file), 'utf8')).length,
+      ).toBeGreaterThan(0);
+    }
   });
 
   it('binds every interaction output in every one of them', () => {
     const missing = templates.flatMap((file) => {
       const source = readFileSync(join(workspaceRoot, file), 'utf8');
-      return OUTPUTS.filter((output) => !bindsOutput(source, output)).map(
-        (output) => `${file} does not bind (${output})`,
+      return rowTags(source).flatMap((tag, index) =>
+        OUTPUTS.filter((output) => !bindsOutput(tag, output)).map(
+          (output) => `${file} row #${index + 1} does not bind (${output})`,
+        ),
       );
     });
 
@@ -86,7 +109,19 @@ describe('trn-message-row consumers', () => {
     expect(
       bindsOutput('<trn-message-row (longPress)="x()" />', 'longPress'),
     ).toBe(true);
-    for (const inert of ['', ' ', 'noop()', 'undefined', 'null', '0']) {
+    expect(
+      bindsOutput("<trn-message-row (longPress)='x()' />", 'longPress'),
+    ).toBe(true);
+    for (const inert of [
+      '',
+      ' ',
+      'noop()',
+      'undefined',
+      'null',
+      '0',
+      'false',
+      "''",
+    ]) {
       expect(
         bindsOutput(`<trn-message-row (longPress)="${inert}" />`, 'longPress'),
       ).toBe(false);
