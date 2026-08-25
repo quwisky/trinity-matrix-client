@@ -24,8 +24,6 @@ import { registerUser } from './support/account.mts';
 // authenticated web e2e specs.
 const session = synapseSession();
 
-// Direct (no-TLS) Synapse admin endpoint — same constant as the other e2e helpers.
-
 interface ApiUser {
   token: string;
   userId: string;

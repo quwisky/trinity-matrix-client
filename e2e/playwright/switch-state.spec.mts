@@ -71,10 +71,17 @@ async function thumbOffset(row: Locator): Promise<number> {
  * The track carries `transition-all`, so an immediate read catches the colour part-way and
  * returns a different alpha every run — two probes of the same checked switch gave
  * `rgba(88, 101, 242, 0.03)` and `rgba(88, 101, 242, 0.176)`. Polling until two consecutive
- * reads agree is what makes the comparison about state rather than about timing.
+ * reads AT LEAST ONE INTERVAL APART agree is what makes the comparison about state rather
+ * than about timing; two reads inside one frame always agree and prove nothing.
  */
 async function settled(locator: Locator, property: string): Promise<string> {
-  let previous = await styleOf(locator, property);
+  // Seeded with a value no computed style can ever be, so the FIRST probe can never report
+  // "stable" — exactly as `thumbOffset()` seeds -1. Playwright runs a poll callback
+  // immediately and only then sleeps, so a pre-read here landed in the same 16.7 ms frame
+  // as probe #1; Chrome resolves transition values once per frame, the two agreed, and the
+  // helper returned the value sampled at t0 having polled nothing. That could fail against
+  // CORRECT code whenever the attribute flip and the read shared a frame.
+  let previous = '';
   await expect
     .poll(
       async () => {

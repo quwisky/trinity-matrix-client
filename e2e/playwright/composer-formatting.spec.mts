@@ -256,7 +256,7 @@ test.describe('Composer formatting', () => {
   }) => {
     // The setting takes away the ROW, not the capability — so the assertion that matters is
     // that Ctrl+B still formats once the buttons are gone.
-    const { composer, openRoom } = await openComposer(page, request, 'ht');
+    const { openRoom } = await openComposer(page, request, 'ht');
 
     await expect(page.getByTestId('format-bold')).toBeVisible();
 

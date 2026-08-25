@@ -21,9 +21,6 @@ import { registerUser } from './support/account.mts';
 // e2e specs (see timeline-virtualization.spec.mts).
 const session = synapseSession();
 
-// Direct (no-TLS) Synapse admin endpoint — same constant as the other e2e
-// helpers (e2e/features/rooms.mjs, search.mjs, unread-badges.spec.mts).
-
 interface ApiUser {
   token: string;
   userId: string;

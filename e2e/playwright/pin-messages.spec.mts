@@ -30,9 +30,6 @@ import { registerUser } from './support/account.mts';
 // authenticated web e2e specs.
 const session = synapseSession();
 
-// Direct (no-TLS) Synapse admin endpoint — same constant as the other e2e
-// helpers (e2e/features/rooms.mjs, search.mjs, unread-badges.spec.mts).
-
 const OTHER_BODY = 'just chatting';
 const PIN_BODY = 'pin me please';
 const REPEAT_PIN_BODY = 'pin me twice please';

@@ -23,10 +23,6 @@ import { registerUser } from './support/account.mts';
 // authenticated web e2e specs (see timeline-virtualization.spec.mts).
 const session = synapseSession();
 
-// Direct (no-TLS) Synapse admin endpoint — same constant as the other e2e
-// helpers (e2e/features/rooms.mjs, search.mjs) and e2e/synapse/start.mjs.
-// The server name ('localhost') is implicit in `hs` and every user id below.
-
 const SEED = 3;
 
 interface ApiUser {

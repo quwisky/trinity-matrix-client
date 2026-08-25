@@ -116,8 +116,12 @@ test.describe('Kit state styling', () => {
     // is underlined (`data-active:after:opacity-100`) and its label is brighter
     // (`data-active:text-foreground`). Both variants were dead, so all three tabs looked
     // the same.
-    expect(await pseudoStyleOf(active, 'opacity')).toBe('1');
-    expect(await pseudoStyleOf(inactive, 'opacity')).toBe('0');
+    // Polled, not read once: the trigger carries `transition-all` and the underline
+    // `after:transition-opacity`. This passes today only because the initially-active tab
+    // renders active from first paint and never animates — an assumption that dies the
+    // moment this test clicks a tab, and it costs nothing to not depend on it.
+    await expect.poll(() => pseudoStyleOf(active, 'opacity')).toBe('1');
+    await expect.poll(() => pseudoStyleOf(inactive, 'opacity')).toBe('0');
     expect(await styleOf(active, 'color')).not.toBe(
       await styleOf(inactive, 'color'),
     );
@@ -139,7 +143,12 @@ test.describe('Kit state styling', () => {
       timeout: 10_000,
     });
 
-    const rule = page.locator('[data-slot="separator"]').first();
+    // Scoped to the toolbar. A document-wide `[data-slot="separator"]` is unambiguous today
+    // but would start failing against correct code the day a HORIZONTAL separator renders
+    // earlier in the room view.
+    const rule = page
+      .locator('trn-composer-toolbar [data-slot="separator"]')
+      .first();
     await expect(rule).toHaveAttribute('data-orientation', 'vertical');
 
     // A rule with no width is not a rule. `data-vertical:w-px` is the only thing that gives
