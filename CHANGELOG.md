@@ -8,6 +8,26 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Room and space settings are tabbed.** Everything a room has used to be one long column
+  in a narrow dialog; it is now General, Access and Bans, so finding the join rule no
+  longer means scrolling past the topic. Saving still covers every tab at once — the Save
+  button sits outside them, and a room that cannot be saved says why from whichever tab
+  you are on.
+
+- **A density setting.** Under Settings → Appearance, "Compact" tightens the spacing in
+  the message list so more of a conversation fits on screen. Other parts of the app keep
+  their spacing for now.
+
+- **The member list has a filter.** Type a name or a user id above the list to narrow it —
+  useful in a room where scrolling to find someone was the only option. Large rooms also
+  render far fewer rows at a time, so opening the member list in a busy room no longer
+  builds thousands of rows up front.
+
+- **Preference toggles are switches.** The twelve on/off settings across Appearance,
+  Privacy, Notifications and Experimental now look like switches rather than checkboxes,
+  which is what they have always been: they take effect immediately, with nothing to
+  confirm.
+
 - **Right-click or long-press a message for its actions.** The full set — pin, quote, copy,
   copy link, forward, view source, report, edit, delete — is now a right-click away on desktop,
   instead of only reachable through the small "⋯" button that appears on hover. On a phone,
@@ -25,6 +45,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Clicking a mention opens the person's card beside it**, instead of a window centred
+  over the conversation the mention is part of — so you can still read what was said while
+  you look at who said it. On a phone it stays centred, where there is no room beside
+  anything.
+
+- **Opening an image gives it the whole screen properly.** The full-size view is now a
+  real dialog: the page behind it does not scroll, Escape closes it, and the keyboard
+  stays inside it. A message arriving underneath no longer slams it shut.
+
+- **Signing in through your homeserver looks like signing in.** The page you land on
+  while the redirect completes now wears the same card and wordmark as the sign-in form,
+  rather than a bare spinner on a blank background.
 - **The "nothing here yet" messages all look the same now.** Fourteen places tell you a list is
   empty — no messages in a channel, no threads, no pinned messages, no search results, nobody in
   a space — and each had drifted into its own size and spacing. They are one panel now, at one

@@ -37,6 +37,28 @@
   app keep a fixed size for now.
 </p>
 
+<h2
+  id="appearance-density-heading"
+  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+>
+  Density
+</h2>
+<div class="px-4 py-2">
+  <trn-select
+    data-testid="density-select"
+    aria-labelledby="appearance-density-heading"
+    placeholder="Select a density"
+    triggerClass="w-full"
+    [options]="densityOptions"
+    [value]="theme.density()"
+    (valueChange)="onDensityChange($event)"
+  />
+</div>
+<p class="block px-4 py-2 text-13 text-muted-foreground">
+  Compact tightens the spacing in the message list so more of a conversation
+  fits on screen. Other parts of the app keep their spacing for now.
+</p>
+
 <trn-code-appearance-block />
 
 <h2
