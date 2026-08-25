@@ -37,7 +37,12 @@ import { prefersReducedMotion } from '@trinity/util/ui';
  */
 
 /** How far in from the right edge a closing gesture may start, in px. */
-const EDGE_ZONE_PX = 24;
+/**
+ * Exported so the message swipe can pin that its own dead zone is never narrower than this.
+ * The two constants have to move together — a swipe arming inside the drawer's opening zone
+ * would put both gestures on the same finger.
+ */
+export const EDGE_ZONE_PX = 24;
 
 /** A drag must beat one of these to commit: this fraction of the drawer, or this speed. */
 const COMMIT_FRACTION = 0.4;

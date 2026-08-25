@@ -30,6 +30,7 @@ import {
 } from '@trinity/data-access/rooms';
 import { isDateFormat, isTimeFormat } from '@trinity/util/matrix';
 import { CodeAppearanceBlockComponent } from './code-appearance-block.component';
+import { MessageGesturesBlockComponent } from './message-gestures-block.component';
 
 /**
  * Appearance settings sub-page: light/dark/system mode, colour palette, text and code size,
@@ -48,6 +49,7 @@ import { CodeAppearanceBlockComponent } from './code-appearance-block.component'
     TrnSelectComponent,
     TrnSwitchComponent,
     CodeAppearanceBlockComponent,
+    MessageGesturesBlockComponent,
   ],
 })
 export class AppearanceSettingsComponent {

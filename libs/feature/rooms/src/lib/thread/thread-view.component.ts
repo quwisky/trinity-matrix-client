@@ -20,7 +20,14 @@ import {
   type BatchOutcome,
   type BatchProgress,
 } from '../shared/send-media-batch';
+import {
+  HapticsService,
+  MessageGestureSettingsService,
+  isMobileOs,
+} from '@trinity/platform-native';
 import { MessageActionSheetService } from '../message-actions/message-action-sheet.service';
+import { type SwipeDirection } from '../message-row/message-row.component';
+import { BELOW_MEMBERS_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
@@ -191,6 +198,45 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
    * `contextmenu` fallback having gone with it — every action on a thread reply was
    * unreachable by touch.
    */
+  /**
+   * Which way a thread reply is dragged to act on it.
+   *
+   * Read from the preference DIRECTLY, unlike the main timeline, whose page forces the
+   * gesture off while the drawer is open. This panel only exists while the drawer is open,
+   * so that rule would leave the gesture permanently dead here — on the one device it is
+   * for. The competition with the drawer's own close-drag is resolved at the row instead: an
+   * armed swipe stops the `pointerdown` from reaching it. See `armSwipe`.
+   *
+   * Still phones only, and for the same reason: above `max-width: 1099.98px` the scroller
+   * does not claim the horizontal axis and the browser eats the drag.
+   */
+  protected readonly swipeDirection = computed<SwipeDirection>(() =>
+    this.belowMembers() && isMobileOs() ? this.gestures.messageSwipe() : 'off',
+  );
+
+  private readonly gestures = inject(MessageGestureSettingsService);
+  private readonly haptics = inject(HapticsService);
+  private readonly belowMembers = mediaQuerySignal(
+    BELOW_MEMBERS_QUERY,
+    inject(DestroyRef),
+  );
+
+  /**
+   * A committed sideways drag on a thread reply: edit it if it can be edited, reply if not.
+   *
+   * Reads `rowCaps` rather than `isEditable` so the icon the reader saw and the action they
+   * get are the same value — the mirror of `MessageListBase.onRowSwipe`, which this panel
+   * cannot inherit because it does not extend that class.
+   */
+  onRowSwipe(row: MessageRow): void {
+    this.haptics.gestureCommitted();
+    if (this.rowCaps(row).editable) {
+      this.startEdit(row);
+      return;
+    }
+    this.startReply(row);
+  }
+
   onRowLongPress(row: MessageRow): void {
     this.messageSheet.open(this, this.rowCaps(row), (action) =>
       this.onRowAction(row, action),

@@ -207,6 +207,29 @@ describe('styling tokens', () => {
           'libs/feature/rooms/src/lib/member-list/member-list.component.scss',
         selector: '.members',
       },
+      // The message swipe (#222) begins on the SAME scroller, and depends on the same claim.
+      // Listed separately rather than folded into the row above because the two gestures are
+      // independent: deleting `swipe-through` while only one of them exists must still fail,
+      // and a reader deleting it needs to see both names. The row itself declares no
+      // `touch-action` of its own on purpose — `.msg`'s value IS consulted (resolution
+      // includes the nearest scroll container), and `none` there would intersect to `none`
+      // and take vertical scrolling away from the timeline.
+      {
+        template:
+          'libs/feature/rooms/src/lib/message-list/virtual-message-list/virtual-message-list.component.html',
+        directive: 'swipeDirection',
+        styles:
+          'libs/feature/rooms/src/lib/message-list/_message-list-shared.scss',
+        selector: '.scroll',
+      },
+      {
+        template:
+          'libs/feature/rooms/src/lib/message-list/simple-message-list/simple-message-list.component.html',
+        directive: 'swipeDirection',
+        styles:
+          'libs/feature/rooms/src/lib/message-list/_message-list-shared.scss',
+        selector: '.scroll',
+      },
     ];
 
     // Scoped to the HOST RULE, not the file. `.pane-handle` in the same stylesheet declares

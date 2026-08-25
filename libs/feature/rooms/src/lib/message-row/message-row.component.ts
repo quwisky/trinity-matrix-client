@@ -84,6 +84,32 @@ const LONG_PRESS_MS = 500;
 const LONG_PRESS_SLOP_PX = 10;
 
 /**
+ * How far in from either viewport edge a message swipe refuses to START.
+ *
+ * Both competitors are viewport-anchored, and neither can be argued with once it has the
+ * gesture: the shell's drawer opens from within `EDGE_ZONE_PX` of the right edge, and iOS and
+ * Android own both edges with recognisers `touch-action` does not govern — WKWebView's are
+ * outside CSS entirely, which `MainViewController.swift` records. So the only lever is to
+ * refuse to arm there, measured at `pointerdown` because that is the only moment the decision
+ * can be made without having already competed.
+ *
+ * Wider than the drawer's zone and wider than the platform regions, whose widths Apple and
+ * Google do not publish — chosen with margin rather than derived. `message-row.swipe.spec.ts`
+ * pins that it is never narrower than the drawer's; a device is what confirms it clears the
+ * platform's.
+ */
+export const SWIPE_DEAD_ZONE_PX = 32;
+
+/** How far a row must travel, as a fraction of its own width, before the action commits. */
+const SWIPE_COMMIT_FRACTION = 0.25;
+
+/** How far the pointer may drift vertically before the drag is a scroll instead. */
+const SWIPE_VERTICAL_SLOP_PX = 12;
+
+/** Which way a row is dragged to act on it, as resolved by whoever renders the row. */
+export type SwipeDirection = 'off' | 'left' | 'right';
+
+/**
  * One presentational message row, shared by the main timeline ({@link
  * SimpleMessageListComponent} / {@link VirtualMessageListComponent}) and the thread
  * view so all render identically — sender
@@ -142,6 +168,9 @@ export class MessageRowComponent {
   constructor() {
     this.destroyRef.onDestroy(() => {
       this.cancelLongPress();
+      // A row destroyed mid-drag — a redaction, an edit, the local-echo id swap, or simply
+      // scrolling out of the virtual window — would otherwise leak its pointer capture.
+      this.cancelSwipe();
       this.hideToolbar();
     });
   }
@@ -182,7 +211,36 @@ export class MessageRowComponent {
    * the way every other app on the device reaches them.
    */
   onPointerDown(event: PointerEvent): void {
-    if (event.pointerType === 'mouse' || !this.toolbar()) {
+    // Neither gesture belongs to a mouse: the pointer has a hover bar and a right-click.
+    if (event.pointerType === 'mouse') {
+      return;
+    }
+    // Only the first finger arms anything. Without this a second pointer overwrote the
+    // timer handle while the first timer stayed scheduled: pinch-zooming a message
+    // cancelled the one that could be cancelled and let the orphan fire, and the overwrite
+    // measured finger one's travel against finger two's origin.
+    if (!event.isPrimary) {
+      return;
+    }
+
+    // The swipe is armed FIRST, and on rows the long press skips, which is why the two
+    // guards below sit under it rather than at the top of this method:
+    //
+    //  - `toolbar()` is absent on decryption failures and redacted rows, and those still
+    //    swipe to Reply — the gesture's whole promise is that it always does the most useful
+    //    available thing.
+    //  - the media/link bail exists because the OS offers its own menu on those elements. A
+    //    horizontal drag is not a menu, and media rows are exactly the ones whose swipe
+    //    means Reply, so sharing that bail would kill the gesture across most of a timeline.
+    if (this.armSwipe(event)) {
+      // The shell's drawer arms on this same `pointerdown`, bubbling, on `.chat-body` — and
+      // while it is open it arms ANYWHERE, with no edge zone. Stopping propagation is what
+      // keeps a thread reply's swipe from also closing the drawer. Only when the gesture
+      // actually armed: off, mouse and the dead zone all leave the drawer exactly as it was.
+      event.stopPropagation();
+    }
+
+    if (!this.toolbar()) {
       return;
     }
     // A long press on a link or an attachment belongs to the BROWSER — "Open in new tab",
@@ -200,14 +258,7 @@ export class MessageRowComponent {
     if ((event.target as HTMLElement | null)?.closest('a, img, video, audio')) {
       return;
     }
-    // Only the first finger arms a press, and any press already pending is cleared first.
-    // Without both, a second pointer overwrote the timer handle while the first timer stayed
-    // scheduled: pinch-zooming a message cancelled the one that could be cancelled and let
-    // the orphan fire, opening the bar mid-gesture with nothing held down. The overwrite also
-    // measured finger one's travel against finger two's origin.
-    if (!event.isPrimary) {
-      return;
-    }
+    // Any press already pending is cleared before a new one is scheduled.
     this.cancelLongPress();
     this.longPressOrigin = { x: event.clientX, y: event.clientY };
     this.longPressTimer = setTimeout(() => {
@@ -220,6 +271,9 @@ export class MessageRowComponent {
       // be dismissed by a stray scroll, or open a picker off the top of the scroller.
       // Everywhere else the hover bar is right, and is left exactly as it was.
       if (isMobileOs()) {
+        // The press won; the drag is no longer a candidate. Without this the sheet opens and
+        // a continued drag still commits underneath its backdrop.
+        this.cancelSwipe();
         this.longPress.emit();
         return;
       }
@@ -232,6 +286,7 @@ export class MessageRowComponent {
    * movement is what keeps the menu from firing at the end of a flick.
    */
   onPointerMove(event: PointerEvent): void {
+    this.trackSwipe(event);
     const origin = this.longPressOrigin;
     if (!origin || this.longPressTimer === null) {
       return;
@@ -244,12 +299,152 @@ export class MessageRowComponent {
   }
 
   /** Lifting, cancelling, or leaving all end the press without opening anything. */
+  /** A finger lifting ends both gestures — the press without firing, the drag by deciding. */
+  onPointerUp(event: PointerEvent): void {
+    this.releaseSwipe(event);
+    this.cancelLongPress();
+  }
+
+  /** The browser took the gesture away (a scroll won, or the pointer was cancelled). */
+  onPointerCancel(): void {
+    this.cancelSwipe();
+    this.cancelLongPress();
+  }
+
   cancelLongPress(): void {
     if (this.longPressTimer !== null) {
       clearTimeout(this.longPressTimer);
       this.longPressTimer = null;
     }
     this.longPressOrigin = null;
+  }
+
+  /**
+   * Whether a sideways drag is armed on this row, and how far it has travelled.
+   *
+   * `null` when nothing is armed — which is what the `off` setting produces, rather than a
+   * drag that moves and springs back. Off means no listeners do anything and the row never
+   * moves.
+   */
+  private swipeStart: { x: number; y: number; id: number } | null = null;
+
+  /** True once a drag has passed the slop and is definitely this gesture, not a scroll. */
+  private swiping = false;
+
+  /**
+   * Arm a sideways drag, if every condition holds.
+   *
+   * Called from `onPointerDown` after the long press has had its look at the event. Returns
+   * whether it armed, because the caller uses that to decide about propagation.
+   */
+  private armSwipe(event: PointerEvent): boolean {
+    if (this.swipeDirection() === 'off') {
+      return false;
+    }
+    // Measured at the START, in viewport coordinates, because that is where the competitors
+    // live. A drag that begins in the middle and travels INTO an edge is fine: these are
+    // edge-start recognisers, so nothing takes it away mid-gesture.
+    const width = typeof window === 'undefined' ? 0 : window.innerWidth;
+    if (
+      event.clientX <= SWIPE_DEAD_ZONE_PX ||
+      width - event.clientX <= SWIPE_DEAD_ZONE_PX
+    ) {
+      return false;
+    }
+    this.swipeStart = {
+      x: event.clientX,
+      y: event.clientY,
+      id: event.pointerId,
+    };
+    this.swiping = false;
+    // Without capture, a drag that drifts off a one-line continuation row never sees its
+    // `pointerup` and leaves the row translated with nothing to put it back. jsdom has no
+    // pointer capture at all, hence the optional call.
+    (event.target as Element | null)?.setPointerCapture?.(event.pointerId);
+    return true;
+  }
+
+  /** Track an armed drag, or abandon it if it turns out to be a scroll. */
+  private trackSwipe(event: PointerEvent): void {
+    const start = this.swipeStart;
+    if (!start || event.pointerId !== start.id) {
+      return;
+    }
+    if (Math.abs(event.clientY - start.y) > SWIPE_VERTICAL_SLOP_PX) {
+      this.cancelSwipe();
+      return;
+    }
+    const delta = event.clientX - start.x;
+    // Travel is only counted in the direction the setting asked for; the other way clamps to
+    // zero, so a wrong-way drag reads as no drag rather than as a negative one.
+    const travelled =
+      this.swipeDirection() === 'left'
+        ? Math.max(0, -delta)
+        : Math.max(0, delta);
+    if (travelled > LONG_PRESS_SLOP_PX) {
+      // This is a swipe, so it is not a press. Without this a slow drag — press, pause past
+      // 500ms, then move — opens the action sheet AND commits the swipe behind its backdrop.
+      this.cancelLongPress();
+      this.swiping = true;
+    }
+    this.paintSwipe(travelled);
+  }
+
+  /** Release an armed drag: commit past the threshold, otherwise put the row back. */
+  private releaseSwipe(event: PointerEvent): void {
+    const start = this.swipeStart;
+    if (!start || event.pointerId !== start.id) {
+      return;
+    }
+    const delta = event.clientX - start.x;
+    const travelled =
+      this.swipeDirection() === 'left'
+        ? Math.max(0, -delta)
+        : Math.max(0, delta);
+    // `.msg`, not the host: `:host { display: contents }` means the component has no box of
+    // its own and would measure 0, which reads as "never far enough" and never commits.
+    const root = this.host.nativeElement as HTMLElement;
+    const width =
+      root.querySelector<HTMLElement>('.msg')?.getBoundingClientRect().width ??
+      0;
+    const committed =
+      this.swiping && width > 0 && travelled >= width * SWIPE_COMMIT_FRACTION;
+    this.cancelSwipe();
+    if (committed) {
+      this.swipe.emit();
+    }
+  }
+
+  /** Disarm, put the row back, and forget the pointer. */
+  cancelSwipe(): void {
+    this.swipeStart = null;
+    this.swiping = false;
+    this.paintSwipe(0);
+  }
+
+  /**
+   * Move the row under the finger.
+   *
+   * One custom property written straight to the element per `pointermove`, which is what the
+   * drawer and the pane handle do and for the same reason: a signal write per move on an
+   * OnPush row would run change detection over the whole timeline for a value only CSS reads.
+   */
+  private paintSwipe(distance: number): void {
+    const root = this.host.nativeElement as HTMLElement;
+    const msg = root.querySelector<HTMLElement>('.msg');
+    if (!msg) {
+      return;
+    }
+    if (distance <= 0) {
+      msg.style.removeProperty('--swipe-drag');
+      msg.classList.remove('msg--swiping');
+      return;
+    }
+    const signed = this.swipeDirection() === 'left' ? -distance : distance;
+    msg.style.setProperty('--swipe-drag', `${Math.round(signed)}px`);
+    // Drives both the icon's visibility and the 1:1 follow; the eased spring-back returns
+    // when this comes off. A class rather than a signal for the reason `paintSwipe` exists.
+    msg.classList.add('msg--swiping');
   }
 
   /**
@@ -340,6 +535,25 @@ export class MessageRowComponent {
    * tappable and nothing to see. The list owns the sheet; see `onRowLongPress` there.
    */
   readonly longPress = output<void>();
+
+  /**
+   * Which way this row is dragged to act on it, already resolved by whoever renders it.
+   *
+   * Resolved by the caller and not read here, deliberately: the answer depends on the
+   * preference, on whether the shell's drawer is open, and on the breakpoint — three things
+   * a presentational row has no business knowing. The row is handed a direction and obeys it.
+   */
+  readonly swipeDirection = input<SwipeDirection>('off');
+
+  /**
+   * A committed sideways drag — the host edits this row or replies to it.
+   *
+   * Payload-free and dispatched by the host for the same reason {@link longPress} is: this
+   * component does not survive a redaction, an edit, the local-echo id swap, or scrolling
+   * out of the virtual window. What the host does with it is decided from the same `caps`
+   * this row drew its icon from, so the affordance and the action cannot disagree.
+   */
+  readonly swipe = output<void>();
 
   /** A `matrix.to` permalink clicked in the message body, for the host to route in-app. */
   readonly matrixLink = output<MatrixLinkClick>();

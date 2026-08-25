@@ -63,6 +63,7 @@ describe('config key ledger', () => {
       'trinity.flags.virtual-timeline',
       'trinity.format.date',
       'trinity.format.time',
+      'trinity.message-swipe',
       'trinity.palette',
       'trinity.privacy.link-previews',
       'trinity.privacy.link-previews-encrypted',

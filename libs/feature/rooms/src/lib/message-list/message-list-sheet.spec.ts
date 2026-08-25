@@ -283,6 +283,37 @@ describe('MessageListBase — the mobile action sheet', () => {
     expect(close).not.toHaveBeenCalled();
   });
 
+  it('edits an editable row it was swiped on, and replies to any other', () => {
+    // The dispatch reads `rowCaps`, not `isEditable`, so the icon the reader saw behind the
+    // row and the action they get are the same value rather than two computations of it.
+    const { fixture, cmp } = build();
+    fixture.componentRef.setInput('messages', [msg('$1')]);
+    fixture.detectChanges();
+
+    cmp.onRowSwipe(cmp.rows()[0]);
+    expect(cmp.replyingToId()).toBe('$1');
+    expect(cmp.editingId()).toBeNull();
+  });
+
+  it('still dispatches when the row is gone by the time it lands', () => {
+    // The restated criterion from #222. A row destroyed mid-DRAG cancels the gesture — there
+    // is no `pointerup` to commit on — so what the snapshot actually buys is that a row
+    // destroyed AFTER the commit still dispatches: the closure holds the row, not the
+    // component, exactly as the action sheet does.
+    const { fixture, cmp } = build();
+    fixture.componentRef.setInput('messages', [msg('$1')]);
+    fixture.detectChanges();
+    const pressed = cmp.rows()[0];
+
+    fixture.componentRef.setInput('messages', []);
+    fixture.detectChanges();
+    expect(cmp.rows().length).toBe(0);
+
+    cmp.onRowSwipe(pressed);
+
+    expect(cmp.replyingToId()).toBe('$1');
+  });
+
   it('gives every row a harness hook', () => {
     // AGENTS.md: keep `data-testid` on interactive elements, because the Playwright specs
     // drive them. A sheet row without one is undrivable.

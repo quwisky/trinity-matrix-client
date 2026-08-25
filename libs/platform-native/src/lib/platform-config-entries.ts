@@ -27,6 +27,12 @@ import {
 } from './composer-settings.service';
 import { DateTimeFormatService } from './date-time-format.service';
 import {
+  DEFAULT_SWIPE_ACTION,
+  MessageGestureSettingsService,
+  TRINITY_SWIPE_ACTIONS,
+  isSwipeAction,
+} from './message-gesture-settings.service';
+import {
   DEFAULT_VIRTUAL_TIMELINE,
   FeatureFlagsService,
 } from './feature-flags.service';
@@ -87,6 +93,7 @@ export function providePlatformConfigEntries(): EnvironmentProviders {
     ...timelineEntries(inject(SystemLineSettingsService)),
     ...formatEntries(inject(DateTimeFormatService)),
     ...composerEntries(inject(ComposerSettingsService)),
+    ...gestureEntries(inject(MessageGestureSettingsService)),
     ...flagEntries(inject(FeatureFlagsService)),
     ...shortcutEntries(inject(KeyboardShortcutsService)),
   ]);
@@ -333,6 +340,34 @@ function composerEntries(
       read: () => composer.formatOnSelection(),
       reset: () => composer.setFormatOnSelection(DEFAULT_FORMAT_ON_SELECTION),
       ...flagSetting((on) => composer.setFormatOnSelection(on)),
+    },
+  ];
+}
+
+/**
+ * A top-level `gestures` group, which is new to the exported document.
+ *
+ * It is not filed under `composer` or `theme` because it is neither: this describes how the
+ * app reads a touch, and the next such preference (a pull-to-refresh, a two-finger anything)
+ * belongs beside it rather than wherever it happened to be implemented.
+ */
+function gestureEntries(
+  gestures: MessageGestureSettingsService,
+): readonly ConfigEntry[] {
+  return [
+    {
+      path: 'gestures.messageSwipe',
+      key: 'trinity.message-swipe',
+      description:
+        'Which way a message is dragged to edit or reply to it, or off.',
+      read: () => gestures.messageSwipe(),
+      reset: () => gestures.setMessageSwipe(DEFAULT_SWIPE_ACTION),
+      ...choiceSetting({
+        isValid: isSwipeAction,
+        options: idsOf(TRINITY_SWIPE_ACTIONS),
+        noun: 'a swipe direction',
+        set: (value) => gestures.setMessageSwipe(value),
+      }),
     },
   ];
 }

@@ -116,6 +116,14 @@ All notable changes to this project are documented here. The format is based on
   by signing out — left the sheet on screen over whatever came next, and picking anything
   from it did nothing at all.
 
+- **Swipe a message to reply to it — or to edit it.** On a phone, drag a message sideways
+  and it replies to that message, or opens it for editing if it is one of yours you can
+  still change. The icon that appears behind the message says which you will get before you
+  let go, and letting the message go back where it came from abandons it. It is **off until
+  you turn it on**, under Settings → Appearance → Message gestures, where you also choose
+  which way to drag: your phone already uses both screen edges for its own back gesture, so
+  there is no direction that is free for everyone.
+
 - **Tabs, separators and toggles show their state too.** The same defect as the switches
   below, found by sweeping the rest of the design kit: the open tab in Room and Space
   settings drew no underline and no brighter label, so all three tabs looked alike; and every

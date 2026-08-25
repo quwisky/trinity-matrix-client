@@ -12,6 +12,17 @@
   flex-wrap: wrap;
   gap: 12px;
 
+  // The swipe offset, written straight to the element by `paintSwipe` on every pointermove.
+  // Absent until a drag arms, so an untouched row carries no transform at all.
+  translate: var(--swipe-drag, 0);
+
+  // Only the spring-back is animated. While the finger is down the row must track it 1:1 —
+  // an eased follow reads as lag — so `.msg--swiping` turns the transition off for the drag
+  // and it comes back for the release. No reduced-motion block of its own: the token
+  // collapses to 0.01ms in `variables.scss`, which is the whole point of using it.
+  transition: translate var(--trinity-duration-fast)
+    var(--trinity-ease-standard);
+
   // Bleed into the scroll's horizontal padding so the hover highlight spans
   // the full width (Discord-style); content position is unchanged.
   // The top value is the GROUP GAP, and it is padding rather than margin on purpose:
@@ -26,6 +37,12 @@
   &:hover {
     background: var(--trinity-hover);
   }
+}
+
+// While a finger is on the row it must track 1:1 — an eased follow reads as lag — so the
+// spring-back transition above is suspended for the duration of the drag.
+.msg--swiping {
+  transition: none;
 }
 
 // Brief attention flash when a jump (reply / search / pinned panel) lands on a row.
@@ -451,4 +468,31 @@
   color: var(--trinity-text-muted);
   font-size: 12px;
   text-align: right;
+}
+
+// The action revealed behind a row as it slides. Counter-translated by the same custom property, so it holds still while the row moves over
+// it — the alternative, a sibling of `.msg`, does not exist: `:host { display: contents }`
+// means there is no box to put one in, and adding a wrapper would break both the
+// `[data-mid]` height measurement in `virtual-message-list` and `.msg`'s negative margin.
+.msg__swipe {
+  position: absolute;
+  inset-block: 0;
+
+  // Sits in the padding `.msg` bleeds into, on whichever side the row comes from. Both edges
+  // are given a box; only the one the row uncovers is ever seen.
+  inset-inline: var(--trinity-space-5);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  translate: calc(-1 * var(--swipe-drag, 0));
+  color: var(--trinity-text-muted);
+  pointer-events: none;
+
+  // Nothing to reveal until the row has actually moved. `.msg` is transparent except on
+  // hover, so an always-visible icon would sit in the timeline's margin on every row.
+  opacity: 0;
+}
+
+.msg--swiping .msg__swipe {
+  opacity: 1;
 }

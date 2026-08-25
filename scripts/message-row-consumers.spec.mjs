@@ -24,7 +24,7 @@ const workspaceRoot = join(import.meta.dirname, '..');
  * with an inline `template:` — the idiom every wrapper component in `libs/components` uses —
  * would otherwise be invisible to the guard written to find exactly that omission.
  */
-const OUTPUTS = ['action', 'longPress'];
+const OUTPUTS = ['action', 'longPress', 'swipe'];
 
 /**
  * Expressions that bind the output to nothing in particular.

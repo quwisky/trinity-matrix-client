@@ -33,6 +33,8 @@
         [caps]="rowCaps(row)"
         (action)="onRowAction(row, $event)"
         (longPress)="onRowLongPress(row)"
+        [swipeDirection]="swipeDirection()"
+        (swipe)="onRowSwipe(row)"
         (pollVote)="onPollVote($event)"
         (pollEnd)="onPollEnd($event)"
       />
