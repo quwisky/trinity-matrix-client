@@ -130,7 +130,16 @@ test.describe('SSO sign-in', () => {
     // background — so coming back from a homeserver's SSO page looked like arriving
     // somewhere else, at the one moment a reader is unsure the redirect worked. jsdom
     // cannot see any of that, so the card's geometry is measured here.
-    await expect(page.getByRole('heading', { name: 'Trinity' })).toBeVisible();
+    const wordmark = page.locator('.login-card__wordmark');
+    await expect(wordmark).toBeVisible();
+    await expect(wordmark).toHaveText('Trinity');
+    await expect(page.getByRole('heading')).toHaveCount(1);
+    await expect(
+      page.getByRole('heading', {
+        level: 1,
+        name: 'Completing sign in',
+      }),
+    ).toHaveCount(1);
     const card = page.locator('.login-card');
     const cardBox = await card.boundingBox();
     expect(cardBox?.width).toBe(420);
