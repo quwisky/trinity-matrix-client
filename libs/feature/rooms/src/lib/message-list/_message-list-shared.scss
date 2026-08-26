@@ -1,5 +1,5 @@
 // Shared styling for the simple and virtual message lists — they render the same
-// timeline chrome (scroll region, dividers, jump pills, empty/typing states) and
+// timeline chrome (scroll region, dividers, jump pills, empty state) and
 // only differ in windowing. @use'd by both component stylesheets so a token or
 // contrast fix lives in one place.
 @use '../styles/mixins' as *;
@@ -58,96 +58,6 @@
   padding: 8px 0 12px;
   font-size: 13px;
   color: var(--trinity-text-muted);
-}
-
-// Always present, so the scroll region does not resize when someone starts or stops
-// typing. Inserting the row used to change `.scroll`'s clientHeight by 25.2px, which
-// the flex column absorbs by shrinking `.list` — the composer never moved, the newest
-// messages did. The @if lives INSIDE this, which is also what keeps "removed when
-// nobody types" true of `.typing-indicator` itself.
-// Note `calc(1.2rem + 6px)` and not `1.2rem`: Tailwind preflight sets `box-sizing:
-// border-box`, so min-height is the BORDER-box height and has to include this rule's
-// own padding. Written as `1.2rem` the slot is 19.2px idle against 25.2px occupied,
-// and 6px of the jump survives the fix.
-.typing-slot {
-  min-height: calc(1.2rem + 6px);
-  padding: 2px 16px 4px;
-}
-
-.typing-indicator {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-style: italic;
-  line-height: 1.2rem;
-  color: var(--trinity-text-muted);
-}
-
-// `min-height` is a FLOOR, so reserving one line is only half the job: an unclamped
-// sentence wraps and the slot grows anyway. Measured at 360/390/412px — the common phone
-// widths — two ordinary display names took the row from 25.19px to 44.41px, which is the
-// jump this component exists to remove, and it also made `Alice` → `Alice and Bob` resize
-// the scroller mid-conversation. One line, ellipsised.
-.typing-indicator__text {
-  @include ellipsis;
-
-  min-width: 0;
-}
-
-// `flex: 0 0 auto` for the same reason the composer's recording dot carries it: an empty
-// span is a shrinkable flex item whose `min-width: auto` resolves to 0, so without this the
-// dots collapse once the text stops wrapping and starts competing for the line.
-.typing-dots {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-
-// A filled shape, not text, so it takes `currentcolor` from the muted line above
-// rather than a text-role token of its own — the same reasoning as the composer's
-// recording dot.
-.typing-dots__dot {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: currentcolor;
-  animation: typing-dot var(--trinity-duration-pulse) ease-in-out infinite;
-}
-
-// Staggered so the three read as a travelling wave rather than one blinking group.
-// The delays are deliberately literal. `styling-tokens.spec.mjs` polices hand-picked
-// animation DURATIONS, and a delay is not one — there is no token for it, and the
-// reduced-motion collapse does not need one: the blanket `animation-iteration-count:
-// 1` in `global.scss` ends the animation inside a single iteration either way.
-.typing-dots__dot:nth-child(2) {
-  animation-delay: 150ms;
-}
-
-.typing-dots__dot:nth-child(3) {
-  animation-delay: 300ms;
-}
-
-// Collapsing `--trinity-duration-pulse` under reduced motion does NOT stop an infinite
-// animation (see the note in variables.scss: measured at 29 iterations in half a second)
-// — `animation-iteration-count: 1` in `global.scss` does.
-// What the dot then rests at is its BASE style, not its 0% frame: the `animation`
-// shorthand sets `animation-fill-mode: none`, so once the animation is over the keyframes
-// stop contributing entirely. The base declares no `opacity`, so it computes to 1. Keeping
-// 0% at 1 as well is what avoids a visible step during the 150ms/300ms delays, where
-// fill-mode `none` also shows the base — it is NOT what makes the resting state correct.
-// Adding `animation-fill-mode: forwards`, or a base `opacity` below 1, is what would
-// strand a reduced-motion user on dimmed dots.
-@keyframes typing-dot {
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.3;
-  }
 }
 
 // The day and unread dividers are styled by `trn-timeline-divider`, which owns their markup.

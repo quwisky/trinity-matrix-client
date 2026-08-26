@@ -95,4 +95,63 @@ test.describe('Thread composer', () => {
     // The command was interpreted, not sent as literal text.
     await expect(thread).not.toContainText('/me waves');
   });
+
+  // The thread panel is the one place the indicator sits in a NON-flex parent
+  // (`.thread__footer` is a plain block), so it is where a layout assumption carried over
+  // from the two lists would break. Measured in a real engine because jsdom applies no
+  // CSS and cannot see a collapsed slot at all.
+  test('reserves the typing row space in the thread panel too', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(150_000);
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}tht`;
+    const user = `tht-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Thread ${runId}`;
+    const rootBody = `root ${runId}`;
+
+    await registerUser(request, user, pass);
+    const token = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user },
+          password: pass,
+        },
+      })
+      .then((r) => r.json())
+      .then((j) => j.access_token as string);
+    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { name: roomName, preset: 'private_chat' },
+    });
+
+    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await openRoom(page, roomName);
+
+    const composer = page.getByTestId('composer-input');
+    await composer.fill(rootBody);
+    await composer.press('Enter');
+    const row = page.locator('.scroll .msg[data-mid]', { hasText: rootBody });
+    await expect(row.first()).toBeVisible({ timeout: 20_000 });
+    await waitForSent(row.first());
+    await clickRowToolbar(
+      row.first(),
+      row.first().getByRole('button', { name: 'Reply in thread' }),
+    );
+
+    const thread = page.getByTestId('thread-view');
+    await expect(thread).toBeVisible({ timeout: 15_000 });
+
+    const slot = thread.locator('.typing-slot');
+    const height = await slot.evaluate(
+      (element) => element.getBoundingClientRect().height,
+    );
+    expect(height).toBeGreaterThan(0);
+
+    // And it does not announce: the list behind it carries the same room-scoped names.
+    await expect(thread.getByTestId('typing-status')).toHaveCount(0);
+  });
 });

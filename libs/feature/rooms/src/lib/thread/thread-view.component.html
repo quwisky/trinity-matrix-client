@@ -44,6 +44,7 @@
   </div>
 
   <div class="thread__footer">
+    <trn-typing-indicator [names]="typingNames()" [announce]="false" />
     <trn-message-composer
       placeholder="Reply…"
       [roomId]="rootEventId()"
@@ -60,6 +61,7 @@
       (cancelEdit)="editingId.set(null)"
       (cancelReply)="replyingToId.set(null)"
       (editLast)="editLastOwn()"
+      (typing)="onTyping($event)"
     />
   </div>
 </div>

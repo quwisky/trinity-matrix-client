@@ -90,6 +90,7 @@ async function build(
     canPaginate?: boolean;
     loadingOlder?: boolean;
     canRedactOthers?: boolean;
+    typingNames?: string[];
   } = {},
 ) {
   const threadMessages = signal<MessageView[]>(messages);
@@ -108,6 +109,7 @@ async function build(
   const openThreadRootIdSignal = signal<string | null>('$root');
   const openThreadRootId = openThreadRootIdSignal.asReadonly();
   const sourceOpen = vi.fn();
+  const setTypingCalls = vi.fn();
   // The thread composer's @-mention list comes from the room's member projection. The spec
   // supplied no RoomsService at all, so `return []` in the component went unnoticed — only
   // a `throw` failed, and that was the template crashing rather than an assertion.
@@ -152,6 +154,10 @@ async function build(
       }),
       MockProvider(TimelineService, {
         canRedactOthers: signal(state.canRedactOthers ?? false).asReadonly(),
+        // Seeded because it is an INSTANCE field, which ng-mocks does not reflect: left
+        // out, `typingNames` is undefined and the typing row throws on every render here.
+        typingNames: signal<string[]>(state.typingNames ?? []).asReadonly(),
+        setTyping: setTypingCalls,
       }),
       MockProvider(TimelineActionsService),
       MockProvider(RoomsService, { membersFor }),
@@ -190,6 +196,7 @@ async function build(
     openThreadRootIdSignal,
     toastShow,
     sourceOpen,
+    setTypingCalls,
     dismissals: () => dismissals,
   };
 }
@@ -676,5 +683,47 @@ describe('ThreadViewComponent members', () => {
     fixture.destroy();
 
     expect(sheetClose).toHaveBeenCalledTimes(1);
+  });
+
+  describe('typing', () => {
+    it('forwards the composer typing state to the room notification', async () => {
+      const { fixture, setTypingCalls } = await build([
+        msg('$a', '@ada:hs', 'hi'),
+      ]);
+      const composer = fixture.debugElement.query(
+        By.directive(MessageComposerComponent),
+      );
+
+      composer.triggerEventHandler('typing', true);
+      composer.triggerEventHandler('typing', false);
+
+      // `setTyping` and not a thread-scoped call: `m.typing` is a room-level EDU, and the
+      // service reads the room off its own open context rather than the argument — which
+      // matters because this composer is bound to `[roomId]="rootEventId()"`, an EVENT id.
+      expect(setTypingCalls.mock.calls).toEqual([[true], [false]]);
+    });
+
+    it('shows the room typists above the thread composer', async () => {
+      const { container } = await build([msg('$a', '@ada:hs', 'hi')], {
+        typingNames: ['Alice'],
+      });
+
+      const row = container.querySelector('.typing-indicator');
+      expect((row?.textContent ?? '').replace(/\s+/g, ' ').trim()).toBe(
+        'Alice is typing',
+      );
+    });
+
+    it('does not announce the typists a second time', async () => {
+      // The list behind this panel carries the same names in its own live region, and
+      // `m.typing` is room-scoped, so announcing here would say it twice.
+      const { container } = await build([msg('$a', '@ada:hs', 'hi')], {
+        typingNames: ['Alice'],
+      });
+
+      expect(
+        container.querySelector('[data-testid="typing-status"]'),
+      ).toBeNull();
+    });
   });
 });

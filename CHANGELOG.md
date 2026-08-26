@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Threads show who is typing, and tell the room when you are.** The reply box in a thread
+  now announces your typing to the room the way the main composer does, and carries the same
+  typing line above it. Matrix tracks typing per room rather than per thread, so that line
+  names everyone typing in the room — including people writing in the main timeline.
+
 - **The typing line has animated dots, and holds its place.** When someone is typing, the
   line under the timeline now ends in three pulsing dots instead of a full stop, so it reads
   as something happening rather than a label. The line also keeps its space whether or not

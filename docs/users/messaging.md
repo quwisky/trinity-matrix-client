@@ -174,6 +174,10 @@ A "… is typing" line names up to three people and summarises beyond that, with
 pulsing dots after the name. The line keeps its place whether or not anyone is typing,
 so the messages above it do not shift when someone starts or stops.
 
+The same line appears above a thread's reply box, and typing there tells the room you are
+typing. Matrix tracks typing per room rather than per thread, so the thread shows everyone
+typing in the room — including people writing in the main timeline rather than the thread.
+
 Under a message you may see a small row of avatars — the people who have read up to it,
 capped at five and excluding you. Your own receipts can be made invisible: **Settings →
 Privacy → send read receipts**, when switched off, still acks messages so your own unread

@@ -64,28 +64,7 @@
   }
 </div>
 
-<div class="typing-slot">
-  @if (typingLabel(); as label) {
-    <!-- aria-hidden: the persistent live region below is what announces this. A
-         role="status" inserted together with its text is not reliably announced. -->
-    <div
-      class="typing-indicator"
-      data-testid="typing-indicator"
-      aria-hidden="true"
-    >
-      <span class="typing-indicator__text">{{ label }}</span>
-      <span class="typing-dots">
-        <span class="typing-dots__dot"></span>
-        <span class="typing-dots__dot"></span>
-        <span class="typing-dots__dot"></span>
-      </span>
-    </div>
-  }
-</div>
-
-<p class="sr-only" role="status" aria-live="polite" data-testid="typing-status">
-  {{ typingLabel() }}
-</p>
+<trn-typing-indicator [names]="typingNames()" />
 
 <trn-message-composer
   [roomId]="roomId()"

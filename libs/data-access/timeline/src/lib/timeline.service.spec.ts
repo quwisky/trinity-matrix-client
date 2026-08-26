@@ -20,7 +20,7 @@ import {
   vi,
 } from 'vitest';
 import { TimelineService } from './timeline.service';
-import { TYPING_REFRESH_MS } from '@trinity/util/matrix';
+import { TYPING_REFRESH_MS, TYPING_TIMEOUT_MS } from '@trinity/util/matrix';
 import {
   fakeClient,
   fakeEvent,
@@ -1247,7 +1247,7 @@ describe('TimelineService', () => {
     it('broadcasts a typing notification when the composer reports typing', () => {
       const { svc, sent } = setupTyping();
       svc.setTyping(true);
-      expect(typingCalls(sent)).toEqual([['typing', true]]);
+      expect(typingCalls(sent)).toEqual([['typing', true, TYPING_TIMEOUT_MS]]);
     });
 
     it('throttles repeated starts, then refreshes once the interval elapses', () => {
@@ -1257,13 +1257,13 @@ describe('TimelineService', () => {
 
       svc.setTyping(true);
       svc.setTyping(true); // still within the refresh window → no second request
-      expect(typingCalls(sent)).toEqual([['typing', true]]);
+      expect(typingCalls(sent)).toEqual([['typing', true, TYPING_TIMEOUT_MS]]);
 
       now += TYPING_REFRESH_MS + 1; // window elapsed → one refresh allowed
       svc.setTyping(true);
       expect(typingCalls(sent)).toEqual([
-        ['typing', true],
-        ['typing', true],
+        ['typing', true, TYPING_TIMEOUT_MS],
+        ['typing', true, TYPING_TIMEOUT_MS],
       ]);
     });
 
@@ -1276,8 +1276,8 @@ describe('TimelineService', () => {
       svc.setTyping(true);
       svc.setTyping(false);
       expect(typingCalls(sent)).toEqual([
-        ['typing', true],
-        ['typing', false],
+        ['typing', true, TYPING_TIMEOUT_MS],
+        ['typing', false, 0],
       ]);
     });
 
@@ -1285,7 +1285,7 @@ describe('TimelineService', () => {
       const { svc, sent } = setupTyping();
       svc.setTyping(true);
       svc.close();
-      expect(typingCalls(sent)).toContainEqual(['typing', false]);
+      expect(typingCalls(sent)).toContainEqual(['typing', false, 0]);
     });
 
     // Both halves of the bookkeeping `stopTypingOnConnectedClient` shares with `setTyping`.
@@ -1308,9 +1308,9 @@ describe('TimelineService', () => {
       svc.setTyping(true);
 
       expect(typingCalls(sent)).toEqual([
-        ['typing', true],
-        ['typing', false],
-        ['typing', true],
+        ['typing', true, TYPING_TIMEOUT_MS],
+        ['typing', false, 0],
+        ['typing', true, TYPING_TIMEOUT_MS],
       ]);
     });
 
@@ -1340,7 +1340,7 @@ describe('TimelineService', () => {
       active.client = incoming; // the switch lands before the deferred close
       svc.close();
 
-      expect(typingCalls(outgoingSent)).toContainEqual(['typing', false]);
+      expect(typingCalls(outgoingSent)).toContainEqual(['typing', false, 0]);
       expect(typingCalls(incomingSent)).toEqual([]);
     });
 
