@@ -5,7 +5,7 @@ import { login, synapseSession } from './support/app.mts';
 //
 // The section list and the detail pane are separate scrollers, so on a short window both
 // overflowed and drew a bar — the list's sitting right beside the content's. The list is
-// twelve items that only overflow when the window is short; the content's bar is the one
+// thirteen items that only overflow when the window is short; the content's bar is the one
 // that carries meaning, so the list's is suppressed and the content's is left alone.
 //
 // Measured here rather than asserted from the class, because the class was the bug: the kit
@@ -50,23 +50,33 @@ test.describe('Settings scrollbars', () => {
   // second bar beside the content's.
   test.use({ viewport: { width: 1280, height: 560 } });
 
-  test('shows one scrollbar at most, whichever section is open', async ({
+  test('never draws the list its own bar, and still draws the content its one', async ({
     page,
   }) => {
     await login(page, session);
     await page.getByTestId('open-settings').click();
 
-    // Notifications and Appearance are the two whose content is long enough to scroll on
-    // its own; the others prove the list alone never draws one.
-    for (const section of ['notifications', 'appearance', 'privacy']) {
+    // Per section, and EXACT — not "at most one". A `<= 1` assertion passes at zero, so a
+    // section that rendered nothing at all would have satisfied it; and the rule has two
+    // halves ("never the outer, only the inner when necessary"), of which only the first
+    // survives a count. Notifications and Appearance are the sections whose own content is
+    // long enough to scroll here; Privacy's is not.
+    const expected: Record<string, string[]> = {
+      notifications: ['SECTION[settings-detail]'],
+      appearance: ['SECTION[settings-detail]'],
+      privacy: [],
+    };
+
+    for (const [section, bars] of Object.entries(expected)) {
       await page.getByTestId(`settings-nav-${section}`).click();
       await page.waitForURL(new RegExp(`/settings/${section}$`), {
         timeout: 20_000,
       });
+      // The pane has rendered, so an empty result below means "no bar" rather than
+      // "nothing to measure".
+      await expect(page.getByTestId('settings-detail')).not.toBeEmpty();
 
-      const bars = await scrollbarPainters(page);
-      expect(bars.filter((bar) => bar.includes('NAV'))).toEqual([]);
-      expect(bars.length).toBeLessThanOrEqual(1);
+      await expect.poll(() => scrollbarPainters(page)).toEqual(bars);
     }
   });
 
@@ -85,10 +95,18 @@ test.describe('Settings scrollbars', () => {
     );
     expect(overflow).toBeGreaterThan(0);
 
-    await nav.evaluate((el) => el.scrollTo({ top: 200 }));
-    expect(await nav.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+    // A wheel over the list, which is the input path the fix promises still works — and the
+    // one a hidden scrollbar actually costs a pointer user.
+    await nav.hover();
+    await page.mouse.wheel(0, 200);
+    await expect
+      .poll(() => nav.evaluate((el) => el.scrollTop))
+      .toBeGreaterThan(0);
 
-    // And the last section is reachable rather than clipped away.
-    await expect(page.getByTestId('settings-nav-experimental')).toBeVisible();
+    // And the LAST section is genuinely reachable. `toBeVisible` would not have shown this:
+    // an element scrolled out of an `overflow: auto` ancestor still has a bounding box, so
+    // that assertion passes whether or not the list scrolls. A click has to reach it.
+    await page.getByTestId('settings-nav-advanced').click();
+    await page.waitForURL(/\/settings\/advanced$/, { timeout: 20_000 });
   });
 });

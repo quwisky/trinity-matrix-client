@@ -115,7 +115,43 @@ const declared = new Set(
 const PRESET = 'node_modules/@spartan-ng/brain/hlm-tailwind-preset.css';
 
 /**
- * Custom UTILITIES the preset defines, which the theme must too if the kit reaches for one.
+ * Every class token the workspace writes, from the places classes are actually written.
+ *
+ * Tokens, not raw file text. A utility name like `container` or `shimmer` is an ordinary
+ * English word, and a whole-file regex reads it out of prose — the first version of this
+ * check flagged `container` because the word appears in comments. Variant prefixes are
+ * stripped so `md:no-scrollbar` counts as a use of `no-scrollbar`.
+ */
+function classTokens() {
+  const tokens = new Set();
+  const add = (value) => {
+    for (const token of value.split(/\s+/)) {
+      if (token) {
+        tokens.add(token.replace(/^.*:/, '').replace(/^!/, ''));
+      }
+    }
+  };
+  for (const file of sources) {
+    const source = read(file);
+    if (file.endsWith('.html')) {
+      for (const [, value] of source.matchAll(/class="([^"]*)"/g)) {
+        add(value);
+      }
+      continue;
+    }
+    // In `.ts` a class list is a quoted string — `classes(() => '…')`, a `class:` host
+    // entry, or a `[class]` binding's literal.
+    for (const [, single, double] of source.matchAll(
+      /'([^'\n]*)'|"([^"\n]*)"/g,
+    )) {
+      add(single ?? double ?? '');
+    }
+  }
+  return tokens;
+}
+
+/**
+ * Custom UTILITIES the preset defines, which the theme must too if anything here uses one.
  *
  * The same shape as the variant mismatch below, and it bit twice: `hlm-select-content` has
  * carried `no-scrollbar` since it was vendored, and that class compiled to nothing at all —
@@ -123,33 +159,26 @@ const PRESET = 'node_modules/@spartan-ng/brain/hlm-tailwind-preset.css';
  * meant to suppress. Nothing could see it: the class is present in the DOM, the CSS is
  * valid, and there is simply no rule.
  *
- * Both sides are derived. The preset is read for what it offers; `libs/spartan` is read for
- * what it uses; the theme is read for what it defines. A utility the kit stops using drops
- * out on its own.
+ * All three sides are derived. The preset is read for what it offers, the workspace for what
+ * it uses, the theme for what it defines — so a utility that stops being used drops out on
+ * its own. The usage side is the whole workspace and not just the kit, because a utility is
+ * just as dead in a feature template: the fix that added this guard put `no-scrollbar` in
+ * `settings.page.html`, which a kit-only sweep could not see.
  */
 function undefinedKitUtilities() {
-  const preset = read(PRESET);
-  const offered = [...preset.matchAll(/@utility\s+([a-z][a-z0-9-]*)/g)].map(
-    ([, name]) => name,
-  );
-  const theme = read(THEME);
+  const offered = [...read(PRESET).matchAll(/@utility\s+([a-z][a-z0-9-]*)/g)]
+    .map(([, name]) => name)
+    // Functional utilities (`scroll-fade-*`) are captured with a trailing hyphen and can
+    // never match a token; they are out of this check's reach and named as such.
+    .filter((name) => !name.endsWith('-'));
   const defined = new Set(
-    [...theme.matchAll(/@utility\s+([a-z][a-z0-9-]*)/g)].map(
+    [...read(THEME).matchAll(/@utility\s+([a-z][a-z0-9-]*)/g)].map(
       ([, name]) => name,
     ),
   );
-  const kit = globSync('libs/spartan/**/*.ts', { cwd: workspaceRoot })
-    .filter((file) => !file.endsWith('.spec.ts'))
-    .map((file) => read(file))
-    .join('\n');
+  const used = classTokens();
 
-  return offered.filter(
-    (name) =>
-      !defined.has(name) &&
-      new RegExp(`(?<![\\w-])${name}(?![\\w-])`).test(kit) &&
-      // Tailwind ships its own `container`; the preset only re-tunes it.
-      name !== 'container',
-  );
+  return offered.filter((name) => !defined.has(name) && used.has(name));
 }
 
 describe('kit utilities', () => {
