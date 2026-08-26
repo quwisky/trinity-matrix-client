@@ -6,7 +6,7 @@
   "tags": ["type:tool", "scope:shared"],
   "targets": {
     "test": {
-      "//": "These specs are the workspace's cross-cutting guards: they read `apps/` and `libs/` as TEXT precisely because the Nx boundaries stop any one project from importing it all. That makes them the one suite whose inputs cannot be `{projectRoot}/**/*` — this project has no dependency edges, so under the default `['default', '^production']` nothing the specs actually read was part of the cache key and every run after the first reported a stale pass. Measured: a `--trinity-text-muted: #f5f5f5` injected into `variables.scss` still returned exit 0 from the cache while `--skip-nx-cache` returned 1. Each entry below is a glob some spec really opens — the stylesheet/template/TS sweeps (`styling-idiom`, `styling-tokens`, `token-resolve`, `shorthand-overrides`, `component-styling`, `host-directives`, `scroll-behaviour`, `contrast-matrix`, `boot-splash`), the tag and vendor-boundary tables `lint-invariants` reads out of every `project.json` and out of `eslint.config.mjs`, the probe files it proves still exist, and the version tables `stack-versions` compares against what pnpm installed.",
+      "//": "These specs are the workspace's cross-cutting guards: they read `apps/` and `libs/` as TEXT precisely because the Nx boundaries stop any one project from importing it all. That makes them the one suite whose inputs cannot be `{projectRoot}/**/*` — this project has no dependency edges, so under the default `['default', '^production']` nothing the specs actually read was part of the cache key and every run after the first reported a stale pass. Measured: a `--trinity-text-muted: #f5f5f5` injected into `variables.scss` still returned exit 0 from the cache while `--skip-nx-cache` returned 1. Each entry below is a glob some spec really opens — the stylesheet/template/TS sweeps (`styling-idiom`, `styling-tokens`, `token-resolve`, `shorthand-overrides`, `component-styling`, `host-directives`, `scroll-behaviour`, `contrast-matrix`, `boot-splash`), the tag and vendor-boundary tables `lint-invariants` reads out of every `project.json` and out of `eslint.config.mjs`, the probe files it proves still exist, and the version tables `stack-versions` compares against what pnpm installed. The E2E module globs are deliberately broader than today's `e2e-shared-harness` reads: that guard begins with the whole module corpus before excluding shared helpers, reads `synapse/start.mjs` directly, and must stay cached when a future invariant reaches another helper.",
       "inputs": [
         "default",
         "^production",
@@ -20,7 +20,8 @@
         "{workspaceRoot}/libs/**/*.scss",
         "{workspaceRoot}/libs/**/project.json",
         "{workspaceRoot}/e2e/project.json",
-        "{workspaceRoot}/e2e/playwright/app.spec.mts",
+        "{workspaceRoot}/e2e/**/*.mts",
+        "{workspaceRoot}/e2e/**/*.mjs",
         "{workspaceRoot}/eslint.config.mjs",
         "{workspaceRoot}/docs/reference/stack.md",
         "{workspaceRoot}/docs/architecture/matrix-and-encryption.md",
