@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Dialog } from '@angular/cdk/dialog';
 import { Overlay } from '@angular/cdk/overlay';
 import { TrnDialogRef } from '../dialog/trn-dialog-ref';
+import { TrnActionSheetRef } from './trn-action-sheet-ref';
 import {
   TrnActionSheetComponent,
   type ActionSheetData,
@@ -26,7 +27,7 @@ export class TrnActionSheetService {
   private readonly dialog = inject(Dialog);
   private readonly overlay = inject(Overlay);
 
-  open(data: ActionSheetData, ariaLabel?: string): TrnDialogRef<void> {
+  open(data: ActionSheetData, ariaLabel?: string): TrnActionSheetRef {
     const ref = this.dialog.open<
       void,
       ActionSheetData,
@@ -41,6 +42,9 @@ export class TrnActionSheetService {
         .centerHorizontally()
         .bottom('12px'),
     });
-    return new TrnDialogRef<void>(ref);
+    return new TrnActionSheetRef(
+      new TrnDialogRef<void>(ref),
+      () => ref.componentInstance?.surface ?? null,
+    );
   }
 }

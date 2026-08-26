@@ -62,6 +62,14 @@ const bindsOutput = (tag, output) => {
   return match !== null && !INERT.test((match[1] ?? match[2] ?? '').trim());
 };
 
+/** The bound expression, for outputs whose payload is part of the contract. */
+const outputExpression = (tag, output) => {
+  const match = new RegExp(
+    `\\(${output}\\)\\s*=\\s*(?:"([^"]*)"|'([^']*)')`,
+  ).exec(tag);
+  return (match?.[1] ?? match?.[2] ?? '').trim();
+};
+
 describe('trn-message-row consumers', () => {
   const templates = globSync(
     ['libs/**/*.html', 'libs/**/*.ts', 'apps/**/*.html', 'apps/**/*.ts'],
@@ -96,6 +104,19 @@ describe('trn-message-row consumers', () => {
         OUTPUTS.filter((output) => !bindsOutput(tag, output)).map(
           (output) => `${file} row #${index + 1} does not bind (${output})`,
         ),
+      );
+    });
+
+    expect(missing).toEqual([]);
+  });
+
+  it('forwards the long-press anchor context from every consumer', () => {
+    const missing = templates.flatMap((file) => {
+      const source = readFileSync(join(workspaceRoot, file), 'utf8');
+      return rowTags(source).flatMap((tag, index) =>
+        outputExpression(tag, 'longPress').includes('$event')
+          ? []
+          : [`${file} row #${index + 1} drops the (longPress) $event`],
       );
     });
 

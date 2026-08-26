@@ -1,4 +1,9 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  inject,
+} from '@angular/core';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
@@ -76,6 +81,7 @@ export interface ActionSheetData {
   template: `
     <div
       class="sheet mb-3 flex max-h-[80svh] w-[min(96vw,26rem)] flex-col overflow-hidden rounded-xl border border-solid border-border bg-card p-1.5 shadow-lg"
+      data-testid="action-sheet-surface"
     >
       @if (data.header) {
         <p
@@ -131,9 +137,17 @@ export interface ActionSheetData {
   `,
 })
 export class TrnActionSheetComponent {
+  private readonly host = inject(ElementRef<HTMLElement>);
   protected readonly data = inject<ActionSheetData>(DIALOG_DATA);
   private readonly ref =
     inject<DialogRef<void, TrnActionSheetComponent>>(DialogRef);
+
+  /** The concrete sheet box for invocation-scoped positioning work. */
+  get surface(): HTMLElement | null {
+    return (this.host.nativeElement as HTMLElement).querySelector<HTMLElement>(
+      '.sheet',
+    );
+  }
 
   protected onClick(button: ActionSheetButton): void {
     this.ref.close();

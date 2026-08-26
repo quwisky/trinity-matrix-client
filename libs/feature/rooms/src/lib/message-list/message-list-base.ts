@@ -46,6 +46,7 @@ import {
   type BatchProgress,
 } from '../shared/send-media-batch';
 import {
+  type MessageLongPressContext,
   type MessageRow,
   type MessageRowAction,
   type MessageRowCaps,
@@ -680,9 +681,12 @@ export abstract class MessageListBase {
    * service. What this method contributes is its caps and a dispatch closing over the row,
    * routed through `onRowAction` — the same path the hover toolbar takes.
    */
-  onRowLongPress(row: MessageRow): void {
-    this.messageSheet.open(this, this.rowCaps(row), (action) =>
-      this.onRowAction(row, action),
+  onRowLongPress(row: MessageRow, context?: MessageLongPressContext): void {
+    this.messageSheet.open(
+      this,
+      this.rowCaps(row),
+      (action) => this.onRowAction(row, action),
+      context,
     );
   }
 
