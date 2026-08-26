@@ -58,6 +58,10 @@ export class MessageActionsService {
    */
   readonly uploadProgress = signal<BatchProgress | null>(null);
 
+  /** Identity allocator and current owner for the progress signal shared by rooms. */
+  private nextUploadGeneration = 0;
+  private activeUploadGeneration: number | null = null;
+
   /**
    * Route a `matrix.to` permalink clicked in a message, in-app. A user shows a profile
    * card (from which the viewer can start a DM); a room resolves its id/alias and — if
@@ -221,6 +225,17 @@ export class MessageActionsService {
     caption: string;
     onOutcomes: (outcomes: readonly BatchOutcome[]) => void;
   }): void {
+    const uploadGeneration = ++this.nextUploadGeneration;
+    this.activeUploadGeneration = uploadGeneration;
+    const reportProgress = (progress: BatchProgress | null): void => {
+      if (uploadGeneration !== this.activeUploadGeneration) {
+        return;
+      }
+      if (progress === null) {
+        this.activeUploadGeneration = null;
+      }
+      this.uploadProgress.set(progress);
+    };
     // Pinned for the whole batch. `sendMedia` resolves the open room on SUBSCRIBE — right for
     // a single action, which subscribes as it is pressed — but a batch subscribes item N
     // minutes later, so switching rooms mid-batch would deliver the rest into the new one.
@@ -238,7 +253,7 @@ export class MessageActionsService {
         }
         return this.timelineActions.sendMedia(file, itemCaption, progress);
       },
-      (progress) => this.uploadProgress.set(progress),
+      reportProgress,
     )
       .pipe(takeUntilDestroyed(this.destroyRef))
       // `onOutcomes` also releases the composer's send latch, and it rides the value rather

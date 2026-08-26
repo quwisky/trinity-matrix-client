@@ -15,7 +15,7 @@
 }
 
 <trn-composer-attachment-strip
-  [uploadProgress]="uploadProgress()"
+  [uploadProgress]="contextUploadProgress()"
   [staged]="staged()"
   [uploadLabel]="uploadLabel()"
   [canRetry]="canSendMedia()"
@@ -27,7 +27,7 @@
   @if (!recordingVoice() && showToolbar()) {
     <trn-composer-toolbar
       [previewing]="previewing()"
-      [disabled]="uploadProgress() !== null"
+      [disabled]="contextUploadProgress() !== null"
       [pinned]="toolbarPinned()"
       [active]="activeFormats()"
       (format)="onFormat($event)"
@@ -127,7 +127,7 @@
     <trn-composer-insert-menu
       [hasMenu]="hasInsertMenu()"
       [editing]="editing()"
-      [uploading]="uploadProgress() !== null"
+      [uploading]="contextUploadProgress() !== null"
       [gifEnabled]="gifEnabled()"
       [gifDownloading]="gifDownloading()"
       [richActions]="richActions()"

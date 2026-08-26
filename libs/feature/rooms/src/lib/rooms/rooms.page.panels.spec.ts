@@ -776,6 +776,48 @@ describe('RoomsPage panels, pins and media', () => {
     expect(toastShow).not.toHaveBeenCalled(); // no error toast
   });
 
+  it('ignores stale progress and cleanup from an older room batch', () => {
+    const shell = build();
+    const streams = [new Subject<void>(), new Subject<void>()] as const;
+    const reports: (((fraction: number) => void) | undefined)[] = [];
+    let streamIndex = 0;
+    sendMedia.mockImplementation(
+      (_file: File, _caption: string, report?: (fraction: number) => void) => {
+        reports.push(report);
+        return streams[streamIndex++]?.asObservable() ?? of(undefined);
+      },
+    );
+
+    shell.messages.onSendMedia({
+      items: [{ id: 'old', file: pngFile() }],
+      caption: '',
+      onOutcomes: () => undefined,
+    });
+    shell.messages.onSendMedia({
+      items: [{ id: 'new', file: pngFile() }],
+      caption: '',
+      onOutcomes: () => undefined,
+    });
+    reports[1]?.(0.6);
+    expect(shell.messages.uploadProgress()?.fraction).toBe(0.6);
+
+    reports[0]?.(0.9);
+    expect(shell.messages.uploadProgress()?.fraction).toBe(0.6);
+
+    streams[0].next();
+    streams[0].complete();
+    expect(shell.messages.uploadProgress()?.fraction).toBe(0.6);
+
+    reports[1]?.(0.75);
+    expect(shell.messages.uploadProgress()?.fraction).toBe(0.75);
+    streams[1].next();
+    streams[1].complete();
+    expect(shell.messages.uploadProgress()).toBeNull();
+
+    reports[1]?.(0.95);
+    expect(shell.messages.uploadProgress()).toBeNull();
+  });
+
   it('hands a single file its caption, and a batch none', () => {
     // Every other host fixture sends `caption: ''`, so nothing checked that the caption
     // survives the host at all — and a caption swallowed here is destroyed outright, since

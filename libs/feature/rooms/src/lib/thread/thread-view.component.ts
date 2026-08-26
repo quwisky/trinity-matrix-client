@@ -143,6 +143,9 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   readonly replyingToId = signal<string | null>(null);
   /** Which file of how many is uploading, and how far along, or null when idle. */
   readonly uploadProgress = signal<BatchProgress | null>(null);
+  /** Identity allocator and current owner for the progress signal shared by threads. */
+  private nextUploadGeneration = 0;
+  private activeUploadGeneration: number | null = null;
 
   private readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
 
@@ -332,6 +335,17 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
     caption: string;
     onOutcomes: (outcomes: readonly BatchOutcome[]) => void;
   }): void {
+    const uploadGeneration = ++this.nextUploadGeneration;
+    this.activeUploadGeneration = uploadGeneration;
+    const reportProgress = (progress: BatchProgress | null): void => {
+      if (uploadGeneration !== this.activeUploadGeneration) {
+        return;
+      }
+      if (progress === null) {
+        this.activeUploadGeneration = null;
+      }
+      this.uploadProgress.set(progress);
+    };
     // Pinned for the whole batch, for the same reason as the room path: the thread is
     // resolved on SUBSCRIBE, and a batch subscribes item N long after it was pressed, so
     // opening another thread mid-batch would deliver the rest into that one.
@@ -347,7 +361,7 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
         }
         return this.threads.sendMediaToThread(file, itemCaption, progress);
       },
-      (progress) => this.uploadProgress.set(progress),
+      reportProgress,
     )
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((outcomes) => {

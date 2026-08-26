@@ -320,6 +320,8 @@ export class MessageComposerComponent {
   private readonly batches: ComposerBatchSender;
   /** The name of the file the progress bar is describing, or null when idle. */
   readonly uploadLabel: Signal<string | null>;
+  /** Upload progress belonging to this room/thread, excluding a previous context's batch. */
+  protected readonly contextUploadProgress: Signal<BatchProgress | null>;
   /** Whether a media send would be accepted right now (the send button says so). */
   protected readonly canSendMedia: Signal<boolean>;
   /**
@@ -430,6 +432,7 @@ export class MessageComposerComponent {
       regrow: () => this.field.regrowAfterRender(),
     });
     this.uploadLabel = this.batches.uploadLabel;
+    this.contextUploadProgress = this.batches.uploadProgress;
     this.canSendMedia = this.batches.canSend;
 
     // Before anything else: the attachment workflows call straight back through this, and
@@ -437,7 +440,7 @@ export class MessageComposerComponent {
     this.attachments.connect({
       roomId: this.roomId,
       editing: this.editing,
-      uploadProgress: this.uploadProgress,
+      uploadProgress: this.contextUploadProgress,
       sendMedia: (file, caption) => {
         // A GIF is a one-item batch with a synthetic id: it was never staged, so nothing in
         // the strip has to be reconciled when its outcome lands.
@@ -467,7 +470,9 @@ export class MessageComposerComponent {
         this.wasRoomId = id;
         untracked(() => {
           this.clearStaged();
-          this.batches.release();
+          if (prev !== undefined) {
+            this.batches.release();
+          }
           // A recording belongs to the room it was started in — cancel it on a
           // room/thread switch so the mic doesn't stay open and a later Send can't
           // post the clip to the wrong room.

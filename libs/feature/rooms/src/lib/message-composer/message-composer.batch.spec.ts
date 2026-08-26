@@ -10,7 +10,7 @@ import {
 } from './message-composer.spec-harness';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { type ComposerSubmit } from './message-composer.component';
-import { type BatchOutcome } from '../shared/send-media-batch';
+import { type BatchItem, type BatchOutcome } from '../shared/send-media-batch';
 
 describe('MessageComposerComponent — sending a batch and reconciling its outcomes', () => {
   beforeEach(() => stubObjectUrls());
@@ -454,6 +454,20 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     expect(sent).toEqual(['one.png']);
   });
 
+  it('honours current-room progress when mounted during an upload', async () => {
+    const { fixture } = await renderComposer({
+      roomId: '!current:hs',
+      uploadProgress: { index: 1, total: 1, fraction: 0.4 },
+    });
+    const cmp = fixture.componentInstance;
+    const sent = collectHeldSends(cmp);
+    pickFiles(cmp, [png('one.png')]);
+
+    cmp.submit();
+
+    expect(sent).toEqual([]);
+  });
+
   it('guards the keyboard path too, and shows the button as disabled', async () => {
     // `onEnter` calls `submit()` directly and never consults `[disabled]`, so the code guard
     // is what stops it — and the button has to SAY so, or the block reads as a dead control.
@@ -661,5 +675,54 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     cmp.submit();
 
     expect(sent).toEqual(['one.png', 'elsewhere.png']);
+  });
+
+  it('does not let an old room’s outcomes release the newer room’s batch', async () => {
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const batches: {
+      items: readonly BatchItem[];
+      onOutcomes: (outcomes: readonly BatchOutcome[]) => void;
+    }[] = [];
+    cmp.submitMedia.subscribe(({ items, onOutcomes }) =>
+      batches.push({ items, onOutcomes }),
+    );
+    pickFiles(cmp, [png('one.png')]);
+    cmp.submit();
+    fixture.componentRef.setInput('uploadProgress', {
+      index: 1,
+      total: 1,
+      fraction: 0.4,
+    });
+    fixture.detectChanges();
+
+    fixture.componentRef.setInput('roomId', '!other:hs');
+    fixture.detectChanges();
+    pickFiles(cmp, [png('elsewhere.png')]);
+    cmp.submit();
+    expect(batches.map(({ items }) => items[0]?.file.name)).toEqual([
+      'one.png',
+      'elsewhere.png',
+    ]);
+
+    const first = batches[0];
+    first?.onOutcomes(
+      first.items.map((item) => ({ id: item.id, failed: false })),
+    );
+
+    expect(stagedFiles(cmp).map((file) => file.name)).toEqual([
+      'elsewhere.png',
+    ]);
+    cmp.submit();
+    expect(batches).toHaveLength(2); // the second batch still owns the latch
+
+    const second = batches[1];
+    fixture.componentRef.setInput('uploadProgress', null);
+    fixture.detectChanges();
+    second?.onOutcomes(
+      second.items.map((item) => ({ id: item.id, failed: true })),
+    );
+    cmp.submit();
+    expect(batches).toHaveLength(3); // its own outcome releases the latch normally
   });
 });
