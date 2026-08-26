@@ -13,6 +13,7 @@ import {
   Preset,
   ReceiptType,
   RoomEvent,
+  RoomMemberEvent,
   RoomStateEvent,
   type MatrixClient,
   type MatrixEvent,
@@ -119,6 +120,12 @@ export interface RoomSummary {
  * every `closeOpenRoom()`.
  */
 const EMPTY_MEMBERS: readonly MemberSummary[] = Object.freeze([]);
+const EMPTY_TYPING: readonly string[] = Object.freeze([]);
+
+/** Whether two typing-name lists say the same thing, in order. */
+function sameNames(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((name, i) => name === b[i]);
+}
 
 /** A joined member shown in the member list. */
 export interface MemberSummary {
@@ -281,6 +288,77 @@ export class RoomsService {
     }
   }
 
+  private readonly _typingByRoom = signal<Record<string, readonly string[]>>(
+    {},
+  );
+  /**
+   * Who is typing, per room, excluding the local user — the sidebar's source.
+   *
+   * `TimelineService` tracks this too, but only for the ONE open room, which is why the
+   * sidebar could not show it before. This listener is client-level, so it sees every room
+   * the user is in.
+   */
+  readonly typingByRoom = this._typingByRoom.asReadonly();
+
+  private readonly dirtyTypingRooms = new Set<string>();
+
+  /**
+   * Coalesced, and deliberately its own flusher rather than either existing one.
+   *
+   * `memberFlusher` is gated on `memberSignals.has(roomId)` — it only serves rooms someone
+   * is watching — and adding `RoomMemberEvent.Typing` to the projection's `events` list
+   * would run a full room-list rebuild and re-sort on every typing EDU from every room.
+   * This writes one key.
+   */
+  private readonly typingFlusher = coalesce(() => {
+    const rooms = [...this.dirtyTypingRooms];
+    this.dirtyTypingRooms.clear();
+    const client = this.projection.client();
+    if (!client) {
+      return;
+    }
+    const selfId = client.getUserId();
+    let next = this._typingByRoom();
+    let changed = false;
+
+    for (const roomId of rooms) {
+      const names = (client.getRoom(roomId)?.getMembers() ?? [])
+        .filter((member) => member.typing && member.userId !== selfId)
+        .map((member) => member.name);
+      const current = next[roomId] ?? EMPTY_TYPING;
+      // Idempotent: an unchanged set writes nothing. Without this every EDU replaces the
+      // record and re-runs the sidebar template, which reads this during change detection.
+      if (sameNames(current, names)) {
+        continue;
+      }
+      if (!changed) {
+        next = { ...next };
+        changed = true;
+      }
+      if (names.length) {
+        next[roomId] = names;
+      } else {
+        delete next[roomId];
+      }
+    }
+
+    if (changed) {
+      this._typingByRoom.set(next);
+    }
+  });
+
+  /**
+   * A member started or stopped typing. The event names the member, not the set, so the
+   * room's whole typing set is re-read on flush.
+   */
+  private readonly onTypingChanged = (
+    _event: MatrixEvent,
+    member: RoomMember,
+  ): void => {
+    this.dirtyTypingRooms.add(member.roomId);
+    this.typingFlusher.schedule();
+  };
+
   // Memoized member projection: a cached, sorted list per room keyed by a cheap
   // fingerprint of its joined members, plus one shared collator (avoids spinning up
   // a fresh locale comparator on every sort). `localeCompare()` with no args is
@@ -359,10 +437,12 @@ export class RoomsService {
     bind: (client) => {
       client.on(RoomStateEvent.Members, this.onMemberChanged);
       client.on(RoomEvent.MyMembership, this.onMyMembership);
+      client.on(RoomMemberEvent.Typing, this.onTypingChanged);
     },
     unbind: (client) => {
       client.off(RoomStateEvent.Members, this.onMemberChanged);
       client.off(RoomEvent.MyMembership, this.onMyMembership);
+      client.off(RoomMemberEvent.Typing, this.onTypingChanged);
     },
     reset: () => {
       this.memberCache.clear();
@@ -374,6 +454,15 @@ export class RoomsService {
       // exists to prevent, reintroduced a microtask late. `projectFromClient` cancels its
       // own coalescer for exactly this reason; it cannot know about this one.
       this.memberFlusher.cancel();
+      // The typing map is protected one layer earlier too: its flusher reads
+      // `projection.client()` and returns when there is none, so a late flush cannot
+      // repopulate from the OUTGOING client the way `memberFlusher` could. Cancelling is
+      // kept for symmetry and to skip a pointless microtask — measured, removing it reds
+      // nothing on its own. What the suite does pin is the outcome: the map is empty and
+      // the listener detached after a disconnect.
+      this.typingFlusher.cancel();
+      this.dirtyTypingRooms.clear();
+      this._typingByRoom.set({});
       // The member signals are part of the read model too. Leaving them holding the
       // outgoing client's members is what makes a stale list survive a switch. The shared
       // empty list, not a fresh `[]`, or every disconnect re-notifies every consumer.

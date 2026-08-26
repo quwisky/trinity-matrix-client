@@ -178,6 +178,9 @@ The same line appears above a thread's reply box, and typing there tells the roo
 typing. Matrix tracks typing per room rather than per thread, so the thread shows everyone
 typing in the room — including people writing in the main timeline rather than the thread.
 
+In the room list, a room where somebody is typing shows that in place of its last message,
+in italics, until they stop.
+
 Under a message you may see a small row of avatars — the people who have read up to it,
 capped at five and excluding you. Your own receipts can be made invisible: **Settings →
 Privacy → send read receipts**, when switched off, still acks messages so your own unread

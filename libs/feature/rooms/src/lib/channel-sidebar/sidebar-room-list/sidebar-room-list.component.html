@@ -120,7 +120,11 @@
       />
       <div class="channel__text">
         <span class="channel__name">{{ room.name }}</span>
-        @if (room.lastMessage) {
+        @if (typingIn(room.id); as typing) {
+          <span class="channel__preview channel__preview--typing">{{
+            typing
+          }}</span>
+        } @else if (room.lastMessage) {
           <span class="channel__preview">{{ room.lastMessage }}</span>
         }
       </div>

@@ -6,6 +6,7 @@ import {
   MatrixEventEvent,
   ReceiptType,
   RoomEvent,
+  RoomMemberEvent,
   RoomStateEvent,
 } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
@@ -1976,5 +1977,119 @@ describe('RoomsService membersFor', () => {
     await Promise.resolve();
 
     expect(reads).toBe(1);
+  });
+
+  describe('typing, per room', () => {
+    /** A room whose members report a typing state, plus the client that owns it. */
+    function setupTyping() {
+      const handlers = new Map<string, (...args: unknown[]) => void>();
+      const members: Record<
+        string,
+        { userId: string; name: string; typing: boolean }[]
+      > = {
+        '!a:hs': [
+          { userId: '@alice:hs', name: 'Alice', typing: false },
+          { userId: '@me:hs', name: 'Me', typing: false },
+        ],
+        '!b:hs': [{ userId: '@bob:hs', name: 'Bob', typing: false }],
+      };
+      const rooms = [
+        fakeRoom({ roomId: '!a:hs', name: 'A' }),
+        fakeRoom({ roomId: '!b:hs', name: 'B' }),
+      ];
+      const client = {
+        baseUrl: 'https://hs.example',
+        getRooms: () => rooms,
+        getUserId: () => '@me:hs',
+        getRoom: (roomId: string) =>
+          members[roomId] ? { getMembers: () => members[roomId] } : null,
+        on: (event: string, handler: (...args: unknown[]) => void) => {
+          handlers.set(event, handler);
+        },
+        off: (event: string) => {
+          handlers.delete(event);
+        },
+      };
+      const { svc, matrix } = provideRooms(client);
+      svc.connect();
+
+      /** Flip a member's typing flag and fire the event the SDK would. */
+      const fire = (roomId: string, userId: string, typing: boolean) => {
+        const member = members[roomId].find((m) => m.userId === userId);
+        if (member) {
+          member.typing = typing;
+        }
+        handlers.get(RoomMemberEvent.Typing)?.({}, { roomId, userId });
+      };
+
+      return { svc, matrix, handlers, fire };
+    }
+
+    it('projects a room typing set, excluding the local user', async () => {
+      const { svc, fire } = setupTyping();
+
+      fire('!a:hs', '@alice:hs', true);
+      await Promise.resolve();
+      expect(svc.typingByRoom()['!a:hs']).toEqual(['Alice']);
+
+      // Self must never appear: "You are typing" on your own room is the failure.
+      fire('!a:hs', '@me:hs', true);
+      await Promise.resolve();
+      expect(svc.typingByRoom()['!a:hs']).toEqual(['Alice']);
+    });
+
+    it('keys each room separately and drops a room that goes quiet', async () => {
+      const { svc, fire } = setupTyping();
+
+      fire('!a:hs', '@alice:hs', true);
+      fire('!b:hs', '@bob:hs', true);
+      await Promise.resolve();
+      expect(svc.typingByRoom()).toEqual({
+        '!a:hs': ['Alice'],
+        '!b:hs': ['Bob'],
+      });
+
+      fire('!a:hs', '@alice:hs', false);
+      await Promise.resolve();
+      expect(svc.typingByRoom()).toEqual({ '!b:hs': ['Bob'] });
+    });
+
+    it('writes nothing when a room typing set is unchanged', async () => {
+      const { svc, fire } = setupTyping();
+
+      // Positive control FIRST: without it the identity check below passes when the
+      // listener was never registered at all, comparing undefined to undefined.
+      fire('!a:hs', '@alice:hs', true);
+      await Promise.resolve();
+      const first = svc.typingByRoom();
+      expect(first['!a:hs']).toEqual(['Alice']);
+
+      // A repeat EDU with the same set. Coalesced, so the flush is what makes this a
+      // real negative rather than a vacuous one.
+      fire('!a:hs', '@alice:hs', true);
+      await Promise.resolve();
+      expect(svc.typingByRoom()).toBe(first);
+
+      // …and it still CAN change, or the assertion above is satisfied by a dead writer.
+      fire('!b:hs', '@bob:hs', true);
+      await Promise.resolve();
+      expect(svc.typingByRoom()).not.toBe(first);
+    });
+
+    it('detaches the listener and clears the map on disconnect', async () => {
+      const { svc, handlers, fire } = setupTyping();
+
+      fire('!a:hs', '@alice:hs', true);
+      await Promise.resolve();
+      expect(svc.typingByRoom()['!a:hs']).toEqual(['Alice']);
+
+      svc.disconnect();
+      await Promise.resolve();
+
+      // Both halves matter. A stale line naming the OUTGOING account's typists is the
+      // bug the surrounding `reset` comments exist to prevent.
+      expect(handlers.has(RoomMemberEvent.Typing)).toBe(false);
+      expect(svc.typingByRoom()).toEqual({});
+    });
   });
 });

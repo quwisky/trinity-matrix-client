@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **The room list shows who is typing.** A room where somebody is typing now says so in
+  place of its last message, in italics, until they stop — so you can see a conversation
+  starting up without opening it.
+
 - **Threads show who is typing, and tell the room when you are.** The reply box in a thread
   now announces your typing to the room the way the main composer does, and carries the same
   typing line above it. Matrix tracks typing per room rather than per thread, so that line
