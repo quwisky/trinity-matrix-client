@@ -97,8 +97,8 @@ if (!app.requestSingleInstanceLock()) {
     // registerAppProtocol() serves `trinity://app` from. Scoped to remote
     // http(s) only; see cors.ts (does not weaken webSecurity/sandbox/isolation).
     installMatrixCors(session.defaultSession);
-    // Restrict renderer permission requests (mic + geolocation only); Electron would
-    // otherwise auto-approve camera and other powerful permissions.
+    // Restrict renderer permission requests (app media + geolocation only); Electron
+    // would otherwise auto-approve every powerful permission.
     installPermissionPolicy(session.defaultSession);
     buildMenu();
     createWindow();

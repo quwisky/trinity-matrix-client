@@ -1,0 +1,12 @@
+{
+  "name": "components-qr-scanner",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/components/qr-scanner/src",
+  "prefix": "trn",
+  "tags": ["type:ui", "scope:shared", "ui:public"],
+  "projectType": "library",
+  "targets": {
+    "test": {},
+    "typecheck": {}
+  }
+}

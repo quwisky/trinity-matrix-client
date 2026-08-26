@@ -28,6 +28,9 @@
       ],
       "@trinity/testing": ["./libs/testing/src/index.ts"],
       "@trinity/platform-native": ["./libs/platform-native/src/index.ts"],
+      "@trinity/platform-native/qr-code": [
+        "./libs/platform-native/src/lib/qr-code.service.ts"
+      ],
       "@trinity/data-access/matrix-client": [
         "./libs/data-access/matrix-client/src/index.ts"
       ],
@@ -138,6 +141,9 @@
       "@trinity/helm/switch": ["./libs/spartan/switch/src/index.ts"],
       "@trinity/data-access/widgets": [
         "./libs/data-access/widgets/src/index.ts"
+      ],
+      "@trinity/components/qr-scanner": [
+        "./libs/components/qr-scanner/src/index.ts"
       ]
     },
     "noUncheckedSideEffectImports": false,

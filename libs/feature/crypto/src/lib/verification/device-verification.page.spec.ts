@@ -1,7 +1,10 @@
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { ActivatedRoute, Router } from '@angular/router';
 import { TrnDialogRef } from '@trinity/components/overlay';
+import { QrScannerComponent } from '@trinity/components/qr-scanner';
+import { QrCodeService } from '@trinity/platform-native/qr-code';
 import { fireEvent, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import {
@@ -21,6 +24,9 @@ function view(partial: Partial<VerificationView>): VerificationView {
     incoming: false,
     emoji: null,
     sasConfirmed: false,
+    qrCodeData: null,
+    qrShowAvailable: false,
+    qrScanAvailable: false,
     cancelReason: null,
     ...partial,
   };
@@ -36,6 +42,11 @@ async function renderPage(
     inputs: { asModal },
     providers: [
       MockProvider(VerificationService, { active }),
+      MockProvider(QrCodeService, {
+        cameraSupported: true,
+        createDataUrl: vi.fn(() => 'data:image/gif;base64,AA=='),
+        openCamera: vi.fn().mockRejectedValue(new Error('camera unavailable')),
+      }),
       MockProvider(Router),
       MockProvider(ActivatedRoute, {
         snapshot: {
@@ -53,6 +64,9 @@ async function renderPage(
   vi.mocked(svc.startSelfVerification).mockReturnValue(of(undefined));
   vi.mocked(svc.accept).mockReturnValue(of(undefined));
   vi.mocked(svc.startSas).mockReturnValue(of(undefined));
+  vi.mocked(svc.showQr).mockReturnValue(of(undefined));
+  vi.mocked(svc.scanQr).mockReturnValue(of(undefined));
+  vi.mocked(svc.confirmQr).mockReturnValue(of(undefined));
   vi.mocked(svc.confirmSas).mockReturnValue(of(undefined));
   vi.mocked(svc.mismatchSas).mockReturnValue(of(undefined));
   vi.mocked(svc.cancel).mockReturnValue(of(undefined));
@@ -143,6 +157,87 @@ describe('DeviceVerificationPage', () => {
     fireEvent.click(button(container, 'They match'));
 
     expect(svc.confirmSas).toHaveBeenCalledOnce();
+  });
+
+  it('offers show, scan, and emoji choices for a compatible self-verification', async () => {
+    const { container } = await renderPage(
+      signal(
+        view({
+          stage: 'ready',
+          qrShowAvailable: true,
+          qrScanAvailable: true,
+        }),
+      ),
+    );
+
+    expect(button(container, 'Show a QR code')).toBeTruthy();
+    expect(button(container, 'Scan a QR code')).toBeTruthy();
+    expect(button(container, 'Use emoji instead')).toBeTruthy();
+  });
+
+  it('never offers QR verification for another user', async () => {
+    const { container } = await renderPage(
+      signal(
+        view({
+          stage: 'ready',
+          isSelfVerification: false,
+          qrShowAvailable: true,
+          qrScanAvailable: true,
+        }),
+      ),
+    );
+
+    expect(container.textContent).not.toContain('QR code');
+    expect(button(container, 'Start emoji verification')).toBeTruthy();
+  });
+
+  it('generates a QR code only after the explicit show action', async () => {
+    const { svc, container } = await renderPage(
+      signal(view({ stage: 'ready', qrShowAvailable: true })),
+    );
+
+    fireEvent.click(button(container, 'Show a QR code'));
+
+    expect(svc.showQr).toHaveBeenCalledOnce();
+  });
+
+  it('renders the generated code with a privacy warning', async () => {
+    const payload = new Uint8ClampedArray([0, 255, 7]);
+    const { container } = await renderPage(
+      signal(view({ stage: 'qr-shown', qrCodeData: payload })),
+    );
+
+    expect(
+      container.querySelector<HTMLImageElement>('[data-testid="verify-qr"]')
+        ?.src,
+    ).toContain('data:image/gif;base64,AA==');
+    expect(container.textContent).toContain('Do not share, screenshot');
+  });
+
+  it('passes decoded scanner bytes to the verification service', async () => {
+    const { fixture, svc, container } = await renderPage(
+      signal(view({ stage: 'ready', qrScanAvailable: true })),
+    );
+    fireEvent.click(button(container, 'Scan a QR code'));
+    await fixture.whenStable();
+    const scanner = fixture.debugElement.query(
+      By.directive(QrScannerComponent),
+    );
+    const payload = new Uint8ClampedArray([0, 255, 7]);
+
+    scanner.componentInstance.scanned.emit(payload);
+
+    expect(svc.scanQr).toHaveBeenCalledWith(payload);
+  });
+
+  it('confirms that the other device scanned the displayed code', async () => {
+    const { svc, container } = await renderPage(
+      signal(view({ stage: 'qr-confirm' })),
+    );
+
+    fireEvent.click(button(container, 'Yes, it scanned this code'));
+
+    expect(svc.confirmQr).toHaveBeenCalledOnce();
   });
 
   it('waits on the other device once the match is confirmed', async () => {

@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   DestroyRef,
   inject,
   input,
@@ -16,6 +17,8 @@ import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
 import { PageHeaderComponent } from '@trinity/components/page-header';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
+import { QrScannerComponent } from '@trinity/components/qr-scanner';
+import { QrCodeService } from '@trinity/platform-native/qr-code';
 import { SasCompareComponent } from './sas-compare.component';
 
 /**
@@ -35,11 +38,13 @@ import { SasCompareComponent } from './sas-compare.component';
     PageHeaderComponent,
     HlmButton,
     SasCompareComponent,
+    QrScannerComponent,
     TrnSpinnerComponent,
   ],
 })
 export class DeviceVerificationPage {
   private readonly verification = inject(VerificationService);
+  private readonly qrCode = inject(QrCodeService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   // Present only when opened as a dialog (incoming request); null on the routed page.
@@ -52,6 +57,12 @@ export class DeviceVerificationPage {
   readonly active = this.verification.active;
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
+  readonly scanning = signal(false);
+  readonly cameraSupported = this.qrCode.cameraSupported;
+  readonly qrCodeUrl = computed(() => {
+    const data = this.active()?.qrCodeData;
+    return data ? this.qrCode.createDataUrl(data) : null;
+  });
 
   /** When true the page is modal content (incoming); else a routed page. */
   readonly asModal = input(false);
@@ -65,7 +76,28 @@ export class DeviceVerificationPage {
     this.run(this.verification.accept());
   }
   startSas(): void {
+    this.scanning.set(false);
     this.run(this.verification.startSas());
+  }
+  showQr(): void {
+    this.run(this.verification.showQr());
+  }
+  hideQr(): void {
+    this.verification.hideQr();
+  }
+  startQrScan(): void {
+    this.error.set(null);
+    this.scanning.set(true);
+  }
+  cancelQrScan(): void {
+    this.scanning.set(false);
+  }
+  scanQr(data: Uint8ClampedArray): void {
+    this.scanning.set(false);
+    this.run(this.verification.scanQr(data));
+  }
+  confirmQr(): void {
+    this.run(this.verification.confirmQr());
   }
   confirm(): void {
     this.run(this.verification.confirmSas());

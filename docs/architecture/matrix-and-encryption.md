@@ -680,9 +680,17 @@ device sign-out, and change-password.
 
 [`VerificationService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/crypto/src/lib/verification.service.ts)
 wraps the SDK's `VerificationRequest` and `Verifier` behind a single `active` signal.
-Method is `m.sas.v1`, for both self-verification (`requestOwnUserVerification`) and
-cross-user verification (`requestVerificationDM`, launched from the member-info panel).
-QR verification is not implemented, and only one verification runs at a time.
+Self-verification offers Matrix QR show/scan when the other session advertises the matching
+method, with `m.sas.v1` emoji as fallback. Cross-user verification
+(`requestVerificationDM`, launched from the member-info panel) remains SAS-only. Only one
+verification runs at a time.
+
+QR payloads remain raw bytes end to end. `generateQRCode()` is called only after the user
+chooses to show a code, and those bytes are discarded as soon as a method starts. The
+public `QrScannerComponent` decodes live-camera frames through the injectable platform QR
+service, so another flow can reuse the camera and tests can substitute the decoder. A scan
+does not mean success: the showing device must confirm the `ShowReciprocateQr` prompt, and
+the UI reports completion only when the request reaches `Done`.
 
 The `sasConfirmed` flag on the view model is **local**, because the SDK's phase stays
 `Started` after your MAC goes out. Without it the UI would keep asking the user to confirm

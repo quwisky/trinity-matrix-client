@@ -129,10 +129,14 @@ Two more policies are applied on top:
   `shell.openExternal` instead; prevents `will-navigate` away from the app origin; and
   prevents `will-attach-webview`. It is applied to the main window and, via
   `app.on('web-contents-created')`, to any contents created later.
-- `installPermissionPolicy()` allows only microphone and geolocation. Electron approves
-  permission requests that reach a ready app by default, so without a handler camera and
-  other powerful permissions would be granted silently. A `media` request is allowed only
-  when it is audio-only.
+- `installPermissionPolicy()` allows only media and geolocation from Trinity's main app
+  frame. Media covers the microphone for voice messages and the camera for QR verification.
+  Electron approves permission requests that reach a ready app by default, so every other
+  powerful permission remains explicitly denied.
+
+Packaged macOS builds also declare `NSCameraUsageDescription` in `electron-builder.yml`
+and the camera entitlement in `build/entitlements.mac.plist`; the runtime permission
+handler cannot produce a valid macOS camera prompt without that packaging metadata.
 
 The window hides to the tray on close rather than being destroyed, keeping the renderer and
 `/sync` alive. An explicit quit — the tray item, the application menu, or OS shutdown —

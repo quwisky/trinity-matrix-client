@@ -6,14 +6,14 @@ import { inlineStyleSheets } from './inline-styles.mjs';
 /**
  * Trinity styles components two ways, and the redesign wants one.
  *
- * Sixty components own a `.scss` file; forty-six templates reach for Tailwind utilities. Both
+ * Sixty-one components own a `.scss` file; forty-six templates reach for Tailwind utilities. Both
  * are legitimate today, and the redesign's direction is to shrink the first set as components
  * move onto tokens and utilities — but a spec asserting that end state would fail sixty times
  * on the day it landed and be deleted the first time it cried wolf.
  *
  * So this is a **frozen ledger**: the set of stylesheet-owning components is recorded, and the
  * assertion is that it does not GROW. Migrating one means deleting its entry, which is a
- * one-line diff in the right direction. Adding a sixty-first stylesheet means adding an entry,
+ * one-line diff in the right direction. Adding a sixty-second stylesheet means adding an entry,
  * which is a conversation.
  *
  * It lives in `scripts` for the same reason `confirmation-words.spec.mjs` does: the files span
@@ -54,13 +54,14 @@ const componentStylesheets = stylesheets.filter(
  *
  * It may shrink: migrating a component to tokens and utilities deletes a line, which is the
  * diff this phase wants to see. It may not grow without a deliberate edit here, so the cost of
- * a sixty-first stylesheet is a visible line in a shared file rather than an invisible default.
+ * a sixty-second stylesheet is a visible line in a shared file rather than an invisible default.
  */
 const LEDGER = [
   'libs/components/banner/src/lib/banner.component.scss',
   'libs/components/emoji-picker/src/lib/trn-emoji-picker/trn-emoji-picker.component.scss',
   'libs/components/media-bubble/src/lib/media-bubble.component.scss',
   'libs/components/message-toolbar/src/lib/message-toolbar.component.scss',
+  'libs/components/qr-scanner/src/lib/qr-scanner/qr-scanner.component.scss',
   'libs/feature/auth/src/lib/auth-card/auth-card.component.scss',
   'libs/feature/auth/src/lib/login/login.page.scss',
   'libs/feature/crypto/src/lib/encryption-setup/encryption-setup.page.scss',

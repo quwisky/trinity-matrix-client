@@ -102,7 +102,9 @@ own manifest does not declare it, so without this entry the OS denies notificati
 ever prompting.
 
 **A FileProvider**, plus `CAMERA`, `READ_MEDIA_IMAGES` and `READ_MEDIA_VIDEO` for
-attachment capture and saving.
+attachment capture and saving. QR verification uses the WebView's live camera API against
+the same declared camera permission, so the scanner stays shared with web and desktop. The
+iOS camera usage description names both attachment capture and verification QR scanning.
 
 **`android:allowBackup="false"`** — a deliberate departure from the Capacitor generator
 default. The Rust crypto store lives in the WebView data directory and is initialised with

@@ -13,6 +13,7 @@ import { encodeRoomSegment } from '@trinity/util/matrix';
 
 const cap = vi.hoisted(() => ({ native: false }));
 vi.mock('@capacitor/core', () => ({
+  registerPlugin: vi.fn(() => ({})),
   Capacitor: { isNativePlatform: () => cap.native },
 }));
 
