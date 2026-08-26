@@ -283,7 +283,7 @@ describe('MessageListBase — the mobile action sheet', () => {
     expect(close).not.toHaveBeenCalled();
   });
 
-  it('edits an editable row it was swiped on, and replies to any other', () => {
+  it('replies to a row that is not editable', () => {
     // The dispatch reads `rowCaps`, not `isEditable`, so the icon the reader saw behind the
     // row and the action they get are the same value rather than two computations of it.
     const { fixture, cmp } = build();
@@ -293,6 +293,23 @@ describe('MessageListBase — the mobile action sheet', () => {
     cmp.onRowSwipe(cmp.rows()[0]);
     expect(cmp.replyingToId()).toBe('$1');
     expect(cmp.editingId()).toBeNull();
+  });
+
+  it('edits a row it can edit', () => {
+    // The branch that had no coverage: the test above uses somebody else's message, so only
+    // the reply path ever ran and deleting the edit branch left the suite green. It is the
+    // half the design is about — the affordance shows a pencil, and this is what has to
+    // happen when the reader lets go.
+    const { fixture, cmp } = build();
+    fixture.componentRef.setInput('messages', [
+      { ...msg('$1'), isOwn: true, senderId: '@me:hs' },
+    ]);
+    fixture.detectChanges();
+
+    cmp.onRowSwipe(cmp.rows()[0]);
+
+    expect(cmp.editingId()).toBe('$1');
+    expect(cmp.replyingToId()).toBeNull();
   });
 
   it('still dispatches when the row is gone by the time it lands', () => {

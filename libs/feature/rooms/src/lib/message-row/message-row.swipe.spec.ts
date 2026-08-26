@@ -286,6 +286,20 @@ describe('MessageRowComponent — the sideways swipe', () => {
       expect(armed(msg)).toBe(true);
     });
 
+    it('stops at fully armed however far the drag goes', async () => {
+      // The clamp, which nothing else reaches. CSS clamps OPACITY to 1 on its own, so an
+      // unbounded progress hides there and comes out in the icon's scale instead: a 300px
+      // drag on a 400px row would put it at 168% and keep growing with the finger. The e2e
+      // cannot see it either — its scale assertion is a not-equal, which an overshoot
+      // satisfies as happily as the right value.
+      const { msg } = await renderRow('right');
+
+      msg.dispatchEvent(touch('pointerdown', 300));
+      msg.dispatchEvent(touch('pointermove', 900));
+
+      expect(progress(msg)).toBe(1);
+    });
+
     it('disarms if the drag falls back under the threshold', async () => {
       // Abandoning has to be visible too: a reader who pulls back must see the action leave.
       const { msg } = await renderRow('right');
@@ -302,9 +316,16 @@ describe('MessageRowComponent — the sideways swipe', () => {
     it('clears the reveal when the gesture ends', async () => {
       const { msg } = await renderRow('right');
 
-      drag(msg, 300, 420);
+      msg.dispatchEvent(touch('pointerdown', 300));
+      msg.dispatchEvent(touch('pointermove', 420));
+      // Established first, so the assertions below cannot pass by the property never having
+      // been written — `progress()` coerces an absent property to 0 exactly as it coerces a
+      // cleared one.
+      expect(msg.style.getPropertyValue('--swipe-progress')).not.toBe('');
 
-      expect(progress(msg)).toBe(0);
+      msg.dispatchEvent(touch('pointerup', 420));
+
+      expect(msg.style.getPropertyValue('--swipe-progress')).toBe('');
       expect(armed(msg)).toBe(false);
     });
   });
@@ -555,6 +576,31 @@ describe('MessageRowComponent — the sideways swipe', () => {
       const { container } = await renderRow('right');
 
       expect(parksAtEnd(container)).toBe(false);
+    });
+
+    it('shows the pencil for edit and the arrow for reply', async () => {
+      // The glyph derives from `swipeAction()` rather than re-deciding it, but "derived" is
+      // not "asserted": swapping the two names in the mapping would leave every attribute
+      // test green, since `TrnIconName` only type-checks that a name is registered.
+      const { fixture } = await renderRow('right', { editable: true });
+      const cmp = fixture.componentInstance as unknown as {
+        swipeIcon: () => string;
+        swipeAction: () => string;
+      };
+
+      expect(cmp.swipeAction()).toBe('edit');
+      expect(cmp.swipeIcon()).toBe('pencil');
+    });
+
+    it('shows the reply arrow on a row that cannot be edited', async () => {
+      const { fixture } = await renderRow('right', { editable: false });
+      const cmp = fixture.componentInstance as unknown as {
+        swipeIcon: () => string;
+        swipeAction: () => string;
+      };
+
+      expect(cmp.swipeAction()).toBe('reply');
+      expect(cmp.swipeIcon()).toBe('reply');
     });
 
     it('renders nothing on a read-only row', async () => {

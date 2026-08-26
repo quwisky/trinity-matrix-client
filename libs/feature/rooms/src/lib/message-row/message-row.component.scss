@@ -506,10 +506,27 @@
 }
 
 .msg__swipe trn-icon {
+  transition: color var(--trinity-duration-fast) var(--trinity-ease-standard);
+}
+
+// Scoped to an active drag, not left on every row. `calc(0.66 + …)` resolves to `0.66` — a
+// real scale, not `none` — so an unscoped rule would open a stacking context on every icon
+// in the timeline, which is the trap the `--swipe-drag` fallback above exists to avoid.
+// Nothing is visible when the class comes off: opacity goes to 0 in the same write.
+.msg--swiping .msg__swipe trn-icon {
   // Grows into place on the same progress, from two thirds to full size. Small enough to
   // read as the action arriving rather than as something bouncing.
   scale: calc(0.66 + (0.34 * var(--swipe-progress, 0)));
-  transition: color var(--trinity-duration-fast) var(--trinity-ease-standard);
+}
+
+// The one thing here the duration tokens cannot reach: the scale is written per pointermove
+// by JS with no transition, so neither the token collapse in `variables.scss` nor the
+// blanket in `global.scss` touches it. The OPACITY carries the progress information; the
+// growth is decoration, so it is the growth that goes.
+@media (prefers-reduced-motion: reduce) {
+  .msg--swiping .msg__swipe trn-icon {
+    scale: 1;
+  }
 }
 
 // Past the commit threshold — releasing now WILL act, and the icon says so before the reader

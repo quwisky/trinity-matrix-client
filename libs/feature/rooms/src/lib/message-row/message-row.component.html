@@ -37,7 +37,7 @@
         aria-hidden="true"
         [attr.data-swipe-action]="swipeAction()"
       >
-        <trn-icon [name]="swipeAction() === 'edit' ? 'pencil' : 'reply'" />
+        <trn-icon [name]="swipeIcon()" />
       </span>
     }
     @if (r.replyTo) {

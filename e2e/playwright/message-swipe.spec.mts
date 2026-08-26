@@ -38,27 +38,33 @@ async function swipe(
 ): Promise<void> {
   const cdp = await page.context().newCDPSession(page);
   const STEPS = 10;
-  await cdp.send('Input.dispatchTouchEvent', {
-    type: 'touchStart',
-    touchPoints: [{ x: from.x, y: from.y, id: 1 }],
-  });
-  for (let step = 1; step <= STEPS; step++) {
+  try {
     await cdp.send('Input.dispatchTouchEvent', {
-      type: 'touchMove',
-      touchPoints: [
-        {
-          x: Math.round(from.x + ((to.x - from.x) * step) / STEPS),
-          y: Math.round(from.y + ((to.y - from.y) * step) / STEPS),
-          id: 1,
-        },
-      ],
+      type: 'touchStart',
+      touchPoints: [{ x: from.x, y: from.y, id: 1 }],
     });
+    for (let step = 1; step <= STEPS; step++) {
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [
+          {
+            x: Math.round(from.x + ((to.x - from.x) * step) / STEPS),
+            y: Math.round(from.y + ((to.y - from.y) * step) / STEPS),
+            id: 1,
+          },
+        ],
+      });
+    }
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchEnd',
+      touchPoints: [],
+    });
+  } finally {
+    // Released even when an assertion throws mid-drag, which also leaves the page with a
+    // finger permanently down — a state no gesture can produce, and one that has already
+    // made a probe in this repo report a defect that did not exist.
+    await cdp.detach();
   }
-  await cdp.send('Input.dispatchTouchEvent', {
-    type: 'touchEnd',
-    touchPoints: [],
-  });
-  await cdp.detach();
 }
 
 /** A throwaway account with one room holding one message from someone else and one of ours. */
@@ -207,11 +213,13 @@ test.describe('Swipe a message', () => {
   }) => {
     const { own, other } = await openRoom(page, request, 'a', 'right');
 
-    // The whole cost of "one gesture, two outcomes" is paid here, so this has to be measured
-    // rather than read off an attribute. The icon is `opacity: 0` until `.msg--swiping`
-    // lands, and `toHaveAttribute` does not consult visibility — an earlier version of this
-    // test stayed green with the reveal rule deleted. It also asserts the ICON, since the
-    // attribute and the glyph are two expressions that could disagree.
+    // The whole cost of "one gesture, two outcomes" is paid here: the reader has to know
+    // which action is coming before committing to it.
+    //
+    // What this test does NOT establish is that the icon can be seen. Playwright's
+    // `toBeVisible()` ignores opacity entirely — an `opacity: 0` element with a box passes
+    // it — so the assertion below would survive the reveal being deleted outright. That
+    // claim belongs to `the action fades and grows in`, which measures the computed value.
     const halfway = async (selector: string) => {
       const box = (await page.locator(selector).boundingBox())!;
       const y = box.y + box.height / 2;
@@ -326,6 +334,51 @@ test.describe('Swipe a message', () => {
       'Replying to',
       { timeout: 10_000 },
     );
+  });
+
+  test('the affordance waits in the strip the row uncovers', async ({
+    page,
+    request,
+  }) => {
+    // The geometry, which nothing else reaches. The unit spec asserts the CLASS and says so;
+    // jsdom computes no `justify-content`. The action test asserts WHICH action. Neither
+    // notices if `.msg__swipe--end { justify-content: flex-end }` is deleted — and the
+    // original bug was exactly that: on a leftward drag the icon stayed at the row's
+    // starting left edge, painting over the message text, while the strip that opened on
+    // the right stayed empty.
+    const { other } = await openRoom(page, request, 'g', 'left');
+    const row = page.locator(other);
+    const before = (await row.boundingBox())!;
+    const y = before.y + before.height / 2;
+
+    const cdp = await page.context().newCDPSession(page);
+    try {
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x: before.x + before.width * 0.9, y, id: 1 }],
+      });
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x: before.x + before.width * 0.5, y, id: 1 }],
+      });
+
+      // Mid-drag, before release. A leftward drag opens a strip at the row's right-hand end,
+      // so that is where the icon has to be.
+      const icon = (await page
+        .locator(`${other} .msg__swipe trn-icon`)
+        .boundingBox())!;
+      const moved = (await row.boundingBox())!;
+      const iconCentre = icon.x + icon.width / 2;
+
+      expect(iconCentre).toBeGreaterThan(moved.x + moved.width);
+      expect(iconCentre).toBeLessThan(before.x + before.width);
+    } finally {
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchEnd',
+        touchPoints: [],
+      });
+      await cdp.detach();
+    }
   });
 
   test('a drag that turns vertical abandons the action', async ({

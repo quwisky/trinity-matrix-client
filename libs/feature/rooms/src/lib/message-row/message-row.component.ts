@@ -169,7 +169,10 @@ export class MessageRowComponent {
     this.destroyRef.onDestroy(() => {
       this.cancelLongPress();
       // A row destroyed mid-drag — a redaction, an edit, the local-echo id swap, or simply
-      // scrolling out of the virtual window — would otherwise leak its pointer capture.
+      // scrolling out of the virtual window — leaves `swipeStart` set, and `releaseSwipe`
+      // early-returns on a null start, so this is what makes a destroyed row unable to
+      // commit. NOT a capture release: the browser drops the capture when the element leaves
+      // the document, and this method never calls `releasePointerCapture`.
       this.cancelSwipe();
       this.hideToolbar();
     });
@@ -442,13 +445,21 @@ export class MessageRowComponent {
     this.paintSwipe(0);
   }
 
-  /** The width the commit threshold is a fraction of: `.msg`, which is the box that moves. */
-  private rowWidth(): number {
-    const root = this.host.nativeElement as HTMLElement;
-    return (
-      root.querySelector<HTMLElement>('.msg')?.getBoundingClientRect().width ??
-      0
-    );
+  /**
+   * The distance a drag has to cover to commit, from the box that actually moves.
+   *
+   * ONE definition, read by both the arming paint and the release. They were two
+   * byte-identical expressions, which made "the icon said it would act, and then it acted"
+   * true by coincidence rather than by construction — the pair could be edited apart with
+   * nothing to notice.
+   *
+   * Takes the already-resolved `.msg` rather than finding it again: `paintSwipe` has it in
+   * hand and this runs once per `pointermove`. `getBoundingClientRect()` is stable during a
+   * drag — a pure `translate` does not change the border box, and the scroller's
+   * `overflow-x: clip` stops a translated row summoning a scrollbar that would reflow it.
+   */
+  private commitDistance(msg: HTMLElement): number {
+    return msg.getBoundingClientRect().width * SWIPE_COMMIT_FRACTION;
   }
 
   /**
@@ -480,7 +491,10 @@ export class MessageRowComponent {
     //
     // A property CSS interpolates directly, not a transition: a transition would be chasing
     // the finger, and the whole point is that the reveal tracks it exactly.
-    const commitAt = this.rowWidth() * SWIPE_COMMIT_FRACTION;
+    const commitAt = this.commitDistance(msg);
+    // Clamped, and the clamp is load-bearing: without it a long drag drives the icon's scale
+    // past 1 and on up with the finger, unbounded. CSS would hide the overshoot in the
+    // opacity (it clamps to 1 on its own) and show it in the size.
     const progress = commitAt > 0 ? Math.min(1, distance / commitAt) : 0;
     msg.style.setProperty('--swipe-progress', `${progress.toFixed(3)}`);
 
@@ -610,6 +624,19 @@ export class MessageRowComponent {
    */
   readonly swipeAction = computed<'edit' | 'reply'>(() =>
     this.caps().editable ? 'edit' : 'reply',
+  );
+
+  /**
+   * The glyph for that action, derived from it rather than re-deciding it.
+   *
+   * The template used to bind `swipeAction() === 'edit' ? 'pencil' : 'reply'` beside
+   * `[attr.data-swipe-action]="swipeAction()"` — two expressions sharing an input, which is
+   * not the same as one expression. Swapping the two icon names left every test green,
+   * because the tests read the attribute and `TrnIconName` only type-checks that a name is
+   * registered, not that it is the right one.
+   */
+  readonly swipeIcon = computed<TrnIconName>(() =>
+    this.swipeAction() === 'edit' ? 'pencil' : 'reply',
   );
 
   /** A `matrix.to` permalink clicked in the message body, for the host to route in-app. */
