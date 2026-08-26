@@ -3,7 +3,9 @@
   flex-direction: column;
   gap: 14px;
   width: 340px;
+  max-height: 92svh;
   max-width: 92vw;
+  overflow: hidden;
   padding: 20px 18px 16px;
   border: 1px solid var(--trinity-divider);
   border-radius: var(--trinity-radius-xl);
@@ -20,6 +22,13 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-height: 0;
+}
+
+.room-settings__tabs {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .room-settings__field {

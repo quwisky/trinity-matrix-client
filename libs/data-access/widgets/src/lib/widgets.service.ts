@@ -27,6 +27,11 @@ import { resolveWidgetLaunch } from './widget-template';
 export const WIDGET_EVENT_TYPE = 'im.vector.modular.widgets';
 const TRINITY_WIDGET_CLIENT_ID = 'eu.qwky.trinity';
 
+interface WatchedRoom {
+  readonly state: WritableSignal<readonly RoomWidget[]>;
+  consumers: number;
+}
+
 /**
  * Demand-driven projection of the widgets declared in rooms whose settings dialog has
  * asked for them. Tier 1 deliberately stops at discovery and an external browser link —
@@ -36,10 +41,7 @@ const TRINITY_WIDGET_CLIENT_ID = 'eu.qwky.trinity';
 export class WidgetsService {
   private readonly matrix = inject(MatrixClientService);
   private readonly theme = inject(ThemeService);
-  private readonly watched = new Map<
-    string,
-    WritableSignal<readonly RoomWidget[]>
-  >();
+  private readonly watched = new Map<string, WatchedRoom>();
 
   private readonly onStateEvent = (event: MatrixEvent): void => {
     const roomId = event.getRoomId();
@@ -57,13 +59,13 @@ export class WidgetsService {
     bind: (client) => client.on(RoomStateEvent.Events, this.onStateEvent),
     unbind: (client) => client.off(RoomStateEvent.Events, this.onStateEvent),
     rebuild: (client) => {
-      for (const [roomId, state] of this.watched) {
-        state.set(readRoomWidgets(client, roomId));
+      for (const [roomId, watched] of this.watched) {
+        watched.state.set(readRoomWidgets(client, roomId));
       }
     },
     reset: () => {
-      for (const state of this.watched.values()) {
-        state.set([]);
+      for (const watched of this.watched.values()) {
+        watched.state.set([]);
       }
     },
   });
@@ -73,25 +75,30 @@ export class WidgetsService {
    * seeded, so the dialog does not flash an empty state before its first render.
    */
   widgetsFor(roomId: string): Signal<readonly RoomWidget[]> {
-    let state = this.watched.get(roomId);
-    if (!state) {
-      state = signal<readonly RoomWidget[]>(
-        readRoomWidgets(this.readClient(), roomId),
-        { equal: sameWidgets },
-      );
-      this.watched.set(roomId, state);
-    }
-    return state.asReadonly();
+    return this.watchedRoom(roomId).state.asReadonly();
   }
 
-  /** Attach the one filtered state listener while the room-settings surface is mounted. */
-  connect(): void {
+  /** Acquire one room and attach the shared filtered listener for the first consumer. */
+  connect(roomId: string): void {
+    this.watchedRoom(roomId).consumers += 1;
     this.projection.connect();
   }
 
-  /** Detach the listener and clear the dialog-scoped projection. */
-  disconnect(): void {
-    this.projection.disconnect();
+  /** Release one consumer without disrupting another open room-settings dialog. */
+  disconnect(roomId: string): void {
+    const watched = this.watched.get(roomId);
+    if (!watched) {
+      return;
+    }
+    watched.consumers = Math.max(0, watched.consumers - 1);
+    if (watched.consumers > 0) {
+      return;
+    }
+    watched.state.set([]);
+    this.watched.delete(roomId);
+    if (this.watched.size === 0) {
+      this.projection.disconnect();
+    }
   }
 
   /** Expand and validate a widget destination using the current account and client UI. */
@@ -104,6 +111,21 @@ export class WidgetsService {
       this.projection.client() ??
       (this.matrix.isInitialized ? this.matrix.instance : null)
     );
+  }
+
+  private watchedRoom(roomId: string): WatchedRoom {
+    let watched = this.watched.get(roomId);
+    if (!watched) {
+      watched = {
+        state: signal<readonly RoomWidget[]>(
+          readRoomWidgets(this.readClient(), roomId),
+          { equal: sameWidgets },
+        ),
+        consumers: 0,
+      };
+      this.watched.set(roomId, watched);
+    }
+    return watched;
   }
 
   private templateContext(roomId: string): WidgetTemplateContext {

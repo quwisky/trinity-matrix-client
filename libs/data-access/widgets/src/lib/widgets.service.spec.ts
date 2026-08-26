@@ -38,9 +38,12 @@ function setup(initial: WidgetFixture[] = []) {
       getState: () => ({ getStateEvents }),
     }),
   };
+  const getRoom = vi.fn((roomId: string) =>
+    roomId === '!room:example.org' ? room : null,
+  );
   const client = {
     baseUrl: 'https://matrix.example.org',
-    getRoom: (roomId: string) => (roomId === '!room:example.org' ? room : null),
+    getRoom,
     getUserId: () => '@alice:example.org',
     getUser: () => null,
     getDeviceId: () => 'DEVICE',
@@ -64,6 +67,7 @@ function setup(initial: WidgetFixture[] = []) {
     service: TestBed.inject(WidgetsService),
     events,
     getStateEvents,
+    getRoom,
     client,
   };
 }
@@ -138,7 +142,7 @@ describe('WidgetsService', () => {
   it('follows relevant live state and coalesces a sync burst', async () => {
     const { service, client, events, getStateEvents } = setup();
     const widgets = service.widgetsFor('!room:example.org');
-    service.connect();
+    service.connect('!room:example.org');
     const readsBefore = getStateEvents.mock.calls.length;
     events.push(
       widgetEvent({
@@ -159,7 +163,7 @@ describe('WidgetsService', () => {
   it('ignores other event types and unwatched rooms', async () => {
     const { service, client, getStateEvents } = setup();
     service.widgetsFor('!room:example.org');
-    service.connect();
+    service.connect('!room:example.org');
     const readsBefore = getStateEvents.mock.calls.length;
     const onState = handlerFor(client, 'RoomState.events');
 
@@ -178,14 +182,14 @@ describe('WidgetsService', () => {
       },
     ]);
     const widgets = service.widgetsFor('!room:example.org');
-    service.connect();
+    service.connect('!room:example.org');
     const readsBefore = getStateEvents.mock.calls.length;
     handlerFor(
       client,
       'RoomState.events',
     )?.(liveEvent(WIDGET_EVENT_TYPE, '!room:example.org'));
 
-    service.disconnect();
+    service.disconnect('!room:example.org');
     await Promise.resolve();
 
     expect(client.off).toHaveBeenCalledWith(
@@ -194,5 +198,61 @@ describe('WidgetsService', () => {
     );
     expect(widgets()).toEqual([]);
     expect(getStateEvents).toHaveBeenCalledTimes(readsBefore);
+  });
+
+  it('labels a display-name fallback as the Matrix user ID it actually sends', () => {
+    const { service } = setup();
+
+    const launch = service.launchFor('!room:example.org', {
+      id: 'board',
+      name: 'Board',
+      type: 'm.custom',
+      rawUrl: 'https://widgets.example/?name=$matrix_display_name',
+      data: {},
+    });
+
+    expect(new URL(launch.url as string).searchParams.get('name')).toBe(
+      '@alice:example.org',
+    );
+    expect(launch.disclosures).toEqual([
+      { kind: 'user-id', label: 'your Matrix user ID' },
+    ]);
+  });
+
+  it('keeps the shared listener alive until overlapping rooms both release it', () => {
+    const { service, client } = setup([
+      {
+        id: 'board',
+        content: { type: 'm.custom', url: 'https://widgets.example' },
+      },
+    ]);
+    const first = service.widgetsFor('!room:example.org');
+    const second = service.widgetsFor('!second:example.org');
+    service.connect('!room:example.org');
+    service.connect('!second:example.org');
+
+    service.disconnect('!room:example.org');
+
+    expect(first()).toEqual([]);
+    expect(client.off).not.toHaveBeenCalled();
+
+    service.disconnect('!second:example.org');
+
+    expect(second()).toEqual([]);
+    expect(client.off).toHaveBeenCalledOnce();
+  });
+
+  it('prunes a released room before a later room reconnects', () => {
+    const { service, getRoom } = setup();
+    service.widgetsFor('!room:example.org');
+    service.connect('!room:example.org');
+    service.disconnect('!room:example.org');
+    getRoom.mockClear();
+
+    service.widgetsFor('!second:example.org');
+    service.connect('!second:example.org');
+
+    expect(getRoom).not.toHaveBeenCalledWith('!room:example.org');
+    expect(getRoom).toHaveBeenCalledWith('!second:example.org');
   });
 });

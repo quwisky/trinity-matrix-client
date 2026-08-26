@@ -144,6 +144,7 @@ export class RoomSettingsComponent implements OnInit {
   private readonly externalBrowser = inject(ExternalBrowserService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
+  private connectedWidgetRoom: string | null = null;
 
   /** True while the save writes are in flight (disables the form + Save). */
   readonly saving = signal(false);
@@ -307,11 +308,16 @@ export class RoomSettingsComponent implements OnInit {
   constructor() {
     // This is a dialog-scoped projection: the only Tier 1 consumer owns the listener, so
     // most sessions pay nothing for widget state they never inspect.
-    this.destroyRef.onDestroy(() => this.widgetsService.disconnect());
+    this.destroyRef.onDestroy(() => {
+      if (this.connectedWidgetRoom) {
+        this.widgetsService.disconnect(this.connectedWidgetRoom);
+      }
+    });
   }
 
   ngOnInit(): void {
-    this.widgetsService.connect();
+    this.connectedWidgetRoom = this.roomId();
+    this.widgetsService.connect(this.connectedWidgetRoom);
     // Seeded once, deliberately: a linkedSignal over the inputs would re-seed on any synced
     // state change and wipe what the user is typing.
     this.model.set({

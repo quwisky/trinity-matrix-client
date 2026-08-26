@@ -78,6 +78,7 @@ function variablesFor(
   widget: RoomWidget,
   context: WidgetTemplateContext,
 ): Record<string, TemplateVariable> {
+  const displayName = context.displayName || context.userId;
   const data = Object.fromEntries(
     Object.entries(widget.data).map(([key, value]) => [key, { value }]),
   );
@@ -85,11 +86,10 @@ function variablesFor(
     ...data,
     matrix_room_id: disclosed(context.roomId, 'room-id', 'this room’s ID'),
     matrix_user_id: disclosed(context.userId, 'user-id', 'your Matrix user ID'),
-    matrix_display_name: disclosed(
-      context.displayName || context.userId,
-      'display-name',
-      'your display name',
-    ),
+    matrix_display_name:
+      displayName === context.userId
+        ? disclosed(displayName, 'user-id', 'your Matrix user ID')
+        : disclosed(displayName, 'display-name', 'your display name'),
     matrix_avatar_url: disclosed(
       context.avatarUrl,
       'avatar-url',

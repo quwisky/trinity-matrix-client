@@ -142,7 +142,7 @@ describe('RoomSettingsComponent', () => {
   it('always offers Widgets and explains an empty room', async () => {
     const { container, fixture, connectWidgets } = await build();
 
-    expect(connectWidgets).toHaveBeenCalledOnce();
+    expect(connectWidgets).toHaveBeenCalledWith('!r:hs');
     const tab = container.querySelector<HTMLElement>(
       '[data-testid="room-settings-tab-widgets"]',
     );
@@ -233,7 +233,7 @@ describe('RoomSettingsComponent', () => {
 
     fixture.destroy();
 
-    expect(disconnectWidgets).toHaveBeenCalledOnce();
+    expect(disconnectWidgets).toHaveBeenCalledWith('!r:hs');
   });
 
   it('offers restricted only when the room sits in a space', async () => {
