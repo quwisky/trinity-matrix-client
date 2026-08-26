@@ -312,4 +312,41 @@ test.describe('Typing indicators', () => {
 
     expect(opacities).toEqual(['1', '1', '1']);
   });
+
+  test('shows the typist in the room list', async ({ page, request }) => {
+    test.setTimeout(150_000);
+    const runId = `${Date.now().toString(36)}s`;
+    const hs = session.hs as string;
+    const { reader, roomName, roomId, memberName, memberId, memberHeaders } =
+      await seedRoomWithMember(request, hs, runId);
+    const member = { userId: memberId, headers: memberHeaders };
+
+    await login(page, reader);
+    await openRoom(page, roomName);
+
+    const channel = page.locator('.channel', { hasText: roomName }).first();
+    const typingPreview = channel.locator('.channel__preview--typing');
+
+    // Someone else types → the room's line says so.
+    await setMemberTyping(request, hs, roomId, member, true);
+    await expect(typingPreview).toHaveText(`${memberName} is typing`, {
+      timeout: 20_000,
+    });
+
+    await setMemberTyping(request, hs, roomId, member, false);
+    await expect(typingPreview).toHaveCount(0, { timeout: 20_000 });
+
+    // Typing ourselves does not bring the line back, and the row keeps its last message.
+    //
+    // This is NOT the self-exclusion guard, and an earlier version of this test wrongly
+    // claimed to be. Measured: with the `!selves.has(userId)` filter deleted, the row still
+    // reads only the other member — our own typing never reaches this map at all, so the
+    // mutation is invisible here whatever we assert. Self-exclusion, including the
+    // multi-account case, is pinned in `rooms.service.spec.ts` where it can actually fail.
+    await page.getByTestId('composer-input').fill('writing something');
+    await setMemberTyping(request, hs, roomId, member, true);
+    await expect(typingPreview).toHaveText(`${memberName} is typing`, {
+      timeout: 20_000,
+    });
+  });
 });

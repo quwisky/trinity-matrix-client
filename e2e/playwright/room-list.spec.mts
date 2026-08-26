@@ -193,7 +193,11 @@ test.describe('Room list preview row', () => {
 
     // Wait on the app's own state — the preview text landing from sync —
     // rather than a fixed sleep.
-    const preview = channel.first().locator('.channel__preview');
+    // Scoped past the typing variant: the same line carries "X is typing" while someone
+    // in the room is, which is transient and would fail this against correct code.
+    const preview = channel
+      .first()
+      .locator('.channel__preview:not(.channel__preview--typing)');
     await expect(preview).toContainText(PREVIEW_BODY, { timeout: 30_000 });
 
     await expect(channel.first().locator('.channel__name')).toHaveText(
