@@ -67,11 +67,12 @@ const bindsOutput = (tag, output) => {
   return expression !== null && !INERT.test(expression);
 };
 
-/** Whether an output expression forwards Angular's event value as its own token. */
-const forwardsEvent = (tag, output) => {
-  const expression = outputExpression(tag, output);
+/** Whether the swipe handler receives Angular's event value unchanged as argument two. */
+const forwardsSwipeAction = (tag) => {
+  const expression = outputExpression(tag, 'swipe');
   return (
-    expression !== null && /(?:^|[^\w$])\$event(?:$|[^\w$])/.test(expression)
+    expression !== null &&
+    /^onRowSwipe\s*\(\s*[A-Za-z_$][\w$]*\s*,\s*\$event\s*\)$/.test(expression)
   );
 };
 
@@ -132,7 +133,7 @@ describe('trn-message-row consumers', () => {
     const missing = templates.flatMap((file) => {
       const source = readFileSync(join(workspaceRoot, file), 'utf8');
       return rowTags(source).flatMap((tag, index) =>
-        forwardsEvent(tag, 'swipe')
+        forwardsSwipeAction(tag)
           ? []
           : [`${file} row #${index + 1} does not forward swipe $event`],
       );
@@ -143,21 +144,30 @@ describe('trn-message-row consumers', () => {
 
   it('recognises only a standalone forwarded swipe event', () => {
     expect(
-      forwardsEvent(
+      forwardsSwipeAction(
         '<trn-message-row (swipe)="onRowSwipe(row, $event)" />',
-        'swipe',
       ),
     ).toBe(true);
     expect(
-      forwardsEvent(
-        "<trn-message-row (swipe)='onRowSwipe(row, $event)' />",
-        'swipe',
+      forwardsSwipeAction(
+        "<trn-message-row (swipe)='onRowSwipe(message, $event)' />",
       ),
     ).toBe(true);
     expect(
-      forwardsEvent('<trn-message-row (swipe)="onRowSwipe(row)" />', 'swipe'),
+      forwardsSwipeAction('<trn-message-row (swipe)="onRowSwipe(row)" />'),
+    ).toBe(false);
+    expect(
+      forwardsSwipeAction(
+        `<trn-message-row (swipe)="onRowSwipe(row, $event === 'edit' ? 'reply' : 'edit')" />`,
+      ),
+    ).toBe(false);
+    expect(
+      forwardsSwipeAction(
+        `<trn-message-row (swipe)="log('$event'); onRowSwipe(row, 'reply')" />`,
+      ),
     ).toBe(false);
   });
+
   it('does not count an inert binding as a binding', () => {
     // The parser is the guard. `includes('(longPress)')` — the first spelling here — scores
     // a hit on the attribute alone, so a consumer that wired the output to nothing would
