@@ -235,6 +235,22 @@ describe('WidgetManagementService', () => {
     expect(sendStateEvent).not.toHaveBeenCalled();
   });
 
+  it('trusts the current state type over a forged generic projection', async () => {
+    const { service, events, sendStateEvent } = setup();
+    events.set(
+      WIDGET.id,
+      stateEvent(WIDGET.id, WIDGET.sourceEventId as string, {
+        type: 'm.jitsi',
+        url: 'https://widgets.example/call',
+      }),
+    );
+
+    await expect(
+      firstValueFrom(service.remove(ROOM_ID, WIDGET)),
+    ).rejects.toMatchObject({ code: 'unsupported-type' });
+    expect(sendStateEvent).not.toHaveBeenCalled();
+  });
+
   it('preserves homeserver write failures', async () => {
     const { service, sendStateEvent } = setup();
     sendStateEvent.mockRejectedValueOnce(new Error('M_FORBIDDEN'));

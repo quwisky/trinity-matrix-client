@@ -110,4 +110,21 @@ describe('RoomWidgetCreateComponent', () => {
     ).toHaveTextContent('no longer have permission');
     expect(component.form.name().value()).toBe('Planning board');
   });
+
+  it('retries a transient failure without requiring a field edit', async () => {
+    const { component, create } = await build();
+    create
+      .mockReturnValueOnce(throwError(() => new Error('unavailable')))
+      .mockReturnValueOnce(of('widget-id'));
+    validDraft(component);
+
+    await component.add();
+    expect(component.form().valid()).toBe(true);
+    expect(component.form.name().value()).toBe('Planning board');
+
+    await component.add();
+
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(component.form.name().value()).toBe('');
+  });
 });

@@ -109,13 +109,17 @@ export class WidgetManagementService {
         WIDGET_EVENT_TYPE,
         widget.id,
       ) as MatrixEvent | null;
+      const currentType = current ? activeWidgetType(current) : null;
       if (
         !widget.sourceEventId ||
         !current?.getId() ||
         current.getId() !== widget.sourceEventId ||
-        !isActiveWidget(current)
+        !currentType
       ) {
         throw new WidgetManagementError('conflict');
+      }
+      if (isCallWidgetType(currentType)) {
+        throw new WidgetManagementError('unsupported-type');
       }
       return from(
         sendWidgetStateEvent(context.client, roomId, {}, widget.id),
@@ -172,13 +176,16 @@ function sendWidgetStateEvent(
   return send(roomId, WIDGET_EVENT_TYPE, content, stateKey);
 }
 
-function isActiveWidget(event: MatrixEvent): boolean {
+function activeWidgetType(event: MatrixEvent): string | null {
   const content: unknown = event.getContent();
-  return !!(
+  if (
     content &&
     typeof content === 'object' &&
     !Array.isArray(content) &&
     typeof (content as Record<string, unknown>)['type'] === 'string' &&
     typeof (content as Record<string, unknown>)['url'] === 'string'
-  );
+  ) {
+    return (content as Record<string, unknown>)['type'] as string;
+  }
+  return null;
 }

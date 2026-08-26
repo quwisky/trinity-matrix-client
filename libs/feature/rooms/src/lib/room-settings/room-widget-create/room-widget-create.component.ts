@@ -44,6 +44,7 @@ export class RoomWidgetCreateComponent {
     viewChild<ElementRef<HTMLInputElement>>('nameInput');
   private readonly urlInput =
     viewChild<ElementRef<HTMLInputElement>>('urlInput');
+  readonly requestError = signal<string | null>(null);
 
   readonly form = form(this.model, (path) => {
     validate(path.name, ({ value }) =>
@@ -65,6 +66,7 @@ export class RoomWidgetCreateComponent {
 
   /** Submit through Signal Forms so validation and duplicate suppression share one path. */
   async add(): Promise<void> {
+    this.requestError.set(null);
     await submit(this.form, {
       action: async (field) => {
         try {
@@ -79,10 +81,8 @@ export class RoomWidgetCreateComponent {
           this.focusName();
           return undefined;
         } catch (error) {
-          return {
-            kind: 'server',
-            message: managementFailureText(error),
-          };
+          this.requestError.set(managementFailureText(error));
+          return undefined;
         }
       },
       onInvalid: () => this.focusFirstInvalid(),
@@ -115,11 +115,7 @@ export class RoomWidgetCreateComponent {
   }
 
   serverError(): string | null {
-    return (
-      this.form()
-        .errors()
-        .find((error) => error.kind === 'server')?.message ?? null
-    );
+    return this.requestError();
   }
 
   private focusFirstInvalid(): void {
