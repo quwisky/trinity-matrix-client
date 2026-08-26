@@ -125,6 +125,30 @@ async function expectMessageClearOfSheet(
   expect(geometry.row.bottom + 8).toBeLessThanOrEqual(sheetBox!.y);
 }
 
+async function scrollerRelativeTop(row: Locator): Promise<number> {
+  return row.evaluate((message) => {
+    const scroller = message.closest('[data-message-scroller]');
+    if (!scroller) {
+      throw new Error('message is not inside its timeline scroller');
+    }
+    return (
+      message.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+    );
+  });
+}
+
+async function expectScrollerPositionRestored(
+  row: Locator,
+  before: number,
+): Promise<void> {
+  await expect
+    .poll(async () => Math.abs((await scrollerRelativeTop(row)) - before), {
+      timeout: 10_000,
+      intervals: [100],
+    })
+    .toBeLessThanOrEqual(2);
+}
+
 test.use({ ...devices['Pixel 5'] });
 
 test.describe('Message actions on a phone', () => {
@@ -261,6 +285,7 @@ test.describe('Message actions on a phone', () => {
     await expect(row).toBeVisible({ timeout: 15_000 });
     await expect(jumpToLatest).toBeHidden();
     await expect.poll(() => rows.count()).toBeLessThan(80);
+    const targetTopBefore = await scrollerRelativeTop(row);
 
     await longPress(page, rowSel);
     const dialog = page.getByRole('dialog', { name: 'Message actions' });
@@ -276,6 +301,7 @@ test.describe('Message actions on a phone', () => {
 
     await expect(sheet).toHaveCount(0);
     await expect(row).toBeVisible();
+    await expectScrollerPositionRestored(row, targetTopBefore);
     await expect(jumpToLatest).toBeHidden();
   });
 
@@ -291,11 +317,19 @@ test.describe('Message actions on a phone', () => {
     await expect(thread).toBeVisible({ timeout: 15_000 });
     const threadRow = thread.locator('.msg[data-mid]').last();
     await expect(threadRow).toBeVisible();
+    const targetTopBefore = await scrollerRelativeTop(threadRow);
 
     await longPressTarget(page, threadRow);
     const dialog = page.getByRole('dialog', { name: 'Message actions' });
     const sheet = dialog.getByTestId('action-sheet-surface');
     await expect(sheet).toBeVisible({ timeout: 10_000 });
     await expectMessageClearOfSheet(threadRow, sheet);
+
+    await page
+      .locator('.cdk-overlay-backdrop')
+      .click({ position: { x: 5, y: 5 } });
+
+    await expect(sheet).toHaveCount(0);
+    await expectScrollerPositionRestored(threadRow, targetTopBefore);
   });
 });
