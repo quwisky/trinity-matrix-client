@@ -112,6 +112,86 @@ const declared = new Set(
   ),
 );
 
+const PRESET = 'node_modules/@spartan-ng/brain/hlm-tailwind-preset.css';
+
+/**
+ * Every class token the workspace writes, from the places classes are actually written.
+ *
+ * Tokens, not raw file text. A utility name like `container` or `shimmer` is an ordinary
+ * English word, and a whole-file regex reads it out of prose — the first version of this
+ * check flagged `container` because the word appears in comments. Variant prefixes are
+ * stripped so `md:no-scrollbar` counts as a use of `no-scrollbar`.
+ */
+function classTokens() {
+  const tokens = new Set();
+  const add = (value) => {
+    for (const token of value.split(/\s+/)) {
+      if (token) {
+        tokens.add(token.replace(/^.*:/, '').replace(/^!/, ''));
+      }
+    }
+  };
+  for (const file of sources) {
+    const source = read(file);
+    if (file.endsWith('.html')) {
+      for (const [, value] of source.matchAll(/class="([^"]*)"/g)) {
+        add(value);
+      }
+      continue;
+    }
+    // In `.ts` a class list is a quoted string — `classes(() => '…')`, a `class:` host
+    // entry, or a `[class]` binding's literal.
+    for (const [, single, double] of source.matchAll(
+      /'([^'\n]*)'|"([^"\n]*)"/g,
+    )) {
+      add(single ?? double ?? '');
+    }
+  }
+  return tokens;
+}
+
+/**
+ * Custom UTILITIES the preset defines, which the theme must too if anything here uses one.
+ *
+ * The same shape as the variant mismatch below, and it bit twice: `hlm-select-content` has
+ * carried `no-scrollbar` since it was vendored, and that class compiled to nothing at all —
+ * the preset that defines it is not imported, so the select panel drew a scrollbar the kit
+ * meant to suppress. Nothing could see it: the class is present in the DOM, the CSS is
+ * valid, and there is simply no rule.
+ *
+ * All three sides are derived. The preset is read for what it offers, the workspace for what
+ * it uses, the theme for what it defines — so a utility that stops being used drops out on
+ * its own. The usage side is the whole workspace and not just the kit, because a utility is
+ * just as dead in a feature template: the fix that added this guard put `no-scrollbar` in
+ * `settings.page.html`, which a kit-only sweep could not see.
+ */
+function undefinedKitUtilities() {
+  const offered = [...read(PRESET).matchAll(/@utility\s+([a-z][a-z0-9-]*)/g)]
+    .map(([, name]) => name)
+    // Functional utilities (`scroll-fade-*`) are captured with a trailing hyphen and can
+    // never match a token; they are out of this check's reach and named as such.
+    .filter((name) => !name.endsWith('-'));
+  const defined = new Set(
+    [...read(THEME).matchAll(/@utility\s+([a-z][a-z0-9-]*)/g)].map(
+      ([, name]) => name,
+    ),
+  );
+  const used = classTokens();
+
+  return offered.filter((name) => !defined.has(name) && used.has(name));
+}
+
+describe('kit utilities', () => {
+  it('reads the preset at all, so an empty sweep cannot pass', () => {
+    const offered = [...read(PRESET).matchAll(/@utility\s+([a-z][a-z0-9-]*)/g)];
+    expect(offered.length).toBeGreaterThan(5);
+  });
+
+  it('defines every preset utility the vendored kit actually uses', () => {
+    expect(undefinedKitUtilities()).toEqual([]);
+  });
+});
+
 describe('kit state variants', () => {
   it('reads the kit and the theme, so an empty sweep cannot pass', () => {
     expect(sources.length).toBeGreaterThan(50);

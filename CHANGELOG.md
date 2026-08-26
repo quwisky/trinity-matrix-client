@@ -111,6 +111,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Settings no longer shows two scrollbars side by side.** On a short window the list of
+  sections scrolled independently of the section you were reading, so both drew a scrollbar
+  next to each other — most visible under Notifications and Appearance, whose content is long
+  enough to scroll too. The list still scrolls; it just no longer draws a bar of its own. The
+  same fix also settles a dormant one: the dropdown panels have carried the instruction to
+  hide theirs since they were added, and it had never taken effect.
+
 - **The message menu no longer lingers after you leave the room.** On a phone, opening a
   message's action sheet and then navigating away — to Settings, or by following a link, or
   by signing out — left the sheet on screen over whatever came next, and picking anything
