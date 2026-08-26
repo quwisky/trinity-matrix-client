@@ -18,6 +18,7 @@ const WIDGET: RoomWidget = {
   data: {},
   creatorUserId: '@alice:example.org',
   waitForIframeLoad: true,
+  sourceEventId: '$board',
 };
 
 const EMBED: WidgetEmbed = {

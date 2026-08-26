@@ -1,6 +1,12 @@
 import { signal } from '@angular/core';
-import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import {
+  TrnAlertService,
+  TrnDialogService,
+  TrnToastService,
+} from '@trinity/components/overlay';
+import {
+  WidgetManagementError,
+  WidgetManagementService,
   WidgetsService,
   type RoomWidget,
   type WidgetLaunch,
@@ -8,7 +14,7 @@ import {
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { Subject, of } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomWidgetsComponent } from './room-widgets.component';
 
@@ -21,6 +27,7 @@ const BOARD_WIDGET: RoomWidget = {
   data: {},
   creatorUserId: '@alice:example.org',
   waitForIframeLoad: true,
+  sourceEventId: '$board',
 };
 
 const BOARD_LAUNCH: WidgetLaunch = {
@@ -40,6 +47,9 @@ async function build(
     launchFor?: Mock;
     openExternal?: Mock;
     openDialog?: Mock;
+    canManage?: boolean;
+    remove?: Mock;
+    confirm?: Mock;
   } = {},
 ) {
   const connect = vi.fn();
@@ -48,6 +58,9 @@ async function build(
     over.launchFor ?? vi.fn<() => WidgetLaunch>(() => BOARD_LAUNCH);
   const openExternal = over.openExternal ?? vi.fn(() => of(true));
   const widgets = signal<readonly RoomWidget[]>(over.widgets ?? []);
+  const canManage = signal(over.canManage ?? false);
+  const remove = over.remove ?? vi.fn(() => of(undefined));
+  const confirm = over.confirm ?? vi.fn().mockResolvedValue(true);
   const toastShow = vi.fn();
   const dialogClosed = new Subject<void>();
   const dialogRef = {
@@ -60,13 +73,19 @@ async function build(
     providers: [
       MockProvider(WidgetsService, {
         widgetsFor: () => widgets.asReadonly(),
+        canManageFor: () => canManage.asReadonly(),
         launchFor,
         connect,
         disconnect,
       }),
       MockProvider(ExternalBrowserService, { open: openExternal }),
       MockProvider(TrnToastService, { show: toastShow }),
+      MockProvider(TrnAlertService, { confirm }),
       MockProvider(TrnDialogService, { open: openDialog }),
+      MockProvider(WidgetManagementService, {
+        create: () => of('created'),
+        remove,
+      }),
     ],
   });
   return {
@@ -78,6 +97,10 @@ async function build(
     toastShow,
     openDialog,
     dialogRef,
+    widgets,
+    canManage,
+    remove,
+    confirm,
   };
 }
 
@@ -112,6 +135,123 @@ describe('RoomWidgetsComponent', () => {
     expect(link?.getAttribute('aria-label')).toBe(
       'Open Planning board in browser',
     );
+  });
+
+  it('shows management controls only while live authorization allows them', async () => {
+    const { container, fixture, canManage } = await build({
+      widgets: [BOARD_WIDGET],
+      canManage: true,
+    });
+
+    expect(
+      container.querySelector('[data-testid="room-widget-create"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="room-widget-remove-board"]'),
+    ).not.toBeNull();
+
+    canManage.set(false);
+    fixture.detectChanges();
+
+    expect(
+      container.querySelector('[data-testid="room-widget-create"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-testid="room-widget-remove-board"]'),
+    ).toBeNull();
+  });
+
+  it('confirms cross-client impact before removing the exact widget', async () => {
+    const { container, confirm, remove, widgets, fixture, toastShow } =
+      await build({
+        widgets: [BOARD_WIDGET],
+        canManage: true,
+      });
+
+    container
+      .querySelector<HTMLElement>('[data-testid="room-widget-remove-board"]')
+      ?.click();
+    await vi.waitFor(() =>
+      expect(remove).toHaveBeenCalledWith('!r:hs', BOARD_WIDGET),
+    );
+
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        header: 'Remove widget',
+        message: expect.stringContaining('every member and Matrix client'),
+        destructive: true,
+      }),
+    );
+
+    widgets.set([]);
+    fixture.detectChanges();
+    expect(toastShow).toHaveBeenCalledWith(
+      'Widget removed.',
+      expect.objectContaining({ variant: 'success' }),
+    );
+    await vi.waitFor(() =>
+      expect(
+        container.querySelector('[data-testid="room-widget-create-name"]'),
+      ).toBe(document.activeElement),
+    );
+  });
+
+  it('keeps call-widget removal out of the generic management surface', async () => {
+    const { container } = await build({
+      widgets: [{ ...BOARD_WIDGET, type: 'm.jitsi' }],
+      canManage: true,
+    });
+
+    expect(
+      container.querySelector('[data-testid="room-widget-remove-board"]'),
+    ).toBeNull();
+  });
+
+  it('reports a revision conflict and restores the remove action', async () => {
+    const { container, fixture, toastShow } = await build({
+      widgets: [BOARD_WIDGET],
+      canManage: true,
+      remove: vi.fn(() =>
+        throwError(() => new WidgetManagementError('conflict')),
+      ),
+    });
+    const button = container.querySelector<HTMLButtonElement>(
+      '[data-testid="room-widget-remove-board"]',
+    );
+
+    button?.click();
+    await vi.waitFor(() =>
+      expect(toastShow).toHaveBeenCalledWith(
+        expect.stringContaining('changed'),
+        expect.objectContaining({ variant: 'destructive' }),
+      ),
+    );
+    fixture.detectChanges();
+
+    expect(button?.disabled).toBe(false);
+  });
+
+  it('unlocks a replacement revision that wins after the write response', async () => {
+    const { container, fixture, widgets, toastShow } = await build({
+      widgets: [BOARD_WIDGET],
+      canManage: true,
+    });
+    const button = container.querySelector<HTMLButtonElement>(
+      '[data-testid="room-widget-remove-board"]',
+    );
+
+    button?.click();
+    await vi.waitFor(() => expect(button?.disabled).toBe(true));
+    widgets.set([{ ...BOARD_WIDGET, sourceEventId: '$board-v2' }]);
+    fixture.detectChanges();
+
+    await vi.waitFor(() =>
+      expect(toastShow).toHaveBeenCalledWith(
+        expect.stringContaining('replaced while removal was in progress'),
+        expect.objectContaining({ variant: 'destructive' }),
+      ),
+    );
+    expect(button?.disabled).toBe(false);
   });
 
   it('delegates a safe widget link to the cross-platform browser service', async () => {

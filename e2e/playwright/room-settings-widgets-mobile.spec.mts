@@ -73,6 +73,18 @@ test.describe('Room settings widgets on a phone', () => {
     await page.getByTestId('overflow-open-room-settings').click();
     await openSettingsTab(page, 'room-settings', 'widgets');
 
+    await page.getByTestId('room-widget-create-name').fill('Mobile board');
+    await page
+      .getByTestId('room-widget-create-url')
+      .fill('https://widgets.example/mobile?room=$matrix_room_id');
+    await page.getByTestId('room-widget-create-url').press('Enter');
+    await expect(
+      page.locator('article.room-widgets__widget', {
+        hasText: 'Mobile board',
+      }),
+    ).toBeVisible({ timeout: 30_000 });
+    expect(widgetFixture.requestCount()).toBe(0);
+
     const scrollRegion = page.locator('.room-settings__tabs');
     await expect
       .poll(() =>

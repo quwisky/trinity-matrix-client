@@ -15,6 +15,7 @@ interface WidgetFixture {
 function widgetEvent(fixture: WidgetFixture) {
   return {
     getStateKey: () => fixture.id,
+    getId: () => `$${fixture.id || 'empty'}`,
     getContent: () => fixture.content,
     getSender: () => fixture.sender,
   };
@@ -31,14 +32,25 @@ function handlerFor(client: { on: Mock }, event: string) {
 
 function setup(initial: WidgetFixture[] = []) {
   const activeUserId = signal<string | null>('@alice:example.org');
+  const membership = signal('join');
+  const guest = signal(false);
+  const maySendWidgets = signal(true);
   const events = initial.map(widgetEvent);
-  const getStateEvents = vi.fn((type: string) =>
-    type === WIDGET_EVENT_TYPE ? events : [],
-  );
+  const getStateEvents = vi.fn((type: string, stateKey?: string) => {
+    if (type !== WIDGET_EVENT_TYPE) {
+      return stateKey === undefined ? [] : null;
+    }
+    return stateKey === undefined
+      ? events
+      : (events.find((event) => event.getStateKey() === stateKey) ?? null);
+  });
+  const mayClientSendStateEvent = vi.fn(() => maySendWidgets());
   const room = {
+    roomId: '!room:example.org',
     getMember: () => null,
+    getMyMembership: () => membership(),
     getLiveTimeline: () => ({
-      getState: () => ({ getStateEvents }),
+      getState: () => ({ getStateEvents, mayClientSendStateEvent }),
     }),
   };
   const getRoom = vi.fn((roomId: string) =>
@@ -51,6 +63,7 @@ function setup(initial: WidgetFixture[] = []) {
     getUser: () => null,
     getDeviceId: () => 'DEVICE',
     getHomeserverUrl: () => 'https://matrix.example.org',
+    isGuest: () => guest(),
     mxcUrlToHttp: () => null,
     on: vi.fn(),
     off: vi.fn(),
@@ -82,6 +95,9 @@ function setup(initial: WidgetFixture[] = []) {
     getRoom,
     client,
     activeUserId,
+    membership,
+    guest,
+    maySendWidgets,
   };
 }
 
@@ -120,6 +136,7 @@ describe('WidgetsService', () => {
         data: { title: 'Fallback title', board: 'roadmap' },
         creatorUserId: '@alice:example.org',
         waitForIframeLoad: false,
+        sourceEventId: '$board',
       },
       {
         id: 'titled',
@@ -129,6 +146,7 @@ describe('WidgetsService', () => {
         data: { title: 'Title from data' },
         creatorUserId: null,
         waitForIframeLoad: true,
+        sourceEventId: '$titled',
       },
     ]);
   });
@@ -218,6 +236,42 @@ describe('WidgetsService', () => {
     );
   });
 
+  it('projects joined, non-guest power authorization and updates it live', async () => {
+    const { service, client, membership, guest, maySendWidgets } = setup();
+    const canManage = service.canManageFor('!room:example.org');
+    service.connect('!room:example.org');
+
+    expect(canManage()).toBe(true);
+
+    maySendWidgets.set(false);
+    handlerFor(
+      client,
+      'RoomState.events',
+    )?.(liveEvent('m.room.power_levels', '!room:example.org'));
+    await Promise.resolve();
+    expect(canManage()).toBe(false);
+
+    maySendWidgets.set(true);
+    membership.set('leave');
+    const membershipHandler = client.on.mock.calls.find(
+      ([name]) => name === 'Room.myMembership',
+    )?.[1] as ((room: { roomId: string }) => void) | undefined;
+    membershipHandler?.({ roomId: '!room:example.org' });
+    await Promise.resolve();
+    expect(canManage()).toBe(false);
+
+    membership.set('join');
+    guest.set(true);
+    membershipHandler?.({ roomId: '!room:example.org' });
+    await Promise.resolve();
+    expect(canManage()).toBe(false);
+
+    guest.set(false);
+    membershipHandler?.({ roomId: '!room:example.org' });
+    await Promise.resolve();
+    expect(canManage()).toBe(true);
+  });
+
   it('follows relevant live state and coalesces a sync burst', async () => {
     const { service, client, events, getStateEvents } = setup();
     const widgets = service.widgetsFor('!room:example.org');
@@ -290,6 +344,7 @@ describe('WidgetsService', () => {
       data: {},
       creatorUserId: '@alice:example.org',
       waitForIframeLoad: true,
+      sourceEventId: '$board',
     });
 
     expect(new URL(launch.url as string).searchParams.get('name')).toBe(
@@ -315,6 +370,7 @@ describe('WidgetsService', () => {
         data: {},
         creatorUserId: '@alice:example.org',
         waitForIframeLoad: true,
+        sourceEventId: '$board',
       }),
     );
 
@@ -353,7 +409,15 @@ describe('WidgetsService', () => {
     service.disconnect('!second:example.org');
 
     expect(second()).toEqual([]);
-    expect(client.off).toHaveBeenCalledOnce();
+    expect(client.off).toHaveBeenCalledTimes(2);
+    expect(client.off).toHaveBeenCalledWith(
+      'RoomState.events',
+      expect.any(Function),
+    );
+    expect(client.off).toHaveBeenCalledWith(
+      'Room.myMembership',
+      expect.any(Function),
+    );
   });
 
   it('prunes a released room before a later room reconnects', () => {

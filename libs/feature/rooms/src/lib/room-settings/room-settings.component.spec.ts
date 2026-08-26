@@ -1,7 +1,14 @@
 import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
-import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
-import { WidgetsService } from '@trinity/data-access/widgets';
+import {
+  TrnAlertService,
+  TrnDialogRef,
+  TrnToastService,
+} from '@trinity/components/overlay';
+import {
+  WidgetManagementService,
+  WidgetsService,
+} from '@trinity/data-access/widgets';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import {
   RoomAliasesService,
@@ -48,6 +55,7 @@ async function build(
   const close = vi.fn();
   const toastShow = vi.fn();
   const widgets = signal([]);
+  const canManageWidgets = signal(false);
   const { fixture, container } = await render(RoomSettingsComponent, {
     inputs: {
       roomId: '!r:hs',
@@ -77,11 +85,14 @@ async function build(
       }),
       MockProvider(WidgetsService, {
         widgetsFor: () => widgets.asReadonly(),
+        canManageFor: () => canManageWidgets.asReadonly(),
         launchFor: vi.fn(),
         connect: vi.fn(),
         disconnect: vi.fn(),
       }),
       MockProvider(ExternalBrowserService, { open: () => of(true) }),
+      MockProvider(WidgetManagementService),
+      MockProvider(TrnAlertService),
       MockProvider(TrnDialogRef, { close }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],

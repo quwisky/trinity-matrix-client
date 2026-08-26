@@ -1,3 +1,7 @@
+@if (canManage()) {
+  <trn-room-widget-create [roomId]="roomId()" />
+}
+
 @if (widgets().length === 0) {
   <p class="room-widgets__note" data-testid="room-settings-widgets-empty">
     No widgets are declared in this room.
@@ -74,6 +78,19 @@
             This widget’s URL is not valid and cannot be opened.
           }
         </p>
+      }
+      @if (canRemove(entry.widget)) {
+        <button
+          hlmBtn
+          type="button"
+          variant="destructive"
+          [disabled]="isRemoving(entry.widget.id)"
+          (click)="removeWidget(entry.widget, entry.launch.origin)"
+          [attr.aria-label]="'Remove ' + entry.widget.name + ' from this room'"
+          [attr.data-testid]="'room-widget-remove-' + entry.widget.id"
+        >
+          {{ isRemoving(entry.widget.id) ? 'Removing…' : 'Remove widget' }}
+        </button>
       }
     </article>
   }
