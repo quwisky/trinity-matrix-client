@@ -26,7 +26,10 @@ import {
   isMobileOs,
 } from '@trinity/platform-native';
 import { MessageActionSheetService } from '../message-actions/message-action-sheet.service';
-import { type SwipeDirection } from '../message-row/message-row.component';
+import {
+  type MessageSwipeAction,
+  type SwipeDirection,
+} from '../message-row/message-row.component';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TypingIndicatorComponent } from '../message-list/typing-indicator/typing-indicator.component';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
@@ -226,15 +229,15 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   );
 
   /**
-   * A committed sideways drag on a thread reply: edit it if it can be edited, reply if not.
+   * Dispatch the semantic action the row captured when its sideways drag committed.
    *
-   * Reads `rowCaps` rather than `isEditable` so the icon the reader saw and the action they
-   * get are the same value — the mirror of `MessageListBase.onRowSwipe`, which this panel
-   * cannot inherit because it does not extend that class.
+   * The row snapshot remains valid after it leaves this panel's live caps map, so this
+   * mirrors `MessageListBase.onRowSwipe` without revalidating capabilities and changing the
+   * action after the reader has already committed it.
    */
-  onRowSwipe(row: MessageRow): void {
+  onRowSwipe(row: MessageRow, action: MessageSwipeAction): void {
     this.haptics.gestureCommitted();
-    if (this.rowCaps(row).editable) {
+    if (action === 'edit') {
       this.startEdit(row);
       return;
     }

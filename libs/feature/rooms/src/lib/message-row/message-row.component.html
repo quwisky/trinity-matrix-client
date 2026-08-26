@@ -27,9 +27,10 @@
     @if (swipeDirection() !== 'off' && !caps().readOnly) {
       <!-- The affordance, and under this design it is what makes the gesture honest: the
            reader has to know WHICH of edit and reply they will get before they commit. Drawn
-           from the same `caps().editable` the host dispatches on, so the two cannot disagree.
-           Counter-translated so it stays put while the row slides over it — `.msg` is the
-           element that moves, and there is no host box to hang this on
+           from the same `swipeAction()` the row emits at release, so the two cannot disagree
+           even if the host's live caps change. Counter-translated so it stays put while the
+           row slides over it — `.msg` is the element that moves, and there is no host box
+           to hang this on
            (`:host { display: contents }`). -->
       <span
         class="msg__swipe"

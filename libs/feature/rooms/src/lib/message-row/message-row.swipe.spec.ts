@@ -13,6 +13,7 @@ import {
   SWIPE_DEAD_ZONE_PX,
   type MessageRow,
   type MessageRowCaps,
+  type MessageSwipeAction,
   type SwipeDirection,
 } from './message-row.component';
 
@@ -105,9 +106,11 @@ async function renderRow(
     bottom: 40,
     toJSON: () => ({}),
   });
-  const swiped: true[] = [];
+  const swiped: MessageSwipeAction[] = [];
   const pressed: true[] = [];
-  result.fixture.componentInstance.swipe.subscribe(() => swiped.push(true));
+  result.fixture.componentInstance.swipe.subscribe((action) =>
+    swiped.push(action),
+  );
   result.fixture.componentInstance.longPress.subscribe(() =>
     pressed.push(true),
   );
@@ -161,10 +164,18 @@ describe('MessageRowComponent — the sideways swipe', () => {
 
     drag(msg, 300, 300 + FAR);
 
-    expect(swiped.length).toBe(1);
+    expect(swiped).toEqual(['reply']);
     expect(capture).toHaveBeenCalledWith(1);
     // And it puts the row back rather than leaving it parked.
     expect(dragged(msg)).toBe('');
+  });
+
+  it('emits the edit action shown for an editable row', async () => {
+    const { msg, swiped } = await renderRow('right', { editable: true });
+
+    drag(msg, 300, 300 + FAR);
+
+    expect(swiped).toEqual(['edit']);
   });
 
   it('puts the row back when the drag is too short to mean it', async () => {

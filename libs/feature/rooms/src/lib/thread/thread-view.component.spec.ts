@@ -178,6 +178,7 @@ async function build(
   return {
     fixture,
     container,
+    threadMessages,
     roster,
     sheetOpen,
     sheetClose,
@@ -665,7 +666,7 @@ describe('ThreadViewComponent members', () => {
       const { fixture } = await build([msg('$1', '@ada:hs', 'a reply')]);
       const cmp = fixture.componentInstance;
 
-      cmp.onRowSwipe(cmp.rows()[0]);
+      cmp.onRowSwipe(cmp.rows()[0], 'reply');
 
       expect(cmp.replyingToId()).toBe('$1');
       expect(cmp.editingId()).toBeNull();
@@ -681,7 +682,24 @@ describe('ThreadViewComponent members', () => {
       ]);
       const cmp = fixture.componentInstance;
 
-      cmp.onRowSwipe(cmp.rows()[0]);
+      cmp.onRowSwipe(cmp.rows()[0], 'edit');
+
+      expect(cmp.editingId()).toBe('$1');
+      expect(cmp.replyingToId()).toBeNull();
+    });
+
+    it('uses the committed edit action after the row leaves the live caps map', async () => {
+      const { fixture, threadMessages } = await build([
+        { ...msg('$1', '@me:hs', 'mine'), isOwn: true },
+      ]);
+      const cmp = fixture.componentInstance;
+      const swiped = cmp.rows()[0];
+
+      threadMessages.set([]);
+      fixture.detectChanges();
+      expect(cmp.rows()).toEqual([]);
+
+      cmp.onRowSwipe(swiped, 'edit');
 
       expect(cmp.editingId()).toBe('$1');
       expect(cmp.replyingToId()).toBeNull();

@@ -50,6 +50,7 @@ import {
   type MessageRow,
   type MessageRowAction,
   type MessageRowCaps,
+  type MessageSwipeAction,
   type SwipeDirection,
 } from '../message-row/message-row.component';
 import {
@@ -654,19 +655,15 @@ export abstract class MessageListBase {
   }
 
   /**
-   * A committed sideways drag on a row: edit it if it can be edited, reply to it otherwise.
+   * Dispatch the semantic action the row captured when its sideways drag committed.
    *
-   * Read from `rowCaps`, not from `isEditable`, and the distinction is the point: `rowCaps`
-   * is what the row itself was handed, so the icon the reader saw behind the row and the
-   * action they get are the same value rather than two computations of it.
-   *
-   * The action is dispatched here rather than by the row for the same reason the sheet is —
-   * the row does not survive a redaction, an edit, the local-echo id swap, or scrolling out
-   * of the virtual window, and `row` here is a snapshot the closure holds.
+   * The host owns dispatch because `row` is its stable snapshot. It deliberately does not
+   * re-read `rowCaps`: the row may have left the virtual window or caps map by the time this
+   * handler runs, while `action` remains the affordance the reader actually committed.
    */
-  onRowSwipe(row: MessageRow): void {
+  onRowSwipe(row: MessageRow, action: MessageSwipeAction): void {
     this.haptics.gestureCommitted();
-    if (this.rowCaps(row).editable) {
+    if (action === 'edit') {
       this.startEdit(row);
       return;
     }
