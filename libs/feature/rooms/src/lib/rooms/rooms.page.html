@@ -330,6 +330,7 @@
 
       <div
         class="chat-body"
+        data-right-panel-slot
         trnDrawerSwipe
         [drawerEnabled]="membersAreDrawer()"
         [drawerOpen]="!!store.rightPanel()"
@@ -464,6 +465,7 @@
               @case ('members') {
                 <trn-member-list
                   class="chat-members"
+                  data-right-panel-surface
                   [members]="vm.members()"
                   [direct]="vm.activeRoomIsDirect()"
                   (selectMember)="memberActions.onSelectMember($event)"
@@ -472,6 +474,7 @@
               @case ('threads') {
                 <trn-threads-list
                   class="chat-panel"
+                  data-right-panel-surface
                   role="complementary"
                   aria-label="Threads"
                   [roomId]="room.id"
@@ -482,6 +485,7 @@
               @case ('thread') {
                 <trn-thread-view
                   class="chat-panel"
+                  data-right-panel-surface
                   role="complementary"
                   aria-label="Thread"
                   [roomId]="room.id"
@@ -492,6 +496,7 @@
               @case ('pinned') {
                 <trn-pinned-messages-panel
                   class="chat-panel"
+                  data-right-panel-surface
                   role="complementary"
                   aria-label="Pinned messages"
                   (selected)="messageActions.onPanelJump($event)"
@@ -501,6 +506,7 @@
               @case ('search') {
                 <trn-message-search
                   class="chat-panel"
+                  data-right-panel-surface
                   role="complementary"
                   aria-label="Search messages"
                   [roomId]="room.id"
@@ -511,6 +517,7 @@
               @case ('member') {
                 <trn-member-info
                   class="chat-panel"
+                  data-right-panel-surface
                   role="complementary"
                   aria-label="Member info"
                   [member]="panel.member"

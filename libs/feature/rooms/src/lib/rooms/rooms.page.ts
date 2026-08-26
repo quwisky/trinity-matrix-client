@@ -84,7 +84,7 @@ import { EncryptionBannerComponent } from '../encryption-banner/encryption-banne
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
 import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
 import { type SwipeDirection } from '../message-row/message-row.component';
-import { RoomShellStore } from './room-shell-store';
+import { RoomShellStore, type RightPanel } from './room-shell-store';
 import { ShellStatusService } from './shell-status.service';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
@@ -356,34 +356,39 @@ export class RoomsPage implements OnInit, OnDestroy {
     // The `?room=` deep link is gone. A notification tap now navigates to `/rooms/:roomId`
     // like everything else, so the room it asked for arrives through `paramMap` and needs no
     // handling here — and none of the strip-the-param-afterwards dance that went with it.
-    this.restoreFocusWhenTheSlotEmpties();
+    this.manageRightPanelFocus();
   }
 
   /**
-   * Give focus back to whatever opened the right-hand slot once it closes.
+   * Hand focus into an inline replacement, or back to the trigger when the slot closes.
    *
    * CDK did this for the four dialogs these panels replaced. Without it a keyboard user who
    * presses "Threads", reads the list and closes it lands on `<body>` and has to tab in from
    * the top of the document again — and in-room search makes it worse, because it
    * deliberately takes focus when it opens.
    *
-   * Two deliberate narrowings. Only a transition THROUGH `null` restores: swapping the
-   * threads list for a thread keeps the original trigger, since the slot never emptied. And
-   * it only fires when the removal actually orphaned focus — anything that has claimed it
-   * since (the room-change handoff, a DM the panel just opened) has a better idea than a
-   * remembered button does.
+   * Opening remembers the external trigger without moving focus: a destination such as
+   * search may already own autofocus. Replacing one inline panel with another preserves that
+   * trigger and focuses the destination's marked control after render. Emptying the slot
+   * restores the original trigger and ends the sequence.
+   *
+   * Both deferred paths only act when removal actually orphaned focus. Anything that has
+   * claimed it since (another panel's own autofocus, the room-change handoff, a DM the panel
+   * just opened) has a better idea than this effect does.
    */
-  private restoreFocusWhenTheSlotEmpties(): void {
+  private manageRightPanelFocus(): void {
     let trigger: HTMLElement | null = null;
+    let previousPanel: RightPanel = null;
     effect(() => {
       const panel = this.store.rightPanel();
       untracked(() => {
+        const previous = previousPanel;
+        previousPanel = panel;
         if (panel) {
-          trigger ??=
-            document.activeElement instanceof HTMLElement &&
-            document.activeElement !== document.body
-              ? document.activeElement
-              : null;
+          trigger ??= this.activeElementOutsideRightPanel();
+          if (previous) {
+            this.focusRightPanelAfterSwap(panel);
+          }
           return;
         }
         const target = trigger;
@@ -395,6 +400,7 @@ export class RoomsPage implements OnInit, OnDestroy {
         afterNextRender(
           () => {
             if (
+              this.store.rightPanel() === null &&
               target.isConnected &&
               document.activeElement === document.body
             ) {
@@ -405,6 +411,37 @@ export class RoomsPage implements OnInit, OnDestroy {
         );
       });
     });
+  }
+
+  /** Focus the destination of a panel-to-panel replacement after its template exists. */
+  private focusRightPanelAfterSwap(panel: Exclude<RightPanel, null>): void {
+    afterNextRender(
+      () => {
+        if (
+          this.store.rightPanel() !== panel ||
+          document.activeElement !== document.body
+        ) {
+          return;
+        }
+        const target = document.querySelector<HTMLElement>(
+          '[data-right-panel-slot] [data-right-panel-focus]',
+        );
+        if (target?.isConnected) {
+          target.focus();
+        }
+      },
+      { injector: this.injector },
+    );
+  }
+
+  /** Return the current focus only when it can meaningfully reopen this panel sequence. */
+  private activeElementOutsideRightPanel(): HTMLElement | null {
+    const active = document.activeElement;
+    return active instanceof HTMLElement &&
+      active !== document.body &&
+      !active.closest('[data-right-panel-surface]')
+      ? active
+      : null;
   }
 
   /**

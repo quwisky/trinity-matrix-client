@@ -202,6 +202,15 @@ async function build(
 }
 
 describe('ThreadViewComponent', () => {
+  it('marks its named close button as the panel focus target', async () => {
+    const { container } = await build();
+
+    const targets = container.querySelectorAll('[data-right-panel-focus]');
+    expect(targets).toHaveLength(1);
+    expect(targets[0].tagName).toBe('BUTTON');
+    expect(targets[0].getAttribute('aria-label')).toBe('Close thread');
+  });
+
   it('opens the thread on init with its room and root ids', async () => {
     const { openThread } = await build();
 

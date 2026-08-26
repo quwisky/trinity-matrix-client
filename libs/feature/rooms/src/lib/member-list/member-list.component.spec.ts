@@ -70,6 +70,20 @@ const MEMBERS = [
 ];
 
 describe('MemberListComponent', () => {
+  it('marks its labelled filter as the panel focus target', async () => {
+    const { container } = await render(MemberListComponent, {
+      inputs: { members: MEMBERS },
+      ...opts,
+    });
+
+    const targets = container.querySelectorAll('[data-right-panel-focus]');
+    expect(targets).toHaveLength(1);
+    expect(targets[0].tagName).toBe('INPUT');
+    expect(targets[0].closest('label')?.textContent).toContain(
+      'Filter members',
+    );
+  });
+
   it('emits selectMember with the clicked member', async () => {
     const clicked = member({ userId: '@z:hs' });
     const { fixture, container } = await render(MemberListComponent, {
