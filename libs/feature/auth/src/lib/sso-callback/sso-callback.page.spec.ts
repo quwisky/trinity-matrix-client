@@ -43,6 +43,7 @@ async function renderPage(opts: {
   /** Per-call legacy-SSO peek behaviour, same purpose. */
   ssoPeek?: () => Promise<SsoStateStash>;
 }): Promise<{
+  fixture: Awaited<ReturnType<typeof render<SsoCallbackPage>>>['fixture'];
   cmp: SsoCallbackPage;
   navigateByUrl: Mock;
   replaceState: Mock;
@@ -86,6 +87,7 @@ async function renderPage(opts: {
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   return {
+    fixture,
     cmp: fixture.componentInstance,
     navigateByUrl,
     replaceState,
@@ -95,6 +97,21 @@ async function renderPage(opts: {
 }
 
 describe('SsoCallbackPage', () => {
+  it('renders its page title as the first and only heading', async () => {
+    const { fixture } = await renderPage({
+      auth: {} as unknown as Partial<AuthService>,
+    });
+    const root = fixture.nativeElement as HTMLElement;
+    const outline = Array.from(
+      root.querySelectorAll<HTMLHeadingElement>('h1, h2, h3, h4, h5, h6'),
+    ).map((heading) => ({
+      level: Number(heading.tagName.slice(1)),
+      text: heading.textContent?.trim(),
+    }));
+
+    expect(outline).toEqual([{ level: 1, text: 'Completing sign in' }]);
+  });
+
   describe('legacy SSO (loginToken)', () => {
     it('completes login when the state matches, clearing storage + URL', async () => {
       const completeSsoLogin = vi.fn(() => of({}));

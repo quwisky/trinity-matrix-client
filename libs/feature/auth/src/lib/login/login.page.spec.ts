@@ -96,6 +96,21 @@ async function renderLogin(
 }
 
 describe('LoginPage', () => {
+  it('renders its page title as the first and only heading', async () => {
+    const { fixture } = await renderLogin(
+      {} as unknown as Partial<AuthService>,
+    );
+    const root = fixture.nativeElement as HTMLElement;
+    const outline = Array.from(
+      root.querySelectorAll<HTMLHeadingElement>('h1, h2, h3, h4, h5, h6'),
+    ).map((heading) => ({
+      level: Number(heading.tagName.slice(1)),
+      text: heading.textContent?.trim(),
+    }));
+
+    expect(outline).toEqual([{ level: 1, text: 'Sign in to Trinity' }]);
+  });
+
   it('discovers the homeserver and surfaces its login flows', async () => {
     const { cmp } = await renderLogin({
       discoverHomeserver: vi.fn(() => of('https://hs.example')),

@@ -10,11 +10,12 @@ import {
 /**
  * Trinity's card, as five attribute directives.
  *
- * Attributes rather than elements because the call site chooses the semantics: the login
- * card is a `<section>` with an `<h2>` title and `<p>` descriptions, and turning those into
- * `<trn-card>` / `<trn-card-title>` elements would flatten the document outline and the
- * heading level with it. The kit's own layout depends on the parent/child relationship
- * (`has-data-[slot=card-footer]` and friends), which attributes preserve exactly.
+ * Attributes rather than elements because the call site chooses the semantics: a section title
+ * can put `trnCardTitle` on its correctly levelled heading, while the auth card uses it on a
+ * neutral wordmark and lets each projected page supply its own `<h1>`. Turning those into
+ * `<trn-card>` / `<trn-card-title>` elements would flatten the document outline. The kit's own
+ * layout depends on the parent/child relationship (`has-data-[slot=card-footer]` and friends),
+ * which attributes preserve exactly.
  *
  * Each composes the kit directive through `hostDirectives`, so no class list is duplicated
  * and a swap is a change to these five entries.
