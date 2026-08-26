@@ -97,7 +97,7 @@ export async function clickRowToolbar(
 export async function openSettingsTab(
   page: Page,
   prefix: 'room-settings' | 'space-settings',
-  tab: 'general' | 'access' | 'bans',
+  tab: 'general' | 'access' | 'widgets' | 'bans',
 ): Promise<void> {
   await page.getByTestId(`${prefix}-tab-${tab}`).click();
   await expect(page.getByTestId(`${prefix}-panel-${tab}`)).toBeVisible({

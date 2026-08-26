@@ -105,6 +105,14 @@
         }
       </trn-tab-panel>
 
+      <trn-tab-panel
+        value="widgets"
+        panelClass="flex flex-col gap-3 pt-3"
+        data-testid="room-settings-panel-widgets"
+      >
+        <trn-room-widgets [roomId]="roomId()" />
+      </trn-tab-panel>
+
       @if (canManageBans()) {
         <trn-tab-panel
           value="bans"

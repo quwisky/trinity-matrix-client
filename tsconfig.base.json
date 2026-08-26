@@ -135,7 +135,10 @@
       "@trinity/helm/toggle": ["./libs/spartan/toggle/src/index.ts"],
       "@trinity/helm/separator": ["./libs/spartan/separator/src/index.ts"],
       "@trinity/helm/tabs": ["./libs/spartan/tabs/src/index.ts"],
-      "@trinity/helm/switch": ["./libs/spartan/switch/src/index.ts"]
+      "@trinity/helm/switch": ["./libs/spartan/switch/src/index.ts"],
+      "@trinity/data-access/widgets": [
+        "./libs/data-access/widgets/src/index.ts"
+      ]
     },
     "noUncheckedSideEffectImports": false,
     "types": ["*"]

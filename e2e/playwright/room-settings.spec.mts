@@ -144,6 +144,75 @@ test.describe('Room settings', () => {
     ).toHaveCount(0);
   });
 
+  test('surfaces a real room widget without navigating to it', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}wd`;
+    const user = `widget-user-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Widgets ${runId}`;
+    const rawUrl =
+      'https://widgets.example/board?room=$matrix_room_id' +
+      '&user=$matrix_user_id&board=$board_id';
+
+    await registerUser(request, user, pass);
+    const { access_token, user_id } = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user },
+          password: pass,
+        },
+      })
+      .then((r) => r.json());
+    const { room_id } = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: { Authorization: `Bearer ${access_token}` },
+        data: {
+          name: roomName,
+          preset: 'private_chat',
+          initial_state: [
+            {
+              type: 'im.vector.modular.widgets',
+              state_key: 'planning-board',
+              content: {
+                name: 'Planning board',
+                type: 'm.custom',
+                url: rawUrl,
+                data: { board_id: 'road map' },
+              },
+            },
+          ],
+        },
+      })
+      .then((r) => r.json());
+
+    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await openRoom(page, roomName);
+    await page.getByTestId('open-room-settings').click();
+    await openSettingsTab(page, 'room-settings', 'widgets');
+
+    const card = page.getByTestId('room-widget-planning-board');
+    await expect(card).toContainText('Planning board');
+    await expect(card).toContainText('m.custom');
+    await expect(card).toContainText(rawUrl);
+    await expect(card).toContainText('https://widgets.example');
+    await expect(card).toContainText('this room’s ID');
+    await expect(card).toContainText('your Matrix user ID');
+
+    const expectedUrl =
+      `https://widgets.example/board?room=${encodeURIComponent(room_id as string)}` +
+      `&user=${encodeURIComponent(user_id as string)}&board=road%20map`;
+    const open = page.getByTestId('room-widget-open-planning-board');
+    await expect(open).toHaveAttribute('href', expectedUrl);
+    await expect(open).toHaveAttribute('target', '_blank');
+    await expect(open).toHaveAttribute('rel', 'noopener noreferrer');
+    // Deliberately do not click: acceptance proves the explicit destination and warning,
+    // without sending this test's Matrix identity to an external network origin.
+  });
+
   test('an admin changes who can join and read history', async ({
     page,
     request,

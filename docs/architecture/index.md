@@ -1,6 +1,6 @@
 # Architecture overview
 
-Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 53
+Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 72
 libraries under `libs/`, grouped by layer into `libs/data-access/`, `libs/feature/`,
 `libs/util/` and `libs/components/` (the public component tier), alongside
 `libs/platform-native`, `libs/testing` and the `libs/spartan/`
@@ -95,7 +95,7 @@ still fails the scope rule. That is the intended behaviour, not a misconfigurati
 
 This is not a style preference; it is checkable, and it currently holds absolutely. Across every
 non-spec file in `libs/feature/*`, `libs/components/*` and `libs/platform-native` there are zero imports from
-`matrix-js-sdk`. The SDK appears only under `libs/data-access/` — in twelve of its thirteen
+`matrix-js-sdk`. The SDK appears only under `libs/data-access/` — in thirteen of its fourteen
 libraries; `data-access-gif` talks to KLIPY and Giphy and needs none of it — and in
 `libs/util/matrix`, which models its types.
 

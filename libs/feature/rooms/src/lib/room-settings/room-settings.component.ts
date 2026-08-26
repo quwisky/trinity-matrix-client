@@ -28,6 +28,7 @@ import {
 import { initialOf } from '@trinity/util/matrix';
 import { BannedMembersComponent } from '../banned-members/banned-members.component';
 import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';
+import { RoomWidgetsComponent } from './room-widgets.component';
 import { AvatarFieldComponent } from '../shared/avatar-field/avatar-field.component';
 import { saveFields, type FieldWrite } from '../shared/save-fields';
 import {
@@ -100,6 +101,7 @@ const HISTORY_OPTIONS = [
     AvatarFieldComponent,
     BannedMembersComponent,
     RoomAliasesComponent,
+    RoomWidgetsComponent,
   ],
   templateUrl: './room-settings.component.html',
   styleUrl: './room-settings.component.scss',
@@ -192,6 +194,11 @@ export class RoomSettingsComponent implements OnInit {
   readonly settingsTabs = computed<TrnTabOption[]>(() => [
     { value: 'general', label: 'General', testId: 'room-settings-tab-general' },
     { value: 'access', label: 'Access', testId: 'room-settings-tab-access' },
+    {
+      value: 'widgets',
+      label: 'Widgets',
+      testId: 'room-settings-tab-widgets',
+    },
     ...(this.canManageBans()
       ? [
           {

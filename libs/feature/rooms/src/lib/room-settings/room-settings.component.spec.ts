@@ -1,5 +1,8 @@
+import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
+import { WidgetsService } from '@trinity/data-access/widgets';
+import { ExternalBrowserService } from '@trinity/platform-native';
 import {
   RoomAliasesService,
   RoomModerationService,
@@ -44,6 +47,7 @@ async function build(
     over.setHistoryVisibility ?? vi.fn(() => of(undefined));
   const close = vi.fn();
   const toastShow = vi.fn();
+  const widgets = signal([]);
   const { fixture, container } = await render(RoomSettingsComponent, {
     inputs: {
       roomId: '!r:hs',
@@ -71,6 +75,13 @@ async function build(
         currentCanonical: () => null,
         localAliases: () => of([]),
       }),
+      MockProvider(WidgetsService, {
+        widgetsFor: () => widgets.asReadonly(),
+        launchFor: vi.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+      }),
+      MockProvider(ExternalBrowserService, { open: () => of(true) }),
       MockProvider(TrnDialogRef, { close }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
@@ -451,12 +462,13 @@ describe('RoomSettingsComponent', () => {
     ).not.toBeNull();
   });
 
-  it('splits the dialog into General and Access', async () => {
+  it('splits the dialog into General, Access, and Widgets', async () => {
     const { cmp, container } = await build({ canManageBans: false });
 
     expect(cmp.settingsTabs().map((tab) => tab.value)).toEqual([
       'general',
       'access',
+      'widgets',
     ]);
     expect(
       container.querySelector('[data-testid=room-settings-tab-bans]'),
@@ -469,6 +481,7 @@ describe('RoomSettingsComponent', () => {
     expect(cmp.settingsTabs().map((tab) => tab.value)).toEqual([
       'general',
       'access',
+      'widgets',
       'bans',
     ]);
     expect(
