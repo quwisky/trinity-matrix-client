@@ -40,5 +40,21 @@ export default defineConfig({
     timeout: 120_000,
     cwd: workspaceRoot,
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+      testIgnore: ['**/*.mobile.spec.mts', '**/*.webkit.spec.mts'],
+    },
+    {
+      name: 'mobile-chromium',
+      use: { ...devices['Pixel 5'] },
+      testMatch: '**/*.mobile.spec.mts',
+    },
+    {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'] },
+      testMatch: '**/*.webkit.spec.mts',
+    },
+  ],
 });

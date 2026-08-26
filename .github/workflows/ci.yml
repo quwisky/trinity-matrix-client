@@ -154,8 +154,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
 
-      # Browsers are ~150 MB. `--with-deps` still runs (it apt-installs the shared
-      # libraries Chromium needs, which no cache covers) but the download is skipped
+      # Browsers are cached. `--with-deps` still runs (it apt-installs the shared
+      # libraries Chromium and WebKit need, which no cache covers) but the download is skipped
       # on a hit. The restore-keys prefix matters: without it, any dependency change at
       # all re-downloads Chromium on the one job with the longest budget.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -171,7 +171,7 @@ jobs:
       # replays it from the in-job Nx cache (measured 0.97s on the second invocation).
       - name: Prepare e2e prerequisites
         run: |
-          pnpm exec playwright install --with-deps chromium >/tmp/pw.log 2>&1 &
+          pnpm exec playwright install --with-deps chromium webkit >/tmp/pw.log 2>&1 &
           pw=$!
           docker compose -f e2e/synapse/docker-compose.yml pull -q >/tmp/pull.log 2>&1 &
           dk=$!
