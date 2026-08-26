@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **The typing line has animated dots, and holds its place.** When someone is typing, the
+  line under the timeline now ends in three pulsing dots instead of a full stop, so it reads
+  as something happening rather than a label. The line also keeps its space whether or not
+  anyone is typing, so the messages above it no longer shift up and down each time somebody
+  starts or stops. If you have asked your system for reduced motion, the dots stay still.
+
 - **Swipe a message to reply to it — or to edit it.** On a phone, drag a message sideways
   and it replies to that message, or opens it for editing if it is one of yours you can
   still change. The icon behind the message fades and grows in as you drag, so you can see

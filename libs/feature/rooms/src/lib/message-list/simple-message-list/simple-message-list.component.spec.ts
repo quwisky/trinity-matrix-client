@@ -61,6 +61,15 @@ function eventRow(id: string, summary: string, ts: number): MessageView {
 
 /** `notAtBottom` drives the jump pill and is protected (template-only); read it
  * through a narrow view rather than widening the component's API for a test. */
+/**
+ * An element's text with runs of whitespace collapsed.
+ *
+ * The typing row interleaves its sentence with empty dot spans, so `textContent` carries
+ * interior newlines that a bare `.trim()` only happens to survive.
+ */
+const text = (el: Element | null | undefined): string =>
+  (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
+
 const notAtBottom = (cmp: SimpleMessageListComponent): boolean =>
   (cmp as unknown as { notAtBottom: () => boolean }).notAtBottom();
 
@@ -715,7 +724,7 @@ describe('SimpleMessageListComponent', () => {
 
       fixture.componentRef.setInput('typingNames', ['Alice', 'Bob']);
       fixture.detectChanges();
-      expect(cmp.typingLabel()).toBe('Alice and Bob are typing…');
+      expect(cmp.typingLabel()).toBe('Alice and Bob are typing');
     });
 
     it('shows the typing row only while someone is typing', async () => {
@@ -724,11 +733,68 @@ describe('SimpleMessageListComponent', () => {
         providers: [MockProvider(TrnAlertService)],
       });
       const indicator = () => container.querySelector('.typing-indicator');
-      expect(indicator()?.textContent?.trim()).toBe('Alice is typing…');
+      expect(text(indicator())).toBe('Alice is typing');
 
       fixture.componentRef.setInput('typingNames', []);
       fixture.detectChanges();
       expect(indicator()).toBeNull();
+    });
+
+    it('reserves the typing row space whether or not anyone is typing', async () => {
+      // The slot is what keeps the scroll region from resizing under the reader. jsdom
+      // applies no CSS, so this asserts only that the element is PRESENT when idle —
+      // that its height is reserved is measured in `composer-typing.spec.mts`.
+      const { fixture, container } = await render(SimpleMessageListComponent, {
+        inputs: { typingNames: [] },
+        providers: [MockProvider(TrnAlertService)],
+      });
+      expect(container.querySelector('.typing-slot')).not.toBeNull();
+      expect(container.querySelector('.typing-indicator')).toBeNull();
+
+      fixture.componentRef.setInput('typingNames', ['Alice']);
+      fixture.detectChanges();
+      expect(container.querySelectorAll('.typing-slot')).toHaveLength(1);
+    });
+
+    it('draws three dots beside the name, hidden from assistive tech', async () => {
+      const { container } = await render(SimpleMessageListComponent, {
+        inputs: { typingNames: ['Alice'] },
+        providers: [MockProvider(TrnAlertService)],
+      });
+      expect(container.querySelectorAll('.typing-dots__dot')).toHaveLength(3);
+      // The visible row must not announce: the persistent region below does that, and
+      // two live regions over one fact double-announce.
+      expect(
+        container
+          .querySelector('.typing-indicator')
+          ?.getAttribute('aria-hidden'),
+      ).toBe('true');
+    });
+
+    it('keeps the typing live region mounted and tracks the name count through it', async () => {
+      // Persistence is the point. A `role="status"` inserted together with its text is
+      // not reliably announced, which is what the old markup did.
+      const { fixture, container } = await render(SimpleMessageListComponent, {
+        inputs: { typingNames: [] },
+        providers: [MockProvider(TrnAlertService)],
+      });
+      const status = () =>
+        container.querySelector('[data-testid="typing-status"]');
+      expect(status()).not.toBeNull();
+      expect(text(status())).toBe('');
+
+      fixture.componentRef.setInput('typingNames', ['Alice']);
+      fixture.detectChanges();
+      expect(text(status())).toBe('Alice is typing');
+
+      fixture.componentRef.setInput('typingNames', ['Alice', 'Bob']);
+      fixture.detectChanges();
+      expect(text(status())).toBe('Alice and Bob are typing');
+
+      fixture.componentRef.setInput('typingNames', []);
+      fixture.detectChanges();
+      expect(status()).not.toBeNull();
+      expect(text(status())).toBe('');
     });
 
     it('routes a submit to editMessage while editing, then clears the target', async () => {

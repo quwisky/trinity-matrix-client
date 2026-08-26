@@ -170,7 +170,9 @@ a **Mark all as read**.
 
 ### Typing and read receipts
 
-A "… is typing" line names up to three people and summarises beyond that.
+A "… is typing" line names up to three people and summarises beyond that, with three
+pulsing dots after the name. The line keeps its place whether or not anyone is typing,
+so the messages above it do not shift when someone starts or stops.
 
 Under a message you may see a small row of avatars — the people who have read up to it,
 capped at five and excluding you. Your own receipts can be made invisible: **Settings →

@@ -2,13 +2,14 @@ import {
   test,
   expect,
   type APIRequestContext,
+  type Locator,
   type Page,
 } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 import { registerUser } from './support/account.mts';
 
 // End-to-end for typing indicators: when another member of the open room starts
-// typing, the app shows an "X is typing…" row under the timeline, and clears it once
+// typing, the app shows an "X is typing" row under the timeline, and clears it once
 // they stop. The other member's typing is driven straight through the Matrix API, so
 // this exercises our sync → signal → render path. Needs a Synapse homeserver (Docker).
 const session = synapseSession();
@@ -135,10 +136,123 @@ test.describe('Typing indicators', () => {
     // The other member starts typing → the row appears naming them.
     await setMemberTyping(request, hs, roomId, member, true);
     await expect(indicator).toBeVisible({ timeout: 20_000 });
-    await expect(indicator).toHaveText(`${memberName} is typing…`);
+    // Exact match, and the dots are empty spans, so they contribute no text. Keep this
+    // after the `toBeVisible` above and never split the two: `toBeHidden` below passes
+    // for a DETACHED node, so on its own it would also pass for a renamed testid.
+    await expect(indicator).toHaveText(`${memberName} is typing`);
 
     // …and stops → the row goes away.
     await setMemberTyping(request, hs, roomId, member, false);
     await expect(indicator).toBeHidden({ timeout: 20_000 });
+  });
+
+  // The reserved slot is the reason the timeline stops shifting, and it is invisible to
+  // every unit test in the tree: jsdom applies no CSS, so the slot has no height there.
+  test('reserves the typing row space whether or not anyone is typing', async ({
+    page,
+    request,
+  }) => {
+    const runId = `${Date.now().toString(36)}r`;
+    const hs = session.hs as string;
+    const { reader, roomName, roomId, memberId, memberHeaders } =
+      await seedRoomWithMember(request, hs, runId);
+    const member = { userId: memberId, headers: memberHeaders };
+
+    await login(page, reader);
+    await openRoom(page, roomName);
+
+    const slot = page.locator('.typing-slot');
+    const heightOf = (locator: Locator): Promise<number> =>
+      locator.evaluate((element) => element.getBoundingClientRect().height);
+
+    // Reserved while idle. Without this the comparison below is unfalsifiable — a slot
+    // that is 0px both times is "unchanged" and proves nothing.
+    const idleSlot = await heightOf(slot);
+    expect(idleSlot).toBeGreaterThan(0);
+
+    await setMemberTyping(request, hs, roomId, member, true);
+    // Wait for the row, not for the PUT: it resolves when the server accepts it, long
+    // before the EDU comes back down /sync. Measuring straight after would read the
+    // pre-state and pass whatever the CSS said.
+    await expect(page.getByTestId('typing-indicator')).toBeVisible({
+      timeout: 20_000,
+    });
+
+    // Sub-pixel tolerance, not equality: the reserved box lays out at 25.1875 and the
+    // occupied line box at 25.203125, a 0.016px LayoutNG difference. The regression this
+    // guards is 6px — `min-height: 1.2rem` without this rule's own padding, which
+    // `box-sizing: border-box` folds in — so a 1px bound catches it with room to spare.
+    //
+    // The slot's own height, and NOT `.scroll`'s clientHeight. The scroller is what the
+    // reader sees move, but it is confounded: the "Set up encryption" banner can mount
+    // between the two reads and shift it 44px on its own, which is a flake rather than a
+    // finding. If the slot never changes height, typing cannot resize the scroller.
+    expect(Math.abs((await heightOf(slot)) - idleSlot)).toBeLessThan(1);
+  });
+
+  test('the dots are actually animating', async ({ page, request }) => {
+    const runId = `${Date.now().toString(36)}a`;
+    const hs = session.hs as string;
+    const { reader, roomName, roomId, memberId, memberHeaders } =
+      await seedRoomWithMember(request, hs, runId);
+    const member = { userId: memberId, headers: memberHeaders };
+
+    await login(page, reader);
+    await openRoom(page, roomName);
+
+    await setMemberTyping(request, hs, roomId, member, true);
+    await expect(page.getByTestId('typing-indicator')).toBeVisible({
+      timeout: 20_000,
+    });
+
+    // getAnimations(), not `getComputedStyle().animationName`: that returns the declared
+    // identifier whether or not any @keyframes rule matches it, so deleting the keyframes
+    // block would leave a name assertion green with three frozen dots on screen.
+    const running = await page
+      .locator('.typing-dots__dot')
+      .first()
+      .evaluate((element) =>
+        element.getAnimations().map((animation) => ({
+          duration: animation.effect?.getComputedTiming().duration ?? null,
+          iterations: animation.effect?.getComputedTiming().iterations ?? null,
+        })),
+      );
+
+    expect(running).toHaveLength(1);
+    // --trinity-duration-pulse, resolved.
+    expect(running[0].duration).toBe(1000);
+    expect(running[0].iterations).toBe(Infinity);
+  });
+
+  test('reduced motion rests the dots at full opacity', async ({
+    page,
+    request,
+  }) => {
+    const runId = `${Date.now().toString(36)}m`;
+    const hs = session.hs as string;
+    const { reader, roomName, roomId, memberId, memberHeaders } =
+      await seedRoomWithMember(request, hs, runId);
+    const member = { userId: memberId, headers: memberHeaders };
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await login(page, reader);
+    await openRoom(page, roomName);
+
+    await setMemberTyping(request, hs, roomId, member, true);
+    await expect(page.getByTestId('typing-indicator')).toBeVisible({
+      timeout: 20_000,
+    });
+
+    // Collapsing --trinity-duration-pulse does NOT stop an infinite animation; the
+    // blanket `animation-iteration-count: 1` in global.scss does, and the dots then fall
+    // back to their base style. That base has to match the keyframe's 0% — inverting the
+    // keyframe would strand these users on permanently dimmed dots.
+    const opacities = await page
+      .locator('.typing-dots__dot')
+      .evaluateAll((elements) =>
+        elements.map((element) => getComputedStyle(element).opacity),
+      );
+
+    expect(opacities).toEqual(['1', '1', '1']);
   });
 });
