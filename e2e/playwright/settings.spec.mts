@@ -180,6 +180,32 @@ test.describe('Settings', () => {
     await expect.poll(spaceToken).toBe('16px');
   });
 
+  // The kit's overlay panels animate open with `animate-in` from `tw-animate-css`, which
+  // ships no reduced-motion guard. `hlm-select-content` now carries `motion-safe:`, so the
+  // class is not applied at all under `reduce` and the panel resolves NO animation.
+  //
+  // This is discriminable underneath the blanket `!important` reset in `global.scss`
+  // precisely because that blanket sets `animation-duration` and `-iteration-count` and
+  // never touches `animation-name`: without `motion-safe:` the panel still resolves the
+  // `enter` keyframes here, it just runs them instantly.
+  test('a select panel resolves no animation under reduced motion', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await openSection(page, 'appearance');
+
+    const trigger = page.getByTestId('palette-select').locator('button');
+    await trigger.click();
+    const panel = page.locator('hlm-select-content').first();
+    await expect(panel).toBeVisible();
+
+    expect(
+      await panel.evaluate(
+        (element) => getComputedStyle(element).animationName,
+      ),
+    ).toBe('none');
+  });
+
   test('selects a colour palette from the dropdown', async ({ page }) => {
     await openSection(page, 'appearance');
 
