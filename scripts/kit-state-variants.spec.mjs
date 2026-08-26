@@ -1,5 +1,6 @@
 import { globSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import postcss from 'postcss';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -37,6 +38,20 @@ const workspaceRoot = join(import.meta.dirname, '..');
 const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
 
 const THEME = 'apps/trinity/src/theme/spartan.css';
+const themeAst = postcss.parse(read(THEME), { from: THEME });
+
+const rulesWithSelector = (selector) => {
+  const rules = [];
+  themeAst.walkRules((rule) => {
+    if (rule.selectors.includes(selector)) rules.push(rule);
+  });
+  return rules;
+};
+
+const backgroundOf = (rule) =>
+  rule.nodes.find(
+    (node) => node.type === 'decl' && node.prop === 'background-color',
+  )?.value;
 
 /**
  * How each bare `data-*` variant used by the kit is expected to resolve.
@@ -189,6 +204,38 @@ describe('kit utilities', () => {
 
   it('defines every preset utility the vendored kit actually uses', () => {
     expect(undefinedKitUtilities()).toEqual([]);
+  });
+});
+
+describe('destructive tint state overrides', () => {
+  it('gates the hover tint by hover capability', () => {
+    const rules = rulesWithSelector('.hover\\:bg-destructive\\/20:hover');
+
+    expect(rules).toHaveLength(1);
+    expect({
+      parent: rules[0].parent.type,
+      name: rules[0].parent.name,
+      params: rules[0].parent.params,
+      background: backgroundOf(rules[0]),
+    }).toEqual({
+      parent: 'atrule',
+      name: 'media',
+      params: '(hover: hover)',
+      background: 'var(--trinity-danger-tint-20)',
+    });
+  });
+
+  it('keeps the non-hover dark tint at the root', () => {
+    const rules = rulesWithSelector('.dark .dark\\:bg-destructive\\/20');
+
+    expect(rules).toHaveLength(1);
+    expect({
+      parent: rules[0].parent.type,
+      background: backgroundOf(rules[0]),
+    }).toEqual({
+      parent: 'root',
+      background: 'var(--trinity-danger-tint-20)',
+    });
   });
 });
 

@@ -373,7 +373,6 @@
   background-color: var(--trinity-danger-tint-10);
 }
 
-.hover\:bg-destructive\/20:hover,
 .dark .dark\:bg-destructive\/20,
 .dark
   [data-variant='destructive'].dark\:data-\[variant\=destructive\]\:focus\:bg-destructive\/20:focus {
@@ -385,6 +384,7 @@
     background-color: var(--trinity-danger-tint-10);
   }
 
+  .hover\:bg-destructive\/20:hover,
   .\[a\]\:hover\:bg-destructive\/20:is(a):hover,
   .dark
     [data-variant='destructive'].dark\:data-\[variant\=destructive\]\:hover\:bg-destructive\/20:hover {

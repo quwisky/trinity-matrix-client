@@ -193,6 +193,10 @@ jobs:
       # verifies its palette × mode canvas and focused text contrast in the installed browser.
       - run: pnpm exec nx run trinity-e2e:storybook-e2e
 
+      # Separate from the Synapse suite: this serves the already-built app and checks CSS
+      # capability queries in desktop and real mobile-device browser profiles.
+      - run: pnpm exec nx run trinity-e2e:styling-e2e
+
       # No env var needed to make this strict: the harness's graceful "Docker is missing,
       # skip the authenticated specs" fallback turns itself off whenever CI is set, so a
       # runner that cannot reach Docker Hub fails here instead of reporting a green E2E
@@ -213,6 +217,7 @@ jobs:
             dist/.playwright/e2e/test-output/
             dist/.playwright/e2e/blob-report/
             dist/.playwright/storybook/
+            dist/.playwright/styling/
           if-no-files-found: warn
           retention-days: 7
           # Artifacts are immutable per run, so without this a re-run of a failed job

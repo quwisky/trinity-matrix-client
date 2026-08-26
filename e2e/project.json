@@ -28,6 +28,15 @@
         "command": "playwright test -c playwright.storybook.config.mts",
         "cwd": "{projectRoot}"
       }
+    },
+    "styling-e2e": {
+      "//": "A separate browser lifecycle from the Synapse-backed app journeys. It is intentionally uncached because its webServer builds application/theme files outside the e2e project input graph.",
+      "cache": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "playwright test -c playwright.styling.config.mts",
+        "cwd": "{projectRoot}"
+      }
     }
   }
 }
