@@ -19,6 +19,15 @@
       "options": {
         "command": "tsc -p tsconfig.json --noEmit"
       }
+    },
+    "storybook-e2e": {
+      "//": "A separate browser lifecycle from the app E2E target: static Storybook needs no Synapse, and this target is intentionally uncached because its webServer builds component stories and theme files outside the e2e project input graph.",
+      "cache": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "playwright test -c playwright.storybook.config.mts",
+        "cwd": "{projectRoot}"
+      }
     }
   }
 }

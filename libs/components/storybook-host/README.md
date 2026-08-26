@@ -8,6 +8,7 @@ the sibling libraries, where they live beside the components they document.
 ```
 pnpm exec nx storybook components-storybook-host        # serve
 pnpm exec nx build-storybook components-storybook-host  # static build
+pnpm exec nx run trinity-e2e:storybook-e2e              # palette × mode canvas check
 ```
 
 The static build lands in `dist/storybook/components-storybook-host`, not in the Storybook
@@ -19,3 +20,7 @@ Why it is here rather than generated as a normal library: a host needs a `projec
 component, a template, a stylesheet, an `index.ts` and a **deprecated** `@nx/eslint:lint`
 executor target that the rest of the workspace has already moved off (siblings infer lint), all
 of which would have to be deleted again.
+
+The browser check has its own Playwright config and static server. It intentionally does not use
+the app E2E target, because Storybook needs neither the application build nor its disposable
+Synapse stack.

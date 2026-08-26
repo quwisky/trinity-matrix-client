@@ -36,8 +36,8 @@ const withTheme: Decorator = (story, context) => {
     mode: 'light' | 'dark';
   };
   applyTheme(palette, mode);
-  // The story's own host needs the surface under it, or every component floats on the
-  // browser default white and the dark palettes look broken for the wrong reason.
+  // `global-styles.scss` paints these tokens on the preview body. This decorator only changes
+  // which values they resolve to, keeping theme state separate from canvas presentation.
   return story();
 };
 
