@@ -137,6 +137,15 @@ any new capability needs its key added here before the affordance ships.
 Neither native project has its `public/` web assets tracked in git — those are produced by
 `cap sync`.
 
+`MainViewController.swift` also owns Trinity's one local Capacitor plugin,
+`NativeNavigation`. WebKit exposes its native Back and Forward edge gestures behind one
+switch and bypasses Capacitor's Android-style `backButton` event, so the Angular shell mirrors
+whether a dialog or registered feature panel can currently consume Back. The controller starts
+with gestures disabled (the safe state if bridge registration or synchronization fails) and
+enables them only after Angular reports an empty interception stack. The drawer's opening
+affordance is the 24px band immediately inside a 32px native-history strip, leaving the extreme
+right edge to native history.
+
 ## Generated native paths go stale
 
 !!! danger "Re-sync after any Capacitor dependency change"
@@ -163,18 +172,19 @@ separate acts, and only the first one is automated.
 
 ## What behaves differently on mobile
 
-| Capability           | Mobile behaviour                                                                                                                                                  |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Notifications        | In-app notification delivery is a no-op. Push owns delivery on iOS and Android                                                                                    |
-| Push registration    | Gated on `getPlatform()` being exactly `'ios'` or `'android'`, and on the plugin being available                                                                  |
-| Secret storage       | Keychain and Keystore through `@aparajita/capacitor-secure-storage`, with syncing switched off so a per-device Matrix session cannot leak across a user's devices |
-| App-icon badge       | `@capawesome/capacitor-badge`. iOS prompts once for badge authorization on first use; Android grants without a prompt                                             |
-| Status bar           | `ThemeService` sets the native status-bar style to match the resolved light or dark theme                                                                         |
-| Deep links           | `appUrlOpen` for a warm open, `getLaunchUrl` for a cold start                                                                                                     |
-| Android back button  | The app owns the whole chain: an open overlay always consumes the press (dismissed unless it set `disableClose`), else step back through history, else minimize   |
-| Media capture        | `MediaPickerService` opens the Capacitor gallery picker on native; elsewhere the composer falls back to a hidden file input                                       |
-| Saving an attachment | Bytes are written to the cache and handed to the OS share sheet, rather than triggering a browser download                                                        |
-| Service worker       | Not registered. The shell and the crypto module are already local files                                                                                           |
+| Capability           | Mobile behaviour                                                                                                                                                   |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Notifications        | In-app notification delivery is a no-op. Push owns delivery on iOS and Android                                                                                     |
+| Push registration    | Gated on `getPlatform()` being exactly `'ios'` or `'android'`, and on the plugin being available                                                                   |
+| Secret storage       | Keychain and Keystore through `@aparajita/capacitor-secure-storage`, with syncing switched off so a per-device Matrix session cannot leak across a user's devices  |
+| App-icon badge       | `@capawesome/capacitor-badge`. iOS prompts once for badge authorization on first use; Android grants without a prompt                                              |
+| Status bar           | `ThemeService` sets the native status-bar style to match the resolved light or dark theme                                                                          |
+| Deep links           | `appUrlOpen` for a warm open, `getLaunchUrl` for a cold start                                                                                                      |
+| Android back button  | The app owns the whole chain: an open overlay always consumes the press (dismissed unless it set `disableClose`), else step back through history, else minimize    |
+| iOS history swipe    | Native Back/Forward stays enabled while no dialog or registered panel can intercept; both edges yield while one is active, and the drawer opens from an inset band |
+| Media capture        | `MediaPickerService` opens the Capacitor gallery picker on native; elsewhere the composer falls back to a hidden file input                                        |
+| Saving an attachment | Bytes are written to the cache and handed to the OS share sheet, rather than triggering a browser download                                                         |
+| Service worker       | Not registered. The shell and the crypto module are already local files                                                                                            |
 
 Everything else — the timeline, rooms and spaces, encryption, search — is the same code
 running in a WebView.

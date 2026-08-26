@@ -18,6 +18,11 @@ import { registerUser } from './support/account.mts';
 // Needs a Synapse homeserver (Docker) and self-skips otherwise.
 const session = synapseSession();
 
+// Centre of DrawerSwipeDirective's 24px opening band, which begins after the 32px strip
+// reserved for native history gestures. This spec cannot make Chromium perform iOS Forward,
+// but real touch input proves the drawer leaves that extreme strip alone.
+const DRAWER_OPEN_FROM_RIGHT_PX = 44;
+
 /**
  * A REAL touch drag, through the browser's own input pipeline.
  *
@@ -58,7 +63,7 @@ test.use({ ...devices['Pixel 5'] });
 test.describe('Drawer swipe on a touch device', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('swipes the member list open from the right edge, and swipes it away', async ({
+  test('reserves native history edge, then opens from its inset band and closes', async ({
     page,
     request,
   }) => {
@@ -100,8 +105,17 @@ test.describe('Drawer swipe on a touch device', () => {
     const size = page.viewportSize()!;
     const y = Math.round(size.height / 2);
 
-    // In from the right edge, past the commit threshold.
+    // The extreme edge belongs to native history and must not summon the drawer.
     await swipe(page, size.width - 4, Math.round(size.width * 0.3), y);
+    await expect(members).toBeHidden();
+
+    // The adjacent inset band is the drawer affordance.
+    await swipe(
+      page,
+      size.width - DRAWER_OPEN_FROM_RIGHT_PX,
+      Math.round(size.width * 0.3),
+      y,
+    );
     await expect(members).toBeVisible({ timeout: 10_000 });
 
     // And away again, from anywhere on the drawer.

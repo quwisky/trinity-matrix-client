@@ -23,6 +23,7 @@ const session = synapseSession();
 // Capacitor Preferences namespaces its localStorage keys; seeding the bare key writes
 // something the app never reads.
 const SWIPE_KEY = 'CapacitorStorage.trinity.message-swipe';
+const DRAWER_OPEN_FROM_RIGHT_PX = 44;
 
 /**
  * A real touch drag, through the browser's own input pipeline.
@@ -326,7 +327,9 @@ test.describe('Swipe a message', () => {
     const y = box.y + box.height / 2;
     await swipe(
       page,
-      { x: box.x + box.width * 0.9, y },
+      // Start beyond the viewport-edge dead zone; the old 90% point sits inside the
+      // combined native-history and drawer band on this phone profile.
+      { x: box.x + box.width * 0.8, y },
       { x: box.x + box.width * 0.1, y },
     );
 
@@ -355,7 +358,7 @@ test.describe('Swipe a message', () => {
     try {
       await cdp.send('Input.dispatchTouchEvent', {
         type: 'touchStart',
-        touchPoints: [{ x: before.x + before.width * 0.9, y, id: 1 }],
+        touchPoints: [{ x: before.x + before.width * 0.8, y, id: 1 }],
       });
       await cdp.send('Input.dispatchTouchEvent', {
         type: 'touchMove',
@@ -452,17 +455,23 @@ test.describe('Swipe a message', () => {
     // The positive control, in the same test. Without it every assertion here would pass
     // just as happily against a gesture that was broken outright, a seed that never applied,
     // or a room that never opened.
-    await swipe(page, { x: 48, y }, { x: size.width * 0.9, y });
+    await swipe(page, { x: 64, y }, { x: size.width * 0.9, y });
     await expect(page.locator('.composer__banner')).toContainText(
       'Replying to',
       { timeout: 10_000 },
     );
 
-    // The right-hand probe goes LAST, because `width - 4` is inside the drawer's own 24px
-    // opening zone: it correctly opens the drawer, and the backdrop that comes with it then
-    // covers every row for the rest of the test. That it opens is the point — the swipe
-    // declined the gesture and left it to the drawer.
+    // The extreme right is native-history territory, so neither gesture claims it here.
     await swipe(page, { x: size.width - 4, y }, { x: size.width * 0.2, y });
+    await expect(page.locator('.chat-members')).toBeHidden();
+
+    // The drawer owns the adjacent inset band. This goes last because its backdrop covers
+    // every row for the rest of the test.
+    await swipe(
+      page,
+      { x: size.width - DRAWER_OPEN_FROM_RIGHT_PX, y },
+      { x: size.width * 0.2, y },
+    );
     await expect(page.locator('.chat-members')).toBeVisible({
       timeout: 10_000,
     });
@@ -487,7 +496,11 @@ test.describe('Swipe a message', () => {
       const y = size.height / 2;
 
       await expect(members).toBeHidden();
-      await swipe(page, { x: size.width - 4, y }, { x: size.width * 0.3, y });
+      await swipe(
+        page,
+        { x: size.width - DRAWER_OPEN_FROM_RIGHT_PX, y },
+        { x: size.width * 0.3, y },
+      );
       await expect(members).toBeVisible({ timeout: 10_000 });
 
       await swipe(page, { x: size.width * 0.4, y }, { x: size.width - 4, y });
@@ -505,7 +518,11 @@ test.describe('Swipe a message', () => {
     await expect(members).toBeHidden();
 
     const y = size.height / 2;
-    await swipe(page, { x: size.width - 4, y }, { x: size.width * 0.3, y });
+    await swipe(
+      page,
+      { x: size.width - DRAWER_OPEN_FROM_RIGHT_PX, y },
+      { x: size.width * 0.3, y },
+    );
     await expect(members).toBeVisible({ timeout: 10_000 });
 
     // And the row gesture must not arm over an open drawer — the page forces it off, because

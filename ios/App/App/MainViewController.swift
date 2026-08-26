@@ -2,40 +2,42 @@ import Capacitor
 import UIKit
 
 /**
- * The app's web view controller, subclassed for one setting.
+ * The app's bridge for coordinating WebKit history gestures with Angular-owned surfaces.
  *
  * WKWebView ships with `allowsBackForwardNavigationGestures` off, and Capacitor does not turn
- * it on — the string appears nowhere in `@capacitor/ios`. So an iOS build had no back gesture
- * at all, while Android has had one all along: Capacitor's bridge routes the system back
- * (button and gesture alike) to the `backButton` event `AppComponent` already listens for.
- * That left the edge swipe, which is how people leave a screen on iOS, doing nothing here.
+ * it on. Trinity enables it while Angular reports no dialog or registered panel that should
+ * consume Back first. Both WebKit edges share this one switch, so disabling it also yields
+ * the right edge to the open drawer's closing gesture.
  *
- * Enabled rather than reimplemented in JavaScript. The platform gesture is interruptible,
- * rubber-bands correctly, and matches every other app on the device; a hand-rolled one would
- * be a pointer-gesture engine competing with native scrolling — including the horizontally
- * scrollable code blocks in the timeline — for a worse result.
- *
- * It drives WEB VIEW history, which since the room moved into the URL is the router's own
- * history, so a swipe lands on the same paths the Back chain already handles.
- *
- * KNOWN GAP, deliberately accepted: unlike Android's `backButton`, this gesture cannot be
- * intercepted, so it navigates rather than first closing an open right-hand panel. A swipe
- * with the thread panel open therefore leaves the room instead of closing the panel. The
- * alternative is reimplementing the gesture to route through `BackInterceptorService`, which
- * trades a correct platform gesture for a worse one to fix a second-order case; the in-app
- * close button is unaffected, and Android keeps the full chain.
- *
- * SECOND GAP, also to be checked on a device: this property enables BOTH edges — left to go
- * back, right to go FORWARD — and the shell's drawer swipe (`DrawerSwipeDirective`) opens
- * from the right edge. The two only compete when there is forward history, i.e. after the
- * user has already gone back once, and `touch-action` does not govern WKWebView's edge
- * recognisers, so CSS cannot arbitrate between them. If it does misbehave, moving the
- * drawer's opening affordance off the extreme edge is the cheaper fix than giving up the
- * platform gesture.
+ * Start disabled, deliberately. A rejected bridge call should lose the convenience gesture,
+ * not restore the bug where WebKit navigates underneath a visible panel. Angular explicitly
+ * enables it after the root shell has observed an empty interception stack.
  */
 class MainViewController: CAPBridgeViewController {
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        webView?.allowsBackForwardNavigationGestures = true
+    override func capacitorDidLoad() {
+        super.capacitorDidLoad()
+        webView?.allowsBackForwardNavigationGestures = false
+        bridge?.registerPluginInstance(NativeNavigationPlugin())
+    }
+}
+
+@objc(NativeNavigationPlugin)
+class NativeNavigationPlugin: CAPInstancePlugin, CAPBridgedPlugin {
+    let identifier = "NativeNavigationPlugin"
+    let jsName = "NativeNavigation"
+    let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "setGesturesEnabled", returnType: CAPPluginReturnPromise)
+    ]
+
+    @objc func setGesturesEnabled(_ call: CAPPluginCall) {
+        guard let enabled = call.getBool("enabled") else {
+            call.reject("Must provide enabled")
+            return
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            self?.bridge?.webView?.allowsBackForwardNavigationGestures = enabled
+            call.resolve()
+        }
     }
 }

@@ -35,8 +35,9 @@ vi.mock('@capacitor/browser', () => ({
 // the other App calls the native-only branch of ngOnInit makes. `vi.mock` factories
 // are hoisted above other module code, so the array has to be created via
 // `vi.hoisted` for the factory below to see it.
-const { backButtonListeners } = vi.hoisted(() => ({
+const { backButtonListeners, nativeGestureCalls } = vi.hoisted(() => ({
   backButtonListeners: [] as Array<(state: { canGoBack: boolean }) => void>,
+  nativeGestureCalls: [] as boolean[],
 }));
 vi.mock('@capacitor/app', () => ({
   App: {
@@ -53,7 +54,17 @@ vi.mock('@capacitor/app', () => ({
 
 // Native-only branch gate: forced true so the backButton listener registers.
 vi.mock('@capacitor/core', () => ({
-  Capacitor: { isNativePlatform: () => true },
+  Capacitor: {
+    getPlatform: () => 'ios',
+    isNativePlatform: () => true,
+    isPluginAvailable: () => true,
+  },
+  registerPlugin: () => ({
+    setGesturesEnabled: ({ enabled }: { enabled: boolean }) => {
+      nativeGestureCalls.push(enabled);
+      return Promise.resolve();
+    },
+  }),
 }));
 
 // AppComponent's template mounts <trn-verification-host>, which injects these.
@@ -191,6 +202,66 @@ describe('AppComponent', () => {
     });
   });
 
+  describe('iOS history gesture coordination', () => {
+    async function create() {
+      nativeGestureCalls.length = 0;
+      const openState = signal(false);
+      await render(AppComponent, {
+        providers: [
+          provideRouter([]),
+          provideServiceWorker('ngsw-worker.js', { enabled: false }),
+          ...hostProviders,
+          MockProvider(TrnDialogService, {
+            openState,
+            hasOpen: () => openState(),
+            closeTopmost: () => false,
+          }),
+        ],
+      });
+      TestBed.tick();
+      return { openState, back: TestBed.inject(BackInterceptorService) };
+    }
+
+    it('enables native history swipes when no surface can intercept Back', async () => {
+      await create();
+
+      expect(nativeGestureCalls.at(-1)).toBe(true);
+    });
+
+    it('disables native history swipes for an overlay and restores them after close', async () => {
+      const { openState } = await create();
+      nativeGestureCalls.length = 0;
+
+      openState.set(true);
+      TestBed.tick();
+      expect(nativeGestureCalls).toEqual([false]);
+
+      openState.set(false);
+      TestBed.tick();
+      expect(nativeGestureCalls).toEqual([false, true]);
+    });
+
+    it('keeps native gestures disabled until both dialog and panel are closed', async () => {
+      const { openState, back } = await create();
+      const panelOpen = signal(false);
+      back.register({ active: panelOpen, dismiss: vi.fn() });
+      nativeGestureCalls.length = 0;
+
+      panelOpen.set(true);
+      TestBed.tick();
+      expect(nativeGestureCalls).toEqual([false]);
+
+      openState.set(true);
+      panelOpen.set(false);
+      TestBed.tick();
+      expect(nativeGestureCalls).toEqual([false]);
+
+      openState.set(false);
+      TestBed.tick();
+      expect(nativeGestureCalls).toEqual([false, true]);
+    });
+  });
+
   // Android hardware back button (native only, see ngOnInit): dismiss the topmost
   // overlay if one owns the screen, else step back through router history if
   // possible, else minimize the app. Exercised through the actual listener
@@ -218,7 +289,11 @@ describe('AppComponent', () => {
           provideRouter([]),
           provideServiceWorker('ngsw-worker.js', { enabled: false }),
           ...hostProviders,
-          MockProvider(TrnDialogService, { closeTopmost, hasOpen }),
+          MockProvider(TrnDialogService, {
+            closeTopmost,
+            hasOpen,
+            openState: signal(false),
+          }),
           MockProvider(Location, { back: locationBack }),
         ],
       });
@@ -249,8 +324,11 @@ describe('AppComponent', () => {
       // `hasOpen()` above cannot see it — Back used to walk straight past an open panel and
       // out of the room, which it has always done for the members drawer.
       const listener = await create();
-      const panel = vi.fn(() => true);
-      TestBed.inject(BackInterceptorService).register(panel);
+      const panel = vi.fn();
+      TestBed.inject(BackInterceptorService).register({
+        active: () => true,
+        dismiss: panel,
+      });
 
       listener({ canGoBack: true });
 
@@ -263,7 +341,10 @@ describe('AppComponent', () => {
       // The other half, and the one that keeps Back usable: an interceptor that declines
       // must not swallow the press.
       const listener = await create();
-      TestBed.inject(BackInterceptorService).register(() => false);
+      TestBed.inject(BackInterceptorService).register({
+        active: () => false,
+        dismiss: vi.fn(),
+      });
 
       listener({ canGoBack: true });
 
@@ -274,8 +355,11 @@ describe('AppComponent', () => {
       // Ordering, asserted rather than assumed: a dialog opened OVER a panel is the more
       // recent thing, so it goes first.
       const listener = await create();
-      const panel = vi.fn(() => true);
-      TestBed.inject(BackInterceptorService).register(panel);
+      const panel = vi.fn();
+      TestBed.inject(BackInterceptorService).register({
+        active: () => true,
+        dismiss: panel,
+      });
       hasOpen.mockReturnValue(true);
       closeTopmost.mockReturnValue(true);
 

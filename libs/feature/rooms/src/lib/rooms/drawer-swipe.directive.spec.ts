@@ -2,7 +2,11 @@ import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DrawerSwipeDirective } from './drawer-swipe.directive';
+import {
+  DrawerSwipeDirective,
+  EDGE_ZONE_PX,
+  NATIVE_HISTORY_EDGE_PX,
+} from './drawer-swipe.directive';
 
 /**
  * The gesture's decisions, which is all a unit test can reach.
@@ -34,6 +38,9 @@ class HostComponent {
   readonly events: string[] = [];
 }
 
+const OPENING_BAND_X =
+  400 - NATIVE_HISTORY_EDGE_PX - Math.floor(EDGE_ZONE_PX / 2);
+
 /** A touch pointer at (x, y), `at` ms into the gesture. */
 function touch(type: string, x: number, y = 100, at = 0): PointerEvent {
   const event = new PointerEvent(type, {
@@ -62,7 +69,10 @@ describe('DrawerSwipeDirective', () => {
     host = fixture.componentInstance;
   });
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
 
   const drag = (from: number, to: number, ms = 400) => {
     target.dispatchEvent(touch('pointerdown', from, 100, 0));
@@ -72,8 +82,8 @@ describe('DrawerSwipeDirective', () => {
 
   describe('opening', () => {
     it('opens on a slow drag in from the right edge, past the threshold', () => {
-      // 390 is inside the 24px edge zone of a 400px viewport; 240 * 0.4 = 96px to commit.
-      drag(390, 280);
+      // The band is 32–56px from the edge; 240 * 0.4 = 96px to commit.
+      drag(OPENING_BAND_X, 240);
 
       expect(host.events).toEqual(['opened']);
     });
@@ -86,7 +96,7 @@ describe('DrawerSwipeDirective', () => {
     });
 
     it('snaps back when the drag stops short and was not a flick', () => {
-      drag(390, 350, 800);
+      drag(OPENING_BAND_X, OPENING_BAND_X - 40, 800);
 
       expect(host.events).toEqual([]);
     });
@@ -94,7 +104,19 @@ describe('DrawerSwipeDirective', () => {
     it('opens on a short FLICK that never reaches the threshold', () => {
       // Speed is a decision too. 40px in 50ms is 0.8px/ms, past the 0.5 commit velocity,
       // while being well under the 96px distance threshold.
-      drag(390, 350, 50);
+      drag(OPENING_BAND_X, OPENING_BAND_X - 40, 50);
+
+      expect(host.events).toEqual(['opened']);
+    });
+
+    it('reserves the extreme right edge for native history', () => {
+      drag(400 - Math.floor(NATIVE_HISTORY_EDGE_PX / 2), 200);
+
+      expect(host.events).toEqual([]);
+    });
+
+    it('opens from the inset band beside the native edge', () => {
+      drag(OPENING_BAND_X, 200);
 
       expect(host.events).toEqual(['opened']);
     });
@@ -126,14 +148,14 @@ describe('DrawerSwipeDirective', () => {
       host.enabled.set(false);
       TestBed.tick();
 
-      drag(390, 280);
+      drag(OPENING_BAND_X, 240);
 
       expect(host.events).toEqual([]);
     });
 
     it('ignores a mouse, which has the button instead', () => {
       const down = new PointerEvent('pointerdown', {
-        clientX: 390,
+        clientX: OPENING_BAND_X,
         pointerType: 'mouse',
         pointerId: 1,
         bubbles: true,
@@ -148,7 +170,7 @@ describe('DrawerSwipeDirective', () => {
     it('abandons a gesture that turns into a vertical scroll', () => {
       // The drawer's own content scrolls; a finger that starts sideways and goes down is
       // reading, not dismissing.
-      target.dispatchEvent(touch('pointerdown', 390, 100, 0));
+      target.dispatchEvent(touch('pointerdown', OPENING_BAND_X, 100, 0));
       target.dispatchEvent(touch('pointermove', 280, 160, 200));
       target.dispatchEvent(touch('pointerup', 280, 160, 200));
 
@@ -164,14 +186,14 @@ describe('DrawerSwipeDirective', () => {
       const capture = vi.fn();
       target.setPointerCapture = capture;
 
-      target.dispatchEvent(touch('pointerdown', 390, 100, 0));
+      target.dispatchEvent(touch('pointerdown', OPENING_BAND_X, 100, 0));
 
       expect(capture).toHaveBeenCalledWith(1);
     });
 
     it('ignores a second finger landing mid-gesture', () => {
-      target.dispatchEvent(touch('pointerdown', 390, 100, 0));
-      target.dispatchEvent(touch('pointermove', 330, 100, 100));
+      target.dispatchEvent(touch('pointerdown', OPENING_BAND_X, 100, 0));
+      target.dispatchEvent(touch('pointermove', OPENING_BAND_X - 60, 100, 100));
       expect(shell.style.getPropertyValue('--drawer-drag')).toBe('60px');
 
       // A different pointer id: another finger, not this swipe.
@@ -190,13 +212,13 @@ describe('DrawerSwipeDirective', () => {
 
   describe('what it writes while dragging', () => {
     it('moves one custom property, and commits nothing until release', () => {
-      target.dispatchEvent(touch('pointerdown', 390, 100, 0));
-      target.dispatchEvent(touch('pointermove', 330, 100, 100));
+      target.dispatchEvent(touch('pointerdown', OPENING_BAND_X, 100, 0));
+      target.dispatchEvent(touch('pointermove', OPENING_BAND_X - 60, 100, 100));
 
       expect(shell.style.getPropertyValue('--drawer-drag')).toBe('60px');
       expect(host.events).toEqual([]);
 
-      target.dispatchEvent(touch('pointerup', 280, 100, 200));
+      target.dispatchEvent(touch('pointerup', 240, 100, 200));
 
       // Handed back to CSS, so the drawer settles to its own position.
       expect(shell.style.getPropertyValue('--drawer-drag')).toBe('');
@@ -204,8 +226,8 @@ describe('DrawerSwipeDirective', () => {
     });
 
     it('clears the property when a gesture is abandoned', () => {
-      target.dispatchEvent(touch('pointerdown', 390, 100, 0));
-      target.dispatchEvent(touch('pointermove', 330, 100, 100));
+      target.dispatchEvent(touch('pointerdown', OPENING_BAND_X, 100, 0));
+      target.dispatchEvent(touch('pointermove', OPENING_BAND_X - 60, 100, 100));
       target.dispatchEvent(touch('pointermove', 320, 200, 150)); // turned vertical
 
       expect(shell.style.getPropertyValue('--drawer-drag')).toBe('');
@@ -216,12 +238,12 @@ describe('DrawerSwipeDirective', () => {
       // The gesture still works; it simply arrives without the drag following it.
       vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true }));
 
-      target.dispatchEvent(touch('pointerdown', 390, 100, 0));
-      target.dispatchEvent(touch('pointermove', 280, 100, 200));
+      target.dispatchEvent(touch('pointerdown', OPENING_BAND_X, 100, 0));
+      target.dispatchEvent(touch('pointermove', 240, 100, 200));
 
       expect(shell.style.getPropertyValue('--drawer-drag')).toBe('');
 
-      target.dispatchEvent(touch('pointerup', 280, 100, 200));
+      target.dispatchEvent(touch('pointerup', 240, 100, 200));
       expect(host.events).toEqual(['opened']);
     });
   });

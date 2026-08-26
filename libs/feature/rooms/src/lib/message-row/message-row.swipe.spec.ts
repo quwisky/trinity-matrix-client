@@ -6,7 +6,7 @@ import { of } from 'rxjs';
 import { MediaService } from '@trinity/data-access/media';
 import { UrlPreviewService } from '@trinity/data-access/timeline';
 import { PrivacySettingsService } from '@trinity/platform-native';
-import { EDGE_ZONE_PX } from '../rooms/drawer-swipe.directive';
+import { DRAWER_OUTER_EDGE_PX } from '../rooms/drawer-swipe.directive';
 import { FileSaveService } from '../media-save/file-save.service';
 import {
   MessageRowComponent,
@@ -243,13 +243,11 @@ describe('MessageRowComponent — the sideways swipe', () => {
       expect(swiped.length).toBe(1);
     });
 
-    it('is never narrower than the drawer’s own edge zone', () => {
-      // The drawer's opening drag starts within `EDGE_ZONE_PX` of the right edge. If this
-      // zone were the narrower of the two, a swipe could arm inside it and the two gestures
-      // would run on the same finger. One constant, read by both edges, and pinned here so
-      // the pair cannot drift — `MainViewController.swift` already anticipates the drawer's
-      // zone moving inward.
-      expect(SWIPE_DEAD_ZONE_PX).toBeGreaterThanOrEqual(EDGE_ZONE_PX);
+    it('covers the native edge and the drawer’s inset opening band', () => {
+      // On iOS the drawer's opening drag sits immediately INSIDE WebKit's Forward edge.
+      // A message swipe must refuse the whole combined region or all three recognisers can
+      // arm from one pointerdown.
+      expect(SWIPE_DEAD_ZONE_PX).toBeGreaterThanOrEqual(DRAWER_OUTER_EDGE_PX);
     });
   });
 

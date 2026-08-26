@@ -1,8 +1,9 @@
 import { Injectable, inject } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { Dialog, DialogConfig, DialogRef } from '@angular/cdk/dialog';
 import { Overlay, type ConnectedPosition } from '@angular/cdk/overlay';
 import type { ComponentType } from '@angular/cdk/portal';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, map, merge } from 'rxjs';
 import { TrnDialogRef } from './trn-dialog-ref';
 
 export interface DialogOptions {
@@ -106,6 +107,21 @@ function prefersCentred(): boolean {
 export class TrnDialogService {
   private readonly dialog = inject(Dialog);
   private readonly overlay = inject(Overlay);
+
+  /**
+   * Reactive view of the shared CDK overlay stack.
+   *
+   * Alerts and action sheets use the same root `Dialog`, so this intentionally follows its
+   * events rather than only refs opened through this service. The initial stack read matters
+   * for a late subscriber: an overlay can predate the app shell consumer.
+   */
+  readonly openState = toSignal(
+    merge(
+      this.dialog.afterOpened.pipe(map(() => true)),
+      this.dialog.afterAllClosed.pipe(map(() => false)),
+    ),
+    { initialValue: this.dialog.openDialogs.length > 0 },
+  );
 
   open<R = unknown, C = object>(
     component: ComponentType<C>,

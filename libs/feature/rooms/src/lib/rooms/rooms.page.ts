@@ -263,22 +263,17 @@ export class RoomsPage implements OnInit, OnDestroy {
   }
 
   /**
-   * Android's hardware Back closes the right-hand panel before it leaves the room.
+   * Native Back closes the right-hand panel before it leaves the room.
    *
    * Registered rather than reached for: `AppComponent` owns the Back chain and cannot import
    * this feature, and the panel is an inline block rather than a CDK dialog, so the chain's
    * `dialog.hasOpen()` check has never seen it. Only claims the press when something is
    * actually open, so Back still leaves the room when the slot is empty.
    */
-  private readonly backRegistration = inject(BackInterceptorService).register(
-    () => {
-      if (!this.store.rightPanel()) {
-        return false;
-      }
-      this.closeRightPanel();
-      return true;
-    },
-  );
+  private readonly backRegistration = inject(BackInterceptorService).register({
+    active: () => this.store.rightPanel() !== null,
+    dismiss: () => this.closeRightPanel(),
+  });
 
   readonly rooms = inject(RoomsService);
   readonly spaces = inject(SpacesService);
