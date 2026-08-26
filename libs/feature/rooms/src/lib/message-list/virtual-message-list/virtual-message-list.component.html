@@ -39,7 +39,7 @@
         (action)="onRowAction(row, $event)"
         (longPress)="onRowLongPress(row, $event)"
         [swipeDirection]="swipeDirection()"
-        (swipe)="onRowSwipe(row)"
+        (swipe)="onRowSwipe(row, $event)"
         (matrixLink)="matrixLink.emit($event)"
         (pollVote)="pollVote.emit($event)"
         (pollEnd)="pollEnd.emit($event)"

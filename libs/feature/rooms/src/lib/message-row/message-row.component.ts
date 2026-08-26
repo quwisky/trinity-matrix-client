@@ -116,6 +116,9 @@ const SWIPE_VERTICAL_SLOP_PX = 12;
 /** Which way a row is dragged to act on it, as resolved by whoever renders the row. */
 export type SwipeDirection = 'off' | 'left' | 'right';
 
+/** The semantic action a row resolved from its affordance when a swipe committed. */
+export type MessageSwipeAction = 'edit' | 'reply';
+
 /**
  * One presentational message row, shared by the main timeline ({@link
  * SimpleMessageListComponent} / {@link VirtualMessageListComponent}) and the thread
@@ -455,9 +458,10 @@ export class MessageRowComponent {
       0;
     const committed =
       this.swiping && width > 0 && travelled >= width * SWIPE_COMMIT_FRACTION;
+    const action = committed ? this.swipeAction() : null;
     this.cancelSwipe();
-    if (committed) {
-      this.swipe.emit();
+    if (action) {
+      this.swipe.emit(action);
     }
   }
 
@@ -630,12 +634,12 @@ export class MessageRowComponent {
   /**
    * A committed sideways drag — the host edits this row or replies to it.
    *
-   * Payload-free and dispatched by the host for the same reason {@link longPress} is: this
-   * component does not survive a redaction, an edit, the local-echo id swap, or scrolling
-   * out of the virtual window. What the host does with it is decided from the same `caps`
-   * this row drew its icon from, so the affordance and the action cannot disagree.
+   * The semantic action is captured from the affordance at commit time, before gesture
+   * cleanup, then dispatched by the host against its row snapshot. The host must not
+   * re-read live capabilities: the row may already have left its virtual window or caps
+   * map, and the action must remain the one the reader saw when they released.
    */
-  readonly swipe = output<void>();
+  readonly swipe = output<MessageSwipeAction>();
 
   /**
    * What a committed swipe would do to this row — the affordance and the action in one value.
@@ -645,7 +649,7 @@ export class MessageRowComponent {
    * been two things that could disagree, which is the defect this whole gesture is designed
    * around.
    */
-  readonly swipeAction = computed<'edit' | 'reply'>(() =>
+  readonly swipeAction = computed<MessageSwipeAction>(() =>
     this.caps().editable ? 'edit' : 'reply',
   );
 

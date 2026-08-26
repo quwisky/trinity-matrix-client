@@ -325,13 +325,13 @@ describe('MessageListBase — the mobile action sheet', () => {
   });
 
   it('replies to a row that is not editable', () => {
-    // The dispatch reads `rowCaps`, not `isEditable`, so the icon the reader saw behind the
-    // row and the action they get are the same value rather than two computations of it.
+    // The row resolved reply from the same caps that drew its icon; the host only dispatches
+    // that committed action against the row snapshot.
     const { fixture, cmp } = build();
     fixture.componentRef.setInput('messages', [msg('$1')]);
     fixture.detectChanges();
 
-    cmp.onRowSwipe(cmp.rows()[0]);
+    cmp.onRowSwipe(cmp.rows()[0], 'reply');
     expect(cmp.replyingToId()).toBe('$1');
     expect(cmp.editingId()).toBeNull();
   });
@@ -347,17 +347,16 @@ describe('MessageListBase — the mobile action sheet', () => {
     ]);
     fixture.detectChanges();
 
-    cmp.onRowSwipe(cmp.rows()[0]);
+    cmp.onRowSwipe(cmp.rows()[0], 'edit');
 
     expect(cmp.editingId()).toBe('$1');
     expect(cmp.replyingToId()).toBeNull();
   });
 
-  it('still dispatches when the row is gone by the time it lands', () => {
-    // The restated criterion from #222. A row destroyed mid-DRAG cancels the gesture — there
-    // is no `pointerup` to commit on — so what the snapshot actually buys is that a row
-    // destroyed AFTER the commit still dispatches: the closure holds the row, not the
-    // component, exactly as the action sheet does.
+  it('uses the committed reply action after the row leaves the live caps map', () => {
+    // A row destroyed mid-drag cancels the gesture. This pins the dispatcher's separate
+    // invariant: once the row has resolved an action, the host uses that payload with its
+    // row snapshot instead of asking a now-empty live caps map to decide again.
     const { fixture, cmp } = build();
     fixture.componentRef.setInput('messages', [msg('$1')]);
     fixture.detectChanges();
@@ -367,9 +366,27 @@ describe('MessageListBase — the mobile action sheet', () => {
     fixture.detectChanges();
     expect(cmp.rows().length).toBe(0);
 
-    cmp.onRowSwipe(pressed);
+    cmp.onRowSwipe(pressed, 'reply');
 
     expect(cmp.replyingToId()).toBe('$1');
+  });
+
+  it('uses the committed edit action after the row leaves the live caps map', () => {
+    const { fixture, cmp } = build();
+    fixture.componentRef.setInput('messages', [
+      { ...msg('$1'), isOwn: true, senderId: '@me:hs' },
+    ]);
+    fixture.detectChanges();
+    const pressed = cmp.rows()[0];
+
+    fixture.componentRef.setInput('messages', []);
+    fixture.detectChanges();
+    expect(cmp.rows()).toEqual([]);
+
+    cmp.onRowSwipe(pressed, 'edit');
+
+    expect(cmp.editingId()).toBe('$1');
+    expect(cmp.replyingToId()).toBeNull();
   });
 
   it('gives every row a harness hook', () => {

@@ -5,8 +5,7 @@ import { describe, expect, it } from 'vitest';
 const workspaceRoot = join(import.meta.dirname, '..');
 
 /**
- * Every template that renders `<trn-message-row>` must bind BOTH of its interaction
- * outputs.
+ * Every template that renders `<trn-message-row>` must bind all of its interaction outputs.
  *
  * This exists because one of them was missed. `(action)` has been bound by all three
  * consumers since it was added; `(longPress)`, which carries the mobile action sheet, was
@@ -54,20 +53,27 @@ const INERT = /^(?:\s*|noop\(\)|undefined|null|''|""|0|false)$/;
 const rowTags = (source) =>
   [...source.matchAll(/<trn-message-row\b[^>]*>/g)].map(([tag]) => tag);
 
-/** A binding whose expression does something. Both attribute quotings are accepted. */
-const bindsOutput = (tag, output) => {
-  const match = new RegExp(
-    `\\(${output}\\)\\s*=\\s*(?:"([^"]*)"|'([^']*)')`,
-  ).exec(tag);
-  return match !== null && !INERT.test((match[1] ?? match[2] ?? '').trim());
-};
-
-/** The bound expression, for outputs whose payload is part of the contract. */
+/** The expression bound to an output, accepting either attribute quoting style. */
 const outputExpression = (tag, output) => {
   const match = new RegExp(
     `\\(${output}\\)\\s*=\\s*(?:"([^"]*)"|'([^']*)')`,
   ).exec(tag);
-  return (match?.[1] ?? match?.[2] ?? '').trim();
+  return match === null ? null : (match[1] ?? match[2] ?? '').trim();
+};
+
+/** A binding whose expression does something. Both attribute quotings are accepted. */
+const bindsOutput = (tag, output) => {
+  const expression = outputExpression(tag, output);
+  return expression !== null && !INERT.test(expression);
+};
+
+/** Whether the swipe handler receives Angular's event value unchanged as argument two. */
+const forwardsSwipeAction = (tag) => {
+  const expression = outputExpression(tag, 'swipe');
+  return (
+    expression !== null &&
+    /^onRowSwipe\s*\(\s*[A-Za-z_$][\w$]*\s*,\s*\$event\s*\)$/.test(expression)
+  );
 };
 
 describe('trn-message-row consumers', () => {
@@ -114,13 +120,52 @@ describe('trn-message-row consumers', () => {
     const missing = templates.flatMap((file) => {
       const source = readFileSync(join(workspaceRoot, file), 'utf8');
       return rowTags(source).flatMap((tag, index) =>
-        outputExpression(tag, 'longPress').includes('$event')
+        outputExpression(tag, 'longPress')?.includes('$event')
           ? []
           : [`${file} row #${index + 1} drops the (longPress) $event`],
       );
     });
 
     expect(missing).toEqual([]);
+  });
+
+  it('forwards the committed swipe action from every row', () => {
+    const missing = templates.flatMap((file) => {
+      const source = readFileSync(join(workspaceRoot, file), 'utf8');
+      return rowTags(source).flatMap((tag, index) =>
+        forwardsSwipeAction(tag)
+          ? []
+          : [`${file} row #${index + 1} does not forward swipe $event`],
+      );
+    });
+
+    expect(missing).toEqual([]);
+  });
+
+  it('recognises only a standalone forwarded swipe event', () => {
+    expect(
+      forwardsSwipeAction(
+        '<trn-message-row (swipe)="onRowSwipe(row, $event)" />',
+      ),
+    ).toBe(true);
+    expect(
+      forwardsSwipeAction(
+        "<trn-message-row (swipe)='onRowSwipe(message, $event)' />",
+      ),
+    ).toBe(true);
+    expect(
+      forwardsSwipeAction('<trn-message-row (swipe)="onRowSwipe(row)" />'),
+    ).toBe(false);
+    expect(
+      forwardsSwipeAction(
+        `<trn-message-row (swipe)="onRowSwipe(row, $event === 'edit' ? 'reply' : 'edit')" />`,
+      ),
+    ).toBe(false);
+    expect(
+      forwardsSwipeAction(
+        `<trn-message-row (swipe)="log('$event'); onRowSwipe(row, 'reply')" />`,
+      ),
+    ).toBe(false);
   });
 
   it('does not count an inert binding as a binding', () => {
