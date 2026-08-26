@@ -109,4 +109,27 @@ test.describe('Settings scrollbars', () => {
     await page.getByTestId('settings-nav-advanced').click();
     await page.waitForURL(/\/settings\/advanced$/, { timeout: 20_000 });
   });
+
+  test('keeps notification overflow inside the settings shell', async ({
+    page,
+  }) => {
+    await login(page, session);
+    await page.getByTestId('open-settings').click();
+    await page.getByTestId('settings-nav-notifications').click();
+    await page.waitForURL(/\/settings\/notifications$/, { timeout: 20_000 });
+
+    // The detail pane owns vertical scrolling. Its routed content must not enlarge the
+    // document's scrollable overflow area in a framed Electron window, where the title-bar
+    // inset makes the body become a second scrollbar at the content threshold.
+    await expect
+      .poll(() =>
+        page
+          .locator('trn-settings')
+          .evaluate((shell) => getComputedStyle(shell).overflowY),
+      )
+      .toBe('hidden');
+    await expect
+      .poll(() => scrollbarPainters(page))
+      .toEqual(['SECTION[settings-detail]']);
+  });
 });
