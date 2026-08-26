@@ -13,6 +13,13 @@ vi.mock('@capacitor/preferences', () => ({
   Preferences: { get: vi.fn(), set: vi.fn() },
 }));
 
+type PreferenceSet = typeof Preferences.set;
+const preferencePlugin = Preferences as unknown as { set: PreferenceSet };
+
+/** Let Node report a promise that finishes the turn without a rejection handler. */
+const flush = (): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, 0));
+
 /**
  * What this service is FOR is the clamping, so that is most of what is tested here.
  *
@@ -67,6 +74,38 @@ describe('ShellLayoutService', () => {
     expect(stored.get('trinity.shell.sidebar-width')).toBe(
       String(SIDEBAR_WIDTH_BOUNDS.max),
     );
+  });
+
+  it('keeps both session widths without leaking a rejected persistence write', async () => {
+    // A plain function is deliberate: Vitest attaches a handler to promises returned from
+    // vi.fn() so it can record settledResults, which would hide the unhandled rejection this
+    // test exists to catch. This is the native-storage failure rather than a mock artifact.
+    const originalSet = preferencePlugin.set;
+    const escaped: unknown[] = [];
+    const record = (reason: unknown) => escaped.push(reason);
+    let calls = 0;
+    preferencePlugin.set = () => {
+      calls += 1;
+      return Promise.reject(new Error('storage unavailable'));
+    };
+    process.on('unhandledRejection', record);
+
+    try {
+      service.setSidebarWidth(5_000);
+      service.setRightPanelWidth(-40);
+
+      // The signal is authoritative for this session and updates before persistence settles.
+      expect(service.sidebarWidth()).toBe(SIDEBAR_WIDTH_BOUNDS.max);
+      expect(service.rightPanelWidth()).toBe(RIGHT_PANEL_WIDTH_BOUNDS.min);
+
+      await flush();
+
+      expect(calls).toBe(2);
+      expect(escaped).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', record);
+      preferencePlugin.set = originalSet;
+    }
   });
 
   it('restores both widths on init', async () => {
