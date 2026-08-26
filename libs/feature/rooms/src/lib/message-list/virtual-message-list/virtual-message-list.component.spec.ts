@@ -666,7 +666,7 @@ describe('VirtualMessageListComponent', () => {
       expect(emits).toBe(2);
     });
 
-    it('restores scroll to the anchor row after older history prepends', () => {
+    it('restores from the rendered anchor instead of fresh row-height estimates', () => {
       // Detached fixture (not renderList/render()), like the backfill test above:
       // render() attaches the component to ApplicationRef, so the synchronous-rAF
       // anchor restore re-enters the zoneless scheduler ("cannot synchronously
@@ -708,13 +708,18 @@ describe('VirtualMessageListComponent', () => {
           scroll.querySelector(`[data-mid="${id}"]`) as HTMLElement
         ).getBoundingClientRect = () => rect(-100, -50); // above the viewport top
       }
+      let prependedHeight = 0;
       (
         scroll.querySelector('[data-mid="$5"]') as HTMLElement
-      ).getBoundingClientRect = () => rect(40, 40 + EST); // first reaching into view
+      ).getBoundingClientRect = () =>
+        rect(40 + prependedHeight, 40 + prependedHeight + EST); // first reaching into view
 
       cmp.onScroll(); // captures anchor $5 (offset 40), sets pendingPrepend, emits
 
-      // Prepend 5 older rows → $5 shifts from index 5 to index 10.
+      // Prepend five short rows. Their real 22px DOM heights are available immediately,
+      // while the prefix still treats each unmeasured row as EST (64px). Restoring from
+      // that prefix would jump to 600; the rendered anchor moved by only 110px.
+      prependedHeight = 5 * 22;
       fixture.componentRef.setInput('messages', [
         ...['$p0', '$p1', '$p2', '$p3', '$p4'].map((id, i) =>
           msg(id, '@a:hs', 'A', 1 + i),
@@ -723,8 +728,8 @@ describe('VirtualMessageListComponent', () => {
       ]);
       fixture.detectChanges(); // prepend branch → rAF (sync) → offset-anchor restore
 
-      // scrollTop = regionTop(0) + offsetOf($5 @ idx 10)=640 - anchorOffset(40) = 600.
-      expect(st).toBe(600);
+      // Preserve the 40px viewport offset: previous 100 + real prepend height 110.
+      expect(st).toBe(210);
     });
   });
 

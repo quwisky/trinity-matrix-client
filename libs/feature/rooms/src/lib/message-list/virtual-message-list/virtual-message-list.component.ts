@@ -202,10 +202,26 @@ export class VirtualMessageListComponent extends MessageListBase {
         const anchorOffset = this.prependAnchorOffset;
         requestAnimationFrame(() => {
           const idx = this.ids().indexOf(anchorId);
-          if (idx >= 0) {
-            // A raw scrollHeight delta is contaminated by the estimated spacer for
-            // the (unrendered) prepended rows, so restore the reference row to its
-            // captured viewport offset via its computed offset (past the padding).
+          const anchor = Array.from(
+            el.querySelectorAll<HTMLElement>('.msg[data-mid]'),
+          ).find((row) => row.getAttribute('data-mid') === anchorId);
+          if (anchor) {
+            // Prefer the rendered row itself: freshly-prepended rows have real DOM heights
+            // before ResizeObserver has replaced their estimates in `prefix()`. Restoring
+            // from those estimates can overshoot, then compensate only the rows whose
+            // estimated boxes happen to sit fully above the fold. Measuring the captured
+            // row keeps the two sides of the restore in the same, real coordinate space.
+            const currentOffset =
+              anchor.getBoundingClientRect().top -
+              el.getBoundingClientRect().top;
+            el.scrollTop = Math.max(
+              0,
+              el.scrollTop + currentOffset - anchorOffset,
+            );
+          } else if (idx >= 0) {
+            // A large page can move the anchor outside the rendered window. A raw
+            // scrollHeight delta is contaminated by the estimated spacer for those
+            // unrendered rows, so use their computed offsets as the fallback.
             el.scrollTop = Math.max(
               0,
               this.rowsRegionTop(el) +
