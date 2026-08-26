@@ -59,8 +59,12 @@ const MENU: readonly SettingsMenuItem[] = [
   templateUrl: './settings.page.html',
   // The page sits on the app's content surface, matching the rooms main pane and thread
   // panels; painting the host covers the transparent header + panes (else it falls back to
-  // the darker shell background, which is wrong in dark mode).
-  host: { class: 'flex h-full flex-col bg-[var(--trinity-chat)]' },
+  // the darker shell background, which is wrong in dark mode). Its panes own scrolling, so
+  // clip their overflow at the shell: without this a framed Electron viewport can include
+  // descendant overflow in the document and paint a second scrollbar beside the detail pane.
+  host: {
+    class: 'flex h-full flex-col overflow-hidden bg-[var(--trinity-chat)]',
+  },
   imports: [
     PageHeaderComponent,
     TrnIconComponent,
