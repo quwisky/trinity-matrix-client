@@ -390,13 +390,8 @@ export class RoomsPage implements OnInit, OnDestroy {
         const previous = previousPanel;
         previousPanel = panel;
         if (panel) {
-          if (!previous) {
-            trigger =
-              document.activeElement instanceof HTMLElement &&
-              document.activeElement !== document.body
-                ? document.activeElement
-                : null;
-          } else {
+          trigger ??= this.activeElementOutsideRightPanel();
+          if (previous) {
             this.focusRightPanelAfterSwap(panel);
           }
           return;
@@ -442,6 +437,16 @@ export class RoomsPage implements OnInit, OnDestroy {
       },
       { injector: this.injector },
     );
+  }
+
+  /** Return the current focus only when it can meaningfully reopen this panel sequence. */
+  private activeElementOutsideRightPanel(): HTMLElement | null {
+    const active = document.activeElement;
+    return active instanceof HTMLElement &&
+      active !== document.body &&
+      !active.closest('[data-right-panel-surface]')
+      ? active
+      : null;
   }
 
   /**
