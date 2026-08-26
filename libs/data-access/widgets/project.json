@@ -1,0 +1,12 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "data-access-widgets",
+  "projectType": "library",
+  "sourceRoot": "libs/data-access/widgets/src",
+  "prefix": "trn",
+  "tags": ["type:data-access", "scope:matrix"],
+  "targets": {
+    "test": {},
+    "typecheck": {}
+  }
+}

@@ -105,6 +105,80 @@
         }
       </trn-tab-panel>
 
+      <trn-tab-panel
+        value="widgets"
+        panelClass="flex flex-col gap-3 pt-3"
+        data-testid="room-settings-panel-widgets"
+      >
+        @if (widgets().length === 0) {
+          <p
+            class="room-settings__note"
+            data-testid="room-settings-widgets-empty"
+          >
+            No widgets are declared in this room.
+          </p>
+        } @else {
+          <p class="room-settings__note">
+            Widgets are third-party websites. Trinity shows the room’s
+            declaration here but does not embed it or give it access to
+            messages.
+          </p>
+          @for (entry of widgets(); track entry.widget.id) {
+            <article
+              class="room-settings__widget"
+              [attr.data-testid]="'room-widget-' + entry.widget.id"
+            >
+              <div class="room-settings__widget-heading">
+                <h3>{{ entry.widget.name }}</h3>
+                <code>{{ entry.widget.type }}</code>
+              </div>
+
+              <div class="room-settings__widget-field">
+                <span class="room-settings__label">Raw URL template</span>
+                <code class="room-settings__widget-url">{{
+                  entry.widget.rawUrl
+                }}</code>
+              </div>
+
+              @if (entry.launch.url) {
+                <p class="room-settings__widget-warning">
+                  This opens a third-party website at
+                  <strong>{{ entry.launch.origin }}</strong
+                  >. It can see your network and browser information.
+                  @if (entry.launch.disclosures.length > 0) {
+                    The URL also shares: {{ disclosureText(entry.launch) }}.
+                  }
+                </p>
+                @if (entry.launch.insecure) {
+                  <p class="room-settings__widget-warning text-danger">
+                    This widget uses unencrypted HTTP.
+                  </p>
+                }
+                <a
+                  hlmBtn
+                  variant="outline"
+                  [href]="entry.launch.url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  (click)="openWidget($event, entry.launch.url)"
+                  [attr.data-testid]="'room-widget-open-' + entry.widget.id"
+                >
+                  Open in browser
+                </a>
+              } @else {
+                <p class="room-settings__widget-warning text-danger">
+                  @if (entry.launch.failure === 'unsupported-protocol') {
+                    Only HTTP and HTTPS widget links can be opened.
+                  } @else {
+                    This widget’s URL is not valid and cannot be opened.
+                  }
+                </p>
+              }
+            </article>
+          }
+        }
+      </trn-tab-panel>
+
       @if (canManageBans()) {
         <trn-tab-panel
           value="bans"

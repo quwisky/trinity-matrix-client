@@ -33,3 +33,4 @@ export * from './lib/platform-config-entries';
 export * from './lib/shortcuts/shortcut-overrides-config';
 export * from './lib/app-config.service';
 export * from './lib/mobile-os';
+export * from './lib/external-browser.service';

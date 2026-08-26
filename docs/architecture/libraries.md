@@ -1,6 +1,6 @@
 # Library inventory
 
-The workspace holds one application and 59 libraries. Every library carries a `type:*` and a
+The workspace holds one application and 72 libraries. Every library carries a `type:*` and a
 `scope:*` tag in its `project.json`, and the UI libraries carry a third `ui:*` tag that
 separates Trinity's own wrapper layer from the vendored kit; those tags are what
 [`@nx/enforce-module-boundaries`](https://github.com/quwisky/trinity-matrix-client/blob/develop/eslint.config.mjs)
@@ -11,8 +11,8 @@ Libraries are imported through `@trinity/*` path aliases declared in
 never by relative path across a library boundary. Imports _within_ a library stay relative.
 
 `libs/` itself has seven entries. Four are layer parents holding that layer's libraries:
-`data-access/` (12), `feature/` (5), `util/` (2) and `components/` (21) — the public component
-tier feature code reaches for. `spartan/` (17) groups the generated Helm components plus the
+`data-access/` (14), `feature/` (5), `util/` (2) and `components/` (27) — the public component
+tier feature code reaches for. `spartan/` (22) groups the generated Helm components plus the
 `tests` project that holds the specs pinning their behaviour. The remaining two are single
 libraries sitting directly under `libs/`: `platform-native` and `testing`.
 
@@ -46,9 +46,9 @@ all, so its own correctness is only ever exercised through the specs that import
 
 ## Platform library
 
-| Library                | Alias                      | Tags                            | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| ---------------------- | -------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `libs/platform-native` | `@trinity/platform-native` | `type:platform`, `scope:shared` | Every capability that differs by platform, behind one API: secure storage, session storage, storage persistence, feature flags, privacy settings, geolocation, voice recording, composer drafts, system-line settings, composer settings, theme, date and time formats, the mobile app badge, the Electron preload bridge, keyboard-shortcut chords, the global error handler, the `BUILD_INFO` token, and the factory-reset primitives (`LocalDataWipeService`, bounded IndexedDB deletion, `AppRestartService`) |
+| Library                | Alias                      | Tags                            | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ---------------------- | -------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `libs/platform-native` | `@trinity/platform-native` | `type:platform`, `scope:shared` | Every capability that differs by platform, behind one API: secure storage, session storage, storage persistence, feature flags, privacy settings, geolocation, voice recording, composer drafts, system-line settings, composer settings, theme, date and time formats, external-browser dispatch, the mobile app badge, the Electron preload bridge, keyboard-shortcut chords, the global error handler, the `BUILD_INFO` token, and the factory-reset primitives (`LocalDataWipeService`, bounded IndexedDB deletion, `AppRestartService`) |
 
 The library branches on Capacitor's `isNativePlatform()` internally, so callers never do. It may
 depend on `util` and nothing else, which is why it holds no Matrix knowledge.
@@ -56,7 +56,7 @@ depend on `util` and nothing else, which is why it holds no Matrix knowledge.
 ## Data-access libraries
 
 One library per Matrix domain. Apart from `libs/util/matrix`, which models the SDK's types, these
-are the only places `matrix-js-sdk` is imported — twelve of the thirteen do, `libs/data-access/gif`
+are the only places `matrix-js-sdk` is imported — thirteen of the fourteen do, `libs/data-access/gif`
 being the exception. All are tagged `scope:matrix` except `data-access-matrix-client`, which is
 `scope:shared`.
 
@@ -75,6 +75,7 @@ being the exception. All are tagged `scope:matrix` except `data-access-matrix-cl
 | `libs/data-access/rooms`         | `@trinity/data-access/rooms`         | `type:data-access`, `scope:matrix`     | The largest domain library: the room list, spaces, space children and per-space ordering, room settings, moderation and aliases, the public-room directory, the account scope, the three mixed-account projections, and the unread aggregator |
 | `libs/data-access/search`        | `@trinity/data-access/search`        | `type:data-access`, `scope:matrix`     | Quick-switcher ranking, directory search and in-room message search                                                                                                                                                                           |
 | `libs/data-access/timeline`      | `@trinity/data-access/timeline`      | `type:data-access`, `scope:matrix`     | `TimelineService`, `ThreadsService`, URL previews and edit history                                                                                                                                                                            |
+| `libs/data-access/widgets`       | `@trinity/data-access/widgets`       | `type:data-access`, `scope:matrix`     | Demand-driven room-widget discovery, safe URL-template expansion, and explicit disclosure metadata for external opening                                                                                                                       |
 
 Data-access libraries may depend on one another, and several do. The real edges today are
 `notifications → rooms, timeline`, `search → rooms, invites`, `timeline → media`, and

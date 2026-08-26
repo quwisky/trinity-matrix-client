@@ -25,6 +25,11 @@ import {
   JoinRule,
   RoomSettingsService,
 } from '@trinity/data-access/rooms';
+import {
+  WidgetsService,
+  type WidgetLaunch,
+} from '@trinity/data-access/widgets';
+import { ExternalBrowserService } from '@trinity/platform-native';
 import { initialOf } from '@trinity/util/matrix';
 import { BannedMembersComponent } from '../banned-members/banned-members.component';
 import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';
@@ -135,6 +140,8 @@ export class RoomSettingsComponent implements OnInit {
 
   private readonly dialogRef = inject<TrnDialogRef<boolean>>(TrnDialogRef);
   private readonly settings = inject(RoomSettingsService);
+  private readonly widgetsService = inject(WidgetsService);
+  private readonly externalBrowser = inject(ExternalBrowserService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -142,6 +149,16 @@ export class RoomSettingsComponent implements OnInit {
   readonly saving = signal(false);
   /** First letter of the room name, for the avatar fallback. */
   readonly avatarInitial = computed(() => initialOf(this.name()));
+
+  /** Widgets plus their current, disclosure-audited external destinations. */
+  readonly widgets = computed(() =>
+    this.widgetsService
+      .widgetsFor(this.roomId())()
+      .map((widget) => ({
+        widget,
+        launch: this.widgetsService.launchFor(this.roomId(), widget),
+      })),
+  );
 
   /** Whether the Save button applies to anything the viewer can change. */
   readonly canSave = computed(
@@ -192,6 +209,11 @@ export class RoomSettingsComponent implements OnInit {
   readonly settingsTabs = computed<TrnTabOption[]>(() => [
     { value: 'general', label: 'General', testId: 'room-settings-tab-general' },
     { value: 'access', label: 'Access', testId: 'room-settings-tab-access' },
+    {
+      value: 'widgets',
+      label: 'Widgets',
+      testId: 'room-settings-tab-widgets',
+    },
     ...(this.canManageBans()
       ? [
           {
@@ -282,7 +304,14 @@ export class RoomSettingsComponent implements OnInit {
   // that existed only to make the control readable from a computed is gone.
   private readonly selectedRule = computed(() => this.model().joinRule);
 
+  constructor() {
+    // This is a dialog-scoped projection: the only Tier 1 consumer owns the listener, so
+    // most sessions pay nothing for widget state they never inspect.
+    this.destroyRef.onDestroy(() => this.widgetsService.disconnect());
+  }
+
   ngOnInit(): void {
+    this.widgetsService.connect();
     // Seeded once, deliberately: a linkedSignal over the inputs would re-seed on any synced
     // state change and wipe what the user is typing.
     this.model.set({
@@ -373,6 +402,16 @@ export class RoomSettingsComponent implements OnInit {
 
   close(): void {
     this.dialogRef.close(false);
+  }
+
+  /** Keep an anchor for link affordances, but route a normal tap through native browser UI. */
+  openWidget(event: Event, url: string): void {
+    event.preventDefault();
+    this.externalBrowser.open(url);
+  }
+
+  disclosureText(launch: WidgetLaunch): string {
+    return launch.disclosures.map((item) => item.label).join(', ');
   }
 }
 
