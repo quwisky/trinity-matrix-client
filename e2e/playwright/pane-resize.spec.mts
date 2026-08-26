@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { login, synapseSession } from './support/app.mts';
 
 /**
@@ -21,6 +21,37 @@ const session = synapseSession();
 
 /** The server rail is a fixed column; everything the drag adds goes to the room list. */
 const RAIL_WIDTH = 72;
+const CHAT_MIN_WIDTH = 320;
+const SIDEBAR_STORAGE_KEY = 'CapacitorStorage.trinity.shell.sidebar-width';
+
+async function shellGeometry(page: Page) {
+  return page.locator('[data-shell-root]').evaluate((shell) => {
+    const sidebar = shell.querySelector('.shell-side');
+    const main = shell.querySelector('.main');
+    const rail = shell.querySelector('.rail');
+    const roomList = shell.querySelector('.sidebar');
+    if (!sidebar || !main || !rail || !roomList) {
+      throw new Error('rooms shell panes are incomplete');
+    }
+
+    const rectOf = (element: Element) => {
+      const { left, right, width } = element.getBoundingClientRect();
+      return {
+        left: Math.round(left),
+        right: Math.round(right),
+        width: Math.round(width),
+      };
+    };
+
+    return {
+      shell: rectOf(shell),
+      sidebar: rectOf(sidebar),
+      main: rectOf(main),
+      rail: rectOf(rail),
+      roomList: rectOf(roomList),
+    };
+  });
+}
 
 test.describe('Resizable panes', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
@@ -121,5 +152,75 @@ test.describe('Resizable panes', () => {
     const list =
       (await page.locator('.sidebar').first().boundingBox())?.width ?? 0;
     expect(Math.round(list)).toBe(Math.round(narrow - RAIL_WIDTH));
+  });
+
+  test('temporarily yields a maximum sidebar to the chat on narrower desktops', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await login(page, session);
+
+    const sidebar = page.locator('.shell-side');
+    await expect(sidebar).toBeVisible({ timeout: 30_000 });
+
+    const handle = page.getByRole('separator', { name: 'Room list width' });
+    const max = Number(await handle.getAttribute('aria-valuemax'));
+    expect(max).toBe(560);
+
+    await handle.focus();
+    await handle.press('End');
+    await expect(handle).toHaveAttribute('aria-valuenow', String(max));
+    await expect
+      .poll(() =>
+        page.evaluate((key) => localStorage.getItem(key), SIDEBAR_STORAGE_KEY),
+      )
+      .toBe(String(max));
+    await expect
+      .poll(async () => Math.round((await sidebar.boundingBox())?.width ?? 0))
+      .toBe(max);
+
+    // Both ends of the affected interval: 879px needs the sidebar to yield by one pixel,
+    // while 768px is the narrowest width at which both panes remain in the desktop row.
+    for (const viewportWidth of [879, 768]) {
+      await page.setViewportSize({ width: viewportWidth, height: 720 });
+
+      const renderedSidebarWidth = viewportWidth - CHAT_MIN_WIDTH;
+      await expect
+        .poll(() => shellGeometry(page))
+        .toEqual({
+          shell: { left: 0, right: viewportWidth, width: viewportWidth },
+          sidebar: {
+            left: 0,
+            right: renderedSidebarWidth,
+            width: renderedSidebarWidth,
+          },
+          main: {
+            left: renderedSidebarWidth,
+            right: viewportWidth,
+            width: CHAT_MIN_WIDTH,
+          },
+          rail: { left: 0, right: RAIL_WIDTH, width: RAIL_WIDTH },
+          roomList: {
+            left: RAIL_WIDTH,
+            right: renderedSidebarWidth,
+            width: renderedSidebarWidth - RAIL_WIDTH,
+          },
+        });
+
+      // The handle describes the user's preference, not this temporary rendered clamp.
+      await expect(handle).toHaveAttribute('aria-valuenow', String(max));
+      expect(
+        await page.evaluate(
+          (key) => localStorage.getItem(key),
+          SIDEBAR_STORAGE_KEY,
+        ),
+      ).toBe(String(max));
+    }
+
+    // Widening has to restore the preference without another write or reload.
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await expect
+      .poll(async () => Math.round((await sidebar.boundingBox())?.width ?? 0))
+      .toBe(max);
   });
 });
