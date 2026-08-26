@@ -64,7 +64,35 @@ const specs = globSync('e2e/**/*.{mts,mjs}', { cwd: workspaceRoot })
   )
   .sort();
 
+/**
+ * Every E2E module is an intentional cache-input superset for this guard.
+ *
+ * The current checks exclude shared helpers and most Synapse modules after globbing, then read
+ * `start.mjs` directly. Hashing the whole source corpus keeps both paths covered and means a
+ * future check cannot silently become uncached merely because it starts reading another helper.
+ */
+const e2eSources = globSync('e2e/**/*.{mts,mjs}', {
+  cwd: workspaceRoot,
+}).sort();
+const scriptsProject = JSON.parse(read('scripts/project.json'));
+const cachedE2eSources = globSync(
+  scriptsProject.targets.test.inputs
+    .filter(
+      (input) =>
+        typeof input === 'string' && input.startsWith('{workspaceRoot}/e2e/'),
+    )
+    .map((input) => input.replace('{workspaceRoot}/', '')),
+  { cwd: workspaceRoot },
+)
+  .filter((file) => /\.(?:mts|mjs)$/.test(file))
+  .sort();
+
 describe('e2e harness constants', () => {
+  it('hashes the complete E2E module corpus in the scripts:test cache key', () => {
+    expect(cachedE2eSources).toEqual(e2eSources);
+    expect(cachedE2eSources).toContain(DEFINITION);
+  });
+
   it('finds the specs at all, so an empty sweep cannot pass', () => {
     expect(specs.length).toBeGreaterThan(80);
     // Both file kinds are in reach, or the widened glob is decorative.
