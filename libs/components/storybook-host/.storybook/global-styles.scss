@@ -13,3 +13,12 @@
 
 // Tailwind's layers plus the Helm token mapping. Plain CSS, so it passes straight through.
 @use '../../../../apps/trinity/src/theme/spartan.css';
+
+// The application shell paints these semantic tokens on its own root, but an isolated story
+// has no shell. Paint the preview body itself so transparent component hosts are reviewed on
+// the same surface they inherit in the app, including the browser canvas beyond their content.
+body {
+  min-height: 100vh;
+  background: var(--background);
+  color: var(--foreground);
+}
