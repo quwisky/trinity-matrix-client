@@ -74,58 +74,6 @@
   color: var(--trinity-text-muted);
 }
 
-.room-settings__widget {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--trinity-divider);
-  border-radius: var(--trinity-radius);
-  background: var(--trinity-hover);
-}
-
-.room-settings__widget-heading {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 6px 10px;
-  width: 100%;
-
-  h3 {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--trinity-text-bright);
-  }
-
-  code {
-    font-size: 12px;
-    color: var(--trinity-text-muted);
-  }
-}
-
-.room-settings__widget-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  width: 100%;
-}
-
-.room-settings__widget-url {
-  overflow-wrap: anywhere;
-  font-size: 12px;
-  color: var(--trinity-text);
-}
-
-.room-settings__widget-warning {
-  overflow-wrap: anywhere;
-  font-size: 12px;
-  color: var(--trinity-text-muted);
-}
-
 .room-settings__actions {
   display: flex;
   justify-content: flex-end;

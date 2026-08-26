@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
+import { firstValueFrom } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ExternalBrowserService } from './external-browser.service';
 
@@ -25,8 +26,10 @@ describe('ExternalBrowserService', () => {
   it('opens web and Electron destinations without an opener', async () => {
     const windowOpen = vi.spyOn(window, 'open').mockReturnValue(null);
 
-    const opened = await TestBed.inject(ExternalBrowserService).open(
-      'https://widgets.example/board',
+    const opened = await firstValueFrom(
+      TestBed.inject(ExternalBrowserService).open(
+        'https://widgets.example/board',
+      ),
     );
 
     expect(opened).toBe(true);
@@ -38,12 +41,27 @@ describe('ExternalBrowserService', () => {
     expect(browserOpen).not.toHaveBeenCalled();
   });
 
+  it('does not dispatch until the action is subscribed', async () => {
+    const windowOpen = vi.spyOn(window, 'open').mockReturnValue(null);
+    const action = TestBed.inject(ExternalBrowserService).open(
+      'https://widgets.example/board',
+    );
+
+    expect(windowOpen).not.toHaveBeenCalled();
+
+    await firstValueFrom(action);
+
+    expect(windowOpen).toHaveBeenCalledOnce();
+  });
+
   it('uses the Capacitor browser on iOS and Android', async () => {
     isNative.mockReturnValue(true);
     const windowOpen = vi.spyOn(window, 'open').mockReturnValue(null);
 
-    const opened = await TestBed.inject(ExternalBrowserService).open(
-      'http://widgets.example/board',
+    const opened = await firstValueFrom(
+      TestBed.inject(ExternalBrowserService).open(
+        'http://widgets.example/board',
+      ),
     );
 
     expect(opened).toBe(true);
@@ -58,8 +76,10 @@ describe('ExternalBrowserService', () => {
     browserOpen.mockRejectedValueOnce(new Error('browser unavailable'));
     vi.spyOn(console, 'debug').mockImplementation(() => undefined);
 
-    const opened = await TestBed.inject(ExternalBrowserService).open(
-      'https://widgets.example/board',
+    const opened = await firstValueFrom(
+      TestBed.inject(ExternalBrowserService).open(
+        'https://widgets.example/board',
+      ),
     );
 
     expect(opened).toBe(false);
@@ -70,9 +90,9 @@ describe('ExternalBrowserService', () => {
     async (url) => {
       const windowOpen = vi.spyOn(window, 'open').mockReturnValue(null);
 
-      expect(await TestBed.inject(ExternalBrowserService).open(url)).toBe(
-        false,
-      );
+      expect(
+        await firstValueFrom(TestBed.inject(ExternalBrowserService).open(url)),
+      ).toBe(false);
       expect(windowOpen).not.toHaveBeenCalled();
       expect(browserOpen).not.toHaveBeenCalled();
     },

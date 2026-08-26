@@ -25,14 +25,10 @@ import {
   JoinRule,
   RoomSettingsService,
 } from '@trinity/data-access/rooms';
-import {
-  WidgetsService,
-  type WidgetLaunch,
-} from '@trinity/data-access/widgets';
-import { ExternalBrowserService } from '@trinity/platform-native';
 import { initialOf } from '@trinity/util/matrix';
 import { BannedMembersComponent } from '../banned-members/banned-members.component';
 import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';
+import { RoomWidgetsComponent } from './room-widgets.component';
 import { AvatarFieldComponent } from '../shared/avatar-field/avatar-field.component';
 import { saveFields, type FieldWrite } from '../shared/save-fields';
 import {
@@ -105,6 +101,7 @@ const HISTORY_OPTIONS = [
     AvatarFieldComponent,
     BannedMembersComponent,
     RoomAliasesComponent,
+    RoomWidgetsComponent,
   ],
   templateUrl: './room-settings.component.html',
   styleUrl: './room-settings.component.scss',
@@ -140,26 +137,13 @@ export class RoomSettingsComponent implements OnInit {
 
   private readonly dialogRef = inject<TrnDialogRef<boolean>>(TrnDialogRef);
   private readonly settings = inject(RoomSettingsService);
-  private readonly widgetsService = inject(WidgetsService);
-  private readonly externalBrowser = inject(ExternalBrowserService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
-  private connectedWidgetRoom: string | null = null;
 
   /** True while the save writes are in flight (disables the form + Save). */
   readonly saving = signal(false);
   /** First letter of the room name, for the avatar fallback. */
   readonly avatarInitial = computed(() => initialOf(this.name()));
-
-  /** Widgets plus their current, disclosure-audited external destinations. */
-  readonly widgets = computed(() =>
-    this.widgetsService
-      .widgetsFor(this.roomId())()
-      .map((widget) => ({
-        widget,
-        launch: this.widgetsService.launchFor(this.roomId(), widget),
-      })),
-  );
 
   /** Whether the Save button applies to anything the viewer can change. */
   readonly canSave = computed(
@@ -305,19 +289,7 @@ export class RoomSettingsComponent implements OnInit {
   // that existed only to make the control readable from a computed is gone.
   private readonly selectedRule = computed(() => this.model().joinRule);
 
-  constructor() {
-    // This is a dialog-scoped projection: the only Tier 1 consumer owns the listener, so
-    // most sessions pay nothing for widget state they never inspect.
-    this.destroyRef.onDestroy(() => {
-      if (this.connectedWidgetRoom) {
-        this.widgetsService.disconnect(this.connectedWidgetRoom);
-      }
-    });
-  }
-
   ngOnInit(): void {
-    this.connectedWidgetRoom = this.roomId();
-    this.widgetsService.connect(this.connectedWidgetRoom);
     // Seeded once, deliberately: a linkedSignal over the inputs would re-seed on any synced
     // state change and wipe what the user is typing.
     this.model.set({
@@ -408,22 +380,6 @@ export class RoomSettingsComponent implements OnInit {
 
   close(): void {
     this.dialogRef.close(false);
-  }
-
-  /** Keep an anchor for link affordances, but route a normal tap through native browser UI. */
-  async openWidget(event: Event, url: string): Promise<void> {
-    event.preventDefault();
-    const opened = await this.externalBrowser.open(url);
-    if (!opened) {
-      this.toast.show('Could not open this widget in a browser.', {
-        duration: 4000,
-        variant: 'destructive',
-      });
-    }
-  }
-
-  disclosureText(launch: WidgetLaunch): string {
-    return launch.disclosures.map((item) => item.label).join(', ');
   }
 }
 

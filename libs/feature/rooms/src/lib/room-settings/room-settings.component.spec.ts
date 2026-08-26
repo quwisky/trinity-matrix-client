@@ -1,11 +1,7 @@
 import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
-import {
-  WidgetsService,
-  type RoomWidget,
-  type WidgetLaunch,
-} from '@trinity/data-access/widgets';
+import { WidgetsService } from '@trinity/data-access/widgets';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import {
   RoomAliasesService,
@@ -17,26 +13,6 @@ import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomSettingsComponent } from './room-settings.component';
-
-const BOARD_WIDGET: RoomWidget = {
-  id: 'board',
-  name: 'Planning board',
-  type: 'm.custom',
-  rawUrl:
-    'https://widgets.example/board?room=$matrix_room_id&user=$matrix_user_id',
-  data: {},
-};
-
-const BOARD_LAUNCH: WidgetLaunch = {
-  url: 'https://widgets.example/board?room=!r%3Ahs&user=%40me%3Ahs',
-  origin: 'https://widgets.example',
-  disclosures: [
-    { kind: 'room-id', label: 'this room’s ID' },
-    { kind: 'user-id', label: 'your Matrix user ID' },
-  ],
-  insecure: false,
-  failure: null,
-};
 
 async function build(
   inputs: Partial<{
@@ -61,9 +37,6 @@ async function build(
     setAvatar?: Mock;
     setJoinRule?: Mock;
     setHistoryVisibility?: Mock;
-    widgets?: readonly RoomWidget[];
-    launchFor?: Mock;
-    openExternal?: Mock;
   } = {},
 ) {
   const setName = over.setName ?? vi.fn(() => of(undefined));
@@ -74,12 +47,7 @@ async function build(
     over.setHistoryVisibility ?? vi.fn(() => of(undefined));
   const close = vi.fn();
   const toastShow = vi.fn();
-  const connectWidgets = vi.fn();
-  const disconnectWidgets = vi.fn();
-  const launchFor =
-    over.launchFor ?? vi.fn<() => WidgetLaunch>(() => BOARD_LAUNCH);
-  const openExternal = over.openExternal ?? vi.fn(() => Promise.resolve(true));
-  const widgets = signal<readonly RoomWidget[]>(over.widgets ?? []);
+  const widgets = signal([]);
   const { fixture, container } = await render(RoomSettingsComponent, {
     inputs: {
       roomId: '!r:hs',
@@ -109,11 +77,11 @@ async function build(
       }),
       MockProvider(WidgetsService, {
         widgetsFor: () => widgets.asReadonly(),
-        launchFor,
-        connect: connectWidgets,
-        disconnect: disconnectWidgets,
+        launchFor: vi.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
       }),
-      MockProvider(ExternalBrowserService, { open: openExternal }),
+      MockProvider(ExternalBrowserService, { open: () => of(true) }),
       MockProvider(TrnDialogRef, { close }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
@@ -129,138 +97,11 @@ async function build(
     setHistoryVisibility,
     close,
     toastShow,
-    connectWidgets,
-    disconnectWidgets,
-    launchFor,
-    openExternal,
-    widgets,
   };
 }
 
 /** A synthetic file-input change event carrying `file` (or none). */
 describe('RoomSettingsComponent', () => {
-  it('always offers Widgets and explains an empty room', async () => {
-    const { container, fixture, connectWidgets } = await build();
-
-    expect(connectWidgets).toHaveBeenCalledWith('!r:hs');
-    const tab = container.querySelector<HTMLElement>(
-      '[data-testid="room-settings-tab-widgets"]',
-    );
-    expect(tab).not.toBeNull();
-    tab?.click();
-    fixture.detectChanges();
-
-    expect(
-      container.querySelector('[data-testid="room-settings-widgets-empty"]'),
-    ).toHaveTextContent('No widgets are declared in this room');
-  });
-
-  it('shows widget metadata, the raw template, destination, and disclosures', async () => {
-    const { container, fixture } = await build({}, { widgets: [BOARD_WIDGET] });
-    container
-      .querySelector<HTMLElement>('[data-testid="room-settings-tab-widgets"]')
-      ?.click();
-    fixture.detectChanges();
-
-    const card = container.querySelector('[data-testid="room-widget-board"]');
-    expect(card).toHaveTextContent('Planning board');
-    expect(card).toHaveTextContent('m.custom');
-    expect(card).toHaveTextContent(BOARD_WIDGET.rawUrl);
-    expect(card).toHaveTextContent('https://widgets.example');
-    expect(card).toHaveTextContent('this room’s ID');
-    expect(card).toHaveTextContent('your Matrix user ID');
-    expect(card).toHaveTextContent('network and browser information');
-
-    const link = card?.querySelector<HTMLAnchorElement>(
-      '[data-testid="room-widget-open-board"]',
-    );
-    expect(link?.getAttribute('href')).toBe(BOARD_LAUNCH.url);
-    expect(link?.getAttribute('target')).toBe('_blank');
-    expect(link?.getAttribute('rel')).toBe('noopener noreferrer');
-    expect(link?.getAttribute('aria-label')).toBe(
-      'Open Planning board in browser',
-    );
-  });
-
-  it('delegates a safe widget link to the cross-platform browser service', async () => {
-    const openExternal = vi.fn(() => Promise.resolve(true));
-    const { container, fixture } = await build(
-      {},
-      { widgets: [BOARD_WIDGET], openExternal },
-    );
-    container
-      .querySelector<HTMLElement>('[data-testid="room-settings-tab-widgets"]')
-      ?.click();
-    fixture.detectChanges();
-
-    container
-      .querySelector<HTMLElement>('[data-testid="room-widget-open-board"]')
-      ?.click();
-
-    expect(openExternal).toHaveBeenCalledWith(BOARD_LAUNCH.url);
-  });
-
-  it('reports when the external browser cannot open a widget', async () => {
-    const openExternal = vi.fn(() => Promise.resolve(false));
-    const { container, fixture, toastShow } = await build(
-      {},
-      { widgets: [BOARD_WIDGET], openExternal },
-    );
-    container
-      .querySelector<HTMLElement>('[data-testid="room-settings-tab-widgets"]')
-      ?.click();
-    await fixture.whenStable();
-
-    container
-      .querySelector<HTMLElement>('[data-testid="room-widget-open-board"]')
-      ?.click();
-    await fixture.whenStable();
-
-    expect(toastShow).toHaveBeenCalledWith(
-      'Could not open this widget in a browser.',
-      { duration: 4000, variant: 'destructive' },
-    );
-  });
-
-  it('lists an unsafe widget but does not make it clickable', async () => {
-    const launchFor = vi.fn<() => WidgetLaunch>(() => ({
-      url: null,
-      origin: null,
-      disclosures: [],
-      insecure: false,
-      failure: 'unsupported-protocol',
-    }));
-    const unsafe = {
-      ...BOARD_WIDGET,
-      rawUrl: 'javascript:alert(document.cookie)',
-    };
-    const { container, fixture } = await build(
-      {},
-      { widgets: [unsafe], launchFor },
-    );
-    container
-      .querySelector<HTMLElement>('[data-testid="room-settings-tab-widgets"]')
-      ?.click();
-    fixture.detectChanges();
-
-    const card = container.querySelector('[data-testid="room-widget-board"]');
-    expect(card).toHaveTextContent('javascript:alert(document.cookie)');
-    expect(card).toHaveTextContent(
-      'Only HTTP and HTTPS widget links can be opened',
-    );
-    expect(
-      card?.querySelector('[data-testid="room-widget-open-board"]'),
-    ).toBeNull();
-  });
-
-  it('disconnects live widget state when the dialog is destroyed', async () => {
-    const { fixture, disconnectWidgets } = await build();
-
-    fixture.destroy();
-
-    expect(disconnectWidgets).toHaveBeenCalledWith('!r:hs');
-  });
-
   it('offers restricted only when the room sits in a space', async () => {
     const withSpace = await build({
       parentSpaces: [{ id: '!s:hs', name: 'Design' }],

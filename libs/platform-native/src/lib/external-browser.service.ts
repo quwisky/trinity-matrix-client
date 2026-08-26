@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
+import { Observable, catchError, defer, from, map, of } from 'rxjs';
 
 /**
  * Opens an explicit third-party destination outside Trinity's app surface.
@@ -14,21 +15,23 @@ import { Capacitor } from '@capacitor/core';
 @Injectable({ providedIn: 'root' })
 export class ExternalBrowserService {
   /** Returns false when the URL is unsafe/malformed or the platform dispatch fails. */
-  async open(url: string): Promise<boolean> {
-    if (!isSafeExternalUrl(url)) {
-      return false;
-    }
-    try {
-      if (Capacitor.isNativePlatform()) {
-        await Browser.open({ url });
-      } else {
-        window.open(url, '_blank', 'noopener,noreferrer');
+  open(url: string): Observable<boolean> {
+    return defer(() => {
+      if (!isSafeExternalUrl(url)) {
+        return of(false);
       }
-      return true;
-    } catch (error) {
-      logFailure(error);
-      return false;
-    }
+      if (Capacitor.isNativePlatform()) {
+        return from(Browser.open({ url })).pipe(map(() => true));
+      }
+
+      window.open(url, '_blank', 'noopener,noreferrer');
+      return of(true);
+    }).pipe(
+      catchError((error: unknown) => {
+        logFailure(error);
+        return of(false);
+      }),
+    );
   }
 }
 
