@@ -17,10 +17,12 @@ import { PaneHandleComponent } from './pane-handle.component';
   imports: [PaneHandleComponent],
   template: `
     <div data-shell-root>
+      <div class="sized-pane"></div>
       @if (show()) {
         <trn-pane-handle
           cssVariable="--w"
           label="Room list width"
+          paneSelector=".sized-pane"
           [value]="value()"
           [min]="200"
           [max]="560"
@@ -58,8 +60,23 @@ async function build() {
   const { container, fixture } = await render(HostComponent);
   const handle = container.querySelector('trn-pane-handle') as HTMLElement;
   const shell = container.querySelector('[data-shell-root]') as HTMLElement;
+  const pane = container.querySelector('.sized-pane') as HTMLElement;
   stubPointerCapture(handle);
-  return { handle, shell, host: fixture.componentInstance };
+  return { handle, pane, shell, host: fixture.componentInstance };
+}
+
+function renderPaneAt(pane: HTMLElement, width: number): void {
+  vi.spyOn(pane, 'getBoundingClientRect').mockReturnValue({
+    bottom: 0,
+    height: 0,
+    left: 0,
+    right: width,
+    top: 0,
+    width,
+    x: 0,
+    y: 0,
+    toJSON: () => undefined,
+  });
 }
 
 describe('PaneHandleComponent', () => {
@@ -96,6 +113,37 @@ describe('PaneHandleComponent', () => {
     // the stylesheet default until Angular rendered the new value.
     expect(host.committed).toEqual([432]);
     expect(shell.style.getPropertyValue('--w')).toBe('432px');
+  });
+
+  it('starts a drag from the rendered pane edge when flexbox clamps the preference', async () => {
+    const { handle, pane, shell, host } = await build();
+    host.value.set(560);
+    renderPaneAt(pane, 448);
+    TestBed.tick();
+
+    handle.dispatchEvent(pointer('pointerdown', 100));
+    TestBed.tick();
+    expect(handle.getAttribute('aria-valuenow')).toBe('448');
+
+    handle.dispatchEvent(pointer('pointermove', 84));
+    handle.dispatchEvent(pointer('pointerup', 84));
+
+    expect(shell.style.getPropertyValue('--w')).toBe('432px');
+    expect(host.committed).toEqual([432]);
+  });
+
+  it('preserves a larger preference when a clamped drag tries to grow', async () => {
+    const { handle, pane, shell, host } = await build();
+    host.value.set(560);
+    renderPaneAt(pane, 448);
+    TestBed.tick();
+
+    handle.dispatchEvent(pointer('pointerdown', 100));
+    handle.dispatchEvent(pointer('pointermove', 116));
+    handle.dispatchEvent(pointer('pointerup', 116));
+
+    expect(shell.style.getPropertyValue('--w')).toBe('560px');
+    expect(host.committed).toEqual([]);
   });
 
   it('clamps a drag to the bounds rather than following the pointer out of them', async () => {
@@ -152,6 +200,34 @@ describe('PaneHandleComponent', () => {
     // Each press commits immediately — there is no gesture to end. Values are computed from
     // the bound width, which the host does not change here, so they are all relative to 352.
     expect(host.committed).toEqual([368, 336, 416, 200, 560]);
+  });
+
+  it('starts a key resize from the rendered pane edge when flexbox clamps it', async () => {
+    const { handle, pane, host } = await build();
+    host.value.set(560);
+    renderPaneAt(pane, 448);
+    TestBed.tick();
+
+    handle.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }),
+    );
+
+    expect(host.committed).toEqual([432]);
+  });
+
+  it('preserves a larger preference when a clamped key tries to grow', async () => {
+    const { handle, pane, host } = await build();
+    host.value.set(560);
+    renderPaneAt(pane, 448);
+    TestBed.tick();
+
+    handle.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }),
+    );
+    TestBed.tick();
+
+    expect(handle.getAttribute('aria-valuemax')).toBe('448');
+    expect(host.committed).toEqual([]);
   });
 
   it('ignores a key it does not handle, leaving the pane alone', async () => {

@@ -207,8 +207,11 @@ test.describe('Resizable panes', () => {
           },
         });
 
-      // The handle describes the user's preference, not this temporary rendered clamp.
-      await expect(handle).toHaveAttribute('aria-valuenow', String(max));
+      // The handle stays at the rendered pane edge even though storage keeps the preference.
+      await expect(handle).toHaveAttribute(
+        'aria-valuenow',
+        String(renderedSidebarWidth),
+      );
       expect(
         await page.evaluate(
           (key) => localStorage.getItem(key),
@@ -217,10 +220,73 @@ test.describe('Resizable panes', () => {
       ).toBe(String(max));
     }
 
+    // Growing is impossible at the live cap. It must be a no-op rather than silently
+    // replacing the preserved 560px preference with 464px, which would only become visible
+    // after the window widened again.
+    await expect(handle).toHaveAttribute('aria-valuemax', '448');
+    const clampedBox = (await handle.boundingBox())!;
+    const clampedY = clampedBox.y + clampedBox.height / 2;
+    const clampedX = clampedBox.x + clampedBox.width / 2;
+    await page.mouse.move(clampedX, clampedY);
+    await page.mouse.down();
+    await page.mouse.move(clampedX + 8, clampedY);
+    await page.mouse.move(clampedX + 16, clampedY);
+    await page.mouse.up();
+    await handle.press('ArrowRight');
+
+    await expect
+      .poll(async () => Math.round((await sidebar.boundingBox())?.width ?? 0))
+      .toBe(448);
+    await expect
+      .poll(() =>
+        page.evaluate((key) => localStorage.getItem(key), SIDEBAR_STORAGE_KEY),
+      )
+      .toBe(String(max));
+
     // Widening has to restore the preference without another write or reload.
     await page.setViewportSize({ width: 1280, height: 720 });
     await expect
       .poll(async () => Math.round((await sidebar.boundingBox())?.width ?? 0))
       .toBe(max);
+    await expect(handle).toHaveAttribute('aria-valuenow', String(max));
+
+    // Interaction must start at the rendered edge, not at the hidden preference. At 768px
+    // the difference is 112px; using 560 as the baseline made this 16px drag and the first
+    // seven ArrowLeft presses write values that flexbox still had to clamp, so nothing moved.
+    await page.setViewportSize({ width: 768, height: 720 });
+    await expect(handle).toHaveAttribute('aria-valuenow', '448');
+
+    const box = (await handle.boundingBox())!;
+    const y = box.y + box.height / 2;
+    const x = box.x + box.width / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x - 8, y);
+    await page.mouse.move(x - 16, y);
+    await page.mouse.up();
+
+    await expect
+      .poll(async () => Math.round((await sidebar.boundingBox())?.width ?? 0))
+      .toBe(432);
+    await expect(handle).toHaveAttribute('aria-valuenow', '432');
+    await expect
+      .poll(() =>
+        page.evaluate((key) => localStorage.getItem(key), SIDEBAR_STORAGE_KEY),
+      )
+      .toBe('432');
+
+    // Reset the preference while still clamped, then prove the first keypress moves the pane.
+    await handle.press('End');
+    await expect(handle).toHaveAttribute('aria-valuenow', '448');
+    await handle.press('ArrowLeft');
+    await expect
+      .poll(async () => Math.round((await sidebar.boundingBox())?.width ?? 0))
+      .toBe(432);
+    await expect(handle).toHaveAttribute('aria-valuenow', '432');
+    await expect
+      .poll(() =>
+        page.evaluate((key) => localStorage.getItem(key), SIDEBAR_STORAGE_KEY),
+      )
+      .toBe('432');
   });
 });

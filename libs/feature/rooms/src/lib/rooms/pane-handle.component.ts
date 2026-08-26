@@ -3,9 +3,12 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  afterNextRender,
+  computed,
   inject,
   input,
   output,
+  signal,
 } from '@angular/core';
 
 /**
@@ -49,9 +52,9 @@ const COARSE_STEP_PX = 64;
     tabindex: '0',
     'aria-orientation': 'vertical',
     '[attr.aria-label]': 'label()',
-    '[attr.aria-valuenow]': 'value()',
+    '[attr.aria-valuenow]': 'announcedValue()',
     '[attr.aria-valuemin]': 'min()',
-    '[attr.aria-valuemax]': 'max()',
+    '[attr.aria-valuemax]': 'announcedMax()',
     '[class.pane-handle--dragging]': 'dragging',
     class: 'pane-handle',
     '(pointerdown)': 'onPointerDown($event)',
@@ -61,7 +64,7 @@ const COARSE_STEP_PX = 64;
 export class PaneHandleComponent {
   private readonly host: ElementRef<HTMLElement> = inject(ElementRef);
 
-  /** Current width of the pane this handle sizes, in px. */
+  /** Preferred width of the pane this handle sizes, in px. */
   readonly value = input.required<number>();
   readonly min = input.required<number>();
   readonly max = input.required<number>();
@@ -77,6 +80,16 @@ export class PaneHandleComponent {
   readonly cssVariable = input.required<string>();
 
   /**
+   * The pane whose rendered width is this separator's live position.
+   *
+   * Optional because the right-panel handle has no live outer-shell clamp today. The room
+   * list does: its preferred width can be 560px while flexbox temporarily renders 448px, so
+   * pointer and keyboard interaction must start from the latter without overwriting the
+   * former merely because the window narrowed.
+   */
+  readonly paneSelector = input<string>();
+
+  /**
    * Which direction growing goes. The sidebar handle grows the pane to its LEFT as the
    * pointer moves right; the right-panel handle grows the pane to its RIGHT, so its delta is
    * inverted. Without this the right-hand pane shrinks when you drag it wider.
@@ -87,10 +100,19 @@ export class PaneHandleComponent {
   readonly committed = output<number>();
 
   protected dragging = false;
+  private readonly renderedValue = signal<number | null>(null);
+  protected readonly announcedValue = computed(
+    () => this.renderedValue() ?? this.value(),
+  );
+  protected readonly announcedMax = computed(() => {
+    const rendered = this.renderedValue();
+    return rendered !== null && this.value() > rendered ? rendered : this.max();
+  });
 
   private startX = 0;
   private startValue = 0;
   private latest = 0;
+  private paneObserver: ResizeObserver | null = null;
   /**
    * The element carrying the custom property, resolved once when the gesture starts.
    *
@@ -101,12 +123,29 @@ export class PaneHandleComponent {
   private shellEl: HTMLElement | null = null;
 
   constructor() {
+    const destroyRef = inject(DestroyRef);
+    afterNextRender(() => {
+      this.syncRenderedValue();
+      const pane = this.renderedPane();
+      if (pane && typeof ResizeObserver !== 'undefined') {
+        this.paneObserver = new ResizeObserver(() => {
+          // A pointer drag deliberately stays outside Angular's render loop. ARIA matched
+          // the starting edge before it began and is reconciled once the gesture lands.
+          if (!this.dragging) {
+            this.syncRenderedValue();
+          }
+        });
+        this.paneObserver.observe(pane);
+      }
+    });
+
     // A gesture can outlive the handle: the right-hand one lives inside the slot's `@if`, and
     // Escape closes the slot from a document listener — so it is destroyed mid-drag with the
     // pointer still down and `onPointerUp` never reached. The inline override would then be
     // left on the shell for good, which is exactly the state that rule warns about: the
     // binding stops reaching the layout and a change from the settings editor does nothing.
-    inject(DestroyRef).onDestroy(() => {
+    destroyRef.onDestroy(() => {
+      this.paneObserver?.disconnect();
       if (this.dragging) {
         // Nothing is committed, so put the property back to the width the binding still
         // holds. REMOVING it would be worse than leaving the drag's value: the stylesheet
@@ -131,7 +170,8 @@ export class PaneHandleComponent {
     this.host.nativeElement.focus();
     this.dragging = true;
     this.startX = event.clientX;
-    this.startValue = this.value();
+    this.startValue = this.currentRenderedValue();
+    this.renderedValue.set(this.startValue);
     this.latest = this.startValue;
     this.shellEl = this.host.nativeElement.closest('[data-shell-root]');
     // Pointer capture, so a fast drag that leaves the 4px handle keeps sending moves here
@@ -155,13 +195,26 @@ export class PaneHandleComponent {
     );
     // The whole gesture, in one line: a style write on an ancestor. No signal, no change
     // detection, no component re-render.
-    this.shellEl?.style.setProperty(this.cssVariable(), `${this.latest}px`);
+    const width = this.preservesPreferredGrowth(this.latest, this.startValue)
+      ? this.value()
+      : this.latest;
+    this.shellEl?.style.setProperty(this.cssVariable(), `${width}px`);
   };
 
   private readonly onPointerUp = (event: PointerEvent): void => {
     this.host.nativeElement.releasePointerCapture?.(event.pointerId);
     const width = this.latest;
+    const shell = this.shellEl;
+    const preservePreference = this.preservesPreferredGrowth(
+      width,
+      this.startValue,
+    );
     this.endGesture();
+    if (preservePreference) {
+      shell?.style.setProperty(this.cssVariable(), `${this.value()}px`);
+      this.syncRenderedValue();
+      return;
+    }
     // The property is left where the drag put it, deliberately. It is not a competing
     // declaration to be cleaned up: the host BINDS this same inline property, so the commit
     // below arrives as an ordinary binding write to the very value already there. Removing
@@ -169,6 +222,7 @@ export class PaneHandleComponent {
     // Angular takes to render — a visible snap back to the default on every release, and a
     // race the pane-resize e2e catches from time to time.
     this.committed.emit(width);
+    this.syncRenderedValue();
   };
 
   /**
@@ -193,21 +247,26 @@ export class PaneHandleComponent {
 
   onKeyDown(event: KeyboardEvent): void {
     const step = event.shiftKey ? COARSE_STEP_PX : STEP_PX;
-    const next = this.fromKey(event.key, step);
+    const current = this.currentRenderedValue();
+    const next = this.fromKey(event.key, step, current);
     if (next === null) {
       return;
     }
     event.preventDefault(); // arrows would otherwise scroll the pane behind the handle
+    this.renderedValue.set(current);
+    if (this.preservesPreferredGrowth(next, current)) {
+      return;
+    }
     this.committed.emit(this.clamp(next));
   }
 
-  private fromKey(key: string, step: number): number | null {
+  private fromKey(key: string, step: number, current: number): number | null {
     const grow = this.invert() ? -step : step;
     switch (key) {
       case 'ArrowLeft':
-        return this.value() - grow;
+        return current - grow;
       case 'ArrowRight':
-        return this.value() + grow;
+        return current + grow;
       case 'Home':
         return this.min();
       case 'End':
@@ -219,5 +278,29 @@ export class PaneHandleComponent {
 
   private clamp(px: number): number {
     return Math.min(this.max(), Math.max(this.min(), Math.round(px)));
+  }
+
+  private renderedPane(): HTMLElement | null {
+    const selector = this.paneSelector();
+    return selector
+      ? (this.host.nativeElement.parentElement?.querySelector<HTMLElement>(
+          selector,
+        ) ?? null)
+      : null;
+  }
+
+  private currentRenderedValue(): number {
+    const width = this.renderedPane()?.getBoundingClientRect().width ?? 0;
+    return width > 0 ? Math.round(width) : this.value();
+  }
+
+  private syncRenderedValue(): void {
+    if (this.paneSelector()) {
+      this.renderedValue.set(this.currentRenderedValue());
+    }
+  }
+
+  private preservesPreferredGrowth(next: number, rendered: number): boolean {
+    return this.value() > rendered && next >= rendered;
   }
 }
