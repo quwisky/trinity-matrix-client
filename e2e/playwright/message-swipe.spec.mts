@@ -237,6 +237,60 @@ test.describe('Swipe a message', () => {
     await expect(otherIcon).toHaveAttribute('data-swipe-action', 'reply');
   });
 
+  test('the action fades and grows in as the drag approaches committing', async ({
+    page,
+    request,
+  }) => {
+    // Measured, because this is the half jsdom cannot see: the unit spec pins the progress
+    // VALUE, and what a reader actually experiences is the opacity and scale that value
+    // drives. A `--swipe-progress` written to an element nothing consumes would satisfy the
+    // unit test and show nothing on screen.
+    const { other } = await openRoom(page, request, 'p', 'right');
+    const box = (await page.locator(other).boundingBox())!;
+    const y = box.y + box.height / 2;
+    const icon = page.locator(`${other} .msg__swipe`);
+
+    const shown = () =>
+      icon.evaluate((el) => ({
+        opacity: Number(getComputedStyle(el).opacity),
+        scale: getComputedStyle(el.querySelector('trn-icon')!).scale,
+        colour: getComputedStyle(el).color,
+      }));
+
+    // A short drag: on its way, not yet committing.
+    await page.mouse.move(0, 0);
+    const cdp = await page.context().newCDPSession(page);
+    const at = async (x: number) =>
+      cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x, y, id: 1 }],
+      });
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: box.x + box.width * 0.4, y, id: 1 }],
+    });
+
+    // Polled, not read straight after the send: `Input.dispatchTouchEvent` resolves when the
+    // event is dispatched, and the handler's style write lands a tick later.
+    await at(box.x + box.width * 0.5);
+    await expect.poll(async () => (await shown()).opacity).toBeGreaterThan(0);
+    const partly = await shown();
+    expect(partly.opacity).toBeLessThan(1);
+
+    await at(box.x + box.width * 0.95);
+    await expect.poll(async () => (await shown()).opacity).toBe(1);
+    const committed = await shown();
+    // Grown, and recoloured — "let go now and it will act", said before letting go.
+    expect(committed.scale).not.toBe(partly.scale);
+    expect(committed.colour).not.toBe(partly.colour);
+
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchEnd',
+      touchPoints: [],
+    });
+    await cdp.detach();
+  });
+
   test('does nothing at all while the setting is off', async ({
     page,
     request,

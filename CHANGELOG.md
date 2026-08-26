@@ -10,11 +10,12 @@ All notable changes to this project are documented here. The format is based on
 
 - **Swipe a message to reply to it — or to edit it.** On a phone, drag a message sideways
   and it replies to that message, or opens it for editing if it is one of yours you can
-  still change. The icon that appears behind the message says which you will get before you
-  let go, and letting the message go back where it came from abandons it. It is **off until
-  you turn it on**, under Settings → Appearance → Message gestures, where you also choose
-  which way to drag: your phone already uses both screen edges for its own back gesture, so
-  there is no direction that is free for everyone.
+  still change. The icon behind the message fades and grows in as you drag, so you can see
+  which action is coming and how close you are to it; it changes colour once you have gone
+  far enough, and sliding the message back puts it away without doing anything. It is **off
+  until you turn it on**, under Settings → Appearance → Message gestures, where you also
+  choose which way to drag: your phone already uses both screen edges for its own back
+  gesture, so there is no direction that is free for everyone.
 
 - **Room and space settings are tabbed.** Everything a room has used to be one long column
   in a narrow dialog; it is now General, Access and Bans, so finding the join rule no

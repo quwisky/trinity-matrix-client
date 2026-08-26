@@ -442,6 +442,15 @@ export class MessageRowComponent {
     this.paintSwipe(0);
   }
 
+  /** The width the commit threshold is a fraction of: `.msg`, which is the box that moves. */
+  private rowWidth(): number {
+    const root = this.host.nativeElement as HTMLElement;
+    return (
+      root.querySelector<HTMLElement>('.msg')?.getBoundingClientRect().width ??
+      0
+    );
+  }
+
   /**
    * Move the row under the finger.
    *
@@ -457,14 +466,30 @@ export class MessageRowComponent {
     }
     if (distance <= 0) {
       msg.style.removeProperty('--swipe-drag');
-      msg.classList.remove('msg--swiping');
+      msg.style.removeProperty('--swipe-progress');
+      msg.classList.remove('msg--swiping', 'msg--swipe-armed');
       return;
     }
     const signed = this.swipeDirection() === 'left' ? -distance : distance;
     msg.style.setProperty('--swipe-drag', `${Math.round(signed)}px`);
+
+    // How far along the gesture is, 0 → 1, as its own custom property. The affordance grows
+    // with the drag rather than snapping on at the first pixel, which is what makes the
+    // issue's "early enough in the drag to abandon it" true rather than merely claimed — a
+    // reader can see the action arriving and let go before it does.
+    //
+    // A property CSS interpolates directly, not a transition: a transition would be chasing
+    // the finger, and the whole point is that the reveal tracks it exactly.
+    const commitAt = this.rowWidth() * SWIPE_COMMIT_FRACTION;
+    const progress = commitAt > 0 ? Math.min(1, distance / commitAt) : 0;
+    msg.style.setProperty('--swipe-progress', `${progress.toFixed(3)}`);
+
     // Drives both the icon's visibility and the 1:1 follow; the eased spring-back returns
     // when this comes off. A class rather than a signal for the reason `paintSwipe` exists.
     msg.classList.add('msg--swiping');
+    // Past the threshold: releasing now WILL act. Worth saying, because the alternative is a
+    // reader discovering where the line was by crossing it.
+    msg.classList.toggle('msg--swipe-armed', progress >= 1);
   }
 
   /**

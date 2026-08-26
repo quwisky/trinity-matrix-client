@@ -498,14 +498,28 @@
 
   // Nothing to reveal until the row has actually moved. `.msg` is transparent except on
   // hover, so an always-visible icon would sit in the timeline's margin on every row.
-  opacity: 0;
+  // Tied to the drag's PROGRESS rather than switched on: `--swipe-progress` runs 0 → 1 as
+  // the row approaches the commit threshold, so the action fades up as it becomes available
+  // instead of arriving whole at the first pixel. No transition on it — a transition would
+  // be chasing the finger, and this has to track it exactly.
+  opacity: var(--swipe-progress, 0);
+}
+
+.msg__swipe trn-icon {
+  // Grows into place on the same progress, from two thirds to full size. Small enough to
+  // read as the action arriving rather than as something bouncing.
+  scale: calc(0.66 + (0.34 * var(--swipe-progress, 0)));
+  transition: color var(--trinity-duration-fast) var(--trinity-ease-standard);
+}
+
+// Past the commit threshold — releasing now WILL act, and the icon says so before the reader
+// finds out by letting go. Colour carries it rather than more movement: the row is already
+// travelling, and a second moving thing at the same moment reads as noise.
+.msg--swipe-armed .msg__swipe {
+  color: var(--trinity-link);
 }
 
 // A leftward drag uncovers the right-hand end, so the icon waits there instead.
 .msg__swipe--end {
   justify-content: flex-end;
-}
-
-.msg--swiping .msg__swipe {
-  opacity: 1;
 }

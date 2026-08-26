@@ -137,6 +137,12 @@ function drag(msg: HTMLElement, from: number, to: number, y = 100): void {
 const dragged = (msg: HTMLElement) =>
   msg.style.getPropertyValue('--swipe-drag');
 
+/** How far along the gesture is, 0 → 1, as the affordance reads it. */
+const progress = (msg: HTMLElement) =>
+  Number(msg.style.getPropertyValue('--swipe-progress') || 0);
+
+const armed = (msg: HTMLElement) => msg.classList.contains('msg--swipe-armed');
+
 describe('MessageRowComponent — the sideways swipe', () => {
   beforeEach(() => {
     state.mobile = true;
@@ -244,6 +250,62 @@ describe('MessageRowComponent — the sideways swipe', () => {
       // the pair cannot drift — `MainViewController.swift` already anticipates the drawer's
       // zone moving inward.
       expect(SWIPE_DEAD_ZONE_PX).toBeGreaterThanOrEqual(EDGE_ZONE_PX);
+    });
+  });
+
+  describe('the reveal', () => {
+    // The affordance has to arrive WITH the drag, not at the first pixel. #222 asks for the
+    // icon to say which action is coming "early enough in the drag to abandon it", and an
+    // affordance that snaps to full strength immediately says nothing about how close the
+    // commit is — the reader finds the threshold by crossing it.
+    it('grows with the drag rather than appearing whole', async () => {
+      const { msg } = await renderRow('right');
+
+      msg.dispatchEvent(touch('pointerdown', 300));
+      msg.dispatchEvent(touch('pointermove', 325));
+      const quarter = progress(msg);
+      msg.dispatchEvent(touch('pointermove', 350));
+      const half = progress(msg);
+
+      // 400px row, 25% threshold → 100px. 25px in is a quarter of the way, 50px is half.
+      expect(quarter).toBeGreaterThan(0);
+      expect(quarter).toBeLessThan(1);
+      expect(half).toBeGreaterThan(quarter);
+      expect(armed(msg)).toBe(false);
+    });
+
+    it('arms once the drag would commit', async () => {
+      const { msg } = await renderRow('right');
+
+      msg.dispatchEvent(touch('pointerdown', 300));
+      msg.dispatchEvent(touch('pointermove', 399));
+      expect(armed(msg)).toBe(false);
+
+      msg.dispatchEvent(touch('pointermove', 400));
+      expect(progress(msg)).toBe(1);
+      expect(armed(msg)).toBe(true);
+    });
+
+    it('disarms if the drag falls back under the threshold', async () => {
+      // Abandoning has to be visible too: a reader who pulls back must see the action leave.
+      const { msg } = await renderRow('right');
+
+      msg.dispatchEvent(touch('pointerdown', 300));
+      msg.dispatchEvent(touch('pointermove', 420));
+      expect(armed(msg)).toBe(true);
+
+      msg.dispatchEvent(touch('pointermove', 340));
+      expect(armed(msg)).toBe(false);
+      expect(progress(msg)).toBeLessThan(1);
+    });
+
+    it('clears the reveal when the gesture ends', async () => {
+      const { msg } = await renderRow('right');
+
+      drag(msg, 300, 420);
+
+      expect(progress(msg)).toBe(0);
+      expect(armed(msg)).toBe(false);
     });
   });
 
