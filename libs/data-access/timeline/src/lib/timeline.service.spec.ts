@@ -1385,6 +1385,46 @@ describe('TimelineService', () => {
       expect(typingCalls(incomingSent)).toEqual([]);
     });
 
+    it('clears local typing ownership when the final account signs out', () => {
+      vi.spyOn(Date, 'now').mockReturnValue(1_000);
+      const outgoingSent: unknown[][] = [];
+      const incomingSent: unknown[][] = [];
+      const room = fakeRoom([], {}, false, []);
+      const outgoing = fakeClient(room, outgoingSent);
+      const incoming = fakeClient(room, incomingSent);
+      const active = {
+        client: outgoing as unknown,
+        isInitialized: true,
+      };
+      TestBed.configureTestingModule({
+        providers: [
+          TimelineService,
+          switchableMatrixProvider(active),
+          mediaProvider(),
+        ],
+      });
+      const svc = TestBed.inject(TimelineService);
+      svc.open('!r:hs');
+      svc.setTyping(true, 'thread');
+
+      active.isInitialized = false;
+      svc.close();
+
+      active.client = incoming;
+      active.isInitialized = true;
+      svc.open('!r:hs');
+      svc.setTyping(true, 'room');
+      svc.setTyping(false, 'room');
+
+      expect(typingCalls(outgoingSent)).toEqual([
+        ['typing', true, TYPING_TIMEOUT_MS],
+      ]);
+      expect(typingCalls(incomingSent)).toEqual([
+        ['typing', true, TYPING_TIMEOUT_MS],
+        ['typing', false, 0],
+      ]);
+    });
+
     it('projects other typing members into typingNames, excluding self', () => {
       const { svc, client } = setupTyping([
         fakeMember('@alice:hs', true, 'Alice'),
