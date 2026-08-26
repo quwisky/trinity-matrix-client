@@ -54,6 +54,7 @@ import {
   vi,
 } from 'vitest';
 import { RoomsPage } from './rooms.page';
+import { type RightPanel } from './room-shell-store';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 
@@ -515,6 +516,149 @@ describe('RoomsPage mobile navigation', () => {
     } finally {
       trigger.remove();
       elsewhere.remove();
+    }
+  });
+
+  const bobPanel: Exclude<RightPanel, null> = {
+    kind: 'member',
+    member: {
+      userId: '@bob:hs',
+      name: 'Bob',
+      initial: 'B',
+      avatarMxc: null,
+      powerLevel: 0,
+      isCreator: false,
+    },
+    caps: { kick: false, ban: false, setPower: false, myPower: 0 },
+    direct: false,
+  };
+
+  it.each<{
+    name: string;
+    from: Exclude<RightPanel, null>;
+    to: Exclude<RightPanel, null>;
+    targetTag: 'button' | 'input';
+  }>([
+    {
+      name: 'threads → thread',
+      from: { kind: 'threads' },
+      to: { kind: 'thread', rootEventId: '$root' },
+      targetTag: 'button',
+    },
+    {
+      name: 'members → member',
+      from: { kind: 'members' },
+      to: bobPanel,
+      targetTag: 'button',
+    },
+    {
+      name: 'member → members',
+      from: bobPanel,
+      to: { kind: 'members' },
+      targetTag: 'input',
+    },
+  ])('hands focus to the replacement on $name', ({ from, to, targetTag }) => {
+    const shell = build();
+    setRouteRoom('!r:hs');
+    shell.page.closeRightPanel();
+    TestBed.tick();
+    const trigger = document.createElement('button');
+    const slot = document.createElement('div');
+    slot.dataset['rightPanelSlot'] = '';
+    document.body.append(trigger, slot);
+    try {
+      trigger.focus();
+      shell.store.rightPanel.set(from);
+      TestBed.tick();
+
+      const source = document.createElement('button');
+      slot.append(source);
+      source.focus();
+      shell.store.rightPanel.set(to);
+      source.remove(); // the outgoing panel's render removal orphans focus
+      const target = document.createElement(targetTag);
+      target.dataset['rightPanelFocus'] = '';
+      slot.append(target);
+      TestBed.tick();
+      TestBed.tick();
+
+      expect(document.activeElement).toBe(target);
+    } finally {
+      trigger.remove();
+      slot.remove();
+    }
+  });
+
+  it('restores the original external trigger after an inline swap then close', () => {
+    const shell = build();
+    setRouteRoom('!r:hs');
+    shell.page.closeRightPanel();
+    TestBed.tick();
+    const trigger = document.createElement('button');
+    const slot = document.createElement('div');
+    slot.dataset['rightPanelSlot'] = '';
+    document.body.append(trigger, slot);
+    try {
+      trigger.focus();
+      shell.store.rightPanel.set({ kind: 'threads' });
+      TestBed.tick();
+
+      const source = document.createElement('button');
+      slot.append(source);
+      source.focus();
+      shell.store.rightPanel.set({ kind: 'thread', rootEventId: '$root' });
+      source.remove();
+      const threadClose = document.createElement('button');
+      threadClose.dataset['rightPanelFocus'] = '';
+      slot.append(threadClose);
+      TestBed.tick();
+      TestBed.tick();
+      expect(document.activeElement).toBe(threadClose);
+
+      shell.page.closeRightPanel();
+      slot.remove();
+      TestBed.tick();
+      TestBed.tick();
+
+      expect(document.activeElement).toBe(trigger);
+    } finally {
+      trigger.remove();
+      slot.remove();
+    }
+  });
+
+  it('does not steal focus claimed while an inline swap renders', () => {
+    const shell = build();
+    setRouteRoom('!r:hs');
+    shell.page.closeRightPanel();
+    TestBed.tick();
+    const trigger = document.createElement('button');
+    const elsewhere = document.createElement('button');
+    const slot = document.createElement('div');
+    slot.dataset['rightPanelSlot'] = '';
+    document.body.append(trigger, elsewhere, slot);
+    try {
+      trigger.focus();
+      shell.store.rightPanel.set({ kind: 'threads' });
+      TestBed.tick();
+
+      const source = document.createElement('button');
+      slot.append(source);
+      source.focus();
+      shell.store.rightPanel.set({ kind: 'thread', rootEventId: '$root' });
+      source.remove();
+      const target = document.createElement('button');
+      target.dataset['rightPanelFocus'] = '';
+      slot.append(target);
+      elsewhere.focus();
+      TestBed.tick();
+      TestBed.tick();
+
+      expect(document.activeElement).toBe(elsewhere);
+    } finally {
+      trigger.remove();
+      elsewhere.remove();
+      slot.remove();
     }
   });
 

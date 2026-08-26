@@ -169,6 +169,15 @@ describe('MemberInfoComponent', () => {
     ).not.toBeNull();
   });
 
+  it('marks its named panel close button as the panel focus target', async () => {
+    const { container } = await buildPanel();
+
+    const targets = container.querySelectorAll('[data-right-panel-focus]');
+    expect(targets).toHaveLength(1);
+    expect(targets[0].tagName).toBe('BUTTON');
+    expect(targets[0].getAttribute('aria-label')).toBe('Close member info');
+  });
+
   it('has no close button as a dialog, where the backdrop and Escape do it', async () => {
     // The pair to the test above, and the reason the header is conditional rather than
     // always on: a dialog that grew a second dismissal would be the odd one out among them.
