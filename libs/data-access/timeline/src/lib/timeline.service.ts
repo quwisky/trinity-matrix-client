@@ -705,22 +705,23 @@ export class TimelineService {
 
   /**
    * The typing-stop {@link close} sends, bound to {@link connectedClient} rather than the
-   * active one. Shares `typingSentAt` with {@link setTyping} so a close cannot send a stop
-   * we never started, and cannot leave the flag set for the next room.
+   * active one. Local ownership is always cleared; the network stop is conditional because
+   * the final account may already be signed out by the time the deferred close runs.
    */
   private stopTypingOnConnectedClient(): void {
     const client = this.connectedClient;
     const room = this.room;
+    const hadSentTyping = this.typingSentAt !== 0;
+    this.typingSentAt = 0;
+    this.typingOwners.clear();
     // `isInitialized` is kept from the `openContext()` guard this replaced, and it is not
     // redundant: `connectedClient` is cleared only by close() itself, so after a sign-out
     // tears every account down it still holds a stopped, logged-out client — and we would
     // PUT typing on a revoked token. An account SWITCH leaves it true (the incoming account
     // is active), so the account-pinning this method exists for is unaffected.
-    if (!client || !room || !this.typingSentAt || !this.matrix.isInitialized) {
+    if (!client || !room || !hadSentTyping || !this.matrix.isInitialized) {
       return;
     }
-    this.typingSentAt = 0;
-    this.typingOwners.clear();
     // Caught, unlike the composer's `setTyping`: this fires during teardown, where the room
     // may already be one the account has left, and there is no longer any surface to report
     // it on. Same shape as `setRoomReadMarkers` in RoomsService.

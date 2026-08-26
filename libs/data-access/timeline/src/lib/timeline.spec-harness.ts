@@ -93,11 +93,16 @@ export function matrixProvider(client: unknown, isInitialized = true) {
  * the real getter, which resolves the *active* account on every access. Lets a test
  * switch accounts and observe when the service actually reads the client.
  */
-export function switchableMatrixProvider(active: { client: unknown }) {
+export function switchableMatrixProvider(active: {
+  client: unknown;
+  isInitialized?: boolean;
+}) {
   return {
     provide: MatrixClientService,
     useValue: {
-      isInitialized: true,
+      get isInitialized() {
+        return active.isInitialized ?? true;
+      },
       get instance() {
         return active.client;
       },
