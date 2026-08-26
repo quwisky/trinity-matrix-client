@@ -26,6 +26,7 @@ import {
   prepareStateDir,
   resolveNetworkContainer,
 } from './paths.mjs';
+import { acquireSynapseLease, releaseSynapseLease } from './lease.mts';
 
 const exec = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -96,6 +97,7 @@ async function exists(p) {
 
 /** Resolved once per run by start(); '' means "publish ports", the normal case. */
 let networkContainer = '';
+let operationSignal;
 
 async function compose(args, opts = {}) {
   return exec(
@@ -103,6 +105,7 @@ async function compose(args, opts = {}) {
     ['compose', ...composeFiles(networkContainer), ...args],
     {
       cwd: HERE,
+      signal: operationSignal,
       ...opts,
       // Same reason as `containerUser` below: the long-running Synapse must own its
       // sqlite DB and media_store as *us*, or the next run cannot rewrite the config
@@ -204,19 +207,23 @@ async function ensureConfig() {
   if (!(await exists(CONFIG))) {
     log('generating homeserver.yaml…');
     // One-shot container to scaffold the config into the mounted ./data volume.
-    await exec('docker', [
-      'run',
-      '--rm',
-      '-v',
-      `${DATA}:/data`,
-      '-e',
-      `SYNAPSE_SERVER_NAME=${SERVER_NAME}`,
-      '-e',
-      'SYNAPSE_REPORT_STATS=no',
-      ...containerUser,
-      'matrixdotorg/synapse:v1.119.0',
-      'generate',
-    ]);
+    await exec(
+      'docker',
+      [
+        'run',
+        '--rm',
+        '-v',
+        `${DATA}:/data`,
+        '-e',
+        `SYNAPSE_SERVER_NAME=${SERVER_NAME}`,
+        '-e',
+        'SYNAPSE_REPORT_STATS=no',
+        ...containerUser,
+        'matrixdotorg/synapse:v1.119.0',
+        'generate',
+      ],
+      { signal: operationSignal },
+    );
   }
 
   let yaml = await readFile(CONFIG, 'utf8');
@@ -353,12 +360,14 @@ async function appliedConfig() {
 
 async function waitFor(label, fn, { tries = 60, delayMs = 1000 } = {}) {
   for (let i = 0; i < tries; i++) {
+    operationSignal?.throwIfAborted();
     try {
       if (await fn()) {
         log(`${label} ready`);
         return;
       }
-    } catch {
+    } catch (error) {
+      if (operationSignal?.aborted) throw error;
       /* keep polling */
     }
     await new Promise((r) => setTimeout(r, delayMs));
@@ -396,7 +405,8 @@ async function registerUser() {
   }
 }
 
-export async function start() {
+export async function start({ signal } = {}) {
+  operationSignal = signal;
   networkContainer = await resolveNetworkContainer();
   log(
     networkContainer
@@ -438,7 +448,9 @@ export async function start() {
   );
 
   await waitFor('synapse /health', async () => {
-    const res = await fetch(`${SYNAPSE_HTTP}/health`);
+    const res = await fetch(`${SYNAPSE_HTTP}/health`, {
+      signal: operationSignal,
+    });
     return res.ok;
   });
 
@@ -446,7 +458,9 @@ export async function start() {
   // Synapse was configured with, which is the mismatch that would otherwise only
   // surface as an opaque token-exchange failure mid-login.
   await waitFor('dex discovery', async () => {
-    const res = await fetch(`${DEX_ISSUER}/.well-known/openid-configuration`);
+    const res = await fetch(`${DEX_ISSUER}/.well-known/openid-configuration`, {
+      signal: operationSignal,
+    });
     return res.ok && (await res.json()).issuer === DEX_ISSUER;
   });
 
@@ -454,7 +468,9 @@ export async function start() {
   // only advertises `m.login.sso` when it has loaded an SSO provider, so this is what
   // turns "we wrote an oidc_providers block" into "the running server has one".
   await waitFor('synapse sso login flow', async () => {
-    const res = await fetch(`${SYNAPSE_HTTP}/_matrix/client/v3/login`);
+    const res = await fetch(`${SYNAPSE_HTTP}/_matrix/client/v3/login`, {
+      signal: operationSignal,
+    });
     if (!res.ok) return false;
     const { flows = [] } = await res.json();
     return flows.some((flow) => flow.type === 'm.login.sso');
@@ -465,6 +481,7 @@ export async function start() {
   await waitFor('caddy well-known (https)', async () => {
     const res = await fetch(`${HS_TLS}/.well-known/matrix/client`, {
       // Node fetch must accept the self-signed cert; toggled via env below.
+      signal: operationSignal,
     });
     if (!res.ok) return false;
     const body = await res.json();
@@ -495,8 +512,14 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   // The well-known poll uses Node's fetch, which rejects Caddy's self-signed cert
   // unless we relax TLS verification for this process only.
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-  start().catch((err) => {
+  let lease;
+  try {
+    lease = await acquireSynapseLease();
+    await start();
+  } catch (err) {
     console.error('[synapse] start failed:', err);
-    process.exit(1);
-  });
+    process.exitCode = 1;
+  } finally {
+    releaseSynapseLease(lease);
+  }
 }

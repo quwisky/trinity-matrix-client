@@ -1,12 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import {
   chooseEmulatorPort,
+  parseDevices,
   parseOnlineDevices,
   reverseTarget,
   validateEmulator,
 } from '../e2e/android/device.mts';
 
 describe('Android E2E device selection', () => {
+  it('retains offline emulator targets for safe port allocation', () => {
+    expect(
+      parseDevices(`List of devices attached
+emulator-5554\tdevice
+emulator-5556\toffline
+R58M123\tunauthorized
+
+`),
+    ).toEqual([
+      { serial: 'emulator-5554', state: 'device' },
+      { serial: 'emulator-5556', state: 'offline' },
+      { serial: 'R58M123', state: 'unauthorized' },
+    ]);
+    expect(chooseEmulatorPort(['emulator-5554', 'emulator-5556'])).toBe(5558);
+  });
+
   it('returns only fully-online targets from adb devices', () => {
     expect(
       parseOnlineDevices(`List of devices attached

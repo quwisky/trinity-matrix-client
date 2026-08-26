@@ -44,7 +44,7 @@ async function launchApp(
 
 interface AndroidApp {
   device: AndroidDevice;
-  page: Page;
+  readonly page: Page;
   navigate: Navigate;
   touch(control: Locator): Promise<void>;
   relaunch(): Promise<Page>;
@@ -64,67 +64,92 @@ async function attachFailureArtifacts(
   testInfo: TestInfo,
   tracePaths: readonly string[],
   crashLog: string,
+  initialErrors: readonly string[] = [],
 ): Promise<void> {
-  const screenshotErrors: string[] = [];
+  const collectionErrors = [...initialErrors];
+  const bounded = async <T,>(label: string, operation: Promise<T>): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        operation,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`${label} timed out after 10 seconds`)),
+            10_000,
+          );
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
   const webviewScreenshot = testInfo.outputPath('webview.png');
   try {
-    await page.screenshot({ path: webviewScreenshot });
+    await bounded('WebView screenshot', page.screenshot({ path: webviewScreenshot }));
     await testInfo.attach('webview.png', {
       path: webviewScreenshot,
       contentType: 'image/png',
     });
   } catch (error) {
-    screenshotErrors.push(`WebView: ${String(error)}`);
+    collectionErrors.push(`WebView screenshot: ${String(error)}`);
   }
 
   const deviceScreenshot = testInfo.outputPath('device.png');
   try {
-    await device.screenshot({ path: deviceScreenshot });
+    await bounded('device screenshot', device.screenshot({ path: deviceScreenshot }));
     await testInfo.attach('device.png', {
       path: deviceScreenshot,
       contentType: 'image/png',
     });
   } catch (error) {
-    screenshotErrors.push(`Device: ${String(error)}`);
+    collectionErrors.push(`Device screenshot: ${String(error)}`);
   }
 
-  const diagnostics = [
-    await shell(device, 'logcat -b all -d'),
-    await shell(device, `dumpsys activity activities`),
-    await shell(device, `dumpsys package ${packageName}`),
-  ];
-  await Promise.all([
-    testInfo.attach('logcat.txt', {
-      body: Buffer.from(diagnostics[0]),
-      contentType: 'text/plain',
-    }),
-    testInfo.attach('activity.txt', {
-      body: Buffer.from(diagnostics[1]),
-      contentType: 'text/plain',
-    }),
-    testInfo.attach('package.txt', {
-      body: Buffer.from(diagnostics[2]),
-      contentType: 'text/plain',
-    }),
+  const diagnosticCommands = [
+    ['logcat.txt', 'logcat -b all -d'],
+    ['activity.txt', 'dumpsys activity activities'],
+    ['package.txt', `dumpsys package ${packageName}`],
+  ] as const;
+  const diagnostics = await Promise.allSettled(
+    diagnosticCommands.map(([name, command]) =>
+      bounded(name, shell(device, command)),
+    ),
+  );
+  const attachments: Promise<void>[] = [
     testInfo.attach('crash-buffer.txt', {
       body: Buffer.from(crashLog),
       contentType: 'text/plain',
     }),
-    ...(screenshotErrors.length > 0
-      ? [
-          testInfo.attach('screenshot-errors.txt', {
-            body: Buffer.from(screenshotErrors.join('\n')),
-            contentType: 'text/plain',
-          }),
-        ]
-      : []),
     ...tracePaths.map((path, index) =>
       testInfo.attach(`trace-${index + 1}.zip`, {
         path,
         contentType: 'application/zip',
       }),
     ),
-  ]);
+  ];
+  diagnostics.forEach((result, index) => {
+    const [name] = diagnosticCommands[index]!;
+    if (result.status === 'fulfilled') {
+      attachments.push(
+        testInfo.attach(name, {
+          body: Buffer.from(result.value),
+          contentType: 'text/plain',
+        }),
+      );
+    } else {
+      collectionErrors.push(`${name}: ${String(result.reason)}`);
+    }
+  });
+  if (collectionErrors.length > 0) {
+    attachments.push(
+      testInfo.attach('artifact-collection-errors.txt', {
+        body: Buffer.from(collectionErrors.join('\n')),
+        contentType: 'text/plain',
+      }),
+    );
+  }
+  await Promise.allSettled(attachments);
 }
 
 export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
@@ -164,7 +189,10 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
   app: async ({ androidDevice }, use, testInfo) => {
     await shell(androidDevice, 'logcat -b all -c');
     await shell(androidDevice, `am force-stop ${packageName}`);
-    await shell(androidDevice, `pm clear ${packageName}`);
+    const clearResult = await shell(androidDevice, `pm clear ${packageName}`);
+    if (clearResult !== 'Success') {
+      throw new Error(`pm clear ${packageName} failed: ${clearResult || '<empty output>'}`);
+    }
 
     let { page, pid } = await launchApp(androidDevice);
     let activeContext = page.context();
@@ -187,20 +215,30 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
 
     const app: AndroidApp = {
       device: androidDevice,
-      page,
+      get page(): Page {
+        return page;
+      },
       navigate,
       async touch(control: Locator): Promise<void> {
         const box = await control.boundingBox();
         if (!box) throw new Error('Cannot touch an element without a bounding box');
-        const session = await page.context().newCDPSession(page);
-        const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-        await session.send('Input.dispatchTouchEvent', {
-          type: 'touchStart',
-          touchPoints: [point],
+        const webView = await androidDevice.info({
+          clazz: /android\.webkit\.WebView/,
+          pkg: packageName,
         });
-        await session.send('Input.dispatchTouchEvent', {
-          type: 'touchEnd',
-          touchPoints: [],
+        const viewport = await page.evaluate(() => ({
+          width: window.innerWidth,
+          height: window.innerHeight,
+        }));
+        await androidDevice.input.tap({
+          x: Math.round(
+            webView.bounds.x +
+              ((box.x + box.width / 2) / viewport.width) * webView.bounds.width,
+          ),
+          y: Math.round(
+            webView.bounds.y +
+              ((box.y + box.height / 2) / viewport.height) * webView.bounds.height,
+          ),
         });
       },
       async relaunch(): Promise<Page> {
@@ -219,15 +257,37 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
 
     await use(app);
 
-    await stopTrace().catch(() => undefined);
-    const crashLog = await shell(androidDevice, 'logcat -b crash -d');
-    const failed = testInfo.status !== testInfo.expectedStatus || crashLog.length > 0;
-    if (failed) {
-      await attachFailureArtifacts(androidDevice, page, testInfo, tracePaths, crashLog);
-    } else {
-      for (const tracePath of tracePaths) rmSync(tracePath, { force: true });
+    let crashLog = '';
+    let crashReadError: unknown;
+    try {
+      await stopTrace().catch(() => undefined);
+      try {
+        crashLog = await shell(androidDevice, 'logcat -b crash -d');
+      } catch (error) {
+        crashReadError = error;
+      }
+      const failed =
+        testInfo.status !== testInfo.expectedStatus ||
+        crashLog.length > 0 ||
+        Boolean(crashReadError);
+      if (failed) {
+        await attachFailureArtifacts(
+          androidDevice,
+          page,
+          testInfo,
+          tracePaths,
+          crashLog,
+          crashReadError ? [`Crash buffer: ${String(crashReadError)}`] : [],
+        );
+      } else {
+        for (const tracePath of tracePaths) rmSync(tracePath, { force: true });
+      }
+    } finally {
+      await shell(androidDevice, `am force-stop ${packageName}`).catch(() => undefined);
     }
-    await shell(androidDevice, `am force-stop ${packageName}`);
+    if (crashReadError && testInfo.status === testInfo.expectedStatus) {
+      throw new Error(`Could not inspect the Android crash buffer: ${String(crashReadError)}`);
+    }
     expect(crashLog, 'Android crash log must stay empty').toBe('');
   },
 });

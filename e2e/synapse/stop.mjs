@@ -8,6 +8,7 @@ import { rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 import { DATA, composeFiles, resolveNetworkContainer } from './paths.mjs';
+import { acquireSynapseTeardownLease, releaseSynapseLease } from './lease.mts';
 import { promisify } from 'node:util';
 
 const exec = promisify(execFile);
@@ -47,8 +48,14 @@ export async function stop({ keepData = false } = {}) {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  stop({ keepData: process.argv.includes('--keep-data') }).catch((err) => {
+  let lease;
+  try {
+    lease = acquireSynapseTeardownLease();
+    await stop({ keepData: process.argv.includes('--keep-data') });
+  } catch (err) {
     console.error('[synapse] stop failed:', err);
-    process.exit(1);
-  });
+    process.exitCode = 1;
+  } finally {
+    releaseSynapseLease(lease);
+  }
 }

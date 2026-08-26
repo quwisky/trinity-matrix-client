@@ -68,6 +68,12 @@ Back, and persisted-session restoration after a native force-stop/relaunch. See
 [`e2e/README.md`](../../e2e/README.md#android-webview-journeys) for ownership, TLS,
 diagnostics, and cleanup details.
 
+Local runs require JDK 21, Docker, Android platform tools and emulator, and the API 36
+Google APIs x86_64 system image. Linux hosts must grant the current user read/write access
+to `/dev/kvm`. Treat an explicitly supplied emulator as disposable: the runner clears
+Trinity's package data and device logcat, replaces the debug APK, and force-stops the app;
+only the previous `tcp:8448` reverse mapping is restored.
+
 ## Plugins
 
 | Plugin                                         | What it is used for                                                                       |

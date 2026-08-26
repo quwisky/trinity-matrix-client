@@ -153,18 +153,18 @@ Each of these runs `pnpm build` and then `cap sync` before it does anything else
 so a web change is always included. Re-run a `*:sync` after any web change if you
 are iterating in Xcode or Android Studio.
 
-| Command                      | What it does                                         | Needs                          |
-| ---------------------------- | ---------------------------------------------------- | ------------------------------ |
-| `pnpm android:sync`          | Build and sync only                                  | Android SDK                    |
-| `pnpm android:run`           | Build, sync, launch on a device or emulator          | Android SDK                    |
-| `pnpm android:open`          | Open the project in Android Studio                   | Android Studio                 |
-| `pnpm android:build`         | Debug APK into `android/app/build/outputs/apk/debug` | Android SDK                    |
-| `pnpm android:build:release` | Release AAB                                          | Android SDK, signing keystore  |
-| `pnpm e2e:android`           | Installed API 36 WebView journeys via Playwright     | Android SDK, emulator, Docker  |
-| `pnpm ios:sync`              | Build and sync only                                  | macOS, Xcode                   |
-| `pnpm ios:run`               | Build, sync, launch on a simulator                   | macOS, Xcode                   |
-| `pnpm ios:open`              | Open the project in Xcode                            | macOS, Xcode                   |
-| `pnpm ios:build`             | `cap build ios --scheme App`                         | macOS, Xcode, signing identity |
+| Command                      | What it does                                         | Needs                                    |
+| ---------------------------- | ---------------------------------------------------- | ---------------------------------------- |
+| `pnpm android:sync`          | Build and sync only                                  | Android SDK                              |
+| `pnpm android:run`           | Build, sync, launch on a device or emulator          | Android SDK                              |
+| `pnpm android:open`          | Open the project in Android Studio                   | Android Studio                           |
+| `pnpm android:build`         | Debug APK into `android/app/build/outputs/apk/debug` | Android SDK                              |
+| `pnpm android:build:release` | Release AAB                                          | Android SDK, signing keystore            |
+| `pnpm e2e:android`           | Installed API 36 WebView journeys via Playwright     | JDK 21, API 36 SDK/emulator, Docker, KVM |
+| `pnpm ios:sync`              | Build and sync only                                  | macOS, Xcode                             |
+| `pnpm ios:run`               | Build, sync, launch on a simulator                   | macOS, Xcode                             |
+| `pnpm ios:open`              | Open the project in Xcode                            | macOS, Xcode                             |
+| `pnpm ios:build`             | `cap build ios --scheme App`                         | macOS, Xcode, signing identity           |
 
 ## End to end harnesses
 

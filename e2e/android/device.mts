@@ -8,15 +8,26 @@ export interface DeviceProperties {
   qemu: string;
 }
 
-/** Parse only fully-online devices; offline/unauthorised targets are never candidates. */
-export function parseOnlineDevices(output: string): string[] {
+export interface AdbDevice {
+  serial: string;
+  state: string;
+}
+
+/** Parse every adb target state so booting/offline emulator ports remain reserved. */
+export function parseDevices(output: string): AdbDevice[] {
   return output
     .split(/\r?\n/)
     .slice(1)
     .map((line) => line.trim().split(/\s+/, 2))
-    .filter(([, state]) => state === 'device')
-    .map(([serial]) => serial)
-    .filter((serial): serial is string => Boolean(serial));
+    .filter(([serial, state]) => Boolean(serial && state))
+    .map(([serial, state]) => ({ serial: serial!, state: state! }));
+}
+
+/** Parse only fully-online devices; offline/unauthorised targets are never candidates. */
+export function parseOnlineDevices(output: string): string[] {
+  return parseDevices(output)
+    .filter(({ state }) => state === 'device')
+    .map(({ serial }) => serial);
 }
 
 /** Return an existing reverse target for one local socket, if the device has one. */

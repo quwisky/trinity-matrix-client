@@ -4,7 +4,6 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -13,10 +12,16 @@ import { promisify } from 'node:util';
 import {
   DEFAULT_AVD,
   chooseEmulatorPort,
+  parseDevices,
   parseOnlineDevices,
   reverseTarget,
   validateEmulator,
 } from './device.mts';
+import {
+  acquireProcessLock,
+  releaseProcessLock,
+  type ProcessLock,
+} from '../support/process-lock.mts';
 import {
   startSynapseSession,
   stopSynapseSession,
@@ -31,15 +36,24 @@ const driverPackages = [
   'com.microsoft.playwright.androiddriver',
   'com.microsoft.playwright.androiddriver.test',
 ];
+const abortController = new AbortController();
 
 let serial = '';
 let emulatorLogFd: number | undefined;
 let ownsEmulator = false;
-let ownsSynapse = false;
+let spawnedEmulator: ChildProcess | undefined;
+let emulatorSpawnError: Error | undefined;
+let emulatorExit: { code: number | null; signal: NodeJS.Signals | null } | undefined;
 let previousReverse: string | undefined;
 let changedReverse = false;
+let playwrightAttachAttempted = false;
 let activeChild: ChildProcess | undefined;
 let cleanupPromise: Promise<void> | undefined;
+let processLock: ProcessLock | undefined;
+let baselineWorktree: string | undefined;
+let cleaningUp = false;
+let requestedExitCode: number | undefined;
+let signalCount = 0;
 
 const sdkRoot = process.env['ANDROID_HOME'] ?? process.env['ANDROID_SDK_ROOT'];
 if (!sdkRoot) {
@@ -48,10 +62,16 @@ if (!sdkRoot) {
 const adb = join(sdkRoot, 'platform-tools/adb');
 const emulator = join(sdkRoot, 'emulator/emulator');
 
+function commandSignal(): AbortSignal | undefined {
+  return cleaningUp ? undefined : abortController.signal;
+}
+
 async function adbRun(...args: string[]): Promise<string> {
   const { stdout } = await exec(adb, serial ? ['-s', serial, ...args] : args, {
     cwd: workspaceRoot,
     maxBuffer: 20 * 1024 * 1024,
+    signal: commandSignal(),
+    timeout: cleaningUp ? 15_000 : undefined,
   });
   return stdout.trim();
 }
@@ -60,8 +80,22 @@ async function adbFor(target: string, ...args: string[]): Promise<string> {
   const { stdout } = await exec(adb, ['-s', target, ...args], {
     cwd: workspaceRoot,
     maxBuffer: 20 * 1024 * 1024,
+    signal: commandSignal(),
   });
   return stdout.trim();
+}
+
+function terminateProcessGroup(
+  child: ChildProcess | undefined,
+  signal: NodeJS.Signals,
+): void {
+  if (!child?.pid) return;
+  try {
+    if (process.platform === 'win32') child.kill(signal);
+    else process.kill(-child.pid, signal);
+  } catch {
+    child.kill(signal);
+  }
 }
 
 async function run(command: string, args: string[]): Promise<void> {
@@ -70,11 +104,15 @@ async function run(command: string, args: string[]): Promise<void> {
       cwd: workspaceRoot,
       env: process.env,
       stdio: 'inherit',
+      detached: process.platform !== 'win32',
     });
     activeChild = child;
-    child.once('error', reject);
+    child.once('error', (error) => {
+      if (activeChild === child) activeChild = undefined;
+      reject(error);
+    });
     child.once('exit', (code, signalName) => {
-      activeChild = undefined;
+      if (activeChild === child) activeChild = undefined;
       if (code === 0) resolve();
       else reject(new Error(`${command} exited with ${code ?? signalName}`));
     });
@@ -97,28 +135,33 @@ function assertPlaywrightVersions(): void {
   }
 }
 
-function acquireLock(): void {
-  mkdirSync(artifactsDir, { recursive: true });
-  try {
-    writeFileSync(lockFile, String(process.pid), { flag: 'wx' });
-  } catch (error) {
-    const currentPid = Number(readFileSync(lockFile, 'utf8'));
-    try {
-      process.kill(currentPid, 0);
-    } catch {
-      rmSync(lockFile, { force: true });
-      writeFileSync(lockFile, String(process.pid), { flag: 'wx' });
-      return;
-    }
-    throw new Error(`Android Playwright is already running as PID ${currentPid}`, {
-      cause: error,
-    });
+async function gitStatus(): Promise<string> {
+  const { stdout } = await exec(
+    'git',
+    ['status', '--porcelain=v1', '--untracked-files=all'],
+    { cwd: workspaceRoot },
+  );
+  return stdout;
+}
+
+async function assertJava21(): Promise<void> {
+  const { stdout, stderr } = await exec('java', ['-version'], { cwd: workspaceRoot });
+  const version = `${stdout}\n${stderr}`;
+  if (!/(?:java|openjdk) version "21(?:\.|\")/i.test(version)) {
+    throw new Error(`Android E2E requires JDK 21; detected: ${version.trim()}`);
   }
 }
 
+async function adbDevicesOutput(): Promise<string> {
+  const { stdout } = await exec(adb, ['devices'], {
+    cwd: workspaceRoot,
+    signal: commandSignal(),
+  });
+  return stdout;
+}
+
 async function onlineDevices(): Promise<string[]> {
-  const { stdout } = await exec(adb, ['devices'], { cwd: workspaceRoot });
-  return parseOnlineDevices(stdout);
+  return parseOnlineDevices(await adbDevicesOutput());
 }
 
 async function runningAvdName(target: string): Promise<string> {
@@ -133,6 +176,7 @@ async function waitUntil(
 ): Promise<void> {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
+    abortController.signal.throwIfAborted();
     if (await predicate().catch(() => false)) return;
     await new Promise((resolve) => setTimeout(resolve, 1_000));
   }
@@ -141,7 +185,8 @@ async function waitUntil(
 
 async function selectOrStartDevice(): Promise<void> {
   const requested = process.env['TRINITY_ANDROID_SERIAL'];
-  const connected = await onlineDevices();
+  const connectedOutput = await adbDevicesOutput();
+  const connected = parseOnlineDevices(connectedOutput);
   if (requested) {
     serial = requested;
     await waitUntil(`${serial} to become online`, async () =>
@@ -164,6 +209,7 @@ async function selectOrStartDevice(): Promise<void> {
 
   const { stdout: avds } = await exec(emulator, ['-list-avds'], {
     cwd: workspaceRoot,
+    signal: commandSignal(),
   });
   if (!avds.split(/\r?\n/).includes(DEFAULT_AVD)) {
     throw new Error(
@@ -171,10 +217,12 @@ async function selectOrStartDevice(): Promise<void> {
     );
   }
 
-  const port = chooseEmulatorPort(connected);
+  const port = chooseEmulatorPort(
+    parseDevices(connectedOutput).map(({ serial: candidate }) => candidate),
+  );
   serial = `emulator-${port}`;
   emulatorLogFd = openSync(join(artifactsDir, 'emulator.log'), 'w');
-  const child = spawn(
+  spawnedEmulator = spawn(
     emulator,
     [
       '-avd',
@@ -189,11 +237,35 @@ async function selectOrStartDevice(): Promise<void> {
     ],
     { cwd: workspaceRoot, detached: true, stdio: ['ignore', emulatorLogFd, emulatorLogFd] },
   );
-  child.unref();
-  ownsEmulator = true;
-  await waitUntil(`${serial} to boot`, async () =>
-    (await onlineDevices()).includes(serial),
-  );
+  spawnedEmulator.once('error', (error) => {
+    emulatorSpawnError = error;
+  });
+  spawnedEmulator.once('exit', (code, signal) => {
+    emulatorExit = { code, signal };
+  });
+
+  const deadline = Date.now() + 180_000;
+  while (Date.now() < deadline) {
+    abortController.signal.throwIfAborted();
+    if (emulatorSpawnError) throw emulatorSpawnError;
+    if (emulatorExit) {
+      throw new Error(
+        `${emulator} exited before ${serial} booted (${emulatorExit.code ?? emulatorExit.signal})`,
+      );
+    }
+    if ((await onlineDevices().catch((): string[] => [])).includes(serial)) {
+      const avdName = await runningAvdName(serial);
+      if (avdName !== DEFAULT_AVD) {
+        throw new Error(
+          `${serial} reported AVD ${avdName || '<unknown>'}, expected ${DEFAULT_AVD}`,
+        );
+      }
+      ownsEmulator = true;
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+  throw new Error(`Timed out waiting for owned ${DEFAULT_AVD} emulator ${serial}`);
 }
 
 async function validateAndWaitForBoot(): Promise<void> {
@@ -205,11 +277,18 @@ async function validateAndWaitForBoot(): Promise<void> {
   await waitUntil('Android package manager', async () =>
     (await adbRun('shell', 'pm', 'path', 'android')).startsWith('package:'),
   );
-  await waitUntil('Android System WebView', async () =>
-    (await adbRun('shell', 'pm', 'list', 'packages', 'com.google.android.webview')).includes(
-      'com.google.android.webview',
-    ),
-  );
+  await waitUntil('an active Android System WebView provider', async () => {
+    const current = await adbRun(
+      'shell',
+      'cmd',
+      'webviewupdate',
+      'getCurrentWebViewPackage',
+    ).catch(() => adbRun('shell', 'dumpsys', 'webviewupdate'));
+    return (
+      /[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+/i.test(current) &&
+      !/(?:null|no webview installed|error)/i.test(current)
+    );
+  });
 
   const properties = {
     qemu: await adbRun('shell', 'getprop', 'ro.kernel.qemu'),
@@ -247,51 +326,97 @@ async function captureDiagnostics(): Promise<void> {
   }
 }
 
+async function waitForProcessExit(child: ChildProcess, timeout: number): Promise<boolean> {
+  if (child.exitCode !== null || child.signalCode !== null) return true;
+  return Promise.race([
+    new Promise<true>((resolve) => child.once('exit', () => resolve(true))),
+    new Promise<false>((resolve) => setTimeout(() => resolve(false), timeout)),
+  ]);
+}
+
 async function cleanup(): Promise<void> {
   if (cleanupPromise) return cleanupPromise;
   cleanupPromise = (async () => {
-    await captureDiagnostics();
-    if (serial) {
-      await adbRun('shell', 'am', 'force-stop', packageName).catch(() => undefined);
-      for (const driverPackage of driverPackages) {
-        await adbRun('uninstall', driverPackage).catch(() => undefined);
-      }
-      if (changedReverse) {
-        await adbRun('reverse', '--remove', 'tcp:8448').catch(() => undefined);
-        if (previousReverse) {
-          await adbRun('reverse', 'tcp:8448', previousReverse).catch(() => undefined);
+    cleaningUp = true;
+    try {
+      await captureDiagnostics().catch(() => undefined);
+      if (serial) {
+        await adbRun('shell', 'am', 'force-stop', packageName).catch(() => undefined);
+        if (playwrightAttachAttempted) {
+          for (const driverPackage of driverPackages) {
+            await adbRun('uninstall', driverPackage).catch(() => undefined);
+          }
+        }
+        if (changedReverse) {
+          await adbRun('reverse', '--remove', 'tcp:8448').catch(() => undefined);
+          if (previousReverse) {
+            await adbRun('reverse', 'tcp:8448', previousReverse).catch(() => undefined);
+          }
         }
       }
+      await stopSynapseSession().catch(() => undefined);
+      if (ownsEmulator && serial) {
+        await adbRun('emu', 'kill').catch(() => undefined);
+      } else if (spawnedEmulator && !emulatorExit) {
+        terminateProcessGroup(spawnedEmulator, 'SIGTERM');
+      }
+      if (spawnedEmulator && !(await waitForProcessExit(spawnedEmulator, 5_000))) {
+        terminateProcessGroup(spawnedEmulator, 'SIGKILL');
+        await waitForProcessExit(spawnedEmulator, 2_000);
+      }
+    } finally {
+      try {
+        if (emulatorLogFd !== undefined) {
+          closeSync(emulatorLogFd);
+          emulatorLogFd = undefined;
+        }
+      } finally {
+        releaseProcessLock(processLock);
+        processLock = undefined;
+      }
     }
-    if (ownsSynapse) await stopSynapseSession().catch(() => undefined);
-    if (ownsEmulator && serial) {
-      await adbRun('emu', 'kill').catch(() => undefined);
+
+    if (baselineWorktree !== undefined) {
+      const finalWorktree = await gitStatus();
+      if (finalWorktree !== baselineWorktree) {
+        throw new Error(
+          `Android E2E changed the worktree:\n${finalWorktree || '<clean>'}\n` +
+            `Before the run:\n${baselineWorktree || '<clean>'}`,
+        );
+      }
     }
-    if (emulatorLogFd !== undefined) closeSync(emulatorLogFd);
-    rmSync(lockFile, { force: true });
   })();
   return cleanupPromise;
 }
 
 function registerSignals(): void {
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-    process.once(signal, () => {
-      activeChild?.kill(signal);
-      void cleanup().finally(() => process.exit(signal === 'SIGINT' ? 130 : 143));
+    process.on(signal, () => {
+      signalCount += 1;
+      if (signalCount > 1) process.exit(signal === 'SIGINT' ? 130 : 143);
+      requestedExitCode = signal === 'SIGINT' ? 130 : 143;
+      abortController.abort(new Error(`Received ${signal}`));
+      const child = activeChild;
+      terminateProcessGroup(child, signal);
+      const killTimer = setTimeout(() => {
+        if (activeChild === child) terminateProcessGroup(child, 'SIGKILL');
+      }, 10_000);
+      killTimer.unref();
     });
   }
 }
 
 async function main(): Promise<void> {
-  acquireLock();
-  registerSignals();
+  await assertJava21();
   assertPlaywrightVersions();
   await run('pnpm', ['exec', 'playwright', 'install', 'android']);
   await selectOrStartDevice();
   await validateAndWaitForBoot();
   await run('pnpm', ['android:build']);
-  ownsSynapse = true;
-  await startSynapseSession({ allowUnavailable: false });
+  await startSynapseSession({
+    allowUnavailable: false,
+    signal: abortController.signal,
+  });
   await configureReverse();
   await adbRun(
     'install',
@@ -300,6 +425,7 @@ async function main(): Promise<void> {
     join(workspaceRoot, 'android/app/build/outputs/apk/debug/app-debug.apk'),
   );
   process.env['TRINITY_ANDROID_SERIAL'] = serial;
+  playwrightAttachAttempted = true;
   await run('pnpm', [
     'exec',
     'playwright',
@@ -309,9 +435,28 @@ async function main(): Promise<void> {
   ]);
 }
 
-main()
-  .catch((error: unknown) => {
-    console.error(error);
-    process.exitCode = 1;
-  })
-  .finally(cleanup);
+async function execute(): Promise<void> {
+  processLock = acquireProcessLock(lockFile, 'Android Playwright');
+  registerSignals();
+
+  let failure: unknown;
+  try {
+    baselineWorktree = await gitStatus();
+    await main();
+  } catch (error) {
+    failure = error;
+  }
+  try {
+    await cleanup();
+  } catch (error) {
+    failure = failure ? new AggregateError([failure, error]) : error;
+  }
+
+  if (requestedExitCode) process.exitCode = requestedExitCode;
+  if (failure) throw failure;
+}
+
+execute().catch((error: unknown) => {
+  console.error(error);
+  if (!process.exitCode) process.exitCode = 1;
+});

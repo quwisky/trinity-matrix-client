@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { start } from '../synapse/start.mjs';
 import { stop } from '../synapse/stop.mjs';
+import { acquireSynapseLease, releaseSynapseLease } from '../synapse/lease.mts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -25,7 +26,9 @@ function runNode(script, env) {
 }
 
 let exit = 1;
+let lease;
 try {
+  lease = await acquireSynapseLease();
   const hs = await start();
   exit = await runNode('../features/verify-sas.mjs', {
     TRINITY_HS: hs.hs,
@@ -35,6 +38,7 @@ try {
 } catch (err) {
   console.error('[e2e:verify] harness error:', err.message ?? err);
 } finally {
-  await stop().catch(() => {});
+  if (lease) await stop().catch(() => {});
+  releaseSynapseLease(lease);
 }
 process.exit(exit);

@@ -32,10 +32,13 @@ describe('Android Playwright coverage manifest', () => {
       ...sharedNow.map(({ androidSpec }) => androidSpec),
       ...androidOnly.map(({ androidSpec }) => androidSpec),
     ];
-    expect(referenced.every((spec) => androidSpecs.includes(spec))).toBe(true);
+    expect([...new Set(referenced)].sort()).toEqual(androidSpecs);
   });
 
   it('records a reason for every intentionally web-only spec', () => {
     expect(webOnly.every(({ reason }) => reason.trim().length > 0)).toBe(true);
+    expect(androidOnly.every(({ journey }) => journey.trim().length > 0)).toBe(
+      true,
+    );
   });
 });

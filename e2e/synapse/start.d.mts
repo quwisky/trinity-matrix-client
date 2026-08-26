@@ -40,4 +40,6 @@ export interface SynapseHarness {
   ssoReset: SynapseSsoAccount;
 }
 
-export declare function start(): Promise<SynapseHarness>;
+export declare function start(options?: {
+  signal?: AbortSignal;
+}): Promise<SynapseHarness>;
