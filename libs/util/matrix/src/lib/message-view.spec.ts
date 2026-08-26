@@ -239,6 +239,17 @@ function parse(html: string): HTMLElement {
   return el;
 }
 
+describe('sanitizeMatrixHtml — embedded documents', () => {
+  it('removes iframe markup and its destination', () => {
+    const clean = sanitizeMatrixHtml(
+      '<iframe src="https://attacker.example"></iframe><p>safe</p>',
+    );
+
+    expect(clean).toBe('<p>safe</p>');
+    expect(clean).not.toContain('attacker.example');
+  });
+});
+
 describe('linkifyText', () => {
   it('wraps a bare URL in an anchor, keeping the surrounding text', () => {
     expect(linkifyText('check https://example.com now')).toBe(

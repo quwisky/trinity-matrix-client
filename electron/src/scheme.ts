@@ -70,7 +70,14 @@ export async function fileResponse(
 /** True only for URLs on our own app origin (exact origin match, no prefix tricks). */
 export function isAppUrl(url: string): boolean {
   try {
-    return new URL(url).origin === APP_ORIGIN;
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === `${APP_SCHEME}:` &&
+      parsed.hostname === APP_HOST &&
+      !parsed.username &&
+      !parsed.password &&
+      !parsed.port
+    );
   } catch {
     return false;
   }

@@ -15,7 +15,7 @@ export interface DialogOptions {
    * split-pane side panel (the panel supplies its own width/height). Replaces the
    * Ionic `justify-content: flex-end` modal css.
    */
-  side?: 'center' | 'end';
+  side?: 'center' | 'end' | 'full-screen';
   /** Prevent backdrop/escape close (Ionic backdropDismiss: false). */
   disableClose?: boolean;
   /**
@@ -133,6 +133,7 @@ export class TrnDialogService {
     // Every dialog paints its own surface (see the `dialog-surface()` mixin), so there is
     // no shared panel styling for a hook to carry. Re-add it with a real consumer.
     const anchor = opts.anchor && !prefersCentred() ? opts.anchor : null;
+    const fullScreen = opts.side === 'full-screen';
     const ref = this.dialog.open<R, unknown, C>(component, {
       backdropClass: anchor
         ? ['cdk-overlay-transparent-backdrop']
@@ -143,6 +144,10 @@ export class TrnDialogService {
       // a spread, so an `autoFocus: undefined` key would clobber the default instead of
       // falling back to it.
       autoFocus: opts.autoFocus ?? 'first-tabbable',
+      width: fullScreen ? '100vw' : undefined,
+      height: fullScreen ? '100vh' : undefined,
+      maxWidth: fullScreen ? '100vw' : undefined,
+      maxHeight: fullScreen ? '100vh' : undefined,
       // Default (undefined) lets CDK center the card; `'end'` pins it top-right
       // and full-height (the panel's own h-screen fills the axis).
       positionStrategy: anchor
@@ -154,7 +159,15 @@ export class TrnDialogService {
             .withPush(true)
         : opts.side === 'end'
           ? this.overlay.position().global().top('0').right('0')
-          : undefined,
+          : fullScreen
+            ? this.overlay
+                .position()
+                .global()
+                .top('0')
+                .right('0')
+                .bottom('0')
+                .left('0')
+            : undefined,
       // What lets a modal'd component `inject(TrnDialogRef)` instead of CDK's own class.
       // The explicit `deps` is a choice, not a constraint, and this comment used to claim
       // otherwise ("because `DialogConfig.providers` is typed `StaticProvider[]`"). Checked

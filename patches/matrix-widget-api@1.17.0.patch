@@ -1,0 +1,194 @@
+diff --git a/lib/ClientWidgetApi.js b/lib/ClientWidgetApi.js
+index 643e4efa3d471634a72a8e0b64bb7e9d17a61f8e..8b5a8dd7cb63b3b5edd26397b64d5026857c52f7 100644
+--- a/lib/ClientWidgetApi.js
++++ b/lib/ClientWidgetApi.js
+@@ -107,6 +107,10 @@ var ClientWidgetApi = /*#__PURE__*/function (_EventEmitter) {
+     _defineProperty(_assertThisInitialized(_this), "isStopped", false);
+     _defineProperty(_assertThisInitialized(_this), "turnServers", null);
+     _defineProperty(_assertThisInitialized(_this), "contentLoadedWaitTimer", void 0);
++    _defineProperty(_assertThisInitialized(_this), "iframe", void 0);
++    _defineProperty(_assertThisInitialized(_this), "iframeLoadListener", function (event) {
++      return _this.onIframeLoad(event);
++    });
+     // Stores pending requests to push a room's state to the widget
+     _defineProperty(_assertThisInitialized(_this), "pushRoomStateTasks", new Set());
+     // Room ID → event type → state key → events to be pushed
+@@ -122,10 +126,11 @@ var ClientWidgetApi = /*#__PURE__*/function (_EventEmitter) {
+     if (!driver) {
+       throw new Error("Invalid driver");
+     }
++    _this.iframe = iframe;
+     _this.transport = new _PostmessageTransport.PostmessageTransport(_WidgetApiDirection.WidgetApiDirection.ToWidget, widget.id, iframe.contentWindow, globalThis);
+     _this.transport.targetOrigin = widget.origin;
+     _this.transport.on("message", _this.handleMessage.bind(_assertThisInitialized(_this)));
+-    iframe.addEventListener("load", _this.onIframeLoad.bind(_assertThisInitialized(_this)));
++    iframe.addEventListener("load", _this.iframeLoadListener);
+     _this.transport.start();
+     return _this;
+   }
+@@ -193,7 +198,13 @@ var ClientWidgetApi = /*#__PURE__*/function (_EventEmitter) {
+   }, {
+     key: "stop",
+     value: function stop() {
++      if (this.isStopped) return;
+       this.isStopped = true;
++      this.iframe.removeEventListener("load", this.iframeLoadListener);
++      if (this.contentLoadedWaitTimer !== undefined) {
++        clearTimeout(this.contentLoadedWaitTimer);
++        this.contentLoadedWaitTimer = undefined;
++      }
+       this.transport.stop();
+     }
+   }, {
+@@ -237,17 +248,20 @@ var ClientWidgetApi = /*#__PURE__*/function (_EventEmitter) {
+     key: "beginCapabilities",
+     value: function beginCapabilities() {
+       var _this2 = this;
++      if (this.isStopped) return;
+       // widget has loaded - tell all the listeners that
+       this.emit("preparing");
+       var requestedCaps;
+       this.transport.send(_WidgetApiAction.WidgetApiToWidgetAction.Capabilities, {}).then(function (caps) {
++        if (_this2.isStopped) return null;
+         requestedCaps = caps.capabilities;
+         return _this2.driver.validateCapabilities(new Set(caps.capabilities));
+       }).then(function (allowedCaps) {
++        if (_this2.isStopped || allowedCaps === null) return;
+         _this2.allowCapabilities(_toConsumableArray(allowedCaps), requestedCaps);
+         _this2.emit("ready");
+       })["catch"](function (e) {
+-        _this2.emit("error:preparing", e);
++        if (!_this2.isStopped) _this2.emit("error:preparing", e);
+       });
+     }
+   }, {
+@@ -356,6 +370,8 @@ var ClientWidgetApi = /*#__PURE__*/function (_EventEmitter) {
+   }, {
+     key: "onIframeLoad",
+     value: function onIframeLoad(ev) {
++      var _this3 = this;
++      if (this.isStopped) return;
+       if (this.widget.waitForIframeLoad) {
+         // If the widget is set to waitForIframeLoad the capabilities immediately get setup after load.
+         // The client does not wait for the ContentLoaded action.
+@@ -365,6 +381,7 @@ var ClientWidgetApi = /*#__PURE__*/function (_EventEmitter) {
+         // the clientApi is awaiting the FIRST ContentLoaded action.
+         console.log("waitForIframeLoad is false: waiting for widget to send contentLoaded");
+         this.contentLoadedWaitTimer = setTimeout(function () {
++          if (_this3.isStopped) return;
+           console.error("Widget specified waitForIframeLoad=false but timed out waiting for contentLoaded event!");
+         }, 10000);
+         this.contentLoadedActionSent = false;
+diff --git a/lib/transport/PostmessageTransport.js b/lib/transport/PostmessageTransport.js
+index cff1f0db5dbda9f704daaa3a03a7ff847515f0e3..ae721a17c51f63ce5cce2fcd4651c8d87ce1f0a0 100644
+--- a/lib/transport/PostmessageTransport.js
++++ b/lib/transport/PostmessageTransport.js
+@@ -62,6 +62,8 @@ var PostmessageTransport = /*#__PURE__*/function (_EventEmitter) {
+     _defineProperty(_assertThisInitialized(_this), "handleMessage", function (ev) {
+       if (_this.stopController.signal.aborted) return;
+       if (!ev.data) return; // invalid event
++      if (ev.source !== _this.transportWindow) return; // unexpected sender
++      if (_this.targetOrigin !== "*" && ev.origin !== _this.targetOrigin) return; // unexpected origin
+ 
+       if (_this.strictOriginCheck && ev.origin !== globalThis.origin) return; // bad origin
+ 
+diff --git a/src/ClientWidgetApi.ts b/src/ClientWidgetApi.ts
+index 75ec2a69b0557388dec19efb04f3d00c37e8ecec..b29832bfda86f2a88dc08a734181700ce61e17de 100644
+--- a/src/ClientWidgetApi.ts
++++ b/src/ClientWidgetApi.ts
+@@ -146,6 +146,8 @@ export class ClientWidgetApi extends EventEmitter {
+     private isStopped = false;
+     private turnServers: AsyncGenerator<ITurnServer> | null = null;
+     private contentLoadedWaitTimer?: ReturnType<typeof setTimeout>;
++    private readonly iframe: HTMLIFrameElement;
++    private readonly iframeLoadListener = (event: Event): void => this.onIframeLoad(event);
+     // Stores pending requests to push a room's state to the widget
+     private readonly pushRoomStateTasks = new Set<Promise<void>>();
+     // Room ID → event type → state key → events to be pushed
+@@ -175,6 +177,7 @@ export class ClientWidgetApi extends EventEmitter {
+         if (!driver) {
+             throw new Error("Invalid driver");
+         }
++        this.iframe = iframe;
+         this.transport = new PostmessageTransport(
+             WidgetApiDirection.ToWidget,
+             widget.id,
+@@ -184,7 +187,7 @@ export class ClientWidgetApi extends EventEmitter {
+         this.transport.targetOrigin = widget.origin;
+         this.transport.on("message", this.handleMessage.bind(this));
+ 
+-        iframe.addEventListener("load", this.onIframeLoad.bind(this));
++        iframe.addEventListener("load", this.iframeLoadListener);
+ 
+         this.transport.start();
+     }
+@@ -229,7 +232,13 @@ export class ClientWidgetApi extends EventEmitter {
+     }
+ 
+     public stop(): void {
++        if (this.isStopped) return;
+         this.isStopped = true;
++        this.iframe.removeEventListener("load", this.iframeLoadListener);
++        if (this.contentLoadedWaitTimer !== undefined) {
++            clearTimeout(this.contentLoadedWaitTimer);
++            this.contentLoadedWaitTimer = undefined;
++        }
+         this.transport.stop();
+     }
+ 
+@@ -252,6 +261,7 @@ export class ClientWidgetApi extends EventEmitter {
+     }
+ 
+     private beginCapabilities(): void {
++        if (this.isStopped) return;
+         // widget has loaded - tell all the listeners that
+         this.emit("preparing");
+ 
+@@ -259,15 +269,17 @@ export class ClientWidgetApi extends EventEmitter {
+         this.transport
+             .send<IWidgetApiRequestEmptyData, ICapabilitiesActionResponseData>(WidgetApiToWidgetAction.Capabilities, {})
+             .then((caps) => {
++                if (this.isStopped) return null;
+                 requestedCaps = caps.capabilities;
+                 return this.driver.validateCapabilities(new Set(caps.capabilities));
+             })
+             .then((allowedCaps) => {
++                if (this.isStopped || allowedCaps === null) return;
+                 this.allowCapabilities([...allowedCaps], requestedCaps);
+                 this.emit("ready");
+             })
+             .catch((e) => {
+-                this.emit("error:preparing", e);
++                if (!this.isStopped) this.emit("error:preparing", e);
+             });
+     }
+ 
+@@ -337,6 +349,7 @@ export class ClientWidgetApi extends EventEmitter {
+     }
+ 
+     private onIframeLoad(ev: Event): void {
++        if (this.isStopped) return;
+         if (this.widget.waitForIframeLoad) {
+             // If the widget is set to waitForIframeLoad the capabilities immediately get setup after load.
+             // The client does not wait for the ContentLoaded action.
+@@ -346,6 +359,7 @@ export class ClientWidgetApi extends EventEmitter {
+             // the clientApi is awaiting the FIRST ContentLoaded action.
+             console.log("waitForIframeLoad is false: waiting for widget to send contentLoaded");
+             this.contentLoadedWaitTimer = setTimeout(() => {
++                if (this.isStopped) return;
+                 console.error(
+                     "Widget specified waitForIframeLoad=false but timed out waiting for contentLoaded event!",
+                 );
+diff --git a/src/transport/PostmessageTransport.ts b/src/transport/PostmessageTransport.ts
+index ac684f822e6c46b29fa04126595792c43abcc93d..0ace887757d72208e7d8c3f688dfda7fbdaa51ff 100644
+--- a/src/transport/PostmessageTransport.ts
++++ b/src/transport/PostmessageTransport.ts
+@@ -157,6 +157,8 @@ export class PostmessageTransport extends EventEmitter implements ITransport {
+     private readonly handleMessage = (ev: MessageEvent): void => {
+         if (this.stopController.signal.aborted) return;
+         if (!ev.data) return; // invalid event
++        if (ev.source !== this.transportWindow) return; // unexpected sender
++        if (this.targetOrigin !== "*" && ev.origin !== this.targetOrigin) return; // unexpected origin
+ 
+         if (this.strictOriginCheck && ev.origin !== globalThis.origin) return; // bad origin
+ 

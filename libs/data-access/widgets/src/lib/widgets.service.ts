@@ -207,6 +207,11 @@ function widgetFrom(event: MatrixEvent): RoomWidget | null {
     type,
     rawUrl,
     data,
+    creatorUserId: text(content['creatorUserId']) ?? text(event.getSender()),
+    waitForIframeLoad:
+      typeof content['waitForIframeLoad'] === 'boolean'
+        ? content['waitForIframeLoad']
+        : true,
   };
 }
 
@@ -230,6 +235,8 @@ function sameWidgets(
         widget.name === right[index]?.name &&
         widget.type === right[index]?.type &&
         widget.rawUrl === right[index]?.rawUrl &&
+        widget.creatorUserId === right[index]?.creatorUserId &&
+        widget.waitForIframeLoad === right[index]?.waitForIframeLoad &&
         JSON.stringify(widget.data) === JSON.stringify(right[index]?.data),
     )
   );

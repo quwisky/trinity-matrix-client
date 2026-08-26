@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  matrix-widget-api@1.17.0: 306f9148adf2ec0a3547fcbfb16e9b63cef2ecdb4bb81787ba96527b7d9a655a
+
 importers:
 
   .:
@@ -149,6 +152,9 @@ importers:
       matrix-js-sdk:
         specifier: ^42.1.0
         version: 42.1.0
+      matrix-widget-api:
+        specifier: 1.17.0
+        version: 1.17.0(patch_hash=306f9148adf2ec0a3547fcbfb16e9b63cef2ecdb4bb81787ba96527b7d9a655a)
       rxjs:
         specifier: ~7.8.2
         version: 7.8.2
@@ -17646,12 +17652,12 @@ snapshots:
       content-type: 2.0.0
       loglevel: 1.9.2
       matrix-events-sdk: 0.0.1
-      matrix-widget-api: 1.17.0
+      matrix-widget-api: 1.17.0(patch_hash=306f9148adf2ec0a3547fcbfb16e9b63cef2ecdb4bb81787ba96527b7d9a655a)
       p-retry: 8.0.0
       sdp-transform: 3.0.0
       unhomoglyph: 1.0.6
 
-  matrix-widget-api@1.17.0:
+  matrix-widget-api@1.17.0(patch_hash=306f9148adf2ec0a3547fcbfb16e9b63cef2ecdb4bb81787ba96527b7d9a655a):
     dependencies:
       '@types/events': 3.0.3
       events: 3.3.0

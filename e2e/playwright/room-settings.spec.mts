@@ -11,6 +11,7 @@ import {
   type SynapseSession,
 } from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import { installWidgetFixture } from './support/widget.mts';
 
 // Covers editing a room's settings: the room header's ⚙ button
 // (data-testid="open-room-settings") opens a dialog (data-testid="room-settings")
@@ -144,7 +145,7 @@ test.describe('Room settings', () => {
     ).toHaveCount(0);
   });
 
-  test('surfaces a real room widget without navigating to it', async ({
+  test('embeds a real room widget through a restricted Widget API bridge', async ({
     page,
     request,
   }) => {
@@ -156,6 +157,7 @@ test.describe('Room settings', () => {
     const rawUrl =
       'https://widgets.example/board?room=$matrix_room_id' +
       '&user=$matrix_user_id&board=$board_id';
+    const widgetFixture = await installWidgetFixture(page, 750);
 
     await registerUser(request, user, pass);
     const { access_token, user_id } = await request
@@ -209,8 +211,69 @@ test.describe('Room settings', () => {
     await expect(open).toHaveAttribute('href', expectedUrl);
     await expect(open).toHaveAttribute('target', '_blank');
     await expect(open).toHaveAttribute('rel', 'noopener noreferrer');
-    // Deliberately do not click: acceptance proves the explicit destination and warning,
-    // without sending this test's Matrix identity to an external network origin.
+    expect(widgetFixture.requestCount()).toBe(0);
+
+    const embed = page.getByTestId('room-widget-embed-planning-board');
+    await embed.click();
+    await expect(page.getByTestId('widget-frame-status')).toContainText(
+      'Negotiating',
+    );
+    expect(widgetFixture.requestCount()).toBe(1);
+
+    // Close during the in-flight capability request, then prove a clean reopen.
+    await page.getByTestId('room-widget-frame-close').click();
+    await expect(page.locator('iframe.widget-frame__iframe')).toHaveCount(0);
+    await embed.click();
+    await expect(page.getByTestId('widget-frame-status')).toContainText(
+      'Widget API ready',
+      { timeout: 5_000 },
+    );
+    expect(widgetFixture.requestCount()).toBe(2);
+    expect(widgetFixture.referrers()).toEqual([undefined, undefined]);
+
+    const frameElement = page.locator('iframe.widget-frame__iframe');
+    await expect(frameElement).toHaveAttribute(
+      'sandbox',
+      'allow-scripts allow-forms allow-same-origin',
+    );
+    await expect(frameElement).toHaveAttribute('referrerpolicy', 'no-referrer');
+    await expect(frameElement).not.toHaveAttribute('allowfullscreen', /.*/);
+    const frame = page.frameLocator('iframe.widget-frame__iframe');
+    await expect(
+      frame.getByRole('heading', { name: 'Widget fixture loaded' }),
+    ).toBeVisible();
+    await expect(frame.locator('#requested')).toContainText(
+      'm.always_on_screen',
+    );
+    await expect(frame.locator('#approved')).toHaveText('[]');
+    await expect(frame.locator('#denied')).toHaveText(
+      JSON.stringify([
+        ['camera', false],
+        ['microphone', false],
+        ['geolocation', false],
+        ['display-capture', false],
+        ['clipboard-read', false],
+        ['fullscreen', false],
+      ]),
+    );
+
+    let blockedHttpRequests = 0;
+    await page.route('http://blocked-widget.test/**', async (route) => {
+      blockedHttpRequests += 1;
+      await route.fulfill({ status: 200, body: 'must not load' });
+    });
+    const cspViolation = page.waitForEvent('console', {
+      predicate: (message) =>
+        message.text().includes('frame-src') &&
+        message.text().includes('blocked-widget.test'),
+    });
+    await page.evaluate(() => {
+      const iframe = document.createElement('iframe');
+      iframe.src = 'http://blocked-widget.test/frame';
+      document.body.append(iframe);
+    });
+    await cspViolation;
+    expect(blockedHttpRequests).toBe(0);
   });
 
   test('an admin changes who can join and read history', async ({

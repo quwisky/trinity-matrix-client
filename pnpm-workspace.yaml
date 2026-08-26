@@ -30,3 +30,6 @@ allowBuilds:
   msgpackr-extract: true
   nx: true
   less: false
+
+patchedDependencies:
+  matrix-widget-api@1.17.0: patches/matrix-widget-api@1.17.0.patch

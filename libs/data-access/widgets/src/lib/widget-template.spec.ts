@@ -8,6 +8,8 @@ const widget: RoomWidget = {
   type: 'm.custom',
   rawUrl: 'https://widgets.example/board',
   data: {},
+  creatorUserId: '@alice:example.org',
+  waitForIframeLoad: true,
 };
 
 const context: WidgetTemplateContext = {

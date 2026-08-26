@@ -64,7 +64,15 @@ export function hardenContents(contents: Electron.WebContents): void {
  */
 export function installPermissionPolicy(session: Electron.Session): void {
   session.setPermissionRequestHandler(
-    (_contents, permission, callback, details) => {
+    (contents, permission, callback, details) => {
+      if (
+        !details.isMainFrame ||
+        !isAppUrl(contents.getURL()) ||
+        !isAppUrl(details.requestingUrl)
+      ) {
+        callback(false);
+        return;
+      }
       if (permission === 'media') {
         const wantsVideo =
           'mediaTypes' in details &&
@@ -76,8 +84,14 @@ export function installPermissionPolicy(session: Electron.Session): void {
     },
   );
   session.setPermissionCheckHandler(
-    (_contents, permission) =>
-      permission === 'media' || permission === 'geolocation',
+    (contents, permission, requestingOrigin, details) =>
+      Boolean(
+        contents &&
+        details.isMainFrame &&
+        isAppUrl(contents.getURL()) &&
+        isAppUrl(details.requestingUrl ?? requestingOrigin) &&
+        (permission === 'media' || permission === 'geolocation'),
+      ),
   );
 }
 

@@ -9,12 +9,14 @@ import { WIDGET_EVENT_TYPE, WidgetsService } from './widgets.service';
 interface WidgetFixture {
   id: string;
   content: Record<string, unknown>;
+  sender?: string;
 }
 
 function widgetEvent(fixture: WidgetFixture) {
   return {
     getStateKey: () => fixture.id,
     getContent: () => fixture.content,
+    getSender: () => fixture.sender,
   };
 }
 
@@ -90,11 +92,13 @@ describe('WidgetsService', () => {
     const { service } = setup([
       {
         id: 'board',
+        sender: '@alice:example.org',
         content: {
           name: 'Planning',
           type: 'm.custom',
           url: 'https://widgets.example/$matrix_room_id',
           data: { title: 'Fallback title', board: 'roadmap' },
+          waitForIframeLoad: false,
         },
       },
       {
@@ -114,6 +118,8 @@ describe('WidgetsService', () => {
         type: 'm.custom',
         rawUrl: 'https://widgets.example/$matrix_room_id',
         data: { title: 'Fallback title', board: 'roadmap' },
+        creatorUserId: '@alice:example.org',
+        waitForIframeLoad: false,
       },
       {
         id: 'titled',
@@ -121,8 +127,70 @@ describe('WidgetsService', () => {
         type: 'm.custom',
         rawUrl: 'https://widgets.example/titled',
         data: { title: 'Title from data' },
+        creatorUserId: null,
+        waitForIframeLoad: true,
       },
     ]);
+  });
+
+  it('prefers a declared creator and validates iframe-load behavior', () => {
+    const { service } = setup([
+      {
+        id: 'board',
+        sender: '@sender:example.org',
+        content: {
+          creatorUserId: ' @creator:example.org ',
+          type: 'm.custom',
+          url: 'https://widgets.example',
+          waitForIframeLoad: 'false',
+        },
+      },
+    ]);
+
+    expect(service.widgetsFor('!room:example.org')()[0]).toEqual(
+      expect.objectContaining({
+        creatorUserId: '@creator:example.org',
+        waitForIframeLoad: true,
+      }),
+    );
+  });
+
+  it('publishes creator and iframe-load changes from room state', async () => {
+    const { service, client, events } = setup([
+      {
+        id: 'board',
+        sender: '@sender:example.org',
+        content: {
+          type: 'm.custom',
+          url: 'https://widgets.example',
+          waitForIframeLoad: true,
+        },
+      },
+    ]);
+    const widgets = service.widgetsFor('!room:example.org');
+    service.connect('!room:example.org');
+    events[0] = widgetEvent({
+      id: 'board',
+      sender: '@new-sender:example.org',
+      content: {
+        type: 'm.custom',
+        url: 'https://widgets.example',
+        waitForIframeLoad: false,
+      },
+    });
+
+    handlerFor(
+      client,
+      'RoomState.events',
+    )?.(liveEvent(WIDGET_EVENT_TYPE, '!room:example.org'));
+    await Promise.resolve();
+
+    expect(widgets()[0]).toEqual(
+      expect.objectContaining({
+        creatorUserId: '@new-sender:example.org',
+        waitForIframeLoad: false,
+      }),
+    );
   });
 
   it('drops tombstones and malformed declarations but keeps unsafe URLs visible', () => {
@@ -220,6 +288,8 @@ describe('WidgetsService', () => {
       type: 'm.custom',
       rawUrl: 'https://widgets.example/?name=$matrix_display_name',
       data: {},
+      creatorUserId: '@alice:example.org',
+      waitForIframeLoad: true,
     });
 
     expect(new URL(launch.url as string).searchParams.get('name')).toBe(
@@ -243,6 +313,8 @@ describe('WidgetsService', () => {
           '&device=$org.matrix.msc3819.matrix_device_id' +
           '&base=$org.matrix.msc4039.matrix_base_url',
         data: {},
+        creatorUserId: '@alice:example.org',
+        waitForIframeLoad: true,
       }),
     );
 

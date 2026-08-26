@@ -10,6 +10,10 @@ export interface RoomWidget {
   readonly rawUrl: string;
   /** Room-declared values available to `$name` placeholders in {@link rawUrl}. */
   readonly data: Readonly<Record<string, unknown>>;
+  /** Account that created the declaration, when room state supplies one. */
+  readonly creatorUserId: string | null;
+  /** Whether the Widget API waits for the iframe load event before negotiation. */
+  readonly waitForIframeLoad: boolean;
 }
 
 /** Values Trinity may put into a widget URL when the user explicitly opens it. */
@@ -56,4 +60,18 @@ export interface WidgetLaunch {
   /** Whether transport to the otherwise-openable destination is unencrypted HTTP. */
   readonly insecure: boolean;
   readonly failure: WidgetLaunchFailure | null;
+}
+
+export type WidgetEmbedFailure =
+  | 'invalid-url'
+  | 'insecure'
+  | 'same-origin'
+  | 'missing-creator'
+  | 'call-widget';
+
+/** A destination that is eligible for Trinity's restricted Widget API runtime. */
+export interface WidgetEmbed {
+  readonly url: string | null;
+  readonly origin: string | null;
+  readonly failure: WidgetEmbedFailure | null;
 }

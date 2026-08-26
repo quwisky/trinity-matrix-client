@@ -6,6 +6,7 @@ import {
   type SynapseSession,
 } from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import { installWidgetFixture } from './support/widget.mts';
 
 // A real device profile is essential here: a touch-enabled desktop user agent keeps the
 // desktop dialog path and would not prove that the mobile settings surface stays usable.
@@ -36,6 +37,7 @@ test.describe('Room settings widgets on a phone', () => {
     const pass = `${user}-pass`;
     const roomName = `Many widgets ${runId}`;
     const widgetCount = 8;
+    const widgetFixture = await installWidgetFixture(page);
 
     await registerUser(request, user, pass);
     const accessToken = await request
@@ -94,6 +96,22 @@ test.describe('Room settings widgets on a phone', () => {
     await page
       .getByTestId(`room-widget-open-board-${widgetCount - 1}`)
       .click({ trial: true });
+
+    expect(widgetFixture.requestCount()).toBe(0);
+    await page
+      .getByTestId(`room-widget-embed-board-${widgetCount - 1}`)
+      .click();
+    await expect(page.getByTestId('widget-frame-status')).toContainText(
+      'Widget API ready',
+    );
+    const frame = page.locator('iframe.widget-frame__iframe');
+    const frameBox = await frame.boundingBox();
+    expect(frameBox).not.toBeNull();
+    expect(frameBox?.width).toBeGreaterThanOrEqual(
+      (page.viewportSize()?.width ?? 0) - 1,
+    );
+    await page.getByTestId('room-widget-frame-close').click();
+    await expect(frame).toHaveCount(0);
 
     const cancel = page.getByTestId('room-settings-cancel');
     const cancelBox = await cancel.boundingBox();

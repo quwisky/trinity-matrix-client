@@ -8,13 +8,17 @@ import {
   input,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnToastService } from '@trinity/components/overlay';
+import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import {
   WidgetsService,
+  resolveWidgetEmbed,
+  type RoomWidget,
+  type WidgetEmbed,
   type WidgetLaunch,
 } from '@trinity/data-access/widgets';
 import { HlmButton } from '@trinity/helm/button';
 import { ExternalBrowserService } from '@trinity/platform-native';
+import { RoomWidgetFrameComponent } from './room-widget-frame/room-widget-frame.component';
 
 /** Tier 1 room-widget discovery and explicit external-browser dispatch. */
 @Component({
@@ -30,6 +34,7 @@ export class RoomWidgetsComponent implements OnInit {
   private readonly widgetsService = inject(WidgetsService);
   private readonly externalBrowser = inject(ExternalBrowserService);
   private readonly toast = inject(TrnToastService);
+  private readonly dialog = inject(TrnDialogService);
   private readonly destroyRef = inject(DestroyRef);
   private connectedRoom: string | null = null;
 
@@ -37,10 +42,14 @@ export class RoomWidgetsComponent implements OnInit {
   readonly widgets = computed(() =>
     this.widgetsService
       .widgetsFor(this.roomId())()
-      .map((widget) => ({
-        widget,
-        launch: this.widgetsService.launchFor(this.roomId(), widget),
-      })),
+      .map((widget) => {
+        const launch = this.widgetsService.launchFor(this.roomId(), widget);
+        return {
+          widget,
+          launch,
+          embed: resolveWidgetEmbed(widget, launch, currentOrigin()),
+        };
+      }),
   );
 
   constructor() {
@@ -74,7 +83,49 @@ export class RoomWidgetsComponent implements OnInit {
       });
   }
 
+  /** Revalidate immediately before creating the only live third-party frame. */
+  embedWidget(widget: RoomWidget): void {
+    const launch = this.widgetsService.launchFor(this.roomId(), widget);
+    const embed = resolveWidgetEmbed(widget, launch, currentOrigin());
+    if (!embed.url) {
+      this.toast.show('This widget cannot be embedded safely.', {
+        duration: 4000,
+        variant: 'destructive',
+      });
+      return;
+    }
+    this.dialog.open(RoomWidgetFrameComponent, {
+      side: 'full-screen',
+      ariaLabel: `${widget.name} widget`,
+      autoFocus: '[data-autofocus]',
+      inputs: {
+        roomId: this.roomId(),
+        widget,
+        embed,
+      },
+    });
+  }
+
+  embedFailureText(embed: WidgetEmbed): string {
+    switch (embed.failure) {
+      case 'insecure':
+        return 'Only HTTPS widgets can open inside Trinity.';
+      case 'same-origin':
+        return 'Same-origin widgets cannot open inside Trinity.';
+      case 'missing-creator':
+        return 'This declaration has no verified creator.';
+      case 'call-widget':
+        return 'Call widgets are not supported in this release.';
+      default:
+        return 'This widget cannot open inside Trinity.';
+    }
+  }
+
   disclosureText(launch: WidgetLaunch): string {
     return launch.disclosures.map((item) => item.label).join(', ');
   }
+}
+
+function currentOrigin(): string {
+  return typeof location === 'undefined' ? '' : location.origin;
 }
