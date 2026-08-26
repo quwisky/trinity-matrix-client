@@ -1,5 +1,6 @@
 import { render } from '@trinity/testing';
 import { describe, expect, it } from 'vitest';
+import { TRN_ICON_MOTIONS } from '../trn-icon-motion';
 import { provideTrnIcons } from '../trn-icon.icons';
 import { TrnIconComponent } from './trn-icon.component';
 
@@ -118,4 +119,21 @@ describe('TrnIconComponent', () => {
 
     expect(getComputedStyle(host).display).toBe('inline-flex');
   });
+
+  it('is motionless by default, without leaving an activation hook behind', async () => {
+    const { fixture } = await setup({ name: 'lock' });
+    const host = fixture.nativeElement as HTMLElement;
+
+    expect(host.getAttribute('data-motion')).toBeNull();
+  });
+
+  it.each(TRN_ICON_MOTIONS)(
+    'publishes the opt-in %s motion for the interactive ancestor',
+    async (motion) => {
+      const { fixture } = await setup({ name: 'lock', motion });
+      const host = fixture.nativeElement as HTMLElement;
+
+      expect(host.getAttribute('data-motion')).toBe(motion);
+    },
+  );
 });

@@ -59,6 +59,7 @@ const componentStylesheets = stylesheets.filter(
 const LEDGER = [
   'libs/components/banner/src/lib/banner.component.scss',
   'libs/components/emoji-picker/src/lib/trn-emoji-picker/trn-emoji-picker.component.scss',
+  'libs/components/icon/src/lib/trn-icon/trn-icon.component.scss',
   'libs/components/media-bubble/src/lib/media-bubble.component.scss',
   'libs/components/message-toolbar/src/lib/message-toolbar.component.scss',
   'libs/feature/auth/src/lib/auth-card/auth-card.component.scss',

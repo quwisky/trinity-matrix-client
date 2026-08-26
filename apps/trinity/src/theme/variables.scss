@@ -99,6 +99,7 @@
   // the end of this file. A literal duration cannot be collapsed, which is why
   // `global.scss` still needs its blanket `!important` override until the remaining
   // hand-picked durations migrate.
+  --trinity-duration-press: 90ms; // pointer/key down — immediate, but still legible
   --trinity-duration-fast: 120ms; // hover/focus tints — must not be perceptible as motion
   --trinity-duration-base: 200ms; // the default for anything entering or leaving
   --trinity-duration-slow: 320ms; // full-surface transitions (panels, sheets)
@@ -500,6 +501,7 @@
 // what stops the infinite animations spinning: collapsing a duration does not end them.
 @media (prefers-reduced-motion: reduce) {
   :root {
+    --trinity-duration-press: 0.01ms;
     --trinity-duration-fast: 0.01ms;
     --trinity-duration-base: 0.01ms;
     --trinity-duration-slow: 0.01ms;
