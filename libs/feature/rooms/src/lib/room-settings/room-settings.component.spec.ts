@@ -78,7 +78,7 @@ async function build(
   const disconnectWidgets = vi.fn();
   const launchFor =
     over.launchFor ?? vi.fn<() => WidgetLaunch>(() => BOARD_LAUNCH);
-  const openExternal = over.openExternal ?? vi.fn(() => true);
+  const openExternal = over.openExternal ?? vi.fn(() => Promise.resolve(true));
   const widgets = signal<readonly RoomWidget[]>(over.widgets ?? []);
   const { fixture, container } = await render(RoomSettingsComponent, {
     inputs: {
@@ -177,10 +177,13 @@ describe('RoomSettingsComponent', () => {
     expect(link?.getAttribute('href')).toBe(BOARD_LAUNCH.url);
     expect(link?.getAttribute('target')).toBe('_blank');
     expect(link?.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(link?.getAttribute('aria-label')).toBe(
+      'Open Planning board in browser',
+    );
   });
 
   it('delegates a safe widget link to the cross-platform browser service', async () => {
-    const openExternal = vi.fn(() => true);
+    const openExternal = vi.fn(() => Promise.resolve(true));
     const { container, fixture } = await build(
       {},
       { widgets: [BOARD_WIDGET], openExternal },
@@ -195,6 +198,28 @@ describe('RoomSettingsComponent', () => {
       ?.click();
 
     expect(openExternal).toHaveBeenCalledWith(BOARD_LAUNCH.url);
+  });
+
+  it('reports when the external browser cannot open a widget', async () => {
+    const openExternal = vi.fn(() => Promise.resolve(false));
+    const { container, fixture, toastShow } = await build(
+      {},
+      { widgets: [BOARD_WIDGET], openExternal },
+    );
+    container
+      .querySelector<HTMLElement>('[data-testid="room-settings-tab-widgets"]')
+      ?.click();
+    await fixture.whenStable();
+
+    container
+      .querySelector<HTMLElement>('[data-testid="room-widget-open-board"]')
+      ?.click();
+    await fixture.whenStable();
+
+    expect(toastShow).toHaveBeenCalledWith(
+      'Could not open this widget in a browser.',
+      { duration: 4000, variant: 'destructive' },
+    );
   });
 
   it('lists an unsafe widget but does not make it clickable', async () => {

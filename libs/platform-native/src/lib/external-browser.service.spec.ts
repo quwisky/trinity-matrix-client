@@ -22,10 +22,10 @@ describe('ExternalBrowserService', () => {
 
   afterEach(() => vi.restoreAllMocks());
 
-  it('opens web and Electron destinations without an opener', () => {
+  it('opens web and Electron destinations without an opener', async () => {
     const windowOpen = vi.spyOn(window, 'open').mockReturnValue(null);
 
-    const opened = TestBed.inject(ExternalBrowserService).open(
+    const opened = await TestBed.inject(ExternalBrowserService).open(
       'https://widgets.example/board',
     );
 
@@ -38,11 +38,11 @@ describe('ExternalBrowserService', () => {
     expect(browserOpen).not.toHaveBeenCalled();
   });
 
-  it('uses the Capacitor browser on iOS and Android', () => {
+  it('uses the Capacitor browser on iOS and Android', async () => {
     isNative.mockReturnValue(true);
     const windowOpen = vi.spyOn(window, 'open').mockReturnValue(null);
 
-    const opened = TestBed.inject(ExternalBrowserService).open(
+    const opened = await TestBed.inject(ExternalBrowserService).open(
       'http://widgets.example/board',
     );
 
@@ -53,12 +53,26 @@ describe('ExternalBrowserService', () => {
     expect(windowOpen).not.toHaveBeenCalled();
   });
 
+  it('reports a Capacitor browser rejection to the caller', async () => {
+    isNative.mockReturnValue(true);
+    browserOpen.mockRejectedValueOnce(new Error('browser unavailable'));
+    vi.spyOn(console, 'debug').mockImplementation(() => undefined);
+
+    const opened = await TestBed.inject(ExternalBrowserService).open(
+      'https://widgets.example/board',
+    );
+
+    expect(opened).toBe(false);
+  });
+
   it.each(['javascript:alert(1)', 'data:text/html,hello', 'not a URL'])(
     'refuses %s before dispatching it to any platform',
-    (url) => {
+    async (url) => {
       const windowOpen = vi.spyOn(window, 'open').mockReturnValue(null);
 
-      expect(TestBed.inject(ExternalBrowserService).open(url)).toBe(false);
+      expect(await TestBed.inject(ExternalBrowserService).open(url)).toBe(
+        false,
+      );
       expect(windowOpen).not.toHaveBeenCalled();
       expect(browserOpen).not.toHaveBeenCalled();
     },

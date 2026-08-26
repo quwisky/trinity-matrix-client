@@ -129,8 +129,13 @@ export class WidgetsService {
   }
 
   private templateContext(roomId: string): WidgetTemplateContext {
-    const client = this.readClient();
-    const userId = client?.getUserId() ?? '';
+    // Reading the signal makes every computed launch URL account-scoped. The active
+    // instance changes synchronously with it, while the room-state projection reconnects
+    // in an effect and may otherwise keep an identical widget array referentially stable.
+    const activeUserId = this.matrix.activeUserId();
+    const client =
+      activeUserId && this.matrix.isInitialized ? this.matrix.instance : null;
+    const userId = client?.getUserId() ?? activeUserId ?? '';
     const roomMember = userId
       ? client?.getRoom(roomId)?.getMember(userId)
       : null;

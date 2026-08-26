@@ -411,9 +411,15 @@ export class RoomSettingsComponent implements OnInit {
   }
 
   /** Keep an anchor for link affordances, but route a normal tap through native browser UI. */
-  openWidget(event: Event, url: string): void {
+  async openWidget(event: Event, url: string): Promise<void> {
     event.preventDefault();
-    this.externalBrowser.open(url);
+    const opened = await this.externalBrowser.open(url);
+    if (!opened) {
+      this.toast.show('Could not open this widget in a browser.', {
+        duration: 4000,
+        variant: 'destructive',
+      });
+    }
   }
 
   disclosureText(launch: WidgetLaunch): string {

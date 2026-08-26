@@ -161,6 +161,9 @@
                   target="_blank"
                   rel="noopener noreferrer"
                   (click)="openWidget($event, entry.launch.url)"
+                  [attr.aria-label]="
+                    'Open ' + entry.widget.name + ' in browser'
+                  "
                   [attr.data-testid]="'room-widget-open-' + entry.widget.id"
                 >
                   Open in browser

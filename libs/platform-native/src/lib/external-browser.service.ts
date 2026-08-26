@@ -13,14 +13,14 @@ import { Capacitor } from '@capacitor/core';
  */
 @Injectable({ providedIn: 'root' })
 export class ExternalBrowserService {
-  /** Returns false only when the URL is unsafe/malformed or dispatch throws synchronously. */
-  open(url: string): boolean {
+  /** Returns false when the URL is unsafe/malformed or the platform dispatch fails. */
+  async open(url: string): Promise<boolean> {
     if (!isSafeExternalUrl(url)) {
       return false;
     }
     try {
       if (Capacitor.isNativePlatform()) {
-        void Browser.open({ url }).catch(logFailure);
+        await Browser.open({ url });
       } else {
         window.open(url, '_blank', 'noopener,noreferrer');
       }

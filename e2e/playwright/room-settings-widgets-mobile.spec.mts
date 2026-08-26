@@ -80,9 +80,20 @@ test.describe('Room settings widgets on a phone', () => {
       )
       .toBe(true);
 
+    const widgetCards = page.locator('[data-testid^="room-widget-board-"]');
+    await expect(widgetCards).toHaveCount(widgetCount);
+    for (let index = 0; index < widgetCount; index += 1) {
+      await expect(
+        page.getByTestId(`room-widget-board-${index}`),
+      ).toContainText(`Planning board ${index + 1}`);
+    }
+
     const lastWidget = page.getByTestId(`room-widget-board-${widgetCount - 1}`);
     await lastWidget.scrollIntoViewIfNeeded();
     await expect(lastWidget).toBeVisible();
+    await page
+      .getByTestId(`room-widget-open-board-${widgetCount - 1}`)
+      .click({ trial: true });
 
     const cancel = page.getByTestId('room-settings-cancel');
     const cancelBox = await cancel.boundingBox();

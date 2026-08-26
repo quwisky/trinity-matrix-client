@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ThemeService } from '@trinity/platform-native';
@@ -28,6 +28,7 @@ function handlerFor(client: { on: Mock }, event: string) {
 }
 
 function setup(initial: WidgetFixture[] = []) {
+  const activeUserId = signal<string | null>('@alice:example.org');
   const events = initial.map(widgetEvent);
   const getStateEvents = vi.fn((type: string) =>
     type === WIDGET_EVENT_TYPE ? events : [],
@@ -52,14 +53,23 @@ function setup(initial: WidgetFixture[] = []) {
     on: vi.fn(),
     off: vi.fn(),
   };
+  const secondClient = {
+    ...client,
+    getUserId: () => '@bob:other.example',
+    getDeviceId: () => 'OTHER-DEVICE',
+    getHomeserverUrl: () => 'https://matrix.other.example',
+  };
+  const matrix = {
+    isInitialized: true,
+    get instance() {
+      return activeUserId() === '@bob:other.example' ? secondClient : client;
+    },
+    activeUserId: activeUserId.asReadonly(),
+  };
   TestBed.configureTestingModule({
     providers: [
       WidgetsService,
-      MockProvider(MatrixClientService, {
-        isInitialized: true,
-        instance: client as never,
-        activeUserId: signal<string | null>('@alice:example.org').asReadonly(),
-      }),
+      { provide: MatrixClientService, useValue: matrix },
       MockProvider(ThemeService, { resolved: signal<'dark'>('dark') }),
     ],
   });
@@ -69,6 +79,7 @@ function setup(initial: WidgetFixture[] = []) {
     getStateEvents,
     getRoom,
     client,
+    activeUserId,
   };
 }
 
@@ -217,6 +228,37 @@ describe('WidgetsService', () => {
     expect(launch.disclosures).toEqual([
       { kind: 'user-id', label: 'your Matrix user ID' },
     ]);
+  });
+
+  it('recomputes launch identity when the active account changes', () => {
+    const { service, activeUserId } = setup();
+    service.connect('!room:example.org');
+    const launch = computed(() =>
+      service.launchFor('!room:example.org', {
+        id: 'board',
+        name: 'Board',
+        type: 'm.custom',
+        rawUrl:
+          'https://widgets.example/?user=$matrix_user_id' +
+          '&device=$org.matrix.msc3819.matrix_device_id' +
+          '&base=$org.matrix.msc4039.matrix_base_url',
+        data: {},
+      }),
+    );
+
+    expect(new URL(launch().url as string).searchParams.get('user')).toBe(
+      '@alice:example.org',
+    );
+
+    activeUserId.set('@bob:other.example');
+
+    expect(
+      Object.fromEntries(new URL(launch().url as string).searchParams),
+    ).toEqual({
+      user: '@bob:other.example',
+      device: 'OTHER-DEVICE',
+      base: 'https://matrix.other.example',
+    });
   });
 
   it('keeps the shared listener alive until overlapping rooms both release it', () => {
