@@ -56,7 +56,12 @@
 
   @media #{$md} {
     width: var(--shell-sidebar-w, 352px);
-    flex: 0 0 auto;
+
+    // The custom property is the user's persisted preference, not an unconditional rendered
+    // width. At the narrow end of the two-pane layout a 560px preference plus `.main`'s
+    // 320px floor needs more room than the shell has, so let flexbox take only that deficit
+    // from this pane. Widening restores the preferred width without rewriting the setting.
+    flex: 0 1 auto;
   }
 
   // Outer-left column: clear the left cutout on a landscape notch (left) and the home

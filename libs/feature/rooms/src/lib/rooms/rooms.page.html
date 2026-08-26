@@ -27,7 +27,7 @@
          asserts the two edges meet at every text size. -->
     <!-- The rule below only sees that 352px equals w-88's 22rem at the default root size;
          the paragraph above is why the two are not interchangeable here. -->
-    <aside #listView tabindex="-1" class="shell-side w-full shrink-0">
+    <aside #listView tabindex="-1" class="shell-side w-full">
       <trn-server-rail
         [spaces]="vm.railSpaces()"
         [activeSpaceId]="store.activeSpaceId()"
@@ -100,6 +100,7 @@
       class="hidden md:block"
       cssVariable="--shell-sidebar-w"
       label="Room list width"
+      paneSelector=".shell-side"
       [value]="layout.sidebarWidth()"
       [min]="layout.sidebarBounds.min"
       [max]="layout.sidebarBounds.max"

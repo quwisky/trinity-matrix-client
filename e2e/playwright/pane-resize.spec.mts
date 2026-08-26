@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { login, synapseSession } from './support/app.mts';
 
 /**
@@ -21,6 +21,37 @@ const session = synapseSession();
 
 /** The server rail is a fixed column; everything the drag adds goes to the room list. */
 const RAIL_WIDTH = 72;
+const CHAT_MIN_WIDTH = 320;
+const SIDEBAR_STORAGE_KEY = 'CapacitorStorage.trinity.shell.sidebar-width';
+
+async function shellGeometry(page: Page) {
+  return page.locator('[data-shell-root]').evaluate((shell) => {
+    const sidebar = shell.querySelector('.shell-side');
+    const main = shell.querySelector('.main');
+    const rail = shell.querySelector('.rail');
+    const roomList = shell.querySelector('.sidebar');
+    if (!sidebar || !main || !rail || !roomList) {
+      throw new Error('rooms shell panes are incomplete');
+    }
+
+    const rectOf = (element: Element) => {
+      const { left, right, width } = element.getBoundingClientRect();
+      return {
+        left: Math.round(left),
+        right: Math.round(right),
+        width: Math.round(width),
+      };
+    };
+
+    return {
+      shell: rectOf(shell),
+      sidebar: rectOf(sidebar),
+      main: rectOf(main),
+      rail: rectOf(rail),
+      roomList: rectOf(roomList),
+    };
+  });
+}
 
 test.describe('Resizable panes', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
@@ -121,5 +152,141 @@ test.describe('Resizable panes', () => {
     const list =
       (await page.locator('.sidebar').first().boundingBox())?.width ?? 0;
     expect(Math.round(list)).toBe(Math.round(narrow - RAIL_WIDTH));
+  });
+
+  test('temporarily yields a maximum sidebar to the chat on narrower desktops', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await login(page, session);
+
+    const sidebar = page.locator('.shell-side');
+    await expect(sidebar).toBeVisible({ timeout: 30_000 });
+
+    const handle = page.getByRole('separator', { name: 'Room list width' });
+    const max = Number(await handle.getAttribute('aria-valuemax'));
+    expect(max).toBe(560);
+
+    await handle.focus();
+    await handle.press('End');
+    await expect(handle).toHaveAttribute('aria-valuenow', String(max));
+    await expect
+      .poll(() =>
+        page.evaluate((key) => localStorage.getItem(key), SIDEBAR_STORAGE_KEY),
+      )
+      .toBe(String(max));
+    await expect
+      .poll(async () => Math.round((await sidebar.boundingBox())?.width ?? 0))
+      .toBe(max);
+
+    // Both ends of the affected interval: 879px needs the sidebar to yield by one pixel,
+    // while 768px is the narrowest width at which both panes remain in the desktop row.
+    for (const viewportWidth of [879, 768]) {
+      await page.setViewportSize({ width: viewportWidth, height: 720 });
+
+      const renderedSidebarWidth = viewportWidth - CHAT_MIN_WIDTH;
+      await expect
+        .poll(() => shellGeometry(page))
+        .toEqual({
+          shell: { left: 0, right: viewportWidth, width: viewportWidth },
+          sidebar: {
+            left: 0,
+            right: renderedSidebarWidth,
+            width: renderedSidebarWidth,
+          },
+          main: {
+            left: renderedSidebarWidth,
+            right: viewportWidth,
+            width: CHAT_MIN_WIDTH,
+          },
+          rail: { left: 0, right: RAIL_WIDTH, width: RAIL_WIDTH },
+          roomList: {
+            left: RAIL_WIDTH,
+            right: renderedSidebarWidth,
+            width: renderedSidebarWidth - RAIL_WIDTH,
+          },
+        });
+
+      // The handle stays at the rendered pane edge even though storage keeps the preference.
+      await expect(handle).toHaveAttribute(
+        'aria-valuenow',
+        String(renderedSidebarWidth),
+      );
+      expect(
+        await page.evaluate(
+          (key) => localStorage.getItem(key),
+          SIDEBAR_STORAGE_KEY,
+        ),
+      ).toBe(String(max));
+    }
+
+    // Growing is impossible at the live cap. It must be a no-op rather than silently
+    // replacing the preserved 560px preference with 464px, which would only become visible
+    // after the window widened again.
+    await expect(handle).toHaveAttribute('aria-valuemax', '448');
+    const clampedBox = (await handle.boundingBox())!;
+    const clampedY = clampedBox.y + clampedBox.height / 2;
+    const clampedX = clampedBox.x + clampedBox.width / 2;
+    await page.mouse.move(clampedX, clampedY);
+    await page.mouse.down();
+    await page.mouse.move(clampedX + 8, clampedY);
+    await page.mouse.move(clampedX + 16, clampedY);
+    await page.mouse.up();
+    await handle.press('ArrowRight');
+
+    await expect
+      .poll(async () => Math.round((await sidebar.boundingBox())?.width ?? 0))
+      .toBe(448);
+    await expect
+      .poll(() =>
+        page.evaluate((key) => localStorage.getItem(key), SIDEBAR_STORAGE_KEY),
+      )
+      .toBe(String(max));
+
+    // Widening has to restore the preference without another write or reload.
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await expect
+      .poll(async () => Math.round((await sidebar.boundingBox())?.width ?? 0))
+      .toBe(max);
+    await expect(handle).toHaveAttribute('aria-valuenow', String(max));
+
+    // Interaction must start at the rendered edge, not at the hidden preference. At 768px
+    // the difference is 112px; using 560 as the baseline made this 16px drag and the first
+    // seven ArrowLeft presses write values that flexbox still had to clamp, so nothing moved.
+    await page.setViewportSize({ width: 768, height: 720 });
+    await expect(handle).toHaveAttribute('aria-valuenow', '448');
+
+    const box = (await handle.boundingBox())!;
+    const y = box.y + box.height / 2;
+    const x = box.x + box.width / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x - 8, y);
+    await page.mouse.move(x - 16, y);
+    await page.mouse.up();
+
+    await expect
+      .poll(async () => Math.round((await sidebar.boundingBox())?.width ?? 0))
+      .toBe(432);
+    await expect(handle).toHaveAttribute('aria-valuenow', '432');
+    await expect
+      .poll(() =>
+        page.evaluate((key) => localStorage.getItem(key), SIDEBAR_STORAGE_KEY),
+      )
+      .toBe('432');
+
+    // Reset the preference while still clamped, then prove the first keypress moves the pane.
+    await handle.press('End');
+    await expect(handle).toHaveAttribute('aria-valuenow', '448');
+    await handle.press('ArrowLeft');
+    await expect
+      .poll(async () => Math.round((await sidebar.boundingBox())?.width ?? 0))
+      .toBe(432);
+    await expect(handle).toHaveAttribute('aria-valuenow', '432');
+    await expect
+      .poll(() =>
+        page.evaluate((key) => localStorage.getItem(key), SIDEBAR_STORAGE_KEY),
+      )
+      .toBe('432');
   });
 });
