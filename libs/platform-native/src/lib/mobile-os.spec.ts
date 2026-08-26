@@ -10,7 +10,7 @@ vi.mock('./trinity-desktop-bridge', () => ({
   isElectronRenderer: () => electron.is,
 }));
 
-import { isMobileOs } from './mobile-os';
+import { isMobileOs, isNativeIos } from './mobile-os';
 
 /** Stand in for a device: its user agent, touch points and UA-Client-Hints. */
 function device(over: {
@@ -116,5 +116,24 @@ describe('isMobileOs', () => {
     vi.stubGlobal('navigator', undefined);
 
     expect(isMobileOs()).toBe(false);
+  });
+});
+
+describe('isNativeIos', () => {
+  afterEach(() => {
+    capacitor.platform = 'web';
+    vi.unstubAllGlobals();
+  });
+
+  it('matches only the native iOS platform', () => {
+    capacitor.platform = 'ios';
+    expect(isNativeIos()).toBe(true);
+
+    capacitor.platform = 'android';
+    expect(isNativeIos()).toBe(false);
+
+    capacitor.platform = 'web';
+    device({ ua: UA.iphone });
+    expect(isNativeIos()).toBe(false);
   });
 });

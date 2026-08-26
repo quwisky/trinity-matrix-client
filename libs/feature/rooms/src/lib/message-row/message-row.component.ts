@@ -87,18 +87,17 @@ const LONG_PRESS_SLOP_PX = 10;
  * How far in from either viewport edge a message swipe refuses to START.
  *
  * Both competitors are viewport-anchored, and neither can be argued with once it has the
- * gesture: the shell's drawer opens from within `EDGE_ZONE_PX` of the right edge, and iOS and
- * Android own both edges with recognisers `touch-action` does not govern — WKWebView's are
- * outside CSS entirely, which `MainViewController.swift` records. So the only lever is to
- * refuse to arm there, measured at `pointerdown` because that is the only moment the decision
- * can be made without having already competed.
+ * gesture: the shell's drawer opens in a 24px band immediately inside a 32px native-history
+ * strip, and native recognisers are outside CSS entirely. So the only lever is to refuse to
+ * arm through that combined region, measured at `pointerdown` because that is the only moment
+ * the decision can be made without having already competed.
  *
  * Wider than the drawer's zone and wider than the platform regions, whose widths Apple and
  * Google do not publish — chosen with margin rather than derived. `message-row.swipe.spec.ts`
  * pins that it is never narrower than the drawer's; a device is what confirms it clears the
  * platform's.
  */
-export const SWIPE_DEAD_ZONE_PX = 32;
+export const SWIPE_DEAD_ZONE_PX = 56;
 
 /** How far a row must travel, as a fraction of its own width, before the action commits. */
 const SWIPE_COMMIT_FRACTION = 0.25;

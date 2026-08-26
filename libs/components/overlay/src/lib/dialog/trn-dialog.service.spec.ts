@@ -1,7 +1,7 @@
 import { ApplicationRef, Component, inject, input } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, NEVER } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TrnAlertService } from '../alert/trn-alert.service';
 import { TrnDialogRef } from './trn-dialog-ref';
@@ -102,12 +102,15 @@ describe('TrnDialogService', () => {
   it('reports whether any dialog is currently open (getTop replacement)', () => {
     const svc = TestBed.inject(TrnDialogService);
     expect(svc.hasOpen()).toBe(false);
+    expect(svc.openState()).toBe(false);
 
     const ref = svc.open<string, TestDialogComponent>(TestDialogComponent);
     expect(svc.hasOpen()).toBe(true);
+    expect(svc.openState()).toBe(true);
 
     ref.close();
     expect(svc.hasOpen()).toBe(false);
+    expect(svc.openState()).toBe(false);
   });
 
   it('closes the top of the stack, not the bottom', async () => {
@@ -128,11 +131,13 @@ describe('TrnDialogService', () => {
     // overlay. Closing the whole stack, or the wrong end of it, would both leave
     // `hasOpen()` looking plausible while the user lost work they could still see.
     expect(svc.hasOpen()).toBe(true);
+    expect(svc.openState()).toBe(true);
     TestBed.inject(ApplicationRef).tick();
     expect(document.body.textContent).toContain('Bottom');
     expect(document.body.textContent).not.toContain('Top');
 
     bottom.close();
+    expect(svc.openState()).toBe(false);
   });
 
   it('reports false when there is nothing to close, so back can fall through to navigation', () => {
@@ -151,11 +156,21 @@ describe('TrnDialogService', () => {
     // that the contract holds the first time something does.
     const declining = { close: () => undefined } as unknown as DialogRef;
     TestBed.configureTestingModule({
-      providers: [{ provide: Dialog, useValue: { openDialogs: [declining] } }],
+      providers: [
+        {
+          provide: Dialog,
+          useValue: {
+            openDialogs: [declining],
+            afterOpened: NEVER,
+            afterAllClosed: NEVER,
+          },
+        },
+      ],
     });
     const svc = TestBed.inject(TrnDialogService);
 
     expect(svc.hasOpen()).toBe(true);
+    expect(svc.openState()).toBe(true);
     expect(svc.closeTopmost()).toBe(false);
   });
 
@@ -211,11 +226,13 @@ describe('TrnDialogService', () => {
     expect(await confirmed).toBe(false);
 
     expect(svc.hasOpen()).toBe(true);
+    expect(svc.openState()).toBe(true);
     TestBed.inject(ApplicationRef).tick();
     expect(document.body.textContent).toContain('Beneath');
 
     beneath.close();
     expect(svc.hasOpen()).toBe(false);
+    expect(svc.openState()).toBe(false);
   });
 
   it('closes every open overlay at once (teardown)', async () => {

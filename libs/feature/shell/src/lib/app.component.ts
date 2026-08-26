@@ -4,6 +4,7 @@ import {
   DestroyRef,
   OnInit,
   computed,
+  effect,
   inject,
 } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
@@ -21,6 +22,7 @@ import { SwUpdate, type VersionReadyEvent } from '@angular/service-worker';
 import { filter, fromEvent, map, take } from 'rxjs';
 import {
   BackInterceptorService,
+  NativeNavigationService,
   getTrinityDesktopBridge,
 } from '@trinity/platform-native';
 import { HlmToaster } from '@trinity/helm/sonner';
@@ -47,6 +49,25 @@ export class AppComponent implements OnInit {
   private readonly location = inject(Location);
   private readonly destroyRef = inject(DestroyRef);
   private readonly backInterceptors = inject(BackInterceptorService);
+  private readonly nativeNavigation = inject(NativeNavigationService);
+
+  /** Dialogs outrank panels, but either one must keep native history underneath it. */
+  private readonly navigationInterceptionActive = computed(
+    () => this.dialog.openState() || this.backInterceptors.hasActive(),
+  );
+
+  /**
+   * WebKit's edge navigation bypasses Capacitor's `backButton` event entirely. Mirror the
+   * same surface availability to the native controller, keeping its platform gesture only
+   * while the app has nothing that should consume Back first.
+   */
+  constructor() {
+    effect(() => {
+      this.nativeNavigation.setHistoryGesturesEnabled(
+        !this.navigationInterceptionActive(),
+      );
+    });
+  }
 
   /**
    * True until the first route has actually rendered something.

@@ -36,13 +36,19 @@ import { prefersReducedMotion } from '@trinity/util/ui';
  * alone makes flicking feel broken, and speed alone makes a careful drag impossible to abort.
  */
 
-/** How far in from the right edge a closing gesture may start, in px. */
 /**
- * Exported so the message swipe can pin that its own dead zone is never narrower than this.
- * The two constants have to move together — a swipe arming inside the drawer's opening zone
- * would put both gestures on the same finger.
+ * Width of the drawer's opening band, in px.
+ *
+ * It begins after {@link NATIVE_HISTORY_EDGE_PX}. Exported because message swipes must avoid
+ * the whole region.
  */
 export const EDGE_ZONE_PX = 24;
+
+/** The extreme right-edge strip reserved for native history gestures. */
+export const NATIVE_HISTORY_EDGE_PX = 32;
+
+/** Outer boundary of the native-history plus drawer-opening bands. */
+export const DRAWER_OUTER_EDGE_PX = NATIVE_HISTORY_EDGE_PX + EDGE_ZONE_PX;
 
 /** A drag must beat one of these to commit: this fraction of the drawer, or this speed. */
 const COMMIT_FRACTION = 0.4;
@@ -90,8 +96,17 @@ export class DrawerSwipeDirective {
     if (!this.drawerEnabled() || event.pointerType === 'mouse') {
       return; // a mouse has the button; this is the touch affordance
     }
+    const distanceFromRight = window.innerWidth - event.clientX;
+    // Native navigation owns the extreme edge: WebKit Forward on iOS, and the OS back
+    // recogniser on gesture-navigation Android. The drawer begins immediately inside it on
+    // every touch platform, which is consistent and lets real-touch browser coverage prove
+    // that it never steals the platform edge. Once open, `onDrawer` below accepts a closing
+    // drag anywhere.
+    const nativeInset = NATIVE_HISTORY_EDGE_PX;
     const fromEdge =
-      window.innerWidth - event.clientX <= EDGE_ZONE_PX && !this.drawerOpen();
+      !this.drawerOpen() &&
+      distanceFromRight > nativeInset &&
+      distanceFromRight <= nativeInset + EDGE_ZONE_PX;
     const onDrawer = this.drawerOpen();
     if (!fromEdge && !onDrawer) {
       return;

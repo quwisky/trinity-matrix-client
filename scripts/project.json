@@ -19,6 +19,7 @@
         "{workspaceRoot}/libs/**/*.html",
         "{workspaceRoot}/libs/**/*.scss",
         "{workspaceRoot}/libs/**/project.json",
+        "{workspaceRoot}/ios/**/*.swift",
         "{workspaceRoot}/e2e/project.json",
         "{workspaceRoot}/e2e/playwright/app.spec.mts",
         "{workspaceRoot}/eslint.config.mjs",
