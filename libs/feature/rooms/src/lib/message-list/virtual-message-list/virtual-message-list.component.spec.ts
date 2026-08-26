@@ -666,7 +666,7 @@ describe('VirtualMessageListComponent', () => {
       expect(emits).toBe(2);
     });
 
-    it('restores scroll to the anchor row after older history prepends', () => {
+    it('restores from the rendered anchor instead of fresh row-height estimates', () => {
       // Detached fixture (not renderList/render()), like the backfill test above:
       // render() attaches the component to ApplicationRef, so the synchronous-rAF
       // anchor restore re-enters the zoneless scheduler ("cannot synchronously
@@ -708,13 +708,18 @@ describe('VirtualMessageListComponent', () => {
           scroll.querySelector(`[data-mid="${id}"]`) as HTMLElement
         ).getBoundingClientRect = () => rect(-100, -50); // above the viewport top
       }
+      let prependedHeight = 0;
       (
         scroll.querySelector('[data-mid="$5"]') as HTMLElement
-      ).getBoundingClientRect = () => rect(40, 40 + EST); // first reaching into view
+      ).getBoundingClientRect = () =>
+        rect(40 + prependedHeight, 40 + prependedHeight + EST); // first reaching into view
 
       cmp.onScroll(); // captures anchor $5 (offset 40), sets pendingPrepend, emits
 
-      // Prepend 5 older rows → $5 shifts from index 5 to index 10.
+      // Prepend five short rows. Their real 22px DOM heights are available immediately,
+      // while the prefix still treats each unmeasured row as EST (64px). Restoring from
+      // that prefix would jump to 600; the rendered anchor moved by only 110px.
+      prependedHeight = 5 * 22;
       fixture.componentRef.setInput('messages', [
         ...['$p0', '$p1', '$p2', '$p3', '$p4'].map((id, i) =>
           msg(id, '@a:hs', 'A', 1 + i),
@@ -723,8 +728,81 @@ describe('VirtualMessageListComponent', () => {
       ]);
       fixture.detectChanges(); // prepend branch → rAF (sync) → offset-anchor restore
 
-      // scrollTop = regionTop(0) + offsetOf($5 @ idx 10)=640 - anchorOffset(40) = 600.
-      expect(st).toBe(600);
+      // Preserve the 40px viewport offset: previous 100 + real prepend height 110.
+      expect(st).toBe(210);
+    });
+
+    it('falls back to prefix offsets when a large prepend windows the anchor out', () => {
+      TestBed.overrideComponent(VirtualMessageListComponent, {
+        remove: { imports: [MessageComposerComponent] },
+        add: { imports: [MockComponent(MessageComposerComponent)] },
+      });
+      const fixture = TestBed.createComponent(VirtualMessageListComponent);
+      fixture.componentRef.setInput('messages', many(120));
+      fixture.detectChanges();
+      const container = fixture.nativeElement as HTMLElement;
+      const cmp = fixture.componentInstance;
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      let st = 100;
+      Object.defineProperty(scroll, 'scrollTop', {
+        get: () => st,
+        set: (v: number) => (st = v),
+        configurable: true,
+      });
+      Object.defineProperty(scroll, 'clientHeight', {
+        value: 600,
+        configurable: true,
+      });
+      Object.defineProperty(scroll, 'scrollHeight', {
+        value: 120 * EST,
+        configurable: true,
+      });
+      scroll.getBoundingClientRect = () => rect(0);
+
+      // Leave the pinned-bottom window first, without arming a backfill. This renders the
+      // top window where the reference row lives.
+      cmp.onScroll();
+      fixture.detectChanges();
+      (scroll.querySelector('.vpad') as HTMLElement).getBoundingClientRect =
+        () => rect(-st);
+      for (const id of ['$0', '$1', '$2', '$3', '$4']) {
+        (
+          scroll.querySelector(`[data-mid="${id}"]`) as HTMLElement
+        ).getBoundingClientRect = () => rect(-100, -50);
+      }
+      (
+        scroll.querySelector('[data-mid="$5"]') as HTMLElement
+      ).getBoundingClientRect = () => rect(40, 40 + EST);
+
+      fixture.componentRef.setInput('canLoadOlder', true);
+      fixture.detectChanges();
+      const restoreFrames: FrameRequestCallback[] = [];
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+        restoreFrames.push(cb);
+        return restoreFrames.length;
+      });
+      cmp.onScroll(); // captures $5, then asks for history
+      expect(
+        (cmp as unknown as { prependAnchorId: string }).prependAnchorId,
+      ).toBe('$5');
+
+      // Thirty estimated rows put old $5 at index 35, beyond the top window's 800px
+      // overscan. Its element is gone when the restore runs, so only the prefix fallback
+      // can preserve the captured offset.
+      fixture.componentRef.setInput('messages', [
+        ...Array.from({ length: 30 }, (_, i) =>
+          msg(`$p${i}`, '@a:hs', 'A', i + 1),
+        ),
+        ...many(120),
+      ]);
+      fixture.detectChanges();
+      expect(restoreFrames).not.toHaveLength(0);
+      for (const frame of restoreFrames) {
+        frame(0);
+      }
+
+      expect(scroll.querySelector('[data-mid="$5"]')).toBeNull();
+      expect(st).toBe(35 * EST - 40);
     });
   });
 
