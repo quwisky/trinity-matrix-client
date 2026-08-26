@@ -47,6 +47,7 @@ import {
 } from '@trinity/util/matrix';
 import {
   MessageRowComponent,
+  type MessageLongPressContext,
   type MessageRow,
   type MessageRowAction,
   type MessageRowCaps,
@@ -246,9 +247,12 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
    * `contextmenu` fallback having gone with it — every action on a thread reply was
    * unreachable by touch.
    */
-  onRowLongPress(row: MessageRow): void {
-    this.messageSheet.open(this, this.rowCaps(row), (action) =>
-      this.onRowAction(row, action),
+  onRowLongPress(row: MessageRow, context?: MessageLongPressContext): void {
+    this.messageSheet.open(
+      this,
+      this.rowCaps(row),
+      (action) => this.onRowAction(row, action),
+      context,
     );
   }
 

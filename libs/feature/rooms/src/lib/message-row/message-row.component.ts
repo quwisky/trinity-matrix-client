@@ -67,6 +67,14 @@ export interface MessageRowCaps {
   readOnly: boolean;
 }
 
+/** The concrete message and press point a mobile action sheet must preserve. */
+export interface MessageLongPressContext {
+  /** The real `.msg` box; the component host is `display: contents` and has no geometry. */
+  anchor: HTMLElement;
+  /** Viewport-space Y coordinate of the finger that won the long press. */
+  clientY: number;
+}
+
 /** A user intent raised from a message row: the toolbar's actions plus row-local ones. */
 export type MessageRowAction =
   | MessageAction
@@ -150,7 +158,11 @@ export class MessageRowComponent {
 
   private readonly toolbar = viewChild(MessageToolbarComponent);
   private longPressTimer: ReturnType<typeof setTimeout> | null = null;
-  private longPressOrigin: { x: number; y: number } | null = null;
+  private longPressOrigin: {
+    x: number;
+    y: number;
+    anchor: HTMLElement;
+  } | null = null;
   private dismissReveal: (() => void) | null = null;
 
   /**
@@ -261,9 +273,21 @@ export class MessageRowComponent {
     if ((event.target as HTMLElement | null)?.closest('a, img, video, audio')) {
       return;
     }
+    // `currentTarget` is the concrete `.msg` while the event is being dispatched. It is
+    // reset to null afterward, so capture it now rather than reading it in the 500ms timer.
+    const anchor =
+      event.currentTarget instanceof HTMLElement
+        ? event.currentTarget
+        : (this.host.nativeElement as HTMLElement).querySelector<HTMLElement>(
+            '.msg',
+          );
+    if (!anchor) {
+      return;
+    }
     // Any press already pending is cleared before a new one is scheduled.
     this.cancelLongPress();
-    this.longPressOrigin = { x: event.clientX, y: event.clientY };
+    const context = { x: event.clientX, y: event.clientY, anchor };
+    this.longPressOrigin = context;
     this.longPressTimer = setTimeout(() => {
       this.longPressTimer = null;
       if (this.hasTextSelection()) {
@@ -277,7 +301,7 @@ export class MessageRowComponent {
         // The press won; the drag is no longer a candidate. Without this the sheet opens and
         // a continued drag still commits underneath its backdrop.
         this.cancelSwipe();
-        this.longPress.emit();
+        this.longPress.emit({ anchor: context.anchor, clientY: context.y });
         return;
       }
       this.revealToolbar();
@@ -593,7 +617,7 @@ export class MessageRowComponent {
    * call back into it would go silent the moment that happened, with every row still
    * tappable and nothing to see. The list owns the sheet; see `onRowLongPress` there.
    */
-  readonly longPress = output<void>();
+  readonly longPress = output<MessageLongPressContext>();
 
   /**
    * Which way this row is dragged to act on it, already resolved by whoever renders it.

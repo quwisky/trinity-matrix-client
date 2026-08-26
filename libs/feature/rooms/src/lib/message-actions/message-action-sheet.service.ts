@@ -1,13 +1,15 @@
 import { Injectable, inject } from '@angular/core';
 import {
   TrnActionSheetService,
-  TrnDialogRef,
+  type TrnActionSheetRef,
   type ActionSheetButton,
 } from '@trinity/components/overlay';
 import {
+  type MessageLongPressContext,
   type MessageRowAction,
   type MessageRowCaps,
 } from '../message-row/message-row.component';
+import { MessageSheetViewportSession } from './message-sheet-viewport-session';
 
 /**
  * The one-tap reactions the sheet offers, mirroring the hover toolbar's quick set.
@@ -78,8 +80,9 @@ type PayloadFreeAction = Exclude<
 @Injectable({ providedIn: 'root' })
 export class MessageActionSheetService {
   private readonly sheet = inject(TrnActionSheetService);
-  private ref: TrnDialogRef<void> | null = null;
+  private ref: TrnActionSheetRef | null = null;
   private owner: object | null = null;
+  private viewport: MessageSheetViewportSession | null = null;
 
   /**
    * Offer the pressed row's actions, dispatching the chosen one through `dispatch`.
@@ -94,8 +97,20 @@ export class MessageActionSheetService {
     owner: object,
     caps: MessageRowCaps,
     dispatch: (action: MessageRowAction) => void,
+    context?: MessageLongPressContext,
   ): void {
-    const act = (type: PayloadFreeAction['type']) => () => dispatch({ type });
+    let viewport: MessageSheetViewportSession | null = null;
+    const run = (action: MessageRowAction) => {
+      // TrnActionSheetComponent closes before invoking a handler. Whether `closed` emits
+      // synchronously or on the next turn, this captured session makes restoration happen
+      // before the action edits, redacts, or replaces the anchor.
+      viewport?.release();
+      if (this.viewport === viewport) {
+        this.viewport = null;
+      }
+      dispatch(action);
+    };
+    const act = (type: PayloadFreeAction['type']) => () => run({ type });
 
     const buttons: ActionSheetButton[] = [
       {
@@ -197,12 +212,17 @@ export class MessageActionSheetService {
         buttons,
         reactions: QUICK_SHEET_REACTIONS.map((key) => ({
           key,
-          handler: () => dispatch({ type: 'react', key }),
+          handler: () => run({ type: 'react', key }),
         })),
       },
       'Message actions',
     );
     this.ref = ref;
+    if (context) {
+      viewport = new MessageSheetViewportSession(context, () => ref.surface);
+      this.viewport = viewport;
+      viewport.start();
+    }
 
     // Let go once the sheet closes ITSELF — a pick, a backdrop tap, Escape. Without this the
     // dead ref is retained until the next `open()` or the owner's own destroy, and through
@@ -211,9 +231,13 @@ export class MessageActionSheetService {
     // against the captured local rather than by identity: `open()` may have replaced it, and
     // `TrnDialogRef`'s own docblock says its identity carries no meaning.
     ref.closed.subscribe(() => {
+      viewport?.release();
       if (this.ref === ref) {
         this.ref = null;
         this.owner = null;
+        if (this.viewport === viewport) {
+          this.viewport = null;
+        }
       }
     });
   }
@@ -232,6 +256,8 @@ export class MessageActionSheetService {
 
   /** Shut whatever is open, whoever opened it. Only `open` may do that. */
   private dismiss(): void {
+    this.viewport?.release();
+    this.viewport = null;
     this.ref?.close();
     this.ref = null;
     this.owner = null;

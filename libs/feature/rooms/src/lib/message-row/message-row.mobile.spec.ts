@@ -10,6 +10,7 @@ import { PrivacySettingsService } from '@trinity/platform-native';
 import { FileSaveService } from '../media-save/file-save.service';
 import {
   MessageRowComponent,
+  type MessageLongPressContext,
   type MessageRow,
   type MessageRowCaps,
 } from './message-row.component';
@@ -79,9 +80,9 @@ async function renderRow(over: Partial<MessageRowCaps> = {}) {
       }),
     ],
   });
-  const pressed: true[] = [];
-  result.fixture.componentInstance.longPress.subscribe(() =>
-    pressed.push(true),
+  const pressed: MessageLongPressContext[] = [];
+  result.fixture.componentInstance.longPress.subscribe((context) =>
+    pressed.push(context),
   );
   return { ...result, pressed };
 }
@@ -122,6 +123,10 @@ describe('MessageRowComponent — the long press on a mobile OS', () => {
     longPress(container);
 
     expect(pressed.length).toBe(1);
+    expect(pressed[0]).toEqual({
+      anchor: container.querySelector('.msg'),
+      clientY: 10,
+    });
     expect(revealed(container)).toBe(false);
   });
 

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Subject } from 'rxjs';
 import { TrnActionSheetService } from '@trinity/components/overlay';
 import { type MessageView } from '@trinity/util/matrix';
+import { MessageSheetViewportSession } from '../message-actions/message-sheet-viewport-session';
 import { MessageListBase } from './message-list-base';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
 
@@ -19,7 +20,7 @@ import { TrnFileDropDirective } from '../shared/file-drop.directive';
  */
 @Component({
   selector: 'trn-test-sheet-list',
-  template: '<div #scroll></div>',
+  template: '<div #scroll data-message-scroller></div>',
   changeDetection: ChangeDetectionStrategy.OnPush,
   hostDirectives: [
     { directive: TrnFileDropDirective, inputs: [], outputs: [] },
@@ -119,6 +120,28 @@ describe('MessageListBase — the mobile action sheet', () => {
     );
   });
 
+  it('restores the viewport before dispatch can replace the anchor', () => {
+    const { fixture, cmp, open } = build();
+    const scroller = fixture.nativeElement.querySelector(
+      '[data-message-scroller]',
+    ) as HTMLElement;
+    const anchor = document.createElement('div');
+    scroller.append(anchor);
+    const release = vi.spyOn(MessageSheetViewportSession.prototype, 'release');
+    const onRowAction = vi.spyOn(cmp, 'onRowAction');
+
+    cmp.onRowLongPress(cmp.rows()[0], { anchor, clientY: 0 });
+    lastSheet(open)
+      .buttons.find((button) => button.text === 'Reply')
+      ?.handler?.();
+
+    expect(release).toHaveBeenCalledOnce();
+    expect(onRowAction).toHaveBeenCalledOnce();
+    expect(release.mock.invocationCallOrder[0]).toBeLessThan(
+      onRowAction.mock.invocationCallOrder[0],
+    );
+  });
+
   it('still dispatches after the row that was pressed has gone', () => {
     // THE test for this design. The sheet captured a row SNAPSHOT and calls the list, so
     // the row component's lifetime is irrelevant — here the row is removed from the list
@@ -176,6 +199,24 @@ describe('MessageListBase — the mobile action sheet', () => {
 
     expect(close).toHaveBeenCalledTimes(1);
     expect(open).toHaveBeenCalledTimes(2);
+  });
+
+  it('releases the old viewport session before replacing its sheet', () => {
+    const { fixture, cmp } = build();
+    fixture.componentRef.setInput('messages', [msg('$1'), msg('$2')]);
+    fixture.detectChanges();
+    const scroller = fixture.nativeElement.querySelector(
+      '[data-message-scroller]',
+    ) as HTMLElement;
+    const first = document.createElement('div');
+    const second = document.createElement('div');
+    scroller.append(first, second);
+    const release = vi.spyOn(MessageSheetViewportSession.prototype, 'release');
+
+    cmp.onRowLongPress(cmp.rows()[0], { anchor: first, clientY: 0 });
+    cmp.onRowLongPress(cmp.rows()[1], { anchor: second, clientY: 0 });
+
+    expect(release).toHaveBeenCalledTimes(1);
   });
 
   it('closes the sheet when the room changes', () => {

@@ -18,7 +18,11 @@
     </button>
   </div>
 
-  <div class="thread flex-1 overflow-y-auto max-members:touch-pan-y" #scroll>
+  <div
+    class="thread flex-1 overflow-y-auto max-members:touch-pan-y"
+    #scroll
+    data-message-scroller
+  >
     @if (loadingOlder()) {
       <div class="thread__load-older">Loading older replies…</div>
     } @else if (canLoadOlder()) {
@@ -32,7 +36,7 @@
         [row]="row"
         [caps]="rowCaps(row)"
         (action)="onRowAction(row, $event)"
-        (longPress)="onRowLongPress(row)"
+        (longPress)="onRowLongPress(row, $event)"
         [swipeDirection]="swipeDirection()"
         (swipe)="onRowSwipe(row)"
         (pollVote)="onPollVote($event)"

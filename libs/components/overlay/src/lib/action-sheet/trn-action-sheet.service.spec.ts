@@ -57,6 +57,9 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
     const ref = svc.open({ buttons: [{ text: 'Reply' }] });
     render();
     expect(document.body.textContent).toContain('Reply');
+    expect(ref.surface).toBe(
+      document.querySelector('[data-testid=action-sheet-surface]'),
+    );
 
     ref.close();
     render();
