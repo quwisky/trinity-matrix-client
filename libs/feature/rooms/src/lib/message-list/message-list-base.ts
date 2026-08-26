@@ -34,7 +34,10 @@ import {
   type MessageView,
   type Mention,
 } from '@trinity/util/matrix';
-import { DateTimeFormatService } from '@trinity/platform-native';
+import {
+  DateTimeFormatService,
+  HapticsService,
+} from '@trinity/platform-native';
 import { DayBoundaryService } from './day-boundary.service';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
 import { delayedBusy } from '@trinity/util/ui';
@@ -47,6 +50,7 @@ import {
   type MessageRow,
   type MessageRowAction,
   type MessageRowCaps,
+  type SwipeDirection,
 } from '../message-row/message-row.component';
 import {
   MessageComposerComponent,
@@ -263,6 +267,16 @@ export abstract class MessageListBase {
   private readonly editHistorySvc = inject(EditHistoryDialogService);
   private readonly reactionsDialog = inject(ReactionsDialogService);
   private readonly messageSheet = inject(MessageActionSheetService);
+  private readonly haptics = inject(HapticsService);
+
+  /**
+   * Which way a row is dragged to act on it, resolved by the page and passed straight down.
+   *
+   * The page owns it because the answer depends on the drawer, which neither the list nor
+   * the row can see. `'off'` means the gesture does not arm at all — no listeners doing
+   * anything, no row movement — rather than a drag that moves and is then refused.
+   */
+  readonly swipeDirection = input<SwipeDirection>('off');
   protected readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
 
   /**
@@ -640,6 +654,26 @@ export abstract class MessageListBase {
   /** Per-row capabilities/state for {@link MessageRowComponent} in the main timeline. */
   rowCaps(row: MessageRow): MessageRowCaps {
     return this.rowCapsById().get(row.id) ?? DEFAULT_ROW_CAPS;
+  }
+
+  /**
+   * A committed sideways drag on a row: edit it if it can be edited, reply to it otherwise.
+   *
+   * Read from `rowCaps`, not from `isEditable`, and the distinction is the point: `rowCaps`
+   * is what the row itself was handed, so the icon the reader saw behind the row and the
+   * action they get are the same value rather than two computations of it.
+   *
+   * The action is dispatched here rather than by the row for the same reason the sheet is —
+   * the row does not survive a redaction, an edit, the local-echo id swap, or scrolling out
+   * of the virtual window, and `row` here is a snapshot the closure holds.
+   */
+  onRowSwipe(row: MessageRow): void {
+    this.haptics.gestureCommitted();
+    if (this.rowCaps(row).editable) {
+      this.startEdit(row);
+      return;
+    }
+    this.startReply(row);
   }
 
   /**

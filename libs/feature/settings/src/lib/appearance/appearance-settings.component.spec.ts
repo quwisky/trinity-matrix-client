@@ -143,6 +143,7 @@ describe('AppearanceSettingsComponent', () => {
       container.querySelector('[data-testid=time-format-select]'),
       container.querySelector('[data-testid=date-format-select]'),
       container.querySelector('[data-testid=space-order-select]'),
+      container.querySelector('[data-testid=message-swipe-select]'),
     ];
     // Every entry must actually be present, or a missing control would pass this sweep by
     // being null. `text-scale-select` was absent from this list until the code-size block

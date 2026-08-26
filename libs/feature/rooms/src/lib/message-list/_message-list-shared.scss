@@ -25,6 +25,19 @@
 }
 
 .scroll {
+  // A swiped row translates past the scroller's right edge, which `overflow-x: auto` — the
+  // computed value when only `overflow-y` is set — turns into a real horizontal pan. What
+  // this prevents is the USER-driven scroll: measured, a wheel `deltaX: 120` moved
+  // `scrollLeft` to 40 without it and 0 with. It does NOT change `scrollWidth`, which stays
+  // 450 either way; an earlier version of this comment cited that as the evidence and was
+  // describing the symptom rather than the fix.
+  // `clip` and not `hidden` is a preference, not a mechanism: with a non-`visible` other
+  // axis `clip` COMPUTES to `hidden` (CSS Overflow 3), and Chromium reports it as such — the
+  // spelling says what is meant, the behaviour is identical. Code blocks inside messages
+  // keep their own horizontal scroll either way, being their own scroll containers: verified
+  // that `pre` `scrollLeft` still reaches 300 with this in place.
+  overflow-x: clip;
+
   @include scrollable;
   @include swipe-through;
 

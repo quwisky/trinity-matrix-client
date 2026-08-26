@@ -39,6 +39,7 @@ import {
   StoragePersistenceService,
   SystemLineSettingsService,
   ComposerSettingsService,
+  MessageGestureSettingsService,
   ShellLayoutService,
   ThemeService,
   TrinityErrorHandler,
@@ -117,6 +118,7 @@ bootstrapApplication(AppComponent, {
     // churn flash in on every cold start.
     provideAppInitializer(() => inject(SystemLineSettingsService).init()),
     provideAppInitializer(() => inject(ComposerSettingsService).init()),
+    provideAppInitializer(() => inject(MessageGestureSettingsService).init()),
     // Load the saved date/time formats before the first timeline paints — every message
     // header carries a timestamp, so hydrating late would render the whole room in the
     // default format and then reflow it.

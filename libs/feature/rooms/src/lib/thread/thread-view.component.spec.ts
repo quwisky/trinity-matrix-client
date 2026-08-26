@@ -3,6 +3,30 @@ import { type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { TrnToastService } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
+
+// `isMobileOs` is a plain exported function, so the barrel is mocked and the rest passed
+// through — the same shape `message-row.mobile.spec.ts` uses, and hoisted for the same reason.
+const platform = vi.hoisted(() => ({ mobile: true }));
+
+/**
+ * Report the drawer breakpoint as matching, or not.
+ *
+ * Stubbed per test rather than once at module scope: the shared setup installs its own
+ * `matchMedia` and would overwrite a module-level stub. `mediaQuerySignal` reads
+ * `window.matchMedia` once at construction and then listens, so this has to be in place
+ * before the component is built.
+ */
+function belowMembers(matches: boolean): void {
+  vi.stubGlobal('matchMedia', () => ({
+    matches,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+}
+vi.mock('@trinity/platform-native', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@trinity/platform-native')>()),
+  isMobileOs: () => platform.mobile,
+}));
 import { TrnActionSheetService } from '@trinity/components/overlay';
 import {
   ThreadsService,
@@ -12,8 +36,12 @@ import {
 import { RoomsService, type MemberSummary } from '@trinity/data-access/rooms';
 import { type MessageView } from '@trinity/util/matrix';
 import { MockProvider } from 'ng-mocks';
+import {
+  MessageGestureSettingsService,
+  type SwipeAction,
+} from '@trinity/platform-native';
 import { Subject, of, throwError } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ThreadViewComponent } from './thread-view.component';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
 import { MessageSourceService } from '../message-source/message-source.service';
@@ -130,6 +158,12 @@ async function build(
       MockProvider(MessageSourceService, { open: sourceOpen }),
       MockProvider(TrnToastService, { show: toastShow }),
       { provide: TrnActionSheetService, useValue: { open: sheetOpen } },
+      // Seeded to a real direction. Left unprovided, the root service returns its `off`
+      // default and every assertion below reads the value the guards would have produced
+      // anyway — which is how three of these tests passed with both guards deleted.
+      MockProvider(MessageGestureSettingsService, {
+        messageSwipe: signal<SwipeAction>('right').asReadonly(),
+      }),
     ],
   });
   /** How many times the panel announced a close, for the dismissal assertions. */
@@ -554,6 +588,70 @@ describe('ThreadViewComponent members', () => {
       expect.stringContaining('you left the thread'),
       expect.anything(),
     );
+  });
+
+  describe('the sideways swipe', () => {
+    beforeEach(() => belowMembers(true));
+    afterEach(() => vi.unstubAllGlobals());
+
+    const direction = (fixture: { componentInstance: unknown }) =>
+      (
+        fixture.componentInstance as { swipeDirection: () => string }
+      ).swipeDirection();
+
+    it('replies to a reply that is not ours', async () => {
+      // The mirror of `MessageListBase.onRowSwipe`, hand-copied because this panel does not
+      // extend that class — which is exactly how `(longPress)` was once missed here.
+      const { fixture } = await build([msg('$1', '@ada:hs', 'a reply')]);
+      const cmp = fixture.componentInstance;
+
+      cmp.onRowSwipe(cmp.rows()[0]);
+
+      expect(cmp.replyingToId()).toBe('$1');
+      expect(cmp.editingId()).toBeNull();
+    });
+
+    it('edits a reply that is ours', async () => {
+      // The branch that had no coverage in EITHER dispatcher: both tests used somebody
+      // else's message, so only the reply path ever ran and deleting the edit branch left
+      // the suite green. It is the half the whole design is about — the affordance shows a
+      // pencil, and this is what has to happen when the reader lets go.
+      const { fixture } = await build([
+        { ...msg('$1', '@me:hs', 'mine'), isOwn: true },
+      ]);
+      const cmp = fixture.componentInstance;
+
+      cmp.onRowSwipe(cmp.rows()[0]);
+
+      expect(cmp.editingId()).toBe('$1');
+      expect(cmp.replyingToId()).toBeNull();
+    });
+
+    it('takes the direction from the preference when both guards pass', async () => {
+      // The positive control. Without one, a computed hard-coded to `() => 'off'` passes
+      // every other test in this block.
+      const { fixture } = await build([msg('$1', '@ada:hs', 'a reply')]);
+
+      expect(direction(fixture)).toBe('right');
+    });
+
+    it('is off above the members breakpoint', async () => {
+      // Above `members` the scroller does not claim the horizontal axis and the browser eats
+      // the drag after one `pointermove` — so arming there would be a gesture that cannot
+      // work. Meaningful only because the control above proves a non-`off` value is reachable.
+      belowMembers(false);
+      const { fixture } = await build([msg('$1', '@ada:hs', 'a reply')]);
+
+      expect(direction(fixture)).toBe('off');
+    });
+
+    it('is off when the platform is not a mobile one', async () => {
+      platform.mobile = false;
+      const { fixture } = await build([msg('$1', '@ada:hs', 'a reply')]);
+
+      expect(direction(fixture)).toBe('off');
+      platform.mobile = true;
+    });
   });
 
   it('closes its own action sheet when the panel is destroyed', async () => {

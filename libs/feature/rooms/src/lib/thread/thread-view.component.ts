@@ -20,7 +20,13 @@ import {
   type BatchOutcome,
   type BatchProgress,
 } from '../shared/send-media-batch';
+import {
+  HapticsService,
+  MessageGestureSettingsService,
+  isMobileOs,
+} from '@trinity/platform-native';
 import { MessageActionSheetService } from '../message-actions/message-action-sheet.service';
+import { type SwipeDirection } from '../message-row/message-row.component';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
@@ -55,7 +61,11 @@ import { MessageSourceService } from '../message-source/message-source.service';
 import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
 import { TrnIconComponent } from '@trinity/components/icon';
-import { scrollBehavior } from '@trinity/util/ui';
+import {
+  scrollBehavior,
+  BELOW_MEMBERS_QUERY,
+  mediaQuerySignal,
+} from '@trinity/util/ui';
 
 /** Group consecutive messages from the same sender within this window (Discord-style). */
 const GROUP_GAP_MS = 5 * 60 * 1000;
@@ -180,6 +190,45 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
     // thread that is no longer open.
     this.messageSheet.close(this);
     this.threads.closeThread();
+  }
+
+  /**
+   * Which way a thread reply is dragged to act on it.
+   *
+   * Read from the preference DIRECTLY, unlike the main timeline, whose page forces the
+   * gesture off while the drawer is open. This panel only exists while the drawer is open,
+   * so that rule would leave the gesture permanently dead here — on the one device it is
+   * for. The competition with the drawer's own close-drag is resolved at the row instead: an
+   * armed swipe stops the `pointerdown` from reaching it. See `armSwipe`.
+   *
+   * Still phones only, and for the same reason: above `max-width: 1099.98px` the scroller
+   * does not claim the horizontal axis and the browser eats the drag.
+   */
+  protected readonly swipeDirection = computed<SwipeDirection>(() =>
+    this.belowMembers() && isMobileOs() ? this.gestures.messageSwipe() : 'off',
+  );
+
+  private readonly gestures = inject(MessageGestureSettingsService);
+  private readonly haptics = inject(HapticsService);
+  private readonly belowMembers = mediaQuerySignal(
+    BELOW_MEMBERS_QUERY,
+    inject(DestroyRef),
+  );
+
+  /**
+   * A committed sideways drag on a thread reply: edit it if it can be edited, reply if not.
+   *
+   * Reads `rowCaps` rather than `isEditable` so the icon the reader saw and the action they
+   * get are the same value — the mirror of `MessageListBase.onRowSwipe`, which this panel
+   * cannot inherit because it does not extend that class.
+   */
+  onRowSwipe(row: MessageRow): void {
+    this.haptics.gestureCommitted();
+    if (this.rowCaps(row).editable) {
+      this.startEdit(row);
+      return;
+    }
+    this.startReply(row);
   }
 
   /**

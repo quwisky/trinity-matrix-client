@@ -8,6 +8,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  computed,
   ElementRef,
   Injector,
   OnDestroy,
@@ -59,6 +60,8 @@ import {
 } from '@trinity/data-access/timeline';
 import {
   HapticsService,
+  MessageGestureSettingsService,
+  isMobileOs,
   BackInterceptorService,
   FeatureFlagsService,
   ShellLayoutService,
@@ -80,6 +83,7 @@ import { VirtualMessageListComponent } from '../message-list/virtual-message-lis
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
 import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
+import { type SwipeDirection } from '../message-row/message-row.component';
 import { RoomShellStore } from './room-shell-store';
 import { ShellStatusService } from './shell-status.service';
 import { RoomShellViewModel } from './room-shell-view-model';
@@ -193,6 +197,42 @@ export class RoomsPage implements OnInit, OnDestroy {
     BELOW_MEMBERS_QUERY,
     inject(DestroyRef),
   );
+
+  /**
+   * Which way a message row is dragged to act on it, HERE and not in the list.
+   *
+   * The preference is only half the answer, and this page is the only place that knows the
+   * other halves — which is why it resolves the direction rather than passing the preference
+   * through.
+   *
+   * `store.rightPanel()` is the literal expression `[drawerOpen]` is bound to below, so the
+   * two cannot drift. It is NOT what stops the row gesture competing with the drawer: while
+   * a panel is open a `fixed inset-0` backdrop covers the viewport, so no `pointerdown`
+   * reaches a timeline row in that state at all. This clause is a mirror of the drawer's own
+   * arming condition, kept because a gesture that is off should be off for a stated reason
+   * rather than by a side effect of somebody else's markup.
+   *
+   * The thread panel is the deliberate exception and is handled at the row: it only EXISTS
+   * while the drawer is open, so this rule would make the gesture permanently dead there. It
+   * stops the `pointerdown` from reaching the drawer instead — see `armSwipe`.
+   *
+   * Phones only. `swipe-through` claims the horizontal axis on `.scroll` only under
+   * `max-width: 1099.98px`; above it the scroller claims nothing and the browser eats the
+   * drag after one `pointermove`. `isMobileOs()` alone would not do — it is true for Android
+   * tablets and iPads, which run wider than that in landscape.
+   */
+  protected readonly messageSwipeDirection = computed<SwipeDirection>(() => {
+    if (!this.membersAreDrawer() || !isMobileOs()) {
+      return 'off';
+    }
+    if (this.store.rightPanel()) {
+      return 'off';
+    }
+    return this.gestures.messageSwipe();
+  });
+
+  /** Which way a message row is dragged, as the reader set it. */
+  private readonly gestures = inject(MessageGestureSettingsService);
 
   /** Persisted pane widths, bound into the shell's CSS custom properties. */
   readonly layout = inject(ShellLayoutService);
