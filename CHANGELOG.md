@@ -68,6 +68,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Menus, tooltips and the indeterminate progress bar now hold still on their own for
+  reduced motion.** They already did, but only because a blanket rule elsewhere in the app
+  was catching them; each now asks for it directly, so the behaviour survives the component
+  being used anywhere else. A progress bar that knows how far along it is still relies on
+  that blanket to stop its fill sliding.
+
 - **Clicking a mention opens the person's card beside it**, instead of a window centred
   over the conversation the mention is part of — so you can still read what was said while
   you look at who said it. On a phone it stays centred, where there is no room beside

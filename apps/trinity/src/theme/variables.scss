@@ -487,12 +487,17 @@
 // This block used to say `global.scss`'s blanket `!important` override "becomes deletable
 // when the last literal duration is migrated". They are all migrated now, and it is NOT
 // deletable — the reasoning missed that the override also covers CSS this file does not
-// own. `tw-animate-css` ships no reduced-motion guard of its own, and the vendored kit is
-// inconsistent about adding one: `hlm-dropdown-menu` writes `motion-safe:animate-in`, while
-// `hlm-select-content` writes a bare `data-open:animate-in` and the progress indicator's
-// `animate-indeterminate` is unguarded. Until those carry their own guards, the blanket is
-// what stops a select panel animating open for someone who asked it not to — and, per the
-// note above, what stops the infinite ones spinning.
+// own. `tw-animate-css` ships no reduced-motion guard of its own.
+// The kit used to be the other half of that argument: `hlm-select-content` and
+// `hlm-tooltip` wrote bare `data-open:animate-in`, and the progress indicator's
+// `animate-indeterminate` was unguarded, so the blanket was the only thing stopping a
+// select panel animating open for someone who asked it not to. Those three now carry
+// their own guards (`scripts/kit-reduced-motion.spec.mjs` keeps them honest), so the
+// blanket is no longer load-bearing FOR THEM.
+// It is still not deletable, though. `tw-animate-css`'s utilities are reachable from any template
+// without a `motion-safe:` prefix, and nothing prevents the next one being written bare —
+// the guard covers `libs/spartan/**`, not the app. And, per the note above, the blanket is
+// what stops the infinite animations spinning: collapsing a duration does not end them.
 @media (prefers-reduced-motion: reduce) {
   :root {
     --trinity-duration-fast: 0.01ms;
