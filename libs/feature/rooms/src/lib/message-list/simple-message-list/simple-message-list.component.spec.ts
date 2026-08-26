@@ -64,6 +64,34 @@ function eventRow(id: string, summary: string, ts: number): MessageView {
 const notAtBottom = (cmp: SimpleMessageListComponent): boolean =>
   (cmp as unknown as { notAtBottom: () => boolean }).notAtBottom();
 
+/**
+ * An element's text with runs of whitespace collapsed.
+ *
+ * The typing row interleaves its sentence with empty dot spans, so `textContent` carries
+ * interior newlines that a bare `.trim()` only happens to survive.
+ */
+const text = (el: Element | null | undefined): string =>
+  (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
+
+/**
+ * The element that follows a divider in the timeline.
+ *
+ * Dividers are a component now, so the `.day-divider` / `.new-divider` element the tests
+ * query sits inside a `<trn-timeline-divider>` host. The host is `display: contents`, so
+ * nothing moves on screen — but it IS in the DOM, and the row after the divider is the
+ * host's sibling rather than the div's. Walking out to the host keeps these assertions
+ * about timeline order rather than about which element happens to wrap what.
+ */
+const afterDivider = (el: Element | null | undefined): Element | null => {
+  const next =
+    (el?.closest('trn-timeline-divider') ?? el)?.nextElementSibling ?? null;
+  // Unwrap the next divider too, so a caller reading `data-testid` sees the divider itself
+  // rather than the host that carries it. A message row is returned untouched.
+  return next?.matches('trn-timeline-divider')
+    ? (next.firstElementChild ?? next)
+    : next;
+};
+
 describe('SimpleMessageListComponent', () => {
   it('renders a row per message and groups consecutive senders', async () => {
     const { container } = await render(SimpleMessageListComponent, {
@@ -686,30 +714,22 @@ describe('SimpleMessageListComponent', () => {
       expect(reacted).toBe(false);
     });
 
-    it('derives the typing label from the typing member names', async () => {
-      const { fixture } = await render(SimpleMessageListComponent, {
-        inputs: { typingNames: [] },
-        providers: [MockProvider(TrnAlertService)],
-      });
-      const cmp = fixture.componentInstance;
-      expect(cmp.typingLabel()).toBe('');
-
-      fixture.componentRef.setInput('typingNames', ['Alice', 'Bob']);
-      fixture.detectChanges();
-      expect(cmp.typingLabel()).toBe('Alice and Bob are typing…');
-    });
-
-    it('shows the typing row only while someone is typing', async () => {
+    // The detail lives in `typing-indicator.component.spec.ts`; what the list owes is the
+    // wiring — its own typingNames input reaching the child that renders them.
+    it('feeds the typing names to the indicator', async () => {
       const { fixture, container } = await render(SimpleMessageListComponent, {
-        inputs: { typingNames: ['Alice'] },
+        inputs: { typingNames: ['Alice', 'Bob'] },
         providers: [MockProvider(TrnAlertService)],
       });
-      const indicator = () => container.querySelector('.typing-indicator');
-      expect(indicator()?.textContent?.trim()).toBe('Alice is typing…');
+      expect(text(container.querySelector('.typing-indicator'))).toBe(
+        'Alice and Bob are typing',
+      );
 
       fixture.componentRef.setInput('typingNames', []);
       fixture.detectChanges();
-      expect(indicator()).toBeNull();
+      expect(container.querySelector('.typing-indicator')).toBeNull();
+      // The slot stays: it is what keeps the scroll region from resizing.
+      expect(container.querySelector('.typing-slot')).not.toBeNull();
     });
 
     it('routes a submit to editMessage while editing, then clears the target', async () => {
@@ -893,7 +913,7 @@ describe('SimpleMessageListComponent', () => {
       expect(divider).not.toBeNull();
       // The divider sits immediately before the $2 row.
       expect(
-        divider?.nextElementSibling
+        afterDivider(divider)
           ?.querySelector('[data-mid]')
           ?.getAttribute('data-mid'),
       ).toBe('$2');
@@ -970,7 +990,7 @@ describe('SimpleMessageListComponent', () => {
       // On the day-2 row, not on the stranded one: the malformed row inherits the day
       // around it rather than opening one of its own.
       expect(
-        found[0]?.nextElementSibling
+        afterDivider(found[0])
           ?.querySelector('[data-mid]')
           ?.getAttribute('data-mid'),
       ).toBe('$2');
@@ -1006,7 +1026,7 @@ describe('SimpleMessageListComponent', () => {
       ]);
       expect(
         found.map((el) =>
-          el.nextElementSibling
+          afterDivider(el)
             ?.querySelector('[data-mid]')
             ?.getAttribute('data-mid'),
         ),
@@ -1034,10 +1054,10 @@ describe('SimpleMessageListComponent', () => {
 
       // "Today / New messages / the row" reads as a sentence; the other order says the day
       // changed after the unread boundary.
-      const unread = separators(container)[0]?.nextElementSibling;
+      const unread = afterDivider(separators(container)[0]);
       expect(unread?.getAttribute('data-testid')).toBe('new-messages-divider');
       expect(
-        unread?.nextElementSibling
+        afterDivider(unread)
           ?.querySelector('[data-mid]')
           ?.getAttribute('data-mid'),
       ).toBe('$2');

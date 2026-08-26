@@ -19,8 +19,31 @@ export const routes: Routes = [
     loadComponent: () =>
       import('@trinity/feature/auth').then((m) => m.SsoCallbackPage),
   },
+  // `/rooms` and `/rooms/<segment>` as ONE route, via a matcher rather than two entries.
+  //
+  // Two sibling entries sharing a `loadComponent` do NOT share a component instance: Angular's
+  // DefaultRouteReuseStrategy is `future.routeConfig === curr.routeConfig`, an identity check on
+  // the Route OBJECT, so two entries are two configs and every open-a-room and close-back-to-the
+  // -list would destroy `RoomsPage` and rebuild it. That page's `providers` hold `RoomShellStore`
+  // and the twelve shell coordinators, so a rebuild resets the selected space, the sidebar view
+  // and the room filter — clicking a room inside a space would snap the sidebar back to Recent.
+  // One config means one `routeConfig`, so the instance is reused across both URLs.
+  //
+  // The segment is base64url, not the raw room id — see `encodeRoomSegment`. A raw id ends in a
+  // dotted server name, which both SPA fallbacks refuse to answer with index.html.
   {
-    path: 'rooms',
+    matcher: (segments) => {
+      if (segments.length === 0 || segments[0].path !== 'rooms') {
+        return null;
+      }
+      if (segments.length === 1) {
+        return { consumed: segments };
+      }
+      if (segments.length === 2) {
+        return { consumed: segments, posParams: { roomId: segments[1] } };
+      }
+      return null;
+    },
     canActivate: [authGuard],
     loadComponent: () =>
       import('@trinity/feature/rooms').then((m) => m.RoomsPage),

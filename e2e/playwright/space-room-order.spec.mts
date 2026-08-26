@@ -1,4 +1,3 @@
-import { createHmac } from 'node:crypto';
 import {
   test,
   expect,
@@ -6,6 +5,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // Covers issue #34: how rooms are ordered inside a space.
 //
@@ -25,38 +25,12 @@ import { login, synapseSession, type SynapseSession } from './support/app.mts';
 // web e2e specs.
 const session = synapseSession();
 
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
 const HS_SERVER_NAME = 'localhost';
 
 interface ApiUser {
   token: string;
   userId: string;
   headers: { Authorization: string };
-}
-
-/** Register a user via Synapse's shared-secret admin endpoint (idempotent). */
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const nonceRes = await request.get(
-    `${SYNAPSE_HTTP}/_synapse/admin/v1/register`,
-  );
-  const { nonce } = await nonceRes.json();
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
 }
 
 async function apiLogin(
@@ -196,6 +170,24 @@ async function chooseSort(page: Page, option: string): Promise<void> {
   await page.getByTestId('space-sort').click();
   const item = page.getByTestId(option);
   await item.waitFor({ state: 'visible', timeout: 15_000 });
+
+  // The tick on whichever row is CURRENTLY selected has to be visible, and this is the only
+  // place in the suite where one is on screen. It reads a real `[data-checked]` presence
+  // attribute through `group-data-checked/dropdown-menu-radio:opacity-100`, which a theme
+  // remap onto `data-state` silently switches off for every menu in the app — emitting a
+  // rule that looks correct and matches nothing. jsdom cannot see it (no CSS) and the
+  // existing unit test asserts only `hasAttribute('data-checked')`, which stays true.
+  const checked = page.locator('[data-checked]:not([data-checked="false"])');
+  await expect(checked.first()).toBeVisible({ timeout: 5_000 });
+  await expect
+    .poll(() =>
+      checked
+        .first()
+        .locator('ng-icon')
+        .evaluate((icon) => getComputedStyle(icon.parentElement!).opacity),
+    )
+    .toBe('1');
+
   await item.click();
   await expect(item).toHaveCount(0); // the overlay closed
 }

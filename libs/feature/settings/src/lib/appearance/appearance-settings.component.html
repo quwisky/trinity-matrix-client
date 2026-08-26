@@ -37,7 +37,31 @@
   app keep a fixed size for now.
 </p>
 
+<h2
+  id="appearance-density-heading"
+  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+>
+  Density
+</h2>
+<div class="px-4 py-2">
+  <trn-select
+    data-testid="density-select"
+    aria-labelledby="appearance-density-heading"
+    placeholder="Select a density"
+    triggerClass="w-full"
+    [options]="densityOptions"
+    [value]="theme.density()"
+    (valueChange)="onDensityChange($event)"
+  />
+</div>
+<p class="block px-4 py-2 text-13 text-muted-foreground">
+  Compact tightens the spacing in the message list so more of a conversation
+  fits on screen. Other parts of the app keep their spacing for now.
+</p>
+
 <trn-code-appearance-block />
+
+<trn-message-gestures-block />
 
 <h2
   id="appearance-palette-heading"
@@ -142,7 +166,7 @@
   class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
   data-testid="timeline-show-membership"
 >
-  <trn-checkbox
+  <trn-switch
     [checked]="systemLines.showMembership()"
     (checkedChange)="systemLines.setShowMembership($event)"
   />
@@ -156,7 +180,7 @@
   class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
   data-testid="timeline-show-profile"
 >
-  <trn-checkbox
+  <trn-switch
     [checked]="systemLines.showProfile()"
     (checkedChange)="systemLines.setShowProfile($event)"
   />
@@ -167,7 +191,7 @@
   class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
   data-testid="timeline-show-room-changes"
 >
-  <trn-checkbox
+  <trn-switch
     [checked]="systemLines.showRoomChanges()"
     (checkedChange)="systemLines.setShowRoomChanges($event)"
   />
@@ -189,14 +213,28 @@
   class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
   data-testid="composer-show-toolbar"
 >
-  <trn-checkbox
+  <trn-switch
     [checked]="composer.showFormattingToolbar()"
     (checkedChange)="composer.setShowFormattingToolbar($event)"
   />
-  Show the formatting toolbar
+  Keep the formatting toolbar open
 </label>
 <p class="block px-4 pb-4 text-13 text-muted-foreground">
-  The row of bold, italic and link buttons above the message box. Hiding it only
-  takes away the buttons — the keyboard shortcuts still work, and Shift+Enter
-  still continues a list.
+  The row of bold, italic and link buttons above the message box, kept in view
+  whether or not you are using it.
+</p>
+<label
+  class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
+  data-testid="composer-format-on-selection"
+>
+  <trn-switch
+    [checked]="composer.formatOnSelection()"
+    (checkedChange)="composer.setFormatOnSelection($event)"
+  />
+  Show it when you select text
+</label>
+<p class="block px-4 pb-4 text-13 text-muted-foreground">
+  With the toolbar closed, selecting some text brings it up for as long as the
+  selection lasts. Turn both off and the buttons never appear — the keyboard
+  shortcuts still work either way, and Shift+Enter still continues a list.
 </p>

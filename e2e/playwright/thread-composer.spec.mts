@@ -1,10 +1,4 @@
-import { createHmac } from 'node:crypto';
-import {
-  test,
-  expect,
-  type APIRequestContext,
-  type Page,
-} from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import {
   clickRowToolbar,
   login,
@@ -12,37 +6,13 @@ import {
   waitForSent,
   type SynapseSession,
 } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // Covers the thread composer (data-testid="thread-view"): the room-scoped actions
 // (poll/location/voice) are hidden there because they post to the main room,
 // not the thread; and a slash command typed in a thread is parsed (`/me waves` sends an
 // emote "waves", not the literal text). Needs a Synapse homeserver (Docker); self-skips.
 const session = synapseSession();
-
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
-
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const { nonce } = await request
-    .get(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`)
-    .then((r) => r.json());
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
-}
 
 async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();
@@ -124,5 +94,71 @@ test.describe('Thread composer', () => {
     ).toBeVisible({ timeout: 20_000 });
     // The command was interpreted, not sent as literal text.
     await expect(thread).not.toContainText('/me waves');
+  });
+
+  // The thread panel is the one place the indicator sits in a NON-flex parent
+  // (`.thread__footer` is a plain block), so it is where a layout assumption carried over
+  // from the two lists would break. Measured in a real engine because jsdom applies no
+  // CSS and cannot see a collapsed slot at all.
+  test('reserves the typing row space in the thread panel too', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(150_000);
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}tht`;
+    const user = `tht-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Thread ${runId}`;
+    const rootBody = `root ${runId}`;
+
+    await registerUser(request, user, pass);
+    const token = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user },
+          password: pass,
+        },
+      })
+      .then((r) => r.json())
+      .then((j) => j.access_token as string);
+    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { name: roomName, preset: 'private_chat' },
+    });
+
+    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await openRoom(page, roomName);
+
+    const composer = page.getByTestId('composer-input');
+    await composer.fill(rootBody);
+    await composer.press('Enter');
+    const row = page.locator('.scroll .msg[data-mid]', { hasText: rootBody });
+    await expect(row.first()).toBeVisible({ timeout: 20_000 });
+    await waitForSent(row.first());
+    await clickRowToolbar(
+      row.first(),
+      row.first().getByRole('button', { name: 'Reply in thread' }),
+    );
+
+    const thread = page.getByTestId('thread-view');
+    await expect(thread).toBeVisible({ timeout: 15_000 });
+
+    // The HOST, not `.typing-slot`, and against a real threshold rather than `> 0`. The slot
+    // is a block child that generates its own box whatever the host does, and with the
+    // reservation gone it still measures its own 6px of padding — so `> 0` on either element
+    // passes on a broken tree, which is what the first version of this test did.
+    //
+    // A reserved row is one 1.2rem line plus 6px ≈ 25px. Losing `min-height` collapses it to
+    // that 6px, so 20px separates the two with room for font-metric drift.
+    const idle = await thread
+      .locator('trn-typing-indicator')
+      .evaluate((element) => element.getBoundingClientRect().height);
+
+    expect(idle).toBeGreaterThan(20);
+
+    // And it does not announce: the list behind it carries the same room-scoped names.
+    await expect(thread.getByTestId('typing-status')).toHaveCount(0);
   });
 });

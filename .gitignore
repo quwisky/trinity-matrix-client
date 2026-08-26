@@ -93,3 +93,10 @@ Thumbs.db
 .claude/settings.local.json
 .angular
 .env
+
+# NOT where `pnpm storybook:build` writes — that goes to `dist/storybook/`, already covered
+# by `/dist` above, because an artifact inside `libs/` breaks three globs that stop at
+# `{apps,libs}` (see the note in libs/components/storybook-host/project.json). This covers
+# only a bare `storybook build` invoked by hand, whose default output dir is `./storybook-static`
+# relative to wherever it was run — hence unanchored.
+storybook-static

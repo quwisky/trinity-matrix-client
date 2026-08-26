@@ -1,4 +1,3 @@
-import { createHmac } from 'node:crypto';
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import {
   clickRowToolbar,
@@ -6,6 +5,7 @@ import {
   synapseSession,
   type SynapseSession,
 } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // Covers the pin-messages feature end to end: a message's hover toolbar's ⋯
 // menu (`data-testid="msg-more"`) offers "Pin message" (`data-testid="msg-pin"`),
@@ -30,11 +30,6 @@ import {
 // authenticated web e2e specs.
 const session = synapseSession();
 
-// Direct (no-TLS) Synapse admin endpoint — same constant as the other e2e
-// helpers (e2e/features/rooms.mjs, search.mjs, unread-badges.spec.mts).
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
-
 const OTHER_BODY = 'just chatting';
 const PIN_BODY = 'pin me please';
 const REPEAT_PIN_BODY = 'pin me twice please';
@@ -57,31 +52,6 @@ interface ApiUser {
   token: string;
   userId: string;
   headers: { Authorization: string };
-}
-
-/** Register a user via Synapse's shared-secret admin endpoint (idempotent —
- * "already exists" is treated as success, mirrors rooms.mjs/search.mjs). */
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const nonceRes = await request.get(
-    `${SYNAPSE_HTTP}/_synapse/admin/v1/register`,
-  );
-  const { nonce } = await nonceRes.json();
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
 }
 
 async function apiLogin(
@@ -394,9 +364,10 @@ test.describe('Pin messages', () => {
     await expect(targetRow.first()).toHaveClass(/msg--flash/, {
       timeout: 1_500,
     });
-    // The panel's dialog resolves on jump, closing it — and PinnedPanelService's
-    // re-entrancy guard (`this.open`) only clears once that resolve's `finally`
-    // runs, so wait for it to be fully hidden before re-opening it below.
+    // Picking a row closes the slot, so wait for it to be fully hidden before re-opening
+    // it below. (It used to be a dialog whose `openAndWait` resolved on jump, with a
+    // re-entrancy guard that cleared in the resolve's `finally`; the slot needs no guard
+    // because there is one of it.)
     await expect(heading).toBeHidden({ timeout: 10_000 });
     await expect(targetRow.first()).toBeInViewport({ timeout: 15_000 });
 
@@ -421,5 +392,46 @@ test.describe('Pin messages', () => {
     });
     await expect(heading).toBeHidden({ timeout: 10_000 });
     await expect(targetRow.first()).toBeInViewport({ timeout: 15_000 });
+  });
+
+  test('the panel takes its own width, and only offers a divider where one means something', async ({
+    page,
+    request,
+  }) => {
+    // Two things the panel's geometry has to get right, both invisible to every unit test
+    // and to the rest of this suite, which only ever runs at the default 1280px viewport.
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}pg`;
+    const { reader, roomName } = await seedPinRoom(request, hs, runId);
+
+    await login(page, reader);
+    await page.getByTestId('rail-rooms').click();
+    const channel = page.locator('.channel', { hasText: roomName });
+    await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
+    await channel.first().click();
+    await expect(page.locator('.scroll')).toBeVisible({ timeout: 15_000 });
+
+    // 1. The slot is seeded to the member roster at this width, and the roster is a fixed
+    //    240px navigation column that does not read `--shell-right-panel-w`. A divider there
+    //    highlights and moves its value while the pane beside it stays put — and it is the
+    //    first divider anyone meets.
+    const divider = page.getByRole('separator', { name: 'Panel width' });
+    await expect(page.locator('.chat-members')).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(divider).toHaveCount(0);
+
+    await page.getByTestId('open-pinned').click();
+    const panel = page.getByTestId('pinned-panel');
+    await expect(panel).toBeVisible({ timeout: 10_000 });
+    await expect(divider).toBeVisible();
+
+    // 2. Below the `members` breakpoint the panel is an overlay drawer, and it is NOT the
+    //    240px one the roster uses: a thread or a list of search results in 240px is not
+    //    readable. It was full-screen as a dialog and has to stay so.
+    await page.setViewportSize({ width: 1000, height: 800 });
+    await expect(divider).toBeHidden();
+    const width = (await panel.boundingBox())?.width ?? 0;
+    expect(width).toBeGreaterThan(400);
   });
 });

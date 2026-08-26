@@ -46,7 +46,7 @@ plainly rather than leaving it unticked in silence. -->
 ## Checklist
 
 - [ ] Commits follow Conventional Commits (`type(scope): subject`) — the `commit-msg` hook enforces it
-- [ ] `CHANGELOG.md` has an entry under `## [Unreleased]` (any user-visible change; see `.claude/rules/docs/changelog.md`)
+- [ ] `CHANGELOG.md` has an entry under `## [Unreleased]` (any user-visible change; see `.agents/rules/docs/changelog.md`)
 - [ ] Docs updated if setup, commands or a public API changed (README / `docs/*`)
 - [ ] No new component imports `matrix-js-sdk` directly — SDK access stays in a `@trinity/data-access/*` service
 - [ ] No secrets, access tokens, recovery keys or real message content in the diff, tests or fixtures

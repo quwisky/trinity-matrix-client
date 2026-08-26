@@ -1,4 +1,3 @@
-import { createHmac } from 'node:crypto';
 import {
   test,
   expect,
@@ -11,6 +10,7 @@ import {
   waitForSent,
   type SynapseSession,
 } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // Covers the markdown render path end to end, through the REAL composer so the wire
 // format is exercised, not just the rendering:
@@ -20,31 +20,6 @@ import {
 //   - fenced code is syntax-highlighted, and follows the theme
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = synapseSession();
-
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
-
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const { nonce } = await request
-    .get(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`)
-    .then((r) => r.json());
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
-}
 
 async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();
@@ -271,15 +246,39 @@ test.describe('Message markdown', () => {
       // from the block's edges and the offsets the stylesheet sets.
       const captionBottom = block.bottom - parseFloat(after.bottom || '0');
       const captionTop = captionBottom - parseFloat(after.fontSize || '0');
+      const captionLeft = block.left + parseFloat(after.left || '0');
+      // Generated content has no node, so its width is measured the way the browser would:
+      // the same text in the same font, through a canvas. Estimating it as "the whole block"
+      // would guarantee a horizontal overlap with anything right-aligned and make the
+      // assertion unfalsifiable in the direction that matters.
+      const ctx = document.createElement('canvas').getContext('2d');
+      if (!ctx) {
+        // Fail loudly. Defaulting the width to 0 here would shrink the caption to a point
+        // and quietly weaken the intersection test below, which is the failure mode this
+        // whole measurement exists to avoid.
+        throw new Error('no 2d context to measure the caption with');
+      }
+      ctx.font = after.font || `${after.fontSize} ${after.fontFamily}`;
+      const captionWidth = ctx.measureText(
+        pre.getAttribute('language') ?? '',
+      ).width;
+      const captionRight = captionLeft + captionWidth;
       return {
         isContinuation: row.classList.contains('msg--cont'),
-        gap: captionTop - toolbar.bottom,
+        // Do the two boxes overlap at all? Asserting non-intersection rather than a vertical
+        // gap holds however they are separated — the caption moved to the block's left when
+        // the toolbar moved inside the row, and a vertical-gap assertion would have called
+        // that a regression when it is the fix.
+        overlaps:
+          captionLeft < toolbar.right &&
+          captionRight > toolbar.left &&
+          captionTop < toolbar.bottom &&
+          captionBottom > toolbar.top,
       };
     });
 
     expect(overlap?.isContinuation).toBe(true);
-    // Positive gap = the caption starts below the toolbar ends.
-    expect(overlap?.gap).toBeGreaterThan(0);
+    expect(overlap?.overlaps).toBe(false);
   });
 
   test('syntax-highlights a fenced block, in the theme’s colours', async ({

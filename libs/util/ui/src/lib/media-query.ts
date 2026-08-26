@@ -15,6 +15,38 @@ export const MD_QUERY = '(min-width: 768px)';
 export const BELOW_MD_QUERY = '(max-width: 767.98px)';
 
 /**
+ * The second boundary the rooms shell turns on: whether there is room for a third column.
+ *
+ * At or above it the member list is a static column beside the timeline; below it the same
+ * list is an overlay drawer over the timeline. Named `members` rather than by its width
+ * because the number is a consequence of what has to fit — a 72px rail, a 280px room list, a
+ * timeline wide enough to read, and a 240px member column — not a decision of its own.
+ *
+ * Paired with the Tailwind variant of the same name (`--breakpoint-members` in
+ * `apps/trinity/src/theme/spartan.css`) and with `$below-members` in the rooms feature's
+ * shared SCSS. Media queries cannot read a custom property, so the value genuinely exists
+ * three times; `scripts/breakpoints.spec.mjs` is what stops the three drifting apart.
+ *
+ * Only the BELOW direction has app-code callers today — every branch on this boundary wants
+ * the answer whose `false` is the safe fallback, which is the other constant. This one is
+ * exported anyway for the same reason `MD_QUERY` is: it is the definitional anchor the guard
+ * compares `--breakpoint-members` against, and a pair with one half missing is the shape
+ * that lets a min and a max drift apart unnoticed.
+ */
+export const MEMBERS_QUERY = '(min-width: 1100px)';
+
+/**
+ * The exact complement of {@link MEMBERS_QUERY}, on the same `.02px` convention as
+ * {@link BELOW_MD_QUERY} — and the same convention Tailwind's own `max-*` variants use, so
+ * `max-members:` and this constant describe one boundary rather than two a pixel apart.
+ *
+ * Note this moved the boundary by a pixel: the hand-rolled query it replaces was
+ * `(max-width: 1100px)`, which made 1100px itself the drawer layout. It is now the column,
+ * matching `MEMBERS_QUERY` and the Tailwind variant.
+ */
+export const BELOW_MEMBERS_QUERY = '(max-width: 1099.98px)';
+
+/**
  * A signal tracking `query`, kept live until `destroyRef` fires — so rotating a phone or
  * dragging a window across the breakpoint re-renders, rather than stranding the layout the
  * page happened to load with.
@@ -50,4 +82,24 @@ export function mediaQuerySignal(
     destroyRef.onDestroy(() => list.removeEventListener('change', onChange));
   }
   return matches.asReadonly();
+}
+
+/**
+ * Whether `query` matches RIGHT NOW, with no subscription and no lifetime to manage.
+ *
+ * The one-shot counterpart to {@link mediaQuerySignal}, and the difference is a behavioural
+ * decision rather than a convenience: a value read once SEEDS a state the user can then
+ * change, while a signal keeps overwriting it. `RoomShellStore.membersOpen` is the seed case
+ * — it decides whether the member column starts open, and a live signal there would reopen
+ * the column on every rotation across the boundary, stomping an explicit close.
+ *
+ * `matchMedia` is feature-detected on the same terms as the signal above: a context without
+ * it reads `false`, so callers must pick the direction whose `false` is the safe fallback.
+ */
+export function matchesQuery(query: string): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia(query).matches
+  );
 }

@@ -18,6 +18,7 @@ import {
   HlmDropdownMenuSubTrigger,
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
+import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { AvatarComponent, type AccountBadge } from '@trinity/components/avatar';
 import { unreadBadgeLabel } from '../../shared/unread-badge';
 import { RoomsService, type RoomSummary } from '@trinity/data-access/rooms';
@@ -26,7 +27,7 @@ import {
   type RoomNotifyMode,
 } from '@trinity/data-access/notifications';
 import { PresenceService } from '@trinity/data-access/profile';
-import { type PresenceState } from '@trinity/util/matrix';
+import { formatTypingNotice, type PresenceState } from '@trinity/util/matrix';
 import { type PendingInvite } from '@trinity/data-access/invites';
 import { TrnIconComponent } from '@trinity/components/icon';
 
@@ -50,6 +51,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
   templateUrl: 'sidebar-room-list.component.html',
   styleUrls: ['sidebar-room-list.component.scss'],
   imports: [
+    EmptyStateComponent,
     AvatarComponent,
     TrnIconComponent,
     NgTemplateOutlet,
@@ -72,6 +74,17 @@ export class SidebarRoomListComponent {
   readonly rooms = input<RoomSummary[]>([]);
   readonly invites = input<readonly PendingInvite[]>([]);
   readonly activeRoomId = input<string | null>(null);
+  /**
+   * Who is typing, per room id, excluding the local user.
+   *
+   * An INPUT and not a `RoomsService` read: `typingByRoom` is an instance field, which
+   * ng-mocks does not reflect, so a bare `MockProvider(RoomsService)` would leave it
+   * undefined and throw here on every render — and one helper in
+   * `channel-sidebar.component.spec.ts` backs 85 of them.
+   */
+  readonly typingByRoom = input<Readonly<Record<string, readonly string[]>>>(
+    {},
+  );
   readonly activeUserId = input<string | null>(null);
   readonly spaceActive = input(false);
   readonly accountBadges = input<ReadonlyMap<string, AccountBadge>>(new Map());
@@ -133,6 +146,11 @@ export class SidebarRoomListComponent {
 
   badgeFor(accountId: string): AccountBadge | null {
     return this.accountBadges().get(accountId) ?? null;
+  }
+
+  /** "X is typing" for a room's preview line, or `''` when nobody in it is. */
+  typingIn(roomId: string): string {
+    return formatTypingNotice(this.typingByRoom()[roomId] ?? []);
   }
 
   presenceOf(room: RoomSummary): PresenceState | null {

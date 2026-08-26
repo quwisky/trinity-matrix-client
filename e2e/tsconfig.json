@@ -14,6 +14,11 @@
     "lib": ["ES2022", "DOM"],
     "types": ["node"],
     "strict": true,
+    // The 81-file registration sweep left nine dead `type APIRequestContext` imports and
+    // nothing caught them: the scoped ESLint block enables `no-floating-promises` and the
+    // `.only` ban, not `no-unused-vars`. A refactor of that size deserves a gate that
+    // notices what it orphans.
+    "noUnusedLocals": true,
     "noImplicitOverride": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,

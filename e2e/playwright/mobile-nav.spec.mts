@@ -1,6 +1,6 @@
-import { createHmac } from 'node:crypto';
 import { test, expect, type Page } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // Node's fetch (the CS-API room seeding below) must accept the disposable
 // Synapse + Caddy harness's self-signed cert — same bypass global-setup applies
@@ -26,8 +26,6 @@ const ROOM_NAME = `Mobile drawer ${Date.now()}`;
 // timeline-virtualization) that seed rooms into it, so under full-suite load its
 // initial /sync was slow enough that ROOM_NAME took >30s (sometimes >90s) to appear —
 // the root cause of this file's flakiness. A fresh user syncs a single room, fast.
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
 const runId = `${Date.now().toString(36)}mn`;
 const MOBILE_USER = `mobile-user-${runId}`;
 const MOBILE_PASS = `${MOBILE_USER}-pass`;
@@ -38,27 +36,6 @@ const mobileSession: SynapseSession = {
   pass: MOBILE_PASS,
 };
 const ROOM_ATTACH_TIMEOUT = 30_000;
-
-/** Register a fresh user via Synapse's shared-secret admin API (idempotent). */
-async function registerUser(username: string, password: string): Promise<void> {
-  const { nonce } = await fetch(
-    `${SYNAPSE_HTTP}/_synapse/admin/v1/register`,
-  ).then((r) => r.json());
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await fetch(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nonce, username, password, admin: false, mac }),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status} ${text}`);
-    }
-  }
-}
 
 /** CS-API password login (bypasses the UI) — returns the access token + user id. */
 async function apiLogin(
@@ -159,8 +136,14 @@ test.describe('Mobile navigation (separate list/chat pages)', () => {
 
   // Register a dedicated user and seed its single room once for the whole file, so
   // every test logs into an account whose initial sync is tiny (and therefore fast).
-  test.beforeAll(async () => {
-    await registerUser(MOBILE_USER, MOBILE_PASS);
+  // `request` IS available here. Playwright provisions it for the hook and disposes it at
+  // hook end — the documented restriction is only that the SAME context cannot be carried
+  // into a test (node_modules/playwright/lib/index.js: "Fixture { request } from beforeAll
+  // cannot be reused in a test"), and nothing here carries it. An earlier version of this
+  // file claimed the fixture did not exist in `beforeAll` and kept a private `fetch`-based
+  // copy of the registration routine on that basis; the claim was wrong.
+  test.beforeAll(async ({ request }) => {
+    await registerUser(request, MOBILE_USER, MOBILE_PASS);
     const { token, userId } = await apiLogin(
       mobileSession.hs as string,
       MOBILE_USER,

@@ -83,6 +83,41 @@ test.describe('Settings', () => {
       'aria-current',
       'page',
     );
+
+    // Two panes SIDE BY SIDE, and the active link visibly marked. Both used to come from
+    // `settings.page.scss` media queries and now come from md-prefixed utilities, which
+    // jsdom cannot evaluate at all — it applies no cascade and no media queries, so the
+    // unit suite can only see that a class string is present. Measured here instead.
+    const nav = page.locator('nav[aria-label="Settings sections"]');
+    const navBox = await nav.boundingBox();
+    const detailBox = await page
+      .locator('section:has(> router-outlet), section')
+      .first()
+      .boundingBox();
+    expect(navBox).not.toBeNull();
+    expect(detailBox).not.toBeNull();
+    // Beside, not stacked: the detail starts after the nav ends.
+    expect(detailBox!.x).toBeGreaterThanOrEqual(navBox!.x + navBox!.width - 1);
+    expect(navBox!.width).toBe(240);
+
+    // The mobile drill-in chevron is suppressed in the sidebar — and it is suppressed by
+    // NOT BEING RENDERED, which is why this asserts absence rather than a computed style.
+    // It was `md:hidden` first, and that class is inert here: Tailwind's utilities live in
+    // `@layer utilities` while a `trn-*` component's own `:host { display: … }` is
+    // unlayered, and an unlayered author declaration beats a layered one whatever the
+    // specificity. Chromium reported `flex` with the class applied.
+    await expect(
+      page
+        .getByTestId('settings-nav-profile')
+        .locator('trn-icon[name="chevron-right"]'),
+    ).toHaveCount(0);
+
+    // The active cue is an inset accent bar, and it has to differ from plain hover —
+    // which uses the same background token, so background alone would say nothing.
+    const shadow = await page
+      .getByTestId('settings-nav-profile')
+      .evaluate((el) => getComputedStyle(el).boxShadow);
+    expect(shadow).not.toBe('none');
   });
 
   test('desktop: back leaves settings without retracing visited sections', async ({
@@ -105,6 +140,92 @@ test.describe('Settings', () => {
 
     await page.getByTestId('theme-light').click();
     await expect.poll(() => hasDarkPalette(page)).toBe(false);
+  });
+
+  test('compact density tightens the spacing scale itself', async ({
+    page,
+  }) => {
+    await openSection(page, 'appearance');
+
+    const spaceToken = () =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue('--trinity-space-5')
+          .trim(),
+      );
+    const densityAttr = () =>
+      page.evaluate(() =>
+        document.documentElement.getAttribute('data-density'),
+      );
+
+    // The default leaves no attribute, and the scale is the 4px rhythm's 16px step.
+    expect(await densityAttr()).toBeNull();
+    expect(await spaceToken()).toBe('16px');
+
+    const trigger = page.getByTestId('density-select').locator('button');
+    await trigger.click();
+    await page.getByTestId('density-compact').click();
+
+    // The TOKEN moves, not a component override — which is the whole design: anything
+    // reading `--trinity-space-*` follows without knowing the preference exists. Only a
+    // real cascade can show this; jsdom resolves no custom properties through a
+    // `[data-density]` selector, so the unit spec can only see the attribute.
+    await expect.poll(densityAttr).toBe('compact');
+    await expect.poll(spaceToken).toBe('12px');
+
+    // Back to cosy → the attribute goes and the scale returns.
+    await trigger.click();
+    await page.getByTestId('density-cosy').click();
+    await expect.poll(densityAttr).toBeNull();
+    await expect.poll(spaceToken).toBe('16px');
+  });
+
+  // The kit's overlay panels animate open with `animate-in` from `tw-animate-css`, which
+  // ships no reduced-motion guard. `hlm-select-content` now carries `motion-safe:`, so the
+  // class is not applied at all under `reduce` and the panel resolves NO animation.
+  //
+  // This is discriminable underneath the blanket `!important` reset in `global.scss`
+  // precisely because that blanket sets `animation-duration` and `-iteration-count` and
+  // never touches `animation-name`: without `motion-safe:` the panel still resolves the
+  // `enter` keyframes here, it just runs them instantly.
+  test('a select panel resolves no animation under reduced motion', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await openSection(page, 'appearance');
+
+    const trigger = page.getByTestId('palette-select').locator('button');
+    await trigger.click();
+    const panel = page.locator('hlm-select-content').first();
+    await expect(panel).toBeVisible();
+
+    expect(
+      await panel.evaluate(
+        (element) => getComputedStyle(element).animationName,
+      ),
+    ).toBe('none');
+  });
+
+  // The positive control for the test above. Without it, `'none'` also holds if the panel
+  // never gets `data-state="open"`, if the `data-open` custom variant is dropped from the
+  // theme, or if the animate class is removed outright — none of which is what that test
+  // claims to measure.
+  test('a select panel does animate when motion is not reduced', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await openSection(page, 'appearance');
+
+    const trigger = page.getByTestId('palette-select').locator('button');
+    await trigger.click();
+    const panel = page.locator('hlm-select-content').first();
+    await expect(panel).toBeVisible();
+
+    expect(
+      await panel.evaluate(
+        (element) => getComputedStyle(element).animationName,
+      ),
+    ).toBe('enter');
   });
 
   test('selects a colour palette from the dropdown', async ({ page }) => {
@@ -190,10 +311,18 @@ test.describe('Settings', () => {
       timeout: 20_000,
     });
 
+    // The detail pane is the scroller. It used to be `.settings__detail`; that class went
+    // when the page moved to utilities, and a `querySelector` for it returned null — which
+    // made `!!pane && …` short-circuit to false and BOTH assertions below pass whatever
+    // the pane did. Located structurally now, and thrown on rather than defaulted, so the
+    // check cannot go quiet again.
     const detailOverflows = () =>
       page.evaluate(() => {
-        const pane = document.querySelector('.settings__detail');
-        return !!pane && pane.scrollHeight > pane.clientHeight + 1;
+        const pane = document.querySelector('[data-testid="settings-detail"]');
+        if (!pane) {
+          throw new Error('settings detail pane not found');
+        }
+        return pane.scrollHeight > pane.clientHeight + 1;
       });
 
     expect(await detailOverflows()).toBe(false);
@@ -313,7 +442,7 @@ test.describe('Settings', () => {
 
     const checkbox = page
       .getByTestId('flag-virtual-timeline')
-      .locator('trn-checkbox');
+      .locator('trn-switch');
     await expect(checkbox).toBeVisible();
     // The virtualized timeline is on by default (163fcc4) and nothing is persisted
     // until the flag is toggled, so the first click turns it OFF and writes 'false'.
@@ -325,14 +454,14 @@ test.describe('Settings', () => {
     // Survives a reload — the deep-linked sub-page restores and the flag reads back.
     await page.reload();
     await expect(
-      page.getByTestId('flag-virtual-timeline').locator('trn-checkbox'),
+      page.getByTestId('flag-virtual-timeline').locator('trn-switch'),
     ).toBeVisible({ timeout: 20_000 });
     expect(await read()).toBe('false');
 
     // Toggling back on persists too.
     await page
       .getByTestId('flag-virtual-timeline')
-      .locator('trn-checkbox')
+      .locator('trn-switch')
       .click();
     await expect.poll(read).toBe('true');
   });

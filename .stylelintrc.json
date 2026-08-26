@@ -2,15 +2,33 @@
   "extends": "stylelint-config-standard-scss",
   "rules": {
     "selector-class-pattern": null,
-    "custom-property-pattern": null,
+    "custom-property-pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*(--[a-z0-9]+(-[a-z0-9]+)*)?$",
     "import-notation": null,
     "no-descending-specificity": null,
     "no-empty-source": null,
     "media-feature-range-notation": "prefix",
     "selector-pseudo-element-no-unknown": [
       true,
-      { "ignorePseudoElements": ["ng-deep"] }
+      {
+        "ignorePseudoElements": ["ng-deep"]
+      }
     ],
-    "scss/dollar-variable-pattern": null
+    "scss/dollar-variable-pattern": null,
+    "scss/at-rule-no-unknown": [
+      true,
+      {
+        "ignoreAtRules": [
+          "source",
+          "custom-variant",
+          "theme",
+          "utility",
+          "variant",
+          "apply",
+          "plugin",
+          "reference"
+        ]
+      }
+    ],
+    "nesting-selector-no-missing-scoping-root": null
   }
 }

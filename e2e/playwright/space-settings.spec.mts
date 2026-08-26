@@ -1,11 +1,16 @@
-import { createHmac } from 'node:crypto';
 import {
   test,
   expect,
   type APIRequestContext,
   type Page,
 } from '@playwright/test';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import {
+  login,
+  openSettingsTab,
+  synapseSession,
+  type SynapseSession,
+} from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // Covers editing a SPACE's settings, which had no surface at all before #40: a space was
 // configured once at creation and never again. The space overflow menu
@@ -18,31 +23,6 @@ import { login, synapseSession, type SynapseSession } from './support/app.mts';
 // failure this spec exists to catch.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = synapseSession();
-
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
-
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const { nonce } = await request
-    .get(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`)
-    .then((r) => r.json());
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
-}
 
 async function apiLogin(
   request: APIRequestContext,
@@ -172,7 +152,13 @@ test.describe('Space settings', () => {
     });
     await page.getByTestId('space-settings-name').fill(newName);
     await page.getByTestId('space-settings-topic').fill(newTopic);
-    await page.getByTestId('space-settings-join-rule').selectOption('public');
+    // Name and topic are General; the join rule is behind Access. Saving spans both, which
+    // is the point of the eager panels — one form, one Save.
+    await openSettingsTab(page, 'space-settings', 'access');
+    // `selectOption` only ever drove a native `<select>`; this is a `trn-select` now, whose
+    // options live in a CDK portal.
+    await page.getByTestId('space-settings-join-rule').click();
+    await page.getByTestId('join-rule-public').click();
     await page.getByTestId('space-settings-save').click();
 
     const read = (type: string, key: string) =>
@@ -218,6 +204,17 @@ test.describe('Space settings', () => {
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.room.topic/`,
       { headers: { Authorization: `Bearer ${token}` }, data: { topic } },
     );
+    // Deliberately NOT the invite-only rule `preset: private_chat` created: the form model
+    // seeds `joinRule: JoinRule.Invite` itself, so asserting "invite" proved nothing — a
+    // dialog that read the rule off nothing at all would have passed. Open the space up
+    // first, and the assertion below can only hold if the dialog read the real state event.
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.room.join_rules/`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { join_rule: 'public' },
+      },
+    );
 
     await login(page, { available: true, hs, user, pass } as SynapseSession);
     await openSpaceMenu(page, spaceName);
@@ -228,9 +225,12 @@ test.describe('Space settings', () => {
       { timeout: 10_000 },
     );
     await expect(page.getByTestId('space-settings-topic')).toHaveValue(topic);
-    // Invite-only is what `preset: private_chat` created, not the field's default value.
-    await expect(page.getByTestId('space-settings-join-rule')).toHaveValue(
-      'invite',
+    await openSettingsTab(page, 'space-settings', 'access');
+    // A `trn-select` collapsed trigger renders the chosen option's LABEL, not its value —
+    // there is no form control to call `toHaveValue` on any more.
+    await expect(page.getByTestId('space-settings-join-rule')).toHaveText(
+      /Anyone can find and join/,
+      { timeout: 10_000 },
     );
   });
 
@@ -289,6 +289,7 @@ test.describe('Space settings', () => {
     );
     await expect(page.getByTestId('space-settings-name')).toBeDisabled();
     await expect(page.getByTestId('space-settings-topic')).toBeDisabled();
+    await openSettingsTab(page, 'space-settings', 'access');
     await expect(page.getByTestId('space-settings-join-rule')).toBeDisabled();
     await expect(page.getByTestId('space-settings-save')).toBeDisabled();
   });
@@ -316,6 +317,7 @@ test.describe('Space settings', () => {
     await login(page, { available: true, hs, user, pass } as SynapseSession);
     await openSpaceMenu(page, spaceName);
     await page.getByTestId('open-space-settings').click();
+    await openSettingsTab(page, 'space-settings', 'access');
     await expect(page.getByTestId('room-aliases')).toBeVisible({
       timeout: 10_000,
     });
@@ -326,7 +328,9 @@ test.describe('Space settings', () => {
     await page.getByTestId('room-alias-input').press('Enter');
 
     // The dialog is still open (Enter must not have submitted it) and the address is live.
-    await expect(page.getByTestId('space-settings-name')).toBeVisible();
+    // The DIALOG, not the name field: that field lives on the General tab, and this test is
+    // standing on Access — a still-open dialog would have failed a visibility check on it.
+    await expect(page.getByTestId('space-settings')).toBeVisible();
     await expect(
       page.getByTestId('room-alias').filter({ hasText: alias }),
     ).toBeVisible({ timeout: 15_000 });

@@ -1,14 +1,19 @@
+import { EmptyStateComponent } from '@trinity/components/empty-state';
 import {
   ChangeDetectionStrategy,
   Component,
   effect,
   signal,
+  untracked,
 } from '@angular/core';
 import { MessageComposerComponent } from '../../message-composer/message-composer.component';
 import { MessageRowComponent } from '../../message-row/message-row.component';
 import { MessageListBase } from '../message-list-base';
 import { TrnFileDropDirective } from '../../shared/file-drop.directive';
 import { DropOverlayComponent } from '../drop-overlay/drop-overlay.component';
+import { TimelineDividerComponent } from '../timeline-divider/timeline-divider.component';
+import { TypingIndicatorComponent } from '../typing-indicator/typing-indicator.component';
+import { scrollBehavior } from '@trinity/util/ui';
 
 /** Trigger older-history loading when the scroll top gets within this many px. */
 const AUTO_LOAD_THRESHOLD_PX = 150;
@@ -37,9 +42,12 @@ const MAX_BACKFILL_ROUNDS = 20;
   selector: 'trn-simple-message-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    EmptyStateComponent,
     MessageComposerComponent,
     MessageRowComponent,
     DropOverlayComponent,
+    TimelineDividerComponent,
+    TypingIndicatorComponent,
   ],
   // The whole conversation is the drop target — "drop it on the room" is the gesture, and
   // these templates are host fragments with no element of their own to carry it.
@@ -85,6 +93,15 @@ export class SimpleMessageListComponent extends MessageListBase {
 
   constructor() {
     super();
+
+    // Start the width watcher as soon as there IS a scroller. An effect rather than
+    // `afterNextRender` because this list's scroll element only exists once a room is open,
+    // so there is no single render to hang it on; `watchScrollerWidth` is idempotent.
+    effect(() => {
+      if (this.scrollEl()) {
+        untracked(() => this.watchScrollerWidth());
+      }
+    });
 
     effect(() => {
       const msgs = this.messages();
@@ -217,7 +234,7 @@ export class SimpleMessageListComponent extends MessageListBase {
     if (!el) {
       return;
     }
-    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    el.scrollTo({ top: el.scrollHeight, behavior: scrollBehavior() });
     this.atBottom = true;
     this.notAtBottom.set(false);
   }
@@ -228,7 +245,10 @@ export class SimpleMessageListComponent extends MessageListBase {
     const el = this.scrollEl()?.nativeElement.querySelector(
       `[data-mid="${messageId}"]`,
     );
-    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Remembered so a width change can re-aim it — a row re-wraps to a different height at a
+    // different width, so this scroll position stops meaning this row. See `notePendingJump`.
+    this.notePendingJump(messageId);
+    el?.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
     this.flash(el);
   }
 }

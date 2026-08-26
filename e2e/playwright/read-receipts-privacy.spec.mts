@@ -1,4 +1,3 @@
-import { createHmac } from 'node:crypto';
 import {
   test,
   expect,
@@ -6,6 +5,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // Covers the "Send read receipts" privacy toggle (Settings → Privacy). With it
 // OFF, reading a message must still clear the reader's own unread state — but
@@ -14,35 +14,9 @@ import { login, synapseSession, type SynapseSession } from './support/app.mts';
 // and we check what each side's sync reports. Needs Synapse (Docker); self-skips.
 const session = synapseSession();
 
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
-
 interface ApiUser {
   userId: string;
   headers: { Authorization: string };
-}
-
-/** Register a user via Synapse's shared-secret admin endpoint (idempotent). */
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const { nonce } = await request
-    .get(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`)
-    .then((r) => r.json());
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
 }
 
 async function apiLogin(
@@ -160,7 +134,7 @@ test.describe('Read-receipt privacy', () => {
     await page.waitForURL(/\/settings\/privacy$/, { timeout: 20_000 });
     const toggle = page
       .getByTestId('privacy-send-read-receipts')
-      .locator('trn-checkbox');
+      .locator('trn-switch');
     await expect(toggle).toBeVisible({ timeout: 15_000 });
     await toggle.click();
 

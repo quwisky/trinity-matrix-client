@@ -25,6 +25,7 @@ import {
 import { switchMap, timer } from 'rxjs';
 import { runWithBusy } from '@trinity/util/ui';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
+import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import { MatrixLinkDirective } from '../matrix-link/matrix-link.directive';
 
 /** A revision plus the label that orients the reader, and what changed to reach it. */
@@ -249,7 +250,9 @@ export class EditHistoryComponent {
    * opener routes it. Following it under the dialog would leave the reader on a new
    * message with a stale history still covering it.
    */
-  onMatrixLink(target: MatrixLinkTarget): void {
+  onMatrixLink({ target }: MatrixLinkClick): void {
+    // The anchor is dropped on purpose: this closes first, so by the time the opener
+    // presents anything the element it would have been pinned to is gone.
     this.dialogRef.close(target);
   }
 

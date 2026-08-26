@@ -9,6 +9,7 @@ import { PushGatewayService } from './push-gateway.service';
 import { PushService } from './push.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { SessionStorageService } from '@trinity/platform-native';
+import { encodeRoomSegment } from '@trinity/util/matrix';
 
 // Shared, mutable mock state — hoisted so the vi.mock factories can close over it.
 const h = vi.hoisted(() => {
@@ -637,9 +638,10 @@ describe('PushService', () => {
 
     expect(setActive).toHaveBeenCalledWith('@alt:hs');
     expect(storageSetActive).toHaveBeenCalledWith('@alt:hs');
-    expect(router.navigate).toHaveBeenCalledWith(['/rooms'], {
-      queryParams: { room: '!r:hs' },
-    });
+    expect(router.navigate).toHaveBeenCalledWith([
+      '/rooms',
+      encodeRoomSegment('!r:hs'),
+    ]);
   });
 
   it('opens the room but does not switch when the tagged account is gone or already active', async () => {
@@ -661,12 +663,14 @@ describe('PushService', () => {
     expect(setActive).not.toHaveBeenCalled();
     expect(storageSetActive).not.toHaveBeenCalled();
     // The room still opens in both cases (the switch guard is independent of nav).
-    expect(router.navigate).toHaveBeenCalledWith(['/rooms'], {
-      queryParams: { room: '!a:hs' },
-    });
-    expect(router.navigate).toHaveBeenCalledWith(['/rooms'], {
-      queryParams: { room: '!b:hs' },
-    });
+    expect(router.navigate).toHaveBeenCalledWith([
+      '/rooms',
+      encodeRoomSegment('!a:hs'),
+    ]);
+    expect(router.navigate).toHaveBeenCalledWith([
+      '/rooms',
+      encodeRoomSegment('!b:hs'),
+    ]);
   });
 
   it('deletes every account pusher and detaches listeners on full unregister', async () => {

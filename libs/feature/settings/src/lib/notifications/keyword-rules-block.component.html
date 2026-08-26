@@ -47,7 +47,7 @@
             <label
               class="flex cursor-pointer items-center gap-2 text-13 text-muted-foreground"
             >
-              <trn-checkbox
+              <trn-switch
                 [checked]="soundOf(keyword)"
                 [disabled]="isBusy(keyword.ruleId)"
                 (checkedChange)="toggleSound(keyword, $event)"

@@ -1,6 +1,6 @@
-import { createHmac } from 'node:crypto';
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // Covers the pinned-messages panel end to end: the room toolbar's pin button
 // (`data-testid="open-pinned"`) opens PinnedPanelService's side panel
@@ -16,32 +16,6 @@ import { login, synapseSession, type SynapseSession } from './support/app.mts';
 // Needs a Synapse homeserver (Docker) and self-skips otherwise, like the other
 // authenticated web e2e specs.
 const session = synapseSession();
-
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
-
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const nonceRes = await request.get(
-    `${SYNAPSE_HTTP}/_synapse/admin/v1/register`,
-  );
-  const { nonce } = await nonceRes.json();
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
-}
 
 /**
  * A room containing two messages, both pinned via `m.room.pinned_events` (pin order =
@@ -135,8 +109,31 @@ test.describe('Pinned messages panel', () => {
     const panel = page.getByTestId('pinned-panel');
     await expect(panel).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId('pinned-item')).toHaveCount(2);
-    await expect(panel).toContainText(unpinBody);
-    await expect(panel).toContainText(keepBody);
+
+    // The panel's top bar: the same 56px the room header is, with its title inset from
+    // the panel's edge. Measured, because the classes cannot say it — this bar carried
+    // `safe-top safe-left safe-right p-3`, and those helpers are UNLAYERED rules in
+    // global.scss while `p-3` is a LAYERED utility, so each replaced the padding on its
+    // side instead of adding to it. The bar rendered 45px tall with its title flush
+    // against the border. jsdom applies no cascade and no layers, so only a browser sees
+    // it, and the height alone would not: it was the missing INSET that showed.
+    const chatBar = await page
+      .locator('trn-page-header header')
+      .first()
+      .boundingBox();
+    const panelBar = await panel.locator('.panel-header').boundingBox();
+    const panelTitle = await panel.locator('.panel-header h2').boundingBox();
+    expect(chatBar).not.toBeNull();
+    expect(panelBar).not.toBeNull();
+    expect(panelTitle).not.toBeNull();
+
+    expect(panelBar!.height).toBe(chatBar!.height);
+    expect(panelTitle!.x - panelBar!.x).toBeCloseTo(12, 0);
+    // And the title is centred in the bar rather than riding its top edge.
+    const above = panelTitle!.y - panelBar!.y;
+    const below =
+      panelBar!.y + panelBar!.height - (panelTitle!.y + panelTitle!.height);
+    expect(Math.abs(above - below)).toBeLessThan(2);
 
     // Unpin the first: the state event is rewritten and the live projection drops the
     // row — while the panel STAYS open (an unpin is not a jump).

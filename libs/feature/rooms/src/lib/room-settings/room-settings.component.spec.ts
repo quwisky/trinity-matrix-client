@@ -78,6 +78,7 @@ async function build(
   return {
     cmp: fixture.componentInstance,
     container,
+    fixture,
     setName,
     setTopic,
     setAvatar,
@@ -447,6 +448,92 @@ describe('RoomSettingsComponent', () => {
     const { container } = await build({ canManageBans: true });
     expect(
       container.querySelector('[data-testid=banned-members]'),
+    ).not.toBeNull();
+  });
+
+  it('splits the dialog into General and Access', async () => {
+    const { cmp, container } = await build({ canManageBans: false });
+
+    expect(cmp.settingsTabs().map((tab) => tab.value)).toEqual([
+      'general',
+      'access',
+    ]);
+    expect(
+      container.querySelector('[data-testid=room-settings-tab-bans]'),
+    ).toBeNull();
+  });
+
+  it('adds a Bans tab only where there is a list behind it', async () => {
+    const { cmp, container } = await build({ canManageBans: true });
+
+    expect(cmp.settingsTabs().map((tab) => tab.value)).toEqual([
+      'general',
+      'access',
+      'bans',
+    ]);
+    expect(
+      container.querySelector('[data-testid=room-settings-tab-bans]'),
+    ).not.toBeNull();
+  });
+
+  it('puts each field on the panel its tab names', async () => {
+    // The panels are eager and an inactive one is only `hidden`, so a query over the whole
+    // dialog finds every field either way. Asserting CONTAINMENT is what tells a real split
+    // from markup that merely gained some tab chrome.
+    const { container } = await build({
+      canManageBans: true,
+      canManageAliases: true,
+    });
+    const panel = (name: string) =>
+      container.querySelector(`[data-testid=room-settings-panel-${name}]`)!;
+    const holds = (name: string, testId: string) =>
+      panel(name).querySelector(`[data-testid=${testId}]`) !== null;
+
+    expect(holds('general', 'room-settings-name')).toBe(true);
+    expect(holds('general', 'room-settings-topic')).toBe(true);
+    expect(holds('access', 'room-settings-join-rule')).toBe(true);
+    expect(holds('access', 'room-settings-history')).toBe(true);
+    expect(holds('access', 'room-aliases')).toBe(true);
+    expect(holds('bans', 'banned-members')).toBe(true);
+    // And not the other way round, which is the half a containment check usually forgets.
+    expect(holds('general', 'room-settings-join-rule')).toBe(false);
+    expect(holds('access', 'room-settings-name')).toBe(false);
+  });
+
+  it('keeps Save and Cancel outside the tabs, always reachable', async () => {
+    // The panels are eager precisely so one form spans them; the actions must not sit on a
+    // panel, or saving would depend on which tab happened to be open.
+    const { container } = await build({ canManageBans: true });
+    const inAnyPanel = (testId: string) =>
+      [
+        ...container.querySelectorAll('[data-testid^=room-settings-panel-]'),
+      ].some(
+        (panel) => panel.querySelector(`[data-testid=${testId}]`) !== null,
+      );
+
+    expect(
+      container.querySelector('[data-testid=room-settings-save]'),
+    ).not.toBeNull();
+    expect(inAnyPanel('room-settings-save')).toBe(false);
+    expect(inAnyPanel('room-settings-cancel')).toBe(false);
+  });
+
+  it('says why Save is off when the field that blocks it is on another tab', async () => {
+    const { cmp, container, fixture } = await build({
+      parentSpaces: [{ id: '!s:hs', name: 'Design' }],
+      supportsRestricted: true,
+      canEditJoinRule: true,
+    });
+    expect(
+      container.querySelector('[data-testid=room-settings-blocked]'),
+    ).toBeNull();
+
+    cmp.form.joinRule().value.set(JoinRule.Restricted);
+    cmp.toggleSpace('!s:hs', false);
+    expect(cmp.noSpaceChosen()).toBe(true);
+    fixture.detectChanges();
+    expect(
+      container.querySelector('[data-testid=room-settings-blocked]'),
     ).not.toBeNull();
   });
 

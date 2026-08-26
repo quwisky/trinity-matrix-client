@@ -222,6 +222,7 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     key: 'trinity.text-scale',
     owner: 'platform-native',
   },
+  { disposition: 'exported', key: 'trinity.density', owner: 'platform-native' },
   {
     disposition: 'exported',
     key: 'trinity.code-scale',
@@ -230,6 +231,18 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
   {
     disposition: 'exported',
     key: 'trinity.code-lines',
+    owner: 'platform-native',
+  },
+
+  // — shell-layout.service.ts —
+  {
+    disposition: 'exported',
+    key: 'trinity.shell.sidebar-width',
+    owner: 'platform-native',
+  },
+  {
+    disposition: 'exported',
+    key: 'trinity.shell.right-panel-width',
     owner: 'platform-native',
   },
 
@@ -279,10 +292,22 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     owner: 'platform-native',
   },
 
+  // — message-gesture-settings.service.ts —
+  {
+    disposition: 'exported',
+    key: 'trinity.message-swipe',
+    owner: 'platform-native',
+  },
+
   // — composer-settings.service.ts —
   {
     disposition: 'exported',
     key: 'trinity.composer.show-toolbar',
+    owner: 'platform-native',
+  },
+  {
+    disposition: 'exported',
+    key: 'trinity.composer.format-on-selection',
     owner: 'platform-native',
   },
 

@@ -3,26 +3,41 @@ import {
   Component,
   DestroyRef,
   OnInit,
+  computed,
   inject,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { Location } from '@angular/common';
-import { Router, RouterOutlet } from '@angular/router';
+import {
+  NavigationEnd,
+  NavigationError,
+  Router,
+  RouterOutlet,
+} from '@angular/router';
 import { App, type URLOpenListenerEvent } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 import { SwUpdate, type VersionReadyEvent } from '@angular/service-worker';
-import { filter, fromEvent } from 'rxjs';
-import { getTrinityDesktopBridge } from '@trinity/platform-native';
+import { filter, fromEvent, map, take } from 'rxjs';
+import {
+  BackInterceptorService,
+  getTrinityDesktopBridge,
+} from '@trinity/platform-native';
 import { HlmToaster } from '@trinity/helm/sonner';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { VerificationHostComponent } from './verification-host.component';
 
 @Component({
   selector: 'trn-root',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: 'app.component.html',
-  imports: [RouterOutlet, VerificationHostComponent, HlmToaster],
+  imports: [
+    RouterOutlet,
+    VerificationHostComponent,
+    HlmToaster,
+    TrnSpinnerComponent,
+  ],
 })
 export class AppComponent implements OnInit {
   private readonly router = inject(Router);
@@ -31,6 +46,36 @@ export class AppComponent implements OnInit {
   private readonly toast = inject(TrnToastService);
   private readonly location = inject(Location);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly backInterceptors = inject(BackInterceptorService);
+
+  /**
+   * True until the first route has actually rendered something.
+   *
+   * `index.html` paints a splash before Angular runs, and Angular clears it the moment the
+   * root component renders — which happens BEFORE any route does. What follows is the long
+   * part: `authGuard` calls `restoreAll()`, which opens IndexedDB, loads the crypto WASM,
+   * runs `initRustCrypto` and starts the client. For that whole window the outlet is empty,
+   * so the app went from a splash to a blank screen and stayed there, which reads as a crash
+   * rather than as work in progress.
+   *
+   * Waits for `NavigationEnd` and not for `NavigationCancel`. A guard that redirects — the
+   * no-session path to `/login` — cancels the navigation and immediately starts another, so
+   * treating a cancel as "done" would drop the splash into the gap between the two.
+   */
+  private readonly navigated = toSignal(
+    this.router.events.pipe(
+      filter(
+        (event) =>
+          event instanceof NavigationEnd || event instanceof NavigationError,
+      ),
+      take(1),
+      map(() => true),
+    ),
+    { initialValue: false },
+  );
+
+  /** Whether to show the in-app boot screen — see {@link navigated}. */
+  readonly booting = computed(() => !this.navigated());
 
   ngOnInit(): void {
     // Recover from a broken service-worker cache (e.g. storage eviction left an
@@ -74,6 +119,13 @@ export class AppComponent implements OnInit {
     void App.addListener('backButton', ({ canGoBack }) => {
       if (this.dialog.hasOpen()) {
         this.dialog.closeTopmost();
+        return;
+      }
+      // Then whatever a feature has registered — the rooms shell's right-hand panel, which
+      // is an inline block rather than a CDK dialog and so is invisible to `hasOpen()`
+      // above. Without this Back walks past an open panel and out of the room, which it has
+      // always done for the members drawer.
+      if (this.backInterceptors.handle()) {
         return;
       }
       if (canGoBack) {

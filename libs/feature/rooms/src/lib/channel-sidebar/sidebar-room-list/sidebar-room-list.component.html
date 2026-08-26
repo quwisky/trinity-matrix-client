@@ -90,11 +90,13 @@
      "Nothing matched" is about the filter, and an invite that DID match is a match — saying
      nothing matched above a visible result would be a plain contradiction. -->
 @if (filterActive() ? !rooms().length && !invites().length : !rooms().length) {
-  <p class="empty" data-testid="room-list-empty">
-    {{
+  <trn-empty-state
+    size="line"
+    [body]="
       filterActive() ? 'No rooms match your filter.' : 'No channels here yet.'
-    }}
-  </p>
+    "
+    data-testid="room-list-empty"
+  />
 }
 
 <ng-template #roomRow let-room>
@@ -118,7 +120,11 @@
       />
       <div class="channel__text">
         <span class="channel__name">{{ room.name }}</span>
-        @if (room.lastMessage) {
+        @if (typingIn(room.id); as typing) {
+          <span class="channel__preview channel__preview--typing">{{
+            typing
+          }}</span>
+        } @else if (room.lastMessage) {
           <span class="channel__preview">{{ room.lastMessage }}</span>
         }
       </div>

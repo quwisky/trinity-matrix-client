@@ -1,9 +1,22 @@
 @use '../styles/mixins' as *;
 
+// The room list takes whatever the shell column has left after the 72px rail, which is what
+// makes the shell's drag handle move THIS rather than an empty box. It was a fixed 280px, and
+// the two together made up the 352px the shell shipped with — but with the column's width now
+// a dragged custom property, a fixed list left the difference as bare rail colour when the
+// column grew and overflowed it over the timeline when it shrank. `min-width: 0` because a
+// flex item's automatic minimum is its content, which would floor the column at the widest
+// room name in it. `rooms.page.scss` owns the column's width and the bounds live in
+// `ShellLayoutService`.
+:host {
+  flex: 1;
+  min-width: 0;
+}
+
 .sidebar {
   @include column(var(--trinity-sidebar));
 
-  width: 280px;
+  width: 100%;
 
   // Ring the avatar presence dots (DM online status) in this panel's surface colour.
   --trn-presence-ring: var(--trinity-sidebar);
@@ -151,19 +164,6 @@
   @include category-label;
 
   padding: 12px 8px 4px;
-}
-
-// Used by this component's "Loading channels…" / "Couldn’t load…" lines. The room list's
-// own empty state carries the same class and is styled in ITS stylesheet, for the same
-// encapsulation reason as `.category` above.
-.empty {
-  color: var(--trinity-text-muted);
-  font-size: 13px;
-  padding: 8px;
-}
-
-.empty--error {
-  color: var(--trinity-danger);
 }
 
 // Touch targets: the small sidebar action / filter-clear buttons are below the touch

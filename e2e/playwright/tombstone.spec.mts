@@ -1,42 +1,12 @@
-import { createHmac } from 'node:crypto';
-import {
-  test,
-  expect,
-  type APIRequestContext,
-  type Page,
-} from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // Covers the room-upgrade / tombstone banner (data-testid="tombstone-banner"): a room
 // with an m.room.tombstone shows a banner whose "Go to the new room" (tombstone-go) joins
 // and opens the successor. Uses distinctly-named old/new rooms so each is identifiable.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = synapseSession();
-
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
-
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const { nonce } = await request
-    .get(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`)
-    .then((r) => r.json());
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
-}
 
 async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();
@@ -104,6 +74,31 @@ test.describe('Room tombstone', () => {
     await expect(page.getByTestId('tombstone-banner')).toBeVisible({
       timeout: 20_000,
     });
+
+    // And it stacks ABOVE the chat row rather than sharing it. `.chat-body` is a flex row of
+    // [timeline, right-hand panel] whose children are sized by content, so a full-width notice
+    // put in there competes with the timeline for horizontal space instead of sitting over it:
+    // measured at 779px of a 928px row, which left the timeline 149px and the composer's text
+    // column nothing at all. `openRoom` above does catch that today — a collapsed composer is
+    // not `toBeVisible()` — but only as a side effect of a gate that is there for sync timing.
+    // This says what is actually being guarded, so it survives a refactor of that helper.
+    const banner = page.getByTestId('tombstone-banner');
+    expect(await banner.evaluate((host) => !!host.closest('.chat-body'))).toBe(
+      false,
+    );
+    const timelineShare = await page.evaluate(() => {
+      const row = document.querySelector('.chat-body')?.getBoundingClientRect();
+      const list = document
+        .querySelector(
+          '.chat-body trn-simple-message-list, .chat-body trn-virtual-message-list',
+        )
+        ?.getBoundingClientRect();
+      return row && list && row.width > 0 ? list.width / row.width : 0;
+    });
+    // Half, not most: the right-hand panel is a legitimate row citizen and takes about a
+    // quarter at this viewport (measured 0.74 with the member list up). The bug left the
+    // timeline 149px of 928 — 0.16 — so half separates the two with room to spare either way.
+    expect(timelineShare).toBeGreaterThan(0.5);
 
     // Go to the successor: the banner clears (the live successor has no tombstone).
     await page.getByTestId('tombstone-go').click();

@@ -1,6 +1,6 @@
-import { createHmac } from 'node:crypto';
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // Covers keyword notification rules (Settings → Notifications → Keywords). Adding a word
 // writes a `content` push rule keyed by the word itself, and a message containing it must
@@ -13,37 +13,12 @@ import { login, synapseSession, type SynapseSession } from './support/app.mts';
 // Needs a Synapse homeserver (Docker); self-skips otherwise like the other web specs.
 const session = synapseSession();
 
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
-
 /** A word no other rule could match, so the highlight can only come from our keyword. */
 const KEYWORD = 'zarquon';
 
 interface ApiUser {
   userId: string;
   headers: { Authorization: string };
-}
-
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const { nonce } = await request
-    .get(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`)
-    .then((r) => r.json());
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
 }
 
 async function apiLogin(
@@ -276,9 +251,12 @@ test.describe('Keyword notifications', () => {
     // The control that makes the absence meaningful: the message DID arrive, so a
     // missing highlight is the mute winning rather than nothing having happened.
     const channel = page.locator('.channel', { hasText: roomName }).first();
-    await expect(channel.locator('.channel__preview')).toContainText(KEYWORD, {
-      timeout: 30_000,
-    });
+    // `:not(...--typing)`: the preview line now swaps to "X is typing" while anybody in
+    // the room is typing, so an unscoped locator can catch the transient text instead of
+    // the message and fail against correct code.
+    await expect(
+      channel.locator('.channel__preview:not(.channel__preview--typing)'),
+    ).toContainText(KEYWORD, { timeout: 30_000 });
     await expect(
       channel.locator('.channel__badge:not(.channel__badge--muted)'),
     ).toHaveCount(0);

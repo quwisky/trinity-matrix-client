@@ -151,6 +151,16 @@
   color: var(--trinity-text-muted);
 }
 
+// Italic, matching the timeline's typing row, so the two read as the same idea. No dots
+// here: the line already truncates, and the state is transient enough that a second
+// moving thing beside the unread badge is noise.
+// This rule belongs to THIS stylesheet and not the parent sidebar's, because the class is
+// rendered by this template — `stylesheet-ownership.spec.ts` fails otherwise, and it
+// exists because this exact pair got it wrong four times in one commit.
+.channel__preview--typing {
+  font-style: italic;
+}
+
 .channel__badge {
   flex: 0 0 auto;
   min-width: 16px;
@@ -201,15 +211,6 @@
   &:hover {
     color: var(--trinity-text-bright);
   }
-}
-
-// This component's empty state ("No channels here yet." / "No rooms match your filter.").
-// The parent renders its own `.empty` lines and styles them in its stylesheet; emulated
-// encapsulation scopes each rule to its own component's elements, so both need a copy.
-.empty {
-  color: var(--trinity-text-muted);
-  font-size: 13px;
-  padding: 8px;
 }
 
 // Touch devices have no hover, so the kebab — the only way into a room's options and its

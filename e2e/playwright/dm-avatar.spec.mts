@@ -1,6 +1,6 @@
-import { createHmac } from 'node:crypto';
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // End-to-end for the direct-message avatar. A DM is never given an `m.room.avatar`, so
 // the room row has to fall back to the other person's picture; reading only the state
@@ -15,9 +15,6 @@ import { login, synapseSession, type SynapseSession } from './support/app.mts';
 // Needs a Synapse homeserver (Docker); self-skips otherwise like the other web specs.
 const session = synapseSession();
 
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
-
 // A 1x1 transparent PNG — a valid image the homeserver accepts as an avatar.
 const PNG_1x1 = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
@@ -27,30 +24,6 @@ const PNG_1x1 = Buffer.from(
 interface ApiUser {
   userId: string;
   headers: { Authorization: string };
-}
-
-/** Register a user via Synapse's shared-secret admin endpoint (idempotent). */
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const nonceRes = await request.get(
-    `${SYNAPSE_HTTP}/_synapse/admin/v1/register`,
-  );
-  const { nonce } = await nonceRes.json();
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
 }
 
 async function apiLogin(

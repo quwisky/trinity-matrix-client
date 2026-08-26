@@ -86,6 +86,25 @@ export async function clickRowToolbar(
   }).toPass({ timeout: 30_000 });
 }
 
+/**
+ * Switch a settings dialog to one of its tabs, and wait until that panel is the visible one.
+ *
+ * `prefix` is `room-settings` or `space-settings`. Both dialogs render every panel eagerly —
+ * one `<form>` spans all of them — so an inactive panel is in the DOM and merely `hidden`.
+ * That is exactly why this waits on VISIBILITY rather than on the element existing: a locator
+ * that only asserts presence would pass before the tab was ever pressed.
+ */
+export async function openSettingsTab(
+  page: Page,
+  prefix: 'room-settings' | 'space-settings',
+  tab: 'general' | 'access' | 'bans',
+): Promise<void> {
+  await page.getByTestId(`${prefix}-tab-${tab}`).click();
+  await expect(page.getByTestId(`${prefix}-panel-${tab}`)).toBeVisible({
+    timeout: 10_000,
+  });
+}
+
 /** Log in through the UI (homeserver → Continue → credentials → Sign in) → /rooms. */
 export async function login(page: Page, s: SynapseSession): Promise<void> {
   await page.goto('/login', { waitUntil: 'networkidle' });

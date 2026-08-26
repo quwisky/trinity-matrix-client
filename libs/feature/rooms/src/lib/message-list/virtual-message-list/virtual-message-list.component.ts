@@ -1,3 +1,4 @@
+import { EmptyStateComponent } from '@trinity/components/empty-state';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -17,6 +18,9 @@ import { MessageRowComponent } from '../../message-row/message-row.component';
 import { MessageListBase } from '../message-list-base';
 import { TrnFileDropDirective } from '../../shared/file-drop.directive';
 import { DropOverlayComponent } from '../drop-overlay/drop-overlay.component';
+import { TimelineDividerComponent } from '../timeline-divider/timeline-divider.component';
+import { TypingIndicatorComponent } from '../typing-indicator/typing-indicator.component';
+import { scrollBehavior } from '@trinity/util/ui';
 import {
   buildPrefixSums,
   computeWindow,
@@ -60,9 +64,12 @@ const SMALL_LIST_ROWS = 80;
   selector: 'trn-virtual-message-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    EmptyStateComponent,
     MessageComposerComponent,
     MessageRowComponent,
     DropOverlayComponent,
+    TimelineDividerComponent,
+    TypingIndicatorComponent,
   ],
   // The whole conversation is the drop target — "drop it on the room" is the gesture, and
   // these templates are host fragments with no element of their own to carry it.
@@ -301,6 +308,7 @@ export class VirtualMessageListComponent extends MessageListBase {
         }
       });
       this.containerRo.observe(el);
+      this.watchScrollerWidth();
       this.reconcileObserved(this.rowHosts());
     });
 
@@ -510,10 +518,13 @@ export class VirtualMessageListComponent extends MessageListBase {
     if (idx < 0) {
       return; // not loaded → no-op
     }
+    // Remembered so a width change can re-aim it: every branch below ends in a measurement
+    // that is only correct for the layout at this instant. See `notePendingJump`.
+    this.notePendingJump(messageId);
     this.atBottomSig.set(false);
     const existing = el.querySelector(`[data-mid="${messageId}"]`);
     if (existing) {
-      existing.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      existing.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
       this.flash(existing);
       return;
     }
@@ -527,7 +538,7 @@ export class VirtualMessageListComponent extends MessageListBase {
     afterNextRender(
       () => {
         const target = el.querySelector(`[data-mid="${messageId}"]`);
-        target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target?.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
         this.flash(target);
       },
       { injector: this.injector },

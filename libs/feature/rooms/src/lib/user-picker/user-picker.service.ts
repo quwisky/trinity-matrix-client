@@ -13,7 +13,7 @@ export interface UserPickerOptions {
  * Presents the {@link UserPickerComponent} as a {@link TrnDialogService} dialog and
  * resolves the chosen Matrix ID (or `null` when cancelled). Wraps the dialog so the
  * rooms page stays thin and the presentation can be retargeted later — mirroring
- * {@link ThreadPanelService}. The page performs the actual create/invite with the
+ * the thread panel. The page performs the actual create/invite with the
  * returned id, so this service owns presentation only.
  */
 @Injectable({ providedIn: 'root' })

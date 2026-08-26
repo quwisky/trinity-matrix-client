@@ -1,5 +1,5 @@
 // Shared styling for the simple and virtual message lists — they render the same
-// timeline chrome (scroll region, dividers, jump pills, empty/typing states) and
+// timeline chrome (scroll region, dividers, jump pills, empty state) and
 // only differ in windowing. @use'd by both component stylesheets so a token or
 // contrast fix lives in one place.
 @use '../styles/mixins' as *;
@@ -25,13 +25,32 @@
 }
 
 .scroll {
+  // A swiped row translates past the scroller's right edge, which `overflow-x: auto` — the
+  // computed value when only `overflow-y` is set — turns into a real horizontal pan. What
+  // this prevents is the USER-driven scroll: measured, a wheel `deltaX: 120` moved
+  // `scrollLeft` to 40 without it and 0 with. It does NOT change `scrollWidth`, which stays
+  // 450 either way; an earlier version of this comment cited that as the evidence and was
+  // describing the symptom rather than the fix.
+  // `clip` and not `hidden` is a preference, not a mechanism: with a non-`visible` other
+  // axis `clip` COMPUTES to `hidden` (CSS Overflow 3), and Chromium reports it as such — the
+  // spelling says what is meant, the behaviour is identical. Code blocks inside messages
+  // keep their own horizontal scroll either way, being their own scroll containers: verified
+  // that `pre` `scrollLeft` still reaches 300 with this in place.
+  overflow-x: clip;
+
   @include scrollable;
+  @include swipe-through;
 
   // Allow the flex child to shrink below its content height so it scrolls
   // instead of growing the column.
   flex: 1;
   min-height: 0;
-  padding: 16px 16px 8px;
+
+  // The horizontal value is the TOKEN because `message-row` bleeds against it: the row
+  // carries `margin: 0 calc(-1 * var(--trinity-space-5))` so its hover highlight spans the
+  // full width. Left hard-coded at 16px, compact density would shrink the row's margin to
+  // -12px while this stayed 16px, and the highlight would stop 4px short on each side.
+  padding: var(--trinity-space-5) var(--trinity-space-5) var(--trinity-space-3);
 }
 
 .load-older {
@@ -41,75 +60,15 @@
   color: var(--trinity-text-muted);
 }
 
-.empty {
-  color: var(--trinity-text-muted);
-  text-align: center;
-  padding: 24px;
-}
-
-.typing-indicator {
-  padding: 2px 16px 4px;
-  font-size: 13px;
-  font-style: italic;
-  line-height: 1.2rem;
-  color: var(--trinity-text-muted);
-}
-
-// Marks where the local calendar day changes. Neutral tokens deliberately: this is
-// wayfinding chrome, not an alert, and it has to sit quieter than the accent-coloured
-// unread divider it can appear directly above. Extra top margin so the day reads as
-// opening the block below it rather than floating between two rows.
-.day-divider {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 16px 0 8px;
-
-  &::before,
-  &::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--trinity-divider);
-  }
-}
-
-.day-divider__label {
-  @include category-label;
-
-  flex: 0 0 auto;
-}
-
-.new-divider {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 8px 0;
-  color: var(--trinity-accent);
-  font-size: 12px;
-  font-weight: 600;
-
-  &::before,
-  &::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--trinity-accent);
-    opacity: 0.5;
-  }
-}
-
-.new-divider__label {
-  flex: 0 0 auto;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
+// The day and unread dividers are styled by `trn-timeline-divider`, which owns their markup.
+// Their rules used to live here; under emulated encapsulation that left them scoped to these
+// two list components while the elements belonged to another, so they matched nothing.
 
 .jump-unread {
   position: absolute;
   top: 8px;
   left: 50%;
-  z-index: 5;
+  z-index: var(--trinity-z-sticky);
   padding: 4px 12px;
   border: none;
   border-radius: var(--trinity-radius-pill);
@@ -126,7 +85,7 @@
   position: absolute;
   right: 16px;
   bottom: 12px;
-  z-index: 5;
+  z-index: var(--trinity-z-sticky);
   display: flex;
   align-items: center;
   justify-content: center;

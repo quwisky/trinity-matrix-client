@@ -1,8 +1,33 @@
 import { signal } from '@angular/core';
 import { type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
+import { TrnToastService } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
+
+// `isMobileOs` is a plain exported function, so the barrel is mocked and the rest passed
+// through — the same shape `message-row.mobile.spec.ts` uses, and hoisted for the same reason.
+const platform = vi.hoisted(() => ({ mobile: true }));
+
+/**
+ * Report the drawer breakpoint as matching, or not.
+ *
+ * Stubbed per test rather than once at module scope: the shared setup installs its own
+ * `matchMedia` and would overwrite a module-level stub. `mediaQuerySignal` reads
+ * `window.matchMedia` once at construction and then listens, so this has to be in place
+ * before the component is built.
+ */
+function belowMembers(matches: boolean): void {
+  vi.stubGlobal('matchMedia', () => ({
+    matches,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+}
+vi.mock('@trinity/platform-native', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@trinity/platform-native')>()),
+  isMobileOs: () => platform.mobile,
+}));
+import { TrnActionSheetService } from '@trinity/components/overlay';
 import {
   ThreadsService,
   TimelineActionsService,
@@ -11,8 +36,12 @@ import {
 import { RoomsService, type MemberSummary } from '@trinity/data-access/rooms';
 import { type MessageView } from '@trinity/util/matrix';
 import { MockProvider } from 'ng-mocks';
+import {
+  MessageGestureSettingsService,
+  type SwipeAction,
+} from '@trinity/platform-native';
 import { Subject, of, throwError } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ThreadViewComponent } from './thread-view.component';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
 import { MessageSourceService } from '../message-source/message-source.service';
@@ -61,6 +90,7 @@ async function build(
     canPaginate?: boolean;
     loadingOlder?: boolean;
     canRedactOthers?: boolean;
+    typingNames?: string[];
   } = {},
 ) {
   const threadMessages = signal<MessageView[]>(messages);
@@ -79,7 +109,7 @@ async function build(
   const openThreadRootIdSignal = signal<string | null>('$root');
   const openThreadRootId = openThreadRootIdSignal.asReadonly();
   const sourceOpen = vi.fn();
-  const dismiss = vi.fn().mockResolvedValue(true);
+  const setTypingCalls = vi.fn();
   // The thread composer's @-mention list comes from the room's member projection. The spec
   // supplied no RoomsService at all, so `return []` in the component went unnoticed — only
   // a `throw` failed, and that was the template crashing rather than an assertion.
@@ -93,6 +123,12 @@ async function build(
       isCreator: false,
     },
   ]);
+  const sheetClose = vi.fn();
+  // `closed` too: the real `TrnDialogRef` has it, and the service subscribes to release
+  // the dead ref. A stub missing part of the API turns a correct change into a red suite.
+  const sheetOpen = vi
+    .fn()
+    .mockReturnValue({ close: sheetClose, closed: new Subject() });
   const membersFor = vi.fn((roomId: string | null) =>
     roomId === '!r:hs'
       ? roster.asReadonly()
@@ -118,18 +154,33 @@ async function build(
       }),
       MockProvider(TimelineService, {
         canRedactOthers: signal(state.canRedactOthers ?? false).asReadonly(),
+        // Seeded because it is an INSTANCE field, which ng-mocks does not reflect: left
+        // out, `typingNames` is undefined and the typing row throws on every render here.
+        typingNames: signal<string[]>(state.typingNames ?? []).asReadonly(),
+        setTyping: setTypingCalls,
       }),
       MockProvider(TimelineActionsService),
       MockProvider(RoomsService, { membersFor }),
       MockProvider(MessageSourceService, { open: sourceOpen }),
-      MockProvider(TrnDialogRef, { close: dismiss }),
       MockProvider(TrnToastService, { show: toastShow }),
+      { provide: TrnActionSheetService, useValue: { open: sheetOpen } },
+      // Seeded to a real direction. Left unprovided, the root service returns its `off`
+      // default and every assertion below reads the value the guards would have produced
+      // anyway — which is how three of these tests passed with both guards deleted.
+      MockProvider(MessageGestureSettingsService, {
+        messageSwipe: signal<SwipeAction>('right').asReadonly(),
+      }),
     ],
   });
+  /** How many times the panel announced a close, for the dismissal assertions. */
+  let dismissals = 0;
+  fixture.componentInstance.dismissed.subscribe(() => (dismissals += 1));
   return {
     fixture,
     container,
     roster,
+    sheetOpen,
+    sheetClose,
     membersFor,
     canPaginateThread,
     loadingOlderThread,
@@ -145,7 +196,8 @@ async function build(
     openThreadRootIdSignal,
     toastShow,
     sourceOpen,
-    dismiss,
+    setTypingCalls,
+    dismissals: () => dismissals,
   };
 }
 
@@ -195,14 +247,14 @@ describe('ThreadViewComponent', () => {
   it('shows an empty state when the thread has no messages', async () => {
     const { container } = await build([]);
 
-    expect(container.querySelector('.thread__empty')).toBeTruthy();
+    expect(container.textContent).toContain('No replies in this thread yet.');
   });
 
-  it('closes the host dialog on close', async () => {
-    const { fixture, dismiss } = await build();
+  it('announces a dismissal on close', async () => {
+    const { fixture, dismissals } = await build();
 
     fixture.componentInstance.close();
-    expect(dismiss).toHaveBeenCalled();
+    expect(dismissals()).toBe(1);
   });
 
   it('closes the thread projection when destroyed', async () => {
@@ -543,5 +595,158 @@ describe('ThreadViewComponent members', () => {
       expect.stringContaining('you left the thread'),
       expect.anything(),
     );
+  });
+
+  describe('the sideways swipe', () => {
+    beforeEach(() => belowMembers(true));
+    afterEach(() => vi.unstubAllGlobals());
+
+    const direction = (fixture: { componentInstance: unknown }) =>
+      (
+        fixture.componentInstance as { swipeDirection: () => string }
+      ).swipeDirection();
+
+    it('replies to a reply that is not ours', async () => {
+      // The mirror of `MessageListBase.onRowSwipe`, hand-copied because this panel does not
+      // extend that class — which is exactly how `(longPress)` was once missed here.
+      const { fixture } = await build([msg('$1', '@ada:hs', 'a reply')]);
+      const cmp = fixture.componentInstance;
+
+      cmp.onRowSwipe(cmp.rows()[0]);
+
+      expect(cmp.replyingToId()).toBe('$1');
+      expect(cmp.editingId()).toBeNull();
+    });
+
+    it('edits a reply that is ours', async () => {
+      // The branch that had no coverage in EITHER dispatcher: both tests used somebody
+      // else's message, so only the reply path ever ran and deleting the edit branch left
+      // the suite green. It is the half the whole design is about — the affordance shows a
+      // pencil, and this is what has to happen when the reader lets go.
+      const { fixture } = await build([
+        { ...msg('$1', '@me:hs', 'mine'), isOwn: true },
+      ]);
+      const cmp = fixture.componentInstance;
+
+      cmp.onRowSwipe(cmp.rows()[0]);
+
+      expect(cmp.editingId()).toBe('$1');
+      expect(cmp.replyingToId()).toBeNull();
+    });
+
+    it('takes the direction from the preference when both guards pass', async () => {
+      // The positive control. Without one, a computed hard-coded to `() => 'off'` passes
+      // every other test in this block.
+      const { fixture } = await build([msg('$1', '@ada:hs', 'a reply')]);
+
+      expect(direction(fixture)).toBe('right');
+    });
+
+    it('is off above the members breakpoint', async () => {
+      // Above `members` the scroller does not claim the horizontal axis and the browser eats
+      // the drag after one `pointermove` — so arming there would be a gesture that cannot
+      // work. Meaningful only because the control above proves a non-`off` value is reachable.
+      belowMembers(false);
+      const { fixture } = await build([msg('$1', '@ada:hs', 'a reply')]);
+
+      expect(direction(fixture)).toBe('off');
+    });
+
+    it('is off when the platform is not a mobile one', async () => {
+      platform.mobile = false;
+      const { fixture } = await build([msg('$1', '@ada:hs', 'a reply')]);
+
+      expect(direction(fixture)).toBe('off');
+      platform.mobile = true;
+    });
+  });
+
+  it('closes its own action sheet when the panel is destroyed', async () => {
+    // The asymmetric consumer, and the reason `MessageActionSheetService` exists at all:
+    // this panel renders `trn-message-row` but does NOT extend `MessageListBase`, so it
+    // inherits none of that wiring and every guarantee has to be re-made here.
+    //
+    // The sheet is a CDK overlay living outside the router outlet, so it outlives the panel.
+    // Without this, closing the thread leaves a modal standing whose every row dispatches
+    // into a destroyed component. The mirror test on the list side cannot cover it — that
+    // one exercises two `MessageListBase` instances, which is the mechanism, not this
+    // configuration.
+    const { fixture, sheetOpen, sheetClose } = await build([
+      msg('$1', '@ada:hs', 'a reply'),
+    ]);
+
+    fixture.componentInstance.onRowLongPress(
+      fixture.componentInstance.rows()[0],
+    );
+    expect(sheetOpen).toHaveBeenCalledTimes(1);
+
+    fixture.destroy();
+
+    expect(sheetClose).toHaveBeenCalledTimes(1);
+  });
+
+  describe('typing', () => {
+    it('forwards the composer typing state to the room notification', async () => {
+      const { fixture, setTypingCalls } = await build([
+        msg('$a', '@ada:hs', 'hi'),
+      ]);
+      const composer = fixture.debugElement.query(
+        By.directive(MessageComposerComponent),
+      );
+
+      composer.triggerEventHandler('typing', true);
+      composer.triggerEventHandler('typing', false);
+
+      // `setTyping` and not a thread-scoped call: `m.typing` is a room-level EDU, and the
+      // service reads the room off its own open context rather than the argument — which
+      // matters because this composer is bound to `[roomId]="rootEventId()"`, an EVENT id.
+      // Tagged `'thread'`: `m.typing` is one flag per room and both composers feed it, so
+      // the service needs to know which one went quiet before it sends a stop.
+      expect(setTypingCalls.mock.calls).toEqual([
+        [true, 'thread'],
+        [false, 'thread'],
+      ]);
+    });
+
+    it('stops typing when the panel is closed mid-reply', async () => {
+      // Without this the server keeps us marked as typing until TYPING_TIMEOUT_MS lapses.
+      // The stop is owner-tagged, so the service can still decline to send it when the main
+      // composer holds a draft — which is why the naive `setTyping(false)` was wrong.
+      const { fixture, setTypingCalls } = await build([
+        msg('$a', '@ada:hs', 'hi'),
+      ]);
+      const composer = fixture.debugElement.query(
+        By.directive(MessageComposerComponent),
+      );
+      composer.triggerEventHandler('typing', true);
+      setTypingCalls.mockClear();
+
+      fixture.destroy();
+
+      expect(setTypingCalls.mock.calls).toEqual([[false, 'thread']]);
+    });
+
+    it('shows the room typists above the thread composer', async () => {
+      const { container } = await build([msg('$a', '@ada:hs', 'hi')], {
+        typingNames: ['Alice'],
+      });
+
+      const row = container.querySelector('.typing-indicator');
+      expect((row?.textContent ?? '').replace(/\s+/g, ' ').trim()).toBe(
+        'Alice is typing',
+      );
+    });
+
+    it('does not announce the typists a second time', async () => {
+      // The list behind this panel carries the same names in its own live region, and
+      // `m.typing` is room-scoped, so announcing here would say it twice.
+      const { container } = await build([msg('$a', '@ada:hs', 'hi')], {
+        typingNames: ['Alice'],
+      });
+
+      expect(
+        container.querySelector('[data-testid="typing-status"]'),
+      ).toBeNull();
+    });
   });
 });

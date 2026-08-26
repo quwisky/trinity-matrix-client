@@ -43,8 +43,8 @@ Everything lives under [`docs/`](docs/index.md), grouped by who is reading.
 - **State:** Angular signals (UI state) + RxJS Observables (async service APIs)
 - **Offline/PWA:** persistent IndexedDB sync store + Angular Service Worker
   (production web) precaching the app shell and crypto WASM
-- **Testing:** Vitest (unit) + Playwright e2e (`@nx/playwright` app journeys +
-  standalone crypto/protocol harnesses)
+- **Testing:** Vitest (unit, plus repository-invariant guard specs in `scripts/`) +
+  Playwright e2e (`@nx/playwright` app journeys + standalone crypto/protocol harnesses)
 - **Quality gates:** ESLint (+ module boundaries), Prettier, Stylelint, and Husky
   hooks (lint-staged + commitlint / Angular commit convention), re-run on every PR
   (and on pushes to `develop`/`master`) by **GitHub Actions** — alongside the unit tests, the production build, the
@@ -76,8 +76,9 @@ For native and full testing details see the [contributor docs](docs/contributing
 | `pnpm build`                        | Production web build into `www/`                               |
 | `pnpm test`                         | Vitest unit tests (`nx run-many -t test` for all projects)     |
 | `pnpm lint`                         | ESLint + Nx module boundaries                                  |
-| `pnpm stylelint`                    | Stylelint (SCSS)                                               |
+| `pnpm stylelint`                    | Stylelint (SCSS and CSS)                                       |
 | `pnpm format`                       | Prettier-format the workspace                                  |
+| `pnpm storybook`                    | Storybook for the whole `libs/components/*` tier               |
 | `pnpm smoke:login`                  | Headless: redirect→login + real matrix.org discovery           |
 | `pnpm spike:chromium`               | Headless E2EE WASM check (Blink → Android WebView / Electron)  |
 | `pnpm spike:webkit`                 | Headless E2EE WASM check (WebKit → iOS WKWebView)              |

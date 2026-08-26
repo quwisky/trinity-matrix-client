@@ -1,11 +1,6 @@
-import { createHmac } from 'node:crypto';
-import {
-  test,
-  expect,
-  type APIRequestContext,
-  type Page,
-} from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // End-to-end for "Mark as unread" (MSC2867). Flagging a room writes `m.marked_unread`
 // into that room's account data — so it follows the user to their other devices — and the
@@ -15,31 +10,6 @@ import { login, synapseSession, type SynapseSession } from './support/app.mts';
 // stay at zero throughout, so the account-data write is the only thing that could be
 // making the row look unread. Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = synapseSession();
-
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
-
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const { nonce } = await request
-    .get(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`)
-    .then((r) => r.json());
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
-}
 
 /** Open the room row's ⋮ menu in the channel list. */
 async function openRoomMenu(page: Page, roomName: string): Promise<void> {

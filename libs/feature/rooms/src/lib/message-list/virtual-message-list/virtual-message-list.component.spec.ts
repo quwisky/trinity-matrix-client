@@ -439,7 +439,7 @@ describe('VirtualMessageListComponent', () => {
     expect(cmp.windowedRows()).toEqual([]);
     expect(cmp.topPad()).toBe(0);
     expect(cmp.bottomPad()).toBe(0);
-    expect(container.querySelector('.empty')).not.toBeNull();
+    expect(container.textContent).toContain('No messages yet.');
   });
 
   it('jumps synchronously to an already-rendered row', async () => {
@@ -790,5 +790,25 @@ describe('VirtualMessageListComponent', () => {
 
     expect(sent).toEqual(['both of these']);
     expect(edited).toEqual([]);
+  });
+  // What this list owes is the wiring — the detail lives in the indicator's own spec.
+  // Before the extraction the markup was copy-pasted here and asserted only in the simple
+  // list, so the windowed copy could drift silently.
+  it('feeds the typing names to the indicator', async () => {
+    const { fixture, container } = await render(VirtualMessageListComponent, {
+      inputs: { typingNames: ['Alice', 'Bob'] },
+      imports: [MockComponent(MessageComposerComponent)],
+    });
+    const text = (el: Element | null | undefined): string =>
+      (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
+
+    expect(text(container.querySelector('.typing-indicator'))).toBe(
+      'Alice and Bob are typing',
+    );
+
+    fixture.componentRef.setInput('typingNames', []);
+    fixture.detectChanges();
+    expect(container.querySelector('.typing-indicator')).toBeNull();
+    expect(container.querySelector('.typing-slot')).not.toBeNull();
   });
 });

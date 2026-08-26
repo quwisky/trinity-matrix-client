@@ -384,6 +384,32 @@ describe('MessageRowComponent', () => {
     },
   );
 
+  // ORDER, not presence. On a continuation row the marker sits BELOW the link preview; on a
+  // group start it sits inside `.msg__head`. Folding the two hand-maintained copies of the
+  // body into one template moved it above the preview, and every other assertion here is a
+  // presence check, so the whole suite stayed green through a visible change.
+  it('keeps the (edited) marker below the link preview on a continuation row', async () => {
+    const { container } = await render(MessageRowComponent, {
+      inputs: {
+        row: row({
+          showHeader: false,
+          edited: true,
+          previewUrl: 'https://example.com',
+        }),
+        caps: caps(),
+      },
+    });
+
+    const body = container.querySelector('.msg__body') as HTMLElement;
+    const children = Array.prototype.slice.call(body.children) as Element[];
+    const preview = body.querySelector('trn-link-preview') as Element;
+    const marker = body.querySelector('[data-testid=msg-edited]') as Element;
+
+    expect(preview).not.toBeNull();
+    expect(marker).not.toBeNull();
+    expect(children.indexOf(preview)).toBeLessThan(children.indexOf(marker));
+  });
+
   it('offers no marker on a message that was never edited', async () => {
     const { container } = await render(MessageRowComponent, {
       inputs: { row: row(), caps: caps() },
@@ -667,5 +693,247 @@ describe('MessageRowComponent', () => {
 
     expect(container.querySelector('trn-message-toolbar')).toBeNull();
     expect(container.querySelector('.msg__retry')).toBeNull();
+  });
+
+  describe('right-click and long-press', () => {
+    /** The menu is rendered into a CDK overlay, so it is found on `document`, not in the row. */
+    const menuOpen = () =>
+      document.querySelectorAll('[data-testid=msg-copy]').length > 0;
+
+    // `isPrimary: true` is part of the DEFAULT on purpose. Only a primary pointer arms a
+    // press, so a helper that left it undefined would make every "nothing happened"
+    // assertion below pass for the wrong reason — the press would never have been armed at
+    // all, and the behaviour each test names would go unexercised.
+    const pointer = (type: string, over: Partial<PointerEvent> = {}) =>
+      Object.assign(
+        new Event(type, { bubbles: true, cancelable: true }),
+        { pointerType: 'touch', clientX: 0, clientY: 0, isPrimary: true },
+        over,
+      ) as unknown as PointerEvent;
+
+    /** The row pins its own action bar open; the bar is not in an overlay. */
+    const barRevealed = (container: HTMLElement) =>
+      container.querySelector('.msg')?.classList.contains('msg--revealed') ??
+      false;
+
+    afterEach(() => {
+      // The overlay outlives the fixture; leaving it attached leaks into the next test.
+      document
+        .querySelectorAll('.cdk-overlay-container')
+        .forEach((el) => el.remove());
+    });
+
+    it('opens the message actions on right-click, instead of the browser menu', async () => {
+      const { container } = await renderRow({ row: row(), caps: caps() });
+      const el = container.querySelector('.msg') as HTMLElement;
+
+      const event = new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+      });
+      el.dispatchEvent(event);
+      await Promise.resolve();
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(menuOpen()).toBe(true);
+    });
+
+    /** Pretend the user has highlighted text, anchored at `anchorNode`. */
+    const selectText = (anchorNode: Node | null) =>
+      vi.spyOn(document, 'getSelection').mockReturnValue({
+        toString: () => 'some highlighted words',
+        anchorNode,
+      } as unknown as Selection);
+
+    it('leaves the browser menu alone when text in this row is selected', async () => {
+      // Their selection, their menu: a user who has highlighted part of a message is asking
+      // for Copy, and replacing that with ours would be a downgrade.
+      const { container } = await renderRow({ row: row(), caps: caps() });
+      const el = container.querySelector('.msg') as HTMLElement;
+      selectText(el.querySelector('.msg__text'));
+
+      const event = new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+      });
+      el.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(menuOpen()).toBe(false);
+      vi.mocked(document.getSelection).mockRestore();
+    });
+
+    it('still offers its own actions when the selection is in a different row', async () => {
+      // A selection is a statement about ONE message. Reading the document-wide selection
+      // meant text highlighted anywhere in the timeline suppressed the context menu on every
+      // other row until it was cleared.
+      const { container } = await renderRow({ row: row(), caps: caps() });
+      const el = container.querySelector('.msg') as HTMLElement;
+      const elsewhere = document.createElement('p');
+      elsewhere.textContent = 'a different message';
+      document.body.append(elsewhere);
+      selectText(elsewhere.firstChild);
+
+      const event = new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+      });
+      el.dispatchEvent(event);
+      await Promise.resolve();
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(menuOpen()).toBe(true);
+      vi.mocked(document.getSelection).mockRestore();
+      elsewhere.remove();
+    });
+
+    it('reveals the action bar after a long press on touch', async () => {
+      // NOT the overflow menu. Reply, Add reaction and Reply in thread are the bar's own
+      // buttons and are not in that menu, so opening it would leave a touch user unable to
+      // reach the three actions they use most.
+      vi.useFakeTimers();
+      const { container } = await renderRow({ row: row(), caps: caps() });
+      const el = container.querySelector('.msg') as HTMLElement;
+
+      el.dispatchEvent(pointer('pointerdown'));
+      expect(barRevealed(container)).toBe(false); // not yet — a tap is not a press
+      vi.advanceTimersByTime(600);
+      await Promise.resolve();
+
+      expect(barRevealed(container)).toBe(true);
+      vi.useRealTimers();
+    });
+
+    it('does not let a second primary pointer leak the first press', async () => {
+      // A pen and a finger are BOTH primary (`isPrimary` is per pointer type), so the
+      // non-primary guard does not cover this: the second `pointerdown` used to overwrite the
+      // timer handle while the first timer stayed scheduled, and cancelling then cleared only
+      // the one still reachable. The orphan fired 500ms later and opened the bar with nothing
+      // held down. Only clearing the pending timer on the way in prevents it.
+      vi.useFakeTimers();
+      const { container } = await renderRow({ row: row(), caps: caps() });
+      const el = container.querySelector('.msg') as HTMLElement;
+
+      el.dispatchEvent(pointer('pointerdown'));
+      el.dispatchEvent(
+        pointer('pointerdown', { pointerType: 'pen', clientX: 80 }),
+      );
+      el.dispatchEvent(pointer('pointercancel'));
+      vi.advanceTimersByTime(1000);
+      await Promise.resolve();
+
+      expect(barRevealed(container)).toBe(false);
+      vi.useRealTimers();
+    });
+
+    it('lets a second finger land without restarting the press underway', async () => {
+      // The distinguishing case for the non-primary guard, which the test above cannot
+      // isolate because clearing the pending timer would also satisfy it. Here the first
+      // press is already 400ms along; treating the second finger as a new press would reset
+      // that clock and the press would never complete. A real pinch still cancels this, via
+      // the `pointercancel` the browser sends when it takes the gesture over.
+      vi.useFakeTimers();
+      const { container } = await renderRow({ row: row(), caps: caps() });
+      const el = container.querySelector('.msg') as HTMLElement;
+
+      el.dispatchEvent(pointer('pointerdown'));
+      vi.advanceTimersByTime(400);
+      el.dispatchEvent(
+        pointer('pointerdown', { isPrimary: false, clientX: 80 }),
+      );
+      vi.advanceTimersByTime(200);
+      await Promise.resolve();
+
+      expect(barRevealed(container)).toBe(true);
+      vi.useRealTimers();
+    });
+
+    it.each(['pointerup', 'pointercancel', 'pointerleave'])(
+      'ends the press on %s',
+      async (endEvent) => {
+        // Each of these is wired separately in the template, so each can be dropped
+        // separately — and a press that outlives the finger opens the bar on its own.
+        vi.useFakeTimers();
+        const { container } = await renderRow({ row: row(), caps: caps() });
+        const el = container.querySelector('.msg') as HTMLElement;
+
+        el.dispatchEvent(pointer('pointerdown'));
+        el.dispatchEvent(pointer(endEvent));
+        vi.advanceTimersByTime(1000);
+        await Promise.resolve();
+
+        expect(barRevealed(container)).toBe(false);
+        vi.useRealTimers();
+      },
+    );
+
+    it('puts the bar away again when something outside the row is pressed', async () => {
+      vi.useFakeTimers();
+      const { container } = await renderRow({ row: row(), caps: caps() });
+      const el = container.querySelector('.msg') as HTMLElement;
+
+      el.dispatchEvent(pointer('pointerdown'));
+      vi.advanceTimersByTime(600);
+      await Promise.resolve();
+      expect(barRevealed(container)).toBe(true);
+
+      document.body.dispatchEvent(
+        new Event('pointerdown', { bubbles: true, cancelable: true }),
+      );
+      await Promise.resolve();
+
+      expect(barRevealed(container)).toBe(false);
+      vi.useRealTimers();
+    });
+
+    it('leaves a right-click on a link to the browser', async () => {
+      // "Open link in new tab" and "Save image as…" exist nowhere else, so swallowing the
+      // native menu over a link or an attachment is a straight loss.
+      const { container } = await renderRow({
+        row: row({ html: '<a href="https://example.com">a link</a>' }),
+        caps: caps(),
+      });
+      const link = container.querySelector('a') as HTMLElement;
+      expect(link).not.toBeNull();
+
+      const event = new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+      });
+      link.dispatchEvent(event);
+      await Promise.resolve();
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(menuOpen()).toBe(false);
+    });
+
+    it('does not fire at the end of a scroll', async () => {
+      // A press that travels is a flick, and a timeline is mostly flicked. Without this the
+      // menu would appear every time a scroll happened to start on a message.
+      vi.useFakeTimers();
+      const { container } = await renderRow({ row: row(), caps: caps() });
+      const el = container.querySelector('.msg') as HTMLElement;
+
+      el.dispatchEvent(pointer('pointerdown'));
+      el.dispatchEvent(pointer('pointermove', { clientY: 40 }));
+      vi.advanceTimersByTime(600);
+      await Promise.resolve();
+
+      expect(barRevealed(container)).toBe(false);
+      vi.useRealTimers();
+    });
+
+    it('ignores a long press from a mouse, which has a right button for this', async () => {
+      vi.useFakeTimers();
+      const { container } = await renderRow({ row: row(), caps: caps() });
+      const el = container.querySelector('.msg') as HTMLElement;
+
+      el.dispatchEvent(pointer('pointerdown', { pointerType: 'mouse' }));
+      vi.advanceTimersByTime(600);
+      await Promise.resolve();
+
+      expect(barRevealed(container)).toBe(false);
+      vi.useRealTimers();
+    });
   });
 });

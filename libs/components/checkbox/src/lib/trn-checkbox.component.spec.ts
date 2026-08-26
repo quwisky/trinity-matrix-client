@@ -47,6 +47,23 @@ describe('TrnCheckboxComponent', () => {
     );
   });
 
+  it('emits when the control is operated, which is the whole job', async () => {
+    // The host has wired `last` since this spec was written and nothing ever read it, so
+    // deleting `(checkedChange)` from the template left the suite green — a checkbox that
+    // does not emit does nothing at all. Found while mirroring this file for `trn-switch`,
+    // where the same gap would have shipped again.
+    //
+    // Driven through a real click rather than by calling the output, so the kit's own event
+    // plumbing is part of what is under test.
+    const { container, fixture } = await render(HostComponent);
+    expect(fixture.componentInstance.last()).toBeNull();
+
+    (box(container) as HTMLElement | null)?.click();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.last()).toBe(true);
+  });
+
   it('forwards disabled, which is what stops the click', async () => {
     // Expressed as `data-disabled` on the host and a native `disabled` on the inner
     // control, not `aria-disabled` — asserted against what the kit actually renders rather

@@ -4,13 +4,13 @@ import {
   type APIRequestContext,
   type Page,
 } from '@playwright/test';
-import { createHmac } from 'node:crypto';
 import {
   fillLabeledInput,
   login,
   synapseSession,
   type SynapseSession,
 } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // GIF picker journeys. The send path round-trips through the REAL disposable
 // Synapse (upload → m.image → sync), like every app-journey spec; only the
@@ -21,8 +21,6 @@ const session = synapseSession();
 
 // The admin API + shared-secret used to register throwaway users (hardcoded in
 // every spec — there is no shared module for them).
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
 
 // A real, decodable 1×1 transparent GIF, served for both the picker preview and
 // the full download so the send round-trips genuine image bytes.
@@ -41,23 +39,6 @@ interface ApiUser {
   token: string;
   userId: string;
   headers: { Authorization: string };
-}
-
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const nonce = await request
-    .get(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`)
-    .then((r) => r.json())
-    .then((j) => j.nonce as string);
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
 }
 
 async function apiLogin(

@@ -3,12 +3,14 @@ import {
   Component,
   DestroyRef,
   inject,
+  output,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { HlmButton } from '@trinity/helm/button';
+import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnTooltip } from '@trinity/components/tooltip';
-import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
+import { TrnToastService } from '@trinity/components/overlay';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import { TrnIconComponent } from '@trinity/components/icon';
 
@@ -18,17 +20,17 @@ import { TrnIconComponent } from '@trinity/components/icon';
  * Reads the live {@link PinnedMessagesService.pinnedMessages} (already projected for
  * the active room by the rooms shell), so it reacts to remote pins/unpins.
  *
- * Presented via {@link PinnedPanelService} as a right-aligned side panel (desktop) /
- * full-screen (mobile) {@link TrnDialogService} dialog — mirroring
- * {@link ThreadsListComponent}. Tapping a row closes the dialog with the chosen event
- * id, and the panel service hands it to the rooms shell to jump the timeline (the
- * same mechanism in-room search uses). Each row also offers an inline Unpin (gated to
- * users who may edit pinned events) that acts in place without closing the panel.
+ * Presentational: it renders into the rooms shell's right-hand panel slot and owns no
+ * panel state of its own — mirroring {@link ThreadsListComponent}. Tapping a row emits
+ * {@link selected} with the chosen event id for the host to jump the timeline to (the
+ * same mechanism in-room search uses), and the header's close button emits
+ * {@link dismissed}. Each row also offers an inline Unpin (gated to users who may edit
+ * pinned events) that acts in place and announces nothing, so the panel stays open.
  */
 @Component({
   selector: 'trn-pinned-messages-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnIconComponent, HlmButton, TrnTooltip],
+  imports: [EmptyStateComponent, TrnIconComponent, HlmButton, TrnTooltip],
   templateUrl: './pinned-messages-panel.component.html',
   styleUrl: './pinned-messages-panel.component.scss',
 })
@@ -39,17 +41,20 @@ export class PinnedMessagesPanelComponent {
   private readonly pinnedSvc = inject(PinnedMessagesService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly dialogRef =
-    inject<TrnDialogRef<string | undefined>>(TrnDialogRef);
 
   /** The active room's pinned messages, in pin order. */
   readonly pinned = this.pinnedSvc.pinnedMessages;
   /** Whether the current user may unpin (room permission). */
   readonly canPin = this.pinnedSvc.canPin;
 
-  /** Close this panel, handing the chosen event id back for a timeline jump. */
+  /** The user picked a pinned message: its event id, for the host to jump to. */
+  readonly selected = output<string>();
+  /** The user closed the panel without picking a pinned message. */
+  readonly dismissed = output<void>();
+
+  /** Row tap: announce the chosen event id for a timeline jump. */
   jumpTo(eventId: string): void {
-    this.dialogRef.close(eventId);
+    this.selected.emit(eventId);
   }
 
   /** Unpin a message in place; the live projection drops the row on success. */
@@ -66,8 +71,8 @@ export class PinnedMessagesPanelComponent {
       });
   }
 
-  /** Close the panel without jumping. */
+  /** Close button: announce the close without a jump. */
   close(): void {
-    this.dialogRef.close();
+    this.dismissed.emit();
   }
 }

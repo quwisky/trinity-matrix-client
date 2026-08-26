@@ -39,6 +39,8 @@ import {
   StoragePersistenceService,
   SystemLineSettingsService,
   ComposerSettingsService,
+  MessageGestureSettingsService,
+  ShellLayoutService,
   ThemeService,
   TrinityErrorHandler,
   isElectronRenderer,
@@ -100,6 +102,9 @@ bootstrapApplication(AppComponent, {
     ),
     // Apply the saved light/dark preference before the first paint.
     provideAppInitializer(() => inject(ThemeService).init()),
+    // Load the dragged pane widths before the shell first paints, so a customised layout is
+    // what renders rather than the default flashing first.
+    provideAppInitializer(() => inject(ShellLayoutService).init()),
     // Load persisted experimental feature flags (e.g. virtualized timeline).
     provideAppInitializer(() => inject(FeatureFlagsService).init()),
     // Load persisted privacy preferences (e.g. whether to send read receipts)
@@ -113,6 +118,7 @@ bootstrapApplication(AppComponent, {
     // churn flash in on every cold start.
     provideAppInitializer(() => inject(SystemLineSettingsService).init()),
     provideAppInitializer(() => inject(ComposerSettingsService).init()),
+    provideAppInitializer(() => inject(MessageGestureSettingsService).init()),
     // Load the saved date/time formats before the first timeline paints — every message
     // header carries a timestamp, so hydrating late would render the whole room in the
     // default format and then reflow it.

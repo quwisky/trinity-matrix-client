@@ -19,7 +19,7 @@ import {
   type ThemePreference,
 } from '@trinity/platform-native';
 import { By } from '@angular/platform-browser';
-import { TrnCheckboxComponent } from '@trinity/components/checkbox';
+import { TrnSwitchComponent } from '@trinity/components/switch';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import {
   SpaceRoomOrderService,
@@ -45,6 +45,8 @@ describe('AppearanceSettingsComponent', () => {
   let setDefault: Mock;
   let showFormattingToolbar: ReturnType<typeof signal<boolean>>;
   let setShowFormattingToolbar: Mock;
+  let formatOnSelection: ReturnType<typeof signal<boolean>>;
+  let setFormatOnSelection: Mock;
 
   beforeEach(() => {
     preference = signal<ThemePreference>('system');
@@ -63,6 +65,8 @@ describe('AppearanceSettingsComponent', () => {
     setDefault = vi.fn();
     showFormattingToolbar = signal(true);
     setShowFormattingToolbar = vi.fn();
+    formatOnSelection = signal(true);
+    setFormatOnSelection = vi.fn();
   });
 
   function renderPage() {
@@ -83,6 +87,8 @@ describe('AppearanceSettingsComponent', () => {
         MockProvider(ComposerSettingsService, {
           showFormattingToolbar,
           setShowFormattingToolbar,
+          formatOnSelection,
+          setFormatOnSelection,
         }),
         MockProvider(SystemLineSettingsService, {
           showMembership,
@@ -137,6 +143,7 @@ describe('AppearanceSettingsComponent', () => {
       container.querySelector('[data-testid=time-format-select]'),
       container.querySelector('[data-testid=date-format-select]'),
       container.querySelector('[data-testid=space-order-select]'),
+      container.querySelector('[data-testid=message-swipe-select]'),
     ];
     // Every entry must actually be present, or a missing control would pass this sweep by
     // being null. `text-scale-select` was absent from this list until the code-size block
@@ -397,17 +404,17 @@ describe('AppearanceSettingsComponent', () => {
     expect(TestBed.inject(ThemeService).setPalette).not.toHaveBeenCalled();
   });
 
-  /** The `trn-checkbox` inside the labelled toggle with the given testid. */
-  function checkboxFor(fixture: unknown, testid: string) {
+  /** The `trn-switch` inside the labelled toggle with the given testid. */
+  function switchFor(fixture: unknown, testid: string) {
     return (
       fixture as { debugElement: { queryAll: (p: unknown) => unknown[] } }
     ).debugElement
-      .queryAll(By.directive(TrnCheckboxComponent))
+      .queryAll(By.directive(TrnSwitchComponent))
       .find((c) =>
         (c as { nativeElement: HTMLElement }).nativeElement.closest(
           `[data-testid=${testid}]`,
         ),
-      ) as { componentInstance: TrnCheckboxComponent } | undefined;
+      ) as { componentInstance: TrnSwitchComponent } | undefined;
   }
 
   // Each switch is a separate binding, so a copy-paste slip (profile bound to
@@ -417,19 +424,16 @@ describe('AppearanceSettingsComponent', () => {
     const { fixture } = await renderPage();
 
     expect(
-      checkboxFor(
+      switchFor(
         fixture,
         'timeline-show-membership',
       )!.componentInstance.checked(),
     ).toBe(true);
     expect(
-      checkboxFor(
-        fixture,
-        'timeline-show-profile',
-      )!.componentInstance.checked(),
+      switchFor(fixture, 'timeline-show-profile')!.componentInstance.checked(),
     ).toBe(false);
     expect(
-      checkboxFor(
+      switchFor(
         fixture,
         'timeline-show-room-changes',
       )!.componentInstance.checked(),
@@ -439,7 +443,7 @@ describe('AppearanceSettingsComponent', () => {
   it('writes each timeline toggle to its own setter', async () => {
     const { fixture } = await renderPage();
 
-    checkboxFor(
+    switchFor(
       fixture,
       'timeline-show-profile',
     )!.componentInstance.checkedChange.emit(false);
@@ -448,13 +452,13 @@ describe('AppearanceSettingsComponent', () => {
     expect(setShowMembership).not.toHaveBeenCalled();
     expect(setShowRoomChanges).not.toHaveBeenCalled();
 
-    checkboxFor(
+    switchFor(
       fixture,
       'timeline-show-membership',
     )!.componentInstance.checkedChange.emit(false);
     expect(setShowMembership).toHaveBeenCalledWith(false);
 
-    checkboxFor(
+    switchFor(
       fixture,
       'timeline-show-room-changes',
     )!.componentInstance.checkedChange.emit(false);
@@ -464,10 +468,24 @@ describe('AppearanceSettingsComponent', () => {
     showFormattingToolbar.set(false);
     const { fixture } = await renderPage();
 
-    const toggle = checkboxFor(fixture, 'composer-show-toolbar')!;
+    const toggle = switchFor(fixture, 'composer-show-toolbar')!;
     expect(toggle.componentInstance.checked()).toBe(false);
 
     toggle.componentInstance.checkedChange.emit(true);
     expect(setShowFormattingToolbar).toHaveBeenCalledWith(true);
+  });
+
+  it('reflects and sets the raise-on-selection preference', async () => {
+    // Its own switch and its own setter. The two are separate preferences precisely so they
+    // can disagree, so a test that only drove the pinned one would not notice them re-merged.
+    formatOnSelection.set(false);
+    const { fixture } = await renderPage();
+
+    const toggle = switchFor(fixture, 'composer-format-on-selection')!;
+    expect(toggle.componentInstance.checked()).toBe(false);
+
+    toggle.componentInstance.checkedChange.emit(true);
+    expect(setFormatOnSelection).toHaveBeenCalledWith(true);
+    expect(setShowFormattingToolbar).not.toHaveBeenCalled();
   });
 });

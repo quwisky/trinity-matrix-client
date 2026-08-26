@@ -1,4 +1,3 @@
-import { createHmac } from 'node:crypto';
 import {
   test,
   expect,
@@ -6,6 +5,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // Covers the member info panel: clicking a member row in the member list
 // (data-testid="member-row") opens a room-scoped info panel
@@ -14,34 +14,9 @@ import { login, synapseSession, type SynapseSession } from './support/app.mts';
 // viewer. Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = synapseSession();
 
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
-
 interface ApiUser {
   userId: string;
   headers: { Authorization: string };
-}
-
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const { nonce } = await request
-    .get(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`)
-    .then((r) => r.json());
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
 }
 
 async function apiLogin(
@@ -130,6 +105,25 @@ test.describe('Member info panel', () => {
       hasText: memberName,
     });
     await memberRow.first().waitFor({ state: 'visible', timeout: 20_000 });
+
+    // The member list windows itself, and its spacer heights come from a ROW_PX constant
+    // rather than a measurement — jsdom has no layout, so the unit tests can only check
+    // that the arithmetic is self-consistent, not that the number is right. If a row stops
+    // being 44px the spacers drift and the scrollbar lies about how long the list is, with
+    // nothing in the unit suite to say so. Measured here, where there is a real cascade.
+    const rowBox = await memberRow.first().boundingBox();
+    expect(rowBox?.height).toBe(44);
+
+    // The header height too, and for a sharper reason: the unit test that checks the
+    // spacer arithmetic is algebraically blind to it — the bottom spacer comes out of the
+    // same total, so the header's height cancels whatever value it is given. Nothing but a
+    // real cascade can say whether HEADER_PX matches what the stylesheet renders.
+    const headerBox = await page
+      .locator('.members__section-label')
+      .first()
+      .boundingBox();
+    expect(headerBox?.height).toBe(34);
+
     await memberRow.first().click();
 
     // The info panel opens with their name, id, role, and a Message action.
@@ -139,5 +133,39 @@ test.describe('Member info panel', () => {
     await expect(panel).toContainText(memberB.userId);
     await expect(panel).toContainText('Member');
     await expect(panel.getByTestId('member-info-message')).toBeVisible();
+
+    // The slot supplies position and size only, so the component has to paint its own
+    // surface — otherwise this is a transparent 480px column with a small card floating in
+    // it, swallowing every click on the timeline behind. Measured in a real browser because
+    // that is the only place `:host` and the page's `.chat-panel` rule meet.
+    const surface = await page.locator('trn-member-info').evaluate((host) => {
+      const style = getComputedStyle(host);
+      return {
+        display: style.display,
+        background: style.backgroundColor,
+        height: host.getBoundingClientRect().height,
+        // The row the panel shares with the timeline, which is what "full height" means for
+        // a pane IN FLOW. Not the viewport: the row starts below the room header, so a
+        // viewport-relative bound would be measuring the header, and would answer
+        // differently again if the panel ever went back to being an overlay.
+        row: host.closest('.chat-body')?.getBoundingClientRect().height ?? 0,
+      };
+    });
+    expect(surface.display).toBe('flex');
+    expect(surface.background).not.toMatch(/rgba\(0, 0, 0, 0\)|transparent/);
+    // As tall as the pane beside it, not a content-sized card floating in the slot.
+    expect(surface.row).toBeGreaterThan(0);
+    expect(Math.abs(surface.height - surface.row)).toBeLessThanOrEqual(1);
+
+    // And it can be closed. As a dialog the backdrop and Escape do that; in the slot at this
+    // width there is neither, so without the header's button the panel is a dead end.
+    // From the page, not the panel: the header is a SIBLING of `member-info`, which is the
+    // body card — the component's host is what wraps both.
+    await page.getByTestId('member-info-close').click();
+    await expect(panel).toBeHidden({ timeout: 10_000 });
+    // Closing member info gives the roster back rather than emptying the slot.
+    await expect(
+      page.locator('[data-testid="member-row"]').first(),
+    ).toBeVisible({ timeout: 10_000 });
   });
 });

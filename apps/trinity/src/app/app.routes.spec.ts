@@ -1,6 +1,12 @@
-import { Component } from '@angular/core';
+import { Component, type OnDestroy } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { Router, provideRouter, type Routes } from '@angular/router';
+import {
+  Router,
+  UrlSegment,
+  provideRouter,
+  type Routes,
+} from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
 import { authGuard } from '@trinity/data-access/auth';
 import { describe, expect, it } from 'vitest';
 
@@ -14,12 +20,19 @@ class BlankComponent {}
  * The real table with its lazy loaders and guards stripped. What is under test is the
  * PATH structure — whether an unknown URL matches anything at all — and resolving the
  * real `loadComponent` chunks would drag every feature lib (and its SDK dependencies)
- * into this run. Paths, redirects and `pathMatch` are copied verbatim, so deleting the
- * wildcard from app.routes.ts still fails these tests.
+ * into this run. Paths, MATCHERS, redirects and `pathMatch` are copied verbatim, so deleting
+ * the wildcard from app.routes.ts still fails these tests.
+ *
+ * The matcher branch is not optional: `/rooms` is matched by a function rather than a path (one
+ * Route object for both `/rooms` and `/rooms/<segment>`, so the page instance is reused across
+ * them). Rebuilding it as `{ path: undefined }` makes the router reject the whole table with
+ * NG04014, which is how this stopped compiling the first time.
  */
 const pathTable: Routes = routes.map((route) =>
   route.redirectTo === undefined
-    ? { path: route.path, component: BlankComponent }
+    ? route.matcher
+      ? { matcher: route.matcher, component: BlankComponent }
+      : { path: route.path, component: BlankComponent }
     : {
         path: route.path,
         redirectTo: route.redirectTo,
@@ -119,5 +132,95 @@ describe('app route guards', () => {
         `${path} needs a leave guard`,
       ).toHaveLength(1);
     }
+  });
+
+  /**
+   * The room lives in the URL, and the shell must SURVIVE it changing.
+   *
+   * `/rooms` and `/rooms/<segment>` are one Route object on purpose. Angular's default reuse
+   * strategy is `future.routeConfig === curr.routeConfig` — an identity check on the Route,
+   * not on the component — so writing these as two sibling entries sharing a `loadComponent`
+   * destroys and rebuilds the page on every open-a-room and every close-back-to-the-list.
+   *
+   * That is not a performance nit. `RoomsPage.providers` holds `RoomShellStore` and the twelve
+   * shell coordinators, so a rebuild resets the selected space, the sidebar view and the room
+   * filter: clicking a room inside a space would snap the sidebar back to Recent, and the
+   * page's `ngOnDestroy` would tear down the timeline, thread and pinned projections a moment
+   * before the new instance re-opened them.
+   *
+   * Counted rather than reasoned about, because the reasoning is what was wrong the first time.
+   */
+  describe('the rooms shell across a room change', () => {
+    let constructed = 0;
+    let destroyed = 0;
+
+    @Component({ template: '' })
+    class CountingShellComponent implements OnDestroy {
+      constructor() {
+        constructed++;
+      }
+      ngOnDestroy(): void {
+        destroyed++;
+      }
+    }
+
+    /** The REAL matcher from app.routes.ts, with only the component swapped. */
+    const roomsRoute = routes.find((route) => route.matcher);
+
+    async function walk(urls: string[]): Promise<void> {
+      constructed = 0;
+      destroyed = 0;
+      TestBed.configureTestingModule({
+        providers: [
+          provideRouter([
+            {
+              matcher: roomsRoute!.matcher!,
+              component: CountingShellComponent,
+            },
+          ]),
+        ],
+      });
+      const harness = await RouterTestingHarness.create();
+      for (const url of urls) {
+        await harness.navigateByUrl(url);
+      }
+    }
+
+    it('is one route, so the page is never rebuilt when the room changes', async () => {
+      await walk([
+        '/rooms',
+        '/rooms/IWE6aHM',
+        '/rooms/IWI6aHM',
+        '/rooms',
+        '/rooms/IWM6aHM',
+      ]);
+
+      // Five navigations, one shell. Measured against two sibling entries: 4 and 3.
+      expect(constructed).toBe(1);
+      expect(destroyed).toBe(0);
+    });
+
+    it('still matches both shapes, and nothing longer', () => {
+      const segments = (path: string) =>
+        path.split('/').map((part) => new UrlSegment(part, {}));
+
+      expect(roomsRoute!.matcher!(segments('rooms'), null!, null!)).toEqual({
+        consumed: segments('rooms'),
+      });
+      // The room arrives as a positional parameter, which is what `paramMap` reads.
+      const withRoom = roomsRoute!.matcher!(
+        segments('rooms/IWE6aHM'),
+        null!,
+        null!,
+      );
+      expect(withRoom?.posParams?.['roomId'].path).toBe('IWE6aHM');
+      // A deeper path is somebody else's — falling through to the wildcard, not swallowed.
+      expect(
+        roomsRoute!.matcher!(segments('rooms/IWE6aHM/extra'), null!, null!),
+      ).toBeNull();
+      expect(
+        roomsRoute!.matcher!(segments('settings'), null!, null!),
+      ).toBeNull();
+    });
   });
 });

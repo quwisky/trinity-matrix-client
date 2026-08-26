@@ -1,9 +1,9 @@
 <div
-  class="flex h-dvh w-screen flex-col overflow-hidden border-l border-solid border-border bg-card text-card-foreground shadow-lg md:w-120"
+  class="safe-bottom flex h-full flex-col overflow-hidden border-l border-solid border-border bg-card text-card-foreground shadow-lg"
   data-testid="thread-view"
 >
   <div
-    class="safe-top safe-left safe-right flex items-center gap-2 border-b border-solid border-border p-3"
+    class="panel-header flex items-center gap-2 border-b border-solid border-border"
   >
     <h2 class="flex-1 text-base font-semibold">Thread</h2>
     <button
@@ -18,7 +18,7 @@
     </button>
   </div>
 
-  <div class="thread flex-1 overflow-y-auto" #scroll>
+  <div class="thread flex-1 overflow-y-auto max-members:touch-pan-y" #scroll>
     @if (loadingOlder()) {
       <div class="thread__load-older">Loading older replies…</div>
     } @else if (canLoadOlder()) {
@@ -32,15 +32,19 @@
         [row]="row"
         [caps]="rowCaps(row)"
         (action)="onRowAction(row, $event)"
+        (longPress)="onRowLongPress(row)"
+        [swipeDirection]="swipeDirection()"
+        (swipe)="onRowSwipe(row)"
         (pollVote)="onPollVote($event)"
         (pollEnd)="onPollEnd($event)"
       />
     } @empty {
-      <div class="thread__empty">No replies in this thread yet.</div>
+      <trn-empty-state body="No replies in this thread yet." />
     }
   </div>
 
   <div class="thread__footer">
+    <trn-typing-indicator [names]="typingNames()" [announce]="false" />
     <trn-message-composer
       placeholder="Reply…"
       [roomId]="rootEventId()"
@@ -57,6 +61,7 @@
       (cancelEdit)="editingId.set(null)"
       (cancelReply)="replyingToId.set(null)"
       (editLast)="editLastOwn()"
+      (typing)="onTyping($event)"
     />
   </div>
 </div>

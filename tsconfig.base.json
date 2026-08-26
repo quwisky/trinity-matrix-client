@@ -90,6 +90,9 @@
       "@trinity/components/emoji-picker": [
         "./libs/components/emoji-picker/src/index.ts"
       ],
+      "@trinity/components/empty-state": [
+        "./libs/components/empty-state/src/index.ts"
+      ],
       "@trinity/components/utils": ["./libs/components/utils/src/index.ts"],
       "@trinity/components/spinner": ["./libs/components/spinner/src/index.ts"],
       "@trinity/components/label": ["./libs/components/label/src/index.ts"],
@@ -113,11 +116,26 @@
         "./libs/components/radio-group/src/index.ts"
       ],
       "@trinity/components/select": ["./libs/components/select/src/index.ts"],
+      "@trinity/components/switch": ["./libs/components/switch/src/index.ts"],
       "@trinity/components/input": ["./libs/components/input/src/index.ts"],
       "@trinity/components/tooltip": ["./libs/components/tooltip/src/index.ts"],
       "@trinity/components/textarea": [
         "./libs/components/textarea/src/index.ts"
-      ]
+      ],
+      "@trinity/components/toggle-group": [
+        "./libs/components/toggle-group/src/index.ts"
+      ],
+      "@trinity/components/tabs": ["./libs/components/tabs/src/index.ts"],
+      "@trinity/components/separator": [
+        "./libs/components/separator/src/index.ts"
+      ],
+      "@trinity/helm/toggle-group": [
+        "./libs/spartan/toggle-group/src/index.ts"
+      ],
+      "@trinity/helm/toggle": ["./libs/spartan/toggle/src/index.ts"],
+      "@trinity/helm/separator": ["./libs/spartan/separator/src/index.ts"],
+      "@trinity/helm/tabs": ["./libs/spartan/tabs/src/index.ts"],
+      "@trinity/helm/switch": ["./libs/spartan/switch/src/index.ts"]
     },
     "noUncheckedSideEffectImports": false,
     "types": ["*"]

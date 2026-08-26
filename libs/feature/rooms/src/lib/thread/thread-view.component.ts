@@ -21,10 +21,15 @@ import {
   type BatchProgress,
 } from '../shared/send-media-batch';
 import {
-  TrnDialogRef,
-  TrnAlertService,
-  TrnToastService,
-} from '@trinity/components/overlay';
+  HapticsService,
+  MessageGestureSettingsService,
+  isMobileOs,
+} from '@trinity/platform-native';
+import { MessageActionSheetService } from '../message-actions/message-action-sheet.service';
+import { type SwipeDirection } from '../message-row/message-row.component';
+import { EmptyStateComponent } from '@trinity/components/empty-state';
+import { TypingIndicatorComponent } from '../message-list/typing-indicator/typing-indicator.component';
+import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import {
@@ -57,6 +62,11 @@ import { MessageSourceService } from '../message-source/message-source.service';
 import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
 import { TrnIconComponent } from '@trinity/components/icon';
+import {
+  scrollBehavior,
+  BELOW_MEMBERS_QUERY,
+  mediaQuerySignal,
+} from '@trinity/util/ui';
 
 /** Group consecutive messages from the same sender within this window (Discord-style). */
 const GROUP_GAP_MS = 5 * 60 * 1000;
@@ -81,14 +91,17 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
  *
  * Orchestration mirrors {@link SimpleMessageListComponent} but routes every action
  * through {@link ThreadsService}'s thread-scoped methods, which carry the thread
- * relation so sends/edits/replies stay in the thread. Presented via
- * {@link ThreadPanelService} as a full-height, right-aligned {@link TrnDialogService}
- * side panel (full-screen on mobile); `roomId`/`rootEventId` arrive as signal inputs.
+ * relation so sends/edits/replies stay in the thread. Presentational: rendered in the
+ * rooms shell's right-hand panel slot, with `roomId`/`rootEventId` as signal inputs; it
+ * closes nothing itself, it announces {@link ThreadViewComponent.dismissed} and the
+ * rooms page empties the slot.
  */
 @Component({
   selector: 'trn-thread-view',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    TypingIndicatorComponent,
+    EmptyStateComponent,
     TrnIconComponent,
     HlmButton,
     TrnTooltip,
@@ -100,6 +113,7 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
 })
 export class ThreadViewComponent implements OnInit, OnDestroy {
   private readonly threads = inject(ThreadsService);
+  private readonly messageSheet = inject(MessageActionSheetService);
   private readonly rooms = inject(RoomsService);
   private readonly reactionPicker = inject(ReactionPickerService);
   private readonly forwardSvc = inject(ForwardService);
@@ -109,15 +123,14 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   private readonly reactionsDialog = inject(ReactionsDialogService);
   private readonly timeline = inject(TimelineService);
   private readonly timelineActions = inject(TimelineActionsService);
-  private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef);
   private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly roomId = input.required<string>();
   readonly rootEventId = input.required<string>();
-  /** Notifies any @Output-bound host that the view closed (for symmetry/tests). */
-  readonly closed = output<void>();
+  /** The user closed the thread. There is nothing to pick here, so no `selected`. */
+  readonly dismissed = output<void>();
 
   /** The room's members, for the thread composer's @-mention autocomplete. */
   readonly members = computed(() => {
@@ -175,13 +188,73 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    // The sheet is a modal over this panel; leaving it standing would dispatch against a
+    // thread that is no longer open.
+    this.messageSheet.close(this);
     this.threads.closeThread();
+    // Closing the panel mid-reply otherwise leaves us marked as typing until the server's
+    // own TYPING_TIMEOUT_MS lapses. Owner-keyed, so this cannot clear the flag when the
+    // main composer still holds a draft — which is why the naive one-liner was wrong.
+    this.timeline.setTyping(false, 'thread');
   }
 
-  /** Close the host dialog (Output bindings aren't wired on dialog components). */
+  /**
+   * Which way a thread reply is dragged to act on it.
+   *
+   * Read from the preference DIRECTLY, unlike the main timeline, whose page forces the
+   * gesture off while the drawer is open. This panel only exists while the drawer is open,
+   * so that rule would leave the gesture permanently dead here — on the one device it is
+   * for. The competition with the drawer's own close-drag is resolved at the row instead: an
+   * armed swipe stops the `pointerdown` from reaching it. See `armSwipe`.
+   *
+   * Still phones only, and for the same reason: above `max-width: 1099.98px` the scroller
+   * does not claim the horizontal axis and the browser eats the drag.
+   */
+  protected readonly swipeDirection = computed<SwipeDirection>(() =>
+    this.belowMembers() && isMobileOs() ? this.gestures.messageSwipe() : 'off',
+  );
+
+  private readonly gestures = inject(MessageGestureSettingsService);
+  private readonly haptics = inject(HapticsService);
+  private readonly belowMembers = mediaQuerySignal(
+    BELOW_MEMBERS_QUERY,
+    inject(DestroyRef),
+  );
+
+  /**
+   * A committed sideways drag on a thread reply: edit it if it can be edited, reply if not.
+   *
+   * Reads `rowCaps` rather than `isEditable` so the icon the reader saw and the action they
+   * get are the same value — the mirror of `MessageListBase.onRowSwipe`, which this panel
+   * cannot inherit because it does not extend that class.
+   */
+  onRowSwipe(row: MessageRow): void {
+    this.haptics.gestureCommitted();
+    if (this.rowCaps(row).editable) {
+      this.startEdit(row);
+      return;
+    }
+    this.startReply(row);
+  }
+
+  /**
+   * A long press on a thread reply, on a phone or tablet.
+   *
+   * Present for the same reason the timeline has one, and easy to forget: this component
+   * renders `trn-message-row` but does NOT extend `MessageListBase`, so it inherits none of
+   * that wiring. Without this the row emitted `longPress` into nothing and — the Android
+   * `contextmenu` fallback having gone with it — every action on a thread reply was
+   * unreachable by touch.
+   */
+  onRowLongPress(row: MessageRow): void {
+    this.messageSheet.open(this, this.rowCaps(row), (action) =>
+      this.onRowAction(row, action),
+    );
+  }
+
+  /** Announce the close; the rooms page owns the slot and empties it. */
   close(): void {
-    this.closed.emit();
-    this.dialogRef.close();
+    this.dismissed.emit();
   }
 
   /** Page in older replies for this thread (mirrors the timeline's load-older). */
@@ -203,6 +276,26 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
       .sendToThread(text, mentions)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
+  }
+
+  /**
+   * The room's typists, for the row above the thread composer.
+   *
+   * Room's, not thread's: `m.typing` is a room-level EDU with no thread dimension, so
+   * somebody typing in the main timeline shows here too. That is the protocol rather than a
+   * bug, and it is why the row here does not own the announcement — the list behind it
+   * already announces the same names.
+   */
+  protected readonly typingNames = this.timeline.typingNames;
+
+  /**
+   * Composer typing state → the room's (throttled) typing notification.
+   *
+   * Tagged `'thread'` so a send here cannot clear the flag while the main composer still
+   * holds a draft — `m.typing` is one flag per room and both composers feed it.
+   */
+  onTyping(typing: boolean): void {
+    this.timeline.setTyping(typing, 'thread');
   }
 
   onSubmit({ text, mentions }: ComposerSubmit): void {
@@ -462,7 +555,7 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   jumpTo(messageId: string): void {
     this.scrollEl()
       ?.nativeElement.querySelector(`[data-mid="${messageId}"]`)
-      ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      ?.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
   }
 
   /** Run a fire-and-forget thread action, surfacing a failure as a toast. */

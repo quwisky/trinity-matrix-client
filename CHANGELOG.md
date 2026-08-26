@@ -6,7 +6,217 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **The room list shows who is typing.** A room where somebody is typing now says so in
+  place of its last message, in italics, until they stop — so you can see a conversation
+  starting up without opening it.
+
+- **Threads show who is typing, and tell the room when you are.** The reply box in a thread
+  now announces your typing to the room the way the main composer does, and carries the same
+  typing line above it. Matrix tracks typing per room rather than per thread, so that line
+  names everyone typing in the room — including people writing in the main timeline.
+
+- **The typing line has animated dots, and holds its place.** When someone is typing, the
+  line under the timeline now ends in three pulsing dots instead of a full stop, so it reads
+  as something happening rather than a label. The line also keeps its space whether or not
+  anyone is typing — and stays one line, shortening a long name rather than wrapping — so the
+  messages above it no longer shift up and down each time somebody starts or stops. If you
+  have asked your system for reduced motion, the dots stay still.
+
+- **Swipe a message to reply to it — or to edit it.** On a phone, drag a message sideways
+  and it replies to that message, or opens it for editing if it is one of yours you can
+  still change. The icon behind the message fades and grows in as you drag, so you can see
+  which action is coming and how close you are to it; it changes colour once you have gone
+  far enough, and sliding the message back puts it away without doing anything. It is **off
+  until you turn it on**, under Settings → Appearance → Message gestures, where you also
+  choose which way to drag: your phone already uses both screen edges for its own back
+  gesture, so there is no direction that is free for everyone.
+
+- **Room and space settings are tabbed.** Everything a room has used to be one long column
+  in a narrow dialog; it is now General, Access and Bans, so finding the join rule no
+  longer means scrolling past the topic. Saving still covers every tab at once — the Save
+  button sits outside them, and a room that cannot be saved says why from whichever tab
+  you are on.
+
+- **A density setting.** Under Settings → Appearance, "Compact" tightens the spacing in
+  the message list so more of a conversation fits on screen. Other parts of the app keep
+  their spacing for now.
+
+- **The member list has a filter.** Type a name or a user id above the list to narrow it —
+  useful in a room where scrolling to find someone was the only option. Large rooms also
+  render far fewer rows at a time, so opening the member list in a busy room no longer
+  builds thousands of rows up front.
+
+- **Right-click or long-press a message for its actions.** The overflow set — pin, quote, copy,
+  copy link, forward, view source, report, edit, delete — is now a right-click away on desktop,
+  instead of only reachable through the small "⋯" button that appears on hover. (Reply, react
+  and Reply in thread stay on the hover bar; the long-press sheet below carries all of them.) On a phone or
+  tablet, where there is no hover and no right-click, a long press brings that same full set up
+  as a sheet from the bottom of the screen: thumb-sized rows you can read, the six most-used
+  reactions along the top, and a way to reach any other emoji. It rises from the bottom edge
+  rather than floating over the timeline, it scrolls if your permissions make the list long,
+  and picking something or tapping outside it puts it away.
+
+  Highlight some text first and you still get the browser's own menu, because that is the one
+  with Copy in it — and right-clicking a link or an image still gets you "Open link in new tab"
+  and "Save image as…".
+
+- **A third theme: Onyx.** A neutral, achromatic palette whose dark mode is true black — on an
+  OLED screen a black pixel is simply switched off, so it saves power and looks properly dark
+  rather than dark grey. Pick it under Settings → Appearance, in either light or dark mode.
+
+### Changed
+
+- **Menus, tooltips and the indeterminate progress bar now hold still on their own for
+  reduced motion.** They already did, but only because a blanket rule elsewhere in the app
+  was catching them; each now asks for it directly, so the behaviour survives the component
+  being used anywhere else. A progress bar that knows how far along it is still relies on
+  that blanket to stop its fill sliding.
+
+- **Clicking a mention opens the person's card beside it**, instead of a window centred
+  over the conversation the mention is part of — so you can still read what was said while
+  you look at who said it. On a phone it stays centred, where there is no room beside
+  anything.
+
+- **Opening an image gives it the whole screen properly.** The full-size view is now a
+  real dialog: the page behind it does not scroll, Escape closes it, and the keyboard
+  stays inside it. A message arriving underneath no longer slams it shut.
+
+- **Signing in through your homeserver looks like signing in.** The page you land on
+  while the redirect completes now wears the same card and wordmark as the sign-in form,
+  rather than a bare spinner on a blank background.
+
+- **Settings toggles are switches now.** Every preference you can turn on and off — appearance,
+  privacy, notifications, the experimental flags — is a switch rather than a tick box, because
+  each takes effect the moment you touch it and there is nothing to submit. A screen reader now
+  announces them as switches too, which is the same thing said out loud. The four places that
+  really are "pick some of these" keep their tick boxes: adding rooms to a space, managing a
+  space's rooms, the room history options, and confirming you have saved a recovery key.
+- **The "nothing here yet" messages all look the same now.** Fourteen places tell you a list is
+  empty — no messages in a channel, no threads, no pinned messages, no search results, nobody in
+  a space — and each had drifted into its own size and spacing. They are one panel now, at one
+  size. The wording is unchanged everywhere; what moves is that the largest of them (the empty
+  channel, an empty thread) are set at the same size as the rest rather than a few pixels larger,
+  and the tightest gain a little breathing room.
+
+- **The composer's buttons live inside the message box.** The `+`, emoji and send buttons used
+  to sit outside the box you type in, flanking it. They are inside it now, so the whole thing
+  reads as one control: pressing anywhere in it — including the empty space beside the buttons
+  on a long draft — puts the cursor in the text, and the focus outline is drawn around the box
+  rather than around a bare field sitting in it. Switching to the preview no longer nudges the
+  composer up and down by a few pixels.
+
+- **One panel at a time down the right-hand side.** Threads, a thread, pinned messages and
+  in-room search used to open as floating panels _over_ the member list, so you could end up
+  with two lists stacked on each other and no clear way back. There is now a single
+  right-hand space, and whatever you ask for takes it: pressing Threads while the member list
+  is up swaps to threads rather than covering it. Clicking someone in the member list opens
+  their info in that same space — closing it puts the member list back, so you can watch a
+  role change land in the list you were reading. Escape closes whatever is showing, and
+  closing it hands the keyboard back to the button you opened it with.
+
+- **The formatting buttons show what your selection already is.** Select some bold text and
+  the **B** is lit; select plain text and it is not. Pressing a lit button takes that
+  formatting off again, so the bar reads as the state of what you have selected rather than as
+  a record of the last button you pressed. Link and code block do not light up, because there
+  is nothing to switch off — pressing them always inserts.
+
+- **The formatting toolbar comes when you need it.** It used to be a row that was either always
+  there or never there, with four buttons out and the other five hidden behind a "⋯". Now
+  selecting some text brings up all nine — bold, italic, strikethrough, inline code, code
+  block, quote, link, bullets and a task list — grouped by what they do, and it goes away again
+  when the selection does. If you would rather it simply stayed put, **Aa** on the bar keeps it,
+  and Settings → Appearance has both switches: keep it open, and bring it up on a selection.
+  Turning both off means the buttons never appear, which is what people who had already hidden
+  the toolbar were asking for and what they will still get. The keyboard shortcuts work either
+  way, as they always have.
+
+- **The composer now tells you which slash commands exist.** Typing `/` at the start of a
+  message brings up the list — `/me`, `/shrug`, `/plain`, `/spoiler` — each with what it does
+  and what it takes, so you no longer have to already know the name to use one. Typing more
+  narrows it, the arrow keys move through it, Enter or Tab fills the command in, and Escape
+  puts it away. It only offers a command where one would actually work — at the start of a new
+  message, never mid-sentence, and not while you are replying, editing, or captioning an
+  attachment, because those are sent as written.
+
 ### Fixed
+
+- **Settings no longer shows two scrollbars side by side.** On a short window the list of
+  sections scrolled independently of the section you were reading, so both drew a scrollbar
+  next to each other — most visible under Notifications and Appearance, whose content is long
+  enough to scroll too. The list still scrolls; it just no longer draws a bar of its own. The
+  same fix also settles a dormant one: the dropdown panels have carried the instruction to
+  hide theirs since they were added, and it had never taken effect.
+
+- **The message menu no longer lingers after you leave the room.** On a phone, opening a
+  message's action sheet and then navigating away — to Settings, or by following a link, or
+  by signing out — left the sheet on screen over whatever came next, and picking anything
+  from it did nothing at all.
+
+- **Tabs, separators and toggles show their state too.** The same defect as the switches
+  below, found by sweeping the rest of the design kit: the open tab in Room and Space
+  settings drew no underline and no brighter label, so all three tabs looked alike; and every
+  divider rule — including the ones separating the composer's formatting buttons into groups
+  — rendered with no width at all, which is to say invisibly. Dropdown menus also animate
+  open again.
+
+- **Switches and checkboxes show which way they are set.** Every toggle in Settings —
+  read receipts, link previews, notification rules, the experimental flag — rendered
+  identically whether it was on or off: the track never took its colour, and the thumb never
+  moved. Checkboxes had it too, staying unfilled when ticked. The
+  controls were reporting their state correctly to screen readers and to the app the whole
+  time; only the part you look at was missing, so a setting you had just changed looked
+  untouched.
+
+- **The side panels have their heading back.** Threads, a thread, pinned messages, search and
+  member info all drew their top bar with the title jammed against the left edge and the bar
+  itself 11px shorter than the room header beside it (45px against 56), so the two never
+  lined up. The padding was being silently dropped rather than applied; all five now match the
+  room header exactly, and still grow to clear the notch on a phone.
+
+- **A room that has been upgraded no longer squashes the conversation.** In a room with a "this
+  room has been replaced" notice, the notice was sharing a row with the message list instead of
+  sitting above it, so the messages were squeezed into a narrow strip down the side and the
+  composer had nowhere to put your text. The notice now spans the width above the conversation,
+  which is where it was always meant to be.
+
+- **Images and videos hold their place while they load.** The timeline used to jump as each
+  one arrived — a message would be one line tall, then several hundred pixels tall a moment
+  later, shoving everything you were reading down the screen. Every attachment now reserves
+  its shape up front, including videos and the ones whose sender did not say how big they
+  were. Tall images are no longer cropped to fit, either, and the placeholder shown while one
+  loads is finally a different colour from the box around it, so you can see it at all.
+
+- **Message actions no longer sit on top of the message above.** The hover toolbar was
+  positioned deliberately outside its own row, which on a phone — where it was always visible —
+  meant every message permanently covered the top of the one before it. It stays inside its own
+  message now, and on a phone or tablet the actions arrive as a bottom sheet on a long press
+  rather than as a floating bar at all.
+
+- **Starting the app no longer shows a blank screen.** Trinity has to open its local
+  database, load the encryption engine and reconnect before it can show you anything, and
+  until now it showed nothing at all while it did — on a cold start, or a slow phone, that
+  was several seconds of blank white or black that looked like a crash. There is a startup
+  screen now, from the first frame the browser paints through to the moment your rooms
+  appear.
+
+- **"Reduce motion" now reaches the timeline.** If your device is set to minimise animation,
+  jumping to a reply, a search result, a pinned message or the first unread one used to
+  animate the whole screen anyway — the setting was honoured everywhere except the place that
+  moves the most. Those jumps are instant now.
+
+- **Muted text and links are readable everywhere now.** Timestamps, member names, dialog
+  captions and other secondary text failed the accessibility contrast floor the moment you
+  hovered or selected the row they sat on — the exact moment you were most likely to be reading
+  them. Links were worse: on the dark theme they sat at 2.18:1 against 4.5:1 required, which is
+  closer to decoration than to text. Both are repaired across every theme in both light and
+  dark, down to the "Get a free API key" link on Settings → GIFs, which was the last one still
+  too faint to read against a dark background. A test now measures the theme's text colours
+  against every background they can land on, so they cannot drift back.
+
+- **The account switcher has its corners back.** On phones the dialog referred to a rounded
+  corner that was never defined, so the browser dropped the rule and it rendered as a square.
 
 - **Trinity no longer opens to a blank screen on some systems.** If your computer's language
   was set in an older style — common on Linux, and on anything configured with `LANG=en_US`
@@ -276,6 +486,30 @@ All notable changes to this project are documented here. The format is based on
   waits for you to say so.
 
 ### Changed
+
+- **The room you have open is now in the address bar, and the panels share the window.**
+  Opening a room puts it in the URL, so you can bookmark a conversation, send someone a link
+  straight to it, and reload without landing back on the room list. Your browser's Back
+  button — and Back on Android — now closes the open room instead of leaving Trinity
+  altogether.
+
+  Threads, the thread you are reading, pinned messages, search results and member info now
+  take turns in one panel beside the conversation rather than stacking up, so opening one
+  puts the previous one away.
+
+  That panel and the room list can both be **dragged wider or narrower**, and Trinity
+  remembers the widths for next time. Drag the divider between them, or focus it and use the
+  arrow keys — Home and End jump to the narrowest and widest, so a layout dragged somewhere
+  unhelpful is one keystroke from being usable again.
+
+  On a phone that panel is a drawer, and it now **swipes**: in from the right edge to bring up
+  the member list, away again to put it back. Android's Back button closes it too, instead of
+  walking straight past it and out of the room. On iPhone the swipe-from-the-left-edge that
+  goes back in every other app finally works in Trinity as well.
+
+- **Nothing sits under the notch or the home indicator any more.** On a phone with a rounded
+  screen the thread composer and a member's action buttons ran underneath the bar at the
+  bottom, because the panels only cleared the top edge. They clear both ends now.
 
 - **The emoji picker follows your theme.** It came from a third-party library that only knew
   "light or dark", so it showed its own purple accent and its own greys whichever Trinity

@@ -1,4 +1,23 @@
-<div class="member-info" data-testid="member-info">
+@if (isPanel) {
+  <!-- Panel mode only. As a dialog the backdrop and Escape close it; in the slot there is
+       neither above the `members` breakpoint, so the header IS the way out. -->
+  <div
+    class="panel-header flex items-center gap-2 border-b border-solid border-border"
+  >
+    <h2 class="flex-1 text-base font-semibold">Member info</h2>
+    <button
+      hlmBtn
+      variant="ghost"
+      size="icon"
+      (click)="close()"
+      aria-label="Close member info"
+      data-testid="member-info-close"
+    >
+      <trn-icon name="x" size="1.25rem" />
+    </button>
+  </div>
+}
+<div class="member-info safe-bottom" data-testid="member-info">
   <trn-avatar
     class="member-info__avatar"
     [mxc]="member().avatarMxc"

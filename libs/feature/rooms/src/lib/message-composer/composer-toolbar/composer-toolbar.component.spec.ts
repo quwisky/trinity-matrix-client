@@ -7,7 +7,12 @@ import { type FormatAction } from '@trinity/util/matrix';
 import { ComposerToolbarComponent } from './composer-toolbar.component';
 
 async function renderToolbar(
-  inputs: { narrow?: boolean; previewing?: boolean; disabled?: boolean } = {},
+  inputs: {
+    previewing?: boolean;
+    disabled?: boolean;
+    pinned?: boolean;
+    active?: FormatAction[];
+  } = {},
 ) {
   return render(ComposerToolbarComponent, { inputs });
 }
@@ -18,27 +23,124 @@ const shown = (container: HTMLElement) =>
   );
 
 describe('ComposerToolbarComponent', () => {
-  it('offers the common actions outright on a roomy layout', async () => {
+  it('offers all nine actions, with nothing behind a menu', async () => {
+    // The overflow is gone with the always-on row that made it necessary. A bar that appears
+    // when you select something can afford to show everything it does, and an action behind a
+    // kebab is one nobody discovers.
     const { container } = await renderToolbar();
 
     expect(shown(container)).toEqual([
       'format-bold',
       'format-italic',
-      'format-link',
+      'format-strike',
       'format-code',
-      'format-more',
+      'format-codeblock',
+      'format-quote',
+      'format-link',
+      'format-list',
+      'format-tasklist',
+      'format-pin',
     ]);
+    expect(
+      container.querySelector('[data-testid=format-more]'),
+      'the overflow trigger must be gone, not merely empty',
+    ).toBeNull();
   });
 
-  it('keeps only two actions outside the overflow on a narrow layout', async () => {
-    // The composer competes with the on-screen keyboard there.
-    const { container } = await renderToolbar({ narrow: true });
+  it('divides the nine into three announced groups', async () => {
+    // The rules are the only place the grouping is stated, so they are separators a screen
+    // reader hears rather than lines drawn between buttons.
+    const { container } = await renderToolbar();
 
-    expect(shown(container)).toEqual([
-      'format-bold',
-      'format-italic',
-      'format-more',
-    ]);
+    const rules = container.querySelectorAll('[trnSeparator]');
+    expect(rules.length).toBe(2); // three groups, two rules
+    for (const rule of rules) {
+      expect(rule.getAttribute('role')).toBe('separator');
+    }
+  });
+
+  it('is one tab stop for the nine, not nine', async () => {
+    // The reason these are a toggle group at all: a nine-button bar that costs nine Tab
+    // presses to cross is the thing `role="toolbar"` exists to avoid.
+    const { container } = await renderToolbar();
+    TestBed.tick();
+
+    const actions = [
+      ...container.querySelectorAll<HTMLElement>('[trnToggleGroupItem]'),
+    ];
+    expect(actions.length).toBe(9);
+    expect(actions.filter((el) => el.tabIndex === 0).length).toBe(1);
+  });
+
+  it('presses the actions the selection already carries', async () => {
+    // `aria-pressed` now means what it says: the composer derives this from the marks around
+    // the selection, so Bold is pressed exactly when pressing it would REMOVE the bold.
+    const { container } = await renderToolbar({ active: ['bold', 'quote'] });
+    TestBed.tick();
+
+    const pressed = (testid: string) =>
+      container
+        .querySelector<HTMLElement>(`[data-testid=${testid}]`)
+        ?.getAttribute('aria-pressed');
+
+    expect(pressed('format-bold')).toBe('true');
+    expect(pressed('format-quote')).toBe('true');
+    expect(pressed('format-italic')).toBe('false');
+    expect(pressed('format-tasklist')).toBe('false');
+  });
+
+  it('leaves everything unpressed when the selection carries nothing', async () => {
+    const { container } = await renderToolbar({ active: [] });
+    TestBed.tick();
+
+    const items = [
+      ...container.querySelectorAll<HTMLElement>('[trnToggleGroupItem]'),
+    ];
+    expect(items).toHaveLength(9);
+    for (const item of items) {
+      expect(item.getAttribute('aria-pressed'), item.outerHTML).toBe('false');
+    }
+  });
+
+  it('lets a re-derived value overrule the press that flipped the button', async () => {
+    // `BrnToggleGroupItem` binds `(click)="toggle()"` on its own host, so an item flips
+    // ITSELF the moment it is clicked, before anyone has looked at the text. That flip is
+    // corrected by the NEXT value the composer derives — which is why `activeFormats` is a
+    // `computed` returning a fresh array: a value re-set to the same reference would not
+    // fire, and the stale flip would stand.
+    //
+    // The flip landing on the right answer most of the time is a coincidence worth not
+    // relying on: pressing a toggle inverts it, and applying a format inverts the
+    // formatting, so the two usually agree. They do not for `link` and `codeblock`, which
+    // flip to pressed and are never reported — those are righted only by this overrule.
+    const { fixture, container } = await renderToolbar({ active: [] });
+    const link = container.querySelector<HTMLElement>(
+      '[data-testid=format-link]',
+    );
+
+    link?.click();
+    TestBed.tick();
+    expect(link?.getAttribute('aria-pressed')).toBe('true'); // the kit's own doing
+
+    fixture.componentRef.setInput('active', []); // a fresh array, as the computed gives
+    TestBed.tick();
+
+    expect(link?.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('reports the pinned state on Aa, and emits when pressed', async () => {
+    const { fixture, container } = await renderToolbar({ pinned: true });
+    let toggled = 0;
+    fixture.componentInstance.togglePinned.subscribe(() => toggled++);
+
+    const pin = container.querySelector<HTMLElement>(
+      '[data-testid=format-pin]',
+    );
+    expect(pin?.getAttribute('aria-pressed')).toBe('true');
+    expect(pin?.getAttribute('aria-label')).toBe('Unpin formatting');
+
+    pin?.click();
+    expect(toggled).toBe(1);
   });
 
   it('emits the action a button stands for', async () => {
@@ -51,29 +153,6 @@ describe('ComposerToolbarComponent', () => {
     container.querySelector<HTMLElement>('[data-testid=format-bold]')?.click();
 
     expect(emitted).toEqual(['bold']);
-  });
-
-  it('puts everything not shown outright into the overflow', async () => {
-    // The overflow is defined as the remainder, so no action can go missing or appear twice.
-    const { fixture, container } = await renderToolbar({ narrow: true });
-    container.querySelector<HTMLElement>('[data-testid=format-more]')?.click();
-    await fixture.whenStable();
-
-    const items = [
-      ...document.querySelectorAll(
-        '[hlmdropdownmenuitem][data-testid^=format-]',
-      ),
-    ].map((el) => el.getAttribute('data-testid'));
-
-    expect(items).toEqual([
-      'format-link',
-      'format-code',
-      'format-strike',
-      'format-codeblock',
-      'format-quote',
-      'format-list',
-      'format-tasklist',
-    ]);
   });
 
   it('reports the preview state on the toggle, and emits when pressed', async () => {
@@ -90,10 +169,13 @@ describe('ComposerToolbarComponent', () => {
     expect(toggled).toBe(1);
   });
 
-  it('disables every action while the composer is busy', async () => {
+  it('disables every formatting action while the composer is busy', async () => {
+    // The nine only. `format-pin` and the preview toggle are deliberately still live: they
+    // change what the composer SHOWS, which is a fair thing to ask for mid-upload, where
+    // wrapping text in a box you cannot type into is not.
     const { container } = await renderToolbar({ disabled: true });
 
-    for (const testid of ['format-bold', 'format-italic', 'format-more']) {
+    for (const testid of ['format-bold', 'format-italic', 'format-tasklist']) {
       const button = container.querySelector<HTMLButtonElement>(
         `[data-testid=${testid}]`,
       );
@@ -112,7 +194,7 @@ describe('ComposerToolbarComponent', () => {
     // user cannot see, against a selection that is no longer on screen.
     const { container } = await renderToolbar({ previewing: true });
 
-    for (const testid of ['format-bold', 'format-italic', 'format-more']) {
+    for (const testid of ['format-bold', 'format-italic', 'format-tasklist']) {
       const button = container.querySelector<HTMLButtonElement>(
         `[data-testid=${testid}]`,
       );
@@ -154,7 +236,7 @@ describe('ComposerToolbarComponent', () => {
       expect(button.getAttribute('aria-label'), button.outerHTML).toBeTruthy();
     }
     expect(
-      container.querySelector('[role=group]')?.getAttribute('aria-label'),
+      container.querySelector('[role=toolbar]')?.getAttribute('aria-label'),
     ).toBe('Formatting');
   });
 

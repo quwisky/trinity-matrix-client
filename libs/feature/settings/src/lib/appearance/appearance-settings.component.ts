@@ -12,13 +12,14 @@ import {
   TrnSelectComponent,
   type TrnSelectOption,
 } from '@trinity/components/select';
-import { TrnCheckboxComponent } from '@trinity/components/checkbox';
+import { TrnSwitchComponent } from '@trinity/components/switch';
 import {
   DateTimeFormatService,
   ComposerSettingsService,
   SystemLineSettingsService,
   ThemeService,
   type Palette,
+  type Density,
   type TextScale,
   type ThemePreference,
 } from '@trinity/platform-native';
@@ -29,6 +30,7 @@ import {
 } from '@trinity/data-access/rooms';
 import { isDateFormat, isTimeFormat } from '@trinity/util/matrix';
 import { CodeAppearanceBlockComponent } from './code-appearance-block.component';
+import { MessageGesturesBlockComponent } from './message-gestures-block.component';
 
 /**
  * Appearance settings sub-page: light/dark/system mode, colour palette, text and code size,
@@ -45,8 +47,9 @@ import { CodeAppearanceBlockComponent } from './code-appearance-block.component'
   imports: [
     TrnRadioGroupComponent,
     TrnSelectComponent,
-    TrnCheckboxComponent,
+    TrnSwitchComponent,
     CodeAppearanceBlockComponent,
+    MessageGesturesBlockComponent,
   ],
 })
 export class AppearanceSettingsComponent {
@@ -90,6 +93,13 @@ export class AppearanceSettingsComponent {
       label: scale.label,
       testId: `text-scale-${scale.id}`,
     }));
+
+  readonly densityOptions: readonly TrnSelectOption<string>[] =
+    this.theme.densities.map((density) => ({
+      value: density.id,
+      label: density.label,
+      testId: `density-${density.id}`,
+    }));
   readonly paletteOptions: readonly TrnSelectOption<string>[] =
     this.theme.palettes.map((palette) => ({
       value: palette.id,
@@ -130,6 +140,16 @@ export class AppearanceSettingsComponent {
       description: option.description,
       testId: `space-order-${option.id}`,
     }));
+
+  /** Apply + persist how much room the app leaves around things. */
+  onDensityChange(value: string | null | undefined): void {
+    // Guarded like every other choice here: the select is ours, but `valueChange` is a
+    // string and the setter takes a union — narrowing against the registered list is what
+    // keeps a stale saved value or a typo out of the token attribute.
+    if (this.theme.densities.some((density) => density.id === value)) {
+      this.theme.setDensity(value as Density);
+    }
+  }
 
   /** Apply + persist how large text is. */
   onTextScaleChange(value: string | null | undefined): void {

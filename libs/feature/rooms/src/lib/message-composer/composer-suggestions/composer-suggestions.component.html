@@ -1,4 +1,14 @@
-@if (emojiOpen()) {
+<!-- Both menus are anchored rather than absolute — see the component's note — and both turn
+     `closeOnOutsidePress` off, because `emojiOpen` and `mentionOpen` are computeds over their
+     query's matches: there is nothing for a self-close to write to. -->
+<ng-template
+  [trnAnchoredOverlay]="anchor()"
+  [open]="emojiOpen()"
+  [closeOnOutsidePress]="false"
+  [matchAnchorWidth]="true"
+  side="top"
+  align="start"
+>
   <ul
     id="emoji-suggestions"
     class="composer__emoji-menu"
@@ -28,8 +38,15 @@
       </li>
     }
   </ul>
-}
-@if (mentionOpen()) {
+</ng-template>
+<ng-template
+  [trnAnchoredOverlay]="anchor()"
+  [open]="mentionOpen()"
+  [closeOnOutsidePress]="false"
+  [matchAnchorWidth]="true"
+  side="top"
+  align="start"
+>
   <ul
     id="mention-suggestions"
     class="composer__emoji-menu"
@@ -58,4 +75,49 @@
       </li>
     }
   </ul>
-}
+</ng-template>
+
+<!-- The `/command` menu. Same shape as the two above — the composer's textarea points
+     `aria-controls` at this id and `aria-activedescendant` at one of its options, and
+     `scrollSuggestionIntoView` looks the option ids up by hand. -->
+<ng-template
+  [trnAnchoredOverlay]="anchor()"
+  [open]="slashOpen()"
+  [closeOnOutsidePress]="false"
+  [matchAnchorWidth]="true"
+  side="top"
+  align="start"
+>
+  <ul
+    id="slash-suggestions"
+    class="composer__emoji-menu"
+    role="listbox"
+    aria-label="Commands"
+    data-testid="slash-autocomplete"
+  >
+    @for (command of slashMatches(); track command.name; let i = $index) {
+      <li role="presentation">
+        <button
+          type="button"
+          tabindex="-1"
+          [id]="'slash-suggestion-' + i"
+          class="composer__emoji-suggestion"
+          [class.composer__emoji-suggestion--active]="i === slashActiveIndex()"
+          role="option"
+          [attr.aria-selected]="i === slashActiveIndex()"
+          (mousedown)="$event.preventDefault()"
+          (mouseenter)="slashHighlight.emit(i)"
+          (click)="slashAccept.emit(i)"
+        >
+          <span class="composer__emoji-suggestion-code"
+            >/{{ command.name
+            }}{{ command.argument ? ' ' + command.argument : '' }}</span
+          >
+          <span class="composer__slash-description">{{
+            command.description
+          }}</span>
+        </button>
+      </li>
+    }
+  </ul>
+</ng-template>

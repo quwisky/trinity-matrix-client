@@ -5,16 +5,18 @@ the repo up yet, start with [Getting started](getting-started.md).
 
 ## Web and day to day
 
-| Command             | What it does                                                               |
-| ------------------- | -------------------------------------------------------------------------- |
-| `pnpm start`        | `nx serve trinity` — dev server with hot reload on `http://localhost:4200` |
-| `pnpm build`        | `nx build trinity` — **production** bundle into root `www/`                |
-| `pnpm watch`        | Development build, rebuilt on change, no server                            |
-| `pnpm test`         | `nx run-many -t test` — Vitest once across every project that has tests    |
-| `pnpm lint`         | `nx run-many -t lint` — ESLint plus Nx module boundaries                   |
-| `pnpm stylelint`    | Stylelint over `{apps,libs}/**/*.scss`                                     |
-| `pnpm format`       | Prettier write, all files                                                  |
-| `pnpm format:check` | Prettier verify, all files — what CI runs                                  |
+| Command                | What it does                                                                                  |
+| ---------------------- | --------------------------------------------------------------------------------------------- |
+| `pnpm start`           | `nx serve trinity` — dev server with hot reload on `http://localhost:4200`                    |
+| `pnpm build`           | `nx build trinity` — **production** bundle into root `www/`                                   |
+| `pnpm watch`           | Development build, rebuilt on change, no server                                               |
+| `pnpm test`            | `nx run-many -t test` — Vitest once across every project that has tests                       |
+| `pnpm lint`            | `nx run-many -t lint` — ESLint plus Nx module boundaries                                      |
+| `pnpm stylelint`       | Stylelint over `{apps,libs}/**/*.{scss,css}`                                                  |
+| `pnpm format`          | Prettier write, all files                                                                     |
+| `pnpm format:check`    | Prettier verify, all files — what CI runs                                                     |
+| `pnpm storybook`       | `nx storybook components-storybook-host` — every `libs/components/*` library in one Storybook |
+| `pnpm storybook:build` | Static Storybook build                                                                        |
 
 Two of these surprise people:
 
@@ -25,7 +27,9 @@ Two of these surprise people:
   paths are production too. Only the end-to-end and spike scripts explicitly pass
   `--configuration=development`.
 - **`pnpm stylelint` is not part of `pnpm lint`.** They are separate commands and
-  separate CI steps. Running only `pnpm lint` will not catch a SCSS violation.
+  separate CI steps. Running only `pnpm lint` will not catch a violation in a `.scss`
+  or `.css` file — and the glob covers both, so hand-written CSS like
+  `apps/trinity/src/theme/spartan.css` is linted too.
 
 ## Nx patterns
 
@@ -48,6 +52,7 @@ pnpm exec nx test feature-rooms --configuration=watch  # watch mode
 pnpm exec nx test feature-rooms -- message-list        # files matching a path substring
 pnpm exec nx test data-access-rooms -- -t "acks the read receipt"  # one test by name
 pnpm exec nx test data-access-rooms -- --coverage      # coverage is opt-in, no threshold
+pnpm exec nx test scripts                              # the repository-invariant guards
 pnpm exec nx affected -t lint test                     # only what changed versus develop
 pnpm exec nx show projects                             # the real project names
 pnpm exec nx graph                                     # dependency graph in a browser
@@ -82,8 +87,9 @@ workspace data goes too.
 
 `pnpm test` runs 45 projects: the thirteen `data-access-*` libraries, `feature-auth`,
 `feature-crypto`, `feature-rooms`, `feature-settings`, `feature-shell`, `platform-native`,
-`ui`, `util-matrix`, the twenty `libs/components/*` libraries, `spartan-tests`, the
-`trinity` app itself, and `scripts`.
+`util-matrix`, `util-ui`, the twenty-one `libs/components/*` libraries, `spartan-tests`, the
+`trinity` app itself, and `scripts` — which holds the build scripts and the repository's
+guard suite, described in [Testing](testing.md#the-guard-suite).
 
 It does **not** run the Electron main-process specs. The `trinity-desktop` project
 is inferred from `electron/` and exposes only a `lint` target — its `test` script
@@ -96,7 +102,8 @@ pnpm -C electron test
 ```
 
 Also outside `pnpm test`: `trinity-e2e` (Playwright, run separately), `libs/testing`
-(the shared render wrapper has no specs of its own), and the generated
+(the shared render wrapper has no specs of its own), `components-storybook-host`
+(a Storybook host, no specs), and the generated
 `libs/spartan/*` Helm packages, which are lint and build only — their behaviour is pinned
 from `libs/spartan/tests` instead.
 

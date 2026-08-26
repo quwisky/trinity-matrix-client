@@ -1,4 +1,3 @@
-import { createHmac } from 'node:crypto';
 import {
   test,
   expect,
@@ -6,35 +5,11 @@ import {
   type Page,
 } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // End-to-end for "seen by" read receipts: when another member reads a message, their
 // avatar appears on it in the reader's timeline. Needs Synapse (Docker).
 const session = synapseSession();
-
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
-
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const { nonce } = await request
-    .get(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`)
-    .then((r) => r.json());
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
-}
 
 async function apiToken(
   request: APIRequestContext,
@@ -144,5 +119,43 @@ test.describe('Read receipts (seen by)', () => {
       'aria-label',
       new RegExp(seerName),
     );
+
+    // The cluster is out of flow, so a reader part-way through a sender's run does not add
+    // height in the middle of it and break the group's rhythm. Measured rather than read off
+    // the stylesheet: `position: absolute` is only half the claim — the other half is that
+    // the row it sits in is no taller than one without receipts, which is what a reader
+    // actually notices and what the windowed list measures.
+    // The cluster must not be painted over the message it belongs to.
+    //
+    // This replaced an assertion that the cluster was OUT of flow. That was the wrong thing
+    // to pin: taking it out of flow did remove the height it adds mid-group, and in doing so
+    // put the avatars on top of the row's own last line, because the row has 2px of bottom
+    // padding and the cluster is ~16px tall. The property that matters to a reader is not
+    // where the box sits in the flow — it is that the words stay visible.
+    //
+    // Measured as box intersection in a real browser: jsdom does no layout, so a unit test
+    // cannot tell the two arrangements apart at all.
+    const overlap = await page.evaluate(() => {
+      const bar = document.querySelector('[data-testid=read-receipts]');
+      const row = bar?.closest('.msg');
+      const text = row?.querySelector('.msg__text');
+      if (!bar || !row || !text) {
+        return null;
+      }
+      const b = bar.getBoundingClientRect();
+      const t = text.getBoundingClientRect();
+      return {
+        intersects:
+          b.left < t.right &&
+          b.right > t.left &&
+          b.top < t.bottom &&
+          b.bottom > t.top,
+      };
+    });
+
+    if (!overlap) {
+      throw new Error('expected a row carrying read receipts');
+    }
+    expect(overlap.intersects).toBe(false);
   });
 });

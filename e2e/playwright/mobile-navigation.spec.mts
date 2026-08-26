@@ -1,4 +1,3 @@
-import { createHmac } from 'node:crypto';
 import {
   test,
   expect,
@@ -6,54 +5,30 @@ import {
   type Page,
 } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // End-to-end for the mobile (narrow-viewport) room navigation the desktop specs
 // never exercise, since the shared config runs at Desktop Chrome (1280px):
 //  - the room header collapses its secondary actions (Invite / Room settings /
 //    Pinned / Members) into an overflow (⋮) menu below the md breakpoint, keeping
 //    only Search + Threads inline (rooms.page.html);
-//  - the member list, a static column at ≥1100px, becomes a slide-in drawer with a
+//  - the member list, a static column at or above the `members` breakpoint, becomes
+//    a slide-in drawer with a
 //    dismissing backdrop below that, opened from the overflow menu and closed by the
 //    backdrop or by selecting a member.
-// Runs at a phone viewport so the width-based breakpoints (max-md / max-[1100px] /
+// Runs at a phone viewport so the width-based breakpoints (max-md / max-members /
 // matchMedia) engage. Drives a real Synapse room with a second member; self-skips
 // without Docker like the other authenticated web specs.
 const session = synapseSession();
 
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
-
-// A phone viewport: below md (768) so the header uses the kebab, and below 1100 so
+// A phone viewport: below md (768) so the header uses the kebab, and below the
+// `members` breakpoint (1100) so
 // the member list is a drawer.
 test.use({ viewport: { width: 390, height: 844 } });
 
 interface ApiUser {
   userId: string;
   headers: { Authorization: string };
-}
-
-/** Register a user via Synapse's shared-secret admin endpoint (idempotent). */
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const nonceRes = await request.get(
-    `${SYNAPSE_HTTP}/_synapse/admin/v1/register`,
-  );
-  const { nonce } = await nonceRes.json();
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
 }
 
 async function apiLogin(
@@ -263,7 +238,7 @@ test.describe('Mobile room navigation', () => {
     page,
     request,
   }) => {
-    // This is the half that actually pins `onEscapeKey`'s guard. Above the 1100px
+    // This is the half that actually pins `onEscapeKey`'s guard. Above the `members`
     // breakpoint the member list is a static column that starts OPEN, so a handler that
     // closed it unconditionally would hide it here. Verified by mutation: dropping the
     // `membersOpen() && membersShownAsDrawer()` guard fails this test and only this test.

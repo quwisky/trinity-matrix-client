@@ -4,7 +4,7 @@ import { JumpToDateComponent } from './jump-to-date.component';
 
 /**
  * Presents {@link JumpToDateComponent} and resolves the chosen day's local midnight (epoch
- * ms), or `null` when cancelled. Mirrors {@link MessageSearchService}: the dialog plumbing
+ * ms), or `null` when cancelled. Mirrors the other one-shot dialogs: the plumbing
  * lives here so the shell stays thin and performs the jump itself with the returned value.
  *
  * A re-entrancy guard makes re-triggering while it is open a no-op rather than stacking

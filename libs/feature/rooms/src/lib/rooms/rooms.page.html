@@ -5,8 +5,15 @@
   <trn-connectivity-banner />
   <trn-encryption-banner />
 
+  <!-- `data-shell-root` is what a pane handle writes its custom property on during a drag.
+       The two properties are seeded from the persisted widths and read by rooms.page.scss;
+       a drag overrides one inline for the length of the gesture and removes it on release,
+       so the committed value below is what the layout goes back to reading. -->
   <div
     class="flex min-h-0 flex-1"
+    data-shell-root
+    [style.--shell-sidebar-w.px]="layout.sidebarWidth()"
+    [style.--shell-right-panel-w.px]="layout.rightPanelWidth()"
     [attr.data-mobile-view]="store.activeRoomId() ? 'chat' : 'list'"
   >
     <!-- Below md the rail + sidebar (room list) and the chat are separate full-screen
@@ -20,13 +27,7 @@
          asserts the two edges meet at every text size. -->
     <!-- The rule below only sees that 352px equals w-88's 22rem at the default root size;
          the paragraph above is why the two are not interchangeable here. -->
-    <!-- eslint-disable tailwindcss/no-unnecessary-arbitrary-value -->
-    <aside
-      #listView
-      tabindex="-1"
-      class="shell-side w-full shrink-0 md:w-[352px]"
-    >
-      <!-- eslint-enable tailwindcss/no-unnecessary-arbitrary-value -->
+    <aside #listView tabindex="-1" class="shell-side w-full shrink-0">
       <trn-server-rail
         [spaces]="vm.railSpaces()"
         [activeSpaceId]="store.activeSpaceId()"
@@ -92,6 +93,18 @@
         (setSortMode)="spaceActions.onSetSpaceSort($event)"
       />
     </aside>
+
+    <!-- Only at md+: below it the sidebar and the chat are separate full-screen pages, so
+         there is no divider between them to drag. -->
+    <trn-pane-handle
+      class="hidden md:block"
+      cssVariable="--shell-sidebar-w"
+      label="Room list width"
+      [value]="layout.sidebarWidth()"
+      [min]="layout.sidebarBounds.min"
+      [max]="layout.sidebarBounds.max"
+      (committed)="layout.setSidebarWidth($event)"
+    />
 
     <div #mainView tabindex="-1" class="main">
       <trn-page-header variant="chat">
@@ -303,14 +316,40 @@
         </ng-container>
       </trn-page-header>
 
-      <div class="chat-body">
+      <!-- A room-level notice belongs in this COLUMN, above the row — not inside it. As a child
+           of `.chat-body`, which is a flex row of [timeline, panel], it was a third item
+           competing for horizontal space: measured at 779px of a 928px row, leaving the
+           timeline 149px and the composer's text column nothing at all. It only rendered in a
+           tombstoned room, which is why it survived so long. -->
+      @if (vm.activeRoom()) {
+        <trn-tombstone-banner
+          (goToRoom)="roomActions.onGoToUpgradedRoom($event)"
+        />
+      }
+
+      <div
+        class="chat-body"
+        trnDrawerSwipe
+        [drawerEnabled]="membersAreDrawer()"
+        [drawerOpen]="!!store.rightPanel()"
+        [drawerWidth]="drawerWidth()"
+        (opened)="onDrawerSwipedOpen()"
+        (closed)="onDrawerSwipedClosed()"
+      >
         @if (vm.activeRoom(); as room) {
-          <trn-tombstone-banner
-            (goToRoom)="roomActions.onGoToUpgradedRoom($event)"
-          />
           <!-- The experimental flag swaps in the windowed timeline. Both take the
              same inputs/outputs (MessageListBase); flipping the flag re-creates the
-             chosen component fresh. -->
+             chosen component fresh.
+
+             The two binding lists are identical and must stay that way — an input added
+             to one and forgotten on the other gives a timeline that behaves differently
+             depending on a flag most people never touch, and nothing fails.
+             `scripts/message-list-bindings.spec.mjs` is what fails instead.
+
+             Not de-duplicated with `*ngComponentOutlet`: it can pass inputs but cannot
+             bind outputs, and half of these thirty are outputs. The real fix is for
+             windowing to be a MODE of one list rather than a second component, which is a
+             larger change than this phase. -->
           @if (flags.virtualTimeline()) {
             <trn-virtual-message-list
               [messages]="timeline.messages()"
@@ -319,6 +358,7 @@
               [canRedactOthers]="timeline.canRedactOthers()"
               [pinnedIds]="pinned.pinnedEventIds()"
               [loadingOlder]="timeline.loadingOlder()"
+              [swipeDirection]="messageSwipeDirection()"
               [canLoadOlder]="timeline.canLoadOlder()"
               [oldestEventId]="timeline.oldestEventId()"
               [roomId]="store.activeRoomId()"
@@ -352,6 +392,7 @@
               [canRedactOthers]="timeline.canRedactOthers()"
               [pinnedIds]="pinned.pinnedEventIds()"
               [loadingOlder]="timeline.loadingOlder()"
+              [swipeDirection]="messageSwipeDirection()"
               [canLoadOlder]="timeline.canLoadOlder()"
               [oldestEventId]="timeline.oldestEventId()"
               [roomId]="store.activeRoomId()"
@@ -378,34 +419,127 @@
               (pollEnd)="messageActions.onPollEnd($event)"
             />
           }
-          @if (store.membersOpen()) {
-            <!-- Below 1100px the member list is an overlay drawer; a backdrop (shown
-               only at that width) dismisses it. At ≥1100px it stays a static column
-               and the backdrop is display:none. -->
+          @if (store.rightPanel(); as panel) {
+            @if (panel.kind !== 'members') {
+              <!-- Between the timeline and the slot. Hidden below the `members` breakpoint,
+                   where the slot is an overlay drawer rather than a column sharing the row —
+                   there is nothing to trade width with. `invert` because this handle grows
+                   the pane to its RIGHT: dragging left makes the panel wider.
+
+                   Not for the roster: `.chat-members` is a fixed 240px navigation column
+                   that does not read `--shell-right-panel-w` (and 240 is below this
+                   handle's own minimum). Rendered there it was a divider that highlighted,
+                   moved its `aria-valuenow` and rewrote the stored width while the pane
+                   beside it stayed put — and the roster is what the slot is seeded to, so
+                   that was the first divider anyone met. -->
+              <trn-pane-handle
+                class="hidden members:block"
+                cssVariable="--shell-right-panel-w"
+                label="Panel width"
+                [invert]="true"
+                [value]="layout.rightPanelWidth()"
+                [min]="layout.rightPanelBounds.min"
+                [max]="layout.rightPanelBounds.max"
+                (committed)="layout.setRightPanelWidth($event)"
+              />
+            }
+            <!-- Below the `members` breakpoint the slot is an overlay drawer; a backdrop
+               (shown only at that width) dismisses it. At or above it the slot is a static
+               column and the backdrop is display:none. One backdrop for every surface,
+               because there is one slot.
+
+               Each surface names itself with role/aria-label: these are plain components
+               now, so the `ariaLabel` the deleted dialog services passed has to come from
+               somewhere. `complementary` rather than `dialog` — nothing here traps focus or
+               marks the rest of the page inert, and claiming modality a screen reader then
+               cannot rely on is worse than not claiming it. -->
             <div
-              class="fixed inset-0 z-30 hidden bg-black/50 max-[1100px]:block"
-              (click)="closeMembers()"
+              class="fixed inset-0 z-[var(--trinity-z-scrim)] hidden bg-black/50 max-members:block"
+              (click)="closeRightPanel()"
               aria-hidden="true"
               data-testid="members-backdrop"
             ></div>
-            <trn-member-list
-              class="chat-members"
-              [members]="vm.members()"
-              [direct]="vm.activeRoomIsDirect()"
-              (selectMember)="memberActions.onSelectMember($event)"
-            />
+            @switch (panel.kind) {
+              @case ('members') {
+                <trn-member-list
+                  class="chat-members"
+                  [members]="vm.members()"
+                  [direct]="vm.activeRoomIsDirect()"
+                  (selectMember)="memberActions.onSelectMember($event)"
+                />
+              }
+              @case ('threads') {
+                <trn-threads-list
+                  class="chat-panel"
+                  role="complementary"
+                  aria-label="Threads"
+                  [roomId]="room.id"
+                  (selected)="messageActions.onThreadPicked($event)"
+                  (dismissed)="closeRightPanel()"
+                />
+              }
+              @case ('thread') {
+                <trn-thread-view
+                  class="chat-panel"
+                  role="complementary"
+                  aria-label="Thread"
+                  [roomId]="room.id"
+                  [rootEventId]="panel.rootEventId"
+                  (dismissed)="closeRightPanel()"
+                />
+              }
+              @case ('pinned') {
+                <trn-pinned-messages-panel
+                  class="chat-panel"
+                  role="complementary"
+                  aria-label="Pinned messages"
+                  (selected)="messageActions.onPanelJump($event)"
+                  (dismissed)="closeRightPanel()"
+                />
+              }
+              @case ('search') {
+                <trn-message-search
+                  class="chat-panel"
+                  role="complementary"
+                  aria-label="Search messages"
+                  [roomId]="room.id"
+                  (selected)="messageActions.onPanelJump($event)"
+                  (dismissed)="closeRightPanel()"
+                />
+              }
+              @case ('member') {
+                <trn-member-info
+                  class="chat-panel"
+                  role="complementary"
+                  aria-label="Member info"
+                  [member]="panel.member"
+                  [roomId]="room.id"
+                  [canKick]="panel.caps.kick"
+                  [canBan]="panel.caps.ban"
+                  [canSetPower]="panel.caps.setPower"
+                  [myPower]="panel.caps.myPower"
+                  [direct]="panel.direct"
+                  (messageUser)="memberActions.onMemberMessage($event)"
+                  (dismissed)="memberActions.onMemberPanelDismissed()"
+                />
+              }
+            }
           }
         } @else {
-          <div class="chat-empty">
-            <div class="hero">
-              <div class="hero__badge">#</div>
-              <!-- h2, not h1: the toolbar (trn-page-header) already owns the page's
-                 single <h1> ("Trinity" here when no room is active). -->
-              <h2 class="hero__title">{{ vm.syncLabel() }}</h2>
-              <p class="hero__meta">
-                Select a channel on the left to get started.
-              </p>
-            </div>
+          <!-- The centring wrapper stays at the call site: filling the pane and centring in
+               it is this container's job, not the panel's — the same split `.chat-empty`
+               around `.hero` already had. `titleAs="h2"` because the toolbar
+               (trn-page-header) already owns the page's single <h1> ("Trinity" here when no
+               room is active). -->
+          <div class="flex flex-1 items-center justify-center p-6">
+            <trn-empty-state
+              size="hero"
+              titleAs="h2"
+              badge="#"
+              [title]="vm.syncLabel()"
+              body="Select a channel on the left to get started."
+              data-testid="chat-empty"
+            />
           </div>
         }
       </div>

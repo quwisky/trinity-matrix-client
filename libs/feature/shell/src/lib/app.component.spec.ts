@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { inject, signal } from '@angular/core';
 import { Location } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
@@ -13,6 +13,7 @@ import { VerificationService } from '@trinity/data-access/crypto';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { render } from '@trinity/testing';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import { BackInterceptorService } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
 import { Subject } from 'rxjs';
 import {
@@ -242,6 +243,48 @@ describe('AppComponent', () => {
       expect(App.minimizeApp).not.toHaveBeenCalled();
     });
 
+    it('closes a registered panel after a dialog, and before leaving the page', async () => {
+      // The chain has a third rung now: a feature can register something Back should close.
+      // The rooms shell's right-hand panel is an inline block, not a CDK dialog, so
+      // `hasOpen()` above cannot see it — Back used to walk straight past an open panel and
+      // out of the room, which it has always done for the members drawer.
+      const listener = await create();
+      const panel = vi.fn(() => true);
+      TestBed.inject(BackInterceptorService).register(panel);
+
+      listener({ canGoBack: true });
+
+      expect(panel).toHaveBeenCalled();
+      expect(locationBack).not.toHaveBeenCalled();
+      expect(App.minimizeApp).not.toHaveBeenCalled();
+    });
+
+    it('leaves the page when the registered panel has nothing open', async () => {
+      // The other half, and the one that keeps Back usable: an interceptor that declines
+      // must not swallow the press.
+      const listener = await create();
+      TestBed.inject(BackInterceptorService).register(() => false);
+
+      listener({ canGoBack: true });
+
+      expect(locationBack).toHaveBeenCalled();
+    });
+
+    it('asks a dialog before a registered panel, not the other way round', async () => {
+      // Ordering, asserted rather than assumed: a dialog opened OVER a panel is the more
+      // recent thing, so it goes first.
+      const listener = await create();
+      const panel = vi.fn(() => true);
+      TestBed.inject(BackInterceptorService).register(panel);
+      hasOpen.mockReturnValue(true);
+      closeTopmost.mockReturnValue(true);
+
+      listener({ canGoBack: true });
+
+      expect(closeTopmost).toHaveBeenCalled();
+      expect(panel).not.toHaveBeenCalled();
+    });
+
     it('swallows the press when an overlay refuses to close, rather than navigating under it', async () => {
       // The branch is on "is something open", NOT on "did it close". A dialog can decline
       // — `disableClose` on the encryption and verification flows, or a `closePredicate` —
@@ -452,3 +495,106 @@ function stubLocation() {
     },
   };
 }
+
+describe('AppComponent boot screen', () => {
+  /** A route that resolves immediately, so navigation completes within the test. */
+  async function create() {
+    const result = await render(AppComponent, {
+      providers: [
+        provideRouter([{ path: '**', children: [] }]),
+        provideServiceWorker('ngsw-worker.js', { enabled: false }),
+        ...hostProviders,
+      ],
+    });
+    return result;
+  }
+
+  const bootScreen = (container: HTMLElement) =>
+    container.querySelector('[data-testid=app-booting]');
+
+  it('shows a boot screen before any route has resolved', async () => {
+    // The gap this fills: Angular clears index.html's splash as soon as the ROOT component
+    // renders, which is well before `authGuard` has finished restoring the session. Without
+    // this the app went straight from a splash to an empty screen.
+    const { container } = await create();
+
+    expect(bootScreen(container)).not.toBeNull();
+    expect(container.textContent).toContain('Restoring your session…');
+  });
+
+  it('announces itself to assistive tech rather than being a silent blank', async () => {
+    const { container } = await create();
+
+    expect(bootScreen(container)?.getAttribute('role')).toBe('status');
+    expect(bootScreen(container)?.getAttribute('aria-live')).toBe('polite');
+  });
+
+  it('gets out of the way once a route has rendered', async () => {
+    const { container, fixture } = await create();
+    expect(bootScreen(container)).not.toBeNull();
+
+    await TestBed.inject(Router).navigate(['/anything']);
+    fixture.detectChanges();
+
+    expect(bootScreen(container)).toBeNull();
+  });
+
+  it('does not linger through the redirect a guard performs', async () => {
+    // Shaped like the real `authGuard`, which returns `true` or a UrlTree for /login and
+    // NEVER a bare `false`. That distinction is the test: a UrlTree CANCELS the first
+    // navigation and has the router start a second one of its own, so treating the cancel
+    // as "done" would drop the boot screen into the gap between the two and show a blank
+    // frame. `false` merely ends the navigation, and asserting against it proved nothing
+    // about the path a signed-out user actually takes.
+    const { container, fixture } = await render(AppComponent, {
+      providers: [
+        provideRouter([
+          {
+            path: 'guarded',
+            children: [],
+            canActivate: [() => inject(Router).createUrlTree(['/login'])],
+          },
+          { path: 'login', children: [] },
+        ]),
+        provideServiceWorker('ngsw-worker.js', { enabled: false }),
+        ...hostProviders,
+      ],
+    });
+    const router = TestBed.inject(Router);
+
+    await router.navigate(['/guarded']);
+    fixture.detectChanges();
+
+    // The redirect really happened, so the assertion below is about the second navigation
+    // ending rather than about the first one never starting.
+    expect(router.url).toBe('/login');
+    expect(bootScreen(container)).toBeNull();
+  });
+
+  it('gets out of the way when the route fails to load', async () => {
+    // The everyday version: a lazy chunk that 404s after a deploy. That navigation ends in
+    // NavigationError and never in NavigationEnd, so a boot screen waiting only for the
+    // latter never leaves — the user is left staring at "Restoring your session…" with no
+    // way to tell that anything went wrong. Hence `navigated` accepting both.
+    const { container, fixture } = await render(AppComponent, {
+      providers: [
+        provideRouter([
+          {
+            path: 'broken',
+            loadComponent: () => Promise.reject(new Error('chunk load failed')),
+          },
+        ]),
+        provideServiceWorker('ngsw-worker.js', { enabled: false }),
+        ...hostProviders,
+      ],
+    });
+    const router = TestBed.inject(Router);
+
+    await expect(router.navigate(['/broken'])).rejects.toThrow(
+      'chunk load failed',
+    );
+    fixture.detectChanges();
+
+    expect(bootScreen(container)).toBeNull();
+  });
+});

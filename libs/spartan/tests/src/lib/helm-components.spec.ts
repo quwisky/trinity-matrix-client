@@ -13,6 +13,7 @@ import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmRadio, HlmRadioGroup } from '@trinity/helm/radio-group';
 import { HlmSpinner } from '@trinity/helm/spinner';
+import { HlmTabsImports } from '@trinity/helm/tabs';
 import { HlmTextarea } from '@trinity/helm/textarea';
 
 // The generated helm libs (libs/spartan/*) shipped with no specs of their own, and
@@ -206,5 +207,22 @@ describe('aria-describedby on helm form controls', () => {
     // host is `display: contents` and is not the focusable control. Pinned so a later sweep
     // over `hostDirectives` does not "fix" it into describing the wrong element.
     expect(await describedBy('checkbox')).toBeNull();
+  });
+});
+
+describe('the tabs kit, minus the piece that was deleted', () => {
+  it('ships the five tab directives and no paginated list', () => {
+    // A registered divergence: `@spartan-ng/cli` generates `hlm-tabs-paginated-list.ts` — a
+    // scrolling trigger row for a tab set too wide to fit — and it was deleted here. Nothing
+    // wraps it, and it dragged `@angular/cdk/observers`, `@ng-icons/*` and the button lib in
+    // behind it. A re-sync restores it silently, which is what this fails on: the choice
+    // should be re-made deliberately, not inherited from a generator run.
+    expect(HlmTabsImports.map((directive) => directive.name).sort()).toEqual([
+      'HlmTabs',
+      'HlmTabsContent',
+      'HlmTabsContentLazy',
+      'HlmTabsList',
+      'HlmTabsTrigger',
+    ]);
   });
 });

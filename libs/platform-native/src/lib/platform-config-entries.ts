@@ -8,12 +8,30 @@ import {
   isTimeFormat,
 } from '@trinity/util/matrix';
 import { provideConfigEntries, type ConfigEntry } from './config-schema';
-import { choiceSetting, flagSetting } from './config-validation';
+import {
+  boundedNumberSetting,
+  choiceSetting,
+  flagSetting,
+} from './config-validation';
+import {
+  DEFAULT_RIGHT_PANEL_WIDTH,
+  DEFAULT_SIDEBAR_WIDTH,
+  RIGHT_PANEL_WIDTH_BOUNDS,
+  SIDEBAR_WIDTH_BOUNDS,
+  ShellLayoutService,
+} from './shell-layout.service';
 import {
   ComposerSettingsService,
+  DEFAULT_FORMAT_ON_SELECTION,
   DEFAULT_SHOW_FORMATTING_TOOLBAR,
 } from './composer-settings.service';
 import { DateTimeFormatService } from './date-time-format.service';
+import {
+  DEFAULT_SWIPE_ACTION,
+  MessageGestureSettingsService,
+  TRINITY_SWIPE_ACTIONS,
+  isSwipeAction,
+} from './message-gesture-settings.service';
 import {
   DEFAULT_VIRTUAL_TIMELINE,
   FeatureFlagsService,
@@ -36,17 +54,20 @@ import {
   DEFAULT_CODE_LINE_MODE,
   DEFAULT_CODE_SCALE,
   DEFAULT_PALETTE,
+  DEFAULT_DENSITY,
   DEFAULT_TEXT_SCALE,
   DEFAULT_THEME_PREFERENCE,
   TRINITY_CODE_LINE_MODES,
   TRINITY_CODE_SCALES,
   TRINITY_PALETTES,
+  TRINITY_DENSITIES,
   TRINITY_TEXT_SCALES,
   TRINITY_THEME_MODES,
   ThemeService,
   isCodeLineMode,
   isCodeScale,
   isPalette,
+  isDensity,
   isTextScale,
   isThemePreference,
 } from './theme.service';
@@ -67,10 +88,12 @@ function idsOf(options: readonly { readonly id: string }[]): readonly string[] {
 export function providePlatformConfigEntries(): EnvironmentProviders {
   return provideConfigEntries(() => [
     ...themeEntries(inject(ThemeService)),
+    ...shellEntries(inject(ShellLayoutService)),
     ...privacyEntries(inject(PrivacySettingsService)),
     ...timelineEntries(inject(SystemLineSettingsService)),
     ...formatEntries(inject(DateTimeFormatService)),
     ...composerEntries(inject(ComposerSettingsService)),
+    ...gestureEntries(inject(MessageGestureSettingsService)),
     ...flagEntries(inject(FeatureFlagsService)),
     ...shortcutEntries(inject(KeyboardShortcutsService)),
   ]);
@@ -119,6 +142,19 @@ function themeEntries(theme: ThemeService): readonly ConfigEntry[] {
       }),
     },
     {
+      path: 'theme.density',
+      key: 'trinity.density',
+      description: 'How much room the app leaves around things.',
+      read: () => theme.density(),
+      reset: () => theme.setDensity(DEFAULT_DENSITY),
+      ...choiceSetting({
+        isValid: isDensity,
+        options: idsOf(TRINITY_DENSITIES),
+        noun: 'a density',
+        set: (value) => theme.setDensity(value),
+      }),
+    },
+    {
       path: 'theme.codeScale',
       key: 'trinity.code-scale',
       description:
@@ -143,6 +179,38 @@ function themeEntries(theme: ThemeService): readonly ConfigEntry[] {
         options: idsOf(TRINITY_CODE_LINE_MODES),
         noun: 'a line-number mode',
         set: (value) => theme.setCodeLines(value),
+      }),
+    },
+  ];
+}
+
+/** The rooms shell's draggable pane widths. */
+function shellEntries(shell: ShellLayoutService): readonly ConfigEntry[] {
+  return [
+    {
+      path: 'shell.sidebarWidth',
+      key: 'trinity.shell.sidebar-width',
+      description:
+        'Width of the rail and room-list column, in pixels. Drag its edge in the app.',
+      read: () => shell.sidebarWidth(),
+      reset: () => shell.setSidebarWidth(DEFAULT_SIDEBAR_WIDTH),
+      ...boundedNumberSetting({
+        ...SIDEBAR_WIDTH_BOUNDS,
+        noun: `a width between ${SIDEBAR_WIDTH_BOUNDS.min} and ${SIDEBAR_WIDTH_BOUNDS.max} pixels`,
+        set: (value) => shell.setSidebarWidth(value),
+      }),
+    },
+    {
+      path: 'shell.rightPanelWidth',
+      key: 'trinity.shell.right-panel-width',
+      description:
+        'Width of the right-hand panel — threads, pinned messages, search — in pixels.',
+      read: () => shell.rightPanelWidth(),
+      reset: () => shell.setRightPanelWidth(DEFAULT_RIGHT_PANEL_WIDTH),
+      ...boundedNumberSetting({
+        ...RIGHT_PANEL_WIDTH_BOUNDS,
+        noun: `a width between ${RIGHT_PANEL_WIDTH_BOUNDS.min} and ${RIGHT_PANEL_WIDTH_BOUNDS.max} pixels`,
+        set: (value) => shell.setRightPanelWidth(value),
       }),
     },
   ];
@@ -254,11 +322,52 @@ function composerEntries(
     {
       path: 'composer.showFormattingToolbar',
       key: 'trinity.composer.show-toolbar',
-      description: 'Whether the message box shows its formatting toolbar.',
+      // Reworded, because the behaviour it names changed: the bar can now also appear on
+      // demand, so "shows its formatting toolbar" would no longer say which of the two this
+      // is. The key and the path are unchanged, so an exported config keeps working.
+      description:
+        'Whether the message box keeps its formatting toolbar pinned open.',
       read: () => composer.showFormattingToolbar(),
       reset: () =>
         composer.setShowFormattingToolbar(DEFAULT_SHOW_FORMATTING_TOOLBAR),
       ...flagSetting((on) => composer.setShowFormattingToolbar(on)),
+    },
+    {
+      path: 'composer.formatOnSelection',
+      key: 'trinity.composer.format-on-selection',
+      description:
+        'Whether selecting text raises the formatting toolbar while it is unpinned.',
+      read: () => composer.formatOnSelection(),
+      reset: () => composer.setFormatOnSelection(DEFAULT_FORMAT_ON_SELECTION),
+      ...flagSetting((on) => composer.setFormatOnSelection(on)),
+    },
+  ];
+}
+
+/**
+ * A top-level `gestures` group, which is new to the exported document.
+ *
+ * It is not filed under `composer` or `theme` because it is neither: this describes how the
+ * app reads a touch, and the next such preference (a pull-to-refresh, a two-finger anything)
+ * belongs beside it rather than wherever it happened to be implemented.
+ */
+function gestureEntries(
+  gestures: MessageGestureSettingsService,
+): readonly ConfigEntry[] {
+  return [
+    {
+      path: 'gestures.messageSwipe',
+      key: 'trinity.message-swipe',
+      description:
+        'Which way a message is dragged to edit or reply to it, or off.',
+      read: () => gestures.messageSwipe(),
+      reset: () => gestures.setMessageSwipe(DEFAULT_SWIPE_ACTION),
+      ...choiceSetting({
+        isValid: isSwipeAction,
+        options: idsOf(TRINITY_SWIPE_ACTIONS),
+        noun: 'a swipe direction',
+        set: (value) => gestures.setMessageSwipe(value),
+      }),
     },
   ];
 }

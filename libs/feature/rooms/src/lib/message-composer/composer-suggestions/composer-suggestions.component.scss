@@ -1,18 +1,14 @@
-// No box of its own: both menus are `position: absolute` and anchor to `.composer`, which is
-// the nearest positioned ancestor either way — but a host that generated a box would still be
-// a flex item in the composer's column.
+// No box of its own. Both menus render in the CDK overlay container now, so this host has
+// nothing left in the composer's column to lay out — but it is still a flex item, and one
+// that generated a box would put a gap in that column.
 :host {
   display: contents;
 }
 
-// `:shortcode` suggestion list, floated above the textarea like the picker but
-// spanning the input width.
+// `:shortcode` suggestion list. Width and position come from the anchored overlay (matched to
+// the input row), so what is left here is the surface: how tall it may get, and what it looks
+// like.
 .composer__emoji-menu {
-  position: absolute;
-  right: 16px;
-  bottom: calc(100% + 4px);
-  left: 16px;
-  z-index: 10;
   max-height: 220px;
   margin: 0;
   padding: 4px;
@@ -56,4 +52,14 @@
   color: var(--trinity-text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+// The command's description, beside its name. Muted and pushed to the end, so the list reads
+// as a column of commands with an explanation rather than two columns of equal weight.
+.composer__slash-description {
+  margin-left: auto;
+  padding-left: 12px;
+  color: var(--trinity-text-muted);
+  font-size: 12px;
+  text-align: right;
 }

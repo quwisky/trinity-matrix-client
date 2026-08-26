@@ -1,11 +1,16 @@
-import { createHmac } from 'node:crypto';
 import {
   test,
   expect,
   type APIRequestContext,
   type Page,
 } from '@playwright/test';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import {
+  login,
+  openSettingsTab,
+  synapseSession,
+  type SynapseSession,
+} from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // Covers editing a room's settings: the room header's ⚙ button
 // (data-testid="open-room-settings") opens a dialog (data-testid="room-settings")
@@ -14,31 +19,6 @@ import { login, synapseSession, type SynapseSession } from './support/app.mts';
 // RoomSettingsService.setName → setRoomName → sync and re-labels the room.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = synapseSession();
-
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
-
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const { nonce } = await request
-    .get(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`)
-    .then((r) => r.json());
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
-}
 
 /** Log in over the API and return the access token. */
 async function tokenFor(
@@ -199,11 +179,24 @@ test.describe('Room settings', () => {
       timeout: 10_000,
     });
 
+    // Both fields live behind the Access tab now. The two assertions around the switch are
+    // deliberate and belong in a browser: the panels are eager, so an inactive one is in the
+    // DOM carrying the `hidden` ATTRIBUTE while its `panelClass` sets `display: flex`. What
+    // keeps it hidden is Tailwind v4's preflight
+    // (`[hidden]:where(:not([hidden='until-found'])) { display: none !important }`) — a bare
+    // UA rule would tie with a single class and lose on source order. jsdom cannot tell the
+    // two apart, so this is the only place the arrangement is actually checked.
+    await expect(page.getByTestId('room-settings-panel-access')).toBeHidden();
+    await openSettingsTab(page, 'room-settings', 'access');
+    await expect(page.getByTestId('room-settings-panel-general')).toBeHidden();
+
     // Open the room up: anyone can join, and history is world-readable.
-    await page.getByTestId('room-settings-join-rule').selectOption('public');
-    await page
-      .getByTestId('room-settings-history')
-      .selectOption('world_readable');
+    // `selectOption` only ever drove a native `<select>`; this is a `trn-select` now, whose
+    // options live in a CDK portal. Open the trigger, then pick by the id the option carries.
+    await page.getByTestId('room-settings-join-rule').click();
+    await page.getByTestId('join-rule-public').click();
+    await page.getByTestId('room-settings-history').click();
+    await page.getByTestId('history-world_readable').click();
     await page.getByTestId('room-settings-save').click();
 
     // Both state events round-trip to the homeserver.
@@ -276,11 +269,11 @@ test.describe('Room settings', () => {
     await expect(page.getByTestId('room-settings')).toBeVisible({
       timeout: 10_000,
     });
+    await openSettingsTab(page, 'room-settings', 'access');
     // The option only exists because the room sits in a space AND its version can enforce
     // the rule — selecting by value proves both held.
-    await page
-      .getByTestId('room-settings-join-rule')
-      .selectOption('restricted');
+    await page.getByTestId('room-settings-join-rule').click();
+    await page.getByTestId('join-rule-restricted').click();
     // Selecting the rule reveals a tickbox per parent space, pre-ticked — the allow list
     // is editable state, so the dialog shows it rather than deriving it out of sight.
     await expect(
@@ -374,6 +367,7 @@ test.describe('Room settings', () => {
     });
 
     await page.getByTestId('open-room-settings').click();
+    await openSettingsTab(page, 'room-settings', 'access');
     // Both boxes start ticked because both are in `allow` — the dialog reports the
     // server's state, not the room's parentage.
     const dropped = page.getByTestId(`room-settings-space-${droppedId}`);
@@ -454,6 +448,7 @@ test.describe('Room settings', () => {
     await openRoom(page, roomName);
 
     await page.getByTestId('open-room-settings').click();
+    await openSettingsTab(page, 'room-settings', 'bans');
     await expect(page.getByTestId('banned-members')).toBeVisible({
       timeout: 10_000,
     });
@@ -513,6 +508,7 @@ test.describe('Room settings', () => {
     await openRoom(page, roomName);
 
     await page.getByTestId('open-room-settings').click();
+    await openSettingsTab(page, 'room-settings', 'access');
     await expect(page.getByTestId('room-aliases')).toBeVisible({
       timeout: 10_000,
     });

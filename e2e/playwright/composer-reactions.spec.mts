@@ -1,4 +1,3 @@
-import { createHmac } from 'node:crypto';
 import {
   test,
   expect,
@@ -6,36 +5,12 @@ import {
   type Page,
 } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // End-to-end for the full emoji reaction picker: hover a message, open the quick
 // reactions, escalate to the full emoji-mart picker via "+", search and pick an
 // emoji, and see it land as a reaction on the message. Needs Synapse (Docker).
 const session = synapseSession();
-
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
-
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const { nonce } = await request
-    .get(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`)
-    .then((r) => r.json());
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
-}
 
 /** Register a user and create a room they own; returns a login session + room name. */
 async function seedRoom(
@@ -80,6 +55,39 @@ async function openRoom(page: Page, roomName: string): Promise<void> {
 
 test.describe('Full emoji reaction picker', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+
+  test('opens and closes the composer’s own picker from its button', async ({
+    page,
+    request,
+  }) => {
+    // The composer's emoji picker had NO e2e coverage at all, which is how it shipped
+    // unclosable: it moved into the CDK overlay container, its trigger stayed in the row the
+    // overlay anchors to, and a press there reached CDK's outside-press dispatcher as well as
+    // the button's own handler. Both wrote the same signal. The second click left the state
+    // saying open with nothing rendered — and 202 e2e tests passed, because none of them ever
+    // closed it.
+    const runId = `${Date.now().toString(36)}p`;
+    const { user, roomName } = await seedRoom(
+      request,
+      session.hs as string,
+      runId,
+    );
+
+    await login(page, user);
+    await openRoom(page, roomName);
+
+    const trigger = page.getByRole('button', { name: 'Insert emoji' });
+    const picker = page.locator('trn-emoji-picker');
+
+    await trigger.click();
+    await expect(picker).toBeVisible({ timeout: 20_000 });
+    // The trigger has to agree with what is on screen, which is the half that desynced.
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+    await trigger.click();
+    await expect(picker).toBeHidden({ timeout: 10_000 });
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
 
   test('reacts with an emoji chosen from the full picker', async ({
     page,

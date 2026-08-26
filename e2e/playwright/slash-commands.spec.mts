@@ -1,41 +1,11 @@
-import { createHmac } from 'node:crypto';
-import {
-  test,
-  expect,
-  type APIRequestContext,
-  type Page,
-} from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // Covers composer slash commands (TimelineService.send → slashCommandContent):
 // /shrug appends the kaomoji, and /plain sends its argument literally (no markdown).
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = synapseSession();
-
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
-
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const { nonce } = await request
-    .get(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`)
-    .then((r) => r.json());
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
-}
 
 async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();
@@ -93,5 +63,31 @@ test.describe('Slash commands', () => {
     await expect(
       page.locator('.msg__text', { hasText: '**not bold**' }),
     ).toBeVisible({ timeout: 20_000 });
+
+    // The autocomplete: a bare `/` offers every command, typing narrows it, and Enter
+    // completes the name instead of sending — the message only goes once the argument is
+    // there. Driven by the keyboard because that is the path the menu exists to serve.
+    const menu = page.getByTestId('slash-autocomplete');
+    await composer.fill('/');
+    await expect(menu).toBeVisible();
+    const all = await menu.getByRole('option').count();
+    expect(all).toBeGreaterThan(1);
+
+    await composer.fill('/m');
+    await expect(menu.getByRole('option')).toHaveCount(1);
+    await expect(menu.getByRole('option').first()).toContainText('/me');
+
+    await composer.press('Enter');
+    await expect(menu).toBeHidden();
+    await expect(composer).toHaveValue('/me ');
+
+    await composer.pressSequentially('waves');
+    await composer.press('Enter');
+    // An emote renders as ordinary message text, so what this proves is that the completed
+    // command sent at all — and sent as `/me waves`, not as the literal string.
+    await expect(
+      page.locator('.msg__text', { hasText: 'waves' }).first(),
+    ).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.msg__text', { hasText: '/me' })).toHaveCount(0);
   });
 });

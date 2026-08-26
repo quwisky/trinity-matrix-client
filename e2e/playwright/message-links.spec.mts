@@ -1,40 +1,10 @@
-import { createHmac } from 'node:crypto';
-import {
-  test,
-  expect,
-  type APIRequestContext,
-  type Page,
-} from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // End-to-end for matrix.to link navigation: a message linking to another room routes
 // in-app (switches rooms) rather than leaving to matrix.to. Needs Synapse (Docker).
 const session = synapseSession();
-
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
-
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const { nonce } = await request
-    .get(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`)
-    .then((r) => r.json());
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
-}
 
 async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();
@@ -176,10 +146,26 @@ test.describe('matrix.to link navigation', () => {
     await openRoom(page, roomName);
 
     // Clicking the mention opens a user card — it does not navigate anywhere.
-    await page.locator('.scroll a', { hasText: bobName }).first().click();
+    const mention = page.locator('.scroll a', { hasText: bobName }).first();
+    const mentionBox = await mention.boundingBox();
+    await mention.click();
     const card = page.getByTestId('user-card');
     await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card.getByTestId('user-card-name')).toHaveText(bobName);
+
+    // And it is a POPOVER pinned to that mention, not a modal centred over the room it
+    // refers to. Two independent signals, because either alone can hold by accident: CDK
+    // builds this wrapper only for a flexibly-connected overlay (a global centred strategy
+    // has none), and the card hangs BELOW the mention it came from rather than at the
+    // viewport's vertical middle.
+    await expect(
+      page.locator('.cdk-overlay-connected-position-bounding-box'),
+    ).toBeVisible();
+    const cardBox = await card.boundingBox();
+    expect(mentionBox).not.toBeNull();
+    expect(cardBox).not.toBeNull();
+    expect(cardBox!.y).toBeGreaterThanOrEqual(mentionBox!.y);
+    expect(Math.abs(cardBox!.x - mentionBox!.x)).toBeLessThan(120);
     // Still in the same room (no empty room opened behind the card).
     await expect(page.getByTestId('composer-input')).toHaveAttribute(
       'placeholder',

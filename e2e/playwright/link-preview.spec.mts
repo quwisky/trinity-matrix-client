@@ -1,6 +1,6 @@
-import { createHmac } from 'node:crypto';
-import { test, expect, type APIRequestContext } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 // Covers link previews (message-row `data-testid="link-preview"`): a URL in an
 // unencrypted message shows an Open-Graph card fetched via the homeserver
@@ -10,8 +10,6 @@ import { login, synapseSession, type SynapseSession } from './support/app.mts';
 // tested) to avoid disclosing the URL. Needs a Synapse homeserver (Docker); self-skips.
 const session = synapseSession();
 
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
 // Reachable by Synapse on the docker network; the browser never fetches it.
 // Fetched by Synapse server-side. On the compose network that is the `caddy` hostname;
 // when the stack shares the job container's network namespace (containerised CI) there is
@@ -19,28 +17,6 @@ const REG_SECRET = 'trinity-e2e-shared-secret';
 const OG_URL = process.env['TRINITY_E2E_NETWORK_CONTAINER']
   ? 'http://localhost:8080/og'
   : 'http://caddy:8080/og';
-
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const { nonce } = await request
-    .get(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`)
-    .then((r) => r.json());
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
-}
 
 test.describe('Link previews', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');

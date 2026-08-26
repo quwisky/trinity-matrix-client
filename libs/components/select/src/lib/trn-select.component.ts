@@ -2,8 +2,9 @@ import {
   ChangeDetectionStrategy,
   Component,
   input,
-  output,
+  model,
 } from '@angular/core';
+import type { FormValueControl } from '@angular/forms/signals';
 import {
   HlmSelect,
   HlmSelectContent,
@@ -85,6 +86,7 @@ export interface TrnSelectOption<T> {
   template: `
     <hlm-select
       [value]="value()"
+      [disabled]="disabled()"
       [itemToString]="labelFor"
       (valueChange)="onValueChange($event)"
     >
@@ -120,17 +122,35 @@ export interface TrnSelectOption<T> {
     </hlm-select>
   `,
 })
-export class TrnSelectComponent<T> {
+export class TrnSelectComponent<T> implements FormValueControl<T | null> {
   readonly options = input.required<readonly TrnSelectOption<T>[]>();
-  readonly value = input<T | null>(null);
+
+  /**
+   * A `model`, not an `input`, and that is what makes `[formField]` work on this element.
+   *
+   * Signal Forms' `FormValueControl` contract requires exactly one thing — a `model()` kept in
+   * sync with the bound field — and satisfying it is the difference between a select the
+   * schema can drive and one every call site has to bridge by hand. The alternative was
+   * `[value]` + `(valueChange)` at each site plus a hand-wired `[disabled]`, which is also
+   * NG8022 on any control still carrying `[formField]`.
+   *
+   * Existing call sites are unaffected: a model publishes the same `[value]` input and the
+   * same `valueChange` output an `input` + `output` pair did.
+   */
+  readonly value = model<T | null>(null);
+
+  /**
+   * Taken from the schema when bound through `[formField]`, so `disabled(path, { when })`
+   * reaches the control. Part of the same contract; without it a gated field would render
+   * enabled and the gate would silently do nothing.
+   */
+  readonly disabled = input<boolean>(false);
 
   /** Shown in the trigger until something is chosen. Every call site sets one. */
   readonly placeholder = input<string>('');
 
   /** Classes for the trigger, which is the element that carries the field's width. */
   readonly triggerClass = input<string>('');
-
-  readonly valueChange = output<T>();
 
   /**
    * What the trigger shows for the chosen value.
@@ -145,13 +165,14 @@ export class TrnSelectComponent<T> {
 
   /**
    * The kit emits `T | null | undefined` — three states, because brain distinguishes "no
-   * value" from "not yet initialised". A chosen option is never either, so the public output
-   * promises `T` and the empty cases are dropped here rather than pushed to every call site.
+   * value" from "not yet initialised". A chosen option is never either, so the empty cases are
+   * dropped here rather than pushed to every call site: `valueChange` still only ever fires
+   * with a real choice, exactly as it did when it was an explicit `output<T>`.
    * Caught by the AOT build; `nx typecheck` does not check templates.
    */
   protected onValueChange(value: T | null | undefined): void {
     if (value !== null && value !== undefined) {
-      this.valueChange.emit(value);
+      this.value.set(value);
     }
   }
 }

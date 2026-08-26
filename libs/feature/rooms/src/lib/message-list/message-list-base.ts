@@ -1,8 +1,10 @@
 import {
+  DestroyRef,
   Directive,
   ElementRef,
   computed,
   effect,
+  Injector,
   inject,
   input,
   output,
@@ -11,7 +13,9 @@ import {
   viewChild,
 } from '@angular/core';
 import { TrnAlertService } from '@trinity/components/overlay';
+import { MessageActionSheetService } from '../message-actions/message-action-sheet.service';
 import { ReactionPickerService } from '../reaction-picker/reaction-picker.service';
+import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import { ForwardService } from '../forward/forward.service';
 import { ReportService } from '../report/report.service';
 import { MessageSourceService } from '../message-source/message-source.service';
@@ -20,20 +24,22 @@ import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.ser
 import { type ThreadSummary } from '@trinity/data-access/timeline';
 import {
   dayLabel,
-  formatTypingNotice,
   hasUsableTimestamp,
   isEditableMessage,
   isQuotableMessage,
   messagePermalink,
   quoteBlock,
   startOfLocalDay,
-  type MatrixLinkTarget,
   type MessageView,
   type Mention,
 } from '@trinity/util/matrix';
-import { DateTimeFormatService } from '@trinity/platform-native';
+import {
+  DateTimeFormatService,
+  HapticsService,
+} from '@trinity/platform-native';
 import { DayBoundaryService } from './day-boundary.service';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
+import { delayedBusy } from '@trinity/util/ui';
 import {
   type BatchItem,
   type BatchOutcome,
@@ -43,12 +49,21 @@ import {
   type MessageRow,
   type MessageRowAction,
   type MessageRowCaps,
+  type SwipeDirection,
 } from '../message-row/message-row.component';
 import {
   MessageComposerComponent,
   type ComposerSubmit,
   type MentionMember,
 } from '../message-composer/message-composer.component';
+
+/**
+ * How long after a jump a width change still counts as "the same jump".
+ *
+ * Long enough to cover a panel closing and a pane being dragged, short enough that resizing
+ * the window later is not answered by scrolling somewhere the reader left behind.
+ */
+const JUMP_REAPPLY_MS = 3_000;
 
 /** Fallback caps for a row not present in the memoized map (defensive; unreached). */
 const DEFAULT_ROW_CAPS: MessageRowCaps = {
@@ -103,6 +118,49 @@ export abstract class MessageListBase {
   /** Currently-pinned event ids, for the per-row pinned state. */
   readonly pinnedIds = input<readonly string[]>([]);
   readonly loadingOlder = input(false);
+  /**
+   * Gates the appearance of the "Loading older messages…" strip, and nothing else.
+   *
+   * `minimumMs: 0` is load-bearing, not a tuning choice — but not on the way OUT, which is
+   * what it looks like. The AND in {@link showLoadingOlder} is what makes the strip vanish
+   * in the same change-detection pass the prepend lands in, and it does that whatever this
+   * is set to. What a minimum hold changes is the NEXT backfill: scrolling back is
+   * repetitive, one slow page is routinely followed by several fast ones, and a
+   * `delayedBusy` still serving out a hold is still "visible" — so the load after it skips
+   * the delay entirely and flashes the strip for a page nobody noticed was fetched, which is
+   * the exact flicker the delay exists to prevent. Zero ends the hold with the load, so
+   * every backfill is judged on its own duration.
+   *
+   * Why the removal has to be synchronous at all: the strip is IN FLOW above the rows, and
+   * `VirtualMessageListComponent.rowsRegionTop()` folds its height into the scroll restore
+   * that keeps the reader's place across a prepend. `TimelineService.loadOlder` prepends the
+   * rows and clears `loadingOlder` in one synchronous block, so a strip held past that point
+   * has the restore measure 36px that is about to disappear — and `.scroll` sets
+   * `overflow-anchor: none`, so nothing compensates when it does: the content jumps up by
+   * the strip's height, in the exact spot being read.
+   */
+  private readonly loadingOlderSettled = delayedBusy(
+    this.loadingOlder,
+    inject(Injector),
+    { minimumMs: 0 },
+  );
+
+  /**
+   * `loadingOlder`, shaped for the eye: nothing at all for a fast backfill.
+   *
+   * Backfilling a page of history is usually quicker than a person can register, so binding
+   * the raw input flashed the strip on most scrolls back — motion at the top of the timeline,
+   * in the exact spot the reader is looking, for a load they never noticed was happening.
+   *
+   * The raw input is ANDed in deliberately: it makes the strip's removal synchronous with the
+   * prepend, exactly as it was before any of this, while the delayed signal decides only
+   * whether it was ever worth showing. The residual is a load landing just past the delay,
+   * which shows the strip briefly — much rarer than the flicker it replaced, and the only
+   * alternative moves the reader's content.
+   */
+  protected readonly showLoadingOlder = computed(
+    () => this.loadingOlder() && this.loadingOlderSettled(),
+  );
   readonly canLoadOlder = input(false);
   /** Oldest RAW event in the loaded window — the backfill progress marker (see
    * TimelineService.oldestEventId). Not the oldest rendered row: rows can be filtered out. */
@@ -165,14 +223,11 @@ export abstract class MessageListBase {
   /** The composer's typing state changed — host debounces it into a typing notification. */
   readonly typing = output<boolean>();
   /** A `matrix.to` permalink clicked in a message body, for the host to route in-app. */
-  readonly matrixLink = output<MatrixLinkTarget>();
+  readonly matrixLink = output<MatrixLinkClick>();
   /** A vote cast on a poll (the host sends the response). */
   readonly pollVote = output<{ pollId: string; answerId: string }>();
   /** A request to close a poll (the host sends the end event). */
   readonly pollEnd = output<string>();
-
-  /** "X is typing…" text for the row above the composer, or '' when nobody is typing. */
-  readonly typingLabel = computed(() => formatTypingNotice(this.typingNames()));
 
   readonly editingId = signal<string | null>(null);
   readonly editingDraft = computed(
@@ -207,6 +262,17 @@ export abstract class MessageListBase {
   private readonly sourceSvc = inject(MessageSourceService);
   private readonly editHistorySvc = inject(EditHistoryDialogService);
   private readonly reactionsDialog = inject(ReactionsDialogService);
+  private readonly messageSheet = inject(MessageActionSheetService);
+  private readonly haptics = inject(HapticsService);
+
+  /**
+   * Which way a row is dragged to act on it, resolved by the page and passed straight down.
+   *
+   * The page owns it because the answer depends on the drawer, which neither the list nor
+   * the row can see. `'off'` means the gesture does not arm at all — no listeners doing
+   * anything, no row movement — rather than a drag that moves and is then refused.
+   */
+  readonly swipeDirection = input<SwipeDirection>('off');
   protected readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
 
   /**
@@ -302,11 +368,27 @@ export abstract class MessageListBase {
     return result;
   });
 
+  /**
+   * Declared ABOVE the constructor on purpose. The constructor registers an `onDestroy` on
+   * it, which works wherever the field sits — every initializer runs before the constructor
+   * body — but TS2729 only guards field initializers, not constructor bodies, so the
+   * compiler would not catch it if this drifted below a subclass. Keeping the two adjacent
+   * removes the question.
+   */
+  private readonly listDestroyRef = inject(DestroyRef);
+
   constructor() {
     // A host directive's outputs are not template-bound, so the subscription IS the wiring.
     // No teardown: an `OutputEmitterRef` drops its subscribers when its own directive is
     // destroyed, and a host directive is destroyed with the component it is attached to.
     this.fileDrop.filesDropped.subscribe((files) => this.onFilesDropped(files));
+
+    // The sheet is a CDK overlay, which lives OUTSIDE the router outlet and so outlives
+    // this list. `resetOnRoomChange` cannot be the only place it is shut: a route to
+    // settings, a logout redirect and a deep link all destroy the timeline WITHOUT the
+    // room id changing, leaving a modal standing whose every row dispatches into a
+    // destroyed component. Scoped to `this`, so it never shuts the thread panel's sheet.
+    this.listDestroyRef.onDestroy(() => this.messageSheet.close(this));
 
     // Reset per-room state when the active room changes. Created here — before any
     // scroll effect a subclass adds in its own constructor — so it runs FIRST
@@ -369,6 +451,9 @@ export abstract class MessageListBase {
 
   /** Reset per-room state on a room switch. Subclasses override to add scroll state. */
   protected resetOnRoomChange(): void {
+    // A sheet is about ONE message in ONE room; leaving it standing over a different
+    // room's timeline would offer actions against an event that is no longer on screen.
+    this.messageSheet.close(this);
     this.editingId.set(null);
     this.replyingToId.set(null);
     this.announcement.set('');
@@ -452,6 +537,71 @@ export abstract class MessageListBase {
     );
   }
 
+  /**
+   * The row a jump most recently aimed at, and the scroller width it was aimed at.
+   *
+   * A jump ends in `scrollIntoView`, which is a measurement: it resolves to a scrollTop that
+   * is only correct for the layout at that instant. Change the scroller's WIDTH afterwards
+   * and every row re-wraps to a new height, so the position the jump computed now belongs to
+   * a different message — the reader is left somewhere near, or nowhere near, with only the
+   * flash to say the jump happened.
+   *
+   * That is not hypothetical: it is what closing a right-hand panel does, since the panel and
+   * the timeline share the row, and it is what a pane drag will do continuously. Rather than
+   * time the jump against the reflow — which cannot be done reliably, because the browser
+   * lays out and fires `ResizeObserver` on its own schedule — the jump is remembered and
+   * RE-APPLIED when the width actually changes.
+   *
+   * Bounded by {@link JUMP_REAPPLY_MS} so a width change minutes later does not yank someone
+   * back to a message they have long scrolled past.
+   */
+  private pendingJumpId: string | null = null;
+  private pendingJumpAt = 0;
+  private lastScrollerWidth = 0;
+  private widthRo?: ResizeObserver;
+
+  /**
+   * Remember a jump so a width change can re-apply it. Called BY the subclasses' `jumpTo`,
+   * not instead of it — the base cannot know how each strategy scrolls.
+   */
+  protected notePendingJump(messageId: string): void {
+    this.pendingJumpId = messageId;
+    this.pendingJumpAt = Date.now();
+  }
+
+  /**
+   * Watch the scroller's width and re-apply a recent jump when it changes.
+   *
+   * Width only: a height change is the keyboard opening or the composer growing, and
+   * re-jumping there would fight the reader rather than help them. Started by the subclasses
+   * once they have a scroll element, and torn down with the component.
+   */
+  protected watchScrollerWidth(): void {
+    const el = this.scrollEl()?.nativeElement;
+    if (!el || typeof ResizeObserver === 'undefined' || this.widthRo) {
+      return;
+    }
+    this.lastScrollerWidth = el.clientWidth;
+    this.widthRo = new ResizeObserver(() => {
+      const width = el.clientWidth;
+      if (width === this.lastScrollerWidth) {
+        return;
+      }
+      this.lastScrollerWidth = width;
+      const id = this.pendingJumpId;
+      if (id && Date.now() - this.pendingJumpAt <= JUMP_REAPPLY_MS) {
+        // Re-aim at the same row against the layout that now exists. `jumpTo` calls
+        // `notePendingJump` again, which refreshes the deadline — deliberately, so a drag
+        // that resizes continuously keeps the reader on their row for its whole duration.
+        this.jumpTo(id);
+      } else {
+        this.pendingJumpId = null;
+      }
+    });
+    this.widthRo.observe(el);
+    this.listDestroyRef.onDestroy(() => this.widthRo?.disconnect());
+  }
+
   /** Scroll a message into view (each scroll strategy implements it differently). */
   abstract jumpTo(messageId: string): void;
 
@@ -500,6 +650,40 @@ export abstract class MessageListBase {
   /** Per-row capabilities/state for {@link MessageRowComponent} in the main timeline. */
   rowCaps(row: MessageRow): MessageRowCaps {
     return this.rowCapsById().get(row.id) ?? DEFAULT_ROW_CAPS;
+  }
+
+  /**
+   * A committed sideways drag on a row: edit it if it can be edited, reply to it otherwise.
+   *
+   * Read from `rowCaps`, not from `isEditable`, and the distinction is the point: `rowCaps`
+   * is what the row itself was handed, so the icon the reader saw behind the row and the
+   * action they get are the same value rather than two computations of it.
+   *
+   * The action is dispatched here rather than by the row for the same reason the sheet is —
+   * the row does not survive a redaction, an edit, the local-echo id swap, or scrolling out
+   * of the virtual window, and `row` here is a snapshot the closure holds.
+   */
+  onRowSwipe(row: MessageRow): void {
+    this.haptics.gestureCommitted();
+    if (this.rowCaps(row).editable) {
+      this.startEdit(row);
+      return;
+    }
+    this.startReply(row);
+  }
+
+  /**
+   * A long press on a row, on a phone or tablet: offer its actions as a bottom sheet.
+   *
+   * The sheet is built and held by {@link MessageActionSheetService}, not here, because
+   * `trn-message-row` has a third consumer that does not extend this class — see that
+   * service. What this method contributes is its caps and a dispatch closing over the row,
+   * routed through `onRowAction` — the same path the hover toolbar takes.
+   */
+  onRowLongPress(row: MessageRow): void {
+    this.messageSheet.open(this, this.rowCaps(row), (action) =>
+      this.onRowAction(row, action),
+    );
   }
 
   /** Route a single row action to its handler / upward output. */
@@ -577,7 +761,9 @@ export abstract class MessageListBase {
       id,
     );
     if (followed) {
-      this.matrixLink.emit(followed);
+      // No anchor: the dialog that held the link has already closed, so a user card from
+      // here is centred rather than pinned to an element that no longer exists.
+      this.matrixLink.emit({ target: followed });
     }
   }
 

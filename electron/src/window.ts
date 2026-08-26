@@ -92,7 +92,7 @@ export function createWindow(): void {
     autoHideMenuBar: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      // Hardened defaults — see CLAUDE.md cross-platform guardrails.
+      // Hardened defaults — see .agents/skills/electron/ipc-security.md.
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
