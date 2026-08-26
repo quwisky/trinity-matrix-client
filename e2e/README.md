@@ -52,6 +52,7 @@ disposable Synapse. Paths are relative to the repo root, so always invoke via th
 | `pnpm smoke:login`                            | Unauthenticated → `/login`, real `.well-known` discovery for matrix.org.                                                                   |
 | `pnpm spike:chromium` / `pnpm spike:webkit`   | In-app E2EE crypto spike.                                                                                                                  |
 | `pnpm e2e:verify`                             | **Two-client device verification (emoji SAS)** — full live flow against a disposable Synapse.                                              |
+| `pnpm e2e:verify:qr`                          | **Two-client QR verification** — production rendering/scanning through a synthetic camera stream against disposable Synapse.               |
 | `pnpm e2e:media`                              | **Note-to-self encrypted media send** — pick a file → encrypt → upload → decrypt own echo.                                                 |
 | `pnpm e2e:reply`                              | **Reply header + preview** — a reply keeps its own author/avatar even as a same-sender continuation, and renders the quoted reply preview. |
 | `pnpm e2e:verify:up` / `pnpm e2e:verify:down` | Bring the Synapse+Caddy+Dex harness up / tear it down by hand.                                                                             |
@@ -134,6 +135,23 @@ TRINITY_PASS=… \
 The account must be allowed to set up encryption fresh (the runner does the
 `/encryption/setup` bootstrap on Device A).
 
+## `e2e:verify:qr` — two-client QR reciprocation
+
+`verify-qr.mjs` performs the same two-context account and encryption setup, then has
+Device A explicitly reveal the SDK's binary QR payload. Device B scans that exact image
+through the production camera component and decoder. The camera input is a canvas-backed
+`MediaStream`, so the run needs no physical hardware while still exercising QR rendering,
+raw-byte decoding, `scanQRCode()`, reciprocation confirmation, and both clients reaching
+`done`. It also asserts that scanning alone does not claim success and that the displayed
+code is removed once consumed.
+
+```bash
+pnpm e2e:verify:qr
+```
+
+The QR and SAS runners each own the same disposable Synapse ports and therefore must run
+sequentially.
+
 ### Homeserver-free self-check
 
 ```bash
@@ -196,3 +214,7 @@ access is unavailable, fall back to the homeserver-free self-check
 (`node e2e/features/verify-sas-selfcheck.mjs` → `RESULT: PASS`), which still covers the dev
 build serving, the SPA booting, `/login` + discovery + the password form, and the
 guarded `/encryption/verify` route — everything except the live SAS exchange.
+
+The live `e2e:verify:qr` round-trip was run to **PASS** on 2026-08-26. The synthetic
+camera decoded Device A's production GIF, Device A withheld reciprocation until the
+explicit confirmation, and both devices then reached `done`.

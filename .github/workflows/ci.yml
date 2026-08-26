@@ -203,6 +203,11 @@ jobs:
       # job that tested almost nothing. See e2e/playwright/support/global-setup.mts.
       - run: pnpm exec nx e2e trinity-e2e
 
+      # The QR protocol harness owns the same fixed Synapse stack, so run it only after
+      # the main suite has completed and torn its stack down. Its synthetic camera feeds
+      # a real SDK payload through production rendering, decoding and reciprocation.
+      - run: pnpm e2e:verify:qr
+
       # always(), not failure(): `timeout-minutes` CANCELS the job, and failure() does not
       # fire on a cancellation — so the run most in need of a trace would upload nothing.
       # A superseded run is cancelled too, but concurrency already discards those.

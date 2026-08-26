@@ -35,3 +35,21 @@
   background: var(--warning);
   color: var(--warning-foreground);
 }
+
+.privacy-warning {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  color: var(--foreground);
+}
+
+.qr-code {
+  display: block;
+  width: min(100%, 320px);
+  height: auto;
+  margin: 16px auto;
+  border-radius: var(--radius);
+  image-rendering: pixelated;
+}

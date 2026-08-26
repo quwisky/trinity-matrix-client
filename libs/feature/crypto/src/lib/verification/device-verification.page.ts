@@ -2,10 +2,13 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
+  effect,
   inject,
   input,
   output,
   signal,
+  viewChild,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -16,6 +19,8 @@ import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
 import { PageHeaderComponent } from '@trinity/components/page-header';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
+import { QrScannerComponent } from '@trinity/components/qr-scanner';
+import { QrCodeService } from '@trinity/platform-native/qr-code';
 import { SasCompareComponent } from './sas-compare.component';
 
 /**
@@ -35,11 +40,13 @@ import { SasCompareComponent } from './sas-compare.component';
     PageHeaderComponent,
     HlmButton,
     SasCompareComponent,
+    QrScannerComponent,
     TrnSpinnerComponent,
   ],
 })
 export class DeviceVerificationPage {
   private readonly verification = inject(VerificationService);
+  private readonly qrCode = inject(QrCodeService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   // Present only when opened as a dialog (incoming request); null on the routed page.
@@ -52,6 +59,40 @@ export class DeviceVerificationPage {
   readonly active = this.verification.active;
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
+  private readonly scannerRequestId = signal<number | null>(null);
+  private readonly stageHeading =
+    viewChild<ElementRef<HTMLHeadingElement>>('stageHeading');
+  private lastFocusedView = '';
+  readonly scanning = () => {
+    const active = this.active();
+    return (
+      active?.stage === 'ready' && this.scannerRequestId() === active.requestId
+    );
+  };
+  readonly cameraSupported = this.qrCode.cameraSupported;
+  readonly qrCodeUrl = signal<string | null>(null);
+
+  private readonly synchronizeQrUi = effect(() => {
+    const active = this.active();
+    const scanning = this.scanning();
+    this.qrCodeUrl.set(
+      active?.qrCodeData ? this.qrCode.createDataUrl(active.qrCodeData) : null,
+    );
+
+    const heading = this.stageHeading();
+    const view = `${active?.requestId ?? 'idle'}:${active?.stage ?? 'idle'}:${scanning}`;
+    if (!heading || view === this.lastFocusedView) {
+      return;
+    }
+    this.lastFocusedView = view;
+    queueMicrotask(() => {
+      const current = this.active();
+      const currentView = `${current?.requestId ?? 'idle'}:${current?.stage ?? 'idle'}:${this.scanning()}`;
+      if (currentView === view) {
+        this.stageHeading()?.nativeElement.focus({ preventScroll: true });
+      }
+    });
+  });
 
   /** When true the page is modal content (incoming); else a routed page. */
   readonly asModal = input(false);
@@ -65,7 +106,28 @@ export class DeviceVerificationPage {
     this.run(this.verification.accept());
   }
   startSas(): void {
+    this.scannerRequestId.set(null);
     this.run(this.verification.startSas());
+  }
+  showQr(): void {
+    this.run(this.verification.showQr());
+  }
+  hideQr(): void {
+    this.verification.hideQr();
+  }
+  startQrScan(): void {
+    this.error.set(null);
+    this.scannerRequestId.set(this.active()?.requestId ?? null);
+  }
+  cancelQrScan(): void {
+    this.scannerRequestId.set(null);
+  }
+  scanQr(data: Uint8ClampedArray): void {
+    this.scannerRequestId.set(null);
+    this.run(this.verification.scanQr(data));
+  }
+  confirmQr(): void {
+    this.run(this.verification.confirmQr());
   }
   confirm(): void {
     this.run(this.verification.confirmSas());

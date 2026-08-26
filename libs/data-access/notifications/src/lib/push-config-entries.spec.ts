@@ -32,6 +32,7 @@ vi.mock('@capacitor/preferences', () => ({
 }));
 
 vi.mock('@capacitor/core', () => ({
+  registerPlugin: vi.fn(() => ({})),
   Capacitor: { getPlatform: () => h.platform },
 }));
 

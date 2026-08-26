@@ -1,0 +1,29 @@
+<div class="scanner">
+  <video
+    #preview
+    class="preview"
+    aria-label="Camera preview for scanning a QR code"
+    autoplay
+    muted
+    playsinline
+  ></video>
+  <canvas #canvas class="frame" aria-hidden="true"></canvas>
+  <div class="finder" aria-hidden="true"></div>
+
+  @if (status() === 'starting') {
+    <p class="status" role="status">Opening the camera…</p>
+  } @else if (status() === 'scanning') {
+    <p class="status" role="status">Point the camera at the QR code.</p>
+  } @else if (error(); as message) {
+    <div class="error" role="alert">
+      <p>{{ message }}</p>
+      <button hlmBtn variant="secondary" size="sm" (click)="retry()">
+        Try again
+      </button>
+    </div>
+  }
+
+  <button hlmBtn variant="ghost" class="cancel" (click)="cancel()">
+    Cancel scan
+  </button>
+</div>

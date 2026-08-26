@@ -540,7 +540,7 @@ renderer" spec.
 small static server and drives Chromium or WebKit, parameterised by `TRINITY_HS`,
 `TRINITY_USER` and `TRINITY_PASS` so it can run against any homeserver. They print
 `RESULT: PASS` or `RESULT: FAIL` and exit accordingly, and `HEADED=1` plus
-`SLOWMO=<ms>` make them watchable. The eight Synapse-backed ones have a thin runner
+`SLOWMO=<ms>` make them watchable. The nine Synapse-backed ones have a thin runner
 under `e2e/runners/` that starts the stack, spawns the body, and stops the stack in a
 `finally`.
 
@@ -550,6 +550,11 @@ and therefore two device ids. It synchronises off a live `data-stage` attribute 
 `waitForFunction` and no fixed sleeps, asserts the seven emoji match across both
 contexts, and deliberately observes the half-confirmed window that only a two-device
 run can see.
+
+`verify-qr.mjs` uses the same two-client setup but supplies Device B with a
+canvas-backed synthetic camera stream containing Device A's rendered QR image. This
+keeps physical hardware out of CI while exercising the production encoder, camera
+scanner, raw-byte decoder, Matrix reciprocation, and completion on both clients.
 
 ## Electron main-process specs
 

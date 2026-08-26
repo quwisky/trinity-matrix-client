@@ -1,0 +1,54 @@
+:host {
+  display: block;
+}
+
+.scanner {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+
+.preview {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  background: var(--muted);
+}
+
+.frame {
+  display: none;
+}
+
+.finder {
+  position: absolute;
+  inset: 18%;
+  border: 3px solid var(--trinity-accent);
+  border-radius: calc(var(--radius) * 1.5);
+  box-shadow: 0 0 0 999px var(--trinity-camera-scrim);
+  pointer-events: none;
+}
+
+.status,
+.error {
+  position: absolute;
+  inset-inline: 12px;
+  bottom: 56px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--card-foreground);
+  text-align: center;
+}
+
+.error p {
+  margin: 0 0 8px;
+  color: var(--trinity-danger);
+}
+
+.cancel {
+  width: calc(100% - 24px);
+  margin: 8px 12px 12px;
+}

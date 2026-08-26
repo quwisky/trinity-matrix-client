@@ -18,6 +18,7 @@ import { VerificationHostComponent } from './verification-host.component';
 
 function incoming(): VerificationView {
   return {
+    requestId: 1,
     stage: 'requested',
     otherUserId: '@me:hs',
     otherDeviceId: 'PHONE',
@@ -25,6 +26,9 @@ function incoming(): VerificationView {
     incoming: true,
     emoji: null,
     sasConfirmed: false,
+    qrCodeData: null,
+    qrShowAvailable: false,
+    qrScanAvailable: false,
     cancelReason: null,
   };
 }

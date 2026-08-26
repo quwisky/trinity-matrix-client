@@ -84,6 +84,8 @@ mac:
     - dmg
     - zip
   category: public.app-category.social-networking
+  extendInfo:
+    NSCameraUsageDescription: Trinity uses the camera to scan device-verification QR codes.
   hardenedRuntime: true
   gatekeeperAssess: false
   # Hardened-runtime entitlements (V8/WASM JIT + Matrix network.client). Applied only

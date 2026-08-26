@@ -102,10 +102,11 @@ equality.
 | `pnpm smoke:login`                                                               | Headless redirect→login + live matrix.org `.well-known` discovery      |
 | `pnpm spike:chromium` / `spike:webkit`                                           | E2EE WASM check in Blink / WebKit                                      |
 | `pnpm e2e:verify`                                                                | Two-client emoji-SAS device verification (needs Docker)                |
+| `pnpm e2e:verify:qr`                                                             | Two-client QR verification through a synthetic camera (needs Docker)   |
 | `pnpm e2e:media` / `threads` / `reply` / `spaces` / `rooms` / `search` / `emoji` | Feature round-trips vs. disposable Synapse (needs Docker)              |
 | `pnpm e2e:verify:up` / `e2e:verify:down`                                         | Start / stop the Synapse Docker harness manually                       |
 
-The Synapse-backed flows (`e2e:verify`, `e2e:media`, `e2e:threads`, `e2e:reply`, `e2e:spaces`,
+The Synapse-backed flows (`e2e:verify`, `e2e:verify:qr`, `e2e:media`, `e2e:threads`, `e2e:reply`, `e2e:spaces`,
 `e2e:rooms`, `e2e:search`, `e2e:emoji`) each own **one** disposable Synapse Docker stack on fixed ports, so they
 **must run sequentially, never concurrently** (e.g. `pnpm e2e:threads && pnpm e2e:spaces`). See
 [docs/contributing/testing.md](docs/contributing/testing.md).

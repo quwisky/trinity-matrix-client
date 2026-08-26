@@ -30,6 +30,7 @@ const h = vi.hoisted(() => {
 });
 
 vi.mock('@capacitor/core', () => ({
+  registerPlugin: vi.fn(() => ({})),
   Capacitor: {
     getPlatform: () => h.state.platform,
     // Electron reports isNativePlatform() === true but has no push plugin — the

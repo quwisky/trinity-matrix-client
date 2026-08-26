@@ -78,8 +78,9 @@ the key against the stored record, imports your cross-signing identity, and swit
 message key backup. A wrong key is rejected with "That recovery key is incorrect."
 before anything changes.
 
-**Verify another device.** Compare emoji with a session that is already verified. No key
-typing, but you need the other session in front of you.
+**Verify another device.** Show or scan a QR code with a session that is already
+verified, or compare emoji when QR is unavailable. No key typing, but you need the
+other session in front of you.
 
 Both routes are also in Settings under Security: **Enter recovery key** and **Verify
 with another device**.
@@ -108,7 +109,10 @@ the lists differ at all, in order or in content.
 
 Start from Settings under Devices with **Verify another session**, from Settings under
 Security with **Verify with another device**, or from the room banner. Your other
-session gets a request to accept, then both show the emoji.
+session gets a request to accept. When both sessions support it, Trinity offers QR
+verification: show the code on one device and scan it with the other. Keep the code
+private and do not screenshot or screen-share it. Emoji comparison remains available as
+a fallback when there is no camera or the other session does not support QR.
 
 Incoming requests are handled anywhere in the app: a modal opens over whatever you are
 looking at, so you do not need to be on a particular screen when your other device asks.
@@ -125,12 +129,11 @@ Compare the emoji over a channel you already trust — in person, or on a call w
 recognise the voice. Comparing them inside the same Matrix chat you are trying to secure
 is circular.
 
-!!! warning "Two limits worth knowing"
+!!! warning "A limit worth knowing"
 
-    QR-code verification is not implemented. Emoji comparison is the only method
-    available. Trinity also handles one verification at a time; a second incoming
-    request that arrives while one is in progress is ignored, so ask the other side to
-    retry once the first finishes.
+    Trinity handles one verification at a time. A second incoming request that arrives
+    while one is in progress is ignored, so ask the other side to retry once the first
+    finishes.
 
 ## What a message shield is telling you
 

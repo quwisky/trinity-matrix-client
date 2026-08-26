@@ -75,7 +75,7 @@ describe('installPermissionPolicy', () => {
   const appContents = { getURL: () => 'trinity://app/rooms' };
   const remoteContents = { getURL: () => 'https://widgets.example/' };
 
-  it('allows only main-frame app microphone and geolocation requests', () => {
+  it('allows only main-frame app media and geolocation requests', () => {
     const s = fakeSession();
     installPermissionPolicy(s as never);
     const request = s.setPermissionRequestHandler.mock.calls[0][0] as (
@@ -107,7 +107,8 @@ describe('installPermissionPolicy', () => {
     };
 
     expect(decide('media', { mediaTypes: ['audio'] })).toBe(true); // mic
-    expect(decide('media', { mediaTypes: ['audio', 'video'] })).toBe(false); // camera
+    expect(decide('media', { mediaTypes: ['video'] })).toBe(true); // QR camera
+    expect(decide('media', { mediaTypes: ['audio', 'video'] })).toBe(true);
     expect(decide('geolocation')).toBe(true);
     expect(decide('notifications')).toBe(false);
     expect(decide('clipboard-read')).toBe(false);
