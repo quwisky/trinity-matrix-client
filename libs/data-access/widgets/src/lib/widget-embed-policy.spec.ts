@@ -51,14 +51,11 @@ describe('resolveWidgetEmbed', () => {
       'same-origin',
     ],
     ['missing creator', LAUNCH, 'missing-creator'],
-    ['Jitsi', LAUNCH, 'call-widget'],
   ] as const)('rejects %s embedding', (_label, launch, failure) => {
     const widget =
       failure === 'missing-creator'
         ? { ...WIDGET, creatorUserId: null }
-        : failure === 'call-widget'
-          ? { ...WIDGET, type: 'm.jitsi' }
-          : WIDGET;
+        : WIDGET;
 
     expect(
       resolveWidgetEmbed(widget, launch, 'https://trinity.example'),
@@ -68,6 +65,19 @@ describe('resolveWidgetEmbed', () => {
       failure,
     });
   });
+
+  it.each(['jitsi', 'm.jitsi', 'm.call', ' M.CALL '])(
+    'rejects the deployed call widget type %s',
+    (type) => {
+      expect(
+        resolveWidgetEmbed(
+          { ...WIDGET, type },
+          LAUNCH,
+          'https://trinity.example',
+        ),
+      ).toEqual({ url: null, origin: null, failure: 'call-widget' });
+    },
+  );
 
   it('rejects a launch whose recorded origin does not match its final URL', () => {
     expect(

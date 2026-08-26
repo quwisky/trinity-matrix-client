@@ -77,13 +77,16 @@ class ActiveWidgetBridge implements WidgetBridgeSession {
   readonly state = this.currentState.asReadonly();
 
   private readonly onPreparing = (): void => {
+    if (this.stopped) return;
     this.currentState.set('negotiating');
   };
   private readonly onReady = (): void => {
+    if (this.stopped) return;
     clearTimeout(this.handshakeTimer);
     this.currentState.set('ready');
   };
   private readonly onError = (): void => {
+    if (this.stopped) return;
     clearTimeout(this.handshakeTimer);
     this.currentState.set('failed');
   };

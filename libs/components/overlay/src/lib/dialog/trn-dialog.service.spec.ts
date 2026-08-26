@@ -88,9 +88,9 @@ describe('TrnDialogService', () => {
 
     const pane = document.querySelector<HTMLElement>('.cdk-overlay-pane');
     expect(pane?.style.width).toBe('100vw');
-    expect(pane?.style.height).toBe('100vh');
+    expect(pane?.style.height).toBe('100dvh');
     expect(pane?.style.maxWidth).toBe('100vw');
-    expect(pane?.style.maxHeight).toBe('100vh');
+    expect(pane?.style.maxHeight).toBe('100dvh');
 
     ref.close();
   });

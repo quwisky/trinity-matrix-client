@@ -1,5 +1,7 @@
 import type { RoomWidget, WidgetEmbed, WidgetLaunch } from './widget.model';
 
+const CALL_WIDGET_TYPES = new Set(['jitsi', 'm.jitsi', 'm.call']);
+
 /** Revalidate an expanded destination at the iframe boundary. */
 export function resolveWidgetEmbed(
   widget: RoomWidget,
@@ -9,7 +11,7 @@ export function resolveWidgetEmbed(
   if (!widget.creatorUserId) {
     return blocked('missing-creator');
   }
-  if (widget.type.toLowerCase() === 'm.jitsi') {
+  if (CALL_WIDGET_TYPES.has(widget.type.trim().toLowerCase())) {
     return blocked('call-widget');
   }
   if (!launch.url || !launch.origin) {

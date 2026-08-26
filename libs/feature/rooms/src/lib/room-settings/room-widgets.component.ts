@@ -8,7 +8,11 @@ import {
   input,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnDialogService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import {
   WidgetsService,
   resolveWidgetEmbed,
@@ -37,6 +41,7 @@ export class RoomWidgetsComponent implements OnInit {
   private readonly dialog = inject(TrnDialogService);
   private readonly destroyRef = inject(DestroyRef);
   private connectedRoom: string | null = null;
+  private activeWidgetFrame: TrnDialogRef<void> | null = null;
 
   /** Widgets plus their current, disclosure-audited external destinations. */
   readonly widgets = computed(() =>
@@ -56,6 +61,8 @@ export class RoomWidgetsComponent implements OnInit {
     // The settings panel owns this demand-driven projection, so sessions that never open
     // room settings pay nothing for widget state they do not inspect.
     this.destroyRef.onDestroy(() => {
+      this.activeWidgetFrame?.close();
+      this.activeWidgetFrame = null;
       if (this.connectedRoom) {
         this.widgetsService.disconnect(this.connectedRoom);
       }
@@ -94,15 +101,25 @@ export class RoomWidgetsComponent implements OnInit {
       });
       return;
     }
-    this.dialog.open(RoomWidgetFrameComponent, {
-      side: 'full-screen',
-      ariaLabel: `${widget.name} widget`,
-      autoFocus: '[data-autofocus]',
-      inputs: {
-        roomId: this.roomId(),
-        widget,
-        embed,
+    this.activeWidgetFrame?.close();
+    const frameRef = this.dialog.open<void, RoomWidgetFrameComponent>(
+      RoomWidgetFrameComponent,
+      {
+        side: 'full-screen',
+        ariaLabel: `${widget.name} widget`,
+        autoFocus: '[data-autofocus]',
+        inputs: {
+          roomId: this.roomId(),
+          widget,
+          embed,
+        },
       },
+    );
+    this.activeWidgetFrame = frameRef;
+    frameRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      if (this.activeWidgetFrame === frameRef) {
+        this.activeWidgetFrame = null;
+      }
     });
   }
 

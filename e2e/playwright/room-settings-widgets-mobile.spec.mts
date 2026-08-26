@@ -110,6 +110,14 @@ test.describe('Room settings widgets on a phone', () => {
     expect(frameBox?.width).toBeGreaterThanOrEqual(
       (page.viewportSize()?.width ?? 0) - 1,
     );
+    const visualViewport = await page.evaluate(() => ({
+      top: window.visualViewport?.offsetTop ?? 0,
+      height: window.visualViewport?.height ?? window.innerHeight,
+    }));
+    expect(frameBox?.y ?? -1).toBeGreaterThanOrEqual(visualViewport.top - 1);
+    expect((frameBox?.y ?? 0) + (frameBox?.height ?? 0)).toBeLessThanOrEqual(
+      visualViewport.top + visualViewport.height + 1,
+    );
     await page.getByTestId('room-widget-frame-close').click();
     await expect(frame).toHaveCount(0);
 

@@ -126,6 +126,10 @@ describe('registerAppProtocol — SPA fallback', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('text/html; charset=utf-8');
+    expect(res.headers.get('content-security-policy')).toBe(
+      "frame-ancestors 'none'",
+    );
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
     expect(readFileMock).toHaveBeenCalledWith(INDEX_HTML);
   });
 
@@ -148,6 +152,8 @@ describe('registerAppProtocol — SPA fallback', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('image/png');
+    expect(res.headers.get('content-security-policy')).toBeNull();
+    expect(res.headers.get('x-frame-options')).toBeNull();
     expect(readFileMock).toHaveBeenCalledWith(logo);
     expect(readFileMock).not.toHaveBeenCalledWith(INDEX_HTML);
   });

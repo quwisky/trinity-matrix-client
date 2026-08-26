@@ -13,6 +13,14 @@ export async function installWidgetFixture(
   let requests = 0;
   const referrers: (string | undefined)[] = [];
   await page.route('https://widgets.example/**', async (route) => {
+    if (new URL(route.request().url()).pathname === '/attacker') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: '<!doctype html><title>Attacker frame</title>',
+      });
+      return;
+    }
     requests += 1;
     referrers.push(route.request().headers()['referer']);
     await route.fulfill({
@@ -34,10 +42,14 @@ function widgetHtml(capabilityDelayMs: number): string {
     <h1>Widget fixture loaded</h1>
     <p id="requested"></p>
     <p id="approved"></p>
+    <p id="policy-api"></p>
     <p id="denied"></p>
+    <p id="request"></p>
     <script>
       const requested = ['m.always_on_screen', 'org.matrix.msc2762.timeline:*'];
       const policy = document.featurePolicy;
+      document.querySelector('#policy-api').textContent =
+        policy ? 'available' : 'missing';
       document.querySelector('#denied').textContent = JSON.stringify(
         ['camera', 'microphone', 'geolocation', 'display-capture',
          'clipboard-read', 'fullscreen'].map((feature) => [
@@ -50,6 +62,7 @@ function widgetHtml(capabilityDelayMs: number): string {
         if (!message || message.api !== 'toWidget' || !message.requestId) return;
         let response = {};
         if (message.action === 'capabilities') {
+          document.querySelector('#request').textContent = JSON.stringify(message);
           document.querySelector('#requested').textContent = JSON.stringify(requested);
           response = { capabilities: requested };
         } else if (message.action === 'notify_capabilities') {

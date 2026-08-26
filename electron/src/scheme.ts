@@ -61,9 +61,18 @@ export async function fileResponse(
   status = 200,
 ): Promise<Response> {
   const data = await fs.promises.readFile(filePath);
+  const headers: Record<string, string> = {
+    'content-type': contentTypeFor(filePath),
+  };
+  if (path.extname(filePath).toLowerCase() === '.html') {
+    // The app permits remote HTTPS widget frames. Prevent one from navigating its
+    // subframe back to the privileged app document and obtaining a same-origin page.
+    headers['content-security-policy'] = "frame-ancestors 'none'";
+    headers['x-frame-options'] = 'DENY';
+  }
   return new Response(new Uint8Array(data), {
     status,
-    headers: { 'content-type': contentTypeFor(filePath) },
+    headers,
   });
 }
 

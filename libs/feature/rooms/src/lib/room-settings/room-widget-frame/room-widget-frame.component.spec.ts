@@ -73,4 +73,27 @@ describe('RoomWidgetFrameComponent', () => {
 
     expect(stop).toHaveBeenCalledOnce();
   });
+
+  it('reports a startup failure without assigning a network-bearing src', async () => {
+    const { container } = await render(RoomWidgetFrameComponent, {
+      inputs: { roomId: '!r:hs', widget: WIDGET, embed: EMBED },
+      providers: [
+        MockProvider(WidgetBridgeService, {
+          start: () => {
+            throw new Error('bridge unavailable');
+          },
+        }),
+        MockProvider(TrnDialogRef, { close: vi.fn() }),
+      ],
+    });
+
+    expect(
+      container.querySelector<HTMLIFrameElement>('iframe')?.getAttribute('src'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-testid="widget-frame-status"]'),
+    ).toHaveTextContent(
+      'Trinity could not start this widget. No third-party page was loaded.',
+    );
+  });
 });

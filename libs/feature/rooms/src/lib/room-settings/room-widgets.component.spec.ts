@@ -49,7 +49,12 @@ async function build(
   const openExternal = over.openExternal ?? vi.fn(() => of(true));
   const widgets = signal<readonly RoomWidget[]>(over.widgets ?? []);
   const toastShow = vi.fn();
-  const openDialog = over.openDialog ?? vi.fn();
+  const dialogClosed = new Subject<void>();
+  const dialogRef = {
+    close: vi.fn(),
+    closed: dialogClosed.asObservable(),
+  };
+  const openDialog = over.openDialog ?? vi.fn(() => dialogRef);
   const { fixture, container } = await render(RoomWidgetsComponent, {
     inputs: { roomId: '!r:hs' },
     providers: [
@@ -72,6 +77,7 @@ async function build(
     openExternal,
     toastShow,
     openDialog,
+    dialogRef,
   };
 }
 
@@ -123,10 +129,8 @@ describe('RoomWidgetsComponent', () => {
   });
 
   it('opens an eligible widget in Trinity only after an explicit click', async () => {
-    const openDialog = vi.fn();
-    const { container } = await build({
+    const { container, openDialog } = await build({
       widgets: [BOARD_WIDGET],
-      openDialog,
     });
 
     expect(openDialog).not.toHaveBeenCalled();
@@ -149,6 +153,37 @@ describe('RoomWidgetsComponent', () => {
         }),
       }),
     );
+  });
+
+  it('closes the active widget frame before opening another one', async () => {
+    const firstClosed = new Subject<void>();
+    const secondClosed = new Subject<void>();
+    const firstRef = {
+      close: vi.fn(),
+      closed: firstClosed.asObservable(),
+    };
+    const secondRef = {
+      close: vi.fn(),
+      closed: secondClosed.asObservable(),
+    };
+    const openDialog = vi
+      .fn()
+      .mockReturnValueOnce(firstRef)
+      .mockReturnValueOnce(secondRef);
+    const { container } = await build({
+      widgets: [BOARD_WIDGET],
+      openDialog,
+    });
+    const embed = container.querySelector<HTMLElement>(
+      '[data-testid="room-widget-embed-board"]',
+    );
+
+    embed?.click();
+    embed?.click();
+
+    expect(firstRef.close).toHaveBeenCalledOnce();
+    expect(secondRef.close).not.toHaveBeenCalled();
+    expect(openDialog).toHaveBeenCalledTimes(2);
   });
 
   it('reports when the external browser cannot open a widget', async () => {

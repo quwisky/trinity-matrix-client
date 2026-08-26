@@ -40,12 +40,14 @@ export class RoomWidgetFrameComponent implements AfterViewInit, OnDestroy {
 
   readonly state = computed(() =>
     this.startupFailed()
-      ? 'failed'
+      ? 'startup-failed'
       : (this.session()?.state() ?? 'frame-loading'),
   );
 
   readonly statusText = computed(() => {
     switch (this.state()) {
+      case 'startup-failed':
+        return 'Trinity could not start this widget. No third-party page was loaded.';
       case 'ready':
         return 'Widget API ready. No Matrix capabilities were granted.';
       case 'failed':

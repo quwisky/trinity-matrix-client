@@ -145,9 +145,9 @@ export class TrnDialogService {
       // falling back to it.
       autoFocus: opts.autoFocus ?? 'first-tabbable',
       width: fullScreen ? '100vw' : undefined,
-      height: fullScreen ? '100vh' : undefined,
+      height: fullScreen ? '100dvh' : undefined,
       maxWidth: fullScreen ? '100vw' : undefined,
-      maxHeight: fullScreen ? '100vh' : undefined,
+      maxHeight: fullScreen ? '100dvh' : undefined,
       // Default (undefined) lets CDK center the card; `'end'` pins it top-right
       // and full-height (the panel's own h-screen fills the axis).
       positionStrategy: anchor
