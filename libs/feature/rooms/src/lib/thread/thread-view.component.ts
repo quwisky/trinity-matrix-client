@@ -192,6 +192,10 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
     // thread that is no longer open.
     this.messageSheet.close(this);
     this.threads.closeThread();
+    // Closing the panel mid-reply otherwise leaves us marked as typing until the server's
+    // own TYPING_TIMEOUT_MS lapses. Owner-keyed, so this cannot clear the flag when the
+    // main composer still holds a draft — which is why the naive one-liner was wrong.
+    this.timeline.setTyping(false, 'thread');
   }
 
   /**
@@ -284,9 +288,14 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
    */
   protected readonly typingNames = this.timeline.typingNames;
 
-  /** Composer typing state → the room's (throttled) typing notification. */
+  /**
+   * Composer typing state → the room's (throttled) typing notification.
+   *
+   * Tagged `'thread'` so a send here cannot clear the flag while the main composer still
+   * holds a draft — `m.typing` is one flag per room and both composers feed it.
+   */
   onTyping(typing: boolean): void {
-    this.timeline.setTyping(typing);
+    this.timeline.setTyping(typing, 'thread');
   }
 
   onSubmit({ text, mentions }: ComposerSubmit): void {

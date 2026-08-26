@@ -1,3 +1,5 @@
+@use '../../styles/mixins' as *;
+
 // Own stylesheet rather than the shared partial: the markup moved into this component,
 // and under emulated encapsulation a rule left behind in `_message-list-shared.scss`
 // would be scoped to the two lists while the elements belong here — matching nothing.
@@ -35,7 +37,22 @@
   color: var(--trinity-text-muted);
 }
 
+// `min-height` on the slot is a FLOOR, so reserving one line is only half the job: an
+// unclamped sentence wraps and the slot grows anyway. Measured at 360/390/412px — the
+// common phone widths — two ordinary display names took the row from 25.19px to 44.41px,
+// which is the jump this component exists to remove, and it also made `Alice` → `Alice and
+// Bob` resize the scroller mid-conversation. One line, ellipsised.
+.typing-indicator__text {
+  @include ellipsis;
+
+  min-width: 0;
+}
+
+// `flex: 0 0 auto` for the same reason the composer's recording dot carries it: an empty
+// span is a shrinkable flex item whose `min-width: auto` resolves to 0, so without this the
+// dots collapse once the text stops wrapping and starts competing for the line.
 .typing-dots {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: 3px;

@@ -145,11 +145,18 @@ test.describe('Thread composer', () => {
     const thread = page.getByTestId('thread-view');
     await expect(thread).toBeVisible({ timeout: 15_000 });
 
-    const slot = thread.locator('.typing-slot');
-    const height = await slot.evaluate(
-      (element) => element.getBoundingClientRect().height,
-    );
-    expect(height).toBeGreaterThan(0);
+    // The HOST, not `.typing-slot`, and against a real threshold rather than `> 0`. The slot
+    // is a block child that generates its own box whatever the host does, and with the
+    // reservation gone it still measures its own 6px of padding — so `> 0` on either element
+    // passes on a broken tree, which is what the first version of this test did.
+    //
+    // A reserved row is one 1.2rem line plus 6px ≈ 25px. Losing `min-height` collapses it to
+    // that 6px, so 20px separates the two with room for font-metric drift.
+    const idle = await thread
+      .locator('trn-typing-indicator')
+      .evaluate((element) => element.getBoundingClientRect().height);
+
+    expect(idle).toBeGreaterThan(20);
 
     // And it does not announce: the list behind it carries the same room-scoped names.
     await expect(thread.getByTestId('typing-status')).toHaveCount(0);

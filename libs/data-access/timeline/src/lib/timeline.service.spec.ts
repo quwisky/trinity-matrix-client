@@ -1319,6 +1319,47 @@ describe('TimelineService', () => {
     // The stop has to go to the account that started typing — the outgoing one — or that
     // account stays marked typing for the server's whole timeout while the incoming one
     // PUTs typing into a room it may not even be in.
+    it('keeps the room marked typing while another composer still holds a draft', () => {
+      // One flag per room, two composers feeding it. Sending in the thread used to clear it
+      // while the main composer still had text, and nothing re-announced until the next
+      // keystroke — an unbounded window, not TYPING_TIMEOUT_MS.
+      const { svc, sent } = setupTyping();
+      svc.setTyping(true, 'room');
+      svc.setTyping(true, 'thread');
+
+      svc.setTyping(false, 'thread');
+
+      expect(typingCalls(sent)).toEqual([['typing', true, TYPING_TIMEOUT_MS]]);
+    });
+
+    it('stops once the last composer goes quiet', () => {
+      // The other half: owner-keying must not swallow the stop altogether.
+      const { svc, sent } = setupTyping();
+      svc.setTyping(true, 'room');
+      svc.setTyping(true, 'thread');
+
+      svc.setTyping(false, 'thread');
+      svc.setTyping(false, 'room');
+
+      expect(typingCalls(sent)).toEqual([
+        ['typing', true, TYPING_TIMEOUT_MS],
+        ['typing', false, 0],
+      ]);
+    });
+
+    it('defaults an untagged report to the room composer', () => {
+      // MessageActionsService calls setTyping(boolean) with no owner; that has to keep
+      // behaving exactly as it did.
+      const { svc, sent } = setupTyping();
+      svc.setTyping(true);
+      svc.setTyping(false);
+
+      expect(typingCalls(sent)).toEqual([
+        ['typing', true, TYPING_TIMEOUT_MS],
+        ['typing', false, 0],
+      ]);
+    });
+
     it('sends the closing typing-stop to the account that was typing', () => {
       const outgoingSent: unknown[][] = [];
       const incomingSent: unknown[][] = [];

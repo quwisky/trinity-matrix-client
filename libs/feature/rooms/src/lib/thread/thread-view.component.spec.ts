@@ -700,7 +700,30 @@ describe('ThreadViewComponent members', () => {
       // `setTyping` and not a thread-scoped call: `m.typing` is a room-level EDU, and the
       // service reads the room off its own open context rather than the argument — which
       // matters because this composer is bound to `[roomId]="rootEventId()"`, an EVENT id.
-      expect(setTypingCalls.mock.calls).toEqual([[true], [false]]);
+      // Tagged `'thread'`: `m.typing` is one flag per room and both composers feed it, so
+      // the service needs to know which one went quiet before it sends a stop.
+      expect(setTypingCalls.mock.calls).toEqual([
+        [true, 'thread'],
+        [false, 'thread'],
+      ]);
+    });
+
+    it('stops typing when the panel is closed mid-reply', async () => {
+      // Without this the server keeps us marked as typing until TYPING_TIMEOUT_MS lapses.
+      // The stop is owner-tagged, so the service can still decline to send it when the main
+      // composer holds a draft — which is why the naive `setTyping(false)` was wrong.
+      const { fixture, setTypingCalls } = await build([
+        msg('$a', '@ada:hs', 'hi'),
+      ]);
+      const composer = fixture.debugElement.query(
+        By.directive(MessageComposerComponent),
+      );
+      composer.triggerEventHandler('typing', true);
+      setTypingCalls.mockClear();
+
+      fixture.destroy();
+
+      expect(setTypingCalls.mock.calls).toEqual([[false, 'thread']]);
     });
 
     it('shows the room typists above the thread composer', async () => {

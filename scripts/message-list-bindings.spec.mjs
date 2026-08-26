@@ -76,6 +76,14 @@ function inlineBindingsOf(elementName, source) {
     return null;
   }
   const body = source.slice(open + elementName.length + 1, close);
+  // The `/>` found above is only THIS element's if nothing closed a tag before it. Without
+  // this, an element rewritten as `<trn-x …></trn-x>` runs the scan on to the next `/>` in
+  // the file — measured, that picked up `<trn-message-composer` and all twenty of its
+  // bindings, and every assertion below still passed while comparing the wrong element.
+  // `bindingsOf` defends against the same thing with its tag-line check.
+  if (body.includes('>')) {
+    return null;
+  }
   return new Set(body.trim().split(/\s+/).filter(Boolean));
 }
 
@@ -131,5 +139,20 @@ describe('message list bindings', () => {
     expect([...(typingBindings.virtual ?? [])].sort()).toEqual(
       [...(typingBindings.simple ?? [])].sort(),
     );
+  });
+
+  it('leaves the announcement to the lists, which own it', () => {
+    // `announce` defaults true and is set false ONLY in the thread panel, whose typists are
+    // the room's and are already announced by the list behind it. A list opting out would
+    // silence the typing announcement for screen readers altogether — and symmetrically, so
+    // the identity check above cannot see it.
+    for (const [list, bindings] of Object.entries(typingBindings)) {
+      expect(
+        [...(bindings ?? [])].filter((binding) =>
+          binding.startsWith('[announce]'),
+        ),
+        `${list} list must not opt out of announcing`,
+      ).toEqual([]);
+    }
   });
 });
