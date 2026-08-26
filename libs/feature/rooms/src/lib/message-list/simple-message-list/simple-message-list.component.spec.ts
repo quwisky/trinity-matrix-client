@@ -61,6 +61,9 @@ function eventRow(id: string, summary: string, ts: number): MessageView {
 
 /** `notAtBottom` drives the jump pill and is protected (template-only); read it
  * through a narrow view rather than widening the component's API for a test. */
+const notAtBottom = (cmp: SimpleMessageListComponent): boolean =>
+  (cmp as unknown as { notAtBottom: () => boolean }).notAtBottom();
+
 /**
  * An element's text with runs of whitespace collapsed.
  *
@@ -69,9 +72,6 @@ function eventRow(id: string, summary: string, ts: number): MessageView {
  */
 const text = (el: Element | null | undefined): string =>
   (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
-
-const notAtBottom = (cmp: SimpleMessageListComponent): boolean =>
-  (cmp as unknown as { notAtBottom: () => boolean }).notAtBottom();
 
 /**
  * The element that follows a divider in the timeline.

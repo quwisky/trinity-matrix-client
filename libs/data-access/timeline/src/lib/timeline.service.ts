@@ -173,7 +173,7 @@ export class TimelineService {
 
   // Display names of the *other* members currently typing in the open room, projected
   // from the room's `m.typing` ephemeral (via RoomMemberEvent.Typing). Drives the
-  // "X is typing…" row under the timeline.
+  // "X is typing" row under the timeline.
   private readonly _typingNames = signal<string[]>([]);
   readonly typingNames = this._typingNames.asReadonly();
 

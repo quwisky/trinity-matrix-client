@@ -40,6 +40,7 @@ async function seedRoomWithMember(
   request: APIRequestContext,
   hs: string,
   runId: string,
+  displayName?: string,
 ): Promise<{
   reader: SynapseSession;
   roomName: string;
@@ -52,7 +53,7 @@ async function seedRoomWithMember(
   const readerPass = `${readerUser}-pass`;
   const memberUser = `typing-member-${runId}`;
   const memberPass = `${memberUser}-pass`;
-  const memberName = `Tilly${runId}`;
+  const memberName = displayName ?? `Tilly${runId}`;
   const roomName = `Typing E2E ${runId}`;
 
   await registerUser(request, readerUser, readerPass);
@@ -190,6 +191,58 @@ test.describe('Typing indicators', () => {
     expect(Math.abs((await heightOf(slot)) - idleSlot)).toBeLessThan(1);
   });
 
+  // The case the assertion above cannot reach: `min-height` is a floor, so a sentence long
+  // enough to wrap grows the slot regardless. Measured before the clamp, two ordinary
+  // display names at a phone width took the row from 25.19px to 44.41px — the very jump
+  // this component exists to remove. A narrow viewport and a long name reproduce it in one
+  // test rather than needing two typists.
+  test('holds one line when the name is too long for the row', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(150_000);
+    const runId = `${Date.now().toString(36)}w`;
+    const hs = session.hs as string;
+    const { reader, roomName, roomId, memberId, memberHeaders } =
+      await seedRoomWithMember(
+        request,
+        hs,
+        runId,
+        'Alexandra Wellington-Fitzgerald the Third of Northumberland and Wessex',
+      );
+    const member = { userId: memberId, headers: memberHeaders };
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await login(page, reader);
+    await openRoom(page, roomName);
+
+    const slot = page.locator('.typing-slot');
+    const idle = await slot.evaluate(
+      (element) => element.getBoundingClientRect().height,
+    );
+    expect(idle).toBeGreaterThan(0);
+
+    await setMemberTyping(request, hs, roomId, member, true);
+    await expect(page.getByTestId('typing-indicator')).toBeVisible({
+      timeout: 20_000,
+    });
+
+    expect(
+      Math.abs(
+        (await slot.evaluate(
+          (element) => element.getBoundingClientRect().height,
+        )) - idle,
+      ),
+    ).toBeLessThan(1);
+
+    // And the name is ellipsised rather than clipped mid-word or overflowing the row.
+    const text = page.locator('.typing-indicator__text');
+    const overflows = await text.evaluate(
+      (element) => element.scrollWidth > element.clientWidth,
+    );
+    expect(overflows).toBe(true);
+  });
+
   test('the dots are actually animating', async ({ page, request }) => {
     const runId = `${Date.now().toString(36)}a`;
     const hs = session.hs as string;
@@ -243,10 +296,14 @@ test.describe('Typing indicators', () => {
       timeout: 20_000,
     });
 
-    // Collapsing --trinity-duration-pulse does NOT stop an infinite animation; the
-    // blanket `animation-iteration-count: 1` in global.scss does, and the dots then fall
-    // back to their base style. That base has to match the keyframe's 0% — inverting the
-    // keyframe would strand these users on permanently dimmed dots.
+    // Collapsing --trinity-duration-pulse does NOT stop an infinite animation; the blanket
+    // `animation-iteration-count: 1` in global.scss does, and the dots then fall back to
+    // their BASE style, because the `animation` shorthand sets `animation-fill-mode: none`.
+    //
+    // So this catches `animation-fill-mode: forwards`, or a base `opacity` below 1 — the
+    // two ways a reduced-motion user ends up on permanently dimmed dots. It does NOT catch
+    // an inverted keyframe: with fill-mode `none` the frames stop contributing once the
+    // animation is over, so the resting value is 1 either way.
     const opacities = await page
       .locator('.typing-dots__dot')
       .evaluateAll((elements) =>

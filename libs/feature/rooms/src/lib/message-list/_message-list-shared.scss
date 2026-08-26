@@ -84,7 +84,22 @@
   color: var(--trinity-text-muted);
 }
 
+// `min-height` is a FLOOR, so reserving one line is only half the job: an unclamped
+// sentence wraps and the slot grows anyway. Measured at 360/390/412px — the common phone
+// widths — two ordinary display names took the row from 25.19px to 44.41px, which is the
+// jump this component exists to remove, and it also made `Alice` → `Alice and Bob` resize
+// the scroller mid-conversation. One line, ellipsised.
+.typing-indicator__text {
+  @include ellipsis;
+
+  min-width: 0;
+}
+
+// `flex: 0 0 auto` for the same reason the composer's recording dot carries it: an empty
+// span is a shrinkable flex item whose `min-width: auto` resolves to 0, so without this the
+// dots collapse once the text stops wrapping and starts competing for the line.
 .typing-dots {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -114,11 +129,16 @@
   animation-delay: 300ms;
 }
 
-// 0% must equal the dot's resting style. Collapsing `--trinity-duration-pulse` under
-// reduced motion does NOT stop an infinite animation (see the note in variables.scss:
-// measured at 29 iterations in half a second) — `animation-iteration-count: 1` does,
-// and the dot then reverts to its base style, which declares no opacity and so
-// computes to 1. Dimming at 0% instead would leave those users on faded dots.
+// Collapsing `--trinity-duration-pulse` under reduced motion does NOT stop an infinite
+// animation (see the note in variables.scss: measured at 29 iterations in half a second)
+// — `animation-iteration-count: 1` in `global.scss` does.
+// What the dot then rests at is its BASE style, not its 0% frame: the `animation`
+// shorthand sets `animation-fill-mode: none`, so once the animation is over the keyframes
+// stop contributing entirely. The base declares no `opacity`, so it computes to 1. Keeping
+// 0% at 1 as well is what avoids a visible step during the 150ms/300ms delays, where
+// fill-mode `none` also shows the base — it is NOT what makes the resting state correct.
+// Adding `animation-fill-mode: forwards`, or a base `opacity` below 1, is what would
+// strand a reduced-motion user on dimmed dots.
 @keyframes typing-dot {
   0%,
   100% {

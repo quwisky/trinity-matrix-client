@@ -230,7 +230,7 @@ export abstract class MessageListBase {
   /** A request to close a poll (the host sends the end event). */
   readonly pollEnd = output<string>();
 
-  /** "X is typing…" text for the row above the composer, or '' when nobody is typing. */
+  /** "X is typing" text for the row above the composer, or '' when nobody is typing. */
   readonly typingLabel = computed(() => formatTypingNotice(this.typingNames()));
 
   readonly editingId = signal<string | null>(null);
