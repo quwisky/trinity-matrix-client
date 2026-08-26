@@ -8,4 +8,5 @@
 // that asymmetry as a table row rather than leaving it to be inferred.
 export { TrnIconComponent } from './lib/trn-icon/trn-icon.component';
 export { TRN_ICON_NAMES, type TrnIconName } from './lib/trn-icon-name';
+export { TRN_ICON_MOTIONS, type TrnIconMotion } from './lib/trn-icon-motion';
 export { TRN_ICONS, provideTrnIcons } from './lib/trn-icon.icons';

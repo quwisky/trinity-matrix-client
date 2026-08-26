@@ -6,6 +6,7 @@ import {
 } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import type { TrnIconName } from '../trn-icon-name';
+import type { TrnIconMotion } from '../trn-icon-motion';
 
 /**
  * Trinity's icon.
@@ -34,30 +35,11 @@ import type { TrnIconName } from '../trn-icon-name';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './trn-icon.component.html',
   imports: [NgIcon],
-  styles: [
-    // `inline-flex`, NOT `inline-block`, and the difference is visible on ~115 call sites.
-    //
-    // An inline-block host sizes its height from its LINE BOX, so it is taller than the
-    // glyph by the strut's half-leading and descent. As a flex item of an `hlmBtn` that
-    // taller box is what `items-center` centres, and the glyph lands above the button's
-    // true middle. Before this wrapper existed the `<ng-icon>` WAS the flex item, with
-    // explicit width/height, so it centred exactly. Measured in Chromium against the real
-    // button mechanics (`size-8`, `text-sm`, the cva `[&_ng-icon…]` rule): inline-block
-    // gives gaps of 3.5px above / 8.5px below for a 20px glyph and 5.5/10.5 for a 16px one;
-    // `inline-flex` restores 6/6 and 8/8, which is what the element it replaced produced.
-    //
-    // `HlmSpinner` — the same shape, a wrapper whose template is one `<ng-icon>` — declares
-    // `inline-flex` for exactly this reason.
-    //
-    // It does so through `classes()` from @trinity/helm/utils, which is the kit's house
-    // pattern and what this would otherwise use. A component style is deliberate here on
-    // two counts: it ships with the component, so the box model does not depend on a
-    // consuming app emitting the `inline-block` utility; and it is assertable, which a
-    // Tailwind class is not, because jsdom loads no stylesheet. Switching to `classes()`
-    // would silently make the box-model test in the spec vacuous — change both together
-    // or neither. Keeping it also leaves this library importing nothing but @ng-icons.
-    ':host { display: inline-flex; }',
-  ],
+  styleUrl: './trn-icon.component.scss',
+  // Keep the one box-model rule inline. jsdom does not load external stylesheets, and the
+  // component spec deliberately proves this wrapper retains the direct icon's inline-flex
+  // geometry. The interaction state machine lives in SCSS so stylelint and token guards see it.
+  styles: [':host { display: inline-flex; }'],
   host: {
     // Null rather than absent-when-false: an unlabelled icon must expose no role at all,
     // or every decorative icon becomes an announceable image with no name. An EMPTY label
@@ -66,6 +48,7 @@ import type { TrnIconName } from '../trn-icon-name';
     // with no name, which is the exact dead ARIA this component exists to prevent.
     '[attr.role]': 'announced() ? "img" : null',
     '[attr.aria-label]': 'announced()',
+    '[attr.data-motion]': 'motion()',
   },
 })
 export class TrnIconComponent {
@@ -90,6 +73,12 @@ export class TrnIconComponent {
    * property, and `1em` applies as before.
    */
   readonly size = input('');
+  /**
+   * Optional transform gesture driven by the surrounding interactive button. The default
+   * writes no activation hook, so decorative icons and controls not explicitly audited for
+   * motion stay completely inert.
+   */
+  readonly motion = input<TrnIconMotion | null>(null);
 
   protected readonly announced = computed(() => this.label() || null);
 }

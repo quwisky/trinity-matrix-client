@@ -575,7 +575,7 @@ This is not a one-off per clone. Each Playwright release pins its own browser bu
 so a bumped runner against old binaries fails every browser test at launch with
 `Executable doesn't exist at .../chromium_headless_shell-<n>` — which reads like a
 catastrophic regression rather than a missing download. The 1.61 to 1.62 bump did
-exactly this. WebKit is needed only for `pnpm spike:webkit`. CI is immune because it
+exactly this. WebKit covers the Storybook icon-motion contract and `pnpm spike:webkit`. CI is immune because it
 keys its browser cache on the lockfile hash, so a moved lockfile necessarily misses.
 
 ## What none of this proves
