@@ -14,6 +14,14 @@ export interface RoomWidget {
   readonly creatorUserId: string | null;
   /** Whether the Widget API waits for the iframe load event before negotiation. */
   readonly waitForIframeLoad: boolean;
+  /** The exact state-event revision projected for conflict-aware management. */
+  readonly sourceEventId: string | null;
+}
+
+/** The two administrator-supplied values for a new generic room widget. */
+export interface NewRoomWidget {
+  readonly name: string;
+  readonly rawUrl: string;
 }
 
 /** Values Trinity may put into a widget URL when the user explicitly opens it. */

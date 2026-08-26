@@ -10,6 +10,7 @@ const widget: RoomWidget = {
   data: {},
   creatorUserId: '@alice:example.org',
   waitForIframeLoad: true,
+  sourceEventId: '$board',
 };
 
 const context: WidgetTemplateContext = {

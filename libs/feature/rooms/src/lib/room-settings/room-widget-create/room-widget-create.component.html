@@ -1,0 +1,78 @@
+<fieldset class="room-widget-create" data-testid="room-widget-create">
+  <legend>Add a widget</legend>
+  <p class="room-widget-create__hint">
+    Add a generic HTTPS widget for everyone in this room. Matrix variables are
+    allowed after the website origin, for example
+    <code>$matrix_room_id</code> in the path or query.
+  </p>
+
+  <div class="room-widget-create__field">
+    <label trnLabel for="room-widget-create-name">Name</label>
+    <input
+      #nameInput
+      trnInput
+      id="room-widget-create-name"
+      autocomplete="off"
+      [formField]="form.name"
+      [attr.aria-describedby]="nameError() ? 'room-widget-name-error' : null"
+      (keydown.enter)="onEnter($event)"
+      data-testid="room-widget-create-name"
+    />
+    @if (nameError(); as message) {
+      <p
+        id="room-widget-name-error"
+        class="room-widget-create__error"
+        data-testid="room-widget-create-name-error"
+      >
+        {{ message }}
+      </p>
+    }
+  </div>
+
+  <div class="room-widget-create__field">
+    <label trnLabel for="room-widget-create-url">HTTPS URL</label>
+    <input
+      #urlInput
+      trnInput
+      id="room-widget-create-url"
+      type="url"
+      inputmode="url"
+      autocomplete="url"
+      placeholder="https://widgets.example/room/$matrix_room_id"
+      [formField]="form.rawUrl"
+      [attr.aria-describedby]="urlError() ? 'room-widget-url-error' : null"
+      (keydown.enter)="onEnter($event)"
+      data-testid="room-widget-create-url"
+    />
+    @if (urlError(); as message) {
+      <p
+        id="room-widget-url-error"
+        class="room-widget-create__error"
+        data-testid="room-widget-create-url-error"
+      >
+        {{ message }}
+      </p>
+    }
+  </div>
+
+  @if (serverError(); as message) {
+    <p
+      class="room-widget-create__error"
+      role="alert"
+      data-testid="room-widget-create-error"
+    >
+      {{ message }}
+    </p>
+  }
+
+  <button
+    hlmBtn
+    type="button"
+    class="room-widget-create__submit"
+    [disabled]="form().invalid() || form().submitting()"
+    (click)="add()"
+    data-testid="room-widget-create-submit"
+  >
+    {{ form().submitting() ? 'Adding…' : 'Add widget' }}
+  </button>
+</fieldset>

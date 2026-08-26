@@ -4,17 +4,25 @@ import {
   DestroyRef,
   OnInit,
   computed,
+  effect,
   inject,
   input,
+  signal,
+  untracked,
+  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
+  TrnAlertService,
   TrnDialogRef,
   TrnDialogService,
   TrnToastService,
 } from '@trinity/components/overlay';
 import {
+  WidgetManagementError,
+  WidgetManagementService,
   WidgetsService,
+  isCallWidgetType,
   resolveWidgetEmbed,
   type RoomWidget,
   type WidgetEmbed,
@@ -23,12 +31,19 @@ import {
 import { HlmButton } from '@trinity/helm/button';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { RoomWidgetFrameComponent } from './room-widget-frame/room-widget-frame.component';
+import { RoomWidgetCreateComponent } from './room-widget-create/room-widget-create.component';
 
-/** Tier 1 room-widget discovery and explicit external-browser dispatch. */
+interface WidgetEntry {
+  readonly widget: RoomWidget;
+  readonly launch: WidgetLaunch;
+  readonly embed: WidgetEmbed;
+}
+
+/** Room-widget discovery, safe launch surfaces, and power-gated management. */
 @Component({
   selector: 'trn-room-widgets',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmButton],
+  imports: [HlmButton, RoomWidgetCreateComponent],
   templateUrl: './room-widgets.component.html',
   styleUrl: './room-widgets.component.scss',
 })
@@ -36,15 +51,25 @@ export class RoomWidgetsComponent implements OnInit {
   readonly roomId = input.required<string>();
 
   private readonly widgetsService = inject(WidgetsService);
+  private readonly management = inject(WidgetManagementService);
   private readonly externalBrowser = inject(ExternalBrowserService);
   private readonly toast = inject(TrnToastService);
+  private readonly alert = inject(TrnAlertService);
   private readonly dialog = inject(TrnDialogService);
   private readonly destroyRef = inject(DestroyRef);
   private connectedRoom: string | null = null;
   private activeWidgetFrame: TrnDialogRef<void> | null = null;
+  private readonly createWidget = viewChild(RoomWidgetCreateComponent);
+  private readonly focusAfterRemoval = new Set<string>();
+  private readonly removalRevisions = new Map<string, string>();
+  readonly removing = signal<ReadonlySet<string>>(new Set());
+
+  readonly canManage = computed(() =>
+    this.widgetsService.canManageFor(this.roomId())(),
+  );
 
   /** Widgets plus their current, disclosure-audited external destinations. */
-  readonly widgets = computed(() =>
+  readonly widgets = computed<readonly WidgetEntry[]>(() =>
     this.widgetsService
       .widgetsFor(this.roomId())()
       .map((widget) => {
@@ -65,6 +90,14 @@ export class RoomWidgetsComponent implements OnInit {
       this.activeWidgetFrame = null;
       if (this.connectedRoom) {
         this.widgetsService.disconnect(this.connectedRoom);
+      }
+    });
+    effect(() => {
+      const visible = new Map(
+        this.widgets().map((entry) => [entry.widget.id, entry] as const),
+      );
+      for (const id of [...this.focusAfterRemoval]) {
+        this.reconcileRemoval(id, visible);
       }
     });
   }
@@ -123,6 +156,61 @@ export class RoomWidgetsComponent implements OnInit {
     });
   }
 
+  canRemove(widget: RoomWidget): boolean {
+    return (
+      this.canManage() &&
+      !!widget.sourceEventId &&
+      !isCallWidgetType(widget.type)
+    );
+  }
+
+  isRemoving(widgetId: string): boolean {
+    return this.removing().has(widgetId);
+  }
+
+  /** Confirm the named cross-client impact, then tombstone only that projected revision. */
+  async removeWidget(widget: RoomWidget, origin: string | null): Promise<void> {
+    if (!this.canRemove(widget) || this.isRemoving(widget.id)) {
+      return;
+    }
+    this.removing.update((pending) => new Set(pending).add(widget.id));
+    this.removalRevisions.set(widget.id, widget.sourceEventId as string);
+    const confirmed = await this.alert.confirm({
+      header: 'Remove widget',
+      message:
+        `Remove “${widget.name}”${origin ? ` (${origin})` : ''} from this room? ` +
+        'It will disappear for every member and Matrix client.',
+      confirmText: 'Remove',
+      destructive: true,
+    });
+    if (!confirmed) {
+      this.clearRemoving(widget.id);
+      return;
+    }
+
+    this.management
+      .remove(this.roomId(), widget)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.focusAfterRemoval.add(widget.id);
+          this.reconcileRemoval(
+            widget.id,
+            new Map(
+              untracked(this.widgets).map((entry) => [entry.widget.id, entry]),
+            ),
+          );
+        },
+        error: (error: unknown) => {
+          this.clearRemoving(widget.id);
+          this.toast.show(removalFailureText(error), {
+            duration: 4000,
+            variant: 'destructive',
+          });
+        },
+      });
+  }
+
   embedFailureText(embed: WidgetEmbed): string {
     switch (embed.failure) {
       case 'insecure':
@@ -141,8 +229,57 @@ export class RoomWidgetsComponent implements OnInit {
   disclosureText(launch: WidgetLaunch): string {
     return launch.disclosures.map((item) => item.label).join(', ');
   }
+
+  private clearRemoving(widgetId: string): void {
+    this.focusAfterRemoval.delete(widgetId);
+    this.removalRevisions.delete(widgetId);
+    this.removing.update((pending) => {
+      const next = new Set(pending);
+      next.delete(widgetId);
+      return next;
+    });
+  }
+
+  private reconcileRemoval(
+    widgetId: string,
+    visible: ReadonlyMap<string, WidgetEntry>,
+  ): void {
+    const current = visible.get(widgetId);
+    if (!current) {
+      this.clearRemoving(widgetId);
+      this.toast.show('Widget removed.', {
+        duration: 3000,
+        variant: 'success',
+      });
+      this.createWidget()?.focusName();
+      return;
+    }
+    if (current.widget.sourceEventId !== this.removalRevisions.get(widgetId)) {
+      this.clearRemoving(widgetId);
+      this.toast.show(
+        'The widget was replaced while removal was in progress. Review it before trying again.',
+        { duration: 4000, variant: 'destructive' },
+      );
+    }
+  }
 }
 
 function currentOrigin(): string {
   return typeof location === 'undefined' ? '' : location.origin;
+}
+
+function removalFailureText(error: unknown): string {
+  if (error instanceof WidgetManagementError) {
+    switch (error.code) {
+      case 'conflict':
+        return 'This widget changed before it could be removed. Review it and try again.';
+      case 'forbidden':
+        return 'You no longer have permission to remove widgets.';
+      case 'unsupported-type':
+        return 'Call widgets cannot be removed here.';
+      default:
+        break;
+    }
+  }
+  return 'Could not remove the widget. Try again.';
 }

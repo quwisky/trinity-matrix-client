@@ -6,8 +6,10 @@ import {
   signal,
 } from '@angular/core';
 import {
+  EventType,
   type MatrixClient,
   type MatrixEvent,
+  RoomEvent,
   RoomStateEvent,
 } from 'matrix-js-sdk';
 import {
@@ -29,6 +31,7 @@ const TRINITY_WIDGET_CLIENT_ID = 'eu.qwky.trinity';
 
 interface WatchedRoom {
   readonly state: WritableSignal<readonly RoomWidget[]>;
+  readonly canManage: WritableSignal<boolean>;
   consumers: number;
 }
 
@@ -46,7 +49,8 @@ export class WidgetsService {
   private readonly onStateEvent = (event: MatrixEvent): void => {
     const roomId = event.getRoomId();
     if (
-      event.getType() === WIDGET_EVENT_TYPE &&
+      (event.getType() === WIDGET_EVENT_TYPE ||
+        event.getType() === EventType.RoomPowerLevels) &&
       roomId &&
       this.watched.has(roomId)
     ) {
@@ -54,18 +58,32 @@ export class WidgetsService {
     }
   };
 
+  private readonly onMyMembership = (room?: { roomId?: string }): void => {
+    if (room?.roomId && this.watched.has(room.roomId)) {
+      this.projection.schedule();
+    }
+  };
+
   private readonly projection = projectFromClient({
     matrix: this.matrix,
-    bind: (client) => client.on(RoomStateEvent.Events, this.onStateEvent),
-    unbind: (client) => client.off(RoomStateEvent.Events, this.onStateEvent),
+    bind: (client) => {
+      client.on(RoomStateEvent.Events, this.onStateEvent);
+      client.on(RoomEvent.MyMembership, this.onMyMembership);
+    },
+    unbind: (client) => {
+      client.off(RoomStateEvent.Events, this.onStateEvent);
+      client.off(RoomEvent.MyMembership, this.onMyMembership);
+    },
     rebuild: (client) => {
       for (const [roomId, watched] of this.watched) {
         watched.state.set(readRoomWidgets(client, roomId));
+        watched.canManage.set(canManageRoomWidgets(client, roomId));
       }
     },
     reset: () => {
       for (const watched of this.watched.values()) {
         watched.state.set([]);
+        watched.canManage.set(false);
       }
     },
   });
@@ -76,6 +94,11 @@ export class WidgetsService {
    */
   widgetsFor(roomId: string): Signal<readonly RoomWidget[]> {
     return this.watchedRoom(roomId).state.asReadonly();
+  }
+
+  /** Live management authorization for the active account in one watched room. */
+  canManageFor(roomId: string): Signal<boolean> {
+    return this.watchedRoom(roomId).canManage.asReadonly();
   }
 
   /** Acquire one room and attach the shared filtered listener for the first consumer. */
@@ -95,6 +118,7 @@ export class WidgetsService {
       return;
     }
     watched.state.set([]);
+    watched.canManage.set(false);
     this.watched.delete(roomId);
     if (this.watched.size === 0) {
       this.projection.disconnect();
@@ -121,6 +145,7 @@ export class WidgetsService {
           readRoomWidgets(this.readClient(), roomId),
           { equal: sameWidgets },
         ),
+        canManage: signal(canManageRoomWidgets(this.readClient(), roomId)),
         consumers: 0,
       };
       this.watched.set(roomId, watched);
@@ -212,6 +237,7 @@ function widgetFrom(event: MatrixEvent): RoomWidget | null {
       typeof content['waitForIframeLoad'] === 'boolean'
         ? content['waitForIframeLoad']
         : true,
+    sourceEventId: event.getId() ?? null,
   };
 }
 
@@ -237,7 +263,23 @@ function sameWidgets(
         widget.rawUrl === right[index]?.rawUrl &&
         widget.creatorUserId === right[index]?.creatorUserId &&
         widget.waitForIframeLoad === right[index]?.waitForIframeLoad &&
+        widget.sourceEventId === right[index]?.sourceEventId &&
         JSON.stringify(widget.data) === JSON.stringify(right[index]?.data),
     )
+  );
+}
+
+/** The shared read/write authorization predicate for legacy room widget state. */
+export function canManageRoomWidgets(
+  client: MatrixClient | null,
+  roomId: string,
+): boolean {
+  const room = client?.getRoom(roomId);
+  const state = room ? liveRoomState(room) : undefined;
+  return !!(
+    client &&
+    room?.getMyMembership() === 'join' &&
+    !client.isGuest() &&
+    state?.mayClientSendStateEvent(WIDGET_EVENT_TYPE, client)
   );
 }

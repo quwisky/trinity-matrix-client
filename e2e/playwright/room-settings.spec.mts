@@ -362,6 +362,223 @@ test.describe('Room settings', () => {
     await expect(embed).toBeFocused();
   });
 
+  test('an admin adds and removes an exact generic widget declaration', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(150_000);
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}wg`;
+    const user = `widget-manage-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Manage widgets ${runId}`;
+    const widgetName = `Roadmap ${runId}`;
+    const rawUrl =
+      'https://widgets.example/board?room=$matrix_room_id&view=roadmap';
+    const widgetFixture = await installWidgetFixture(page);
+
+    await registerUser(request, user, pass);
+    const { access_token, user_id } = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user },
+          password: pass,
+        },
+      })
+      .then((response) => response.json());
+    const { room_id } = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: { Authorization: `Bearer ${access_token}` },
+        data: { name: roomName, preset: 'private_chat' },
+      })
+      .then((response) => response.json());
+
+    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await openRoom(page, roomName);
+    await page.getByTestId('open-room-settings').click();
+    await openSettingsTab(page, 'room-settings', 'widgets');
+
+    await page.getByTestId('room-widget-create-name').fill(widgetName);
+    await page.getByTestId('room-widget-create-url').fill(rawUrl);
+    await page.getByTestId('room-widget-create-url').press('Enter');
+
+    const card = page.locator('article.room-widgets__widget', {
+      hasText: widgetName,
+    });
+    await expect(card).toBeVisible({ timeout: 30_000 });
+    expect(widgetFixture.requestCount()).toBe(0);
+
+    const stateEvents = await request
+      .get(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/state`,
+        { headers: { Authorization: `Bearer ${access_token}` } },
+      )
+      .then((response) => response.json());
+    const declaration = (
+      stateEvents as Array<{
+        type: string;
+        state_key: string;
+        content: Record<string, unknown>;
+      }>
+    ).find(
+      (event) =>
+        event.type === 'im.vector.modular.widgets' &&
+        event.content['name'] === widgetName,
+    );
+    expect(declaration).toBeDefined();
+    expect(declaration?.content).toEqual({
+      id: declaration?.state_key,
+      name: widgetName,
+      type: 'm.custom',
+      url: rawUrl,
+      creatorUserId: user_id,
+      data: {},
+      waitForIframeLoad: true,
+    });
+
+    const widgetId = declaration?.state_key as string;
+    await page.getByTestId(`room-widget-remove-${widgetId}`).click();
+    const confirmation = page.locator('trn-alert-dialog');
+    await expect(confirmation).toContainText(widgetName);
+    await expect(confirmation).toContainText('every member and Matrix client');
+    await confirmation.getByTestId('alert-confirm').click();
+
+    await expect(card).toHaveCount(0, { timeout: 30_000 });
+    await expect(page.getByTestId('room-widget-create-name')).toBeFocused();
+    expect(widgetFixture.requestCount()).toBe(0);
+
+    const tombstone = await request
+      .get(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/state/im.vector.modular.widgets/${encodeURIComponent(widgetId)}`,
+        { headers: { Authorization: `Bearer ${access_token}` } },
+      )
+      .then((response) => response.json());
+    expect(tombstone).toEqual({});
+  });
+
+  test('widget management follows live power grants and revocations', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(150_000);
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}wp`;
+    const owner = `widget-owner-${runId}`;
+    const ownerPass = `${owner}-pass`;
+    const member = `widget-member-${runId}`;
+    const memberPass = `${member}-pass`;
+    const roomName = `Widget powers ${runId}`;
+    const widgetFixture = await installWidgetFixture(page);
+
+    await registerUser(request, owner, ownerPass);
+    await registerUser(request, member, memberPass);
+    const ownerSession = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user: owner },
+          password: ownerPass,
+        },
+      })
+      .then((response) => response.json());
+    const memberSession = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user: member },
+          password: memberPass,
+        },
+      })
+      .then((response) => response.json());
+    const ownerHeaders = {
+      Authorization: `Bearer ${ownerSession.access_token as string}`,
+    };
+    const memberHeaders = {
+      Authorization: `Bearer ${memberSession.access_token as string}`,
+    };
+    const { room_id } = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: ownerHeaders,
+        data: {
+          name: roomName,
+          preset: 'private_chat',
+          invite: [memberSession.user_id],
+          initial_state: [
+            {
+              type: 'im.vector.modular.widgets',
+              state_key: 'shared-board',
+              content: {
+                name: 'Shared board',
+                type: 'm.custom',
+                url: 'https://widgets.example/shared',
+              },
+            },
+          ],
+        },
+      })
+      .then((response) => response.json());
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/join`,
+      { headers: memberHeaders },
+    );
+
+    await login(page, {
+      available: true,
+      hs,
+      user: member,
+      pass: memberPass,
+    } as SynapseSession);
+    await openRoom(page, roomName);
+    await page.getByTestId('open-room-settings').click();
+    await openSettingsTab(page, 'room-settings', 'widgets');
+
+    await expect(page.getByTestId('room-widget-shared-board')).toBeVisible();
+    await expect(page.getByTestId('room-widget-create')).toHaveCount(0);
+    await expect(
+      page.getByTestId('room-widget-remove-shared-board'),
+    ).toHaveCount(0);
+
+    const powerUrl = `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/state/m.room.power_levels/`;
+    const powers = await request
+      .get(powerUrl, { headers: ownerHeaders })
+      .then((response) => response.json());
+    await request.put(powerUrl, {
+      headers: ownerHeaders,
+      data: {
+        ...powers,
+        users: {
+          ...(powers.users as Record<string, number>),
+          [memberSession.user_id as string]: 50,
+        },
+      },
+    });
+    await expect(page.getByTestId('room-widget-create')).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(
+      page.getByTestId('room-widget-remove-shared-board'),
+    ).toBeVisible();
+
+    await request.put(powerUrl, {
+      headers: ownerHeaders,
+      data: {
+        ...powers,
+        users: {
+          ...(powers.users as Record<string, number>),
+          [memberSession.user_id as string]: 0,
+        },
+      },
+    });
+    await expect(page.getByTestId('room-widget-create')).toHaveCount(0, {
+      timeout: 30_000,
+    });
+    await expect(
+      page.getByTestId('room-widget-remove-shared-board'),
+    ).toHaveCount(0);
+    expect(widgetFixture.requestCount()).toBe(0);
+  });
+
   test('an admin changes who can join and read history', async ({
     page,
     request,
