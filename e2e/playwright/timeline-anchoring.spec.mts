@@ -80,7 +80,7 @@ test.describe('Timeline anchoring', () => {
     await expect(scroll).toBeVisible();
     await expect(
       scroll.locator(':scope > .vpad'),
-      'the anchoring regression must exercise the windowed list',
+      'the anchoring regression must exercise the virtual-list implementation',
     ).toHaveCount(2);
 
     // Settle by waiting for the NEWEST message to be on screen, rather than polling a
