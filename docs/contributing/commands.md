@@ -160,6 +160,7 @@ are iterating in Xcode or Android Studio.
 | `pnpm android:open`          | Open the project in Android Studio                   | Android Studio                 |
 | `pnpm android:build`         | Debug APK into `android/app/build/outputs/apk/debug` | Android SDK                    |
 | `pnpm android:build:release` | Release AAB                                          | Android SDK, signing keystore  |
+| `pnpm e2e:android`           | Installed API 36 WebView journeys via Playwright     | Android SDK, emulator, Docker  |
 | `pnpm ios:sync`              | Build and sync only                                  | macOS, Xcode                   |
 | `pnpm ios:run`               | Build, sync, launch on a simulator                   | macOS, Xcode                   |
 | `pnpm ios:open`              | Open the project in Xcode                            | macOS, Xcode                   |
@@ -186,6 +187,18 @@ run instead, so a runner that cannot reach Docker cannot report green.
 The config sets `retries: 2` unconditionally, including locally. A spec that fails
 once and passes on retry is reported as _flaky_, not failed, which is easy to skim
 past — pass `--retries=0` when you want the truth.
+
+The Android representative suite is a separate serialized Nx target:
+
+```bash
+pnpm e2e:android
+TRINITY_ANDROID_SERIAL=emulator-5554 pnpm e2e:android
+```
+
+Without an explicit serial it uses only an AVD named `Trinity_API_36`; it never picks the
+first attached device. It builds and installs the production Capacitor app, drives the
+actual WebView, exercises native Back and process relaunch, and leaves failure artifacts
+under `dist/.playwright/android/`. Docker is mandatory for its authenticated journeys.
 
 ### Standalone protocol harnesses
 

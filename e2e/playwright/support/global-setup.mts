@@ -1,10 +1,4 @@
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-// The disposable Synapse + Caddy harness lives in the repo-root e2e/ tree and is
-// reused here so there's a single source of truth for the test homeserver.
-import { start } from '../../synapse/start.mjs';
-
-export const SESSION_FILE = join(import.meta.dirname, '.synapse-session.json');
+import { startSynapseSession } from './synapse-session.mts';
 
 /**
  * Bring up the disposable Synapse homeserver and record its credentials for the
@@ -18,27 +12,7 @@ export const SESSION_FILE = join(import.meta.dirname, '.synapse-session.json');
  * the unauthenticated specs.
  */
 export default async function globalSetup(): Promise<void> {
-  // Node's fetch + the browser must accept Caddy's self-signed cert.
-  process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
-  try {
-    const { hs, user, pass, sso, ssoReset } = await start();
-    writeFileSync(
-      SESSION_FILE,
-      JSON.stringify({ available: true, hs, user, pass, sso, ssoReset }),
-    );
-    console.log(`[e2e] Synapse ready at ${hs} (user ${user})`);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (process.env['CI'] && !process.env['TRINITY_E2E_ALLOW_NO_SYNAPSE']) {
-      throw new Error(
-        `[e2e] Synapse could not start and CI is set, so the authenticated specs ` +
-          `would silently skip: ${message}. Docker must be available on the runner ` +
-          `(set TRINITY_E2E_ALLOW_NO_SYNAPSE=1 to accept a skipped run).`,
-      );
-    }
-    console.warn(
-      `[e2e] Synapse unavailable (${message}); authenticated specs will skip.`,
-    );
-    writeFileSync(SESSION_FILE, JSON.stringify({ available: false }));
-  }
+  const allowUnavailable =
+    !process.env['CI'] || Boolean(process.env['TRINITY_E2E_ALLOW_NO_SYNAPSE']);
+  await startSynapseSession({ allowUnavailable });
 }

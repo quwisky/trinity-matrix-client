@@ -1,0 +1,24 @@
+import { openSettingsFromRooms } from '../playwright/journeys/navigation.mts';
+import { login, synapseSession } from '../playwright/support/app.mts';
+import { expect, test } from './fixtures.mts';
+
+const session = synapseSession();
+
+test.describe('Android navigation', () => {
+  test('logs in, opens settings by touch, and handles hardware Back', async ({ app }) => {
+    await login(app.page, session, app.navigate);
+    await openSettingsFromRooms(app.page, (control) => app.touch(control));
+
+    await app.device.input.press('Back');
+    await app.page.waitForURL(/\/rooms(\/|$)/, { timeout: 20_000 });
+    await expect(app.page.locator('trn-rooms')).toBeVisible({ timeout: 20_000 });
+  });
+
+  test('restores the authenticated route after a native process restart', async ({ app }) => {
+    await login(app.page, session, app.navigate);
+
+    const relaunchedPage = await app.relaunch();
+    await relaunchedPage.waitForURL(/\/rooms(\/|$)/, { timeout: 30_000 });
+    await expect(relaunchedPage.locator('trn-rooms')).toBeVisible({ timeout: 30_000 });
+  });
+});

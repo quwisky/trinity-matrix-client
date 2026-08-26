@@ -1,6 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { expect, type Locator, type Page } from '@playwright/test';
-import { SESSION_FILE } from './global-setup.mts';
+import { SESSION_FILE } from './synapse-session.mts';
+
+export type Navigate = (page: Page, path: string) => Promise<void>;
+
+export const webNavigate: Navigate = async (page, path) => {
+  await page.goto(path, { waitUntil: 'networkidle' });
+};
 
 /** The Dex-backed account Synapse created via SSO, so it has no Matrix password. */
 export interface SsoAccount {
@@ -106,8 +112,12 @@ export async function openSettingsTab(
 }
 
 /** Log in through the UI (homeserver → Continue → credentials → Sign in) → /rooms. */
-export async function login(page: Page, s: SynapseSession): Promise<void> {
-  await page.goto('/login', { waitUntil: 'networkidle' });
+export async function login(
+  page: Page,
+  s: SynapseSession,
+  navigate: Navigate = webNavigate,
+): Promise<void> {
+  await navigate(page, '/login');
   await fillLabeledInput(page, 'Homeserver', s.hs as string);
   await page.getByText('Continue', { exact: true }).click();
   await page

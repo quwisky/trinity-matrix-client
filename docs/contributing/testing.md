@@ -336,7 +336,7 @@ check that the mutation would actually change what you are asserting.
 
 ## Playwright: the app journeys
 
-79 spec files under `e2e/playwright/`, Chromium only, driven against the disposable
+The spec files under `e2e/playwright/` run in Chromium against the disposable
 Synapse stack.
 [`e2e/playwright.config.mts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/e2e/playwright.config.mts)
 spreads `nxE2EPreset(...)` and then overrides three of its values _after_ the
@@ -352,6 +352,23 @@ spread, so the preset's CI-conditional defaults do not apply.
 Because retries are unconditional, a spec that fails once and passes on the retry is
 reported as _flaky_ rather than failed, which is easy to skim past locally. Pass
 `--retries=0` when you want the honest first-attempt result.
+
+### Android runs shared journeys in the installed WebView
+
+`pnpm e2e:android` is deliberately separate from the Chromium suite. It builds the
+production Capacitor app, installs it on a validated API 36 x86_64 emulator, and attaches
+Playwright to the app's own WebView. That boundary makes native hardware Back, touch input,
+Android TLS handling, and session restoration after force-stop/relaunch observable.
+
+Every web spec is classified in `e2e/android/coverage-manifest.mts` as shared now,
+portable later, or intentionally web-only. A scripts guard enforces exact coverage so a new
+web spec cannot enter without an Android portability decision. The shared entries call the
+same journey functions from thin platform wrappers rather than copying assertions.
+
+The outer runner owns Synapse, one exact emulator serial, the APK, the Playwright Android
+driver packages, and the `tcp:8448` reverse mapping. It restores only state it changed and
+records screenshots, traces, logcat/crash buffers, activity state, and package diagnostics
+under `dist/.playwright/android/` on failure.
 
 The `webServer` runs `nx run trinity:build:development` and then serves `www/`
 statically on port 4200, with `reuseExistingServer` on whenever `CI` is unset. That
