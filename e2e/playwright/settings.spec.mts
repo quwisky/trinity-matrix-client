@@ -206,6 +206,28 @@ test.describe('Settings', () => {
     ).toBe('none');
   });
 
+  // The positive control for the test above. Without it, `'none'` also holds if the panel
+  // never gets `data-state="open"`, if the `data-open` custom variant is dropped from the
+  // theme, or if the animate class is removed outright — none of which is what that test
+  // claims to measure.
+  test('a select panel does animate when motion is not reduced', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await openSection(page, 'appearance');
+
+    const trigger = page.getByTestId('palette-select').locator('button');
+    await trigger.click();
+    const panel = page.locator('hlm-select-content').first();
+    await expect(panel).toBeVisible();
+
+    expect(
+      await panel.evaluate(
+        (element) => getComputedStyle(element).animationName,
+      ),
+    ).toBe('enter');
+  });
+
   test('selects a colour palette from the dropdown', async ({ page }) => {
     await openSection(page, 'appearance');
 

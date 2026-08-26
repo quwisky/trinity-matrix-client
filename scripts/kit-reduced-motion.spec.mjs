@@ -52,20 +52,28 @@ const KIT_FILES = globSync('libs/spartan/**/*.ts', { cwd: workspaceRoot })
 /**
  * An `animate-in`/`animate-out` trigger written WITHOUT a `motion-safe:` prefix.
  *
- * Matches the whole variant chain before the utility, so `data-[state=delayed-open]:` and
- * `data-open:` are both seen. A leading `motion-safe:` anywhere in the chain is what makes
- * it guarded — the prefix order Tailwind emits is not significant here.
+ * Parsed by finding the utility and then taking the whitespace-delimited TOKEN it belongs
+ * to, rather than by enumerating the characters a variant may contain. Enumerating them was
+ * the first attempt and it was wrong in a way that mattered: `*` was missing, so
+ * `*:data-open:animate-in` — a shape the kit already uses elsewhere (`hlm-avatar.ts`,
+ * `hlm-select-trigger.ts`), and that upstream now ships on the very tooltip constant this
+ * guards — slipped through silently. Taking the token has no such list to keep in step.
  */
-const BARE_ANIMATE = /(?<![\w:-])((?:[\w[\]=-]+:)*)animate-(?:in|out)\b/g;
+const ANIMATE_UTILITY = /animate-(?:in|out)\b/;
+
+/** Every whitespace- or quote-delimited token in the source. */
+const tokensOf = (source) => source.split(/[\s'"`]+/).filter(Boolean);
 
 function bareTriggers(source) {
-  const found = [];
-  for (const [match, variants] of source.matchAll(BARE_ANIMATE)) {
-    if (!variants.includes('motion-safe:')) {
-      found.push(match);
+  return tokensOf(source).filter((token) => {
+    if (!ANIMATE_UTILITY.test(token)) {
+      return false;
     }
-  }
-  return found;
+    // Exact segment, not a substring: `not-motion-safe:` compiles to
+    // `@media not (prefers-reduced-motion: no-preference)`, which matches precisely under
+    // `reduce` — the OPPOSITE of the invariant — and a substring test accepts it.
+    return !token.split(':').includes('motion-safe');
+  });
 }
 
 const THEME = 'apps/trinity/src/theme/spartan.css';
@@ -78,7 +86,8 @@ describe('kit animations respect reduced motion', () => {
     const guarded = KIT_FILES.filter((file) =>
       code(file).includes('motion-safe:'),
     );
-    expect(guarded.length).toBeGreaterThanOrEqual(3);
+    // Five today; the original floor of three was already met before this guard existed.
+    expect(guarded.length).toBeGreaterThanOrEqual(5);
   });
 
   it('never writes a bare animate-in or animate-out', () => {
@@ -101,6 +110,20 @@ describe('kit animations respect reduced motion', () => {
     ]);
     expect(bareTriggers('motion-safe:data-closed:animate-out')).toEqual([]);
     expect(bareTriggers('animate-spin')).toEqual([]);
+
+    // The two shapes the character-class parser missed, both silently.
+    expect(bareTriggers('*:data-open:animate-in')).toEqual([
+      '*:data-open:animate-in',
+    ]);
+    expect(bareTriggers('**:data-open:animate-in')).toEqual([
+      '**:data-open:animate-in',
+    ]);
+    // Inverted, and therefore NOT a guard: it applies exactly under `reduce`.
+    expect(bareTriggers('not-motion-safe:animate-in')).toEqual([
+      'not-motion-safe:animate-in',
+    ]);
+    // A guard behind a breakpoint is still a guard.
+    expect(bareTriggers('md:motion-safe:data-open:animate-in')).toEqual([]);
   });
 
   it('guards the indeterminate progress sweep in the theme', () => {
