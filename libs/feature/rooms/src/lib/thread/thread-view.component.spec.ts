@@ -554,6 +554,47 @@ describe('ThreadViewComponent members', () => {
     expect(cmp.uploadProgress()).toBeNull();
   });
 
+  it('ignores stale progress and cleanup from an older thread batch', async () => {
+    const { fixture, sendMediaToThread } = await build();
+    const cmp = fixture.componentInstance;
+    const streams = [new Subject<void>(), new Subject<void>()] as const;
+    const reports: (((fraction: number) => void) | undefined)[] = [];
+    let streamIndex = 0;
+    sendMediaToThread.mockImplementation(
+      (_file: File, _caption: string, report?: (fraction: number) => void) => {
+        reports.push(report);
+        return streams[streamIndex++]?.asObservable() ?? of(undefined);
+      },
+    );
+    const png = () => new File(['x'], 'pic.png', { type: 'image/png' });
+
+    cmp.onSendMedia({
+      items: [{ id: 'old', file: png() }],
+      caption: '',
+      onOutcomes: () => undefined,
+    });
+    cmp.onSendMedia({
+      items: [{ id: 'new', file: png() }],
+      caption: '',
+      onOutcomes: () => undefined,
+    });
+    reports[1]?.(0.6);
+    expect(cmp.uploadProgress()?.fraction).toBe(0.6);
+
+    reports[0]?.(0.9);
+    expect(cmp.uploadProgress()?.fraction).toBe(0.6);
+
+    streams[0].next();
+    streams[0].complete();
+    expect(cmp.uploadProgress()?.fraction).toBe(0.6);
+
+    reports[1]?.(0.75);
+    expect(cmp.uploadProgress()?.fraction).toBe(0.75);
+    streams[1].next();
+    streams[1].complete();
+    expect(cmp.uploadProgress()).toBeNull();
+  });
+
   it('says what happened when a thread batch fails, and why', async () => {
     const { fixture, sendMediaToThread, toastShow } = await build();
     sendMediaToThread.mockReturnValue(throwError(() => new Error('nope')));

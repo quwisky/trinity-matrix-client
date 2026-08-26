@@ -72,6 +72,17 @@ export class ComposerBatchSender {
    */
   private readonly sending = signal(false);
 
+  /**
+   * Identity of the batch allowed to release {@link sending} when it settles.
+   *
+   * A room change deliberately releases the old room's latch before its upload finishes, so
+   * another batch can already own this sender when the old outcomes arrive. The identity keeps
+   * that stale callback useful for reconciling its own files and caption without letting it
+   * release the newer batch.
+   */
+  private nextBatchGeneration = 0;
+  private activeBatchGeneration: number | null = null;
+
   /** Whether a batch is out and has not reported yet. */
   readonly inFlight = this.sending.asReadonly();
 
@@ -85,6 +96,7 @@ export class ComposerBatchSender {
    * the next room's composer.
    */
   release(): void {
+    this.activeBatchGeneration = null;
     this.sending.set(false);
   }
 
@@ -135,6 +147,8 @@ export class ComposerBatchSender {
       return false;
     }
     this.sendingItems.set(items);
+    const generation = ++this.nextBatchGeneration;
+    this.activeBatchGeneration = generation;
     this.sending.set(true);
     // Stamped with the room, like the files themselves are by the owner: a batch settles long
     // after it was pressed, and by then this composer may be showing a different conversation.
@@ -143,7 +157,7 @@ export class ComposerBatchSender {
       items,
       caption,
       onOutcomes: (outcomes) =>
-        this.reconcile(outcomes, caption, mentions, roomAtDispatch),
+        this.reconcile(outcomes, caption, mentions, roomAtDispatch, generation),
     });
     return true;
   }
@@ -160,11 +174,15 @@ export class ComposerBatchSender {
     caption: string,
     mentions: readonly Mention[],
     roomAtDispatch: string | null,
+    generation: number,
   ): void {
     // The batch is over the moment its outcomes land, and this is the ONLY release: inferring
     // it from `uploadProgress` returning to null cannot work, because a send that completes
     // synchronously is back to null before a signal input can ever observe it move.
-    this.sending.set(false);
+    if (this.activeBatchGeneration === generation) {
+      this.activeBatchGeneration = null;
+      this.sending.set(false);
+    }
     for (const outcome of outcomes) {
       if (!outcome.failed) {
         this.ports.removeStaged(outcome.id);
