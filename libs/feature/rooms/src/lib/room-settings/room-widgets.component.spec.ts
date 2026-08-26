@@ -1,5 +1,5 @@
 import { signal } from '@angular/core';
-import { TrnToastService } from '@trinity/components/overlay';
+import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import {
   WidgetsService,
   type RoomWidget,
@@ -19,6 +19,8 @@ const BOARD_WIDGET: RoomWidget = {
   rawUrl:
     'https://widgets.example/board?room=$matrix_room_id&user=$matrix_user_id',
   data: {},
+  creatorUserId: '@alice:example.org',
+  waitForIframeLoad: true,
 };
 
 const BOARD_LAUNCH: WidgetLaunch = {
@@ -37,6 +39,7 @@ async function build(
     widgets?: readonly RoomWidget[];
     launchFor?: Mock;
     openExternal?: Mock;
+    openDialog?: Mock;
   } = {},
 ) {
   const connect = vi.fn();
@@ -46,6 +49,12 @@ async function build(
   const openExternal = over.openExternal ?? vi.fn(() => of(true));
   const widgets = signal<readonly RoomWidget[]>(over.widgets ?? []);
   const toastShow = vi.fn();
+  const dialogClosed = new Subject<void>();
+  const dialogRef = {
+    close: vi.fn(),
+    closed: dialogClosed.asObservable(),
+  };
+  const openDialog = over.openDialog ?? vi.fn(() => dialogRef);
   const { fixture, container } = await render(RoomWidgetsComponent, {
     inputs: { roomId: '!r:hs' },
     providers: [
@@ -57,6 +66,7 @@ async function build(
       }),
       MockProvider(ExternalBrowserService, { open: openExternal }),
       MockProvider(TrnToastService, { show: toastShow }),
+      MockProvider(TrnDialogService, { open: openDialog }),
     ],
   });
   return {
@@ -66,6 +76,8 @@ async function build(
     disconnect,
     openExternal,
     toastShow,
+    openDialog,
+    dialogRef,
   };
 }
 
@@ -114,6 +126,64 @@ describe('RoomWidgetsComponent', () => {
       ?.click();
 
     expect(openExternal).toHaveBeenCalledWith(BOARD_LAUNCH.url);
+  });
+
+  it('opens an eligible widget in Trinity only after an explicit click', async () => {
+    const { container, openDialog } = await build({
+      widgets: [BOARD_WIDGET],
+    });
+
+    expect(openDialog).not.toHaveBeenCalled();
+    container
+      .querySelector<HTMLElement>('[data-testid="room-widget-embed-board"]')
+      ?.click();
+
+    expect(openDialog).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        side: 'full-screen',
+        ariaLabel: 'Planning board widget',
+        inputs: expect.objectContaining({
+          roomId: '!r:hs',
+          widget: BOARD_WIDGET,
+          embed: expect.objectContaining({
+            url: BOARD_LAUNCH.url,
+            origin: BOARD_LAUNCH.origin,
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('closes the active widget frame before opening another one', async () => {
+    const firstClosed = new Subject<void>();
+    const secondClosed = new Subject<void>();
+    const firstRef = {
+      close: vi.fn(),
+      closed: firstClosed.asObservable(),
+    };
+    const secondRef = {
+      close: vi.fn(),
+      closed: secondClosed.asObservable(),
+    };
+    const openDialog = vi
+      .fn()
+      .mockReturnValueOnce(firstRef)
+      .mockReturnValueOnce(secondRef);
+    const { container } = await build({
+      widgets: [BOARD_WIDGET],
+      openDialog,
+    });
+    const embed = container.querySelector<HTMLElement>(
+      '[data-testid="room-widget-embed-board"]',
+    );
+
+    embed?.click();
+    embed?.click();
+
+    expect(firstRef.close).toHaveBeenCalledOnce();
+    expect(secondRef.close).not.toHaveBeenCalled();
+    expect(openDialog).toHaveBeenCalledTimes(2);
   });
 
   it('reports when the external browser cannot open a widget', async () => {

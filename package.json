@@ -104,6 +104,7 @@
     "luxon": "^3.7.2",
     "marked": "^18.0.6",
     "matrix-js-sdk": "^42.1.0",
+    "matrix-widget-api": "1.17.0",
     "rxjs": "~7.8.2",
     "tailwind-merge": "^3.6.0",
     "tslib": "^2.8.1",

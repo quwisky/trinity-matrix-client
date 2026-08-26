@@ -72,21 +72,37 @@ describe('installPermissionPolicy', () => {
     };
   }
 
-  it('allows only microphone (audio) and geolocation; denies the rest', () => {
+  const appContents = { getURL: () => 'trinity://app/rooms' };
+  const remoteContents = { getURL: () => 'https://widgets.example/' };
+
+  it('allows only main-frame app microphone and geolocation requests', () => {
     const s = fakeSession();
     installPermissionPolicy(s as never);
     const request = s.setPermissionRequestHandler.mock.calls[0][0] as (
       c: unknown,
       p: string,
       cb: (ok: boolean) => void,
-      d?: { mediaTypes?: string[] },
+      d?: {
+        mediaTypes?: string[];
+        isMainFrame?: boolean;
+        requestingUrl?: string;
+      },
     ) => void;
     const decide = (
       permission: string,
-      details?: { mediaTypes?: string[] },
+      details: {
+        mediaTypes?: string[];
+        isMainFrame?: boolean;
+        requestingUrl?: string;
+      } = { isMainFrame: true, requestingUrl: 'trinity://app/rooms' },
+      contents: unknown = appContents,
     ) => {
       let granted: boolean | undefined;
-      request(null, permission, (ok) => (granted = ok), details);
+      request(contents, permission, (ok) => (granted = ok), {
+        isMainFrame: true,
+        requestingUrl: 'trinity://app/rooms',
+        ...details,
+      });
       return granted;
     };
 
@@ -96,6 +112,10 @@ describe('installPermissionPolicy', () => {
     expect(decide('notifications')).toBe(false);
     expect(decide('clipboard-read')).toBe(false);
     expect(decide('openExternal')).toBe(false);
+    expect(decide('media', { mediaTypes: ['audio'], isMainFrame: false })).toBe(
+      false,
+    );
+    expect(decide('geolocation', undefined, remoteContents)).toBe(false);
   });
 
   it('the sync check handler mirrors the request policy', () => {
@@ -104,10 +124,28 @@ describe('installPermissionPolicy', () => {
     const check = s.setPermissionCheckHandler.mock.calls[0][0] as (
       c: unknown,
       p: string,
+      origin: string,
+      details?: { isMainFrame?: boolean },
     ) => boolean;
 
-    expect(check(null, 'geolocation')).toBe(true);
-    expect(check(null, 'media')).toBe(true);
-    expect(check(null, 'midi')).toBe(false);
+    expect(
+      check(appContents, 'geolocation', 'trinity://app', { isMainFrame: true }),
+    ).toBe(true);
+    expect(
+      check(appContents, 'media', 'trinity://app', { isMainFrame: true }),
+    ).toBe(true);
+    expect(
+      check(appContents, 'media', 'https://widgets.example', {
+        isMainFrame: false,
+      }),
+    ).toBe(false);
+    expect(
+      check(remoteContents, 'geolocation', 'https://widgets.example', {
+        isMainFrame: true,
+      }),
+    ).toBe(false);
+    expect(
+      check(appContents, 'midi', 'trinity://app', { isMainFrame: true }),
+    ).toBe(false);
   });
 });

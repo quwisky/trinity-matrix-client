@@ -5,7 +5,7 @@
 } @else {
   <p class="room-widgets__note">
     Widgets are third-party websites. Trinity shows the room’s declaration here
-    but does not embed it or give it access to messages.
+    and loads it only after you choose where to open it.
   </p>
   @for (entry of widgets(); track entry.widget.id) {
     <article
@@ -36,18 +36,36 @@
             This widget uses unencrypted HTTP.
           </p>
         }
-        <a
-          hlmBtn
-          variant="outline"
-          [href]="entry.launch.url"
-          target="_blank"
-          rel="noopener noreferrer"
-          (click)="openWidget($event, entry.launch.url)"
-          [attr.aria-label]="'Open ' + entry.widget.name + ' in browser'"
-          [attr.data-testid]="'room-widget-open-' + entry.widget.id"
-        >
-          Open in browser
-        </a>
+        <div class="room-widgets__actions">
+          @if (entry.embed.url) {
+            <button
+              hlmBtn
+              type="button"
+              (click)="embedWidget(entry.widget)"
+              [attr.aria-label]="'Open ' + entry.widget.name + ' in Trinity'"
+              [attr.data-testid]="'room-widget-embed-' + entry.widget.id"
+            >
+              Open in Trinity
+            </button>
+          }
+          <a
+            hlmBtn
+            variant="outline"
+            [href]="entry.launch.url"
+            target="_blank"
+            rel="noopener noreferrer"
+            (click)="openWidget($event, entry.launch.url)"
+            [attr.aria-label]="'Open ' + entry.widget.name + ' in browser'"
+            [attr.data-testid]="'room-widget-open-' + entry.widget.id"
+          >
+            Open in browser
+          </a>
+        </div>
+        @if (!entry.embed.url) {
+          <p class="room-widgets__warning">
+            {{ embedFailureText(entry.embed) }}
+          </p>
+        }
       } @else {
         <p class="room-widgets__warning text-danger">
           @if (entry.launch.failure === 'unsupported-protocol') {

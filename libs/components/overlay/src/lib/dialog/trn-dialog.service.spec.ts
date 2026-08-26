@@ -81,6 +81,20 @@ describe('TrnDialogService', () => {
     expect(await closed).toBe('Side');
   });
 
+  it('gives a full-screen dialog the complete viewport pane', () => {
+    const svc = TestBed.inject(TrnDialogService);
+    const ref = svc.open(TestDialogComponent, { side: 'full-screen' });
+    TestBed.inject(ApplicationRef).tick();
+
+    const pane = document.querySelector<HTMLElement>('.cdk-overlay-pane');
+    expect(pane?.style.width).toBe('100vw');
+    expect(pane?.style.height).toBe('100dvh');
+    expect(pane?.style.maxWidth).toBe('100vw');
+    expect(pane?.style.maxHeight).toBe('100dvh');
+
+    ref.close();
+  });
+
   it('focuses the element named by autoFocus, not the first tabbable one', async () => {
     // The shape every search-style dialog has: a dismiss button ahead of the field the
     // user came to type in. CDK's default ('first-tabbable') would take the button, and

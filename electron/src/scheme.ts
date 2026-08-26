@@ -61,16 +61,32 @@ export async function fileResponse(
   status = 200,
 ): Promise<Response> {
   const data = await fs.promises.readFile(filePath);
+  const headers: Record<string, string> = {
+    'content-type': contentTypeFor(filePath),
+  };
+  if (path.extname(filePath).toLowerCase() === '.html') {
+    // The app permits remote HTTPS widget frames. Prevent one from navigating its
+    // subframe back to the privileged app document and obtaining a same-origin page.
+    headers['content-security-policy'] = "frame-ancestors 'none'";
+    headers['x-frame-options'] = 'DENY';
+  }
   return new Response(new Uint8Array(data), {
     status,
-    headers: { 'content-type': contentTypeFor(filePath) },
+    headers,
   });
 }
 
 /** True only for URLs on our own app origin (exact origin match, no prefix tricks). */
 export function isAppUrl(url: string): boolean {
   try {
-    return new URL(url).origin === APP_ORIGIN;
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === `${APP_SCHEME}:` &&
+      parsed.hostname === APP_HOST &&
+      !parsed.username &&
+      !parsed.password &&
+      !parsed.port
+    );
   } catch {
     return false;
   }

@@ -11,6 +11,7 @@ import {
   type SynapseSession,
 } from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import { installWidgetFixture } from './support/widget.mts';
 
 // Covers editing a room's settings: the room header's ⚙ button
 // (data-testid="open-room-settings") opens a dialog (data-testid="room-settings")
@@ -144,7 +145,7 @@ test.describe('Room settings', () => {
     ).toHaveCount(0);
   });
 
-  test('surfaces a real room widget without navigating to it', async ({
+  test('embeds a real room widget through a restricted Widget API bridge', async ({
     page,
     request,
   }) => {
@@ -156,6 +157,7 @@ test.describe('Room settings', () => {
     const rawUrl =
       'https://widgets.example/board?room=$matrix_room_id' +
       '&user=$matrix_user_id&board=$board_id';
+    const widgetFixture = await installWidgetFixture(page, 1_500);
 
     await registerUser(request, user, pass);
     const { access_token, user_id } = await request
@@ -209,8 +211,155 @@ test.describe('Room settings', () => {
     await expect(open).toHaveAttribute('href', expectedUrl);
     await expect(open).toHaveAttribute('target', '_blank');
     await expect(open).toHaveAttribute('rel', 'noopener noreferrer');
-    // Deliberately do not click: acceptance proves the explicit destination and warning,
-    // without sending this test's Matrix identity to an external network origin.
+    expect(widgetFixture.requestCount()).toBe(0);
+
+    const embed = page.getByTestId('room-widget-embed-planning-board');
+    await embed.click();
+    await expect(page.getByTestId('widget-frame-status')).toContainText(
+      'Negotiating',
+    );
+    await expect(page.getByTestId('room-widget-frame-close')).toBeFocused();
+    expect(widgetFixture.requestCount()).toBe(1);
+
+    const firstFrame = page.frameLocator('iframe.widget-frame__iframe');
+    await expect(firstFrame.locator('#request')).not.toHaveText('');
+    const firstRequest = JSON.parse(
+      (await firstFrame.locator('#request').textContent()) ?? '{}',
+    ) as Record<string, unknown>;
+    const attackerNavigation = page.waitForEvent('framenavigated', {
+      predicate: (candidate) =>
+        candidate.url() === 'https://widgets.example/attacker',
+    });
+    await page.evaluate(() => {
+      const attacker = document.createElement('iframe');
+      attacker.dataset['widgetAttacker'] = 'source';
+      attacker.src = 'https://widgets.example/attacker';
+      document.body.append(attacker);
+    });
+    const attackerFrame = await attackerNavigation;
+    await attackerFrame.evaluate(
+      ({ message, targetOrigin }) => {
+        parent.postMessage(
+          { ...message, response: { capabilities: [] } },
+          targetOrigin,
+        );
+      },
+      { message: firstRequest, targetOrigin: new URL(page.url()).origin },
+    );
+    await page.waitForTimeout(100);
+    await expect(page.getByTestId('widget-frame-status')).toContainText(
+      'Negotiating',
+    );
+    await page
+      .locator('iframe[data-widget-attacker="source"]')
+      .evaluate((element) => element.remove());
+
+    // A same-origin sibling cannot forge the response. Close during the real request,
+    // then also prove that the target WindowProxy is rejected after an origin change.
+    await page.getByTestId('room-widget-frame-close').click();
+    await expect(page.locator('iframe.widget-frame__iframe')).toHaveCount(0);
+    await expect(embed).toBeFocused();
+    await embed.click();
+    await expect(page.getByTestId('widget-frame-status')).toContainText(
+      'Negotiating',
+    );
+    const secondFrame = page.frameLocator('iframe.widget-frame__iframe');
+    await expect(secondFrame.locator('#request')).not.toHaveText('');
+    const secondRequest = JSON.parse(
+      (await secondFrame.locator('#request').textContent()) ?? '{}',
+    ) as Record<string, unknown>;
+    await page.route('https://attacker.example/**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: '<!doctype html><title>Changed origin</title>',
+      });
+    });
+    const originChange = page.waitForEvent('framenavigated', {
+      predicate: (candidate) =>
+        candidate.url() === 'https://attacker.example/origin-change',
+    });
+    await page
+      .locator('iframe.widget-frame__iframe')
+      .evaluate((iframe: HTMLIFrameElement) => {
+        iframe.src = 'https://attacker.example/origin-change';
+      });
+    const changedFrame = await originChange;
+    await changedFrame.evaluate(
+      ({ message, targetOrigin }) => {
+        parent.postMessage(
+          { ...message, response: { capabilities: [] } },
+          targetOrigin,
+        );
+      },
+      { message: secondRequest, targetOrigin: new URL(page.url()).origin },
+    );
+    await page.waitForTimeout(100);
+    await expect(page.getByTestId('widget-frame-status')).toContainText(
+      'Negotiating',
+    );
+    await page.getByTestId('room-widget-frame-close').click();
+    await expect(embed).toBeFocused();
+
+    // A clean third open completes with only the legitimate target response.
+    await embed.click();
+    await expect(page.getByTestId('widget-frame-status')).toContainText(
+      'Widget API ready',
+      { timeout: 5_000 },
+    );
+    expect(widgetFixture.requestCount()).toBe(3);
+    expect(widgetFixture.referrers()).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+
+    const frameElement = page.locator('iframe.widget-frame__iframe');
+    await expect(frameElement).toHaveAttribute(
+      'sandbox',
+      'allow-scripts allow-forms allow-same-origin',
+    );
+    await expect(frameElement).toHaveAttribute('referrerpolicy', 'no-referrer');
+    await expect(frameElement).not.toHaveAttribute('allowfullscreen', /.*/);
+    const frame = page.frameLocator('iframe.widget-frame__iframe');
+    await expect(
+      frame.getByRole('heading', { name: 'Widget fixture loaded' }),
+    ).toBeVisible();
+    await expect(frame.locator('#requested')).toContainText(
+      'm.always_on_screen',
+    );
+    await expect(frame.locator('#approved')).toHaveText('[]');
+    await expect(frame.locator('#policy-api')).toHaveText('available');
+    await expect(frame.locator('#denied')).toHaveText(
+      JSON.stringify([
+        ['camera', false],
+        ['microphone', false],
+        ['geolocation', false],
+        ['display-capture', false],
+        ['clipboard-read', false],
+        ['fullscreen', false],
+      ]),
+    );
+
+    let blockedHttpRequests = 0;
+    await page.route('http://blocked-widget.test/**', async (route) => {
+      blockedHttpRequests += 1;
+      await route.fulfill({ status: 200, body: 'must not load' });
+    });
+    const cspViolation = page.waitForEvent('console', {
+      predicate: (message) =>
+        message.text().includes('frame-src') &&
+        message.text().includes('blocked-widget.test'),
+    });
+    await page.evaluate(() => {
+      const iframe = document.createElement('iframe');
+      iframe.src = 'http://blocked-widget.test/frame';
+      document.body.append(iframe);
+    });
+    await cspViolation;
+    expect(blockedHttpRequests).toBe(0);
+    await page.getByTestId('room-widget-frame-close').click();
+    await expect(embed).toBeFocused();
   });
 
   test('an admin changes who can join and read history', async ({

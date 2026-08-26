@@ -109,8 +109,14 @@ defence. Three of its decisions are worth knowing:
   `style-src` includes `'unsafe-inline'`, required by Angular's runtime `<style>`
   injection and the CDK overlay.
 
-`frame-ancestors` is absent on purpose: it is ignored in a `<meta>` CSP and has to be set
-as a real response header by whatever serves the build.
+`frame-ancestors` is absent from the meta policy on purpose: browsers ignore that
+directive in a `<meta>` CSP. Every web deployment must send
+`Content-Security-Policy: frame-ancestors 'none'` as a real response header for the app
+shell (and should also send `X-Frame-Options: DENY` for older clients). This is part of
+the widget-embedding boundary: a third-party frame can navigate itself, so the app's own
+response must refuse to render if that navigation points back to Trinity's HTTPS origin.
+The Electron protocol handler sets both headers itself; static web hosting must be
+configured separately because the compiled bundle cannot set response headers.
 
 ## The service worker
 

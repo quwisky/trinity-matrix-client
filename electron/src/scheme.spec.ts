@@ -57,13 +57,13 @@ describe('contentTypeFor', () => {
 });
 
 describe('isAppUrl', () => {
-  // Security-relevant guarantee: URLs on other origins (and garbage) are never
-  // treated as app URLs. (A positive `trinity://app/...` case can't be asserted
-  // here — URL.origin is opaque for a non-special scheme until Electron registers
-  // it as `standard` at runtime; that's out of scope for a unit test.)
-  it('rejects external origins and malformed input', () => {
+  it('accepts only the exact Trinity scheme and host', () => {
+    expect(isAppUrl('trinity://app/rooms')).toBe(true);
+    expect(isAppUrl('trinity://app/')).toBe(true);
     expect(isAppUrl('https://evil.example/app')).toBe(false);
     expect(isAppUrl('http://app/')).toBe(false);
+    expect(isAppUrl('trinity://app.evil.example/')).toBe(false);
+    expect(isAppUrl('trinity://user@app/')).toBe(false);
     expect(isAppUrl('javascript:alert(1)')).toBe(false);
     expect(isAppUrl('not a url')).toBe(false);
     expect(isAppUrl('')).toBe(false);
@@ -126,6 +126,10 @@ describe('registerAppProtocol — SPA fallback', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('text/html; charset=utf-8');
+    expect(res.headers.get('content-security-policy')).toBe(
+      "frame-ancestors 'none'",
+    );
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
     expect(readFileMock).toHaveBeenCalledWith(INDEX_HTML);
   });
 
@@ -148,6 +152,8 @@ describe('registerAppProtocol — SPA fallback', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('image/png');
+    expect(res.headers.get('content-security-policy')).toBeNull();
+    expect(res.headers.get('x-frame-options')).toBeNull();
     expect(readFileMock).toHaveBeenCalledWith(logo);
     expect(readFileMock).not.toHaveBeenCalledWith(INDEX_HTML);
   });

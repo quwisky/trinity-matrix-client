@@ -67,3 +67,9 @@
   font-size: 12px;
   color: var(--trinity-text-muted);
 }
+
+.room-widgets__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
