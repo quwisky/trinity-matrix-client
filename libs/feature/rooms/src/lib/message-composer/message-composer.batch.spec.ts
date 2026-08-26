@@ -454,6 +454,20 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     expect(sent).toEqual(['one.png']);
   });
 
+  it('honours current-room progress when mounted during an upload', async () => {
+    const { fixture } = await renderComposer({
+      roomId: '!current:hs',
+      uploadProgress: { index: 1, total: 1, fraction: 0.4 },
+    });
+    const cmp = fixture.componentInstance;
+    const sent = collectHeldSends(cmp);
+    pickFiles(cmp, [png('one.png')]);
+
+    cmp.submit();
+
+    expect(sent).toEqual([]);
+  });
+
   it('guards the keyboard path too, and shows the button as disabled', async () => {
     // `onEnter` calls `submit()` directly and never consults `[disabled]`, so the code guard
     // is what stops it — and the button has to SAY so, or the block reads as a dead control.
@@ -675,6 +689,12 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     );
     pickFiles(cmp, [png('one.png')]);
     cmp.submit();
+    fixture.componentRef.setInput('uploadProgress', {
+      index: 1,
+      total: 1,
+      fraction: 0.4,
+    });
+    fixture.detectChanges();
 
     fixture.componentRef.setInput('roomId', '!other:hs');
     fixture.detectChanges();
@@ -697,6 +717,8 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     expect(batches).toHaveLength(2); // the second batch still owns the latch
 
     const second = batches[1];
+    fixture.componentRef.setInput('uploadProgress', null);
+    fixture.detectChanges();
     second?.onOutcomes(
       second.items.map((item) => ({ id: item.id, failed: true })),
     );

@@ -813,6 +813,9 @@ describe('RoomsPage panels, pins and media', () => {
     streams[1].next();
     streams[1].complete();
     expect(shell.messages.uploadProgress()).toBeNull();
+
+    reports[1]?.(0.95);
+    expect(shell.messages.uploadProgress()).toBeNull();
   });
 
   it('hands a single file its caption, and a batch none', () => {

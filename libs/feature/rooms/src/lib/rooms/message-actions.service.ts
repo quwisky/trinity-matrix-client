@@ -58,8 +58,9 @@ export class MessageActionsService {
    */
   readonly uploadProgress = signal<BatchProgress | null>(null);
 
-  /** Latest batch allowed to write the progress signal shared by successive rooms. */
-  private uploadGeneration = 0;
+  /** Identity allocator and current owner for the progress signal shared by rooms. */
+  private nextUploadGeneration = 0;
+  private activeUploadGeneration: number | null = null;
 
   /**
    * Route a `matrix.to` permalink clicked in a message, in-app. A user shows a profile
@@ -224,11 +225,16 @@ export class MessageActionsService {
     caption: string;
     onOutcomes: (outcomes: readonly BatchOutcome[]) => void;
   }): void {
-    const uploadGeneration = ++this.uploadGeneration;
+    const uploadGeneration = ++this.nextUploadGeneration;
+    this.activeUploadGeneration = uploadGeneration;
     const reportProgress = (progress: BatchProgress | null): void => {
-      if (uploadGeneration === this.uploadGeneration) {
-        this.uploadProgress.set(progress);
+      if (uploadGeneration !== this.activeUploadGeneration) {
+        return;
       }
+      if (progress === null) {
+        this.activeUploadGeneration = null;
+      }
+      this.uploadProgress.set(progress);
     };
     // Pinned for the whole batch. `sendMedia` resolves the open room on SUBSCRIBE — right for
     // a single action, which subscribes as it is pressed — but a batch subscribes item N

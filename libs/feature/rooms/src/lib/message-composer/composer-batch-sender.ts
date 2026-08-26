@@ -83,6 +83,14 @@ export class ComposerBatchSender {
   private nextBatchGeneration = 0;
   private activeBatchGeneration: number | null = null;
 
+  /** Whether the reported progress belongs to the room/thread this sender now serves. */
+  private readonly progressIsForCurrentContext = signal(true);
+
+  /** Progress scoped to the current room/thread rather than the page's previous upload. */
+  readonly uploadProgress = computed(() =>
+    this.progressIsForCurrentContext() ? this.ports.uploadProgress() : null,
+  );
+
   /** Whether a batch is out and has not reported yet. */
   readonly inFlight = this.sending.asReadonly();
 
@@ -97,6 +105,7 @@ export class ComposerBatchSender {
    */
   release(): void {
     this.activeBatchGeneration = null;
+    this.progressIsForCurrentContext.set(false);
     this.sending.set(false);
   }
 
@@ -106,7 +115,7 @@ export class ComposerBatchSender {
    * whatever was dispatched first.
    */
   readonly uploadLabel = computed(() => {
-    const progress = this.ports.uploadProgress();
+    const progress = this.uploadProgress();
     return progress
       ? (this.sendingItems()[progress.index - 1]?.file.name ?? null)
       : null;
@@ -119,7 +128,7 @@ export class ComposerBatchSender {
    * synchronously, while the input it mirrors lags by a change-detection tick.
    */
   readonly canSend = computed(
-    () => this.ports.uploadProgress() === null && !this.sending(),
+    () => this.uploadProgress() === null && !this.sending(),
   );
 
   /**
@@ -146,6 +155,7 @@ export class ComposerBatchSender {
     if (!this.canSend()) {
       return false;
     }
+    this.progressIsForCurrentContext.set(true);
     this.sendingItems.set(items);
     const generation = ++this.nextBatchGeneration;
     this.activeBatchGeneration = generation;

@@ -593,6 +593,9 @@ describe('ThreadViewComponent members', () => {
     streams[1].next();
     streams[1].complete();
     expect(cmp.uploadProgress()).toBeNull();
+
+    reports[1]?.(0.95);
+    expect(cmp.uploadProgress()).toBeNull();
   });
 
   it('says what happened when a thread batch fails, and why', async () => {
