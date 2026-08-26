@@ -144,6 +144,7 @@ async function renderSidebar(
     mixedInvites?: PendingInvite[];
     mixing?: boolean;
     notifyMode?: RoomNotifyMode;
+    typingByRoom?: Record<string, readonly string[]>;
   } = {},
 ) {
   modeForSpy = vi.fn(() => opts.notifyMode ?? 'all');
@@ -170,7 +171,13 @@ async function renderSidebar(
       MockProvider(AccountScopeService, {
         mixing: signal(opts.mixing ?? false).asReadonly(),
       }),
-      MockProvider(RoomsService),
+      // Seeded because `typingByRoom` is an INSTANCE field, which ng-mocks does not
+      // reflect: left out it is undefined and the sidebar throws on every render here.
+      MockProvider(RoomsService, {
+        typingByRoom: signal<Record<string, readonly string[]>>(
+          opts.typingByRoom ?? {},
+        ).asReadonly(),
+      }),
       MockProvider(RoomNotificationsService, {
         modeFor: modeForSpy,
       }),
@@ -1928,5 +1935,58 @@ describe('ChannelSidebarComponent room filter', () => {
     expect(
       container.querySelector('[data-testid=mark-all-read]'),
     ).not.toBeNull();
+  });
+
+  describe('typing in the room list', () => {
+    it('swaps the preview line for who is typing', async () => {
+      const { container } = await renderSidebar({
+        inputs: {
+          rooms: [
+            room({ id: '!a:hs', name: 'general', lastMessage: 'see you then' }),
+          ],
+        },
+        typingByRoom: { '!a:hs': ['Alice'] },
+      });
+
+      const preview = container.querySelector('.channel__preview');
+      expect(preview?.textContent?.trim()).toBe('Alice is typing');
+      expect(preview?.classList.contains('channel__preview--typing')).toBe(
+        true,
+      );
+    });
+
+    it('leaves a room with nobody typing showing its last message', async () => {
+      const { container } = await renderSidebar({
+        inputs: {
+          rooms: [
+            room({ id: '!a:hs', name: 'general', lastMessage: 'see you then' }),
+          ],
+        },
+        typingByRoom: {},
+      });
+
+      const preview = container.querySelector('.channel__preview');
+      expect(preview?.textContent?.trim()).toBe('see you then');
+      expect(preview?.classList.contains('channel__preview--typing')).toBe(
+        false,
+      );
+    });
+
+    it('does not leak one room typing state onto another', async () => {
+      const { container } = await renderSidebar({
+        inputs: {
+          rooms: [
+            room({ id: '!a:hs', name: 'general', lastMessage: 'one' }),
+            room({ id: '!b:hs', name: 'random', lastMessage: 'two' }),
+          ],
+        },
+        typingByRoom: { '!b:hs': ['Bob'] },
+      });
+
+      const previews = [...container.querySelectorAll('.channel__preview')].map(
+        (el) => el.textContent?.trim(),
+      );
+      expect(previews).toEqual(['one', 'Bob is typing']);
+    });
   });
 });

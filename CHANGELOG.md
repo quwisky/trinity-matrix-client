@@ -8,6 +8,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **The room list shows who is typing.** A room where somebody is typing now says so in
+  place of its last message, in italics, until they stop — so you can see a conversation
+  starting up without opening it.
+
+- **Threads show who is typing, and tell the room when you are.** The reply box in a thread
+  now announces your typing to the room the way the main composer does, and carries the same
+  typing line above it. Matrix tracks typing per room rather than per thread, so that line
+  names everyone typing in the room — including people writing in the main timeline.
+
 - **The typing line has animated dots, and holds its place.** When someone is typing, the
   line under the timeline now ends in three pulsing dots instead of a full stop, so it reads
   as something happening rather than a label. The line also keeps its space whether or not
@@ -58,6 +67,12 @@ All notable changes to this project are documented here. The format is based on
   rather than dark grey. Pick it under Settings → Appearance, in either light or dark mode.
 
 ### Changed
+
+- **Menus, tooltips and the indeterminate progress bar now hold still on their own for
+  reduced motion.** They already did, but only because a blanket rule elsewhere in the app
+  was catching them; each now asks for it directly, so the behaviour survives the component
+  being used anywhere else. A progress bar that knows how far along it is still relies on
+  that blanket to stop its fill sliding.
 
 - **Clicking a mention opens the person's card beside it**, instead of a window centred
   over the conversation the mention is part of — so you can still read what was said while

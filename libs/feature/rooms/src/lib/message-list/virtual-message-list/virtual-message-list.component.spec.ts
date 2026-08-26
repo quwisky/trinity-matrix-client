@@ -791,40 +791,24 @@ describe('VirtualMessageListComponent', () => {
     expect(sent).toEqual(['both of these']);
     expect(edited).toEqual([]);
   });
-  // The typing markup is duplicated between this list and the simple one, and only the
-  // simple one asserted anything about it — so the windowed copy could drift silently.
-  describe('typing indicator', () => {
+  // What this list owes is the wiring — the detail lives in the indicator's own spec.
+  // Before the extraction the markup was copy-pasted here and asserted only in the simple
+  // list, so the windowed copy could drift silently.
+  it('feeds the typing names to the indicator', async () => {
+    const { fixture, container } = await render(VirtualMessageListComponent, {
+      inputs: { typingNames: ['Alice', 'Bob'] },
+      imports: [MockComponent(MessageComposerComponent)],
+    });
     const text = (el: Element | null | undefined): string =>
       (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
 
-    it('names the typists, draws three dots, and hides the row from assistive tech', async () => {
-      const { container } = await render(VirtualMessageListComponent, {
-        inputs: { typingNames: ['Alice', 'Bob'] },
-        imports: [MockComponent(MessageComposerComponent)],
-      });
+    expect(text(container.querySelector('.typing-indicator'))).toBe(
+      'Alice and Bob are typing',
+    );
 
-      const indicator = container.querySelector('.typing-indicator');
-      expect(text(indicator)).toBe('Alice and Bob are typing');
-      expect(indicator?.getAttribute('aria-hidden')).toBe('true');
-      expect(container.querySelectorAll('.typing-dots__dot')).toHaveLength(3);
-    });
-
-    it('keeps the slot and the live region while nobody is typing', async () => {
-      const { fixture, container } = await render(VirtualMessageListComponent, {
-        inputs: { typingNames: [] },
-        imports: [MockComponent(MessageComposerComponent)],
-      });
-      const status = () =>
-        container.querySelector('[data-testid="typing-status"]');
-
-      expect(container.querySelector('.typing-slot')).not.toBeNull();
-      expect(container.querySelector('.typing-indicator')).toBeNull();
-      expect(status()).not.toBeNull();
-      expect(text(status())).toBe('');
-
-      fixture.componentRef.setInput('typingNames', ['Alice']);
-      fixture.detectChanges();
-      expect(text(status())).toBe('Alice is typing');
-    });
+    fixture.componentRef.setInput('typingNames', []);
+    fixture.detectChanges();
+    expect(container.querySelector('.typing-indicator')).toBeNull();
+    expect(container.querySelector('.typing-slot')).not.toBeNull();
   });
 });

@@ -89,6 +89,15 @@ export class ChannelSidebarComponent {
   private readonly mixedInvites = inject(MixedInvitesService);
   private readonly accountScope = inject(AccountScopeService);
   private readonly roomsSvc = inject(RoomsService);
+  /**
+   * Who is typing, per room, read here and passed DOWN to the row list.
+   *
+   * The row list takes it as an input rather than injecting the service itself: one
+   * `MockProvider(RoomsService)` helper backs 85 tests in this component's spec, and
+   * ng-mocks does not reflect instance fields, so a read from inside the row template
+   * would throw in all of them.
+   */
+  protected readonly typingByRoom = this.roomsSvc.typingByRoom;
   private readonly presence = inject(PresenceService);
   private readonly roomNotifications = inject(RoomNotificationsService);
   private readonly accountPicker = inject(AccountPickerService);

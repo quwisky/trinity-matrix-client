@@ -268,8 +268,11 @@ export function fakeClient(
       handlers.set(event, handler);
     },
     off: () => {},
-    sendTyping: (_rid: string, isTyping: boolean) => {
-      sent.push(['typing', isTyping]);
+    // The timeout is recorded, not dropped: it is the only argument that says how long the
+    // server keeps us marked as typing, and while it went unrecorded no test could tell
+    // TYPING_TIMEOUT_MS from any other number — or from nothing at all.
+    sendTyping: (_rid: string, isTyping: boolean, timeoutMs?: number) => {
+      sent.push(['typing', isTyping, timeoutMs]);
       return Promise.resolve({});
     },
     sendReadReceipt: () => Promise.resolve({}),

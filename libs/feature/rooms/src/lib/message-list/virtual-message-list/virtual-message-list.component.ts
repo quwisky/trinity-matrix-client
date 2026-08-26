@@ -19,6 +19,7 @@ import { MessageListBase } from '../message-list-base';
 import { TrnFileDropDirective } from '../../shared/file-drop.directive';
 import { DropOverlayComponent } from '../drop-overlay/drop-overlay.component';
 import { TimelineDividerComponent } from '../timeline-divider/timeline-divider.component';
+import { TypingIndicatorComponent } from '../typing-indicator/typing-indicator.component';
 import { scrollBehavior } from '@trinity/util/ui';
 import {
   buildPrefixSums,
@@ -68,6 +69,7 @@ const SMALL_LIST_ROWS = 80;
     MessageRowComponent,
     DropOverlayComponent,
     TimelineDividerComponent,
+    TypingIndicatorComponent,
   ],
   // The whole conversation is the drop target — "drop it on the room" is the gesture, and
   // these templates are host fragments with no element of their own to carry it.

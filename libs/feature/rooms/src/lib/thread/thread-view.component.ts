@@ -28,6 +28,7 @@ import {
 import { MessageActionSheetService } from '../message-actions/message-action-sheet.service';
 import { type SwipeDirection } from '../message-row/message-row.component';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
+import { TypingIndicatorComponent } from '../message-list/typing-indicator/typing-indicator.component';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
@@ -99,6 +100,7 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
   selector: 'trn-thread-view',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    TypingIndicatorComponent,
     EmptyStateComponent,
     TrnIconComponent,
     HlmButton,
@@ -190,6 +192,10 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
     // thread that is no longer open.
     this.messageSheet.close(this);
     this.threads.closeThread();
+    // Closing the panel mid-reply otherwise leaves us marked as typing until the server's
+    // own TYPING_TIMEOUT_MS lapses. Owner-keyed, so this cannot clear the flag when the
+    // main composer still holds a draft — which is why the naive one-liner was wrong.
+    this.timeline.setTyping(false, 'thread');
   }
 
   /**
@@ -270,6 +276,26 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
       .sendToThread(text, mentions)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
+  }
+
+  /**
+   * The room's typists, for the row above the thread composer.
+   *
+   * Room's, not thread's: `m.typing` is a room-level EDU with no thread dimension, so
+   * somebody typing in the main timeline shows here too. That is the protocol rather than a
+   * bug, and it is why the row here does not own the announcement — the list behind it
+   * already announces the same names.
+   */
+  protected readonly typingNames = this.timeline.typingNames;
+
+  /**
+   * Composer typing state → the room's (throttled) typing notification.
+   *
+   * Tagged `'thread'` so a send here cannot clear the flag while the main composer still
+   * holds a draft — `m.typing` is one flag per room and both composers feed it.
+   */
+  onTyping(typing: boolean): void {
+    this.timeline.setTyping(typing, 'thread');
   }
 
   onSubmit({ text, mentions }: ComposerSubmit): void {
