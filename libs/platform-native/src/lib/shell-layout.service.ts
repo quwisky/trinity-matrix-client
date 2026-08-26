@@ -123,7 +123,9 @@ export class ShellLayoutService {
   ): void {
     target.set(value);
     // Fire and forget, like every other preference here: the signal is the source of truth
-    // for this session, and a failed write costs the setting on the next launch, not now.
-    void Preferences.set({ key, value: String(value) });
+    // for this session, and a failed write costs the setting on the next launch, not now. The
+    // rejection is deliberately handled so best-effort persistence cannot become a global
+    // application error.
+    void Preferences.set({ key, value: String(value) }).catch(() => undefined);
   }
 }
