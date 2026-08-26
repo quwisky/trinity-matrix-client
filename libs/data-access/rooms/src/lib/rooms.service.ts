@@ -184,7 +184,23 @@ export class RoomsService {
    * events carry entirely different arguments: this one names no room, so every watched
    * list has to be re-read rather than one.
    */
-  private readonly onMyMembership = (): void => this.scheduleMemberReread(null);
+  private readonly onMyMembership = (room?: { roomId?: string }): void => {
+    // A room we have left stops syncing, so its members never emit the "stopped typing"
+    // transition and its key would sit in the map for the rest of the session — visible
+    // again the moment the room is rejoined, and frozen there, because an unchanged set
+    // writes nothing.
+    const roomId = room?.roomId;
+    if (roomId) {
+      this.dirtyTypingRooms.delete(roomId);
+      const current = this._typingByRoom();
+      if (roomId in current) {
+        const next = { ...current };
+        delete next[roomId];
+        this._typingByRoom.set(next);
+      }
+    }
+    this.scheduleMemberReread(null);
+  };
 
   /** Someone in a room joined, left, or changed their profile. */
   private readonly onMemberChanged = (
@@ -300,7 +316,7 @@ export class RoomsService {
    */
   readonly typingByRoom = this._typingByRoom.asReadonly();
 
-  private readonly dirtyTypingRooms = new Set<string>();
+  private readonly dirtyTypingRooms = new Map<string, string[]>();
 
   /**
    * Coalesced, and deliberately its own flusher rather than either existing one.
@@ -317,14 +333,26 @@ export class RoomsService {
     if (!client) {
       return;
     }
-    const selfId = client.getUserId();
+    // EVERY signed-in account, not just the active one. A room both accounts are joined to
+    // renders as ONE row (see `RoomSummary.accountIds`), so filtering only the active mxid
+    // let the user's own other account announce itself on their own room — the same failure
+    // the self-exclusion exists to prevent, arriving by the back door.
+    // EVERY signed-in account, not just the active one. A room both accounts are joined to
+    // renders as ONE row (see `RoomSummary.accountIds`), so filtering only the active mxid
+    // let the user's own other account announce itself on their own room — the same failure
+    // the self-exclusion exists to prevent, arriving by the back door.
+    const selves = new Set(this.matrix.accountIds());
     let next = this._typingByRoom();
     let changed = false;
 
-    for (const roomId of rooms) {
-      const names = (client.getRoom(roomId)?.getMembers() ?? [])
-        .filter((member) => member.typing && member.userId !== selfId)
-        .map((member) => member.name);
+    for (const [roomId, typingIds] of rooms) {
+      const room = client.getRoom(roomId);
+      // The ids come off the EDU the handler already received, so this is O(typists).
+      // `getMembers()` — what TimelineService does — is O(members), which is fine for the
+      // one open room and not for every joined room on every typing change.
+      const names = typingIds
+        .filter((userId) => !selves.has(userId))
+        .map((userId) => room?.getMember(userId)?.name ?? userId);
       const current = next[roomId] ?? EMPTY_TYPING;
       // Idempotent: an unchanged set writes nothing. Without this every EDU replaces the
       // record and re-runs the sidebar template, which reads this during change detection.
@@ -352,10 +380,17 @@ export class RoomsService {
    * room's whole typing set is re-read on flush.
    */
   private readonly onTypingChanged = (
-    _event: MatrixEvent,
+    event: MatrixEvent,
     member: RoomMember,
   ): void => {
-    this.dirtyTypingRooms.add(member.roomId);
+    // `m.typing` carries the room's WHOLE typing set, so the last event per room wins and
+    // there is no delta to merge. Taking it here rather than re-reading members on flush
+    // keeps the cost O(typists) instead of O(members-in-every-joined-room).
+    const userIds = event.getContent()?.['user_ids'];
+    this.dirtyTypingRooms.set(
+      member.roomId,
+      Array.isArray(userIds) ? (userIds as string[]) : [],
+    );
     this.typingFlusher.schedule();
   };
 

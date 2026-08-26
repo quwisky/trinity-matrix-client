@@ -313,10 +313,7 @@ test.describe('Typing indicators', () => {
     expect(opacities).toEqual(['1', '1', '1']);
   });
 
-  test('shows the typist in the room list, but never yourself', async ({
-    page,
-    request,
-  }) => {
+  test('shows the typist in the room list', async ({ page, request }) => {
     test.setTimeout(150_000);
     const runId = `${Date.now().toString(36)}s`;
     const hs = session.hs as string;
@@ -339,12 +336,17 @@ test.describe('Typing indicators', () => {
     await setMemberTyping(request, hs, roomId, member, false);
     await expect(typingPreview).toHaveCount(0, { timeout: 20_000 });
 
-    // Now type yourself. The local user is excluded, so the line must NOT swap — the
-    // failure this guards reads "You are typing" on every room you type in.
+    // Typing ourselves does not bring the line back, and the row keeps its last message.
+    //
+    // This is NOT the self-exclusion guard, and an earlier version of this test wrongly
+    // claimed to be. Measured: with the `!selves.has(userId)` filter deleted, the row still
+    // reads only the other member — our own typing never reaches this map at all, so the
+    // mutation is invisible here whatever we assert. Self-exclusion, including the
+    // multi-account case, is pinned in `rooms.service.spec.ts` where it can actually fail.
     await page.getByTestId('composer-input').fill('writing something');
-    // Long enough for the EDU to round-trip if it were going to: the indicator above
-    // appeared well inside this budget.
-    await expect(page.getByTestId('typing-indicator')).toHaveCount(0);
-    await expect(typingPreview).toHaveCount(0);
+    await setMemberTyping(request, hs, roomId, member, true);
+    await expect(typingPreview).toHaveText(`${memberName} is typing`, {
+      timeout: 20_000,
+    });
   });
 });

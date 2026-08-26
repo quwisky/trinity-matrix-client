@@ -2002,7 +2002,13 @@ describe('RoomsService membersFor', () => {
         getRooms: () => rooms,
         getUserId: () => '@me:hs',
         getRoom: (roomId: string) =>
-          members[roomId] ? { getMembers: () => members[roomId] } : null,
+          members[roomId]
+            ? {
+                getMembers: () => members[roomId],
+                getMember: (userId: string) =>
+                  members[roomId].find((m) => m.userId === userId) ?? null,
+              }
+            : null,
         on: (event: string, handler: (...args: unknown[]) => void) => {
           handlers.set(event, handler);
         },
@@ -2011,18 +2017,34 @@ describe('RoomsService membersFor', () => {
         },
       };
       const { svc, matrix } = provideRooms(client);
+      // Self-exclusion spans EVERY signed-in account, not just the active one, so the stub
+      // has to name them — a bare provideRooms leaves accountIds empty and the local user
+      // announces themselves.
+      ngMocks.stubMember(matrix, 'accountIds', signal(['@me:hs']).asReadonly());
       svc.connect();
 
-      /** Flip a member's typing flag and fire the event the SDK would. */
+      /**
+       * Flip a member's typing flag and fire the event the SDK would.
+       *
+       * The event carries `user_ids` — the room's WHOLE typing set — because that is what
+       * `m.typing` is and what the service reads. A fake that omitted it would make the
+       * service look broken while the real one worked, and vice versa.
+       */
       const fire = (roomId: string, userId: string, typing: boolean) => {
         const member = members[roomId].find((m) => m.userId === userId);
         if (member) {
           member.typing = typing;
         }
-        handlers.get(RoomMemberEvent.Typing)?.({}, { roomId, userId });
+        const user_ids = members[roomId]
+          .filter((m) => m.typing)
+          .map((m) => m.userId);
+        handlers.get(RoomMemberEvent.Typing)?.(
+          { getContent: () => ({ user_ids }) },
+          { roomId, userId },
+        );
       };
 
-      return { svc, matrix, handlers, fire };
+      return { svc, matrix, handlers, fire, members };
     }
 
     it('projects a room typing set, excluding the local user', async () => {
@@ -2036,6 +2058,46 @@ describe('RoomsService membersFor', () => {
       fire('!a:hs', '@me:hs', true);
       await Promise.resolve();
       expect(svc.typingByRoom()['!a:hs']).toEqual(['Alice']);
+    });
+
+    it('excludes every signed-in account, not just the active one', async () => {
+      // A room both accounts are joined to renders as ONE row, so filtering only the active
+      // mxid let the user's own other account announce itself on their own room.
+      const { svc, matrix, fire, members } = setupTyping();
+      ngMocks.stubMember(
+        matrix,
+        'accountIds',
+        signal(['@me:hs', '@other:hs']).asReadonly(),
+      );
+      members['!a:hs'].push({
+        userId: '@other:hs',
+        name: 'Other Me',
+        typing: false,
+      });
+
+      fire('!a:hs', '@other:hs', true);
+      await Promise.resolve();
+      expect(svc.typingByRoom()['!a:hs']).toBeUndefined();
+
+      // …and a genuine stranger still comes through, so the filter is not just off.
+      fire('!a:hs', '@alice:hs', true);
+      await Promise.resolve();
+      expect(svc.typingByRoom()['!a:hs']).toEqual(['Alice']);
+    });
+
+    it('drops a room typing set when we leave the room', async () => {
+      // A left room stops syncing, so its members never emit the "stopped" transition. The
+      // key would survive the session and reappear on rejoin — frozen, because an unchanged
+      // set writes nothing.
+      const { svc, handlers, fire } = setupTyping();
+      fire('!a:hs', '@alice:hs', true);
+      await Promise.resolve();
+      expect(svc.typingByRoom()['!a:hs']).toEqual(['Alice']);
+
+      handlers.get(RoomEvent.MyMembership)?.({ roomId: '!a:hs' }, 'leave');
+      await Promise.resolve();
+
+      expect(svc.typingByRoom()['!a:hs']).toBeUndefined();
     });
 
     it('keys each room separately and drops a room that goes quiet', async () => {
