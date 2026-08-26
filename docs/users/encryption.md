@@ -78,8 +78,9 @@ the key against the stored record, imports your cross-signing identity, and swit
 message key backup. A wrong key is rejected with "That recovery key is incorrect."
 before anything changes.
 
-**Verify another device.** Compare emoji with a session that is already verified. No key
-typing, but you need the other session in front of you.
+**Verify another device.** Show or scan a QR code with a session that is already
+verified, or compare emoji when QR is unavailable. No key typing, but you need the
+other session in front of you.
 
 Both routes are also in Settings under Security: **Enter recovery key** and **Verify
 with another device**.

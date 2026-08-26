@@ -39,7 +39,9 @@
         @case ('requested') {
           @if (v.incoming) {
             @if (v.isSelfVerification) {
-              <h2 class="heading">Verify this device?</h2>
+              <h2 #stageHeading class="heading" tabindex="-1">
+                Verify this device?
+              </h2>
               <p class="text-muted-foreground">
                 Another of your sessions wants to verify this one
                 @if (v.otherDeviceId) {
@@ -54,7 +56,9 @@
                 send one. Naming them is the whole security control: the emoji only mean
                 anything if the user knows who they are comparing with, and out-of-band.
               -->
-              <h2 class="heading">Verify another user?</h2>
+              <h2 #stageHeading class="heading" tabindex="-1">
+                Verify another user?
+              </h2>
               <p class="text-muted-foreground">
                 <strong data-testid="verify-other-user">{{
                   v.otherUserId
@@ -83,7 +87,9 @@
               Decline
             </button>
           } @else {
-            <h2 class="heading">Waiting for your other device…</h2>
+            <h2 #stageHeading class="heading" tabindex="-1">
+              Waiting for your other device…
+            </h2>
             <p class="text-muted-foreground">
               Accept the verification request on your other session.
             </p>
@@ -92,7 +98,9 @@
         }
         @case ('ready') {
           @if (scanning()) {
-            <h2 class="heading">Scan the other device</h2>
+            <h2 #stageHeading class="heading" tabindex="-1">
+              Scan the other device
+            </h2>
             <p class="text-muted-foreground">
               The QR code must be on another device in front of you.
             </p>
@@ -106,7 +114,9 @@
               v.isSelfVerification &&
               (v.qrShowAvailable || (v.qrScanAvailable && cameraSupported))
             ) {
-              <h2 class="heading">Choose how to verify</h2>
+              <h2 #stageHeading class="heading" tabindex="-1">
+                Choose how to verify
+              </h2>
               <p class="text-muted-foreground">
                 Use a QR code when both devices are together, or compare emoji.
               </p>
@@ -134,7 +144,9 @@
                 </button>
               }
             } @else {
-              <h2 class="heading">Start the emoji check</h2>
+              <h2 #stageHeading class="heading" tabindex="-1">
+                Start the emoji check
+              </h2>
               <p class="text-muted-foreground">
                 Both sessions are ready. Begin comparing emoji.
               </p>
@@ -164,7 +176,9 @@
           }
         }
         @case ('qr-shown') {
-          <h2 class="heading">Scan this code with your other device</h2>
+          <h2 #stageHeading class="heading" tabindex="-1">
+            Scan this code with your other device
+          </h2>
           <div class="privacy-warning" role="note">
             <strong>Keep this code private.</strong> Do not share, screenshot,
             or show it while screen sharing. Only let the device in front of you
@@ -189,7 +203,9 @@
           </button>
         }
         @case ('qr-confirm') {
-          <h2 class="heading">Did your other device scan this code?</h2>
+          <h2 #stageHeading class="heading" tabindex="-1">
+            Did your other device scan this code?
+          </h2>
           <p class="text-muted-foreground">
             Confirm only if the device in front of you just scanned the QR code
             shown here.
@@ -214,7 +230,7 @@
           </button>
         }
         @case ('waiting') {
-          <h2 class="heading">Setting up…</h2>
+          <h2 #stageHeading class="heading" tabindex="-1">Setting up…</h2>
           <div class="center" role="status" aria-live="polite">
             <trn-spinner />
             <p>
@@ -225,7 +241,7 @@
           </div>
         }
         @case ('sas-shown') {
-          <h2 class="heading">Compare the emoji</h2>
+          <h2 #stageHeading class="heading" tabindex="-1">Compare the emoji</h2>
           @if (!v.isSelfVerification) {
             <!-- This is the moment trust is granted, so it is the moment that must
                  name the counterparty — "They match" here cross-signs THIS user. -->
@@ -249,7 +265,7 @@
         @case ('done') {
           <div class="center" role="status">
             <div class="result result--ok" aria-hidden="true">✓</div>
-            <h2 class="heading">Device verified</h2>
+            <h2 #stageHeading class="heading" tabindex="-1">Device verified</h2>
             <p class="text-muted-foreground">
               This session is now trusted. Your encrypted history will sync.
             </p>
@@ -259,7 +275,9 @@
         @case ('cancelled') {
           <div class="center" role="status">
             <div class="result result--bad" aria-hidden="true">⚠️</div>
-            <h2 class="heading">Verification stopped</h2>
+            <h2 #stageHeading class="heading" tabindex="-1">
+              Verification stopped
+            </h2>
             <p class="text-muted-foreground">{{ v.cancelReason }}</p>
             <button hlmBtn class="mt-4 w-full" (click)="finish()">Close</button>
           </div>
@@ -267,7 +285,9 @@
       }
     } @else {
       <!-- Routed entry: nothing in flight yet — offer to start. -->
-      <h2 class="heading">Verify with another device</h2>
+      <h2 #stageHeading class="heading" tabindex="-1">
+        Verify with another device
+      </h2>
       <p class="text-muted-foreground">
         Confirm this is really you by scanning a QR code or comparing emoji with
         another session that's already signed in — an alternative to your

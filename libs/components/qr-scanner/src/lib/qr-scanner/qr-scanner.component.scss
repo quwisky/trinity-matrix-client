@@ -27,7 +27,7 @@
   inset: 18%;
   border: 3px solid var(--trinity-accent);
   border-radius: calc(var(--radius) * 1.5);
-  box-shadow: 0 0 0 999px rgb(0 0 0 / 35%);
+  box-shadow: 0 0 0 999px var(--trinity-camera-scrim);
   pointer-events: none;
 }
 

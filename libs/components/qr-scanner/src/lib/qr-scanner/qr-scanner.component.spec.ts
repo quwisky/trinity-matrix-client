@@ -54,4 +54,26 @@ describe('QrScannerComponent', () => {
     expect(closeCamera).toHaveBeenCalledWith(stream);
     expect(cancelled).toBe(true);
   });
+
+  it('releases the camera when the app is hidden without auto-resuming', async () => {
+    const stream = { getTracks: () => [] } as unknown as MediaStream;
+    const closeCamera = vi.fn();
+    const { fixture } = await render(QrScannerComponent, {
+      providers: [
+        MockProvider(QrCodeService, {
+          openCamera: vi.fn().mockResolvedValue(stream),
+          closeCamera,
+        }),
+      ],
+    });
+    const cancelled = vi.fn();
+    fixture.componentInstance.cancelled.subscribe(cancelled);
+    await fixture.whenStable();
+
+    window.dispatchEvent(new Event('pagehide'));
+
+    expect(closeCamera).toHaveBeenCalledWith(stream);
+    expect(cancelled).toHaveBeenCalledOnce();
+    expect(TestBed.inject(QrCodeService).openCamera).toHaveBeenCalledOnce();
+  });
 });

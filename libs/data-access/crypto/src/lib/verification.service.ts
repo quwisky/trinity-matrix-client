@@ -36,6 +36,8 @@ export interface SasEmoji {
 
 /** Plain view model of the active verification — no SDK types leak to the UI. */
 export interface VerificationView {
+  /** Monotonic identity for this request, used to scope transient UI intent. */
+  requestId: number;
   stage: VerificationStage;
   otherUserId: string | null;
   otherDeviceId: string | null;
@@ -84,6 +86,8 @@ export class VerificationService {
   private qrCodeData: Uint8ClampedArray | null = null;
   private qrScanStarted = false;
   private sasConfirmed = false;
+  private requestSequence = 0;
+  private requestId = 0;
 
   private readonly _active = signal<VerificationView | null>(null);
   /** The active verification, or `null` when none is in flight. */
@@ -266,7 +270,14 @@ export class VerificationService {
           if (!data.length) {
             throw new Error('The scanned QR code was empty.');
           }
-          const verifier = await this.requireSelfRequest().scanQRCode(data);
+          const request = this.requireSelfRequest();
+          const verifier = await request.scanQRCode(data);
+          if (request !== this.request || this.isTerminal(request)) {
+            verifier.cancel(
+              new Error('The verification request changed while scanning.'),
+            );
+            return;
+          }
           this.qrScanStarted = true;
           this.attachVerifier(verifier);
           this.recompute();
@@ -349,6 +360,7 @@ export class VerificationService {
   private adopt(request: VerificationRequest): void {
     this.clearRequest();
     this.request = request;
+    this.requestId = ++this.requestSequence;
     request.on(VerificationRequestEvent.Change, this.onRequestChange);
     if (request.phase === VerificationPhase.Started && request.verifier) {
       this.attachVerifier(request.verifier);
@@ -406,6 +418,7 @@ export class VerificationService {
       return;
     }
     this._active.set({
+      requestId: this.requestId,
       stage: this.stageOf(req),
       otherUserId: req.otherUserId ?? null,
       otherDeviceId: req.otherDeviceId ?? null,

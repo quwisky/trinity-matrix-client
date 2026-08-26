@@ -409,6 +409,42 @@ describe('VerificationService', () => {
     expect(svc.active()?.stage).toBe('waiting');
   });
 
+  it('cancels a late QR verifier instead of attaching it to a replacement request', async () => {
+    const { svc, client } = setup();
+    svc.connect();
+    const oldRequest = fakeRequest({
+      phase: VerificationPhase.Ready,
+      supportedMethods: ['m.qr_code.show.v1'],
+    });
+    let resolveScan!: (verifier: ReturnType<typeof fakeVerifier>) => void;
+    oldRequest.scanQRCode.mockReturnValue(
+      new Promise((resolve) => {
+        resolveScan = resolve;
+      }),
+    );
+    client.emit(CryptoEvent.VerificationRequestReceived, oldRequest);
+    const scan = firstValueFrom(
+      svc.scanQr(new Uint8ClampedArray([0, 255, 7, 128])),
+    );
+
+    oldRequest.setPhase(VerificationPhase.Cancelled);
+    const replacement = fakeRequest({
+      phase: VerificationPhase.Ready,
+      otherDeviceId: 'REPLACEMENT',
+    });
+    client.emit(CryptoEvent.VerificationRequestReceived, replacement);
+    const staleVerifier = fakeVerifier();
+    resolveScan(staleVerifier);
+    await scan;
+
+    expect(staleVerifier.cancel).toHaveBeenCalledOnce();
+    expect(staleVerifier.verify).not.toHaveBeenCalled();
+    expect(svc.active()).toMatchObject({
+      stage: 'ready',
+      otherDeviceId: 'REPLACEMENT',
+    });
+  });
+
   it('asks before reciprocating a scan and confirms through the SDK callback', async () => {
     const { svc, client } = setup();
     svc.connect();

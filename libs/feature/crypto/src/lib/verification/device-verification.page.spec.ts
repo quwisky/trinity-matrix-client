@@ -17,6 +17,7 @@ import { DeviceVerificationPage } from './device-verification.page';
 
 function view(partial: Partial<VerificationView>): VerificationView {
   return {
+    requestId: 1,
     stage: 'requested',
     otherUserId: '@me:hs',
     otherDeviceId: 'OTHER',
@@ -214,6 +215,23 @@ describe('DeviceVerificationPage', () => {
     expect(container.textContent).toContain('Do not share, screenshot');
   });
 
+  it('overwrites the rendered QR data URL when the sensitive payload clears', async () => {
+    const active = signal(
+      view({
+        stage: 'qr-shown',
+        qrCodeData: new Uint8ClampedArray([0, 255, 7]),
+      }),
+    );
+    const { fixture } = await renderPage(active);
+    expect(fixture.componentInstance.qrCodeUrl()).not.toBeNull();
+
+    active.set(view({ requestId: 1, stage: 'waiting' }));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.qrCodeUrl()).toBeNull();
+  });
+
   it('passes decoded scanner bytes to the verification service', async () => {
     const { fixture, svc, container } = await renderPage(
       signal(view({ stage: 'ready', qrScanAvailable: true })),
@@ -228,6 +246,41 @@ describe('DeviceVerificationPage', () => {
     scanner.componentInstance.scanned.emit(payload);
 
     expect(svc.scanQr).toHaveBeenCalledWith(payload);
+  });
+
+  it('does not carry scanner intent into a replacement request', async () => {
+    const active = signal(
+      view({ stage: 'ready', requestId: 1, qrScanAvailable: true }),
+    );
+    const { fixture, container } = await renderPage(active);
+    fireEvent.click(button(container, 'Scan a QR code'));
+    await fixture.whenStable();
+    expect(
+      fixture.debugElement.query(By.directive(QrScannerComponent)),
+    ).not.toBeNull();
+
+    active.set(view({ stage: 'ready', requestId: 2, qrScanAvailable: true }));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(
+      fixture.debugElement.query(By.directive(QrScannerComponent)),
+    ).toBeNull();
+    expect(container.textContent).toContain('Choose how to verify');
+  });
+
+  it('moves focus to the heading when a security-critical stage changes', async () => {
+    const active = signal(view({ stage: 'ready', requestId: 1 }));
+    const { fixture } = await renderPage(active);
+
+    active.set(view({ stage: 'qr-confirm', requestId: 1 }));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await Promise.resolve();
+
+    expect(document.activeElement?.textContent).toContain(
+      'Did your other device scan this code?',
+    );
   });
 
   it('confirms that the other device scanned the displayed code', async () => {

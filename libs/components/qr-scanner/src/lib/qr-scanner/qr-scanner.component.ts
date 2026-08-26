@@ -1,3 +1,4 @@
+import { DOCUMENT } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -24,6 +25,7 @@ type ScannerStatus = 'starting' | 'scanning' | 'error';
 })
 export class QrScannerComponent implements AfterViewInit, OnDestroy {
   private readonly qrCode = inject(QrCodeService);
+  private readonly document = inject(DOCUMENT);
   private readonly preview =
     viewChild.required<ElementRef<HTMLVideoElement>>('preview');
   private readonly canvas =
@@ -31,6 +33,8 @@ export class QrScannerComponent implements AfterViewInit, OnDestroy {
   private stream: MediaStream | null = null;
   private animationFrame: number | null = null;
   private destroyed = false;
+  private scanSessionActive = false;
+  private scanGeneration = 0;
   private lastScanAt = 0;
 
   readonly scanned = output<Uint8ClampedArray>();
@@ -39,11 +43,18 @@ export class QrScannerComponent implements AfterViewInit, OnDestroy {
   readonly error = signal<string | null>(null);
 
   ngAfterViewInit(): void {
+    this.document.addEventListener('visibilitychange', this.onVisibilityChange);
+    window.addEventListener('pagehide', this.onPageHide);
     void this.start();
   }
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    this.document.removeEventListener(
+      'visibilitychange',
+      this.onVisibilityChange,
+    );
+    window.removeEventListener('pagehide', this.onPageHide);
     this.stop();
   }
 
@@ -58,11 +69,13 @@ export class QrScannerComponent implements AfterViewInit, OnDestroy {
 
   private async start(): Promise<void> {
     this.stop();
+    const generation = ++this.scanGeneration;
+    this.scanSessionActive = true;
     this.status.set('starting');
     this.error.set(null);
     try {
       const stream = await this.qrCode.openCamera();
-      if (this.destroyed) {
+      if (this.destroyed || generation !== this.scanGeneration) {
         this.qrCode.closeCamera(stream);
         return;
       }
@@ -112,6 +125,8 @@ export class QrScannerComponent implements AfterViewInit, OnDestroy {
   }
 
   private stop(): void {
+    this.scanSessionActive = false;
+    this.scanGeneration += 1;
     if (this.animationFrame !== null) {
       cancelAnimationFrame(this.animationFrame);
       this.animationFrame = null;
@@ -122,6 +137,24 @@ export class QrScannerComponent implements AfterViewInit, OnDestroy {
     if (element) {
       element.nativeElement.srcObject = null;
     }
+  }
+
+  private readonly onVisibilityChange = (): void => {
+    if (this.document.hidden) {
+      this.cancelForLifecycle();
+    }
+  };
+
+  private readonly onPageHide = (): void => {
+    this.cancelForLifecycle();
+  };
+
+  private cancelForLifecycle(): void {
+    if (!this.scanSessionActive) {
+      return;
+    }
+    this.stop();
+    this.cancelled.emit();
   }
 }
 

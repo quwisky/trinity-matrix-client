@@ -81,6 +81,7 @@
   --trinity-shadow-raised: 0 1px 2px rgb(0 0 0 / 8%);
   --trinity-shadow-floating: 0 4px 12px rgb(0 0 0 / 12%);
   --trinity-shadow-overlay: 0 12px 32px rgb(0 0 0 / 18%);
+  --trinity-camera-scrim: rgb(0 0 0 / 35%);
 
   // --- Z-index layers -----------------------------------------------------------
   // Named because the bare numbers in the tree (5, 10, 20, 40) carry no relation to
@@ -320,6 +321,7 @@
   --trinity-shadow-raised: 0 1px 2px rgb(0 0 0 / 30%);
   --trinity-shadow-floating: 0 4px 12px rgb(0 0 0 / 40%);
   --trinity-shadow-overlay: 0 12px 32px rgb(0 0 0 / 55%);
+  --trinity-camera-scrim: rgb(0 0 0 / 45%);
   --trinity-text-muted: #aab0b7; // 4.59:1 on --trinity-active (was #949ba4, 3.57:1)
   --trinity-link: #a4abf8; // 4.66:1 on the worst dark surface (blurple was 2.18:1)
   --trinity-text-bright: #f2f3f5;

@@ -18,6 +18,7 @@ import { VerificationHostComponent } from './verification-host.component';
 
 function incoming(): VerificationView {
   return {
+    requestId: 1,
     stage: 'requested',
     otherUserId: '@me:hs',
     otherDeviceId: 'PHONE',
