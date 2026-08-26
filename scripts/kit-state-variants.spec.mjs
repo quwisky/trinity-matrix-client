@@ -112,6 +112,57 @@ const declared = new Set(
   ),
 );
 
+const PRESET = 'node_modules/@spartan-ng/brain/hlm-tailwind-preset.css';
+
+/**
+ * Custom UTILITIES the preset defines, which the theme must too if the kit reaches for one.
+ *
+ * The same shape as the variant mismatch below, and it bit twice: `hlm-select-content` has
+ * carried `no-scrollbar` since it was vendored, and that class compiled to nothing at all —
+ * the preset that defines it is not imported, so the select panel drew a scrollbar the kit
+ * meant to suppress. Nothing could see it: the class is present in the DOM, the CSS is
+ * valid, and there is simply no rule.
+ *
+ * Both sides are derived. The preset is read for what it offers; `libs/spartan` is read for
+ * what it uses; the theme is read for what it defines. A utility the kit stops using drops
+ * out on its own.
+ */
+function undefinedKitUtilities() {
+  const preset = read(PRESET);
+  const offered = [...preset.matchAll(/@utility\s+([a-z][a-z0-9-]*)/g)].map(
+    ([, name]) => name,
+  );
+  const theme = read(THEME);
+  const defined = new Set(
+    [...theme.matchAll(/@utility\s+([a-z][a-z0-9-]*)/g)].map(
+      ([, name]) => name,
+    ),
+  );
+  const kit = globSync('libs/spartan/**/*.ts', { cwd: workspaceRoot })
+    .filter((file) => !file.endsWith('.spec.ts'))
+    .map((file) => read(file))
+    .join('\n');
+
+  return offered.filter(
+    (name) =>
+      !defined.has(name) &&
+      new RegExp(`(?<![\\w-])${name}(?![\\w-])`).test(kit) &&
+      // Tailwind ships its own `container`; the preset only re-tunes it.
+      name !== 'container',
+  );
+}
+
+describe('kit utilities', () => {
+  it('reads the preset at all, so an empty sweep cannot pass', () => {
+    const offered = [...read(PRESET).matchAll(/@utility\s+([a-z][a-z0-9-]*)/g)];
+    expect(offered.length).toBeGreaterThan(5);
+  });
+
+  it('defines every preset utility the vendored kit actually uses', () => {
+    expect(undefinedKitUtilities()).toEqual([]);
+  });
+});
+
 describe('kit state variants', () => {
   it('reads the kit and the theme, so an empty sweep cannot pass', () => {
     expect(sources.length).toBeGreaterThan(50);
