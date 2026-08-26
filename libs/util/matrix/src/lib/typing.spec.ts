@@ -11,24 +11,24 @@ describe('formatTypingNotice', () => {
   });
 
   it('names a single typist', () => {
-    expect(formatTypingNotice(['Alice'])).toBe('Alice is typing…');
+    expect(formatTypingNotice(['Alice'])).toBe('Alice is typing');
   });
 
   it('joins two typists with "and"', () => {
     expect(formatTypingNotice(['Alice', 'Bob'])).toBe(
-      'Alice and Bob are typing…',
+      'Alice and Bob are typing',
     );
   });
 
   it('comma-separates three typists', () => {
     expect(formatTypingNotice(['Alice', 'Bob', 'Carol'])).toBe(
-      'Alice, Bob and Carol are typing…',
+      'Alice, Bob and Carol are typing',
     );
   });
 
   it('summarises four or more typists', () => {
     expect(formatTypingNotice(['Alice', 'Bob', 'Carol', 'Dave'])).toBe(
-      'Several people are typing…',
+      'Several people are typing',
     );
   });
 

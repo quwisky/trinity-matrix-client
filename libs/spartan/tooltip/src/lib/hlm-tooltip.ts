@@ -7,11 +7,24 @@ import {
 import { hlm } from '@trinity/helm/utils';
 import { cva } from 'class-variance-authority';
 
+/**
+ * ┌─ VENDORED FILE — @spartan-ng/cli generated, then diverged ────────────────────────────┐
+ *
+ * One deliberate local override: the three `animate-in` / `animate-out` triggers carry
+ * `motion-safe:`, matching `hlm-dropdown-menu`. Upstream ships them bare, which left the
+ * tooltip's reduced-motion behaviour resting entirely on the blanket `!important` reset in
+ * `apps/trinity/src/global.scss` — a file this component knows nothing about. Note all
+ * THREE need it: `data-closed:animate-out` and `data-[state=delayed-open]:animate-in` are
+ * as much an animation as `data-open:animate-in`.
+ *
+ * Pinned by scripts/kit-reduced-motion.spec.mjs.
+ * └───────────────────────────────────────────────────────────────────────────────────────┘
+ */
 export const DEFAULT_TOOLTIP_SVG_CLASS =
   'bg-foreground fill-foreground z-50 block size-2.5 translate-y-[calc(-50%-2px)] rotate-45 rounded-xs';
 
 export const DEFAULT_TOOLTIP_CONTENT_CLASSES = hlm(
-  'z-50 w-fit origin-(--radix-tooltip-content-transform-origin) rounded-md bg-foreground px-3 py-1.5 text-xs text-balance text-background data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95',
+  'z-50 w-fit origin-(--radix-tooltip-content-transform-origin) rounded-md bg-foreground px-3 py-1.5 text-xs text-balance text-background motion-safe:data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 motion-safe:data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 motion-safe:data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95',
 );
 
 export const tooltipPositionVariants = cva('absolute', {

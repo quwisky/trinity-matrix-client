@@ -146,6 +146,12 @@ export interface TimelineContext {
  * `matrix.instance` — the listener detach and the typing-stop both. It does take the
  * shared `coalesce`, which is the half that applies.
  */
+/**
+ * Which composer a typing report came from. `m.typing` is one flag per room; this says who
+ * is holding it up, so the stop is only sent when every surface has gone quiet.
+ */
+export type TypingOwner = 'room' | 'thread';
+
 @Injectable({ providedIn: 'root' })
 export class TimelineService {
   private readonly matrix = inject(MatrixClientService);
@@ -173,7 +179,7 @@ export class TimelineService {
 
   // Display names of the *other* members currently typing in the open room, projected
   // from the room's `m.typing` ephemeral (via RoomMemberEvent.Typing). Drives the
-  // "X is typing…" row under the timeline.
+  // "X is typing" row under the timeline.
   private readonly _typingNames = signal<string[]>([]);
   readonly typingNames = this._typingNames.asReadonly();
 
@@ -193,6 +199,16 @@ export class TimelineService {
   // refresh the flag at most every {@link TYPING_REFRESH_MS} instead of per keystroke;
   // 0 means we are not currently marked as typing.
   private typingSentAt = 0;
+
+  /**
+   * Which composers currently hold text.
+   *
+   * `m.typing` is one flag per room, but two surfaces feed it — the timeline composer and
+   * the thread panel's. With a single flag, sending in the thread cleared the room's typing
+   * state while the main composer still held a draft, and nothing re-announced it until the
+   * next keystroke. The stop goes out when the LAST owner goes quiet.
+   */
+  private readonly typingOwners = new Set<TypingOwner>();
 
   private roomId: string | null = null;
 
@@ -654,11 +670,23 @@ export class TimelineService {
    * keeps the flag alive for {@link TYPING_TIMEOUT_MS}, so it never lapses mid-compose
    * yet we don't hit the network on every keystroke. A no-op when no room is open.
    */
-  setTyping(typing: boolean): void {
+  setTyping(typing: boolean, owner: TypingOwner = 'room'): void {
     const ctx = this.openContext();
     if (!ctx) {
       return;
     }
+    if (typing) {
+      this.typingOwners.add(owner);
+    } else {
+      this.typingOwners.delete(owner);
+      if (this.typingOwners.size) {
+        // Another composer still holds a draft. Sending the stop here would mark us as not
+        // typing while the main composer's text sits there — and nothing re-announces until
+        // the next keystroke, so the window is unbounded rather than TYPING_TIMEOUT_MS.
+        return;
+      }
+    }
+
     const now = Date.now();
     if (typing) {
       if (this.typingSentAt && now - this.typingSentAt < TYPING_REFRESH_MS) {
@@ -692,6 +720,7 @@ export class TimelineService {
       return;
     }
     this.typingSentAt = 0;
+    this.typingOwners.clear();
     // Caught, unlike the composer's `setTyping`: this fires during teardown, where the room
     // may already be one the account has left, and there is no longer any surface to report
     // it on. Same shape as `setRoomReadMarkers` in RoomsService.

@@ -251,9 +251,12 @@ test.describe('Keyword notifications', () => {
     // The control that makes the absence meaningful: the message DID arrive, so a
     // missing highlight is the mute winning rather than nothing having happened.
     const channel = page.locator('.channel', { hasText: roomName }).first();
-    await expect(channel.locator('.channel__preview')).toContainText(KEYWORD, {
-      timeout: 30_000,
-    });
+    // `:not(...--typing)`: the preview line now swaps to "X is typing" while anybody in
+    // the room is typing, so an unscoped locator can catch the transient text instead of
+    // the message and fail against correct code.
+    await expect(
+      channel.locator('.channel__preview:not(.channel__preview--typing)'),
+    ).toContainText(KEYWORD, { timeout: 30_000 });
     await expect(
       channel.locator('.channel__badge:not(.channel__badge--muted)'),
     ).toHaveCount(0);

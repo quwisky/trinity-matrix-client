@@ -1,5 +1,5 @@
 // Shared styling for the simple and virtual message lists — they render the same
-// timeline chrome (scroll region, dividers, jump pills, empty/typing states) and
+// timeline chrome (scroll region, dividers, jump pills, empty state) and
 // only differ in windowing. @use'd by both component stylesheets so a token or
 // contrast fix lives in one place.
 @use '../styles/mixins' as *;
@@ -57,14 +57,6 @@
   text-align: center;
   padding: 8px 0 12px;
   font-size: 13px;
-  color: var(--trinity-text-muted);
-}
-
-.typing-indicator {
-  padding: 2px 16px 4px;
-  font-size: 13px;
-  font-style: italic;
-  line-height: 1.2rem;
   color: var(--trinity-text-muted);
 }
 

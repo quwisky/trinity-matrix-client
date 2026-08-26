@@ -6,6 +6,7 @@ import {
   MatrixEventEvent,
   ReceiptType,
   RoomEvent,
+  RoomMemberEvent,
   RoomStateEvent,
 } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
@@ -1976,5 +1977,181 @@ describe('RoomsService membersFor', () => {
     await Promise.resolve();
 
     expect(reads).toBe(1);
+  });
+
+  describe('typing, per room', () => {
+    /** A room whose members report a typing state, plus the client that owns it. */
+    function setupTyping() {
+      const handlers = new Map<string, (...args: unknown[]) => void>();
+      const members: Record<
+        string,
+        { userId: string; name: string; typing: boolean }[]
+      > = {
+        '!a:hs': [
+          { userId: '@alice:hs', name: 'Alice', typing: false },
+          { userId: '@me:hs', name: 'Me', typing: false },
+        ],
+        '!b:hs': [{ userId: '@bob:hs', name: 'Bob', typing: false }],
+      };
+      const rooms = [
+        fakeRoom({ roomId: '!a:hs', name: 'A' }),
+        fakeRoom({ roomId: '!b:hs', name: 'B' }),
+      ];
+      const client = {
+        baseUrl: 'https://hs.example',
+        getRooms: () => rooms,
+        getUserId: () => '@me:hs',
+        getRoom: (roomId: string) =>
+          members[roomId]
+            ? {
+                getMembers: () => members[roomId],
+                getMember: (userId: string) =>
+                  members[roomId].find((m) => m.userId === userId) ?? null,
+              }
+            : null,
+        on: (event: string, handler: (...args: unknown[]) => void) => {
+          handlers.set(event, handler);
+        },
+        off: (event: string) => {
+          handlers.delete(event);
+        },
+      };
+      const { svc, matrix } = provideRooms(client);
+      // Self-exclusion spans EVERY signed-in account, not just the active one, so the stub
+      // has to name them — a bare provideRooms leaves accountIds empty and the local user
+      // announces themselves.
+      ngMocks.stubMember(matrix, 'accountIds', signal(['@me:hs']).asReadonly());
+      svc.connect();
+
+      /**
+       * Flip a member's typing flag and fire the event the SDK would.
+       *
+       * The event carries `user_ids` — the room's WHOLE typing set — because that is what
+       * `m.typing` is and what the service reads. A fake that omitted it would make the
+       * service look broken while the real one worked, and vice versa.
+       */
+      const fire = (roomId: string, userId: string, typing: boolean) => {
+        const member = members[roomId].find((m) => m.userId === userId);
+        if (member) {
+          member.typing = typing;
+        }
+        const user_ids = members[roomId]
+          .filter((m) => m.typing)
+          .map((m) => m.userId);
+        handlers.get(RoomMemberEvent.Typing)?.(
+          { getContent: () => ({ user_ids }) },
+          { roomId, userId },
+        );
+      };
+
+      return { svc, matrix, handlers, fire, members };
+    }
+
+    it('projects a room typing set, excluding the local user', async () => {
+      const { svc, fire } = setupTyping();
+
+      fire('!a:hs', '@alice:hs', true);
+      await Promise.resolve();
+      expect(svc.typingByRoom()['!a:hs']).toEqual(['Alice']);
+
+      // Self must never appear: "You are typing" on your own room is the failure.
+      fire('!a:hs', '@me:hs', true);
+      await Promise.resolve();
+      expect(svc.typingByRoom()['!a:hs']).toEqual(['Alice']);
+    });
+
+    it('excludes every signed-in account, not just the active one', async () => {
+      // A room both accounts are joined to renders as ONE row, so filtering only the active
+      // mxid let the user's own other account announce itself on their own room.
+      const { svc, matrix, fire, members } = setupTyping();
+      ngMocks.stubMember(
+        matrix,
+        'accountIds',
+        signal(['@me:hs', '@other:hs']).asReadonly(),
+      );
+      members['!a:hs'].push({
+        userId: '@other:hs',
+        name: 'Other Me',
+        typing: false,
+      });
+
+      fire('!a:hs', '@other:hs', true);
+      await Promise.resolve();
+      expect(svc.typingByRoom()['!a:hs']).toBeUndefined();
+
+      // …and a genuine stranger still comes through, so the filter is not just off.
+      fire('!a:hs', '@alice:hs', true);
+      await Promise.resolve();
+      expect(svc.typingByRoom()['!a:hs']).toEqual(['Alice']);
+    });
+
+    it('drops a room typing set when we leave the room', async () => {
+      // A left room stops syncing, so its members never emit the "stopped" transition. The
+      // key would survive the session and reappear on rejoin — frozen, because an unchanged
+      // set writes nothing.
+      const { svc, handlers, fire } = setupTyping();
+      fire('!a:hs', '@alice:hs', true);
+      await Promise.resolve();
+      expect(svc.typingByRoom()['!a:hs']).toEqual(['Alice']);
+
+      handlers.get(RoomEvent.MyMembership)?.({ roomId: '!a:hs' }, 'leave');
+      await Promise.resolve();
+
+      expect(svc.typingByRoom()['!a:hs']).toBeUndefined();
+    });
+
+    it('keys each room separately and drops a room that goes quiet', async () => {
+      const { svc, fire } = setupTyping();
+
+      fire('!a:hs', '@alice:hs', true);
+      fire('!b:hs', '@bob:hs', true);
+      await Promise.resolve();
+      expect(svc.typingByRoom()).toEqual({
+        '!a:hs': ['Alice'],
+        '!b:hs': ['Bob'],
+      });
+
+      fire('!a:hs', '@alice:hs', false);
+      await Promise.resolve();
+      expect(svc.typingByRoom()).toEqual({ '!b:hs': ['Bob'] });
+    });
+
+    it('writes nothing when a room typing set is unchanged', async () => {
+      const { svc, fire } = setupTyping();
+
+      // Positive control FIRST: without it the identity check below passes when the
+      // listener was never registered at all, comparing undefined to undefined.
+      fire('!a:hs', '@alice:hs', true);
+      await Promise.resolve();
+      const first = svc.typingByRoom();
+      expect(first['!a:hs']).toEqual(['Alice']);
+
+      // A repeat EDU with the same set. Coalesced, so the flush is what makes this a
+      // real negative rather than a vacuous one.
+      fire('!a:hs', '@alice:hs', true);
+      await Promise.resolve();
+      expect(svc.typingByRoom()).toBe(first);
+
+      // …and it still CAN change, or the assertion above is satisfied by a dead writer.
+      fire('!b:hs', '@bob:hs', true);
+      await Promise.resolve();
+      expect(svc.typingByRoom()).not.toBe(first);
+    });
+
+    it('detaches the listener and clears the map on disconnect', async () => {
+      const { svc, handlers, fire } = setupTyping();
+
+      fire('!a:hs', '@alice:hs', true);
+      await Promise.resolve();
+      expect(svc.typingByRoom()['!a:hs']).toEqual(['Alice']);
+
+      svc.disconnect();
+      await Promise.resolve();
+
+      // Both halves matter. A stale line naming the OUTGOING account's typists is the
+      // bug the surrounding `reset` comments exist to prevent.
+      expect(handlers.has(RoomMemberEvent.Typing)).toBe(false);
+      expect(svc.typingByRoom()).toEqual({});
+    });
   });
 });

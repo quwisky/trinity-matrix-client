@@ -64,16 +64,7 @@
   }
 </div>
 
-@if (typingLabel(); as label) {
-  <div
-    class="typing-indicator"
-    role="status"
-    aria-live="polite"
-    data-testid="typing-indicator"
-  >
-    {{ label }}
-  </div>
-}
+<trn-typing-indicator [names]="typingNames()" />
 
 <trn-message-composer
   [roomId]="roomId()"

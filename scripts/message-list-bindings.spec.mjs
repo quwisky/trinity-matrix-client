@@ -40,22 +40,69 @@ const template = readFileSync(
  * the tag must self-close. Both are asserted rather than assumed: this reads source text, so
  * every parsing assumption it makes is a way for it to stop guarding without saying so.
  */
-function bindingsOf(elementName) {
-  const open = template.indexOf(`<${elementName}`);
+function bindingsOf(elementName, source = template) {
+  const open = source.indexOf(`<${elementName}`);
   if (open === -1) {
     return null;
   }
-  const close = template.indexOf('/>', open);
+  const close = source.indexOf('/>', open);
   if (close === -1) {
     return null;
   }
-  const [tagLine, ...bindingLines] = template.slice(open, close).split('\n');
+  const [tagLine, ...bindingLines] = source.slice(open, close).split('\n');
   // `<trn-x` and nothing else. A binding sharing the line would be silently dropped.
   if (tagLine.trim() !== `<${elementName}`) {
     return null;
   }
   return new Set(bindingLines.map((line) => line.trim()).filter(Boolean));
 }
+
+/**
+ * The bindings on a SINGLE-LINE self-closing element, as a set.
+ *
+ * `bindingsOf` above requires the tag alone on its first line, which is how prettier formats
+ * a thirty-binding element and NOT how it formats a short one: `<trn-typing-indicator
+ * [names]="typingNames()" />` fits in 47 characters and stays on one line. Feeding that to
+ * `bindingsOf` returns null, which would compare null to null and pass while guarding
+ * nothing — so the shape gets its own parser rather than a loosened shared one.
+ */
+function inlineBindingsOf(elementName, source) {
+  const open = source.indexOf(`<${elementName}`);
+  if (open === -1) {
+    return null;
+  }
+  const close = source.indexOf('/>', open);
+  if (close === -1) {
+    return null;
+  }
+  const body = source.slice(open + elementName.length + 1, close);
+  // The `/>` found above is only THIS element's if nothing closed a tag before it. Without
+  // this, an element rewritten as `<trn-x …></trn-x>` runs the scan on to the next `/>` in
+  // the file — measured, that picked up `<trn-message-composer` and all twenty of its
+  // bindings, and every assertion below still passed while comparing the wrong element.
+  // `bindingsOf` defends against the same thing with its tag-line check.
+  if (body.includes('>')) {
+    return null;
+  }
+  return new Set(body.trim().split(/\s+/).filter(Boolean));
+}
+
+const listTemplates = {
+  virtual:
+    'libs/feature/rooms/src/lib/message-list/virtual-message-list/virtual-message-list.component.html',
+  simple:
+    'libs/feature/rooms/src/lib/message-list/simple-message-list/simple-message-list.component.html',
+};
+
+const typingBindings = Object.fromEntries(
+  Object.entries(listTemplates).map(([key, path]) => [
+    key,
+    inlineBindingsOf(
+      'trn-typing-indicator',
+      readFileSync(join(workspaceRoot, path), 'utf8'),
+    ),
+  ]),
+);
 
 const virtual = bindingsOf('trn-virtual-message-list');
 const simple = bindingsOf('trn-simple-message-list');
@@ -79,5 +126,33 @@ describe('message list bindings', () => {
       onlyVirtual: [],
       onlySimple: [],
     });
+  });
+
+  it('finds the typing indicator in both list templates', () => {
+    // Same anti-vacuity check as above, and for the same reason: two nulls compare equal.
+    expect(typingBindings.virtual).not.toBeNull();
+    expect(typingBindings.simple).not.toBeNull();
+    expect(typingBindings.virtual).toContain('[names]="typingNames()"');
+  });
+
+  it('binds the typing indicator identically in both lists', () => {
+    expect([...(typingBindings.virtual ?? [])].sort()).toEqual(
+      [...(typingBindings.simple ?? [])].sort(),
+    );
+  });
+
+  it('leaves the announcement to the lists, which own it', () => {
+    // `announce` defaults true and is set false ONLY in the thread panel, whose typists are
+    // the room's and are already announced by the list behind it. A list opting out would
+    // silence the typing announcement for screen readers altogether — and symmetrically, so
+    // the identity check above cannot see it.
+    for (const [list, bindings] of Object.entries(typingBindings)) {
+      expect(
+        [...(bindings ?? [])].filter((binding) =>
+          binding.startsWith('[announce]'),
+        ),
+        `${list} list must not opt out of announcing`,
+      ).toEqual([]);
+    }
   });
 });

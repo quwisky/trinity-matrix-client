@@ -65,6 +65,15 @@ const notAtBottom = (cmp: SimpleMessageListComponent): boolean =>
   (cmp as unknown as { notAtBottom: () => boolean }).notAtBottom();
 
 /**
+ * An element's text with runs of whitespace collapsed.
+ *
+ * The typing row interleaves its sentence with empty dot spans, so `textContent` carries
+ * interior newlines that a bare `.trim()` only happens to survive.
+ */
+const text = (el: Element | null | undefined): string =>
+  (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
+
+/**
  * The element that follows a divider in the timeline.
  *
  * Dividers are a component now, so the `.day-divider` / `.new-divider` element the tests
@@ -705,30 +714,22 @@ describe('SimpleMessageListComponent', () => {
       expect(reacted).toBe(false);
     });
 
-    it('derives the typing label from the typing member names', async () => {
-      const { fixture } = await render(SimpleMessageListComponent, {
-        inputs: { typingNames: [] },
-        providers: [MockProvider(TrnAlertService)],
-      });
-      const cmp = fixture.componentInstance;
-      expect(cmp.typingLabel()).toBe('');
-
-      fixture.componentRef.setInput('typingNames', ['Alice', 'Bob']);
-      fixture.detectChanges();
-      expect(cmp.typingLabel()).toBe('Alice and Bob are typing…');
-    });
-
-    it('shows the typing row only while someone is typing', async () => {
+    // The detail lives in `typing-indicator.component.spec.ts`; what the list owes is the
+    // wiring — its own typingNames input reaching the child that renders them.
+    it('feeds the typing names to the indicator', async () => {
       const { fixture, container } = await render(SimpleMessageListComponent, {
-        inputs: { typingNames: ['Alice'] },
+        inputs: { typingNames: ['Alice', 'Bob'] },
         providers: [MockProvider(TrnAlertService)],
       });
-      const indicator = () => container.querySelector('.typing-indicator');
-      expect(indicator()?.textContent?.trim()).toBe('Alice is typing…');
+      expect(text(container.querySelector('.typing-indicator'))).toBe(
+        'Alice and Bob are typing',
+      );
 
       fixture.componentRef.setInput('typingNames', []);
       fixture.detectChanges();
-      expect(indicator()).toBeNull();
+      expect(container.querySelector('.typing-indicator')).toBeNull();
+      // The slot stays: it is what keeps the scroll region from resizing.
+      expect(container.querySelector('.typing-slot')).not.toBeNull();
     });
 
     it('routes a submit to editMessage while editing, then clears the target', async () => {

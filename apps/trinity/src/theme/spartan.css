@@ -62,9 +62,11 @@
  * via `_dataState()`), so their enter/exit animations start working here. Both are safe:
  * brain already calls `waitForElementAnimations` before detaching, and the attribute is set
  * in the same synchronous task as the attach, so nothing paints in the closed state first.
- * Neither carries a `motion-safe:` guard the way `hlm-dropdown-menu` does, so reduced motion
- * for those two rests on the blanket rule in `global.scss` — which `variables.scss` already
- * records as load-bearing for exactly this reason.
+ * Both now carry a `motion-safe:` guard the way `hlm-dropdown-menu` does, so reduced motion
+ * for them no longer rests on the blanket rule in `global.scss`. Pinned by
+ * `kit-reduced-motion.spec.mjs`, and measured in `settings.spec.mts`: without the prefix the
+ * panel resolves the `enter` keyframes even under the blanket, because that rule sets
+ * `animation-duration` and `-iteration-count` and never touches `animation-name`.
  *
  * `kit-state-variants.spec.mjs` pins every pairing including the presence branch;
  * `switch-state.spec.mts`, `kit-state-styling.spec.mts` and `space-room-order.spec.mts`
@@ -265,6 +267,30 @@
 
   100% {
     transform: translateX(250%) scaleX(0.4);
+  }
+}
+
+/*
+ * The indeterminate sweep's own reduced-motion guard.
+ *
+ * `HlmProgressIndicator` applies the class through `[class.animate-indeterminate]`, a
+ * BINDING, so it cannot carry a `motion-safe:` prefix the way `hlm-dropdown-menu`'s static
+ * class strings do. Guarding it here rather than in the vendored `.ts` also keeps the fix
+ * out of a file the spartan CLI regenerates.
+ *
+ * Deliberately UNLAYERED, for the same reason as the danger-token block below: Tailwind
+ * emits `animate-indeterminate` from `@theme inline` into a cascade layer, and an
+ * unlayered declaration outranks any layer without a specificity war.
+ *
+ * This changes nothing observable TODAY — the blanket `!important` reset in `global.scss`
+ * already stops it, and that blanket is not going anywhere while `tw-animate-css` ships no
+ * guard of its own. What it removes is this component's dependency on that blanket. Note
+ * the blanket never touches `animation-name`, which is what makes this rule detectable
+ * (and testable) underneath it.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .animate-indeterminate {
+    animation: none;
   }
 }
 
