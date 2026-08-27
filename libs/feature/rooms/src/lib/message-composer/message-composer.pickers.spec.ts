@@ -15,6 +15,7 @@ import { GifSettingsService } from '@trinity/data-access/gif';
 import { TrnToastService } from '@trinity/components/overlay';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { LocationShareService } from '../location-share/location-share.service';
+import { Router } from '@angular/router';
 
 describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray and voice', () => {
   beforeEach(() => stubObjectUrls());
@@ -135,6 +136,21 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     cmp.toggleEmojiPicker();
     expect(cmp.pickerOpen()).toBe(true);
     expect(cmp.gifPickerOpen()).toBe(false);
+  });
+
+  it('opens image-pack settings with the active room as context', async () => {
+    const navigate = vi.fn().mockResolvedValue(true);
+    const { fixture } = await renderComposer({ roomId: '!room:hs' }, [
+      MockProvider(Router, { navigate }),
+    ]);
+    fixture.componentInstance.stickerPickerOpen.set(true);
+
+    fixture.componentInstance.manageImagePacks();
+
+    expect(fixture.componentInstance.stickerPickerOpen()).toBe(false);
+    expect(navigate).toHaveBeenCalledWith(['/settings/stickers'], {
+      queryParams: { roomId: '!room:hs' },
+    });
   });
 
   it('downloads a chosen GIF and sends it as media, closing the picker', async () => {

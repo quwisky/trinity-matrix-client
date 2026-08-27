@@ -1,6 +1,6 @@
 # Settings
 
-Settings is a two-pane screen: a list of thirteen sections beside the section you have open.
+Settings is a two-pane screen: a list of fourteen sections beside the section you have open.
 Below 768 pixels wide the list is the page, and opening a section swaps to it with a back
 button.
 
@@ -18,9 +18,9 @@ button.
     physically meaningless on another device.
 
     The sections that *are* account-scoped, and therefore do follow you, are Profile,
-    Presence, Devices, Account, Security and Notifications.
+    Presence, Devices, Account, Security, Notifications and Stickers & emoji.
 
-## The thirteen sections
+## The fourteen sections
 
 | Section            | What it holds                                                          |
 | ------------------ | ---------------------------------------------------------------------- |
@@ -34,6 +34,7 @@ button.
 | Server             | What each account's homeserver is running, and where it is reached.    |
 | Privacy            | Read receipts and link previews.                                       |
 | GIFs               | Which GIF provider to use, and its API key.                            |
+| Stickers & emoji   | Account-wide MSC2545 image-pack installation and removal.              |
 | Keyboard shortcuts | Every shortcut, its binding, and rebinding.                            |
 | Experimental       | Opt-in feature flags.                                                  |
 | Advanced           | Every setting on this device as one document: copy, edit, import.      |
@@ -174,6 +175,19 @@ like a working setup that failed every search. Paste a KLIPY key to switch GIF s
 
 The key is third-party configuration rather than a credential of yours, so it is stored
 alongside the other preferences, on this device.
+
+## Stickers & emoji
+
+Install a sticker or custom-emoji pack by entering the Matrix room ID or alias that
+publishes it. Trinity joins that room if necessary and, when it contains several packs,
+lists every state key so you can choose the intended one. The installed reference is Matrix
+account data and follows your account to other devices.
+
+The capability badges are defined by the pack publisher: Trinity does not invent private
+per-device usage switches. Removing an installed pack removes only your account reference.
+It does not leave the source room, remove its state, or delete homeserver media. Broken,
+deleted, malformed and currently inaccessible references remain visible here so they can
+still be removed.
 
 ## Keyboard shortcuts
 

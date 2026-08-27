@@ -4,6 +4,17 @@
   data-testid="sticker-picker"
   (keydown.escape)="onEscape($event)"
 >
+  <div class="picker__header">
+    <span>Stickers</span>
+    <button
+      type="button"
+      class="picker__manage"
+      data-testid="manage-image-packs"
+      (click)="manage.emit()"
+    >
+      Manage
+    </button>
+  </div>
   <label class="picker__search-label" for="sticker-search"
     >Search stickers</label
   >

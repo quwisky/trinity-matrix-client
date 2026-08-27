@@ -1,0 +1,122 @@
+:host {
+  display: block;
+}
+
+.packs {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.25rem 1rem 2rem;
+}
+
+.packs__header,
+.packs__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+h3 {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+h4 {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.packs__header p,
+.packs__section > p,
+.pack-card p {
+  color: var(--trinity-text-muted);
+  font-size: 0.8125rem;
+}
+
+.pack-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.875rem;
+  border: 1px solid var(--trinity-divider);
+  border-radius: 0.75rem;
+  background: var(--trinity-sidebar);
+}
+
+.pack-card__body {
+  min-width: 0;
+}
+
+.pack-card__source {
+  overflow-wrap: anywhere;
+}
+
+.pack-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin: 0.5rem 0;
+}
+
+.pack-card__badges span {
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  background: var(--trinity-hover);
+  color: var(--trinity-text-muted);
+  font-size: 0.75rem;
+}
+
+.pack-card .pack-card__problem,
+.packs__error {
+  color: var(--trinity-danger);
+}
+
+.pack-card__attribution {
+  margin-top: 0.375rem;
+}
+
+.packs__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.packs__form-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.packs__form-row input {
+  min-width: 0;
+  flex: 1;
+}
+
+.packs__announcements {
+  min-height: 1.25rem;
+}
+
+.packs__notice {
+  color: var(--trinity-text);
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 31.98rem) {
+  .pack-card,
+  .packs__form-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

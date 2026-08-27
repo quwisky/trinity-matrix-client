@@ -83,6 +83,19 @@ describe('StickerPickerComponent', () => {
     ).toBe('status');
   });
 
+  it('offers pack management as a separate presentational action', () => {
+    const manage = vi.fn();
+    fixture.componentInstance.manage.subscribe(manage);
+
+    (
+      fixture.nativeElement.querySelector(
+        '[data-testid="manage-image-packs"]',
+      ) as HTMLButtonElement
+    ).click();
+
+    expect(manage).toHaveBeenCalledOnce();
+  });
+
   it('does not resolve every entry in a large offscreen pack', async () => {
     fixture.destroy();
     TestBed.resetTestingModule();

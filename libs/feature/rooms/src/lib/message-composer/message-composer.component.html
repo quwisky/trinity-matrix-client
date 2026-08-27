@@ -66,6 +66,7 @@
       [packs]="stickerPacks()"
       (selected)="onStickerSelect($event)"
       (dismiss)="closeStickerPicker()"
+      (manage)="manageImagePacks()"
     />
   </ng-template>
   @if (recordingVoice()) {

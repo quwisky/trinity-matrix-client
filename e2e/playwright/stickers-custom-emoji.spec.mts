@@ -19,10 +19,18 @@ async function openRoom(page: Page, roomName: string): Promise<void> {
   });
 }
 
+async function leaveSettings(page: Page): Promise<void> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (await page.getByTestId('rail-rooms').isVisible()) return;
+    await page.getByRole('button', { name: 'Back' }).click();
+  }
+  await expect(page.getByTestId('rail-rooms')).toBeVisible();
+}
+
 test.describe('MSC2545 stickers and custom emoji', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('discovers a room pack, sends a sticker, and resolves an inline custom emote', async ({
+  test('installs, sends, and uninstalls a room image pack', async ({
     page,
     request,
   }) => {
@@ -30,8 +38,11 @@ test.describe('MSC2545 stickers and custom emoji', () => {
     const runId = `${Date.now().toString(36)}stk`;
     const user = `sticker-${runId}`;
     const pass = `${user}-pass`;
-    const roomName = `Stickers ${runId}`;
+    const publisher = `publisher-${runId}`;
+    const publisherPass = `${publisher}-pass`;
+    const roomName = `Sticker chat ${runId}`;
     await registerUser(request, user, pass);
+    await registerUser(request, publisher, publisherPass);
     const auth = await request
       .post(`${hs}/_matrix/client/v3/login`, {
         data: {
@@ -41,14 +52,44 @@ test.describe('MSC2545 stickers and custom emoji', () => {
         },
       })
       .then((response) => response.json());
+    const publisherAuth = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user: publisher },
+          password: publisherPass,
+        },
+      })
+      .then((response) => response.json());
     const headers = { Authorization: `Bearer ${auth.access_token as string}` };
-    const roomId = await request
+    const publisherHeaders = {
+      Authorization: `Bearer ${publisherAuth.access_token as string}`,
+    };
+    const chatRoomId = await request
       .post(`${hs}/_matrix/client/v3/createRoom`, {
         headers,
         data: { name: roomName, preset: 'private_chat' },
       })
       .then((response) => response.json())
       .then((json) => json.room_id as string);
+    const aliasLocalpart = `packs-${runId}`;
+    const packRoomId = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: publisherHeaders,
+        data: {
+          name: `Pack source ${runId}`,
+          visibility: 'public',
+          preset: 'public_chat',
+          room_alias_name: aliasLocalpart,
+        },
+      })
+      .then((response) => response.json())
+      .then((json) => json.room_id as string);
+    const serverName = (publisherAuth.user_id as string)
+      .split(':')
+      .slice(1)
+      .join(':');
+    const roomAlias = `#${aliasLocalpart}:${serverName}`;
 
     // A complete 1x1 transparent PNG. Pack media is intentionally homeserver media:
     // MSC2545 references public mxc content even when the room event is encrypted.
@@ -58,18 +99,22 @@ test.describe('MSC2545 stickers and custom emoji', () => {
     );
     const mxc = await request
       .post(`${hs}/_matrix/media/v3/upload?filename=party.png`, {
-        headers: { ...headers, 'Content-Type': 'image/png' },
+        headers: { ...publisherHeaders, 'Content-Type': 'image/png' },
         data: png,
       })
       .then((response) => response.json())
       .then((json) => json.content_uri as string);
 
     await request.put(
-      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.image_pack/fun`,
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(packRoomId)}/state/m.room.image_pack/fun`,
       {
-        headers,
+        headers: publisherHeaders,
         data: {
-          pack: { display_name: 'Fun pack', usage: ['sticker', 'emoticon'] },
+          pack: {
+            display_name: 'Fun pack',
+            usage: ['sticker', 'emoticon'],
+            attribution: 'Trinity test pack',
+          },
           images: {
             party: {
               url: mxc,
@@ -80,12 +125,29 @@ test.describe('MSC2545 stickers and custom emoji', () => {
         },
       },
     );
+    // A same-key legacy event proves stable state wins without producing a duplicate row.
     await request.put(
-      `${hs}/_matrix/client/v3/user/${encodeURIComponent(auth.user_id as string)}/account_data/m.image_pack.rooms`,
-      { headers, data: { rooms: { [roomId]: { fun: {} } } } },
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(packRoomId)}/state/im.ponies.room_emotes/fun`,
+      {
+        headers: publisherHeaders,
+        data: {
+          pack: { display_name: 'Legacy duplicate', usage: ['sticker'] },
+          images: { old: { url: mxc, body: 'Old pixel' } },
+        },
+      },
     );
     await request.put(
-      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${runId}`,
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(packRoomId)}/state/m.room.image_pack/other`,
+      {
+        headers: publisherHeaders,
+        data: {
+          pack: { display_name: 'Other pack', usage: ['sticker'] },
+          images: { other: { url: mxc, body: 'Other pixel' } },
+        },
+      },
+    );
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(chatRoomId)}/send/m.room.message/${runId}`,
       {
         headers,
         data: {
@@ -105,16 +167,41 @@ test.describe('MSC2545 stickers and custom emoji', () => {
     await expect(inline).toHaveAttribute('src', /^blob:/);
 
     await page.getByTestId('composer-insert').click();
-    await page.getByTestId('insert-sticker').click();
-    await expect(page.getByTestId('sticker-picker')).toBeVisible();
-    const stickerSearch = page.getByTestId('sticker-search');
-    await expect(stickerSearch).toBeFocused();
-    await stickerSearch.press('Escape');
-    await expect(page.getByTestId('sticker-picker')).toBeHidden();
-    await expect(page.getByTestId('composer-input')).toBeFocused();
+    await expect(page.getByTestId('insert-sticker')).toBeHidden();
+    await page.keyboard.press('Escape');
+
+    await page.getByTestId('open-settings').click();
+    await page.getByTestId('settings-nav-stickers').click();
+    await page.waitForURL(/\/settings\/stickers(?:\?|$)/, { timeout: 20_000 });
+    const sourceInput = page.getByTestId('image-pack-source');
+    await sourceInput.fill(roomAlias);
+    await expect(sourceInput).toHaveValue(roomAlias);
+    await sourceInput.press('Tab');
+    await expect(
+      page.getByText('Enter a Matrix room ID or alias, such as'),
+    ).toBeHidden();
+    await page.getByTestId('find-image-packs').click();
+    const candidates = page.getByTestId('available-image-pack');
+    await expect(candidates).toHaveCount(2, { timeout: 30_000 });
+    const funPack = candidates.filter({ hasText: 'Fun pack' });
+    await expect(funPack).toContainText('Stable');
+    await funPack.getByTestId('install-image-pack').click();
+    await expect(page.getByTestId('installed-image-pack')).toContainText(
+      'Fun pack',
+    );
+    await expect(page.getByTestId('image-pack-notice')).toContainText(
+      'available in all rooms',
+    );
+
+    await leaveSettings(page);
+    await openRoom(page, roomName);
 
     await page.getByTestId('composer-insert').click();
+    await expect(page.getByTestId('insert-sticker')).toBeVisible({
+      timeout: 20_000,
+    });
     await page.getByTestId('insert-sticker').click();
+    await expect(page.getByTestId('manage-image-packs')).toBeVisible();
     await page.getByTestId('sticker-party').click();
 
     const sticker = page.locator('.msg--sticker').last();
@@ -124,7 +211,7 @@ test.describe('MSC2545 stickers and custom emoji', () => {
 
     const messages = await request
       .get(
-        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/messages?dir=b&limit=20`,
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(chatRoomId)}/messages?dir=b&limit=20`,
         { headers },
       )
       .then((response) => response.json());
@@ -134,5 +221,38 @@ test.describe('MSC2545 stickers and custom emoji', () => {
           event.type === 'm.sticker' && event.content?.url === mxc,
       ),
     ).toBe(true);
+
+    await page.getByTestId('open-settings').click();
+    await page.getByTestId('settings-nav-stickers').click();
+    const installedPack = page
+      .getByTestId('installed-image-pack')
+      .filter({ hasText: 'Fun pack' });
+    await installedPack.getByTestId('remove-image-pack').click();
+    await page.getByRole('button', { name: 'Remove pack' }).click();
+    await expect(installedPack).toHaveCount(0);
+    await expect(page.getByTestId('image-pack-notice')).toContainText(
+      'removed from your account',
+    );
+
+    const accountData = await request
+      .get(
+        `${hs}/_matrix/client/v3/user/${encodeURIComponent(auth.user_id as string)}/account_data/m.image_pack.rooms`,
+        { headers },
+      )
+      .then((response) => response.json());
+    expect(accountData).toEqual({ rooms: {} });
+
+    const sourceState = await request.get(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(packRoomId)}/state/m.room.image_pack/fun`,
+      { headers: publisherHeaders },
+    );
+    expect(sourceState.ok()).toBe(true);
+
+    await leaveSettings(page);
+    await openRoom(page, roomName);
+    await page.getByTestId('composer-insert').click();
+    await expect(page.getByTestId('insert-sticker')).toBeHidden({
+      timeout: 20_000,
+    });
   });
 });

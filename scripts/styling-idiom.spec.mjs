@@ -122,6 +122,7 @@ const LEDGER = [
   'libs/feature/rooms/src/lib/user-picker/user-picker.component.scss',
   'libs/feature/rooms/src/lib/voice-message/voice-message.component.scss',
   'libs/feature/settings/src/lib/advanced/config-editor/config-editor.component.scss',
+  'libs/feature/settings/src/lib/image-packs/image-packs-section.component.scss',
   'libs/feature/settings/src/lib/server/homeserver-block.component.scss',
 ];
 

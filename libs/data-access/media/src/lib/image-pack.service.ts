@@ -1,4 +1,5 @@
 import {
+  effect,
   Injectable,
   type Signal,
   type WritableSignal,
@@ -16,6 +17,7 @@ import {
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
 import { liveRoomState } from '@trinity/util/matrix';
+import { ImagePackSelectionStore } from './image-pack-selection.store';
 
 export const IMAGE_PACK_EVENT_TYPE = 'm.room.image_pack';
 export const LEGACY_IMAGE_PACK_EVENT_TYPE = 'im.ponies.room_emotes';
@@ -61,6 +63,7 @@ interface WatchedRoom {
 @Injectable({ providedIn: 'root' })
 export class ImagePackService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly selections = inject(ImagePackSelectionStore);
   private readonly watched = new Map<string, WatchedRoom>();
 
   private readonly onStateEvent = (event: MatrixEvent): void => {
@@ -73,10 +76,13 @@ export class ImagePackService {
   };
 
   private readonly onAccountData = (event: MatrixEvent): void => {
-    if (
-      event.getType() === IMAGE_PACK_ROOMS_EVENT_TYPE ||
-      event.getType() === LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE
-    ) {
+    if (event.getType() === IMAGE_PACK_ROOMS_EVENT_TYPE) {
+      const client = this.projection.client();
+      if (client) {
+        this.selections.clear(client);
+      }
+      this.projection.schedule();
+    } else if (event.getType() === LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE) {
       this.projection.schedule();
     }
   };
@@ -93,7 +99,9 @@ export class ImagePackService {
     },
     rebuild: (client) => {
       for (const [roomId, watched] of this.watched) {
-        watched.packs.set(readImagePacks(client, roomId));
+        watched.packs.set(
+          readImagePacks(client, roomId, this.selections.get(client)),
+        );
       }
     },
     reset: () => {
@@ -102,6 +110,13 @@ export class ImagePackService {
       }
     },
   });
+
+  constructor() {
+    effect(() => {
+      this.selections.changed();
+      if (this.projection.isConnected()) this.projection.schedule();
+    });
+  }
 
   packsFor(roomId: string): Signal<readonly ImagePack[]> {
     return this.watchedRoom(roomId).packs.asReadonly();
@@ -126,7 +141,7 @@ export class ImagePackService {
     let watched = this.watched.get(roomId);
     if (!watched) {
       watched = {
-        packs: signal(readImagePacks(this.readClient(), roomId), {
+        packs: signal(this.readPacks(roomId), {
           equal: samePacks,
         }),
         consumers: 0,
@@ -142,14 +157,27 @@ export class ImagePackService {
       (this.matrix.isInitialized ? this.matrix.instance : null)
     );
   }
+
+  private readPacks(roomId: string): readonly ImagePack[] {
+    const client = this.readClient();
+    return readImagePacks(
+      client,
+      roomId,
+      client ? this.selections.get(client) : null,
+    );
+  }
 }
 
 export function readImagePacks(
   client: MatrixClient | null,
   currentRoomId: string,
+  selection: {
+    readonly present: boolean;
+    readonly content: unknown;
+  } | null = null,
 ): readonly ImagePack[] {
   if (!client) return [];
-  const sources = selectedPackSources(client);
+  const sources = selectedPackSources(client, selection);
   const currentRoom = client.getRoom?.(currentRoomId);
   const currentState = currentRoom ? liveRoomState(currentRoom) : undefined;
   if (currentState) {
@@ -209,7 +237,10 @@ interface PackSource {
   stateKey: string;
 }
 
-function selectedPackSources(client: MatrixClient): PackSource[] {
+function selectedPackSources(
+  client: MatrixClient,
+  selection: { readonly present: boolean; readonly content: unknown } | null,
+): PackSource[] {
   // matrix-js-sdk's account-data map is intentionally closed over spec events;
   // MSC2545's stable and legacy custom keys are therefore accessed through a
   // narrow string-keyed view until the SDK includes them in AccountDataEvents.
@@ -218,15 +249,19 @@ function selectedPackSources(client: MatrixClient): PackSource[] {
         type: string,
       ) => MatrixEvent | undefined)
     : () => undefined;
-  const stable = getAccountData(IMAGE_PACK_ROOMS_EVENT_TYPE);
-  const selected = accountPackRooms(
-    stable ?? getAccountData(LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE),
+  const stableEvent = getAccountData(IMAGE_PACK_ROOMS_EVENT_TYPE);
+  const stablePresent = selection?.present ?? stableEvent !== undefined;
+  const selected = accountPackRoomsContent(
+    stablePresent
+      ? selection
+        ? selection.content
+        : stableEvent?.getContent()
+      : getAccountData(LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE)?.getContent(),
   );
   return selected.sort((a, b) => sourceKey(a).localeCompare(sourceKey(b)));
 }
 
-function accountPackRooms(event: MatrixEvent | undefined): PackSource[] {
-  const content: unknown = event?.getContent();
+function accountPackRoomsContent(content: unknown): PackSource[] {
   if (!isRecord(content) || !isRecord(content['rooms'])) return [];
   const sources: PackSource[] = [];
   for (const roomId of Object.keys(content['rooms']).sort()) {
