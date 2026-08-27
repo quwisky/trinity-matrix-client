@@ -15,9 +15,19 @@
  */
 button:focus-visible,
 a:focus-visible,
+[role='button']:focus-visible,
+[role='link']:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid var(--trinity-accent);
-  outline-offset: 2px;
+  outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+  outline-offset: var(--trinity-focus-ring-offset);
+}
+
+button:disabled,
+[aria-disabled='true'] {
+  opacity: var(--trinity-disabled-opacity);
 }
 
 /*

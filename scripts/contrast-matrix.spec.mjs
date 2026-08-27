@@ -88,6 +88,42 @@ const ROLES = [
       '--trinity-active',
     ],
   },
+  {
+    text: '--trinity-state-hover-foreground',
+    on: ['--trinity-state-hover-surface'],
+  },
+  {
+    text: '--trinity-state-pressed-foreground',
+    on: ['--trinity-state-pressed-surface'],
+  },
+  {
+    text: '--trinity-state-selected-foreground',
+    on: ['--trinity-state-selected-surface'],
+  },
+  {
+    text: '--trinity-state-selected-hover-foreground',
+    on: ['--trinity-state-selected-hover-surface'],
+  },
+  {
+    text: '--trinity-state-attention-foreground',
+    on: ['--trinity-state-attention-surface'],
+  },
+];
+
+/** Focus is a non-text visual indicator, so WCAG's 3:1 component threshold applies. */
+const NON_TEXT_ROLES = [
+  {
+    foreground: '--trinity-focus-ring',
+    on: [
+      '--trinity-surface-frame',
+      '--trinity-surface-navigation',
+      '--trinity-surface-workspace',
+      '--trinity-surface-raised',
+      '--trinity-surface-floating',
+      '--trinity-state-hover-surface',
+      '--trinity-state-pressed-surface',
+    ],
+  },
 ];
 
 /**
@@ -306,6 +342,30 @@ function* pairs() {
 
 const measured = [...pairs()];
 
+function* nonTextPairs() {
+  for (const palette of palettes) {
+    for (const mode of ['light', 'dark']) {
+      for (const role of NON_TEXT_ROLES) {
+        for (const surface of role.on) {
+          const foreground = toRgb(resolve(role.foreground, palette, mode));
+          const background = toRgb(resolve(surface, palette, mode));
+          if (foreground && background) {
+            yield {
+              palette,
+              mode,
+              foreground: role.foreground,
+              surface,
+              ratio: ratio(foreground, background),
+            };
+          }
+        }
+      }
+    }
+  }
+}
+
+const measuredNonText = [...nonTextPairs()];
+
 describe('contrast matrix', () => {
   it('measures something, so an empty matrix cannot pass as a clean one', () => {
     // A parser change that stopped matching the palette blocks would otherwise report every
@@ -347,6 +407,21 @@ describe('contrast matrix', () => {
       .map(
         (m) =>
           `${m.palette}/${m.mode}: ${m.text} on ${m.surface} = ${m.ratio.toFixed(2)}:1`,
+      )
+      .sort();
+
+    expect(failures).toEqual([]);
+  });
+
+  it('keeps the focus indicator above the non-text contrast floor on every surface', () => {
+    expect(measuredNonText.length).toBe(
+      palettes.length * 2 * NON_TEXT_ROLES[0].on.length,
+    );
+    const failures = measuredNonText
+      .filter((measurement) => measurement.ratio < 3)
+      .map(
+        (measurement) =>
+          `${measurement.palette}/${measurement.mode}: ${measurement.foreground} on ${measurement.surface} = ${measurement.ratio.toFixed(2)}:1`,
       )
       .sort();
 

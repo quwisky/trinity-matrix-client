@@ -6,10 +6,10 @@
 .toolbar {
   display: flex;
   overflow: hidden;
-  border: 1px solid var(--trinity-divider);
-  border-radius: var(--trinity-radius);
-  background: var(--trinity-sidebar);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 30%);
+  border: 1px solid var(--trinity-border-subtle);
+  border-radius: var(--trinity-shape-container-radius);
+  background: var(--trinity-surface-floating);
+  box-shadow: var(--trinity-shadow-floating);
 }
 
 .toolbar__picker {
@@ -17,25 +17,34 @@
   right: 0;
   bottom: calc(100% + 4px);
   display: flex;
-  gap: 2px;
-  padding: 4px;
-  border: 1px solid var(--trinity-divider);
-  border-radius: var(--trinity-radius);
-  background: var(--trinity-sidebar);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 30%);
+  gap: var(--trinity-density-item-gap);
+  padding: var(--trinity-density-item-gap);
+  border: 1px solid var(--trinity-border-subtle);
+  border-radius: var(--trinity-shape-container-radius);
+  background: var(--trinity-surface-floating);
+  box-shadow: var(--trinity-shadow-floating);
 }
 
 .toolbar__emoji {
   padding: 3px 4px;
   border: none;
-  border-radius: var(--trinity-radius-sm);
+  border-radius: var(--trinity-shape-control-radius);
   background: none;
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
+  transition:
+    background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
+    color var(--trinity-duration-fast) var(--trinity-ease-standard);
 
-  &:hover {
-    background: var(--trinity-hover);
+  &:hover:not(:disabled) {
+    background: var(--trinity-state-hover-surface);
+    color: var(--trinity-state-hover-foreground);
+  }
+
+  &:active:not(:disabled) {
+    background: var(--trinity-state-pressed-surface);
+    color: var(--trinity-state-pressed-foreground);
   }
 }
 
@@ -44,27 +53,38 @@
   align-items: center;
   justify-content: center;
   color: var(--trinity-text-muted);
-
-  &:hover {
-    color: var(--trinity-text-bright);
-  }
 }
 
 .toolbar__btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: var(--trinity-density-control-size);
+  height: var(--trinity-density-control-size);
   border: none;
+  border-radius: var(--trinity-shape-control-radius);
   background: none;
   color: var(--trinity-text-muted);
   font-size: 18px;
   cursor: pointer;
+  transition:
+    background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
+    color var(--trinity-duration-fast) var(--trinity-ease-standard);
 
-  &:hover {
-    background: var(--trinity-hover);
-    color: var(--trinity-text-bright);
+  &:hover:not(:disabled) {
+    background: var(--trinity-state-hover-surface);
+    color: var(--trinity-state-hover-foreground);
+  }
+
+  &:active:not(:disabled) {
+    background: var(--trinity-state-pressed-surface);
+    color: var(--trinity-state-pressed-foreground);
+  }
+
+  // The toolbar clips its rounded outer edge. Pull the keyboard ring inside the button so
+  // the first and last controls do not lose half their indicator to that clipping boundary.
+  &:focus-visible {
+    outline-offset: calc(-1 * var(--trinity-focus-ring-width));
   }
 }
 

@@ -77,6 +77,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Shared controls now use one modern interaction language.** Floating message actions, status
+  banners and file attachments share tokenised hover, press, focus, disabled, shape, type and
+  density roles. Keyboard focus uses a measured high-contrast ring in every theme, and Compact
+  density now tightens these pieces of chrome without shrinking touch targets.
+
 - **People and places now keep distinct, stable avatar shapes.** People and direct messages stay
   circular, while rooms and spaces use squircles throughout navigation, search, directories and
   settings. Selecting or hovering a space no longer changes its fundamental shape; background,

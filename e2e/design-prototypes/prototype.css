@@ -28,7 +28,7 @@ body {
   min-height: 100%;
   margin: 0;
   overflow: hidden;
-  background: var(--trinity-rail);
+  background: var(--trinity-surface-frame);
   color: var(--trinity-text);
   font-family: 'Trinity Prototype Sans', sans-serif;
 }
@@ -103,7 +103,7 @@ p {
   align-items: center;
   gap: var(--trinity-space-3);
   padding: var(--trinity-space-3) var(--trinity-space-2);
-  background: var(--trinity-rail);
+  background: var(--trinity-surface-frame);
 }
 
 .space-rail nav {
@@ -161,14 +161,14 @@ p {
   overflow: hidden;
   border: 1px solid var(--trinity-divider);
   border-radius: calc(var(--trinity-radius-xl) + var(--trinity-space-2));
-  background: var(--trinity-chat);
+  background: var(--trinity-surface-workspace);
   box-shadow: var(--trinity-shadow-raised);
 }
 
 .channel-sidebar,
 .details-panel {
   min-width: 0;
-  background: var(--trinity-sidebar);
+  background: var(--trinity-surface-navigation);
 }
 
 .channel-sidebar {

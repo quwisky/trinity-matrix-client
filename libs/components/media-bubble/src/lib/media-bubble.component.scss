@@ -21,9 +21,9 @@
   // and then had its edges cut off to fill the box: reserved at one shape, drawn at another.
   // With `contain` the whole image stays inside whatever height survives the clamp.
   max-height: 20rem;
-  border-radius: 0.5rem;
+  border-radius: var(--trinity-shape-container-radius);
   overflow: hidden;
-  background: var(--trinity-sidebar);
+  background: var(--trinity-surface-raised);
 }
 
 .media__img {
@@ -45,13 +45,13 @@
   // NOT `--trinity-sidebar`: that is what `.media--image` paints its own box with, so the
   // skeleton was the same colour as the thing it sits inside and could not be seen at all.
   // This is the one skeleton in the workspace and it was invisible.
-  background: var(--trinity-hover);
+  background: var(--trinity-state-hover-surface);
 }
 
 .media--video,
 .media--audio {
   width: 100%;
-  border-radius: 0.5rem;
+  border-radius: var(--trinity-shape-container-radius);
 }
 
 .media--video {
@@ -66,13 +66,27 @@
 .media--file {
   display: flex;
   align-items: center;
-  gap: 0.625rem;
-  padding: 0.625rem 0.75rem;
-  border-radius: 0.5rem;
-  background: var(--trinity-sidebar);
+  gap: var(--trinity-density-row-gap);
+  padding: var(--trinity-density-row-padding-block)
+    var(--trinity-density-row-padding-inline);
+  border-radius: var(--trinity-shape-container-radius);
+  background: var(--trinity-surface-raised);
   color: var(--trinity-text);
   text-align: left;
   width: 100%;
+  transition:
+    background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
+    color var(--trinity-duration-fast) var(--trinity-ease-standard);
+
+  &:hover:not(:disabled) {
+    background: var(--trinity-state-hover-surface);
+    color: var(--trinity-state-hover-foreground);
+  }
+
+  &:active:not(:disabled) {
+    background: var(--trinity-state-pressed-surface);
+    color: var(--trinity-state-pressed-foreground);
+  }
 }
 
 // Always paired with .media--file in the template; the compound selector outranks it
@@ -103,18 +117,25 @@
 }
 
 .media__name {
-  font-weight: 600;
+  font-size: var(--trinity-type-control-size);
+  font-weight: var(--trinity-type-control-weight);
+  line-height: var(--trinity-type-control-line-height);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .media__sub {
-  font-size: 0.8125rem;
+  font-size: var(--trinity-type-metadata-size);
+  font-variant-numeric: var(--trinity-type-metadata-numeric);
+  font-weight: var(--trinity-type-metadata-weight);
+  line-height: var(--trinity-type-metadata-line-height);
   opacity: 0.7;
 }
 
 .media__loading {
-  font-size: 0.8125rem;
+  font-size: var(--trinity-type-metadata-size);
+  font-weight: var(--trinity-type-metadata-weight);
+  line-height: var(--trinity-type-metadata-line-height);
   opacity: 0.7;
 }

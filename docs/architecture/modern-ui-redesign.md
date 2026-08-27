@@ -331,6 +331,13 @@ Acceptance:
 
 ### Phase 1 - foundations
 
+Status: in progress. The first foundations slice introduces component-facing surface, shape,
+typography, density and interaction roles while preserving the existing palette primitives. It
+applies the recipes to the banner, message toolbar and media bubble and tests their rendered
+states through Storybook. Final value tuning and a production font decision remain gated on the
+Phase 0 human prototype approval; the system font remains authoritative until that decision is
+recorded.
+
 Primary ownership:
 
 - `apps/trinity/src/theme/variables.scss`

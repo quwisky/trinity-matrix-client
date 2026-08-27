@@ -47,6 +47,13 @@
   --trinity-radius-md: calc(var(--radius) - 2px); // 6px
   --trinity-radius-xl: 0.75rem; // 12px — cards / dialogs / menus
   --trinity-radius-pill: 9999px; // badges, chips, capsules
+
+  // Component-facing shape roles. The scale above describes measurements; these aliases say
+  // why a radius is used, so later tuning does not require every consumer to choose again.
+  --trinity-shape-control-radius: var(--trinity-radius-md);
+  --trinity-shape-container-radius: var(--trinity-radius);
+  --trinity-shape-overlay-radius: var(--trinity-radius-xl);
+
   // Semantic identity geometry. Selection never changes these roles: people/DMs remain
   // circular, while rooms/spaces remain stable squircles.
   --trinity-shape-person-radius: 50%;
@@ -68,6 +75,26 @@
   --trinity-text-lg: 1.25rem; // 20px — page and section headings
   --trinity-text-lg--line-height: 1.3;
 
+  // Semantic typography roles. Size, leading and weight travel together; a component should
+  // not silently pair a role's size with arbitrary leading. Metadata also gets stable number
+  // widths so timestamps and byte counts do not jitter as their digits change.
+  --trinity-type-caption-size: var(--trinity-text-xs);
+  --trinity-type-caption-line-height: var(--trinity-text-xs--line-height);
+  --trinity-type-caption-weight: 500;
+  --trinity-type-metadata-size: var(--trinity-text-xs);
+  --trinity-type-metadata-line-height: var(--trinity-text-xs--line-height);
+  --trinity-type-metadata-weight: 400;
+  --trinity-type-metadata-numeric: tabular-nums;
+  --trinity-type-body-size: var(--trinity-text-sm);
+  --trinity-type-body-line-height: var(--trinity-text-sm--line-height);
+  --trinity-type-body-weight: 400;
+  --trinity-type-control-size: var(--trinity-text-sm);
+  --trinity-type-control-line-height: var(--trinity-text-sm--line-height);
+  --trinity-type-control-weight: 600;
+  --trinity-type-title-size: var(--trinity-text-lg);
+  --trinity-type-title-line-height: var(--trinity-text-lg--line-height);
+  --trinity-type-title-weight: 700;
+
   // --- Spacing (mode- & palette-agnostic) ---------------------------------------
   // A 4px rhythm. Named by step rather than by use, because the same gap means
   // different things in different components; what matters is that it is ON the grid.
@@ -78,6 +105,15 @@
   --trinity-space-5: 16px;
   --trinity-space-6: 24px;
   --trinity-space-7: 32px;
+
+  // Component-density roles. Compact mode re-cuts their source spacing steps below; the
+  // physical control size is separately reduced only for pointer-precise desktop layouts.
+  // The coarse-pointer floor in global.scss remains 44px in every density.
+  --trinity-density-item-gap: var(--trinity-space-2);
+  --trinity-density-row-gap: var(--trinity-space-3);
+  --trinity-density-row-padding-block: var(--trinity-space-3);
+  --trinity-density-row-padding-inline: var(--trinity-space-4);
+  --trinity-density-control-size: 2rem;
 
   // --- Elevation ----------------------------------------------------------------
   // Overridden per mode: a shadow that reads on white is invisible on #313338, which
@@ -141,9 +177,9 @@
   --trinity-code-scale: 1;
 
   // --- Mode- & palette-invariant Helm bindings (define once) --------------------
-  // Card/popover text tracks the base foreground; the brand tokens track the Trinity
-  // accent; the input outline tracks the border. Palettes reset the *source* token
-  // (--foreground / --trinity-accent / --border) and these follow for free. (The
+  // Card/popover text tracks the base foreground; primary tracks the Trinity accent; the
+  // focus ring tracks the measured focus role; and the input outline tracks the border.
+  // Palettes reset the *source* tokens and these follow for free. (The
   // secondary/accent surface text is a touch lighter than --foreground in light, so it
   // is set per mode below rather than bound here.)
   --card-foreground: var(--foreground);
@@ -152,7 +188,7 @@
   --accent-foreground: hsl(240deg 5.9% 10%);
   --primary: var(--trinity-accent);
   --primary-foreground: hsl(0deg 0% 100%);
-  --ring: var(--trinity-accent);
+  --ring: var(--trinity-focus-ring);
   --input: var(--border);
 
   // Warning is identical across modes; destructive/success flip in dark (see below).
@@ -268,6 +304,36 @@
   // Elevated surface for floating controls (e.g. the jump-to-latest pill); follows
   // the sidebar tone in both modes.
   --trinity-surface: var(--trinity-sidebar);
+
+  // Semantic surface hierarchy. The established palette primitives above remain supported
+  // aliases while feature phases migrate; new component work should consume these roles.
+  --trinity-surface-frame: var(--trinity-rail);
+  --trinity-surface-navigation: var(--trinity-sidebar);
+  --trinity-surface-navigation-header: var(--trinity-sidebar-header);
+  --trinity-surface-workspace: var(--trinity-chat);
+  --trinity-surface-raised: var(--trinity-surface);
+  --trinity-surface-floating: var(--trinity-sidebar);
+  --trinity-border-subtle: var(--trinity-divider);
+  --trinity-border-strong: var(--trinity-active);
+
+  // Interaction-state contract. A state always carries both surface and foreground even when
+  // today's pair aliases another role; that keeps future palette tuning atomic. Focus uses the
+  // measured text-link colour rather than the accent fill, which falls below 3:1 on some dark
+  // interactive grounds. scripts/contrast-matrix.spec.mjs enforces the non-text threshold.
+  --trinity-state-hover-surface: var(--trinity-hover);
+  --trinity-state-hover-foreground: var(--trinity-text-bright);
+  --trinity-state-pressed-surface: var(--trinity-active);
+  --trinity-state-pressed-foreground: var(--trinity-text-bright);
+  --trinity-state-selected-surface: var(--trinity-active);
+  --trinity-state-selected-foreground: var(--trinity-text-bright);
+  --trinity-state-selected-hover-surface: var(--trinity-active);
+  --trinity-state-selected-hover-foreground: var(--trinity-text-bright);
+  --trinity-state-attention-surface: var(--trinity-accent);
+  --trinity-state-attention-foreground: var(--trinity-accent-foreground);
+  --trinity-focus-ring: var(--trinity-link);
+  --trinity-focus-ring-width: 2px;
+  --trinity-focus-ring-offset: 2px;
+  --trinity-disabled-opacity: 0.48;
 
   // --- Trinity text -------------------------------------------------------------
   --trinity-text: #313338;
@@ -536,4 +602,5 @@
   --trinity-space-3: 4px;
   --trinity-space-4: 8px;
   --trinity-space-5: 12px;
+  --trinity-density-control-size: 1.75rem;
 }
