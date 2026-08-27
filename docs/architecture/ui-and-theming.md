@@ -740,6 +740,13 @@ link-shaped fallback also cannot leak a label URL into the preview fetch. Succes
 participate in the existing privacy-gated preview flow; they never create an `<img>` or bypass
 authenticated Matrix media, CSP, or the remote-image rule above.
 
+Edit history renders the original and every valid `m.replace` through this same path. Its
+aggregation repair may point the timeline event at a fetched revision only after verifying
+that the event contains an object-valued `m.new_content` and an `m.replace` relation targeting
+that exact message. A related or malformed room message must never become the SDK replacement:
+the SDK resolves a replacement without `m.new_content` to empty content, which would turn an
+otherwise readable timeline row into an unsupported-message placeholder when history opens.
+
 Only security belongs in the sanitizer hook. Attributes set inside `afterSanitizeAttributes`
 are not re-filtered against the allowlist, so anything added there rides out onto the wire
 too.

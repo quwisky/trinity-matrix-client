@@ -316,6 +316,42 @@ describe('EditHistoryService', () => {
       expect(makeReplaced).toHaveBeenCalledWith(good);
     });
 
+    it('does not replace the timeline from a non-edit room message', async () => {
+      const destination =
+        'https://static.wikia.nocookie.net/control6745/images/e/e6/' +
+        'Control_-_Safeer_Abbas_-_Powerplant_enviromental_art_1.jpg';
+      const nonEdit = {
+        getId: () => '$not-an-edit',
+        getTs: () => 3000,
+        getSender: () => SENDER,
+        getType: () => EventType.RoomMessage,
+        isRedacted: () => false,
+        isDecryptionFailure: () => false,
+        getContent: () => ({
+          body: `[${destination}](${destination})`,
+          format: 'org.matrix.custom.html',
+          formatted_body: `[${destination}](${destination})`,
+          msgtype: 'm.text',
+        }),
+        status: null,
+      } as unknown as MatrixEvent;
+      const { copy, makeReplaced } = timelineCopy();
+      const { svc } = setup(
+        [
+          {
+            originalEvent: original(),
+            events: [nonEdit],
+            nextBatch: null,
+          },
+        ],
+        { timelineCopy: copy },
+      );
+
+      await firstValueFrom(svc.revisions('!r:hs', '$orig'));
+
+      expect(makeReplaced).not.toHaveBeenCalled();
+    });
+
     // Re-applying the same answer would emit a pointless Replaced and re-render every
     // row of the timeline for nothing.
     it('leaves the message alone when it is already correct', async () => {

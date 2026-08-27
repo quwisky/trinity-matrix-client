@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
+import { MatrixEvent, type MatrixClient, type Room } from 'matrix-js-sdk';
 import {
   MAX_NAMED_REACTORS,
   buildMessageView,
@@ -292,6 +292,59 @@ describe('mislabeled standalone Markdown links', () => {
 
     return buildMessageView(client, room, event);
   }
+
+  it('projects the reported Wikia event instead of degrading it to unsupported', () => {
+    const destination =
+      'https://static.wikia.nocookie.net/control6745/images/e/e6/' +
+      'Control_-_Safeer_Abbas_-_Powerplant_enviromental_art_1.jpg';
+    const escapedDestination = destination.replaceAll('_', String.raw`\\_`);
+    const messageContent = {
+      body: `[${escapedDestination}](${escapedDestination})`,
+      format: 'org.matrix.custom.html',
+      formatted_body: `[${destination}](${destination})`,
+      'm.mentions': {},
+      msgtype: 'm.text',
+    };
+    const rawEvent = {
+      age: 1_464_072_657,
+      content: messageContent,
+      event_id: '$HQt5VrE5OnJRpHxzqyQEuLHAXlcf_oQIR5yYkscjjKA',
+      origin_server_ts: 1_786_382_342_397,
+      room_id: '!XX:xx.com',
+      sender: '@yx:xx.com',
+      type: 'm.room.message',
+      unsigned: {},
+    };
+    const event = new MatrixEvent(rawEvent);
+    const room = {
+      getMember: () => null,
+      getUsersReadUpTo: () => [],
+      hasEncryptionStateEvent: () => false,
+      relations: { getChildEventsForEvent: () => undefined },
+    } as unknown as Room;
+    const client = {
+      getUserId: () => '@me:xx.com',
+    } as unknown as MatrixClient;
+
+    expect(escapedDestination.match(/\\\\_/g)).toHaveLength(
+      destination.match(/_/g)?.length ?? 0,
+    );
+
+    const direct = buildMessageView(client, room, event);
+    const guarded = safeBuildMessageView(client, room, event);
+
+    for (const view of [direct, guarded]) {
+      const rendered = parse(view.html ?? '');
+      const anchors = rendered.querySelectorAll('a');
+
+      expect(view.kind).toBe('text');
+      expect(anchors).toHaveLength(1);
+      expect(anchors[0].textContent).toBe(destination);
+      expect(anchors[0].getAttribute('href')).toBe(destination);
+      expect(rendered.querySelector('img')).toBeNull();
+      expect(view.previewUrl).toBe(destination);
+    }
+  });
 
   it('renders the supplied shape as one link and previews the same URL', () => {
     const view = project(content());

@@ -97,9 +97,14 @@ test.describe('Link previews', () => {
         data: { name: roomName, preset: 'private_chat' },
       })
       .then((response) => response.json());
-    const destination = `${OG_URL}?asset=image_name.jpg`;
+    const destination =
+      `${OG_URL}?asset=Control_-_Safeer_Abbas_-_` +
+      'Powerplant_enviromental_art_1.jpg';
     const markdown = `[${destination}](${destination})`;
-    const escapedDestination = destination.replaceAll('_', '\\_');
+    // The reported fallback contains two decoded backslashes before each underscore.
+    // The valid formatted body is authoritative, so that malformed fallback must not
+    // prevent rendering or make the history repair poison the live event.
+    const escapedDestination = destination.replaceAll('_', String.raw`\\_`);
     const fallbackMarkdown = `[${escapedDestination}](${escapedDestination})`;
     const sent = await request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${runId}-msg`,
@@ -110,10 +115,46 @@ test.describe('Link previews', () => {
           body: fallbackMarkdown,
           format: 'org.matrix.custom.html',
           formatted_body: markdown,
+          'm.mentions': {},
         },
       },
     );
     expect(sent.ok()).toBe(true);
+    const { event_id: eventId } = (await sent.json()) as { event_id: string };
+
+    const received = await request
+      .get(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/event/${encodeURIComponent(eventId)}`,
+        { headers: auth },
+      )
+      .then((response) => response.json());
+    expect(received.content).toMatchObject({
+      body: fallbackMarkdown,
+      format: 'org.matrix.custom.html',
+      formatted_body: markdown,
+      'm.mentions': {},
+      msgtype: 'm.text',
+    });
+
+    const edit = await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${runId}-edit`,
+      {
+        headers: auth,
+        data: {
+          msgtype: 'm.text',
+          body: `* ${fallbackMarkdown}`,
+          'm.new_content': {
+            msgtype: 'm.text',
+            body: fallbackMarkdown,
+            format: 'org.matrix.custom.html',
+            formatted_body: markdown,
+            'm.mentions': {},
+          },
+          'm.relates_to': { rel_type: 'm.replace', event_id: eventId },
+        },
+      },
+    );
+    expect(edit.ok()).toBe(true);
 
     await login(page, { available: true, hs, user, pass } as SynapseSession);
     await page.getByTestId('rail-rooms').click();
@@ -127,12 +168,24 @@ test.describe('Link previews', () => {
     });
     await expect(messageLink).toBeVisible({ timeout: 20_000 });
     await expect(messageLink).toHaveAttribute('href', destination);
-    const message = page.locator('.scroll .msg').filter({ has: messageLink });
+    const message = page.locator(`[data-mid="${eventId}"]`);
     await expect(message).not.toContainText('](');
 
     const card = page.getByTestId('link-preview');
     await expect(card).toBeVisible({ timeout: 30_000 });
     await expect(card).toContainText('Trinity E2E Preview');
     await expect(card).toHaveAttribute('href', destination);
+
+    await message.getByRole('button', { name: /edited/i }).click();
+    const history = page.getByTestId('edit-history');
+    await expect(history).toBeVisible({ timeout: 20_000 });
+    await expect(history.locator('.revision')).toHaveCount(2);
+    await expect(history.getByRole('link', { name: destination })).toHaveCount(
+      2,
+    );
+    await page.getByTestId('edit-history-close').click();
+
+    await expect(message).not.toContainText('[unsupported message]');
+    await expect(messageLink).toBeVisible();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EventStatus, type MatrixEvent } from 'matrix-js-sdk';
+import { EventStatus, MatrixEvent } from 'matrix-js-sdk';
 import { buildEditRevisions } from './edit-history';
 import { UNDECRYPTABLE_BODY } from './message-view';
 
@@ -152,6 +152,40 @@ describe('buildEditRevisions', () => {
     container.innerHTML = revisions[1].html ?? '';
     const anchor = container.querySelector('a');
 
+    expect(anchor?.textContent).toBe(destination);
+    expect(anchor?.getAttribute('href')).toBe(destination);
+    expect(container.textContent).not.toContain('](');
+  });
+
+  it('renders the reported Wikia event as the original history entry', () => {
+    const destination =
+      'https://static.wikia.nocookie.net/control6745/images/e/e6/' +
+      'Control_-_Safeer_Abbas_-_Powerplant_enviromental_art_1.jpg';
+    const escapedDestination = destination.replaceAll('_', String.raw`\\_`);
+    const rawEvent = {
+      age: 1_464_072_657,
+      content: {
+        body: `[${escapedDestination}](${escapedDestination})`,
+        format: 'org.matrix.custom.html',
+        formatted_body: `[${destination}](${destination})`,
+        'm.mentions': {},
+        msgtype: 'm.text',
+      },
+      event_id: '$HQt5VrE5OnJRpHxzqyQEuLHAXlcf_oQIR5yYkscjjKA',
+      origin_server_ts: 1_786_382_342_397,
+      room_id: '!XX:xx.com',
+      sender: '@yx:xx.com',
+      type: 'm.room.message',
+      unsigned: {},
+    };
+    const event = new MatrixEvent(rawEvent);
+
+    const [revision] = buildEditRevisions(event, [], '@me:xx.com');
+    const container = document.createElement('div');
+    container.innerHTML = revision.html ?? '';
+    const anchor = container.querySelector('a');
+
+    expect(revision.kind).toBe('text');
     expect(anchor?.textContent).toBe(destination);
     expect(anchor?.getAttribute('href')).toBe(destination);
     expect(container.textContent).not.toContain('](');

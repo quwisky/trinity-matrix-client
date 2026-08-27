@@ -128,13 +128,24 @@ export class EditHistoryService {
       return; // not in a loaded timeline — nothing on screen to correct
     }
     const newest = edits
-      .filter(
-        (edit) =>
+      .filter((edit) => {
+        const content = edit.getContent();
+        const replacement = content['m.new_content'];
+        const relation = content['m.relates_to'];
+        return (
           !edit.isRedacted() &&
           edit.getType() === EventType.RoomMessage &&
           edit.getSender() === target.getSender() &&
-          edit.status === null,
-      )
+          edit.status === null &&
+          replacement !== null &&
+          typeof replacement === 'object' &&
+          relation !== null &&
+          typeof relation === 'object' &&
+          (relation as Record<string, unknown>)['rel_type'] ===
+            RelationType.Replace &&
+          (relation as Record<string, unknown>)['event_id'] === eventId
+        );
+      })
       .reduce<MatrixEvent | null>(
         (latest, edit) =>
           !latest || edit.getTs() > latest.getTs() ? edit : latest,
