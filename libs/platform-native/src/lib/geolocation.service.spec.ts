@@ -16,6 +16,11 @@ const isNative = vi.mocked(Capacitor.isNativePlatform);
 const capacitorGeolocation = vi.mocked(Geolocation);
 
 interface Bridge {
+  isElectron?: boolean;
+  resolveCurrentLocation?: () => Promise<
+    | { status: 'ok'; lat: number; lng: number; accuracy: number }
+    | { status: 'denied' }
+  >;
   resolveApproxLocation?: () => Promise<{ lat: number; lng: number } | null>;
 }
 
@@ -47,6 +52,33 @@ describe('GeolocationService', () => {
   });
 
   describe('current', () => {
+    it('uses the native desktop bridge before Capacitor in Electron', async () => {
+      const resolveCurrentLocation = vi.fn().mockResolvedValue({
+        status: 'ok',
+        lat: 47.5,
+        lng: 19.04,
+        accuracy: 25,
+      });
+      setBridge({ isElectron: true, resolveCurrentLocation });
+
+      await expect(firstValueFrom(makeService().current())).resolves.toEqual({
+        lat: 47.5,
+        lng: 19.04,
+      });
+      expect(resolveCurrentLocation).toHaveBeenCalledOnce();
+      expect(capacitorGeolocation.getCurrentPosition).not.toHaveBeenCalled();
+    });
+
+    it('errors when the desktop provider cannot resolve a position', async () => {
+      setBridge({
+        isElectron: true,
+        resolveCurrentLocation: vi.fn().mockResolvedValue({ status: 'denied' }),
+      });
+      await expect(firstValueFrom(makeService().current())).rejects.toThrow(
+        /location/i,
+      );
+    });
+
     it('uses the native provider on iOS and Android', async () => {
       isNative.mockReturnValue(true);
       capacitorGeolocation.getCurrentPosition.mockResolvedValue({

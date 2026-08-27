@@ -30,6 +30,10 @@ export function launchApp(): Promise<ElectronApplication> {
   // persisted in Electron's default userDataDir and boots straight to /rooms.
   const userDataDir = mkdtempSync(path.join(tmpdir(), 'trinity-e2e-'));
   return electron.launch({
+    env: {
+      ...process.env,
+      TRINITY_E2E_LOCATION: '47.4979,19.0402,10',
+    },
     args: [
       mainEntry,
       // Required when running as root / in a container (CI); harmless on a desktop.

@@ -98,6 +98,7 @@ test('exposes the desktop bridge but no Node in the renderer', async () => {
           showNotification?: unknown;
           onNotificationClick?: unknown;
           secureStore?: unknown;
+          resolveCurrentLocation?: unknown;
         };
       }
     ).trinityDesktop;
@@ -108,6 +109,7 @@ test('exposes the desktop bridge but no Node in the renderer', async () => {
       showNotification: typeof td?.showNotification,
       onNotificationClick: typeof td?.onNotificationClick,
       secureStore: typeof td?.secureStore,
+      resolveCurrentLocation: typeof td?.resolveCurrentLocation,
     };
   });
   expect(exposure.require).toBe('undefined');
@@ -116,6 +118,30 @@ test('exposes the desktop bridge but no Node in the renderer', async () => {
   expect(exposure.showNotification).toBe('function'); // main-process notifications
   expect(exposure.onNotificationClick).toBe('function');
   expect(exposure.secureStore).toBe('object'); // OS-keychain secret storage (#1)
+  expect(exposure.resolveCurrentLocation).toBe('function');
+});
+
+test('routes current location through the main-process provider', async () => {
+  await app.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    win?.show();
+    win?.focus();
+  });
+  const result = await page.evaluate(() =>
+    (
+      globalThis as {
+        trinityDesktop?: {
+          resolveCurrentLocation?: () => Promise<unknown>;
+        };
+      }
+    ).trinityDesktop?.resolveCurrentLocation?.(),
+  );
+  expect(result).toEqual({
+    status: 'ok',
+    lat: 47.4979,
+    lng: 19.0402,
+    accuracy: 10,
+  });
 });
 
 test('secureStore round-trips through the main process (or degrades cleanly)', async () => {

@@ -32,8 +32,9 @@ function normalizeLocationError(error: unknown): Error {
 }
 
 /**
- * Resolves the device's current location through Capacitor: its native provider on
- * iOS/Android and its browser adapter on the web. The native provider is deliberate:
+ * Resolves the device's current location through the Electron host bridge on desktop,
+ * or Capacitor's native provider on iOS/Android and browser adapter on the web. The
+ * native provider is deliberate:
  * Android WebView's browser API can receive permission yet never receive a
  * fused-provider fix. Exposed as a cold Observable so callers can surface errors; a
  * missing API or a denied/failed request errors rather than hanging.
@@ -43,6 +44,20 @@ export class GeolocationService {
   /** The device's current position as {@link GeoPoint}. Cold — prompts on subscribe. */
   current(): Observable<GeoPoint> {
     return defer(() => {
+      const desktop = getTrinityDesktopBridge();
+      if (desktop?.isElectron) {
+        if (!desktop.resolveCurrentLocation) {
+          throw new Error('Location isn’t available on this device.');
+        }
+        return from(desktop.resolveCurrentLocation()).pipe(
+          map((result) => {
+            if (result.status !== 'ok') {
+              throw new Error('Could not get your location.');
+            }
+            return { coords: { latitude: result.lat, longitude: result.lng } };
+          }),
+        );
+      }
       const isNative = Capacitor.isNativePlatform();
       if (
         !isNative &&
@@ -92,7 +107,7 @@ export class GeolocationService {
    * The device's APPROXIMATE location via the desktop shell's IP lookup (city-level).
    * Cold — resolves through the main process on subscribe; errors if the bridge is
    * absent (non-desktop) or the estimate fails. Backs the manual dialog's opt-in
-   * button on desktop, where {@link current} can't resolve without a Google API key.
+   * button on desktop when the host OS provider cannot resolve a location.
    */
   approximateFromDesktop(): Observable<GeoPoint> {
     return defer(() => {

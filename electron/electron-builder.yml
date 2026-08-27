@@ -43,6 +43,8 @@ protocols:
 # so the main process resolves them via process.resourcesPath when packaged.
 # (See resolveTrayIcon() in src/main.ts for the dev + packaged lookup order.)
 extraResources:
+  - from: native-location/build/Release/native_location.node
+    to: native-location/native_location.node
   - from: build/trinityTray.png
     to: build/trinityTray.png
   - from: build/trinityTrayTemplate.png
@@ -86,6 +88,8 @@ mac:
   category: public.app-category.social-networking
   extendInfo:
     NSCameraUsageDescription: Trinity uses the camera to scan device-verification QR codes.
+    NSLocationUsageDescription: Trinity uses your location only when you choose to share it in a room.
+    NSLocationWhenInUseUsageDescription: Trinity uses your location only when you choose to share it in a room.
   hardenedRuntime: true
   gatekeeperAssess: false
   # Hardened-runtime entitlements (V8/WASM JIT + Matrix network.client). Applied only

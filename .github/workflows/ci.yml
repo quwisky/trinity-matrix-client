@@ -125,6 +125,24 @@ jobs:
       # privileged scheme, WASM stream-instantiation, the sandbox posture and safeStorage.
       - run: xvfb-run -a pnpm electron:e2e
 
+  # The location bridge is a platform-native Node-API addon. Compiling only on the
+  # Linux desktop runner would leave the Objective-C++ Core Location and C++/WinRT
+  # providers unchecked until a tagged release, so every PR builds all three variants.
+  native-location:
+    name: Native location (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libglib2.0-dev
+      - run: pnpm -C electron install --frozen-lockfile
+      - run: pnpm -C electron run native:build
+
   # The app journeys, driven against a disposable Synapse + Caddy stack in Docker.
   e2e:
     name: E2E (Playwright + Synapse)

@@ -106,8 +106,8 @@ if (!app.requestSingleInstanceLock()) {
     registerNotificationIpc();
     registerSecureStoreIpc();
     registerCorsIpc();
-    // Approximate (IP-based) location lookup for the desktop location-share dialog;
-    // Chromium's navigator.geolocation can't resolve without an embedded Google key.
+    // Native OS current-location bridge plus the opt-in approximate IP fallback.
+    // Chromium's own provider cannot resolve without an embedded Google key.
     registerGeolocationIpc();
     // Dock/launcher unread badge: the renderer pushes its unread total, which
     // main validates + clamps before app.setBadgeCount. Drives the macOS dock

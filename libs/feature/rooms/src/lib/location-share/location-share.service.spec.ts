@@ -93,27 +93,44 @@ describe('LocationShareService', () => {
   });
 
   describe('desktop (manual dialog)', () => {
-    it('opens the manual dialog instead of device geolocation', async () => {
+    it('sends the native desktop location without opening the dialog', async () => {
       setBridge({ isElectron: true });
       const { svc, current, openAndWait, sendLocation } = setup();
 
       svc.share();
       await Promise.resolve();
 
-      expect(current).not.toHaveBeenCalled();
-      expect(openAndWait).toHaveBeenCalled();
-      expect(sendLocation).toHaveBeenCalledWith(3.5, 4.5);
+      expect(current).toHaveBeenCalled();
+      expect(openAndWait).not.toHaveBeenCalled();
+      expect(sendLocation).toHaveBeenCalledWith(1.5, 2.5);
     });
 
-    it('sends nothing when the dialog is dismissed', async () => {
+    it('falls back to the manual dialog when native location fails', async () => {
       setBridge({ isElectron: true });
-      const openAndWait = vi.fn(() => Promise.resolve(null));
-      const { svc, sendLocation } = setup({ openAndWait });
+      const current = vi.fn(() => throwError(() => new Error('denied')));
+      const { svc, openAndWait, sendLocation, toastShow } = setup({ current });
 
       svc.share();
       await Promise.resolve();
+      await Promise.resolve();
+
+      expect(openAndWait).toHaveBeenCalled();
+      expect(sendLocation).toHaveBeenCalledWith(3.5, 4.5);
+      expect(toastShow).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing when native location fails and the dialog is dismissed', async () => {
+      setBridge({ isElectron: true });
+      const current = vi.fn(() => throwError(() => new Error('denied')));
+      const openAndWait = vi.fn(() => Promise.resolve(null));
+      const { svc, sendLocation } = setup({ current, openAndWait });
+
+      svc.share();
+      await Promise.resolve();
+      await Promise.resolve();
 
       expect(sendLocation).not.toHaveBeenCalled();
+      expect(svc.sharing()).toBe(false);
     });
   });
 });

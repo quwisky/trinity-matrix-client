@@ -161,6 +161,7 @@ surface:
 | `cors.allowOrigin(o)`        | send             | `trinity:cors:allow-origin`        | Additively allow one origin                                         |
 | `secureStore.isAvailable()`  | invoke           | `trinity:secure-store:available`   | Whether the OS keychain is usable                                   |
 | `secureStore.get/set/delete` | invoke           | `trinity:secure-store:*`           | Read, write and remove a secret                                     |
+| `resolveCurrentLocation()`   | invoke           | `trinity:geolocation:current`      | One-shot location from the host OS location service                 |
 | `resolveApproxLocation()`    | invoke           | `trinity:geolocation:approximate`  | City-level location from the public IP, opt-in only                 |
 
 Both sides validate. The preload drops payloads of the wrong shape, and every main-process
@@ -173,11 +174,22 @@ The typed mirror of this interface, and the authoritative documentation of each 
 Prefer it over the preload's own comments, one of which was spliced in half when the CORS
 bridge was inserted between the two paragraphs of the `secureStore` docblock.
 
-`resolveApproxLocation` exists because Chromium's `navigator.geolocation` is backed by
-Google's network location provider, which prebuilt Electron cannot authenticate without an
-embedded API key. On a desktop with no GPS it simply never resolves. The main process makes
-a keyless HTTPS lookup instead, time-boxed to eight seconds, resolving `null` on any
-failure so the renderer falls back to manual entry.
+`resolveCurrentLocation` bypasses Chromium's Google-backed geolocation provider. A small
+Node-API addon runs in the Electron main process and talks directly to the host service:
+Core Location on macOS, `Windows.Devices.Geolocation` on Windows, and GeoClue over a
+persistent system D-Bus connection on Linux. The addon is built against Electron's headers
+by `pnpm -C electron run native:build` and packaged as an `extraResource` outside the ASAR.
+Linux builders therefore need `pkg-config` and the GLib/GIO development headers. CI compiles
+all three providers rather than waiting for a release build to discover native drift.
+
+The IPC handler accepts requests only from the visible, focused main renderer and coalesces
+concurrent calls into one OS request. The native result is validated at the main-process
+boundary before crossing the preload bridge. A denied, unavailable, timed-out, or malformed
+result is intentionally not shown as an error: location sharing opens the existing dialog,
+where the user can enter coordinates or explicitly request an approximate IP location.
+
+`resolveApproxLocation` remains the keyless fallback. The main process makes a time-boxed
+HTTPS lookup and resolves `null` on failure so manual entry is always available.
 
 ## Cross-origin requests to homeservers
 

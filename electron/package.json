@@ -11,8 +11,9 @@
     "ensure:binary": "node scripts/ensure-electron.mjs",
     "copy:www": "node scripts/copy-www.mjs",
     "compile": "tsc -p tsconfig.json",
+    "native:build": "node scripts/build-native-location.mjs",
     "typecheck": "tsc -p tsconfig.spec.json --noEmit",
-    "build": "node scripts/copy-www.mjs && tsc -p tsconfig.json",
+    "build": "node scripts/copy-www.mjs && tsc -p tsconfig.json && node scripts/build-native-location.mjs",
     "test": "vitest run",
     "start": "electron .",
     "package": "electron-builder",
@@ -30,6 +31,7 @@
     "@types/node": "^24.13.3",
     "electron": "43.2.0",
     "electron-builder": "26.15.7",
+    "node-gyp": "^11.5.0",
     "typescript": "6.0.3",
     "vitest": "^4.1.9"
   }

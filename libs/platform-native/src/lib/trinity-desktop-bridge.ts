@@ -99,6 +99,14 @@ export interface TrinityDesktopBridge {
    * IP the request originates from, never GPS or Wi-Fi scan data.
    */
   resolveApproxLocation?: () => Promise<{ lat: number; lng: number } | null>;
+
+  /** Request one OS-mediated foreground position from the Electron main process. */
+  resolveCurrentLocation?: () => Promise<
+    | { status: 'ok'; lat: number; lng: number; accuracy: number }
+    | {
+        status: 'denied' | 'unavailable' | 'timeout' | 'cancelled' | 'error';
+      }
+  >;
 }
 
 /** Payload for {@link TrinityDesktopBridge.showNotification}. */

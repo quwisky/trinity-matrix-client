@@ -1,8 +1,15 @@
 import { ipcMain, net } from 'electron';
 import { getMainWindow } from './window';
+import {
+  createNativeLocationProvider,
+  type NativeLocationProvider,
+  type NativeLocationResult,
+} from './native-location';
 
 /** IPC channel the preload's `resolveApproxLocation` invokes. */
 export const APPROX_LOCATION_CHANNEL = 'trinity:geolocation:approximate';
+/** IPC channel the preload's `resolveCurrentLocation` invokes. */
+export const CURRENT_LOCATION_CHANNEL = 'trinity:geolocation:current';
 
 // Keyless, HTTPS IP-geolocation endpoint. City-level accuracy is intentional —
 // this is the desktop convenience fallback, not precise device positioning.
@@ -43,7 +50,27 @@ function toGeoPoint(
  * the renderer falls back to manual entry instead of hanging. Sends only the IP the
  * request originates from — never GPS or Wi-Fi scan data.
  */
-export function registerGeolocationIpc(): void {
+export function registerGeolocationIpc(
+  provider: NativeLocationProvider = createNativeLocationProvider(),
+): void {
+  let activeRequest: Promise<NativeLocationResult> | undefined;
+  ipcMain.handle(CURRENT_LOCATION_CHANNEL, async (event) => {
+    const win = getMainWindow();
+    if (
+      !win ||
+      event.sender !== win.webContents ||
+      !win.isVisible() ||
+      (!win.isFocused() && provider.allowUnfocused !== true)
+    ) {
+      return { status: 'unavailable' } satisfies NativeLocationResult;
+    }
+    if (activeRequest) return activeRequest;
+    activeRequest = provider.requestCurrentLocation().finally(() => {
+      activeRequest = undefined;
+    });
+    return activeRequest;
+  });
+
   ipcMain.handle(APPROX_LOCATION_CHANNEL, async (event) => {
     const win = getMainWindow();
     if (!win || event.sender !== win.webContents) {

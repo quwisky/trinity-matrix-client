@@ -2,6 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import {
   type Observable,
   finalize,
+  firstValueFrom,
   of,
   switchMap,
   throwError,
@@ -20,13 +21,11 @@ import { ManualLocationDialogComponent } from './manual-location-dialog/manual-l
  * Shares a location to the open room as an `m.location` message.
  *
  * On web/mobile it resolves the device's current position through Capacitor's
- * native/browser adapter (prompting for permission). On the desktop shell it instead
- * opens the manual-location dialog, because Chromium's
- * `navigator.geolocation` can't resolve a position without an embedded Google API key
- * — so the on-device path would just stall. Either way the resolved point flows into
- * {@link TimelineActionsService.sendLocation}; a denied/failed request surfaces a
- * toast, and {@link sharing} tracks the in-flight send so the composer can show a busy
- * state.
+ * native/browser adapter (prompting for permission). On the desktop shell it asks the
+ * host OS through the Electron bridge, then falls back to manual/IP entry if the host
+ * denies or cannot resolve the request. Either way the resolved point flows into
+ * {@link TimelineActionsService.sendLocation}, and {@link sharing} tracks the in-flight
+ * request/send so the composer can show a busy state.
  */
 @Injectable({ providedIn: 'root' })
 export class LocationShareService {
@@ -42,7 +41,7 @@ export class LocationShareService {
   /** Resolve a location and send it to the active room. */
   share(): void {
     if (getTrinityDesktopBridge()?.isElectron) {
-      void this.shareViaDialog();
+      void this.shareViaDesktop();
       return;
     }
     // Bound the whole request: the browser's own `timeout` clock only starts once
@@ -62,7 +61,20 @@ export class LocationShareService {
     );
   }
 
-  /** Desktop: pick a location by hand (Chromium can't resolve one), then send it. */
+  /** Desktop: prefer the OS provider, then fall back silently to manual/IP entry. */
+  private async shareViaDesktop(): Promise<void> {
+    this.sharingSig.set(true);
+    try {
+      const point = await firstValueFrom(this.geo.current());
+      this.sharingSig.set(false);
+      this.send(of(point));
+    } catch {
+      this.sharingSig.set(false);
+      await this.shareViaDialog();
+    }
+  }
+
+  /** Desktop fallback: pick a location manually or through the opt-in IP estimate. */
   private async shareViaDialog(): Promise<void> {
     const point = await this.dialog.openAndWait<
       GeoPoint | null,

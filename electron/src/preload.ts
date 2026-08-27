@@ -175,4 +175,12 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
       lat: number;
       lng: number;
     } | null>,
+  // One foreground, OS-mediated location request. Main validates both the caller
+  // and the native addon's response; no native handle or raw IPC reaches renderer.
+  resolveCurrentLocation: (): Promise<
+    | { status: 'ok'; lat: number; lng: number; accuracy: number }
+    | {
+        status: 'denied' | 'unavailable' | 'timeout' | 'cancelled' | 'error';
+      }
+  > => ipcRenderer.invoke('trinity:geolocation:current'),
 });
