@@ -233,6 +233,12 @@ describe('firstUrl', () => {
   it('returns null when there is no URL', () => {
     expect(firstUrl('no links here')).toBeNull();
   });
+
+  it('preserves a bare URL after ordinary bracket-like text', () => {
+    expect(firstUrl('[note](not-markdown) see https://example.com')).toBe(
+      'https://example.com',
+    );
+  });
 });
 
 /** Parse sanitized HTML back into a document fragment for attribute assertions. */
@@ -327,7 +333,9 @@ describe('mislabeled standalone Markdown links', () => {
       );
 
       expect(parse(rendered.html ?? '').querySelector('a')).toBeNull();
-      expect(firstUrl(value)).toBeNull();
+      expect(
+        project(content({ body: value, formatted_body: value })).previewUrl,
+      ).toBeNull();
     }
   });
 
@@ -375,7 +383,9 @@ describe('mislabeled standalone Markdown links', () => {
       );
 
       expect(parse(rendered.html ?? '').querySelector('a')).toBeNull();
-      expect(firstUrl(value)).toBeNull();
+      expect(
+        project(content({ body: value, formatted_body: value })).previewUrl,
+      ).toBeNull();
     }
   });
 
@@ -392,6 +402,26 @@ describe('mislabeled standalone Markdown links', () => {
     } as unknown as Room;
 
     expect(replyPreview(room, '$target')?.body).toBe(destination);
+  });
+
+  it('does not reinterpret a Markdown-looking fallback for valid HTML replies', () => {
+    const fallback = '[literal](https://example.com)';
+    const target = {
+      getContent: () =>
+        content({
+          body: fallback,
+          formatted_body: '<strong>formatted</strong>',
+        }),
+      getSender: () => '@alice:hs',
+      isRedacted: () => false,
+      replyEventId: null,
+    } as unknown as MatrixEvent;
+    const room = {
+      findEventById: () => target,
+      getMember: () => null,
+    } as unknown as Room;
+
+    expect(replyPreview(room, '$target')?.body).toBe(fallback);
   });
 });
 

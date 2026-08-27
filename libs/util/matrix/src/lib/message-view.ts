@@ -400,7 +400,8 @@ export function buildMessageView(
     // actually previewed is decided downstream from `previewEncrypted` + the user's
     // preferences — a preview fetch discloses the URL to the homeserver, so in an
     // encrypted room it happens only when the user has opted in.
-    previewUrl: kind === 'text' ? firstUrl(body) : null,
+    previewUrl:
+      kind === 'text' ? previewUrlForText(event.getContent(), body) : null,
     // Fail CLOSED: if the SDK can't report the room's encryption state, treat it as
     // encrypted so a preview requires the explicit encrypted-rooms opt-in.
     previewEncrypted: room.hasEncryptionStateEvent?.() ?? true,
@@ -532,12 +533,23 @@ export function replyPreview(room: Room, eventId: string): ReplyPreview | null {
   const raw = redacted
     ? '(message deleted)'
     : stripReplyFallbackText((content?.['body'] as string) ?? '');
-  const recovered =
+  const formatted =
     content?.['format'] === 'org.matrix.custom.html' &&
     typeof content['formatted_body'] === 'string'
+      ? parseStandaloneMarkdownLink(
+          stripReplyFallbackHtml(content['formatted_body']),
+        )
+      : NOT_STANDALONE_MARKDOWN_LINK;
+  const fallback =
+    formatted.kind === 'link'
       ? parseStandaloneMarkdownLink(raw)
       : NOT_STANDALONE_MARKDOWN_LINK;
-  const display = recovered.kind === 'link' ? recovered.label : raw;
+  const display =
+    formatted.kind === 'link'
+      ? fallback.kind === 'link' && fallback.href === formatted.href
+        ? fallback.label
+        : formatted.label
+      : raw;
   return {
     id: eventId,
     senderName,
@@ -1775,14 +1787,14 @@ function isControlOrWhitespace(char: string): boolean {
 function parseStandaloneMarkdownLink(
   value: string,
 ): StandaloneMarkdownLinkResult {
+  if (value.length > MAX_STANDALONE_MARKDOWN_LINK_LENGTH) {
+    return INVALID_STANDALONE_MARKDOWN_LINK;
+  }
   const source = value.trim();
   if (!source.startsWith('[') || !source.includes('](')) {
     return NOT_STANDALONE_MARKDOWN_LINK;
   }
-  if (
-    value.length > MAX_STANDALONE_MARKDOWN_LINK_LENGTH ||
-    /[<>\r\n]/.test(source)
-  ) {
+  if (/[<>\r\n]/.test(source)) {
     return INVALID_STANDALONE_MARKDOWN_LINK;
   }
 
@@ -1858,15 +1870,27 @@ function parseStandaloneMarkdownLink(
   }
 }
 
-/** The first safe http(s) URL in `text`, or null. */
+function previewUrlForText(
+  content: Record<string, unknown>,
+  text: string,
+): string | null {
+  if (
+    content['format'] === 'org.matrix.custom.html' &&
+    typeof content['formatted_body'] === 'string'
+  ) {
+    const markdown = parseStandaloneMarkdownLink(text);
+    if (markdown.kind === 'link') {
+      return markdown.href;
+    }
+    if (markdown.kind === 'invalid-link') {
+      return null;
+    }
+  }
+  return firstUrl(text);
+}
+
+/** The first http(s) URL in `text` (trailing sentence punctuation trimmed), or null. */
 export function firstUrl(text: string): string | null {
-  const markdown = parseStandaloneMarkdownLink(text);
-  if (markdown.kind === 'link') {
-    return markdown.href;
-  }
-  if (markdown.kind === 'invalid-link') {
-    return null;
-  }
   const match = /https?:\/\/[^\s<>"']+/.exec(text);
   if (!match) {
     return null;

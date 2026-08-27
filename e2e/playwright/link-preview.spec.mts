@@ -97,14 +97,17 @@ test.describe('Link previews', () => {
         data: { name: roomName, preset: 'private_chat' },
       })
       .then((response) => response.json());
-    const markdown = `[${OG_URL}](${OG_URL})`;
+    const destination = `${OG_URL}?asset=image_name.jpg`;
+    const markdown = `[${destination}](${destination})`;
+    const escapedDestination = destination.replaceAll('_', '\\_');
+    const fallbackMarkdown = `[${escapedDestination}](${escapedDestination})`;
     const sent = await request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${runId}-msg`,
       {
         headers: auth,
         data: {
           msgtype: 'm.text',
-          body: markdown,
+          body: fallbackMarkdown,
           format: 'org.matrix.custom.html',
           formatted_body: markdown,
         },
@@ -119,17 +122,17 @@ test.describe('Link previews', () => {
     await channel.first().click();
 
     const messageLink = page.getByRole('link', {
-      name: OG_URL,
+      name: destination,
       exact: true,
     });
     await expect(messageLink).toBeVisible({ timeout: 20_000 });
-    await expect(messageLink).toHaveAttribute('href', OG_URL);
+    await expect(messageLink).toHaveAttribute('href', destination);
     const message = page.locator('.scroll .msg').filter({ has: messageLink });
     await expect(message).not.toContainText('](');
 
     const card = page.getByTestId('link-preview');
     await expect(card).toBeVisible({ timeout: 30_000 });
     await expect(card).toContainText('Trinity E2E Preview');
-    await expect(card).toHaveAttribute('href', OG_URL);
+    await expect(card).toHaveAttribute('href', destination);
   });
 });
