@@ -197,10 +197,11 @@ pnpm e2e:android -- --shard=1/4
 ```
 
 Without an explicit serial it uses only an AVD named `Trinity_API_36`; it never picks the
-first attached device. It builds and installs the production Capacitor app, runs every
+first attached device. It builds and installs the production Capacitor app, collects every
 canonical app journey in the actual WebView plus native-only coverage, and leaves failure
-artifacts under `dist/.playwright/android/`. Docker is mandatory for its authenticated
-journeys.
+artifacts under `dist/.playwright/android/`. Journeys that require external FCM delivery, a
+not-yet-implemented native file export, or unavailable compositor-panning instrumentation
+are reported as explicit platform skips. Docker is mandatory for authenticated journeys.
 
 ### Standalone protocol harnesses
 

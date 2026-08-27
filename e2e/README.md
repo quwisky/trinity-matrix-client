@@ -77,25 +77,30 @@ current user also needs read/write access to `/dev/kvm`; software emulation is t
 this suite.
 
 The installed Capacitor app is cleared and relaunched for each test. Every canonical spec
-under `e2e/playwright/` imports the shared platform fixture, so Android executes the same
-journey and assertions in the package WebView. Platform adapters map browser options,
-permissions, preferences, file/export behavior, multi-device isolation, and native
-authentication boundaries without substituting a desktop browser for the app under test.
+under `e2e/playwright/` imports the shared platform fixture, so Android collects the same
+journeys in the package WebView. Platform adapters map browser options, permissions,
+preferences, multi-device isolation, and native authentication boundaries without
+substituting a desktop browser for the app under test. External FCM notification delivery
+encrypted-key export, and the compositor-panning assertion are explicit Android skips until
+those environments/product paths exist; they are not replaced with renderer shims that
+would create false coverage.
 Android-only specs additionally cover hardware Back and process restoration. Caddy's test
 certificate is accepted through the attached WebView's DevTools session because
 browser-config `ignoreHTTPSErrors` does not change Android WebView policy.
 
 Failures retain a WebView screenshot, whole-device screenshot, Playwright trace, logcat
 including the crash buffer, activity state, and package diagnostics under
-`dist/.playwright/android/`. Cleanup removes both Playwright Android driver packages,
-restores the prior reverse mapping, and stops only an emulator the runner started.
+`dist/.playwright/android/`. Cleanup removes only Playwright Android driver packages that
+were absent before the run, restores the prior reverse mapping, and stops only an emulator
+the runner started.
 
 An explicitly supplied serial must be disposable. The suite clears both Trinity test
 package IDs before their tests, replaces their APKs, and clears the device's logcat buffers;
 those mutations cannot be restored. It also force-stops Trinity after the run. The exact
 pre-run `adb reverse tcp:8448` mapping is restored, and a pre-existing emulator is left
-running. Pass normal Playwright arguments after `--`; CI divides the suite with
-`--shard=N/4`. A source-shape guard requires every canonical spec to import the shared
+running. The target must provide Chrome for native OIDC/SSO journeys. Pass normal
+Playwright arguments after `--`; CI divides the suite with `--shard=N/4` and fails on any
+flaky retry. A source-shape guard requires every canonical spec to import the shared
 fixture and requires the Android config to collect the canonical glob.
 
 ## `e2e:media` — encrypted media send round-trip

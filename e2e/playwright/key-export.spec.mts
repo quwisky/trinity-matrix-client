@@ -23,6 +23,10 @@ test.describe('Encrypted key export', () => {
     page,
     request,
   }) => {
+    test.skip(
+      isAndroidE2E,
+      'native WebView export needs a production Files/Share implementation before this browser download journey is portable',
+    );
     const hs = session.hs as string;
     const runId = `${Date.now().toString(36)}ke`;
     const user = `keyexp-${runId}`;
@@ -42,75 +46,9 @@ test.describe('Encrypted key export', () => {
     await page.getByTestId('security-export-keys').click();
     const dialog = page.locator('trn-alert-dialog');
     await dialog.locator('input').fill(PASSPHRASE);
-    if (isAndroidE2E) {
-      await page.evaluate(() => {
-        const state = window as typeof window & {
-          __trinityDownload?: {
-            name: string;
-            mimeType: string;
-            base64: string;
-          };
-        };
-        const click = HTMLAnchorElement.prototype.click;
-        URL.revokeObjectURL = () => undefined;
-        HTMLAnchorElement.prototype.click = function captureDownload() {
-          const name = this.download || 'trinity-room-keys.txt';
-          const encoded = this.href.slice(this.href.indexOf(',') + 1);
-          const bytes = new TextEncoder().encode(decodeURIComponent(encoded));
-          let binary = '';
-          for (const byte of bytes) binary += String.fromCharCode(byte);
-          state.__trinityDownload = {
-            name,
-            mimeType: 'text/plain',
-            base64: btoa(binary),
-          };
-          HTMLAnchorElement.prototype.click = click;
-        };
-      });
-    }
-    const downloadPromise = isAndroidE2E
-      ? undefined
-      : page.waitForEvent('download');
+    const downloadPromise = page.waitForEvent('download');
     await page.getByTestId('alert-confirm').click();
-    const inputFile = isAndroidE2E
-      ? await expect
-          .poll(
-            () =>
-              page.evaluate(
-                () =>
-                  (
-                    window as typeof window & {
-                      __trinityDownload?: {
-                        name: string;
-                        mimeType: string;
-                        base64: string;
-                      };
-                    }
-                  ).__trinityDownload,
-              ),
-            { timeout: 20_000 },
-          )
-          .not.toBeUndefined()
-          .then(() =>
-            page.evaluate(
-              () =>
-                (
-                  window as typeof window & {
-                    __trinityDownload: {
-                      name: string;
-                      mimeType: string;
-                      base64: string;
-                    };
-                  }
-                ).__trinityDownload,
-            ),
-          )
-          .then((download) => ({
-            name: download.name,
-            mimeType: download.mimeType,
-            buffer: Buffer.from(download.base64, 'base64'),
-          }))
-      : await downloadPromise!.then((download) => download.path());
+    const inputFile = await downloadPromise.then((download) => download.path());
     await expect(page.getByText('Room keys exported.')).toBeVisible({
       timeout: 20_000,
     });

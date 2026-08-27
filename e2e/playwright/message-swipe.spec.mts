@@ -6,6 +6,7 @@ import {
   type Page,
 } from './support/fixtures.mts';
 import {
+  isAndroidE2E,
   login,
   seedPreference,
   synapseSession,
@@ -441,6 +442,10 @@ test.describe('Swipe a message', () => {
     request,
     touchPlatform,
   }) => {
+    test.skip(
+      isAndroidE2E,
+      'the attached WebView DevTools endpoint does not expose compositor touch panning; do not replace it with a DOM scroll',
+    );
     // The other half of the same criterion, and the one that needs a real browser: the row
     // gesture must not have taken the vertical axis away from the scroller.
     const { other } = await openRoom(page, request, 's', 'right', 30);

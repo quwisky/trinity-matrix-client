@@ -272,7 +272,7 @@ jobs:
           profile: pixel_6
           avd-name: trinity_api_36_ci
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm e2e:android -- --shard=${{ matrix.shard }}/4
+          script: TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm e2e:android -- --fail-on-flaky-tests --shard=${{ matrix.shard }}/4
 
       - name: Verify Android E2E left the worktree unchanged
         if: always()

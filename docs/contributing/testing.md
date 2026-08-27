@@ -364,12 +364,14 @@ Every canonical spec imports `e2e/playwright/support/fixtures.mts`. It selects t
 browser lifecycle for web and overrides both `page` and `context` with the installed
 package WebView for Android. The Android config collects the entire canonical glob plus
 native-only specs; a source-shape guard prevents new specs from bypassing that boundary.
-Platform adapters cover test options, native preferences and permissions, exports,
-external authentication, and a separately packaged second device while keeping one set of
-journey assertions.
+Platform adapters cover test options, native preferences and permissions, external
+authentication, and a separately packaged second device while keeping one set of journey
+assertions. External FCM notification delivery, encrypted-key export, and the one
+compositor-panning assertion remain explicit Android skips: none is replaced with an
+in-page assertion that bypasses the named native behavior.
 
 The outer runner owns Synapse, one exact emulator serial, the APK, the Playwright Android
-driver packages, and the `tcp:8448` reverse mapping. It restores only state it changed and
+driver packages it installs, and the `tcp:8448` reverse mapping. It restores only state it changed and
 records screenshots, traces, logcat/crash buffers, activity state, and package diagnostics
 under `dist/.playwright/android/` on failure.
 

@@ -15,7 +15,7 @@ function processIsAlive(pid: number): boolean {
   }
 }
 
-/** Acquire a PID lock, taking over only when its recorded process is gone. */
+/** Acquire a PID lock without ever deleting a lock another contender may own. */
 export function acquireProcessLock(
   file: string,
   description: string,
@@ -28,7 +28,14 @@ export function acquireProcessLock(
       writeFileSync(file, owner, { flag: 'wx' });
       return { file, owner };
     } catch (error) {
-      const existingOwner = readFileSync(file, 'utf8').trim();
+      let existingOwner: string;
+      try {
+        existingOwner = readFileSync(file, 'utf8').trim();
+      } catch {
+        // The owner can finish between our exclusive-create failure and the read.
+        // Retry the atomic create; no lock was removed by this contender.
+        continue;
+      }
       const existingPid = Number(existingOwner);
       if (Number.isInteger(existingPid) && processIsAlive(existingPid)) {
         throw new Error(
@@ -38,12 +45,15 @@ export function acquireProcessLock(
           },
         );
       }
-
-      // Compare before removal so a newly acquired lock is never mistaken for the
-      // stale one we inspected.
-      if (readFileSync(file, 'utf8').trim() === existingOwner) {
-        rmSync(file, { force: true });
-      }
+      // Refuse automatic stale-lock reclamation. A read/compare/unlink sequence has
+      // a TOCTOU window in which another contender can replace the stale file and
+      // have its live lock removed. Manual removal is rare and keeps the fixed-port
+      // Synapse stack strictly serialized.
+      throw new Error(
+        `${description} left a stale lock at ${file} (owner ${existingOwner || '<invalid>'}); ` +
+          'remove it only after confirming no runner is active',
+        { cause: error },
+      );
     }
   }
 

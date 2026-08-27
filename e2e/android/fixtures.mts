@@ -531,22 +531,12 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
 
   touchPlatform: async ({ app }, use) => {
     await use({
-      async swipe(page, from, to): Promise<void> {
+      async swipe(page): Promise<void> {
         if (page !== app.page) {
           throw new Error('Android touch input must target the primary app WebView');
         }
-        // Android's remote-debugging transport delivers the row's touch events
-        // but does not hand vertical panning to the attached WebView compositor.
-        // The web project covers that arbitration with CDP touch input; here we
-        // move the hit-tested scroller and retain the Android assertion that the
-        // row did not arm an edit or reply action.
-        await page.evaluate(
-          ({ from, to }) => {
-            const element = document.querySelector<HTMLElement>('.scroll');
-            if (!element) throw new Error('Timeline scroll container is unavailable');
-            element.scrollTop += from.y - to.y;
-          },
-          { from, to },
+        throw new Error(
+          'Android compositor touch panning is unavailable through the attached WebView DevTools endpoint',
         );
       },
     });
