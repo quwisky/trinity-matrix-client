@@ -1,4 +1,5 @@
 export * from './lib/auth.service';
+export * from './lib/registration.service';
 export * from './lib/auth.guard';
 export * from './lib/factory-reset.service';
 export type {

@@ -94,7 +94,7 @@ describe('app routes', () => {
  */
 describe('app route guards', () => {
   /** The routes that are deliberately reachable signed out, by path. */
-  const PUBLIC_PATHS = ['login', 'sso-callback', 'spike'];
+  const PUBLIC_PATHS = ['login', 'register', 'sso-callback', 'spike'];
   /** Pure redirects — they carry no component, so there is nothing to guard. */
   const isRedirect = (route: (typeof routes)[number]): boolean =>
     route.redirectTo !== undefined;

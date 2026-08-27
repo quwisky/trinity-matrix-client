@@ -1,0 +1,313 @@
+<trn-auth-card>
+  <h1 class="sr-only">Create a Trinity account</h1>
+
+  <ng-container trnAuthCardSubtitle>
+    <p trnCardDescription class="registration-card__subtitle">
+      Create an account on your Matrix homeserver
+    </p>
+    @if (baseUrl(); as homeserver) {
+      <p class="registration-card__homeserver">{{ homeserver }}</p>
+    }
+  </ng-container>
+
+  @if (discovering()) {
+    <div
+      class="registration-card__busy text-center"
+      role="status"
+      aria-live="polite"
+    >
+      <trn-spinner />
+      <p class="text-muted-foreground">Checking registration…</p>
+    </div>
+  } @else if (baseUrl()) {
+    @if (!started() || stage().kind === 'credentials') {
+      <div class="registration-card__field">
+        <label
+          trnLabel
+          for="registration-username"
+          class="registration-card__label"
+        >
+          Username
+        </label>
+        <input
+          trnInput
+          id="registration-username"
+          autocomplete="username"
+          autocapitalize="off"
+          autocorrect="off"
+          [formField]="credentialsForm.username"
+          (keyup.enter)="createAccount()"
+        />
+        @if (
+          credentialsForm.username().touched() &&
+            credentialsForm.username().errors()[0];
+          as validation
+        ) {
+          <p class="registration-card__field-error text-danger">
+            {{ validation.message }}
+          </p>
+        }
+      </div>
+
+      <div class="registration-card__field">
+        <label
+          trnLabel
+          for="registration-password"
+          class="registration-card__label"
+        >
+          Password
+        </label>
+        <div class="relative">
+          <input
+            trnInput
+            id="registration-password"
+            autocomplete="new-password"
+            [type]="passwordVisible() ? 'text' : 'password'"
+            class="pr-10"
+            [formField]="credentialsForm.password"
+          />
+          <button
+            hlmBtn
+            variant="ghost"
+            size="icon"
+            type="button"
+            class="absolute inset-y-0 right-0 text-muted-foreground"
+            [attr.aria-label]="
+              passwordVisible() ? 'Hide password' : 'Show password'
+            "
+            [attr.aria-pressed]="passwordVisible()"
+            [disabled]="busy()"
+            (click)="passwordVisible.set(!passwordVisible())"
+          >
+            <trn-icon [name]="passwordVisible() ? 'eye-off' : 'eye'" />
+          </button>
+        </div>
+      </div>
+
+      <div class="registration-card__field">
+        <label
+          trnLabel
+          for="registration-confirm-password"
+          class="registration-card__label"
+        >
+          Confirm password
+        </label>
+        <input
+          trnInput
+          id="registration-confirm-password"
+          autocomplete="new-password"
+          [type]="passwordVisible() ? 'text' : 'password'"
+          [formField]="credentialsForm.confirmPassword"
+          (keyup.enter)="createAccount()"
+        />
+        @if (
+          credentialsForm.confirmPassword().touched() &&
+            credentialsForm.confirmPassword().errors()[0];
+          as validation
+        ) {
+          <p class="registration-card__field-error text-danger">
+            {{ validation.message }}
+          </p>
+        }
+      </div>
+
+      <button
+        hlmBtn
+        class="registration-card__submit w-full"
+        [disabled]="busy()"
+        (click)="createAccount()"
+        data-testid="register-submit"
+      >
+        Create account
+      </button>
+    } @else {
+      @switch (stage().kind) {
+        @case ('email-address') {
+          <p class="registration-card__copy">
+            This homeserver requires an email address to verify your
+            registration.
+          </p>
+          <div class="registration-card__field">
+            <label
+              trnLabel
+              for="registration-email"
+              class="registration-card__label"
+            >
+              Email address
+            </label>
+            <input
+              trnInput
+              id="registration-email"
+              type="email"
+              autocomplete="email"
+              [formField]="emailForm.email"
+              (keyup.enter)="provideEmail()"
+            />
+          </div>
+          <button
+            hlmBtn
+            class="w-full"
+            [disabled]="busy()"
+            (click)="provideEmail()"
+          >
+            Send verification email
+          </button>
+        }
+        @case ('email-verification') {
+          <p class="registration-card__copy">
+            Open the verification link sent by the homeserver, then return here.
+          </p>
+          <button hlmBtn class="w-full" [disabled]="busy()" (click)="poll()">
+            I verified my email
+          </button>
+          <button
+            hlmBtn
+            variant="ghost"
+            class="mt-2 w-full"
+            [disabled]="busy()"
+            (click)="resendEmail()"
+          >
+            Resend email
+          </button>
+        }
+        @case ('terms') {
+          <p class="registration-card__copy">
+            Review the homeserver policies required to create this account.
+          </p>
+          <ul class="registration-card__policies">
+            @for (policy of $any(stage()).policies; track policy.id) {
+              <li>
+                <button
+                  hlmBtn
+                  variant="link"
+                  class="h-auto p-0"
+                  (click)="openPolicy(policy)"
+                >
+                  {{ policy.name }}
+                </button>
+                @if (policy.version) {
+                  <span class="text-muted-foreground">
+                    (version {{ policy.version }})</span
+                  >
+                }
+              </li>
+            }
+          </ul>
+          <label class="registration-card__consent">
+            <trn-checkbox
+              [checked]="termsAccepted()"
+              [disabled]="busy()"
+              (checkedChange)="termsAccepted.set($event)"
+            />
+            <span>I have read and accept these policies.</span>
+          </label>
+          <button
+            hlmBtn
+            class="mt-4 w-full"
+            [disabled]="busy() || !termsAccepted()"
+            (click)="acceptTerms()"
+          >
+            Accept and continue
+          </button>
+        }
+        @case ('registration-token') {
+          <p class="registration-card__copy">
+            This homeserver requires an invitation or registration token.
+          </p>
+          <div class="registration-card__field">
+            <label
+              trnLabel
+              for="registration-token"
+              class="registration-card__label"
+            >
+              Registration token
+            </label>
+            <input
+              trnInput
+              id="registration-token"
+              autocomplete="off"
+              [formField]="tokenForm.token"
+              (keyup.enter)="submitToken()"
+            />
+          </div>
+          <button
+            hlmBtn
+            class="w-full"
+            [disabled]="busy()"
+            (click)="submitToken()"
+          >
+            Continue
+          </button>
+        }
+        @case ('fallback') {
+          <p class="registration-card__copy">
+            Complete this homeserver verification step in your browser, then
+            return to Trinity.
+          </p>
+          <button
+            hlmBtn
+            class="w-full"
+            [disabled]="busy()"
+            (click)="openFallback($any(stage()).url)"
+            data-testid="registration-fallback-open"
+          >
+            Open verification
+          </button>
+          <button
+            hlmBtn
+            variant="outline"
+            class="mt-2 w-full"
+            [disabled]="busy() || !fallbackOpened()"
+            (click)="poll()"
+          >
+            I completed this step
+          </button>
+        }
+        @case ('session-error') {
+          <p class="registration-card__copy">
+            The Matrix account
+            <strong>{{ $any(stage()).userId }}</strong> exists on the
+            homeserver.
+          </p>
+          @if ($any(stage()).retryable) {
+            <button
+              hlmBtn
+              class="w-full"
+              [disabled]="busy()"
+              (click)="retryEstablishment()"
+            >
+              Retry local setup
+            </button>
+          }
+        }
+      }
+    }
+  }
+
+  @if (busy() && !discovering()) {
+    <div
+      class="registration-card__busy text-center"
+      role="status"
+      aria-live="polite"
+    >
+      <trn-spinner />
+      <p class="text-muted-foreground">Working…</p>
+    </div>
+  }
+
+  @if (error(); as message) {
+    <p class="registration-card__error text-danger" role="alert">
+      {{ message }}
+    </p>
+  }
+
+  <button
+    hlmBtn
+    variant="ghost"
+    class="mt-4 w-full"
+    [disabled]="busy()"
+    (click)="backToLogin()"
+  >
+    Back to sign in
+  </button>
+</trn-auth-card>

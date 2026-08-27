@@ -131,6 +131,21 @@
       </button>
     }
 
+    <!-- Legacy Matrix registration. The side-effect-free availability probe must
+         positively report open before this action appears; unknown fails closed. -->
+    @if (registrationAvailability() === 'open' && !reauthUserId()) {
+      <button
+        hlmBtn
+        variant="outline"
+        class="login-card__sso w-full"
+        [disabled]="busy()"
+        (click)="startRegistration()"
+        data-testid="password-register"
+      >
+        Create account
+      </button>
+    }
+
     <!-- ── Step 2c: OIDC (next-gen auth) ──────────────── -->
     @if (oidcSupported()) {
       <button

@@ -19,6 +19,11 @@ export const routes: Routes = [
     loadComponent: () =>
       import('@trinity/feature/auth').then((m) => m.SsoCallbackPage),
   },
+  {
+    path: 'register',
+    loadComponent: () =>
+      import('@trinity/feature/auth').then((m) => m.RegistrationPage),
+  },
   // `/rooms` and `/rooms/<segment>` as ONE route, via a matcher rather than two entries.
   //
   // Two sibling entries sharing a `loadComponent` do NOT share a component instance: Angular's

@@ -26,10 +26,8 @@ import {
   getTrinityDesktopBridge,
 } from '@trinity/platform-native';
 import {
-  MatrixSession,
   UiaCancelledError,
   runPasswordUia,
-  type OidcSessionBinding,
   type PasswordPrompt,
 } from '@trinity/util/matrix';
 import {
@@ -39,11 +37,14 @@ import {
   type OidcGrant,
   type OidcGrantContext,
 } from './oidc-client.service';
+import {
+  SessionEstablishmentService,
+  type LoginMode,
+} from './session-establishment.service';
+
+export type { LoginMode } from './session-establishment.service';
 
 const DEVICE_DISPLAY_NAME = 'Trinity';
-
-/** Whether a successful login replaces the current account or adds alongside it. */
-export type LoginMode = 'replace' | 'add';
 
 /** The active OIDC account's provider-hosted account-management surface. */
 export interface AccountManagement {
@@ -70,6 +71,7 @@ export class AuthService {
   private readonly push = inject(PushService);
   private readonly oidc = inject(OidcClientService);
   private readonly drafts = inject(DraftStoreService);
+  private readonly sessions = inject(SessionEstablishmentService);
 
   /**
    * Resolve a homeserver base URL from a user-entered domain (e.g. "matrix.org"
@@ -152,7 +154,7 @@ export class AuthService {
           ...(deviceId ? { device_id: deviceId } : {}),
         }),
       ),
-    ).pipe(switchMap((res) => this.establish(baseUrl, res, mode)));
+    ).pipe(switchMap((res) => this.sessions.establish(baseUrl, res, mode)));
   }
 
   /**
@@ -187,7 +189,7 @@ export class AuthService {
           ...(deviceId ? { device_id: deviceId } : {}),
         }),
       ),
-    ).pipe(switchMap((res) => this.establish(baseUrl, res, mode)));
+    ).pipe(switchMap((res) => this.sessions.establish(baseUrl, res, mode)));
   }
 
   /**
@@ -229,7 +231,7 @@ export class AuthService {
     return this.oidc.completeGrant(code, context).pipe(
       switchMap((grant) => this.rejectMismatchedGrant(grant, expectedUserId)),
       switchMap((grant) =>
-        this.establish(
+        this.sessions.establish(
           grant.homeserverUrl,
           {
             user_id: grant.userId,
@@ -452,56 +454,6 @@ export class AuthService {
         ),
       );
     });
-  }
-
-  /**
-   * Persist a login response and bring its client up. `replace` (the default login)
-   * tears down any current account first — dropping its media/avatar caches + pusher;
-   * `add` keeps the other signed-in accounts running and just adds this one, active.
-   */
-  private establish(
-    baseUrl: string,
-    res: {
-      user_id: string;
-      device_id: string;
-      access_token: string;
-      refresh_token?: string;
-      accessTokenExpiresAt?: number;
-      oidc?: OidcSessionBinding;
-    },
-    mode: LoginMode,
-  ): Observable<void> {
-    const session: MatrixSession = {
-      baseUrl,
-      userId: res.user_id,
-      deviceId: res.device_id,
-      accessToken: res.access_token,
-      ...(res.refresh_token !== undefined
-        ? { refreshToken: res.refresh_token }
-        : {}),
-      ...(res.accessTokenExpiresAt !== undefined
-        ? { accessTokenExpiresAt: res.accessTokenExpiresAt }
-        : {}),
-      ...(res.oidc ? { oidc: res.oidc } : {}),
-    };
-    if (mode === 'add') {
-      // Additive: leave the other accounts' media/avatar caches + pusher untouched.
-      // Start with the STORED session so this account uses its own crypto-store
-      // prefix, not the SDK default (which would collide with the active account's).
-      // Then register a pusher for the new account (idempotent; no-op off native).
-      return this.storage.save(session).pipe(
-        switchMap((stored) => this.matrix.add(stored)),
-        switchMap(() => this.push.register()),
-      );
-    }
-    // Replace: drop the prior session's avatar/media blobs (re-login can switch
-    // accounts/homeservers without a logout) and its pusher, then start fresh.
-    this.avatars.releaseAll();
-    this.media.releaseAll();
-    return this.push.unregister().pipe(
-      switchMap(() => this.storage.save(session)),
-      switchMap((stored) => this.matrix.init(stored)),
-    );
   }
 
   /** Accept "@user:server.org", "user:server.org", or a bare "server.org". */
