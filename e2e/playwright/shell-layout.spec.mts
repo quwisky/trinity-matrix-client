@@ -358,6 +358,14 @@ test.describe('Modern room shell layout', () => {
         await expect(page.locator('html')).not.toHaveAttribute('data-density');
       }
 
+      const shellGap = density === 'compact' ? '4px' : '8px';
+      const shellPadding = density === 'compact' ? '6px' : '8px';
+      await expect(page.locator('.rail')).toHaveCSS('gap', shellGap);
+      await expect(page.locator('.sidebar__header')).toHaveCSS(
+        'padding-left',
+        shellPadding,
+      );
+
       await page.getByTestId('rail-rooms').click();
       const row = page.locator('.channel-row', {
         has: page.locator('.channel', { hasText: roomNames[density] }),
@@ -395,6 +403,15 @@ test.describe('Modern room shell layout', () => {
         await page.getByTestId('toggle-members').click();
       }
       await expect(page.locator('.members')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.member').first()).toHaveCSS('height', '44px');
+      await expect(page.locator('.member').first()).toHaveCSS(
+        'padding-left',
+        shellPadding,
+      );
+      await expect(page.locator('.members__section-label').first()).toHaveCSS(
+        'height',
+        '34px',
+      );
       await expectEllipsis(
         page.locator('.member__name', { hasText: 'Morgan With A Member Name' }),
       );
