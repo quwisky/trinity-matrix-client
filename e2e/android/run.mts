@@ -50,7 +50,6 @@ const changedReverseMappings: Array<{
   previous: string | undefined;
 }> = [];
 let playwrightAttachAttempted = false;
-const preexistingDriverPackages = new Set<string>();
 let activeChild: ChildProcess | undefined;
 let cleanupPromise: Promise<void> | undefined;
 let processLock: ProcessLock | undefined;
@@ -298,6 +297,19 @@ async function validateAndWaitForBoot(): Promise<void> {
       'package:',
     ),
   );
+  for (const driverPackage of driverPackages) {
+    const installed = await adbRun(
+      'shell',
+      'pm',
+      'path',
+      driverPackage,
+    ).catch(() => '');
+    if (installed.startsWith('package:')) {
+      throw new Error(
+        `${serial} already contains ${driverPackage}; remove pre-existing Playwright drivers before using this disposable test target`,
+      );
+    }
+  }
 
   const properties = {
     qemu: await adbRun('shell', 'getprop', 'ro.kernel.qemu'),
@@ -357,9 +369,7 @@ async function cleanup(): Promise<void> {
         await adbRun('shell', 'am', 'force-stop', packageName).catch(() => undefined);
         if (playwrightAttachAttempted) {
           for (const driverPackage of driverPackages) {
-            if (!preexistingDriverPackages.has(driverPackage)) {
-              await adbRun('uninstall', driverPackage).catch(() => undefined);
-            }
+            await adbRun('uninstall', driverPackage).catch(() => undefined);
           }
         }
         for (const { local, previous } of changedReverseMappings.reverse()) {
@@ -455,17 +465,6 @@ async function main(): Promise<void> {
     ),
   );
   process.env['TRINITY_ANDROID_SERIAL'] = serial;
-  for (const driverPackage of driverPackages) {
-    const installed = await adbRun(
-      'shell',
-      'pm',
-      'path',
-      driverPackage,
-    ).catch(() => '');
-    if (installed.startsWith('package:')) {
-      preexistingDriverPackages.add(driverPackage);
-    }
-  }
   playwrightAttachAttempted = true;
   await run('pnpm', [
     'exec',

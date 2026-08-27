@@ -371,7 +371,9 @@ compositor-panning assertion remain explicit Android skips: none is replaced wit
 in-page assertion that bypasses the named native behavior.
 
 The outer runner owns Synapse, one exact emulator serial, the APK, the Playwright Android
-driver packages it installs, and the `tcp:8448` reverse mapping. It restores only state it changed and
+driver packages, and the `tcp:8448` reverse mapping. Device validation rejects a target
+that already contains Playwright drivers, so their later removal is unambiguously owned by
+this run. It restores only state it changed and
 records screenshots, traces, logcat/crash buffers, activity state, and package diagnostics
 under `dist/.playwright/android/` on failure.
 

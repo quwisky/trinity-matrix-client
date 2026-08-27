@@ -38,6 +38,8 @@ describe('Android Playwright canonical coverage', () => {
       'utf8',
     );
     expect(runner).toContain("TRINITY_E2E_PLATFORM'] = 'android'");
+    expect(runner).toContain('already contains ${driverPackage}');
+    expect(runner).not.toContain('preexistingDriverPackages');
   });
 
   it('fails CI shards when any Android retry is flaky', () => {
@@ -51,23 +53,49 @@ describe('Android Playwright canonical coverage', () => {
       join(workspaceRoot, 'e2e/android/fixtures.mts'),
       'utf8',
     );
-    expect(fixture).not.toContain('element.scrollTop +=');
+    const touchAdapter = fixture.slice(
+      fixture.indexOf('\n  touchPlatform: async'),
+      fixture.indexOf('\n  secondaryApp: async'),
+    );
+    expect(touchAdapter).toContain(
+      "throw new Error(\n          'Android compositor touch panning is unavailable",
+    );
 
     const explicitSkips = [
-      ['key-export.spec.mts', 'native WebView export needs'],
-      ['notifications.spec.mts', 'native notification delivery needs'],
+      [
+        'key-export.spec.mts',
+        'exports room keys to a file and imports them back',
+        'native WebView export needs',
+      ],
+      [
+        'notifications.spec.mts',
+        'notifies for a live message in a room you are not viewing',
+        'native notification delivery needs',
+      ],
       [
         'multi-account.spec.mts',
+        'raises a notification for a live message to a background account',
         'native notification delivery and collapse tags need',
       ],
-      ['message-swipe.spec.mts', 'does not expose compositor touch panning'],
+      [
+        'message-swipe.spec.mts',
+        'a vertical drag still scrolls the timeline',
+        'does not expose compositor touch panning',
+      ],
     ];
-    for (const [spec, reason] of explicitSkips) {
+    for (const [spec, title, reason] of explicitSkips) {
       const source = readFileSync(
         join(workspaceRoot, 'e2e/playwright', spec),
         'utf8',
       );
-      expect(source).toContain(reason);
+      const titleAt = source.indexOf(title);
+      const nextTestAt = source.indexOf('\n  test(', titleAt + title.length);
+      const block = source.slice(
+        source.lastIndexOf('test(', titleAt),
+        nextTestAt === -1 ? source.length : nextTestAt,
+      );
+      expect(block).toContain(reason);
+      expect(block).toMatch(/test\.skip\(\s*isAndroidE2E,\s*['"]/);
     }
   });
 });

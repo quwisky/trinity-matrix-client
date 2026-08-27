@@ -90,9 +90,9 @@ browser-config `ignoreHTTPSErrors` does not change Android WebView policy.
 
 Failures retain a WebView screenshot, whole-device screenshot, Playwright trace, logcat
 including the crash buffer, activity state, and package diagnostics under
-`dist/.playwright/android/`. Cleanup removes only Playwright Android driver packages that
-were absent before the run, restores the prior reverse mapping, and stops only an emulator
-the runner started.
+`dist/.playwright/android/`. Device validation rejects pre-existing Playwright Android
+driver packages; cleanup can therefore remove the run-installed drivers, restore the prior
+reverse mapping, and stop only an emulator the runner started.
 
 An explicitly supplied serial must be disposable. The suite clears both Trinity test
 package IDs before their tests, replaces their APKs, and clears the device's logcat buffers;
