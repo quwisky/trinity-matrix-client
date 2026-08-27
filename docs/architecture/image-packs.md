@@ -60,11 +60,12 @@ may join the room. A join is ordinary participant-visible Matrix membership and 
 when discovery finds no usable pack.
 
 `ImagePackSelectionStore` holds a short-lived direct-readback snapshot keyed by `MatrixClient`.
-`setAccountData()` waits for its sync echo before resolving, and the management service then
-performs direct readback and stores that server-confirmed document. The snapshot overrides an SDK
-account-data cache that may still lag the direct read. It is not optimistic state: it is populated
-only after readback confirms the requested reference state, then cleared by a subsequent stable
-account-data event or lazily expired after 30 seconds.
+The management service sends the account-data request through the SDK's raw HTTP API and then
+performs direct readback of the server-confirmed document. This avoids waiting for a local sync
+echo whose cached event may lag another device. The snapshot overrides that potentially stale SDK
+cache. It is not optimistic state: it is populated only after readback confirms the complete
+expected merge, then cleared by a subsequent stable account-data event or lazily expired after 30
+seconds.
 
 All three are active-client projections. Switching accounts rebuilds them from the new
 `MatrixClient`; installed references and source-room membership therefore never leak between
@@ -151,11 +152,13 @@ stable writes, namespaced usage preferences, preservation, serialization, comple
 server readback and failure behavior. Settings tests own explicit submission, in-flight results,
 usage controls, focus recovery, accessibility feedback and removal disclosure.
 
-`e2e/playwright/stickers-custom-emoji.spec.mts` is a canonical journey collected by both Chromium
-and the installed Android WebView. It proves alias resolution and joining, multiple state keys,
-stable-over-legacy deduplication, propagation to a separately installed same-account client,
-immediate enable/disable behavior, visible account/room scope, sticker sending, uninstall, final
-empty stable account data, and survival of the publisher's source state. It does not prove atomic
+`e2e/playwright/support/image-pack-management-journey.mts` is the canonical journey used by
+Chromium, the installed Android WebView, and the built Electron shell. It proves alias resolution
+and joining, multiple state keys, stable-over-legacy deduplication, immediate enable/disable
+behavior, visible account/room scope, sticker sending, uninstall, final empty stable account data,
+and survival of the publisher's source state. The Web/Android wrapper additionally proves
+propagation to a separately installed same-account client. Electron omits that one assertion
+because the application enforces a single-instance lock. The journey does not prove atomic
 conflict freedom.
 
 Focused commands and native prerequisites are kept in [`e2e/README.md`](../../e2e/README.md).

@@ -7,7 +7,7 @@
 > bundle, serves `www/`, and spins the Synapse harness below up/down via global
 > setup, skipping auth specs when Docker is absent locally — under `CI` a missing
 > harness fails the run instead, unless `TRINITY_E2E_ALLOW_NO_SYNAPSE=1`) and the desktop suite with
-> `pnpm electron:e2e`. Run the same app-journey suite against the installed Android
+> `pnpm electron:e2e`, whose global setup applies the same Synapse policy. Run the same app-journey suite against the installed Android
 > package with `pnpm e2e:android`.
 > The `features/` + `runners/` scripts are specialised
 > crypto/protocol drivers (E2EE spike, two-client SAS verification, encrypted
@@ -61,6 +61,7 @@ disposable Synapse. Paths are relative to the repo root, so always invoke via th
 | `pnpm e2e:reply`                              | **Reply header + preview** — a reply keeps its own author/avatar even as a same-sender continuation, and renders the quoted reply preview. |
 | `pnpm e2e:verify:up` / `pnpm e2e:verify:down` | Bring the Synapse+Caddy+Dex harness up / tear it down by hand.                                                                             |
 | `pnpm e2e:android`                            | Build and install Android, then run every web journey plus native-only journeys in its API 36 WebView.                                     |
+| `pnpm electron:e2e`                           | Build and launch Electron, then run desktop shell checks and the image-pack manager journey against disposable Synapse.                    |
 
 ## Android WebView journeys
 
@@ -105,8 +106,8 @@ fixture and requires the Android config to collect the canonical glob.
 
 ## MSC2545 image-pack management
 
-`playwright/stickers-custom-emoji.spec.mts` is shared unchanged by the Chromium and installed
-Android WebView suites. Against disposable Synapse it:
+`playwright/support/image-pack-management-journey.mts` is shared by Chromium, the installed
+Android WebView, and Electron wrappers. Against disposable Synapse it:
 
 1. creates a public source room with two stable packs and a same-key legacy duplicate;
 2. resolves the room alias, joins it through **Find packs**, and lists both stable state keys;
@@ -120,9 +121,10 @@ Android WebView suites. Against disposable Synapse it:
 10. returns to the room and confirms the account-only sticker action is gone.
 
 The Android collection also asserts the source input and install button reach the 44px
-coarse-pointer target. The isolated second client proves persisted same-account propagation, but
-the journey does not claim atomic conflict freedom; Matrix account-data writes have no CAS
-primitive.
+coarse-pointer target. The Web/Android wrapper's isolated second client proves persisted
+same-account propagation. Electron runs one shell process because its single-instance lock makes
+a second simultaneous app launch unsuitable for that assertion. The journey does not claim atomic
+conflict freedom; Matrix account-data writes have no CAS primitive.
 
 Run only this journey on web:
 
@@ -138,6 +140,12 @@ pnpm exec nx run trinity-e2e:android-e2e -- playwright/stickers-custom-emoji.spe
 
 The Android prerequisites and `TRINITY_ANDROID_SERIAL` rules are the same as for the full suite
 above.
+
+Run the manager journey in the built Electron shell (use `xvfb-run` on headless Linux):
+
+```bash
+xvfb-run -a pnpm electron:e2e image-pack-management.electron.spec.mts
+```
 
 ## `e2e:media` — encrypted media send round-trip
 

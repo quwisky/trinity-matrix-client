@@ -147,6 +147,10 @@ Two constraints on packaging:
 xvfb-run -a pnpm electron:e2e
 ```
 
+The suite starts and stops the disposable Synapse stack for authenticated journeys. It skips those
+journeys when Docker is unavailable locally and fails instead under CI, matching the Web suite.
+To focus the image-pack manager journey, append `image-pack-management.electron.spec.mts`.
+
 ## Native platforms
 
 Each of these runs `pnpm build` and then `cap sync` before it does anything else,
