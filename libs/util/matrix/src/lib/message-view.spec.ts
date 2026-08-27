@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
 import {
   MAX_NAMED_REACTORS,
+  buildMessageView,
   collectMessageSenders,
   firstUrl,
   isEditableMessage,
@@ -11,6 +12,8 @@ import {
   parseLocationInput,
   reactionDetailsFor,
   reactionsFor,
+  renderTextBody,
+  replyPreview,
   safeBuildMessageView,
   sanitizeMatrixHtml,
   sanitizeOutgoingHtml,
@@ -238,6 +241,159 @@ function parse(html: string): HTMLElement {
   el.innerHTML = html;
   return el;
 }
+
+describe('mislabeled standalone Markdown links', () => {
+  const destination = 'https://static.example/image_name.jpg';
+  const escapedMarkdown =
+    '[https://static.example/image\\_name.jpg]' +
+    '(https://static.example/image\\_name.jpg)';
+  const markdown = `[${destination}](${destination})`;
+
+  function content(
+    over: Record<string, unknown> = {},
+  ): Record<string, unknown> {
+    return {
+      msgtype: 'm.text',
+      body: escapedMarkdown,
+      format: 'org.matrix.custom.html',
+      formatted_body: markdown,
+      ...over,
+    };
+  }
+
+  function project(messageContent: Record<string, unknown>): MessageView {
+    const event = {
+      getSender: () => '@alice:hs',
+      getType: () => 'm.room.message',
+      getContent: () => messageContent,
+      getId: () => '$markdown-link',
+      getTs: () => 123,
+      isDecryptionFailure: () => false,
+      isRedacted: () => false,
+      replacingEvent: () => null,
+      replyEventId: null,
+      status: null,
+    } as unknown as MatrixEvent;
+    const room = {
+      getMember: () => null,
+      getUsersReadUpTo: () => [],
+      hasEncryptionStateEvent: () => false,
+      relations: { getChildEventsForEvent: () => undefined },
+    } as unknown as Room;
+    const client = {
+      getUserId: () => '@me:hs',
+    } as unknown as MatrixClient;
+
+    return buildMessageView(client, room, event);
+  }
+
+  it('renders the supplied shape as one link and previews the same URL', () => {
+    const view = project(content());
+    const rendered = parse(view.html ?? '');
+    const anchors = rendered.querySelectorAll('a');
+
+    expect(anchors).toHaveLength(1);
+    expect(anchors[0].textContent).toBe(destination);
+    expect(anchors[0].getAttribute('href')).toBe(destination);
+    expect(rendered.querySelector('img')).toBeNull();
+    expect(rendered.textContent).not.toContain('](');
+    expect(view.previewUrl).toBe(destination);
+  });
+
+  it('supports escaped punctuation without leaving backslashes visible', () => {
+    const rendered = renderTextBody(
+      content({
+        body: '[bracket\\]](https://example.com/a\\))',
+        formatted_body: '[bracket\\]](https://example.com/a\\))',
+      }),
+      false,
+    );
+    const anchor = parse(rendered.html ?? '').querySelector('a');
+
+    expect(anchor?.textContent).toBe('bracket]');
+    expect(anchor?.getAttribute('href')).toBe('https://example.com/a)');
+  });
+
+  it('keeps unsafe and non-canonical destinations inert and suppresses previews', () => {
+    for (const value of [
+      '[https://safe.example](javascript:alert(1))',
+      '[safe](https:example.com)',
+      '[safe](https://example.com\\evil)',
+      '[safe](https://example.com/non\u00a0breaking)',
+    ]) {
+      const rendered = renderTextBody(
+        content({ body: value, formatted_body: value }),
+        false,
+      );
+
+      expect(parse(rendered.html ?? '').querySelector('a')).toBeNull();
+      expect(firstUrl(value)).toBeNull();
+    }
+  });
+
+  it('preserves valid Matrix HTML through the existing sanitizer', () => {
+    const formattedBody =
+      '<strong>safe</strong> <a href="https://example.com/path">link</a>';
+    const rendered = renderTextBody(
+      content({ body: 'safe link', formatted_body: formattedBody }),
+      false,
+    );
+
+    expect(rendered.html).toBe(formattedBody);
+  });
+
+  it('does not reinterpret mixed HTML and Markdown', () => {
+    const rendered = renderTextBody(
+      content({
+        body: 'mixed',
+        formatted_body:
+          '<strong onclick="alert(1)">label</strong> [link](https://example.com)',
+      }),
+      false,
+    );
+    const fragment = parse(rendered.html ?? '');
+
+    expect(fragment.querySelector('strong')?.textContent).toBe('label');
+    expect(fragment.querySelector('strong')?.hasAttribute('onclick')).toBe(
+      false,
+    );
+    expect(fragment.querySelector('a')).toBeNull();
+    expect(fragment.textContent).toContain('[link](https://example.com)');
+  });
+
+  it('fails closed for ambiguous, trailing, and oversized input', () => {
+    const malformed = [
+      '[outer [inner]](https://example.com)',
+      '[label](https://example.com) trailing',
+      `[${'a'.repeat(65_537)}](https://example.com)`,
+    ];
+
+    for (const value of malformed) {
+      const rendered = renderTextBody(
+        content({ body: value, formatted_body: value }),
+        false,
+      );
+
+      expect(parse(rendered.html ?? '').querySelector('a')).toBeNull();
+      expect(firstUrl(value)).toBeNull();
+    }
+  });
+
+  it('uses the recovered label in reply previews', () => {
+    const target = {
+      getContent: () => content(),
+      getSender: () => '@alice:hs',
+      isRedacted: () => false,
+      replyEventId: null,
+    } as unknown as MatrixEvent;
+    const room = {
+      findEventById: () => target,
+      getMember: () => null,
+    } as unknown as Room;
+
+    expect(replyPreview(room, '$target')?.body).toBe(destination);
+  });
+});
 
 describe('sanitizeMatrixHtml — embedded documents', () => {
   it('removes iframe markup and its destination', () => {

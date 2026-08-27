@@ -135,6 +135,28 @@ describe('buildEditRevisions', () => {
     expect(revisions[1].html).not.toContain('script');
   });
 
+  it('recovers a standalone Markdown link in formatted edit history', () => {
+    const destination = 'https://static.example/image_name.jpg';
+    const revisions = buildEditRevisions(
+      original(),
+      [
+        edit({
+          body: `[${destination.replace('_', '\\_')}](${destination.replace('_', '\\_')})`,
+          formattedBody: `[${destination}](${destination})`,
+        }),
+      ],
+      SENDER,
+    );
+
+    const container = document.createElement('div');
+    container.innerHTML = revisions[1].html ?? '';
+    const anchor = container.querySelector('a');
+
+    expect(anchor?.textContent).toBe(destination);
+    expect(anchor?.getAttribute('href')).toBe(destination);
+    expect(container.textContent).not.toContain('](');
+  });
+
   it('linkifies a plain-text version, as the timeline does', () => {
     const revisions = buildEditRevisions(
       original(),

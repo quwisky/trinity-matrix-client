@@ -726,6 +726,20 @@ serves both directions — incoming render and outgoing send.
   reason: the app never binds a remote `<img>`, since avatars and media are fetched over
   `connect-src` and bound as blobs.
 
+### Received standalone-link compatibility
+
+Some clients and bridges declare `org.matrix.custom.html` but put one Markdown link in
+`formatted_body` instead of HTML. The render path recovers only the exact, text-only
+`[label](https://destination)` shape. A bounded linear scanner accepts Markdown escapes for
+ASCII punctuation, canonicalizes an absolute `http:` or `https:` URL, builds one anchor, and
+then sends that anchor through the same incoming sanitizer as every other formatted body.
+
+The boundary is deliberately narrow. Valid Matrix HTML, mixed HTML/Markdown, nested or
+trailing syntax, unsafe schemes and malformed URLs are not reinterpreted. A rejected
+link-shaped fallback also cannot leak a label URL into the preview fetch. Successful links
+participate in the existing privacy-gated preview flow; they never create an `<img>` or bypass
+authenticated Matrix media, CSP, or the remote-image rule above.
+
 Only security belongs in the sanitizer hook. Attributes set inside `afterSanitizeAttributes`
 are not re-filtered against the allowlist, so anything added there rides out onto the wire
 too.

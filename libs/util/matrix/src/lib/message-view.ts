@@ -527,15 +527,23 @@ export function replyPreview(room: Room, eventId: string): ReplyPreview | null {
   const member = room.getMember(sender);
   // `||` (not `??`) so an empty display name still falls back to the mxid.
   const senderName = member?.name || sender;
-  const raw = target.isRedacted()
+  const redacted = target.isRedacted();
+  const content = redacted ? null : target.getContent();
+  const raw = redacted
     ? '(message deleted)'
-    : stripReplyFallbackText((target.getContent()['body'] as string) ?? '');
+    : stripReplyFallbackText((content?.['body'] as string) ?? '');
+  const recovered =
+    content?.['format'] === 'org.matrix.custom.html' &&
+    typeof content['formatted_body'] === 'string'
+      ? parseStandaloneMarkdownLink(raw)
+      : NOT_STANDALONE_MARKDOWN_LINK;
+  const display = recovered.kind === 'link' ? recovered.label : raw;
   return {
     id: eventId,
     senderName,
     senderInitial: initialOf(senderName),
     senderAvatarMxc: member?.getMxcAvatarUrl() ?? null,
-    body: raw.replace(/\s+/g, ' ').trim() || '…',
+    body: display.replace(/\s+/g, ' ').trim() || '…',
   };
 }
 
@@ -1412,13 +1420,22 @@ export function renderTextBody(
       : null;
   const strippedHtml =
     isReply && rawHtml ? stripReplyFallbackHtml(rawHtml) : rawHtml;
+  const recovered =
+    strippedHtml === null
+      ? NOT_STANDALONE_MARKDOWN_LINK
+      : parseStandaloneMarkdownLink(strippedHtml);
   // From `m.mentions`, never from the body: the sender writes the body, so a link in it
   // proves only that they typed your id, not that they addressed you.
   const addressesViewer = mentionsViewer(content, selfUserId);
   const html =
     strippedHtml === null
       ? null
-      : sanitizeMatrixHtml(strippedHtml, addressesViewer);
+      : sanitizeMatrixHtml(
+          recovered.kind === 'link'
+            ? `<a href="${escapeHtml(recovered.href)}">${escapeHtml(recovered.label)}</a>`
+            : strippedHtml,
+          addressesViewer,
+        );
 
   // Plain text (no formatted_body) still gets bare URLs linkified so they're clickable.
   return { text, html, textHtml: html ?? linkifyText(text) };
@@ -1712,8 +1729,144 @@ export function linkifyText(text: string): string | null {
   return (html + escapeHtml(text.slice(lastIndex))).replace(/\n/g, '<br>');
 }
 
-/** The first http(s) URL in `text` (trailing sentence punctuation trimmed), or null. */
+const MAX_STANDALONE_MARKDOWN_LINK_LENGTH = 64 * 1024;
+
+interface StandaloneMarkdownLink {
+  kind: 'link';
+  label: string;
+  href: string;
+}
+
+type StandaloneMarkdownLinkResult =
+  StandaloneMarkdownLink | { kind: 'invalid-link' } | { kind: 'not-link' };
+
+const INVALID_STANDALONE_MARKDOWN_LINK = {
+  kind: 'invalid-link',
+} as const;
+const NOT_STANDALONE_MARKDOWN_LINK = { kind: 'not-link' } as const;
+
+function isMarkdownEscapable(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return (
+    (code >= 33 && code <= 47) ||
+    (code >= 58 && code <= 64) ||
+    (code >= 91 && code <= 96) ||
+    (code >= 123 && code <= 126)
+  );
+}
+
+function isControlCharacter(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return code < 32 || code === 127;
+}
+
+function isControlOrWhitespace(char: string): boolean {
+  return isControlCharacter(char) || /\s/u.test(char);
+}
+
+/**
+ * Recognize exactly one text-only Markdown link from a malformed Matrix body.
+ *
+ * The tri-state result is deliberate: a link-shaped value with an unsafe destination
+ * must not fall through to the ordinary bare-URL finder and trigger a preview fetch from
+ * a URL that happened to appear in its label. The scanner is linear and bounded to the
+ * Matrix event-size ceiling; anything ambiguous remains inert text.
+ */
+function parseStandaloneMarkdownLink(
+  value: string,
+): StandaloneMarkdownLinkResult {
+  const source = value.trim();
+  if (!source.startsWith('[') || !source.includes('](')) {
+    return NOT_STANDALONE_MARKDOWN_LINK;
+  }
+  if (
+    value.length > MAX_STANDALONE_MARKDOWN_LINK_LENGTH ||
+    /[<>\r\n]/.test(source)
+  ) {
+    return INVALID_STANDALONE_MARKDOWN_LINK;
+  }
+
+  let index = 1;
+  let label = '';
+  while (index < source.length && source[index] !== ']') {
+    const char = source[index];
+    if (char === '[' || isControlCharacter(char)) {
+      return INVALID_STANDALONE_MARKDOWN_LINK;
+    }
+    if (char === '\\') {
+      const escaped = source[index + 1];
+      if (!escaped || !isMarkdownEscapable(escaped)) {
+        return INVALID_STANDALONE_MARKDOWN_LINK;
+      }
+      label += escaped;
+      index += 2;
+      continue;
+    }
+    label += char;
+    index++;
+  }
+
+  if (
+    label.trim() === '' ||
+    source[index] !== ']' ||
+    source[index + 1] !== '('
+  ) {
+    return INVALID_STANDALONE_MARKDOWN_LINK;
+  }
+
+  index += 2;
+  let destination = '';
+  while (index < source.length - 1) {
+    const char = source[index];
+    if (char === '(' || char === ')' || isControlOrWhitespace(char)) {
+      return INVALID_STANDALONE_MARKDOWN_LINK;
+    }
+    if (char === '\\') {
+      const escaped = source[index + 1];
+      if (!escaped || !isMarkdownEscapable(escaped)) {
+        return INVALID_STANDALONE_MARKDOWN_LINK;
+      }
+      destination += escaped;
+      index += 2;
+      continue;
+    }
+    destination += char;
+    index++;
+  }
+
+  if (
+    destination === '' ||
+    source[index] !== ')' ||
+    index !== source.length - 1 ||
+    destination.includes('\\') ||
+    !/^https?:\/\//i.test(destination)
+  ) {
+    return INVALID_STANDALONE_MARKDOWN_LINK;
+  }
+
+  try {
+    const url = new URL(destination);
+    if (
+      (url.protocol !== 'http:' && url.protocol !== 'https:') ||
+      url.hostname === ''
+    ) {
+      return INVALID_STANDALONE_MARKDOWN_LINK;
+    }
+    return { kind: 'link', label, href: url.href };
+  } catch {
+    return INVALID_STANDALONE_MARKDOWN_LINK;
+  }
+}
+
+/** The first safe http(s) URL in `text`, or null. */
 export function firstUrl(text: string): string | null {
+  const markdown = parseStandaloneMarkdownLink(text);
+  if (markdown.kind === 'link') {
+    return markdown.href;
+  }
+  if (markdown.kind === 'invalid-link') {
+    return null;
+  }
   const match = /https?:\/\/[^\s<>"']+/.exec(text);
   if (!match) {
     return null;

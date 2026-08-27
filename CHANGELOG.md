@@ -142,6 +142,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Links from clients that mislabeled Markdown as Matrix HTML are clickable again.** A
+  received message containing one standalone `[label](https://destination)` link no longer
+  shows the brackets and destination as punctuation. Unsafe, mixed or ambiguous markup stays
+  inert, and remote image URLs still use the existing privacy-gated preview flow rather than
+  loading as images inside the message.
+
 - **Settings no longer shows two scrollbars side by side.** On a short window the list of
   sections scrolled independently of the section you were reading, so both drew a scrollbar
   next to each other — most visible under Notifications and Appearance, whose content is long
