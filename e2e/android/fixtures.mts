@@ -1,4 +1,7 @@
+import { execFile } from 'node:child_process';
 import { rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
 import {
   expect,
   test as base,
@@ -20,9 +23,33 @@ import type {
 const packageName = 'eu.qwky.trinity';
 const secondaryPackageName = 'eu.qwky.trinity.secondary';
 const appOrigin = 'https://localhost';
+const exec = promisify(execFile);
 
 async function shell(device: AndroidDevice, command: string): Promise<string> {
   return (await device.shell(command)).toString('utf8').trim();
+}
+
+async function setEmulatorLocation(
+  device: AndroidDevice,
+  position: { latitude: number; longitude: number },
+): Promise<void> {
+  const sdkRoot = process.env['ANDROID_HOME'] ?? process.env['ANDROID_SDK_ROOT'];
+  if (!sdkRoot) {
+    throw new Error('ANDROID_HOME or ANDROID_SDK_ROOT is required for geolocation');
+  }
+  await exec(
+    join(sdkRoot, 'platform-tools/adb'),
+    [
+      '-s',
+      device.serial(),
+      'emu',
+      'geo',
+      'fix',
+      String(position.longitude),
+      String(position.latitude),
+    ],
+    { timeout: 10_000 },
+  );
 }
 
 async function enableSelfSignedTls(page: Page): Promise<void> {
@@ -139,7 +166,7 @@ async function configurePage(
   device: AndroidDevice,
   page: Page,
   options: AndroidUseOptions,
-): Promise<void> {
+): Promise<() => Promise<void>> {
   const originalGoto = page.goto.bind(page);
   const originalReload = page.reload.bind(page);
   const waitForBoot = (timeout: number) =>
@@ -200,46 +227,6 @@ async function configurePage(
   if (options.colorScheme) {
     await page.emulateMedia({ colorScheme: options.colorScheme });
   }
-  if (options.geolocation) {
-    await session.send('Emulation.setGeolocationOverride', options.geolocation);
-    await page.addInitScript((position) => {
-      const coords = {
-        latitude: position.latitude,
-        longitude: position.longitude,
-        accuracy: position.accuracy ?? 1,
-        altitude: null,
-        altitudeAccuracy: null,
-        heading: null,
-        speed: null,
-        toJSON() {
-          return this;
-        },
-      } satisfies GeolocationCoordinates;
-      const current = (): GeolocationPosition => ({
-        coords,
-        timestamp: Date.now(),
-        toJSON() {
-          return this;
-        },
-      });
-      Object.defineProperty(navigator, 'geolocation', {
-        configurable: true,
-        value: {
-          getCurrentPosition(success: PositionCallback): void {
-            success(current());
-          },
-          watchPosition(success: PositionCallback): number {
-            success(current());
-            return 1;
-          },
-          clearWatch(): void {
-            /* deterministic test implementation has no live watcher */
-          },
-        },
-      });
-    }, options.geolocation);
-  }
-
   const androidPermissions = new Map([
     ['geolocation', ['android.permission.ACCESS_COARSE_LOCATION', 'android.permission.ACCESS_FINE_LOCATION']],
     ['microphone', ['android.permission.RECORD_AUDIO']],
@@ -268,7 +255,7 @@ async function configurePage(
   if (unsupportedArgs.length > 0) {
     throw new Error(`No Android launch-option adapter for: ${unsupportedArgs.join(', ')}`);
   }
-  let needsReload = Boolean(options.geolocation);
+  let needsReload = false;
   if (launchArgs.includes('--use-fake-device-for-media-stream')) {
     await page.addInitScript(() => {
       const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
@@ -287,6 +274,33 @@ async function configurePage(
   if (needsReload) {
     await page.reload({ waitUntil: 'domcontentloaded' });
   }
+
+  // The emulator drops a console location sent before a native listener exists.
+  // Pulse the requested fix while the journey runs so the Capacitor plugin's
+  // later getCurrentPosition subscription receives a real provider update. This
+  // is intentionally the only location source in Android journeys: a CDP override
+  // would let navigator.geolocation mask a native plugin regression.
+  let locationPulse: ReturnType<typeof setInterval> | undefined;
+  let locationPulseTask: Promise<void> | undefined;
+  if (options.geolocation) {
+    await setEmulatorLocation(device, options.geolocation);
+    const pulseLocation = () => {
+      if (locationPulseTask) return;
+      locationPulseTask = setEmulatorLocation(device, options.geolocation!)
+        .catch((error: unknown) => {
+          console.warn('[android-e2e] could not pulse emulator location', error);
+        })
+        .finally(() => {
+          locationPulseTask = undefined;
+        });
+    };
+    locationPulse = setInterval(pulseLocation, 1_000);
+  }
+
+  return async () => {
+    if (locationPulse) clearInterval(locationPulse);
+    await locationPulseTask;
+  };
 }
 
 async function attachFailureArtifacts(
@@ -704,7 +718,7 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
         `Expected ${packageName}'s WebView at ${appOrigin}; attached page is ${page.url()}`,
       );
     }
-    await configurePage(app.device, page, {
+    const stopAdapters = await configurePage(app.device, page, {
       colorScheme,
       deviceScaleFactor,
       geolocation,
@@ -715,7 +729,11 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
       userAgent,
       viewport,
     });
-    await use(page);
+    try {
+      await use(page);
+    } finally {
+      await stopAdapters();
+    }
   },
 });
 

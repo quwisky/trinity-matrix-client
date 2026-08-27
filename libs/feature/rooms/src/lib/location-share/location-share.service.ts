@@ -19,9 +19,9 @@ import { ManualLocationDialogComponent } from './manual-location-dialog/manual-l
 /**
  * Shares a location to the open room as an `m.location` message.
  *
- * On web/mobile it resolves the device's current position via
- * {@link GeolocationService} (prompting for the OS permission). On the desktop shell
- * it instead opens the manual-location dialog, because Chromium's
+ * On web/mobile it resolves the device's current position through Capacitor's
+ * native/browser adapter (prompting for permission). On the desktop shell it instead
+ * opens the manual-location dialog, because Chromium's
  * `navigator.geolocation` can't resolve a position without an embedded Google API key
  * — so the on-device path would just stall. Either way the resolved point flows into
  * {@link TimelineActionsService.sendLocation}; a denied/failed request surfaces a

@@ -1,7 +1,19 @@
 import { TestBed } from '@angular/core/testing';
+import { Capacitor } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { firstValueFrom } from 'rxjs';
 import { GeolocationService } from './geolocation.service';
+
+vi.mock('@capacitor/core', () => ({
+  Capacitor: { isNativePlatform: vi.fn(() => false) },
+}));
+vi.mock('@capacitor/geolocation', () => ({
+  Geolocation: { getCurrentPosition: vi.fn() },
+}));
+
+const isNative = vi.mocked(Capacitor.isNativePlatform);
+const capacitorGeolocation = vi.mocked(Geolocation);
 
 interface Bridge {
   resolveApproxLocation?: () => Promise<{ lat: number; lng: number } | null>;
@@ -11,7 +23,7 @@ function setBridge(bridge: Bridge | undefined): void {
   (globalThis as { trinityDesktop?: Bridge }).trinityDesktop = bridge;
 }
 
-/** Install a `navigator.geolocation` stub (jsdom leaves it undefined). */
+/** Mark the browser geolocation API available or unavailable in jsdom. */
 function setGeolocation(geolocation: unknown): void {
   Object.defineProperty(navigator, 'geolocation', {
     value: geolocation,
@@ -29,30 +41,62 @@ describe('GeolocationService', () => {
     delete (globalThis as { trinityDesktop?: Bridge }).trinityDesktop;
     setGeolocation(undefined);
     vi.restoreAllMocks();
+    isNative.mockReset().mockReturnValue(false);
+    capacitorGeolocation.getCurrentPosition.mockReset();
     TestBed.resetTestingModule();
   });
 
   describe('current', () => {
-    it('emits the coordinates the device resolves', async () => {
-      setGeolocation({
-        getCurrentPosition: (success: PositionCallback) =>
-          success({
-            coords: { latitude: 10, longitude: 20 },
-          } as GeolocationPosition),
-      });
+    it('uses the native provider on iOS and Android', async () => {
+      isNative.mockReturnValue(true);
+      capacitorGeolocation.getCurrentPosition.mockResolvedValue({
+        coords: { latitude: 10, longitude: 20 },
+      } as Awaited<ReturnType<typeof Geolocation.getCurrentPosition>>);
 
       await expect(firstValueFrom(makeService().current())).resolves.toEqual({
         lat: 10,
         lng: 20,
       });
+      expect(capacitorGeolocation.getCurrentPosition).toHaveBeenCalledWith({
+        enableHighAccuracy: true,
+        timeout: 20_000,
+        maximumAge: 60_000,
+        enableLocationFallback: true,
+      });
     });
 
-    it('errors when the request fails', async () => {
-      setGeolocation({
-        getCurrentPosition: (
-          _success: PositionCallback,
-          error: PositionErrorCallback,
-        ) => error({ message: 'Timeout expired' } as GeolocationPositionError),
+    it('propagates native permission and provider failures', async () => {
+      isNative.mockReturnValue(true);
+      capacitorGeolocation.getCurrentPosition.mockRejectedValue(
+        new Error('Location permission request was denied.'),
+      );
+
+      await expect(firstValueFrom(makeService().current())).rejects.toThrow(
+        'Location permission request was denied.',
+      );
+    });
+
+    it('uses the Capacitor web adapter in browsers', async () => {
+      setGeolocation({ getCurrentPosition: vi.fn() });
+      capacitorGeolocation.getCurrentPosition.mockResolvedValue({
+        coords: { latitude: 10, longitude: 20 },
+      } as Awaited<ReturnType<typeof Geolocation.getCurrentPosition>>);
+
+      await expect(firstValueFrom(makeService().current())).resolves.toEqual({
+        lat: 10,
+        lng: 20,
+      });
+      expect(capacitorGeolocation.getCurrentPosition).toHaveBeenCalledWith({
+        enableHighAccuracy: false,
+        timeout: 10_000,
+        maximumAge: 60_000,
+      });
+    });
+
+    it('normalizes browser failures that are not Error instances', async () => {
+      setGeolocation({ getCurrentPosition: vi.fn() });
+      capacitorGeolocation.getCurrentPosition.mockRejectedValue({
+        message: 'Timeout expired',
       });
 
       await expect(firstValueFrom(makeService().current())).rejects.toThrow(
@@ -66,6 +110,7 @@ describe('GeolocationService', () => {
       await expect(firstValueFrom(makeService().current())).rejects.toThrow(
         /available/i,
       );
+      expect(capacitorGeolocation.getCurrentPosition).not.toHaveBeenCalled();
     });
   });
 

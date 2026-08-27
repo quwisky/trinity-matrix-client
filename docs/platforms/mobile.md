@@ -152,12 +152,14 @@ in
 The platform floor is `.iOS(.v15)` and `capacitor-swift-pm` is pinned with `exact:`.
 
 `Info.plist` declares `CFBundleURLSchemes: [eu.qwky.trinity]` for the auth callback, and
-five usage strings that iOS requires before the corresponding prompt can be shown:
+six usage strings that iOS requires before the corresponding prompt can be shown:
 `NSCameraUsageDescription`, `NSPhotoLibraryUsageDescription`,
 `NSPhotoLibraryAddUsageDescription`, `NSMicrophoneUsageDescription` (voice messages) and
-`NSLocationWhenInUseUsageDescription` (location sharing). A missing string is not a denied
-permission the app can catch — iOS terminates the process the moment the API is touched, so
-any new capability needs its key added here before the affordance ships.
+`NSLocationWhenInUseUsageDescription` plus
+`NSLocationAlwaysAndWhenInUseUsageDescription` (the native geolocation plugin requires both,
+although Trinity only asks while the app is in use). A missing string is not a denied permission
+the app can catch — iOS terminates the process the moment the API is touched, so any new
+capability needs its key added here before the affordance ships.
 
 Neither native project has its `public/` web assets tracked in git — those are produced by
 `cap sync`.
