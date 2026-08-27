@@ -1,4 +1,4 @@
-import { EventType, type MatrixEvent } from 'matrix-js-sdk';
+import { EventType, MsgType, type MatrixEvent } from 'matrix-js-sdk';
 import {
   UNDECRYPTABLE_BODY,
   renderTextBody,
@@ -27,11 +27,26 @@ export interface MessageRevisionView {
   isOwn: boolean;
 }
 
-/** The `m.new_content` block of an edit: the replacement message, unwrapped. */
-function newContentOf(edit: MatrixEvent): Record<string, unknown> | null {
+/**
+ * The complete editable-text `m.new_content` block of an edit, unwrapped.
+ *
+ * Keep this stricter than a generic object check. `MatrixEvent.getContent()` returns
+ * this value verbatim once the edit is aggregated, so an array, incomplete object or
+ * media replacement would otherwise turn a readable text row into an unsupported one.
+ */
+export function editableReplacementContentOf(
+  edit: MatrixEvent,
+): Record<string, unknown> | null {
   const content = edit.getContent()['m.new_content'];
-  return content && typeof content === 'object'
-    ? (content as Record<string, unknown>)
+  if (!content || typeof content !== 'object' || Array.isArray(content)) {
+    return null;
+  }
+  const replacement = content as Record<string, unknown>;
+  return typeof replacement['body'] === 'string' &&
+    (replacement['msgtype'] === MsgType.Text ||
+      replacement['msgtype'] === MsgType.Emote ||
+      replacement['msgtype'] === MsgType.Notice)
+    ? replacement
     : null;
 }
 
@@ -129,7 +144,7 @@ export function buildEditRevisions(
       applied.push(undecryptable(edit, isOwn));
       continue;
     }
-    const content = newContentOf(edit);
+    const content = editableReplacementContentOf(edit);
     if (content) {
       applied.push(revision(edit, content, isOwn));
     }

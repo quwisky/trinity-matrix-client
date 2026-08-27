@@ -10,6 +10,7 @@ import { Observable, defer, from, map } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   buildEditRevisions,
+  editableReplacementContentOf,
   type MessageRevisionView,
 } from '@trinity/util/matrix';
 
@@ -129,21 +130,19 @@ export class EditHistoryService {
     }
     const newest = edits
       .filter((edit) => {
-        const content = edit.getContent();
-        const replacement = content['m.new_content'];
-        const relation = content['m.relates_to'];
+        const replacement = editableReplacementContentOf(edit);
+        // In encrypted rooms Matrix deliberately keeps the relation in the cleartext
+        // wire content while m.new_content is available only after decryption. The SDK
+        // accessor reads the correct side for both encrypted and plaintext edits.
+        const relation = edit.getRelation();
         return (
           !edit.isRedacted() &&
           edit.getType() === EventType.RoomMessage &&
           edit.getSender() === target.getSender() &&
           edit.status === null &&
           replacement !== null &&
-          typeof replacement === 'object' &&
-          relation !== null &&
-          typeof relation === 'object' &&
-          (relation as Record<string, unknown>)['rel_type'] ===
-            RelationType.Replace &&
-          (relation as Record<string, unknown>)['event_id'] === eventId
+          relation?.rel_type === RelationType.Replace &&
+          relation.event_id === eventId
         );
       })
       .reduce<MatrixEvent | null>(

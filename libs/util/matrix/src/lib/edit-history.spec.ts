@@ -47,7 +47,7 @@ function edit(
     sender?: string;
     body?: string;
     formattedBody?: string;
-    newContent?: Record<string, unknown> | null;
+    newContent?: unknown;
     type?: string;
     redacted?: boolean;
     undecryptable?: boolean;
@@ -232,6 +232,21 @@ describe('buildEditRevisions', () => {
     );
 
     expect(revisions).toHaveLength(1); // the original only
+  });
+
+  it.each([
+    ['an array', []],
+    ['an empty object', {}],
+    ['text without a body', { msgtype: 'm.text' }],
+    ['non-text content', { msgtype: 'm.image', body: 'image.jpg' }],
+  ])('drops m.new_content shaped as %s', (_label, newContent) => {
+    const revisions = buildEditRevisions(
+      original(),
+      [edit({ newContent })],
+      SENDER,
+    );
+
+    expect(revisions).toHaveLength(1);
   });
 
   // An in-flight or failed edit is not history yet: the timeline shows it optimistically,

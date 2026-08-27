@@ -147,7 +147,8 @@ All notable changes to this project are documented here. The format is based on
   shows the brackets and destination as punctuation. Unsafe, mixed or ambiguous markup stays
   inert, and remote image URLs still use the existing privacy-gated preview flow rather than
   loading as images inside the message. Opening edit history also no longer lets an invalid
-  related message replace the live row with an "unsupported message" placeholder.
+  related message replace the live row with an "unsupported message" placeholder, including
+  when the valid edit is encrypted or the malformed replacement is an array or incomplete text.
 
 - **Settings no longer shows two scrollbars side by side.** On a short window the list of
   sections scrolled independently of the section you were reading, so both drew a scrollbar

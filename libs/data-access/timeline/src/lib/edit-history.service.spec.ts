@@ -2,8 +2,8 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
-import { Direction, EventType, RelationType } from 'matrix-js-sdk';
-import type { MatrixClient, MatrixEvent } from 'matrix-js-sdk';
+import { Direction, EventType, MatrixEvent, RelationType } from 'matrix-js-sdk';
+import type { MatrixClient } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { EditHistoryService } from './edit-history.service';
 
@@ -46,6 +46,7 @@ function edit(id: string, body: string, sender = SENDER): MatrixEvent {
       'm.new_content': { msgtype: 'm.text', body },
       'm.relates_to': { rel_type: 'm.replace', event_id: '$orig' },
     }),
+    getRelation: () => ({ rel_type: 'm.replace', event_id: '$orig' }),
     getOriginalContent: () => ({}),
     status: null,
   } as unknown as MatrixEvent;
@@ -333,6 +334,7 @@ describe('EditHistoryService', () => {
           formatted_body: `[${destination}](${destination})`,
           msgtype: 'm.text',
         }),
+        getRelation: () => null,
         status: null,
       } as unknown as MatrixEvent;
       const { copy, makeReplaced } = timelineCopy();
@@ -350,6 +352,161 @@ describe('EditHistoryService', () => {
       await firstValueFrom(svc.revisions('!r:hs', '$orig'));
 
       expect(makeReplaced).not.toHaveBeenCalled();
+    });
+
+    it('reads an encrypted edit relation from its wire content', async () => {
+      const encrypted = new MatrixEvent({
+        event_id: '$encrypted-edit',
+        origin_server_ts: 3000,
+        room_id: '!r:hs',
+        sender: SENDER,
+        type: EventType.RoomMessage,
+        content: {
+          msgtype: 'm.text',
+          body: '* encrypted revision',
+          'm.new_content': {
+            msgtype: 'm.text',
+            body: 'encrypted revision',
+          },
+        },
+      });
+      encrypted.makeEncrypted(
+        'm.room.encrypted',
+        {
+          algorithm: 'm.megolm.v1.aes-sha2',
+          ciphertext: 'ciphertext',
+          device_id: 'DEVICE',
+          sender_key: 'sender-key',
+          session_id: 'session',
+          'm.relates_to': {
+            rel_type: RelationType.Replace,
+            event_id: '$orig',
+          },
+        },
+        'sender-key',
+        'claimed-key',
+      );
+      const { copy, makeReplaced } = timelineCopy();
+      const { svc } = setup(
+        [
+          {
+            originalEvent: original(),
+            events: [encrypted],
+            nextBatch: null,
+          },
+        ],
+        { timelineCopy: copy },
+      );
+
+      await firstValueFrom(svc.revisions('!r:hs', '$orig'));
+
+      expect(encrypted.getContent()).toMatchObject({
+        'm.new_content': { msgtype: 'm.text', body: 'encrypted revision' },
+      });
+      expect(encrypted.getRelation()).toEqual({
+        rel_type: RelationType.Replace,
+        event_id: '$orig',
+      });
+      expect(makeReplaced).toHaveBeenCalledWith(encrypted);
+    });
+
+    it.each([
+      ['an array', []],
+      ['an empty object', {}],
+      ['text without a body', { msgtype: 'm.text' }],
+      ['non-text content', { msgtype: 'm.image', body: 'image.jpg' }],
+    ])('ignores m.new_content shaped as %s', async (_label, replacement) => {
+      const malformed = new MatrixEvent({
+        event_id: '$malformed-edit',
+        origin_server_ts: 4000,
+        room_id: '!r:hs',
+        sender: SENDER,
+        type: EventType.RoomMessage,
+        content: {
+          msgtype: 'm.text',
+          body: '* malformed',
+          'm.new_content': replacement,
+          'm.relates_to': {
+            rel_type: RelationType.Replace,
+            event_id: '$orig',
+          },
+        },
+      });
+      const current = edit('$current', 'still readable');
+      const { copy, makeReplaced } = timelineCopy({ replacing: current });
+      const { svc } = setup(
+        [
+          {
+            originalEvent: original(),
+            events: [malformed],
+            nextBatch: null,
+          },
+        ],
+        { timelineCopy: copy },
+      );
+
+      await firstValueFrom(svc.revisions('!r:hs', '$orig'));
+
+      // The invalid relation is not applied. With no valid fetched replacement the
+      // stale aggregate is cleared, so the target resolves to its readable original.
+      expect(makeReplaced).toHaveBeenCalledWith(undefined);
+      expect(makeReplaced).not.toHaveBeenCalledWith(malformed);
+    });
+
+    it('keeps a real timeline MatrixEvent readable after malformed history', async () => {
+      const destination =
+        'https://static.wikia.nocookie.net/control6745/images/e/e6/' +
+        'Control_-_Safeer_Abbas_-_Powerplant_enviromental_art_1.jpg';
+      const escapedDestination = destination.replaceAll('_', String.raw`\\_`);
+      const markdown = `[${destination}](${destination})`;
+      const target = new MatrixEvent({
+        event_id: '$orig',
+        origin_server_ts: 1000,
+        room_id: '!r:hs',
+        sender: SENDER,
+        type: EventType.RoomMessage,
+        content: {
+          body: `[${escapedDestination}](${escapedDestination})`,
+          format: 'org.matrix.custom.html',
+          formatted_body: markdown,
+          msgtype: 'm.text',
+        },
+      });
+      const malformed = new MatrixEvent({
+        event_id: '$malformed-edit',
+        origin_server_ts: 4000,
+        room_id: '!r:hs',
+        sender: SENDER,
+        type: EventType.RoomMessage,
+        content: {
+          msgtype: 'm.text',
+          body: '* malformed',
+          'm.new_content': [],
+          'm.relates_to': {
+            rel_type: RelationType.Replace,
+            event_id: '$orig',
+          },
+        },
+      });
+      const { svc } = setup(
+        [
+          {
+            originalEvent: target,
+            events: [malformed],
+            nextBatch: null,
+          },
+        ],
+        { timelineCopy: target },
+      );
+
+      expect(target.getContent()['msgtype']).toBe('m.text');
+      await firstValueFrom(svc.revisions('!r:hs', '$orig'));
+
+      expect(target.replacingEvent()).toBeNull();
+      expect(target.getContent()).toMatchObject({
+        msgtype: 'm.text',
+        formatted_body: markdown,
+      });
     });
 
     // Re-applying the same answer would emit a pointless Replaced and re-render every
