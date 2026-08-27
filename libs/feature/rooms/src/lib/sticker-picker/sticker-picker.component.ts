@@ -1,10 +1,13 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
+  afterNextRender,
   computed,
   input,
   output,
   signal,
+  viewChild,
 } from '@angular/core';
 import { StickerImageComponent } from '../sticker-image/sticker-image.component';
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
@@ -20,7 +23,13 @@ import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
 export class StickerPickerComponent {
   readonly packs = input<readonly ImagePack[]>([]);
   readonly selected = output<ImagePackImage>();
+  readonly dismiss = output<void>();
   protected readonly query = signal('');
+  private readonly search = viewChild<ElementRef<HTMLInputElement>>('search');
+
+  constructor() {
+    afterNextRender(() => this.search()?.nativeElement.focus());
+  }
 
   protected readonly visiblePacks = computed(() => {
     const query = this.query().trim().toLocaleLowerCase();
@@ -40,5 +49,20 @@ export class StickerPickerComponent {
 
   protected onSearch(event: Event): void {
     this.query.set((event.target as HTMLInputElement).value);
+  }
+
+  protected labelFor(image: ImagePackImage): string {
+    return (
+      (image.body.slice(0, 256) || image.shortcode) +
+      ' (:' +
+      image.shortcode +
+      ':)'
+    );
+  }
+
+  protected onEscape(event: Event): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.dismiss.emit();
   }
 }

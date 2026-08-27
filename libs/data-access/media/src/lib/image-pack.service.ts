@@ -36,6 +36,8 @@ export interface ImagePackImage {
   readonly mimetype: string | null;
   readonly width: number | null;
   readonly height: number | null;
+  /** Original MSC2545 ImageInfo, retained for an exact m.sticker send. */
+  readonly info: Readonly<Record<string, unknown>>;
   readonly usage: readonly ImagePackUsage[];
   readonly packId: string;
   readonly packName: string;
@@ -180,9 +182,15 @@ export function readImagePacks(
     const id = `${source.roomId}\u0000${source.stateKey}`;
     if (seen.has(id)) continue;
     seen.add(id);
+    const sourceRoom = client.getRoom?.(source.roomId);
     const event = packEvent(client, source.roomId, source.stateKey);
     const pack = event
-      ? parsePack(event, source.roomId, source.stateKey)
+      ? parsePack(
+          event,
+          source.roomId,
+          source.stateKey,
+          boundedText(sourceRoom?.name),
+        )
       : null;
     if (!pack) continue;
     const available = MAX_IMAGES - totalImages;
@@ -210,16 +218,11 @@ function selectedPackSources(client: MatrixClient): PackSource[] {
         type: string,
       ) => MatrixEvent | undefined)
     : () => undefined;
-  const stable = accountPackRooms(getAccountData(IMAGE_PACK_ROOMS_EVENT_TYPE));
-  const legacy = accountPackRooms(
-    getAccountData(LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE),
+  const stable = getAccountData(IMAGE_PACK_ROOMS_EVENT_TYPE);
+  const selected = accountPackRooms(
+    stable ?? getAccountData(LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE),
   );
-  const merged = new Map<string, PackSource>();
-  for (const source of legacy) merged.set(sourceKey(source), source);
-  for (const source of stable) merged.set(sourceKey(source), source);
-  return [...merged.values()].sort((a, b) =>
-    sourceKey(a).localeCompare(sourceKey(b)),
-  );
+  return selected.sort((a, b) => sourceKey(a).localeCompare(sourceKey(b)));
 }
 
 function accountPackRooms(event: MatrixEvent | undefined): PackSource[] {
@@ -262,6 +265,7 @@ function parsePack(
   event: MatrixEvent,
   roomId: string,
   stateKey: string,
+  roomName: string | null,
 ): ImagePack | null {
   const content: unknown = event.getContent();
   if (!isRecord(content) || !isRecord(content['images'])) return null;
@@ -270,7 +274,7 @@ function parsePack(
   if (usage.length === 0) return null;
   const id = `${roomId}:${stateKey}`;
   const name =
-    (boundedText(packMeta['display_name']) ?? stateKey) || 'Image pack';
+    boundedText(packMeta['display_name']) ?? roomName ?? 'Image pack';
   const images: ImagePackImage[] = [];
   for (const shortcode of Object.keys(content['images']).sort()) {
     if (images.length >= MAX_IMAGES_PER_PACK) break;
@@ -280,10 +284,11 @@ function parsePack(
     images.push({
       shortcode: shortcode.slice(0, MAX_LABEL_LENGTH),
       url: raw['url'],
-      body: boundedText(raw['body']) ?? shortcode,
+      body: typeof raw['body'] === 'string' ? raw['body'] : shortcode,
       mimetype: boundedText(info['mimetype']),
       width: positiveNumber(info['w']),
       height: positiveNumber(info['h']),
+      info: { ...info },
       usage,
       packId: id,
       packName: name,

@@ -1,8 +1,14 @@
-<section class="picker" aria-label="Stickers" data-testid="sticker-picker">
+<section
+  class="picker"
+  aria-label="Stickers"
+  data-testid="sticker-picker"
+  (keydown.escape)="onEscape($event)"
+>
   <label class="picker__search-label" for="sticker-search"
     >Search stickers</label
   >
   <input
+    #search
     id="sticker-search"
     class="picker__search"
     type="search"
@@ -30,7 +36,7 @@
             <button
               type="button"
               class="picker__item"
-              [attr.aria-label]="image.body + ' (:' + image.shortcode + ':)'"
+              [attr.aria-label]="labelFor(image)"
               [attr.title]="':' + image.shortcode + ':'"
               [attr.data-testid]="'sticker-' + image.shortcode"
               (click)="selected.emit(image)"
@@ -44,7 +50,7 @@
         }
       </section>
     } @empty {
-      <p class="picker__empty">No stickers found.</p>
+      <p class="picker__empty" role="status">No stickers found.</p>
     }
   </div>
 </section>

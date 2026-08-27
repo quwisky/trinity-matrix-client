@@ -27,6 +27,7 @@ import { runWithBusy } from '@trinity/util/ui';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
 import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import { MatrixLinkDirective } from '../matrix-link/matrix-link.directive';
+import { InlineMxcImagesDirective } from '../inline-mxc-images/inline-mxc-images.directive';
 
 /** A revision plus the label that orients the reader, and what changed to reach it. */
 interface RevisionEntry extends MessageRevisionView {
@@ -57,6 +58,7 @@ const REFRESH_DELAY_MS = 600;
     TrnSpinnerComponent,
     SpoilerRevealDirective,
     MatrixLinkDirective,
+    InlineMxcImagesDirective,
   ],
 })
 export class EditHistoryComponent {

@@ -111,11 +111,7 @@ export class TimelineActionsService {
         ctx.client.sendEvent(ctx.room.roomId, EventType.Sticker, {
           body: sticker.body || sticker.shortcode,
           url: sticker.url,
-          info: {
-            ...(sticker.mimetype ? { mimetype: sticker.mimetype } : {}),
-            ...(sticker.width ? { w: sticker.width } : {}),
-            ...(sticker.height ? { h: sticker.height } : {}),
-          },
+          info: sticker.info,
         }),
       );
     }).pipe(map(() => void 0));

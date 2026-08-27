@@ -2,6 +2,9 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
+  afterNextRender,
+  computed,
   effect,
   inject,
   input,
@@ -22,18 +25,37 @@ export class StickerImageComponent {
   readonly image = input.required<ImagePackImage>();
   protected readonly src = signal<string | null>(null);
   protected readonly failed = signal(false);
+  protected readonly label = computed(
+    () => this.image().body.slice(0, 256) || this.image().shortcode,
+  );
   private readonly media = inject(MediaService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly visible = signal(
+    typeof IntersectionObserver === 'undefined',
+  );
   private subscription?: Subscription;
   private pinned: string | null = null;
+  private observer?: IntersectionObserver;
 
   constructor() {
+    afterNextRender(() => {
+      if (typeof IntersectionObserver === 'undefined') return;
+      this.observer = new IntersectionObserver(
+        (entries) =>
+          this.visible.set(entries.some((entry) => entry.isIntersecting)),
+        { rootMargin: '160px 0px' },
+      );
+      this.observer.observe(this.host.nativeElement);
+    });
     effect(() => {
       const image = this.image();
+      const visible = this.visible();
       this.subscription?.unsubscribe();
       this.repin(null);
       this.src.set(null);
       this.failed.set(false);
+      if (!visible) return;
       this.subscription = this.media
         .resolveMedia(payload(image), 'thumbnail')
         .subscribe({
@@ -45,9 +67,16 @@ export class StickerImageComponent {
         });
     });
     this.destroyRef.onDestroy(() => {
+      this.observer?.disconnect();
       this.subscription?.unsubscribe();
       this.repin(null);
     });
+  }
+
+  protected onImageError(): void {
+    this.repin(null);
+    this.src.set(null);
+    this.failed.set(true);
   }
 
   private repin(url: string | null): void {

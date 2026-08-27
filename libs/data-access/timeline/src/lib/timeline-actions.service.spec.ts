@@ -63,6 +63,14 @@ describe('TimelineActionsService', () => {
         mimetype: 'image/png',
         width: 64,
         height: 48,
+        info: {
+          mimetype: 'image/png',
+          size: 4096,
+          w: 64,
+          h: 48,
+          thumbnail_url: 'mxc://hs/thumb',
+          thumbnail_info: { mimetype: 'image/png', w: 32, h: 24 },
+        },
         usage: ['sticker'],
         packId: '!pack:hs:fun',
         packName: 'Fun',
@@ -75,7 +83,14 @@ describe('TimelineActionsService', () => {
       {
         body: 'Party parrot',
         url: 'mxc://hs/parrot',
-        info: { mimetype: 'image/png', w: 64, h: 48 },
+        info: {
+          mimetype: 'image/png',
+          size: 4096,
+          w: 64,
+          h: 48,
+          thumbnail_url: 'mxc://hs/thumb',
+          thumbnail_info: { mimetype: 'image/png', w: 32, h: 24 },
+        },
       },
     ]);
   });
@@ -92,6 +107,7 @@ describe('TimelineActionsService', () => {
         mimetype: 'image/png',
         width: 1,
         height: 1,
+        info: { mimetype: 'image/png', w: 1, h: 1 },
         usage: ['sticker'],
         packId: '!pack:hs:unsafe',
         packName: 'Unsafe',

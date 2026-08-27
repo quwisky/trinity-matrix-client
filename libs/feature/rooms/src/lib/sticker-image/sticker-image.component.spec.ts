@@ -6,18 +6,14 @@ import { StickerImageComponent } from './sticker-image.component';
 
 describe('StickerImageComponent', () => {
   it('resolves and labels a pack image without adding another button', async () => {
+    const media = {
+      resolveMedia: vi.fn(() => of('blob:party')),
+      pin: vi.fn(),
+      unpin: vi.fn(),
+    };
     await TestBed.configureTestingModule({
       imports: [StickerImageComponent],
-      providers: [
-        {
-          provide: MediaService,
-          useValue: {
-            resolveMedia: vi.fn(() => of('blob:party')),
-            pin: vi.fn(),
-            unpin: vi.fn(),
-          },
-        },
-      ],
+      providers: [{ provide: MediaService, useValue: media }],
     }).compileComponents();
     const fixture: ComponentFixture<StickerImageComponent> =
       TestBed.createComponent(StickerImageComponent);
@@ -28,14 +24,22 @@ describe('StickerImageComponent', () => {
       mimetype: 'image/png',
       width: 32,
       height: 32,
+      info: { mimetype: 'image/png', w: 32, h: 32 },
       usage: ['sticker'],
       packId: '!pack:hs:fun',
       packName: 'Fun',
     });
     fixture.detectChanges();
 
-    const image = fixture.nativeElement.querySelector('img');
-    expect(image?.getAttribute('alt')).toBe('Party pixel');
+    const image = fixture.nativeElement.querySelector(
+      'img',
+    ) as HTMLImageElement;
+    expect(image.getAttribute('alt')).toBe('Party pixel');
     expect(fixture.nativeElement.querySelector('button')).toBeNull();
+
+    image.dispatchEvent(new Event('error'));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain(':party:');
+    expect(media.unpin).toHaveBeenCalledWith('blob:party');
   });
 });

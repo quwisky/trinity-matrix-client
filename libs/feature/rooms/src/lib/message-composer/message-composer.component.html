@@ -65,6 +65,7 @@
     <trn-sticker-picker
       [packs]="stickerPacks()"
       (selected)="onStickerSelect($event)"
+      (dismiss)="closeStickerPicker()"
     />
   </ng-template>
   @if (recordingVoice()) {

@@ -107,6 +107,14 @@ test.describe('MSC2545 stickers and custom emoji', () => {
     await page.getByTestId('composer-insert').click();
     await page.getByTestId('insert-sticker').click();
     await expect(page.getByTestId('sticker-picker')).toBeVisible();
+    const stickerSearch = page.getByTestId('sticker-search');
+    await expect(stickerSearch).toBeFocused();
+    await stickerSearch.press('Escape');
+    await expect(page.getByTestId('sticker-picker')).toBeHidden();
+    await expect(page.getByTestId('composer-input')).toBeFocused();
+
+    await page.getByTestId('composer-insert').click();
+    await page.getByTestId('insert-sticker').click();
     await page.getByTestId('sticker-party').click();
 
     const sticker = page.locator('.msg--sticker').last();

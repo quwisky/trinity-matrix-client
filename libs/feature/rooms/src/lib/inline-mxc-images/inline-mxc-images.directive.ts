@@ -8,7 +8,7 @@ import {
 } from '@angular/core';
 import { MediaService } from '@trinity/data-access/media';
 import type { MediaPayload } from '@trinity/util/matrix';
-import { Subscription } from 'rxjs';
+import { Subscription, fromEvent, take } from 'rxjs';
 
 const MAX_INLINE_EMOTES = 50;
 
@@ -74,9 +74,17 @@ export class InlineMxcImagesDirective implements OnDestroy {
       this.subscriptions.add(
         this.media.resolveMedia(payload, 'thumbnail').subscribe({
           next: (url) => {
-            target.src = url;
             this.media.pin(url);
             this.pinned.add(url);
+            this.subscriptions.add(
+              fromEvent(target, 'error')
+                .pipe(take(1))
+                .subscribe(() => {
+                  if (this.pinned.delete(url)) this.media.unpin(url);
+                  target.replaceWith(document.createTextNode(declaration.alt));
+                }),
+            );
+            target.src = url;
           },
           error: () =>
             target.replaceWith(document.createTextNode(declaration.alt)),

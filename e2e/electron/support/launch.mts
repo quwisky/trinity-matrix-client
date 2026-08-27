@@ -31,12 +31,19 @@ export function launchApp(): Promise<ElectronApplication> {
   const userDataDir = mkdtempSync(path.join(tmpdir(), 'trinity-e2e-'));
   return electron.launch({
     args: [
-      mainEntry,
       // Required when running as root / in a container (CI); harmless on a desktop.
       // This is the Chromium zygote sandbox flag, NOT the app's webPreferences
       // sandbox (which stays true) — it only affects the test launch.
       '--no-sandbox',
+      // Electron E2E uses loopback servers as deterministic remote origins. Disable
+      // Chromium's separate local-network permission gate in this test process so
+      // those requests reach the app's production CORS interceptor under test.
+      '--disable-features=LocalNetworkAccessChecks',
+      // Local HTTPS fixtures use a committed test-only certificate. Ignoring its trust
+      // status does not disable webSecurity or the CORS checks under test.
+      '--ignore-certificate-errors',
       `--user-data-dir=${userDataDir}`,
+      mainEntry,
     ],
     executablePath: electronExecutable(),
   });

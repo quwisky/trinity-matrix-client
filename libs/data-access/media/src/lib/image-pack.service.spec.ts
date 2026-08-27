@@ -45,6 +45,7 @@ function setup() {
     };
     rooms.set(roomId, {
       roomId,
+      name: `Room ${roomId}`,
       getLiveTimeline: () => ({ getState: () => state }),
     });
   };
@@ -79,7 +80,14 @@ function pack(name: string, usage?: unknown, extraImages = 0) {
     wave: {
       url: `mxc://hs/${name}`,
       body: `${name} wave`,
-      info: { mimetype: 'image/png', w: 32, h: 24 },
+      info: {
+        mimetype: 'image/png',
+        size: 2048,
+        w: 32,
+        h: 24,
+        thumbnail_url: 'mxc://hs/thumb',
+        thumbnail_info: { mimetype: 'image/png', w: 16, h: 12 },
+      },
     },
   };
   for (let index = 0; index < extraImages; index += 1) {
@@ -118,6 +126,14 @@ describe('ImagePackService', () => {
     expect(packs.map((item) => item.name)).toEqual(['Global', 'Local']);
     expect(packs[0].images[0].usage).toEqual(['emoticon', 'sticker']);
     expect(packs[1].images[0].usage).toEqual(['sticker']);
+    expect(packs[0].images[0].info).toEqual({
+      mimetype: 'image/png',
+      size: 2048,
+      w: 32,
+      h: 24,
+      thumbnail_url: 'mxc://hs/thumb',
+      thumbnail_info: { mimetype: 'image/png', w: 16, h: 12 },
+    });
   });
 
   it('lets stable pack state override a legacy selection for the same source', () => {
@@ -138,6 +154,48 @@ describe('ImagePackService', () => {
     expect(
       readImagePacks(client as never, '!current:hs').map((item) => item.name),
     ).toEqual(['Old', 'Stable']);
+  });
+
+  it('uses legacy account selections only when stable account data is absent', () => {
+    const { client, account, roomEvents, rebuildRoom } = setup();
+    account.set(
+      LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE,
+      event(LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
+        rooms: { '!pack:hs': { stale: {} } },
+      }),
+    );
+    account.set(
+      IMAGE_PACK_ROOMS_EVENT_TYPE,
+      event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
+        rooms: { '!pack:hs': { selected: {} } },
+      }),
+    );
+    roomEvents.set('!pack:hs', [
+      event(IMAGE_PACK_EVENT_TYPE, 'stale', pack('Stale')),
+      event(IMAGE_PACK_EVENT_TYPE, 'selected', pack('Selected')),
+    ]);
+    rebuildRoom('!pack:hs');
+
+    expect(
+      readImagePacks(client as never, '!current:hs').map((item) => item.name),
+    ).toEqual(['Selected']);
+  });
+
+  it('uses the source room name when a pack has no display name', () => {
+    const { client, roomEvents, rebuildRoom } = setup();
+    roomEvents.set('!current:hs', [
+      event(
+        IMAGE_PACK_EVENT_TYPE,
+        'opaque-state-key',
+        { images: pack('Unnamed').images },
+        '!current:hs',
+      ),
+    ]);
+    rebuildRoom('!current:hs');
+
+    expect(readImagePacks(client as never, '!current:hs')[0].name).toBe(
+      'Room !current:hs',
+    );
   });
 
   it('drops malformed URLs/usages and bounds oversized packs', () => {

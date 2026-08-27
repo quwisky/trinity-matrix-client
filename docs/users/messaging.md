@@ -102,7 +102,8 @@ The searchable picker combines packs selected in your `m.image_pack.rooms` accou
 with packs published in the room's `m.room.image_pack` state; legacy experimental event
 names are read as a compatibility fallback. Selecting one sends a standalone `m.sticker`
 event. Pack images are homeserver media and are not attachment-encrypted, even when the
-room is encrypted; the sticker event that references them is encrypted normally.
+room is encrypted; the sticker event that references them is encrypted normally. Trinity
+warns you about that distinction before sending a sticker in an encrypted room.
 
 **Files and images.** Attach a file, or paste an image straight into the message box. A
 picked or pasted file is _staged_ rather than sent immediately, so you can type a caption

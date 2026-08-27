@@ -1,5 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 import { type ElectronApplication } from 'playwright';
+import { readFileSync } from 'node:fs';
+import { createServer } from 'node:https';
+import type { AddressInfo } from 'node:net';
 import { launchApp } from './support/launch.mts';
 
 // One Electron instance for the whole file (launching is expensive).
@@ -265,4 +268,56 @@ test('exposes the CORS-allowlist bridge (a plain send, not an invoke)', async ()
   expect(shape.setAllowedOrigins).toBe('function');
   expect(shape.allowOrigin).toBe('function');
   expect(shape.returnsUndefined).toBeUndefined();
+});
+
+test('fetches pack media through the scoped homeserver CORS bridge', async () => {
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  const server = createServer(
+    {
+      key: readFileSync(
+        new URL('./fixtures/localhost-key.pem', import.meta.url),
+      ),
+      cert: readFileSync(
+        new URL('./fixtures/localhost-cert.pem', import.meta.url),
+      ),
+    },
+    (_request, response) => {
+      // Deliberately no Access-Control-Allow-Origin: the Electron bridge must add it.
+      response.writeHead(200, { 'Content-Type': 'image/png' });
+      response.end(png);
+    },
+  );
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const origin = `https://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+  try {
+    await page.evaluate((allowed) => {
+      (
+        globalThis as {
+          trinityDesktop?: { cors?: { allowOrigin: (o: string) => void } };
+        }
+      ).trinityDesktop?.cors?.allowOrigin(allowed);
+    }, origin);
+
+    await expect
+      .poll(() =>
+        page.evaluate(async (url) => {
+          try {
+            const response = await fetch(url);
+            return response.ok && (await response.arrayBuffer()).byteLength > 0;
+          } catch {
+            return false;
+          }
+        }, `${origin}/_matrix/media/v3/download/hs/sticker`),
+      )
+      .toBe(true);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });

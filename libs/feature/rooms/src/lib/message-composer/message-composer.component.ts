@@ -955,6 +955,12 @@ export class MessageComposerComponent {
   onStickerSelect(sticker: ImagePackImage): void {
     this.stickerPickerOpen.set(false);
     this.stickerSelect.emit(sticker);
+    queueMicrotask(() => this.field.focus());
+  }
+
+  closeStickerPicker(): void {
+    this.stickerPickerOpen.set(false);
+    queueMicrotask(() => this.field.focus());
   }
 
   /** Begin recording a voice message; toasts and resets if the mic is unavailable. */

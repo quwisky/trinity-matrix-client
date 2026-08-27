@@ -188,6 +188,11 @@ export class MessageActionsService {
   }
 
   onSendSticker(sticker: ImagePackImage): void {
+    if (this.timeline.openContext()?.room.hasEncryptionStateEvent()) {
+      this.status.showWarning(
+        'Sticker images are public homeserver media, even in encrypted rooms.',
+      );
+    }
     this.runAction(
       this.timelineActions.sendSticker(sticker),
       'Could not send the sticker.',

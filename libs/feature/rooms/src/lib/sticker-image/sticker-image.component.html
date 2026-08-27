@@ -1,5 +1,5 @@
 @if (src(); as source) {
-  <img [src]="source" [alt]="image().body" />
+  <img [src]="source" [alt]="label()" (error)="onImageError()" />
 } @else if (failed()) {
   <span class="fallback">:{{ image().shortcode }}:</span>
 } @else {

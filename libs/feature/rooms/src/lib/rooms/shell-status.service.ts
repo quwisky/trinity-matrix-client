@@ -47,4 +47,8 @@ export class ShellStatusService implements BusyState {
   showSuccess(message: string): void {
     this.toast.show(message, { duration: 3000, variant: 'success' });
   }
+
+  showWarning(message: string): void {
+    this.toast.show(message, { duration: 6000 });
+  }
 }

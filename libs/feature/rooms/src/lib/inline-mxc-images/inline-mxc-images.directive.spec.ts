@@ -60,4 +60,17 @@ describe('InlineMxcImagesDirective', () => {
     fixture.destroy();
     expect(media.unpin).toHaveBeenCalledWith('blob:wave');
   });
+
+  it('unpins and falls back when the resolved bytes cannot decode', () => {
+    resolved.next('blob:wave');
+    const image = fixture.nativeElement.querySelector(
+      'img',
+    ) as HTMLImageElement;
+
+    image.dispatchEvent(new Event('error'));
+
+    expect(media.unpin).toHaveBeenCalledWith('blob:wave');
+    expect(fixture.nativeElement.textContent).toContain(':wave:');
+    expect(fixture.nativeElement.querySelector('img')).toBeNull();
+  });
 });
