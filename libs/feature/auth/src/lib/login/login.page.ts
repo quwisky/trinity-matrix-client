@@ -33,10 +33,12 @@ import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import {
   AuthService,
   FactoryResetService,
+  RegistrationService,
   type LoginMode,
   type OidcApplicationType,
   type OidcAuthorizationRequest,
   type AuthMetadata,
+  type RegistrationAvailability,
 } from '@trinity/data-access/auth';
 import {
   AppRestartService,
@@ -72,6 +74,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
 })
 export class LoginPage {
   private readonly auth = inject(AuthService);
+  private readonly registration = inject(RegistrationService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly ssoState = inject(SsoStateStore);
@@ -142,7 +145,9 @@ export class LoginPage {
             return this.discoverCapabilities(record.baseUrl);
           }),
         ),
-      ).subscribe(({ flows, oidc }) => this.applyFlows(flows, oidc));
+      ).subscribe(({ flows, oidc, registration }) =>
+        this.applyFlows(flows, oidc, registration),
+      );
     }
 
     // The username/password step is inserted after homeserver discovery, so the
@@ -168,6 +173,8 @@ export class LoginPage {
   readonly baseUrl = signal<string | null>(null);
   readonly ssoSupported = signal(false);
   readonly passwordSupported = signal(false);
+  readonly registrationAvailability =
+    signal<RegistrationAvailability>('unknown');
   /** The delegated OIDC provider config, when the homeserver uses next-gen auth. */
   readonly oidcMetadata = signal<AuthMetadata | null>(null);
   readonly oidcSupported = computed(() => this.oidcMetadata() !== null);
@@ -220,9 +227,9 @@ export class LoginPage {
             ),
           ),
         ),
-    ).subscribe(({ baseUrl, flows, oidc }) => {
+    ).subscribe(({ baseUrl, flows, oidc, registration }) => {
       this.baseUrl.set(baseUrl);
-      this.applyFlows(flows, oidc);
+      this.applyFlows(flows, oidc, registration);
     });
   }
 
@@ -232,15 +239,28 @@ export class LoginPage {
    * may not serve the legacy `/login` flows at all), so its error degrades to "no
    * flows" rather than aborting the whole discovery.
    */
-  private discoverCapabilities(
-    baseUrl: string,
-  ): Observable<{ flows: string[]; oidc: AuthMetadata | null }> {
+  private discoverCapabilities(baseUrl: string): Observable<{
+    flows: string[];
+    oidc: AuthMetadata | null;
+    registration: RegistrationAvailability;
+  }> {
     return forkJoin({
       flows: this.auth
         .getSupportedFlows(baseUrl)
         .pipe(catchError(() => of<string[]>([]))),
       oidc: this.auth.getDelegatedAuthConfig(baseUrl),
-    });
+    }).pipe(
+      switchMap(({ flows, oidc }) => {
+        // Delegated OIDC owns registration, while add/reauth gating is handled by the
+        // template. Only a legacy password homeserver needs the extra availability GET.
+        if (oidc || !flows.includes('m.login.password')) {
+          return of({ flows, oidc, registration: 'unknown' as const });
+        }
+        return this.registration
+          .getAvailability(baseUrl)
+          .pipe(map((registration) => ({ flows, oidc, registration })));
+      }),
+    );
   }
 
   /**
@@ -248,8 +268,13 @@ export class LoginPage {
    * provider, so prefer its "Continue" button and suppress the legacy password/SSO ones
    * (a homeserver mid-migration may still advertise m.login.sso for compatibility).
    */
-  private applyFlows(flows: string[], oidc: AuthMetadata | null): void {
+  private applyFlows(
+    flows: string[],
+    oidc: AuthMetadata | null,
+    registration: RegistrationAvailability = 'unknown',
+  ): void {
     this.oidcMetadata.set(oidc);
+    this.registrationAvailability.set(registration);
     this.passwordSupported.set(!oidc && flows.includes('m.login.password'));
     this.ssoSupported.set(!oidc && flows.includes('m.login.sso'));
     // No OIDC, password, or SSO flow — surface a clear message instead of leaving the
@@ -259,6 +284,19 @@ export class LoginPage {
         "This homeserver doesn't offer a sign-in method Trinity supports.",
       );
     }
+  }
+
+  /** Continue from the shared homeserver step into legacy Matrix registration. */
+  startRegistration(): void {
+    if (this.registrationAvailability() !== 'open' || this.reauthUserId()) {
+      return;
+    }
+    void this.router.navigate(['/register'], {
+      queryParams: {
+        homeserver: this.homeserverModel().homeserver,
+        ...(this.addMode ? { add: '' } : {}),
+      },
+    });
   }
 
   /** Step 2a: password login. */

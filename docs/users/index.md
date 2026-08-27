@@ -114,4 +114,3 @@ looking for a button that is not there.
 | Approving or denying a knock        | The `knock` join rule can be set, and a knock renders as a system line, but there is no approval surface.                                                                            |
 | Upgrading a room to a newer version | An upgraded room's tombstone is followed to its successor; nothing in Trinity creates one.                                                                                           |
 | Two verifications at once           | A verification request arriving while another is live is ignored.                                                                                                                    |
-| Creating an account                 | Except through an OIDC provider's own registration flow. See [Signing in](signing-in.md).                                                                                            |

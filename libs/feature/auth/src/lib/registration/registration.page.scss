@@ -1,0 +1,83 @@
+.registration-card__subtitle {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.4;
+  color: var(--trinity-text-muted);
+}
+
+.registration-card__homeserver {
+  margin: 6px 0 0;
+  font-size: 0.875rem;
+  word-break: break-all;
+  color: var(--trinity-link);
+}
+
+.registration-card__field {
+  margin-bottom: 16px;
+}
+
+.registration-card__label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--trinity-text-muted);
+}
+
+.registration-card__field input {
+  width: 100%;
+  background: var(--trinity-active);
+  color: var(--trinity-text-bright);
+  border-color: transparent;
+}
+
+.registration-card__submit {
+  display: block;
+  margin-top: 20px;
+}
+
+.registration-card__copy,
+.registration-card__policies {
+  margin: 0 0 16px;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--trinity-text-muted);
+}
+
+.registration-card__policies {
+  padding-left: 20px;
+}
+
+.registration-card__policy + .registration-card__policy {
+  margin-top: 12px;
+}
+
+.registration-card__consent {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--trinity-text);
+}
+
+.registration-card__field-error,
+.registration-card__stage-error,
+.registration-card__error {
+  margin: 8px 0 0;
+  font-size: 0.875rem;
+}
+
+.registration-card__stage-error {
+  margin-bottom: 16px;
+}
+
+.registration-card__error {
+  text-align: center;
+}
+
+.registration-card__busy {
+  padding-top: 16px;
+}

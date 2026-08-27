@@ -65,6 +65,7 @@ const LEDGER = [
   'libs/components/qr-scanner/src/lib/qr-scanner/qr-scanner.component.scss',
   'libs/feature/auth/src/lib/auth-card/auth-card.component.scss',
   'libs/feature/auth/src/lib/login/login.page.scss',
+  'libs/feature/auth/src/lib/registration/registration.page.scss',
   'libs/feature/crypto/src/lib/encryption-setup/encryption-setup.page.scss',
   'libs/feature/crypto/src/lib/encryption-unlock/encryption-unlock.page.scss',
   'libs/feature/crypto/src/lib/recovery-key-display/recovery-key-display.component.scss',

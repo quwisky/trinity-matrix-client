@@ -3,6 +3,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import {
   AuthService,
   FactoryResetService,
+  RegistrationService,
   type OidcAuthorizationParams,
 } from '@trinity/data-access/auth';
 import {
@@ -51,6 +52,9 @@ async function renderLogin(
   const { fixture } = await render(LoginPage, {
     providers: [
       MockProvider(AuthService, auth),
+      MockProvider(RegistrationService, {
+        getAvailability: vi.fn(() => of('unknown' as const)),
+      }),
       MockProvider(Router),
       MockProvider(SsoStateStore),
       MockProvider(OidcStateStore, {
@@ -124,6 +128,59 @@ describe('LoginPage', () => {
     expect(cmp.passwordSupported()).toBe(true);
     expect(cmp.ssoSupported()).toBe(true);
     expect(cmp.oidcSupported()).toBe(false);
+  });
+
+  it('shows legacy registration only after its side-effect-free probe reports open', async () => {
+    const getAvailability = vi.fn(() => of('open' as const));
+    const { fixture, cmp } = await renderLogin({
+      discoverHomeserver: vi.fn(() => of('https://hs.example')),
+      getSupportedFlows: vi.fn(() => of(['m.login.password'])),
+      getDelegatedAuthConfig: vi.fn(() => of(null)),
+    } as unknown as Partial<AuthService>);
+    vi.mocked(
+      TestBed.inject(RegistrationService).getAvailability,
+    ).mockImplementation(getAvailability);
+
+    cmp.discover();
+    await fixture.whenStable();
+
+    expect(getAvailability).toHaveBeenCalledWith('https://hs.example');
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="password-register"]',
+      ),
+    ).not.toBeNull();
+  });
+
+  it('does not probe legacy registration when delegated OIDC owns signup', async () => {
+    const { cmp } = await renderLogin({
+      discoverHomeserver: vi.fn(() => of('https://hs.example')),
+      getSupportedFlows: vi.fn(() => of(['m.login.password'])),
+      getDelegatedAuthConfig: vi.fn(() => of({ issuer: 'https://op' })),
+    } as unknown as Partial<AuthService>);
+    const getAvailability = vi.mocked(
+      TestBed.inject(RegistrationService).getAvailability,
+    );
+
+    cmp.discover();
+
+    expect(getAvailability).not.toHaveBeenCalled();
+    expect(cmp.registrationAvailability()).toBe('unknown');
+  });
+
+  it('carries the selected homeserver and add-account mode into registration', async () => {
+    const { cmp, router } = await renderLogin(
+      {} as unknown as Partial<AuthService>,
+      { add: true },
+    );
+    cmp.registrationAvailability.set('open');
+    cmp.homeserverForm.homeserver().value.set('example.org');
+
+    cmp.startRegistration();
+
+    expect(router.navigate).toHaveBeenCalledWith(['/register'], {
+      queryParams: { homeserver: 'example.org', add: '' },
+    });
   });
 
   it('hides password/SSO when the homeserver does not offer them', async () => {
