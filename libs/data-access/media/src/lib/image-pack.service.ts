@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import {
   ClientEvent,
+  RoomEvent,
   type MatrixClient,
   type MatrixEvent,
   RoomStateEvent,
@@ -91,10 +92,12 @@ export class ImagePackService {
     matrix: this.matrix,
     bind: (client) => {
       client.on?.(RoomStateEvent.Events, this.onStateEvent);
+      client.on?.(RoomEvent.MyMembership, this.projection.schedule);
       client.on?.(ClientEvent.AccountData, this.onAccountData);
     },
     unbind: (client) => {
       client.off?.(RoomStateEvent.Events, this.onStateEvent);
+      client.off?.(RoomEvent.MyMembership, this.projection.schedule);
       client.off?.(ClientEvent.AccountData, this.onAccountData);
     },
     rebuild: (client) => {
@@ -257,20 +260,27 @@ function selectedPackSources(
         ? selection.content
         : stableEvent?.getContent()
       : getAccountData(LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE)?.getContent(),
+    !stablePresent,
   );
   return selected.sort((a, b) => sourceKey(a).localeCompare(sourceKey(b)));
 }
 
-function accountPackRoomsContent(content: unknown): PackSource[] {
+function accountPackRoomsContent(
+  content: unknown,
+  legacy: boolean,
+): PackSource[] {
   if (!isRecord(content) || !isRecord(content['rooms'])) return [];
   const sources: PackSource[] = [];
   for (const roomId of Object.keys(content['rooms']).sort()) {
     const stateKeys = content['rooms'][roomId];
     if (!isRecord(stateKeys)) continue;
     for (const stateKey of Object.keys(stateKeys).sort()) {
-      // MSC2545 models each referenced state key as an empty object. Accepting
-      // `true` as well keeps packs selected by older experimental clients usable.
-      if (isRecord(stateKeys[stateKey]) || stateKeys[stateKey] === true) {
+      // MSC2545 requires an object. Only the experimental legacy event accepted
+      // the earlier boolean representation.
+      if (
+        isRecord(stateKeys[stateKey]) ||
+        (legacy && stateKeys[stateKey] === true)
+      ) {
         sources.push({
           roomId,
           stateKey,
@@ -287,6 +297,7 @@ function packEvent(
   stateKey: string,
 ): MatrixEvent | null {
   const room = client.getRoom?.(roomId);
+  if (room?.getMyMembership() !== 'join') return null;
   const state = room ? liveRoomState(room) : undefined;
   if (!state) return null;
   const stable = state.getStateEvents(IMAGE_PACK_EVENT_TYPE, stateKey);

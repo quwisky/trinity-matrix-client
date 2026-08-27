@@ -183,6 +183,9 @@ publishes it. Trinity joins that room if necessary and, when it contains several
 lists every state key so you can choose the intended one. The installed reference is Matrix
 account data and follows your account to other devices.
 
+Trinity currently sends sticker-capable entries from these packs and displays custom emoji
+received in messages. Composing a new message with a pack's custom emoji is not yet supported.
+
 The capability badges are defined by the pack publisher: Trinity does not invent private
 per-device usage switches. Removing an installed pack removes only your account reference.
 It does not leave the source room, remove its state, or delete homeserver media. Broken,

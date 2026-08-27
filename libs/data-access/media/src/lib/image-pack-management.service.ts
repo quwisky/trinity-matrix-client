@@ -2,6 +2,9 @@ import { Injectable, type Signal, effect, inject, signal } from '@angular/core';
 import { defer, from, type Observable } from 'rxjs';
 import {
   ClientEvent,
+  MatrixError,
+  Method,
+  RoomEvent,
   type MatrixClient,
   type MatrixEvent,
   RoomStateEvent,
@@ -71,10 +74,12 @@ export class ImagePackManagementService {
     matrix: this.matrix,
     bind: (client) => {
       client.on?.(RoomStateEvent.Events, this.onStateEvent);
+      client.on?.(RoomEvent.MyMembership, this.projection.schedule);
       client.on?.(ClientEvent.AccountData, this.onAccountData);
     },
     unbind: (client) => {
       client.off?.(RoomStateEvent.Events, this.onStateEvent);
+      client.off?.(RoomEvent.MyMembership, this.projection.schedule);
       client.off?.(ClientEvent.AccountData, this.onAccountData);
     },
     rebuild: (client) => {
@@ -215,7 +220,6 @@ export class ImagePackManagementService {
 }
 
 type AccountDataClient = {
-  getAccountDataFromServer(type: string): Promise<unknown | null>;
   setAccountData(
     type: string,
     content: Record<string, unknown>,
@@ -226,11 +230,26 @@ function accountDataClient(client: MatrixClient): AccountDataClient {
   return client as unknown as AccountDataClient;
 }
 
-function getAccountDataFromServer(
+async function getAccountDataFromServer(
   client: MatrixClient,
   type: string,
 ): Promise<unknown | null> {
-  return accountDataClient(client).getAccountDataFromServer(type);
+  const userId = client.getUserId();
+  if (!userId) throw new ImagePackManagementError('not-signed-in');
+  try {
+    // The SDK helper serves the local account-data store after initial sync. This
+    // explicit request is required before every merge and verification so a
+    // recently-arrived write from another device is not silently overwritten.
+    return await client.http.authedRequest<unknown>(
+      Method.Get,
+      `/user/${encodeURIComponent(userId)}/account_data/${encodeURIComponent(type)}`,
+    );
+  } catch (error) {
+    if (error instanceof MatrixError && error.errcode === 'M_NOT_FOUND') {
+      return null;
+    }
+    throw error;
+  }
 }
 
 async function setAccountData(

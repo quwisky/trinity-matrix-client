@@ -30,6 +30,7 @@ function setup() {
   const account = new Map<string, ReturnType<typeof event>>();
   const roomEvents = new Map<string, ReturnType<typeof event>[]>();
   const rooms = new Map<string, unknown>();
+  const memberships = new Map<string, string>();
   const rebuildRoom = (roomId: string) => {
     const state = {
       getStateEvents: (type: string, stateKey?: string) => {
@@ -46,6 +47,7 @@ function setup() {
     rooms.set(roomId, {
       roomId,
       name: `Room ${roomId}`,
+      getMyMembership: () => memberships.get(roomId) ?? 'join',
       getLiveTimeline: () => ({ getState: () => state }),
     });
   };
@@ -71,6 +73,7 @@ function setup() {
     client,
     account,
     roomEvents,
+    memberships,
     rebuildRoom,
   };
 }
@@ -181,6 +184,39 @@ describe('ImagePackService', () => {
     ).toEqual(['Selected']);
   });
 
+  it('rejects legacy boolean references in stable account data', () => {
+    const { client, account, roomEvents, rebuildRoom } = setup();
+    account.set(
+      IMAGE_PACK_ROOMS_EVENT_TYPE,
+      event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
+        rooms: { '!pack:hs': { malformed: true } },
+      }),
+    );
+    roomEvents.set('!pack:hs', [
+      event(IMAGE_PACK_EVENT_TYPE, 'malformed', pack('Malformed')),
+    ]);
+    rebuildRoom('!pack:hs');
+
+    expect(readImagePacks(client as never, '!current:hs')).toEqual([]);
+  });
+
+  it('stops exposing a selected pack after leaving its source room', () => {
+    const { client, account, roomEvents, memberships, rebuildRoom } = setup();
+    account.set(
+      IMAGE_PACK_ROOMS_EVENT_TYPE,
+      event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
+        rooms: { '!pack:hs': { selected: {} } },
+      }),
+    );
+    roomEvents.set('!pack:hs', [
+      event(IMAGE_PACK_EVENT_TYPE, 'selected', pack('Selected')),
+    ]);
+    memberships.set('!pack:hs', 'leave');
+    rebuildRoom('!pack:hs');
+
+    expect(readImagePacks(client as never, '!current:hs')).toEqual([]);
+  });
+
   it('uses the source room name when a pack has no display name', () => {
     const { client, roomEvents, rebuildRoom } = setup();
     roomEvents.set('!current:hs', [
@@ -244,5 +280,13 @@ describe('ImagePackService', () => {
     service.disconnect('!current:hs');
     expect(packs()).toEqual([]);
     expect(client.off).toHaveBeenCalledWith('RoomState.events', handler);
+    expect(client.on).toHaveBeenCalledWith(
+      'Room.myMembership',
+      expect.any(Function),
+    );
+    expect(client.off).toHaveBeenCalledWith(
+      'Room.myMembership',
+      expect.any(Function),
+    );
   });
 });

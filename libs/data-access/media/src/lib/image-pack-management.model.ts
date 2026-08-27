@@ -50,10 +50,14 @@ export class ImagePackManagementError extends Error {
 
 export function validateImagePackSource(source: string): string {
   const normalized = source.trim();
+  const separator = normalized.indexOf(':', 1);
   if (
     normalized.length === 0 ||
     normalized.length > MAX_SOURCE_LENGTH ||
-    !/^[!#][^\s:]+:[^\s:]+$/.test(normalized)
+    !['!', '#'].includes(normalized[0] ?? '') ||
+    separator <= 1 ||
+    separator === normalized.length - 1 ||
+    /\s/.test(normalized)
   ) {
     throw new ImagePackManagementError('invalid-source');
   }
@@ -159,8 +163,11 @@ export function mutateSelectionContent(
   const base = !migratingLegacy && isRecord(content) ? { ...content } : {};
   const rooms = normalizedRooms(content, migratingLegacy);
   const room = { ...(rooms[source.roomId] ?? {}) };
-  if (install) room[source.stateKey] = {};
-  else delete room[source.stateKey];
+  if (install) {
+    if (!isRecord(room[source.stateKey])) room[source.stateKey] = {};
+  } else {
+    delete room[source.stateKey];
+  }
   if (Object.keys(room).length > 0) rooms[source.roomId] = room;
   else delete rooms[source.roomId];
   return { ...base, rooms };

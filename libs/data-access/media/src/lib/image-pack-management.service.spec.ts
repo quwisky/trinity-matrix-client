@@ -2,6 +2,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { firstValueFrom } from 'rxjs';
+import { MatrixError, Method } from 'matrix-js-sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   IMAGE_PACK_EVENT_TYPE,
@@ -61,13 +62,24 @@ function setup(options?: {
   const legacy: unknown | null = options?.legacy ?? null;
   const packRoom = room('!pack:hs', options?.roomEvents ?? []);
   const client = {
+    getUserId: vi.fn(() => '@alice:hs'),
     getAccountData: vi.fn((type: string) => {
       const content = type === IMAGE_PACK_ROOMS_EVENT_TYPE ? stable : legacy;
       return content === null ? undefined : event(type, '', content);
     }),
-    getAccountDataFromServer: vi.fn(async (type: string) =>
-      type === IMAGE_PACK_ROOMS_EVENT_TYPE ? structuredClone(stable) : legacy,
-    ),
+    http: {
+      authedRequest: vi.fn(async (_method: Method, path: string) => {
+        const content = path.endsWith(
+          encodeURIComponent(IMAGE_PACK_ROOMS_EVENT_TYPE),
+        )
+          ? stable
+          : legacy;
+        if (content === null) {
+          throw new MatrixError({ errcode: 'M_NOT_FOUND' }, 404);
+        }
+        return structuredClone(content);
+      }),
+    },
     setAccountData: vi.fn(async (_type: string, content: unknown) => {
       stable = structuredClone(content);
     }),
@@ -117,6 +129,12 @@ describe('image-pack management parsing', () => {
     );
     expect(validateImagePackSource('!packs:example.org')).toBe(
       '!packs:example.org',
+    );
+    expect(validateImagePackSource('#packs:example.org:8448')).toBe(
+      '#packs:example.org:8448',
+    );
+    expect(validateImagePackSource('#packs:[2001:db8::1]:8448')).toBe(
+      '#packs:[2001:db8::1]:8448',
     );
     expect(() => validateImagePackSource('https://example.org')).toThrow(
       ImagePackManagementError,
@@ -260,6 +278,44 @@ describe('ImagePackManagementService', () => {
     expect(stable()).toEqual({
       future: { value: 1 },
       rooms: { '!other:hs': { keep: { future: true } } },
+    });
+  });
+
+  it('preserves future fields on an already-installed reference', async () => {
+    const { service, stable } = setup({
+      stable: {
+        rooms: { '!pack:hs': { keep: { future: 'value' } } },
+      },
+    });
+
+    await firstValueFrom(
+      service.install({ roomId: '!pack:hs', stateKey: 'keep' }),
+    );
+
+    expect(stable()).toEqual({
+      rooms: { '!pack:hs': { keep: { future: 'value' } } },
+    });
+  });
+
+  it('reads account data directly from the server before merging', async () => {
+    const { service, client, stable } = setup({
+      stable: { rooms: { '!other:hs': { remote: {} } } },
+    });
+    client.getAccountData.mockReturnValue(undefined);
+
+    await firstValueFrom(
+      service.install({ roomId: '!pack:hs', stateKey: 'local' }),
+    );
+
+    expect(client.http.authedRequest).toHaveBeenCalledWith(
+      Method.Get,
+      '/user/%40alice%3Ahs/account_data/m.image_pack.rooms',
+    );
+    expect(stable()).toEqual({
+      rooms: {
+        '!other:hs': { remote: {} },
+        '!pack:hs': { local: {} },
+      },
     });
   });
 

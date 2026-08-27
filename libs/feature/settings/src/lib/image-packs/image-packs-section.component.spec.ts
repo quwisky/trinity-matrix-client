@@ -6,7 +6,7 @@ import {
   ImagePackManagementService,
   type ManagedImagePack,
 } from '@trinity/data-access/media';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ImagePacksSectionComponent } from './image-packs-section.component';
 
@@ -114,5 +114,73 @@ describe('ImagePacksSectionComponent', () => {
       }),
     );
     expect(uninstall).toHaveBeenCalledWith(available);
+  });
+
+  it('prefills a routed room without joining or discovering automatically', async () => {
+    TestBed.overrideProvider(ActivatedRoute, {
+      useValue: {
+        snapshot: {
+          queryParamMap: convertToParamMap({ roomId: '!source:hs' }),
+        },
+      },
+    });
+    const fixture = TestBed.createComponent(ImagePacksSectionComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(discover).not.toHaveBeenCalled();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+        '[data-testid=image-pack-source]',
+      )?.value,
+    ).toBe('!source:hs');
+  });
+
+  it('clears stale discovery results while a new lookup is in flight', async () => {
+    const pending = new Subject<{
+      roomId: string;
+      roomName: string;
+      packs: ManagedImagePack[];
+    }>();
+    discover.mockReturnValueOnce(pending);
+    const fixture = TestBed.createComponent(ImagePacksSectionComponent);
+    fixture.detectChanges();
+    fixture.componentInstance.discovery.set({
+      roomId: '!old:hs',
+      roomName: 'Old room',
+      packs: [available],
+    });
+    fixture.componentInstance.sourceForm.source().value.set('#new:hs');
+
+    const finding = fixture.componentInstance.find();
+    await Promise.resolve();
+
+    expect(fixture.componentInstance.discovery()).toBeNull();
+    pending.next({
+      roomId: '!new:hs',
+      roomName: 'New room',
+      packs: [available],
+    });
+    pending.complete();
+    await finding;
+  });
+
+  it('connects invalid source feedback to the input', async () => {
+    const fixture = TestBed.createComponent(ImagePacksSectionComponent);
+    fixture.detectChanges();
+    await fixture.componentInstance.find();
+    fixture.detectChanges();
+
+    const input = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid=image-pack-source]',
+    );
+    const error = (fixture.nativeElement as HTMLElement).querySelector(
+      '#image-pack-source-error',
+    );
+    expect(input?.getAttribute('aria-invalid')).toBe('true');
+    expect(input?.getAttribute('aria-describedby')).toBe(
+      'image-pack-source-error',
+    );
+    expect(error?.getAttribute('role')).toBe('alert');
   });
 });

@@ -185,7 +185,13 @@ test.describe('MSC2545 stickers and custom emoji', () => {
     await expect(candidates).toHaveCount(2, { timeout: 30_000 });
     const funPack = candidates.filter({ hasText: 'Fun pack' });
     await expect(funPack).toContainText('Stable');
-    await funPack.getByTestId('install-image-pack').click();
+    const installButton = funPack.getByTestId('install-image-pack');
+    if (await page.evaluate(() => matchMedia('(pointer: coarse)').matches)) {
+      expect(
+        (await installButton.boundingBox())?.height,
+      ).toBeGreaterThanOrEqual(44);
+    }
+    await installButton.click();
     await expect(page.getByTestId('installed-image-pack')).toContainText(
       'Fun pack',
     );

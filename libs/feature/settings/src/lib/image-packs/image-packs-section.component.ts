@@ -80,7 +80,6 @@ export class ImagePacksSectionComponent {
     const roomId = this.route.snapshot.queryParamMap.get('roomId');
     if (roomId) {
       this.sourceForm.source().value.set(roomId);
-      void this.find();
     }
   }
 
@@ -89,6 +88,7 @@ export class ImagePacksSectionComponent {
     this.notice.set(null);
     await submit(this.sourceForm, {
       action: async (field) => {
+        this.discovery.set(null);
         this.finding.set(true);
         try {
           const result = await firstValueFrom(

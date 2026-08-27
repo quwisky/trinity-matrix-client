@@ -2,8 +2,9 @@
   <header class="packs__header">
     <h2 id="image-packs-title">Stickers &amp; emoji</h2>
     <p>
-      Install image packs for stickers and custom emoji. Packs stay in their
-      source rooms; Trinity only saves a reference to your account.
+      Install image packs for sending stickers and displaying received custom
+      emoji. Packs stay in their source rooms; Trinity only saves a reference to
+      your account.
     </p>
   </header>
 
@@ -16,7 +17,10 @@
           <p class="pack-card__source">
             {{ pack.roomName || pack.roomId }} · state key “{{ pack.stateKey }}”
           </p>
-          <div class="pack-card__badges" aria-label="Pack capabilities">
+          <div
+            class="pack-card__badges"
+            aria-label="Publisher-declared pack capabilities"
+          >
             @if (pack.usage.includes('sticker')) {
               <span>Stickers</span>
             }
@@ -71,6 +75,16 @@
           autocomplete="off"
           placeholder="#stickers:example.org"
           [formField]="sourceForm.source"
+          [attr.aria-invalid]="
+            sourceForm.source().touched() && sourceForm.source().invalid()
+              ? 'true'
+              : null
+          "
+          [attr.aria-describedby]="
+            sourceForm.source().touched() && sourceForm.source().invalid()
+              ? 'image-pack-source-error'
+              : null
+          "
           data-testid="image-pack-source"
         />
         <button
@@ -83,7 +97,7 @@
         </button>
       </div>
       @if (sourceForm.source().touched() && sourceForm.source().invalid()) {
-        <p class="packs__error">
+        <p id="image-pack-source-error" class="packs__error" role="alert">
           {{ sourceForm.source().errors()[0]?.message }}
         </p>
       }
@@ -100,7 +114,10 @@
           <div class="pack-card__body">
             <h4>{{ pack.name }}</h4>
             <p class="pack-card__source">State key “{{ pack.stateKey }}”</p>
-            <div class="pack-card__badges" aria-label="Pack capabilities">
+            <div
+              class="pack-card__badges"
+              aria-label="Publisher-declared pack capabilities"
+            >
               @if (pack.usage.includes('sticker')) {
                 <span>Stickers</span>
               }
