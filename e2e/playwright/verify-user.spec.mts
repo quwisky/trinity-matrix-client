@@ -3,7 +3,7 @@ import {
   expect,
   type APIRequestContext,
   type Page,
-} from '@playwright/test';
+} from './support/fixtures.mts';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 import { registerUser } from './support/account.mts';
 
@@ -52,20 +52,45 @@ async function openRoom(page: Page, roomName: string): Promise<void> {
   });
 }
 
+/** Give a UI client its own cross-signing identity before cross-user SAS starts. */
+async function setUpEncryption(page: Page, password: string): Promise<void> {
+  await page.goto('/encryption/setup', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Set up encryption' }).click();
+
+  const uia = page.locator('trn-alert-dialog');
+  const key = page.getByTestId('recovery-key');
+  const shown = await Promise.race([
+    uia
+      .waitFor({ state: 'visible', timeout: 30_000 })
+      .then(() => 'uia')
+      .catch(() => null),
+    key
+      .waitFor({ state: 'visible', timeout: 30_000 })
+      .then(() => 'key')
+      .catch(() => null),
+  ]);
+  if (shown === 'uia') {
+    await uia.locator('input[type="password"]').fill(password);
+    await uia.getByRole('button', { name: 'Confirm' }).click();
+  }
+
+  await key.waitFor({ state: 'visible', timeout: 60_000 });
+  await page
+    .getByRole('checkbox', { name: /I've saved my recovery key/ })
+    .click();
+  await page.getByRole('button', { name: 'Continue to Trinity' }).click();
+  await page.waitForURL('**/rooms', { timeout: 30_000 });
+}
+
 test.describe('Verify another user', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  // Cross-user (SAS) verification requires BOTH parties to have a cross-signing
-  // identity, but this harness logs the counterpart in via the raw API (no crypto),
-  // and a freshly-logged-in initiator hasn't bootstrapped cross-signing either — so
-  // requestVerificationDM can't establish a request and the verify page never opens.
-  // Exercising the real handshake needs a second crypto-capable device the headless
-  // harness can't provide; the member-panel wiring + startUserVerification are covered
-  // by unit tests instead. Kept as documentation of the intended journey.
-  test.fixme('starts cross-user verification from the member panel', async ({
+  test('starts cross-user verification from the member panel', async ({
     page,
+    secondaryApp,
     request,
   }) => {
+    test.slow();
     const hs = session.hs as string;
     const runId = `${Date.now().toString(36)}vu`;
     const me = `verify-me-${runId}`;
@@ -105,6 +130,21 @@ test.describe('Verify another user', () => {
       user: me,
       pass: mePass,
     } as SynapseSession);
+    await setUpEncryption(page, mePass);
+
+    // The counterpart must be a real crypto-capable client with its own
+    // cross-signing identity. Android uses the separately packaged secondary
+    // app, while web uses an isolated browser context through the same fixture.
+    const otherPage = await secondaryApp.launch();
+    await login(otherPage, {
+      available: true,
+      hs,
+      user: other,
+      pass: otherPass,
+    } as SynapseSession);
+    await setUpEncryption(otherPage, otherPass);
+    await secondaryApp.activatePrimary();
+
     await openRoom(page, roomName);
 
     // Open the other member's info panel and start verifying them.

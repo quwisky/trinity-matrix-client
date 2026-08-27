@@ -44,8 +44,11 @@ let ownsEmulator = false;
 let spawnedEmulator: ChildProcess | undefined;
 let emulatorSpawnError: Error | undefined;
 let emulatorExit: { code: number | null; signal: NodeJS.Signals | null } | undefined;
-let previousReverse: string | undefined;
-let changedReverse = false;
+const requiredReversePorts = ['8448', '5556'] as const;
+const changedReverseMappings: Array<{
+  local: string;
+  previous: string | undefined;
+}> = [];
 let playwrightAttachAttempted = false;
 let activeChild: ChildProcess | undefined;
 let cleanupPromise: Promise<void> | undefined;
@@ -302,10 +305,14 @@ async function validateAndWaitForBoot(): Promise<void> {
 }
 
 async function configureReverse(): Promise<void> {
-  previousReverse = reverseTarget(await adbRun('reverse', '--list'), 'tcp:8448');
-  if (previousReverse === 'tcp:8448') return;
-  await adbRun('reverse', 'tcp:8448', 'tcp:8448');
-  changedReverse = true;
+  const existing = await adbRun('reverse', '--list');
+  for (const port of requiredReversePorts) {
+    const local = `tcp:${port}`;
+    const previous = reverseTarget(existing, local);
+    if (previous === local) continue;
+    await adbRun('reverse', local, local);
+    changedReverseMappings.push({ local, previous });
+  }
 }
 
 async function captureDiagnostics(): Promise<void> {
@@ -347,10 +354,10 @@ async function cleanup(): Promise<void> {
             await adbRun('uninstall', driverPackage).catch(() => undefined);
           }
         }
-        if (changedReverse) {
-          await adbRun('reverse', '--remove', 'tcp:8448').catch(() => undefined);
-          if (previousReverse) {
-            await adbRun('reverse', 'tcp:8448', previousReverse).catch(() => undefined);
+        for (const { local, previous } of changedReverseMappings.reverse()) {
+          await adbRun('reverse', '--remove', local).catch(() => undefined);
+          if (previous) {
+            await adbRun('reverse', local, previous).catch(() => undefined);
           }
         }
       }
@@ -412,7 +419,13 @@ async function main(): Promise<void> {
   await run('pnpm', ['exec', 'playwright', 'install', 'android']);
   await selectOrStartDevice();
   await validateAndWaitForBoot();
+  process.env['TRINITY_E2E_PLATFORM'] = 'android';
   await run('pnpm', ['android:build']);
+  await run(join(workspaceRoot, 'android/gradlew'), [
+    '-p',
+    'android',
+    'assembleSecondaryDebug',
+  ]);
   await startSynapseSession({
     allowUnavailable: false,
     signal: abortController.signal,
@@ -424,6 +437,15 @@ async function main(): Promise<void> {
     '-t',
     join(workspaceRoot, 'android/app/build/outputs/apk/debug/app-debug.apk'),
   );
+  await adbRun(
+    'install',
+    '-r',
+    '-t',
+    join(
+      workspaceRoot,
+      'android/app/build/outputs/apk/secondaryDebug/app-secondaryDebug.apk',
+    ),
+  );
   process.env['TRINITY_ANDROID_SERIAL'] = serial;
   playwrightAttachAttempted = true;
   await run('pnpm', [
@@ -432,6 +454,7 @@ async function main(): Promise<void> {
     'test',
     '-c',
     'e2e/playwright.android.config.mts',
+    ...process.argv.slice(2),
   ]);
 }
 

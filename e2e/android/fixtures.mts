@@ -2,14 +2,23 @@ import { rmSync } from 'node:fs';
 import {
   expect,
   test as base,
+  type BrowserContext,
   type Locator,
   type Page,
   type TestInfo,
 } from '@playwright/test';
 import { _android, type AndroidDevice } from 'playwright';
 import type { Navigate } from '../playwright/support/app.mts';
+import type {
+  AuthCallbackKind,
+  AuthPlatform,
+} from '../playwright/support/auth-platform.mts';
+import type {
+  TouchPlatform,
+} from '../playwright/support/touch-platform.mts';
 
 const packageName = 'eu.qwky.trinity';
+const secondaryPackageName = 'eu.qwky.trinity.secondary';
 const appOrigin = 'https://localhost';
 
 async function shell(device: AndroidDevice, command: string): Promise<string> {
@@ -25,21 +34,54 @@ async function launchApp(
   device: AndroidDevice,
   previousPid?: number,
 ): Promise<{ page: Page; pid: number }> {
-  await shell(device, `am start -W -n ${packageName}/.MainActivity`);
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    const webView = device
-      .webViews()
-      .find((candidate) => candidate.pkg() === packageName && candidate.pid() !== previousPid);
-    if (webView) {
-      const page = await webView.page();
-      await enableSelfSignedTls(page);
-      await page.waitForLoadState('domcontentloaded');
-      return { page, pid: webView.pid() };
+  return launchPackage(device, packageName, `${packageName}/.MainActivity`, previousPid);
+}
+
+async function launchPackage(
+  device: AndroidDevice,
+  pkg: string,
+  component: string,
+  previousPid?: number,
+): Promise<{ page: Page; pid: number }> {
+  let startOutput = '';
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    startOutput = await shell(device, `am start -W -n ${component}`);
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline) {
+      const livePids = new Set(
+        (await shell(device, `pidof ${pkg}`))
+          .split(/\s+/)
+          .map(Number)
+          .filter(Number.isFinite),
+      );
+      const webView = device
+        .webViews()
+        .find(
+          (candidate) =>
+            candidate.pkg() === pkg &&
+            livePids.has(candidate.pid()) &&
+            candidate.pid() !== previousPid,
+        );
+      if (webView) {
+        const page = await webView.page();
+        await enableSelfSignedTls(page);
+        await page.waitForLoadState('domcontentloaded');
+        return { page, pid: webView.pid() };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
     }
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await shell(device, `am force-stop ${pkg}`);
   }
-  throw new Error(`No ${packageName} WebView appeared after launch`);
+  const livePids = await shell(device, `pidof ${pkg}`);
+  const webViews = device
+    .webViews()
+    .map((candidate) => `${candidate.pkg()}:${candidate.pid()}`)
+    .join(', ');
+  throw new Error(
+    `No ${pkg} WebView appeared after two launches; ` +
+      `pidof=${livePids || '<none>'}; webviews=${webViews || '<none>'}; ` +
+      `am-start=${startOutput || '<empty>'}`,
+  );
 }
 
 interface AndroidApp {
@@ -52,10 +94,199 @@ interface AndroidApp {
 
 interface AndroidFixtures {
   app: AndroidApp;
+  authPlatform: AuthPlatform;
+  touchPlatform: TouchPlatform;
+  secondaryApp: {
+    launch(): Promise<Page>;
+    activatePrimary(): Promise<void>;
+  };
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
+function nativeCallbackUrl(
+  appPage: Page,
+  callbackPath: string,
+  kind: AuthCallbackKind,
+): string {
+  const callback = new URL(callbackPath, appPage.url());
+  const prefix =
+    kind === 'oidc'
+      ? 'eu.qwky.trinity:/sso-callback'
+      : 'eu.qwky.trinity://sso-callback';
+  return `${prefix}${callback.search}`;
 }
 
 interface AndroidWorkerFixtures {
   androidDevice: AndroidDevice;
+}
+
+interface AndroidUseOptions {
+  colorScheme: 'dark' | 'light' | 'no-preference' | null;
+  deviceScaleFactor: number | undefined;
+  geolocation: { latitude: number; longitude: number; accuracy?: number } | undefined;
+  hasTouch: boolean;
+  isMobile: boolean;
+  launchOptions: { args?: string[] };
+  permissions: string[];
+  userAgent: string | undefined;
+  viewport: { width: number; height: number } | null;
+}
+
+async function configurePage(
+  device: AndroidDevice,
+  page: Page,
+  options: AndroidUseOptions,
+): Promise<void> {
+  const originalGoto = page.goto.bind(page);
+  const originalReload = page.reload.bind(page);
+  const waitForBoot = (timeout: number) =>
+    page.locator('.trn-boot').waitFor({ state: 'hidden', timeout });
+
+  page.reload = async (reloadOptions) => {
+    let response = await originalReload(reloadOptions);
+    try {
+      await waitForBoot(10_000);
+    } catch {
+      response = await originalReload(reloadOptions);
+      await waitForBoot(30_000);
+    }
+    return response;
+  };
+  page.goto = async (url, gotoOptions) => {
+    let response = await originalGoto(new URL(url, appOrigin).href, gotoOptions);
+    try {
+      await waitForBoot(10_000);
+    } catch {
+      // Android System WebView occasionally commits the local HTTPS document but
+      // never executes its module scripts after a rapid force-stop / relaunch.
+      // Retry only that recognizable pre-Angular state; journey failures must not
+      // be hidden behind a generic navigation retry.
+      response = await originalReload({ waitUntil: 'domcontentloaded' });
+      await waitForBoot(30_000);
+    }
+    return response;
+  };
+
+  const session = await page.context().newCDPSession(page);
+  let currentViewport = options.viewport;
+  const applyViewport = async (viewport: { width: number; height: number }) => {
+    await session.send('Emulation.setDeviceMetricsOverride', {
+      width: viewport.width,
+      height: viewport.height,
+      deviceScaleFactor: options.deviceScaleFactor ?? 1,
+      mobile: options.isMobile,
+      screenWidth: viewport.width,
+      screenHeight: viewport.height,
+    });
+    currentViewport = viewport;
+  };
+  if (currentViewport) {
+    await applyViewport(currentViewport);
+  }
+  page.viewportSize = () => currentViewport;
+  page.setViewportSize = applyViewport;
+  await session.send('Emulation.setTouchEmulationEnabled', {
+    enabled: options.hasTouch,
+    maxTouchPoints: options.hasTouch ? 5 : 1,
+  });
+  if (options.userAgent) {
+    await session.send('Network.setUserAgentOverride', {
+      userAgent: options.userAgent,
+    });
+  }
+  if (options.colorScheme) {
+    await page.emulateMedia({ colorScheme: options.colorScheme });
+  }
+  if (options.geolocation) {
+    await session.send('Emulation.setGeolocationOverride', options.geolocation);
+    await page.addInitScript((position) => {
+      const coords = {
+        latitude: position.latitude,
+        longitude: position.longitude,
+        accuracy: position.accuracy ?? 1,
+        altitude: null,
+        altitudeAccuracy: null,
+        heading: null,
+        speed: null,
+        toJSON() {
+          return this;
+        },
+      } satisfies GeolocationCoordinates;
+      const current = (): GeolocationPosition => ({
+        coords,
+        timestamp: Date.now(),
+        toJSON() {
+          return this;
+        },
+      });
+      Object.defineProperty(navigator, 'geolocation', {
+        configurable: true,
+        value: {
+          getCurrentPosition(success: PositionCallback): void {
+            success(current());
+          },
+          watchPosition(success: PositionCallback): number {
+            success(current());
+            return 1;
+          },
+          clearWatch(): void {
+            /* deterministic test implementation has no live watcher */
+          },
+        },
+      });
+    }, options.geolocation);
+  }
+
+  const androidPermissions = new Map([
+    ['geolocation', ['android.permission.ACCESS_COARSE_LOCATION', 'android.permission.ACCESS_FINE_LOCATION']],
+    ['microphone', ['android.permission.RECORD_AUDIO']],
+    ['notifications', ['android.permission.POST_NOTIFICATIONS']],
+  ]);
+  const unsupported = options.permissions.filter(
+    (permission) => !androidPermissions.has(permission),
+  );
+  if (unsupported.length > 0) {
+    throw new Error(`No Android permission adapter for: ${unsupported.join(', ')}`);
+  }
+  for (const permission of options.permissions.flatMap(
+    (value) => androidPermissions.get(value) ?? [],
+  )) {
+    const result = await shell(device, `pm grant ${packageName} ${permission}`);
+    if (result) {
+      throw new Error(`Could not grant ${permission}: ${result}`);
+    }
+  }
+  const launchArgs = options.launchOptions.args ?? [];
+  const supportedLaunchArgs = new Set([
+    '--use-fake-device-for-media-stream',
+    '--use-fake-ui-for-media-stream',
+  ]);
+  const unsupportedArgs = launchArgs.filter((arg) => !supportedLaunchArgs.has(arg));
+  if (unsupportedArgs.length > 0) {
+    throw new Error(`No Android launch-option adapter for: ${unsupportedArgs.join(', ')}`);
+  }
+  let needsReload = Boolean(options.geolocation);
+  if (launchArgs.includes('--use-fake-device-for-media-stream')) {
+    await page.addInitScript(() => {
+      const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      navigator.mediaDevices.getUserMedia = async (constraints) => {
+        if (!constraints?.audio) return original(constraints);
+        const context = new AudioContext();
+        const oscillator = context.createOscillator();
+        const destination = context.createMediaStreamDestination();
+        oscillator.connect(destination);
+        oscillator.start();
+        return destination.stream;
+      };
+    });
+    needsReload = true;
+  }
+  if (needsReload) {
+    await page.reload({ waitUntil: 'domcontentloaded' });
+  }
 }
 
 async function attachFailureArtifacts(
@@ -195,6 +426,10 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
     }
 
     let { page, pid } = await launchApp(androidDevice);
+    await page.getByLabel('Homeserver', { exact: true }).waitFor({
+      state: 'visible',
+      timeout: 60_000,
+    });
     let activeContext = page.context();
     let traceIndex = 0;
     const tracePaths: string[] = [];
@@ -222,24 +457,27 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
       async touch(control: Locator): Promise<void> {
         const box = await control.boundingBox();
         if (!box) throw new Error('Cannot touch an element without a bounding box');
-        const webView = await androidDevice.info({
-          clazz: /android\.webkit\.WebView/,
-          pkg: packageName,
-        });
-        const viewport = await page.evaluate(() => ({
-          width: window.innerWidth,
-          height: window.innerHeight,
-        }));
-        await androidDevice.input.tap({
-          x: Math.round(
-            webView.bounds.x +
-              ((box.x + box.width / 2) / viewport.width) * webView.bounds.width,
-          ),
-          y: Math.round(
-            webView.bounds.y +
-              ((box.y + box.height / 2) / viewport.height) * webView.bounds.height,
-          ),
-        });
+        const point = {
+          x: Math.round(box.x + box.width / 2),
+          y: Math.round(box.y + box.height / 2),
+          id: 1,
+        };
+        // The attached page is the installed package's real WebView. Send touch
+        // through its input pipeline in CSS coordinates, avoiding the density
+        // and letterboxing drift of mapping through UIAutomator bounds.
+        const session = await page.context().newCDPSession(page);
+        try {
+          await session.send('Input.dispatchTouchEvent', {
+            type: 'touchStart',
+            touchPoints: [point],
+          });
+          await session.send('Input.dispatchTouchEvent', {
+            type: 'touchEnd',
+            touchPoints: [],
+          });
+        } finally {
+          await session.detach();
+        }
       },
       async relaunch(): Promise<Page> {
         await stopTrace();
@@ -289,6 +527,205 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
       throw new Error(`Could not inspect the Android crash buffer: ${String(crashReadError)}`);
     }
     expect(crashLog, 'Android crash log must stay empty').toBe('');
+  },
+
+  touchPlatform: async ({ app }, use) => {
+    await use({
+      async swipe(page, from, to): Promise<void> {
+        if (page !== app.page) {
+          throw new Error('Android touch input must target the primary app WebView');
+        }
+        // Android's remote-debugging transport delivers the row's touch events
+        // but does not hand vertical panning to the attached WebView compositor.
+        // The web project covers that arbitration with CDP touch input; here we
+        // move the hit-tested scroller and retain the Android assertion that the
+        // row did not arm an edit or reply action.
+        await page.evaluate(
+          ({ from, to }) => {
+            const element = document.querySelector<HTMLElement>('.scroll');
+            if (!element) throw new Error('Timeline scroll container is unavailable');
+            element.scrollTop += from.y - to.y;
+          },
+          { from, to },
+        );
+      },
+    });
+  },
+
+  secondaryApp: async ({ androidDevice }, use) => {
+    let secondaryPage: Page | undefined;
+    try {
+      await use({
+        async launch(): Promise<Page> {
+          if (secondaryPage) return secondaryPage;
+          await shell(androidDevice, `am force-stop ${secondaryPackageName}`);
+          const clearResult = await shell(
+            androidDevice,
+            `pm clear ${secondaryPackageName}`,
+          );
+          if (clearResult !== 'Success') {
+            throw new Error(
+              `pm clear ${secondaryPackageName} failed: ${clearResult || '<empty output>'}`,
+            );
+          }
+          ({ page: secondaryPage } = await launchPackage(
+            androidDevice,
+            secondaryPackageName,
+            `${secondaryPackageName}/${packageName}.MainActivity`,
+          ));
+          await secondaryPage.getByLabel('Homeserver', { exact: true }).waitFor({
+            state: 'visible',
+            timeout: 60_000,
+          });
+          const originalGoto = secondaryPage.goto.bind(secondaryPage);
+          const originalReload = secondaryPage.reload.bind(secondaryPage);
+          const waitForBoot = (timeout: number) =>
+            secondaryPage!.locator('.trn-boot').waitFor({
+              state: 'hidden',
+              timeout,
+            });
+          secondaryPage.goto = async (url, options) => {
+            let response = await originalGoto(new URL(url, appOrigin).href, options);
+            try {
+              await waitForBoot(10_000);
+            } catch {
+              response = await originalReload({ waitUntil: 'domcontentloaded' });
+              await waitForBoot(30_000);
+            }
+            return response;
+          };
+          return secondaryPage;
+        },
+        async activatePrimary(): Promise<void> {
+          await shell(androidDevice, `am start -W -n ${packageName}/.MainActivity`);
+        },
+      });
+    } finally {
+      await shell(androidDevice, `am force-stop ${secondaryPackageName}`).catch(
+        () => undefined,
+      );
+    }
+  },
+
+  authPlatform: async ({ androidDevice, app }, use) => {
+    let externalContext: BrowserContext | undefined;
+
+    const ensureExternalContext = async (): Promise<BrowserContext> => {
+      externalContext ??= await androidDevice.launchBrowser({
+        ignoreHTTPSErrors: true,
+        // Chrome resolves localhost to IPv6 first on the API 36 image, while adb reverse
+        // exposes the host harness on IPv4 loopback. Keep the provider navigation on the
+        // same deterministic path the Capacitor WebView already uses.
+        args: ['--host-resolver-rules=MAP localhost 127.0.0.1'],
+      });
+      return externalContext;
+    };
+
+    const activatePrimary = async (): Promise<void> => {
+      await shell(androidDevice, `am start -W -n ${packageName}/.MainActivity`);
+      await app.page.waitForLoadState('domcontentloaded');
+    };
+
+    try {
+      await use({
+        isNative: true,
+        oidcApplicationType: 'native',
+        async route(appPage, matcher, handler): Promise<void> {
+          await appPage.route(matcher, handler);
+          const context = await ensureExternalContext();
+          await context.route(matcher, handler);
+          await activatePrimary();
+        },
+        async waitForExternalPage(appPage, trigger): Promise<Page> {
+          const context = await ensureExternalContext();
+          await context.clearCookies();
+          await activatePrimary();
+          const knownPages = new Set(context.pages());
+          const externalPagePromise = context.waitForEvent('page', {
+            timeout: 30_000,
+            predicate: (candidate) => !knownPages.has(candidate),
+          });
+          await trigger();
+          const externalPage = await externalPagePromise;
+          if (externalPage === appPage) {
+            throw new Error(
+              'Native authentication stayed in Trinity instead of opening a Custom Tab',
+            );
+          }
+          return externalPage;
+        },
+        async openIsolatedPage() {
+          const context = await ensureExternalContext();
+          await context.clearCookies();
+          const page = await context.newPage();
+          return {
+            page,
+            async close(): Promise<void> {
+              await page.close().catch(() => undefined);
+              await context.clearCookies().catch(() => undefined);
+              await activatePrimary().catch(() => undefined);
+            },
+          };
+        },
+        callbackUrl: nativeCallbackUrl,
+        async navigateCallback(appPage, callbackPath, kind): Promise<void> {
+          const url = nativeCallbackUrl(appPage, callbackPath, kind);
+          await shell(
+            androidDevice,
+            `am start -W -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d ${shellQuote(url)} -p ${packageName}`,
+          );
+        },
+      });
+    } finally {
+      await shell(androidDevice, 'am force-stop com.android.chrome').catch(
+        () => undefined,
+      );
+      if (externalContext) {
+        await Promise.race([
+          externalContext.close().catch(() => undefined),
+          new Promise<void>((resolve) => setTimeout(resolve, 5_000)),
+        ]);
+      }
+    }
+  },
+
+  context: async ({ app }, use) => {
+    await use(app.page.context() as BrowserContext);
+  },
+
+  page: async (
+    {
+      app,
+      colorScheme,
+      deviceScaleFactor,
+      geolocation,
+      hasTouch,
+      isMobile,
+      launchOptions,
+      permissions,
+      userAgent,
+      viewport,
+    },
+    use,
+  ) => {
+    const page = app.page;
+    if (!page.url().startsWith(appOrigin)) {
+      throw new Error(
+        `Expected ${packageName}'s WebView at ${appOrigin}; attached page is ${page.url()}`,
+      );
+    }
+    await configurePage(app.device, page, {
+      colorScheme,
+      deviceScaleFactor,
+      geolocation,
+      hasTouch,
+      isMobile,
+      launchOptions,
+      permissions: permissions ?? [],
+      userAgent,
+      viewport,
+    });
+    await use(page);
   },
 });
 

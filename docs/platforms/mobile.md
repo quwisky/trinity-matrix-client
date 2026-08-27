@@ -62,9 +62,10 @@ emulator, then attaches Playwright to Trinity's real Capacitor WebView. Pass an 
 physical devices, other API levels, and other ABIs rather than modifying an arbitrary
 connected target.
 
-The representative journeys share their assertions with the web suite and cover app boot,
-password login against the disposable Synapse harness, touch navigation, Android hardware
-Back, and persisted-session restoration after a native force-stop/relaunch. See
+All canonical web journeys run through the installed package WebView, with platform
+adapters for native capabilities and an independently packaged second test device.
+Android-only journeys additionally cover hardware Back and persisted-session restoration
+after a native force-stop/relaunch. See
 [`e2e/README.md`](../../e2e/README.md#android-webview-journeys) for ownership, TLS,
 diagnostics, and cleanup details.
 

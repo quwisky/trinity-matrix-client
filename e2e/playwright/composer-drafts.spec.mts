@@ -3,8 +3,13 @@ import {
   expect,
   type APIRequestContext,
   type Page,
-} from '@playwright/test';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+} from './support/fixtures.mts';
+import {
+  login,
+  readPreference,
+  synapseSession,
+  type SynapseSession,
+} from './support/app.mts';
 import { registerUser } from './support/account.mts';
 
 // End-to-end for per-conversation composer drafts: a half-typed message is kept per
@@ -12,8 +17,7 @@ import { registerUser } from './support/account.mts';
 // Preferences and restored at startup). Needs a Synapse homeserver (Docker).
 const session = synapseSession();
 
-/** Capacitor Preferences persists web values under this localStorage prefix. */
-const DRAFTS_LS_KEY = 'CapacitorStorage.trinity.composer.drafts';
+const DRAFTS_KEY = 'trinity.composer.drafts';
 
 /** Register a reader and create two plain rooms they belong to. */
 async function seedTwoRooms(
@@ -95,9 +99,7 @@ test.describe('Composer drafts', () => {
 
     // Once the draft has persisted, a reload restores it (cold-start).
     await expect
-      .poll(() =>
-        page.evaluate((k) => localStorage.getItem(k) ?? '', DRAFTS_LS_KEY),
-      )
+      .poll(() => readPreference(page, DRAFTS_KEY).then((value) => value ?? ''))
       .toContain(draft);
     await page.reload();
     await openRoom(page, roomA);

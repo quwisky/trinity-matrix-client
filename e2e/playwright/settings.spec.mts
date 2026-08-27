@@ -1,5 +1,10 @@
-import { test, expect, type Page } from '@playwright/test';
-import { login, fillLabeledInput, synapseSession } from './support/app.mts';
+import { test, expect, type Page } from './support/fixtures.mts';
+import {
+  login,
+  fillLabeledInput,
+  readPreference,
+  synapseSession,
+} from './support/app.mts';
 
 // Authenticated journeys through Settings — theme switching, profile editing,
 // device management, and the responsive section submenu (two-pane on desktop,
@@ -436,9 +441,8 @@ test.describe('Settings', () => {
     page,
   }) => {
     await openSection(page, 'experimental');
-    // Capacitor Preferences stores non-secret prefs in localStorage under this key.
-    const KEY = 'CapacitorStorage.trinity.flags.virtual-timeline';
-    const read = () => page.evaluate((k) => localStorage.getItem(k), KEY);
+    const KEY = 'trinity.flags.virtual-timeline';
+    const read = () => readPreference(page, KEY);
 
     const checkbox = page
       .getByTestId('flag-virtual-timeline')

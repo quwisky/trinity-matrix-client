@@ -1,4 +1,4 @@
-import { test, expect, type APIRequestContext } from '@playwright/test';
+import { test, expect, type APIRequestContext } from './support/fixtures.mts';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 import { registerUser } from './support/account.mts';
 
@@ -184,6 +184,8 @@ test.describe('Message grouping', () => {
       return {
         rowTop: r.top,
         barTop: b.top,
+        rowHeight: r.height,
+        barHeight: b.height,
         overflowAbove: r.top - b.top,
         overflowBelow: b.bottom - r.bottom,
       };
@@ -198,12 +200,13 @@ test.describe('Message grouping', () => {
 
     // And the other direction, which the assertion above cannot see.
     //
-    // The bar is 34px and a continuation row is 26px, so it cannot fit: at `top: 0` it hangs
-    // ~8px into the row below. That is a real residual, not an oversight — the alternatives
-    // are taller rows (undoing the density this phase is for) or smaller buttons (worse to
-    // hit), and 8px transiently on hover beats 16px permanently on every row, which is what
-    // it replaced. What must not happen is that number growing unnoticed, so it is bounded
-    // rather than left unmeasured.
-    expect(containment.overflowBelow).toBeLessThanOrEqual(8);
+    // The pointer model owns the button size: 34px with a mouse and a larger touch target
+    // on Android. In either case `top: 0` means the only permitted overflow is exactly the
+    // height difference; an extra offset would cover still more of the following row.
+    const expectedOverflow = Math.max(
+      0,
+      containment.barHeight - containment.rowHeight,
+    );
+    expect(containment.overflowBelow).toBeLessThanOrEqual(expectedOverflow + 1);
   });
 });

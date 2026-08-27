@@ -1,4 +1,4 @@
-import { devices, expect, test, type Page } from '@playwright/test';
+import { devices, expect, test, type Page } from './support/fixtures.mts';
 import {
   login,
   openSettingsTab,

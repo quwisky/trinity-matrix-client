@@ -3,8 +3,9 @@ import {
   expect,
   type APIRequestContext,
   type Page,
-} from '@playwright/test';
+} from './support/fixtures.mts';
 import {
+  isAndroidE2E,
   login,
   synapseSession,
   waitForSent,
@@ -228,7 +229,7 @@ test.describe('Message markdown', () => {
     await waitForSent(
       page.locator('.scroll .msg[data-mid]', { hasText: 'x = 1' }).first(),
     );
-    await pre.hover();
+    if (!isAndroidE2E) await pre.hover();
 
     const overlap = await page.evaluate(() => {
       const row = [...document.querySelectorAll('.msg')].find((m) =>
@@ -265,6 +266,7 @@ test.describe('Message markdown', () => {
       const captionRight = captionLeft + captionWidth;
       return {
         isContinuation: row.classList.contains('msg--cont'),
+        toolbarOpacity: getComputedStyle(toolbarEl).opacity,
         // Do the two boxes overlap at all? Asserting non-intersection rather than a vertical
         // gap holds however they are separated — the caption moved to the block's left when
         // the toolbar moved inside the row, and a vertical-gap assertion would have called
@@ -278,7 +280,14 @@ test.describe('Message markdown', () => {
     });
 
     expect(overlap?.isContinuation).toBe(true);
-    expect(overlap?.overlaps).toBe(false);
+    if (isAndroidE2E) {
+      // Touch cannot enter the hover state measured on web. The caption is always
+      // visible and the toolbar stays concealed until a long press reveals this row,
+      // so intersecting dormant boxes do not overlap painted controls.
+      expect(overlap?.toolbarOpacity).toBe('0');
+    } else {
+      expect(overlap?.overlaps).toBe(false);
+    }
   });
 
   test('syntax-highlights a fenced block, in the theme’s colours', async ({
@@ -359,9 +368,11 @@ test.describe('Message markdown', () => {
       });
 
     expect((await captionStyle()).content).toContain('python');
-    expect((await captionStyle()).opacity).toBe('0');
-    await pre.hover();
-    await expect.poll(async () => (await captionStyle()).opacity).toBe('1');
+    expect((await captionStyle()).opacity).toBe(isAndroidE2E ? '1' : '0');
+    if (!isAndroidE2E) {
+      await pre.hover();
+      await expect.poll(async () => (await captionStyle()).opacity).toBe('1');
+    }
 
     // And it stays out of the text: the <pre> reads exactly as its <code> does, so
     // selecting or copying the block yields only the sender's source — and the

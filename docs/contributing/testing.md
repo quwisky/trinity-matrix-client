@@ -360,10 +360,13 @@ production Capacitor app, installs it on a validated API 36 x86_64 emulator, and
 Playwright to the app's own WebView. That boundary makes native hardware Back, touch input,
 Android TLS handling, and session restoration after force-stop/relaunch observable.
 
-Every web spec is classified in `e2e/android/coverage-manifest.mts` as shared now,
-portable later, or intentionally web-only. A scripts guard enforces exact coverage so a new
-web spec cannot enter without an Android portability decision. The shared entries call the
-same journey functions from thin platform wrappers rather than copying assertions.
+Every canonical spec imports `e2e/playwright/support/fixtures.mts`. It selects the normal
+browser lifecycle for web and overrides both `page` and `context` with the installed
+package WebView for Android. The Android config collects the entire canonical glob plus
+native-only specs; a source-shape guard prevents new specs from bypassing that boundary.
+Platform adapters cover test options, native preferences and permissions, exports,
+external authentication, and a separately packaged second device while keeping one set of
+journey assertions.
 
 The outer runner owns Synapse, one exact emulator serial, the APK, the Playwright Android
 driver packages, and the `tcp:8448` reverse mapping. It restores only state it changed and

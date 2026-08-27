@@ -166,12 +166,16 @@ function oidcBlock() {
   // shares one loopback there, so the published port is reachable as localhost.
   const internal = networkContainer ? 'localhost:5556' : 'dex:5556';
   const appOrigin = process.env.BASE_URL ?? 'http://localhost:4200';
+  const clientWhitelist = [`${appOrigin.replace(/\/$/, '')}/`];
+  if (process.env.TRINITY_E2E_PLATFORM === 'android') {
+    clientWhitelist.push('eu.qwky.trinity://sso-callback');
+  }
   return [
     OIDC_START,
     // Synapse refuses to redirect a login token anywhere it was not told to.
     'sso:',
     '  client_whitelist:',
-    `    - "${appOrigin.replace(/\/$/, '')}/"`,
+    ...clientWhitelist.map((url) => `    - "${url}"`),
     'oidc_providers:',
     '  - idp_id: dex',
     '    idp_name: "Dex"',

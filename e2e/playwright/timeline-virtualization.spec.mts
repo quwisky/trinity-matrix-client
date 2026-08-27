@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
-import { login, synapseSession } from './support/app.mts';
+import { test, expect } from './support/fixtures.mts';
+import { login, seedPreference, synapseSession } from './support/app.mts';
 
 // Seeds a long room over the CS API, turns on the virtualized-timeline flag, and
 // asserts the timeline windows: even after every message is paged into the client,
@@ -12,7 +12,7 @@ const SEED = 200;
 /** Upper bound on rows kept in the DOM at once — comfortably above the window,
  * far below SEED, so a bounded DOM is unambiguous. */
 const MAX_RENDERED = 80;
-const FLAG_KEY = 'CapacitorStorage.trinity.flags.virtual-timeline';
+const FLAG_KEY = 'trinity.flags.virtual-timeline';
 
 test.describe('Timeline virtualization', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
@@ -55,11 +55,7 @@ test.describe('Timeline virtualization', () => {
       );
     }
 
-    // Turn the flag on before the app boots (Capacitor Preferences → localStorage).
-    await page.addInitScript(
-      (key) => localStorage.setItem(key, 'true'),
-      FLAG_KEY,
-    );
+    await seedPreference(page, FLAG_KEY, 'true');
 
     await login(page, session);
 

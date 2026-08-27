@@ -1,4 +1,4 @@
-import { test, expect, type Page, type Route } from '@playwright/test';
+import { test, expect, type Page, type Route } from './support/fixtures.mts';
 
 // OIDC-native ("next-gen auth", MSC3861/MSC2965) login, against a FULLY MOCKED
 // homeserver + provider. Unlike the other app-journey specs this needs no Synapse/MAS,
@@ -100,28 +100,41 @@ test.describe('OIDC-native login', () => {
 
   test('builds a PKCE authorize request and surfaces a provider error on the callback', async ({
     page,
+    authPlatform,
   }) => {
     await mockOidcHomeserver(page);
     // Dynamic client registration → issue a client id.
-    await page.route(/provider\.oidc\.example\/register/, (r) =>
-      json(r, { client_id: 'e2e-client-id' }, 201),
-    );
+    let registrationApplicationType: string | null = null;
+    await authPlatform.route(page, /provider\.oidc\.example\/register/, (r) => {
+      if (r.request().method() === 'POST') {
+        registrationApplicationType =
+          (r.request().postDataJSON() as { application_type?: string })
+            .application_type ?? null;
+      }
+      return json(r, { client_id: 'e2e-client-id' }, 201);
+    });
 
     // Intercept the redirect to the provider's authorize endpoint: capture the PKCE
     // params, then send the browser back to the app as if the user declined consent.
     let authorizeUrl: URL | null = null;
-    await page.route(/provider\.oidc\.example\/authorize/, async (route) => {
-      authorizeUrl = new URL(route.request().url());
-      const state = authorizeUrl.searchParams.get('state') ?? '';
-      // Redirect back to the app's OWN registered callback (from the request), not an
-      // origin derived from page.url() (which is the provider during this navigation).
-      const redirectUri = authorizeUrl.searchParams.get('redirect_uri') ?? '';
-      const back = `${redirectUri}?error=access_denied&error_description=${encodeURIComponent('E2E declined')}&state=${encodeURIComponent(state)}`;
-      await route.fulfill({ status: 302, headers: { location: back } });
-    });
+    await authPlatform.route(
+      page,
+      /provider\.oidc\.example\/authorize/,
+      async (route) => {
+        authorizeUrl = new URL(route.request().url());
+        const state = authorizeUrl.searchParams.get('state') ?? '';
+        // Redirect back to the app's OWN registered callback (from the request), not an
+        // origin derived from page.url() (which is the provider during this navigation).
+        const redirectUri = authorizeUrl.searchParams.get('redirect_uri') ?? '';
+        const back = `${redirectUri}?error=access_denied&error_description=${encodeURIComponent('E2E declined')}&state=${encodeURIComponent(state)}`;
+        await route.fulfill({ status: 302, headers: { location: back } });
+      },
+    );
 
     await discover(page);
-    await page.getByTestId('oidc-continue').click();
+    await authPlatform.waitForExternalPage(page, () =>
+      page.getByTestId('oidc-continue').click(),
+    );
 
     // Back on the callback with the provider error surfaced — reached only because the
     // returned OAuth state matched the durably-stashed one (CSRF check).
@@ -140,7 +153,10 @@ test.describe('OIDC-native login', () => {
     expect(params.get('code_challenge_method')).toBe('S256');
     expect(params.get('code_challenge')).toBeTruthy();
     expect(params.get('state')).toBeTruthy();
-    expect(params.get('redirect_uri')).toContain('/sso-callback');
+    expect(params.get('redirect_uri')).toBe(
+      authPlatform.callbackUrl(page, '/sso-callback', 'oidc'),
+    );
+    expect(registrationApplicationType).toBe(authPlatform.oidcApplicationType);
     // matrix-js-sdk 42 requests stable Matrix URNs and no longer asks for `openid`
     // (v41 sent `openid urn:matrix:org.matrix.msc2967.client:api:*`).
     expect(params.get('scope') ?? '').toContain('urn:matrix:client:api:*');
@@ -151,44 +167,57 @@ test.describe('OIDC-native login', () => {
     expect(params.get('response_mode')).toBe('query');
   });
 
-  test('redeems the code with the stashed PKCE verifier', async ({ page }) => {
+  test('redeems the code with the stashed PKCE verifier', async ({
+    page,
+    authPlatform,
+  }) => {
     // The one thing no other test can see end to end: matrix-js-sdk 42 persists no
     // sign-in state, so the code_verifier the token POST presents can only have come out
     // of OidcStateStore, written before the redirect and read back in a fresh navigation.
     // If that round-trip breaks, the provider rejects the exchange with an opaque PKCE
     // error and login dies — this asserts the two halves actually match.
     await mockOidcHomeserver(page);
-    await page.route(/provider\.oidc\.example\/register/, (r) =>
+    await authPlatform.route(page, /provider\.oidc\.example\/register/, (r) =>
       json(r, { client_id: 'e2e-client-id' }, 201),
     );
 
     let challenge: string | null = null;
-    await page.route(/provider\.oidc\.example\/authorize/, async (route) => {
-      const url = new URL(route.request().url());
-      challenge = url.searchParams.get('code_challenge');
-      const back = `${url.searchParams.get('redirect_uri') ?? ''}?code=E2E_CODE&state=${encodeURIComponent(url.searchParams.get('state') ?? '')}`;
-      await route.fulfill({ status: 302, headers: { location: back } });
-    });
+    await authPlatform.route(
+      page,
+      /provider\.oidc\.example\/authorize/,
+      async (route) => {
+        const url = new URL(route.request().url());
+        challenge = url.searchParams.get('code_challenge');
+        const back = `${url.searchParams.get('redirect_uri') ?? ''}?code=E2E_CODE&state=${encodeURIComponent(url.searchParams.get('state') ?? '')}`;
+        await route.fulfill({ status: 302, headers: { location: back } });
+      },
+    );
 
     let tokenBody: URLSearchParams | null = null;
-    await page.route(/provider\.oidc\.example\/token/, async (route) => {
-      if (route.request().method() !== 'OPTIONS') {
-        tokenBody = new URLSearchParams(route.request().postData() ?? '');
-      }
-      return json(route, {
-        token_type: 'Bearer',
-        access_token: 'e2e-access',
-        refresh_token: 'e2e-refresh',
-        expires_in: 300,
-      });
-    });
+    await authPlatform.route(
+      page,
+      /provider\.oidc\.example\/token/,
+      async (route) => {
+        if (route.request().method() !== 'OPTIONS') {
+          tokenBody = new URLSearchParams(route.request().postData() ?? '');
+        }
+        return json(route, {
+          token_type: 'Bearer',
+          access_token: 'e2e-access',
+          refresh_token: 'e2e-refresh',
+          expires_in: 300,
+        });
+      },
+    );
     await page.route(
       /hs\.oidc\.example\/_matrix\/client\/v3\/account\/whoami/,
       (r) => json(r, { user_id: '@e2e:oidc.example', device_id: 'E2EDEV' }),
     );
 
     await discover(page);
-    await page.getByTestId('oidc-continue').click();
+    await authPlatform.waitForExternalPage(page, () =>
+      page.getByTestId('oidc-continue').click(),
+    );
 
     await expect.poll(() => tokenBody !== null, { timeout: 20_000 }).toBe(true);
     const body = tokenBody as unknown as URLSearchParams;

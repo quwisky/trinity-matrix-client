@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/fixtures.mts';
 import { focusInside, openSettingsFromRooms } from './journeys/navigation.mts';
 import { login, synapseSession } from './support/app.mts';
 

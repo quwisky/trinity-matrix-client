@@ -1,11 +1,7 @@
 import { randomBytes } from 'node:crypto';
-import {
-  expect,
-  type APIRequestContext,
-  type Browser,
-  type Page,
-} from '@playwright/test';
+import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import type { AccountSession } from './account.mts';
+import type { AuthPlatform } from './auth-platform.mts';
 import {
   fillLabeledInput,
   type SsoAccount,
@@ -44,6 +40,7 @@ async function answerDexForm(page: Page, sso: SsoAccount): Promise<void> {
 export async function ssoLogin(
   page: Page,
   s: SynapseSession,
+  authPlatform: AuthPlatform,
   account: SsoAccount = s.sso as SsoAccount,
 ): Promise<void> {
   await page.goto('/login', { waitUntil: 'networkidle' });
@@ -51,8 +48,10 @@ export async function ssoLogin(
   await page.getByText('Continue', { exact: true }).click();
   const ssoButton = page.getByRole('button', { name: 'Continue with SSO' });
   await ssoButton.waitFor({ state: 'visible', timeout: 30_000 });
-  await ssoButton.click();
-  await answerDexForm(page, account);
+  const providerPage = await authPlatform.waitForExternalPage(page, () =>
+    ssoButton.click(),
+  );
+  await answerDexForm(providerPage, account);
   // The Dex round-trip adds a provider page and two redirects to an already slow first
   // login (Rust-crypto init + first /sync), so this gets more room than a password one.
   await page.waitForURL('**/rooms', { timeout: 60_000 });
@@ -69,13 +68,13 @@ export async function ssoLogin(
  * token to any URL outside `sso.client_whitelist`.
  */
 export async function ssoLoginToken(
-  browser: Browser,
+  authPlatform: AuthPlatform,
   s: SynapseSession,
   account: SsoAccount = s.sso as SsoAccount,
 ): Promise<string> {
-  const context = await browser.newContext({ ignoreHTTPSErrors: true });
+  const lease = await authPlatform.openIsolatedPage();
   try {
-    const page = await context.newPage();
+    const { page } = lease;
     // Held on an object rather than in a local: the assignment happens inside a listener,
     // which control-flow analysis cannot see, so a bare `let` reads as permanently null.
     const captured: { token: string | null } = { token: null };
@@ -99,7 +98,7 @@ export async function ssoLoginToken(
     }
     return captured.token;
   } finally {
-    await context.close();
+    await lease.close();
   }
 }
 
@@ -123,7 +122,7 @@ export async function redeemLoginToken(
 }
 
 export async function ssoApiSession(
-  browser: Browser,
+  authPlatform: AuthPlatform,
   request: APIRequestContext,
   s: SynapseSession,
   account: SsoAccount = s.sso as SsoAccount,
@@ -131,7 +130,7 @@ export async function ssoApiSession(
   return redeemLoginToken(
     request,
     s.hs as string,
-    await ssoLoginToken(browser, s, account),
+    await ssoLoginToken(authPlatform, s, account),
   );
 }
 

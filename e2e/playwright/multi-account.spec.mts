@@ -3,9 +3,19 @@ import {
   expect,
   type APIRequestContext,
   type Page,
-} from '@playwright/test';
-import { fillLabeledInput, login, synapseSession } from './support/app.mts';
+} from './support/fixtures.mts';
+import {
+  fillLabeledInput,
+  isAndroidE2E,
+  login,
+  synapseSession,
+} from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import {
+  installBadgeRecorder,
+  recordedBadgeCalls,
+  recordedBadgeCount,
+} from './support/platform-badge.mts';
 
 // End-to-end for concurrent multi-account (Milestones 9 + 6/10): add a second account
 // from the user-panel "Add account" (routes to /login?add), switch the active account,
@@ -80,26 +90,6 @@ async function seedUnreadReader(
     );
   }
   return { user, pass };
-}
-
-/** Stub the W3C Badging API before boot so AppBadgeService's web sink is recorded. */
-async function installBadgeRecorder(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const w = window as unknown as { __appBadgeCalls: unknown[][] };
-    w.__appBadgeCalls = [];
-    const nav = navigator as Navigator & {
-      setAppBadge?: (n?: number) => Promise<void>;
-      clearAppBadge?: () => Promise<void>;
-    };
-    nav.setAppBadge = (n?: number) => {
-      w.__appBadgeCalls.push(['set', n]);
-      return Promise.resolve();
-    };
-    nav.clearAppBadge = () => {
-      w.__appBadgeCalls.push(['clear']);
-      return Promise.resolve();
-    };
-  });
 }
 
 /**
@@ -360,16 +350,22 @@ test.describe('Multiple accounts', () => {
     await expect(page.locator('.userbar__handle')).toContainText(`@${b.user}:`);
 
     // The badge reflects the cross-account total: A(0) + B(SEED) = SEED.
-    await page.waitForFunction(
-      (seed) => {
-        const w = window as unknown as { __appBadgeCalls?: unknown[][] };
-        return (w.__appBadgeCalls ?? []).some(
-          (call) => call[0] === 'set' && call[1] === seed,
-        );
-      },
-      SEED,
-      { timeout: 30_000, polling: 300 },
-    );
+    if (isAndroidE2E) {
+      await expect
+        .poll(() => recordedBadgeCount(page), { timeout: 30_000 })
+        .toBe(SEED);
+    } else {
+      await page.waitForFunction(
+        (seed) => {
+          const w = window as unknown as { __appBadgeCalls?: unknown[][] };
+          return (w.__appBadgeCalls ?? []).some(
+            (call) => call[0] === 'set' && call[1] === seed,
+          );
+        },
+        SEED,
+        { timeout: 30_000, polling: 300 },
+      );
+    }
 
     // Switch to account A (0 unread of its own). Because the total is aggregated
     // across every account, B's unread still counts — the badge must NOT clear or
@@ -382,10 +378,12 @@ test.describe('Multiple accounts', () => {
       .click();
     await expect(page.locator('.userbar__handle')).toContainText(`@${userA}:`);
 
-    const calls = await page.evaluate(
-      () =>
-        (window as unknown as { __appBadgeCalls: unknown[][] }).__appBadgeCalls,
-    );
+    if (isAndroidE2E) {
+      await expect.poll(() => recordedBadgeCount(page)).toBe(SEED);
+      return;
+    }
+
+    const calls = await recordedBadgeCalls(page);
     const lastSet = [...calls].reverse().find((call) => call[0] === 'set');
     expect(lastSet?.[1]).toBe(SEED); // still B's unread, not A's zero
     expect(calls[calls.length - 1]).not.toEqual(['clear']);
@@ -578,6 +576,31 @@ test.describe('Multiple accounts', () => {
       `multi-notify-${runId}`,
       body,
     );
+
+    if (isAndroidE2E) {
+      // Android push owns delivery. Prove the background client processed the event,
+      // then verify live sync did not also create a duplicate renderer notification.
+      await page.getByTestId('user-menu-trigger').click();
+      await page
+        .getByTestId('account-row')
+        .filter({ hasText: `@${b.user}:` })
+        .click();
+      await page.getByTestId('rail-rooms').click();
+      await expect(
+        page.locator('.channel', { hasText: body }).first(),
+      ).toBeVisible({ timeout: 20_000 });
+      expect(
+        await page.evaluate(
+          () =>
+            (
+              window as unknown as {
+                __notifications?: Array<{ title: string; options: unknown }>;
+              }
+            ).__notifications?.length ?? 0,
+        ),
+      ).toBe(0);
+      return;
+    }
 
     // Wait on the app's own recorded state, not a fixed sleep.
     await page.waitForFunction(

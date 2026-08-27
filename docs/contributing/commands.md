@@ -188,17 +188,19 @@ The config sets `retries: 2` unconditionally, including locally. A spec that fai
 once and passes on retry is reported as _flaky_, not failed, which is easy to skim
 past — pass `--retries=0` when you want the truth.
 
-The Android representative suite is a separate serialized Nx target:
+The Android suite is a separate serialized Nx target and accepts Playwright arguments:
 
 ```bash
 pnpm e2e:android
 TRINITY_ANDROID_SERIAL=emulator-5554 pnpm e2e:android
+pnpm e2e:android -- --shard=1/4
 ```
 
 Without an explicit serial it uses only an AVD named `Trinity_API_36`; it never picks the
-first attached device. It builds and installs the production Capacitor app, drives the
-actual WebView, exercises native Back and process relaunch, and leaves failure artifacts
-under `dist/.playwright/android/`. Docker is mandatory for its authenticated journeys.
+first attached device. It builds and installs the production Capacitor app, runs every
+canonical app journey in the actual WebView plus native-only coverage, and leaves failure
+artifacts under `dist/.playwright/android/`. Docker is mandatory for its authenticated
+journeys.
 
 ### Standalone protocol harnesses
 

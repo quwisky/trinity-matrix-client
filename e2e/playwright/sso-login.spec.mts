@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/fixtures.mts';
 import { fillLabeledInput, synapseSession } from './support/app.mts';
 import { redeemLoginToken, ssoLoginToken } from './support/sso.mts';
 
@@ -24,6 +24,7 @@ test.describe('SSO sign-in', () => {
 
   test('signs in through the provider and keeps the session', async ({
     page,
+    authPlatform,
   }) => {
     const hs = session.hs as string;
     const sso = session.sso;
@@ -44,13 +45,17 @@ test.describe('SSO sign-in', () => {
     await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
     await expect(page.getByTestId('oidc-continue')).toHaveCount(0);
 
-    await ssoButton.click();
+    const providerPage = await authPlatform.waitForExternalPage(page, () =>
+      ssoButton.click(),
+    );
 
     // Dex's own form — our provider, pinned to one image, so its ids are a contract.
-    await page.locator('#login').waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator('#login').fill(sso.email);
-    await page.locator('#password').fill(sso.pass);
-    await page.locator('#submit-login').click();
+    await providerPage
+      .locator('#login')
+      .waitFor({ state: 'visible', timeout: 30_000 });
+    await providerPage.locator('#login').fill(sso.email);
+    await providerPage.locator('#password').fill(sso.pass);
+    await providerPage.locator('#submit-login').click();
 
     await page.waitForURL('**/rooms', { timeout: 60_000 });
 
@@ -65,18 +70,19 @@ test.describe('SSO sign-in', () => {
 
   test('refuses a callback it cannot verify, and does not spend the token', async ({
     page,
-    browser,
+    authPlatform,
     request,
   }) => {
     // Anyone can navigate to the callback route — and on native, any app can fire the
     // shared `eu.qwky.trinity://` deep link. A token arriving without a sign-in this app
     // started must not become a session.
     const hs = session.hs as string;
-    const stolen = await ssoLoginToken(browser, session);
+    const stolen = await ssoLoginToken(authPlatform, session);
 
-    await page.goto(
+    await authPlatform.navigateCallback(
+      page,
       callback(`loginToken=${encodeURIComponent(stolen)}&sso_state=forged`),
-      { waitUntil: 'domcontentloaded' },
+      'sso',
     );
 
     await expect(page.getByText('could not be verified')).toBeVisible({
@@ -95,7 +101,7 @@ test.describe('SSO sign-in', () => {
 
   test('ignores a forged callback mid-sign-in without breaking the real one', async ({
     page,
-    browser,
+    authPlatform,
   }) => {
     // The subtle half of the rule: when a sign-in IS in flight, a mismatched callback has
     // to be met with silence rather than an error, and must not consume the stash — the
@@ -106,19 +112,24 @@ test.describe('SSO sign-in', () => {
     if (!sso) {
       throw new Error('harness came up without an SSO account');
     }
-    const stolen = await ssoLoginToken(browser, session);
+    const stolen = await ssoLoginToken(authPlatform, session);
 
     // Start a real sign-in, which stashes the state, and stop at the provider.
     await page.goto('/login', { waitUntil: 'networkidle' });
     await fillLabeledInput(page, 'Homeserver', hs);
     await page.getByText('Continue', { exact: true }).click();
-    await page.getByRole('button', { name: 'Continue with SSO' }).click();
-    await page.locator('#login').waitFor({ state: 'visible', timeout: 30_000 });
+    const firstProviderPage = await authPlatform.waitForExternalPage(page, () =>
+      page.getByRole('button', { name: 'Continue with SSO' }).click(),
+    );
+    await firstProviderPage
+      .locator('#login')
+      .waitFor({ state: 'visible', timeout: 30_000 });
 
     // A forged callback lands while that stash is live.
-    await page.goto(
+    await authPlatform.navigateCallback(
+      page,
       callback(`loginToken=${encodeURIComponent(stolen)}&sso_state=forged`),
-      { waitUntil: 'domcontentloaded' },
+      'sso',
     );
     // The visible paragraph, not the sr-only <h1> that carries the same words.
     await expect(page.getByText('Completing sign in…')).toBeVisible({
@@ -160,11 +171,15 @@ test.describe('SSO sign-in', () => {
     await page.goto('/login', { waitUntil: 'networkidle' });
     await fillLabeledInput(page, 'Homeserver', hs);
     await page.getByText('Continue', { exact: true }).click();
-    await page.getByRole('button', { name: 'Continue with SSO' }).click();
-    await page.locator('#login').waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator('#login').fill(sso.email);
-    await page.locator('#password').fill(sso.pass);
-    await page.locator('#submit-login').click();
+    const providerPage = await authPlatform.waitForExternalPage(page, () =>
+      page.getByRole('button', { name: 'Continue with SSO' }).click(),
+    );
+    await providerPage
+      .locator('#login')
+      .waitFor({ state: 'visible', timeout: 30_000 });
+    await providerPage.locator('#login').fill(sso.email);
+    await providerPage.locator('#password').fill(sso.pass);
+    await providerPage.locator('#submit-login').click();
 
     await page.waitForURL('**/rooms', { timeout: 60_000 });
   });
