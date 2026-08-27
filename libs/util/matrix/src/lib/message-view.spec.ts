@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { MatrixEvent, type MatrixClient, type Room } from 'matrix-js-sdk';
+import {
+  MatrixEvent,
+  RelationType,
+  type MatrixClient,
+  type Room,
+} from 'matrix-js-sdk';
 import {
   MAX_NAMED_REACTORS,
   buildMessageView,
@@ -346,7 +351,7 @@ describe('mislabeled standalone Markdown links', () => {
     }
   });
 
-  it('keeps the reported event readable while the SDK points at a malformed edit', () => {
+  it('keeps the latest valid edit while the SDK points at a malformed edit', () => {
     const destination =
       'https://static.wikia.nocookie.net/control6745/images/e/e6/' +
       'Control_-_Safeer_Abbas_-_Powerplant_enviromental_art_1.jpg';
@@ -358,9 +363,28 @@ describe('mislabeled standalone Markdown links', () => {
       type: 'm.room.message',
       content: {
         msgtype: 'm.text',
-        body: `[${destination}](${destination})`,
-        format: 'org.matrix.custom.html',
-        formatted_body: `[${destination}](${destination})`,
+        body: 'Original wording',
+      },
+    });
+    const valid = new MatrixEvent({
+      event_id: '$valid-edit',
+      origin_server_ts: 1500,
+      room_id: '!r:hs',
+      sender: '@alice:hs',
+      type: 'm.room.message',
+      content: {
+        msgtype: 'm.text',
+        body: '* updated',
+        'm.new_content': {
+          msgtype: 'm.text',
+          body: `[${destination}](${destination})`,
+          format: 'org.matrix.custom.html',
+          formatted_body: `[${destination}](${destination})`,
+        },
+        'm.relates_to': {
+          rel_type: 'm.replace',
+          event_id: '$markdown-link',
+        },
       },
     });
     const malformed = new MatrixEvent({
@@ -382,7 +406,12 @@ describe('mislabeled standalone Markdown links', () => {
       getMember: () => null,
       getUsersReadUpTo: () => [],
       hasEncryptionStateEvent: () => false,
-      relations: { getChildEventsForEvent: () => undefined },
+      relations: {
+        getChildEventsForEvent: (_id: string, relationType: RelationType) =>
+          relationType === RelationType.Replace
+            ? { getRelations: () => [valid, malformed] }
+            : undefined,
+      },
     } as unknown as Room;
     const client = {
       getUserId: () => '@me:hs',

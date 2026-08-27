@@ -352,7 +352,7 @@ export function buildMessageView(
   const senderName = member?.name || senderId;
   const decryptionFailed = event.isDecryptionFailure();
   const replacement = event.replacingEvent();
-  const content = renderableMessageContentOf(event);
+  const content = renderableMessageContentOf(room, event);
   // A poll renders as its own kind, driven by the projected PollView rather than the
   // usual message body — so branch before renderBody (which expects m.room.message).
   const poll = isPollStart(event) ? buildPollView(client, room, event) : null;
@@ -1412,17 +1412,56 @@ function editableTextContent(content: unknown): Record<string, unknown> | null {
 
 /**
  * Content safe for the live renderer. A relations fetch can temporarily make the SDK
- * point the original event at malformed `m.new_content`; keep showing the readable
- * original until a complete editable-text replacement is available.
+ * point the original event at malformed `m.new_content`; keep showing the latest known
+ * valid edit (or the original) until a complete editable-text replacement is available.
  */
 function renderableMessageContentOf(
+  room: Room,
   event: MatrixEvent,
 ): Record<string, unknown> {
   const content = event.getContent();
   const replacement = event.replacingEvent();
-  return replacement && editableTextContent(content) === null
-    ? event.getOriginalContent()
-    : content;
+  if (!replacement || editableTextContent(content) !== null) {
+    return content;
+  }
+
+  const eventId = event.getId();
+  const relations = eventId
+    ? room.relations
+        ?.getChildEventsForEvent(
+          eventId,
+          RelationType.Replace,
+          EventType.RoomMessage,
+        )
+        ?.getRelations()
+    : undefined;
+  const latestValid = relations
+    ?.filter((edit) => {
+      const relation = edit.getRelation();
+      return (
+        edit.getSender() === event.getSender() &&
+        edit.getType() === EventType.RoomMessage &&
+        !edit.isRedacted() &&
+        edit.status === null &&
+        relation?.rel_type === RelationType.Replace &&
+        relation.event_id === eventId &&
+        editableReplacementContentOf(edit) !== null
+      );
+    })
+    .reduce<MatrixEvent | null>(
+      (latest, edit) =>
+        !latest ||
+        edit.getTs() > latest.getTs() ||
+        (edit.getTs() === latest.getTs() &&
+          (edit.getId() ?? '').localeCompare(latest.getId() ?? '') > 0)
+          ? edit
+          : latest,
+      null,
+    );
+
+  return latestValid
+    ? (editableReplacementContentOf(latestValid) ?? event.getOriginalContent())
+    : event.getOriginalContent();
 }
 
 /** Whether an event's `m.mentions` names the viewer — the only trustworthy "this is for

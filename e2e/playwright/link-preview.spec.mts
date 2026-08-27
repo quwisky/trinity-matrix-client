@@ -145,9 +145,9 @@ test.describe('Link previews', () => {
           body: `* ${fallbackMarkdown}`,
           'm.new_content': {
             msgtype: 'm.text',
-            body: fallbackMarkdown,
+            body: `[Updated Wikia link](${destination})`,
             format: 'org.matrix.custom.html',
-            formatted_body: markdown,
+            formatted_body: `[Updated Wikia link](${destination})`,
             'm.mentions': {},
           },
           'm.relates_to': { rel_type: 'm.replace', event_id: eventId },
@@ -163,7 +163,7 @@ test.describe('Link previews', () => {
     await channel.first().click();
 
     const messageLink = page.getByRole('link', {
-      name: destination,
+      name: 'Updated Wikia link',
       exact: true,
     });
     await expect(messageLink).toBeVisible({ timeout: 20_000 });
@@ -193,13 +193,33 @@ test.describe('Link previews', () => {
     );
     expect(malformedEdit.ok()).toBe(true);
 
+    // A later event in the same room proves the malformed edit crossed /sync and was
+    // processed before any history fetch can repair SDK aggregation.
+    const sentinelBody = `after-malformed-${runId}`;
+    const sentinel = await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${runId}-sentinel`,
+      {
+        headers: auth,
+        data: { msgtype: 'm.text', body: sentinelBody },
+      },
+    );
+    expect(sentinel.ok()).toBe(true);
+    await expect(
+      page.locator('.msg__text').filter({ hasText: sentinelBody }),
+    ).toHaveText(sentinelBody, { timeout: 20_000 });
+    await expect(messageLink).toBeVisible();
+
     await message.getByRole('button', { name: /edited/i }).click();
     const history = page.getByTestId('edit-history');
     await expect(history).toBeVisible({ timeout: 20_000 });
     await expect(history.locator('.revision')).toHaveCount(2);
-    await expect(history.getByRole('link', { name: destination })).toHaveCount(
-      2,
-    );
+    await expect(
+      history.getByRole('link', { name: destination, exact: true }),
+    ).toHaveCount(1);
+    await expect(
+      history.locator('ins').filter({ hasText: 'Updated Wikia link' }),
+    ).toHaveCount(1);
+    await expect(history.getByRole('link')).toHaveCount(2);
     await page.getByTestId('edit-history-close').click();
 
     await expect(message).not.toContainText('[unsupported message]');
