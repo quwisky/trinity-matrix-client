@@ -1,18 +1,18 @@
 @use '../styles/mixins' as *;
 
 .rail {
-  @include column(var(--trinity-rail));
+  @include column(var(--trinity-surface-frame));
   @include scrollable;
 
   // Ring the account badge against the rail surface, not the page background — the default
   // resolves to --background, which is near-black in dark themes and reads as a punched
   // hole around the badge rather than an overlay. (Mirrors channel-sidebar.)
-  --trn-presence-ring: var(--trinity-rail);
+  --trn-presence-ring: var(--trinity-surface-frame);
 
   width: 72px;
   align-items: center;
   padding: 12px 0;
-  gap: 8px;
+  gap: var(--trinity-density-shell-gap);
 }
 
 // A visible section divider on the rail. `--trinity-divider` is tuned for the lighter
@@ -41,7 +41,7 @@
   transform: translateY(-50%);
   width: 4px;
   height: 0;
-  background: var(--trinity-text-bright);
+  background: var(--trinity-state-selected-foreground);
   border-radius: 0 4px 4px 0;
   transition: height var(--trinity-duration-fast) var(--trinity-ease-standard);
 }
@@ -69,7 +69,7 @@
   font-weight: 700;
   line-height: 18px;
   text-align: center;
-  box-shadow: 0 0 0 2px var(--trinity-rail);
+  box-shadow: 0 0 0 2px var(--trinity-surface-frame);
   pointer-events: none;
 }
 
@@ -82,7 +82,9 @@
   height: 48px;
   border: none;
   cursor: pointer;
-  background: var(--trinity-sidebar);
+  min-width: var(--trinity-interaction-target-min-size);
+  min-height: var(--trinity-interaction-target-min-size);
+  background: var(--trinity-surface-navigation);
   color: var(--trinity-text);
   border-radius: var(--trinity-shape-place-radius);
   display: flex;
@@ -91,8 +93,19 @@
   font-size: 20px;
   font-weight: 700;
   padding: 0;
-  transition: background var(--trinity-duration-fast)
-    var(--trinity-ease-standard);
+  transition:
+    background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
+    color var(--trinity-duration-fast) var(--trinity-ease-standard),
+    transform var(--trinity-duration-press) var(--trinity-ease-standard);
+
+  &:focus-visible {
+    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+    outline-offset: var(--trinity-focus-ring-offset);
+  }
+
+  &:active {
+    transform: scale(0.96);
+  }
 }
 
 // Recent is the primary view (first item, default on launch), so its pill is the

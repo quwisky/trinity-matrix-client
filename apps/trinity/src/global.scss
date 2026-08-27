@@ -95,6 +95,9 @@ router-outlet + * {
   padding-top: env(safe-area-inset-top);
   padding-right: calc(0.75rem + env(safe-area-inset-right));
   padding-left: calc(0.75rem + env(safe-area-inset-left));
+  background: var(--trinity-surface-panel);
+  color: var(--trinity-text-bright);
+  box-shadow: inset 0 -1px 0 var(--trinity-border-subtle);
 }
 
 /* Respect users who prefer reduced motion. */

@@ -77,6 +77,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **The conversation shell is calmer and more compact.** The space rail, room list,
+  conversation header, member list and account dock now share recessed semantic surfaces,
+  clearer selected and pressed states, stable space squircles and density-aware spacing.
+  Resizable pane widths and virtualized member-row measurements stay unchanged, and Compact
+  density never reduces a coarse-pointer target below 44px.
+
 - **Shared controls now use one modern interaction language.** Floating message actions, status
   banners and file attachments share tokenised hover, press, focus, disabled, shape, type and
   density roles. Keyboard focus uses a measured high-contrast ring in every theme, and Compact

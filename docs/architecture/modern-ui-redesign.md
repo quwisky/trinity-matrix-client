@@ -362,6 +362,13 @@ Acceptance:
 
 ### Phase 2 - desktop shell and navigation
 
+Status: implemented. The shell now consumes the Phase 1 surface, state, shape, focus and density
+roles across the rail, room list, shared conversation header, member list and identity dock. The
+recessed workspace is paint-only so persisted pane geometry and outward focus rings remain intact;
+the member list keeps its fixed 34px section headers and 44px rows because those measurements feed
+its virtual window. Final font and value tuning remains behind the Phase 0 human prototype approval
+gate described above.
+
 Primary ownership:
 
 - `libs/feature/rooms/src/lib/rooms/`

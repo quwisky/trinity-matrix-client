@@ -124,6 +124,7 @@ const NON_TEXT_ROLES = [
       '--trinity-surface-workspace',
       '--trinity-surface-raised',
       '--trinity-surface-floating',
+      '--trinity-surface-panel',
       '--trinity-state-hover-surface',
       '--trinity-state-pressed-surface',
     ],

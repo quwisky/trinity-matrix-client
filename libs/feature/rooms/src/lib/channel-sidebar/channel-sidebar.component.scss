@@ -14,12 +14,12 @@
 }
 
 .sidebar {
-  @include column(var(--trinity-sidebar));
+  @include column(var(--trinity-surface-navigation));
 
   width: 100%;
 
   // Ring the avatar presence dots (DM online status) in this panel's surface colour.
-  --trn-presence-ring: var(--trinity-sidebar);
+  --trn-presence-ring: var(--trinity-surface-navigation);
 }
 
 .sidebar__header {
@@ -27,12 +27,12 @@
   flex: 0 0 56px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 8px 0 16px;
+  gap: var(--trinity-density-shell-gap);
+  padding: 0 var(--trinity-density-shell-padding-inline);
   font-weight: 600;
   color: var(--trinity-text-bright);
-  background: var(--trinity-sidebar-header);
-  box-shadow: 0 1px 0 rgb(0 0 0 / 20%);
+  background: var(--trinity-surface-navigation-header);
+  box-shadow: inset 0 -1px 0 var(--trinity-border-subtle);
 }
 
 .sidebar__title {
@@ -57,6 +57,8 @@
   justify-content: center;
   width: 30px;
   height: 30px;
+  min-width: var(--trinity-interaction-target-min-size);
+  min-height: var(--trinity-interaction-target-min-size);
   font-size: 20px;
 
   &:hover {
@@ -85,6 +87,8 @@
   justify-content: center;
   width: 22px;
   height: 22px;
+  min-width: var(--trinity-interaction-target-min-size);
+  min-height: var(--trinity-interaction-target-min-size);
   font-size: 14px;
 
   &:hover {
@@ -96,7 +100,7 @@
   @include scrollable;
 
   flex: 1;
-  padding: 12px 8px;
+  padding: 12px var(--trinity-density-shell-padding-inline);
 }
 
 // Separates the Favourites group from the rooms below it.
@@ -109,7 +113,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 8px;
+  padding: 6px var(--trinity-density-shell-padding-inline);
   margin-top: 1px;
   color: var(--trinity-text-muted);
 }
@@ -144,6 +148,7 @@
   @include interactive-row;
 
   flex: 0 0 auto;
+  min-height: var(--trinity-interaction-target-min-size);
   padding: 3px 10px;
   font-size: 12px;
   font-weight: 600;
@@ -164,18 +169,4 @@
   @include category-label;
 
   padding: 12px 8px 4px;
-}
-
-// Touch targets: the small sidebar action / filter-clear buttons are below the touch
-// minimum — lift them to 44px on touch only (desktop keeps 22–30px).
-// The invite and room-kebab buttons used to be listed here too. They moved out with the
-// markup: they are rendered by SidebarRoomListComponent, and under emulated encapsulation
-// a rule in THIS stylesheet is attributed to this component's elements only, so it could
-// never have matched them from here. Their copy lives in that component's stylesheet.
-@media (pointer: coarse) {
-  .sidebar__action,
-  .sidebar__filter-clear {
-    min-width: 44px;
-    min-height: 44px;
-  }
 }

@@ -5,6 +5,14 @@
 // status bar. env() is 0 off notched devices, so this is inert on web/desktop.
 .rooms-shell {
   padding-top: env(safe-area-inset-top);
+  background: var(--trinity-surface-frame);
+}
+
+// Paint-only recessing: this must not add padding, borders or clipping because the shell's
+// pane geometry, outward focus rings and negative-margin resize handles are contractual.
+.rooms-workspace {
+  background: var(--trinity-surface-frame);
+  box-shadow: inset 0 0 0 1px var(--trinity-border-subtle);
 }
 
 // Server rail (72) + channel sidebar (280) = 352px. A static column at md+ and the
@@ -39,12 +47,12 @@
   &:hover,
   &:focus-visible,
   &.pane-handle--dragging {
-    background: var(--trinity-accent);
+    background: var(--trinity-focus-ring);
     background-clip: content-box;
   }
 
   &:focus-visible {
-    outline: 2px solid var(--trinity-accent);
+    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
     outline-offset: -3px;
   }
 }
@@ -52,7 +60,7 @@
 .shell-side {
   display: flex;
   height: 100%;
-  background: var(--trinity-rail);
+  background: var(--trinity-surface-frame);
 
   @media #{$md} {
     width: var(--shell-sidebar-w, 352px);
@@ -96,7 +104,8 @@
   // Outer-right column: keep content clear of a right-side landscape cutout. The top
   // inset lives on .rooms-shell (above the banners).
   padding-right: env(safe-area-inset-right);
-  background: var(--trinity-chat);
+  background: var(--trinity-surface-workspace);
+  box-shadow: inset 1px 0 0 var(--trinity-border-subtle);
 }
 
 // Below md the rail + sidebar (room list) and the chat are separate full-screen
@@ -166,11 +175,12 @@
   display: flex;
   min-height: 0;
   overflow: hidden; // bound the row so message-list/member-list scroll internally
-  background: var(--trinity-chat);
+  background: var(--trinity-surface-workspace);
 }
 
 .chat-members {
   flex: 0 0 240px;
+  box-shadow: inset 1px 0 0 var(--trinity-border-subtle);
 }
 
 // The other surfaces the slot can show — threads, a thread, pinned, search, member info.
@@ -188,6 +198,7 @@
   // The stored value is untouched, so widening the window restores it.
   flex: 0 1 var(--shell-right-panel-w, 480px);
   min-width: 0;
+  box-shadow: inset 1px 0 0 var(--trinity-border-subtle);
 }
 
 // Below the `members` breakpoint the static column would crowd the chat, so present the

@@ -19,6 +19,11 @@ Top to bottom, the rail holds:
 
 Each pill carries an unread badge, exact up to 99 and then shown as `99+`.
 
+The rail, room list and account dock follow the display density chosen under
+**Settings → Appearance**. Compact reduces unused spacing but keeps the same room-list actions and
+does not shrink touch targets. Space icons keep their squircle shape when selected; the indicator
+and background carry the active state instead.
+
 The rail is flat. A space nested inside another space gets its own top-level pill rather
 than appearing as a second level of rail. Nested navigation inside the rail is not built.
 

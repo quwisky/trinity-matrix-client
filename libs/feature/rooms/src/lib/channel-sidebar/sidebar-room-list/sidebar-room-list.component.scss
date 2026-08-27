@@ -24,8 +24,8 @@
   gap: 8px;
   padding: 6px 8px;
   margin-top: 1px;
-  border-radius: 4px;
-  background: var(--trinity-hover);
+  border-radius: var(--trinity-shape-control-radius);
+  background: var(--trinity-state-hover-surface);
 }
 
 .invite__avatar {
@@ -69,6 +69,8 @@
   justify-content: center;
   width: 28px;
   height: 28px;
+  min-width: var(--trinity-interaction-target-min-size);
+  min-height: var(--trinity-interaction-target-min-size);
   font-size: 18px;
 
   &.accept:hover {
@@ -102,13 +104,20 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 8px;
+  min-height: var(--trinity-interaction-target-min-size);
+  padding: var(--trinity-density-channel-padding-block)
+    var(--trinity-density-shell-padding-inline);
   margin-top: 1px;
   text-align: left;
 
   &.active {
-    background: var(--trinity-active);
-    color: var(--trinity-text-bright);
+    background: var(--trinity-state-selected-surface);
+    color: var(--trinity-state-selected-foreground);
+
+    &:hover {
+      background: var(--trinity-state-selected-hover-surface);
+      color: var(--trinity-state-selected-hover-foreground);
+    }
   }
 
   // Unread rooms read brighter and bolder (messenger-style emphasis).
@@ -205,6 +214,8 @@
   justify-content: center;
   width: 26px;
   height: 26px;
+  min-width: var(--trinity-interaction-target-min-size);
+  min-height: var(--trinity-interaction-target-min-size);
   font-size: 18px;
   opacity: 0;
 
@@ -222,15 +233,5 @@
 @media (hover: none) {
   .channel__menu {
     opacity: 1;
-  }
-}
-
-// Touch targets: the invite and room-kebab buttons are below the touch minimum — lift them
-// to 44px on touch only (desktop keeps 26–30px). Same encapsulation reason as above.
-@media (pointer: coarse) {
-  .invite__btn,
-  .channel__menu {
-    min-width: 44px;
-    min-height: 44px;
   }
 }
