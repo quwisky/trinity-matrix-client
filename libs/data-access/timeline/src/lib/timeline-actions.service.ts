@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { EventType } from 'matrix-js-sdk';
 import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { MediaService } from '@trinity/data-access/media';
+import { MediaService, type ImagePackImage } from '@trinity/data-access/media';
 import { type VoiceRecording } from '@trinity/platform-native';
 import {
   annotationContent,
@@ -94,6 +94,31 @@ export class TimelineActionsService {
         ),
       ).pipe(map(() => void 0));
     });
+  }
+
+  /** Send an MSC2545 image-pack entry as a standalone `m.sticker` event. */
+  sendSticker(sticker: ImagePackImage): Observable<void> {
+    return defer(() => {
+      const ctx = this.timeline.openContext();
+      if (
+        !ctx ||
+        !sticker.usage.includes('sticker') ||
+        !/^mxc:\/\/[^/\s]+\/[^\s]+$/.test(sticker.url)
+      ) {
+        return of(void 0);
+      }
+      return from(
+        ctx.client.sendEvent(ctx.room.roomId, EventType.Sticker, {
+          body: sticker.body || sticker.shortcode,
+          url: sticker.url,
+          info: {
+            ...(sticker.mimetype ? { mimetype: sticker.mimetype } : {}),
+            ...(sticker.width ? { w: sticker.width } : {}),
+            ...(sticker.height ? { h: sticker.height } : {}),
+          },
+        }),
+      );
+    }).pipe(map(() => void 0));
   }
 
   /**

@@ -114,6 +114,8 @@ const LEDGER = [
   'libs/feature/rooms/src/lib/shared/avatar-field/avatar-field.component.scss',
   'libs/feature/rooms/src/lib/space-members/space-members.component.scss',
   'libs/feature/rooms/src/lib/space-settings/space-settings.component.scss',
+  'libs/feature/rooms/src/lib/sticker-image/sticker-image.component.scss',
+  'libs/feature/rooms/src/lib/sticker-picker/sticker-picker.component.scss',
   'libs/feature/rooms/src/lib/thread/thread-view.component.scss',
   'libs/feature/rooms/src/lib/thread/threads-list.component.scss',
   'libs/feature/rooms/src/lib/user-card/user-card.component.scss',

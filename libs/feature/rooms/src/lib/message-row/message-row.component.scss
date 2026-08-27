@@ -337,6 +337,11 @@
   font-style: italic;
 }
 
+.msg--sticker .msg__media {
+  display: block;
+  max-width: 12rem;
+}
+
 // Compact "💬 N replies · last reply <time>" affordance under a thread root,
 // indented to align with the message body (avatar 40 + gap 12).
 .msg__thread {

@@ -1,0 +1,7 @@
+@if (src(); as source) {
+  <img [src]="source" [alt]="image().body" />
+} @else if (failed()) {
+  <span class="fallback">:{{ image().shortcode }}:</span>
+} @else {
+  <span class="skeleton" aria-hidden="true"></span>
+}

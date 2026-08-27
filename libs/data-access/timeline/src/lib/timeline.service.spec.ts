@@ -1020,6 +1020,47 @@ describe('TimelineService', () => {
   });
 
   describe('media messages', () => {
+    it('projects m.sticker as an image-backed, non-editable sticker row', () => {
+      const svc = setup([
+        fakeEvent({
+          id: '$sticker',
+          sender: '@a:hs',
+          type: 'm.sticker',
+          body: 'Party parrot',
+          url: 'mxc://hs/parrot',
+          info: { w: 64, h: 48 },
+        }),
+      ]);
+
+      const sticker = svc.messages()[0];
+      expect(sticker.kind).toBe('sticker');
+      expect(sticker.body).toBe('Party parrot');
+      expect(sticker.media).toMatchObject({
+        kind: 'image',
+        mxc: 'mxc://hs/parrot',
+        mimeType: 'image/png',
+        width: 64,
+        height: 48,
+      });
+    });
+
+    it('does not render a sticker with a remote image source', () => {
+      const svc = setup([
+        fakeEvent({
+          id: '$sticker',
+          sender: '@a:hs',
+          type: 'm.sticker',
+          body: 'tracker',
+          url: 'https://tracker.example/pixel.png',
+        }),
+      ]);
+
+      expect(svc.messages()[0]).toMatchObject({
+        kind: 'unsupported',
+        media: null,
+      });
+    });
+
     it('projects an m.image event to an image MediaPayload', () => {
       const svc = setup([
         fakeEvent({

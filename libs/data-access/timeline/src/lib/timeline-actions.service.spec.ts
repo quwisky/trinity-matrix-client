@@ -51,6 +51,56 @@ describe('TimelineActionsService', () => {
     });
   });
 
+  it('sends an image-pack entry as an m.sticker event with exact media metadata', async () => {
+    const sent: unknown[][] = [];
+    const svc = setupActions([], sent);
+
+    await firstValueFrom(
+      svc.sendSticker({
+        shortcode: 'party_parrot',
+        url: 'mxc://hs/parrot',
+        body: 'Party parrot',
+        mimetype: 'image/png',
+        width: 64,
+        height: 48,
+        usage: ['sticker'],
+        packId: '!pack:hs:fun',
+        packName: 'Fun',
+      }),
+    );
+
+    expect(sent[0]).toEqual([
+      'event',
+      'm.sticker',
+      {
+        body: 'Party parrot',
+        url: 'mxc://hs/parrot',
+        info: { mimetype: 'image/png', w: 64, h: 48 },
+      },
+    ]);
+  });
+
+  it('does not send a sticker with a remote tracking URL', async () => {
+    const sent: unknown[][] = [];
+    const svc = setupActions([], sent);
+
+    await firstValueFrom(
+      svc.sendSticker({
+        shortcode: 'tracker',
+        url: 'https://tracker.example/pixel.png',
+        body: 'Tracker',
+        mimetype: 'image/png',
+        width: 1,
+        height: 1,
+        usage: ['sticker'],
+        packId: '!pack:hs:unsafe',
+        packName: 'Unsafe',
+      }),
+    );
+
+    expect(sent).toEqual([]);
+  });
+
   it('interprets a /me slash command as an emote', async () => {
     const sent: unknown[][] = [];
     const svc = setupActions([], sent);

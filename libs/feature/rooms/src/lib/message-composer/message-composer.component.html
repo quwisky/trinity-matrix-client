@@ -56,6 +56,17 @@
   >
     <trn-gif-picker (gifSelect)="onGifSelect($event)" />
   </ng-template>
+  <ng-template
+    [trnAnchoredOverlay]="composerField"
+    [(open)]="stickerPickerOpen"
+    side="top"
+    align="start"
+  >
+    <trn-sticker-picker
+      [packs]="stickerPacks()"
+      (selected)="onStickerSelect($event)"
+    />
+  </ng-template>
   @if (recordingVoice()) {
     <div class="composer__recording" data-testid="composer-voice-recording">
       <button
@@ -134,11 +145,13 @@
       [voiceSupported]="voiceSupported"
       [recording]="recordingVoice()"
       [locationSharing]="locationSharing()"
+      [stickerEnabled]="stickerEnabled()"
       (attachFile)="onAttach()"
       (pickGif)="toggleGifPicker()"
       (createPoll)="openPollDialog()"
       (shareLocation)="shareLocation()"
       (recordVoice)="startVoiceRecording()"
+      (pickSticker)="toggleStickerPicker()"
     />
     <!-- The preview replaces the input rather than sitting beside it, so the composer keeps its
        height and nothing below it moves. The textarea stays in the DOM (hidden) so its value,
@@ -154,6 +167,7 @@
         data-testid="composer-preview"
         trnSpoilerReveal
         trnMatrixLink
+        [trnInlineMxcImages]="preview().rich ? preview().html : ''"
         [innerHTML]="preview().html"
       ></div>
     }

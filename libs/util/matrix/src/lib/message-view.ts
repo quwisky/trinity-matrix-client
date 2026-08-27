@@ -28,6 +28,7 @@ export type MessageKind =
   | 'unsupported'
   | 'poll'
   | 'location'
+  | 'sticker'
   /** A room state / membership change rendered as a compact system line (see `summary`). */
   | 'event'
   | MediaKind;
@@ -468,13 +469,14 @@ function unsupportedView(
   };
 }
 
-/** True when an event should render as a message row (a plain message or poll). */
+/** True when an event should render as a message row (message, sticker, or poll). */
 export function isDisplayableMessage(event: MatrixEvent): boolean {
   if (isPollStart(event)) {
     return true;
   }
   return (
-    event.getType() === EventType.RoomMessage &&
+    (event.getType() === EventType.RoomMessage ||
+      event.getType() === EventType.Sticker) &&
     !event.isRelation(RelationType.Replace)
   );
 }
@@ -768,6 +770,7 @@ const MATRIX_ALLOWED_ATTR = [
   'class',
   'data-mx-bg-color',
   'data-mx-color',
+  'data-mx-emoticon',
   'data-mx-spoiler',
 ];
 
@@ -778,7 +781,7 @@ const LOCAL_IMG_SCHEME = /^(?:mxc|blob|data):/i;
 // The only `class` tokens Matrix sanctions: `language-*` (syntax highlighting on
 // <code>) and the spoiler class. `class` is otherwise allowed globally, so a
 // sender could borrow app/Ionic classes to spoof UI chrome — restrict to these.
-const ALLOWED_CLASS = /^(?:language-[\w-]+|mx-spoiler)$/;
+const ALLOWED_CLASS = /^(?:language-[\w-]+|mx-spoiler|mx-emoticon)$/;
 
 // A sender's `formatted_body` can embed `<img src="https://attacker/x.gif">`,
 // which the browser would fetch on render — leaking the viewer's IP and acting
@@ -962,6 +965,7 @@ export function sanitizeMatrixHtml(
     RETURN_DOM: true as const,
   }) as HTMLElement;
   normaliseSpoilers(body);
+  normaliseCustomEmotes(body);
   normaliseTaskItems(body);
   renderCodeBlocks(body);
   markMentionPills(body, addressesViewer);
@@ -974,6 +978,24 @@ export function sanitizeMatrixHtml(
   }
   sanitizedHtmlCache.set(cacheKey, clean);
   return clean;
+}
+
+/**
+ * Mark safe MSC2545 inline custom emotes for the render bridge. Their source stays an
+ * `mxc://` identifier until the feature directive resolves it through authenticated media;
+ * remote, data and blob sources become readable alt text and never reach an image fetch.
+ */
+function normaliseCustomEmotes(body: HTMLElement): void {
+  for (const image of body.querySelectorAll('img[data-mx-emoticon]')) {
+    const source = image.getAttribute('src') ?? '';
+    if (!/^mxc:\/\/[^/\s]+\/[^\s]+$/.test(source)) {
+      image.replaceWith(image.getAttribute('alt') ?? 'custom emoji');
+      continue;
+    }
+    image.classList.add('mx-emoticon');
+    image.removeAttribute('width');
+    image.setAttribute('height', '32');
+  }
 }
 
 /**
@@ -1429,6 +1451,39 @@ function renderBody(
     !!event.replyEventId,
     selfUserId,
   );
+  if (event.getType() === EventType.Sticker) {
+    const rawInfo =
+      content['info'] && typeof content['info'] === 'object'
+        ? (content['info'] as Record<string, unknown>)
+        : {};
+    const media = buildMediaPayload(
+      {
+        ...content,
+        info: {
+          ...rawInfo,
+          mimetype:
+            typeof rawInfo['mimetype'] === 'string'
+              ? rawInfo['mimetype']
+              : 'image/png',
+        },
+      },
+      MsgType.Image,
+    );
+    if (!media || !validMxc(media.mxc)) {
+      return {
+        body: text || '[sticker]',
+        html: null,
+        kind: 'unsupported',
+        media: null,
+      };
+    }
+    return {
+      body: text || media.filename,
+      html: null,
+      kind: 'sticker',
+      media,
+    };
+  }
   switch (content.msgtype) {
     case MsgType.Text:
       return { body: text, html: textHtml, kind: 'text', media: null };
@@ -1492,6 +1547,10 @@ function renderBody(
         media: null,
       };
   }
+}
+
+function validMxc(value: string | null): value is string {
+  return value !== null && /^mxc:\/\/[^/\s]+\/[^\s]+$/.test(value);
 }
 
 /** MIME types we never render inline (script-bearing), forced to download-only. */

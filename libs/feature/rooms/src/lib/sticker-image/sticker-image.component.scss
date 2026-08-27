@@ -1,0 +1,22 @@
+:host,
+img,
+.skeleton {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+img {
+  object-fit: contain;
+}
+
+.skeleton {
+  border-radius: var(--trinity-radius-sm);
+  background: var(--trinity-rail);
+}
+
+.fallback {
+  color: var(--trinity-text-muted);
+  font-size: 0.7rem;
+  overflow-wrap: anywhere;
+}

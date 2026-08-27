@@ -22,7 +22,9 @@ Sending a message goes through a composer that understands Markdown, with a live
 toggle and a formatting toolbar. It also handles `:shortcode` emoji completion, `@mention`
 completion that produces real Matrix mention pills, file attachments including
 paste-to-attach, voice recording, polls, location sharing, GIF search, and per-conversation
-drafts that survive a restart. Four slash commands are recognised: `/me`, `/shrug`,
+drafts that survive a restart. MSC2545 image packs provide a searchable sticker picker,
+and inline custom emoji received from other clients render through authenticated Matrix
+media. Four slash commands are recognised: `/me`, `/shrug`,
 `/plain` and `/spoiler`.
 
 A message you have sent can be edited, deleted, pinned, forwarded, reported, quoted as a
@@ -108,7 +110,6 @@ looking for a button that is not there.
 | Not available                       | Note                                                                                                                                                                                 |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Voice and video calls               | No call code exists. The notification settings do expose a "Call invitations" toggle, because that is an account-level Matrix push rule, but Trinity never places or answers a call. |
-| Stickers and custom emoji packs     | MSC2545 is not implemented.                                                                                                                                                          |
 | Deactivating an account             | And no management of email addresses or phone numbers on an account.                                                                                                                 |
 | Forgetting a room after leaving     | Leaving works; the follow-up "forget" call is not wired.                                                                                                                             |
 | Approving or denying a knock        | The `knock` join rule can be set, and a knock renders as a system line, but there is no approval surface.                                                                            |

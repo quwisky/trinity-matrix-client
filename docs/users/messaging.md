@@ -5,15 +5,11 @@ the timeline does with what arrives. Setting up an account is on
 [signing in](signing-in.md); finding and joining conversations is on
 [rooms and spaces](rooms-and-spaces.md).
 
-Two things people expect from a chat app are genuinely absent, and are worth knowing up
-front rather than hunting for:
-
-- **Stickers and custom emoji packs are not supported.** MSC2545 is not implemented: there
-  is no sticker picker and no image-pack support anywhere in the app. Unicode emoji work
-  normally, both in messages and as reactions.
-- **Voice and video calls are not supported.** There is no call UI. You will still find a
-  "Call invitations" notification toggle, because that is one of the standard Matrix push
-  rules your account carries whatever client wrote it.
+One thing people expect from a chat app is genuinely absent, and is worth knowing up
+front rather than hunting for: **voice and video calls are not supported.** There is no
+call UI. You will still find a
+"Call invitations" notification toggle, because that is one of the standard Matrix push
+rules your account carries whatever client wrote it.
 
 ## Writing a message
 
@@ -81,6 +77,12 @@ so editing a message that already mentioned someone does not notify them a secon
 There is also a full emoji picker on the composer, and the same picker is what "react with
 any emoji" opens on a message.
 
+Custom emoji embedded by another MSC2545-capable client render inline. Trinity resolves
+their `mxc://` media through the same authenticated-media path as attachments; remote,
+`data:` and `blob:` image sources are rejected rather than loaded. The `:shortcode`
+autocomplete currently searches Unicode emoji only, so choosing a custom emoji for a new
+text message still needs another client.
+
 ### Drafts
 
 What you type is kept per conversation and survives closing the app. A draft is keyed by
@@ -94,6 +96,13 @@ device.
 
 Attachments, GIFs, polls, location and voice all live behind the `+` button beside the
 message box.
+
+**Stickers.** When MSC2545 image packs are available, **Sticker** appears in the `+` menu.
+The searchable picker combines packs selected in your `m.image_pack.rooms` account data
+with packs published in the room's `m.room.image_pack` state; legacy experimental event
+names are read as a compatibility fallback. Selecting one sends a standalone `m.sticker`
+event. Pack images are homeserver media and are not attachment-encrypted, even when the
+room is encrypted; the sticker event that references them is encrypted normally.
 
 **Files and images.** Attach a file, or paste an image straight into the message box. A
 picked or pasted file is _staged_ rather than sent immediately, so you can type a caption
@@ -130,8 +139,8 @@ outright.
 **Settings → GIFs**. Until then there is no key to search with, so it is hidden rather than
 shown broken. See [settings](settings.md#gifs).
 
-Polls, location and voice act on the room you have open, so the **thread composer does not
-offer them** — there is no way to route them into a thread.
+Stickers, polls, location and voice act on the room you have open, so the **thread composer
+does not offer them** — there is no way to route them into a thread.
 
 ## Reading the timeline
 

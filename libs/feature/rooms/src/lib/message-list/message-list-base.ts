@@ -58,6 +58,7 @@ import {
   type ComposerSubmit,
   type MentionMember,
 } from '../message-composer/message-composer.component';
+import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
 
 /**
  * How long after a jump a width change still counts as "the same jump".
@@ -185,6 +186,7 @@ export abstract class MessageListBase {
   readonly firstUnreadId = input<string | null>(null);
   /** Which file of how many is uploading and how far along, or null when idle. */
   readonly uploadProgress = input<BatchProgress | null>(null);
+  readonly stickerPacks = input<readonly ImagePack[]>([]);
   /**
    * Event id to scroll into view, set by an external jump (e.g. in-room search).
    * A no-op when the event isn't in the loaded timeline.
@@ -203,6 +205,7 @@ export abstract class MessageListBase {
   /** Pin or unpin this event id (host resolves which, given its current pinned state). */
   readonly togglePin = output<string>();
   readonly send = output<{ body: string; mentions: Mention[] }>();
+  readonly sendSticker = output<ImagePackImage>();
   /**
    * Send a batch of staged attachments. `onOutcomes` reports back per item, so the composer
    * can drop the delivered ones and keep the rest staged for a retry — and it MUST be called
