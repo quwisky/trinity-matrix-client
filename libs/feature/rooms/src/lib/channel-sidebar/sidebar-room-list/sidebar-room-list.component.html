@@ -10,6 +10,7 @@
         [initial]="invite.initial"
         [name]="invite.name"
         [size]="32"
+        [shape]="invite.isDirect ? 'person' : 'place'"
       />
       <div class="invite__text">
         <span class="invite__name" [title]="invite.name">{{
@@ -115,6 +116,7 @@
         [initial]="room.initial"
         [name]="room.name"
         [size]="36"
+        [shape]="room.directUserId ? 'person' : 'place'"
         [presence]="presenceOf(room)"
         [accountBadge]="badgeFor(room.accountId)"
       />

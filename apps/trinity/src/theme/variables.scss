@@ -47,6 +47,10 @@
   --trinity-radius-md: calc(var(--radius) - 2px); // 6px
   --trinity-radius-xl: 0.75rem; // 12px — cards / dialogs / menus
   --trinity-radius-pill: 9999px; // badges, chips, capsules
+  // Semantic identity geometry. Selection never changes these roles: people/DMs remain
+  // circular, while rooms/spaces remain stable squircles.
+  --trinity-shape-person-radius: 50%;
+  --trinity-shape-place-radius: 30%;
 
   // --- Typography (mode- & palette-agnostic; a palette may override) -------------
   // Roles, not sizes. `--trinity-text-sm` is the message body and the sidebar row —

@@ -172,7 +172,44 @@ test.describe('Rooms view excludes space-owned rooms', () => {
       exact: true,
     });
     await spacePill.waitFor({ state: 'visible', timeout: 30_000 });
+
+    const spaceRadii = () =>
+      spacePill.evaluate((pill) => {
+        const host = pill.querySelector('trn-avatar');
+        const avatar = pill.querySelector('hlm-avatar');
+        const fallback = pill.querySelector('[data-slot="avatar-fallback"]');
+        if (!host || !avatar || !fallback) {
+          throw new Error('space pill avatar did not render its fallback');
+        }
+        return {
+          shape: host.getAttribute('data-shape'),
+          pill: getComputedStyle(pill).borderRadius,
+          avatar: getComputedStyle(avatar).borderRadius,
+          fallback: getComputedStyle(fallback).borderRadius,
+          outline: getComputedStyle(avatar, '::after').borderRadius,
+        };
+      });
+    const assertStablePlaceGeometry = (
+      radii: Awaited<ReturnType<typeof spaceRadii>>,
+    ) => {
+      expect(radii.shape).toBe('place');
+      expect(
+        new Set([radii.pill, radii.avatar, radii.fallback, radii.outline]).size,
+      ).toBe(1);
+      expect(radii.avatar).not.toBe('50%');
+    };
+
+    const restingRadii = await spaceRadii();
+    assertStablePlaceGeometry(restingRadii);
+    await spacePill.hover();
+    const hoveredRadii = await spaceRadii();
+    assertStablePlaceGeometry(hoveredRadii);
+    expect(hoveredRadii).toEqual(restingRadii);
+
     await spacePill.click();
+    const selectedRadii = await spaceRadii();
+    assertStablePlaceGeometry(selectedRadii);
+    expect(selectedRadii).toEqual(restingRadii);
 
     const childRow = page.locator('.channel', { hasText: childName });
     await childRow.first().waitFor({ state: 'visible', timeout: 30_000 });

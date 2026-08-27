@@ -84,32 +84,22 @@
   cursor: pointer;
   background: var(--trinity-sidebar);
   color: var(--trinity-text);
-  border-radius: var(--trinity-radius-xl);
+  border-radius: var(--trinity-shape-place-radius);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 20px;
   font-weight: 700;
   padding: 0;
-  transition:
-    border-radius var(--trinity-duration-fast) var(--trinity-ease-standard),
-    background var(--trinity-duration-fast) var(--trinity-ease-standard);
-}
-
-.pill:hover {
-  border-radius: 50%;
+  transition: background var(--trinity-duration-fast)
+    var(--trinity-ease-standard);
 }
 
 // Recent is the primary view (first item, default on launch), so its pill is the
-// always-filled brand exception — accent-filled at rest, round when its view is active.
+// always-filled brand exception — accent-filled at rest.
 .pill.recent {
   background: var(--trinity-accent);
   color: var(--trinity-accent-foreground);
-}
-
-.pill.recent.round,
-.item.active .pill {
-  border-radius: 50%;
 }
 
 .pill.add {

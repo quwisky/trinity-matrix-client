@@ -58,7 +58,7 @@
           [initial]="result.initial"
           [name]="result.title"
           [size]="40"
-          [square]="result.kind === 'space'"
+          [shape]="avatarShape(result)"
           [accountBadge]="badgeFor(result)"
         />
         <span class="min-w-0 flex-1">

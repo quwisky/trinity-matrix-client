@@ -77,6 +77,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **People and places now keep distinct, stable avatar shapes.** People and direct messages stay
+  circular, while rooms and spaces use squircles throughout navigation, search, directories and
+  settings. Selecting or hovering a space no longer changes its fundamental shape; background,
+  indicator and focus states carry selection instead.
+
 - **Menus, tooltips and the indeterminate progress bar now hold still on their own for
   reduced motion.** They already did, but only because a blanket rule elsewhere in the app
   was catching them; each now asks for it directly, so the behaviour survives the component

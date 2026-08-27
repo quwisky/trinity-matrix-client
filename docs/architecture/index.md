@@ -115,6 +115,11 @@ metadata without an SDK import of its own.
 New SDK interaction belongs in a `data-access-*` service. See
 [state and reactivity](state-and-reactivity.md) for the shape those services take.
 
+The proposed visual evolution of those UI layers is documented separately in the
+[modern UI redesign plan](modern-ui-redesign.md). It keeps the same dependency direction and
+cross-platform bundle while modernising the shared design system and high-traffic surfaces in
+reviewable phases.
+
 ## Crossing a forbidden edge on purpose
 
 Some legitimate needs run against the grain of the layering. The encryption unlock dialog has to be

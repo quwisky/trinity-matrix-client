@@ -16,7 +16,11 @@ import {
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AccountBadgesService } from '../shared/account-badges.service';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
-import { AvatarComponent, type AccountBadge } from '@trinity/components/avatar';
+import {
+  AvatarComponent,
+  type AccountBadge,
+  type AvatarShape,
+} from '@trinity/components/avatar';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnInput } from '@trinity/components/input';
@@ -197,5 +201,14 @@ export class QuickSwitcherComponent {
 
   kindIcon(kind: SwitcherKind): TrnIconName {
     return KIND_ICON[kind];
+  }
+
+  /** People and DMs are circular; every room-like destination is a stable squircle. */
+  avatarShape(result: SwitcherResult): AvatarShape {
+    return result.kind === 'user' ||
+      result.kind === 'dm' ||
+      (result.kind === 'invite' && result.isDirect)
+      ? 'person'
+      : 'place';
   }
 }

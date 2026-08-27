@@ -3,7 +3,6 @@
     <span class="indicator"></span>
     <button
       class="pill recent"
-      [class.round]="recentActive()"
       (click)="showRecent.emit()"
       [attr.aria-current]="recentActive() ? 'true' : null"
       aria-label="Recent activity"
@@ -30,9 +29,6 @@
     <span class="indicator"></span>
     <button
       class="pill home"
-      [class.round]="
-        activeSpaceId() === null && !roomsActive() && !recentActive()
-      "
       (click)="selectSpace.emit(null)"
       [attr.aria-current]="
         activeSpaceId() === null && !roomsActive() && !recentActive()
@@ -101,7 +97,7 @@
           [accountId]="space.accountId"
           [initial]="space.initial"
           [name]="space.name"
-          [square]="activeSpaceId() !== space.id || roomsActive()"
+          shape="place"
           [size]="48"
           [accountBadge]="badgeFor(space.accountId)"
         />

@@ -126,6 +126,22 @@ describe('QuickSwitcherComponent', () => {
     expect(container.querySelectorAll('.qs-row').length).toBe(LOCAL.length);
   });
 
+  it('keeps people circular and room-like destinations squircle-shaped', async () => {
+    const { fixture } = await renderSwitcher();
+    const component = fixture.componentInstance;
+
+    expect(component.avatarShape(result({ kind: 'user' }))).toBe('person');
+    expect(component.avatarShape(result({ kind: 'dm' }))).toBe('person');
+    expect(
+      component.avatarShape(result({ kind: 'invite', isDirect: true })),
+    ).toBe('person');
+    expect(component.avatarShape(result({ kind: 'room' }))).toBe('place');
+    expect(component.avatarShape(result({ kind: 'space' }))).toBe('place');
+    expect(
+      component.avatarShape(result({ kind: 'invite', isDirect: false })),
+    ).toBe('place');
+  });
+
   it('recomputes results when the query changes', async () => {
     const { fixture } = await renderSwitcher();
     const c = fixture.componentInstance;

@@ -292,4 +292,21 @@ describe('ServerRailComponent', () => {
     });
     expect(container.querySelector('[data-testid="account-badge"]')).toBeNull();
   });
+
+  it('keeps space avatars place-shaped across active view changes', async () => {
+    const { fixture, container } = await render(ServerRailComponent, {
+      inputs: { spaces: [space({ id: '!s1:hs' })] },
+    });
+    const avatar = () => container.querySelector('trn-avatar');
+
+    expect(avatar()?.getAttribute('data-shape')).toBe('place');
+
+    fixture.componentRef.setInput('activeSpaceId', '!s1:hs');
+    await fixture.whenStable();
+    expect(avatar()?.getAttribute('data-shape')).toBe('place');
+
+    fixture.componentRef.setInput('roomsActive', true);
+    await fixture.whenStable();
+    expect(avatar()?.getAttribute('data-shape')).toBe('place');
+  });
 });

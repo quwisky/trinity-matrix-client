@@ -596,6 +596,40 @@ describe('ChannelSidebarComponent', () => {
     expect(declined).toBe('!i:hs');
   });
 
+  it('uses person geometry for DMs and direct invites, and place geometry for rooms', async () => {
+    const { container } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({ id: '!room:hs', name: 'General' }),
+          room({ id: '!dm:hs', name: 'Alice', directUserId: '@alice:hs' }),
+        ],
+      },
+      invites: [
+        invite({ roomId: '!room-invite:hs', name: 'Project' }),
+        invite({
+          roomId: '!dm-invite:hs',
+          name: 'Bob',
+          isDirect: true,
+        }),
+      ],
+    });
+
+    const shapeByName = (selector: string, nameSelector: string) =>
+      new Map(
+        [...container.querySelectorAll<HTMLElement>(selector)].map((row) => [
+          row.querySelector(nameSelector)?.textContent?.trim(),
+          row.querySelector('trn-avatar')?.getAttribute('data-shape'),
+        ]),
+      );
+    const roomShapes = shapeByName('.channel', '.channel__name');
+    const inviteShapes = shapeByName('.invite', '.invite__name');
+
+    expect(roomShapes.get('General')).toBe('place');
+    expect(roomShapes.get('Alice')).toBe('person');
+    expect(inviteShapes.get('Project')).toBe('place');
+    expect(inviteShapes.get('Bob')).toBe('person');
+  });
+
   it('shows no Invites group when there are none', async () => {
     const { container } = await renderSidebar();
 

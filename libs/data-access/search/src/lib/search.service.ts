@@ -36,6 +36,8 @@ export interface SwitcherResult {
   score: number;
   /** Whether the underlying room is encrypted (drives the lock badge). */
   encrypted?: boolean;
+  /** Direct-message invite classification, used to keep people circular in the UI. */
+  isDirect?: boolean;
   /** The signed-in account this row belongs to — the mixed-account view badges rows with
    * it, and jumping to one switches to that account first. */
   accountId?: string;
@@ -105,6 +107,7 @@ interface SwitcherEntry {
   /** Last-activity ms for the recency tiebreak (0 for spaces/invites). */
   activityTs: number;
   encrypted?: boolean;
+  isDirect?: boolean;
   accountId?: string;
 }
 
@@ -205,6 +208,7 @@ export class SearchService {
         titleLower,
         haystack: titleLower,
         activityTs: 0,
+        isDirect: invite.isDirect,
       });
     }
 
@@ -252,6 +256,7 @@ export class SearchService {
         ...(entry.encrypted !== undefined
           ? { encrypted: entry.encrypted }
           : {}),
+        ...(entry.isDirect !== undefined ? { isDirect: entry.isDirect } : {}),
         ...(entry.accountId ? { accountId: entry.accountId } : {}),
       }));
   }

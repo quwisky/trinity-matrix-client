@@ -230,7 +230,12 @@ describe('SearchService.localResults aggregation', () => {
       directRoomIds: new Set(['!dm:hs']),
       spaces: [space({ id: '!sp:hs', name: 'bob space' })],
       invites: [
-        invite({ roomId: '!inv:hs', name: 'bob invite', inviterName: 'Carol' }),
+        invite({
+          roomId: '!inv:hs',
+          name: 'bob invite',
+          inviterName: 'Carol',
+          isDirect: true,
+        }),
       ],
     });
 
@@ -240,6 +245,7 @@ describe('SearchService.localResults aggregation', () => {
     expect(byId.get('!sp:hs')?.kind).toBe('space');
     expect(byId.get('!inv:hs')?.kind).toBe('invite');
     expect(byId.get('!inv:hs')?.subtitle).toBe('Invited by Carol');
+    expect(byId.get('!inv:hs')?.isDirect).toBe(true);
   });
 
   it('surfaces the room encrypted flag for the lock badge', () => {
