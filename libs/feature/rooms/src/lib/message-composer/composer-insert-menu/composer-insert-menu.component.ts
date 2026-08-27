@@ -59,10 +59,13 @@ export class ComposerInsertMenuComponent {
   readonly recording = input(false);
   /** Whether a location is being resolved and sent. */
   readonly locationSharing = input(false);
+  /** Whether the active room has at least one sticker-capable image-pack entry. */
+  readonly stickerEnabled = input(false);
 
   readonly attachFile = output<void>();
   readonly pickGif = output<void>();
   readonly createPoll = output<void>();
   readonly shareLocation = output<void>();
   readonly recordVoice = output<void>();
+  readonly pickSticker = output<void>();
 }

@@ -32,6 +32,7 @@ import { LinkPreviewComponent } from '../link-preview/link-preview.component';
 import { LocationComponent } from '../location-share/location.component';
 import { VoiceMessageComponent } from '../voice-message/voice-message.component';
 import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
+import { InlineMxcImagesDirective } from '../inline-mxc-images/inline-mxc-images.directive';
 
 /** A {@link MessageView} plus the presentation state the list derives for it. */
 export interface MessageRow extends MessageView {
@@ -147,6 +148,7 @@ export type MessageSwipeAction = 'edit' | 'reply';
     LocationComponent,
     VoiceMessageComponent,
     TrnTooltip,
+    InlineMxcImagesDirective,
   ],
   templateUrl: './message-row.component.html',
   styleUrl: './message-row.component.scss',

@@ -14,6 +14,7 @@ import {
   TimelineService,
 } from '@trinity/data-access/timeline';
 import { type Mention } from '@trinity/util/matrix';
+import type { ImagePackImage } from '@trinity/data-access/media';
 import { Observable, throwError } from 'rxjs';
 import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
 import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
@@ -184,6 +185,18 @@ export class MessageActionsService {
       .send(body, mentions)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
+  }
+
+  onSendSticker(sticker: ImagePackImage): void {
+    if (this.timeline.openContext()?.room.hasEncryptionStateEvent()) {
+      this.status.showWarning(
+        'Sticker images are public homeserver media, even in encrypted rooms.',
+      );
+    }
+    this.runAction(
+      this.timelineActions.sendSticker(sticker),
+      'Could not send the sticker.',
+    );
   }
 
   /** Composer typing state → a (throttled) Matrix typing notification for the room. */

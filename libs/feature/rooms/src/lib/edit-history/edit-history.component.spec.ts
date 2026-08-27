@@ -11,6 +11,7 @@ import {
   EditHistoryService,
   type EditHistoryResult,
 } from '@trinity/data-access/timeline';
+import { MediaService } from '@trinity/data-access/media';
 import { type MessageRevisionView } from '@trinity/util/matrix';
 import { EditHistoryComponent } from './edit-history.component';
 
@@ -39,6 +40,11 @@ async function build(
   const remove = vi.fn(() => of(undefined));
   const confirm = vi.fn().mockResolvedValue(true);
   const toast = vi.fn();
+  const media = {
+    resolveMedia: vi.fn(() => of('blob:wave')),
+    pin: vi.fn(),
+    unpin: vi.fn(),
+  };
   const result = await render(EditHistoryComponent, {
     inputs: { roomId: '!r:hs', eventId: '$orig' },
     providers: [
@@ -49,9 +55,10 @@ async function build(
       MockProvider(TrnDialogRef, { close }),
       MockProvider(TrnAlertService, { confirm }),
       MockProvider(TrnToastService, { show: toast }),
+      { provide: MediaService, useValue: media },
     ],
   });
-  return { ...result, close, revisions, remove, confirm, toast };
+  return { ...result, close, revisions, remove, confirm, toast, media };
 }
 
 /** The rendered label of every entry, in order. */
@@ -148,6 +155,27 @@ describe('EditHistoryComponent', () => {
       'rich',
     );
     expect(container.textContent).toContain('plain');
+  });
+
+  it('resolves custom emoji inside an earlier formatted version', async () => {
+    const html =
+      '<img class="mx-emoticon" data-mx-emoticon src="mxc://hs/wave" alt=":wave:">';
+    const { container, media } = await build(
+      of({
+        revisions: [revision({ body: ':wave:', html })],
+        truncated: false,
+      }),
+    );
+
+    await waitFor(() =>
+      expect(media.resolveMedia).toHaveBeenCalledWith(
+        expect.objectContaining({ mxc: 'mxc://hs/wave' }),
+        'thumbnail',
+      ),
+    );
+    expect(
+      (container.querySelector('img.mx-emoticon') as HTMLImageElement).src,
+    ).toBe('blob:wave');
   });
 
   // The dialog exists to answer "what changed", so it answers it without being asked.

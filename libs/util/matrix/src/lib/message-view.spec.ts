@@ -389,6 +389,33 @@ describe('sanitizeMatrixHtml — spoilers', () => {
   });
 });
 
+describe('sanitizeMatrixHtml — MSC2545 custom emotes', () => {
+  it('marks a valid mxc custom emote for authenticated-media resolution', () => {
+    const clean = sanitizeMatrixHtml(
+      '<img data-mx-emoticon src="mxc://hs/wave" alt=":wave:" title="wave" height="99" width="99">',
+    );
+    const image = parse(clean).querySelector('img.mx-emoticon');
+
+    expect(image?.getAttribute('src')).toBe('mxc://hs/wave');
+    expect(image?.getAttribute('data-mx-emoticon')).toBe('');
+    expect(image?.getAttribute('height')).toBe('32');
+    expect(image?.hasAttribute('width')).toBe(false);
+  });
+
+  it.each([
+    'https://tracker.test/pixel',
+    'data:image/png;base64,eA==',
+    'blob:evil',
+  ])('turns a custom emote from %s into its readable fallback', (source) => {
+    const clean = sanitizeMatrixHtml(
+      `<img data-mx-emoticon src="${source}" alt=":wave:">`,
+    );
+    expect(clean).not.toContain('<img');
+    expect(clean).toContain(':wave:');
+    expect(clean).not.toContain(source);
+  });
+});
+
 // The send path shares one DOMPurify config with the render path — same allowlist, so
 // the client can never emit a formatted_body its own renderer would strip — but none of
 // the render-only normalisation, which has no business on the wire.

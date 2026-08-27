@@ -22,6 +22,7 @@ import {
   KeyboardShortcutsService,
 } from '@trinity/platform-native';
 import { type GifResult } from '@trinity/data-access/gif';
+import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
 import {
   applyFormat,
   continueList,
@@ -60,6 +61,8 @@ import {
   type TrnEmojiPick,
 } from '@trinity/components/emoji-picker';
 import { type MentionMember } from './mention-autocomplete';
+import { StickerPickerComponent } from '../sticker-picker/sticker-picker.component';
+import { InlineMxcImagesDirective } from '../inline-mxc-images/inline-mxc-images.directive';
 
 /**
  * A room member offered by the @-mention autocomplete. Re-exported here because it is the
@@ -108,6 +111,8 @@ let nextPickerId = 0;
     TrnTextarea,
     TrnEmojiPickerComponent,
     GifPickerComponent,
+    StickerPickerComponent,
+    InlineMxcImagesDirective,
     ComposerToolbarComponent,
     ComposerAttachmentStripComponent,
     ComposerInsertMenuComponent,
@@ -171,6 +176,8 @@ export class MessageComposerComponent {
    * into a thread — the thread composer sets this false to hide them.
    */
   readonly richActions = input(true);
+  /** MSC2545 packs available to this room. Empty in thread composers. */
+  readonly stickerPacks = input<readonly ImagePack[]>([]);
   /** Upload fraction in [0, 1] while an attachment uploads, else null (idle). */
   readonly uploadProgress = input<BatchProgress | null>(null);
   readonly submitText = output<ComposerSubmit>();
@@ -212,6 +219,7 @@ export class MessageComposerComponent {
    * notification goes.
    */
   readonly typing = output<boolean>();
+  readonly stickerSelect = output<ImagePackImage>();
 
   readonly text = signal('');
 
@@ -279,6 +287,7 @@ export class MessageComposerComponent {
   /** Whether anything is staged. */
   readonly hasStaged = this.attachments.hasStaged;
   readonly pickerOpen = signal(false);
+  readonly stickerPickerOpen = signal(false);
   /** Whether the GIF search grid is open (mutually exclusive with the emoji picker). */
   readonly gifPickerOpen = this.attachments.gifPickerOpen;
   /** True while a voice message is being recorded. */
@@ -297,8 +306,13 @@ export class MessageComposerComponent {
    * GIF provider configured — a one-item menu is pure friction, so `+` stays a plain
    * attach button there. See the media query in the SCSS for where the tray applies.
    */
+  readonly stickerEnabled = computed(() =>
+    this.stickerPacks().some((pack) =>
+      pack.images.some((image) => image.usage.includes('sticker')),
+    ),
+  );
   readonly hasInsertMenu = computed(
-    () => this.richActions() || this.gifEnabled(),
+    () => this.richActions() || this.gifEnabled() || this.stickerEnabled(),
   );
   /**
    * The three autocomplete menus: `:shortcode`, `@mention` and `/command`.
@@ -921,13 +935,32 @@ export class MessageComposerComponent {
   /** Toggle the emoji picker, closing the other overlays (only one at a time). */
   toggleEmojiPicker(): void {
     this.gifPickerOpen.set(false);
+    this.stickerPickerOpen.set(false);
     this.pickerOpen.set(!this.pickerOpen());
   }
 
   /** Toggle the GIF grid, closing the other overlays (only one at a time). */
   toggleGifPicker(): void {
     this.pickerOpen.set(false);
+    this.stickerPickerOpen.set(false);
     this.attachments.toggleGifPicker();
+  }
+
+  toggleStickerPicker(): void {
+    this.pickerOpen.set(false);
+    this.gifPickerOpen.set(false);
+    this.stickerPickerOpen.update((open) => !open);
+  }
+
+  onStickerSelect(sticker: ImagePackImage): void {
+    this.stickerPickerOpen.set(false);
+    this.stickerSelect.emit(sticker);
+    queueMicrotask(() => this.field.focus());
+  }
+
+  closeStickerPicker(): void {
+    this.stickerPickerOpen.set(false);
+    queueMicrotask(() => this.field.focus());
   }
 
   /** Begin recording a voice message; toasts and resets if the mic is unavailable. */
@@ -1043,6 +1076,10 @@ export class MessageComposerComponent {
     }
     if (this.gifPickerOpen()) {
       this.gifPickerOpen.set(false);
+      return;
+    }
+    if (this.stickerPickerOpen()) {
+      this.stickerPickerOpen.set(false);
       return;
     }
     // Not while a batch is going out: those rows are what its outcomes will report on, and

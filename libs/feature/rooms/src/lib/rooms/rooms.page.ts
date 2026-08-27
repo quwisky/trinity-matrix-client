@@ -39,6 +39,7 @@ import {
   MixedInvitesService,
 } from '@trinity/data-access/invites';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { ImagePackService } from '@trinity/data-access/media';
 import {
   NotificationService,
   PushService,
@@ -286,6 +287,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   readonly timelineActions = inject(TimelineActionsService);
   readonly threads = inject(ThreadsService);
   readonly pinned = inject(PinnedMessagesService);
+  private readonly imagePackService = inject(ImagePackService);
   readonly flags = inject(FeatureFlagsService);
   private readonly matrix = inject(MatrixClientService);
   private readonly crypto = inject(CryptoService);
@@ -308,6 +310,11 @@ export class RoomsPage implements OnInit, OnDestroy {
   readonly messageActions = inject(MessageActionsService);
   readonly shortcutActions = inject(ShellShortcutsService);
   readonly session = inject(SessionActionsService);
+
+  readonly imagePacks = computed(() => {
+    const roomId = this.store.activeRoomId();
+    return roomId ? this.imagePackService.packsFor(roomId)() : [];
+  });
 
   /**
    * The accounts the view draws from — the user's picker selection, persisted and always
@@ -352,6 +359,12 @@ export class RoomsPage implements OnInit, OnDestroy {
       this.mixedRooms.setAccounts(accounts);
       this.mixedSpaces.setAccounts(accounts);
       this.mixedInvites.setAccounts(accounts);
+    });
+    effect((onCleanup) => {
+      const roomId = this.store.activeRoomId();
+      if (!roomId) return;
+      this.imagePackService.connect(roomId);
+      onCleanup(() => this.imagePackService.disconnect(roomId));
     });
     // The `?room=` deep link is gone. A notification tap now navigates to `/rooms/:roomId`
     // like everything else, so the room it asked for arrives through `paramMap` and needs no

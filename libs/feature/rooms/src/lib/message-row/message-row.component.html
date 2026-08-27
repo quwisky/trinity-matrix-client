@@ -13,6 +13,7 @@
     class="msg"
     [class.msg--cont]="!r.showHeader"
     [class.msg--failed]="r.decryptionFailed"
+    [class.msg--sticker]="r.kind === 'sticker'"
     [class.msg--sending]="r.status === 'sending'"
     [class.msg--sendfailed]="r.status === 'failed'"
     [class.msg--revealed]="revealed()"
@@ -114,6 +115,7 @@
             class="msg__text msg__text--html"
             trnSpoilerReveal
             trnMatrixLink
+            [trnInlineMxcImages]="r.captionHtml ?? ''"
             (matrixLink)="matrixLink.emit($event)"
             [innerHTML]="r.captionHtml"
           ></div>
@@ -125,6 +127,7 @@
           class="msg__text msg__text--html"
           trnSpoilerReveal
           trnMatrixLink
+          [trnInlineMxcImages]="r.html ?? ''"
           (matrixLink)="matrixLink.emit($event)"
           [innerHTML]="r.html"
         ></div>

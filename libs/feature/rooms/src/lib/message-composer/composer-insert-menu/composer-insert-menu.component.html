@@ -44,6 +44,17 @@
         </button>
       }
       @if (richActions()) {
+        @if (stickerEnabled()) {
+          <button
+            hlmDropdownMenuItem
+            class="composer__insert-item"
+            (triggered)="pickSticker.emit()"
+            data-testid="insert-sticker"
+          >
+            <trn-icon name="image" />
+            Sticker
+          </button>
+        }
         <button
           hlmDropdownMenuItem
           class="composer__insert-item"

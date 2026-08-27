@@ -51,12 +51,14 @@ describe('MessageActionsService', () => {
   const toggleReaction = vi.fn(() => of(undefined));
   const votePoll = vi.fn(() => of(undefined));
   const endPoll = vi.fn(() => of(undefined));
+  const sendSticker = vi.fn(() => of(undefined));
+  const openContext = vi.fn(() => null);
   const loadOlder = vi.fn(() => of(undefined));
   const setTyping = vi.fn();
   const toastShow = vi.fn();
 
   const MOCKS: Provider[] = [
-    MockProvider(TimelineService, { loadOlder, setTyping }),
+    MockProvider(TimelineService, { loadOlder, setTyping, openContext }),
     MockProvider(TimelineActionsService, {
       send,
       reply,
@@ -64,6 +66,7 @@ describe('MessageActionsService', () => {
       toggleReaction,
       votePoll,
       endPoll,
+      sendSticker,
     }),
     MockProvider(PinnedMessagesService),
     MockProvider(RoomsService),
@@ -162,6 +165,33 @@ describe('MessageActionsService', () => {
 
       expect(setTyping).toHaveBeenNthCalledWith(1, true);
       expect(setTyping).toHaveBeenNthCalledWith(2, false);
+    });
+
+    it('warns that sticker media stays public in an encrypted room', () => {
+      openContext.mockReturnValueOnce({
+        room: { hasEncryptionStateEvent: () => true },
+      } as never);
+      const { actions } = build();
+      const sticker = {
+        shortcode: 'party',
+        url: 'mxc://hs/party',
+        body: 'Party',
+        mimetype: 'image/png',
+        width: 32,
+        height: 32,
+        info: { mimetype: 'image/png', w: 32, h: 32 },
+        usage: ['sticker'] as const,
+        packId: '!pack:hs:fun',
+        packName: 'Fun',
+      };
+
+      actions.onSendSticker(sticker);
+
+      expect(toastShow).toHaveBeenCalledWith(
+        'Sticker images are public homeserver media, even in encrypted rooms.',
+        { duration: 6000 },
+      );
+      expect(sendSticker).toHaveBeenCalledWith(sticker);
     });
   });
 

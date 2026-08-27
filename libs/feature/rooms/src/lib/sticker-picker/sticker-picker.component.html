@@ -1,0 +1,56 @@
+<section
+  class="picker"
+  aria-label="Stickers"
+  data-testid="sticker-picker"
+  (keydown.escape)="onEscape($event)"
+>
+  <label class="picker__search-label" for="sticker-search"
+    >Search stickers</label
+  >
+  <input
+    #search
+    id="sticker-search"
+    class="picker__search"
+    type="search"
+    autocomplete="off"
+    placeholder="Search stickers…"
+    data-testid="sticker-search"
+    [value]="query()"
+    (input)="onSearch($event)"
+  />
+
+  <div class="picker__scroll">
+    @for (pack of visiblePacks(); track pack.id) {
+      <section
+        class="picker__pack"
+        [attr.aria-labelledby]="'sticker-pack-' + $index"
+      >
+        <h3 class="picker__pack-name" [id]="'sticker-pack-' + $index">
+          {{ pack.name }}
+        </h3>
+        <div class="picker__grid">
+          @for (
+            image of pack.images;
+            track image.packId + ':' + image.shortcode
+          ) {
+            <button
+              type="button"
+              class="picker__item"
+              [attr.aria-label]="labelFor(image)"
+              [attr.title]="':' + image.shortcode + ':'"
+              [attr.data-testid]="'sticker-' + image.shortcode"
+              (click)="selected.emit(image)"
+            >
+              <trn-sticker-image [image]="image" />
+            </button>
+          }
+        </div>
+        @if (pack.attribution) {
+          <p class="picker__attribution">{{ pack.attribution }}</p>
+        }
+      </section>
+    } @empty {
+      <p class="picker__empty" role="status">No stickers found.</p>
+    }
+  </div>
+</section>
