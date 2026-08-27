@@ -108,5 +108,6 @@ describe('Android Playwright canonical coverage', () => {
     expect(fixture).not.toMatch(
       /Object\.defineProperty\(navigator,\s*['"]geolocation['"]/,
     );
+    expect(fixture).not.toContain('Emulation.setGeolocationOverride');
   });
 });

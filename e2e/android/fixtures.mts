@@ -166,7 +166,7 @@ async function configurePage(
   device: AndroidDevice,
   page: Page,
   options: AndroidUseOptions,
-): Promise<() => void> {
+): Promise<() => Promise<void>> {
   const originalGoto = page.goto.bind(page);
   const originalReload = page.reload.bind(page);
   const waitForBoot = (timeout: number) =>
@@ -227,34 +227,6 @@ async function configurePage(
   if (options.colorScheme) {
     await page.emulateMedia({ colorScheme: options.colorScheme });
   }
-  if (options.geolocation) {
-    // Feed both sources deliberately. Canonical browser journeys still use the CDP
-    // override, while the installed Capacitor app consumes the emulator's native
-    // provider through @capacitor/geolocation. Do not replace navigator.geolocation:
-    // that hid a production Android timeout while the journey stayed green.
-    await setEmulatorLocation(device, options.geolocation);
-    await session.send('Emulation.setGeolocationOverride', options.geolocation);
-  }
-
-  // The emulator drops a console location sent before a native listener exists.
-  // Pulse the requested fix while the journey runs so the Capacitor plugin's
-  // later getCurrentPosition subscription receives a real provider update.
-  let locationPulse: ReturnType<typeof setInterval> | undefined;
-  if (options.geolocation) {
-    let sending = false;
-    locationPulse = setInterval(() => {
-      if (sending) return;
-      sending = true;
-      void setEmulatorLocation(device, options.geolocation!)
-        .catch((error: unknown) => {
-          console.warn('[android-e2e] could not pulse emulator location', error);
-        })
-        .finally(() => {
-          sending = false;
-        });
-    }, 1_000);
-  }
-
   const androidPermissions = new Map([
     ['geolocation', ['android.permission.ACCESS_COARSE_LOCATION', 'android.permission.ACCESS_FINE_LOCATION']],
     ['microphone', ['android.permission.RECORD_AUDIO']],
@@ -283,7 +255,7 @@ async function configurePage(
   if (unsupportedArgs.length > 0) {
     throw new Error(`No Android launch-option adapter for: ${unsupportedArgs.join(', ')}`);
   }
-  let needsReload = Boolean(options.geolocation);
+  let needsReload = false;
   if (launchArgs.includes('--use-fake-device-for-media-stream')) {
     await page.addInitScript(() => {
       const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
@@ -302,8 +274,32 @@ async function configurePage(
   if (needsReload) {
     await page.reload({ waitUntil: 'domcontentloaded' });
   }
-  return () => {
+
+  // The emulator drops a console location sent before a native listener exists.
+  // Pulse the requested fix while the journey runs so the Capacitor plugin's
+  // later getCurrentPosition subscription receives a real provider update. This
+  // is intentionally the only location source in Android journeys: a CDP override
+  // would let navigator.geolocation mask a native plugin regression.
+  let locationPulse: ReturnType<typeof setInterval> | undefined;
+  let locationPulseTask: Promise<void> | undefined;
+  if (options.geolocation) {
+    await setEmulatorLocation(device, options.geolocation);
+    const pulseLocation = () => {
+      if (locationPulseTask) return;
+      locationPulseTask = setEmulatorLocation(device, options.geolocation!)
+        .catch((error: unknown) => {
+          console.warn('[android-e2e] could not pulse emulator location', error);
+        })
+        .finally(() => {
+          locationPulseTask = undefined;
+        });
+    };
+    locationPulse = setInterval(pulseLocation, 1_000);
+  }
+
+  return async () => {
     if (locationPulse) clearInterval(locationPulse);
+    await locationPulseTask;
   };
 }
 
@@ -736,7 +732,7 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
     try {
       await use(page);
     } finally {
-      stopAdapters();
+      await stopAdapters();
     }
   },
 });
