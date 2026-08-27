@@ -19,11 +19,17 @@ export default defineConfig({
   testDir: './electron',
   testMatch: '**/*.electron.spec.mts',
   outputDir: join(workspaceRoot, 'dist/.playwright/electron'),
+  globalSetup: './playwright/support/global-setup.mts',
+  globalTeardown: './playwright/support/global-teardown.mts',
   // Each test launches its own Electron instance — keep them serial.
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env['CI'],
-  timeout: 60_000,
+  timeout: 120_000,
   expect: { timeout: 15_000 },
+  use: {
+    ignoreHTTPSErrors: true,
+    trace: 'retain-on-failure',
+  },
   reporter: process.env['CI'] ? 'dot' : 'list',
 });

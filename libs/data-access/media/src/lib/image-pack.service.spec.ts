@@ -8,6 +8,8 @@ import {
   ImagePackService,
   LEGACY_IMAGE_PACK_EVENT_TYPE,
   LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE,
+  TRINITY_IMAGE_PACK_ENABLED_USAGE,
+  isValidMxcUri,
   readImagePacks,
 } from './image-pack.service';
 
@@ -30,6 +32,7 @@ function setup() {
   const account = new Map<string, ReturnType<typeof event>>();
   const roomEvents = new Map<string, ReturnType<typeof event>[]>();
   const rooms = new Map<string, unknown>();
+  const memberships = new Map<string, string>();
   const rebuildRoom = (roomId: string) => {
     const state = {
       getStateEvents: (type: string, stateKey?: string) => {
@@ -46,6 +49,7 @@ function setup() {
     rooms.set(roomId, {
       roomId,
       name: `Room ${roomId}`,
+      getMyMembership: () => memberships.get(roomId) ?? 'join',
       getLiveTimeline: () => ({ getState: () => state }),
     });
   };
@@ -71,6 +75,7 @@ function setup() {
     client,
     account,
     roomEvents,
+    memberships,
     rebuildRoom,
   };
 }
@@ -124,6 +129,10 @@ describe('ImagePackService', () => {
     const packs = readImagePacks(client as never, '!current:hs');
 
     expect(packs.map((item) => item.name)).toEqual(['Global', 'Local']);
+    expect(packs.map((item) => item.scope.sticker)).toEqual([
+      'account',
+      'room',
+    ]);
     expect(packs[0].images[0].usage).toEqual(['emoticon', 'sticker']);
     expect(packs[1].images[0].usage).toEqual(['sticker']);
     expect(packs[0].images[0].info).toEqual({
@@ -134,6 +143,53 @@ describe('ImagePackService', () => {
       thumbnail_url: 'mxc://hs/thumb',
       thumbnail_info: { mimetype: 'image/png', w: 16, h: 12 },
     });
+  });
+
+  it('uses account preferences per usage and falls back to current-room scope', () => {
+    const { client, account, roomEvents, rebuildRoom } = setup();
+    account.set(
+      IMAGE_PACK_ROOMS_EVENT_TYPE,
+      event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
+        rooms: {
+          '!current:hs': {
+            mixed: { [TRINITY_IMAGE_PACK_ENABLED_USAGE]: ['emoticon'] },
+          },
+        },
+      }),
+    );
+    roomEvents.set('!current:hs', [
+      event(IMAGE_PACK_EVENT_TYPE, 'mixed', pack('Mixed'), '!current:hs'),
+    ]);
+    rebuildRoom('!current:hs');
+
+    const packs = readImagePacks(client as never, '!current:hs');
+
+    expect(packs).toHaveLength(1);
+    expect(packs[0].scope).toEqual({
+      emoticon: 'account',
+      sticker: 'room',
+    });
+    expect(packs[0].images[0].usage).toEqual(['emoticon', 'sticker']);
+  });
+
+  it('omits a fully disabled account pack outside its source room', () => {
+    const { client, account, roomEvents, rebuildRoom } = setup();
+    account.set(
+      IMAGE_PACK_ROOMS_EVENT_TYPE,
+      event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
+        rooms: {
+          '!pack:hs': {
+            disabled: { [TRINITY_IMAGE_PACK_ENABLED_USAGE]: [] },
+          },
+        },
+      }),
+    );
+    roomEvents.set('!pack:hs', [
+      event(IMAGE_PACK_EVENT_TYPE, 'disabled', pack('Disabled')),
+    ]);
+    rebuildRoom('!pack:hs');
+
+    expect(readImagePacks(client as never, '!current:hs')).toEqual([]);
   });
 
   it('lets stable pack state override a legacy selection for the same source', () => {
@@ -181,6 +237,39 @@ describe('ImagePackService', () => {
     ).toEqual(['Selected']);
   });
 
+  it('rejects legacy boolean references in stable account data', () => {
+    const { client, account, roomEvents, rebuildRoom } = setup();
+    account.set(
+      IMAGE_PACK_ROOMS_EVENT_TYPE,
+      event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
+        rooms: { '!pack:hs': { malformed: true } },
+      }),
+    );
+    roomEvents.set('!pack:hs', [
+      event(IMAGE_PACK_EVENT_TYPE, 'malformed', pack('Malformed')),
+    ]);
+    rebuildRoom('!pack:hs');
+
+    expect(readImagePacks(client as never, '!current:hs')).toEqual([]);
+  });
+
+  it('stops exposing a selected pack after leaving its source room', () => {
+    const { client, account, roomEvents, memberships, rebuildRoom } = setup();
+    account.set(
+      IMAGE_PACK_ROOMS_EVENT_TYPE,
+      event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
+        rooms: { '!pack:hs': { selected: {} } },
+      }),
+    );
+    roomEvents.set('!pack:hs', [
+      event(IMAGE_PACK_EVENT_TYPE, 'selected', pack('Selected')),
+    ]);
+    memberships.set('!pack:hs', 'leave');
+    rebuildRoom('!pack:hs');
+
+    expect(readImagePacks(client as never, '!current:hs')).toEqual([]);
+  });
+
   it('uses the source room name when a pack has no display name', () => {
     const { client, roomEvents, rebuildRoom } = setup();
     roomEvents.set('!current:hs', [
@@ -223,6 +312,42 @@ describe('ImagePackService', () => {
     );
   });
 
+  it('matches the Matrix SDK MXC server and media-ID validation', () => {
+    expect(isValidMxcUri('mxc://example.org/media_1-2')).toBe(true);
+    expect(isValidMxcUri('mxc://[2001:db8::1]:8448/media')).toBe(true);
+    expect(isValidMxcUri('mxc://example.org/media/extra')).toBe(false);
+    expect(isValidMxcUri('mxc://example.org:123456/media')).toBe(false);
+    expect(isValidMxcUri('mxc://example.org/not%20valid')).toBe(false);
+  });
+
+  it('uses unambiguous ids for room and state-key pairs containing colons', () => {
+    const { client, account, roomEvents, rebuildRoom } = setup();
+    account.set(
+      IMAGE_PACK_ROOMS_EVENT_TYPE,
+      event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
+        rooms: {
+          '!pack:hs': { '8448:fun': {} },
+          '!pack:hs:8448': { fun: {} },
+        },
+      }),
+    );
+    roomEvents.set('!pack:hs', [
+      event(IMAGE_PACK_EVENT_TYPE, '8448:fun', pack('First'), '!pack:hs'),
+    ]);
+    roomEvents.set('!pack:hs:8448', [
+      event(IMAGE_PACK_EVENT_TYPE, 'fun', pack('Second'), '!pack:hs:8448'),
+    ]);
+    rebuildRoom('!pack:hs');
+    rebuildRoom('!pack:hs:8448');
+
+    const ids = readImagePacks(client as never, '!current:hs').map(
+      (item) => item.id,
+    );
+
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2);
+  });
+
   it('rebuilds for relevant live events and detaches cleanly', async () => {
     const { service, client, roomEvents, rebuildRoom } = setup();
     roomEvents.set('!current:hs', []);
@@ -244,5 +369,13 @@ describe('ImagePackService', () => {
     service.disconnect('!current:hs');
     expect(packs()).toEqual([]);
     expect(client.off).toHaveBeenCalledWith('RoomState.events', handler);
+    expect(client.on).toHaveBeenCalledWith(
+      'Room.myMembership',
+      expect.any(Function),
+    );
+    expect(client.off).toHaveBeenCalledWith(
+      'Room.myMembership',
+      expect.any(Function),
+    );
   });
 });

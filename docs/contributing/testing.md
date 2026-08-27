@@ -370,6 +370,14 @@ assertions. External FCM notification delivery, encrypted-key export, and the on
 compositor-panning assertion remain explicit Android skips: none is replaced with an
 in-page assertion that bypasses the named native behavior.
 
+The MSC2545 journey is a useful example of why this sharing matters. One platform-neutral helper
+creates a pack room on disposable Synapse, discovers and installs one state key through Settings,
+sends its sticker, and removes the account reference. Chromium proves the browser flow; collection
+of its Web wrapper in the installed Android WebView additionally proves the production Capacitor
+build, touch-sized install control and native renderer boundary. Electron invokes the same helper
+through a custom-scheme navigation adapter. Its exact assertions and focused commands live in
+[`e2e/README.md`](../../e2e/README.md#msc2545-image-pack-management).
+
 The outer runner owns Synapse, one exact emulator serial, the APK, the Playwright Android
 driver packages, and the `tcp:8448` reverse mapping. Device validation rejects a target
 that already contains Playwright drivers, so their later removal is unambiguously owned by
@@ -519,12 +527,13 @@ outright and never reaches the branch under test.
 
 `pnpm electron:e2e` is not an Nx target. It runs `pnpm run electron:build` and then
 `playwright test -c e2e/playwright.electron.config.mts`. The build chain begins with
-`pnpm build`, the **production** Angular build, which makes the seven tests in
-`e2e/electron/app.electron.spec.mts` the only browser-driven gate on production
-output — and is exactly why the desktop dark-theme regression test lives here.
+`pnpm build`, the **production** Angular build. The Electron specs are the browser-driven gate on
+that output, which is exactly why the desktop dark-theme regression and image-pack manager journey
+live here.
 
-The config sets `fullyParallel: false`, `workers: 1` and a 60s timeout, and has no
-`webServer` or `baseURL`: each spec launches the process itself.
+The config sets `fullyParallel: false`, `workers: 1` and a 120s timeout, and has no
+`webServer` or `baseURL`: each spec launches the process itself. Global setup and teardown own the
+same disposable Synapse stack as the Web suite, with the same local skip and strict CI behavior.
 [`launch.mts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/e2e/electron/support/launch.mts)
 resolves the Electron executable through `createRequire` against
 `electron/package.json`, since the package lives in `electron/` and not at the root,
@@ -545,6 +554,10 @@ What the specs establish:
 - The safeStorage round trip, or its clean refusal, with the secret never landing in
   `localStorage`.
 - `.dark` on `<html>` actually beats `:root` in the real renderer.
+- The full image-pack manager journey works over `trinity://app`: discovery, install,
+  enable/disable, scope, sticker send, uninstall, final account-data readback, and source-state
+  preservation. Same-account second-client propagation remains in the Web/Android wrapper because
+  Electron enforces a single-instance lock.
 
 The `--no-sandbox` argument in `launch.mts` is the Chromium _zygote_ flag needed to
 run as root or in a container. It is explicitly not the app's

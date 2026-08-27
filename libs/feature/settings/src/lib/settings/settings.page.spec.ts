@@ -23,6 +23,7 @@ const SECTIONS = [
   'server',
   'privacy',
   'gifs',
+  'stickers',
   'shortcuts',
   'experimental',
   'advanced',

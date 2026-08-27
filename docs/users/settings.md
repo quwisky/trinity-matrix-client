@@ -1,6 +1,6 @@
 # Settings
 
-Settings is a two-pane screen: a list of thirteen sections beside the section you have open.
+Settings is a two-pane screen: a list of fourteen sections beside the section you have open.
 Below 768 pixels wide the list is the page, and opening a section swaps to it with a back
 button.
 
@@ -18,9 +18,9 @@ button.
     physically meaningless on another device.
 
     The sections that *are* account-scoped, and therefore do follow you, are Profile,
-    Presence, Devices, Account, Security and Notifications.
+    Presence, Devices, Account, Security, Notifications and Stickers & emoji.
 
-## The thirteen sections
+## The fourteen sections
 
 | Section            | What it holds                                                          |
 | ------------------ | ---------------------------------------------------------------------- |
@@ -34,6 +34,7 @@ button.
 | Server             | What each account's homeserver is running, and where it is reached.    |
 | Privacy            | Read receipts and link previews.                                       |
 | GIFs               | Which GIF provider to use, and its API key.                            |
+| Stickers & emoji   | Account-wide MSC2545 image-pack installation and removal.              |
 | Keyboard shortcuts | Every shortcut, its binding, and rebinding.                            |
 | Experimental       | Opt-in feature flags.                                                  |
 | Advanced           | Every setting on this device as one document: copy, edit, import.      |
@@ -174,6 +175,54 @@ like a working setup that failed every search. Paste a KLIPY key to switch GIF s
 
 The key is third-party configuration rather than a credential of yours, so it is stored
 alongside the other preferences, on this device.
+
+## Stickers & emoji
+
+This section manages image packs for the **currently active Matrix account**. Installed pack
+references are Matrix account data, so they follow that account to another device; they are
+not a preference belonging only to this installation.
+
+To install one:
+
+1. Enter the source room's Matrix ID or alias.
+2. Choose **Find packs**. Entering the address alone does nothing. If the account is not
+   already a member, this action joins the room with normal, participant-visible Matrix
+   membership.
+3. Choose **Install** beside the intended pack. A room may publish several state keys. Trinity
+   lists usable packs and empty packs; an empty pack is described but cannot be installed.
+
+A successful room join is not undone when the room turns out to contain no usable pack.
+Removing a pack later also does not leave the source room. It removes only the account
+reference: it does not edit the published pack, remove room state, or delete homeserver media.
+
+Installed rows remain visible when their source becomes inaccessible, is left, is deleted, or
+contains missing or malformed pack state. That is intentional: a broken reference must still
+have a **Remove** action. The status line distinguishes available, empty, unavailable, missing,
+and malformed sources.
+
+The **Stickers** and **Custom emoji** badges show capabilities declared by the publisher. For an
+installed pack, the checkboxes below them choose which supported usages Trinity enables. Those
+choices sync with the account between Trinity devices. They use a namespaced extension inside the
+stable account reference because MSC2545 reserves that object for extensions but does not define a
+standard per-user usage field; other Matrix clients may ignore the preference. Clearing every
+checkbox disables its account-wide use in Trinity without uninstalling it. If you are currently in
+the source room, that room's published pack can still appear there as **This room**. Trinity
+currently sends sticker-capable entries and displays custom emoji received in messages; composing
+a new message with a pack's custom emoji is not yet supported.
+
+Trinity writes only stable `m.image_pack.rooms` account data. It can read the older
+`im.ponies.emote_rooms` form when stable data does not exist, and migrates valid legacy
+references on the first change. If another device changes the same account data during a write,
+Trinity retries a bounded server read, merge and complete-document verification when an install,
+removal, or usage change does not stick. Matrix provides no atomic compare-and-swap here: a
+simultaneous change that lands between Trinity's read and write can still be overwritten without
+detection, and a repeated conflict is shown with an instruction to try again.
+
+Install only from a room whose publishers you trust. Installing saves a reference, not a copy:
+people with permission to change that room's pack state can change its names and images later.
+Pack media is ordinary homeserver media rather than an encrypted attachment, so the relevant
+homeservers can see it even when the sticker event itself is sent in an encrypted room. See
+[Messaging](messaging.md#sending-more-than-text) for picker and sending behavior.
 
 ## Keyboard shortcuts
 

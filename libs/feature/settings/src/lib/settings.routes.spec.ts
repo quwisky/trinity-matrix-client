@@ -4,6 +4,7 @@ import { AdvancedSettingsComponent } from './advanced/advanced-settings.componen
 import { ServerSectionComponent } from './server/server-section.component';
 import { SettingsPage } from './settings/settings.page';
 import { settingsRoutes } from './settings.routes';
+import { ImagePacksSectionComponent } from './image-packs/image-packs-section.component';
 
 /**
  * The section routes, read straight off the table. This is deliberately a structural
@@ -39,6 +40,10 @@ describe('settings routes', () => {
   // this child the link lands on an empty outlet with every other spec still green.
   it('resolves server to the server settings section', () => {
     expect(componentFor('server')).toBe(ServerSectionComponent);
+  });
+
+  it('resolves stickers to the image-pack manager', () => {
+    expect(componentFor('stickers')).toBe(ImagePacksSectionComponent);
   });
 
   it('gives every section a path and a component', () => {

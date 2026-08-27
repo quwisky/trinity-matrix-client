@@ -14,6 +14,7 @@ import { NotificationsSectionComponent } from './notifications/notifications-sec
 import { SecuritySectionComponent } from './security/security-section.component';
 import { ShortcutsSectionComponent } from './shortcuts/shortcuts-section.component';
 import { ServerSectionComponent } from './server/server-section.component';
+import { ImagePacksSectionComponent } from './image-packs/image-packs-section.component';
 
 /**
  * Settings routes: the {@link SettingsPage} shell hosts a submenu + a routed detail
@@ -34,6 +35,7 @@ export const settingsRoutes: Routes = [
       { path: 'server', component: ServerSectionComponent },
       { path: 'privacy', component: PrivacySettingsComponent },
       { path: 'gifs', component: GifsSectionComponent },
+      { path: 'stickers', component: ImagePacksSectionComponent },
       { path: 'shortcuts', component: ShortcutsSectionComponent },
       { path: 'experimental', component: ExperimentalSettingsComponent },
       {

@@ -358,8 +358,9 @@ only, by choice. See [CI and releases](../contributing/ci-and-releases.md).
 
 [e2e/playwright.electron.config.mts](https://github.com/quwisky/trinity-matrix-client/blob/develop/e2e/playwright.electron.config.mts)
 launches the real built application through Playwright's `_electron` helper, one worker, no
-parallelism. It is the only gate in the repository that exercises the custom scheme, WASM
-stream instantiation, the sandbox posture and `safeStorage`.
+parallelism. Its global setup owns disposable Synapse for authenticated journeys. It is the only
+gate in the repository that exercises the custom scheme, WASM stream instantiation, the sandbox
+posture and `safeStorage`, and it runs the image-pack manager journey against the built shell.
 
 ```bash
 pnpm electron:e2e

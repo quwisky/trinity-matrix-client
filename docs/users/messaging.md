@@ -97,13 +97,20 @@ device.
 Attachments, GIFs, polls, location and voice all live behind the `+` button beside the
 message box.
 
-**Stickers.** When MSC2545 image packs are available, **Sticker** appears in the `+` menu.
-The searchable picker combines packs selected in your `m.image_pack.rooms` account data
-with packs published in the room's `m.room.image_pack` state; legacy experimental event
-names are read as a compatibility fallback. Selecting one sends a standalone `m.sticker`
-event. Pack images are homeserver media and are not attachment-encrypted, even when the
-room is encrypted; the sticker event that references them is encrypted normally. Trinity
-warns you about that distinction before sending a sticker in an encrypted room.
+**Stickers.** Install MSC2545 packs under **Settings → Stickers & emoji**, or choose
+**Manage** in the sticker picker. Manage carries the current room into Settings as a suggestion,
+but does not search or join until you choose **Find packs**. The [Settings guide](settings.md#stickers--emoji)
+covers joining, installation, removal, broken references and account scope in detail.
+
+When either an account-installed pack or the current room publishes a sticker-capable pack,
+**Sticker** appears in the `+` menu. Account packs are available in every room for that account;
+current-room packs are available only in the room that publishes them and need not be installed.
+The searchable picker removes duplicates when stable and legacy data name the same source.
+
+Selecting an image sends a standalone `m.sticker` event. Pack media is ordinary homeserver
+media, not an end-to-end encrypted attachment: the homeservers involved can see it even when the
+room is encrypted. The sticker event that references the media is encrypted normally, and
+Trinity warns about the distinction whenever you send a sticker in an encrypted room.
 
 **Files and images.** Attach a file, or paste an image straight into the message box. A
 picked or pasted file is _staged_ rather than sent immediately, so you can type a caption

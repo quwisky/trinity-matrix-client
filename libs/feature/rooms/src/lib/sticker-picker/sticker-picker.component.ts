@@ -24,6 +24,7 @@ export class StickerPickerComponent {
   readonly packs = input<readonly ImagePack[]>([]);
   readonly selected = output<ImagePackImage>();
   readonly dismiss = output<void>();
+  readonly manage = output<void>();
   protected readonly query = signal('');
   private readonly search = viewChild<ElementRef<HTMLInputElement>>('search');
 

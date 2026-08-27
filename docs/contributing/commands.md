@@ -147,6 +147,10 @@ Two constraints on packaging:
 xvfb-run -a pnpm electron:e2e
 ```
 
+The suite starts and stops the disposable Synapse stack for authenticated journeys. It skips those
+journeys when Docker is unavailable locally and fails instead under CI, matching the Web suite.
+To focus the image-pack manager journey, append `image-pack-management.electron.spec.mts`.
+
 ## Native platforms
 
 Each of these runs `pnpm build` and then `cap sync` before it does anything else,
@@ -202,6 +206,10 @@ canonical app journey in the actual WebView plus native-only coverage, and leave
 artifacts under `dist/.playwright/android/`. Journeys that require external FCM delivery, a
 not-yet-implemented native file export, or unavailable compositor-panning instrumentation
 are reported as explicit platform skips. Docker is mandatory for authenticated journeys.
+
+Focused single-spec Web/Android commands are documented beside each owned scenario in
+[`e2e/README.md`](../../e2e/README.md); the MSC2545 pair is under
+[image-pack management](../../e2e/README.md#msc2545-image-pack-management).
 
 ### Standalone protocol harnesses
 

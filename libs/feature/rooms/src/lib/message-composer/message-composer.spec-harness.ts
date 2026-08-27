@@ -22,6 +22,7 @@ import {
 } from '@trinity/data-access/gif';
 import { TrnToastService } from '@trinity/components/overlay';
 import { MessageComposerComponent } from './message-composer.component';
+import { Router } from '@angular/router';
 
 // The draft store persists to Capacitor Preferences (debounced); stub it so the
 // composer's real DraftStoreService is a no-op on the storage side.
@@ -88,7 +89,11 @@ export function renderComposer(
 ) {
   return render(MessageComposerComponent, {
     inputs,
-    providers: [MockProvider(TrnToastService), ...providers],
+    providers: [
+      MockProvider(TrnToastService),
+      MockProvider(Router, { navigate: vi.fn().mockResolvedValue(true) }),
+      ...providers,
+    ],
   });
 }
 
