@@ -198,7 +198,6 @@
   // The stored value is untouched, so widening the window restores it.
   flex: 0 1 var(--shell-right-panel-w, 480px);
   min-width: 0;
-  box-shadow: inset 1px 0 0 var(--trinity-border-subtle);
 }
 
 // Below the `members` breakpoint the static column would crowd the chat, so present the
