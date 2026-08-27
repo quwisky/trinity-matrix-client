@@ -350,6 +350,19 @@ describe('mislabeled standalone Markdown links', () => {
     expect(rendered.html).toBe(formattedBody);
   });
 
+  it('preserves bare-URL previews for valid custom HTML', () => {
+    const body = '[note](not-markdown) see https://example.com';
+    const view = project(
+      content({
+        body,
+        formatted_body:
+          '<p>[note](not-markdown) see <a href="https://example.com">https://example.com</a></p>',
+      }),
+    );
+
+    expect(view.previewUrl).toBe('https://example.com');
+  });
+
   it('does not reinterpret mixed HTML and Markdown', () => {
     const rendered = renderTextBody(
       content({

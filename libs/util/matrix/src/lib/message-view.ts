@@ -1878,7 +1878,9 @@ function previewUrlForText(
     content['format'] === 'org.matrix.custom.html' &&
     typeof content['formatted_body'] === 'string'
   ) {
-    const markdown = parseStandaloneMarkdownLink(text);
+    const markdown = parseStandaloneMarkdownLink(
+      stripReplyFallbackHtml(content['formatted_body']),
+    );
     if (markdown.kind === 'link') {
       return markdown.href;
     }
