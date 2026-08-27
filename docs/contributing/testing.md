@@ -647,6 +647,28 @@ and two-dimensional phone target size on both screens. See
 [`e2e/design-prototypes/README.md`](../../e2e/design-prototypes/README.md) for the profile matrix,
 state coverage and the human approval checklist.
 
+## Current-interface redesign archive
+
+The Phase 0 “before” archive is separate from the proposed static scenes. It drives the real built
+application against disposable Synapse at desktop-wide, desktop-compact and full Pixel 5 profiles:
+
+```bash
+pnpm e2e:design:current
+pnpm e2e:design:current:update
+```
+
+The first command performs semantic/layout checks and writes ephemeral captures under `dist/`. The
+second runs the same journey and only then atomically promotes a complete Linux set into
+`e2e/design-baselines/archive/`. Those PNGs are historical comparison material, not pixel gates;
+later redesign phases are expected to look different. The provenance manifest records the exact
+capture environment because the current application deliberately uses its platform system font.
+
+This target is manual while its additional app build, Synapse lifecycle and three UI logins are
+measured. It is non-cacheable and non-parallel because it owns the same fixed-port stack as the
+canonical web, Android and protocol harnesses. See
+[`e2e/design-baselines/README.md`](../../e2e/design-baselines/README.md) for isolation, normalization,
+security and archive rules.
+
 ## The styling blind spot, and what closes it
 
 Three separate blocking bugs in the redesign phases were invisible to a completely green

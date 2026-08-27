@@ -38,6 +38,16 @@
         "cwd": "{projectRoot}"
       }
     },
+    "design-current-e2e": {
+      "//": "Manual Phase 0 evidence journey against the real app and a fixed-port Synapse stack. Non-parallel because it owns that external stack; PNG promotion is a separate atomic command.",
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node design-baselines/prepare.mjs && playwright test -c playwright.current-baselines.config.mts",
+        "cwd": "{projectRoot}"
+      }
+    },
     "styling-e2e": {
       "//": "A separate browser lifecycle from the Synapse-backed app journeys. It is intentionally uncached because its webServer builds application/theme files outside the e2e project input graph.",
       "cache": false,

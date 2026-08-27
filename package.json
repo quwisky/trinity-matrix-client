@@ -31,6 +31,8 @@
     "e2e:emoji": "nx build trinity --configuration=development && node e2e/runners/emoji-run.mjs",
     "e2e:android": "nx run trinity-e2e:android-e2e",
     "e2e:design": "nx run trinity-e2e:design-e2e",
+    "e2e:design:current": "nx run trinity-e2e:design-current-e2e",
+    "e2e:design:current:update": "pnpm e2e:design:current && node e2e/design-baselines/promote.mjs",
     "electron:install": "pnpm -C electron install && pnpm -C electron run ensure:binary",
     "electron:build": "pnpm run build && pnpm run electron:install && pnpm -C electron run build && pnpm run electron:sign:dev",
     "electron:start": "pnpm run electron:build && pnpm -C electron run start",
