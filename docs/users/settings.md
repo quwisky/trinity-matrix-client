@@ -208,8 +208,10 @@ messages; composing a new message with a pack's custom emoji is not yet supporte
 Trinity writes only stable `m.image_pack.rooms` account data. It can read the older
 `im.ponies.emote_rooms` form when stable data does not exist, and migrates valid legacy
 references on the first change. If another device changes the same account data during a write,
-Trinity retries a bounded server read, merge and verification. Matrix provides no atomic
-compare-and-swap here, so a repeated conflict is shown and the action asks you to try again.
+Trinity retries a bounded server read, merge and verification when the requested install or
+removal does not stick. Matrix provides no atomic compare-and-swap here: a simultaneous change to
+a different pack can still be overwritten without detection, and a repeated conflict on the
+requested pack is shown with an instruction to try again.
 
 Install only from a room whose publishers you trust. Installing saves a reference, not a copy:
 people with permission to change that room's pack state can change its names and images later.

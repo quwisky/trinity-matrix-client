@@ -110,7 +110,7 @@ The searchable picker removes duplicates when stable and legacy data name the sa
 Selecting an image sends a standalone `m.sticker` event. Pack media is ordinary homeserver
 media, not an end-to-end encrypted attachment: the homeservers involved can see it even when the
 room is encrypted. The sticker event that references the media is encrypted normally, and
-Trinity warns about the distinction before the first send in an encrypted room.
+Trinity warns about the distinction whenever you send a sticker in an encrypted room.
 
 **Files and images.** Attach a file, or paste an image straight into the message box. A
 picked or pasted file is _staged_ rather than sent immediately, so you can type a caption

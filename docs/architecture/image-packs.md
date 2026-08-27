@@ -53,11 +53,12 @@ never start discovery or membership by itself. Choosing **Find packs** is the ex
 may join the room. A join is ordinary participant-visible Matrix membership and is not rolled back
 when discovery finds no usable pack.
 
-`ImagePackSelectionStore` bridges the gap between a confirmed HTTP write and the SDK sync echo. It
-holds a short-lived, server-confirmed stable account-data snapshot keyed by `MatrixClient` so the
-picker and manager update immediately. It is not optimistic state: the store is populated only
-after readback confirms the requested reference state. The stable account-data event clears it,
-and an unconsumed snapshot expires after 30 seconds.
+`ImagePackSelectionStore` holds a short-lived direct-readback snapshot keyed by `MatrixClient`.
+`setAccountData()` waits for its sync echo before resolving, and the management service then
+performs direct readback and stores that server-confirmed document. The snapshot overrides an SDK
+account-data cache that may still lag the direct read. It is not optimistic state: it is populated
+only after readback confirms the requested reference state, then cleared by a subsequent stable
+account-data event or lazily expired after 30 seconds.
 
 All three are active-client projections. Switching accounts rebuilds them from the new
 `MatrixClient`; installed references and source-room membership therefore never leak between
@@ -72,16 +73,19 @@ authoritative validators.
 
 Pack parsing is deliberately bounded before UI rendering:
 
-| Bound                     | Limit |
-| ------------------------- | ----: |
-| Account/source packs      |   100 |
-| Images read from one pack |   500 |
-| Images across one picker  | 1,000 |
-| Display text              |   256 |
+| Bound                                                 | Limit |
+| ----------------------------------------------------- | ----: |
+| Account/source packs retained                         |   100 |
+| Usable images retained from one pack                  |   500 |
+| Usable images retained across one picker              | 1,000 |
+| Pack display name, attribution and shortcode retained |   256 |
 
-Only `mxc://` image URLs with a server and media ID are accepted. Names, attribution and image info
-remain text/data; the UI never renders publisher metadata as HTML. Media resolution continues
-through the media data-access path rather than placing arbitrary remote HTTP URLs in the DOM.
+Only a primary image `url` using `mxc://` with a server and media ID can become a rendered picker
+entry. Names, attribution and image info remain text/data; the UI never renders publisher metadata
+as HTML. Media resolution continues through the media data-access path rather than placing
+arbitrary remote HTTP URLs in the DOM. The publisher's complete `info` object is nevertheless
+preserved and forwarded in the outgoing `m.sticker` event, including nested URL-shaped fields;
+Trinity does not render those nested fields, but recipient clients decide how to consume them.
 
 ## Account-data mutation is best effort
 
@@ -100,9 +104,10 @@ updates but cannot make them impossible:
    state, Trinity repeats the read, merge, write and verification, for at most three attempts.
 6. Repeated failure becomes a visible conflict error rather than a false success.
 
-This protects against stale local sync state and catches many overlapping writes. It is not an
-atomic guarantee: another client can still write after Trinity's successful verification and win.
-Do not describe the implementation as conflict-free.
+This protects against stale local sync state and verifies only that the requested leaf has the
+desired presence. It is not an atomic guarantee: a concurrent change to a different reference can
+be overwritten without detection, and another client can still write after Trinity's successful
+verification and win. Do not describe the implementation as conflict-free.
 
 Uninstall removes only the exact account reference. It never leaves the room, deletes media, or
 edits pack state. Installing likewise writes no room pack state; the only possible room-state
