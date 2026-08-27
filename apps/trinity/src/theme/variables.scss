@@ -178,8 +178,8 @@
   --trinity-code-scale: 1;
 
   // --- Mode- & palette-invariant Helm bindings (define once) --------------------
-  // Card/popover text tracks the base foreground; primary tracks the Trinity accent; the
-  // focus ring tracks the measured focus role; and the input outline tracks the border.
+  // Card/popover text tracks the base foreground; primary tracks the Trinity accent; Helm's
+  // translucent focus halo tracks its own high-contrast source; and input tracks the border.
   // Palettes reset the *source* tokens and these follow for free. (The
   // secondary/accent surface text is a touch lighter than --foreground in light, so it
   // is set per mode below rather than bound here.)
@@ -189,7 +189,7 @@
   --accent-foreground: hsl(240deg 5.9% 10%);
   --primary: var(--trinity-accent);
   --primary-foreground: hsl(0deg 0% 100%);
-  --ring: var(--trinity-focus-ring);
+  --ring: var(--trinity-focus-ring-halo);
   --input: var(--border);
 
   // Warning is identical across modes; destructive/success flip in dark (see below).
@@ -335,6 +335,7 @@
   --trinity-status-neutral-foreground: var(--trinity-text);
   --trinity-focus-ring: var(--trinity-link);
   --trinity-focus-ring-on-attention: var(--trinity-state-attention-foreground);
+  --trinity-focus-ring-halo: #000;
   --trinity-focus-ring-width: 2px;
   --trinity-focus-ring-offset: 2px;
   --trinity-disabled-opacity: 0.48;
@@ -367,6 +368,8 @@
 // Default palette — dark
 // -----------------------------------------------------------------------------
 :root.dark {
+  --trinity-focus-ring-halo: #fff;
+
   // Syntax highlighting. Measured against the dark rails — #1e1f22 (default) and
   // #1c1826 (amethyst) — where One Dark's published values clear 4.5:1 unchanged;
   // worst case 5.16:1. `-plain`/`-punctuation` are var() references and follow the

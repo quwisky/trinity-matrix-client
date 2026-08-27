@@ -17,9 +17,9 @@ button:focus-visible,
 a:focus-visible,
 [role='button']:focus-visible,
 [role='link']:focus-visible,
-input:not([trnInput]):focus-visible,
-select:not([trnInput]):focus-visible,
-textarea:not([trnInput], [trnTextarea]):focus-visible,
+input:not([data-slot='input']):focus-visible,
+select:not([data-slot='input']):focus-visible,
+textarea:not([data-slot='input'], [data-slot='textarea']):focus-visible,
 [tabindex]:focus-visible {
   outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
   outline-offset: var(--trinity-focus-ring-offset);
@@ -130,7 +130,7 @@ router-outlet + * {
 @media (pointer: coarse) {
   button[hlmBtn][data-slot='button'],
   a[hlmBtn][data-slot='button'] {
-    min-width: 44px;
-    min-height: 44px;
+    min-width: var(--trinity-interaction-target-min-size);
+    min-height: var(--trinity-interaction-target-min-size);
   }
 }

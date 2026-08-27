@@ -67,6 +67,7 @@ const templates = ['libs/**/*.html', 'apps/**/*.html']
   .sort();
 
 const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
+const globalStyles = read('apps/trinity/src/global.scss');
 
 /**
  * A stylesheet with its comments removed.
@@ -85,6 +86,20 @@ const code = (file) =>
 describe('styling tokens', () => {
   it('reads the stylesheets at all, so an empty sweep cannot pass as a clean one', () => {
     expect(files.length).toBeGreaterThan(50);
+  });
+
+  it('leaves focus indicators to public and Helm controls that already own one', () => {
+    // These selectors live outside a cascade layer, while Helm's outline reset and ring live
+    // in Tailwind's utilities layer. Forgetting either wrapper here paints both indicators.
+    expect(globalStyles).toContain(
+      "input:not([data-slot='input']):focus-visible",
+    );
+    expect(globalStyles).toContain(
+      "select:not([data-slot='input']):focus-visible",
+    );
+    expect(globalStyles).toContain(
+      "textarea:not([data-slot='input'], [data-slot='textarea']):focus-visible",
+    );
   });
 
   it('uses the z-index scale for every app-level layer', () => {

@@ -141,6 +141,41 @@ test.describe('semantic design foundations', () => {
         expect(
           contrastRatio(attentionRing, attentionSurface),
         ).toBeGreaterThanOrEqual(3);
+
+        await openStory(page, 'components-input--default', palette, mode);
+        const field = page.getByRole('textbox', { name: 'Room name' });
+        await field.evaluate((element) => {
+          element.setAttribute('data-testid', 'focus-field');
+          const probe = document.createElement('span');
+          probe.setAttribute('data-testid', 'focus-halo-probe');
+          // Match Helm's `ring-ring/50` in the browser's own colour space, composited over
+          // the Storybook canvas instead of comparing the opaque source token.
+          probe.style.background =
+            'color-mix(in oklab, var(--ring) 50%, var(--background))';
+          document.body.append(probe);
+        });
+        await field.focus();
+        await expect(field).toBeFocused();
+        expect(
+          await field.evaluate(
+            (element) => getComputedStyle(element).outlineStyle,
+          ),
+        ).toBe('none');
+        expect(
+          await field.evaluate(
+            (element) => getComputedStyle(element).boxShadow,
+          ),
+        ).not.toBe('none');
+        const halo = await computedColour(
+          page.getByTestId('focus-halo-probe'),
+          'background-color',
+        );
+        const fieldSurface = await resolveTokenSrgb(
+          page,
+          'focus-field',
+          '--background',
+        );
+        expect(contrastRatio(halo, fieldSurface)).toBeGreaterThanOrEqual(3);
       });
     }
   }
@@ -209,6 +244,7 @@ test.describe('semantic design foundations', () => {
 
   for (const [story, label] of [
     ['components-input--default', 'Room name'],
+    ['components-input--direct-helm-prompt', 'Prompt response'],
     ['components-textarea--default', 'Room topic'],
   ] as const) {
     test(`${label} wrapper renders one owned focus indicator`, async ({
