@@ -1,3 +1,19 @@
+@font-face {
+  font-family: 'Trinity Prototype Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('/__design-fonts__/nunito-sans-regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Trinity Prototype Sans';
+  font-style: normal;
+  font-weight: 700 800;
+  font-display: block;
+  src: url('/__design-fonts__/nunito-sans-bold.woff2') format('woff2');
+}
+
 * {
   box-sizing: border-box;
 }
@@ -14,7 +30,7 @@ body {
   overflow: hidden;
   background: var(--trinity-rail);
   color: var(--trinity-text);
-  font-family: var(--font-sans, system-ui, sans-serif);
+  font-family: 'Trinity Prototype Sans', sans-serif;
 }
 
 button,
@@ -359,11 +375,17 @@ p {
   display: grid;
   min-width: 0;
   min-height: 0;
+  grid-template-areas:
+    'header'
+    'banner'
+    'timeline'
+    'composer';
   grid-template-rows: auto auto minmax(0, 1fr) auto;
   background: var(--trinity-chat);
 }
 
 .conversation-header {
+  grid-area: header;
   padding: 0 var(--trinity-space-4);
   background: var(--trinity-surface);
 }
@@ -419,6 +441,7 @@ p {
 
 .error-banner {
   display: none;
+  grid-area: banner;
   align-items: center;
   justify-content: space-between;
   gap: var(--trinity-space-4);
@@ -442,6 +465,7 @@ p {
 }
 
 .timeline {
+  grid-area: timeline;
   min-height: 0;
   padding: var(--trinity-space-5) var(--trinity-space-5) var(--trinity-space-3);
   overflow: hidden auto;
@@ -630,6 +654,7 @@ body[data-scene='error'] .state-panel[data-state-only='error'] {
 
 .composer {
   display: grid;
+  grid-area: composer;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: end;
   gap: var(--trinity-space-2);
@@ -970,6 +995,7 @@ body[data-scene='error'] .state-panel[data-state-only='error'] {
   .prototype input,
   .prototype select,
   .prototype textarea {
+    min-width: 2.75rem;
     min-height: 2.75rem;
   }
 
@@ -985,6 +1011,7 @@ body[data-scene='error'] .state-panel[data-state-only='error'] {
   }
 
   .workspace-surface {
+    height: 100dvh;
     min-height: 100dvh;
     grid-template-columns: minmax(0, 1fr);
     border: 0;
@@ -992,7 +1019,9 @@ body[data-scene='error'] .state-panel[data-state-only='error'] {
   }
 
   .conversation {
+    height: 100dvh;
     min-height: 100dvh;
+    overflow: hidden;
   }
 
   .conversation-header {

@@ -28,14 +28,14 @@ The source of truth is
 desktop user agent. Phone profiles retain Playwright's full Pixel 5 device descriptor, including
 its mobile user agent, touch support, device scale and `isMobile` behavior.
 
-| Profile          | Size     | Purpose                         |
-| ---------------- | -------- | ------------------------------- |
-| desktop-wide     | 1440x900 | primary desktop design evidence |
-| desktop-standard | 1280x720 | common desktop window           |
-| desktop-tablet   | 1024x768 | narrow desktop window           |
-| desktop-compact  | 900x700  | compact supported shell         |
-| phone-pixel-5    | 393x851  | primary phone design evidence   |
-| phone-small      | 320x568  | smallest supported phone width  |
+| Profile          | CSS viewport | Device screen | Purpose                         |
+| ---------------- | ------------ | ------------- | ------------------------------- |
+| desktop-wide     | 1440x900     | 1440x900      | primary desktop design evidence |
+| desktop-standard | 1280x720     | 1280x720      | common desktop window           |
+| desktop-tablet   | 1024x768     | 1024x768      | narrow desktop window           |
+| desktop-compact  | 900x700      | 900x700       | compact supported shell         |
+| phone-pixel-5    | 393x727      | 393x851       | primary phone design evidence   |
+| phone-small      | 320x568      | 320x568       | smallest supported phone width  |
 
 ## Run and update
 
@@ -44,15 +44,17 @@ pnpm e2e:design
 pnpm exec nx run trinity-e2e:design-e2e -- --update-snapshots
 ```
 
-Visual baselines are generated on Linux Chromium, which is the repository authority for pixel
-comparison. The harness uses fixed local content and times, waits for fonts, disables animation
-and carets, and requests reduced motion. Other platforms may inspect the prototypes, but should
-not rewrite the committed Linux snapshots because system-font rasterization differs.
+Visual baselines are generated on Playwright's managed Linux Chromium, which is the repository
+authority for pixel comparison. The scenes load the locked Storybook package's bundled Nunito Sans
+files rather than a system font. The harness also uses fixed local content and times, waits for the
+font, disables animation and carets, and requests reduced motion. Other platforms may inspect the
+prototypes, but should not rewrite the committed Linux snapshots.
 
 The pixel comparisons are supported by semantic checks for landmarks, selected navigation,
-accessible action names, status and alert semantics, label associations, text/action contrast,
-horizontal overflow, and 44px phone targets. A screenshot is evidence of appearance, not a
-replacement for those assertions.
+accessible action names, status and alert semantics, label associations, representative
+text/control contrast across both screens and every theme, horizontal overflow, composer reachability
+and two-dimensional 44px phone targets on both screens. A screenshot is evidence of appearance,
+not a replacement for those assertions.
 
 ## Approval gate
 

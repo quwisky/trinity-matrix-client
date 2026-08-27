@@ -16,6 +16,11 @@ type PrototypeScreen = (typeof SCREENS)[number];
 type PrototypeScene = 'busy' | 'empty' | 'error';
 type PrototypeTheme = (typeof THEMES)[number];
 
+const CONTRAST_TARGETS = {
+  workspace: ['workspace-title', 'primary-action'],
+  settings: ['settings-title', 'settings-palette'],
+} as const satisfies Record<PrototypeScreen, readonly string[]>;
+
 async function openPrototype(
   page: Page,
   screen: PrototypeScreen,
@@ -38,6 +43,12 @@ async function openPrototype(
   await page.evaluate(async () => {
     await document.fonts.ready;
   });
+  expect(
+    await page.evaluate(() =>
+      document.fonts.check('16px "Trinity Prototype Sans"'),
+    ),
+    'bundled prototype font loaded',
+  ).toBe(true);
   await expect(page.locator(`[data-prototype="${screen}"]`)).toBeVisible();
 }
 
@@ -55,6 +66,21 @@ test.describe('modern UI prototype structure', () => {
           () => document.documentElement.scrollWidth - innerWidth,
         ),
       ).toBeLessThanOrEqual(1);
+
+      if (screen === 'workspace') {
+        const composer = await page.locator('.composer').boundingBox();
+        const viewport = page.viewportSize();
+        expect(composer, 'composer has a layout box').not.toBeNull();
+        expect(viewport, 'project has a viewport').not.toBeNull();
+        expect(
+          composer!.y,
+          'composer starts inside viewport',
+        ).toBeGreaterThanOrEqual(0);
+        expect(
+          composer!.y + composer!.height,
+          'composer ends inside viewport',
+        ).toBeLessThanOrEqual(viewport!.height + 1);
+      }
     });
   }
 
@@ -137,37 +163,67 @@ test.describe('modern UI prototype structure', () => {
     await expect(
       page.getByRole('switch', { name: /Show message previews/ }),
     ).toHaveAttribute('aria-checked', 'true');
+
+    for (const theme of THEMES) {
+      await openPrototype(page, 'settings', theme);
+      await expect(
+        page.getByRole('button', {
+          name: theme === 'light' ? 'Light' : 'Dark',
+        }),
+      ).toHaveAttribute('aria-pressed', 'true');
+      await expect(
+        page.getByRole('button', { name: 'System' }),
+      ).toHaveAttribute('aria-pressed', 'false');
+      await expect(page.getByRole('combobox', { name: 'Palette' })).toHaveValue(
+        theme === 'onyx' ? 'Onyx' : 'Trinity',
+      );
+    }
   });
 
-  test('phone profiles preserve 44px interactive targets', async ({
+  test('phone profiles preserve 44px interactive targets on both screens', async ({
     page,
   }, testInfo) => {
     test.skip(
       !testInfo.project.name.startsWith('phone-'),
       'phone profiles only',
     );
-    await openPrototype(page, 'workspace');
+    for (const screen of SCREENS) {
+      await openPrototype(page, screen);
 
-    const controls = page.locator(
-      'button:visible, a:visible, input:visible, textarea:visible',
-    );
-    const count = await controls.count();
-    for (let index = 0; index < count; index += 1) {
-      const box = await controls.nth(index).boundingBox();
-      expect(box, `control ${index} has a box`).not.toBeNull();
-      expect(box!.height, `control ${index} height`).toBeGreaterThanOrEqual(44);
+      const controls = page.locator(
+        'button:visible, a:visible, input:visible, select:visible, textarea:visible',
+      );
+      const count = await controls.count();
+      for (let index = 0; index < count; index += 1) {
+        const box = await controls.nth(index).boundingBox();
+        expect(box, `${screen} control ${index} has a box`).not.toBeNull();
+        expect(
+          box!.width,
+          `${screen} control ${index} width`,
+        ).toBeGreaterThanOrEqual(44);
+        expect(
+          box!.height,
+          `${screen} control ${index} height`,
+        ).toBeGreaterThanOrEqual(44);
+      }
     }
   });
 
-  test('primary copy and action meet normal-text contrast', async ({
+  test('representative copy and controls meet normal-text contrast in every reference', async ({
     page,
   }) => {
-    await openPrototype(page, 'workspace');
-
-    const title = await measureContrast(page, 'workspace-title');
-    const action = await measureContrast(page, 'primary-action');
-    expect(title.ratio).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
-    expect(action.ratio).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
+    for (const screen of SCREENS) {
+      for (const theme of THEMES) {
+        await openPrototype(page, screen, theme);
+        for (const target of CONTRAST_TARGETS[screen]) {
+          const measured = await measureContrast(page, target);
+          expect(
+            measured.ratio,
+            `${screen} ${theme} ${target} contrast`,
+          ).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
+        }
+      }
+    }
   });
 });
 

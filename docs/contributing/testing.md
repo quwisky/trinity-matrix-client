@@ -638,10 +638,12 @@ pnpm e2e:design
 pnpm exec nx run trinity-e2e:design-e2e -- --update-snapshots
 ```
 
-Linux Chromium is authoritative for committed pixel baselines. The harness fixes content and
-times, waits for fonts, disables animation and carets, and requests reduced motion. Each visual
-reference also has semantic checks for landmarks, navigation state, accessible names, labels,
-contrast, overflow and phone target size. See
+Playwright's managed Linux Chromium is authoritative for committed pixel baselines. The scenes
+load the locked Storybook package's bundled Nunito Sans files instead of a system font; the harness
+also fixes content and times, waits for the font, disables animation and carets, and requests
+reduced motion. Semantic checks cover landmarks, navigation state, accessible names, labels,
+representative contrast for both screens in every reference theme, overflow, composer reachability,
+and two-dimensional phone target size on both screens. See
 [`e2e/design-prototypes/README.md`](../../e2e/design-prototypes/README.md) for the profile matrix,
 state coverage and the human approval checklist.
 

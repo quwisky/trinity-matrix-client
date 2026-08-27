@@ -58,7 +58,7 @@
               href="#conversation"
               aria-current="page"
             >
-              <span class="place-avatar">D</span>
+              <span class="place-avatar" aria-hidden="true">D</span>
               <span class="room-copy">
                 <strong>design-systems-and-accessibility-review</strong>
                 <small>Mira: Updated the focus states</small>
@@ -66,7 +66,7 @@
               <span class="mention-badge" aria-label="3 mentions">3</span>
             </a>
             <a class="room-row" href="#">
-              <span class="place-avatar">E</span>
+              <span class="place-avatar" aria-hidden="true">E</span>
               <span class="room-copy">
                 <strong>engineering</strong>
                 <small>Two new messages</small>
@@ -74,14 +74,14 @@
               <span class="unread-badge" aria-label="Unread messages">8</span>
             </a>
             <a class="room-row" href="#">
-              <span class="place-avatar">R</span>
+              <span class="place-avatar" aria-hidden="true">R</span>
               <span class="room-copy">
                 <strong>release-planning-for-multiple-platforms</strong>
                 <small>Alex: Android build is green</small>
               </span>
             </a>
             <a class="room-row" href="#">
-              <span class="person-avatar">L</span>
+              <span class="person-avatar" aria-hidden="true">L</span>
               <span class="room-copy">
                 <strong>Leila Haddad</strong>
                 <small>Can you review the compact view?</small>
@@ -91,12 +91,14 @@
           </nav>
 
           <footer class="identity-dock">
-            <span class="person-avatar identity-avatar">Q</span>
+            <span class="person-avatar identity-avatar" aria-hidden="true"
+              >Q</span
+            >
             <span class="identity-copy">
               <strong>quwisky with a deliberately long account name</strong>
               <small>Online</small>
             </span>
-            <button aria-label="Mute microphone">Mute</button>
+            <button aria-label="Open account menu">Account</button>
             <button aria-label="Open settings">Settings</button>
           </footer>
         </aside>
@@ -104,7 +106,7 @@
         <main class="conversation" id="conversation">
           <header class="conversation-header">
             <button class="phone-back" aria-label="Back to rooms">Back</button>
-            <span class="place-avatar header-avatar">D</span>
+            <span class="place-avatar header-avatar" aria-hidden="true">D</span>
             <div class="conversation-title">
               <h1 data-testid="workspace-title">
                 design-systems-and-accessibility-review
@@ -138,7 +140,9 @@
           >
             <div class="day-divider"><span>Today</span></div>
             <article class="message-group">
-              <span class="person-avatar message-avatar">M</span>
+              <span class="person-avatar message-avatar" aria-hidden="true"
+                >M</span
+              >
               <div>
                 <header>
                   <strong>Mira Okafor</strong
@@ -165,7 +169,9 @@
               <span>3 new messages</span>
             </div>
             <article class="message-group">
-              <span class="person-avatar message-avatar">L</span>
+              <span class="person-avatar message-avatar" aria-hidden="true"
+                >L</span
+              >
               <div>
                 <header>
                   <strong>Leila Haddad</strong
@@ -183,7 +189,9 @@
               </div>
             </article>
             <article class="message-group is-sending">
-              <span class="person-avatar message-avatar">Q</span>
+              <span class="person-avatar message-avatar" aria-hidden="true"
+                >Q</span
+              >
               <div>
                 <header>
                   <strong>quwisky</strong
@@ -257,13 +265,16 @@
           <section aria-labelledby="online-title">
             <h3 id="online-title">Online</h3>
             <div class="member-row">
-              <span class="person-avatar">M</span><strong>Mira Okafor</strong>
+              <span class="person-avatar" aria-hidden="true">M</span
+              ><strong>Mira Okafor</strong>
             </div>
             <div class="member-row">
-              <span class="person-avatar">L</span><strong>Leila Haddad</strong>
+              <span class="person-avatar" aria-hidden="true">L</span
+              ><strong>Leila Haddad</strong>
             </div>
             <div class="member-row">
-              <span class="person-avatar">Q</span><strong>quwisky</strong>
+              <span class="person-avatar" aria-hidden="true">Q</span
+              ><strong>quwisky</strong>
             </div>
           </section>
         </aside>
@@ -309,7 +320,7 @@
             >
           </nav>
           <footer>
-            <span class="person-avatar">Q</span>
+            <span class="person-avatar" aria-hidden="true">Q</span>
             <span
               ><strong>quwisky</strong
               ><small>@quwisky:matrix.example</small></span
@@ -339,7 +350,7 @@
                 class="preview-canvas"
                 aria-label="Conversation appearance preview"
               >
-                <span class="person-avatar">M</span>
+                <span class="person-avatar" aria-hidden="true">M</span>
                 <div>
                   <strong>Mira Okafor <small>09:41</small></strong>
                   <p>
@@ -360,15 +371,16 @@
                 role="group"
                 aria-label="Colour mode"
               >
-                <button>Light</button><button aria-pressed="true">Dark</button
-                ><button>System</button>
+                <button data-mode="light" aria-pressed="false">Light</button
+                ><button data-mode="dark" aria-pressed="true">Dark</button
+                ><button data-mode="system" aria-pressed="false">System</button>
               </div>
               <label class="settings-row">
                 <span
                   ><strong>Palette</strong
                   ><small>Accent and supporting neutrals</small></span
                 >
-                <select aria-label="Palette">
+                <select aria-label="Palette" data-testid="settings-palette">
                   <option>Trinity</option>
                   <option>Amethyst</option>
                   <option>Onyx</option>

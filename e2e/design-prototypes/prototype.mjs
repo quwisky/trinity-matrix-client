@@ -20,3 +20,16 @@ if (theme === 'onyx') {
 } else {
   root.removeAttribute('data-theme');
 }
+
+for (const mode of document.querySelectorAll('[data-mode]')) {
+  const selectedMode = theme === 'light' ? 'light' : 'dark';
+  mode.setAttribute(
+    'aria-pressed',
+    String(mode.getAttribute('data-mode') === selectedMode),
+  );
+}
+
+const palette = document.querySelector('[aria-label="Palette"]');
+if (palette instanceof HTMLSelectElement) {
+  palette.value = theme === 'onyx' ? 'Onyx' : 'Trinity';
+}
