@@ -112,7 +112,8 @@ Android WebView, and Electron wrappers. Against disposable Synapse it:
 1. creates a public source room with two stable packs and a same-key legacy duplicate;
 2. resolves the room alias, joins it through **Find packs**, and lists both stable state keys;
 3. installs one exact reference and observes the installed row immediately;
-4. signs the same account into a second isolated app and observes the synced pack there;
+4. on Web/Android, signs the same account into a second isolated app and observes the synced pack
+   there;
 5. disables and re-enables sticker use, observing the composer update without restarting;
 6. labels the installed pack **All rooms** and a current-room pack **This room**;
 7. sends the selected image as `m.sticker` and confirms the event through the Matrix API;

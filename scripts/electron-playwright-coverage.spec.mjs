@@ -31,7 +31,7 @@ describe('Electron Playwright image-pack coverage', () => {
       'e2e/playwright/support/image-pack-management-journey.mts',
     );
     expect(journey).toContain('runImagePackManagementJourney');
-    expect(journey).not.toMatch(/\btest(?:\.describe|\.skip|\.slow|\()/);
+    expect(journey).not.toMatch(/\btest\s*(?:\.|\()/);
 
     const webSpec = read('e2e/playwright/stickers-custom-emoji.spec.mts');
     expect(webSpec).toContain("from './support/fixtures.mts'");
