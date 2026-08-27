@@ -90,10 +90,13 @@ Any future brand refresh should be its own decision after the structural redesig
 The timeline and composer are the visual focus. Navigation is quieter, persistent and easy to scan;
 status and security information stays visible but does not compete with the message being read.
 
-### People are circles; places and tools are squircles
+### People are circles; places and navigation tools are squircles
 
-- users, DMs and presence-bearing identities use circles;
-- spaces, rooms with custom avatars, bots/apps and account/workspace tiles use stable squircles;
+- Matrix users, account avatars, DMs and other presence-bearing identities use circles; bots/apps
+  stay in this group until the client has reliable metadata that can distinguish them;
+- every room and space uses a stable squircle, whether it has an uploaded image or an initial;
+- account/workspace containers and navigation tool tiles may use stable squircles around their
+  contents without changing a person's avatar inside them;
 - selected state is expressed with surface, border or indicator changes, never by changing the
   identity's fundamental shape;
 - containers use larger radii than the controls nested inside them.
@@ -296,6 +299,12 @@ disabled/focus/error and reduced motion where relevant.
 
 Each phase should be a separate issue or a small cluster of issues. A phase may ship independently;
 there should be no long-lived branch containing the entire redesign.
+
+The semantic-avatar slice is the Phase 0 pilot for this plan. It preserves the existing 30% place
+radius rather than claiming a newly measured target, moves that value behind one semantic token,
+and adds Storybook plus real-browser comparisons so later prototypes can tune it centrally. It does
+not complete Phase 0: the reference screenshots, viewport fixtures and broader desktop/phone
+prototypes below remain the gate before finalising the rest of the Phase 1 token system.
 
 ### Phase 0 - baselines and prototypes
 

@@ -207,6 +207,7 @@ test.describe('Rooms view excludes space-owned rooms', () => {
     expect(hoveredRadii).toEqual(restingRadii);
 
     await spacePill.click();
+    await expect(spacePill).toHaveAttribute('aria-current', 'true');
     const selectedRadii = await spaceRadii();
     assertStablePlaceGeometry(selectedRadii);
     expect(selectedRadii).toEqual(restingRadii);

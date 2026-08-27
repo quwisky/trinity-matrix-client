@@ -205,10 +205,22 @@ export class QuickSwitcherComponent {
 
   /** People and DMs are circular; every room-like destination is a stable squircle. */
   avatarShape(result: SwitcherResult): AvatarShape {
-    return result.kind === 'user' ||
-      result.kind === 'dm' ||
-      (result.kind === 'invite' && result.isDirect)
-      ? 'person'
-      : 'place';
+    switch (result.kind) {
+      case 'user':
+      case 'dm':
+        return 'person';
+      case 'room':
+      case 'space':
+        return 'place';
+      case 'invite':
+        return result.isDirect ? 'person' : 'place';
+      default:
+        return this.unreachableSwitcherResult(result);
+    }
+  }
+
+  /** Compile-time exhaustiveness guard for future switcher result kinds. */
+  private unreachableSwitcherResult(result: never): never {
+    throw new Error(`Unsupported switcher result: ${String(result)}`);
   }
 }

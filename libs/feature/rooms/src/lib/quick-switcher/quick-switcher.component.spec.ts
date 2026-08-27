@@ -24,7 +24,7 @@ function result(over: Partial<SwitcherResult> = {}): SwitcherResult {
     initial: 'R',
     score: 100,
     ...over,
-  };
+  } as SwitcherResult;
 }
 
 const LOCAL: SwitcherResult[] = [

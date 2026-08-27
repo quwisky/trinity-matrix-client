@@ -11,8 +11,14 @@ import { of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { AddToSpaceComponent } from './add-to-space.component';
 
-function room(id: string, name: string) {
-  return { id, name, initial: name[0], avatarMxc: null } as never;
+function room(id: string, name: string, directUserId?: string) {
+  return {
+    id,
+    name,
+    initial: name[0],
+    avatarMxc: null,
+    ...(directUserId ? { directUserId } : {}),
+  } as never;
 }
 
 function space(id: string, name: string) {
@@ -111,6 +117,33 @@ describe('AddToSpaceComponent', () => {
 
     const nested = cmp.candidates().find((c) => c.id === '!sub:hs');
     expect(nested?.isSpace).toBe(true);
+  });
+
+  it('keeps DMs circular while rooms and spaces are place-shaped', async () => {
+    const { cmp, container } = await build({
+      rooms: [
+        room('!dm:hs', 'Alice', '@alice:hs'),
+        room('!room:hs', 'General'),
+      ],
+      spaces: [space('!sub:hs', 'Workspace')],
+    });
+
+    expect(
+      new Map(
+        cmp.candidates().map((candidate) => [candidate.name, candidate.shape]),
+      ),
+    ).toEqual(
+      new Map([
+        ['Alice', 'person'],
+        ['General', 'place'],
+        ['Workspace', 'place'],
+      ]),
+    );
+    expect(
+      [...container.querySelectorAll('trn-avatar')].map((avatar) =>
+        avatar.getAttribute('data-shape'),
+      ),
+    ).toEqual(['person', 'place', 'place']);
   });
 
   it('never offers the space to itself', async () => {
