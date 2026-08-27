@@ -10,6 +10,7 @@ import { workspaceRoot } from '@nx/devkit';
  */
 export function appE2EConfig(
   baseURL: string,
+  options: { reuseExistingServer?: boolean } = {},
 ): Pick<
   PlaywrightTestConfig,
   'globalSetup' | 'globalTeardown' | 'use' | 'webServer'
@@ -26,7 +27,7 @@ export function appE2EConfig(
       command:
         'pnpm exec nx run trinity:build:development && node e2e/playwright/support/serve-www.mjs',
       url: baseURL,
-      reuseExistingServer: !process.env['CI'],
+      reuseExistingServer: options.reuseExistingServer ?? !process.env['CI'],
       timeout: 240_000,
       cwd: workspaceRoot,
     },

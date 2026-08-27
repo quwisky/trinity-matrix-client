@@ -22,10 +22,11 @@ captures at the compact desktop height that has historically exposed settings sc
 | desktop-compact | 900x700      | room, appearance                          |
 | phone-pixel-5   | 393x727      | login, room, appearance, encryption intro |
 
-Each profile owns fixed disposable reader/sender accounts and three deterministic rooms. The
-sender posts before the reader signs in, leaving long names, previews, unread counts and a mention
-for the real initial sync to project. One stepped journey per profile avoids multiple crypto
-devices or cross-test account-data bleed.
+Each profile owns fixed disposable reader/sender accounts and three deterministic rooms. The main
+room alternates enough messages between both accounts to fill the wide timeline with distinct
+message groups. Messages posted before the reader signs in also leave long names, previews, unread
+counts and a mention for the real initial sync to project. One stepped journey per profile avoids
+multiple crypto devices or cross-test account-data bleed.
 
 ## Run and promote
 
@@ -38,13 +39,17 @@ pnpm e2e:design:current
 pnpm e2e:design:current:update
 ```
 
-Every green run writes 12 ephemeral screenshots and its Playwright report under
+The capture command requires a clean tracked worktree, forces a fresh repository-owned build on
+the fixed local origin and refuses to reuse an existing server. Every green run writes 12
+ephemeral screenshots and its Playwright report under
 `dist/.playwright/current-baselines/`. The update command then validates the complete expected set
 and atomically replaces the 10-file Linux archive. A failed or partial journey cannot leave a
 half-updated tracked archive.
 
-`archive/manifest.json` records the source commit, exact Playwright/Chromium/Node/Linux environment,
-canonical viewport values and the two normalized volatile strings. The current application keeps
+`archive/manifest.json` records the source commit and Git tree captured at preparation time, exact
+Playwright/Chromium/Node/Linux environment, canonical viewport values and the two normalized
+volatile strings. Promotion rechecks the clean worktree and source identity before replacing the
+archive. The current application keeps
 its real system-font policy; no replacement font is injected, so these non-gating images document
 their precise generation environment instead of claiming cross-distribution pixel identity.
 

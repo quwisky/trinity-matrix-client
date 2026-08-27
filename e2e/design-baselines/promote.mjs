@@ -2,6 +2,7 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
+  readFileSync,
   renameSync,
   rmSync,
   writeFileSync,
@@ -19,6 +20,7 @@ if (platform() !== 'linux') {
 
 const root = resolve(import.meta.dirname, '../..');
 const captureRoot = join(root, 'dist/.playwright/current-baselines/captures');
+const provenancePath = join(captureRoot, 'capture-provenance.json');
 const archiveRoot = join(root, 'e2e/design-baselines/archive');
 const temporaryRoot = `${archiveRoot}.tmp-${process.pid}`;
 const backupRoot = `${archiveRoot}.backup-${process.pid}`;
@@ -42,6 +44,42 @@ const expected = Object.entries(archivedSurfaces).flatMap(
     surfaces.map((surface) => `${surface}-${profile}-linux.png`),
 );
 
+if (!existsSync(provenancePath)) {
+  throw new Error(
+    'Refusing to promote captures without capture-time provenance.',
+  );
+}
+
+const provenance = JSON.parse(readFileSync(provenancePath, 'utf8'));
+const currentCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+  cwd: root,
+  encoding: 'utf8',
+}).trim();
+const currentTree = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], {
+  cwd: root,
+  encoding: 'utf8',
+}).trim();
+const trackedStatus = execFileSync(
+  'git',
+  ['status', '--porcelain=v1', '--untracked-files=no'],
+  { cwd: root, encoding: 'utf8' },
+).trim();
+
+if (trackedStatus) {
+  throw new Error(
+    'Refusing to promote from a dirty tracked worktree. Commit or restore tracked changes first.',
+  );
+}
+if (
+  provenance.trackedWorktreeClean !== true ||
+  provenance.sourceCommit !== currentCommit ||
+  provenance.sourceTree !== currentTree
+) {
+  throw new Error(
+    'Refusing to promote captures that do not match the current clean source commit and tree.',
+  );
+}
+
 const missing = expected.filter(
   (filename) => !existsSync(join(captureRoot, filename)),
 );
@@ -63,10 +101,6 @@ const playwrightVersion = require('@playwright/test/package.json').version;
 const browser = await chromium.launch({ headless: true });
 const chromiumVersion = browser.version();
 await browser.close();
-const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
-  cwd: root,
-  encoding: 'utf8',
-}).trim();
 const profiles = Object.fromEntries(
   Object.keys(archivedSurfaces).map((name) => {
     const profile = DESIGN_VIEWPORTS[name];
@@ -76,7 +110,8 @@ const profiles = Object.fromEntries(
 const manifest = {
   purpose:
     'Archival Phase 0 evidence of the pre-redesign application, not visual-regression baselines.',
-  sourceCommit,
+  sourceCommit: provenance.sourceCommit,
+  sourceTree: provenance.sourceTree,
   generatedAt: new Date().toISOString(),
   environment: {
     platform: platform(),

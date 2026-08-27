@@ -28,7 +28,18 @@ const captureRoot = resolve(
 const MAIN_ROOM = 'design-systems-and-accessibility-review';
 const MAIN_MESSAGES = [
   'I updated the focus treatment so keyboard and selected states stay distinct.',
+  'Thanks. I am comparing the light, dark and Onyx palettes side by side.',
   'The compact layout keeps the composer reachable without hiding the timeline.',
+  'I checked the unread badge against both short and very long room names.',
+  'Can we preserve the dense information hierarchy without making it feel cramped?',
+  'Yes. The next pass increases separation between navigation and conversation content.',
+  'The phone layout still needs comfortable targets around the header actions.',
+  'I verified the back button and send button remain at least forty-four pixels square.',
+  'The settings view now has evidence at the compact height that exposed the old scroll bug.',
+  'Great. Please keep keyboard focus visible independently from selected navigation state.',
+  'The prototype also keeps errors and empty states visually quieter than primary content.',
+  'That should help the active conversation remain the strongest region on screen.',
+  'I am documenting the exact viewport and browser versions with every capture.',
   'The current application baseline is ready for review.',
 ] as const;
 
@@ -76,6 +87,7 @@ async function createSeededRoom(
   name: string,
   messages: readonly string[],
   mentionReader = false,
+  alternateAuthors = false,
 ): Promise<string> {
   const created = await request.post(`${hs}/_matrix/client/v3/createRoom`, {
     headers: reader.headers,
@@ -97,10 +109,11 @@ async function createSeededRoom(
   await requireOk(joined, `join sender to ${name}`);
 
   for (const [index, body] of messages.entries()) {
+    const author = alternateAuthors && index % 2 === 1 ? reader : sender;
     const sent = await request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${slug}-${index}`,
       {
-        headers: sender.headers,
+        headers: author.headers,
         data: {
           msgtype: 'm.text',
           body,
@@ -165,6 +178,8 @@ async function seedAccount(
     `${suffix}-main`,
     MAIN_ROOM,
     MAIN_MESSAGES,
+    false,
+    true,
   );
 
   return {
@@ -307,6 +322,9 @@ test.describe('Phase 0 current application evidence', () => {
       ).toBeVisible({
         timeout: 30_000,
       });
+      await expect(page.locator('.main .msg__author')).toHaveCount(
+        MAIN_MESSAGES.length,
+      );
       await expect(page.getByTestId('composer-input')).toHaveAccessibleName(
         new RegExp(MAIN_ROOM),
       );

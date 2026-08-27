@@ -3,7 +3,10 @@ import { nxE2EPreset } from '@nx/playwright/preset';
 import { DESIGN_VIEWPORTS } from './playwright/support/design-viewports.mts';
 import { appE2EConfig } from './playwright/support/app-e2e-config.mts';
 
-const baseURL = process.env['BASE_URL'] || 'http://localhost:4200';
+// Archival evidence must always represent the application built from this checkout. Unlike the
+// general journey config, this deliberately rejects external origins and existing dev servers.
+const baseURL = 'http://localhost:4200';
+const appConfig = appE2EConfig(baseURL, { reuseExistingServer: false });
 const projectNames = [
   'desktop-wide',
   'desktop-compact',
@@ -16,7 +19,7 @@ const projectNames = [
  */
 export default defineConfig({
   ...nxE2EPreset(import.meta.dirname, { testDir: './design-baselines' }),
-  ...appE2EConfig(baseURL),
+  ...appConfig,
   retries: 0,
   workers: 1,
   timeout: 180_000,
@@ -32,7 +35,7 @@ export default defineConfig({
     ],
   ],
   use: {
-    ...appE2EConfig(baseURL).use,
+    ...appConfig.use,
     colorScheme: 'dark',
     locale: 'en-US',
     timezoneId: 'UTC',

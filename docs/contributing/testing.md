@@ -657,11 +657,14 @@ pnpm e2e:design:current
 pnpm e2e:design:current:update
 ```
 
-The first command performs semantic/layout checks and writes ephemeral captures under `dist/`. The
-second runs the same journey and only then atomically promotes a complete Linux set into
+The first command requires a clean tracked worktree, forces a fresh local application build,
+performs semantic/layout checks and writes ephemeral captures under `dist/`. The second runs the
+same journey and only then atomically promotes a complete Linux set into
 `e2e/design-baselines/archive/`. Those PNGs are historical comparison material, not pixel gates;
-later redesign phases are expected to look different. The provenance manifest records the exact
-capture environment because the current application deliberately uses its platform system font.
+later redesign phases are expected to look different. Promotion verifies the capture-time commit
+and Git tree against the still-clean checkout. The provenance manifest records that identity and
+the exact capture environment because the current application deliberately uses its platform
+system font.
 
 This target is manual while its additional app build, Synapse lifecycle and three UI logins are
 measured. It is non-cacheable and non-parallel because it owns the same fixed-port stack as the
