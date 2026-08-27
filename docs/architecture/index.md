@@ -187,7 +187,7 @@ Four details are not obvious from the table:
   initialised, otherwise calls `matrix.restoreAll()`, which activates the persisted account and
   warms the rest in the background. Any failure maps to a redirect to `/login`.
 - **`/settings` has no default child redirect.** Bare `/settings` renders the settings shell with
-  an empty detail outlet; the thirteen sections are children of it.
+  an empty detail outlet; the fourteen sections are children of it.
 - **The `canDeactivate` guards on the two encryption routes exist because those pages display a
   recovery key exactly once and never persist it.** The browser Back button would otherwise
   discard it silently. Those guards are also why `main.ts` passes
@@ -244,4 +244,6 @@ WASM as bundled assets and must not layer a second cache over them.
 - [State and reactivity](state-and-reactivity.md) — the projection idiom, `projectFromClient`, and
   the traps around it.
 - [Matrix and encryption](matrix-and-encryption.md) — the client registry, sessions, and E2EE.
+- [Image packs](image-packs.md) — MSC2545 discovery, projections, stable/legacy precedence,
+  account-data mutation, and trust boundaries.
 - [UI and theming](ui-and-theming.md) — Helm, Tailwind and the design tokens.

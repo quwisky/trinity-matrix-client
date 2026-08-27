@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Install and manage sticker packs without another Matrix client.** Settings now has a
+  **Stickers & emoji** section that finds MSC2545 packs by room ID or alias, lets you choose
+  among multiple packs in one room, and installs or removes them for the active account. A
+  **Manage** action in the sticker picker opens the same screen. Installed packs update the
+  composer immediately and follow the account to other devices; broken or inaccessible
+  references remain removable instead of disappearing. Trinity reads legacy pack data for
+  compatibility but writes only the stable Matrix event type.
+
 - **The room list shows who is typing.** A room where somebody is typing now says so in
   place of its last message, in italics, until they stop — so you can see a conversation
   starting up without opening it.

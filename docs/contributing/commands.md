@@ -203,6 +203,10 @@ artifacts under `dist/.playwright/android/`. Journeys that require external FCM 
 not-yet-implemented native file export, or unavailable compositor-panning instrumentation
 are reported as explicit platform skips. Docker is mandatory for authenticated journeys.
 
+Focused single-spec Web/Android commands are documented beside each owned scenario in
+[`e2e/README.md`](../../e2e/README.md); the MSC2545 pair is under
+[image-pack management](../../e2e/README.md#msc2545-image-pack-management).
+
 ### Standalone protocol harnesses
 
 Raw Playwright scripts under `e2e/features/`, each serving `www/` on its own port

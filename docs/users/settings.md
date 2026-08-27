@@ -178,19 +178,44 @@ alongside the other preferences, on this device.
 
 ## Stickers & emoji
 
-Install a sticker or custom-emoji pack by entering the Matrix room ID or alias that
-publishes it. Trinity joins that room if necessary and, when it contains several packs,
-lists every state key so you can choose the intended one. The installed reference is Matrix
-account data and follows your account to other devices.
+This section manages image packs for the **currently active Matrix account**. Installed pack
+references are Matrix account data, so they follow that account to another device; they are
+not a preference belonging only to this installation.
 
-Trinity currently sends sticker-capable entries from these packs and displays custom emoji
-received in messages. Composing a new message with a pack's custom emoji is not yet supported.
+To install one:
 
-The capability badges are defined by the pack publisher: Trinity does not invent private
-per-device usage switches. Removing an installed pack removes only your account reference.
-It does not leave the source room, remove its state, or delete homeserver media. Broken,
-deleted, malformed and currently inaccessible references remain visible here so they can
-still be removed.
+1. Enter the source room's Matrix ID or alias.
+2. Choose **Find packs**. Entering the address alone does nothing. If the account is not
+   already a member, this action joins the room with normal, participant-visible Matrix
+   membership.
+3. Choose **Install** beside the intended pack. A room may publish several state keys. Trinity
+   lists usable packs and empty packs; an empty pack is described but cannot be installed.
+
+A successful room join is not undone when the room turns out to contain no usable pack.
+Removing a pack later also does not leave the source room. It removes only the account
+reference: it does not edit the published pack, remove room state, or delete homeserver media.
+
+Installed rows remain visible when their source becomes inaccessible, is left, is deleted, or
+contains missing or malformed pack state. That is intentional: a broken reference must still
+have a **Remove** action. The status line distinguishes available, empty, unavailable, missing,
+and malformed sources.
+
+The **Stickers** and **Custom emoji** badges are capabilities declared by the publisher, not
+switches stored by Trinity. MSC2545 has no per-user field for enabling one usage while disabling
+the other. Trinity currently sends sticker-capable entries and displays custom emoji received in
+messages; composing a new message with a pack's custom emoji is not yet supported.
+
+Trinity writes only stable `m.image_pack.rooms` account data. It can read the older
+`im.ponies.emote_rooms` form when stable data does not exist, and migrates valid legacy
+references on the first change. If another device changes the same account data during a write,
+Trinity retries a bounded server read, merge and verification. Matrix provides no atomic
+compare-and-swap here, so a repeated conflict is shown and the action asks you to try again.
+
+Install only from a room whose publishers you trust. Installing saves a reference, not a copy:
+people with permission to change that room's pack state can change its names and images later.
+Pack media is ordinary homeserver media rather than an encrypted attachment, so the relevant
+homeservers can see it even when the sticker event itself is sent in an encrypted room. See
+[Messaging](messaging.md#sending-more-than-text) for picker and sending behavior.
 
 ## Keyboard shortcuts
 

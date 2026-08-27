@@ -370,6 +370,14 @@ assertions. External FCM notification delivery, encrypted-key export, and the on
 compositor-panning assertion remain explicit Android skips: none is replaced with an
 in-page assertion that bypasses the named native behavior.
 
+The MSC2545 journey is a useful example of why this sharing matters. One canonical spec creates a
+pack room on disposable Synapse, discovers and installs one state key through Settings, sends its
+sticker, and removes the account reference. Chromium proves the browser flow; collection of that
+same file in the installed Android WebView additionally proves the production Capacitor build,
+touch-sized install control and native renderer boundary without maintaining a second scenario.
+Its exact assertions and focused commands live in
+[`e2e/README.md`](../../e2e/README.md#msc2545-image-pack-management).
+
 The outer runner owns Synapse, one exact emulator serial, the APK, the Playwright Android
 driver packages, and the `tcp:8448` reverse mapping. Device validation rejects a target
 that already contains Playwright drivers, so their later removal is unambiguously owned by

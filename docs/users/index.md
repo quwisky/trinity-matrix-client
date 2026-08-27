@@ -22,9 +22,10 @@ Sending a message goes through a composer that understands Markdown, with a live
 toggle and a formatting toolbar. It also handles `:shortcode` emoji completion, `@mention`
 completion that produces real Matrix mention pills, file attachments including
 paste-to-attach, voice recording, polls, location sharing, GIF search, and per-conversation
-drafts that survive a restart. MSC2545 image packs provide a searchable sticker picker,
-and inline custom emoji received from other clients render through authenticated Matrix
-media. Four slash commands are recognised: `/me`, `/shrug`,
+drafts that survive a restart. MSC2545 image packs can be installed and removed inside
+Trinity, provide a searchable sticker picker, and follow the active Matrix account; inline
+custom emoji received from other clients render through authenticated Matrix media. Four
+slash commands are recognised: `/me`, `/shrug`,
 `/plain` and `/spoiler`.
 
 A message you have sent can be edited, deleted, pinned, forwarded, reported, quoted as a
@@ -93,12 +94,12 @@ room switches to that account first.
 
 ## Settings
 
-Thirteen sections: profile, presence, appearance, devices, account, security, notifications,
-privacy, GIFs, keyboard shortcuts, an experimental flag, the server your account is on, and
-an advanced view of everything Trinity keeps on this device. Appearance carries a
+Fourteen sections: profile, presence, appearance, devices, account, security, notifications,
+privacy, GIFs, Stickers & emoji, keyboard shortcuts, an experimental flag, the server your
+account is on, and an advanced view of everything Trinity keeps on this device. Appearance carries a
 light/dark/system choice, a colour palette picker, time and date formats, and toggles for
-the system lines in the timeline. Thirteen keyboard shortcuts are defined and every one is
-rebindable.
+the system lines in the timeline. Thirteen keyboard shortcuts are defined and twelve are
+rebindable; the numbered desktop room jump is fixed.
 
 Read the detail in [Settings](settings.md).
 

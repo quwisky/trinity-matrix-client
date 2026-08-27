@@ -103,6 +103,39 @@ Playwright arguments after `--`; CI divides the suite with `--shard=N/4` and fai
 flaky retry. A source-shape guard requires every canonical spec to import the shared
 fixture and requires the Android config to collect the canonical glob.
 
+## MSC2545 image-pack management
+
+`playwright/stickers-custom-emoji.spec.mts` is shared unchanged by the Chromium and installed
+Android WebView suites. Against disposable Synapse it:
+
+1. creates a public source room with two stable packs and a same-key legacy duplicate;
+2. resolves the room alias, joins it through **Find packs**, and lists both stable state keys;
+3. installs one exact reference and observes the installed row immediately;
+4. returns to the room and observes the composer's **Sticker** action without restarting;
+5. sends the selected image as `m.sticker` and confirms the event through the Matrix API;
+6. removes the reference and verifies stable account data is `{ "rooms": {} }`;
+7. verifies that uninstall did not delete the publisher's source state; and
+8. returns to the room and confirms the account-only sticker action is gone.
+
+The Android collection also asserts the install button reaches the 44px coarse-pointer target.
+The journey does not claim another-device propagation or atomic conflict freedom; those properties
+are outside a single-client E2E.
+
+Run only this journey on web:
+
+```bash
+pnpm exec nx e2e trinity-e2e -- playwright/stickers-custom-emoji.spec.mts
+```
+
+Run the same file in the installed Android app:
+
+```bash
+pnpm exec nx run trinity-e2e:android-e2e -- playwright/stickers-custom-emoji.spec.mts
+```
+
+The Android prerequisites and `TRINITY_ANDROID_SERIAL` rules are the same as for the full suite
+above.
+
 ## `e2e:media` — encrypted media send round-trip
 
 `send-media.mjs` creates an **E2EE room** via the CS API, logs into the app as that
