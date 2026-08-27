@@ -29,6 +29,15 @@
         "cwd": "{projectRoot}"
       }
     },
+    "design-e2e": {
+      "//": "Non-shipping redesign candidates rendered against the built application tokens. Linux-generated snapshots are the visual authority; semantic assertions run across every canonical redesign viewport.",
+      "cache": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "playwright test -c playwright.design.config.mts",
+        "cwd": "{projectRoot}"
+      }
+    },
     "styling-e2e": {
       "//": "A separate browser lifecycle from the Synapse-backed app journeys. It is intentionally uncached because its webServer builds application/theme files outside the e2e project input graph.",
       "cache": false,

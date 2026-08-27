@@ -626,6 +626,25 @@ The release pipeline runs no browser or Electron end-to-end test at all — see
 [CI and releases](ci-and-releases.md) for what does gate a tag, and for the
 repository-level invariant specs that guard configuration a green run cannot see.
 
+## Redesign prototype evidence
+
+The non-shipping scenes in `e2e/design-prototypes/` render against the built application's real
+theme stylesheet without adding an Angular route or production asset. They provide deterministic
+comparison material for the modern UI redesign across the canonical desktop, compact-window and
+full mobile-device profiles.
+
+```bash
+pnpm e2e:design
+pnpm exec nx run trinity-e2e:design-e2e -- --update-snapshots
+```
+
+Linux Chromium is authoritative for committed pixel baselines. The harness fixes content and
+times, waits for fonts, disables animation and carets, and requests reduced motion. Each visual
+reference also has semantic checks for landmarks, navigation state, accessible names, labels,
+contrast, overflow and phone target size. See
+[`e2e/design-prototypes/README.md`](../../e2e/design-prototypes/README.md) for the profile matrix,
+state coverage and the human approval checklist.
+
 ## The styling blind spot, and what closes it
 
 Three separate blocking bugs in the redesign phases were invisible to a completely green

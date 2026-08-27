@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trinity modern UI prototype</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/__design__/prototype.css" />
+  </head>
+  <body data-scene="busy" data-screen="workspace">
+    <section
+      class="prototype prototype-workspace"
+      data-prototype="workspace"
+      aria-label="Room workspace prototype"
+    >
+      <aside class="space-rail" aria-label="Spaces">
+        <div class="brand-mark" aria-label="Trinity">T</div>
+        <nav aria-label="Space list">
+          <button
+            class="rail-place is-selected"
+            aria-label="Product design"
+            aria-current="page"
+          >
+            PD
+          </button>
+          <button class="rail-place" aria-label="Open source community">
+            OS
+          </button>
+          <button
+            class="rail-place"
+            aria-label="A very long research workspace name"
+          >
+            R
+          </button>
+        </nav>
+        <button class="rail-action" aria-label="Add a space">+</button>
+      </aside>
+
+      <div class="workspace-surface">
+        <aside class="channel-sidebar" aria-label="Rooms and direct messages">
+          <header class="sidebar-header">
+            <div>
+              <span class="overline">Workspace</span>
+              <strong>Product design and accessibility research</strong>
+            </div>
+            <button aria-label="Workspace menu">More</button>
+          </header>
+
+          <label class="room-filter">
+            <span class="sr-only">Filter rooms</span>
+            <input type="search" placeholder="Find a conversation" />
+          </label>
+
+          <nav class="room-list" aria-label="Room list">
+            <h2>Rooms</h2>
+            <a
+              class="room-row is-selected"
+              href="#conversation"
+              aria-current="page"
+            >
+              <span class="place-avatar">D</span>
+              <span class="room-copy">
+                <strong>design-systems-and-accessibility-review</strong>
+                <small>Mira: Updated the focus states</small>
+              </span>
+              <span class="mention-badge" aria-label="3 mentions">3</span>
+            </a>
+            <a class="room-row" href="#">
+              <span class="place-avatar">E</span>
+              <span class="room-copy">
+                <strong>engineering</strong>
+                <small>Two new messages</small>
+              </span>
+              <span class="unread-badge" aria-label="Unread messages">8</span>
+            </a>
+            <a class="room-row" href="#">
+              <span class="place-avatar">R</span>
+              <span class="room-copy">
+                <strong>release-planning-for-multiple-platforms</strong>
+                <small>Alex: Android build is green</small>
+              </span>
+            </a>
+            <a class="room-row" href="#">
+              <span class="person-avatar">L</span>
+              <span class="room-copy">
+                <strong>Leila Haddad</strong>
+                <small>Can you review the compact view?</small>
+              </span>
+              <span class="unread-dot" aria-label="Unread messages"></span>
+            </a>
+          </nav>
+
+          <footer class="identity-dock">
+            <span class="person-avatar identity-avatar">Q</span>
+            <span class="identity-copy">
+              <strong>quwisky with a deliberately long account name</strong>
+              <small>Online</small>
+            </span>
+            <button aria-label="Mute microphone">Mute</button>
+            <button aria-label="Open settings">Settings</button>
+          </footer>
+        </aside>
+
+        <main class="conversation" id="conversation">
+          <header class="conversation-header">
+            <button class="phone-back" aria-label="Back to rooms">Back</button>
+            <span class="place-avatar header-avatar">D</span>
+            <div class="conversation-title">
+              <h1 data-testid="workspace-title">
+                design-systems-and-accessibility-review
+              </h1>
+              <p>
+                Component decisions, visual evidence and implementation notes
+              </p>
+            </div>
+            <nav class="header-actions" aria-label="Room actions">
+              <button aria-label="Search messages">Search</button>
+              <button aria-label="Open pinned messages">Pins</button>
+              <button aria-label="Open member list" aria-pressed="true">
+                Members
+              </button>
+              <button aria-label="More room actions">More</button>
+            </nav>
+          </header>
+
+          <div class="error-banner" role="alert" data-state-only="error">
+            <div>
+              <strong>Messages could not be loaded</strong>
+              <p>Your draft is safe. Check your connection, then try again.</p>
+            </div>
+            <button>Retry</button>
+          </div>
+
+          <section
+            class="timeline"
+            aria-label="Message timeline"
+            data-state-only="busy"
+          >
+            <div class="day-divider"><span>Today</span></div>
+            <article class="message-group">
+              <span class="person-avatar message-avatar">M</span>
+              <div>
+                <header>
+                  <strong>Mira Okafor</strong
+                  ><time datetime="2026-08-27T09:41">09:41</time>
+                </header>
+                <p>
+                  I updated the focus treatment so selected navigation and
+                  keyboard focus remain separate. The compact layout keeps the
+                  same target sizes.
+                </p>
+                <div class="attachment-note">
+                  <strong>Navigation states</strong>
+                  <span>Prototype notes and contrast measurements</span>
+                </div>
+                <div class="reaction-row" aria-label="Message reactions">
+                  <button aria-label="Four check mark reactions">
+                    Check 4
+                  </button>
+                  <button aria-label="Two eyes reactions">Eyes 2</button>
+                </div>
+              </div>
+            </article>
+            <div class="unread-divider" role="separator">
+              <span>3 new messages</span>
+            </div>
+            <article class="message-group">
+              <span class="person-avatar message-avatar">L</span>
+              <div>
+                <header>
+                  <strong>Leila Haddad</strong
+                  ><time datetime="2026-08-27T09:48">09:48</time>
+                </header>
+                <p>
+                  On a phone, the room title truncates before the actions. Back
+                  remains the first control and the composer keeps its safe-area
+                  inset.
+                </p>
+                <blockquote>
+                  <strong>Replying to Mira</strong>
+                  Selected state should not depend on shape changes.
+                </blockquote>
+              </div>
+            </article>
+            <article class="message-group is-sending">
+              <span class="person-avatar message-avatar">Q</span>
+              <div>
+                <header>
+                  <strong>quwisky</strong
+                  ><time datetime="2026-08-27T09:52">09:52</time>
+                </header>
+                <p>The Onyx comparison is ready for review.</p>
+                <span class="message-status" role="status">Sending</span>
+              </div>
+            </article>
+          </section>
+
+          <section
+            class="timeline state-panel"
+            aria-labelledby="empty-title"
+            data-state-only="empty"
+          >
+            <div>
+              <span class="empty-mark" aria-hidden="true">#</span>
+              <h2 id="empty-title">Start this conversation</h2>
+              <p>Share an update or invite someone to this room.</p>
+              <button>Invite people</button>
+            </div>
+          </section>
+
+          <section
+            class="timeline state-panel"
+            aria-labelledby="error-title"
+            data-state-only="error"
+          >
+            <div>
+              <span class="empty-mark error-mark" aria-hidden="true">!</span>
+              <h2 id="error-title">Timeline unavailable</h2>
+              <p>
+                Trinity will reconnect automatically. You can retry now without
+                losing your draft.
+              </p>
+            </div>
+          </section>
+
+          <footer class="composer" aria-label="Message composer">
+            <button aria-label="Add an attachment">Add</button>
+            <label>
+              <span class="sr-only"
+                >Message design-systems-and-accessibility-review</span
+              >
+              <textarea rows="1" placeholder="Message this room"></textarea>
+            </label>
+            <button aria-label="Choose emoji">Emoji</button>
+            <button
+              class="send-action"
+              aria-label="Send message"
+              data-testid="primary-action"
+            >
+              Send
+            </button>
+          </footer>
+        </main>
+
+        <aside class="details-panel" aria-labelledby="members-title">
+          <header>
+            <div>
+              <h2 id="members-title">Members</h2>
+              <p>12 people</p>
+            </div>
+            <button aria-label="Close member list">Close</button>
+          </header>
+          <label class="member-filter">
+            <span class="sr-only">Find a member</span>
+            <input type="search" placeholder="Find a member" />
+          </label>
+          <section aria-labelledby="online-title">
+            <h3 id="online-title">Online</h3>
+            <div class="member-row">
+              <span class="person-avatar">M</span><strong>Mira Okafor</strong>
+            </div>
+            <div class="member-row">
+              <span class="person-avatar">L</span><strong>Leila Haddad</strong>
+            </div>
+            <div class="member-row">
+              <span class="person-avatar">Q</span><strong>quwisky</strong>
+            </div>
+          </section>
+        </aside>
+      </div>
+    </section>
+
+    <section
+      class="prototype prototype-settings"
+      data-prototype="settings"
+      aria-label="Settings workspace prototype"
+      hidden
+    >
+      <div class="settings-frame">
+        <aside class="settings-directory">
+          <header>
+            <button class="phone-back" aria-label="Close settings">
+              Close
+            </button>
+            <div>
+              <span class="overline">Trinity</span>
+              <h1>Settings</h1>
+            </div>
+          </header>
+          <label class="settings-search">
+            <span class="sr-only">Search settings</span>
+            <input type="search" placeholder="Search settings" />
+          </label>
+          <nav aria-label="Settings sections">
+            <a href="#" aria-current="page"
+              ><span>Appearance</span><small>Theme and layout</small></a
+            >
+            <a href="#"
+              ><span>Notifications</span><small>Alerts and sounds</small></a
+            >
+            <a href="#"
+              ><span>Security</span><small>Encryption and sessions</small></a
+            >
+            <a href="#"
+              ><span>Privacy</span><small>Receipts and presence</small></a
+            >
+            <a href="#"
+              ><span>Advanced</span><small>Developer options</small></a
+            >
+          </nav>
+          <footer>
+            <span class="person-avatar">Q</span>
+            <span
+              ><strong>quwisky</strong
+              ><small>@quwisky:matrix.example</small></span
+            >
+          </footer>
+        </aside>
+
+        <main class="settings-detail">
+          <header class="settings-detail-header">
+            <button class="phone-back" aria-label="Back to settings sections">
+              Back
+            </button>
+            <div>
+              <p>Settings</p>
+              <h1 data-testid="settings-title">Appearance</h1>
+            </div>
+            <button aria-label="Close settings">Close</button>
+          </header>
+
+          <div class="settings-content">
+            <section class="appearance-preview" aria-labelledby="preview-title">
+              <div>
+                <h2 id="preview-title">Preview</h2>
+                <p>See how conversation density and colour work together.</p>
+              </div>
+              <div
+                class="preview-canvas"
+                aria-label="Conversation appearance preview"
+              >
+                <span class="person-avatar">M</span>
+                <div>
+                  <strong>Mira Okafor <small>09:41</small></strong>
+                  <p>
+                    Selected state stays clear without changing avatar shape.
+                  </p>
+                  <span class="preview-reaction">Check 4</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-group" aria-labelledby="mode-title">
+              <div class="group-heading">
+                <h2 id="mode-title">Mode and palette</h2>
+                <p>Choose the surface contrast that feels most comfortable.</p>
+              </div>
+              <div
+                class="segmented-control"
+                role="group"
+                aria-label="Colour mode"
+              >
+                <button>Light</button><button aria-pressed="true">Dark</button
+                ><button>System</button>
+              </div>
+              <label class="settings-row">
+                <span
+                  ><strong>Palette</strong
+                  ><small>Accent and supporting neutrals</small></span
+                >
+                <select aria-label="Palette">
+                  <option>Trinity</option>
+                  <option>Amethyst</option>
+                  <option>Onyx</option>
+                </select>
+              </label>
+            </section>
+
+            <section class="settings-group" aria-labelledby="layout-title">
+              <div class="group-heading">
+                <h2 id="layout-title">Layout</h2>
+                <p>
+                  Density changes spacing while accessible targets stay the same
+                  size.
+                </p>
+              </div>
+              <label class="settings-row">
+                <span
+                  ><strong>Conversation density</strong
+                  ><small
+                    >Space between messages and navigation rows</small
+                  ></span
+                >
+                <select aria-label="Conversation density">
+                  <option>Cosy</option>
+                  <option>Compact</option>
+                </select>
+              </label>
+              <label class="settings-row">
+                <span
+                  ><strong>Text size</strong
+                  ><small>Applies throughout the application</small></span
+                >
+                <select aria-label="Text size">
+                  <option>Default</option>
+                  <option>Larger</option>
+                </select>
+              </label>
+              <div class="settings-row">
+                <span
+                  ><strong>Show message previews</strong
+                  ><small
+                    >Display the latest message in the room list</small
+                  ></span
+                >
+                <button
+                  class="switch-control"
+                  role="switch"
+                  aria-label="Show message previews"
+                  aria-checked="true"
+                >
+                  <span></span>
+                </button>
+              </div>
+            </section>
+          </div>
+        </main>
+      </div>
+    </section>
+
+    <script type="module" src="/__design__/prototype.mjs"></script>
+  </body>
+</html>

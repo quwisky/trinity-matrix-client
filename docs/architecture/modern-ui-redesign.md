@@ -308,6 +308,12 @@ prototypes below remain the gate before finalising the rest of the Phase 1 token
 
 ### Phase 0 - baselines and prototypes
 
+Status: in progress. The semantic-avatar pilot is implemented in PR #271. The first follow-up
+slice adds canonical viewport/device profiles and non-shipping workspace/settings candidates under
+`e2e/design-prototypes/`. Current application captures for the room shell, settings, login and
+encryption remain a separate follow-up so proposed direction is never mistaken for a record of the
+existing interface. Product-direction approval is still a human gate, not an automated test result.
+
 Deliverables:
 
 - capture reference screenshots for the room shell, settings, login and encryption flows;
