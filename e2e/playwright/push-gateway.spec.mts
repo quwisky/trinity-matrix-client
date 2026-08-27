@@ -1,5 +1,10 @@
-import { test, expect, type APIRequestContext } from '@playwright/test';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { test, expect, type APIRequestContext } from './support/fixtures.mts';
+import {
+  isAndroidE2E,
+  login,
+  synapseSession,
+  type SynapseSession,
+} from './support/app.mts';
 import { registerUser } from './support/account.mts';
 
 // Two things, both needing a Synapse homeserver (Docker); self-skips otherwise.
@@ -48,7 +53,7 @@ const PUSHKEY = 'E2E-DEVICE-TOKEN';
 test.describe('Push gateway', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('the gateway block is shown but gated to mobile on the web build', async ({
+  test('the gateway block follows the current platform capability', async ({
     page,
     request,
   }) => {
@@ -67,9 +72,14 @@ test.describe('Push gateway', () => {
     await expect(
       page.getByRole('heading', { name: 'Push gateway (this device)' }),
     ).toBeVisible({ timeout: 15_000 });
-    // ...but on the web platform it is inert: the note shows, the form does not.
-    await expect(page.getByTestId('push-gateway-unsupported')).toBeVisible();
-    await expect(page.getByTestId('push-gateway-url')).toHaveCount(0);
+    if (isAndroidE2E) {
+      await expect(page.getByTestId('push-gateway-unsupported')).toHaveCount(0);
+      await expect(page.getByTestId('push-gateway-url')).toBeVisible();
+    } else {
+      // On the web platform it is inert: the note shows, the form does not.
+      await expect(page.getByTestId('push-gateway-unsupported')).toBeVisible();
+      await expect(page.getByTestId('push-gateway-url')).toHaveCount(0);
+    }
   });
 
   test('append lets co-hosted accounts coexist and an app-id change leaves no orphan', async ({

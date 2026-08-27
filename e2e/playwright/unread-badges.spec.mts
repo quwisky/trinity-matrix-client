@@ -1,6 +1,16 @@
-import { test, expect, type APIRequestContext } from '@playwright/test';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { test, expect, type APIRequestContext } from './support/fixtures.mts';
+import {
+  isAndroidE2E,
+  login,
+  synapseSession,
+  type SynapseSession,
+} from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import {
+  installBadgeRecorder,
+  recordedBadgeCalls,
+  recordedBadgeCount,
+} from './support/platform-badge.mts';
 
 // Covers the two unread-badge features end to end:
 //
@@ -144,7 +154,7 @@ test.describe('Unread badges', () => {
     }
   });
 
-  test('web Badging API mirrors the unread total via navigator.setAppBadge', async ({
+  test('the platform badge mirrors the unread total', async ({
     page,
     request,
   }) => {
@@ -153,28 +163,22 @@ test.describe('Unread badges', () => {
 
     const { reader, roomName } = await seedUnreadRoom(request, hs, runId, SEED);
 
-    // Stub the W3C Badging API BEFORE the app boots so AppBadgeService's web
-    // sink (the only branch reachable in a plain Chromium tab — not native,
-    // not Electron) talks to our recorder instead of the real (unsupported in
-    // headless Chromium) API.
-    await page.addInitScript(() => {
-      const w = window as unknown as { __appBadgeCalls: unknown[][] };
-      w.__appBadgeCalls = [];
-      const nav = navigator as Navigator & {
-        setAppBadge?: (n?: number) => Promise<void>;
-        clearAppBadge?: () => Promise<void>;
-      };
-      nav.setAppBadge = (n?: number) => {
-        w.__appBadgeCalls.push(['set', n]);
-        return Promise.resolve();
-      };
-      nav.clearAppBadge = () => {
-        w.__appBadgeCalls.push(['clear']);
-        return Promise.resolve();
-      };
-    });
+    await installBadgeRecorder(page);
 
     await login(page, reader);
+
+    if (isAndroidE2E) {
+      await expect
+        .poll(() => recordedBadgeCount(page), { timeout: 30_000 })
+        .toBe(SEED);
+
+      await page.getByTestId('rail-rooms').click();
+      await page.locator('.channel', { hasText: roomName }).first().click();
+      await expect
+        .poll(() => recordedBadgeCount(page), { timeout: 15_000 })
+        .toBe(0);
+      return;
+    }
 
     // Wait for AppBadgeService's effect to settle on the seeded total (its
     // constructor effect runs on every RoomsService.totalUnread() change).
@@ -189,10 +193,7 @@ test.describe('Unread badges', () => {
       { timeout: 30_000, polling: 300 },
     );
 
-    const calls = await page.evaluate(
-      () =>
-        (window as unknown as { __appBadgeCalls: unknown[][] }).__appBadgeCalls,
-    );
+    const calls = await recordedBadgeCalls(page);
     expect(calls.some((call) => call[0] === 'set' && call[1] === SEED)).toBe(
       true,
     );

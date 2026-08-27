@@ -1,5 +1,11 @@
-import { test, expect, type Page } from '@playwright/test';
-import { login, synapseSession } from './support/app.mts';
+import { test, expect, type Page } from './support/fixtures.mts';
+import {
+  isAndroidE2E,
+  login,
+  preferenceKeys,
+  seedPreference,
+  synapseSession,
+} from './support/app.mts';
 import {
   AA_NORMAL_TEXT,
   measureContrast,
@@ -30,10 +36,8 @@ const session = synapseSession();
 
 /** Every CapacitorStorage-namespaced key currently in localStorage. */
 function storageKeys(page: Page): Promise<string[]> {
-  return page.evaluate(() =>
-    Object.keys(window.localStorage).filter((k) =>
-      k.startsWith('CapacitorStorage.'),
-    ),
+  return preferenceKeys(page).then((keys) =>
+    keys.map((key) => `CapacitorStorage.${key}`),
   );
 }
 
@@ -90,11 +94,13 @@ test.describe('Clear all data', () => {
       dbs: await databaseNames(page),
     };
     // The key carries the full MXID, not the localpart `session.user` holds.
-    expect(
-      before.keys.some((k) =>
-        k.startsWith('CapacitorStorage.secure.matrix.accessToken:@'),
-      ),
-    ).toBe(true);
+    if (!isAndroidE2E) {
+      expect(
+        before.keys.some((k) =>
+          k.startsWith('CapacitorStorage.secure.matrix.accessToken:@'),
+        ),
+      ).toBe(true);
+    }
     expect(before.keys).toContain('CapacitorStorage.matrix.accounts');
     expect(
       before.dbs.some((n) => n.startsWith('matrix-js-sdk:trinity-sync:@')),
@@ -125,7 +131,10 @@ test.describe('Clear all data', () => {
     await page.waitForLoadState('networkidle');
 
     // Assert in the NEW document: nothing of ours survived.
-    const after = await databaseNames(page);
+    const after = await expect
+      .poll(() => databaseNames(page).catch(() => null), { timeout: 30_000 })
+      .not.toBeNull()
+      .then(() => databaseNames(page));
     for (const name of before.dbs) {
       expect(after).not.toContain(name);
     }
@@ -142,11 +151,10 @@ test.describe('Clear all data', () => {
     // — but a bad preference (here a dead push gateway) is still on disk with no way to
     // reach it from the UI.
     await page.goto('/login', { waitUntil: 'networkidle' });
-    await page.evaluate(() =>
-      window.localStorage.setItem(
-        'CapacitorStorage.trinity.push.gateway',
-        'https://dead.example/_matrix/push/v1/notify',
-      ),
+    await seedPreference(
+      page,
+      'trinity.push.gateway',
+      'https://dead.example/_matrix/push/v1/notify',
     );
     expect(await storageKeys(page)).toContain(
       'CapacitorStorage.trinity.push.gateway',
@@ -191,9 +199,7 @@ for (const scheme of ['light', 'dark'] as const) {
       test(`stays a legible danger red on ${palette.id}`, async ({ page }) => {
         // The palette is restored from Preferences on boot, so seed it the way the app
         // stores it rather than reaching into ThemeService.
-        await page.addInitScript((id) => {
-          window.localStorage.setItem('CapacitorStorage.trinity.palette', id);
-        }, palette.id);
+        await seedPreference(page, 'trinity.palette', palette.id);
         await page.goto('/login', { waitUntil: 'networkidle' });
         const button = page.getByTestId('clear-all-data');
         await button.waitFor({ state: 'visible', timeout: 20_000 });

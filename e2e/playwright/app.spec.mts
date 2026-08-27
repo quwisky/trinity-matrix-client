@@ -1,21 +1,20 @@
-import { test, expect } from '@playwright/test';
+import { test } from './support/fixtures.mts';
+import {
+  expectLoginScreen,
+  expectProtectedRouteRedirect,
+} from './journeys/app-shell.mts';
+import { webNavigate } from './support/app.mts';
 
 // Smoke checks that need no homeserver — the SPA boots, the login screen renders,
 // and the auth guard protects app routes.
 test.describe('App shell', () => {
   test('renders the login screen with a homeserver field', async ({ page }) => {
-    await page.goto('/login');
-    await expect(page.getByLabel('Homeserver')).toBeVisible({
-      timeout: 20_000,
-    });
-    await expect(page.getByText('Continue', { exact: true })).toBeVisible();
+    await expectLoginScreen(page, webNavigate);
   });
 
   test('redirects an unauthenticated user from /settings to /login', async ({
     page,
   }) => {
-    await page.goto('/settings');
-    await page.waitForURL('**/login', { timeout: 20_000 });
-    await expect(page).toHaveURL(/\/login/);
+    await expectProtectedRouteRedirect(page, webNavigate);
   });
 });

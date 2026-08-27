@@ -1,4 +1,4 @@
-import { test, expect, type APIRequestContext } from '@playwright/test';
+import { test, expect, type APIRequestContext } from './support/fixtures.mts';
 import { synapseSession, type SsoAccount } from './support/app.mts';
 import {
   keyBackupVersion,
@@ -43,7 +43,7 @@ test.describe('Recovery reset on an SSO account', () => {
 
   test('refuses the reset and points at the identity provider', async ({
     page,
-    browser,
+    authPlatform,
     request,
   }) => {
     const hs = session.hs as string;
@@ -51,7 +51,12 @@ test.describe('Recovery reset on an SSO account', () => {
 
     // Give the account a cross-signing identity if it has none; without one the server
     // waives UIA entirely and the reset would sail through, testing nothing.
-    const account = await ssoApiSession(browser, request, session, identity);
+    const account = await ssoApiSession(
+      authPlatform,
+      request,
+      session,
+      identity,
+    );
     await ensureCrossSigning(request, hs, account);
     const masterKeyBefore = await masterKey(request, hs, account);
     expect(masterKeyBefore).toBeTruthy();
@@ -62,7 +67,7 @@ test.describe('Recovery reset on an SSO account', () => {
     const backupBefore = await ensureKeyBackup(request, hs, account);
     expect(backupBefore).toBeTruthy();
 
-    await ssoLogin(page, session, identity);
+    await ssoLogin(page, session, authPlatform, identity);
     await page.goto('/encryption/unlock', { waitUntil: 'domcontentloaded' });
 
     const resetButton = page.getByTestId('reset-recovery');

@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './support/fixtures.mts';
 import { login, synapseSession } from './support/app.mts';
 
 // One scrollbar in Settings, never two.
@@ -31,7 +31,10 @@ async function scrollbarPainters(page: Page): Promise<string[]> {
       const scrolls =
         (style.overflowY === 'auto' || style.overflowY === 'scroll') &&
         node.scrollHeight > node.clientHeight + 1;
-      if (scrolls && style.scrollbarWidth !== 'none') {
+      const webkitScrollbar = getComputedStyle(node, '::-webkit-scrollbar');
+      const hidden =
+        style.scrollbarWidth === 'none' || webkitScrollbar.display === 'none';
+      if (scrolls && !hidden) {
         found.push(
           `${node.tagName}[${node.getAttribute('data-testid') ?? node.className.slice(0, 30)}]`,
         );

@@ -153,17 +153,18 @@ Each of these runs `pnpm build` and then `cap sync` before it does anything else
 so a web change is always included. Re-run a `*:sync` after any web change if you
 are iterating in Xcode or Android Studio.
 
-| Command                      | What it does                                         | Needs                          |
-| ---------------------------- | ---------------------------------------------------- | ------------------------------ |
-| `pnpm android:sync`          | Build and sync only                                  | Android SDK                    |
-| `pnpm android:run`           | Build, sync, launch on a device or emulator          | Android SDK                    |
-| `pnpm android:open`          | Open the project in Android Studio                   | Android Studio                 |
-| `pnpm android:build`         | Debug APK into `android/app/build/outputs/apk/debug` | Android SDK                    |
-| `pnpm android:build:release` | Release AAB                                          | Android SDK, signing keystore  |
-| `pnpm ios:sync`              | Build and sync only                                  | macOS, Xcode                   |
-| `pnpm ios:run`               | Build, sync, launch on a simulator                   | macOS, Xcode                   |
-| `pnpm ios:open`              | Open the project in Xcode                            | macOS, Xcode                   |
-| `pnpm ios:build`             | `cap build ios --scheme App`                         | macOS, Xcode, signing identity |
+| Command                      | What it does                                         | Needs                                    |
+| ---------------------------- | ---------------------------------------------------- | ---------------------------------------- |
+| `pnpm android:sync`          | Build and sync only                                  | Android SDK                              |
+| `pnpm android:run`           | Build, sync, launch on a device or emulator          | Android SDK                              |
+| `pnpm android:open`          | Open the project in Android Studio                   | Android Studio                           |
+| `pnpm android:build`         | Debug APK into `android/app/build/outputs/apk/debug` | Android SDK                              |
+| `pnpm android:build:release` | Release AAB                                          | Android SDK, signing keystore            |
+| `pnpm e2e:android`           | Installed API 36 WebView journeys via Playwright     | JDK 21, API 36 SDK/emulator, Docker, KVM |
+| `pnpm ios:sync`              | Build and sync only                                  | macOS, Xcode                             |
+| `pnpm ios:run`               | Build, sync, launch on a simulator                   | macOS, Xcode                             |
+| `pnpm ios:open`              | Open the project in Xcode                            | macOS, Xcode                             |
+| `pnpm ios:build`             | `cap build ios --scheme App`                         | macOS, Xcode, signing identity           |
 
 ## End to end harnesses
 
@@ -186,6 +187,21 @@ run instead, so a runner that cannot reach Docker cannot report green.
 The config sets `retries: 2` unconditionally, including locally. A spec that fails
 once and passes on retry is reported as _flaky_, not failed, which is easy to skim
 past — pass `--retries=0` when you want the truth.
+
+The Android suite is a separate serialized Nx target and accepts Playwright arguments:
+
+```bash
+pnpm e2e:android
+TRINITY_ANDROID_SERIAL=emulator-5554 pnpm e2e:android
+pnpm e2e:android -- --shard=1/4
+```
+
+Without an explicit serial it uses only an AVD named `Trinity_API_36`; it never picks the
+first attached device. It builds and installs the production Capacitor app, collects every
+canonical app journey in the actual WebView plus native-only coverage, and leaves failure
+artifacts under `dist/.playwright/android/`. Journeys that require external FCM delivery, a
+not-yet-implemented native file export, or unavailable compositor-panning instrumentation
+are reported as explicit platform skips. Docker is mandatory for authenticated journeys.
 
 ### Standalone protocol harnesses
 

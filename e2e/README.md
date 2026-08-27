@@ -1,23 +1,25 @@
 # Trinity e2e
 
-> **Two e2e systems, one `e2e/` root.** App-level user journeys (login, settings,
-> theme, profile, devices) are **`@nx/playwright` specs** in `e2e/playwright/`
-> (web) and `e2e/electron/` (desktop) — run the web suite with
-> `pnpm exec nx e2e trinity` (`@playwright/test`, Chromium; it builds the dev
+> **Three app-journey targets, one `e2e/` root.** App-level user journeys (login,
+> settings, theme, profile, devices) are **Playwright specs** in `e2e/playwright/`
+> (web), `e2e/android/` (installed Capacitor WebView), and `e2e/electron/` (desktop) — run the web suite with
+> `pnpm exec nx e2e trinity-e2e` (`@playwright/test`, Chromium; it builds the dev
 > bundle, serves `www/`, and spins the Synapse harness below up/down via global
 > setup, skipping auth specs when Docker is absent locally — under `CI` a missing
 > harness fails the run instead, unless `TRINITY_E2E_ALLOW_NO_SYNAPSE=1`) and the desktop suite with
-> `pnpm electron:e2e`. The `features/` + `runners/` scripts are specialised
+> `pnpm electron:e2e`. Run the same app-journey suite against the installed Android
+> package with `pnpm e2e:android`.
+> The `features/` + `runners/` scripts are specialised
 > crypto/protocol drivers (E2EE spike, two-client SAS verification, encrypted
 > media, emoji composer) kept as raw `playwright` Node harnesses. All of it reuses
 > the same disposable Synapse (`e2e/synapse/`).
 >
-> The Playwright **configs stay at `apps/trinity/`** (`playwright.config.mts`,
-> `playwright.electron.config.mts`) so Nx keeps inferring the `e2e` target on the
-> `trinity` project; their `testDir` points back here at `../../e2e/{playwright,electron}`.
+> The Playwright configs live at `e2e/playwright*.config.mts`. The web target is
+> inferred from `playwright.config.mts`; Android is explicit because its Nx target must
+> serialize and disable caching around external emulator state.
 
-Build the dev bundle first (`pnpm nx build trinity --configuration=development`),
-which the `pnpm` wrappers below do for you.
+The web and protocol wrappers build the development bundle for you. Android instead
+builds the production web output and syncs it into the APK before every run.
 
 > On a **containerised CI runner** (a job container talking to a separate Docker
 > daemon), set `TRINITY_E2E_STATE_DIR` and `TRINITY_E2E_NETWORK_CONTAINER` — bind
@@ -33,7 +35,9 @@ e2e/
   runners/    Synapse orchestrators — start the harness, spawn one feature body
               with the HS env, tear the harness down (the `pnpm e2e:*` entrypoints)
   playwright/ @nx/playwright web app-journey specs (app, navigation, settings) +
-              support/ (global-setup/teardown, serve-www) — `nx e2e trinity`
+              support/ (global-setup/teardown, serve-www) — `nx e2e trinity-e2e`
+  android/    API 36 Capacitor WebView fixture, native-only specs, and device
+              orchestrator — `pnpm e2e:android`
   electron/   @nx/playwright Electron specs + support/launch — `pnpm electron:e2e`
   support/    shared helpers (e.g. serve.mjs — static file server for www/)
   synapse/    the disposable Synapse + Caddy + Dex harness (docker-compose, start/stop;
@@ -56,6 +60,48 @@ disposable Synapse. Paths are relative to the repo root, so always invoke via th
 | `pnpm e2e:media`                              | **Note-to-self encrypted media send** — pick a file → encrypt → upload → decrypt own echo.                                                 |
 | `pnpm e2e:reply`                              | **Reply header + preview** — a reply keeps its own author/avatar even as a same-sender continuation, and renders the quoted reply preview. |
 | `pnpm e2e:verify:up` / `pnpm e2e:verify:down` | Bring the Synapse+Caddy+Dex harness up / tear it down by hand.                                                                             |
+| `pnpm e2e:android`                            | Build and install Android, then run every web journey plus native-only journeys in its API 36 WebView.                                     |
+
+## Android WebView journeys
+
+`pnpm e2e:android` is an Nx target, but it deliberately owns more than a normal browser
+test: the production Android build, one API 36 x86_64 emulator, the Playwright Android
+driver, the disposable Synapse stack, and `adb reverse tcp:8448`. Set
+`TRINITY_ANDROID_SERIAL` to an already-running dedicated emulator, or create an AVD named
+`Trinity_API_36`; the runner never selects an arbitrary attached device. It validates that
+the target is an API 36 x86_64 emulator before installing anything.
+
+Prerequisites are JDK 21, Docker, and an Android SDK containing platform tools, the
+emulator, Android API 36, and the API 36 Google APIs x86_64 system image. On Linux, the
+current user also needs read/write access to `/dev/kvm`; software emulation is too slow for
+this suite.
+
+The installed Capacitor app is cleared and relaunched for each test. Every canonical spec
+under `e2e/playwright/` imports the shared platform fixture, so Android collects the same
+journeys in the package WebView. Platform adapters map browser options, permissions,
+preferences, multi-device isolation, and native authentication boundaries without
+substituting a desktop browser for the app under test. External FCM notification delivery
+encrypted-key export, and the compositor-panning assertion are explicit Android skips until
+those environments/product paths exist; they are not replaced with renderer shims that
+would create false coverage.
+Android-only specs additionally cover hardware Back and process restoration. Caddy's test
+certificate is accepted through the attached WebView's DevTools session because
+browser-config `ignoreHTTPSErrors` does not change Android WebView policy.
+
+Failures retain a WebView screenshot, whole-device screenshot, Playwright trace, logcat
+including the crash buffer, activity state, and package diagnostics under
+`dist/.playwright/android/`. Device validation rejects pre-existing Playwright Android
+driver packages; cleanup can therefore remove the run-installed drivers, restore the prior
+reverse mapping, and stop only an emulator the runner started.
+
+An explicitly supplied serial must be disposable. The suite clears both Trinity test
+package IDs before their tests, replaces their APKs, and clears the device's logcat buffers;
+those mutations cannot be restored. It also force-stops Trinity after the run. The exact
+pre-run `adb reverse tcp:8448` mapping is restored, and a pre-existing emulator is left
+running. The target must provide Chrome for native OIDC/SSO journeys. Pass normal
+Playwright arguments after `--`; CI divides the suite with `--shard=N/4` and fails on any
+flaky retry. A source-shape guard requires every canonical spec to import the shared
+fixture and requires the Android config to collect the canonical glob.
 
 ## `e2e:media` — encrypted media send round-trip
 

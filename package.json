@@ -29,6 +29,7 @@
     "e2e:rooms": "nx build trinity --configuration=development && node e2e/runners/rooms-run.mjs",
     "e2e:search": "nx build trinity --configuration=development && node e2e/runners/search-run.mjs",
     "e2e:emoji": "nx build trinity --configuration=development && node e2e/runners/emoji-run.mjs",
+    "e2e:android": "nx run trinity-e2e:android-e2e",
     "electron:install": "pnpm -C electron install && pnpm -C electron run ensure:binary",
     "electron:build": "pnpm run build && pnpm run electron:install && pnpm -C electron run build && pnpm run electron:sign:dev",
     "electron:start": "pnpm run electron:build && pnpm -C electron run start",

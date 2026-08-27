@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './support/fixtures.mts';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 import { registerUser } from './support/account.mts';
 
@@ -142,7 +142,7 @@ test.describe('Message authenticity shields', () => {
 
   test('a shielded message explains itself in a tooltip', async ({
     page,
-    browser,
+    secondaryApp,
     request,
   }) => {
     // Two UI logins plus a cross-signing bootstrap; well past the default budget.
@@ -192,70 +192,66 @@ test.describe('Message authenticity shields', () => {
     await setUpEncryption(page, pass);
 
     // Device B: same account, its own crypto store, never signed by that identity.
-    const contextB = await browser.newContext({ ignoreHTTPSErrors: true });
-    try {
-      const deviceB = await contextB.newPage();
-      await login(deviceB, asSession);
-      await openRoom(deviceB, roomName);
-      await deviceB.locator('textarea.composer__input').first().click();
-      await deviceB.keyboard.type(body);
-      await deviceB.keyboard.press('Enter');
-      await expect(
-        deviceB.locator('.msg__text', { hasText: runId }),
-      ).toBeVisible({ timeout: 30_000 });
+    const deviceB = await secondaryApp.launch();
+    await login(deviceB, asSession);
+    await openRoom(deviceB, roomName);
+    await deviceB.locator('textarea.composer__input').first().click();
+    await deviceB.keyboard.type(body);
+    await deviceB.keyboard.press('Enter');
+    await expect(deviceB.locator('.msg__text', { hasText: runId })).toBeVisible(
+      { timeout: 30_000 },
+    );
 
-      // Back on A, the message arrives shielded.
-      await openRoom(page, roomName);
-      await expect(page.locator('.msg__text', { hasText: runId })).toBeVisible({
-        timeout: 60_000,
-      });
-      const shield = page.locator('[data-testid^="msg-shield-"]').first();
-      await expect(shield).toBeVisible({ timeout: 60_000 });
+    // Back on A, the message arrives shielded.
+    await secondaryApp.activatePrimary();
+    await openRoom(page, roomName);
+    await expect(page.locator('.msg__text', { hasText: runId })).toBeVisible({
+      timeout: 60_000,
+    });
+    const shield = page.locator('[data-testid^="msg-shield-"]').first();
+    await expect(shield).toBeVisible({ timeout: 60_000 });
 
-      // The custom tooltip owns the wording now, so no native one may linger.
-      await expect(shield).not.toHaveAttribute('title', /./);
-      await expect(shield).toHaveAttribute('tabindex', '0');
+    // The custom tooltip owns the wording now, so no native one may linger.
+    await expect(shield).not.toHaveAttribute('title', /./);
+    await expect(shield).toHaveAttribute('tabindex', '0');
 
-      // Keyboard reaches it: brn opens on focus, not only hover.
-      await shield.focus();
-      const tip = page.getByTestId('msg-shield-tip');
-      await expect(tip).toBeVisible({ timeout: 10_000 });
-      // Both halves — what was found, and what it means for the reader.
-      await expect(tip.locator('.msg__shield-tip-reason')).not.toBeEmpty();
-      await expect(tip.locator('.msg__shield-tip-detail')).not.toBeEmpty();
-      // Announced to a screen reader as the icon's description while open.
-      await expect(shield).toHaveAttribute('aria-describedby', /./);
+    // Keyboard reaches it: brn opens on focus, not only hover.
+    await shield.focus();
+    const tip = page.getByTestId('msg-shield-tip');
+    await expect(tip).toBeVisible({ timeout: 10_000 });
+    // Both halves — what was found, and what it means for the reader.
+    await expect(tip.locator('.msg__shield-tip-reason')).not.toBeEmpty();
+    await expect(tip.locator('.msg__shield-tip-detail')).not.toBeEmpty();
+    // Announced to a screen reader as the icon's description while open.
+    await expect(shield).toHaveAttribute('aria-describedby', /./);
 
-      // Never overstate a shield: it means the sender couldn't be attributed, not
-      // that anyone else read the message.
-      expect(await tip.innerText()).not.toMatch(
-        /intercept|read by|eavesdrop|compromised|leaked/i,
-      );
+    // Never overstate a shield: it means the sender couldn't be attributed, not
+    // that anyone else read the message.
+    expect(await tip.innerText()).not.toMatch(
+      /intercept|read by|eavesdrop|compromised|leaked/i,
+    );
 
-      // Placement, measured: flush with the row's trailing edge, top-aligned, and
-      // clear of the wrapped text.
-      const geometry = await page.evaluate(() => {
-        const el = document.querySelector('[data-testid^="msg-shield-"]');
-        const rowEl = el?.closest('.msg');
-        const textEl = rowEl?.querySelector('.msg__text');
-        if (!el || !rowEl || !textEl) return null;
-        const row = rowEl.getBoundingClientRect();
-        const style = getComputedStyle(rowEl);
-        const box = el.getBoundingClientRect();
-        return {
-          rowLevelChild: el.parentElement === rowEl,
-          gapToRowEnd: row.right - parseFloat(style.paddingRight) - box.right,
-          gapToRowTop: box.top - (row.top + parseFloat(style.paddingTop)),
-          overlapsText: box.left < textEl.getBoundingClientRect().right,
-        };
-      });
-      expect(geometry).not.toBeNull();
-      expect(geometry!.rowLevelChild).toBe(true);
-      expect(geometry!.gapToRowEnd).toBeCloseTo(0, 0);
-      expect(geometry!.gapToRowTop).toBeLessThanOrEqual(4);
-      expect(geometry!.overlapsText).toBe(false);
-    } finally {
-      await contextB.close();
-    }
+    // Placement, measured: flush with the row's trailing edge, top-aligned, and
+    // clear of the wrapped text.
+    const geometry = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid^="msg-shield-"]');
+      const rowEl = el?.closest('.msg');
+      const textEl = rowEl?.querySelector('.msg__text');
+      if (!el || !rowEl || !textEl) return null;
+      const row = rowEl.getBoundingClientRect();
+      const style = getComputedStyle(rowEl);
+      const box = el.getBoundingClientRect();
+      return {
+        rowLevelChild: el.parentElement === rowEl,
+        gapToRowEnd: row.right - parseFloat(style.paddingRight) - box.right,
+        gapToRowTop: box.top - (row.top + parseFloat(style.paddingTop)),
+        overlapsText: box.left < textEl.getBoundingClientRect().right,
+      };
+    });
+    expect(geometry).not.toBeNull();
+    expect(geometry!.rowLevelChild).toBe(true);
+    expect(geometry!.gapToRowEnd).toBeCloseTo(0, 0);
+    expect(geometry!.gapToRowTop).toBeLessThanOrEqual(4);
+    expect(geometry!.overlapsText).toBe(false);
   });
 });

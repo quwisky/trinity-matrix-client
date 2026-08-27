@@ -4,8 +4,14 @@ import {
   devices,
   type APIRequestContext,
   type Page,
-} from '@playwright/test';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+} from './support/fixtures.mts';
+import {
+  isAndroidE2E,
+  login,
+  seedPreference,
+  synapseSession,
+  type SynapseSession,
+} from './support/app.mts';
 import { registerUser } from './support/account.mts';
 
 // Swiping a message row sideways to edit or reply to it (#222), on a real phone profile.
@@ -22,7 +28,7 @@ const session = synapseSession();
 
 // Capacitor Preferences namespaces its localStorage keys; seeding the bare key writes
 // something the app never reads.
-const SWIPE_KEY = 'CapacitorStorage.trinity.message-swipe';
+const SWIPE_KEY = 'trinity.message-swipe';
 const DRAWER_OPEN_FROM_RIGHT_PX = 44;
 
 /**
@@ -132,12 +138,7 @@ async function openRoom(
   }
 
   if (direction) {
-    // Capacitor Preferences is localStorage on the web, and this runs before the app boots —
-    // which also exercises the restore path the service's `init()` is for.
-    await page.addInitScript(
-      ([key, value]) => localStorage.setItem(key, value),
-      [SWIPE_KEY, direction] as const,
-    );
+    await seedPreference(page, SWIPE_KEY, direction);
   }
 
   await login(page, { available: true, hs, user, pass } as SynapseSession);
@@ -148,6 +149,27 @@ async function openRoom(
   await expect(page.getByTestId('composer-input')).toBeVisible({
     timeout: 20_000,
   });
+
+  if (filler > 0) {
+    // The initial /sync contains only the newest timeline slice, so the two target
+    // messages precede it in the long-room cases. Reach the top to trigger one real
+    // back-pagination before asking locators for those older rows.
+    const scroll = page.locator('.scroll').first();
+    await expect
+      .poll(
+        async () => {
+          const loaded = await page
+            .locator('.msg[data-mid]', { hasText: `mine ${runId}` })
+            .count();
+          if (loaded > 0) return true;
+          await scroll.evaluate((element) => element.scrollTo({ top: 0 }));
+          await page.waitForTimeout(250);
+          return false;
+        },
+        { timeout: 30_000 },
+      )
+      .toBe(true);
+  }
 
   // Located by their BODY, not by position: `.msg[data-mid]` also matches the system lines
   // the room creation puts at the top (`msg--event`), which render a different element with
@@ -166,7 +188,12 @@ async function openRoom(
 
 /** Drag a row rightwards across enough of its width to commit. */
 async function swipeRow(page: Page, selector: string): Promise<void> {
-  const box = (await page.locator(selector).boundingBox())!;
+  const row = page.locator(selector);
+  // Besides scrolling, Playwright waits for the element to stop moving here. The
+  // incoming row can gain a read-receipt chip just after the room opens; measuring
+  // during that reflow occasionally sent the synthetic finger outside the row.
+  await row.scrollIntoViewIfNeeded();
+  const box = (await row.boundingBox())!;
   const y = box.y + box.height / 2;
   await swipe(
     page,
@@ -413,7 +440,12 @@ test.describe('Swipe a message', () => {
   test('a vertical drag still scrolls the timeline', async ({
     page,
     request,
+    touchPlatform,
   }) => {
+    test.skip(
+      isAndroidE2E,
+      'the attached WebView DevTools endpoint does not expose compositor touch panning; do not replace it with a DOM scroll',
+    );
     // The other half of the same criterion, and the one that needs a real browser: the row
     // gesture must not have taken the vertical axis away from the scroller.
     const { other } = await openRoom(page, request, 's', 'right', 30);
@@ -424,12 +456,25 @@ test.describe('Swipe a message', () => {
         .locator('.scroll')
         .first()
         .evaluate((el) => el.scrollTop);
-    const before = await scrollTop();
+    const { before } = await page
+      .locator('.scroll')
+      .first()
+      .evaluate((el) => ({
+        before: el.scrollTop,
+      }));
+    // scrollIntoView() may place this older row at either end of the currently
+    // loaded slice. Swipe toward whichever direction still has scroll range.
+    // The target is an older row near the top edge. Prefer dragging downward
+    // while there is content above it, which keeps the endpoint on-screen.
+    const distance = before > 1 ? 100 : -100;
 
-    await swipe(
+    await touchPlatform.swipe(
       page,
       { x: box.x + box.width * 0.5, y: box.y + box.height / 2 },
-      { x: box.x + box.width * 0.5, y: box.y + box.height / 2 - 200 },
+      {
+        x: box.x + box.width * 0.5,
+        y: box.y + box.height / 2 + distance,
+      },
     );
 
     await expect.poll(scrollTop, { timeout: 5_000 }).not.toBe(before);
@@ -445,7 +490,9 @@ test.describe('Swipe a message', () => {
     // question — a Pixel 5 profile emulates a viewport and a user agent, not WKWebView's or
     // Android's gesture regions.
     const { other } = await openRoom(page, request, 'd', 'right');
-    const box = (await page.locator(other).boundingBox())!;
+    const row = page.locator(other);
+    await row.scrollIntoViewIfNeeded();
+    const box = (await row.boundingBox())!;
     const y = box.y + box.height / 2;
     const size = page.viewportSize()!;
 
@@ -455,7 +502,9 @@ test.describe('Swipe a message', () => {
     // The positive control, in the same test. Without it every assertion here would pass
     // just as happily against a gesture that was broken outright, a seed that never applied,
     // or a room that never opened.
-    await swipe(page, { x: 64, y }, { x: size.width * 0.9, y });
+    // Leave meaningful margin beyond the 56px dead zone. Starting only 8px
+    // beyond it made the positive control vulnerable to device-coordinate rounding.
+    await swipe(page, { x: 80, y }, { x: size.width * 0.85, y });
     await expect(page.locator('.composer__banner')).toContainText(
       'Replying to',
       { timeout: 10_000 },

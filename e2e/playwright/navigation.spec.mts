@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from './support/fixtures.mts';
+import { focusInside, openSettingsFromRooms } from './journeys/navigation.mts';
 import { login, synapseSession } from './support/app.mts';
 
 // Historical context: this file used to guard the IonRouterOutlet transition lock
@@ -20,23 +21,6 @@ import { login, synapseSession } from './support/app.mts';
 // via provideAppInitializer in main.ts; the second test asserts it.
 const session = synapseSession();
 
-/** Is `document.activeElement` inside the given page component (piercing shadow roots)? */
-const focusInside = (page: Page, selector: string): Promise<boolean> =>
-  page.evaluate((sel) => {
-    const host = document.querySelector(sel);
-    if (!host) return false;
-    let node: Node | null = document.activeElement;
-    while (node) {
-      if (node === host) return true;
-      const root = node.getRootNode();
-      node =
-        root instanceof ShadowRoot
-          ? root.host
-          : (node as Element).parentElement;
-    }
-    return false;
-  }, selector);
-
 test.describe('Route transitions', () => {
   test.skip(
     !session.available,
@@ -52,11 +36,7 @@ test.describe('Route transitions', () => {
     // bar). This is what the removed-behavior test below used to drive; kept as a
     // real (still-true) regression check that the plain router-outlet completes
     // the transition — no dead router.
-    await page.getByTestId('open-settings').click();
-    await page.waitForURL(/\/settings(\/|$)/, { timeout: 20_000 });
-    await expect(page.locator('trn-settings')).toBeVisible({
-      timeout: 20_000,
-    });
+    await openSettingsFromRooms(page);
   });
 
   // NavigationFocusService moves focus into the entering page after each route

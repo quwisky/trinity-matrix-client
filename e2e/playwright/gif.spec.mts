@@ -3,10 +3,12 @@ import {
   expect,
   type APIRequestContext,
   type Page,
-} from '@playwright/test';
+} from './support/fixtures.mts';
 import {
   fillLabeledInput,
   login,
+  readPreference,
+  seedPreference,
   synapseSession,
   type SynapseSession,
 } from './support/app.mts';
@@ -31,9 +33,7 @@ const GIF_1x1 = Buffer.from(
 const PREVIEW_URL = 'https://media.klipy.com/e2e-preview/trinity.gif';
 const FULL_URL = 'https://media.klipy.com/e2e-full/trinity.gif';
 
-// Capacitor Preferences persists non-secret prefs to localStorage under this key
-// (GifSettingsService reads `trinity.gif.config` at startup).
-const GIF_CONFIG_KEY = 'CapacitorStorage.trinity.gif.config';
+const GIF_CONFIG_KEY = 'trinity.gif.config';
 
 interface ApiUser {
   token: string;
@@ -192,7 +192,7 @@ test.describe('GIF picker', () => {
     await page.waitForURL(/\/settings\/gifs$/, { timeout: 20_000 });
 
     const read = (): Promise<string | null> =>
-      page.evaluate((k) => localStorage.getItem(k), GIF_CONFIG_KEY);
+      readPreference(page, GIF_CONFIG_KEY);
     expect(await read()).toBeNull(); // unconfigured → composer hides the GIF button
 
     await page.getByTestId('gif-provider-giphy').click();
@@ -255,12 +255,10 @@ test.describe('GIF picker', () => {
     const { reader, roomName } = await seedRoom(request, hs, runId);
 
     // Enable the picker before the app boots, and stub the provider API + CDN.
-    await page.addInitScript(
-      ([k, v]) => localStorage.setItem(k, v),
-      [
-        GIF_CONFIG_KEY,
-        JSON.stringify({ provider: 'klipy', apiKey: 'e2e-key' }),
-      ],
+    await seedPreference(
+      page,
+      GIF_CONFIG_KEY,
+      JSON.stringify({ provider: 'klipy', apiKey: 'e2e-key' }),
     );
     await stubKlipy(page);
 
@@ -302,12 +300,10 @@ test.describe('GIF picker', () => {
     const runId = `${Date.now().toString(36)}ma`;
     const b = await seedRoom(request, hs, runId);
 
-    await page.addInitScript(
-      ([k, v]) => localStorage.setItem(k, v),
-      [
-        GIF_CONFIG_KEY,
-        JSON.stringify({ provider: 'klipy', apiKey: 'e2e-key' }),
-      ],
+    await seedPreference(
+      page,
+      GIF_CONFIG_KEY,
+      JSON.stringify({ provider: 'klipy', apiKey: 'e2e-key' }),
     );
     await stubKlipy(page);
 

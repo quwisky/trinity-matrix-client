@@ -3,7 +3,7 @@ import {
   expect,
   type APIRequestContext,
   type Page,
-} from '@playwright/test';
+} from './support/fixtures.mts';
 import {
   login,
   openSettingsTab,

@@ -54,6 +54,29 @@ previous build until you run `pnpm ios:sync`.
 
 Android builds need an Android SDK that Gradle can find. iOS builds need macOS with Xcode.
 
+## Android end-to-end testing
+
+`pnpm e2e:android` builds and installs the debug APK on a dedicated API 36 x86_64
+emulator, then attaches Playwright to Trinity's real Capacitor WebView. Pass an explicit
+`TRINITY_ANDROID_SERIAL`, or create an AVD named `Trinity_API_36`. The runner rejects
+physical devices, other API levels, and other ABIs rather than modifying an arbitrary
+connected target.
+
+All canonical web journeys are collected against the installed package WebView, with
+platform adapters for native capabilities and an independently packaged second test
+device. External FCM delivery, the browser-only encrypted-key download, and the one
+compositor-panning assertion are explicit platform skips rather than simulated passes.
+Android-only journeys additionally cover hardware Back and persisted-session restoration
+after a native force-stop/relaunch. See
+[`e2e/README.md`](../../e2e/README.md#android-webview-journeys) for ownership, TLS,
+diagnostics, and cleanup details.
+
+Local runs require JDK 21, Docker, Android platform tools and emulator, Chrome, and the API
+36 Google APIs x86_64 system image. Linux hosts must grant the current user read/write access
+to `/dev/kvm`. Treat an explicitly supplied emulator as disposable: the runner clears
+Trinity's package data and device logcat, replaces the debug APK, and force-stops the app;
+only the previous `tcp:8448` reverse mapping is restored.
+
 ## Plugins
 
 | Plugin                                         | What it is used for                                                                       |

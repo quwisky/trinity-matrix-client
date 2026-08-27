@@ -1,5 +1,10 @@
-import { test, expect, type Page } from '@playwright/test';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { test, expect, type Page } from './support/fixtures.mts';
+import {
+  isAndroidE2E,
+  login,
+  synapseSession,
+  type SynapseSession,
+} from './support/app.mts';
 import { registerUser } from './support/account.mts';
 
 // End-to-end for matrix.to link navigation: a message linking to another room routes
@@ -153,11 +158,21 @@ test.describe('matrix.to link navigation', () => {
     await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card.getByTestId('user-card-name')).toHaveText(bobName);
 
-    // And it is a POPOVER pinned to that mention, not a modal centred over the room it
-    // refers to. Two independent signals, because either alone can hold by accident: CDK
-    // builds this wrapper only for a flexibly-connected overlay (a global centred strategy
-    // has none), and the card hangs BELOW the mention it came from rather than at the
-    // viewport's vertical middle.
+    // Android deliberately uses its mobile dialog interaction model even under a wide
+    // emulated viewport. Web uses the anchored pointer popover.
+    if (isAndroidE2E) {
+      await expect(
+        page.locator('.cdk-overlay-connected-position-bounding-box'),
+      ).toHaveCount(0);
+      await expect(page.getByRole('dialog')).toContainText(bobName);
+      await expect(page.getByTestId('composer-input')).toHaveAttribute(
+        'placeholder',
+        new RegExp(roomName),
+      );
+      return;
+    }
+
+    // On web it is a POPOVER pinned to the mention, not a centred modal.
     await expect(
       page.locator('.cdk-overlay-connected-position-bounding-box'),
     ).toBeVisible();

@@ -3,8 +3,13 @@ import {
   expect,
   type APIRequestContext,
   type Page,
-} from '@playwright/test';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+} from './support/fixtures.mts';
+import {
+  isAndroidE2E,
+  login,
+  synapseSession,
+  type SynapseSession,
+} from './support/app.mts';
 import { registerUser } from './support/account.mts';
 
 // Covers NotificationService's core rule end to end: a live message fires an OS
@@ -218,6 +223,10 @@ test.describe('Message notifications', () => {
     page,
     request,
   }) => {
+    test.skip(
+      isAndroidE2E,
+      'native notification delivery needs an FCM integration environment; renderer notification assertions are web-only',
+    );
     const hs = session.hs as string;
     const runId = `${Date.now().toString(36)}n`;
 

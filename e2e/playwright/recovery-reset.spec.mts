@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './support/fixtures.mts';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 import {
   defaultKeyId,
@@ -313,7 +313,7 @@ test.describe('Recovery reset', () => {
 
   test('Settings offers the escape hatch to someone who cannot unlock', async ({
     page,
-    browser,
+    secondaryApp,
     request,
   }) => {
     // The door the changelog promises. It only exists in the `needs-recovery` state — an
@@ -336,32 +336,27 @@ test.describe('Recovery reset', () => {
     await setUpEncryption(page, pass);
 
     // A second device: same account, no recovery key, so it lands on needs-recovery.
-    const second = await browser.newContext({ ignoreHTTPSErrors: true });
-    try {
-      const fresh = await second.newPage();
-      await login(fresh, credentials);
-      await fresh.goto('/settings/security', { waitUntil: 'domcontentloaded' });
+    const fresh = await secondaryApp.launch();
+    await login(fresh, credentials);
+    await fresh.goto('/settings/security', { waitUntil: 'domcontentloaded' });
 
-      const lost = fresh.getByTestId('security-reset-recovery');
-      await expect(lost).toBeVisible({ timeout: 30_000 });
-      // It sits beside "Enter recovery key" rather than replacing it: someone who still
-      // has their key must not be nudged towards the destructive path.
-      await expect(fresh.getByTestId('security-unlock')).toBeVisible();
+    const lost = fresh.getByTestId('security-reset-recovery');
+    await expect(lost).toBeVisible({ timeout: 30_000 });
+    // It sits beside "Enter recovery key" rather than replacing it: someone who still
+    // has their key must not be nudged towards the destructive path.
+    await expect(fresh.getByTestId('security-unlock')).toBeVisible();
 
-      await lost.click();
+    await lost.click();
 
-      // One implementation of the irreversible flow, two doors — and this door has to
-      // arrive with the reset actually offered. Landing on "Enter your recovery key" and
-      // asking the user to find the same words a second time is not a second door.
-      const gate = fresh.locator('trn-alert-dialog');
-      await expect(gate).toBeVisible({ timeout: 30_000 });
-      await expect(gate).toContainText('Type RESET to confirm');
+    // One implementation of the irreversible flow, two doors — and this door has to
+    // arrive with the reset actually offered. Landing on "Enter your recovery key" and
+    // asking the user to find the same words a second time is not a second door.
+    const gate = fresh.locator('trn-alert-dialog');
+    await expect(gate).toBeVisible({ timeout: 30_000 });
+    await expect(gate).toContainText('Type RESET to confirm');
 
-      // …and backing out of it leaves them on the screen that owns the flow.
-      await gate.getByTestId('alert-cancel').click();
-      await expect(fresh.getByTestId('reset-recovery')).toBeVisible();
-    } finally {
-      await second.close();
-    }
+    // …and backing out of it leaves them on the screen that owns the flow.
+    await gate.getByTestId('alert-cancel').click();
+    await expect(fresh.getByTestId('reset-recovery')).toBeVisible();
   });
 });

@@ -17,6 +17,11 @@ android {
         }
     }
     buildTypes {
+        secondaryDebug {
+            initWith debug
+            applicationIdSuffix ".secondary"
+            matchingFallbacks = ['debug']
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'

@@ -37,6 +37,16 @@
         "command": "playwright test -c playwright.styling.config.mts",
         "cwd": "{projectRoot}"
       }
+    },
+    "android-e2e": {
+      "//": "Owns an installed API 36 WebView, a fixed-port Synapse stack, and adb reverse state. Those external resources are intentionally serialized and never cacheable.",
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node android/run.mts",
+        "cwd": "{projectRoot}"
+      }
     }
   }
 }

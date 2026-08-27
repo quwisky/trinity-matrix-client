@@ -1,4 +1,4 @@
-import { test, expect, devices, type Page } from '@playwright/test';
+import { test, expect, devices, type Page } from './support/fixtures.mts';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 import { registerUser } from './support/account.mts';
 

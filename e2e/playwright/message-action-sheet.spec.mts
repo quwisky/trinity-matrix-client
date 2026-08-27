@@ -5,7 +5,7 @@ import {
   type APIRequestContext,
   type Locator,
   type Page,
-} from '@playwright/test';
+} from './support/fixtures.mts';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 import { registerUser } from './support/account.mts';
 
@@ -122,7 +122,9 @@ async function expectMessageClearOfSheet(
   expect(sheetBox).not.toBeNull();
   expect(geometry.row.top).toBeGreaterThanOrEqual(geometry.scroller.top);
   expect(geometry.row.bottom).toBeLessThanOrEqual(geometry.scroller.bottom);
-  expect(geometry.row.bottom + 8).toBeLessThanOrEqual(sheetBox!.y);
+  // CDP reports fractional CSS pixels after Android device-scale conversion; allow
+  // sub-pixel rounding while preserving the intended eight-pixel visual gap.
+  expect(geometry.row.bottom + 8).toBeLessThanOrEqual(sheetBox!.y + 0.5);
 }
 
 async function scrollerRelativeTop(row: Locator): Promise<number> {

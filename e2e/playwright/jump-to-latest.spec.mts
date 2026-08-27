@@ -3,8 +3,13 @@ import {
   expect,
   type APIRequestContext,
   type Page,
-} from '@playwright/test';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+} from './support/fixtures.mts';
+import {
+  isAndroidE2E,
+  login,
+  synapseSession,
+  type SynapseSession,
+} from './support/app.mts';
 import { registerUser } from './support/account.mts';
 
 // End-to-end for the message list's jump-to-latest pill: once the user scrolls up
@@ -144,10 +149,15 @@ test.describe('Jump to latest', () => {
     );
     expect(range, `scrollable range ${range}px`).toBeGreaterThan(300);
 
-    // Scroll up with a real wheel gesture; the list now reports "not at bottom"
-    // and offers the pill.
-    await scroll.hover();
-    await page.mouse.wheel(0, -3000);
+    // Desktop Chromium accepts a wheel gesture. Android's attached WebView does
+    // not receive Playwright's synthetic mouse wheel, so drive the same scroll
+    // container directly there and let its real scroll event update the signal.
+    if (isAndroidE2E) {
+      await scroll.evaluate((element) => element.scrollBy({ top: -3000 }));
+    } else {
+      await scroll.hover();
+      await page.mouse.wheel(0, -3000);
+    }
     await expect(pill).toBeVisible({ timeout: 15_000 });
 
     // Jumping returns to the newest message and dismisses the pill.

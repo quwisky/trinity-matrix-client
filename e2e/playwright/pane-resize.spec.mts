@@ -1,5 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
-import { login, synapseSession } from './support/app.mts';
+import { test, expect, type Page } from './support/fixtures.mts';
+import { login, readPreference, synapseSession } from './support/app.mts';
 
 /**
  * Dragging a pane changes the layout, and the layout survives a reload.
@@ -22,7 +22,7 @@ const session = synapseSession();
 /** The server rail is a fixed column; everything the drag adds goes to the room list. */
 const RAIL_WIDTH = 72;
 const CHAT_MIN_WIDTH = 320;
-const SIDEBAR_STORAGE_KEY = 'CapacitorStorage.trinity.shell.sidebar-width';
+const SIDEBAR_STORAGE_KEY = 'trinity.shell.sidebar-width';
 
 async function shellGeometry(page: Page) {
   return page.locator('[data-shell-root]').evaluate((shell) => {
@@ -171,9 +171,7 @@ test.describe('Resizable panes', () => {
     await handle.press('End');
     await expect(handle).toHaveAttribute('aria-valuenow', String(max));
     await expect
-      .poll(() =>
-        page.evaluate((key) => localStorage.getItem(key), SIDEBAR_STORAGE_KEY),
-      )
+      .poll(() => readPreference(page, SIDEBAR_STORAGE_KEY))
       .toBe(String(max));
     await expect
       .poll(async () => Math.round((await sidebar.boundingBox())?.width ?? 0))
@@ -212,12 +210,7 @@ test.describe('Resizable panes', () => {
         'aria-valuenow',
         String(renderedSidebarWidth),
       );
-      expect(
-        await page.evaluate(
-          (key) => localStorage.getItem(key),
-          SIDEBAR_STORAGE_KEY,
-        ),
-      ).toBe(String(max));
+      expect(await readPreference(page, SIDEBAR_STORAGE_KEY)).toBe(String(max));
     }
 
     // Growing is impossible at the live cap. It must be a no-op rather than silently
@@ -238,9 +231,7 @@ test.describe('Resizable panes', () => {
       .poll(async () => Math.round((await sidebar.boundingBox())?.width ?? 0))
       .toBe(448);
     await expect
-      .poll(() =>
-        page.evaluate((key) => localStorage.getItem(key), SIDEBAR_STORAGE_KEY),
-      )
+      .poll(() => readPreference(page, SIDEBAR_STORAGE_KEY))
       .toBe(String(max));
 
     // Widening has to restore the preference without another write or reload.
@@ -270,9 +261,7 @@ test.describe('Resizable panes', () => {
       .toBe(432);
     await expect(handle).toHaveAttribute('aria-valuenow', '432');
     await expect
-      .poll(() =>
-        page.evaluate((key) => localStorage.getItem(key), SIDEBAR_STORAGE_KEY),
-      )
+      .poll(() => readPreference(page, SIDEBAR_STORAGE_KEY))
       .toBe('432');
 
     // Reset the preference while still clamped, then prove the first keypress moves the pane.
@@ -284,9 +273,7 @@ test.describe('Resizable panes', () => {
       .toBe(432);
     await expect(handle).toHaveAttribute('aria-valuenow', '432');
     await expect
-      .poll(() =>
-        page.evaluate((key) => localStorage.getItem(key), SIDEBAR_STORAGE_KEY),
-      )
+      .poll(() => readPreference(page, SIDEBAR_STORAGE_KEY))
       .toBe('432');
   });
 });
