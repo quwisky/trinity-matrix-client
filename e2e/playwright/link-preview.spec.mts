@@ -176,6 +176,23 @@ test.describe('Link previews', () => {
     await expect(card).toContainText('Trinity E2E Preview');
     await expect(card).toHaveAttribute('href', destination);
 
+    // Introduce the server event that caused the reported second-stage failure only
+    // after the readable row is on screen. The SDK may aggregate it from sync or while
+    // `/relations` is fetched below; either way, an array cannot replace the live text.
+    const malformedEdit = await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${runId}-malformed-edit`,
+      {
+        headers: auth,
+        data: {
+          msgtype: 'm.text',
+          body: '* malformed',
+          'm.new_content': [],
+          'm.relates_to': { rel_type: 'm.replace', event_id: eventId },
+        },
+      },
+    );
+    expect(malformedEdit.ok()).toBe(true);
+
     await message.getByRole('button', { name: /edited/i }).click();
     const history = page.getByTestId('edit-history');
     await expect(history).toBeVisible({ timeout: 20_000 });

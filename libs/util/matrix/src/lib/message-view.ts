@@ -351,6 +351,8 @@ export function buildMessageView(
   // `||` (not `??`) so an empty display name still falls back to the mxid.
   const senderName = member?.name || senderId;
   const decryptionFailed = event.isDecryptionFailure();
+  const replacement = event.replacingEvent();
+  const content = renderableMessageContentOf(event);
   // A poll renders as its own kind, driven by the projected PollView rather than the
   // usual message body — so branch before renderBody (which expects m.room.message).
   const poll = isPollStart(event) ? buildPollView(client, room, event) : null;
@@ -372,7 +374,7 @@ export function buildMessageView(
         captionHtml: null,
         location: null,
       }
-    : renderBody(event, decryptionFailed, client.getUserId() ?? '');
+    : renderBody(event, content, decryptionFailed, client.getUserId() ?? '');
   return {
     id: event.getId() ?? '',
     senderId,
@@ -384,7 +386,9 @@ export function buildMessageView(
     timestamp: event.getTs(),
     isOwn: senderId === client.getUserId(),
     decryptionFailed,
-    edited: event.replacingEvent() !== null,
+    // Keep the history affordance when an invalid newest edit sits after valid ones.
+    // The body above falls back safely, while history filters the malformed revision.
+    edited: replacement !== null,
     reactions: reactionsFor(client, room, event),
     replyTo: event.replyEventId ? replyPreview(room, event.replyEventId) : null,
     status: mapStatus(event.status),
@@ -400,8 +404,7 @@ export function buildMessageView(
     // actually previewed is decided downstream from `previewEncrypted` + the user's
     // preferences — a preview fetch discloses the URL to the homeserver, so in an
     // encrypted room it happens only when the user has opted in.
-    previewUrl:
-      kind === 'text' ? previewUrlForText(event.getContent(), body) : null,
+    previewUrl: kind === 'text' ? previewUrlForText(content, body) : null,
     // Fail CLOSED: if the SDK can't report the room's encryption state, treat it as
     // encrypted so a preview requires the explicit encrypted-rooms opt-in.
     previewEncrypted: room.hasEncryptionStateEvent?.() ?? true,
@@ -1380,6 +1383,48 @@ interface RenderedBody {
   location?: LocationView | null;
 }
 
+/**
+ * The complete editable-text `m.new_content` block of an edit, unwrapped.
+ *
+ * Keep this stricter than a generic object check. `MatrixEvent.getContent()` returns
+ * this value verbatim once the SDK aggregates the edit, so an array, incomplete object
+ * or media replacement would otherwise turn a readable text row into an unsupported one.
+ */
+export function editableReplacementContentOf(
+  edit: MatrixEvent,
+): Record<string, unknown> | null {
+  return editableTextContent(edit.getContent()['m.new_content']);
+}
+
+/** A complete text, emote or notice body, or null for an invalid replacement shape. */
+function editableTextContent(content: unknown): Record<string, unknown> | null {
+  if (!content || typeof content !== 'object' || Array.isArray(content)) {
+    return null;
+  }
+  const replacement = content as Record<string, unknown>;
+  return typeof replacement['body'] === 'string' &&
+    (replacement['msgtype'] === MsgType.Text ||
+      replacement['msgtype'] === MsgType.Emote ||
+      replacement['msgtype'] === MsgType.Notice)
+    ? replacement
+    : null;
+}
+
+/**
+ * Content safe for the live renderer. A relations fetch can temporarily make the SDK
+ * point the original event at malformed `m.new_content`; keep showing the readable
+ * original until a complete editable-text replacement is available.
+ */
+function renderableMessageContentOf(
+  event: MatrixEvent,
+): Record<string, unknown> {
+  const content = event.getContent();
+  const replacement = event.replacingEvent();
+  return replacement && editableTextContent(content) === null
+    ? event.getOriginalContent()
+    : content;
+}
+
 /** Whether an event's `m.mentions` names the viewer — the only trustworthy "this is for
  * you" signal, since everything else in the content is written by the sender. */
 function mentionsViewer(
@@ -1455,6 +1500,7 @@ export function renderTextBody(
 
 function renderBody(
   event: MatrixEvent,
+  content: Record<string, unknown>,
   decryptionFailed: boolean,
   selfUserId: string,
 ): RenderedBody {
@@ -1474,7 +1520,6 @@ function renderBody(
       media: null,
     };
   }
-  const content = event.getContent();
   const { text, html, textHtml } = renderTextBody(
     content,
     !!event.replyEventId,
@@ -1513,7 +1558,7 @@ function renderBody(
       media,
     };
   }
-  switch (content.msgtype) {
+  switch (content['msgtype']) {
     case MsgType.Text:
       return { body: text, html: textHtml, kind: 'text', media: null };
     case MsgType.Emote:
@@ -1543,11 +1588,11 @@ function renderBody(
     case MsgType.File:
     case MsgType.Audio:
     case MsgType.Video: {
-      const media = buildMediaPayload(content, content.msgtype);
+      const media = buildMediaPayload(content, content['msgtype'] as string);
       // A malformed media event (no url/file) falls back to a plain label.
       if (!media) {
         return {
-          body: text || `[${String(content.msgtype).replace(/^m\./, '')}]`,
+          body: text || `[${String(content['msgtype']).replace(/^m\./, '')}]`,
           html: null,
           kind: 'unsupported',
           media: null,

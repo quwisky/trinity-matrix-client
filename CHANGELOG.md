@@ -149,6 +149,8 @@ All notable changes to this project are documented here. The format is based on
   loading as images inside the message. Opening edit history also no longer lets an invalid
   related message replace the live row with an "unsupported message" placeholder, including
   when the valid edit is encrypted or the malformed replacement is an array or incomplete text.
+  The readable original now also stays on screen while the Matrix SDK temporarily aggregates
+  such a malformed edit, before the history repair has had a chance to discard it.
 
 - **Settings no longer shows two scrollbars side by side.** On a short window the list of
   sections scrolled independently of the section you were reading, so both drew a scrollbar

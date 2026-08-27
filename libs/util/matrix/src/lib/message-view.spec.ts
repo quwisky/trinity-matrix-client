@@ -346,6 +346,56 @@ describe('mislabeled standalone Markdown links', () => {
     }
   });
 
+  it('keeps the reported event readable while the SDK points at a malformed edit', () => {
+    const destination =
+      'https://static.wikia.nocookie.net/control6745/images/e/e6/' +
+      'Control_-_Safeer_Abbas_-_Powerplant_enviromental_art_1.jpg';
+    const target = new MatrixEvent({
+      event_id: '$markdown-link',
+      origin_server_ts: 1000,
+      room_id: '!r:hs',
+      sender: '@alice:hs',
+      type: 'm.room.message',
+      content: {
+        msgtype: 'm.text',
+        body: `[${destination}](${destination})`,
+        format: 'org.matrix.custom.html',
+        formatted_body: `[${destination}](${destination})`,
+      },
+    });
+    const malformed = new MatrixEvent({
+      event_id: '$malformed-edit',
+      origin_server_ts: 2000,
+      room_id: '!r:hs',
+      sender: '@alice:hs',
+      type: 'm.room.message',
+      content: {
+        msgtype: 'm.text',
+        body: '* malformed',
+        'm.new_content': [],
+        'm.relates_to': { rel_type: 'm.replace', event_id: '$markdown-link' },
+      },
+    });
+    target.makeReplaced(malformed);
+
+    const room = {
+      getMember: () => null,
+      getUsersReadUpTo: () => [],
+      hasEncryptionStateEvent: () => false,
+      relations: { getChildEventsForEvent: () => undefined },
+    } as unknown as Room;
+    const client = {
+      getUserId: () => '@me:hs',
+    } as unknown as MatrixClient;
+    const guarded = safeBuildMessageView(client, room, target);
+    const anchor = parse(guarded.html ?? '').querySelector('a');
+
+    expect(guarded.kind).toBe('text');
+    expect(guarded.edited).toBe(true);
+    expect(anchor?.textContent).toBe(destination);
+    expect(anchor?.getAttribute('href')).toBe(destination);
+  });
+
   it('renders the supplied shape as one link and previews the same URL', () => {
     const view = project(content());
     const rendered = parse(view.html ?? '');

@@ -746,7 +746,11 @@ that the decrypted event contains a complete text, emote or notice `m.new_conten
 content has an `m.replace` relation targeting that exact message. Reading the relation from the
 wire event is required in encrypted rooms. A related or malformed room message must never become
 the SDK replacement: the SDK resolves a missing or invalid `m.new_content` to content the text
-renderer cannot support, which would corrupt an otherwise readable row when history opens.
+renderer cannot support, which would corrupt an otherwise readable row when history opens. The
+live projection therefore also treats an aggregated array, incomplete object or non-text
+replacement as invalid and renders the original content until a valid text replacement is
+available. This second boundary covers the interval before edit-history repair runs, including a
+malformed edit arriving through sync.
 
 Only security belongs in the sanitizer hook. Attributes set inside `afterSanitizeAttributes`
 are not re-filtered against the allowlist, so anything added there rides out onto the wire
