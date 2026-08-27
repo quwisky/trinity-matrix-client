@@ -8,6 +8,7 @@ import {
   ImagePackService,
   LEGACY_IMAGE_PACK_EVENT_TYPE,
   LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE,
+  TRINITY_IMAGE_PACK_ENABLED_USAGE,
   readImagePacks,
 } from './image-pack.service';
 
@@ -127,6 +128,10 @@ describe('ImagePackService', () => {
     const packs = readImagePacks(client as never, '!current:hs');
 
     expect(packs.map((item) => item.name)).toEqual(['Global', 'Local']);
+    expect(packs.map((item) => item.scope.sticker)).toEqual([
+      'account',
+      'room',
+    ]);
     expect(packs[0].images[0].usage).toEqual(['emoticon', 'sticker']);
     expect(packs[1].images[0].usage).toEqual(['sticker']);
     expect(packs[0].images[0].info).toEqual({
@@ -137,6 +142,53 @@ describe('ImagePackService', () => {
       thumbnail_url: 'mxc://hs/thumb',
       thumbnail_info: { mimetype: 'image/png', w: 16, h: 12 },
     });
+  });
+
+  it('uses account preferences per usage and falls back to current-room scope', () => {
+    const { client, account, roomEvents, rebuildRoom } = setup();
+    account.set(
+      IMAGE_PACK_ROOMS_EVENT_TYPE,
+      event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
+        rooms: {
+          '!current:hs': {
+            mixed: { [TRINITY_IMAGE_PACK_ENABLED_USAGE]: ['emoticon'] },
+          },
+        },
+      }),
+    );
+    roomEvents.set('!current:hs', [
+      event(IMAGE_PACK_EVENT_TYPE, 'mixed', pack('Mixed'), '!current:hs'),
+    ]);
+    rebuildRoom('!current:hs');
+
+    const packs = readImagePacks(client as never, '!current:hs');
+
+    expect(packs).toHaveLength(1);
+    expect(packs[0].scope).toEqual({
+      emoticon: 'account',
+      sticker: 'room',
+    });
+    expect(packs[0].images[0].usage).toEqual(['emoticon', 'sticker']);
+  });
+
+  it('omits a fully disabled account pack outside its source room', () => {
+    const { client, account, roomEvents, rebuildRoom } = setup();
+    account.set(
+      IMAGE_PACK_ROOMS_EVENT_TYPE,
+      event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
+        rooms: {
+          '!pack:hs': {
+            disabled: { [TRINITY_IMAGE_PACK_ENABLED_USAGE]: [] },
+          },
+        },
+      }),
+    );
+    roomEvents.set('!pack:hs', [
+      event(IMAGE_PACK_EVENT_TYPE, 'disabled', pack('Disabled')),
+    ]);
+    rebuildRoom('!pack:hs');
+
+    expect(readImagePacks(client as never, '!current:hs')).toEqual([]);
   });
 
   it('lets stable pack state override a legacy selection for the same source', () => {

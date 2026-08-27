@@ -10,9 +10,10 @@ All notable changes to this project are documented here. The format is based on
 
 - **Install and manage sticker packs without another Matrix client.** Settings now has a
   **Stickers & emoji** section that finds MSC2545 packs by room ID or alias, lets you choose
-  among multiple packs in one room, and installs or removes them for the active account. A
-  **Manage** action in the sticker picker opens the same screen. Installed packs update the
-  composer immediately and follow the account to other devices; broken or inaccessible
+  among multiple packs in one room, enables or disables their supported usages, and installs or
+  removes them for the active account. A **Manage** action in the sticker picker opens the same
+  screen, and pack headings distinguish **All rooms** from **This room** sources. Installed packs
+  update the composer immediately and follow the account to other devices; broken or inaccessible
   references remain removable instead of disappearing. Trinity reads legacy pack data for
   compatibility but writes only the stable Matrix event type.
 

@@ -111,11 +111,13 @@ Android WebView suites. Against disposable Synapse it:
 1. creates a public source room with two stable packs and a same-key legacy duplicate;
 2. resolves the room alias, joins it through **Find packs**, and lists both stable state keys;
 3. installs one exact reference and observes the installed row immediately;
-4. returns to the room and observes the composer's **Sticker** action without restarting;
-5. sends the selected image as `m.sticker` and confirms the event through the Matrix API;
-6. removes the reference and verifies stable account data is `{ "rooms": {} }`;
-7. verifies that uninstall did not delete the publisher's source state; and
-8. returns to the room and confirms the account-only sticker action is gone.
+4. signs the same account into a second isolated app and observes the synced pack there;
+5. disables and re-enables sticker use, observing the composer update without restarting;
+6. labels the installed pack **All rooms** and a current-room pack **This room**;
+7. sends the selected image as `m.sticker` and confirms the event through the Matrix API;
+8. removes the reference and verifies stable account data is `{ "rooms": {} }`;
+9. verifies that uninstall did not delete the publisher's source state; and
+10. returns to the room and confirms the account-only sticker action is gone.
 
 The Android collection also asserts the install button reaches the 44px coarse-pointer target.
 The journey does not claim another-device propagation or atomic conflict freedom; those properties

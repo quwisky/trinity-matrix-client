@@ -33,7 +33,9 @@ test.describe('MSC2545 stickers and custom emoji', () => {
   test('installs, sends, and uninstalls a room image pack', async ({
     page,
     request,
+    secondaryApp,
   }) => {
+    test.slow();
     const hs = session.hs as string;
     const runId = `${Date.now().toString(36)}stk`;
     const user = `sticker-${runId}`;
@@ -199,8 +201,84 @@ test.describe('MSC2545 stickers and custom emoji', () => {
       'available in all rooms',
     );
 
+    // A separately installed client signed into the same account receives the
+    // stable account-data reference without sharing browser/app storage.
+    const deviceB = await secondaryApp.launch();
+    await login(deviceB, {
+      available: true,
+      hs,
+      user,
+      pass,
+    } as SynapseSession);
+    await openRoom(deviceB, roomName);
+    await deviceB.getByTestId('composer-insert').click();
+    await expect(deviceB.getByTestId('insert-sticker')).toBeVisible({
+      timeout: 20_000,
+    });
+    await deviceB.getByTestId('insert-sticker').click();
+    const deviceBPack = deviceB
+      .getByTestId('sticker-pack')
+      .filter({ hasText: 'Fun pack' });
+    await expect(deviceBPack.getByTestId('sticker-pack-scope')).toHaveText(
+      'All rooms',
+    );
+    await secondaryApp.activatePrimary();
+
+    // Usage preferences are a namespaced extension on the stable reference.
+    // Disabling stickers removes the pack immediately without uninstalling it.
+    const installedPack = page
+      .getByTestId('installed-image-pack')
+      .filter({ hasText: 'Fun pack' });
+    await installedPack
+      .getByTestId('image-pack-usage-sticker')
+      .getByRole('checkbox')
+      .click();
+    await expect(page.getByTestId('image-pack-notice')).toContainText(
+      'usage was updated',
+    );
+
     await leaveSettings(page);
     await openRoom(page, roomName);
+    await page.getByTestId('composer-insert').click();
+    await expect(page.getByTestId('insert-sticker')).toBeHidden({
+      timeout: 20_000,
+    });
+    await page.keyboard.press('Escape');
+
+    await page.getByTestId('open-settings').click();
+    await page.getByTestId('settings-nav-stickers').click();
+    const disabledPack = page
+      .getByTestId('installed-image-pack')
+      .filter({ hasText: 'Fun pack' });
+    await disabledPack
+      .getByTestId('image-pack-usage-sticker')
+      .getByRole('checkbox')
+      .click();
+    await expect(page.getByTestId('image-pack-notice')).toContainText(
+      'usage was updated',
+    );
+
+    await leaveSettings(page);
+    await openRoom(page, roomName);
+
+    // Publish a second pack in the active chat so the same picker proves the
+    // distinction between globally installed and room-scoped sources.
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(chatRoomId)}/state/m.room.image_pack/local`,
+      {
+        headers,
+        data: {
+          pack: { display_name: 'Local pack', usage: ['sticker'] },
+          images: {
+            local: {
+              url: mxc,
+              body: 'Local pixel',
+              info: { mimetype: 'image/png', w: 1, h: 1 },
+            },
+          },
+        },
+      },
+    );
 
     await page.getByTestId('composer-insert').click();
     await expect(page.getByTestId('insert-sticker')).toBeVisible({
@@ -208,6 +286,25 @@ test.describe('MSC2545 stickers and custom emoji', () => {
     });
     await page.getByTestId('insert-sticker').click();
     await expect(page.getByTestId('manage-image-packs')).toBeVisible();
+    const globalPack = page
+      .getByTestId('sticker-pack')
+      .filter({ hasText: 'Fun pack' });
+    const localPack = page
+      .getByTestId('sticker-pack')
+      .filter({ hasText: 'Local pack' });
+    await expect(globalPack.getByTestId('sticker-pack-scope')).toHaveText(
+      'All rooms',
+    );
+    await expect(localPack.getByTestId('sticker-pack-scope')).toHaveText(
+      'This room',
+      { timeout: 20_000 },
+    );
+
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(chatRoomId)}/state/m.room.image_pack/local`,
+      { headers, data: {} },
+    );
+    await expect(localPack).toHaveCount(0, { timeout: 20_000 });
     await page.getByTestId('sticker-party').click();
 
     const sticker = page.locator('.msg--sticker').last();
@@ -230,12 +327,13 @@ test.describe('MSC2545 stickers and custom emoji', () => {
 
     await page.getByTestId('open-settings').click();
     await page.getByTestId('settings-nav-stickers').click();
-    const installedPack = page
+    const packToRemove = page
       .getByTestId('installed-image-pack')
       .filter({ hasText: 'Fun pack' });
-    await installedPack.getByTestId('remove-image-pack').click();
+    await packToRemove.getByTestId('remove-image-pack').click();
     await page.getByRole('button', { name: 'Remove pack' }).click();
-    await expect(installedPack).toHaveCount(0);
+    await expect(packToRemove).toHaveCount(0);
+    await expect(page.locator('#installed-packs-title')).toBeFocused();
     await expect(page.getByTestId('image-pack-notice')).toContainText(
       'removed from your account',
     );

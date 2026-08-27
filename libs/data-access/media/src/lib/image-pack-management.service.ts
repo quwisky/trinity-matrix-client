@@ -16,6 +16,7 @@ import {
 import {
   IMAGE_PACK_EVENT_TYPE,
   IMAGE_PACK_ROOMS_EVENT_TYPE,
+  type ImagePackUsage,
   LEGACY_IMAGE_PACK_EVENT_TYPE,
   LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE,
 } from './image-pack.service';
@@ -24,10 +25,12 @@ import {
   ImagePackManagementError,
   type ImagePackDiscovery,
   type ImagePackSource,
+  type ImagePackUsageSource,
   type ManagedImagePack,
   hasImagePackReference,
   inspectStatePacks,
   mutateSelectionContent,
+  mutateSelectionEnabledUsage,
   readManagedImagePacks,
   roomNameFromState,
   validateImagePackSource,
@@ -36,6 +39,15 @@ import {
 export * from './image-pack-management.model';
 
 const VERIFY_ATTEMPTS = 3;
+
+type ImagePackMutation =
+  | { readonly kind: 'install' }
+  | { readonly kind: 'uninstall' }
+  | {
+      readonly kind: 'usage';
+      readonly source: ImagePackUsageSource;
+      readonly enabled: readonly ImagePackUsage[];
+    };
 
 /** Installs and removes MSC2545 account pack references without authoring room state. */
 @Injectable({ providedIn: 'root' })
@@ -114,12 +126,32 @@ export class ImagePackManagementService {
 
   /** Add one exact room/state-key reference to stable account data. Cold. */
   install(source: ImagePackSource): Observable<void> {
-    return defer(() => from(this.mutate(this.client(), source, true)));
+    return defer(() =>
+      from(this.mutate(this.client(), source, { kind: 'install' })),
+    );
   }
 
   /** Remove only the account reference; room membership, state, and media remain. Cold. */
   uninstall(source: ImagePackSource): Observable<void> {
-    return defer(() => from(this.mutate(this.client(), source, false)));
+    return defer(() =>
+      from(this.mutate(this.client(), source, { kind: 'uninstall' })),
+    );
+  }
+
+  /** Change which publisher-supported usages Trinity exposes. Cold. */
+  setEnabledUsage(
+    source: ImagePackUsageSource,
+    enabled: readonly ImagePackUsage[],
+  ): Observable<void> {
+    return defer(() =>
+      from(
+        this.mutate(this.client(), source, {
+          kind: 'usage',
+          source,
+          enabled,
+        }),
+      ),
+    );
   }
 
   private client(): MatrixClient {
@@ -162,12 +194,12 @@ export class ImagePackManagementService {
   private mutate(
     client: MatrixClient,
     source: ImagePackSource,
-    install: boolean,
+    mutation: ImagePackMutation,
   ): Promise<void> {
     const previous = this.queues.get(client) ?? Promise.resolve();
     const operation = previous
       .catch(() => undefined)
-      .then(() => this.mutateSerialized(client, source, install));
+      .then(() => this.mutateSerialized(client, source, mutation));
     this.queues.set(client, operation);
     const cleanup = (): void => {
       if (this.queues.get(client) === operation) this.queues.delete(client);
@@ -179,7 +211,7 @@ export class ImagePackManagementService {
   private async mutateSerialized(
     client: MatrixClient,
     source: ImagePackSource,
-    install: boolean,
+    mutation: ImagePackMutation,
   ): Promise<void> {
     for (let attempt = 0; attempt < VERIFY_ATTEMPTS; attempt += 1) {
       const stable = await getAccountDataFromServer(
@@ -193,21 +225,32 @@ export class ImagePackManagementService {
               LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE,
             )
           : stable;
-      const next = mutateSelectionContent(
-        base,
-        source,
-        install,
-        stable === null,
-      );
+      if (
+        mutation.kind === 'usage' &&
+        !hasImagePackReference(base, source, stable === null)
+      ) {
+        continue;
+      }
+      const next =
+        mutation.kind === 'usage'
+          ? mutateSelectionEnabledUsage(
+              base,
+              mutation.source,
+              mutation.enabled,
+              stable === null,
+            )
+          : mutateSelectionContent(
+              base,
+              source,
+              mutation.kind === 'install',
+              stable === null,
+            );
       await setAccountData(client, IMAGE_PACK_ROOMS_EVENT_TYPE, next);
       const verified = await getAccountDataFromServer(
         client,
         IMAGE_PACK_ROOMS_EVENT_TYPE,
       );
-      if (
-        verified !== null &&
-        hasImagePackReference(verified, source) === install
-      ) {
+      if (verified !== null && sameJsonDocument(verified, next)) {
         this.selections.set(client, { present: true, content: verified });
         this.installedState.set(
           readManagedImagePacks(client, { present: true, content: verified }),
@@ -217,6 +260,32 @@ export class ImagePackManagementService {
     }
     throw new ImagePackManagementError('write-conflict');
   }
+}
+
+function sameJsonDocument(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => sameJsonDocument(value, right[index]))
+    );
+  }
+  if (!isJsonObject(left) || !isJsonObject(right)) return false;
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key, index) =>
+        key === rightKeys[index] && sameJsonDocument(left[key], right[key]),
+    )
+  );
+}
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 type AccountDataClient = {

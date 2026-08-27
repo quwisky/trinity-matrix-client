@@ -17,6 +17,7 @@ import {
 } from '@angular/forms/signals';
 import { ActivatedRoute } from '@angular/router';
 import { TrnInput } from '@trinity/components/input';
+import { TrnCheckboxComponent } from '@trinity/components/checkbox';
 import { TrnLabel } from '@trinity/components/label';
 import { TrnAlertService } from '@trinity/components/overlay';
 import {
@@ -24,6 +25,7 @@ import {
   ImagePackManagementService,
   type ImagePackDiscovery,
   type ManagedImagePack,
+  type ImagePackUsage,
   validateImagePackSource,
 } from '@trinity/data-access/media';
 import { HlmButton } from '@trinity/helm/button';
@@ -36,7 +38,14 @@ interface SourceFormModel {
 @Component({
   selector: 'trn-image-packs-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormField, FormRoot, HlmButton, TrnInput, TrnLabel],
+  imports: [
+    FormField,
+    FormRoot,
+    HlmButton,
+    TrnCheckboxComponent,
+    TrnInput,
+    TrnLabel,
+  ],
   templateUrl: './image-packs-section.component.html',
   styleUrl: './image-packs-section.component.scss',
 })
@@ -48,6 +57,8 @@ export class ImagePacksSectionComponent {
   private readonly sourceModel = signal<SourceFormModel>({ source: '' });
   private readonly resultsHeading =
     viewChild<ElementRef<HTMLElement>>('resultsHeading');
+  private readonly installedHeading =
+    viewChild<ElementRef<HTMLElement>>('installedHeading');
 
   readonly installed = this.management.installed;
   readonly discovery = signal<ImagePackDiscovery | null>(null);
@@ -136,8 +147,32 @@ export class ImagePacksSectionComponent {
     try {
       await firstValueFrom(this.management.uninstall(pack));
       this.notice.set(`${pack.name} was removed from your account.`);
+      queueMicrotask(() => this.installedHeading()?.nativeElement.focus());
     } catch (error) {
       this.error.set(managementErrorText(error, 'remove'));
+    } finally {
+      this.busyId.set(null);
+    }
+  }
+
+  async setUsage(
+    pack: ManagedImagePack,
+    usage: ImagePackUsage,
+    enabled: boolean,
+  ): Promise<void> {
+    this.error.set(null);
+    this.notice.set(null);
+    this.busyId.set(pack.id);
+    const next = pack.enabledUsage.filter((item) => item !== usage);
+    if (enabled) next.push(usage);
+    const canonical = (['emoticon', 'sticker'] as const).filter((item) =>
+      next.includes(item),
+    );
+    try {
+      await firstValueFrom(this.management.setEnabledUsage(pack, canonical));
+      this.notice.set(`${pack.name} usage was updated.`);
+    } catch (error) {
+      this.error.set(managementErrorText(error, 'usage'));
     } finally {
       this.busyId.set(null);
     }
@@ -161,7 +196,7 @@ export class ImagePacksSectionComponent {
 
 function managementErrorText(
   error: unknown,
-  action: 'discover' | 'install' | 'remove',
+  action: 'discover' | 'install' | 'remove' | 'usage',
 ): string {
   if (error instanceof ImagePackManagementError) {
     switch (error.code) {
@@ -178,7 +213,7 @@ function managementErrorText(
   if (action === 'discover') {
     return 'Could not join or read that room. Check the address and your access.';
   }
-  return action === 'install'
-    ? 'Could not install the pack. Try again.'
-    : 'Could not remove the pack. Try again.';
+  if (action === 'install') return 'Could not install the pack. Try again.';
+  if (action === 'usage') return 'Could not update the pack. Try again.';
+  return 'Could not remove the pack. Try again.';
 }

@@ -35,10 +35,21 @@
       <section
         class="picker__pack"
         [attr.aria-labelledby]="'sticker-pack-' + $index"
+        [attr.aria-describedby]="'sticker-pack-scope-' + $index"
+        data-testid="sticker-pack"
       >
-        <h3 class="picker__pack-name" [id]="'sticker-pack-' + $index">
-          {{ pack.name }}
-        </h3>
+        <div class="picker__pack-heading">
+          <h3 class="picker__pack-name" [id]="'sticker-pack-' + $index">
+            {{ pack.name }}
+          </h3>
+          <span
+            class="picker__scope"
+            [id]="'sticker-pack-scope-' + $index"
+            data-testid="sticker-pack-scope"
+          >
+            {{ pack.scope.sticker === 'account' ? 'All rooms' : 'This room' }}
+          </span>
+        </div>
         <div class="picker__grid">
           @for (
             image of pack.images;

@@ -3,6 +3,7 @@ import { liveRoomState } from '@trinity/util/matrix';
 import {
   IMAGE_PACK_EVENT_TYPE,
   IMAGE_PACK_ROOMS_EVENT_TYPE,
+  TRINITY_IMAGE_PACK_ENABLED_USAGE,
   type ImagePackUsage,
   LEGACY_IMAGE_PACK_EVENT_TYPE,
   LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE,
@@ -28,6 +29,7 @@ export interface ManagedImagePack extends ImagePackSource {
   readonly attribution: string | null;
   readonly imageCount: number;
   readonly usage: readonly ImagePackUsage[];
+  readonly enabledUsage: readonly ImagePackUsage[];
   readonly eventType: 'stable' | 'legacy' | null;
   readonly status: ManagedImagePackStatus;
 }
@@ -36,6 +38,10 @@ export interface ImagePackDiscovery {
   readonly roomId: string;
   readonly roomName: string | null;
   readonly packs: readonly ManagedImagePack[];
+}
+
+export interface ImagePackUsageSource extends ImagePackSource {
+  readonly usage: readonly ImagePackUsage[];
 }
 
 export type ImagePackManagementErrorCode =
@@ -106,6 +112,7 @@ export function readManagedImagePacks(
       roomName,
       stable ? 'stable' : 'legacy',
       event.getContent(),
+      source.enabledUsage,
     );
   });
 }
@@ -141,6 +148,7 @@ export function inspectStatePacks(
         roomName,
         stableEvent ? 'stable' : 'legacy',
         event?.content,
+        null,
       );
     });
 }
@@ -176,10 +184,39 @@ export function mutateSelectionContent(
 export function hasImagePackReference(
   content: unknown,
   source: ImagePackSource,
+  legacy = false,
 ): boolean {
   if (!isRecord(content) || !isRecord(content['rooms'])) return false;
   const room = content['rooms'][source.roomId];
-  return isRecord(room) && isRecord(room[source.stateKey]);
+  if (!isRecord(room)) return false;
+  const reference = room[source.stateKey];
+  return isRecord(reference) || (legacy && reference === true);
+}
+
+export function mutateSelectionEnabledUsage(
+  content: unknown,
+  source: ImagePackUsageSource,
+  enabled: readonly ImagePackUsage[],
+  migratingLegacy = false,
+): Record<string, unknown> {
+  const base = !migratingLegacy && isRecord(content) ? { ...content } : {};
+  const rooms = normalizedRooms(content, migratingLegacy);
+  const room = { ...(rooms[source.roomId] ?? {}) };
+  const current = room[source.stateKey];
+  if (!isRecord(current)) return { ...base, rooms };
+  const reference = { ...current };
+  const normalized = canonicalUsage(enabled).filter((usage) =>
+    source.usage.includes(usage),
+  );
+  const allSupported = canonicalUsage(source.usage);
+  if (sameUsage(normalized, allSupported)) {
+    delete reference[TRINITY_IMAGE_PACK_ENABLED_USAGE];
+  } else {
+    reference[TRINITY_IMAGE_PACK_ENABLED_USAGE] = normalized;
+  }
+  room[source.stateKey] = reference;
+  rooms[source.roomId] = room;
+  return { ...base, rooms };
 }
 
 function inspectPack(
@@ -187,6 +224,7 @@ function inspectPack(
   roomName: string | null,
   eventType: 'stable' | 'legacy',
   content: unknown,
+  configuredUsage: readonly ImagePackUsage[] | null,
 ): ManagedImagePack {
   const base = {
     ...source,
@@ -199,6 +237,10 @@ function inspectPack(
   }
   const meta = isRecord(content['pack']) ? content['pack'] : {};
   const usage = parseUsage(meta['usage']);
+  const enabledUsage =
+    configuredUsage === null
+      ? usage
+      : usage.filter((item) => configuredUsage.includes(item));
   const images = Object.values(content['images']).slice(0, MAX_IMAGES_PER_PACK);
   const imageCount = images.filter(
     (image) => isRecord(image) && validMxc(image['url']),
@@ -216,6 +258,7 @@ function inspectPack(
     attribution: boundedText(meta['attribution']),
     imageCount,
     usage,
+    enabledUsage,
     status,
   };
 }
@@ -258,27 +301,66 @@ function unavailableDetails(
     attribution: null,
     imageCount: 0,
     usage: [],
+    enabledUsage: [],
     status,
   };
+}
+
+interface AccountPackSource extends ImagePackSource {
+  readonly enabledUsage: readonly ImagePackUsage[] | null;
 }
 
 function accountPackSources(
   content: unknown,
   legacy: boolean,
-): ImagePackSource[] {
+): AccountPackSource[] {
   if (!isRecord(content) || !isRecord(content['rooms'])) return [];
-  const sources: ImagePackSource[] = [];
+  const sources: AccountPackSource[] = [];
   for (const roomId of Object.keys(content['rooms']).sort()) {
     const stateKeys = content['rooms'][roomId];
     if (!isRecord(stateKeys)) continue;
     for (const stateKey of Object.keys(stateKeys).sort()) {
       const value = stateKeys[stateKey];
       if (isRecord(value) || (legacy && value === true)) {
-        sources.push({ roomId, stateKey });
+        sources.push({
+          roomId,
+          stateKey,
+          enabledUsage: isRecord(value) ? configuredUsage(value) : null,
+        });
       }
     }
   }
   return sources;
+}
+
+function configuredUsage(
+  reference: Record<string, unknown>,
+): readonly ImagePackUsage[] | null {
+  const value = reference[TRINITY_IMAGE_PACK_ENABLED_USAGE];
+  return Array.isArray(value) && value.every(isImagePackUsage)
+    ? canonicalUsage(value)
+    : null;
+}
+
+function isImagePackUsage(value: unknown): value is ImagePackUsage {
+  return value === 'emoticon' || value === 'sticker';
+}
+
+function canonicalUsage(value: readonly unknown[]): ImagePackUsage[] {
+  const usage: ImagePackUsage[] = [];
+  if (value.includes('emoticon')) usage.push('emoticon');
+  if (value.includes('sticker')) usage.push('sticker');
+  return usage;
+}
+
+function sameUsage(
+  left: readonly ImagePackUsage[],
+  right: readonly ImagePackUsage[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
 }
 
 function normalizedRooms(

@@ -200,18 +200,22 @@ contains missing or malformed pack state. That is intentional: a broken referenc
 have a **Remove** action. The status line distinguishes available, empty, unavailable, missing,
 and malformed sources.
 
-The **Stickers** and **Custom emoji** badges are capabilities declared by the publisher, not
-switches stored by Trinity. MSC2545 has no per-user field for enabling one usage while disabling
-the other. Trinity currently sends sticker-capable entries and displays custom emoji received in
-messages; composing a new message with a pack's custom emoji is not yet supported.
+The **Stickers** and **Custom emoji** badges show capabilities declared by the publisher. For an
+installed pack, the checkboxes below them choose which supported usages Trinity enables. Those
+choices sync with the account between Trinity devices. They use a namespaced extension inside the
+stable account reference because MSC2545 reserves that object for extensions but does not define a
+standard per-user usage field; other Matrix clients may ignore the preference. Clearing every
+checkbox disables the pack in Trinity without uninstalling it. Trinity currently sends
+sticker-capable entries and displays custom emoji received in messages; composing a new message
+with a pack's custom emoji is not yet supported.
 
 Trinity writes only stable `m.image_pack.rooms` account data. It can read the older
 `im.ponies.emote_rooms` form when stable data does not exist, and migrates valid legacy
 references on the first change. If another device changes the same account data during a write,
-Trinity retries a bounded server read, merge and verification when the requested install or
-removal does not stick. Matrix provides no atomic compare-and-swap here: a simultaneous change to
-a different pack can still be overwritten without detection, and a repeated conflict on the
-requested pack is shown with an instruction to try again.
+Trinity retries a bounded server read, merge and complete-document verification when an install,
+removal, or usage change does not stick. Matrix provides no atomic compare-and-swap here: a
+simultaneous change that lands between Trinity's read and write can still be overwritten without
+detection, and a repeated conflict is shown with an instruction to try again.
 
 Install only from a room whose publishers you trust. Installing saves a reference, not a copy:
 people with permission to change that room's pack state can change its names and images later.

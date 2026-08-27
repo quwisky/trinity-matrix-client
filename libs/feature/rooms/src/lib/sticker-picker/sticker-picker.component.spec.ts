@@ -31,6 +31,7 @@ describe('StickerPickerComponent', () => {
         stateKey: 'fun',
         name: 'Fun',
         attribution: 'Made by Alice',
+        scope: { emoticon: null, sticker: 'account' },
         images: [
           {
             shortcode: 'party',
@@ -96,6 +97,24 @@ describe('StickerPickerComponent', () => {
     expect(manage).toHaveBeenCalledOnce();
   });
 
+  it('labels whether a sticker pack is available account-wide or only here', async () => {
+    expect(fixture.nativeElement.textContent).toContain('All rooms');
+    const pack = fixture.nativeElement.querySelector(
+      '[data-testid="sticker-pack"]',
+    ) as HTMLElement;
+    expect(pack.getAttribute('aria-describedby')).toBe('sticker-pack-scope-0');
+
+    fixture.componentRef.setInput('packs', [
+      {
+        ...fixture.componentInstance.packs()[0],
+        scope: { emoticon: null, sticker: 'room' },
+      },
+    ]);
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.textContent).toContain('This room');
+  });
+
   it('does not resolve every entry in a large offscreen pack', async () => {
     fixture.destroy();
     TestBed.resetTestingModule();
@@ -135,6 +154,7 @@ describe('StickerPickerComponent', () => {
         stateKey: 'large',
         name: 'Large',
         attribution: null,
+        scope: { emoticon: null, sticker: 'account' },
         images: Array.from({ length: 500 }, (_, index) => ({
           shortcode: `sticker-${index}`,
           url: `mxc://hs/${index}`,

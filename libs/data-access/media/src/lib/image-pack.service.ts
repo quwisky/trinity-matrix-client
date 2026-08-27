@@ -24,6 +24,7 @@ export const IMAGE_PACK_EVENT_TYPE = 'm.room.image_pack';
 export const LEGACY_IMAGE_PACK_EVENT_TYPE = 'im.ponies.room_emotes';
 export const IMAGE_PACK_ROOMS_EVENT_TYPE = 'm.image_pack.rooms';
 export const LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE = 'im.ponies.emote_rooms';
+export const TRINITY_IMAGE_PACK_ENABLED_USAGE = 'eu.qwky.trinity.enabled_usage';
 
 const MAX_PACKS = 100;
 const MAX_IMAGES_PER_PACK = 500;
@@ -31,6 +32,12 @@ const MAX_IMAGES = 1000;
 const MAX_LABEL_LENGTH = 256;
 
 export type ImagePackUsage = 'emoticon' | 'sticker';
+export type ImagePackScope = 'account' | 'room';
+
+export interface ImagePackScopeByUsage {
+  readonly emoticon: ImagePackScope | null;
+  readonly sticker: ImagePackScope | null;
+}
 
 export interface ImagePackImage {
   readonly shortcode: string;
@@ -52,6 +59,7 @@ export interface ImagePack {
   readonly stateKey: string;
   readonly name: string;
   readonly attribution: string | null;
+  readonly scope: ImagePackScopeByUsage;
   readonly images: readonly ImagePackImage[];
 }
 
@@ -191,7 +199,7 @@ export function readImagePacks(
         .sort(),
     );
     for (const stateKey of [...stableKeys].sort()) {
-      sources.push({ roomId: currentRoomId, stateKey });
+      addRoomSource(sources, currentRoomId, stateKey);
     }
     for (const event of [
       ...currentState.getStateEvents(LEGACY_IMAGE_PACK_EVENT_TYPE),
@@ -200,28 +208,19 @@ export function readImagePacks(
     )) {
       const stateKey = event.getStateKey() ?? '';
       if (!stableKeys.has(stateKey)) {
-        sources.push({ roomId: currentRoomId, stateKey });
+        addRoomSource(sources, currentRoomId, stateKey);
       }
     }
   }
 
-  const seen = new Set<string>();
   const packs: ImagePack[] = [];
   let totalImages = 0;
   for (const source of sources) {
     if (packs.length >= MAX_PACKS || totalImages >= MAX_IMAGES) break;
-    const id = `${source.roomId}\u0000${source.stateKey}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
     const sourceRoom = client.getRoom?.(source.roomId);
     const event = packEvent(client, source.roomId, source.stateKey);
     const pack = event
-      ? parsePack(
-          event,
-          source.roomId,
-          source.stateKey,
-          boundedText(sourceRoom?.name),
-        )
+      ? parsePack(event, source, boundedText(sourceRoom?.name))
       : null;
     if (!pack) continue;
     const available = MAX_IMAGES - totalImages;
@@ -238,6 +237,9 @@ export function readImagePacks(
 interface PackSource {
   roomId: string;
   stateKey: string;
+  /** Undefined means the source is not account-installed; null means all usages. */
+  accountUsage: readonly ImagePackUsage[] | null | undefined;
+  roomScoped: boolean;
 }
 
 function selectedPackSources(
@@ -284,6 +286,10 @@ function accountPackRoomsContent(
         sources.push({
           roomId,
           stateKey,
+          accountUsage: isRecord(stateKeys[stateKey])
+            ? enabledUsage(stateKeys[stateKey])
+            : null,
+          roomScoped: false,
         });
       }
     }
@@ -309,16 +315,18 @@ function packEvent(
 
 function parsePack(
   event: MatrixEvent,
-  roomId: string,
-  stateKey: string,
+  source: PackSource,
   roomName: string | null,
 ): ImagePack | null {
   const content: unknown = event.getContent();
   if (!isRecord(content) || !isRecord(content['images'])) return null;
   const packMeta = isRecord(content['pack']) ? content['pack'] : {};
-  const usage = parseUsage(packMeta['usage']);
+  const publisherUsage = parseUsage(packMeta['usage']);
+  if (publisherUsage.length === 0) return null;
+  const scope = scopeByUsage(source, publisherUsage);
+  const usage = publisherUsage.filter((item) => scope[item] !== null);
   if (usage.length === 0) return null;
-  const id = `${roomId}:${stateKey}`;
+  const id = `${source.roomId}:${source.stateKey}`;
   const name =
     boundedText(packMeta['display_name']) ?? roomName ?? 'Image pack';
   const images: ImagePackImage[] = [];
@@ -343,12 +351,70 @@ function parsePack(
   if (images.length === 0) return null;
   return {
     id,
-    roomId,
-    stateKey,
+    roomId: source.roomId,
+    stateKey: source.stateKey,
     name,
     attribution: boundedText(packMeta['attribution']),
+    scope,
     images,
   };
+}
+
+function addRoomSource(
+  sources: PackSource[],
+  roomId: string,
+  stateKey: string,
+): void {
+  const existing = sources.find(
+    (source) => source.roomId === roomId && source.stateKey === stateKey,
+  );
+  if (existing) {
+    existing.roomScoped = true;
+  } else {
+    sources.push({
+      roomId,
+      stateKey,
+      accountUsage: undefined,
+      roomScoped: true,
+    });
+  }
+}
+
+function scopeByUsage(
+  source: PackSource,
+  publisherUsage: readonly ImagePackUsage[],
+): ImagePackScopeByUsage {
+  const accountSelected = source.accountUsage !== undefined;
+  const accountUsage = source.accountUsage ?? publisherUsage;
+  const scopeFor = (usage: ImagePackUsage): ImagePackScope | null => {
+    if (!publisherUsage.includes(usage)) return null;
+    if (accountSelected && accountUsage.includes(usage)) return 'account';
+    return source.roomScoped ? 'room' : null;
+  };
+  return {
+    emoticon: scopeFor('emoticon'),
+    sticker: scopeFor('sticker'),
+  };
+}
+
+function enabledUsage(value: unknown): readonly ImagePackUsage[] | null {
+  if (!isRecord(value)) return null;
+  const configured = value[TRINITY_IMAGE_PACK_ENABLED_USAGE];
+  if (
+    configured === undefined ||
+    !Array.isArray(configured) ||
+    !configured.every(isImagePackUsage)
+  ) {
+    return null;
+  }
+  const usage: ImagePackUsage[] = [];
+  if (configured.includes('emoticon')) usage.push('emoticon');
+  if (configured.includes('sticker')) usage.push('sticker');
+  return usage;
+}
+
+function isImagePackUsage(value: unknown): value is ImagePackUsage {
+  return value === 'emoticon' || value === 'sticker';
 }
 
 function parseUsage(value: unknown): readonly ImagePackUsage[] {

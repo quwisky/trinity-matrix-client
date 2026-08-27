@@ -2,14 +2,16 @@
   <header class="packs__header">
     <h2 id="image-packs-title">Stickers &amp; emoji</h2>
     <p>
-      Install image packs for sending stickers and displaying received custom
-      emoji. Packs stay in their source rooms; Trinity only saves a reference to
-      your account.
+      Install image packs for sending stickers and custom emoji suggestions.
+      Packs stay in their source rooms; Trinity only saves a reference to your
+      account.
     </p>
   </header>
 
   <section class="packs__section" aria-labelledby="installed-packs-title">
-    <h3 id="installed-packs-title">Installed for all rooms</h3>
+    <h3 id="installed-packs-title" #installedHeading tabindex="-1">
+      Installed for all rooms
+    </h3>
     @for (pack of installed(); track pack.id) {
       <article class="pack-card" data-testid="installed-image-pack">
         <div class="pack-card__body">
@@ -36,6 +38,35 @@
           <p [class.pack-card__problem]="pack.status !== 'available'">
             {{ statusText(pack) }}
           </p>
+          @if (pack.status === 'available') {
+            <fieldset class="pack-card__usage">
+              <legend>Use this pack for</legend>
+              @if (pack.usage.includes('sticker')) {
+                <label data-testid="image-pack-usage-sticker">
+                  <trn-checkbox
+                    [checked]="pack.enabledUsage.includes('sticker')"
+                    [disabled]="busyId() !== null"
+                    (checkedChange)="setUsage(pack, 'sticker', $event)"
+                  />
+                  <span>Stickers</span>
+                </label>
+              }
+              @if (pack.usage.includes('emoticon')) {
+                <label data-testid="image-pack-usage-emoticon">
+                  <trn-checkbox
+                    [checked]="pack.enabledUsage.includes('emoticon')"
+                    [disabled]="busyId() !== null"
+                    (checkedChange)="setUsage(pack, 'emoticon', $event)"
+                  />
+                  <span>Custom emoji</span>
+                </label>
+              }
+              <p>
+                These choices sync between Trinity devices. Custom emoji
+                composition is not available yet.
+              </p>
+            </fieldset>
+          }
           @if (pack.attribution) {
             <p class="pack-card__attribution">{{ pack.attribution }}</p>
           }
@@ -50,7 +81,7 @@
           data-testid="remove-image-pack"
           (click)="remove(pack)"
         >
-          {{ busyId() === pack.id ? 'Removing…' : 'Remove' }}
+          Remove
         </button>
       </article>
     } @empty {

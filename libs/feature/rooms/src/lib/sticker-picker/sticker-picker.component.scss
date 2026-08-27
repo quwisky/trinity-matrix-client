@@ -75,10 +75,23 @@
 }
 
 .picker__pack-name {
-  margin-bottom: 0.5rem;
   font-size: 0.8rem;
   font-weight: 700;
   text-transform: uppercase;
+}
+
+.picker__pack-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.picker__scope {
+  flex: none;
+  color: var(--trinity-text-muted);
+  font-size: 0.7rem;
 }
 
 .picker__grid {

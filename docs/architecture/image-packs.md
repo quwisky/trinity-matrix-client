@@ -18,7 +18,10 @@ the picker or manager. User-facing behavior is covered under
 
 The account event maps a room ID and state key to an object. Trinity writes each new leaf as
 exactly `{}`. The object shape is deliberate extension space, so an install preserves an existing
-object rather than replacing unknown future fields.
+object rather than replacing unknown future fields. A later usage change may add Trinity's
+namespaced `eu.qwky.trinity.enabled_usage` array to that leaf. Other clients can ignore it; a
+missing key means all publisher-supported usages, and an empty array disables the installed pack
+inside Trinity without uninstalling it.
 
 The two legacy fallbacks obey different precedence rules:
 
@@ -40,7 +43,10 @@ surface is alive, and read a signal. The projection combines:
 
 It listens for relevant room-state, account-data and own-membership changes. A left source room is
 not usable even if the SDK retains its state in memory. Stable/legacy aliases and repeated sources
-are deduplicated before the picker sees them.
+are deduplicated before the picker sees them. Availability scope is retained per usage: the sticker
+picker labels an account-enabled sticker source **All rooms** and a current-room source **This
+room**. If an account preference disables stickers but the current room publishes the same pack,
+the room-scoped sticker remains available there.
 
 `ImagePackManagementService` owns Settings. Its installed signal is intentionally broader than the
 picker projection: it retains unavailable, missing, malformed and empty references so the user can
@@ -97,17 +103,18 @@ updates but cannot make them impossible:
    `getAccountDataFromServer()` helper is not used because it reads the local store after initial
    sync and can lag another device.
 3. When stable data is absent, one direct GET reads legacy data and valid references are migrated.
-4. The requested reference is merged into the fresh stable document. Valid unknown top-level and
-   per-reference stable fields are preserved, empty room maps are pruned, and only
-   `m.image_pack.rooms` is written.
-5. The SDK PUT is followed by another direct GET. If the requested reference is not in the desired
-   state, Trinity repeats the read, merge, write and verification, for at most three attempts.
+4. The requested reference or namespaced usage preference is merged into the fresh stable
+   document. Valid unknown top-level and per-reference stable fields are preserved, empty room maps
+   are pruned, and only `m.image_pack.rooms` is written.
+5. The SDK PUT is followed by another direct GET. The complete returned JSON document must match
+   the expected merge, not merely the requested reference. If an observable unrelated change won
+   the write, Trinity repeats the read, merge, write and verification, for at most three attempts.
 6. Repeated failure becomes a visible conflict error rather than a false success.
 
-This protects against stale local sync state and verifies only that the requested leaf has the
-desired presence. It is not an atomic guarantee: a concurrent change to a different reference can
-be overwritten without detection, and another client can still write after Trinity's successful
-verification and win. Do not describe the implementation as conflict-free.
+This protects against stale local sync state and preserves unrelated changes that are visible in a
+verification read. It is not an atomic guarantee: a concurrent change that lands between Trinity's
+GET and PUT can be overwritten without leaving evidence, and another client can still write after
+Trinity's successful verification and win. Do not describe the implementation as conflict-free.
 
 Uninstall removes only the exact account reference. It never leaves the room, deletes media, or
 edits pack state. Installing likewise writes no room pack state; the only possible room-state
@@ -132,13 +139,15 @@ the data-access layer and must enforce the room's state-event power levels.
 ## Test ownership
 
 Unit tests in `libs/data-access/media` own parsing, bounds, precedence, legacy migration, exact
-stable writes, preservation, serialization, server readback and failure behavior. Settings tests
-own explicit submission, in-flight results, accessibility feedback and removal disclosure.
+stable writes, namespaced usage preferences, preservation, serialization, complete-document
+server readback and failure behavior. Settings tests own explicit submission, in-flight results,
+usage controls, focus recovery, accessibility feedback and removal disclosure.
 
 `e2e/playwright/stickers-custom-emoji.spec.mts` is a canonical journey collected by both Chromium
 and the installed Android WebView. It proves alias resolution and joining, multiple state keys,
-stable-over-legacy deduplication, immediate composer availability, sticker sending, uninstall,
-final empty stable account data, and survival of the publisher's source state. It does not prove
-another-device propagation or atomic conflict freedom.
+stable-over-legacy deduplication, propagation to a separately installed same-account client,
+immediate enable/disable behavior, visible account/room scope, sticker sending, uninstall, final
+empty stable account data, and survival of the publisher's source state. It does not prove atomic
+conflict freedom.
 
 Focused commands and native prerequisites are kept in [`e2e/README.md`](../../e2e/README.md).

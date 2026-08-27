@@ -19,6 +19,7 @@ const available: ManagedImagePack = {
   attribution: 'Pack authors',
   imageCount: 2,
   usage: ['sticker', 'emoticon'],
+  enabledUsage: ['sticker', 'emoticon'],
   eventType: 'stable',
   status: 'available',
 };
@@ -30,6 +31,7 @@ describe('ImagePacksSectionComponent', () => {
   );
   const install = vi.fn(() => of(void 0));
   const uninstall = vi.fn(() => of(void 0));
+  const setEnabledUsage = vi.fn(() => of(void 0));
   const confirm = vi.fn(async () => true);
 
   beforeEach(() => {
@@ -47,6 +49,7 @@ describe('ImagePacksSectionComponent', () => {
             discover,
             install,
             uninstall,
+            setEnabledUsage,
           },
         },
         { provide: TrnAlertService, useValue: { confirm } },
@@ -114,6 +117,31 @@ describe('ImagePacksSectionComponent', () => {
       }),
     );
     expect(uninstall).toHaveBeenCalledWith(available);
+  });
+
+  it('updates one enabled usage through an accessible checkbox', async () => {
+    installed.set([available]);
+    const fixture = TestBed.createComponent(ImagePacksSectionComponent);
+    await fixture.whenStable();
+
+    const sticker = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid=image-pack-usage-sticker]',
+    ) as HTMLElement;
+    sticker.click();
+    await fixture.whenStable();
+
+    expect(setEnabledUsage).toHaveBeenCalledWith(available, ['emoticon']);
+  });
+
+  it('moves focus to the installed heading after removing a row', async () => {
+    installed.set([available]);
+    const fixture = TestBed.createComponent(ImagePacksSectionComponent);
+    await fixture.whenStable();
+
+    await fixture.componentInstance.remove(available);
+    await fixture.whenStable();
+
+    expect(document.activeElement?.id).toBe('installed-packs-title');
   });
 
   it('prefills a routed room without joining or discovering automatically', async () => {

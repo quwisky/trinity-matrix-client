@@ -8,6 +8,7 @@ import {
   IMAGE_PACK_EVENT_TYPE,
   IMAGE_PACK_ROOMS_EVENT_TYPE,
   LEGACY_IMAGE_PACK_EVENT_TYPE,
+  TRINITY_IMAGE_PACK_ENABLED_USAGE,
 } from './image-pack.service';
 import {
   ImagePackManagementError,
@@ -205,6 +206,31 @@ describe('image-pack management parsing', () => {
     ]);
   });
 
+  it('reads a namespaced enabled-usage preference from installed references', () => {
+    const client = {
+      getAccountData: () =>
+        event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
+          rooms: {
+            '!pack:hs': {
+              fun: { [TRINITY_IMAGE_PACK_ENABLED_USAGE]: ['emoticon'] },
+            },
+          },
+        }),
+      getRoom: () =>
+        room('!pack:hs', [
+          event(
+            IMAGE_PACK_EVENT_TYPE,
+            'fun',
+            pack('Fun', ['emoticon', 'sticker']),
+          ),
+        ]),
+    };
+
+    expect(readManagedImagePacks(client as never)).toMatchObject([
+      { usage: ['emoticon', 'sticker'], enabledUsage: ['emoticon'] },
+    ]);
+  });
+
   it('uses stable account data exclusively when legacy references also exist', () => {
     const client = {
       getAccountData: (type: string) =>
@@ -297,6 +323,98 @@ describe('ImagePackManagementService', () => {
     });
   });
 
+  it('stores enabled usages in a namespaced field and preserves extensions', async () => {
+    const { service, stable } = setup({
+      stable: {
+        future: { value: 1 },
+        rooms: {
+          '!pack:hs': { fun: { future: true } },
+          '!other:hs': { keep: {} },
+        },
+      },
+    });
+
+    await firstValueFrom(
+      service.setEnabledUsage(
+        {
+          roomId: '!pack:hs',
+          stateKey: 'fun',
+          usage: ['emoticon', 'sticker'],
+        },
+        ['emoticon'],
+      ),
+    );
+
+    expect(stable()).toEqual({
+      future: { value: 1 },
+      rooms: {
+        '!pack:hs': {
+          fun: {
+            future: true,
+            [TRINITY_IMAGE_PACK_ENABLED_USAGE]: ['emoticon'],
+          },
+        },
+        '!other:hs': { keep: {} },
+      },
+    });
+  });
+
+  it('removes the extension when every supported usage is enabled', async () => {
+    const { service, stable } = setup({
+      stable: {
+        rooms: {
+          '!pack:hs': {
+            fun: { [TRINITY_IMAGE_PACK_ENABLED_USAGE]: ['emoticon'] },
+          },
+        },
+      },
+    });
+
+    await firstValueFrom(
+      service.setEnabledUsage(
+        {
+          roomId: '!pack:hs',
+          stateKey: 'fun',
+          usage: ['emoticon', 'sticker'],
+        },
+        ['sticker', 'emoticon'],
+      ),
+    );
+
+    expect(stable()).toEqual({ rooms: { '!pack:hs': { fun: {} } } });
+  });
+
+  it('migrates legacy references when changing an enabled usage', async () => {
+    const { service, stable } = setup({
+      legacy: {
+        rooms: {
+          '!old:hs': { old: true },
+          '!pack:hs': { fun: true },
+        },
+      },
+    });
+
+    await firstValueFrom(
+      service.setEnabledUsage(
+        {
+          roomId: '!pack:hs',
+          stateKey: 'fun',
+          usage: ['emoticon', 'sticker'],
+        },
+        ['sticker'],
+      ),
+    );
+
+    expect(stable()).toEqual({
+      rooms: {
+        '!old:hs': { old: {} },
+        '!pack:hs': {
+          fun: { [TRINITY_IMAGE_PACK_ENABLED_USAGE]: ['sticker'] },
+        },
+      },
+    });
+  });
+
   it('reads account data directly from the server before merging', async () => {
     const { service, client, stable } = setup({
       stable: { rooms: { '!other:hs': { remote: {} } } },
@@ -316,6 +434,30 @@ describe('ImagePackManagementService', () => {
         '!other:hs': { remote: {} },
         '!pack:hs': { local: {} },
       },
+    });
+  });
+
+  it('retries when verification contains an unrelated remote change', async () => {
+    const { service, client, stable } = setup({ stable: { rooms: {} } });
+    client.http.authedRequest
+      .mockResolvedValueOnce({ rooms: {} })
+      .mockResolvedValueOnce({
+        remote: { revision: 1 },
+        rooms: { '!pack:hs': { local: {} } },
+      })
+      .mockResolvedValueOnce({
+        remote: { revision: 1 },
+        rooms: { '!pack:hs': { local: {} } },
+      });
+
+    await firstValueFrom(
+      service.install({ roomId: '!pack:hs', stateKey: 'local' }),
+    );
+
+    expect(client.setAccountData).toHaveBeenCalledTimes(2);
+    expect(stable()).toEqual({
+      remote: { revision: 1 },
+      rooms: { '!pack:hs': { local: {} } },
     });
   });
 
