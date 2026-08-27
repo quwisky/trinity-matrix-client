@@ -17,6 +17,8 @@ const read = (file) => readFileSync(join(root, file), 'utf8');
 const variables = read('apps/trinity/src/theme/variables.scss');
 const roomsHtml = read('libs/feature/rooms/src/lib/rooms/rooms.page.html');
 const roomsCss = read('libs/feature/rooms/src/lib/rooms/rooms.page.scss');
+const roomMixins = read('libs/feature/rooms/src/lib/styles/_mixins.scss');
+const globalCss = read('apps/trinity/src/global.scss');
 const memberTs = read(
   'libs/feature/rooms/src/lib/member-list/member-list.component.ts',
 );
@@ -98,5 +100,24 @@ describe('modern room shell layout contracts', () => {
         'var(--trinity-interaction-target-min-size)',
       );
     }
+  });
+
+  it('keeps generic interaction guards weaker than specialized consumer states', () => {
+    expect(roomMixins).toContain('&:hover:where(:not(:disabled))');
+    expect(roomMixins).toContain('&:active:where(:not(:disabled))');
+    expect(sidebarCss).toMatch(
+      /\.joinable__action\s*\{[\s\S]*?&:hover\s*\{[\s\S]*?background:\s*var\(--trinity-active\)/,
+    );
+  });
+
+  it('leaves right-panel separators with one paint owner', () => {
+    const panelHeader = globalCss.match(
+      /\.panel-header\s*\{([\s\S]*?)\n\}/,
+    )?.[1];
+    const chatPanel = roomsCss.match(/\.chat-panel\s*\{([\s\S]*?)\n\}/)?.[1];
+    expect(panelHeader).toBeDefined();
+    expect(chatPanel).toBeDefined();
+    expect(panelHeader).not.toContain('box-shadow');
+    expect(chatPanel).not.toContain('box-shadow');
   });
 });
