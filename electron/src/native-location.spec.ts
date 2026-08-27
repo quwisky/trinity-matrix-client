@@ -9,6 +9,7 @@ vi.mock('electron', () => ({ app }));
 import {
   createNativeLocationProvider,
   normalizeNativeLocationResult,
+  type NativeLocationAddon,
 } from './native-location';
 
 describe('native location boundary', () => {
@@ -68,5 +69,46 @@ describe('native location boundary', () => {
     await expect(
       createNativeLocationProvider().requestCurrentLocation(),
     ).resolves.toEqual({ status: 'unavailable' });
+  });
+
+  it('bounds the whole native request and cancels work at the deadline', async () => {
+    vi.useFakeTimers();
+    const addon: NativeLocationAddon = {
+      requestCurrentPosition: vi.fn(() => new Promise(() => undefined)),
+      cancelCurrentRequest: vi.fn(),
+    };
+    const result = createNativeLocationProvider(addon).requestCurrentLocation();
+
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    await expect(result).resolves.toEqual({ status: 'timeout' });
+    expect(addon.cancelCurrentRequest).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
+  it('cancels an active native request during shutdown disposal', () => {
+    const addon: NativeLocationAddon = {
+      requestCurrentPosition: vi.fn(),
+      cancelCurrentRequest: vi.fn(),
+    };
+    createNativeLocationProvider(addon).dispose?.();
+    expect(addon.cancelCurrentRequest).toHaveBeenCalledOnce();
+  });
+
+  it('still settles the deadline when native cancellation throws', async () => {
+    vi.useFakeTimers();
+    const addon: NativeLocationAddon = {
+      requestCurrentPosition: vi.fn(() => new Promise(() => undefined)),
+      cancelCurrentRequest: vi.fn(() => {
+        throw new Error('native cancellation failed');
+      }),
+    };
+    const result = createNativeLocationProvider(addon).requestCurrentLocation();
+
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    await expect(result).resolves.toEqual({ status: 'timeout' });
+    expect(() => createNativeLocationProvider(addon).dispose?.()).not.toThrow();
+    vi.useRealTimers();
   });
 });

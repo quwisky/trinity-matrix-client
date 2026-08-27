@@ -184,12 +184,21 @@ all three providers rather than waiting for a release build to discover native d
 
 The IPC handler accepts requests only from the visible, focused main renderer and coalesces
 concurrent calls into one OS request. The native result is validated at the main-process
-boundary before crossing the preload bridge. A denied, unavailable, timed-out, or malformed
-result is intentionally not shown as an error: location sharing opens the existing dialog,
-where the user can enter coordinates or explicitly request an approximate IP location.
+boundary before crossing the preload bridge. One overall 20-second deadline covers permission
+and positioning; expiry or app shutdown cancels the underlying native request. A denied,
+unavailable, timed-out, or malformed result is intentionally not shown as an error: location
+sharing opens the existing dialog, where the user can enter coordinates or explicitly request
+an approximate IP location.
 
 `resolveApproxLocation` remains the keyless fallback. The main process makes a time-boxed
 HTTPS lookup and resolves `null` on failure so manual entry is always available.
+
+If native location always falls back, first verify that location services are enabled for
+Trinity in the host privacy settings. Linux additionally needs a running GeoClue service and
+the installed `trinity.desktop` identity; an unpackaged development launch may therefore use
+manual/IP entry even though the packaged application works. Build diagnostics should run
+`pnpm -C electron run native:package-smoke`, which packages the current platform, checks the
+resource path and GeoClue executable identity, and loads the shipped addon in Electron.
 
 ## Cross-origin requests to homeservers
 

@@ -9,6 +9,7 @@ const electronDir = path.resolve(
 );
 const require = createRequire(import.meta.url);
 const nodeGyp = require.resolve('node-gyp/bin/node-gyp.js');
+const electronVersion = require('electron/package.json').version;
 const result = spawnSync(
   process.execPath,
   [
@@ -16,7 +17,7 @@ const result = spawnSync(
     'rebuild',
     '--directory',
     path.join(electronDir, 'native-location'),
-    '--target=43.2.0',
+    `--target=${electronVersion}`,
     '--dist-url=https://electronjs.org/headers',
   ],
   { cwd: electronDir, stdio: 'inherit' },

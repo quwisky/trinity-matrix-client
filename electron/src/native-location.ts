@@ -11,10 +11,12 @@ export interface NativeLocationProvider {
   /** Test-only escape hatch for headless Xvfb, which has no window manager/focus. */
   readonly allowUnfocused?: boolean;
   requestCurrentLocation(): Promise<NativeLocationResult>;
+  dispose?(): void;
 }
 
-interface NativeLocationAddon {
+export interface NativeLocationAddon {
   requestCurrentPosition(timeoutMs: number): Promise<unknown>;
+  cancelCurrentRequest(): void;
 }
 
 const REQUEST_TIMEOUT_MS = 20_000;
@@ -106,21 +108,63 @@ function loadAddon(): NativeLocationAddon | undefined {
 }
 
 /** Build the one-shot provider used by the Electron main process. */
-export function createNativeLocationProvider(): NativeLocationProvider {
-  const injected = testProvider();
+export function createNativeLocationProvider(
+  addonOverride?: NativeLocationAddon,
+): NativeLocationProvider {
+  const injected = addonOverride ? undefined : testProvider();
   if (injected) return injected;
 
-  let addon: NativeLocationAddon | undefined;
+  let addon = addonOverride;
+  let nativeInFlight: Promise<unknown> | undefined;
+  const dispose = (): void => {
+    try {
+      addon?.cancelCurrentRequest();
+    } catch {
+      // Native teardown must never prevent Electron from quitting.
+    }
+  };
+  app.once?.('before-quit', dispose);
   return {
+    dispose,
     async requestCurrentLocation(): Promise<NativeLocationResult> {
       addon ??= loadAddon();
       if (!addon) return { status: 'unavailable' };
+      if (nativeInFlight) return { status: 'unavailable' };
+      const activeAddon = addon;
+      nativeInFlight = Promise.resolve(
+        activeAddon.requestCurrentPosition(REQUEST_TIMEOUT_MS),
+      );
+      const nativeRequest = nativeInFlight;
+      void nativeRequest.then(
+        () => {
+          if (nativeInFlight === nativeRequest) nativeInFlight = undefined;
+        },
+        () => {
+          if (nativeInFlight === nativeRequest) nativeInFlight = undefined;
+        },
+      );
+      let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         return normalizeNativeLocationResult(
-          await addon.requestCurrentPosition(REQUEST_TIMEOUT_MS),
+          await Promise.race([
+            nativeRequest,
+            new Promise<NativeLocationResult>((resolve) => {
+              timer = setTimeout(() => {
+                try {
+                  activeAddon.cancelCurrentRequest();
+                } catch {
+                  // The deadline still settles even if native cancellation fails.
+                } finally {
+                  resolve({ status: 'timeout' });
+                }
+              }, REQUEST_TIMEOUT_MS);
+            }),
+          ]),
         );
       } catch {
         return { status: 'error' };
+      } finally {
+        if (timer) clearTimeout(timer);
       }
     },
   };

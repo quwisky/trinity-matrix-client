@@ -3,15 +3,14 @@
 
 #include "result.h"
 
-namespace {
-struct Request;
+struct TrinityLocationRequest;
 
 @interface TrinityLocationDelegate : NSObject <CLLocationManagerDelegate>
-@property(nonatomic, assign) Request* request;
+@property(nonatomic, assign) TrinityLocationRequest* request;
 @property(nonatomic, assign) BOOL started;
 @end
 
-struct Request {
+struct TrinityLocationRequest {
   napi_env env;
   napi_deferred deferred;
   CLLocationManager* manager;
@@ -19,9 +18,12 @@ struct Request {
   bool finished = false;
 };
 
-void Finish(Request* request, LocationResult result) {
+static TrinityLocationRequest* current_request = nullptr;
+
+static void Finish(TrinityLocationRequest* request, LocationResult result) {
   if (!request || request->finished) return;
   request->finished = true;
+  if (current_request == request) current_request = nullptr;
   [request->manager stopUpdatingLocation];
   request->manager.delegate = nil;
   napi_resolve_deferred(request->env, request->deferred,
@@ -67,7 +69,7 @@ void Finish(Request* request, LocationResult result) {
 }
 @end
 
-napi_value RequestCurrentPosition(napi_env env, napi_callback_info info) {
+static napi_value RequestCurrentPosition(napi_env env, napi_callback_info info) {
   const uint32_t timeout_ms = TimeoutArgument(env, info);
   napi_value promise;
   napi_deferred deferred;
@@ -79,8 +81,15 @@ napi_value RequestCurrentPosition(napi_env env, napi_callback_info info) {
         ResultToJs(env, LocationResult{LocationStatus::Unavailable}));
     return promise;
   }
+  if (current_request) {
+    napi_resolve_deferred(
+        env, deferred,
+        ResultToJs(env, LocationResult{LocationStatus::Unavailable}));
+    return promise;
+  }
 
-  auto* request = new Request{env, deferred};
+  auto* request = new TrinityLocationRequest{env, deferred};
+  current_request = request;
   request->manager = [[CLLocationManager alloc] init];
   request->delegate = [[TrinityLocationDelegate alloc] init];
   request->delegate.request = request;
@@ -107,12 +116,21 @@ napi_value RequestCurrentPosition(napi_env env, napi_callback_info info) {
       });
   return promise;
 }
-}  // namespace
+
+static napi_value CancelCurrentRequest(napi_env env, napi_callback_info) {
+  Finish(current_request, LocationResult{LocationStatus::Cancelled});
+  napi_value result;
+  napi_get_undefined(env, &result);
+  return result;
+}
 
 NAPI_MODULE_INIT() {
   napi_value fn;
   napi_create_function(env, "requestCurrentPosition", NAPI_AUTO_LENGTH,
                        RequestCurrentPosition, nullptr, &fn);
   napi_set_named_property(env, exports, "requestCurrentPosition", fn);
+  napi_create_function(env, "cancelCurrentRequest", NAPI_AUTO_LENGTH,
+                       CancelCurrentRequest, nullptr, &fn);
+  napi_set_named_property(env, exports, "cancelCurrentRequest", fn);
   return exports;
 }

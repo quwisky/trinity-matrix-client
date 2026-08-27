@@ -141,7 +141,11 @@ jobs:
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y pkg-config libglib2.0-dev
       - run: pnpm -C electron install --frozen-lockfile
-      - run: pnpm -C electron run native:build
+      - run: pnpm build
+      - run: pnpm -C electron run build
+      - run: pnpm -C electron run native:package-smoke
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
   # The app journeys, driven against a disposable Synapse + Caddy stack in Docker.
   e2e:

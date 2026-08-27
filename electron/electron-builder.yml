@@ -71,6 +71,9 @@ afterSign: build/notarize.cjs
 # Linux
 # ---------------------------------------------------------------------------
 linux:
+  # GeoClue authorizes the DesktopId against this exact .desktop basename.
+  executableName: trinity
+  syncDesktopName: true
   target:
     - AppImage
     - deb
