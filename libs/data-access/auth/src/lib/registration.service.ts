@@ -25,6 +25,7 @@ import {
   take,
   tap,
 } from 'rxjs';
+import { AccountAlreadyStoredError } from '@trinity/platform-native';
 import {
   EMAIL_STAGE,
   NATIVE_REGISTRATION_STAGES,
@@ -33,7 +34,11 @@ import {
   chooseRegistrationFlow,
   readRegistrationPolicies,
   readRegistrationUiaChallenge,
+  registrationErrorMessage,
+  registrationLocalpart,
+  registrationProbeLocalpart,
   type RegistrationAvailability,
+  type ExpectedRegistrationIdentity,
   type RegistrationStage,
   type RegistrationUiaData,
 } from './registration-uia';
@@ -49,7 +54,6 @@ export type {
 } from './registration-uia';
 
 const DEVICE_DISPLAY_NAME = 'Trinity';
-const REGISTRATION_PROBE_PREFIX = 'trinity_registration_probe_';
 type InitialRegistrationResult =
   | { kind: 'registered'; response: RegisterResponse }
   | { kind: 'uia'; data: RegistrationUiaData };
@@ -78,6 +82,7 @@ export class RegistrationService {
   private createdResponse?: RegisterResponse;
   private activeBaseUrl = '';
   private activeMode: LoginMode = 'replace';
+  private activeIdentity?: ExpectedRegistrationIdentity;
 
   /**
    * Probe the side-effect-free username-availability endpoint. A 200 response means
@@ -88,7 +93,7 @@ export class RegistrationService {
   getAvailability(baseUrl: string): Observable<RegistrationAvailability> {
     return defer(() => {
       const client = createClient({ baseUrl });
-      return from(client.isUsernameAvailable(this.probeLocalpart()));
+      return from(client.isUsernameAvailable(registrationProbeLocalpart()));
     }).pipe(
       map(() => 'open' as const),
       catchError((error: unknown) =>
@@ -106,12 +111,17 @@ export class RegistrationService {
     baseUrl: string,
     username: string,
     password: string,
+    expectedServerName: string,
     mode: LoginMode = 'replace',
   ): Observable<void> {
-    const generation = this.beginGeneration(baseUrl, mode);
+    const localpart = registrationLocalpart(username);
+    const generation = this.beginGeneration(baseUrl, mode, {
+      localpart,
+      serverName: expectedServerName,
+    });
     const client = createClient({ baseUrl });
     const request: RegisterRequest = {
-      username: this.localpart(username),
+      username: localpart,
       password,
       refresh_token: true,
       inhibit_login: false,
@@ -225,6 +235,7 @@ export class RegistrationService {
     this.activeAuth = undefined;
     this.createdResponse = undefined;
     this.activeBaseUrl = '';
+    this.activeIdentity = undefined;
     this.busyState.set(false);
     this.errorState.set(null);
     this.stageState.set({ kind: 'idle' });
@@ -387,11 +398,13 @@ export class RegistrationService {
   ): Observable<void> {
     this.ensureActive(generation);
     this.createdResponse = response;
-    const session = authenticatedRegistrationResponse(response);
+    const identity = this.activeIdentity;
+    if (!identity) throw new StaleRegistrationError();
+    const session = authenticatedRegistrationResponse(response, identity);
     return defer(() => {
       this.ensureActive(generation);
       this.busyState.set(true);
-      return this.sessions.establish(
+      return this.sessions.establishNew(
         this.activeBaseUrl,
         session,
         this.activeMode,
@@ -404,10 +417,15 @@ export class RegistrationService {
     );
   }
 
-  private beginGeneration(baseUrl: string, mode: LoginMode): number {
+  private beginGeneration(
+    baseUrl: string,
+    mode: LoginMode,
+    identity: ExpectedRegistrationIdentity,
+  ): number {
     this.cancel();
     this.activeBaseUrl = baseUrl;
     this.activeMode = mode;
+    this.activeIdentity = identity;
     this.stageState.set({ kind: 'credentials' });
     return this.generation;
   }
@@ -422,35 +440,38 @@ export class RegistrationService {
     this.busyState.set(false);
     if (this.createdResponse) {
       const retryable =
-        !(error instanceof RegistrationSessionError) || error.retryable;
+        error instanceof AccountAlreadyStoredError
+          ? false
+          : !(error instanceof RegistrationSessionError) || error.retryable;
       this.stageState.set({
         kind: 'session-error',
         userId: this.createdResponse.user_id,
         retryable,
       });
       this.errorState.set(
-        'Your account was created, but Trinity could not finish signing in. ' +
-          (retryable
-            ? 'Retry local setup or sign in normally.'
-            : 'Sign in normally to continue.'),
+        !retryable
+          ? `${this.nonretryableSessionMessage(error)} No local account data was changed.`
+          : 'Your account was created, but Trinity could not finish signing in. ' +
+              'Retry local setup or sign in normally.',
       );
       return EMPTY;
     }
     this.stageState.set({ kind: 'credentials' });
-    this.errorState.set(this.errorMessage(error));
+    this.errorState.set(registrationErrorMessage(error));
     return EMPTY;
   }
 
   private handleActionFailure(error: unknown): Observable<never> {
-    this.errorState.set(this.errorMessage(error));
+    this.errorState.set(registrationErrorMessage(error));
     return EMPTY;
   }
 
-  private errorMessage(error: unknown): string {
-    if (error instanceof MatrixError) {
-      return error.error || 'The homeserver rejected this registration step.';
+  private nonretryableSessionMessage(error: unknown): string {
+    if (error instanceof RegistrationSessionError) return error.message;
+    if (error instanceof AccountAlreadyStoredError) {
+      return 'Trinity refused to replace an account already stored on this device.';
     }
-    return error instanceof Error ? error.message : 'Registration failed.';
+    return 'Trinity could not safely establish this registration session.';
   }
 
   private async withBusy<T>(
@@ -470,21 +491,6 @@ export class RegistrationService {
 
   private ensureActive(generation: number): void {
     if (generation !== this.generation) throw new StaleRegistrationError();
-  }
-
-  private probeLocalpart(): string {
-    const bytes = new Uint8Array(12);
-    crypto.getRandomValues(bytes);
-    return (
-      REGISTRATION_PROBE_PREFIX +
-      Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('')
-    );
-  }
-
-  private localpart(username: string): string {
-    const trimmed = username.trim().replace(/^@/, '');
-    const colon = trimmed.indexOf(':');
-    return colon >= 0 ? trimmed.slice(0, colon) : trimmed;
   }
 }
 

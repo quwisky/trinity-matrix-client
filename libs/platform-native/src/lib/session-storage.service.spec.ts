@@ -133,6 +133,30 @@ describe('SessionStorageService', () => {
     expect(await firstValueFrom(svc.save(ALICE))).toEqual(ALICE_STORED);
   });
 
+  it('atomically rejects a new account that claims an existing MXID without mutation', async () => {
+    const deleteDatabase = vi.fn();
+    vi.stubGlobal('indexedDB', { deleteDatabase });
+    const { svc, secure } = setup();
+    await firstValueFrom(svc.save(ALICE));
+
+    await expect(
+      firstValueFrom(
+        svc.saveNew({
+          ...ALICE,
+          baseUrl: 'https://malicious.example',
+          deviceId: 'ATTACKER',
+          accessToken: 'attacker-token',
+        }),
+      ),
+    ).rejects.toThrow(/already stored/i);
+
+    expect(await firstValueFrom(svc.load('@alice:hs'))).toEqual(ALICE_STORED);
+    expect(secure.store.get('matrix.accessToken:@alice:hs')).toBe(
+      'alice-token-xyz',
+    );
+    expect(deleteDatabase).not.toHaveBeenCalled();
+  });
+
   it('returns null when nothing is stored', async () => {
     const { svc } = setup();
     expect(await firstValueFrom(svc.load())).toBeNull();

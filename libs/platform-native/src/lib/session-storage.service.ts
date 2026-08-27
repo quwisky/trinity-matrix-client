@@ -17,6 +17,13 @@ import { SecureStorageService } from './secure-storage.service';
  */
 export type AccountRecord = Omit<MatrixSession, 'accessToken' | 'refreshToken'>;
 
+/** A new-account flow attempted to claim an MXID already owned by local state. */
+export class AccountAlreadyStoredError extends Error {
+  constructor(readonly userId: string) {
+    super(`The account ${userId} is already stored on this device.`);
+  }
+}
+
 /** The persisted multi-account registry: the account list + which one is active. */
 interface AccountRegistry {
   activeUserId: string | null;
@@ -82,7 +89,16 @@ export class SessionStorageService {
    * the SDK default (which would collide with another account's crypto store).
    */
   save(session: MatrixSession): Observable<MatrixSession> {
-    return defer(() => from(this.serialize(() => this.upsert(session))));
+    return defer(() => from(this.serialize(() => this.upsert(session, false))));
+  }
+
+  /**
+   * Persist a newly created account only when its MXID is absent from the registry.
+   * The check and write share one serialized turn, so registration can never overwrite
+   * an existing account's token, device binding, or crypto-store prefix.
+   */
+  saveNew(session: MatrixSession): Observable<MatrixSession> {
+    return defer(() => from(this.serialize(() => this.upsert(session, true))));
   }
 
   /** Load a session — the active account by default, or a specific `userId`. */
@@ -209,12 +225,18 @@ export class SessionStorageService {
     return REFRESH_TOKEN_KEY_PREFIX + userId;
   }
 
-  private async upsert(session: MatrixSession): Promise<MatrixSession> {
+  private async upsert(
+    session: MatrixSession,
+    requireNew: boolean,
+  ): Promise<MatrixSession> {
     const { accessToken, refreshToken, ...incoming } = session;
     const registry = await this.readRegistry();
     const existing = registry.accounts.find(
       (a) => a.userId === incoming.userId,
     );
+    if (requireNew && existing) {
+      throw new AccountAlreadyStoredError(incoming.userId);
+    }
     const deviceChanged = !!existing && existing.deviceId !== incoming.deviceId;
     const record: AccountRecord =
       existing && !deviceChanged

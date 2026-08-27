@@ -3,6 +3,7 @@ import { MatrixError, createClient } from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, lastValueFrom, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { AccountAlreadyStoredError } from '@trinity/platform-native';
 import { RegistrationService } from './registration.service';
 import { SessionEstablishmentService } from './session-establishment.service';
 
@@ -59,7 +60,7 @@ describe('RegistrationService', () => {
       providers: [
         RegistrationService,
         MockProvider(SessionEstablishmentService, {
-          establish: vi.fn(() => of(undefined)),
+          establishNew: vi.fn(() => of(undefined)),
         }),
       ],
     });
@@ -77,7 +78,7 @@ describe('RegistrationService', () => {
       ).resolves.toBe('open');
 
       expect(matrixClient.isUsernameAvailable).toHaveBeenCalledWith(
-        expect.stringMatching(/^trinity_registration_probe_[0-9a-f]{24}$/),
+        expect.stringMatching(/^trinity[0-9a-f]{12}$/),
       );
       expect(matrixClient.registerRequest).not.toHaveBeenCalled();
     });
@@ -111,7 +112,7 @@ describe('RegistrationService', () => {
     createClientMock.mockReturnValue(client({ registerRequest }) as never);
 
     await firstValueFrom(
-      service.begin('https://hs', '@New:hs', 'password', 'replace'),
+      service.begin('https://hs', '@New:hs', 'password', 'hs', 'replace'),
     );
 
     expect(registerRequest).toHaveBeenNthCalledWith(
@@ -122,7 +123,7 @@ describe('RegistrationService', () => {
         auth: { type: 'm.login.dummy', session: 'uia-session' },
       }),
     );
-    expect(sessions.establish).toHaveBeenCalledWith(
+    expect(sessions.establishNew).toHaveBeenCalledWith(
       'https://hs',
       expect.objectContaining({
         user_id: '@new:hs',
@@ -159,7 +160,7 @@ describe('RegistrationService', () => {
     createClientMock.mockReturnValue(client({ registerRequest }) as never);
 
     const completion = firstValueFrom(
-      service.begin('https://hs', 'new', 'password'),
+      service.begin('https://hs', 'new', 'password', 'hs'),
     );
     await vi.waitFor(() =>
       expect(service.stage().kind).toBe('registration-token'),
@@ -179,7 +180,7 @@ describe('RegistrationService', () => {
     createClientMock.mockReturnValue(client({ registerRequest }) as never);
 
     const completion = firstValueFrom(
-      service.begin('https://hs', 'new', 'password'),
+      service.begin('https://hs', 'new', 'password', 'hs'),
     );
     await vi.waitFor(() =>
       expect(service.stage().kind).toBe('registration-token'),
@@ -231,7 +232,7 @@ describe('RegistrationService', () => {
     createClientMock.mockReturnValue(matrixClient as never);
 
     const completion = firstValueFrom(
-      service.begin('https://hs', 'new', 'password'),
+      service.begin('https://hs', 'new', 'password', 'hs'),
     );
     await vi.waitFor(() => expect(service.stage().kind).toBe('terms'));
 
@@ -250,6 +251,44 @@ describe('RegistrationService', () => {
     await completion;
   });
 
+  it('falls back for the whole terms stage when any required policy is malformed', async () => {
+    const registerRequest = vi.fn().mockRejectedValue(
+      uia(['m.login.terms'], {
+        params: {
+          'm.login.terms': {
+            policies: {
+              privacy: {
+                version: '1.0',
+                en: { name: 'Privacy policy', url: 'https://hs/privacy' },
+              },
+              unsafe: {
+                version: '1.0',
+                en: { name: 'Unsafe policy', url: 'javascript:alert(1)' },
+              },
+            },
+          },
+        },
+      }),
+    );
+    const matrixClient = client({ registerRequest });
+    createClientMock.mockReturnValue(matrixClient as never);
+
+    const subscription = service
+      .begin('https://hs', 'new', 'password', 'hs')
+      .subscribe();
+    await vi.waitFor(() => expect(service.stage().kind).toBe('fallback'));
+
+    expect(service.stage()).toMatchObject({
+      kind: 'fallback',
+      authType: 'm.login.terms',
+    });
+    expect(matrixClient.getFallbackAuthUrl).toHaveBeenCalledWith(
+      'm.login.terms',
+      'uia-session',
+    );
+    subscription.unsubscribe();
+  });
+
   it('collects email only when the chosen flow requires it, then polls its sid', async () => {
     const registerRequest = vi
       .fn()
@@ -259,7 +298,7 @@ describe('RegistrationService', () => {
     createClientMock.mockReturnValue(matrixClient as never);
 
     const completion = firstValueFrom(
-      service.begin('https://hs', 'new', 'password'),
+      service.begin('https://hs', 'new', 'password', 'hs'),
     );
     await vi.waitFor(() => expect(service.stage().kind).toBe('email-address'));
 
@@ -295,11 +334,11 @@ describe('RegistrationService', () => {
       .mockRejectedValueOnce(uia(['m.login.dummy']))
       .mockResolvedValueOnce(registered);
     createClientMock.mockReturnValue(client({ registerRequest }) as never);
-    vi.mocked(sessions.establish)
+    vi.mocked(sessions.establishNew)
       .mockReturnValueOnce(throwError(() => new Error('storage failed')))
       .mockReturnValueOnce(of(undefined));
 
-    await lastValueFrom(service.begin('https://hs', 'new', 'password'), {
+    await lastValueFrom(service.begin('https://hs', 'new', 'password', 'hs'), {
       defaultValue: undefined,
     });
     expect(service.stage()).toMatchObject({
@@ -311,14 +350,14 @@ describe('RegistrationService', () => {
 
     await firstValueFrom(service.retryEstablishment());
     expect(registerRequest).toHaveBeenCalledTimes(2);
-    expect(sessions.establish).toHaveBeenCalledTimes(2);
+    expect(sessions.establishNew).toHaveBeenCalledTimes(2);
   });
 
   it('does not retry a registration response that omitted its login tokens', async () => {
     const registerRequest = vi.fn().mockResolvedValue({ user_id: '@new:hs' });
     createClientMock.mockReturnValue(client({ registerRequest }) as never);
 
-    await lastValueFrom(service.begin('https://hs', 'new', 'password'), {
+    await lastValueFrom(service.begin('https://hs', 'new', 'password', 'hs'), {
       defaultValue: undefined,
     });
 
@@ -327,7 +366,48 @@ describe('RegistrationService', () => {
       userId: '@new:hs',
       retryable: false,
     });
-    expect(sessions.establish).not.toHaveBeenCalled();
+    expect(sessions.establishNew).not.toHaveBeenCalled();
+    expect(registerRequest).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a registration response whose MXID does not match the target identity', async () => {
+    const registerRequest = vi.fn().mockResolvedValue({
+      ...registered,
+      user_id: '@victim:other-server',
+    });
+    createClientMock.mockReturnValue(client({ registerRequest }) as never);
+
+    await lastValueFrom(service.begin('https://hs', 'new', 'password', 'hs'), {
+      defaultValue: undefined,
+    });
+
+    expect(service.stage()).toEqual({
+      kind: 'session-error',
+      userId: '@victim:other-server',
+      retryable: false,
+    });
+    expect(service.error()).toMatch(/identity.*did not match/i);
+    expect(sessions.establishNew).not.toHaveBeenCalled();
+    expect(registerRequest).toHaveBeenCalledOnce();
+  });
+
+  it('refuses to overwrite an account already stored under the returned MXID', async () => {
+    const registerRequest = vi.fn().mockResolvedValue(registered);
+    createClientMock.mockReturnValue(client({ registerRequest }) as never);
+    vi.mocked(sessions.establishNew).mockReturnValue(
+      throwError(() => new AccountAlreadyStoredError('@new:hs')),
+    );
+
+    await lastValueFrom(service.begin('https://hs', 'new', 'password', 'hs'), {
+      defaultValue: undefined,
+    });
+
+    expect(service.stage()).toEqual({
+      kind: 'session-error',
+      userId: '@new:hs',
+      retryable: false,
+    });
+    expect(service.error()).toMatch(/refused to replace/i);
     expect(registerRequest).toHaveBeenCalledOnce();
   });
 
@@ -337,7 +417,7 @@ describe('RegistrationService', () => {
       .mockRejectedValue(new MatrixError({ flows: [] }, 401));
     createClientMock.mockReturnValue(client({ registerRequest }) as never);
 
-    await lastValueFrom(service.begin('https://hs', 'new', 'password'), {
+    await lastValueFrom(service.begin('https://hs', 'new', 'password', 'hs'), {
       defaultValue: undefined,
     });
 

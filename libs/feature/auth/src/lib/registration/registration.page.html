@@ -36,6 +36,12 @@
           autocapitalize="off"
           autocorrect="off"
           [formField]="credentialsForm.username"
+          [attr.aria-describedby]="
+            credentialsForm.username().touched() &&
+            credentialsForm.username().errors().length
+              ? 'registration-username-error'
+              : null
+          "
           (keyup.enter)="createAccount()"
         />
         @if (
@@ -43,7 +49,10 @@
             credentialsForm.username().errors()[0];
           as validation
         ) {
-          <p class="registration-card__field-error text-danger">
+          <p
+            id="registration-username-error"
+            class="registration-card__field-error text-danger"
+          >
             {{ validation.message }}
           </p>
         }
@@ -65,6 +74,12 @@
             [type]="passwordVisible() ? 'text' : 'password'"
             class="pr-10"
             [formField]="credentialsForm.password"
+            [attr.aria-describedby]="
+              credentialsForm.password().touched() &&
+              credentialsForm.password().errors().length
+                ? 'registration-password-error'
+                : null
+            "
           />
           <button
             hlmBtn
@@ -82,6 +97,18 @@
             <trn-icon [name]="passwordVisible() ? 'eye-off' : 'eye'" />
           </button>
         </div>
+        @if (
+          credentialsForm.password().touched() &&
+            credentialsForm.password().errors()[0];
+          as validation
+        ) {
+          <p
+            id="registration-password-error"
+            class="registration-card__field-error text-danger"
+          >
+            {{ validation.message }}
+          </p>
+        }
       </div>
 
       <div class="registration-card__field">
@@ -98,6 +125,12 @@
           autocomplete="new-password"
           [type]="passwordVisible() ? 'text' : 'password'"
           [formField]="credentialsForm.confirmPassword"
+          [attr.aria-describedby]="
+            credentialsForm.confirmPassword().touched() &&
+            credentialsForm.confirmPassword().errors().length
+              ? 'registration-confirm-password-error'
+              : null
+          "
           (keyup.enter)="createAccount()"
         />
         @if (
@@ -105,7 +138,10 @@
             credentialsForm.confirmPassword().errors()[0];
           as validation
         ) {
-          <p class="registration-card__field-error text-danger">
+          <p
+            id="registration-confirm-password-error"
+            class="registration-card__field-error text-danger"
+          >
             {{ validation.message }}
           </p>
         }
@@ -121,6 +157,11 @@
         Create account
       </button>
     } @else {
+      @if (stageMessage(); as message) {
+        <p class="registration-card__stage-error text-danger" role="alert">
+          {{ message }}
+        </p>
+      }
       @switch (stage().kind) {
         @case ('email-address') {
           <p class="registration-card__copy">
@@ -141,8 +182,24 @@
               type="email"
               autocomplete="email"
               [formField]="emailForm.email"
+              [attr.aria-describedby]="
+                emailForm.email().touched() && emailForm.email().errors().length
+                  ? 'registration-email-error'
+                  : null
+              "
               (keyup.enter)="provideEmail()"
             />
+            @if (
+              emailForm.email().touched() && emailForm.email().errors()[0];
+              as validation
+            ) {
+              <p
+                id="registration-email-error"
+                class="registration-card__field-error text-danger"
+              >
+                {{ validation.message }}
+              </p>
+            }
           </div>
           <button
             hlmBtn
@@ -176,31 +233,28 @@
           </p>
           <ul class="registration-card__policies">
             @for (policy of $any(stage()).policies; track policy.id) {
-              <li>
+              <li class="registration-card__policy">
+                <label class="registration-card__consent">
+                  <trn-checkbox
+                    [checked]="policyAccepted(policy)"
+                    [disabled]="busy()"
+                    (checkedChange)="togglePolicy(policy, $event)"
+                  />
+                  <span>
+                    I accept {{ policy.name }} (version {{ policy.version }}).
+                  </span>
+                </label>
                 <button
                   hlmBtn
                   variant="link"
-                  class="h-auto p-0"
+                  class="ml-8 h-auto p-0"
                   (click)="openPolicy(policy)"
                 >
-                  {{ policy.name }}
+                  Read {{ policy.name }}
                 </button>
-                @if (policy.version) {
-                  <span class="text-muted-foreground">
-                    (version {{ policy.version }})</span
-                  >
-                }
               </li>
             }
           </ul>
-          <label class="registration-card__consent">
-            <trn-checkbox
-              [checked]="termsAccepted()"
-              [disabled]="busy()"
-              (checkedChange)="termsAccepted.set($event)"
-            />
-            <span>I have read and accept these policies.</span>
-          </label>
           <button
             hlmBtn
             class="mt-4 w-full"
@@ -227,8 +281,24 @@
               id="registration-token"
               autocomplete="off"
               [formField]="tokenForm.token"
+              [attr.aria-describedby]="
+                tokenForm.token().touched() && tokenForm.token().errors().length
+                  ? 'registration-token-error'
+                  : null
+              "
               (keyup.enter)="submitToken()"
             />
+            @if (
+              tokenForm.token().touched() && tokenForm.token().errors()[0];
+              as validation
+            ) {
+              <p
+                id="registration-token-error"
+                class="registration-card__field-error text-danger"
+              >
+                {{ validation.message }}
+              </p>
+            }
           </div>
           <button
             hlmBtn

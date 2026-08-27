@@ -69,8 +69,8 @@ export class RegistrationPage implements OnDestroy {
   readonly discovering = signal(false);
   readonly started = signal(false);
   readonly passwordVisible = signal(false);
-  readonly termsAccepted = signal(false);
-  readonly fallbackOpened = signal(false);
+  private readonly acceptedPolicyKeys = signal<ReadonlySet<string>>(new Set());
+  private readonly openedFallbackUrl = signal<string | null>(null);
   private readonly pageError = signal<string | null>(null);
 
   readonly stage = this.registration.stage;
@@ -80,6 +80,22 @@ export class RegistrationPage implements OnDestroy {
   readonly error = computed(
     () => this.pageError() ?? this.registration.error(),
   );
+  readonly stageMessage = computed(() => {
+    const stage = this.stage();
+    return 'message' in stage ? (stage.message ?? null) : null;
+  });
+  readonly fallbackOpened = computed(() => {
+    const stage = this.stage();
+    return stage.kind === 'fallback' && this.openedFallbackUrl() === stage.url;
+  });
+  readonly termsAccepted = computed(() => {
+    const stage = this.stage();
+    return (
+      stage.kind === 'terms' &&
+      stage.policies.length > 0 &&
+      stage.policies.every((policy) => this.policyAccepted(policy))
+    );
+  });
 
   private readonly credentialsModel = signal({
     username: '',
@@ -126,6 +142,8 @@ export class RegistrationPage implements OnDestroy {
     const baseUrl = this.baseUrl();
     if (!baseUrl) return;
     submit(this.credentialsForm, async () => {
+      this.acceptedPolicyKeys.set(new Set());
+      this.openedFallbackUrl.set(null);
       this.started.set(true);
       this.pageError.set(null);
       this.registration
@@ -133,6 +151,7 @@ export class RegistrationPage implements OnDestroy {
           baseUrl,
           this.credentialsModel().username,
           this.credentialsModel().password,
+          this.registrationServerName(this.homeserverInput),
           this.mode,
         )
         .pipe(takeUntilDestroyed(this.destroyRef))
@@ -157,6 +176,18 @@ export class RegistrationPage implements OnDestroy {
   acceptTerms(): void {
     if (!this.termsAccepted() || this.busy()) return;
     this.runAction(this.registration.acceptTerms());
+  }
+
+  policyAccepted(policy: RegistrationPolicy): boolean {
+    return this.acceptedPolicyKeys().has(this.policyKey(policy));
+  }
+
+  togglePolicy(policy: RegistrationPolicy, accepted: boolean): void {
+    const keys = new Set(this.acceptedPolicyKeys());
+    const key = this.policyKey(policy);
+    if (accepted) keys.add(key);
+    else keys.delete(key);
+    this.acceptedPolicyKeys.set(keys);
   }
 
   resendEmail(): void {
@@ -259,7 +290,7 @@ export class RegistrationPage implements OnDestroy {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((opened) => {
         if (opened) {
-          if (fallback) this.fallbackOpened.set(true);
+          if (fallback) this.openedFallbackUrl.set(url);
           return;
         }
         this.pageError.set('Trinity could not open that page in your browser.');
@@ -268,5 +299,25 @@ export class RegistrationPage implements OnDestroy {
 
   private finish(): void {
     void this.router.navigateByUrl('/encryption/setup', { replaceUrl: true });
+  }
+
+  private policyKey(policy: RegistrationPolicy): string {
+    return `${policy.id}\u0000${policy.version}\u0000${policy.url}`;
+  }
+
+  /** Mirror homeserver discovery's accepted domain / MXID input into its server name. */
+  private registrationServerName(input: string): string {
+    try {
+      const url = new URL(input);
+      if (url.protocol === 'http:' || url.protocol === 'https:') {
+        // A direct base URL's transport port need not be part of the Matrix server name.
+        return url.hostname;
+      }
+    } catch {
+      // Domain and MXID inputs are handled below.
+    }
+    const trimmed = input.trim().replace(/^@/, '');
+    const colon = trimmed.indexOf(':');
+    return colon >= 0 ? trimmed.slice(colon + 1) : trimmed;
   }
 }

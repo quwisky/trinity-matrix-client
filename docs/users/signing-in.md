@@ -92,23 +92,28 @@ Trinity supports."
 
 ## Creating an account
 
-Trinity cannot register a Matrix account. There is no registration form, no captcha
-handling, and no registration-token flow anywhere in the client.
+After homeserver discovery, Trinity shows **Create account** only when the server positively
+reports that legacy password registration is available. You choose a username and password
+inside Trinity, then complete the steps the homeserver requires. Trinity handles simple
+confirmation, terms, email verification, and registration-token stages directly.
 
-There is exactly one exception. When the homeserver delegates to an OIDC provider and that
-provider advertises support for a registration prompt, Trinity shows a **Create account**
-button next to **Continue**. Pressing it sends you to the provider's own sign-up page. The
-account is created there, by the provider, under its rules; Trinity only receives the
-result.
+Some stages, most notably CAPTCHA, must run on a homeserver-hosted page. Trinity opens that
+page in the system browser and waits for you to return and confirm completion. If a server
+returns a terms stage Trinity cannot render safely, that entire stage uses the same hosted
+fallback rather than accepting policies you could not review.
 
-For every other homeserver, register through that server's own web page or another client
-first, then sign in to Trinity with the account you have.
+When the homeserver delegates authentication to an OIDC provider, its provider remains in
+charge of registration. If the provider advertises a registration prompt, Trinity's
+**Create account** button opens that hosted sign-up flow instead of showing the legacy form.
+
+After a legacy registration succeeds, Trinity signs in the new device and takes you straight
+to encryption setup so you can create and save the account's recovery key.
 
 ## What happens after you sign in
 
-You land in the room list. Trinity does not force you through an encryption wizard, but if
-this account or this device is not ready for encrypted messages, a banner appears above the
-room list with the action that applies:
+After signing in to an existing account, you land in the room list. Trinity does not force
+that account through an encryption wizard, but if the account or device is not ready for
+encrypted messages, a banner appears above the room list with the action that applies:
 
 - **Set up** when the account has no recovery set up yet. This is the first-device path,
   and it ends by showing a recovery key exactly once.

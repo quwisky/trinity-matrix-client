@@ -50,6 +50,10 @@
   padding-left: 20px;
 }
 
+.registration-card__policy + .registration-card__policy {
+  margin-top: 12px;
+}
+
 .registration-card__consent {
   display: flex;
   gap: 10px;
@@ -60,9 +64,14 @@
 }
 
 .registration-card__field-error,
+.registration-card__stage-error,
 .registration-card__error {
   margin: 8px 0 0;
   font-size: 0.875rem;
+}
+
+.registration-card__stage-error {
+  margin-bottom: 16px;
 }
 
 .registration-card__error {
