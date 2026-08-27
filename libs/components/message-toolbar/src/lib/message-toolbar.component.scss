@@ -61,6 +61,8 @@
   justify-content: center;
   width: var(--trinity-density-control-size);
   height: var(--trinity-density-control-size);
+  min-width: var(--trinity-interaction-target-min-size);
+  min-height: var(--trinity-interaction-target-min-size);
   border: none;
   border-radius: var(--trinity-shape-control-radius);
   background: none;
@@ -92,7 +94,8 @@
   color: var(--trinity-danger);
 }
 
-// Touch targets: 44px wherever a finger can reach these buttons, 32px otherwise.
+// Touch targets: the shared interaction minimum becomes 44px wherever a finger can reach
+// these buttons and remains zero on precise pointers.
 
 // Still keyed on `(pointer: coarse)` after #220 moved phones and tablets to a bottom
 // sheet, and the two predicates are not in conflict — they answer different questions.
@@ -103,11 +106,10 @@
 // So on a phone this block is inert (the bar is never revealed there) and on a hybrid
 // laptop it is load-bearing (the bar IS revealed, and can be tapped). Right in both.
 @media (pointer: coarse) {
-  .toolbar__btn,
   .toolbar__emoji,
   .toolbar__emoji--more,
   .toolbar__picker {
-    min-width: 44px;
-    min-height: 44px;
+    min-width: var(--trinity-interaction-target-min-size);
+    min-height: var(--trinity-interaction-target-min-size);
   }
 }

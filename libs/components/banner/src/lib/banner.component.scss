@@ -14,11 +14,13 @@
 }
 
 .banner[data-tone='neutral'] {
-  background: var(--trinity-state-selected-surface);
-  color: var(--trinity-text);
+  background: var(--trinity-status-neutral-surface);
+  color: var(--trinity-status-neutral-foreground);
 }
 
 .banner[data-tone='accent'] {
+  --trinity-focus-ring: var(--trinity-focus-ring-on-attention);
+
   background: var(--trinity-state-attention-surface);
   color: var(--trinity-state-attention-foreground);
 }

@@ -114,6 +114,7 @@
   --trinity-density-row-padding-block: var(--trinity-space-3);
   --trinity-density-row-padding-inline: var(--trinity-space-4);
   --trinity-density-control-size: 2rem;
+  --trinity-interaction-target-min-size: 0px;
 
   // --- Elevation ----------------------------------------------------------------
   // Overridden per mode: a shadow that reads on white is invisible on #313338, which
@@ -330,7 +331,10 @@
   --trinity-state-selected-hover-foreground: var(--trinity-text-bright);
   --trinity-state-attention-surface: var(--trinity-accent);
   --trinity-state-attention-foreground: var(--trinity-accent-foreground);
+  --trinity-status-neutral-surface: var(--trinity-active);
+  --trinity-status-neutral-foreground: var(--trinity-text);
   --trinity-focus-ring: var(--trinity-link);
+  --trinity-focus-ring-on-attention: var(--trinity-state-attention-foreground);
   --trinity-focus-ring-width: 2px;
   --trinity-focus-ring-offset: 2px;
   --trinity-disabled-opacity: 0.48;
@@ -584,9 +588,9 @@
 
 // --- Density ---------------------------------------------------------------------
 // Compact tightens the SPACING SCALE, so anything reading `--trinity-space-*` follows
-// without knowing the preference exists. Today that is the message row, which is what a
-// chat client's density setting is really about; everything else is unchanged until it
-// adopts the tokens.
+// without knowing the preference exists. Message rows and the shared banner, media bubble,
+// and message toolbar currently consume the density contract; later components follow as
+// they adopt the same roles.
 
 // The five smallest steps only. 24px and 32px are section-level gaps — squeezing those
 // makes a settings page look broken rather than dense — and the 4px rhythm is kept: the
@@ -603,4 +607,12 @@
   --trinity-space-4: 8px;
   --trinity-space-5: 12px;
   --trinity-density-control-size: 1.75rem;
+}
+
+// Density may make precise-pointer chrome smaller, but never makes a finger target smaller.
+// Components consume this minimum alongside their density-controlled width/height or padding.
+@media (pointer: coarse) {
+  :root {
+    --trinity-interaction-target-min-size: 44px;
+  }
 }

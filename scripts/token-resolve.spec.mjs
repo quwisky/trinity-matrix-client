@@ -100,7 +100,10 @@ describe('trinity design tokens', () => {
       '--trinity-surface-floating': '--trinity-sidebar',
       '--trinity-state-hover-surface': '--trinity-hover',
       '--trinity-state-pressed-surface': '--trinity-active',
+      '--trinity-status-neutral-surface': '--trinity-active',
       '--trinity-focus-ring': '--trinity-link',
+      '--trinity-focus-ring-on-attention':
+        '--trinity-state-attention-foreground',
     };
 
     const wrong = Object.entries(aliases)

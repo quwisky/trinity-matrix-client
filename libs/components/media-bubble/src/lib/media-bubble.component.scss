@@ -74,16 +74,17 @@
   color: var(--trinity-text);
   text-align: left;
   width: 100%;
+  min-height: var(--trinity-interaction-target-min-size);
   transition:
     background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
     color var(--trinity-duration-fast) var(--trinity-ease-standard);
 
-  &:hover:not(:disabled) {
+  &:hover:not(:disabled, .media--error) {
     background: var(--trinity-state-hover-surface);
     color: var(--trinity-state-hover-foreground);
   }
 
-  &:active:not(:disabled) {
+  &:active:not(:disabled, .media--error) {
     background: var(--trinity-state-pressed-surface);
     color: var(--trinity-state-pressed-foreground);
   }
@@ -96,6 +97,14 @@
   // shout. Tinting the surface keeps the card readable under --trinity-text in
   // both modes (--card is the chat canvas in light, the sidebar grey in dark).
   background: color-mix(in srgb, var(--destructive) 25%, var(--card));
+
+  &:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--destructive) 35%, var(--card));
+  }
+
+  &:active:not(:disabled) {
+    background: color-mix(in srgb, var(--destructive) 45%, var(--card));
+  }
 }
 
 .media__icon {

@@ -108,6 +108,10 @@ const ROLES = [
     text: '--trinity-state-attention-foreground',
     on: ['--trinity-state-attention-surface'],
   },
+  {
+    text: '--trinity-status-neutral-foreground',
+    on: ['--trinity-status-neutral-surface'],
+  },
 ];
 
 /** Focus is a non-text visual indicator, so WCAG's 3:1 component threshold applies. */
@@ -123,6 +127,10 @@ const NON_TEXT_ROLES = [
       '--trinity-state-hover-surface',
       '--trinity-state-pressed-surface',
     ],
+  },
+  {
+    foreground: '--trinity-focus-ring-on-attention',
+    on: ['--trinity-state-attention-surface'],
   },
 ];
 
@@ -415,7 +423,9 @@ describe('contrast matrix', () => {
 
   it('keeps the focus indicator above the non-text contrast floor on every surface', () => {
     expect(measuredNonText.length).toBe(
-      palettes.length * 2 * NON_TEXT_ROLES[0].on.length,
+      palettes.length *
+        2 *
+        NON_TEXT_ROLES.reduce((total, role) => total + role.on.length, 0),
     );
     const failures = measuredNonText
       .filter((measurement) => measurement.ratio < 3)

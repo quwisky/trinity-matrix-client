@@ -17,9 +17,9 @@ button:focus-visible,
 a:focus-visible,
 [role='button']:focus-visible,
 [role='link']:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible,
+input:not([trnInput]):focus-visible,
+select:not([trnInput]):focus-visible,
+textarea:not([trnInput], [trnTextarea]):focus-visible,
 [tabindex]:focus-visible {
   outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
   outline-offset: var(--trinity-focus-ring-offset);

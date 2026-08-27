@@ -114,6 +114,33 @@ test.describe('semantic design foundations', () => {
           ),
         );
         expect(contrastRatio(focus, floating)).toBeGreaterThanOrEqual(3);
+
+        await openStory(page, 'components-banner--accent', palette, mode);
+        const banner = page.locator('[data-tone="accent"]');
+        const bannerAction = page.getByRole('button', { name: 'Set up' });
+        await bannerAction.evaluate((element) =>
+          element.setAttribute('data-testid', 'attention-action'),
+        );
+        await bannerAction.focus();
+        await expect(bannerAction).toBeFocused();
+        const attentionRing = await computedColour(
+          bannerAction,
+          'outline-color',
+        );
+        const attentionSurface = await computedColour(
+          banner,
+          'background-color',
+        );
+        expect(attentionRing).toEqual(
+          await resolveTokenSrgb(
+            page,
+            'attention-action',
+            '--trinity-focus-ring-on-attention',
+          ),
+        );
+        expect(
+          contrastRatio(attentionRing, attentionSurface),
+        ).toBeGreaterThanOrEqual(3);
       });
     }
   }
@@ -153,6 +180,55 @@ test.describe('semantic design foundations', () => {
     );
     expect(opacity).toBe(token);
   });
+
+  test('failed file interactions retain an error-aware surface', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await openStory(page, 'components-media-bubble--error');
+    const file = page.getByRole('button', {
+      name: /modern-interface-review\.pdf/i,
+    });
+    await file.evaluate((element) =>
+      element.setAttribute('data-testid', 'error-file'),
+    );
+    const initial = await computedColour(file, 'background-color');
+    await file.hover();
+    await expect
+      .poll(() => computedColour(file, 'background-color'))
+      .not.toEqual(initial);
+    const hovered = await computedColour(file, 'background-color');
+    const neutralHover = await resolveTokenSrgb(
+      page,
+      'error-file',
+      '--trinity-state-hover-surface',
+    );
+    expect(hovered).not.toEqual(initial);
+    expect(hovered).not.toEqual(neutralHover);
+  });
+
+  for (const [story, label] of [
+    ['components-input--default', 'Room name'],
+    ['components-textarea--default', 'Room topic'],
+  ] as const) {
+    test(`${label} wrapper renders one owned focus indicator`, async ({
+      page,
+    }) => {
+      await openStory(page, story);
+      const field = page.getByRole('textbox', { name: label });
+      await field.focus();
+      await expect(field).toBeFocused();
+      const focus = await field.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          outlineStyle: style.outlineStyle,
+          boxShadow: style.boxShadow,
+        };
+      });
+      expect(focus.outlineStyle).toBe('none');
+      expect(focus.boxShadow).not.toBe('none');
+    });
+  }
 
   test('reduced motion collapses state transitions', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
