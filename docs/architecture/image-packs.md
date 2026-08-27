@@ -84,14 +84,20 @@ Pack parsing is deliberately bounded before UI rendering:
 | Account/source packs retained                         |   100 |
 | Usable images retained from one pack                  |   500 |
 | Usable images retained across one picker              | 1,000 |
+| Newly selectable state key (UTF-8 bytes)              |   255 |
 | Pack display name, attribution and shortcode retained |   256 |
 
-Only a primary image `url` using `mxc://` with a server and media ID can become a rendered picker
-entry. Names, attribution and image info remain text/data; the UI never renders publisher metadata
-as HTML. Media resolution continues through the media data-access path rather than placing
-arbitrary remote HTTP URLs in the DOM. The publisher's complete `info` object is nevertheless
-preserved and forwarded in the outgoing `m.sticker` event, including nested URL-shaped fields;
-Trinity does not render those nested fields, but recipient clients decide how to consume them.
+Newly discovered state keys also reject control characters and are excluded rather than truncated,
+so their persisted identity cannot change. Existing malformed or oversized references remain in
+the manager with a bounded label so users can remove them.
+
+Only a primary image `url` using `mxc://` with the same server-name and media-ID grammar as
+`matrix-js-sdk` can become a rendered picker entry. Names, attribution and image info remain
+text/data; the UI never renders publisher metadata as HTML. Media resolution continues through the
+media data-access path rather than placing arbitrary remote HTTP URLs in the DOM. The publisher's
+complete `info` object is nevertheless preserved and forwarded in the outgoing `m.sticker` event,
+including nested URL-shaped fields; Trinity does not render those nested fields, but recipient
+clients decide how to consume them.
 
 ## Account-data mutation is best effort
 
@@ -106,9 +112,11 @@ updates but cannot make them impossible:
 4. The requested reference or namespaced usage preference is merged into the fresh stable
    document. Valid unknown top-level and per-reference stable fields are preserved, empty room maps
    are pruned, and only `m.image_pack.rooms` is written.
-5. The SDK PUT is followed by another direct GET. The complete returned JSON document must match
-   the expected merge, not merely the requested reference. If an observable unrelated change won
-   the write, Trinity repeats the read, merge, write and verification, for at most three attempts.
+5. The SDK's raw account-data PUT is followed by another direct GET. The raw call avoids the SDK's
+   object-comparison assumptions for magic-but-valid state keys; the explicit server verification
+   replaces its sync-echo wait. The complete returned JSON document must match the expected merge,
+   not merely the requested reference. If an observable unrelated change won the write, Trinity
+   repeats the read, merge, write and verification, for at most three attempts.
 6. Repeated failure becomes a visible conflict error rather than a false success.
 
 This protects against stale local sync state and preserves unrelated changes that are visible in a

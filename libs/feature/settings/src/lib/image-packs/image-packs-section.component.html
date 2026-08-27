@@ -17,7 +17,9 @@
         <div class="pack-card__body">
           <h4>{{ pack.name }}</h4>
           <p class="pack-card__source">
-            {{ pack.roomName || pack.roomId }} · state key “{{ pack.stateKey }}”
+            {{ pack.roomName || pack.roomId }} · state key “{{
+              stateKeyText(pack.stateKey)
+            }}”
           </p>
           <div
             class="pack-card__badges"
@@ -45,7 +47,7 @@
                 <label data-testid="image-pack-usage-sticker">
                   <trn-checkbox
                     [checked]="pack.enabledUsage.includes('sticker')"
-                    [disabled]="busyId() !== null"
+                    [disabled]="busyId() !== null && busyId() !== pack.id"
                     (checkedChange)="setUsage(pack, 'sticker', $event)"
                   />
                   <span>Stickers</span>
@@ -55,7 +57,7 @@
                 <label data-testid="image-pack-usage-emoticon">
                   <trn-checkbox
                     [checked]="pack.enabledUsage.includes('emoticon')"
-                    [disabled]="busyId() !== null"
+                    [disabled]="busyId() !== null && busyId() !== pack.id"
                     (checkedChange)="setUsage(pack, 'emoticon', $event)"
                   />
                   <span>Custom emoji</span>
@@ -76,10 +78,11 @@
           type="button"
           variant="outline"
           size="sm"
-          [disabled]="busyId() !== null"
           [attr.aria-label]="'Remove ' + pack.name + ' from your account'"
           data-testid="remove-image-pack"
-          (click)="remove(pack)"
+          #removeButton
+          [disabled]="busyId() !== null && busyId() !== pack.id"
+          (click)="remove(pack, removeButton)"
         >
           Remove
         </button>
@@ -102,6 +105,7 @@
       <div class="packs__form-row">
         <input
           trnInput
+          #sourceInput
           id="image-pack-source"
           autocomplete="off"
           placeholder="#stickers:example.org"
@@ -121,7 +125,8 @@
         <button
           hlmBtn
           type="submit"
-          [disabled]="finding() || busyId() !== null"
+          [disabled]="busyId() !== null"
+          [attr.aria-busy]="finding() ? 'true' : null"
           data-testid="find-image-packs"
         >
           {{ finding() ? 'Finding…' : 'Find packs' }}
@@ -144,7 +149,9 @@
         <article class="pack-card" data-testid="available-image-pack">
           <div class="pack-card__body">
             <h4>{{ pack.name }}</h4>
-            <p class="pack-card__source">State key “{{ pack.stateKey }}”</p>
+            <p class="pack-card__source">
+              State key “{{ stateKeyText(pack.stateKey) }}”
+            </p>
             <div
               class="pack-card__badges"
               aria-label="Publisher-declared pack capabilities"
@@ -168,14 +175,16 @@
             hlmBtn
             type="button"
             size="sm"
+            #installButton
             [disabled]="
-              busyId() !== null ||
+              (busyId() !== null && busyId() !== pack.id) ||
               installedIds().has(pack.id) ||
               pack.status !== 'available'
             "
+            [attr.aria-busy]="busyId() === pack.id ? 'true' : null"
             [attr.aria-label]="'Install ' + pack.name + ' for all rooms'"
             data-testid="install-image-pack"
-            (click)="install(pack)"
+            (click)="install(pack, installButton)"
           >
             {{
               installedIds().has(pack.id)

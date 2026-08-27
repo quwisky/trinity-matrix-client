@@ -152,7 +152,8 @@ h4 {
 
 @media (pointer: coarse) {
   .pack-card > button,
-  .packs__form-row > button {
+  .packs__form-row > button,
+  .packs__form-row > input {
     min-height: 2.75rem;
   }
 

@@ -9,6 +9,7 @@ import {
   LEGACY_IMAGE_PACK_EVENT_TYPE,
   LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE,
   TRINITY_IMAGE_PACK_ENABLED_USAGE,
+  isValidMxcUri,
   readImagePacks,
 } from './image-pack.service';
 
@@ -309,6 +310,42 @@ describe('ImagePackService', () => {
     expect(packs[0].images.some((item) => item.url.startsWith('https:'))).toBe(
       false,
     );
+  });
+
+  it('matches the Matrix SDK MXC server and media-ID validation', () => {
+    expect(isValidMxcUri('mxc://example.org/media_1-2')).toBe(true);
+    expect(isValidMxcUri('mxc://[2001:db8::1]:8448/media')).toBe(true);
+    expect(isValidMxcUri('mxc://example.org/media/extra')).toBe(false);
+    expect(isValidMxcUri('mxc://example.org:123456/media')).toBe(false);
+    expect(isValidMxcUri('mxc://example.org/not%20valid')).toBe(false);
+  });
+
+  it('uses unambiguous ids for room and state-key pairs containing colons', () => {
+    const { client, account, roomEvents, rebuildRoom } = setup();
+    account.set(
+      IMAGE_PACK_ROOMS_EVENT_TYPE,
+      event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
+        rooms: {
+          '!pack:hs': { '8448:fun': {} },
+          '!pack:hs:8448': { fun: {} },
+        },
+      }),
+    );
+    roomEvents.set('!pack:hs', [
+      event(IMAGE_PACK_EVENT_TYPE, '8448:fun', pack('First'), '!pack:hs'),
+    ]);
+    roomEvents.set('!pack:hs:8448', [
+      event(IMAGE_PACK_EVENT_TYPE, 'fun', pack('Second'), '!pack:hs:8448'),
+    ]);
+    rebuildRoom('!pack:hs');
+    rebuildRoom('!pack:hs:8448');
+
+    const ids = readImagePacks(client as never, '!current:hs').map(
+      (item) => item.id,
+    );
+
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2);
   });
 
   it('rebuilds for relevant live events and detaches cleanly', async () => {

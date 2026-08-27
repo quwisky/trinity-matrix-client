@@ -59,6 +59,8 @@ export class ImagePacksSectionComponent {
     viewChild<ElementRef<HTMLElement>>('resultsHeading');
   private readonly installedHeading =
     viewChild<ElementRef<HTMLElement>>('installedHeading');
+  private readonly sourceInput =
+    viewChild<ElementRef<HTMLInputElement>>('sourceInput');
 
   readonly installed = this.management.installed;
   readonly discovery = signal<ImagePackDiscovery | null>(null);
@@ -95,6 +97,7 @@ export class ImagePacksSectionComponent {
   }
 
   async find(): Promise<void> {
+    if (this.finding() || this.busyId() !== null) return;
     this.error.set(null);
     this.notice.set(null);
     await submit(this.sourceForm, {
@@ -110,6 +113,7 @@ export class ImagePacksSectionComponent {
         } catch (error) {
           this.discovery.set(null);
           this.error.set(managementErrorText(error, 'discover'));
+          queueMicrotask(() => this.sourceInput()?.nativeElement.focus());
         } finally {
           this.finding.set(false);
         }
@@ -118,21 +122,25 @@ export class ImagePacksSectionComponent {
     });
   }
 
-  async install(pack: ManagedImagePack): Promise<void> {
+  async install(pack: ManagedImagePack, trigger?: HTMLElement): Promise<void> {
+    if (this.busyId() !== null) return;
     this.error.set(null);
     this.notice.set(null);
     this.busyId.set(pack.id);
     try {
       await firstValueFrom(this.management.install(pack));
       this.notice.set(`${pack.name} is now available in all rooms.`);
+      queueMicrotask(() => this.installedHeading()?.nativeElement.focus());
     } catch (error) {
       this.error.set(managementErrorText(error, 'install'));
+      queueMicrotask(() => trigger?.focus());
     } finally {
       this.busyId.set(null);
     }
   }
 
-  async remove(pack: ManagedImagePack): Promise<void> {
+  async remove(pack: ManagedImagePack, trigger?: HTMLElement): Promise<void> {
+    if (this.busyId() !== null) return;
     this.error.set(null);
     this.notice.set(null);
     const confirmed = await this.alert.confirm({
@@ -150,6 +158,7 @@ export class ImagePacksSectionComponent {
       queueMicrotask(() => this.installedHeading()?.nativeElement.focus());
     } catch (error) {
       this.error.set(managementErrorText(error, 'remove'));
+      queueMicrotask(() => trigger?.focus());
     } finally {
       this.busyId.set(null);
     }
@@ -160,6 +169,7 @@ export class ImagePacksSectionComponent {
     usage: ImagePackUsage,
     enabled: boolean,
   ): Promise<void> {
+    if (this.busyId() !== null) return;
     this.error.set(null);
     this.notice.set(null);
     this.busyId.set(pack.id);
@@ -191,6 +201,12 @@ export class ImagePacksSectionComponent {
       case 'malformed':
         return 'The pack data is malformed and cannot be used.';
     }
+  }
+
+  stateKeyText(stateKey: string): string {
+    const printable = stateKey.replace(/[\u0000-\u001f\u007f]/g, '�');
+    if (printable.length === 0) return '(empty)';
+    return printable.length > 256 ? `${printable.slice(0, 255)}…` : printable;
   }
 }
 

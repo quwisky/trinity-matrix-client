@@ -289,7 +289,7 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
 }
 
 type AccountDataClient = {
-  setAccountData(
+  setAccountDataRaw(
     type: string,
     content: Record<string, unknown>,
   ): Promise<unknown>;
@@ -326,7 +326,11 @@ async function setAccountData(
   type: string,
   content: Record<string, unknown>,
 ): Promise<void> {
-  await accountDataClient(client).setAccountData(type, content);
+  // We verify with a direct server read immediately afterward, so waiting for
+  // the sync echo is unnecessary. The SDK's higher-level setAccountData()
+  // deep-comparison assumes ordinary dictionaries and throws on null-prototype
+  // maps used to preserve magic-but-valid state keys such as `__proto__`.
+  await accountDataClient(client).setAccountDataRaw(type, content);
 }
 
 function boundedRoomName(value: unknown): string | null {

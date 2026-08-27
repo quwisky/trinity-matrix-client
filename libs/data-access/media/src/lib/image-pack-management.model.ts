@@ -4,6 +4,8 @@ import {
   IMAGE_PACK_EVENT_TYPE,
   IMAGE_PACK_ROOMS_EVENT_TYPE,
   TRINITY_IMAGE_PACK_ENABLED_USAGE,
+  isSafeImagePackStateKey,
+  isValidMxcUri,
   type ImagePackUsage,
   LEGACY_IMAGE_PACK_EVENT_TYPE,
   LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE,
@@ -131,6 +133,7 @@ export function inspectStatePacks(
   const stable = new Map<string, RawImagePackStateEvent>();
   const legacy = new Map<string, RawImagePackStateEvent>();
   for (const event of events) {
+    if (!isSafeImagePackStateKey(event.state_key)) continue;
     if (event.type === IMAGE_PACK_EVENT_TYPE)
       stable.set(event.state_key, event);
     if (event.type === LEGACY_IMAGE_PACK_EVENT_TYPE)
@@ -170,7 +173,7 @@ export function mutateSelectionContent(
 ): Record<string, unknown> {
   const base = !migratingLegacy && isRecord(content) ? { ...content } : {};
   const rooms = normalizedRooms(content, migratingLegacy);
-  const room = { ...(rooms[source.roomId] ?? {}) };
+  const room = copyDictionary(rooms[source.roomId]);
   if (install) {
     if (!isRecord(room[source.stateKey])) room[source.stateKey] = {};
   } else {
@@ -189,6 +192,7 @@ export function hasImagePackReference(
   if (!isRecord(content) || !isRecord(content['rooms'])) return false;
   const room = content['rooms'][source.roomId];
   if (!isRecord(room)) return false;
+  if (!Object.hasOwn(room, source.stateKey)) return false;
   const reference = room[source.stateKey];
   return isRecord(reference) || (legacy && reference === true);
 }
@@ -201,7 +205,8 @@ export function mutateSelectionEnabledUsage(
 ): Record<string, unknown> {
   const base = !migratingLegacy && isRecord(content) ? { ...content } : {};
   const rooms = normalizedRooms(content, migratingLegacy);
-  const room = { ...(rooms[source.roomId] ?? {}) };
+  const room = copyDictionary(rooms[source.roomId]);
+  if (!Object.hasOwn(room, source.stateKey)) return { ...base, rooms };
   const current = room[source.stateKey];
   if (!isRecord(current)) return { ...base, rooms };
   const reference = { ...current };
@@ -243,7 +248,7 @@ function inspectPack(
       : usage.filter((item) => configuredUsage.includes(item));
   const images = Object.values(content['images']).slice(0, MAX_IMAGES_PER_PACK);
   const imageCount = images.filter(
-    (image) => isRecord(image) && validMxc(image['url']),
+    (image) => isRecord(image) && isValidMxcUri(image['url']),
   ).length;
   const invalidImages = imageCount < images.length;
   const status: ManagedImagePackStatus =
@@ -368,10 +373,10 @@ function normalizedRooms(
   legacy: boolean,
 ): Record<string, Record<string, unknown>> {
   if (!isRecord(content) || !isRecord(content['rooms'])) return {};
-  const rooms: Record<string, Record<string, unknown>> = {};
+  const rooms = Object.create(null) as Record<string, Record<string, unknown>>;
   for (const [roomId, stateKeys] of Object.entries(content['rooms'])) {
     if (!isRecord(stateKeys)) continue;
-    const next: Record<string, unknown> = {};
+    const next = Object.create(null) as Record<string, unknown>;
     for (const [stateKey, value] of Object.entries(stateKeys)) {
       if (isRecord(value)) next[stateKey] = { ...value };
       else if (legacy && value === true) next[stateKey] = {};
@@ -379,6 +384,15 @@ function normalizedRooms(
     if (Object.keys(next).length > 0) rooms[roomId] = next;
   }
   return rooms;
+}
+
+function copyDictionary(
+  value: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const copy = Object.create(null) as Record<string, unknown>;
+  if (!value) return copy;
+  for (const [key, entry] of Object.entries(value)) copy[key] = entry;
+  return copy;
 }
 
 function parseUsage(value: unknown): readonly ImagePackUsage[] {
@@ -390,10 +404,6 @@ function parseUsage(value: unknown): readonly ImagePackUsage[] {
   if (value.includes('emoticon')) usage.push('emoticon');
   if (value.includes('sticker')) usage.push('sticker');
   return usage;
-}
-
-function validMxc(value: unknown): value is string {
-  return typeof value === 'string' && /^mxc:\/\/[^/\s]+\/[^\s]+$/.test(value);
 }
 
 function boundedText(value: unknown): string | null {

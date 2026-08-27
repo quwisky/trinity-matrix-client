@@ -30,6 +30,10 @@ const MAX_PACKS = 100;
 const MAX_IMAGES_PER_PACK = 500;
 const MAX_IMAGES = 1000;
 const MAX_LABEL_LENGTH = 256;
+const MAX_STATE_KEY_BYTES = 255;
+const SERVER_NAME_PATTERN =
+  /^(?:(?:\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})|(?:\[[\dA-Fa-f:.]{2,45}])|(?:[A-Za-z\d\-.]{1,255}))(?::\d{1,5})?$/;
+const MEDIA_ID_PATTERN = /^[\w-]+$/;
 
 export type ImagePackUsage = 'emoticon' | 'sticker';
 export type ImagePackScope = 'account' | 'room';
@@ -196,6 +200,7 @@ export function readImagePacks(
       currentState
         .getStateEvents(IMAGE_PACK_EVENT_TYPE)
         .map((event) => event.getStateKey() ?? '')
+        .filter(isSafeImagePackStateKey)
         .sort(),
     );
     for (const stateKey of [...stableKeys].sort()) {
@@ -207,7 +212,7 @@ export function readImagePacks(
       (a.getStateKey() ?? '').localeCompare(b.getStateKey() ?? ''),
     )) {
       const stateKey = event.getStateKey() ?? '';
-      if (!stableKeys.has(stateKey)) {
+      if (isSafeImagePackStateKey(stateKey) && !stableKeys.has(stateKey)) {
         addRoomSource(sources, currentRoomId, stateKey);
       }
     }
@@ -280,8 +285,9 @@ function accountPackRoomsContent(
       // MSC2545 requires an object. Only the experimental legacy event accepted
       // the earlier boolean representation.
       if (
-        isRecord(stateKeys[stateKey]) ||
-        (legacy && stateKeys[stateKey] === true)
+        isSafeImagePackStateKey(stateKey) &&
+        (isRecord(stateKeys[stateKey]) ||
+          (legacy && stateKeys[stateKey] === true))
       ) {
         sources.push({
           roomId,
@@ -326,14 +332,14 @@ function parsePack(
   const scope = scopeByUsage(source, publisherUsage);
   const usage = publisherUsage.filter((item) => scope[item] !== null);
   if (usage.length === 0) return null;
-  const id = `${source.roomId}:${source.stateKey}`;
+  const id = sourceKey(source);
   const name =
     boundedText(packMeta['display_name']) ?? roomName ?? 'Image pack';
   const images: ImagePackImage[] = [];
   for (const shortcode of Object.keys(content['images']).sort()) {
     if (images.length >= MAX_IMAGES_PER_PACK) break;
     const raw = content['images'][shortcode];
-    if (!isRecord(raw) || !validMxc(raw['url'])) continue;
+    if (!isRecord(raw) || !isValidMxcUri(raw['url'])) continue;
     const info = isRecord(raw['info']) ? raw['info'] : {};
     images.push({
       shortcode: shortcode.slice(0, MAX_LABEL_LENGTH),
@@ -428,8 +434,24 @@ function parseUsage(value: unknown): readonly ImagePackUsage[] {
   return usage;
 }
 
-function validMxc(value: unknown): value is string {
-  return typeof value === 'string' && /^mxc:\/\/[^/\s]+\/[^\s]+$/.test(value);
+/** Matches matrix-js-sdk's server-name and media-ID validation. */
+export function isValidMxcUri(value: unknown): value is string {
+  if (typeof value !== 'string' || !value.startsWith('mxc://')) return false;
+  const [serverName, mediaId, ...rest] = value.slice(6).split('/');
+  return (
+    rest.length === 0 &&
+    SERVER_NAME_PATTERN.test(serverName) &&
+    MEDIA_ID_PATTERN.test(mediaId)
+  );
+}
+
+/** Bounds new state-key selections without changing their identity. */
+export function isSafeImagePackStateKey(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    !/[\u0000-\u001f\u007f]/.test(value) &&
+    new TextEncoder().encode(value).length <= MAX_STATE_KEY_BYTES
+  );
 }
 
 function boundedText(value: unknown): string | null {

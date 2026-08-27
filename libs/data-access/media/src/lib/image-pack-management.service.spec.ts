@@ -62,6 +62,9 @@ function setup(options?: {
   let stable: unknown | null = options?.stable ?? null;
   const legacy: unknown | null = options?.legacy ?? null;
   const packRoom = room('!pack:hs', options?.roomEvents ?? []);
+  const setAccountData = vi.fn(async (_type: string, content: unknown) => {
+    stable = structuredClone(content);
+  });
   const client = {
     getUserId: vi.fn(() => '@alice:hs'),
     getAccountData: vi.fn((type: string) => {
@@ -81,9 +84,8 @@ function setup(options?: {
         return structuredClone(content);
       }),
     },
-    setAccountData: vi.fn(async (_type: string, content: unknown) => {
-      stable = structuredClone(content);
-    }),
+    setAccountData,
+    setAccountDataRaw: setAccountData,
     getRoom: vi.fn((roomId: string) =>
       roomId === '!pack:hs' ? packRoom : null,
     ),
@@ -183,6 +185,28 @@ describe('image-pack management parsing', () => {
 
     expect(packs[0]).toMatchObject({ stateKey: '', status: 'empty' });
     expect(packs[1]).toMatchObject({ imageCount: 500, status: 'available' });
+  });
+
+  it('excludes unsafe state keys from discovery without truncating identity', () => {
+    const packs = inspectStatePacks('!pack:hs', null, [
+      {
+        type: IMAGE_PACK_EVENT_TYPE,
+        state_key: 'safe',
+        content: pack('Safe'),
+      },
+      {
+        type: IMAGE_PACK_EVENT_TYPE,
+        state_key: 'x'.repeat(256),
+        content: pack('Oversized'),
+      },
+      {
+        type: IMAGE_PACK_EVENT_TYPE,
+        state_key: 'control\u0000key',
+        content: pack('Control'),
+      },
+    ]);
+
+    expect(packs.map((candidate) => candidate.stateKey)).toEqual(['safe']);
   });
 
   it('keeps inaccessible references removable and ignores room-level empty maps', () => {
@@ -321,6 +345,39 @@ describe('ImagePackManagementService', () => {
     expect(stable()).toEqual({
       rooms: { '!pack:hs': { keep: { future: 'value' } } },
     });
+  });
+
+  it('round-trips a prototype-named state key as account data', async () => {
+    const { service, stable } = setup({ stable: { rooms: {} } });
+    const source = { roomId: '!pack:hs', stateKey: '__proto__' };
+
+    await firstValueFrom(service.install(source));
+    expect(
+      Object.hasOwn(
+        (stable() as { rooms: Record<string, Record<string, unknown>> }).rooms[
+          source.roomId
+        ],
+        source.stateKey,
+      ),
+    ).toBe(true);
+
+    await firstValueFrom(
+      service.setEnabledUsage({ ...source, usage: ['emoticon', 'sticker'] }, [
+        'sticker',
+      ]),
+    );
+    expect(stable()).toEqual({
+      rooms: {
+        '!pack:hs': {
+          ['__proto__']: {
+            [TRINITY_IMAGE_PACK_ENABLED_USAGE]: ['sticker'],
+          },
+        },
+      },
+    });
+
+    await firstValueFrom(service.uninstall(source));
+    expect(stable()).toEqual({ rooms: {} });
   });
 
   it('stores enabled usages in a namespaced field and preserves extensions', async () => {

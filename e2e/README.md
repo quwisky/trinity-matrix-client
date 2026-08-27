@@ -119,9 +119,10 @@ Android WebView suites. Against disposable Synapse it:
 9. verifies that uninstall did not delete the publisher's source state; and
 10. returns to the room and confirms the account-only sticker action is gone.
 
-The Android collection also asserts the install button reaches the 44px coarse-pointer target.
-The journey does not claim another-device propagation or atomic conflict freedom; those properties
-are outside a single-client E2E.
+The Android collection also asserts the source input and install button reach the 44px
+coarse-pointer target. The isolated second client proves persisted same-account propagation, but
+the journey does not claim atomic conflict freedom; Matrix account-data writes have no CAS
+primitive.
 
 Run only this journey on web:
 

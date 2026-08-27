@@ -205,9 +205,10 @@ installed pack, the checkboxes below them choose which supported usages Trinity 
 choices sync with the account between Trinity devices. They use a namespaced extension inside the
 stable account reference because MSC2545 reserves that object for extensions but does not define a
 standard per-user usage field; other Matrix clients may ignore the preference. Clearing every
-checkbox disables the pack in Trinity without uninstalling it. Trinity currently sends
-sticker-capable entries and displays custom emoji received in messages; composing a new message
-with a pack's custom emoji is not yet supported.
+checkbox disables its account-wide use in Trinity without uninstalling it. If you are currently in
+the source room, that room's published pack can still appear there as **This room**. Trinity
+currently sends sticker-capable entries and displays custom emoji received in messages; composing
+a new message with a pack's custom emoji is not yet supported.
 
 Trinity writes only stable `m.image_pack.rooms` account data. It can read the older
 `im.ponies.emote_rooms` form when stable data does not exist, and migrates valid legacy

@@ -189,6 +189,9 @@ test.describe('MSC2545 stickers and custom emoji', () => {
     await expect(funPack).toContainText('Stable');
     const installButton = funPack.getByTestId('install-image-pack');
     if (await page.evaluate(() => matchMedia('(pointer: coarse)').matches)) {
+      expect((await sourceInput.boundingBox())?.height).toBeGreaterThanOrEqual(
+        44,
+      );
       expect(
         (await installButton.boundingBox())?.height,
       ).toBeGreaterThanOrEqual(44);

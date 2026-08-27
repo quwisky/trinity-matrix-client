@@ -6,7 +6,7 @@ import {
   ImagePackManagementService,
   type ManagedImagePack,
 } from '@trinity/data-access/media';
-import { of, Subject } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ImagePacksSectionComponent } from './image-packs-section.component';
 
@@ -142,6 +142,38 @@ describe('ImagePacksSectionComponent', () => {
     await fixture.whenStable();
 
     expect(document.activeElement?.id).toBe('installed-packs-title');
+  });
+
+  it('restores focus after failed discovery and install actions', async () => {
+    discover.mockReturnValueOnce(
+      throwError(() => new Error('discovery failed')),
+    );
+    install.mockReturnValueOnce(throwError(() => new Error('install failed')));
+    const fixture = TestBed.createComponent(ImagePacksSectionComponent);
+    fixture.detectChanges();
+    fixture.componentInstance.sourceForm.source().value.set('#packs:hs');
+    const input = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid=image-pack-source]',
+    ) as HTMLInputElement;
+
+    await fixture.componentInstance.find();
+    await fixture.whenStable();
+    expect(document.activeElement).toBe(input);
+
+    fixture.componentInstance.discovery.set({
+      roomId: '!pack:hs',
+      roomName: 'Pack room',
+      packs: [available],
+    });
+    fixture.detectChanges();
+    const installButton = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid=install-image-pack]',
+    ) as HTMLButtonElement;
+    installButton.focus();
+    installButton.click();
+    await fixture.whenStable();
+
+    expect(document.activeElement).toBe(installButton);
   });
 
   it('prefills a routed room without joining or discovering automatically', async () => {
