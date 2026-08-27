@@ -98,4 +98,15 @@ describe('Android Playwright canonical coverage', () => {
       expect(block).toMatch(/test\.skip\(\s*isAndroidE2E,\s*['"]/);
     }
   });
+
+  it('drives native location without replacing the browser API', () => {
+    const fixture = readFileSync(
+      join(workspaceRoot, 'e2e/android/fixtures.mts'),
+      'utf8',
+    );
+    expect(fixture).toContain("'emu',\n      'geo',\n      'fix'");
+    expect(fixture).not.toMatch(
+      /Object\.defineProperty\(navigator,\s*['"]geolocation['"]/,
+    );
+  });
 });

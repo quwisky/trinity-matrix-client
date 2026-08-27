@@ -68,5 +68,7 @@
 	<string>Trinity needs microphone access to record voice messages.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Trinity needs your location to share it in a message when you choose to.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Trinity needs your location to share it in a message when you choose to.</string>
 </dict>
 </plist>

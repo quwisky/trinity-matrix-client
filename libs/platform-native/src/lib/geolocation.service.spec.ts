@@ -1,7 +1,19 @@
 import { TestBed } from '@angular/core/testing';
+import { Capacitor } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { firstValueFrom } from 'rxjs';
 import { GeolocationService } from './geolocation.service';
+
+vi.mock('@capacitor/core', () => ({
+  Capacitor: { isNativePlatform: vi.fn(() => false) },
+}));
+vi.mock('@capacitor/geolocation', () => ({
+  Geolocation: { getCurrentPosition: vi.fn() },
+}));
+
+const isNative = vi.mocked(Capacitor.isNativePlatform);
+const nativeGeolocation = vi.mocked(Geolocation);
 
 interface Bridge {
   resolveApproxLocation?: () => Promise<{ lat: number; lng: number } | null>;
@@ -29,10 +41,41 @@ describe('GeolocationService', () => {
     delete (globalThis as { trinityDesktop?: Bridge }).trinityDesktop;
     setGeolocation(undefined);
     vi.restoreAllMocks();
+    isNative.mockReset().mockReturnValue(false);
+    nativeGeolocation.getCurrentPosition.mockReset();
     TestBed.resetTestingModule();
   });
 
   describe('current', () => {
+    it('uses the native provider on iOS and Android', async () => {
+      isNative.mockReturnValue(true);
+      nativeGeolocation.getCurrentPosition.mockResolvedValue({
+        coords: { latitude: 10, longitude: 20 },
+      } as Awaited<ReturnType<typeof Geolocation.getCurrentPosition>>);
+
+      await expect(firstValueFrom(makeService().current())).resolves.toEqual({
+        lat: 10,
+        lng: 20,
+      });
+      expect(nativeGeolocation.getCurrentPosition).toHaveBeenCalledWith({
+        enableHighAccuracy: true,
+        timeout: 20_000,
+        maximumAge: 60_000,
+        enableLocationFallback: true,
+      });
+    });
+
+    it('propagates native permission and provider failures', async () => {
+      isNative.mockReturnValue(true);
+      nativeGeolocation.getCurrentPosition.mockRejectedValue(
+        new Error('Location permission request was denied.'),
+      );
+
+      await expect(firstValueFrom(makeService().current())).rejects.toThrow(
+        'Location permission request was denied.',
+      );
+    });
+
     it('emits the coordinates the device resolves', async () => {
       setGeolocation({
         getCurrentPosition: (success: PositionCallback) =>

@@ -1,4 +1,6 @@
 import { Injectable } from '@angular/core';
+import { Capacitor } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
 import { Observable, defer, from, map, throwError } from 'rxjs';
 import { getTrinityDesktopBridge } from './trinity-desktop-bridge';
 
@@ -9,15 +11,35 @@ export interface GeoPoint {
 }
 
 /**
- * Resolves the device's current location via the platform `navigator.geolocation`
- * (works on web and inside the Capacitor/Electron WebViews, gated by the OS permission
- * prompt). Exposed as a cold Observable so callers can cancel and surface errors; a
- * missing API or a denied/failed request errors rather than hanging.
+ * Resolves the device's current location via Capacitor's native provider on iOS/Android
+ * and `navigator.geolocation` on the web. The native provider is deliberate: Android
+ * WebView's browser API can receive permission yet never receive a fused-provider fix.
+ * Exposed as a cold Observable so callers can surface errors; a missing API or a
+ * denied/failed request errors rather than hanging.
  */
 @Injectable({ providedIn: 'root' })
 export class GeolocationService {
   /** The device's current position as {@link GeoPoint}. Cold — prompts on subscribe. */
   current(): Observable<GeoPoint> {
+    if (Capacitor.isNativePlatform()) {
+      return defer(() =>
+        Geolocation.getCurrentPosition({
+          // Prefer GPS when available. Android's balanced fused provider can wait
+          // indefinitely when network positioning is unavailable; approximate-only
+          // permission still downgrades this request safely on Android 12+.
+          enableHighAccuracy: true,
+          timeout: 20_000,
+          maximumAge: 60_000,
+          enableLocationFallback: true,
+        }),
+      ).pipe(
+        map((position) => ({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        })),
+      );
+    }
+
     return new Observable<GeoPoint>((subscriber) => {
       const geo =
         typeof navigator !== 'undefined' ? navigator.geolocation : undefined;
