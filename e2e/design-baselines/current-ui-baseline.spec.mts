@@ -300,7 +300,10 @@ test.describe('Phase 0 current application evidence', () => {
       });
       await room.click();
       await expect(
-        page.getByText(MAIN_MESSAGES[2], { exact: true }),
+        page
+          .getByTestId('timeline-event')
+          .filter({ hasText: MAIN_MESSAGES[2] })
+          .last(),
       ).toBeVisible({
         timeout: 30_000,
       });
