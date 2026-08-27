@@ -1,4 +1,12 @@
-import { ipcMain, net } from 'electron';
+import {
+  dialog,
+  ipcMain,
+  net,
+  type BrowserWindow,
+  type IpcMainInvokeEvent,
+  type WebFrameMain,
+} from 'electron';
+import { isAppUrl } from './scheme';
 import { getMainWindow } from './window';
 import {
   createNativeLocationProvider,
@@ -15,6 +23,56 @@ export const CURRENT_LOCATION_CHANNEL = 'trinity:geolocation:current';
 // this is the desktop convenience fallback, not precise device positioning.
 const IP_GEO_URL = 'https://ipapi.co/json/';
 const LOOKUP_TIMEOUT_MS = 8_000;
+
+type ConfirmCurrentLocation = (window: BrowserWindow) => Promise<boolean>;
+
+/** Ask for a fresh, trusted user decision from Electron's main process. */
+async function confirmCurrentLocation(window: BrowserWindow): Promise<boolean> {
+  try {
+    const { response } = await dialog.showMessageBox(window, {
+      type: 'question',
+      title: 'Share your location',
+      message: 'Use your precise location?',
+      detail:
+        'Trinity will request one position from the operating system. You can choose a location manually instead.',
+      buttons: ['Use precise location', 'Choose manually'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+    });
+    return response === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Require the exact live main document that started the request to remain trusted and
+ * foregrounded. A navigation replaces `mainFrame`, so its new document cannot inherit
+ * an authorization or result belonging to the old one.
+ */
+function isTrustedCurrentLocationCaller(
+  event: IpcMainInvokeEvent,
+  window: BrowserWindow,
+  frame: WebFrameMain,
+  provider: NativeLocationProvider,
+): boolean {
+  const contents = window.webContents;
+  return (
+    getMainWindow() === window &&
+    !window.isDestroyed() &&
+    !contents.isDestroyed() &&
+    event.sender === contents &&
+    event.senderFrame === frame &&
+    contents.mainFrame === frame &&
+    !frame.isDestroyed() &&
+    !frame.detached &&
+    isAppUrl(frame.url) &&
+    isAppUrl(contents.getURL()) &&
+    window.isVisible() &&
+    (window.isFocused() || provider.syntheticE2E === true)
+  );
+}
 
 /** Coerce a lat/lng pair to a finite point inside WGS84 bounds, else null. */
 function toGeoPoint(
@@ -52,23 +110,50 @@ function toGeoPoint(
  */
 export function registerGeolocationIpc(
   provider: NativeLocationProvider = createNativeLocationProvider(),
+  confirm: ConfirmCurrentLocation = confirmCurrentLocation,
 ): void {
-  let activeRequest: Promise<NativeLocationResult> | undefined;
+  let activeRequest:
+    { frame: WebFrameMain; promise: Promise<NativeLocationResult> } | undefined;
   ipcMain.handle(CURRENT_LOCATION_CHANNEL, async (event) => {
     const win = getMainWindow();
+    const frame = event.senderFrame;
     if (
       !win ||
-      event.sender !== win.webContents ||
-      !win.isVisible() ||
-      (!win.isFocused() && provider.allowUnfocused !== true)
+      !frame ||
+      !isTrustedCurrentLocationCaller(event, win, frame, provider)
     ) {
       return { status: 'unavailable' } satisfies NativeLocationResult;
     }
-    if (activeRequest) return activeRequest;
-    activeRequest = provider.requestCurrentLocation().finally(() => {
-      activeRequest = undefined;
+    if (activeRequest) {
+      return activeRequest.frame === frame
+        ? activeRequest.promise
+        : ({ status: 'unavailable' } satisfies NativeLocationResult);
+    }
+
+    const promise = async (): Promise<NativeLocationResult> => {
+      if (provider.syntheticE2E !== true && !(await confirm(win))) {
+        return { status: 'cancelled' };
+      }
+      if (!isTrustedCurrentLocationCaller(event, win, frame, provider)) {
+        return { status: 'cancelled' };
+      }
+      try {
+        const result = await provider.requestCurrentLocation();
+        return isTrustedCurrentLocationCaller(event, win, frame, provider)
+          ? result
+          : { status: 'cancelled' };
+      } catch {
+        return { status: 'error' };
+      }
+    };
+    const transaction = promise();
+    activeRequest = { frame, promise: transaction };
+    void transaction.finally(() => {
+      if (activeRequest?.promise === transaction) {
+        activeRequest = undefined;
+      }
     });
-    return activeRequest;
+    return transaction;
   });
 
   ipcMain.handle(APPROX_LOCATION_CHANNEL, async (event) => {

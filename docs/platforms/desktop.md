@@ -182,13 +182,17 @@ by `pnpm -C electron run native:build` and packaged as an `extraResource` outsid
 Linux builders therefore need `pkg-config` and the GLib/GIO development headers. CI compiles
 all three providers rather than waiting for a release build to discover native drift.
 
-The IPC handler accepts requests only from the visible, focused main renderer and coalesces
-concurrent calls into one OS request. The native result is validated at the main-process
-boundary before crossing the preload bridge. One overall 20-second deadline covers permission
-and positioning; expiry or app shutdown cancels the underlying native request. A denied,
-unavailable, timed-out, or malformed result is intentionally not shown as an error: location
-sharing opens the existing dialog, where the user can enter coordinates or explicitly request
-an approximate IP location.
+The IPC handler accepts requests only from the visible, focused main document. Electron shows
+a main-process-owned confirmation before touching the host location service, and concurrent
+calls from that document share the same confirmation/request transaction. The handler binds
+the transaction to the initiating frame and rechecks the live app URL, frame identity, window
+visibility and focus before starting the provider and before releasing its result. A navigation
+or focus loss therefore cancels delivery rather than handing precise coordinates to a different
+document. The native result is validated at the main-process boundary before crossing the
+preload bridge. One overall 20-second deadline covers permission and positioning; expiry or app
+shutdown cancels the underlying native request. A declined, denied, unavailable, timed-out, or
+malformed result opens the existing fallback dialog, where the user can enter coordinates or
+explicitly request an approximate IP location.
 
 `resolveApproxLocation` remains the keyless fallback. The main process makes a time-boxed
 HTTPS lookup and resolves `null` on failure so manual entry is always available.

@@ -1,7 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it } from 'vitest';
-import { TimelineActionsService } from './timeline-actions.service';
+import {
+  TimelineActionsService,
+  type LocationShareTarget,
+} from './timeline-actions.service';
 import { TimelineService } from './timeline.service';
 import {
   fakeClient,
@@ -41,14 +44,63 @@ describe('TimelineActionsService', () => {
   it('sends a shared location as m.location', async () => {
     const sent: unknown[][] = [];
     const svc = setupActions([], sent);
+    const target = svc.captureLocationTarget();
 
-    await firstValueFrom(svc.sendLocation(52.51, 13.38));
+    expect(target).not.toBeNull();
+    await firstValueFrom(svc.sendLocationToTarget(target!, 52.51, 13.38));
 
     expect(sent[0][0]).toBe('message');
     expect(sent[0][1]).toMatchObject({
       msgtype: 'm.location',
       geo_uri: 'geo:52.51,13.38',
     });
+  });
+
+  it('never sends a resolved location after the active account changes', async () => {
+    const room = fakeRoom([]);
+    const sentByFirst: unknown[][] = [];
+    const sentBySecond: unknown[][] = [];
+    const firstClient = fakeClient(room, sentByFirst);
+    const secondClient = fakeClient(room, sentBySecond);
+    const active = { client: firstClient as unknown };
+    TestBed.configureTestingModule({
+      providers: [
+        TimelineService,
+        TimelineActionsService,
+        switchableMatrixProvider(active),
+        mediaProvider(),
+      ],
+    });
+    TestBed.inject(TimelineService).open('!r:hs');
+    const svc = TestBed.inject(TimelineActionsService);
+    const target = svc.captureLocationTarget();
+    active.client = secondClient;
+
+    await expect(
+      firstValueFrom(svc.sendLocationToTarget(target!, 52.51, 13.38)),
+    ).rejects.toThrow(
+      'Location wasn’t shared because you changed rooms or accounts.',
+    );
+    expect(sentByFirst).toEqual([]);
+    expect(sentBySecond).toEqual([]);
+  });
+
+  it('rejects a location target that was not issued by this service', async () => {
+    const sent: unknown[][] = [];
+    const svc = setupActions([], sent);
+
+    await expect(
+      firstValueFrom(
+        svc.sendLocationToTarget(
+          { roomId: '!r:hs' } as LocationShareTarget,
+          52.51,
+          13.38,
+        ),
+      ),
+    ).rejects.toThrow(
+      'Location wasn’t shared because you changed rooms or accounts.',
+    );
+    expect(sent).toEqual([]);
   });
 
   it('interprets a /me slash command as an emote', async () => {

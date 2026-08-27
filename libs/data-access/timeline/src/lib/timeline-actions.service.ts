@@ -20,7 +20,18 @@ import {
   voiceMessageContent,
   type Mention,
 } from '@trinity/util/matrix';
-import { TimelineService } from './timeline.service';
+import { TimelineService, type TimelineContext } from './timeline.service';
+
+declare const locationShareTargetBrand: unique symbol;
+
+/** Opaque one-shot binding to the room and account where location sharing began. */
+export interface LocationShareTarget {
+  readonly roomId: string;
+  readonly [locationShareTargetBrand]: true;
+}
+
+export const LOCATION_TARGET_CHANGED_MESSAGE =
+  'Location wasn’t shared because you changed rooms or accounts.';
 
 /** File extension for a recorded voice clip's MIME type (best-effort, default webm). */
 function voiceExtension(mimeType: string): string {
@@ -43,15 +54,20 @@ function voiceExtension(mimeType: string): string {
  * room is asked for on subscribe via {@link TimelineService.openContext}, so there is
  * one answer to "which room, on which account" rather than two.
  *
- * Every method returns a COLD Observable: nothing is sent until someone subscribes,
- * and the room + account are resolved at that moment. An action built before an
- * account switch (or replayed by a retry operator) therefore fires against whoever is
- * active when it actually runs, never against a captured stale client.
+ * Every send method returns a COLD Observable: nothing is sent until someone
+ * subscribes, and the room + account are normally resolved at that moment. Location
+ * sharing is deliberately different: resolving a position may outlive navigation, so
+ * it uses an opaque one-shot target captured before the asynchronous request and
+ * refuses to send if that exact room/account is no longer active.
  */
 @Injectable({ providedIn: 'root' })
 export class TimelineActionsService {
   private readonly timeline = inject(TimelineService);
   private readonly mediaSvc = inject(MediaService);
+  private readonly locationTargets = new WeakMap<
+    LocationShareTarget,
+    TimelineContext
+  >();
   // Only forwardMessage needs this: it targets ANOTHER room, so there is no open-room
   // context to resolve and it has to reach the client directly.
   private readonly matrix = inject(MatrixClientService);
@@ -79,17 +95,52 @@ export class TimelineActionsService {
     }).pipe(map(() => void 0));
   }
 
-  /** Send a shared location (`m.location`) to the active room. Cold — runs on subscribe. */
-  sendLocation(lat: number, lng: number): Observable<void> {
+  /** Capture the exact room/account that initiated an asynchronous location share. */
+  captureLocationTarget(): LocationShareTarget | null {
+    const context = this.timeline.openContext();
+    if (!context) {
+      return null;
+    }
+    const target = Object.freeze({
+      roomId: context.room.roomId,
+    }) as LocationShareTarget;
+    this.locationTargets.set(target, context);
+    return target;
+  }
+
+  /** Whether a captured target is still the exact active room on the same account. */
+  isLocationTargetCurrent(target: LocationShareTarget): boolean {
+    const captured = this.locationTargets.get(target);
+    const current = this.timeline.openContext();
+    return Boolean(
+      captured &&
+      current &&
+      current.client === captured.client &&
+      current.room === captured.room,
+    );
+  }
+
+  /** Send `m.location` only to its captured room/account; each target is one-shot. */
+  sendLocationToTarget(
+    target: LocationShareTarget,
+    lat: number,
+    lng: number,
+  ): Observable<void> {
     return defer(() => {
-      const ctx = this.timeline.openContext();
-      if (!ctx) {
-        return of(void 0);
+      const captured = this.locationTargets.get(target);
+      const current = this.timeline.openContext();
+      this.locationTargets.delete(target);
+      if (
+        !captured ||
+        !current ||
+        current.client !== captured.client ||
+        current.room !== captured.room
+      ) {
+        return throwError(() => new Error(LOCATION_TARGET_CHANGED_MESSAGE));
       }
-      const { client, room } = ctx;
       return from(
-        client.sendMessage(
-          room.roomId,
+        captured.client.sendMessage(
+          captured.room.roomId,
           locationMessageContent(lat, lng) as never,
         ),
       ).pipe(map(() => void 0));

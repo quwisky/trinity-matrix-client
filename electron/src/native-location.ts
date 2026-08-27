@@ -8,8 +8,8 @@ export type NativeLocationResult =
   | { status: 'denied' | 'unavailable' | 'timeout' | 'cancelled' | 'error' };
 
 export interface NativeLocationProvider {
-  /** Test-only escape hatch for headless Xvfb, which has no window manager/focus. */
-  readonly allowUnfocused?: boolean;
+  /** Unpackaged synthetic E2E provider; never set by a production provider. */
+  readonly syntheticE2E?: boolean;
   requestCurrentLocation(): Promise<NativeLocationResult>;
   dispose?(): void;
 }
@@ -74,7 +74,7 @@ function testProvider(): NativeLocationProvider | undefined {
     accuracy,
   });
   return {
-    allowUnfocused: true,
+    syntheticE2E: true,
     requestCurrentLocation: () => Promise.resolve(result),
   };
 }

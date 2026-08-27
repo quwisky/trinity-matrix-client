@@ -9,7 +9,11 @@ import {
   timeout,
 } from 'rxjs';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
-import { TimelineActionsService } from '@trinity/data-access/timeline';
+import {
+  LOCATION_TARGET_CHANGED_MESSAGE,
+  TimelineActionsService,
+  type LocationShareTarget,
+} from '@trinity/data-access/timeline';
 import {
   GeolocationService,
   getTrinityDesktopBridge,
@@ -24,8 +28,8 @@ import { ManualLocationDialogComponent } from './manual-location-dialog/manual-l
  * native/browser adapter (prompting for permission). On the desktop shell it asks the
  * host OS through the Electron bridge, then falls back to manual/IP entry if the host
  * denies or cannot resolve the request. Either way the resolved point flows into
- * {@link TimelineActionsService.sendLocation}, and {@link sharing} tracks the in-flight
- * request/send so the composer can show a busy state.
+ * {@link TimelineActionsService.sendLocationToTarget}, and {@link sharing} tracks the
+ * in-flight request/send so the composer can show a busy state.
  */
 @Injectable({ providedIn: 'root' })
 export class LocationShareService {
@@ -40,8 +44,12 @@ export class LocationShareService {
 
   /** Resolve a location and send it to the active room. */
   share(): void {
+    const target = this.timelineActions.captureLocationTarget();
+    if (!target) {
+      return;
+    }
     if (getTrinityDesktopBridge()?.isElectron) {
-      void this.shareViaDesktop();
+      void this.shareViaDesktop(target);
       return;
     }
     // Bound the whole request: the browser's own `timeout` clock only starts once
@@ -49,6 +57,7 @@ export class LocationShareService {
     // without this the busy state (and the disabled button) would stick on for the
     // session. On timeout we error, which clears busy via `finalize` and toasts.
     this.send(
+      target,
       this.geo.current().pipe(
         timeout({
           each: 30_000,
@@ -62,36 +71,43 @@ export class LocationShareService {
   }
 
   /** Desktop: prefer the OS provider, then fall back silently to manual/IP entry. */
-  private async shareViaDesktop(): Promise<void> {
+  private async shareViaDesktop(target: LocationShareTarget): Promise<void> {
     this.sharingSig.set(true);
     try {
       const point = await firstValueFrom(this.geo.current());
       this.sharingSig.set(false);
-      this.send(of(point));
+      this.send(target, of(point));
     } catch {
       this.sharingSig.set(false);
-      await this.shareViaDialog();
+      if (!this.timelineActions.isLocationTargetCurrent(target)) {
+        this.toastTargetChanged();
+        return;
+      }
+      await this.shareViaDialog(target);
     }
   }
 
   /** Desktop fallback: pick a location manually or through the opt-in IP estimate. */
-  private async shareViaDialog(): Promise<void> {
+  private async shareViaDialog(target: LocationShareTarget): Promise<void> {
     const point = await this.dialog.openAndWait<
       GeoPoint | null,
       ManualLocationDialogComponent
     >(ManualLocationDialogComponent, {});
     if (point) {
-      this.send(of(point));
+      this.send(target, of(point));
     }
   }
 
   /** Send the resolved point to the room, tracking busy state and toasting failures. */
-  private send(source: Observable<GeoPoint>): void {
+  private send(
+    target: LocationShareTarget,
+    source: Observable<GeoPoint>,
+  ): void {
     this.sharingSig.set(true);
     source
       .pipe(
         switchMap(({ lat, lng }) =>
-          this.timelineActions.sendLocation(lat, lng),
+          this.timelineActions.sendLocationToTarget(target, lat, lng),
         ),
         finalize(() => this.sharingSig.set(false)),
       )
@@ -104,5 +120,12 @@ export class LocationShareService {
             { duration: 4000, variant: 'destructive' },
           ),
       });
+  }
+
+  private toastTargetChanged(): void {
+    this.toast.show(LOCATION_TARGET_CHANGED_MESSAGE, {
+      duration: 4000,
+      variant: 'destructive',
+    });
   }
 }

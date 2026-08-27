@@ -123,8 +123,10 @@ outright.
 !!! note "Location on the desktop app"
 
     The Electron shell cannot resolve `navigator.geolocation` without an embedded Google
-    API key, which Trinity does not ship. On desktop, location sharing opens a dialog where
-    you paste a map link or type coordinates instead.
+    API key, which Trinity does not ship. Instead, Trinity asks you in a desktop-owned prompt
+    before requesting one position from the operating system's native location service. If you
+    decline or the host cannot resolve it, the location dialog lets you paste a map link, type
+    coordinates, or explicitly request a city-level estimate from your public IP.
 
 **GIFs.** The GIF option appears only once you have configured a provider and API key at
 **Settings → GIFs**. Until then there is no key to search with, so it is hidden rather than

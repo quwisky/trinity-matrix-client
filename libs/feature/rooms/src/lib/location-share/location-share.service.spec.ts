@@ -18,12 +18,20 @@ function setBridge(bridge: Bridge | undefined): void {
 function setup(
   over: {
     current?: Mock;
-    sendLocation?: Mock;
+    captureLocationTarget?: Mock;
+    isLocationTargetCurrent?: Mock;
+    sendLocationToTarget?: Mock;
     openAndWait?: Mock;
   } = {},
 ) {
+  const locationTarget = { roomId: '!r:hs' };
   const current = over.current ?? vi.fn(() => of({ lat: 1.5, lng: 2.5 }));
-  const sendLocation = over.sendLocation ?? vi.fn(() => of(undefined));
+  const captureLocationTarget =
+    over.captureLocationTarget ?? vi.fn(() => locationTarget);
+  const isLocationTargetCurrent =
+    over.isLocationTargetCurrent ?? vi.fn(() => true);
+  const sendLocationToTarget =
+    over.sendLocationToTarget ?? vi.fn(() => of(undefined));
   const openAndWait =
     over.openAndWait ?? vi.fn(() => Promise.resolve({ lat: 3.5, lng: 4.5 }));
   const toastShow = vi.fn();
@@ -31,15 +39,22 @@ function setup(
     providers: [
       LocationShareService,
       MockProvider(GeolocationService, { current }),
-      MockProvider(TimelineActionsService, { sendLocation }),
+      MockProvider(TimelineActionsService, {
+        captureLocationTarget,
+        isLocationTargetCurrent,
+        sendLocationToTarget,
+      }),
       MockProvider(TrnDialogService, { openAndWait }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
   });
   return {
     svc: TestBed.inject(LocationShareService),
+    locationTarget,
     current,
-    sendLocation,
+    captureLocationTarget,
+    isLocationTargetCurrent,
+    sendLocationToTarget,
     openAndWait,
     toastShow,
   };
@@ -53,24 +68,36 @@ describe('LocationShareService', () => {
 
   describe('web / mobile (device geolocation)', () => {
     it('resolves the location and sends it to the active room', () => {
-      const { svc, current, sendLocation, openAndWait } = setup();
+      const {
+        svc,
+        locationTarget,
+        current,
+        captureLocationTarget,
+        sendLocationToTarget,
+        openAndWait,
+      } = setup();
 
       svc.share();
 
+      expect(captureLocationTarget).toHaveBeenCalledBefore(current);
       expect(current).toHaveBeenCalled();
       expect(openAndWait).not.toHaveBeenCalled();
-      expect(sendLocation).toHaveBeenCalledWith(1.5, 2.5);
+      expect(sendLocationToTarget).toHaveBeenCalledWith(
+        locationTarget,
+        1.5,
+        2.5,
+      );
     });
 
     it('toasts when the location can’t be resolved', () => {
       const current = vi.fn(() =>
         throwError(() => new Error('Permission denied.')),
       );
-      const { svc, sendLocation, toastShow } = setup({ current });
+      const { svc, sendLocationToTarget, toastShow } = setup({ current });
 
       svc.share();
 
-      expect(sendLocation).not.toHaveBeenCalled();
+      expect(sendLocationToTarget).not.toHaveBeenCalled();
       expect(toastShow).toHaveBeenCalledWith(
         'Permission denied.',
         expect.objectContaining({ variant: 'destructive' }),
@@ -95,41 +122,82 @@ describe('LocationShareService', () => {
   describe('desktop (manual dialog)', () => {
     it('sends the native desktop location without opening the dialog', async () => {
       setBridge({ isElectron: true });
-      const { svc, current, openAndWait, sendLocation } = setup();
+      const {
+        svc,
+        locationTarget,
+        current,
+        openAndWait,
+        sendLocationToTarget,
+      } = setup();
 
       svc.share();
       await Promise.resolve();
 
       expect(current).toHaveBeenCalled();
       expect(openAndWait).not.toHaveBeenCalled();
-      expect(sendLocation).toHaveBeenCalledWith(1.5, 2.5);
+      expect(sendLocationToTarget).toHaveBeenCalledWith(
+        locationTarget,
+        1.5,
+        2.5,
+      );
     });
 
     it('falls back to the manual dialog when native location fails', async () => {
       setBridge({ isElectron: true });
       const current = vi.fn(() => throwError(() => new Error('denied')));
-      const { svc, openAndWait, sendLocation, toastShow } = setup({ current });
+      const {
+        svc,
+        locationTarget,
+        openAndWait,
+        sendLocationToTarget,
+        toastShow,
+      } = setup({ current });
 
       svc.share();
       await Promise.resolve();
       await Promise.resolve();
 
       expect(openAndWait).toHaveBeenCalled();
-      expect(sendLocation).toHaveBeenCalledWith(3.5, 4.5);
+      expect(sendLocationToTarget).toHaveBeenCalledWith(
+        locationTarget,
+        3.5,
+        4.5,
+      );
       expect(toastShow).not.toHaveBeenCalled();
+    });
+
+    it('does not open the fallback after the room or account changes', async () => {
+      setBridge({ isElectron: true });
+      const current = vi.fn(() => throwError(() => new Error('denied')));
+      const isLocationTargetCurrent = vi.fn(() => false);
+      const { svc, openAndWait, sendLocationToTarget, toastShow } = setup({
+        current,
+        isLocationTargetCurrent,
+      });
+
+      svc.share();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(openAndWait).not.toHaveBeenCalled();
+      expect(sendLocationToTarget).not.toHaveBeenCalled();
+      expect(toastShow).toHaveBeenCalledWith(
+        'Location wasn’t shared because you changed rooms or accounts.',
+        expect.objectContaining({ variant: 'destructive' }),
+      );
     });
 
     it('sends nothing when native location fails and the dialog is dismissed', async () => {
       setBridge({ isElectron: true });
       const current = vi.fn(() => throwError(() => new Error('denied')));
       const openAndWait = vi.fn(() => Promise.resolve(null));
-      const { svc, sendLocation } = setup({ current, openAndWait });
+      const { svc, sendLocationToTarget } = setup({ current, openAndWait });
 
       svc.share();
       await Promise.resolve();
       await Promise.resolve();
 
-      expect(sendLocation).not.toHaveBeenCalled();
+      expect(sendLocationToTarget).not.toHaveBeenCalled();
       expect(svc.sharing()).toBe(false);
     });
   });
