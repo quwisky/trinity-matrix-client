@@ -1,7 +1,8 @@
 {
   "purpose": "Archival Phase 0 evidence of the pre-redesign application, not visual-regression baselines.",
-  "sourceCommit": "aa255cf9b207af9fcdcec076ce2ed5dafff297bb",
-  "generatedAt": "2026-08-27T22:15:20.801Z",
+  "sourceCommit": "69947792ad0635e3e647558db4c2512e5d139a30",
+  "sourceTree": "df6677bd526e3711430ae7bba4fa6e9d8900a800",
+  "generatedAt": "2026-08-27T22:24:58.232Z",
   "environment": {
     "platform": "linux",
     "kernel": "6.12.101+deb13-amd64",
