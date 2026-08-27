@@ -50,10 +50,23 @@ through the skills tooling, don't hand-edit** the copied files.
 | Skill | Upstream | Covers |
 | --- | --- | --- |
 | `angular-developer` | `angular/skills` | Angular code generation + architecture: signals (`linkedSignal`, `resource`), forms, DI, routing, SSR, ARIA, animations, styling, testing, CLI. |
+| `brandkit` | `leonxlnx/taste-skill` | Premium brand-guideline boards, logo systems, identity decks, and visual-world presentations. |
+| `design-taste-frontend` | `leonxlnx/taste-skill` | Anti-template frontend direction for landing pages, portfolios, and redesigns (current v2). |
+| `design-taste-frontend-v1` | `leonxlnx/taste-skill` | Original taste-skill behavior for work that requires v1 compatibility. |
+| `full-output-enforcement` | `leonxlnx/taste-skill` | Complete, unabridged output for tasks where placeholders or truncation are unacceptable. |
+| `gpt-taste` | `leonxlnx/taste-skill` | Editorial UI direction, AIDA structure, varied layouts, and advanced GSAP motion. |
+| `high-end-visual-design` | `leonxlnx/taste-skill` | Agency-style typography, spacing, surface treatment, and motion direction. |
+| `image-to-code` | `leonxlnx/taste-skill` | Image-first website design references followed by close frontend implementation. |
+| `imagegen-frontend-mobile` | `leonxlnx/taste-skill` | Premium mobile-app screen and flow image generation without code generation. |
+| `imagegen-frontend-web` | `leonxlnx/taste-skill` | Separate conversion-aware website reference images for every requested section. |
+| `industrial-brutalist-ui` | `leonxlnx/taste-skill` | Swiss, industrial, and tactical interface direction for dense or editorial surfaces. |
+| `minimalist-ui` | `leonxlnx/taste-skill` | Warm, editorial minimalism with flat grids, muted accents, and restrained effects. |
 | `nx-workspace` | `nrwl/nx-ai-agents-config` | Exploring/understanding the Nx workspace — projects, targets, dependencies — and debugging nx task failures. The same nx plugin also provides `nx-generate` for scaffolding. |
 | `playwright-best-practices` | `currents-dev/playwright-best-practices-skill` | Writing & fixing Playwright tests: flakiness, Page Object Model, CI, mocking, auth, accessibility, and more (E2E/component/API/visual/security/Electron). |
 | `playwright-cli` | `microsoft/playwright-cli` | Automating browser interactions and driving Playwright tests from the CLI. |
+| `redesign-existing-projects` | `leonxlnx/taste-skill` | Audit-first visual upgrades for existing websites and apps without breaking behavior. |
 | `spartan` | `spartan-ng/spartan` | spartan/ui: Brain (headless) + Helm (styled) layers, the `@spartan-ng/cli` generators, `components.json` projects. |
+| `stitch-design-taste` | `leonxlnx/taste-skill` | Premium semantic `DESIGN.md` systems for Google Stitch screen generation. |
 | `vitest` | `antfu/skills` | Vitest unit testing: mocking, coverage, test filtering, fixtures. |
 
 ---
