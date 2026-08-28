@@ -167,6 +167,17 @@ export class SettingsPage {
   protected readonly wide = mediaQuerySignal(MD_QUERY, this.destroyRef);
 
   constructor() {
+    // Browser Back, Android hardware Back and iOS history gestures bypass goBack(). When
+    // one of them pops a narrow drill-in back to the directory, clear the remembered push
+    // and mark its originating link before the shell's NavigationEnd focus pass runs.
+    effect(() => {
+      if (this.activePath() !== null || !this.narrowSectionPushed()) {
+        return;
+      }
+      this.markDirectoryFocusTarget();
+      this.narrowSectionPushed.set(false);
+    });
+
     // The wide two-pane layout must never show an empty detail pane: land the bare
     // `/settings` index on the first section. Narrow leaves the index on the list.
     effect(() => {

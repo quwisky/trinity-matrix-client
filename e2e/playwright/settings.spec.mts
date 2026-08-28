@@ -1,4 +1,4 @@
-import { test, expect, type Page } from './support/fixtures.mts';
+import { devices, test, expect, type Page } from './support/fixtures.mts';
 import {
   login,
   fillLabeledInput,
@@ -11,6 +11,7 @@ import {
 // list → sub-page on mobile). They need a live homeserver, so the suite skips
 // itself when the disposable Synapse wasn't available (no Docker).
 const session = synapseSession();
+const PIXEL_5 = devices['Pixel 5'];
 
 const SECTIONS = [
   'profile',
@@ -23,8 +24,10 @@ const SECTIONS = [
   'server',
   'privacy',
   'gifs',
+  'stickers',
   'shortcuts',
   'experimental',
+  'advanced',
 ];
 
 // A 1x1 transparent PNG — a valid image the homeserver accepts as an avatar.
@@ -595,5 +598,66 @@ test.describe('Settings', () => {
     await expect(appearance).toBeVisible();
     await page.getByRole('button', { name: 'Back' }).click();
     await page.waitForURL(/\/rooms/, { timeout: 20_000 });
+  });
+
+  test('mobile: browser Back restores directory focus and clears drill-in history', async ({
+    page,
+  }) => {
+    await page.getByRole('button', { name: 'Back' }).click();
+    await page.waitForURL(/\/rooms/, { timeout: 20_000 });
+
+    await page.setViewportSize({ width: 375, height: 800 });
+    await page.getByTestId('open-settings').click();
+    const appearance = page.getByTestId('settings-nav-appearance');
+    await appearance.click();
+    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+
+    await page.goBack();
+    await page.waitForURL(/\/settings$/, { timeout: 20_000 });
+    await expect(appearance).toBeFocused();
+
+    await page.setViewportSize({ width: 1024, height: 700 });
+    await page.waitForURL(/\/settings\/profile$/, { timeout: 20_000 });
+    await page.getByRole('button', { name: 'Back' }).click();
+    await page.waitForURL(/\/rooms/, { timeout: 20_000 });
+  });
+
+  test.describe('Pixel 5 profile', () => {
+    test.use({
+      viewport: PIXEL_5.viewport,
+      userAgent: PIXEL_5.userAgent,
+      deviceScaleFactor: PIXEL_5.deviceScaleFactor,
+      isMobile: PIXEL_5.isMobile,
+      hasTouch: PIXEL_5.hasTouch,
+    });
+
+    test('keeps drill-in navigation, touch targets, and width containment', async ({
+      page,
+    }) => {
+      await page.goto('/settings');
+      const appearance = page.getByTestId('settings-nav-appearance');
+      await expect(appearance).toBeVisible({ timeout: 20_000 });
+
+      const profile = await page.evaluate(() => ({
+        userAgent: navigator.userAgent,
+        touchPoints: navigator.maxTouchPoints,
+        overflow:
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth,
+      }));
+      expect(profile.userAgent).toContain('Android');
+      expect(profile.touchPoints).toBeGreaterThan(0);
+      expect(profile.overflow).toBeLessThanOrEqual(1);
+      const target = await appearance.boundingBox();
+      expect(target?.height ?? 0).toBeGreaterThanOrEqual(44);
+
+      await appearance.click();
+      await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+      await expect(
+        page.getByRole('heading', { name: 'Appearance' }),
+      ).toBeFocused();
+      await page.goBack();
+      await expect(appearance).toBeFocused();
+    });
   });
 });

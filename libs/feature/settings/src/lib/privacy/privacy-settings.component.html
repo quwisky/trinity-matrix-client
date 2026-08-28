@@ -33,14 +33,18 @@
 }
 
 @if (privacy.linkPreviews()) {
-  <label trnSettingsToggleRow data-testid="privacy-link-previews-encrypted">
+  <label
+    trnSettingsToggleRow
+    [nested]="true"
+    data-testid="privacy-link-previews-encrypted"
+  >
     <trn-switch
       [checked]="privacy.linkPreviewsInEncrypted()"
       (checkedChange)="privacy.setLinkPreviewsInEncrypted($event)"
     />
     Show link previews in encrypted rooms
   </label>
-  <p class="block py-2 pr-4 pl-8 text-13 text-muted-foreground">
+  <p class="block py-2 ps-8 pe-4 text-13 text-muted-foreground">
     ⚠ Off by default. Turning this on sends links from your encrypted messages
     to your homeserver to fetch a preview — disclosing a link it otherwise
     couldn't see.

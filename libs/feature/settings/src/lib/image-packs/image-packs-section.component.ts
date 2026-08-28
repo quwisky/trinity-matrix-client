@@ -30,6 +30,7 @@ import {
 } from '@trinity/data-access/media';
 import { HlmButton } from '@trinity/helm/button';
 import { firstValueFrom } from 'rxjs';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
 interface SourceFormModel {
   source: string;
@@ -45,6 +46,7 @@ interface SourceFormModel {
     TrnCheckboxComponent,
     TrnInput,
     TrnLabel,
+    SettingsSectionHeadingComponent,
   ],
   templateUrl: './image-packs-section.component.html',
   styleUrl: './image-packs-section.component.scss',

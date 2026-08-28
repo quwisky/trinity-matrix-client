@@ -266,6 +266,35 @@ describe('SettingsPage (shell)', () => {
     expect(historyGo).toHaveBeenCalledWith(-2);
   });
 
+  it('forgets a mobile push after history returns to the directory', async () => {
+    const media = stubMatchMedia(false);
+    const { harness, shell, router } = await harnessAt('/settings');
+    const location = TestBed.inject(Location);
+    const historyGo = vi
+      .spyOn(location, 'historyGo')
+      .mockImplementation(() => undefined);
+    const back = vi.spyOn(location, 'back').mockImplementation(() => undefined);
+
+    shell.onSectionNavigate();
+    await harness.navigateByUrl('/settings/appearance');
+    await harness.navigateByUrl('/settings'); // browser/system Back equivalent
+    harness.detectChanges();
+    await flush();
+
+    const link = (
+      harness.fixture.nativeElement as HTMLElement
+    ).querySelector<HTMLElement>('[data-testid=settings-nav-appearance]');
+    expect(link?.hasAttribute('data-route-focus')).toBe(true);
+
+    media.fireChange(true);
+    harness.detectChanges();
+    expect(await settle(router, '/settings/profile')).toBe('/settings/profile');
+    shell.goBack();
+
+    expect(back).toHaveBeenCalledOnce();
+    expect(historyGo).not.toHaveBeenCalled();
+  });
+
   it('leaves settings via history when the header back button is clicked at the index', async () => {
     stubMatchMedia(false);
     const { harness } = await harnessAt('/settings');
