@@ -1,20 +1,42 @@
 @use '../../styles/mixins' as *;
 
-// This component wraps the sidebar's footer; stay layout-transparent so the
-// footer remains the .sidebar flex column's fixed 52px bottom bar.
+// Narrow layouts keep the panel in the sidebar's flex flow. At desktop width the host becomes
+// the positioned box, leaving `.userbar` responsible only for the dock's visual surface.
 :host {
   display: contents;
+
+  @media #{$md} {
+    position: absolute;
+    inset-inline: var(--trinity-space-3);
+    inset-block-end: var(--trinity-space-3);
+    z-index: var(--trinity-z-sticky);
+    display: block;
+    height: var(--trinity-sidebar-dock-height);
+  }
 }
 
 .userbar {
-  height: 52px;
-  flex: 0 0 52px;
+  --userbar-avatar-ring: var(--trinity-surface-navigation-header);
+
+  box-sizing: border-box;
+  height: var(--trinity-sidebar-dock-height);
+  flex: 0 0 var(--trinity-sidebar-dock-height);
   display: flex;
   align-items: center;
   gap: var(--trinity-density-shell-gap);
   padding: 0 var(--trinity-density-shell-padding-inline);
   background: var(--trinity-surface-navigation-header);
   box-shadow: inset 0 1px 0 var(--trinity-border-subtle);
+
+  @media #{$md} {
+    --userbar-avatar-ring: var(--trinity-surface-floating);
+
+    height: 100%;
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-container-radius);
+    background: var(--trinity-surface-floating);
+    box-shadow: var(--trinity-shadow-floating);
+  }
 }
 
 .userbar__trigger {
@@ -150,7 +172,7 @@
 .userbar__stack-item {
   position: relative;
   border-radius: 50%;
-  box-shadow: 0 0 0 2px var(--trinity-surface-navigation-header);
+  box-shadow: 0 0 0 2px var(--userbar-avatar-ring);
 
   &:not(:first-child) {
     margin-left: -10px;

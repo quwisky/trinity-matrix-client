@@ -402,13 +402,15 @@ Deliverables:
 - stable space squircles and refined active/unread states;
 - density-aware rail, channel, member and user-panel spacing;
 - unified header action hierarchy and right-panel family;
-- modern identity dock in the channel sidebar.
+- modern identity dock in the channel sidebar, floating above its scroll surface at desktop
+  widths while retaining an in-flow touch layout below the two-pane breakpoint.
 
 Acceptance:
 
 - persisted pane widths, min/max bounds and drag handles behave unchanged;
 - 1280x720, 1024x768 and 900x700 have one vertical scroll owner per pane;
 - long space/room/account names truncate without hiding actions or badges;
+- the last room and focus-driven scrolling clear the floating identity dock;
 - keyboard and touch access remains complete at every density.
 
 ### Phase 3 - timeline and composer

@@ -153,6 +153,71 @@ async function expectInside(child: Locator, parent: Locator): Promise<void> {
   );
 }
 
+async function expectFloatingDockContract(page: Page): Promise<void> {
+  const geometry = await page.evaluate(() => {
+    const sidebar = document.querySelector<HTMLElement>('.sidebar');
+    const scroller = document.querySelector<HTMLElement>('.sidebar__scroll');
+    const host = document.querySelector<HTMLElement>('trn-sidebar-user-panel');
+    const dock = document.querySelector<HTMLElement>('.userbar');
+    const lastRow = scroller?.lastElementChild as HTMLElement | null;
+    if (!sidebar || !scroller || !host || !dock || !lastRow) {
+      throw new Error('missing floating identity dock geometry');
+    }
+
+    scroller.scrollTop = scroller.scrollHeight;
+    const sidebarBox = sidebar.getBoundingClientRect();
+    const dockBox = dock.getBoundingClientRect();
+    const rowBox = lastRow.getBoundingClientRect();
+    const scrollerStyle = getComputedStyle(scroller);
+    return {
+      compact: document.documentElement.dataset['density'] === 'compact',
+      hostPosition: getComputedStyle(host).position,
+      scrollPaddingEnd: Number.parseFloat(scrollerStyle.scrollPaddingBlockEnd),
+      dockInsideInline:
+        dockBox.left >= sidebarBox.left - 1 &&
+        dockBox.right <= sidebarBox.right + 1,
+      dockInsideBlock:
+        dockBox.top >= sidebarBox.top - 1 &&
+        dockBox.bottom <= sidebarBox.bottom + 1,
+      lastRowClearsDock: rowBox.bottom <= dockBox.top - 1,
+    };
+  });
+
+  expect(geometry.scrollPaddingEnd).toBe(geometry.compact ? 64 : 68);
+  expect(geometry).toMatchObject({
+    hostPosition: 'absolute',
+    dockInsideInline: true,
+    dockInsideBlock: true,
+    lastRowClearsDock: true,
+  });
+}
+
+async function expectAccountMenuAboveDock(page: Page): Promise<void> {
+  const membersBackdrop = page.getByTestId('members-backdrop');
+  if (await membersBackdrop.isVisible()) {
+    await membersBackdrop.click({ position: { x: 8, y: 8 } });
+    await expect(membersBackdrop).toBeHidden();
+  }
+
+  const trigger = page.getByTestId('user-menu-trigger');
+  await trigger.click();
+  const menu = page.getByRole('menu').last();
+  await expect(menu).toBeVisible();
+
+  const [menuBox, dockBox] = await Promise.all([
+    menu.boundingBox(),
+    page.locator('.userbar').boundingBox(),
+  ]);
+  expect(menuBox).not.toBeNull();
+  expect(dockBox).not.toBeNull();
+  // The anchored overlay may meet the dock inside the 4px spacing token (including its
+  // shadow), but it must remain above the dock controls rather than opening over them.
+  expect(menuBox!.y + menuBox!.height).toBeLessThanOrEqual(dockBox!.y + 4);
+
+  await page.keyboard.press('Escape');
+  await expect(trigger).toBeFocused();
+}
+
 async function expectScrollContract(
   page: Page,
   viewport: { width: number; height: number },
@@ -212,6 +277,7 @@ async function expectScrollContract(
     'position',
     viewport.width >= 1100 ? 'static' : 'fixed',
   );
+  await expectFloatingDockContract(page);
 }
 
 /**
@@ -421,6 +487,18 @@ test.describe('Modern room shell layout', () => {
         { width: 900, height: 700 },
       ]) {
         await expectScrollContract(page, viewport);
+      }
+
+      await expectAccountMenuAboveDock(page);
+
+      if (density === 'compact') {
+        await page.evaluate(() => {
+          document.documentElement.dir = 'rtl';
+        });
+        await expectFloatingDockContract(page);
+        await page.evaluate(() => {
+          document.documentElement.removeAttribute('dir');
+        });
       }
     }
   });

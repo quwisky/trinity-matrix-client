@@ -144,6 +144,11 @@ All notable changes to this project are documented here. The format is based on
   Resizable pane widths and virtualized member-row measurements stay unchanged, and Compact
   density never reduces a coarse-pointer target below 44px.
 
+- **The desktop account dock now floats above the room list.** Web and Electron inset the
+  bottom-left identity panel as a raised surface over the channel sidebar, while reserving
+  enough scroll space that the last room and keyboard-focused rows remain visible. Phones keep
+  the touch-first panel in normal flow above the device safe area.
+
 - **Shared controls now use one modern interaction language.** Floating message actions, status
   banners and file attachments share tokenised hover, press, focus, disabled, shape, type and
   density roles. Keyboard focus uses a measured high-contrast ring in every theme, and Compact

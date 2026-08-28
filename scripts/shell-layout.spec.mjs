@@ -102,6 +102,21 @@ describe('modern room shell layout contracts', () => {
     }
   });
 
+  it('gives the desktop identity dock one shared floating geometry contract', () => {
+    expect(sidebarCss).toMatch(
+      /\.sidebar\s*\{[^}]*position:\s*relative;[^}]*--trinity-sidebar-dock-height:\s*52px;/s,
+    );
+    expect(sidebarCss).toMatch(
+      /\.sidebar__scroll\s*\{[\s\S]*?@media\s+#\{\$md\}\s*\{[\s\S]*?padding-block-end:\s*calc\([\s\S]*?var\(--trinity-sidebar-dock-height\)[\s\S]*?scroll-padding-block-end:\s*calc\([\s\S]*?var\(--trinity-sidebar-dock-height\)/,
+    );
+    expect(userPanelCss).toMatch(
+      /:host\s*\{[\s\S]*?@media\s+#\{\$md\}\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?inset-inline:[^;]+;[\s\S]*?inset-block-end:[^;]+;[\s\S]*?height:\s*var\(--trinity-sidebar-dock-height\)/,
+    );
+    expect(userPanelCss).toMatch(
+      /\.userbar\s*\{[\s\S]*?@media\s+#\{\$md\}\s*\{[\s\S]*?border-radius:\s*var\(--trinity-shape-container-radius\);[\s\S]*?background:\s*var\(--trinity-surface-floating\);[\s\S]*?box-shadow:\s*var\(--trinity-shadow-floating\);/,
+    );
+  });
+
   it('keeps generic interaction guards weaker than specialized consumer states', () => {
     expect(roomMixins).toContain('&:hover:where(:not(:disabled))');
     expect(roomMixins).toContain('&:active:where(:not(:disabled))');

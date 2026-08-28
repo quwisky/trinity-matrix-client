@@ -7,9 +7,11 @@ become a single pane you move between.
 
 The interface uses a recessed frame, quieter navigation and one raised conversation workspace.
 People stay circular while rooms and spaces use stable squircles, selected items keep their shape,
-and low-frequency room or composer actions move into clearly labelled overflow menus. Choose
-**Cosy** or **Compact** under Settings → Appearance; density changes shell, settings, timeline and
-composer spacing without shrinking touch targets below the mobile minimum.
+and low-frequency room or composer actions move into clearly labelled overflow menus. On desktop,
+the account and Settings panel floats above the bottom of the room list; on a phone it remains in
+the list layout so it cannot cover rooms or the device safe area. Choose **Cosy** or **Compact**
+under Settings → Appearance; density changes shell, settings, timeline and composer spacing without
+shrinking touch targets below the mobile minimum.
 
 This section describes what the application does today. Everything listed here is in the
 shipped code; the things that are not are listed at the bottom of this page.

@@ -295,9 +295,9 @@ setting for long-lived rooms.
 ## Accounts
 
 Signing in to more than one account at a time, and choosing which of them the room list draws
-from, is not in Settings — it lives in the user panel at the bottom of the sidebar (and, on a
-narrow layout, in a dedicated account dialog, because a flyout there would land on top of the
-menu that opened it).
+from, is not in Settings — it lives in the user panel floating above the bottom of the desktop
+sidebar. On a narrow layout the panel stays in the list flow and opens a dedicated account dialog,
+because a flyout there would land on top of the menu that opened it.
 
 Two ideas are distinct there. The **active** account is the one every action runs as: sending,
 creating rooms, sending receipts. The **mixed** set is which accounts contribute rooms to the
