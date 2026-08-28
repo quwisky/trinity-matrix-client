@@ -81,9 +81,9 @@ evaluated before those, so nothing gets past it. That is the mechanism behind "a
 stays muted".
 
 Some Matrix clients, including FluffyChat's quick room action, call the first of those modes
-simply **Mute**. Trinity recognizes the same standard room rule, shows a crossed-out bell in
-the room list, and names the remaining mention behaviour explicitly so it is not confused
-with silencing everything.
+simply **Mute**. FluffyChat writes the modern empty-action Matrix rule; Trinity recognizes it
+as well as the older `dont_notify` form, shows a crossed-out bell in the room list, and names
+the remaining mention behaviour explicitly so it is not confused with silencing everything.
 
 Per-room modes are push rules as well, so they follow your account to your other devices.
 Changes made in another client appear as soon as sync delivers them, without reopening the

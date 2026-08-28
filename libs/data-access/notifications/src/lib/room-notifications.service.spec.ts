@@ -41,7 +41,7 @@ function makeClient(
     ),
     setRoomMutePushRule: vi.fn(
       async (_scope: string, roomId: string, mute: boolean) => {
-        serverRules.global.room = mute ? [roomMute(roomId)] : [];
+        serverRules.global.room = mute ? [canonicalRoomMute(roomId)] : [];
       },
     ),
     addPushRule: vi.fn(
@@ -153,19 +153,45 @@ const overrideMute = (rule_id: string, enabled = true): Rule => ({
   ],
 });
 
+const canonicalRoomMute = (rule_id: string, enabled = true): Rule => ({
+  ...roomMute(rule_id, enabled),
+  actions: [],
+});
+
+const canonicalOverrideMute = (rule_id: string, enabled = true): Rule => ({
+  ...overrideMute(rule_id, enabled),
+  actions: [],
+});
+
 describe('RoomNotificationsService', () => {
   describe('modeFor', () => {
     it('reports "all" with no room rules', () => {
       expect(setup().svc.modeFor(ROOM)).toBe('all');
     });
 
-    it('reports "mentions" for a room-kind dont_notify rule', () => {
+    it('reports "mentions" for a legacy room dont_notify rule', () => {
       const { svc } = setup({ room: [roomMute(ROOM)] });
       expect(svc.modeFor(ROOM)).toBe('mentions');
     });
 
-    it('reports "mute" for an override dont_notify rule', () => {
+    it('reports "mentions" for FluffyChat’s canonical empty-action room rule', () => {
+      const { svc } = setup({ room: [canonicalRoomMute(ROOM)] });
+      expect(svc.modeFor(ROOM)).toBe('mentions');
+    });
+
+    it('ignores deprecated coalesce when classifying a room rule', () => {
+      const rule = { ...canonicalRoomMute(ROOM), actions: ['coalesce'] };
+      const { svc } = setup({ room: [rule] });
+      expect(svc.modeFor(ROOM)).toBe('mentions');
+    });
+
+    it('reports "mute" for a legacy override dont_notify rule', () => {
       const { svc } = setup({ override: [overrideMute(ROOM)] });
+      expect(svc.modeFor(ROOM)).toBe('mute');
+    });
+
+    it('reports "mute" for a canonical empty-action override rule', () => {
+      const { svc } = setup({ override: [canonicalOverrideMute(ROOM)] });
       expect(svc.modeFor(ROOM)).toBe('mute');
     });
 
@@ -181,6 +207,11 @@ describe('RoomNotificationsService', () => {
       const { svc } = setup({
         override: [overrideMute(ROOM, false)],
       });
+      expect(svc.modeFor(ROOM)).toBe('all');
+    });
+
+    it('ignores a disabled canonical room rule', () => {
+      const { svc } = setup({ room: [canonicalRoomMute(ROOM, false)] });
       expect(svc.modeFor(ROOM)).toBe('all');
     });
 
@@ -205,7 +236,7 @@ describe('RoomNotificationsService', () => {
   });
 
   describe('setMode', () => {
-    it('mentions → adds the room-kind dont_notify rule and disables any override', async () => {
+    it('mentions → adds a canonical empty-action room rule and disables any override', async () => {
       const { svc, client } = setup({ override: [overrideMute(ROOM)] });
       await firstValueFrom(svc.setMode(ROOM, 'mentions'));
       expect(client.setPushRuleEnabled).toHaveBeenCalledWith(
@@ -218,19 +249,33 @@ describe('RoomNotificationsService', () => {
         'global',
         PushRuleKind.RoomSpecific,
         ROOM,
-        { actions: ['dont_notify'] },
+        { actions: [] },
       );
     });
 
-    it('mute → disables the room rule and adds an override dont_notify rule', async () => {
+    it('mute → disables the room rule and adds a canonical empty-action override', async () => {
       const { svc, client } = setup();
       await firstValueFrom(svc.setMode(ROOM, 'mute'));
       expect(client.addPushRule).toHaveBeenCalledWith(
         'global',
         'override',
         ROOM,
-        expect.objectContaining({ actions: ['dont_notify'] }),
+        expect.objectContaining({ actions: [] }),
       );
+    });
+
+    it('can unmute a canonical FluffyChat room rule', async () => {
+      const { svc, client } = setup({ room: [canonicalRoomMute(ROOM)] });
+
+      await firstValueFrom(svc.setMode(ROOM, 'all'));
+
+      expect(client.setPushRuleEnabled).toHaveBeenCalledWith(
+        'global',
+        PushRuleKind.RoomSpecific,
+        ROOM,
+        false,
+      );
+      expect(svc.modeFor(ROOM)).toBe('all');
     });
 
     it('all → disables both the override and room rules without losing priority', async () => {
@@ -320,7 +365,9 @@ describe('RoomNotificationsService', () => {
       ).rejects.toMatchObject({ restored: false });
 
       expect(serverRules.global.room).toEqual([roomMute(ROOM, false)]);
-      expect(serverRules.global.override).toEqual([overrideMute(ROOM)]);
+      expect(serverRules.global.override).toEqual([
+        canonicalOverrideMute(ROOM),
+      ]);
       expect(svc.modeFor(ROOM)).toBe('mute');
     });
 
@@ -430,6 +477,20 @@ describe('RoomNotificationsService', () => {
       expect(serverRules.global.room).toEqual([custom]);
       expect(client.addPushRule).not.toHaveBeenCalled();
       expect(client.deletePushRule).not.toHaveBeenCalled();
+    });
+
+    it('does not claim an empty-action room rule with a custom pattern', async () => {
+      const custom: Rule = {
+        ...canonicalRoomMute(ROOM),
+        pattern: 'custom',
+      };
+      const { svc, client } = setup({ room: [custom] });
+
+      expect(svc.modeFor(ROOM)).toBe('all');
+      await expect(
+        firstValueFrom(svc.setMode(ROOM, 'mentions')),
+      ).rejects.toThrow('custom notification rule');
+      expect(client.addPushRule).not.toHaveBeenCalled();
     });
 
     it('rejects a success response when the requested mode was not applied', async () => {
@@ -598,7 +659,7 @@ describe('RoomNotificationsService per-account rules', () => {
       'global',
       PushRuleKind.Override,
       ROOM,
-      expect.objectContaining({ actions: ['dont_notify'] }),
+      expect.objectContaining({ actions: [] }),
     );
     expect(activeClient.addPushRule).not.toHaveBeenCalled();
   });
@@ -649,7 +710,7 @@ describe('RoomNotificationsService per-account rules', () => {
       'global',
       PushRuleKind.Override,
       ROOM,
-      expect.objectContaining({ actions: ['dont_notify'] }),
+      expect.objectContaining({ actions: [] }),
     );
   });
 

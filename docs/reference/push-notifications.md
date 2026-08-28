@@ -23,10 +23,12 @@ Three services in `@trinity/data-access/notifications` write push rules, and the
 deliberately separate because they address different rule buckets.
 
 `RoomNotificationsService` maps a per-room mode onto rules. `all` has no enabled
-room-specific mute rule. `mentions` enables a room-kind `dont_notify` rule, which leaves the
-override highlight rules free to fire. `mute` enables an **override** `dont_notify` rule, because
-overrides are evaluated ahead of the highlight rules and a room-kind rule would not
-silence a mention. After a write it refreshes the client's cached ruleset, so the UI
+room-specific mute rule. `mentions` enables a room-kind rule with no effective actions,
+which leaves the override highlight rules free to fire. `mute` enables the same shape as an
+**override**, because overrides are evaluated ahead of the highlight rules and a room-kind
+rule would not silence a mention. Matrix v1.7 made an empty action list canonical; Trinity
+also reads legacy `dont_notify`/`coalesce`-only rules so mutes created by older clients remain
+interoperable. After a write it refreshes the client's cached ruleset, so the UI
 shows the new level without waiting for the `m.push_rules` sync echo. It also listens for
 that account-data event on every live account and writes a revision signal, which is required
 to repaint the zoneless room list when another client changes a rule. Writes are compensating

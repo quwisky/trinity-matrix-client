@@ -116,14 +116,11 @@ async function setRemoteMentions(
 ): Promise<void> {
   const headers = { Authorization: `Bearer ${accessToken}` };
   const ruleId = encodeURIComponent(roomId);
-  const removed = await request.delete(
-    `${hs}/_matrix/client/v3/pushrules/global/override/${ruleId}`,
-    { headers },
-  );
-  expect(removed.ok()).toBe(true);
   const added = await request.put(
     `${hs}/_matrix/client/v3/pushrules/global/room/${ruleId}`,
-    { headers, data: { actions: ['dont_notify'] } },
+    // FluffyChat 2.7.2 uses matrix-dart 10.2.2, whose mentions-only/muted
+    // room rule is the Matrix v1.7+ canonical empty effective action list.
+    { headers, data: { actions: [] } },
   );
   expect(added.ok()).toBe(true);
 }
@@ -182,25 +179,17 @@ test.describe('Per-room notifications', () => {
     // A fresh room defaults to "All messages".
     await openNotifyMenu(page, roomName);
     await expectChecked(page, 'all');
+    const roomRow = page.locator('.channel-row', { hasText: roomName }).first();
+    await expect(roomRow.getByTestId('room-muted')).toHaveCount(0);
 
-    // The local mute write survives a full application reload because the next client
-    // initialization reads the homeserver rules rather than browser-only state.
-    await pickLevel(page, 'mute');
-    await page.reload();
-    await openRoom(page, roomName);
-    await openNotifyMenu(page, roomName);
-    await expectChecked(page, 'mute');
-
-    // Simulate another device changing the room to mentions-only. The already-open client
-    // must consume m.push_rules through /sync and show it without a reload.
+    // Reproduce FluffyChat's quick Mute action from another device. Its current Matrix
+    // SDK writes a room rule with `actions: []`; the already-open Trinity client must
+    // consume m.push_rules through /sync and show it without a reload.
     await page.keyboard.press('Escape');
     const remoteSync = waitForRemoteMentions(page, roomId);
     await setRemoteMentions(request, session.hs as string, accessToken, roomId);
     await remoteSync;
-    const remoteRow = page
-      .locator('.channel-row', { hasText: roomName })
-      .first();
-    await expect(remoteRow.getByTestId('room-muted')).toHaveAttribute(
+    await expect(roomRow.getByTestId('room-muted')).toHaveAttribute(
       'aria-label',
       'Room muted; mentions and keywords still notify',
     );
@@ -233,8 +222,35 @@ test.describe('Per-room notifications', () => {
     await openNotifyMenu(page, roomName);
     await expectChecked(page, 'mentions');
 
+    // A successful Trinity full-mute write survives a reload because initialization
+    // reads the homeserver rules instead of relying on browser-only state.
+    await pickLevel(page, 'mute');
+    await page.reload();
+    await openRoom(page, roomName);
+    await openNotifyMenu(page, roomName);
+    await expectChecked(page, 'mute');
+
     // Clear both server rules and prove the final transition back to the default.
     await pickLevel(page, 'all');
+    const serverRules = (await request
+      .get(`${session.hs}/_matrix/client/v3/pushrules/`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      .then((response) => response.json())) as {
+      global?: {
+        room?: Array<{
+          rule_id?: string;
+          enabled?: boolean;
+          actions?: unknown[];
+        }>;
+      };
+    };
+    expect(
+      serverRules.global?.room?.find((rule) => rule.rule_id === roomId),
+    ).toMatchObject({ enabled: false, actions: [] });
+
+    await page.reload();
+    await openRoom(page, roomName);
     await openNotifyMenu(page, roomName);
     await expectChecked(page, 'all');
   });

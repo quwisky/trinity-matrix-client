@@ -13,10 +13,10 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 /**
  * Per-room notification level:
  * - `all` — notify for every message (the default; no enabled room mute rules).
- * - `mentions` — only mentions/keywords notify (a room-kind `dont_notify` rule; the
- *   override highlight rules still fire).
- * - `mute` — nothing notifies, mentions included (an override `dont_notify` rule on the
- *   room, which is evaluated ahead of the highlight rules).
+ * - `mentions` — only mentions/keywords notify (a room-kind no-notify rule; the override
+ *   highlight rules still fire).
+ * - `mute` — nothing notifies, mentions included (an override no-notify rule on the room,
+ *   which is evaluated ahead of the highlight rules).
  */
 export type RoomNotifyMode = 'all' | 'mentions' | 'mute';
 export type RoomNotifyDisplayMode = RoomNotifyMode | 'mixed';
@@ -111,10 +111,7 @@ export class RoomNotificationsService {
       return 'mute';
     }
     const roomRule = client.getRoomPushRule('global', roomId);
-    if (
-      roomRule?.enabled &&
-      roomRule.actions.includes(PushRuleActionName.DontNotify)
-    ) {
+    if (roomRule?.enabled && this.isStandardRoomMute(roomRule)) {
       return 'mentions';
     }
     return 'all';
@@ -303,7 +300,7 @@ export class RoomNotificationsService {
         break;
       case 'mentions':
         await this.disableOverrideMute(client, roomId);
-        // Room-kind dont_notify — override highlight rules still notify.
+        // A room-kind no-notify rule — override highlight rules still notify.
         await this.addRoomMute(client, roomId);
         break;
       case 'mute':
@@ -389,8 +386,7 @@ export class RoomNotificationsService {
   private isStandardRoomMute(rule: IPushRule): boolean {
     return (
       !rule.default &&
-      rule.actions.length === 1 &&
-      rule.actions[0] === PushRuleActionName.DontNotify &&
+      this.hasNoNotifyActions(rule) &&
       !rule.conditions?.length &&
       rule.pattern === undefined
     );
@@ -400,13 +396,26 @@ export class RoomNotificationsService {
     const [condition] = rule.conditions ?? [];
     return (
       !rule.default &&
-      rule.actions.length === 1 &&
-      rule.actions[0] === PushRuleActionName.DontNotify &&
+      this.hasNoNotifyActions(rule) &&
       rule.conditions?.length === 1 &&
       condition?.kind === ConditionKind.EventMatch &&
       condition.key === 'room_id' &&
       condition.pattern === roomId &&
       rule.pattern === undefined
+    );
+  }
+
+  /**
+   * Matrix v1.7 removed `dont_notify` and `coalesce` as active actions. A rule
+   * suppresses notifications when no effective action remains, so current clients such
+   * as FluffyChat write `[]` while older clients may retain either deprecated string.
+   * Tweaks and `notify` remain custom and must not be claimed by this service.
+   */
+  private hasNoNotifyActions(rule: IPushRule): boolean {
+    return rule.actions.every(
+      (action) =>
+        action === PushRuleActionName.DontNotify ||
+        action === PushRuleActionName.Coalesce,
     );
   }
 
@@ -506,7 +515,7 @@ export class RoomNotificationsService {
             rule_id: roomId,
             enabled: true,
             default: false,
-            actions: [PushRuleActionName.DontNotify],
+            actions: [],
           };
     const overrideRule = (): IPushRule =>
       previous.override
@@ -515,7 +524,7 @@ export class RoomNotificationsService {
             rule_id: roomId,
             enabled: true,
             default: false,
-            actions: [PushRuleActionName.DontNotify],
+            actions: [],
             conditions: [
               {
                 kind: ConditionKind.EventMatch,
@@ -584,7 +593,7 @@ export class RoomNotificationsService {
     );
   }
 
-  /** The enabled override `dont_notify` rule keyed by this room id, if any. */
+  /** The enabled standard no-notify override keyed by this room id, if any. */
   private overrideMuteRule(
     client: MatrixClient,
     roomId: string,
@@ -613,7 +622,7 @@ export class RoomNotificationsService {
       return;
     }
     await client.addPushRule('global', PushRuleKind.Override, roomId, {
-      actions: [PushRuleActionName.DontNotify],
+      actions: [],
       conditions: [
         { kind: ConditionKind.EventMatch, key: 'room_id', pattern: roomId },
       ],
@@ -652,7 +661,7 @@ export class RoomNotificationsService {
       return;
     }
     await client.addPushRule('global', PushRuleKind.RoomSpecific, roomId, {
-      actions: [PushRuleActionName.DontNotify],
+      actions: [],
     });
   }
 
