@@ -219,8 +219,8 @@ describe('safe-area helpers and padding utilities', () => {
     const source = read(
       'libs/components/overlay/src/lib/action-sheet/trn-action-sheet.component.ts',
     );
-    expect(source).toContain(
-      'padding-bottom: calc(0.375rem + env(safe-area-inset-bottom));',
+    expect(source).toMatch(
+      /\.sheet\s*\{\s*padding-bottom:\s*calc\(0\.375rem \+ env\(safe-area-inset-bottom\)\);\s*\}/,
     );
     expect(
       source.match(
