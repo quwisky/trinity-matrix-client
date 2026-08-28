@@ -116,12 +116,13 @@ All notable changes to this project are documented here. The format is based on
 - **Messages and the composer now share a clearer conversation hierarchy.** Message bodies,
   authors, timestamps, replies, threads, reactions, receipts, status rows and typing/divider
   chrome now consume semantic type, surface, state and density roles. The floating message
-  toolbar stays attached to its own measured row, while reply/edit context, attachments and
-  the input read as one composer surface. Its actions remain fully hit-testable on short grouped
-  rows, edit mode has a touch cancel action, and voice recording moves keyboard focus into and
-  back out of its replacement controls. Growing the composer or opening the software keyboard
-  keeps an exactly bottom-pinned conversation at the newest message and preserves every
-  scrolled-up reading position in both the simple and virtual timelines.
+  toolbar is narrower and raised over the row boundary, allowing message bodies to use the
+  full timeline width without changing measured row heights. Its actions remain fully
+  hit-testable on short grouped rows, while reply/edit context, attachments and the input read
+  as one composer surface. Edit mode has a touch cancel action, and voice recording moves
+  keyboard focus into and back out of its replacement controls. Growing the composer or opening
+  the software keyboard keeps an exactly bottom-pinned conversation at the newest message and
+  preserves every scrolled-up reading position in both the simple and virtual timelines.
 
 - **The conversation shell is calmer and more compact.** The space rail, room list,
   conversation header, member list and account dock now share recessed semantic surfaces,
@@ -259,11 +260,10 @@ All notable changes to this project are documented here. The format is based on
   were. Tall images are no longer cropped to fit, either, and the placeholder shown while one
   loads is finally a different colour from the box around it, so you can see it at all.
 
-- **Message actions no longer sit on top of the message above.** The hover toolbar was
-  positioned deliberately outside its own row, which on a phone — where it was always visible —
-  meant every message permanently covered the top of the one before it. It stays inside its own
-  message now, and on a phone or tablet the actions arrive as a bottom sheet on a long press
-  rather than as a floating bar at all.
+- **Message actions no longer permanently cover neighboring messages.** The hover toolbar used
+  to be forced open on every phone row. Phones and tablets now use a bottom sheet on long press;
+  desktop and web show one compact, raised floating bar only for the active row, leaving
+  the message body its full available width.
 
 - **Starting the app no longer shows a blank screen.** Trinity has to open its local
   database, load the encryption engine and reconnect before it can show you anything, and

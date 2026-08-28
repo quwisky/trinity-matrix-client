@@ -49,17 +49,17 @@ describe('modern timeline layout contracts', () => {
       '--message-body-indent: calc(40px + var(--trinity-density-message-column-gap));',
     );
     expect(rowCss.match(/var\(--message-body-indent\)/g)?.length).toBe(4);
-    expect(rowCss).toMatch(
-      /\.msg:has\(\.msg__toolbar\)\s*\{[^}]*--message-action-size:\s*max\([\s\S]*?--trinity-density-control-size[\s\S]*?--trinity-interaction-target-min-size[\s\S]*?\);[^}]*min-height:\s*calc\(var\(--message-action-size\) \+ 2px\);[^}]*padding-right:\s*calc\(/s,
-    );
+    // The floating actions must never consume the message's inline width or measured height.
+    // Rendered browser coverage owns their visual overlap and hit-testing bounds.
+    expect(rowCss).not.toMatch(/\.msg:has\(\.msg__toolbar\)/);
     expect(rowCss).not.toMatch(/\.msg\s*\{[^}]*min-height:/s);
   });
 
-  it('keeps the toolbar attached inside its owning measured row', () => {
+  it('keeps the toolbar attached without participating in row measurement', () => {
     expect(rowCss).toMatch(
-      /\.msg__toolbar\s*\{[^}]*position:\s*absolute;[^}]*top:\s*0;/s,
+      /\.msg__toolbar\s*\{[^}]*position:\s*absolute;[^}]*inset-inline-end:/s,
     );
-    expect(rowCss).not.toMatch(/\.msg__toolbar\s*\{[^}]*top:\s*-/s);
+    expect(rowCss).toMatch(/\.msg__toolbar\s*\{[^}]*translate:/s);
   });
 
   it('keeps input and preview in one stable grid cell', () => {

@@ -45,18 +45,6 @@
   }
 }
 
-.msg:has(.msg__toolbar) {
-  --message-action-size: max(
-    var(--trinity-density-control-size),
-    var(--trinity-interaction-target-min-size)
-  );
-
-  min-height: calc(var(--message-action-size) + 2px);
-  padding-right: calc(
-    var(--trinity-space-6) + 4 * var(--message-action-size) + 2px
-  );
-}
-
 // While a finger is on the row it must track 1:1 — an eased follow reads as lag — so the
 // spring-back transition above is suspended for the duration of the drag.
 .msg--swiping {
@@ -177,17 +165,19 @@
   opacity: 0.85;
 }
 
-// Anchored INSIDE the row's own box. It used to sit at `top: -16px`, i.e. deliberately
-// parked over the row above — so the actions for one message floated across its
-// predecessor, and on a touch device (where the bar is always open, below) every row
-// permanently covered the top of the one before it. The group gap this phase added is what
-// buys the room to keep it in-box without crowding the text.
+// Float across the row's upper boundary instead of reserving a permanent trailing gutter.
+// The raised position leaves every message the full content width while limiting the
+// overlap on a continuation row to one compact corner. It is intentionally out of flow:
+// showing actions must not change the ResizeObserver height that drives virtual scrolling.
+// Mobile does not render this toolbar at all; its actions use the long-press sheet below.
 .msg__toolbar {
   position: absolute;
   top: 0;
-  right: var(--trinity-space-6);
+  inset-inline-end: var(--trinity-space-6);
+  z-index: var(--trinity-z-sticky);
   opacity: 0;
   pointer-events: none;
+  translate: 0 calc(-50% - var(--trinity-space-2));
   transition: opacity var(--trinity-duration-fast) var(--trinity-ease-standard);
 }
 

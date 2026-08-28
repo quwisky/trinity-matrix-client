@@ -59,10 +59,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: var(--trinity-density-control-size);
-  height: var(--trinity-density-control-size);
-  min-width: var(--trinity-interaction-target-min-size);
-  min-height: var(--trinity-interaction-target-min-size);
+
+  // A floating desktop control only needs the WCAG 2.5.8 24px pointer target. Keeping the
+  // coarse-pointer floor in the same max() makes hybrid touchscreen desktops stay at 44px.
+  width: max(
+    24px,
+    calc(var(--trinity-density-control-size) - var(--trinity-space-3)),
+    var(--trinity-interaction-target-min-size)
+  );
+  height: max(
+    24px,
+    calc(var(--trinity-density-control-size) - var(--trinity-space-3)),
+    var(--trinity-interaction-target-min-size)
+  );
   border: none;
   border-radius: var(--trinity-shape-control-radius);
   background: none;

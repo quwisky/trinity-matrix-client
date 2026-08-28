@@ -167,14 +167,9 @@ test.describe('Message grouping', () => {
     // evidence.)
     expect(gap.start.marginTop).toBe(0);
 
-    // The hover toolbar belongs to its own row. It used to be parked at `top: -16px`, i.e.
-    // deliberately over the row ABOVE — which on a touch device, where the bar is always
-    // open, meant every row permanently covered the top of its predecessor. Measured as a
-    // box containment rather than read off the stylesheet, because that is the actual claim.
-    // A CONTINUATION row specifically, not the first row that happens to carry a bar. A group
-    // start is ~60px — taller than the 34px bar — so the residual measured on one is 0 no
-    // matter how tall the bar grows, and the bound below would pass by construction. The
-    // 26px continuation is the row the reasoning is about and the only one that can fail.
+    // The hover toolbar floats over the trailing row boundary instead of reserving a permanent
+    // action gutter. Measure a CONTINUATION row specifically: it has no author header or group
+    // padding to disguise either a lost strip of message width or excessive vertical overlap.
     const containment = await page.evaluate(() => {
       const row = [...document.querySelectorAll('.msg--cont')].find(
         (candidate) => candidate.querySelector('.msg__toolbar'),
@@ -188,15 +183,31 @@ test.describe('Message grouping', () => {
       const r = row.getBoundingClientRect();
       const b = bar.getBoundingClientRect();
       const t = text.getBoundingClientRect();
+      const body = row.querySelector('.msg__body')?.getBoundingClientRect();
+      const rowStyle = getComputedStyle(row);
+      const lineHeight = parseFloat(getComputedStyle(text).lineHeight);
       const buttons = [...bar.querySelectorAll<HTMLElement>('button')];
       return {
         rowTop: r.top,
         barTop: b.top,
         rowHeight: r.height,
         barHeight: b.height,
+        barWidth: b.width,
         overflowAbove: r.top - b.top,
         overflowBelow: b.bottom - r.bottom,
-        textToolbarGap: b.left - t.right,
+        bodyEndGap:
+          body === undefined
+            ? null
+            : r.right - parseFloat(rowStyle.paddingInlineEnd) - body.right,
+        textOverlap: Math.max(
+          0,
+          Math.min(b.bottom, t.bottom) - Math.max(b.top, t.top),
+        ),
+        lineHeight,
+        buttonSizes: buttons.map((button) => {
+          const box = button.getBoundingClientRect();
+          return { width: box.width, height: box.height };
+        }),
         allButtonsHit: buttons.every((button) => {
           const box = button.getBoundingClientRect();
           const hit = document.elementFromPoint(
@@ -211,21 +222,25 @@ test.describe('Message grouping', () => {
     if (!containment) {
       throw new Error('expected a continuation row carrying a toolbar');
     }
-    // Zero or negative: the bar starts at or below its row's top edge, never above it. That
-    // is the defect this replaced — a bar at `top: -16px` painted over the row before it.
-    expect(containment.overflowAbove).toBeLessThanOrEqual(0);
-
-    // The measured row reserves the toolbar's whole block size. Nothing may overflow into
-    // the following positioned row, and every button centre must hit its owning button.
+    // Full message width: the body reaches the row content edge rather than stopping before
+    // a four-button action track. The toolbar is compact and straddles only the upper boundary.
+    expect(containment.bodyEndGap).not.toBeNull();
+    expect(Math.abs(containment.bodyEndGap ?? Infinity)).toBeLessThanOrEqual(1);
+    expect(containment.barWidth).toBeLessThanOrEqual(100);
+    expect(containment.overflowAbove).toBeGreaterThan(0);
+    expect(containment.overflowAbove).toBeLessThanOrEqual(
+      (containment.barHeight * 2) / 3 + 1,
+    );
     expect(containment.overflowBelow).toBeLessThanOrEqual(1);
-    expect(containment.textToolbarGap).toBeGreaterThanOrEqual(0);
+    expect(containment.textOverlap).toBeLessThanOrEqual(
+      containment.lineHeight / 2 + 1,
+    );
+    expect(
+      containment.buttonSizes.every(
+        ({ width, height }) => width >= 24 && height >= 24,
+      ),
+    ).toBe(true);
     expect(containment.allButtonsHit).toBe(true);
-
-    const eventHeight = await page
-      .locator('.msg--event')
-      .first()
-      .evaluate((row) => row.getBoundingClientRect().height);
-    expect(eventHeight).toBeLessThan(containment.barHeight);
 
     // Compact is a rendered timeline mode, not merely an attribute or a token declaration.
     // Tighten the live document and prove the measured conversation consumes less vertical
@@ -255,6 +270,10 @@ test.describe('Message grouping', () => {
       if (!start || !cont || !bar) return null;
       const rowBox = cont.getBoundingClientRect();
       const barBox = bar.getBoundingClientRect();
+      const bodyBox = cont
+        .querySelector<HTMLElement>('.msg__body')
+        ?.getBoundingClientRect();
+      const rowStyle = getComputedStyle(cont);
       return {
         rowsHeight: rows.reduce(
           (total, row) => total + row.getBoundingClientRect().height,
@@ -263,6 +282,14 @@ test.describe('Message grouping', () => {
         startPaddingTop: parseFloat(getComputedStyle(start).paddingTop),
         startMarginTop: parseFloat(getComputedStyle(start).marginTop),
         continuationPaddingTop: parseFloat(getComputedStyle(cont).paddingTop),
+        bodyEndGap:
+          bodyBox === undefined
+            ? null
+            : rowBox.right -
+              parseFloat(rowStyle.paddingInlineEnd) -
+              bodyBox.right,
+        barWidth: barBox.width,
+        barHeight: barBox.height,
         overflowAbove: rowBox.top - barBox.top,
         overflowBelow: barBox.bottom - rowBox.bottom,
       };
@@ -272,7 +299,13 @@ test.describe('Message grouping', () => {
     expect(compact.startPaddingTop).toBe(12);
     expect(compact.startMarginTop).toBe(0);
     expect(compact.continuationPaddingTop).toBe(0);
-    expect(compact.overflowAbove).toBeLessThanOrEqual(0);
+    expect(compact.bodyEndGap).not.toBeNull();
+    expect(Math.abs(compact.bodyEndGap ?? Infinity)).toBeLessThanOrEqual(1);
+    expect(compact.barWidth).toBeLessThanOrEqual(100);
+    expect(compact.overflowAbove).toBeGreaterThan(0);
+    expect(compact.overflowAbove).toBeLessThanOrEqual(
+      (compact.barHeight * 2) / 3 + 1,
+    );
     expect(compact.overflowBelow).toBeLessThanOrEqual(1);
   });
 });

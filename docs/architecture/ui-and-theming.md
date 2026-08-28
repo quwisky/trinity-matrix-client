@@ -724,9 +724,9 @@ that `message-row`'s scoped styles cannot reach.
 
 One placement detail with a reason: a fenced block's language caption is generated from the
 `language` attribute and positioned **bottom**-right, not top-right. The message hover
-toolbar is anchored across the row's top edge, so a top-right caption lands underneath it on
-a continuation row. Using generated content also keeps the caption out of the element's text,
-so it cannot be selected, copied, or picked up by the edit-history diff.
+toolbar floats across the row's upper trailing boundary, so a top-right caption can land
+underneath it on a continuation row. Using generated content also keeps the caption out of
+the element's text, so it cannot be selected, copied, or picked up by the edit-history diff.
 
 ## The HTML allowlist
 

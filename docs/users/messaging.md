@@ -263,8 +263,9 @@ spot; it appears in the panel once the timeline has loaded far enough back to in
 
 ## Per-message actions
 
-The hover toolbar keeps React, Reply and Reply-in-thread inline. Everything else is behind
-the `⋯` overflow:
+On desktop and web, the compact hover toolbar floats over the message's upper trailing edge
+so the body can use the full timeline width. It keeps React, Reply and Reply-in-thread inline.
+Everything else is behind the `⋯` overflow:
 
 | Action         | Notes                                                                               |
 | -------------- | ----------------------------------------------------------------------------------- |
