@@ -80,8 +80,9 @@ All notable changes to this project are documented here. The format is based on
 - **The composer insert menu now follows the device.** On iOS and Android, including mobile web
   and installed PWAs, the `+` opens a thumb-sized bottom sheet for files, GIFs, stickers, polls,
   location and voice. Desktop web and Electron keep the compact anchored menu. Dismissing the
-  sheet restores keyboard focus, while choosing an action leaves focus with the picker or dialog
-  it opens; switching rooms or changing an action's availability closes stale choices.
+  sheet or choosing an action without a successor restores focus to the `+`; GIF, sticker and
+  poll choices transfer focus into the picker or dialog they open. Switching rooms or changing
+  any action's availability closes stale choices.
 
 - **Settings is easier to scan without growing a second scrollbar.** Desktop and Electron now use
   a centred, bounded settings workspace with grouped navigation, sentence-case section hierarchy

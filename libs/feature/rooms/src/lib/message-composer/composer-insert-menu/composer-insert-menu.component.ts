@@ -33,12 +33,13 @@ interface ComposerInsertAction {
   readonly icon: TrnIconName;
   readonly testId: string;
   readonly disabled: boolean;
+  /** The launched surface deliberately owns focus after the sheet closes. */
+  readonly transfersFocus: boolean;
   readonly run: () => void;
 }
 
 interface OwnedSheet {
   readonly ref: TrnActionSheetRef;
-  picked: boolean;
   restoreOnDismiss: boolean;
 }
 
@@ -119,6 +120,7 @@ export class ComposerInsertMenuComponent {
           icon: 'paperclip',
           testId: 'insert-attach',
           disabled: false,
+          transfersFocus: false,
           run: () => this.attachFile.emit(),
         },
       ];
@@ -128,6 +130,7 @@ export class ComposerInsertMenuComponent {
           icon: 'image-play',
           testId: 'insert-gif',
           disabled: this.uploading() || this.gifDownloading(),
+          transfersFocus: true,
           run: () => this.pickGif.emit(),
         });
       }
@@ -138,6 +141,7 @@ export class ComposerInsertMenuComponent {
             icon: 'image',
             testId: 'insert-sticker',
             disabled: false,
+            transfersFocus: true,
             run: () => this.pickSticker.emit(),
           });
         }
@@ -147,6 +151,7 @@ export class ComposerInsertMenuComponent {
             icon: 'vote',
             testId: 'insert-poll',
             disabled: false,
+            transfersFocus: true,
             run: () => this.createPoll.emit(),
           },
           {
@@ -154,6 +159,7 @@ export class ComposerInsertMenuComponent {
             icon: 'map-pin',
             testId: 'insert-location',
             disabled: this.locationSharing(),
+            transfersFocus: false,
             run: () => this.shareLocation.emit(),
           },
         );
@@ -163,6 +169,7 @@ export class ComposerInsertMenuComponent {
             icon: 'mic',
             testId: 'insert-voice',
             disabled: this.uploading(),
+            transfersFocus: false,
             run: () => this.recordVoice.emit(),
           });
         }
@@ -204,7 +211,7 @@ export class ComposerInsertMenuComponent {
       handler: () => {
         const current = invocation;
         if (!current) return;
-        current.picked = true;
+        current.restoreOnDismiss = !action.transfersFocus;
         if (this.ownedSheet === current) {
           this.ownedSheet = null;
           this.mobileSheetOpen.set(false);
@@ -216,12 +223,12 @@ export class ComposerInsertMenuComponent {
       { header: 'Add to message', buttons },
       'Add to message',
       // Selection can open a poll, GIF or sticker surface. CDK restoring the `+`
-      // afterward would steal focus from it, so this opener restores only dismissals.
+      // afterward would steal focus from it, so this invocation owns restoration and
+      // applies it only to dismissals and actions that do not launch a focus owner.
       { restoreFocus: false },
     );
     const owned: OwnedSheet = {
       ref,
-      picked: false,
       restoreOnDismiss: true,
     };
     invocation = owned;
@@ -234,9 +241,9 @@ export class ComposerInsertMenuComponent {
         this.mobileSheetOpen.set(false);
       }
       // `TrnActionSheetComponent` closes before it runs the handler. Defer this check
-      // one microtask so a chosen action can mark itself before dismissal restoration.
+      // one microtask so the chosen action can publish its focus-transfer contract.
       queueMicrotask(() => {
-        if (owned.restoreOnDismiss && !owned.picked) {
+        if (owned.restoreOnDismiss) {
           this.mobileTrigger()?.nativeElement.focus();
         }
       });

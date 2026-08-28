@@ -1,46 +1,63 @@
-import { devices, expect, test } from './support/fixtures.mts';
-import { login, synapseSession } from './support/app.mts';
+import {
+  devices,
+  expect,
+  test,
+  type APIRequestContext,
+} from './support/fixtures.mts';
+import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { registerUser } from './support/account.mts';
 
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 
 const session = synapseSession();
-const roomName = `Mobile insert ${Date.now()}`;
+const runId = `${Date.now().toString(36)}-${process.pid}`;
+const user = `insert-${runId}`;
+const pass = `${user}-pass`;
+const isolatedSession: SynapseSession = {
+  available: session.available,
+  hs: session.hs,
+  user,
+  pass,
+};
+const roomName = `Mobile insert ${runId}`;
 const pixel = devices['Pixel 5'];
 
-async function seedRoom(): Promise<void> {
-  const loginResponse = await fetch(`${session.hs}/_matrix/client/v3/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      type: 'm.login.password',
-      identifier: { type: 'm.id.user', user: session.user },
-      password: session.pass,
-    }),
-  });
-  if (!loginResponse.ok) {
-    throw new Error(`Login failed while seeding: ${loginResponse.status}`);
+async function seedRoom(request: APIRequestContext): Promise<void> {
+  await registerUser(request, user, pass);
+  const loginResponse = await request.post(
+    `${isolatedSession.hs}/_matrix/client/v3/login`,
+    {
+      data: {
+        type: 'm.login.password',
+        identifier: { type: 'm.id.user', user },
+        password: pass,
+      },
+    },
+  );
+  if (!loginResponse.ok()) {
+    throw new Error(
+      `Login failed while seeding: ${loginResponse.status()} ${await loginResponse.text()}`,
+    );
   }
   const { access_token: token } = (await loginResponse.json()) as {
     access_token: string;
   };
-  const roomResponse = await fetch(
-    `${session.hs}/_matrix/client/v3/createRoom`,
+  const roomResponse = await request.post(
+    `${isolatedSession.hs}/_matrix/client/v3/createRoom`,
     {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ name: roomName }),
+      headers: { Authorization: `Bearer ${token}` },
+      data: { name: roomName },
     },
   );
-  if (!roomResponse.ok) {
-    throw new Error(`Room seed failed: ${roomResponse.status}`);
+  if (!roomResponse.ok()) {
+    throw new Error(
+      `Room seed failed: ${roomResponse.status()} ${await roomResponse.text()}`,
+    );
   }
 }
 
 async function openSeededRoom(page: import('@playwright/test').Page) {
-  await login(page, session);
+  await login(page, isolatedSession);
   await page.getByTestId('rail-rooms').click();
   const room = page.locator('button.channel', { hasText: roomName }).first();
   await room.waitFor({ state: 'visible', timeout: 30_000 });
@@ -54,7 +71,7 @@ test.describe('Mobile composer insert sheet', () => {
     'Android has a separate installed-WebView journey',
   );
   test.skip(!session.available, 'requires the disposable Synapse homeserver');
-  test.beforeAll(seedRoom);
+  test.beforeAll(async ({ request }) => seedRoom(request));
 
   test.describe('Pixel 5 profile', () => {
     test.use({

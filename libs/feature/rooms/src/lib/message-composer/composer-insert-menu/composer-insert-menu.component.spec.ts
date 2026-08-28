@@ -278,31 +278,99 @@ describe('ComposerInsertMenuComponent', () => {
     });
   });
 
-  it('dismisses a stale mobile sheet when its room context changes', async () => {
-    platform.mobile = true;
-    const { fixture, container } = await render(ComposerInsertMenuComponent, {
-      inputs: {
-        contextKey: '!first:example.org',
-        hasMenu: true,
-        richActions: true,
-      },
-    });
-    const trigger = container.querySelector<HTMLButtonElement>(
-      '[data-testid=composer-insert]',
-    );
-    trigger?.click();
-    await fixture.whenStable();
-    expect(document.querySelector('trn-action-sheet')).not.toBeNull();
+  it.each([
+    ['contextKey', '!second:example.org'],
+    ['hasMenu', false],
+    ['editing', true],
+    ['uploading', true],
+    ['gifEnabled', false],
+    ['gifDownloading', true],
+    ['richActions', false],
+    ['voiceSupported', false],
+    ['recording', true],
+    ['locationSharing', true],
+    ['stickerEnabled', false],
+  ] as const)(
+    'dismisses a stale mobile sheet when %s changes',
+    async (inputName, nextValue) => {
+      platform.mobile = true;
+      const { fixture, container } = await render(ComposerInsertMenuComponent, {
+        inputs: {
+          contextKey: '!first:example.org',
+          hasMenu: true,
+          gifEnabled: true,
+          richActions: true,
+          voiceSupported: true,
+          stickerEnabled: true,
+        },
+      });
+      const trigger = container.querySelector<HTMLButtonElement>(
+        '[data-testid=composer-insert]',
+      );
+      trigger?.click();
+      await fixture.whenStable();
+      expect(document.querySelector('trn-action-sheet')).not.toBeNull();
 
-    fixture.componentRef.setInput('contextKey', '!second:example.org');
-    fixture.detectChanges();
-    await fixture.whenStable();
+      fixture.componentRef.setInput(inputName, nextValue);
+      fixture.detectChanges();
+      await fixture.whenStable();
 
-    expect(document.querySelector('trn-action-sheet')).toBeNull();
-    expect(trigger?.getAttribute('aria-expanded')).toBe('false');
-  });
+      expect(document.querySelector('trn-action-sheet')).toBeNull();
+      expect(
+        container
+          .querySelector('[data-testid=composer-insert]')
+          ?.getAttribute('aria-expanded') ?? 'false',
+      ).toBe('false');
+    },
+  );
 
-  it('restores the mobile trigger after dismissal but not after an action launches another surface', async () => {
+  it.each([
+    [{ gifEnabled: false }, ['insert-gif'], []],
+    [
+      { richActions: false },
+      ['insert-sticker', 'insert-poll', 'insert-location', 'insert-voice'],
+      [],
+    ],
+    [{ voiceSupported: false }, ['insert-voice'], []],
+    [{ recording: true }, ['insert-voice'], []],
+    [{ stickerEnabled: false }, ['insert-sticker'], []],
+    [{ uploading: true }, [], ['insert-gif', 'insert-voice']],
+    [{ gifDownloading: true }, [], ['insert-gif']],
+    [{ locationSharing: true }, [], ['insert-location']],
+  ] as const)(
+    'keeps the mobile sheet capability matrix current for %o',
+    async (changedInputs, withheld, disabled) => {
+      platform.mobile = true;
+      const { fixture, container } = await render(ComposerInsertMenuComponent, {
+        inputs: {
+          hasMenu: true,
+          gifEnabled: true,
+          richActions: true,
+          voiceSupported: true,
+          stickerEnabled: true,
+          ...changedInputs,
+        },
+      });
+
+      container
+        .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
+        ?.click();
+      await fixture.whenStable();
+      const rows = sheetItems();
+      const rowsById = new Map(
+        rows.map((row) => [row.dataset['testid'] ?? '', row]),
+      );
+
+      for (const testId of withheld) {
+        expect(rowsById.has(testId)).toBe(false);
+      }
+      for (const testId of disabled) {
+        expect(rowsById.get(testId)?.disabled).toBe(true);
+      }
+    },
+  );
+
+  it('restores the mobile trigger after dismissal and non-surface actions', async () => {
     platform.mobile = true;
     const { fixture, container } = await render(ComposerInsertMenuComponent, {
       inputs: { hasMenu: true, richActions: true },
@@ -318,9 +386,25 @@ describe('ComposerInsertMenuComponent', () => {
     await Promise.resolve();
     expect(document.activeElement).toBe(trigger);
 
-    const downstream = document.createElement('button');
-    document.body.append(downstream);
-    fixture.componentInstance.createPoll.subscribe(() => downstream.focus());
+    trigger?.click();
+    await fixture.whenStable();
+    sheetItems()
+      .find((item) => item.dataset['testid'] === 'insert-location')
+      ?.click();
+    await fixture.whenStable();
+    await Promise.resolve();
+
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('does not steal focus back after an action launches another surface', async () => {
+    platform.mobile = true;
+    const { fixture, container } = await render(ComposerInsertMenuComponent, {
+      inputs: { hasMenu: true, richActions: true },
+    });
+    const trigger = container.querySelector<HTMLButtonElement>(
+      '[data-testid=composer-insert]',
+    );
     trigger?.click();
     await fixture.whenStable();
     sheetItems()
@@ -329,8 +413,7 @@ describe('ComposerInsertMenuComponent', () => {
     await fixture.whenStable();
     await Promise.resolve();
 
-    expect(document.activeElement).toBe(downstream);
-    downstream.remove();
+    expect(document.activeElement).not.toBe(trigger);
   });
 
   it('names the trigger for screen readers', async () => {

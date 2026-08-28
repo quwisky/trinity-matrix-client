@@ -466,9 +466,11 @@ Acceptance:
 Status: implemented. The composer keeps one ordered action model but presents it according to the
 operating-system interaction model: iOS and Android, including mobile web/PWAs, use the shared
 bottom sheet; desktop web and Electron keep the anchored menu. Sheet snapshots close when their
-room or capabilities change, dismissals restore the trigger, and a selected action is allowed to
-place focus in the picker or dialog it opens. Existing identity-dock, drawer, safe-area and message
-gesture contracts remain unchanged.
+room or capabilities change. Dismissals and actions without a successor restore the trigger;
+GIF, sticker and poll actions transfer focus into the picker or dialog they open. Installed-WebView
+coverage measures the software-keyboard viewport and checks that the sheet composes its base
+padding with the device safe-area inset exactly once. Existing identity-dock, drawer, safe-area and
+message gesture contracts remain unchanged.
 
 Primary ownership:
 

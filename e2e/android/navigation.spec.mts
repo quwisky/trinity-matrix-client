@@ -1,47 +1,62 @@
+import type { APIRequestContext } from '@playwright/test';
 import { openSettingsFromRooms } from '../playwright/journeys/navigation.mts';
-import { login, synapseSession } from '../playwright/support/app.mts';
+import {
+  login,
+  synapseSession,
+  type SynapseSession,
+} from '../playwright/support/app.mts';
+import { registerUser } from '../playwright/support/account.mts';
 import { expect, test } from './fixtures.mts';
 
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 
 const session = synapseSession();
-const composerRoomName = `Android insert ${Date.now()}`;
+const composerRunId = `${Date.now().toString(36)}-${process.pid}`;
+const composerUser = `android-insert-${composerRunId}`;
+const composerPass = `${composerUser}-pass`;
+const composerSession: SynapseSession = {
+  available: session.available,
+  hs: session.hs,
+  user: composerUser,
+  pass: composerPass,
+};
+const composerRoomName = `Android insert ${composerRunId}`;
 
-async function seedComposerRoom(): Promise<void> {
-  const loginResponse = await fetch(`${session.hs}/_matrix/client/v3/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      type: 'm.login.password',
-      identifier: { type: 'm.id.user', user: session.user },
-      password: session.pass,
-    }),
-  });
-  if (!loginResponse.ok) {
-    throw new Error(`Android room-seed login failed: ${loginResponse.status}`);
+async function seedComposerRoom(request: APIRequestContext): Promise<void> {
+  await registerUser(request, composerUser, composerPass);
+  const loginResponse = await request.post(
+    `${composerSession.hs}/_matrix/client/v3/login`,
+    {
+      data: {
+        type: 'm.login.password',
+        identifier: { type: 'm.id.user', user: composerUser },
+        password: composerPass,
+      },
+    },
+  );
+  if (!loginResponse.ok()) {
+    throw new Error(
+      `Android room-seed login failed: ${loginResponse.status()} ${await loginResponse.text()}`,
+    );
   }
   const { access_token: token } = (await loginResponse.json()) as {
     access_token: string;
   };
-  const roomResponse = await fetch(
-    `${session.hs}/_matrix/client/v3/createRoom`,
+  const roomResponse = await request.post(
+    `${composerSession.hs}/_matrix/client/v3/createRoom`,
     {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ name: composerRoomName }),
+      headers: { Authorization: `Bearer ${token}` },
+      data: { name: composerRoomName },
     },
   );
-  if (!roomResponse.ok) {
-    throw new Error(`Android room seed failed: ${roomResponse.status}`);
+  if (!roomResponse.ok()) {
+    throw new Error(
+      `Android room seed failed: ${roomResponse.status()} ${await roomResponse.text()}`,
+    );
   }
 }
 
 test.describe('Android navigation', () => {
-  test.beforeAll(seedComposerRoom);
-
   test('logs in, opens settings by touch, and handles hardware Back', async ({
     app,
     page,
@@ -106,16 +121,20 @@ test.describe('Android navigation', () => {
 
   test.describe('phone-sized composer', () => {
     test.use({
-      viewport: { width: 390, height: 844 },
+      // Preserve the WebView's native viewport so Android's adjustResize can change
+      // visualViewport when the IME opens. A CDP device-metrics override pins it at the
+      // emulated height and hides the exact native behaviour this journey verifies.
+      viewport: null,
       hasTouch: true,
       isMobile: true,
     });
+    test.beforeAll(async ({ request }) => seedComposerRoom(request));
 
-    test('uses a native-style sheet that hardware Back dismisses', async ({
+    test('keeps the native sheet inside the keyboard viewport and dismisses it with hardware Back', async ({
       app,
       page,
     }) => {
-      await login(page, session, app.navigate);
+      await login(page, composerSession, app.navigate);
       await page.getByTestId('rail-rooms').click();
       await expect(page.getByTestId('rail-rooms')).toHaveAttribute(
         'aria-current',
@@ -127,13 +146,72 @@ test.describe('Android navigation', () => {
       await room.waitFor({ state: 'visible', timeout: 30_000 });
       await room.click();
 
+      const composer = page.getByTestId('composer-input');
+      await expect(composer).toBeVisible();
+      const fullViewportHeight = await page.evaluate(
+        () => window.visualViewport?.height ?? window.innerHeight,
+      );
+      await app.touch(composer);
+      await app.device.input.type('keyboard proof');
+      // The emulator keyboard may auto-capitalize the first word; either value proves that
+      // input came through the native IME rather than CDP's synthetic fill path.
+      await expect(composer).toHaveValue(/keyboard proof/i);
+      await expect
+        .poll(
+          () =>
+            page.evaluate(
+              () => window.visualViewport?.height ?? window.innerHeight,
+            ),
+          { timeout: 10_000 },
+        )
+        .toBeLessThan(fullViewportHeight - 100);
+
       const trigger = page.getByTestId('composer-insert');
       await app.touch(trigger);
-      await expect(page.getByTestId('action-sheet-surface')).toBeVisible();
+      const sheet = page.getByTestId('action-sheet-surface');
+      await expect(sheet).toBeVisible();
       await expect(trigger).toHaveAttribute('aria-expanded', 'true');
 
+      const geometry = await page.evaluate(() => {
+        const surface = document.querySelector<HTMLElement>(
+          '[data-testid=action-sheet-surface]',
+        );
+        if (!surface) throw new Error('action sheet surface is missing');
+        const probe = document.createElement('div');
+        probe.style.paddingBottom = 'env(safe-area-inset-bottom)';
+        document.body.append(probe);
+        const safeAreaInset = Number.parseFloat(
+          getComputedStyle(probe).paddingBottom,
+        );
+        probe.remove();
+        const rootFontSize = Number.parseFloat(
+          getComputedStyle(document.documentElement).fontSize,
+        );
+        const box = surface.getBoundingClientRect();
+        const viewport = window.visualViewport;
+        return {
+          top: box.top,
+          bottom: box.bottom,
+          viewportTop: viewport?.offsetTop ?? 0,
+          viewportBottom:
+            (viewport?.offsetTop ?? 0) +
+            (viewport?.height ?? window.innerHeight),
+          actualPadding: Number.parseFloat(
+            getComputedStyle(surface).paddingBottom,
+          ),
+          expectedPadding: rootFontSize * 0.375 + safeAreaInset,
+        };
+      });
+      expect(geometry.top).toBeGreaterThanOrEqual(geometry.viewportTop - 1);
+      expect(geometry.bottom).toBeLessThanOrEqual(
+        geometry.viewportBottom + 1,
+      );
+      expect(
+        Math.abs(geometry.actualPadding - geometry.expectedPadding),
+      ).toBeLessThanOrEqual(1);
+
       await app.device.input.press('Back');
-      await expect(page.getByTestId('action-sheet-surface')).toBeHidden();
+      await expect(sheet).toBeHidden();
       await expect(trigger).toBeFocused();
       await expect(trigger).toHaveAttribute('aria-expanded', 'false');
       await expect(page.getByTestId('composer-input')).toBeVisible();

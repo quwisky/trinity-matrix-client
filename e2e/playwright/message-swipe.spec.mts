@@ -282,7 +282,9 @@ test.describe('Swipe a message', () => {
     // drives. A `--swipe-progress` written to an element nothing consumes would satisfy the
     // unit test and show nothing on screen.
     const { other } = await openRoom(page, request, 'p', 'right');
-    const box = (await page.locator(other).boundingBox())!;
+    const row = page.locator(other);
+    await row.scrollIntoViewIfNeeded();
+    const box = (await row.boundingBox())!;
     const y = box.y + box.height / 2;
     const icon = page.locator(`${other} .msg__swipe`);
 
@@ -294,21 +296,32 @@ test.describe('Swipe a message', () => {
       }));
 
     // A short drag: on its way, not yet committing.
-    await page.mouse.move(0, 0);
     const cdp = await page.context().newCDPSession(page);
-    const at = async (x: number) =>
-      cdp.send('Input.dispatchTouchEvent', {
-        type: 'touchMove',
-        touchPoints: [{ x, y, id: 1 }],
-      });
+    let currentX = box.x + box.width * 0.35;
+    const at = async (x: number) => {
+      // Feed the compositor a real path rather than one large move. Android/Chromium can
+      // consume the first move to resolve the touch-action axis without forwarding it as a
+      // pointermove, which left the progress assertion at zero while the release journeys
+      // (whose shared helper already sends ten moves) remained green.
+      const from = currentX;
+      for (let step = 1; step <= 4; step++) {
+        currentX = from + ((x - from) * step) / 4;
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [{ x: currentX, y, id: 1 }],
+        });
+      }
+    };
     await cdp.send('Input.dispatchTouchEvent', {
       type: 'touchStart',
-      touchPoints: [{ x: box.x + box.width * 0.4, y, id: 1 }],
+      touchPoints: [{ x: currentX, y, id: 1 }],
     });
 
     // Polled, not read straight after the send: `Input.dispatchTouchEvent` resolves when the
     // event is dispatched, and the handler's style write lands a tick later.
-    await at(box.x + box.width * 0.5);
+    // Twenty percent of the row is still short of the 25% commit threshold, while being
+    // far enough past Chromium's gesture-axis arbitration to guarantee pointer moves.
+    await at(box.x + box.width * 0.55);
     await expect.poll(async () => (await shown()).opacity).toBeGreaterThan(0);
     const partly = await shown();
     expect(partly.opacity).toBeLessThan(1);
