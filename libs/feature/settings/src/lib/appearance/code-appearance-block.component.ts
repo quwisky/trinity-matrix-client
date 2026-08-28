@@ -8,7 +8,8 @@ import {
   type CodeLineMode,
   type CodeScale,
 } from '@trinity/platform-native';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
+import { SettingsFieldRowDirective } from '../shared/settings-field-row.directive';
+import { SettingsGroupComponent } from '../shared/settings-group/settings-group.component';
 
 /**
  * How code inside messages is displayed, as its own block on the Appearance page.
@@ -21,7 +22,11 @@ import { SettingsSectionHeadingComponent } from '../shared/settings-section-head
   selector: 'trn-code-appearance-block',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './code-appearance-block.component.html',
-  imports: [TrnSelectComponent, SettingsSectionHeadingComponent],
+  imports: [
+    TrnSelectComponent,
+    SettingsFieldRowDirective,
+    SettingsGroupComponent,
+  ],
 })
 export class CodeAppearanceBlockComponent {
   readonly theme = inject(ThemeService);

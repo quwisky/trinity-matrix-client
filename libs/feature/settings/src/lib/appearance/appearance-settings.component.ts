@@ -34,6 +34,8 @@ import { MessageGesturesBlockComponent } from './message-gestures-block.componen
 import { AppearancePreviewComponent } from './appearance-preview.component';
 import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 import { SettingsToggleRowDirective } from '../shared/settings-toggle-row.directive';
+import { SettingsFieldRowDirective } from '../shared/settings-field-row.directive';
+import { SettingsGroupComponent } from '../shared/settings-group/settings-group.component';
 
 /**
  * Appearance settings sub-page: light/dark/system mode, colour palette, text and code size,
@@ -56,6 +58,8 @@ import { SettingsToggleRowDirective } from '../shared/settings-toggle-row.direct
     AppearancePreviewComponent,
     SettingsSectionHeadingComponent,
     SettingsToggleRowDirective,
+    SettingsFieldRowDirective,
+    SettingsGroupComponent,
   ],
 })
 export class AppearanceSettingsComponent {

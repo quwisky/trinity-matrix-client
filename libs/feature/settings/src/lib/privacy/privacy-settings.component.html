@@ -1,4 +1,8 @@
-<trn-settings-section-heading title="Privacy" [primary]="true" />
+<trn-settings-section-heading
+  title="Privacy"
+  description="Control receipts and link previews stored on this device."
+  [primary]="true"
+/>
 <label trnSettingsToggleRow data-testid="privacy-send-read-receipts">
   <trn-switch
     [checked]="privacy.sendReadReceipts()"

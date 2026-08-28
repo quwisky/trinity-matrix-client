@@ -1,215 +1,258 @@
 <trn-settings-section-heading
   title="Appearance"
-  headingId="appearance-mode-heading"
+  description="Tune theme, type and spacing together, with a live preview of the result."
+  headingId="appearance-heading"
   [primary]="true"
 />
-<trn-radio-group
-  class="px-4 py-2"
-  aria-labelledby="appearance-mode-heading"
-  [options]="themeOptions"
-  [value]="theme.preference()"
-  (valueChange)="onThemeChange($event)"
-/>
-<p class="block px-4 py-2 text-13 text-muted-foreground">
-  Showing the {{ theme.resolved() }} theme.
-</p>
 
-<trn-appearance-preview
-  [themeLabel]="theme.resolved()"
-  [paletteLabel]="paletteLabel()"
-  [densityLabel]="densityLabel()"
-  [timeLabel]="format.sampleTime(sample, format.timeFormat())"
-/>
-
-<trn-settings-section-heading
-  title="Text size"
-  headingId="appearance-text-size-heading"
-/>
-<div class="px-4 py-2">
-  <trn-select
-    data-testid="text-scale-select"
-    aria-labelledby="appearance-text-size-heading"
-    placeholder="Select a text size"
-    triggerClass="w-full"
-    [options]="textScaleOptions"
-    [value]="theme.textScale()"
-    (valueChange)="onTextScaleChange($event)"
-  />
-</div>
-<p class="block px-4 py-2 text-13 text-muted-foreground">
-  Scales message text and most of what is written around it. Some parts of the
-  app keep a fixed size for now.
-</p>
-
-<trn-settings-section-heading
-  title="Density"
-  headingId="appearance-density-heading"
-/>
-<div class="px-4 py-2">
-  <trn-select
-    data-testid="density-select"
-    aria-labelledby="appearance-density-heading"
-    placeholder="Select a density"
-    triggerClass="w-full"
-    [options]="densityOptions"
-    [value]="theme.density()"
-    (valueChange)="onDensityChange($event)"
-  />
-</div>
-<p class="block px-4 py-2 text-13 text-muted-foreground">
-  Compact tightens the spacing in the message list so more of a conversation
-  fits on screen. Other parts of the app keep their spacing for now.
-</p>
-
-<trn-code-appearance-block />
-
-<trn-message-gestures-block />
-
-<trn-settings-section-heading
-  title="Palette"
-  headingId="appearance-palette-heading"
-/>
-<div class="px-4 py-2">
-  <trn-select
-    data-testid="palette-select"
-    aria-labelledby="appearance-palette-heading"
-    placeholder="Select a palette"
-    triggerClass="w-full"
-    [options]="paletteOptions"
-    [value]="theme.palette()"
-    (valueChange)="onPaletteChange($event)"
-  />
-</div>
-
-<trn-settings-section-heading
-  title="Time format"
-  headingId="appearance-time-heading"
-/>
-<div class="px-4 py-2">
-  <trn-select
-    data-testid="time-format-select"
-    aria-labelledby="appearance-time-heading"
-    placeholder="Select a time format"
-    triggerClass="w-full"
-    [options]="timeFormatOptions()"
-    [value]="format.timeFormat()"
-    (valueChange)="onTimeFormatChange($event)"
-  />
-</div>
-
-<trn-settings-section-heading
-  title="Date format"
-  headingId="appearance-date-heading"
-/>
-<div class="px-4 py-2">
-  <trn-select
-    data-testid="date-format-select"
-    aria-labelledby="appearance-date-heading"
-    placeholder="Select a date format"
-    triggerClass="w-full"
-    [options]="dateFormatOptions()"
-    [value]="format.dateFormat()"
-    (valueChange)="onDateFormatChange($event)"
-  />
-</div>
-<p
-  class="block px-4 py-2 text-13 text-muted-foreground"
-  data-testid="date-time-showing"
+<div
+  class="grid gap-[var(--trinity-space-7)] px-[var(--trinity-space-4)] pb-[var(--trinity-space-7)] md:px-0"
 >
-  Showing {{ format.dateTime(sample) }}. Match system follows your device's
-  language.
-</p>
-
-<trn-settings-section-heading
-  title="Room order in spaces"
-  headingId="appearance-space-order-heading"
-/>
-<p class="block px-4 py-2 text-13 text-muted-foreground">
-  How rooms are listed inside a space — every other list is ordered by recent
-  activity. Saved per account on this device; a space you order individually
-  keeps its own choice.
-</p>
-<div class="px-4 py-2">
-  <trn-select
-    data-testid="space-order-select"
-    aria-labelledby="appearance-space-order-heading"
-    placeholder="Select an order"
-    triggerClass="w-full"
-    [options]="spaceOrderOptions"
-    [value]="spaceOrder.defaultMode()"
-    (valueChange)="onSpaceOrderChange($event)"
+  <trn-appearance-preview
+    [themeLabel]="theme.resolved()"
+    [paletteLabel]="paletteLabel()"
+    [densityLabel]="densityLabel()"
+    [timeLabel]="format.sampleTime(sample, format.timeFormat())"
   />
+
+  <trn-settings-group
+    title="Mode and palette"
+    headingId="appearance-mode-heading"
+    description="Choose the surface contrast and colour accents that feel most comfortable."
+    data-testid="appearance-mode-palette"
+  >
+    <trn-radio-group
+      variant="segmented"
+      aria-labelledby="appearance-mode-heading"
+      [options]="themeOptions"
+      [value]="theme.preference()"
+      (valueChange)="onThemeChange($event)"
+    />
+    <p class="text-13 text-[var(--trinity-text-muted)]">
+      Showing the {{ theme.resolved() }} theme.
+    </p>
+    <div trnSettingsFieldRow>
+      <span class="min-w-0">
+        <strong
+          id="appearance-palette-heading"
+          class="block text-sm font-semibold text-[var(--trinity-text-bright)]"
+          >Palette</strong
+        >
+        <small class="block text-13 text-[var(--trinity-text-muted)]"
+          >Accent and supporting neutrals</small
+        >
+      </span>
+      <trn-select
+        data-testid="palette-select"
+        aria-labelledby="appearance-palette-heading"
+        placeholder="Select a palette"
+        triggerClass="w-full"
+        [options]="paletteOptions"
+        [value]="theme.palette()"
+        (valueChange)="onPaletteChange($event)"
+      />
+    </div>
+  </trn-settings-group>
+
+  <trn-settings-group
+    title="Layout"
+    headingId="appearance-layout-heading"
+    description="Density changes spacing while accessible targets stay the same size."
+    data-testid="appearance-layout"
+  >
+    <div trnSettingsFieldRow>
+      <span class="min-w-0">
+        <strong
+          id="appearance-density-heading"
+          class="block text-sm font-semibold text-[var(--trinity-text-bright)]"
+          >Conversation density</strong
+        >
+        <small class="block text-13 text-[var(--trinity-text-muted)]"
+          >Space between messages and navigation rows</small
+        >
+      </span>
+      <trn-select
+        data-testid="density-select"
+        aria-labelledby="appearance-density-heading"
+        placeholder="Select a density"
+        triggerClass="w-full"
+        [options]="densityOptions"
+        [value]="theme.density()"
+        (valueChange)="onDensityChange($event)"
+      />
+    </div>
+    <div trnSettingsFieldRow>
+      <span class="min-w-0">
+        <strong
+          id="appearance-text-size-heading"
+          class="block text-sm font-semibold text-[var(--trinity-text-bright)]"
+          >Text size</strong
+        >
+        <small class="block text-13 text-[var(--trinity-text-muted)]"
+          >Applies throughout the application</small
+        >
+      </span>
+      <trn-select
+        data-testid="text-scale-select"
+        aria-labelledby="appearance-text-size-heading"
+        placeholder="Select a text size"
+        triggerClass="w-full"
+        [options]="textScaleOptions"
+        [value]="theme.textScale()"
+        (valueChange)="onTextScaleChange($event)"
+      />
+    </div>
+  </trn-settings-group>
+
+  <trn-code-appearance-block />
+
+  <trn-settings-group
+    title="Date and time"
+    headingId="appearance-date-time-heading"
+    description="Choose how timestamps are written throughout Trinity."
+  >
+    <div trnSettingsFieldRow>
+      <span class="min-w-0">
+        <strong
+          id="appearance-time-heading"
+          class="block text-sm font-semibold text-[var(--trinity-text-bright)]"
+          >Time format</strong
+        >
+        <small class="block text-13 text-[var(--trinity-text-muted)]"
+          >12-hour, 24-hour or your system preference</small
+        >
+      </span>
+      <trn-select
+        data-testid="time-format-select"
+        aria-labelledby="appearance-time-heading"
+        placeholder="Select a time format"
+        triggerClass="w-full"
+        [options]="timeFormatOptions()"
+        [value]="format.timeFormat()"
+        (valueChange)="onTimeFormatChange($event)"
+      />
+    </div>
+    <div trnSettingsFieldRow>
+      <span class="min-w-0">
+        <strong
+          id="appearance-date-heading"
+          class="block text-sm font-semibold text-[var(--trinity-text-bright)]"
+          >Date format</strong
+        >
+        <small class="block text-13 text-[var(--trinity-text-muted)]"
+          >Day first, month first, ISO or system</small
+        >
+      </span>
+      <trn-select
+        data-testid="date-format-select"
+        aria-labelledby="appearance-date-heading"
+        placeholder="Select a date format"
+        triggerClass="w-full"
+        [options]="dateFormatOptions()"
+        [value]="format.dateFormat()"
+        (valueChange)="onDateFormatChange($event)"
+      />
+    </div>
+    <p
+      class="text-13 text-[var(--trinity-text-muted)]"
+      data-testid="date-time-showing"
+    >
+      Showing {{ format.dateTime(sample) }}. Match system follows your device's
+      language.
+    </p>
+  </trn-settings-group>
+
+  <trn-settings-group
+    title="Room lists"
+    headingId="appearance-room-lists-heading"
+    description="Choose the default order for rooms inside spaces."
+  >
+    <div trnSettingsFieldRow>
+      <span class="min-w-0">
+        <strong
+          id="appearance-space-order-heading"
+          class="block text-sm font-semibold text-[var(--trinity-text-bright)]"
+          >Room order in spaces</strong
+        >
+        <small class="block text-13 text-[var(--trinity-text-muted)]"
+          >Saved per account on this device</small
+        >
+      </span>
+      <trn-select
+        data-testid="space-order-select"
+        aria-labelledby="appearance-space-order-heading"
+        placeholder="Select an order"
+        triggerClass="w-full"
+        [options]="spaceOrderOptions"
+        [value]="spaceOrder.defaultMode()"
+        (valueChange)="onSpaceOrderChange($event)"
+      />
+    </div>
+    <p class="text-13 text-[var(--trinity-text-muted)]">
+      A space you order individually keeps its own choice. Favourites always
+      stay in their own group.
+    </p>
+  </trn-settings-group>
+
+  <trn-settings-group
+    title="Timeline"
+    headingId="appearance-timeline-heading"
+    description="Reduce membership and profile churn in busy or bridged rooms without changing unread counts."
+  >
+    <label trnSettingsToggleRow data-testid="timeline-show-membership">
+      <trn-switch
+        [checked]="systemLines.showMembership()"
+        (checkedChange)="systemLines.setShowMembership($event)"
+      />
+      Show joins and leaves
+    </label>
+    <p class="text-13 text-[var(--trinity-text-muted)]">
+      Includes invites, knocks, kicks and bans.
+    </p>
+    <label trnSettingsToggleRow data-testid="timeline-show-profile">
+      <trn-switch
+        [checked]="systemLines.showProfile()"
+        (checkedChange)="systemLines.setShowProfile($event)"
+      />
+      Show display name and avatar changes
+    </label>
+    <label trnSettingsToggleRow data-testid="timeline-show-room-changes">
+      <trn-switch
+        [checked]="systemLines.showRoomChanges()"
+        (checkedChange)="systemLines.setShowRoomChanges($event)"
+      />
+      Show room changes
+    </label>
+    <p class="text-13 text-[var(--trinity-text-muted)]">
+      Includes name, topic, avatar, address and access changes, plus room
+      creation and encryption notices.
+    </p>
+  </trn-settings-group>
+
+  <trn-settings-group
+    title="Composer"
+    headingId="appearance-composer-heading"
+    description="Choose when the formatting controls appear above the message box."
+  >
+    <label trnSettingsToggleRow data-testid="composer-show-toolbar">
+      <trn-switch
+        [checked]="composer.showFormattingToolbar()"
+        (checkedChange)="composer.setShowFormattingToolbar($event)"
+      />
+      Keep the formatting toolbar open
+    </label>
+    <label trnSettingsToggleRow data-testid="composer-format-on-selection">
+      <trn-switch
+        [checked]="composer.formatOnSelection()"
+        (checkedChange)="composer.setFormatOnSelection($event)"
+      />
+      Show it when you select text
+    </label>
+    <p class="text-13 text-[var(--trinity-text-muted)]">
+      Turn both off to hide the buttons. Keyboard shortcuts and Shift+Enter list
+      continuation still work.
+    </p>
+  </trn-settings-group>
+
+  <trn-message-gestures-block />
 </div>
-<p class="block px-4 pb-2 text-13 text-muted-foreground">
-  Favourites always sit in their own group, so “Space order” applies within each
-  group.
-</p>
-
-<trn-settings-section-heading
-  title="Timeline"
-  headingId="appearance-timeline-heading"
-/>
-<p class="block px-4 py-2 text-13 text-muted-foreground">
-  In busy or bridged rooms, membership and profile churn can drown out the
-  conversation. Hiding a category removes those lines entirely — it doesn't
-  change your unread counts.
-</p>
-<label trnSettingsToggleRow data-testid="timeline-show-membership">
-  <trn-switch
-    [checked]="systemLines.showMembership()"
-    (checkedChange)="systemLines.setShowMembership($event)"
-  />
-  Show joins and leaves
-</label>
-<p class="block px-4 pb-2 text-13 text-muted-foreground">
-  Includes invites, knocks, kicks and bans.
-</p>
-
-<label trnSettingsToggleRow data-testid="timeline-show-profile">
-  <trn-switch
-    [checked]="systemLines.showProfile()"
-    (checkedChange)="systemLines.setShowProfile($event)"
-  />
-  Show display name and avatar changes
-</label>
-
-<label trnSettingsToggleRow data-testid="timeline-show-room-changes">
-  <trn-switch
-    [checked]="systemLines.showRoomChanges()"
-    (checkedChange)="systemLines.setShowRoomChanges($event)"
-  />
-  Show room changes
-</label>
-<p class="block px-4 pb-4 text-13 text-muted-foreground">
-  Name, topic, avatar, address and access changes, plus the notices for room
-  creation and encryption being turned on. The lock in the room header still
-  shows whether a room is encrypted.
-</p>
-
-<trn-settings-section-heading
-  title="Composer"
-  headingId="appearance-composer-heading"
-/>
-<label trnSettingsToggleRow data-testid="composer-show-toolbar">
-  <trn-switch
-    [checked]="composer.showFormattingToolbar()"
-    (checkedChange)="composer.setShowFormattingToolbar($event)"
-  />
-  Keep the formatting toolbar open
-</label>
-<p class="block px-4 pb-4 text-13 text-muted-foreground">
-  The row of bold, italic and link buttons above the message box, kept in view
-  whether or not you are using it.
-</p>
-<label trnSettingsToggleRow data-testid="composer-format-on-selection">
-  <trn-switch
-    [checked]="composer.formatOnSelection()"
-    (checkedChange)="composer.setFormatOnSelection($event)"
-  />
-  Show it when you select text
-</label>
-<p class="block px-4 pb-4 text-13 text-muted-foreground">
-  With the toolbar closed, selecting some text brings it up for as long as the
-  selection lasts. Turn both off and the buttons never appear — the keyboard
-  shortcuts still work either way, and Shift+Enter still continues a list.
-</p>

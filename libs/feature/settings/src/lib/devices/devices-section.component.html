@@ -1,5 +1,9 @@
 <div>
-  <trn-settings-section-heading title="Devices" [primary]="true" />
+  <trn-settings-section-heading
+    title="Devices"
+    description="Review, verify, rename and sign out sessions connected to this account."
+    [primary]="true"
+  />
 
   @for (device of devices(); track device.id) {
     <div

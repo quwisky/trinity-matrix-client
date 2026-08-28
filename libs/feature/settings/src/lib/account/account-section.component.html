@@ -1,5 +1,9 @@
 <div>
-  <trn-settings-section-heading title="Account" [primary]="true" />
+  <trn-settings-section-heading
+    title="Account"
+    description="Manage the credentials and account controls provided by your homeserver."
+    [primary]="true"
+  />
 
   @if (accountManagement(); as management) {
     <!-- OIDC account: credentials + device management live at the provider. -->

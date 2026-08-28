@@ -62,13 +62,17 @@ characters. Matrix has no "invisible" state, so Trinity does not offer one.
 
 ## Appearance
 
-The top of Appearance includes a small live conversation preview. It follows the selected mode,
-palette, text size, time format and density immediately, so you can compare the combined result
-without leaving Settings. It is only a preview: its room names and messages are illustrative and
-none of them are interactive.
+Appearance groups related controls under **Mode and palette**, **Layout**, **Code**, **Date and
+time**, **Room lists**, **Timeline**, **Composer**, and **Message gestures**. Labels and supporting
+copy stay on the leading side while dropdowns and switches stay on the logical trailing side on a
+wide window; they stack when the pane is narrow. The top of the page includes a compact live
+conversation preview. It follows the selected mode, palette, text size, time format and density
+immediately, so you can compare the combined result without leaving Settings. It is only a preview:
+its names and messages are illustrative and none of them are interactive.
 
-**Theme.** Light, Dark, or follow the system setting. The page states which one is currently
-resolved, which matters when you have chosen "system".
+**Theme.** Light, Dark, or follow the system setting, presented as one segmented radio control with
+normal arrow-key and screen-reader behavior. The page states which one is currently resolved, which
+matters when you have chosen "system".
 
 **Palette.** The accent colour scheme, independent of light and dark. Two ship: Trinity
 (blurple) and Amethyst (violet). Mode and palette are genuinely orthogonal — each palette

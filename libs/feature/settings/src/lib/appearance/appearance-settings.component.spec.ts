@@ -127,6 +127,23 @@ describe('AppearanceSettingsComponent', () => {
     expect(container.textContent).toContain('dark'); // resolved-theme note
   });
 
+  it('groups the content into the prototype-aligned settings rhythm', async () => {
+    const { container } = await renderPage();
+
+    expect(
+      container.querySelector('[data-testid=appearance-mode-palette]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid=appearance-layout]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelectorAll('[trnSettingsFieldRow]').length,
+    ).toBeGreaterThanOrEqual(5);
+    expect(
+      container.querySelector('trn-radio-group')?.getAttribute('data-variant'),
+    ).toBe('segmented');
+  });
+
   it('renders a labelled live preview of the active appearance recipe', async () => {
     const { container, fixture } = await renderPage();
     const preview = container.querySelector('[data-testid=appearance-preview]');
@@ -161,14 +178,7 @@ describe('AppearanceSettingsComponent', () => {
 
     const labelled = [
       container.querySelector('hlm-radio-group'),
-      container.querySelector('[data-testid=palette-select]'),
-      container.querySelector('[data-testid=text-scale-select]'),
-      container.querySelector('[data-testid=code-scale-select]'),
-      container.querySelector('[data-testid=code-lines-select]'),
-      container.querySelector('[data-testid=time-format-select]'),
-      container.querySelector('[data-testid=date-format-select]'),
-      container.querySelector('[data-testid=space-order-select]'),
-      container.querySelector('[data-testid=message-swipe-select]'),
+      ...Array.from(container.querySelectorAll('trn-select [role=combobox]')),
     ];
     // Every entry must actually be present, or a missing control would pass this sweep by
     // being null. `text-scale-select` was absent from this list until the code-size block

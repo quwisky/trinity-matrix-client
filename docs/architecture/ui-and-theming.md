@@ -291,9 +291,10 @@ DOM — silently, on three shipped screens, for as long as the components have e
    attribute, because the host is `display: contents` and is not the focusable element. That
    asymmetry is pinned by a test — do not "fix" it into describing the wrong node.
 
-Still open: `hlm-select-trigger` applies `brnFieldControlDescribedBy` to its inner `<button>` with
-nothing bound and exposes no input, so a select trigger cannot be described at all. No call site
-needs it today; tracked rather than fixed here.
+`hlm-select-trigger` still applies `brnFieldControlDescribedBy` to its inner `<button>` with
+nothing bound, so `aria-describedby` remains unavailable. Trinity's registered override now
+forwards `aria-labelledby` to that same button, which lets the public select wrapper name the
+actual combobox while the description gap stays explicitly tracked.
 
 ## Registered vendored divergences
 
@@ -315,6 +316,7 @@ step with the banner in
 | `dropdown-menu` · `HlmDropdownMenu` and `HlmDropdownMenuSub` | Both `animate-in` / `animate-out` triggers carry `motion-safe:` — upstream ships them bare                                                                                                                                                                                        | `kit-reduced-motion.spec.mjs`   |
 | `tooltip` · `DEFAULT_TOOLTIP_CONTENT_CLASSES`                | All three `animate-in` / `animate-out` triggers carry `motion-safe:`, including `data-[state=delayed-open]:`                                                                                                                                                                      | `kit-reduced-motion.spec.mjs`   |
 | `select` · `HlmSelectContent`                                | Both `animate-in` / `animate-out` triggers carry `motion-safe:`                                                                                                                                                                                                                   | `kit-reduced-motion.spec.mjs`   |
+| `select` · `HlmSelectTrigger`                                | Forwards `aria-labelledby` to the inner focusable combobox button instead of leaving it on a role-less wrapper                                                                                                                                                                    | `trn-select.component.spec.ts`  |
 | `progress` · `HlmProgressIndicator`                          | Its **indeterminate** sweep is guarded for reduced motion in `theme/spartan.css` — the class is applied through a `[class.…]` binding, so the guard is a rule rather than a variant. The determinate `transition-all` is not covered and still rests on the `global.scss` blanket | `kit-reduced-motion.spec.mjs`   |
 | Every file with `hostDirectives`, kit and public tier alike  | Every entry states its `inputs` and `outputs` explicitly, even when empty — the generator's shorthand decides the element's public API by omission                                                                                                                                | `host-directives.spec.mjs`      |
 

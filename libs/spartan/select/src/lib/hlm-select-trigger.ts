@@ -7,6 +7,18 @@ import { BrnSelectTrigger } from '@spartan-ng/brain/select';
 import { hlm } from '@trinity/helm/utils';
 import type { ClassValue } from 'clsx';
 
+/**
+ * ┌─ VENDORED FILE — @spartan-ng/cli generated, then diverged ───────────────┐
+ *
+ * Trinity forwards `aria-labelledby` through this wrapper to the inner
+ * combobox button. Upstream exposes no input for that focusable element, so a
+ * label placed on `hlm-select-trigger` names a role-less host instead.
+ *
+ * The override is registered in docs/architecture/ui-and-theming.md and pinned
+ * by the public select wrapper test.
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+
 @Component({
 	selector: 'hlm-select-trigger',
 	imports: [NgIcon, BrnSelectTrigger, BrnFieldControlDescribedBy],
@@ -20,6 +32,7 @@ import type { ClassValue } from 'clsx';
 			[id]="buttonId()"
 			[class]="_computedClass()"
 			[attr.data-size]="size()"
+			[attr.aria-labelledby]="ariaLabelledby()"
 			data-slot="select-trigger"
 		>
 			<ng-content />
@@ -39,6 +52,9 @@ export class HlmSelectTrigger {
 	);
 
 	public readonly buttonId = input<string>(`hlm-select-trigger-${HlmSelectTrigger._id++}`);
+
+	/** Trinity override: names the inner combobox rather than this role-less host. */
+	public readonly ariaLabelledby = input<string | null>(null, { alias: 'aria-labelledby' });
 
 	public readonly size = input<'default' | 'sm'>('default');
 

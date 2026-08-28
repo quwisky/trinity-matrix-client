@@ -22,7 +22,6 @@ p {
   margin: 0;
 }
 
-.packs__header > p,
 .packs__section {
   margin-inline: var(--trinity-space-5);
 }
@@ -41,7 +40,6 @@ h4 {
   font-weight: var(--trinity-type-control-weight);
 }
 
-.packs__header p,
 .packs__section > p,
 .pack-card p {
   color: var(--trinity-text-muted);

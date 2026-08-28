@@ -57,14 +57,9 @@ export interface TrnSelectOption<T> {
  * `w-fit`, so folding them into one input would shrink every settings select to the width of
  * its text.
  *
- * **Known gap, deliberately not papered over:** `aria-labelledby` is left to land on this
- * host as a plain attribute, exactly where the call sites already put it — which means the
- * combobox is still not named. `role="combobox"` lives on a `<button>` inside the kit's
- * trigger, and the kit exposes no input reaching it, so naming it properly needs a
- * registered divergence in the vendored kit rather than a change here. Routing the
- * attribute to the inner `hlm-select` instead was tried and reverted: neither wrapper
- * carries a role, so it named nothing either way while splitting the attribute away from
- * the `data-testid` the same element carries. Parity, and the gap recorded.
+ * `aria-labelledby` is routed to the actual combobox button through Trinity's registered
+ * `HlmSelectTrigger` divergence. The host keeps the consumer's `data-testid`, but it is
+ * deliberately stripped of the naming attribute because it carries no interactive role.
  */
 @Component({
   selector: 'trn-select',
@@ -75,6 +70,9 @@ export interface TrnSelectOption<T> {
   // to know, and the first one to forget it would get a silently narrow select. Same
   // reasoning as TrnRadioGroupComponent, where forgetting it was already costing an indent.
   styles: [':host { display: block; }'],
+  host: {
+    '[attr.aria-labelledby]': 'null',
+  },
   imports: [
     HlmSelect,
     HlmSelectTrigger,
@@ -90,7 +88,10 @@ export interface TrnSelectOption<T> {
       [itemToString]="labelFor"
       (valueChange)="onValueChange($event)"
     >
-      <hlm-select-trigger [class]="triggerClass()">
+      <hlm-select-trigger
+        [class]="triggerClass()"
+        [aria-labelledby]="ariaLabelledby()"
+      >
         <hlm-select-value [placeholder]="placeholder()" />
       </hlm-select-trigger>
       <hlm-select-content *hlmSelectPortal>
@@ -123,6 +124,9 @@ export interface TrnSelectOption<T> {
   `,
 })
 export class TrnSelectComponent<T> implements FormValueControl<T | null> {
+  readonly ariaLabelledby = input<string | null>(null, {
+    alias: 'aria-labelledby',
+  });
   readonly options = input.required<readonly TrnSelectOption<T>[]>();
 
   /**

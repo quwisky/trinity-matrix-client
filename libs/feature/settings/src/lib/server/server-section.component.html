@@ -1,6 +1,10 @@
 <div>
   <div class="flex items-center justify-between pr-4">
-    <trn-settings-section-heading title="Server" [primary]="true" />
+    <trn-settings-section-heading
+      title="Server"
+      description="See what each signed-in account's homeserver is running."
+      [primary]="true"
+    />
     @if (accounts().length) {
       <button
         trnBtn

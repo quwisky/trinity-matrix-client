@@ -393,9 +393,9 @@ test.describe('@phase7 shipped UI', () => {
       page,
       page.getByRole('heading', { name: 'Appearance' }),
     );
-    await expect(page.getByTestId('palette-select')).toHaveAccessibleName(
-      'Palette',
-    );
+    await expect(
+      page.getByTestId('palette-select').getByRole('combobox'),
+    ).toHaveAccessibleName('Palette');
     await screenshot(settings, 'settings', appearance);
 
     await page.goto('/encryption/setup', { waitUntil: 'domcontentloaded' });

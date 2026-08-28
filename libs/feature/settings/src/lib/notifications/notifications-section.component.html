@@ -1,9 +1,9 @@
 <div>
-  <trn-settings-section-heading title="Notifications" [primary]="true" />
-  <p class="px-4 py-1 text-13 text-muted-foreground">
-    Choose what notifies you. These rules apply to every device signed in to
-    your account.
-  </p>
+  <trn-settings-section-heading
+    title="Notifications"
+    description="Choose what notifies you. These rules apply to every device signed in to your account."
+    [primary]="true"
+  />
 
   @for (rule of toggles; track rule.id) {
     <label trnSettingsToggleRow [attr.data-testid]="'notif-' + rule.id">

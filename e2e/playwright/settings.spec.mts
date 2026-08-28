@@ -132,6 +132,66 @@ test.describe('Settings', () => {
     expect(shadow).not.toBe('none');
   });
 
+  test('desktop: settings content uses the shared grouped hierarchy', async ({
+    page,
+  }) => {
+    await openSection(page, 'appearance');
+
+    const mode = page.getByTestId('appearance-mode-palette');
+    const layout = page.getByTestId('appearance-layout');
+    await expect(mode).toBeVisible();
+    await expect(layout).toBeVisible();
+    await expect(
+      page.getByRole('radiogroup', { name: 'Mode and palette' }),
+    ).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Palette' })).toBeVisible();
+    await expect(
+      page.getByRole('combobox', { name: 'Conversation density' }),
+    ).toBeVisible();
+
+    const densityRow = page.getByTestId('density-select').locator('..');
+    const densityLabel = page.locator('#appearance-density-heading');
+    const densityControl = page.getByRole('combobox', {
+      name: 'Conversation density',
+    });
+    const [rowBox, labelBox, controlBox] = await Promise.all([
+      densityRow.boundingBox(),
+      densityLabel.boundingBox(),
+      densityControl.boundingBox(),
+    ]);
+    expect(rowBox).not.toBeNull();
+    expect(labelBox).not.toBeNull();
+    expect(controlBox).not.toBeNull();
+    expect(controlBox!.x).toBeGreaterThan(labelBox!.x + labelBox!.width);
+    expect(controlBox!.x + controlBox!.width).toBeLessThanOrEqual(
+      rowBox!.x + rowBox!.width + 1,
+    );
+
+    await openSection(page, 'notifications');
+    const notificationRow = page.locator('[data-testid^="notif-"]').first();
+    const notificationSwitch = notificationRow.getByRole('switch');
+    const [notificationBox, switchBox] = await Promise.all([
+      notificationRow.boundingBox(),
+      notificationSwitch.boundingBox(),
+    ]);
+    expect(notificationBox).not.toBeNull();
+    expect(switchBox).not.toBeNull();
+    expect(switchBox!.x).toBeGreaterThan(
+      notificationBox!.x + notificationBox!.width / 2,
+    );
+
+    await openSection(page, 'profile');
+    await expect(
+      page.getByText('Manage the name and avatar people see across Matrix.'),
+    ).toBeVisible();
+    await openSection(page, 'advanced');
+    await expect(
+      page.getByText(
+        'Inspect, move or reset the preferences stored on this device.',
+      ),
+    ).toBeVisible();
+  });
+
   test('desktop: close leaves settings without changing the room route', async ({
     page,
   }) => {
@@ -224,7 +284,7 @@ test.describe('Settings', () => {
       );
     const previewGap = () =>
       page
-        .locator('.preview__message')
+        .locator('.preview__canvas')
         .first()
         .evaluate((element) => getComputedStyle(element).columnGap);
 
@@ -349,7 +409,7 @@ test.describe('Settings', () => {
     expect(await paletteAttr(page)).toBeNull();
     const previewAccent = () =>
       page
-        .locator('.preview__identity--active')
+        .locator('.preview__avatar')
         .evaluate((element) => getComputedStyle(element).backgroundColor);
     const initialPreviewAccent = await previewAccent();
 

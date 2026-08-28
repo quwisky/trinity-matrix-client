@@ -19,8 +19,10 @@ const OPTIONS: readonly TrnSelectOption<string>[] = [
 @Component({
   imports: [TrnSelectComponent],
   template: `
+    <h2 id="space-order-heading">Room order</h2>
     <trn-select
       data-testid="space-order-select"
+      aria-labelledby="space-order-heading"
       placeholder="Select an order"
       triggerClass="w-full"
       [options]="options"
@@ -55,6 +57,16 @@ describe('TrnSelectComponent', () => {
     const { container } = await render(HostComponent);
 
     expect(container.querySelector('button')?.className).toContain('w-full');
+  });
+
+  it('forwards its accessible name to the actual combobox trigger', async () => {
+    const { container } = await render(HostComponent);
+    const button = container.querySelector('[role=combobox]');
+
+    expect(button?.getAttribute('aria-labelledby')).toBe('space-order-heading');
+    expect(
+      container.querySelector('trn-select')?.hasAttribute('aria-labelledby'),
+    ).toBe(false);
   });
 
   it('falls back to the raw value when no option matches it', async () => {

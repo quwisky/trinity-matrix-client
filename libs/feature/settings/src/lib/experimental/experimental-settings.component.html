@@ -1,4 +1,8 @@
-<trn-settings-section-heading title="Experimental" [primary]="true" />
+<trn-settings-section-heading
+  title="Experimental"
+  description="Try unfinished features that may still change or behave unexpectedly."
+  [primary]="true"
+/>
 <label trnSettingsToggleRow data-testid="flag-virtual-timeline">
   <trn-switch
     [checked]="flags.virtualTimeline()"

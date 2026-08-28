@@ -77,6 +77,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Settings content now follows the modern grouped hierarchy.** Appearance combines a compact
+  conversation preview, a segmented mode picker and labelled two-column control rows, while every
+  section gains a clear title and supporting description. Related controls use calmer group
+  headings, switches sit on the logical trailing edge, and select fields expose their visible
+  labels to assistive technology. The layout remains contained at 125% text and Compact density.
+
 - **Read-receipt avatars keep the full timeline edge beside authenticity shields.** A shield now
   reserves space only beside the message content; the “seen by” row spans underneath it and remains
   aligned to the trailing edge in both left-to-right and right-to-left interfaces. Both controls stay

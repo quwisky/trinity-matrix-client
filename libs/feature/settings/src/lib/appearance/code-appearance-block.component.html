@@ -1,40 +1,48 @@
-<trn-settings-section-heading
-  title="Code size"
-  headingId="appearance-code-size-heading"
-/>
-<div class="px-4 py-2">
-  <trn-select
-    data-testid="code-scale-select"
-    aria-labelledby="appearance-code-size-heading"
-    placeholder="Select a code size"
-    triggerClass="w-full"
-    [options]="codeScaleOptions"
-    [value]="theme.codeScale()"
-    (valueChange)="onCodeScaleChange($event)"
-  />
-</div>
-<p class="block px-4 py-2 text-13 text-muted-foreground">
-  Sizes code in messages — both code written inside a sentence and whole blocks.
-  It is relative to Text size, so the two work together rather than one
-  overriding the other.
-</p>
-
-<trn-settings-section-heading
-  title="Line numbers"
-  headingId="appearance-code-lines-heading"
-/>
-<div class="px-4 py-2">
-  <trn-select
-    data-testid="code-lines-select"
-    aria-labelledby="appearance-code-lines-heading"
-    placeholder="Select when to number lines"
-    triggerClass="w-full"
-    [options]="codeLineOptions"
-    [value]="theme.codeLines()"
-    (valueChange)="onCodeLinesChange($event)"
-  />
-</div>
-<p class="block px-4 py-2 text-13 text-muted-foreground">
-  Numbers the lines of a code block, so you can point at one. They are never
-  part of the message: selecting or copying a block gives you the code alone.
-</p>
+<trn-settings-group
+  title="Code"
+  headingId="appearance-code-heading"
+  description="Set code text independently while keeping it proportional to the app's text size."
+>
+  <div trnSettingsFieldRow>
+    <span class="min-w-0">
+      <strong
+        id="appearance-code-size-heading"
+        class="block text-sm font-semibold text-[var(--trinity-text-bright)]"
+        >Code size</strong
+      >
+      <small class="block text-13 text-[var(--trinity-text-muted)]"
+        >Inline code and whole message blocks</small
+      >
+    </span>
+    <trn-select
+      data-testid="code-scale-select"
+      aria-labelledby="appearance-code-size-heading"
+      placeholder="Select a code size"
+      triggerClass="w-full"
+      [options]="codeScaleOptions"
+      [value]="theme.codeScale()"
+      (valueChange)="onCodeScaleChange($event)"
+    />
+  </div>
+  <div trnSettingsFieldRow>
+    <span class="min-w-0">
+      <strong
+        id="appearance-code-lines-heading"
+        class="block text-sm font-semibold text-[var(--trinity-text-bright)]"
+        >Line numbers</strong
+      >
+      <small class="block text-13 text-[var(--trinity-text-muted)]"
+        >Numbers are never included when you copy</small
+      >
+    </span>
+    <trn-select
+      data-testid="code-lines-select"
+      aria-labelledby="appearance-code-lines-heading"
+      placeholder="Select when to number lines"
+      triggerClass="w-full"
+      [options]="codeLineOptions"
+      [value]="theme.codeLines()"
+      (valueChange)="onCodeLinesChange($event)"
+    />
+  </div>
+</trn-settings-group>

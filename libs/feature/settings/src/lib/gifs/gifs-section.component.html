@@ -1,5 +1,9 @@
 <div>
-  <trn-settings-section-heading title="GIFs" [primary]="true" />
+  <trn-settings-section-heading
+    title="GIFs"
+    description="Choose a search provider and connect the API key used by the composer."
+    [primary]="true"
+  />
 
   @if (migratedFrom(); as retired) {
     <p

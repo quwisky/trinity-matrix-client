@@ -1,6 +1,10 @@
 <div>
   <div class="flex items-center justify-between pr-4">
-    <trn-settings-section-heading title="Keyboard shortcuts" [primary]="true" />
+    <trn-settings-section-heading
+      title="Keyboard shortcuts"
+      description="Review and personalize the key combinations saved on this device."
+      [primary]="true"
+    />
     @if (hasCustomBindings()) {
       <button
         trnBtn
@@ -14,14 +18,9 @@
     }
   </div>
 
-  <p class="px-4 pb-2 text-sm text-muted-foreground">
-    Click a shortcut to give it a new key combination. Bindings are saved on
-    this device.
-  </p>
-
   @for (group of groups(); track group.category) {
     <h3
-      class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+      class="px-4 pt-5 pb-2 text-sm font-semibold text-foreground"
       [attr.data-testid]="'shortcut-group-' + group.category.toLowerCase()"
     >
       {{ group.category }}

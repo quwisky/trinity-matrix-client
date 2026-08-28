@@ -461,11 +461,14 @@ Acceptance:
 
 Status: implemented. Settings now uses a parent-height-bounded frame on wide layouts, with a
 scrollable but visually quiet directory and the detail pane as the only painted scrollbar. The
-directory is grouped by task, section headings and toggle rows consume feature-local semantic
-recipes, and Appearance includes a token-only live preview that responds to mode, palette, text
-size, time format and density. Nested routes explicitly focus their section heading; mobile Back
-restores the originating directory link, and a mobile drill-in resized wide still exits Settings
-in one step. Search remains deliberately deferred to its own product slice, as planned.
+directory is grouped by task. Detail panes now share a title-and-description intro and logical
+trailing switch rows; Appearance additionally uses reusable labelled field rows and quiet section
+groups, a true-radio segmented mode picker, and a compact token-only conversation preview that
+responds to mode, palette, text size, time format and density. Select names are forwarded to the
+actual combobox trigger rather than left on a role-less wrapper. Nested routes explicitly focus
+their section heading; mobile Back restores the originating directory link, and a mobile drill-in
+resized wide still exits Settings in one step. Search remains deliberately deferred to its own
+product slice, as planned.
 
 Primary ownership:
 
