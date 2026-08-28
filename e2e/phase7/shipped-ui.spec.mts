@@ -198,6 +198,27 @@ async function stabilize(page: Page): Promise<void> {
   });
 }
 
+async function expectProductionReducedMotionContract(page: Page) {
+  const evidence = await page.evaluate(() => ({
+    requested: matchMedia('(prefers-reduced-motion: reduce)').matches,
+    fastDuration: getComputedStyle(document.documentElement)
+      .getPropertyValue('--trinity-duration-fast')
+      .trim(),
+  }));
+  expect(evidence.requested).toBe(true);
+  expect(evidence.fastDuration).toMatch(/ms$/);
+  expect(Number.parseFloat(evidence.fastDuration)).toBe(0.01);
+}
+
+async function tabTo(page: Page, target: Locator): Promise<void> {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    await page.keyboard.press('Tab');
+    if (await target.evaluate((element) => element === document.activeElement))
+      return;
+  }
+  throw new Error('Keyboard navigation did not reach the expected control');
+}
+
 async function seedAppearance(
   page: Page,
   appearance: Appearance,
@@ -304,13 +325,17 @@ async function attachPerformanceEvidence(
 test.describe('@phase7 shipped UI', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('matches the approved pairwise visual and semantic matrix', async ({
+  test('matches the approved representative visual and semantic matrix', async ({
+    browserName,
     page,
     request,
   }, testInfo) => {
     const appearance = MATRIX[testInfo.project.name];
     if (!appearance)
       throw new Error(`Missing Phase 7 matrix entry: ${testInfo.project.name}`);
+    if (testInfo.project.name === 'webkit-compact-light') {
+      expect(browserName).toBe('webkit');
+    }
     const { credentials, roomName } = await seedRoom(
       request,
       testInfo.project.name,
@@ -323,6 +348,7 @@ test.describe('@phase7 shipped UI', () => {
     await seedAppearance(page, appearance);
 
     await page.goto('/login', { waitUntil: 'networkidle' });
+    await expectProductionReducedMotionContract(page);
     await fillLabeledInput(page, 'Homeserver', credentials.hs as string);
     await page.getByText('Continue', { exact: true }).click();
     await expect(page.getByLabel('Username', { exact: true })).toBeVisible({
@@ -395,8 +421,19 @@ test.describe('@phase7 shipped UI', () => {
         ),
       ).toBe(true);
       const action = page.getByRole('button', { name: 'Set up encryption' });
-      await action.focus();
+      await tabTo(page, action);
       await expect(action).toBeFocused();
+      const focusIndicator = await action.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          color: style.outlineColor,
+          style: style.outlineStyle,
+          width: Number.parseFloat(style.outlineWidth),
+        };
+      });
+      expect(focusIndicator.style).not.toBe('none');
+      expect(focusIndicator.width).toBeGreaterThanOrEqual(1);
+      expect(focusIndicator.color).not.toBe('rgba(0, 0, 0, 0)');
     }
     await attachPerformanceEvidence(page, testInfo);
   });

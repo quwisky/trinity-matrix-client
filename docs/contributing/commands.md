@@ -172,10 +172,11 @@ are iterating in Xcode or Android Studio.
 | `pnpm ios:open`               | Open the project in Xcode                            | macOS, Xcode                             |
 | `pnpm ios:build`              | `cap build ios --scheme App`                         | macOS, Xcode, signing identity           |
 
-The `*:prebuilt` commands exist for cross-platform evidence, not ordinary iteration. Run one
-production `pnpm build`, record it with `pnpm bundle:manifest:write`, then let Electron and Android
-copy that payload without rebuilding. `pnpm bundle:manifest:verify` proves every recorded web file
-is byte-identical in both wrapper trees; Android's additional native bootstrap files are allowed.
+The `*:prebuilt` commands exist for cross-platform evidence, not ordinary iteration.
+`pnpm e2e:design:shipped` creates a production `www/`, records it, and tests that payload; Electron
+and Android can then copy it without rebuilding. `pnpm bundle:manifest:verify` proves both wrapper
+trees have the exact recorded web file set and bytes; only Android's named `cordova.js` and
+`cordova_plugins.js` bootstrap files are allowed in addition.
 
 ## End to end harnesses
 

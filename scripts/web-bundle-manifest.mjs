@@ -7,7 +7,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -21,7 +21,11 @@ function walk(root, directory = root) {
     .flatMap((entry) => {
       const absolute = join(directory, entry.name);
       if (entry.isDirectory()) return walk(root, absolute);
-      if (!entry.isFile()) return [];
+      if (!entry.isFile()) {
+        throw new Error(
+          `Unsupported filesystem entry in web payload: ${relative(root, absolute)}`,
+        );
+      }
       const body = readFileSync(absolute);
       return [
         {
@@ -32,6 +36,47 @@ function walk(root, directory = root) {
       ];
     })
     .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function validateRelativePath(value, label) {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.includes('\\') ||
+    posix.isAbsolute(value) ||
+    posix.normalize(value) !== value ||
+    value === '..' ||
+    value.startsWith('../')
+  ) {
+    throw new Error(`${label} is not a safe bundle-relative path: ${value}`);
+  }
+  return value;
+}
+
+function validateManifest(manifest) {
+  if (manifest?.version !== 1 || !Array.isArray(manifest.files)) {
+    throw new Error('Unsupported web bundle manifest');
+  }
+  const seen = new Set();
+  let totalBytes = 0;
+  for (const [index, file] of manifest.files.entries()) {
+    const path = validateRelativePath(file?.path, `Manifest file ${index}`);
+    if (seen.has(path)) throw new Error(`Duplicate manifest file: ${path}`);
+    if (!Number.isSafeInteger(file.bytes) || file.bytes < 0) {
+      throw new Error(`Invalid byte count for manifest file: ${path}`);
+    }
+    if (
+      typeof file.sha256 !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(file.sha256)
+    ) {
+      throw new Error(`Invalid SHA-256 for manifest file: ${path}`);
+    }
+    seen.add(path);
+    totalBytes += file.bytes;
+  }
+  if (manifest.totalBytes !== totalBytes) {
+    throw new Error('Manifest totalBytes does not match its file entries');
+  }
 }
 
 export function buildWebBundleManifest(root) {
@@ -57,19 +102,41 @@ export function writeWebBundleManifest(root, destination = DEFAULT_MANIFEST) {
   return manifest;
 }
 
-export function verifyWebBundleRoot(root, manifest) {
+export function verifyWebBundleRoot(
+  root,
+  manifest,
+  { allowedExtraPaths = [] } = {},
+) {
   const absoluteRoot = resolve(root);
+  validateManifest(manifest);
+  const actual = buildWebBundleManifest(absoluteRoot);
+  const actualByPath = new Map(actual.files.map((file) => [file.path, file]));
+  const expectedPaths = new Set(manifest.files.map((file) => file.path));
+  const allowedExtras = new Set(
+    allowedExtraPaths.map((path, index) =>
+      validateRelativePath(path, `Allowed extra ${index}`),
+    ),
+  );
   const failures = [];
   for (const expected of manifest.files) {
-    const absolute = join(absoluteRoot, expected.path);
-    if (!existsSync(absolute) || !statSync(absolute).isFile()) {
+    const observed = actualByPath.get(expected.path);
+    if (!observed) {
       failures.push(`${expected.path}: missing`);
       continue;
     }
-    const body = readFileSync(absolute);
-    const digest = createHash('sha256').update(body).digest('hex');
-    if (body.byteLength !== expected.bytes || digest !== expected.sha256) {
+    if (
+      observed.bytes !== expected.bytes ||
+      observed.sha256 !== expected.sha256
+    ) {
       failures.push(`${expected.path}: content differs`);
+    }
+  }
+  for (const observed of actual.files) {
+    if (
+      !expectedPaths.has(observed.path) &&
+      !allowedExtras.has(observed.path)
+    ) {
+      failures.push(`${observed.path}: unexpected`);
     }
   }
   if (failures.length > 0) {
@@ -84,6 +151,7 @@ function usage() {
     'Usage:',
     '  node scripts/web-bundle-manifest.mjs write <www-root> [manifest.json]',
     '  node scripts/web-bundle-manifest.mjs verify <manifest.json> <copied-root> [...]',
+    '  node scripts/web-bundle-manifest.mjs verify-with-extras <manifest.json> <copied-root> <allowed-extra> [...]',
   ].join('\n');
 }
 
@@ -100,13 +168,19 @@ async function main() {
   if (command === 'verify' && args.length >= 2) {
     const [manifestPath, ...roots] = args;
     const manifest = JSON.parse(readFileSync(resolve(manifestPath), 'utf8'));
-    if (manifest.version !== 1 || !Array.isArray(manifest.files)) {
-      throw new Error(`Unsupported web bundle manifest: ${manifestPath}`);
-    }
     for (const root of roots) {
       verifyWebBundleRoot(root, manifest);
       console.log(`[web bundle] verified ${resolve(root)}`);
     }
+    return;
+  }
+  if (command === 'verify-with-extras' && args.length >= 3) {
+    const [manifestPath, root, ...allowedExtraPaths] = args;
+    const manifest = JSON.parse(readFileSync(resolve(manifestPath), 'utf8'));
+    verifyWebBundleRoot(root, manifest, { allowedExtraPaths });
+    console.log(
+      `[web bundle] verified ${resolve(root)} with ${allowedExtraPaths.length} allowed platform files`,
+    );
     return;
   }
   throw new Error(usage());

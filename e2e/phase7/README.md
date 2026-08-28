@@ -11,6 +11,10 @@ pnpm e2e:design:shipped
 pnpm exec nx run trinity-e2e:phase7-visual-e2e -- --update-snapshots
 ```
 
+Both commands create a production build and its SHA-256 manifest before Playwright starts. Set
+`TRINITY_E2E_PREBUILT_WWW=1` only to reuse a previously recorded `www/`; that path verifies the
+payload against the manifest before serving it and fails closed if either has drifted.
+
 Only Playwright's managed Linux Chromium may update the committed PNGs. The suite uses fixed
 accounts, room copy and timestamps; loads the locked Nunito Sans files from Storybook; waits for
 fonts; disables animations, carets and incidental tooltips; and records per-project performance
@@ -21,7 +25,7 @@ self-signed TLS discovery through the worker and synthesizes a 504, which tests 
 behavior instead of the shipped UI this suite owns. The same production JavaScript, CSS and assets
 are still served and hash-verified before they are copied into Electron and Android.
 
-## Pairwise matrix
+## Representative cross-cutting matrix
 
 | Project                | Viewport/device | Appearance                | Pixel-gated surfaces |
 | ---------------------- | --------------- | ------------------------- | -------------------- |
@@ -34,10 +38,12 @@ are still served and hash-verified before they are copied into Electron and Andr
 | webkit-compact-light   | 900x700 WebKit  | light Trinity, Compact    | semantic checks only |
 
 Every project still checks horizontal overflow, surface bounds, representative rendered contrast,
-reduced motion, accessible control names and picker focus restoration. The 1024px project also
-checks forced-colour activation and keyboard focus. Pixel screenshots are intentionally limited to
+the production reduced-motion token contract, accessible control names and picker focus
+restoration. The 1024px project also reaches the primary action through Tab navigation and verifies
+its focus indicator under forced colours. The WebKit project launches Playwright's actual WebKit
+engine rather than only adopting its user agent. Pixel screenshots are intentionally limited to
 stable representative compositions; semantics and geometry cover the rest of the matrix without a
-brittle Cartesian snapshot explosion.
+brittle Cartesian snapshot explosion. This is not a complete pairwise covering array.
 
 The attached performance JSON is diagnostic evidence, not a machine-independent timing budget.
 Production Angular budgets remain the hard bundle-size gate. A Phase 7 timing regression must be

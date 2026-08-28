@@ -536,10 +536,12 @@ Acceptance:
 
 Status: implemented. A separate shipped-interface suite now pixel-gates nine deterministic real-app
 compositions while semantic geometry, contrast, focus, reduced-motion and overflow checks cover a
-six-project pairwise matrix, including full Pixel 5 and 320x568 device descriptors. The Phase 0
+seven-project representative cross-cutting matrix, including genuine WebKit plus full Pixel 5 and
+320x568 device descriptors. The Phase 0
 archive remains immutable. Three unused global compatibility tokens were removed, and a source-shape
 guard now rejects future unused central tokens. Production rollout builds `www/` once, records a
-sorted SHA-256 manifest and verifies the unchanged payload after Electron and Capacitor copy it.
+sorted SHA-256 manifest and verifies the exact unchanged payload after Electron and Capacitor copy
+it; only Capacitor's two named bootstrap scripts may be additional files.
 
 Web, Linux Electron and Android WebView are the installed/runtime evidence available from the Linux
 release environment. iOS still requires the existing macOS/Xcode gate; Phase 7 does not claim a local

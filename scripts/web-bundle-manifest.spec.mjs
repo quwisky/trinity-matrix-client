@@ -3,6 +3,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -41,11 +42,19 @@ describe('web bundle manifest', () => {
     expect(manifest.totalBytes).toBeGreaterThan(0);
   });
 
-  it('verifies copied payload bytes while allowing platform bootstrap files', () => {
+  it('rejects unlisted files and permits only explicit platform bootstrap files', () => {
     const source = fixture();
     const copied = fixture();
     writeFileSync(join(copied, 'cordova.js'), 'native bootstrap');
-    verifyWebBundleRoot(copied, buildWebBundleManifest(source));
+    const manifest = buildWebBundleManifest(source);
+    expect(() => verifyWebBundleRoot(copied, manifest)).toThrow(
+      /cordova\.js: unexpected/,
+    );
+    expect(() =>
+      verifyWebBundleRoot(copied, manifest, {
+        allowedExtraPaths: ['cordova.js'],
+      }),
+    ).not.toThrow();
   });
 
   it('rejects a changed or missing web asset', () => {
@@ -64,5 +73,21 @@ describe('web bundle manifest', () => {
     const saved = JSON.parse(readFileSync(destination, 'utf8'));
     expect(saved.version).toBe(1);
     expect(saved.files).toHaveLength(2);
+  });
+
+  it('rejects unsafe manifest paths and symlinks', () => {
+    const source = fixture();
+    const copied = fixture();
+    const manifest = buildWebBundleManifest(source);
+    manifest.files[0].path = '../outside.js';
+    expect(() => verifyWebBundleRoot(copied, manifest)).toThrow(
+      /safe bundle-relative path/,
+    );
+
+    const linked = fixture();
+    symlinkSync(join(linked, 'index.html'), join(linked, 'linked.html'));
+    expect(() => buildWebBundleManifest(linked)).toThrow(
+      /Unsupported filesystem entry/,
+    );
   });
 });

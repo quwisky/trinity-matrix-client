@@ -680,27 +680,28 @@ Phase 7 keeps the Phase 0 archive immutable and adds a separate real-application
 pnpm e2e:design:shipped
 ```
 
-It drives six pairwise viewport/device profiles against disposable Synapse, including full Pixel 5
+It creates and records a production build, then drives seven representative cross-cutting
+viewport/device profiles against disposable Synapse, including genuine WebKit plus full Pixel 5
 and 320x568 mobile descriptors rather than resized desktop Chromium. Nine stable auth, room,
 settings, encryption and emoji-picker compositions are pixel-gated with deterministic fonts and
-copy; every project also checks geometry, horizontal overflow, rendered contrast, focus and
-reduced-motion behaviour. See [`e2e/phase7/README.md`](../../e2e/phase7/README.md) for the matrix and
-snapshot-update policy.
+copy; every project also checks geometry, horizontal overflow, rendered contrast, focus and the
+production reduced-motion contract. See [`e2e/phase7/README.md`](../../e2e/phase7/README.md) for the
+matrix and snapshot-update policy.
 
-For cross-platform rollout evidence, build `www/` once and hash it before either wrapper copies it:
+For cross-platform rollout evidence, the shipped-interface command builds `www/` once and hashes it
+before either wrapper copies it:
 
 ```bash
-pnpm build
-pnpm bundle:manifest:write
-TRINITY_E2E_PREBUILT_WWW=1 pnpm e2e:design:shipped
+pnpm e2e:design:shipped
 pnpm electron:build:prebuilt
 TRINITY_E2E_PREBUILT_WWW=1 pnpm e2e:android -- --grep @phase7-smoke
 pnpm bundle:manifest:verify
 ```
 
-The verifier requires every production-web file to exist byte-for-byte in `electron/www` and the
-Capacitor asset tree. Android may add its two native bootstrap scripts; those do not replace or
-alter the application payload.
+The verifier requires an exact byte-for-byte file set in `electron/www` and the Capacitor asset
+tree. Android may add only `cordova.js` and `cordova_plugins.js`; any other unrecorded file fails the
+gate. To rerun only the web evidence without rebuilding, set `TRINITY_E2E_PREBUILT_WWW=1`; the runner
+first verifies `www/` against the recorded manifest.
 
 ## The styling blind spot, and what closes it
 

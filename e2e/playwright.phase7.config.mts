@@ -12,8 +12,8 @@ const { defaultBrowserType: _safariBrowser, ...desktopSafari } =
  * Real shipped-interface evidence for Phase 7.
  *
  * This is deliberately separate from the immutable Phase 0 archive and from the static design
- * prototypes. Seven projects cover the pairwise responsive/theme/density/browser matrix, while
- * the spec pixel-gates only nine stable representative surfaces.
+ * prototypes. Seven projects cover a representative cross-cutting responsive, appearance,
+ * density and browser matrix, while the spec pixel-gates only nine stable surfaces.
  */
 export default defineConfig({
   ...nxE2EPreset(import.meta.dirname, { testDir: './phase7' }),
@@ -60,6 +60,7 @@ export default defineConfig({
       name: 'webkit-compact-light',
       use: {
         ...desktopSafari,
+        browserName: 'webkit',
         viewport: { width: 900, height: 700 },
       },
     },

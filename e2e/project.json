@@ -54,7 +54,7 @@
       "parallelism": false,
       "executor": "nx:run-commands",
       "options": {
-        "command": "playwright test -c playwright.phase7.config.mts",
+        "command": "node ../scripts/run-phase7-e2e.mjs",
         "cwd": "{projectRoot}"
       }
     },
