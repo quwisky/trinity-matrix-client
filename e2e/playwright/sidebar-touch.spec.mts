@@ -63,8 +63,12 @@ test.describe('Sidebar on a touch device', () => {
     // Phones keep the identity dock in normal flow rather than letting a desktop overlay
     // cover the last room or duplicate the shell's safe-area ownership.
     await expect(page.locator('trn-sidebar-user-panel')).toHaveCSS(
+      'position',
+      'static',
+    );
+    await expect(page.locator('trn-sidebar-user-panel')).toHaveCSS(
       'display',
-      'contents',
+      'block',
     );
     const mobileDockFlow = await page.evaluate(() => {
       const scroller = document.querySelector<HTMLElement>('.sidebar__scroll');

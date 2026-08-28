@@ -215,23 +215,6 @@
     }
   </div>
 
-  <trn-sidebar-user-panel
-    [user]="user()"
-    [accounts]="accounts()"
-    [activeUserId]="activeUserId()"
-    [reauthAccounts]="reauthAccounts()"
-    [shownAccountIds]="shownAccountIds()"
-    [pickAccountsInDialog]="narrowLayout()"
-    (openAccountPicker)="onOpenAccountPicker()"
-    (toggleAccountShown)="toggleAccountShown.emit($event)"
-    (openSettings)="openSettings.emit()"
-    (accountsOpened)="accountsOpened.emit()"
-    (switchAccount)="switchAccount.emit($event)"
-    (reauthAccount)="reauthAccount.emit($event)"
-    (addAccount)="addAccount.emit()"
-    (logout)="logout.emit($event)"
-  />
-
   <!-- The space's own actions. Ordered by how often they are reached for, with the two
        destructive-adjacent ones last and separated: Leave sat one 30px target from Invite in
        the old row, on exactly the platform where targets are hardest to hit. #40 adds Space

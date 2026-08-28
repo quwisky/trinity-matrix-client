@@ -16,13 +16,7 @@
 .sidebar {
   @include column(var(--trinity-surface-navigation));
 
-  position: relative;
   width: 100%;
-
-  // One measurement owns both the floating identity dock and the scroll clearance below it.
-  // Keeping it on the sidebar lets the child panel inherit it without making the room shell
-  // depend on an implementation detail of the user-panel component.
-  --trinity-sidebar-dock-height: 52px;
 
   // Ring the avatar presence dots (DM online status) in this panel's surface colour.
   --trn-presence-ring: var(--trinity-surface-navigation);
@@ -113,10 +107,10 @@
     // for the last room and tell focus-driven scrolling about the same obstruction, so a
     // keyboard-selected row can always settle fully above the dock.
     padding-block-end: calc(
-      var(--trinity-sidebar-dock-height) + var(--trinity-space-5)
+      var(--trinity-navigation-dock-height) + var(--trinity-space-5)
     );
     scroll-padding-block-end: calc(
-      var(--trinity-sidebar-dock-height) + var(--trinity-space-5)
+      var(--trinity-navigation-dock-height) + var(--trinity-space-5)
     );
   }
 }

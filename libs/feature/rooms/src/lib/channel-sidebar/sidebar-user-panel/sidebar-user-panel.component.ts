@@ -41,7 +41,7 @@ export interface AccountSummary extends UserProfile {
   server?: string | null;
 }
 
-/** The channel sidebar's bottom user panel: the signed-in user plus the account switcher. */
+/** The navigation shell's bottom user panel: the signed-in user plus account switcher. */
 @Component({
   selector: 'trn-sidebar-user-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,

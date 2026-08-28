@@ -1,17 +1,22 @@
 @use '../../styles/mixins' as *;
 
-// Narrow layouts keep the panel in the sidebar's flex flow. At desktop width the host becomes
-// the positioned box, leaving `.userbar` responsible only for the dock's visual surface.
+// Narrow layouts keep the panel in the room-list column of the navigation grid. At desktop
+// width the host floats across both the Space rail and room list, leaving `.userbar`
+// responsible only for the dock's visual surface.
 :host {
-  display: contents;
+  display: block;
+  grid-column: 2;
+  grid-row: 2;
+  height: var(--trinity-navigation-dock-height);
 
   @media #{$md} {
+    grid-column: 1 / -1;
     position: absolute;
     inset-inline: var(--trinity-space-3);
-    inset-block-end: var(--trinity-space-3);
+    inset-block-end: calc(
+      var(--trinity-space-3) + var(--trinity-navigation-safe-area-bottom)
+    );
     z-index: var(--trinity-z-sticky);
-    display: block;
-    height: var(--trinity-sidebar-dock-height);
   }
 }
 
@@ -19,8 +24,8 @@
   --userbar-avatar-ring: var(--trinity-surface-navigation-header);
 
   box-sizing: border-box;
-  height: var(--trinity-sidebar-dock-height);
-  flex: 0 0 var(--trinity-sidebar-dock-height);
+  height: var(--trinity-navigation-dock-height);
+  flex: 0 0 var(--trinity-navigation-dock-height);
   display: flex;
   align-items: center;
   gap: var(--trinity-density-shell-gap);
