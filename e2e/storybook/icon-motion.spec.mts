@@ -71,6 +71,25 @@ test.describe('icon motion', () => {
     await page.mouse.up();
   });
 
+  test('public icon buttons share pointer and hover treatment', async ({
+    page,
+  }) => {
+    await openStory(page, 'pop');
+    const button = page.getByRole('button', { name: 'Search' });
+    const rest = await button.evaluate((element) => ({
+      background: getComputedStyle(element).backgroundColor,
+      cursor: getComputedStyle(element).cursor,
+    }));
+
+    expect(rest.cursor).toBe('pointer');
+    await button.hover();
+    await expect
+      .poll(() =>
+        button.evaluate((element) => getComputedStyle(element).backgroundColor),
+      )
+      .not.toBe(rest.background);
+  });
+
   test('keyboard focus-visible triggers the same semantic gesture', async ({
     page,
   }) => {
@@ -83,6 +102,68 @@ test.describe('icon motion', () => {
 
     await expect(button).toBeFocused();
     await expect.poll(() => transformOf(icon)).not.toBe(rest);
+  });
+
+  test('icon links receive the same focus gesture and button treatment', async ({
+    page,
+  }) => {
+    await page.goto(`${STORY}--treatments&viewMode=story`);
+    const link = page.getByRole('link', { name: 'Linked action' });
+    const icon = innerIcon(link);
+    const rest = await transformOf(icon);
+
+    expect(
+      await link.evaluate((element) => getComputedStyle(element).cursor),
+    ).toBe('pointer');
+    await link.focus();
+    await expect.poll(() => transformOf(icon)).not.toBe(rest);
+  });
+
+  test('sizes and contextual tones retain one interaction contract', async ({
+    page,
+  }) => {
+    await page.goto(`${STORY}--treatments&viewMode=story`);
+    const enabledNames = [
+      'Small action',
+      'Destructive action',
+      'Floating action',
+    ];
+    const enabled = enabledNames.map((name) =>
+      page.getByRole('button', { name }),
+    );
+    const restBackgrounds = await Promise.all(
+      enabled.map((button) =>
+        button.evaluate((element) => getComputedStyle(element).backgroundColor),
+      ),
+    );
+    const radii = await Promise.all(
+      enabled.map((button) =>
+        button.evaluate((element) => getComputedStyle(element).borderRadius),
+      ),
+    );
+    const expectedHover = await page.evaluate(() => {
+      const probe = document.createElement('div');
+      probe.style.backgroundColor = 'var(--trinity-state-hover-surface)';
+      document.body.append(probe);
+      const color = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return color;
+    });
+
+    expect(new Set(radii).size).toBe(1);
+    expect(new Set(restBackgrounds).size).toBeGreaterThan(1);
+    for (const button of enabled) {
+      expect(
+        await button.evaluate((element) => getComputedStyle(element).cursor),
+      ).toBe('pointer');
+      await button.hover();
+      await expect(button).toHaveCSS('background-color', expectedHover);
+    }
+
+    const disabled = page.getByRole('button', { name: 'Unavailable action' });
+    expect(
+      await disabled.evaluate((element) => getComputedStyle(element).cursor),
+    ).toBe('default');
   });
 
   test('disabled controls remain still under the pointer', async ({ page }) => {
@@ -136,8 +217,15 @@ test.describe('icon motion', () => {
           palette: palette === 'trinity' ? null : palette,
         });
 
-        await expect(page.getByRole('button')).toHaveCount(3);
-        for (const name of ['Back', 'Send', 'Settings']) {
+        await expect(page.getByRole('button')).toHaveCount(6);
+        for (const name of [
+          'Back',
+          'Move up',
+          'Move down',
+          'Send',
+          'Search',
+          'Settings',
+        ]) {
           const button = page.getByRole('button', { name });
           const icon = innerIcon(button);
           await expect(button).toBeVisible();

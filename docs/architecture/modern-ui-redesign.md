@@ -126,6 +126,21 @@ layouts, remove the decorative outer radius and use the full viewport.
 An action moved into overflow must retain a tooltip or label, keyboard access and an efficient route
 for frequent users. Destructive actions remain separated and use the existing danger roles.
 
+#### Icon buttons
+
+Square icon actions use the public `trnBtn` contract with an `icon*` size and the ghost
+treatment. The wrapper marks those controls so the unlayered application interaction rule can
+give every one the same control radius, pointer cursor, tokenised hover/pressed surface, focus
+baseline and disabled behavior without changing the vendored Helm layer. Context may still add a
+resting treatment when meaning or contrast requires it: destructive device actions keep their
+danger foreground, and the image viewer's Close control keeps its bordered floating surface.
+
+Not every button that contains an icon is a square icon action. Navigation rows, server-rail
+destinations, reaction chips, media playback, attachment previews, formatting toggles, composer
+controls and the compact floating message toolbar retain purpose-built geometry and target sizes.
+Their component styles are an explicit audited exception; new bespoke icon-control surfaces must
+be added to the source-shape inventory rather than silently bypassing the public contract.
+
 ### Motion confirms cause and effect
 
 Use the existing motion vocabulary:
@@ -135,9 +150,12 @@ Use the existing motion vocabulary:
 - 200ms menus, toolbars and local transitions;
 - 320ms full-surface panel changes.
 
-Prefer opacity and transform. Icons may use the existing semantic motions when the motion explains
-the result (send, rotate settings, back nudge); they should not animate merely because they are
-hovered. Every motion must collapse under `prefers-reduced-motion`.
+Prefer opacity and transform. Every public square icon action chooses an explicit, restrained
+semantic gesture for hover, keyboard focus and press: directional actions nudge toward their
+result, settings and Close rotate slightly, and discovery or reveal actions pop. The gesture moves
+only the inner glyph, never its layout box or hit target. Decorative icons remain static, the same
+action should reuse the same gesture everywhere, and every motion must collapse under
+`prefers-reduced-motion`.
 
 ## Target experience
 

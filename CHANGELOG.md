@@ -77,6 +77,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Icon buttons now behave as one family.** Square actions use the same shape, pointer cursor,
+  hover and pressed surfaces across the app while preserving contextual danger and lightbox
+  contrast. Each action also gets a small semantic glyph motion—for example, Back nudges left,
+  Settings rotates and Search pops—with keyboard parity and a static reduced-motion fallback.
+
 - **The modern interface is now hardened across the supported screen sizes.** The quieter layered
   room shell, responsive auth and encryption tasks, grouped settings workspace, compact density and
   floating pickers now share one tested visual system from 1440px desktop windows down to 320px

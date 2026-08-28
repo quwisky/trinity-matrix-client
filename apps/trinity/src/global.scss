@@ -31,6 +31,58 @@ button:disabled,
 }
 
 /*
+ * Shared icon-button interaction contract.
+ *
+ * `TrnButton` publishes the marker for every `size="icon*"` public button. This rule is
+ * intentionally unlayered so the invariant state treatment wins over Helm's layered variant
+ * utilities without reaching into the vendored component. Contextual rest treatments still
+ * belong to the caller: the lightbox keeps its floating contrast and destructive actions keep
+ * their danger foreground. Only shape, cursor and interaction feedback are standardized here.
+ */
+:is(button, a)[trnBtn][data-trn-icon-button] {
+  border-radius: var(--trinity-shape-control-radius);
+  cursor: pointer;
+  transition:
+    background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
+    color var(--trinity-duration-fast) var(--trinity-ease-standard),
+    border-color var(--trinity-duration-fast) var(--trinity-ease-standard),
+    box-shadow var(--trinity-duration-fast) var(--trinity-ease-standard);
+}
+
+@media (hover: hover) {
+  :is(button, a)[trnBtn][data-trn-icon-button]:not(
+      :disabled,
+      [aria-disabled='true'],
+      [data-disabled='true'],
+      [data-disabled='']
+    ) {
+    &:hover {
+      background: var(--trinity-state-hover-surface);
+    }
+  }
+}
+
+:is(button, a)[trnBtn][data-trn-icon-button]:not(
+    :disabled,
+    [aria-disabled='true'],
+    [data-disabled='true'],
+    [data-disabled='']
+  ) {
+  &:active {
+    background: var(--trinity-state-pressed-surface);
+  }
+}
+
+:is(button, a)[trnBtn][data-trn-icon-button]:is(
+    :disabled,
+    [aria-disabled='true'],
+    [data-disabled='true'],
+    [data-disabled='']
+  ) {
+  cursor: default;
+}
+
+/*
  * App-shell layout. <trn-root> is a fixed-height flex column (h-dvh); Angular renders
  * the routed page as the sibling immediately after <router-outlet>, so make that page
  * fill the remaining space and be its own flex column (its <header> is shrink-0, its

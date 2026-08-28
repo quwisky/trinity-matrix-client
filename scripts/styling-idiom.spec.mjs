@@ -127,6 +127,7 @@ const LEDGER = [
   'libs/feature/settings/src/lib/appearance/appearance-preview.component.scss',
   'libs/feature/settings/src/lib/image-packs/image-packs-section.component.scss',
   'libs/feature/settings/src/lib/server/homeserver-block.component.scss',
+  'libs/feature/settings/src/lib/settings-dialog/settings-dialog.component.scss',
   'libs/feature/settings/src/lib/settings/settings.page.scss',
 ];
 

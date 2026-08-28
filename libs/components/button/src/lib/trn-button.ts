@@ -1,4 +1,4 @@
-import { Directive } from '@angular/core';
+import { computed, Directive, inject } from '@angular/core';
 import { HlmButton } from '@trinity/helm/button';
 
 /**
@@ -12,6 +12,9 @@ import { HlmButton } from '@trinity/helm/button';
 @Directive({
   selector: 'button[trnBtn], a[trnBtn]',
   exportAs: 'trnBtn',
+  host: {
+    '[attr.data-trn-icon-button]': "iconButton() ? '' : null",
+  },
   hostDirectives: [
     {
       directive: HlmButton,
@@ -20,6 +23,18 @@ import { HlmButton } from '@trinity/helm/button';
     },
   ],
 })
-export class TrnButton {}
+export class TrnButton {
+  private readonly helm = inject(HlmButton, { self: true });
+
+  /**
+   * Icon sizes opt into Trinity's shared icon-button interaction contract.
+   *
+   * Keep this derived from Helm's public input instead of reading the host attribute: bound
+   * sizes need to update reactively, and the public wrapper is the layer that owns the marker.
+   */
+  protected readonly iconButton = computed(() =>
+    this.helm.size()?.startsWith('icon'),
+  );
+}
 
 export const TrnButtonImports = [TrnButton] as const;
