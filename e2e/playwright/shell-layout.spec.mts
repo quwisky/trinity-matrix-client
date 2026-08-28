@@ -162,6 +162,10 @@ async function expectFloatingDockContract(page: Page): Promise<void> {
       document.querySelector<HTMLElement>('.sidebar__scroll');
     const host = document.querySelector<HTMLElement>('trn-sidebar-user-panel');
     const dock = document.querySelector<HTMLElement>('.userbar');
+    const settingsButton = document.querySelector<HTMLElement>(
+      '[data-testid="open-settings"]',
+    );
+    const settingsIcon = settingsButton?.querySelector<HTMLElement>('trn-icon');
     const lastSpace = rail?.lastElementChild as HTMLElement | null;
     const lastRoom = roomScroller?.lastElementChild as HTMLElement | null;
     if (
@@ -171,6 +175,8 @@ async function expectFloatingDockContract(page: Page): Promise<void> {
       !roomScroller ||
       !host ||
       !dock ||
+      !settingsButton ||
+      !settingsIcon ||
       !lastSpace ||
       !lastRoom
     ) {
@@ -184,6 +190,8 @@ async function expectFloatingDockContract(page: Page): Promise<void> {
     const railBox = rail.getBoundingClientRect();
     const sidebarBox = sidebar.getBoundingClientRect();
     const dockBox = dock.getBoundingClientRect();
+    const settingsButtonBox = settingsButton.getBoundingClientRect();
+    const settingsIconBox = settingsIcon.getBoundingClientRect();
     const spaceBox = lastSpace.getBoundingClientRect();
     const roomBox = lastRoom.getBoundingClientRect();
     const railStyle = getComputedStyle(rail);
@@ -204,6 +212,16 @@ async function expectFloatingDockContract(page: Page): Promise<void> {
         dockBox.left < railBox.right && dockBox.right > sidebarBox.left,
       lastSpaceClearsDock: spaceBox.bottom <= dockBox.top - 1,
       lastRoomClearsDock: roomBox.bottom <= dockBox.top - 1,
+      settingsIconOffsetX: Math.abs(
+        settingsButtonBox.left +
+          settingsButtonBox.width / 2 -
+          (settingsIconBox.left + settingsIconBox.width / 2),
+      ),
+      settingsIconOffsetY: Math.abs(
+        settingsButtonBox.top +
+          settingsButtonBox.height / 2 -
+          (settingsIconBox.top + settingsIconBox.height / 2),
+      ),
     };
     shell.style.removeProperty('--trinity-navigation-safe-area-bottom');
     return result;
@@ -211,6 +229,8 @@ async function expectFloatingDockContract(page: Page): Promise<void> {
 
   expect(geometry.railScrollPaddingEnd).toBe(geometry.compact ? 64 : 68);
   expect(geometry.roomScrollPaddingEnd).toBe(geometry.compact ? 64 : 68);
+  expect(geometry.settingsIconOffsetX).toBeLessThanOrEqual(1);
+  expect(geometry.settingsIconOffsetY).toBeLessThanOrEqual(1);
   expect(geometry).toMatchObject({
     hostPosition: 'absolute',
     dockInsideInline: true,

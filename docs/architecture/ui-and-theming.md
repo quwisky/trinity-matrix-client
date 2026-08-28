@@ -35,7 +35,8 @@ Icon-only actions use one of two public contracts. A standard square action uses
 an `icon*` size, which supplies the shared shape and automatically opts into the common pointer,
 hover and pressed states. A purpose-built control whose geometry carries meaning—a reaction chip,
 server-rail pill, avatar action or compact toolbar button—uses `trnIconButton` instead. It keeps
-that geometry but receives the same interaction states. In both forms the inner `<trn-icon>` must
+that geometry but receives the same interaction states; the owning component must explicitly
+centre its glyph within that custom box. In both forms the inner `<trn-icon>` must
 choose an explicit semantic `motion` (`nudge-left`, `nudge-up`, `nudge-down`, `nudge-up-right`,
 `pop` or `rotate`); motion never moves the hit target, and reduced-motion mode removes the glyph
 transform while retaining colour and focus feedback.
