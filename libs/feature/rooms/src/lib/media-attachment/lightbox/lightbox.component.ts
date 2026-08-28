@@ -4,6 +4,8 @@ import {
   inject,
   input,
 } from '@angular/core';
+import { TrnButton } from '@trinity/components/button';
+import { TrnIconComponent } from '@trinity/components/icon';
 import { TrnDialogRef } from '@trinity/components/overlay';
 
 /**
@@ -24,19 +26,13 @@ import { TrnDialogRef } from '@trinity/components/overlay';
 @Component({
   selector: 'trn-lightbox',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [TrnButton, TrnIconComponent],
   host: {
-    class:
-      'flex h-screen w-screen cursor-zoom-out items-center justify-center p-6',
+    class: 'lightbox',
     '(click)': 'close()',
   },
-  template: `
-    <img
-      decoding="async"
-      class="max-h-full max-w-full object-contain"
-      [src]="src()"
-      [alt]="filename()"
-    />
-  `,
+  templateUrl: './lightbox.component.html',
+  styleUrl: './lightbox.component.scss',
 })
 export class LightboxComponent {
   readonly src = input.required<string>();

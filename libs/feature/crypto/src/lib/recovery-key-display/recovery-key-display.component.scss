@@ -4,13 +4,13 @@
 
 .key {
   display: block;
-  padding: 14px 16px;
+  padding: var(--trinity-space-5);
   border: 1px solid var(--trinity-divider);
-  border-radius: var(--trinity-radius);
-  background: var(--trinity-rail);
+  border-radius: var(--trinity-shape-container-radius);
+  background: var(--trinity-surface-workspace);
   color: var(--trinity-text-bright);
   font-family: SFMono-Regular, 'Roboto Mono', menlo, consolas, monospace;
-  font-size: 15px;
+  font-size: var(--trinity-text-base);
   line-height: 1.6;
   letter-spacing: 0.04em;
   overflow-wrap: anywhere;
@@ -19,8 +19,9 @@
 
 .actions {
   display: flex;
-  gap: 8px;
-  margin-top: 12px;
+  flex-wrap: wrap;
+  gap: var(--trinity-space-3);
+  margin-top: var(--trinity-space-4);
 }
 
 .copy-hint {

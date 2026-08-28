@@ -21,10 +21,13 @@
   display: block;
 
   .emoji-mart {
-    background: var(--background);
-    border-color: var(--border);
+    overflow: hidden;
+    border-color: var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-overlay-radius);
+    background: var(--trinity-surface-floating);
     color: var(--foreground);
     font-family: inherit;
+    box-shadow: var(--trinity-shadow-overlay);
   }
 
   // Only the idle and hover states are ours to paint. The vendor inline-styles the anchor
@@ -45,7 +48,7 @@
 
   .emoji-mart-search {
     input {
-      background: var(--background);
+      background: var(--trinity-surface-workspace);
       border-color: var(--border);
       color: var(--foreground);
 
@@ -70,7 +73,7 @@
   // Category headings are sticky and painted opaque by the vendor so rows do not show
   // through; that opaque fill has to be OUR surface or a band of #fff crosses dark mode.
   .emoji-mart-category-label span {
-    background: var(--background);
+    background: var(--trinity-surface-floating);
     color: var(--foreground);
   }
 

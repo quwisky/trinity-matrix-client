@@ -132,6 +132,9 @@
   --trinity-shadow-overlay: 0 12px 32px rgb(0 0 0 / 18%);
   --trinity-camera-scrim: rgb(0 0 0 / 35%);
 
+  // QR modules require a stable light quiet zone regardless of mode or palette.
+  --trinity-qr-surface: #fff;
+
   // --- Z-index layers -----------------------------------------------------------
   // Named because the bare numbers in the tree (5, 10, 20, 40) carry no relation to
   // each other and nothing said which was meant to sit over which. These govern

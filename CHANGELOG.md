@@ -77,6 +77,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Sign-in, encryption and secondary surfaces now share the modern interface.** Authentication
+  and registration use a roomier, branded task card; encryption setup, recovery and verification
+  use the same bounded routed surface and a distinct scroll-safe dialog treatment. Security
+  warnings and recovery keys remain the strongest elements in those flows. GIF, sticker, emoji
+  and user pickers now share the floating-surface vocabulary, and the full-screen image viewer
+  adds a visible Close control without changing Escape or backdrop dismissal.
+
 - **Interface controls now go through Trinity's public component tier.** Buttons, dropdown
   menus and the toast viewport keep the same behaviour and appearance, but feature code no
   longer imports the vendored Helm kit directly. The lint boundary now has no exceptions.

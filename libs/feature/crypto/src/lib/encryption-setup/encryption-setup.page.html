@@ -1,36 +1,43 @@
 <trn-page-header title="Set up encryption" />
 
-<main class="flex-1 overflow-y-auto p-4">
-  @if (recoveryKey(); as key) {
-    <!-- Step 2: the key exists — show it once behind a confirm-saved gate. -->
-    <trn-recovery-key-save
-      [recoveryKey]="key"
-      heading="Save your recovery key"
-      intro="This key restores your encrypted messages on a new device. Store it somewhere safe, like a password manager."
-      warning="We'll only show this key once. Without it, you can't recover your message history."
-      confirmLabel="Continue to Trinity"
-      (confirmed)="finish()"
-    />
-  } @else {
-    <!-- Step 1: introduce the flow and trigger setup. -->
-    <h2 class="heading">Secure your messages</h2>
-    <p class="text-muted-foreground">
-      Set up end-to-end encryption so only you and the people you message can
-      read what's sent. We'll generate a recovery key for you to save.
-    </p>
+<main class="crypto-route">
+  <section class="crypto-surface">
+    @if (recoveryKey(); as key) {
+      <!-- Step 2: the key exists — show it once behind a confirm-saved gate. -->
+      <trn-recovery-key-save
+        [recoveryKey]="key"
+        heading="Save your recovery key"
+        intro="This key restores your encrypted messages on a new device. Store it somewhere safe, like a password manager."
+        warning="We'll only show this key once. Without it, you can't recover your message history."
+        confirmLabel="Continue to Trinity"
+        (confirmed)="finish()"
+      />
+    } @else {
+      <!-- Step 1: introduce the flow and trigger setup. -->
+      <h2 class="heading">Secure your messages</h2>
+      <p class="lead">
+        Set up end-to-end encryption so only you and the people you message can
+        read what's sent. We'll generate a recovery key for you to save.
+      </p>
 
-    <button trnBtn class="w-full" [disabled]="busy()" (click)="setUp()">
-      Set up encryption
-    </button>
-  }
+      <button
+        trnBtn
+        class="primary-action w-full"
+        [disabled]="busy()"
+        (click)="setUp()"
+      >
+        Set up encryption
+      </button>
+    }
 
-  @if (busy()) {
-    <div class="pt-4 text-center" role="status" aria-live="polite">
-      <trn-spinner />
-      <p class="text-muted-foreground">Setting up encryption…</p>
-    </div>
-  }
-  @if (error(); as message) {
-    <p class="text-danger" role="alert">{{ message }}</p>
-  }
+    @if (busy()) {
+      <div class="status" role="status" aria-live="polite">
+        <trn-spinner />
+        <p class="text-muted-foreground">Setting up encryption…</p>
+      </div>
+    }
+    @if (error(); as message) {
+      <p class="error" role="alert">{{ message }}</p>
+    }
+  </section>
 </main>

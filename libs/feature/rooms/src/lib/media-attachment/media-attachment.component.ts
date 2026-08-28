@@ -131,8 +131,8 @@ export class MediaAttachmentComponent {
             {
               inputs: { src: url, filename: this.media().filename },
               ariaLabel: this.media().filename,
-              // The image, not the first tabbable thing: there is nothing to tab to, and
-              // 'first-tabbable' would leave focus on the dialog container unnamed.
+              // Keep the full viewer container as the initial focus target. The visible close
+              // button remains keyboard reachable, while Escape/backdrop dismissal stay intact.
               autoFocus: 'dialog',
             },
           );

@@ -10,8 +10,95 @@
 /// Four copies of this block had already been pasted apart; it lives here once because
 /// these screens are read as one flow and must not drift again.
 @mixin heading {
-  font-size: 20px;
-  font-weight: 700;
+  margin: 0 0 var(--trinity-space-3);
   color: var(--trinity-text-bright);
-  margin: 0 0 8px;
+  font-size: var(--trinity-type-title-size);
+  font-weight: var(--trinity-type-title-weight);
+  line-height: var(--trinity-type-title-line-height);
+  letter-spacing: -0.015em;
+}
+
+/// A routed crypto flow owns the only vertical scroll and centres its task surface.
+@mixin route {
+  flex: 1;
+  overflow-y: auto;
+  padding: clamp(var(--trinity-space-5), 4vw, var(--trinity-space-7));
+  background: var(--trinity-surface-frame);
+}
+
+@mixin surface {
+  width: min(100%, 640px);
+  margin-inline: auto;
+  padding: var(--trinity-space-6);
+  border: 1px solid var(--trinity-border-subtle);
+  border-radius: var(--trinity-shape-overlay-radius);
+  background: var(--trinity-surface-raised);
+  box-shadow: var(--trinity-shadow-raised);
+
+  @media (max-width: 479px) {
+    padding: var(--trinity-space-5);
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
+@mixin modal {
+  display: flex;
+  width: min(92vw, 500px);
+  max-height: min(90vh, 720px);
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--trinity-border-subtle);
+  border-radius: var(--trinity-shape-overlay-radius);
+  background: var(--trinity-surface-floating);
+  color: var(--trinity-text);
+  box-shadow: var(--trinity-shadow-overlay);
+}
+
+@mixin modal-header {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  gap: var(--trinity-space-3);
+  padding: var(--trinity-space-4) var(--trinity-space-5);
+  border-bottom: 1px solid var(--trinity-border-subtle);
+  background: var(--trinity-surface-navigation-header);
+}
+
+@mixin modal-body {
+  overflow-y: auto;
+  padding: var(--trinity-space-6);
+}
+
+@mixin lead {
+  margin: 0;
+  color: var(--trinity-text-muted);
+  font-size: var(--trinity-type-body-size);
+  line-height: var(--trinity-type-body-line-height);
+}
+
+@mixin warning {
+  margin: var(--trinity-space-5) 0;
+  padding: var(--trinity-space-4) var(--trinity-space-5);
+  border: 1px solid var(--warning);
+  border-inline-start-width: 4px;
+  border-radius: var(--trinity-shape-container-radius);
+  background: color-mix(
+    in srgb,
+    var(--warning) 12%,
+    var(--trinity-surface-raised)
+  );
+  color: var(--trinity-text-bright);
+  font-size: var(--trinity-type-body-size);
+  font-weight: 600;
+  line-height: var(--trinity-type-body-line-height);
+}
+
+@mixin status {
+  margin-top: var(--trinity-space-5);
+  padding: var(--trinity-space-4);
+  border-radius: var(--trinity-shape-container-radius);
+  background: var(--trinity-state-hover-surface);
+  text-align: center;
 }

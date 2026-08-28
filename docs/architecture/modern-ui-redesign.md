@@ -495,6 +495,25 @@ Acceptance:
 
 ### Phase 6 - auth, crypto and remaining surfaces
 
+Status: implemented. Authentication now has one branded, responsive card surface and one shared
+form recipe for password login and legacy registration; SSO keeps its intentionally smaller
+redirect treatment. Routed encryption tasks use a centred surface inside the page's single scroll
+owner, while unlock and verification dialogs use a separate bounded modal shell. Recovery keys
+remain selectable and untruncated, one-time-key and QR privacy warnings retain warning-level
+contrast, and stage-heading/autofocus behaviour is unchanged. GIF, sticker, emoji and user pickers
+share the same floating radius, elevation and tokenised state treatment; the media lightbox adds a
+visible Close action while preserving Escape, backdrop and focus restoration. The empty-state and
+toast primitives were audited and already matched the shared vocabulary. Feature and application
+code now have no direct Helm imports: public button, dropdown and toaster APIs close the final
+vendor-boundary exceptions.
+
+Primary ownership:
+
+- `libs/feature/auth/src/lib/auth-card` and `styles/_auth-form.scss`;
+- `libs/feature/crypto/src/lib/styles/_mixins.scss` and the crypto flow components;
+- public overlay/button components plus picker and media surfaces;
+- the zero-direct-Helm lint/source-shape guards.
+
 Deliverables:
 
 - modern auth and registration cards;

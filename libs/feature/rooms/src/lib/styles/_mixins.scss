@@ -94,6 +94,32 @@ $below-md: '(max-width: 767.98px)';
   background: var(--trinity-sidebar);
 }
 
+/// Anchored picker surface shared by GIF, sticker and other composer trays.
+@mixin picker-surface($width) {
+  display: flex;
+  width: $width;
+  max-width: calc(100vw - 2rem);
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--trinity-border-subtle);
+  border-radius: var(--trinity-shape-overlay-radius);
+  background: var(--trinity-surface-floating);
+  color: var(--trinity-text);
+  box-shadow: var(--trinity-shadow-overlay);
+}
+
+@mixin picker-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--trinity-space-4);
+  padding: var(--trinity-space-5);
+  color: var(--trinity-text-muted);
+  font-size: var(--trinity-type-body-size);
+  line-height: var(--trinity-type-body-line-height);
+  text-align: center;
+}
+
 /// Full-height vertical column surface.
 @mixin column($background) {
   height: 100%;

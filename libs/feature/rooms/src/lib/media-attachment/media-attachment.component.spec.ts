@@ -191,7 +191,11 @@ describe('MediaAttachmentComponent', () => {
     TestBed.tick();
     mediaService.unpin.mockClear();
 
-    (lightboxImage()?.parentElement as HTMLElement).click();
+    const close = document.querySelector<HTMLButtonElement>(
+      '[data-testid=lightbox-close]',
+    );
+    expect(close?.getAttribute('aria-label')).toBe('Close image viewer');
+    close?.click();
 
     expect(lightboxImage()).toBeNull();
     expect(mediaService.unpin).toHaveBeenCalledWith('blob:full');
