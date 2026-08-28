@@ -54,6 +54,28 @@ async function openSection(page: Page, path: string): Promise<void> {
   await expect(page.getByTestId('settings-detail')).not.toBeEmpty();
 }
 
+/** Difference between the title text edge and the navigation's content edge. */
+async function settingsTitleAlignment(page: Page): Promise<number> {
+  return page.locator('[data-settings-autofocus]').evaluate((title) => {
+    const nav = document.querySelector<HTMLElement>(
+      'nav[aria-label="Settings sections"]',
+    );
+    const text = title.firstChild;
+    if (!nav || !text) throw new Error('settings title geometry missing');
+
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    const textRect = range.getBoundingClientRect();
+    const navRect = nav.getBoundingClientRect();
+    const navStyle = getComputedStyle(nav);
+    const paddingStart = Number.parseFloat(navStyle.paddingInlineStart);
+
+    return navStyle.direction === 'rtl'
+      ? navRect.right - paddingStart - textRect.right
+      : textRect.left - (navRect.left + paddingStart);
+  });
+}
+
 test.describe('Settings', () => {
   test.skip(
     !session.available,
@@ -111,6 +133,20 @@ test.describe('Settings', () => {
     // Beside, not stacked: the detail starts after the nav ends.
     expect(detailBox!.x).toBeGreaterThanOrEqual(navBox!.x + navBox!.width - 1);
     expect(navBox!.width).toBe(256);
+    await expect
+      .poll(async () => Math.abs(await settingsTitleAlignment(page)))
+      .toBeLessThanOrEqual(1);
+
+    const settingsDialog = page.getByTestId('settings-dialog');
+    await settingsDialog.evaluate((element) => {
+      element.setAttribute('dir', 'rtl');
+    });
+    await expect
+      .poll(async () => Math.abs(await settingsTitleAlignment(page)))
+      .toBeLessThanOrEqual(1);
+    await settingsDialog.evaluate((element) => {
+      element.setAttribute('dir', 'ltr');
+    });
 
     // The mobile drill-in chevron is suppressed in the sidebar — and it is suppressed by
     // NOT BEING RENDERED, which is why this asserts absence rather than a computed style.
@@ -414,6 +450,9 @@ test.describe('Settings', () => {
     await expect.poll(densityAttr).toBe('compact');
     await expect.poll(spaceToken).toBe('12px');
     await expect.poll(previewGap).toBe('8px');
+    await expect
+      .poll(async () => Math.abs(await settingsTitleAlignment(page)))
+      .toBeLessThanOrEqual(1);
     await expect(page.getByTestId('appearance-preview-state')).toContainText(
       'Compact',
     );

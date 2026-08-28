@@ -31,6 +31,7 @@
   min-width: 0;
   flex: 1;
   margin: 0;
+  padding-inline-start: calc(var(--trinity-space-4) - var(--trinity-space-3));
   color: var(--trinity-text-bright);
   font-size: var(--trinity-type-title-size);
   line-height: var(--trinity-type-title-line-height);
