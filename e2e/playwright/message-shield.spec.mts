@@ -1,11 +1,6 @@
-import {
-  test,
-  expect,
-  type APIRequestContext,
-  type Page,
-} from './support/fixtures.mts';
+import { test, expect, type Page } from './support/fixtures.mts';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import { passwordLogin, registerUser } from './support/account.mts';
 
 // Covers per-message authenticity shields (message-row `data-testid="msg-shield-*"`):
 // that a plaintext room raises none — shields are resolved only for encrypted events —
@@ -18,27 +13,6 @@ import { registerUser } from './support/account.mts';
 // proves the SDK actually raises a shield here at all.
 // Needs a Synapse homeserver (Docker); self-skips.
 const session = synapseSession();
-
-async function apiToken(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<{ userId: string; headers: { Authorization: string } }> {
-  const json = await request
-    .post(`${hs}/_matrix/client/v3/login`, {
-      data: {
-        type: 'm.login.password',
-        identifier: { type: 'm.id.user', user },
-        password: pass,
-      },
-    })
-    .then((response) => response.json());
-  return {
-    userId: json.user_id as string,
-    headers: { Authorization: `Bearer ${json.access_token}` },
-  };
-}
 
 /**
  * Bootstrap cross-signing + recovery on the first device. Without an own identity the
@@ -106,33 +80,24 @@ test.describe('Message authenticity shields', () => {
 
     await registerUser(request, owner, ownerPass);
     await registerUser(request, reader, readerPass);
-    const login1 = await request
-      .post(`${hs}/_matrix/client/v3/login`, {
-        data: {
-          type: 'm.login.password',
-          identifier: { type: 'm.id.user', user: owner },
-          password: ownerPass,
-        },
-      })
-      .then((r) => r.json());
-    const ownerAuth = { Authorization: `Bearer ${login1.access_token}` };
-    const readerLogin = await request
-      .post(`${hs}/_matrix/client/v3/login`, {
-        data: {
-          type: 'm.login.password',
-          identifier: { type: 'm.id.user', user: reader },
-          password: readerPass,
-        },
-      })
-      .then((r) => r.json());
-    const readerAuth = { Authorization: `Bearer ${readerLogin.access_token}` };
-    const readerId = readerLogin.user_id as string;
+    const ownerSession = await passwordLogin(request, hs, owner, ownerPass);
+    const readerSession = await passwordLogin(request, hs, reader, readerPass);
+    const ownerAuth = {
+      Authorization: `Bearer ${ownerSession.accessToken}`,
+    };
+    const readerAuth = {
+      Authorization: `Bearer ${readerSession.accessToken}`,
+    };
 
     // A plaintext room (no encryption initial_state) — its messages get no shield.
     const { room_id } = await request
       .post(`${hs}/_matrix/client/v3/createRoom`, {
         headers: ownerAuth,
-        data: { name: roomName, preset: 'private_chat', invite: [readerId] },
+        data: {
+          name: roomName,
+          preset: 'private_chat',
+          invite: [readerSession.userId],
+        },
       })
       .then((r) => r.json());
     // The reader must actually join, else the room lands as an invite (not a joined
@@ -188,24 +153,19 @@ test.describe('Message authenticity shields', () => {
 
     await registerUser(request, user, pass);
     await registerUser(request, seerUser, seerPass);
-    const session1 = await request
-      .post(`${hs}/_matrix/client/v3/login`, {
-        data: {
-          type: 'm.login.password',
-          identifier: { type: 'm.id.user', user },
-          password: pass,
-        },
-      })
-      .then((r) => r.json());
-    const seer = await apiToken(request, hs, seerUser, seerPass);
+    const ownerSession = await passwordLogin(request, hs, user, pass);
+    const seerSession = await passwordLogin(request, hs, seerUser, seerPass);
+    const seerAuth = {
+      Authorization: `Bearer ${seerSession.accessToken}`,
+    };
     await request.put(
-      `${hs}/_matrix/client/v3/profile/${encodeURIComponent(seer.userId)}/displayname`,
-      { headers: seer.headers, data: { displayname: seerName } },
+      `${hs}/_matrix/client/v3/profile/${encodeURIComponent(seerSession.userId)}/displayname`,
+      { headers: seerAuth, data: { displayname: seerName } },
     );
 
     const { room_id } = await request
       .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: { Authorization: `Bearer ${session1.access_token}` },
+        headers: { Authorization: `Bearer ${ownerSession.accessToken}` },
         data: {
           name: roomName,
           preset: 'private_chat',
@@ -221,15 +181,15 @@ test.describe('Message authenticity shields', () => {
       .then((r) => r.json());
     expect(room_id).toBeTruthy();
     const ownerAuth = {
-      Authorization: `Bearer ${session1.access_token as string}`,
+      Authorization: `Bearer ${ownerSession.accessToken}`,
     };
     await request.post(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/invite`,
-      { headers: ownerAuth, data: { user_id: seer.userId } },
+      { headers: ownerAuth, data: { user_id: seerSession.userId } },
     );
     await request.post(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/join`,
-      { headers: seer.headers },
+      { headers: seerAuth },
     );
 
     // Device A: owns the cross-signing identity every other device is judged against.
@@ -254,11 +214,11 @@ test.describe('Message authenticity shields', () => {
     await expect(page.locator('.msg__text', { hasText: runId })).toBeVisible({
       timeout: 60_000,
     });
-    const shield = page.locator('[data-testid^="msg-shield-"]').first();
+    const shieldRow = page
+      .locator('.msg', { has: page.locator('.msg__text', { hasText: body }) })
+      .first();
+    const shield = shieldRow.locator('[data-testid^="msg-shield-"]');
     await expect(shield).toBeVisible({ timeout: 60_000 });
-    const shieldRow = shield.locator(
-      'xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " msg ")][1]',
-    );
     const eventId = await shieldRow.getAttribute('data-mid');
     expect(eventId).toBeTruthy();
 
@@ -267,7 +227,7 @@ test.describe('Message authenticity shields', () => {
     // and the real browser layout meet at the same message.
     const receiptResponse = await request.post(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/receipt/m.read/${encodeURIComponent(eventId as string)}`,
-      { headers: seer.headers, data: {} },
+      { headers: seerAuth, data: {} },
     );
     expect(receiptResponse.ok()).toBe(true);
     const receipts = shieldRow.getByTestId('read-receipts');
@@ -298,18 +258,17 @@ test.describe('Message authenticity shields', () => {
     // row's trailing column. Receipts span the complete body below it, stay flush with the
     // logical trailing edge, and remain in flow for virtual-row measurement.
     for (const direction of ['ltr', 'rtl'] as const) {
-      const geometry = await page.evaluate(async (dir) => {
+      const geometry = await shield.evaluate(async (shieldEl, dir) => {
         document.documentElement.dir = dir;
         await new Promise<void>((resolve) =>
           requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
         );
 
-        const shieldEl = document.querySelector('[data-testid^="msg-shield-"]');
-        const rowEl = shieldEl?.closest('.msg');
-        const bodyEl = shieldEl?.parentElement;
+        const rowEl = shieldEl.closest('.msg');
+        const bodyEl = rowEl?.querySelector('.msg__body');
         const contentEl = bodyEl?.querySelector('.msg__content');
         const receiptEl = rowEl?.querySelector('[data-testid=read-receipts]');
-        if (!shieldEl || !rowEl || !bodyEl || !contentEl || !receiptEl) {
+        if (!rowEl || !bodyEl || !contentEl || !receiptEl) {
           return null;
         }
 
