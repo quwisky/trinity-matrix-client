@@ -53,7 +53,11 @@ test.describe('Message grouping', () => {
     const me = `mg-me-${runId}`;
     const mePass = `${me}-pass`;
     const roomName = `Grouping ${runId}`;
-    const bodies = ['First message', 'Second message', 'Third message'];
+    const bodies = [
+      'First message',
+      'Second message with enough text to reach the trailing action track without the reserved inset',
+      'Third message',
+    ];
 
     await registerUser(request, me, mePass);
     const author = await apiLogin(request, hs, me, mePass);
@@ -176,12 +180,14 @@ test.describe('Message grouping', () => {
         (candidate) => candidate.querySelector('.msg__toolbar'),
       );
       const bar = row?.querySelector('.msg__toolbar');
-      if (!row || !bar) {
+      const text = row?.querySelector('.msg__text');
+      if (!row || !bar || !text) {
         return null;
       }
       row.classList.add('msg--revealed');
       const r = row.getBoundingClientRect();
       const b = bar.getBoundingClientRect();
+      const t = text.getBoundingClientRect();
       const buttons = [...bar.querySelectorAll<HTMLElement>('button')];
       return {
         rowTop: r.top,
@@ -190,6 +196,7 @@ test.describe('Message grouping', () => {
         barHeight: b.height,
         overflowAbove: r.top - b.top,
         overflowBelow: b.bottom - r.bottom,
+        textToolbarGap: b.left - t.right,
         allButtonsHit: buttons.every((button) => {
           const box = button.getBoundingClientRect();
           const hit = document.elementFromPoint(
@@ -211,7 +218,14 @@ test.describe('Message grouping', () => {
     // The measured row reserves the toolbar's whole block size. Nothing may overflow into
     // the following positioned row, and every button centre must hit its owning button.
     expect(containment.overflowBelow).toBeLessThanOrEqual(1);
+    expect(containment.textToolbarGap).toBeGreaterThanOrEqual(0);
     expect(containment.allButtonsHit).toBe(true);
+
+    const eventHeight = await page
+      .locator('.msg--event')
+      .first()
+      .evaluate((row) => row.getBoundingClientRect().height);
+    expect(eventHeight).toBeLessThan(containment.barHeight);
 
     // Compact is a rendered timeline mode, not merely an attribute or a token declaration.
     // Tighten the live document and prove the measured conversation consumes less vertical

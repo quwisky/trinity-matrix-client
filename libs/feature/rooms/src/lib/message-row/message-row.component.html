@@ -45,7 +45,7 @@
     @if (r.replyTo) {
       <button
         type="button"
-        class="msg__reply"
+        class="msg__reply msg__target"
         [attr.aria-label]="'Replying to ' + r.replyTo.senderName"
         (click)="action.emit({ type: 'jump', id: r.replyTo.id })"
       >
@@ -86,7 +86,7 @@
           @if (showEditedMarker()) {
             <button
               type="button"
-              class="msg__edited"
+              class="msg__edited msg__target"
               data-testid="msg-edited"
               aria-label="(edited) — show edit history"
               (click)="action.emit({ type: 'edit-history' })"
@@ -144,7 +144,7 @@
         @if (showEditedMarker()) {
           <button
             type="button"
-            class="msg__edited"
+            class="msg__edited msg__target"
             data-testid="msg-edited"
             aria-label="(edited) — show edit history"
             (click)="action.emit({ type: 'edit-history' })"
@@ -163,7 +163,7 @@
       @if (r.readReceipts.length) {
         <button
           type="button"
-          class="msg__receipts"
+          class="msg__receipts msg__target"
           data-testid="read-receipts"
           [attr.aria-label]="seenByLabel(r.readReceipts)"
           [title]="seenByLabel(r.readReceipts)"
@@ -195,7 +195,7 @@
     @if (r.shield; as shield) {
       <trn-icon
         [name]="shieldIcon(shield.level)"
-        class="msg__shield"
+        class="msg__shield msg__target"
         [class.msg__shield--red]="shield.level === 'red'"
         [trnTooltip]="shieldTip"
         tabindex="0"
@@ -213,7 +213,7 @@
     @if (threadSummary(); as thread) {
       <button
         type="button"
-        class="msg__thread"
+        class="msg__thread msg__target"
         [attr.aria-label]="threadLabel(thread)"
         (click)="action.emit({ type: 'thread' })"
       >
@@ -240,7 +240,10 @@
     }
 
     @if (!caps().readOnly && r.status === 'failed') {
-      <button class="msg__retry" (click)="action.emit({ type: 'retry' })">
+      <button
+        class="msg__retry msg__target"
+        (click)="action.emit({ type: 'retry' })"
+      >
         Failed to send — retry
       </button>
     }

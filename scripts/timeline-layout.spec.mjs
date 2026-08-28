@@ -49,9 +49,10 @@ describe('modern timeline layout contracts', () => {
       '--message-body-indent: calc(40px + var(--trinity-density-message-column-gap));',
     );
     expect(rowCss.match(/var\(--message-body-indent\)/g)?.length).toBe(4);
-    expect(rowCss).toContain(
-      'min-height: calc(var(--trinity-density-control-size) + 2px);',
+    expect(rowCss).toMatch(
+      /\.msg:has\(\.msg__toolbar\)\s*\{[^}]*--message-action-size:\s*max\([\s\S]*?--trinity-density-control-size[\s\S]*?--trinity-interaction-target-min-size[\s\S]*?\);[^}]*min-height:\s*calc\(var\(--message-action-size\) \+ 2px\);[^}]*padding-right:\s*calc\(/s,
     );
+    expect(rowCss).not.toMatch(/\.msg\s*\{[^}]*min-height:/s);
   });
 
   it('keeps the toolbar attached inside its owning measured row', () => {

@@ -12,7 +12,6 @@
   position: relative;
   display: flex;
   flex-wrap: wrap;
-  min-height: calc(var(--trinity-density-control-size) + 2px);
   gap: var(--trinity-density-message-column-gap);
 
   // The swipe offset, written straight to the element by `paintSwipe` on every pointermove.
@@ -44,6 +43,18 @@
   &:hover {
     background: var(--trinity-state-hover-surface);
   }
+}
+
+.msg:has(.msg__toolbar) {
+  --message-action-size: max(
+    var(--trinity-density-control-size),
+    var(--trinity-interaction-target-min-size)
+  );
+
+  min-height: calc(var(--message-action-size) + 2px);
+  padding-right: calc(
+    var(--trinity-space-6) + 4 * var(--message-action-size) + 2px
+  );
 }
 
 // While a finger is on the row it must track 1:1 — an eased follow reads as lag — so the
@@ -180,9 +191,7 @@
   transition: opacity var(--trinity-duration-fast) var(--trinity-ease-standard);
 }
 
-.msg:hover .msg__toolbar,
-.msg:focus-within .msg__toolbar,
-.msg--revealed .msg__toolbar {
+.msg:is(:hover, :focus-within, .msg--revealed) .msg__toolbar {
   opacity: 1;
   pointer-events: auto;
 }
@@ -496,12 +505,7 @@
   }
 }
 
-.msg__edited:focus-visible,
-.msg__shield:focus-visible,
-.msg__reply:focus-visible,
-.msg__thread:focus-visible,
-.msg__retry:focus-visible,
-.msg__receipts:focus-visible {
+.msg__target:focus-visible {
   outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
   outline-offset: var(--trinity-focus-ring-offset);
 }
@@ -583,16 +587,7 @@
 }
 
 @media (pointer: coarse) {
-  .msg {
-    min-height: calc(var(--trinity-interaction-target-min-size) + 2px);
-  }
-
-  .msg__reply,
-  .msg__thread,
-  .msg__retry,
-  .msg__receipts,
-  .msg__edited,
-  .msg__shield {
+  .msg__target {
     min-width: var(--trinity-interaction-target-min-size);
     min-height: var(--trinity-interaction-target-min-size);
   }
