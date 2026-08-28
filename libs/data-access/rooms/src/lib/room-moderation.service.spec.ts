@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RoomModerationService } from './room-moderation.service';
+import { RoomsService } from './rooms.service';
 
 interface FakeBan {
   userId: string;
@@ -20,13 +21,20 @@ function setup(
     me?: string;
     noRoom?: boolean;
     bans?: FakeBan[];
+    kickError?: Error;
+    banError?: Error;
   } = {},
 ) {
-  const kick = vi.fn().mockResolvedValue({});
-  const ban = vi.fn().mockResolvedValue({});
+  const kick = opts.kickError
+    ? vi.fn().mockRejectedValue(opts.kickError)
+    : vi.fn().mockResolvedValue({});
+  const ban = opts.banError
+    ? vi.fn().mockRejectedValue(opts.banError)
+    : vi.fn().mockResolvedValue({});
   const unban = vi.fn().mockResolvedValue({});
   const setPowerLevel = vi.fn().mockResolvedValue({});
   const reportEvent = vi.fn().mockResolvedValue({});
+  const removeMemberFromProjection = vi.fn();
   const me = opts.me ?? '@me:hs';
   const myLevel = opts.myLevel ?? 100;
   const targetLevel = opts.targetLevel ?? 0;
@@ -70,6 +78,7 @@ function setup(
         isInitialized: true,
         instance: instance as never,
       }),
+      MockProvider(RoomsService, { removeMemberFromProjection }),
     ],
   });
   return {
@@ -79,25 +88,39 @@ function setup(
     unban,
     setPowerLevel,
     reportEvent,
+    removeMemberFromProjection,
   };
 }
 
 describe('RoomModerationService', () => {
   it('kick is cold and removes the member (with reason) on subscribe', async () => {
-    const { svc, kick } = setup();
+    const { svc, kick, removeMemberFromProjection } = setup();
 
     const action = svc.kick('!r:hs', '@bob:hs', 'spam');
     expect(kick).not.toHaveBeenCalled(); // cold
 
     await firstValueFrom(action);
     expect(kick).toHaveBeenCalledWith('!r:hs', '@bob:hs', 'spam');
+    expect(removeMemberFromProjection).toHaveBeenCalledWith('!r:hs', '@bob:hs');
   });
 
   it('ban is cold and bans the member on subscribe', async () => {
-    const { svc, ban } = setup();
+    const { svc, ban, removeMemberFromProjection } = setup();
 
     await firstValueFrom(svc.ban('!r:hs', '@bob:hs'));
     expect(ban).toHaveBeenCalledWith('!r:hs', '@bob:hs', undefined);
+    expect(removeMemberFromProjection).toHaveBeenCalledWith('!r:hs', '@bob:hs');
+  });
+
+  it('keeps the member projected when moderation fails', async () => {
+    const { svc, removeMemberFromProjection } = setup({
+      kickError: new Error('forbidden'),
+    });
+
+    await expect(firstValueFrom(svc.kick('!r:hs', '@bob:hs'))).rejects.toThrow(
+      'forbidden',
+    );
+    expect(removeMemberFromProjection).not.toHaveBeenCalled();
   });
 
   it('unban is cold and lifts the ban on subscribe', async () => {

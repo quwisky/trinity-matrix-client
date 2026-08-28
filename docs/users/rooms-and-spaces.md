@@ -241,6 +241,11 @@ the room's own threshold for that action, and it only offers role presets at or 
 your own level. Owner is never assignable. These checks decide what is shown; the
 homeserver enforces the real rule, so an action can still be refused.
 
+After a successful kick or ban, the profile panel returns to the member list with that
+member removed immediately. Trinity keeps that local projection in place until the
+homeserver's membership update arrives, so unrelated member updates cannot briefly bring
+the removed row back.
+
 The same profile panel and the same actions are used from a space's member list, because
 a space is a room.
 

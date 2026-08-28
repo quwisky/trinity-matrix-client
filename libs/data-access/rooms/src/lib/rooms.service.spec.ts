@@ -38,6 +38,7 @@ function fakeMember(over: {
   name?: string;
   avatarMxc?: string | null;
   powerLevel?: number;
+  membership?: string;
 }) {
   return {
     userId: over.userId,
@@ -45,6 +46,7 @@ function fakeMember(over: {
     // matrix-js-sdk's RoomMember.getMxcAvatarUrl() returns `string | undefined`.
     getMxcAvatarUrl: () => over.avatarMxc ?? undefined,
     powerLevel: over.powerLevel ?? 0,
+    membership: over.membership ?? 'join',
   };
 }
 
@@ -1677,11 +1679,12 @@ describe('RoomsService membersFor', () => {
     client: { on: Mock },
     roomId: string,
     userId = '@someone:hs',
+    membership = 'join',
   ): void {
     const handler = client.on.mock.calls.find(
       ([e]) => e === 'RoomState.members',
     )?.[1] as ((e: unknown, s: unknown, m: unknown) => void) | undefined;
-    handler?.({}, { roomId }, { userId });
+    handler?.({}, { roomId }, { userId, membership });
   }
 
   it('shares one signal per room', () => {
@@ -1704,6 +1707,75 @@ describe('RoomsService membersFor', () => {
         .membersFor('!a:hs')()
         .map((m) => m.userId),
     ).toEqual(['@ada:hs']);
+  });
+
+  it('removes a moderated member immediately while the SDK waits for sync', () => {
+    const room = fakeRoom({
+      roomId: '!a:hs',
+      name: 'general',
+      members: [
+        fakeMember({ userId: '@ada:hs', name: 'Ada' }),
+        fakeMember({ userId: '@bo:hs', name: 'Bo' }),
+      ],
+    });
+    const { svc } = setup([room]);
+    const members = svc.membersFor('!a:hs');
+
+    svc.removeMemberFromProjection('!a:hs', '@bo:hs');
+
+    expect(members().map((member) => member.userId)).toEqual(['@ada:hs']);
+    // The projection must not mutate matrix-js-sdk's source of truth.
+    expect(room.getJoinedMembers().map((member) => member.userId)).toEqual([
+      '@ada:hs',
+      '@bo:hs',
+    ]);
+  });
+
+  it('does not resurrect a moderated member on an unrelated member event', async () => {
+    const room = fakeRoom({
+      roomId: '!a:hs',
+      name: 'general',
+      members: [
+        fakeMember({ userId: '@ada:hs', name: 'Ada' }),
+        fakeMember({ userId: '@bo:hs', name: 'Bo' }),
+      ],
+    });
+    const { svc, client } = setup([room]);
+    const members = svc.membersFor('!a:hs');
+
+    svc.removeMemberFromProjection('!a:hs', '@bo:hs');
+    fireMemberChange(client, '!a:hs', '@ada:hs');
+    await Promise.resolve();
+
+    expect(members().map((member) => member.userId)).toEqual(['@ada:hs']);
+  });
+
+  it('hands the roster back to sync after the moderated membership arrives', async () => {
+    const roster = [
+      fakeMember({ userId: '@ada:hs', name: 'Ada' }),
+      fakeMember({ userId: '@bo:hs', name: 'Bo' }),
+    ];
+    const room = fakeRoom({
+      roomId: '!a:hs',
+      name: 'general',
+      members: roster,
+    });
+    const { svc, client } = setup([room]);
+    const members = svc.membersFor('!a:hs');
+
+    svc.removeMemberFromProjection('!a:hs', '@bo:hs');
+    roster.splice(1, 1);
+    fireMemberChange(client, '!a:hs', '@bo:hs', 'leave');
+    await Promise.resolve();
+    expect(members().map((member) => member.userId)).toEqual(['@ada:hs']);
+
+    roster.push(fakeMember({ userId: '@bo:hs', name: 'Bo' }));
+    fireMemberChange(client, '!a:hs', '@bo:hs');
+    await Promise.resolve();
+    expect(members().map((member) => member.userId)).toEqual([
+      '@ada:hs',
+      '@bo:hs',
+    ]);
   });
 
   it('re-reads the room a member event names', async () => {

@@ -1,8 +1,9 @@
 import { Injectable, inject } from '@angular/core';
 import { EventType } from 'matrix-js-sdk';
-import { Observable, defer, from, map, throwError } from 'rxjs';
+import { Observable, defer, from, map, tap, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { liveRoomState } from '@trinity/util/matrix';
+import { RoomsService } from './rooms.service';
 
 /** Which moderation actions the current user may take against a specific member. */
 export interface ModerationCaps {
@@ -31,6 +32,7 @@ export interface BannedMember {
 @Injectable({ providedIn: 'root' })
 export class RoomModerationService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly rooms = inject(RoomsService);
 
   /** Remove a member from the room (they may rejoin if invited / it's public). Cold. */
   kick(roomId: string, userId: string, reason?: string): Observable<void> {
@@ -39,6 +41,7 @@ export class RoomModerationService {
         return throwError(() => new Error('Not signed in.'));
       }
       return from(this.matrix.instance.kick(roomId, userId, reason)).pipe(
+        tap(() => this.rooms.removeMemberFromProjection(roomId, userId)),
         map(() => void 0),
       );
     });
@@ -51,6 +54,7 @@ export class RoomModerationService {
         return throwError(() => new Error('Not signed in.'));
       }
       return from(this.matrix.instance.ban(roomId, userId, reason)).pipe(
+        tap(() => this.rooms.removeMemberFromProjection(roomId, userId)),
         map(() => void 0),
       );
     });
