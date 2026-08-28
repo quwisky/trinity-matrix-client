@@ -18,6 +18,7 @@ const OPTIONS: readonly TrnRadioOption<string>[] = [
     <h2 id="mode-heading">Appearance</h2>
     <trn-radio-group
       aria-labelledby="mode-heading"
+      variant="segmented"
       [options]="options"
       [value]="value()"
       (valueChange)="value.set($event)"
@@ -69,6 +70,17 @@ describe('TrnRadioGroupComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.componentInstance.value()).toBe('light');
+  });
+
+  it('marks the active option in the segmented presentation', async () => {
+    const { container } = await render(HostComponent);
+    const host = container.querySelector('trn-radio-group');
+    const selected = container.querySelector('[data-testid=theme-system]');
+
+    expect(host?.getAttribute('data-variant')).toBe('segmented');
+    expect(selected?.classList.contains('trn-radio-option--selected')).toBe(
+      true,
+    );
   });
 
   it('is a block, so a layout class on the host still lays the options out', async () => {

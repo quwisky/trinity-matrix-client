@@ -25,18 +25,37 @@ and `ui:vendor-wrapper`.
 
 The Trinity-authored wrappers that used to sit among them — the overlay adapters,
 `<trn-icon>` and `<trn-emoji-picker>` — now live in `libs/components/` with the rest of the
-public tier (twenty libraries, tagged `ui:public`). Trinity's own presentational components
+public tier (twenty-nine libraries, tagged `ui:public`). Trinity's own presentational components
 — `<trn-avatar>` (with its `AVATAR_RESOLVER` seam), banner, media bubble, message toolbar
-and page header — live there too: the avatar and message toolbar wrap kit primitives, which
-is the tier's job, and moving them deleted the `@trinity/helm/avatar` staging exception from
-the consumer-side kit ban.
+and page header — live there too. Button is exposed as `trnBtn`; dropdown directives and the
+root toaster are exposed from `@trinity/components/overlay`. These public APIs compose or host
+kit primitives, which is the tier's job, without leaking Helm selectors or types to features.
+
+Icon-only actions use one of two public contracts. A standard square action uses `trnBtn` with
+an `icon*` size, which supplies the shared shape and automatically opts into the common pointer,
+hover and pressed states. A purpose-built control whose geometry carries meaning—a reaction chip,
+server-rail pill, avatar action or compact toolbar button—uses `trnIconButton` instead. It keeps
+that geometry but receives the same interaction states; the owning component must explicitly
+centre its glyph within that custom box. In both forms the inner `<trn-icon>` must
+choose an explicit semantic `motion` (`nudge-left`, `nudge-up`, `nudge-down`, `nudge-up-right`,
+`pop` or `rotate`); motion never moves the hit target, and reduced-motion mode removes the glyph
+transform while retaining colour and focus feedback.
+
+Themeable interactive labels use `trnTooltip` alongside their `aria-label`, not a native `title`: the
+native surface is browser/OS chrome and cannot follow Trinity's theme. A source guard keeps native
+titles off every button and link; vertically stacked navigation and member labels open sideways so a
+hoverable overlay cannot cover the preceding control. The public tooltip wrapper keeps Helm's geometry
+and motion but replaces its inverted colours with the semantic `--trinity-tooltip-surface` /
+`--trinity-tooltip-foreground` pair. Light mode preserves the dark tooltip treatment; dark mode
+resolves the surface through the active palette's elevated popover tokens, including the arrow.
 
 `libs/ui` is gone entirely. What was left after the components moved out was not UI: the
 `runWithBusy` / `mediaQuerySignal` / internal-URL helpers went to `@trinity/util/ui`
 (`type:util`, reachable from every layer rather than only from above), and the
-`EncryptionDialogService` seam became `@trinity/components/encryption-dialog` — its own
-library rather than part of `@trinity/components/overlay`, which stays the generic swappable
-dialog wrapper and is not taught one domain's routes and loader token.
+`EncryptionDialogService` and `SettingsDialogService` seams became
+`@trinity/components/encryption-dialog` and `@trinity/components/settings-dialog` — their own
+libraries rather than part of `@trinity/components/overlay`, which stays the generic swappable
+dialog wrapper and is not taught domain routes or loader tokens.
 
 That tier is closed from both sides. The vendor bans stop everything below the UI layer
 naming `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` or `@ctrl/ngx-emoji-mart`; and a
@@ -50,11 +69,9 @@ banning `ui:vendor-wrapper` from feature code also fails on every path through
 `@trinity/components/*` — the very path it exists to bless. A direct-import rule is the right
 shape, and it is the same one the `matrix-js-sdk` ban uses.
 
-Four kit libraries are still excepted by name — `button` (50 call sites), `dropdown-menu`
-(7), `sonner` and `avatar` (1 each) — because banning them today would fail `pnpm lint` on 59
-files. Same staging #148 used for the vendor bans: a NEW reach past the tier fails
-immediately, and the exception list shrinks to zero as each wrapper lands.
-`scripts/lint-invariants.spec.mjs` pins the list, so a fifth cannot arrive by accident.
+There are no named exceptions. `scripts/lint-invariants.spec.mjs` resolves the effective ESLint
+configuration and scans feature/app sources, so weakening the glob or adding a direct Helm import
+fails independently of ordinary lint.
 
 That third tag is what makes the layering above enforceable rather than merely described.
 Every UI library used to carry identical tags, so no boundary rule could say "only the kit may
@@ -133,8 +150,10 @@ That rule is what forces the injection-token pattern. `<trn-avatar>` needs to tu
 `mxc://` URI into a displayable blob URL, which is a data-access concern, so it injects an
 optional `AVATAR_RESOLVER` token that `main.ts` wires to `AvatarService.resolve`. When the
 token is absent — `ui` in isolation, or a unit test — the component falls back to its `url`
-input. The same shape appears in `ENCRYPTION_DIALOG_COMPONENTS`, which lets a `type:ui`
-service present a `type:feature` page as a modal without importing it. See
+input. Its typed `shape="person|place"` contract keeps users and DMs circular while rooms and
+spaces use stable squircles; the radius is applied to Helm's host, image, fallback and outline
+through one inherited custom property. The same injection-token shape appears in
+`ENCRYPTION_DIALOG_COMPONENTS`, which lets a `type:ui` service present a `type:feature` page as a modal without importing it. See
 [libraries](libraries.md) for the boundary rules in full.
 
 ## The Helm libraries are generated
@@ -196,8 +215,9 @@ those specs stay in the vendor tier now that the hand-authored libraries have le
 for historical reasons until it moved to the public tier with the icon and emoji-picker
 wrappers. It holds the imperative overlay adapters:
 `TrnDialogService`, `TrnAlertService` with `TrnAlertDialogComponent`, `TrnActionSheetService`
-with `TrnActionSheetComponent`, and `TrnToastService` — built on CDK Dialog and Overlay plus
-brain sonner. A modal'd component closes itself with `inject(TrnDialogRef).close(data)`.
+with `TrnActionSheetComponent`, public dropdown directives, `TrnToastService`, and the root
+`TrnToasterComponent` — built on CDK Dialog and Overlay plus brain sonner. A modal'd component
+closes itself with `inject(TrnDialogRef).close(data)`.
 
 `TrnDialogRef` is Trinity's own class, not a re-exported `DialogRef`. That distinction is the
 whole point of the layer: the barrel used to hand out CDK's class — one deliberate, documented
@@ -232,13 +252,14 @@ message-search panels use, sized `w-screen md:w-[480px]` so they go full-screen 
     button wins. A component-side `focus()` cannot fix it, because CDK focuses *after* attach
     and overrides the earlier call. Name the element instead: `autoFocus: '[data-autofocus]'`.
 
-!!! warning "Import toast from brain, not ngx-sonner"
+!!! warning "Keep sonner behind the public overlay tier"
 
-    `<hlm-toaster/>` wraps brain's `<brn-sonner-toaster/>`, which reads **brain's own**
+    `<trn-toaster/>` owns Helm's toaster, which wraps brain's `<brn-sonner-toaster/>` and reads **brain's own**
     `toastState`. Since spartan 1.1 brain ships its own sonner port and no longer depends on
     `ngx-sonner`, so calling `ngx-sonner`'s `toast()` pushes into a store the mounted toaster
     never observes. The toast silently never appears — no error, no console output, nothing in
-    the DOM. `TrnToastService` is the one place that imports it.
+    the DOM. `TrnToastService` is the one place that imports the brain toast function, and
+    `TrnToasterComponent` is the one public root viewport.
 
 ## `hostDirectives` is public API
 
@@ -270,9 +291,10 @@ DOM — silently, on three shipped screens, for as long as the components have e
    attribute, because the host is `display: contents` and is not the focusable element. That
    asymmetry is pinned by a test — do not "fix" it into describing the wrong node.
 
-Still open: `hlm-select-trigger` applies `brnFieldControlDescribedBy` to its inner `<button>` with
-nothing bound and exposes no input, so a select trigger cannot be described at all. No call site
-needs it today; tracked rather than fixed here.
+`hlm-select-trigger` still applies `brnFieldControlDescribedBy` to its inner `<button>` with
+nothing bound, so `aria-describedby` remains unavailable. Trinity's registered override now
+forwards `aria-labelledby` to that same button, which lets the public select wrapper name the
+actual combobox while the description gap stays explicitly tracked.
 
 ## Registered vendored divergences
 
@@ -282,20 +304,21 @@ a lost override fails the suite rather than shipping. This table is the register
 step with the banner in
 [`hlm-dropdown-menu.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/spartan/dropdown-menu/src/lib/hlm-dropdown-menu.ts).
 
-| File and symbol                                              | Override                                                                                                                                                                                                                                                                          | Pinned by                       |
-| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | `_handleClick` shadowed so a sub-trigger click opens the submenu instead of toggling it closed under zoneless change detection                                                                                                                                                    | `dropdown-menu-submenu.spec.ts` |
-| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | The same shadow re-does CDK's focus move, so keyboard Enter and Space land inside the submenu                                                                                                                                                                                     | `dropdown-menu-submenu.spec.ts` |
-| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | `side` defaults to `'right'`, so a submenu opens beside its parent rather than over it                                                                                                                                                                                            | `dropdown-menu-submenu.spec.ts` |
-| `dropdown-menu` · `HlmDropdownMenu` and `HlmDropdownMenuSub` | `CdkTargetMenuAim` host directive                                                                                                                                                                                                                                                 | `dropdown-menu-submenu.spec.ts` |
-| `dropdown-menu` · `HlmDropdownMenuItem`                      | A destructive item's text and icon use `text-danger`, not upstream's `text-destructive`                                                                                                                                                                                           | `dropdown-menu-submenu.spec.ts` |
-| `badge` · `badgeVariants`                                    | Adds `success` and `warning` variants that upstream Helm does not ship                                                                                                                                                                                                            | `helm-components.spec.ts`       |
-| `tabs` · `HlmTabsPaginatedList`                              | Generated and then deleted — nothing wraps the scrolling trigger row, and it pulled `@angular/cdk/observers`, `@ng-icons/*` and the button lib in behind it                                                                                                                       | `helm-components.spec.ts`       |
-| `dropdown-menu` · `HlmDropdownMenu` and `HlmDropdownMenuSub` | Both `animate-in` / `animate-out` triggers carry `motion-safe:` — upstream ships them bare                                                                                                                                                                                        | `kit-reduced-motion.spec.mjs`   |
-| `tooltip` · `DEFAULT_TOOLTIP_CONTENT_CLASSES`                | All three `animate-in` / `animate-out` triggers carry `motion-safe:`, including `data-[state=delayed-open]:`                                                                                                                                                                      | `kit-reduced-motion.spec.mjs`   |
-| `select` · `HlmSelectContent`                                | Both `animate-in` / `animate-out` triggers carry `motion-safe:`                                                                                                                                                                                                                   | `kit-reduced-motion.spec.mjs`   |
-| `progress` · `HlmProgressIndicator`                          | Its **indeterminate** sweep is guarded for reduced motion in `theme/spartan.css` — the class is applied through a `[class.…]` binding, so the guard is a rule rather than a variant. The determinate `transition-all` is not covered and still rests on the `global.scss` blanket | `kit-reduced-motion.spec.mjs`   |
-| Every file with `hostDirectives`, kit and public tier alike  | Every entry states its `inputs` and `outputs` explicitly, even when empty — the generator's shorthand decides the element's public API by omission                                                                                                                                | `host-directives.spec.mjs`      |
+| File and symbol                                              | Override                                                                                                                                                                                                                                                                          | Pinned by                                                    |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | `_handleClick` shadowed so a sub-trigger click opens the submenu instead of toggling it closed under zoneless change detection                                                                                                                                                    | `dropdown-menu-submenu.spec.ts`                              |
+| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | The same shadow re-does CDK's focus move, so keyboard Enter and Space land inside the submenu                                                                                                                                                                                     | `dropdown-menu-submenu.spec.ts`                              |
+| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | `side` defaults to `'right'`, so a submenu opens beside its parent rather than over it                                                                                                                                                                                            | `dropdown-menu-submenu.spec.ts`                              |
+| `dropdown-menu` · `HlmDropdownMenu` and `HlmDropdownMenuSub` | `CdkTargetMenuAim` host directive                                                                                                                                                                                                                                                 | `dropdown-menu-submenu.spec.ts`                              |
+| `dropdown-menu` · `HlmDropdownMenuItem`                      | A destructive item's text and icon use `text-danger`, not upstream's `text-destructive`                                                                                                                                                                                           | `dropdown-menu-submenu.spec.ts`                              |
+| `badge` · `badgeVariants`                                    | Adds `success` and `warning` variants that upstream Helm does not ship                                                                                                                                                                                                            | `helm-components.spec.ts`                                    |
+| `tabs` · `HlmTabsPaginatedList`                              | Generated and then deleted — nothing wraps the scrolling trigger row, and it pulled `@angular/cdk/observers`, `@ng-icons/*` and the button lib in behind it                                                                                                                       | `helm-components.spec.ts`                                    |
+| `dropdown-menu` · `HlmDropdownMenu` and `HlmDropdownMenuSub` | Both `animate-in` / `animate-out` triggers carry `motion-safe:` — upstream ships them bare                                                                                                                                                                                        | `kit-reduced-motion.spec.mjs`                                |
+| `tooltip` · `DEFAULT_TOOLTIP_CONTENT_CLASSES`                | All three `animate-in` / `animate-out` triggers carry `motion-safe:`, including `data-[state=delayed-open]:`                                                                                                                                                                      | `kit-reduced-motion.spec.mjs`                                |
+| `select` · `HlmSelectContent`                                | Both `animate-in` / `animate-out` triggers carry `motion-safe:`                                                                                                                                                                                                                   | `kit-reduced-motion.spec.mjs`                                |
+| `select` · `HlmSelectTrigger`                                | Forwards `aria-labelledby` to the inner focusable combobox button instead of leaving it on a role-less wrapper, applies Trinity's coarse-pointer target floor to that button, and pins its foreground to the theme token                                                          | `trn-select.component.spec.ts`; Settings Playwright journeys |
+| `progress` · `HlmProgressIndicator`                          | Its **indeterminate** sweep is guarded for reduced motion in `theme/spartan.css` — the class is applied through a `[class.…]` binding, so the guard is a rule rather than a variant. The determinate `transition-all` is not covered and still rests on the `global.scss` blanket | `kit-reduced-motion.spec.mjs`                                |
+| Every file with `hostDirectives`, kit and public tier alike  | Every entry states its `inputs` and `outputs` explicitly, even when empty — the generator's shorthand decides the element's public API by omission                                                                                                                                | `host-directives.spec.mjs`                                   |
 
 The two `.spec.ts` files live in
 [`libs/spartan/tests/src/lib`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/spartan/tests/src/lib),
@@ -411,9 +434,8 @@ decides what to do about it.
 
 `pnpm storybook` serves one Storybook covering the whole `libs/components/*` tier
 (`libs/components/storybook-host` is config only — the stories live beside the components they
-document). The toolbar carries the two theme axes, palette × light/dark, read from
-`TRINITY_PALETTES` rather than restated, so a newly registered palette appears there
-immediately.
+document). The toolbar carries palette, light/dark mode and density. Palettes are read from
+`TRINITY_PALETTES` rather than restated, so a newly registered palette appears there immediately.
 
 That is what it is for. A palette is meant to be a data change — a block of token overrides plus
 a registry entry — and before this the only way to know that held was to launch the app and
@@ -430,21 +452,40 @@ control appears.
 **Trinity tokens** (`--trinity-*`) are the app's own vocabulary, consumed directly by
 hand-authored component SCSS.
 
-| Group                               | Tokens                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Surfaces, lightest to most recessed | `--trinity-rail`, `--trinity-sidebar`, `--trinity-sidebar-header`, `--trinity-chat`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| Surface states                      | `--trinity-hover` (row hover), `--trinity-active` (selected row), `--trinity-divider`, `--trinity-surface` (floating controls), `--trinity-members`                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| Text                                | `--trinity-text`, `--trinity-text-muted`, `--trinity-text-bright`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| Brand                               | `--trinity-accent`, `--trinity-accent-foreground`, `--trinity-green`, `--trinity-green-foreground`                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| Link                                | `--trinity-link` — accent-coloured **text**. Split from `--trinity-accent`, which is a fill: a fill and a readable text colour cannot be the same value and both clear AA (blurple is 3.19:1 on the light row grounds). Every `color:` that reads as accent uses this; borders and backgrounds use the accent.                                                                                                                                                                                                                                                                   |
-| Danger                              | `--trinity-danger`, `--trinity-danger-solid`, `--trinity-danger-solid-foreground`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| Radii                               | `--trinity-radius` (8px), `-sm` (4px), `-md` (6px), `-xl` (12px), `-pill` (9999px)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| Syntax                              | eight `--trinity-syntax-*` roles plus `-plain`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| Typography                          | `--trinity-text-xs` / `-sm` / `-base` / `-lg`, each with a matching `--…--line-height`. Roles, not sizes: `-sm` is the message body and the sidebar row. In `rem`, so Settings → Appearance → Text size scales them.                                                                                                                                                                                                                                                                                                                                                             |
-| Spacing                             | `--trinity-space-1`…`-7` — a 4px rhythm (2, 4, 8, 12, 16, 24, 32)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| Elevation                           | `--trinity-shadow-raised` / `-floating` / `-overlay`. Overridden per mode: a shadow tuned for white is invisible on `#313338`, so dark raises the alpha.                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| Z-index layers                      | `--trinity-z-sticky` (5) → `-floating` (10) → `-overlay` (20) → `-panel` (40). **App-level only** — a component stacking its own children is local and stays a literal. The CDK overlay container sits above all of them at 1000.                                                                                                                                                                                                                                                                                                                                                |
-| Motion                              | `--trinity-duration-press` for the down response and `-fast` / `-base` / `-slow` for transitions, plus `--trinity-duration-pulse` / `-flash` for motion that is not one (an ambient loop, a one-shot cue). `--trinity-ease-standard` / `-decelerate` / `-accelerate`. All collapsed to 0.01ms under `prefers-reduced-motion` at the bottom of `variables.scss` — which is why a literal duration is a bug, not a style. An `infinite` animation needs `global.scss`'s `animation-iteration-count` too: collapsing its duration alone makes it repeat per frame rather than stop. |
+| Group               | Tokens                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Surface primitives  | Palette values: `--trinity-rail`, `--trinity-sidebar`, `--trinity-sidebar-header`, `--trinity-chat`, `--trinity-hover`, `--trinity-active`, `--trinity-divider`, `--trinity-surface`. Existing consumers keep working while feature phases migrate.                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Semantic surfaces   | Component-facing aliases: `--trinity-surface-frame`, `-navigation`, `-navigation-header`, `-workspace`, `-panel`, `-raised`, `-floating`; `--trinity-border-subtle` / `-strong`. These point inward to the palette primitives, never the other way round.                                                                                                                                                                                                                                                                                                                                                                                            |
+| Interaction states  | Paired `--trinity-state-{hover,pressed,selected,selected-hover,attention}-{surface,foreground}` roles, plus the paired `--trinity-status-neutral-*` recipe, `--trinity-focus-ring` / `-on-attention` / `-halo` / `-width` / `-offset`, and `--trinity-disabled-opacity`. A state is a pair so palette tuning cannot change its fill without its ink.                                                                                                                                                                                                                                                                                                 |
+| Text                | `--trinity-text`, `--trinity-text-muted`, `--trinity-text-bright`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Brand               | `--trinity-accent`, `--trinity-accent-foreground`, `--trinity-green`, `--trinity-green-foreground`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Link                | `--trinity-link` — accent-coloured **text**. Split from `--trinity-accent`, which is a fill: a fill and a readable text colour cannot be the same value and both clear AA (blurple is 3.19:1 on the light row grounds). Every `color:` that reads as accent uses this; borders and backgrounds use the accent.                                                                                                                                                                                                                                                                                                                                       |
+| Danger              | `--trinity-danger`, `--trinity-danger-solid`, `--trinity-danger-solid-foreground`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Radii               | Measurement scale: `--trinity-radius` (8px), `-sm` (4px), `-md` (6px), `-xl` (12px), `-pill` (9999px). Component roles: `--trinity-shape-control-radius`, `-container-radius`, `-overlay-radius`. Identity roles: `--trinity-shape-person-radius` (circle) and `--trinity-shape-place-radius` (squircle).                                                                                                                                                                                                                                                                                                                                            |
+| Syntax              | eight `--trinity-syntax-*` roles plus `-plain`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Typography          | Measurement scale: `--trinity-text-xs` / `-sm` / `-base` / `-md` / `-lg`, each with matching leading. Semantic `--trinity-type-{caption,metadata,body,message,control,title}-{size,line-height,weight}` roles keep the three decisions together; metadata also exposes tabular-number treatment. The message role is 1rem with 1.5 leading, while smaller conversation chrome stays on the compact roles. Sizes remain in `rem`, so Appearance → Text size scales them.                                                                                                                                                                              |
+| Spacing and density | `--trinity-space-1`…`-7` — a 4px rhythm (2, 4, 8, 12, 16, 24, 32). Shared components consume `--trinity-density-item-gap`, `-row-gap`, `-row-padding-*` and `-control-size`; the room shell adds `-shell-gap`, `-shell-padding-inline` and `-channel-padding-block`, while the conversation adds `-message-column-gap` and `-composer-{padding-inline,field-gap,field-inset,action-size}`. Compact re-cuts these while `--trinity-interaction-target-min-size` enforces the global 44px coarse-pointer floor. Member rows and role headers deliberately do not use vertical density roles: their fixed 44px/34px boxes are inputs to virtualization. |
+| Scrollbars          | `--trinity-scrollbar-size`, `-radius`, `-thumb` and `-track` apply the former room-container treatment to every visible vertical and horizontal scrollbar. The thumb aliases the active palette's `--trinity-rail`; Blink/WebKit use the fixed 8px rounded geometry, while Firefox shares the rail colour with its platform-defined `thin` geometry.                                                                                                                                                                                                                                                                                                 |
+| Elevation           | `--trinity-shadow-raised` / `-floating` / `-overlay`. Overridden per mode: a shadow tuned for white is invisible on `#313338`, so dark raises the alpha.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Protocol media      | `--trinity-qr-surface` is the palette-invariant light quiet zone around QR modules. It is deliberately not a general card/background role.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Z-index layers      | `--trinity-z-sticky` (5) → `-floating` (10) → `-overlay` (20) → `-panel` (40). **App-level only** — a component stacking its own children is local and stays a literal. The CDK overlay container sits above all of them at 1000.                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Motion              | `--trinity-duration-press` for the down response and `-fast` / `-base` / `-slow` for transitions, plus `--trinity-duration-pulse` / `-flash` for motion that is not one (an ambient loop, a one-shot cue). `--trinity-ease-standard` / `-decelerate` / `-accelerate`. All collapsed to 0.01ms under `prefers-reduced-motion` at the bottom of `variables.scss` — which is why a literal duration is a bug, not a style. An `infinite` animation needs `global.scss`'s `animation-iteration-count` too: collapsing its duration alone makes it repeat per frame rather than stop.                                                                     |
+
+Settings is the worked feature-level composition of these roles. Web and Electron mount its bounded
+workspace in a CDK dialog; the installed mobile apps and direct deep links mount the same section
+registry in the routed shell. The directory remains scrollable with a hidden gutter while the
+detail pane is the one painted scroll owner. Paint containment on both shells prevents a long
+detail from enlarging the document's root scroll extent.
+
+Visible scrollbars are styled once in `apps/trinity/src/global.scss`; components own only
+their overflow behavior and must not restate scrollbar paint. The `.no-scrollbar` utility is
+the narrow exception for a scrollable surface whose bar would duplicate nearby chrome, such as
+the Settings directory and select panels. It hides only the marked scroller, not nested overflow
+surfaces, and must never be used to remove scrolling itself.
+`SettingsSectionHeadingComponent` and `SettingsToggleRowDirective` keep sentence-case type and
+density consistent without weakening native heading, label or switch semantics. The Appearance
+preview is intentionally feature-local and token-only: it demonstrates the same surface, identity,
+type and density roles without importing the room feature or duplicating theme values.
 
 **Helm and shadcn tokens** (`--background`, `--card`, `--primary`, `--muted-foreground`,
 `--border`, and the rest) are consumed by the generated Helm components through Tailwind
@@ -456,9 +497,16 @@ palette only has to set the value once:
 ```scss
 --card: var(--trinity-sidebar);
 --primary: var(--trinity-accent);
---ring: var(--trinity-accent);
+--ring: var(--trinity-focus-ring-halo);
 --input: var(--border);
 ```
+
+The opaque focus role deliberately resolves to the measured link colour rather than the accent
+fill. The fill drops below the 3:1 non-text threshold on some dark interactive surfaces. Attention
+surfaces override it with `--trinity-focus-ring-on-attention`, whose value is paired to that fill.
+Helm controls draw a 50%-alpha halo, so `--trinity-focus-ring-halo` supplies black in light mode and
+white in dark mode; the browser suite measures the composited halo rather than trusting its source
+colour. Every focus recipe is checked against its semantic surface across all palettes and modes.
 
 Mode-invariant bindings are declared once in the base `:root` block. Three palettes ship:
 `trinity` (blurple `#5865f2`), `amethyst` (violet) and `onyx` (achromatic; dark is AMOLED
@@ -616,7 +664,7 @@ Two steps.
 Override only what differs; anything omitted falls through to `:root` or `:root.dark`.
 
 You will mostly be overriding Trinity tokens. Helm tokens defined as references re-theme for
-free — `--primary` and `--ring` in both modes, and in **dark** also `--card`, `--popover`,
+free — `--primary` and the measured focus-backed `--ring` in both modes, and in **dark** also `--card`, `--popover`,
 `--secondary`, `--muted` and `--accent`. Helm tokens holding a _literal_ need explicit
 overrides:
 
@@ -703,9 +751,9 @@ that `message-row`'s scoped styles cannot reach.
 
 One placement detail with a reason: a fenced block's language caption is generated from the
 `language` attribute and positioned **bottom**-right, not top-right. The message hover
-toolbar is anchored across the row's top edge, so a top-right caption lands underneath it on
-a continuation row. Using generated content also keeps the caption out of the element's text,
-so it cannot be selected, copied, or picked up by the edit-history diff.
+toolbar floats across the row's upper trailing boundary, so a top-right caption can land
+underneath it on a continuation row. Using generated content also keeps the caption out of
+the element's text, so it cannot be selected, copied, or picked up by the edit-history diff.
 
 ## The HTML allowlist
 
@@ -754,6 +802,8 @@ overrides three `marked` renderers, each for a stated reason:
   `interactive-row`, `scrollable`.
 - Component SCSS references design tokens. Never hardcode a colour, or it will not re-theme
   with the mode or the palette.
+- Component SCSS declares overflow but leaves visible scrollbar paint to the global token
+  contract. Use `.no-scrollbar` only for an intentional hidden-bar exception.
 
 More on the workspace-wide rules is in [conventions](../contributing/conventions.md).
 
@@ -781,4 +831,16 @@ deep-link and mobile target, and the service falls back to routing whenever the 
 component loaders are absent. See
 [matrix and encryption](matrix-and-encryption.md) for what those flows do.
 
-Toasts render through a single `<hlm-toaster/>` mounted in `AppComponent`.
+`SettingsDialogService` uses platform capability rather than viewport size: web and Electron
+open `SettingsDialogComponent`, while `Capacitor.isNativePlatform()` routes Android and iOS to
+`/settings`. The app supplies the feature component through `SETTINGS_DIALOG_CONFIG`, so the
+public UI library never imports a feature. Direct settings URLs remain the canonical deep-link
+surface. A failed modal load leaves the current route intact and reports an error; a navigation
+that starts while the chunk is pending cancels its presentation. The presenter coalesces repeated
+opens while the lazy chunk loads and ignores a second trigger while one dialog is active. Security
+and Devices force their nested verification/recovery overlays to stay modal even in the narrow web
+drill-in, rather than returning the user through a routed Settings page.
+
+Toasts render through a single `<hlm-toaster/>` mounted in `AppComponent`. While CDK marks the app
+root `aria-hidden` for a modal, `TrnToastService` mirrors new messages through CDK's body-level
+`LiveAnnouncer`; outside a modal Sonner owns the announcement, avoiding duplicate speech.

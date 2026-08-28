@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, form } from '@angular/forms/signals';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnCheckboxComponent } from '@trinity/components/checkbox';
 import { TrnInput } from '@trinity/components/input';
@@ -19,7 +19,7 @@ import {
   SpaceChildrenService,
   SpacesService,
 } from '@trinity/data-access/rooms';
-import { AvatarComponent } from '@trinity/components/avatar';
+import { AvatarComponent, type AvatarShape } from '@trinity/components/avatar';
 import { saveFields, type FieldWrite } from '../shared/save-fields';
 
 /** A room or space offered for adding, flattened so one list can hold both. */
@@ -29,6 +29,7 @@ export interface AddCandidate {
   initial: string;
   avatarMxc: string | null;
   isSpace: boolean;
+  shape: AvatarShape;
 }
 
 /**
@@ -54,7 +55,7 @@ export interface AddCandidate {
   imports: [
     EmptyStateComponent,
     FormField,
-    HlmButton,
+    TrnButton,
     TrnCheckboxComponent,
     TrnInput,
     AvatarComponent,
@@ -111,6 +112,7 @@ export class AddToSpaceComponent {
         initial: room.initial,
         avatarMxc: room.avatarMxc,
         isSpace: false,
+        shape: room.directUserId ? 'person' : 'place',
       }));
     const spaces: AddCandidate[] = this.spaces
       .spaces()
@@ -123,6 +125,7 @@ export class AddToSpaceComponent {
         initial: space.initial,
         avatarMxc: space.avatarMxc,
         isSpace: true,
+        shape: 'place',
       }));
     return [...rooms, ...spaces].sort((a, b) => a.name.localeCompare(b.name));
   });

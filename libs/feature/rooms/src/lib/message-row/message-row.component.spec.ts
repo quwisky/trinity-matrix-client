@@ -338,11 +338,10 @@ describe('MessageRowComponent', () => {
     expect(cmp.shieldIcon('grey')).toBe('shield-question');
   });
 
-  // The shield qualifies the whole message, so it hangs off the row itself rather than
-  // sitting inside the header or the body — that is what lets one element serve both
-  // layouts and park at the row's trailing edge instead of trailing the text.
+  // The shield qualifies the whole message but shares the body grid with its content. This
+  // lets one element serve both layouts while receipts span underneath its reserved column.
   it.each([true, false])(
-    'hangs the shield off the row itself (showHeader=%s)',
+    'places one shield in the body grid (showHeader=%s)',
     async (showHeader) => {
       const { container } = await renderRow({
         row: row({
@@ -357,9 +356,34 @@ describe('MessageRowComponent', () => {
 
       const shields = container.querySelectorAll('[data-testid^=msg-shield-]');
       expect(shields).toHaveLength(1);
-      expect(shields[0].parentElement?.classList.contains('msg')).toBe(true);
+      expect(shields[0].parentElement?.classList.contains('msg__body')).toBe(
+        true,
+      );
     },
   );
+
+  it('orders content, shield, and full-width receipts for keyboard and grid flow', async () => {
+    const { container } = await renderRow({
+      row: row({
+        shield: {
+          level: 'grey',
+          reason: 'Sent from an unverified device.',
+          explanation: 'Verify this person to be sure.',
+        },
+        readReceipts: [
+          { userId: '@bob:hs', name: 'Bob', initial: 'B', avatarMxc: null },
+        ],
+      }),
+    });
+    const body = container.querySelector('.msg__body');
+    const children = [...(body?.children ?? [])];
+
+    expect(children.map((child) => child.className)).toEqual([
+      'msg__content',
+      expect.stringContaining('msg__shield'),
+      expect.stringContaining('msg__receipts'),
+    ]);
+  });
 
   // The marker is the only way into the edit history, and it has to work identically in
   // both layouts — a grouped message has no header for it to sit in.
@@ -400,10 +424,10 @@ describe('MessageRowComponent', () => {
       },
     });
 
-    const body = container.querySelector('.msg__body') as HTMLElement;
-    const children = Array.prototype.slice.call(body.children) as Element[];
-    const preview = body.querySelector('trn-link-preview') as Element;
-    const marker = body.querySelector('[data-testid=msg-edited]') as Element;
+    const content = container.querySelector('.msg__content') as HTMLElement;
+    const children = Array.prototype.slice.call(content.children) as Element[];
+    const preview = content.querySelector('trn-link-preview') as Element;
+    const marker = content.querySelector('[data-testid=msg-edited]') as Element;
 
     expect(preview).not.toBeNull();
     expect(marker).not.toBeNull();

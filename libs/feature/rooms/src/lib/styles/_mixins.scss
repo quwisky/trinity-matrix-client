@@ -94,6 +94,32 @@ $below-md: '(max-width: 767.98px)';
   background: var(--trinity-sidebar);
 }
 
+/// Anchored picker surface shared by GIF, sticker and other composer trays.
+@mixin picker-surface($width) {
+  display: flex;
+  width: $width;
+  max-width: calc(100vw - 2rem);
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--trinity-border-subtle);
+  border-radius: var(--trinity-shape-overlay-radius);
+  background: var(--trinity-surface-floating);
+  color: var(--trinity-text);
+  box-shadow: var(--trinity-shadow-overlay);
+}
+
+@mixin picker-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--trinity-space-4);
+  padding: var(--trinity-space-5);
+  color: var(--trinity-text-muted);
+  font-size: var(--trinity-type-body-size);
+  line-height: var(--trinity-type-body-line-height);
+  text-align: center;
+}
+
 /// Full-height vertical column surface.
 @mixin column($background) {
   height: 100%;
@@ -107,37 +133,32 @@ $below-md: '(max-width: 767.98px)';
 @mixin interactive-row {
   border: none;
   background: transparent;
-  border-radius: var(--trinity-radius-sm);
+  border-radius: var(--trinity-shape-control-radius);
   cursor: pointer;
   color: var(--trinity-text-muted);
+  transition:
+    background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
+    color var(--trinity-duration-fast) var(--trinity-ease-standard);
 
-  &:hover {
-    background: var(--trinity-hover);
-    color: var(--trinity-text);
+  // `:where()` keeps the disabled guard specificity-neutral, so a specialized state
+  // declared by the consumer (Join, Accept, Decline) can still override this recipe.
+  &:hover:where(:not(:disabled)) {
+    background: var(--trinity-state-hover-surface);
+    color: var(--trinity-state-hover-foreground);
+  }
+
+  &:active:where(:not(:disabled)) {
+    background: var(--trinity-state-pressed-surface);
+    color: var(--trinity-state-pressed-foreground);
   }
 
   &:focus-visible {
-    outline: 2px solid var(--trinity-accent);
-    outline-offset: 2px;
+    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+    outline-offset: var(--trinity-focus-ring-offset);
   }
 }
 
-/// Thin Discord-style scrollbar on an overflowing element.
+/// Add vertical overflow; global.scss owns the shared visible-scrollbar appearance.
 @mixin scrollable {
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--trinity-rail) transparent;
-
-  &::-webkit-scrollbar {
-    width: 8px;
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background: var(--trinity-rail);
-    border-radius: var(--trinity-radius-sm);
-  }
-
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
 }

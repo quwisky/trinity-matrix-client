@@ -33,7 +33,7 @@ import {
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TypingIndicatorComponent } from '../message-list/typing-indicator/typing-indicator.component';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import {
   ThreadsService,
@@ -107,7 +107,7 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
     TypingIndicatorComponent,
     EmptyStateComponent,
     TrnIconComponent,
-    HlmButton,
+    TrnButton,
     TrnTooltip,
     MessageRowComponent,
     MessageComposerComponent,

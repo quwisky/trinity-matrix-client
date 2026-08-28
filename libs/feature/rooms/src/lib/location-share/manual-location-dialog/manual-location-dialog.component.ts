@@ -9,7 +9,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { parseLocationInput } from '@trinity/util/matrix';
 import { GeolocationService, type GeoPoint } from '@trinity/platform-native';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnInput } from '@trinity/components/input';
 import { TrnLabel } from '@trinity/components/label';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
@@ -29,7 +29,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     TrnIconComponent,
-    HlmButton,
+    TrnButton,
     TrnInput,
     TrnLabel,
     TrnSpinnerComponent,

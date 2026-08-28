@@ -17,6 +17,7 @@ async function build(
     editable: boolean;
     noun: string;
     testid: string;
+    shape: 'person' | 'place';
   }> = {},
   over: { setAvatar?: Mock } = {},
 ) {
@@ -129,6 +130,14 @@ describe('AvatarFieldComponent', () => {
 
     expect(container.querySelector('button')).toBeNull();
     expect(container.querySelector('trn-avatar')).not.toBeNull();
+  });
+
+  it('uses place geometry for room and space settings by default', async () => {
+    const { container } = await build();
+
+    expect(
+      container.querySelector('trn-avatar')?.getAttribute('data-shape'),
+    ).toBe('place');
   });
 
   afterEach(() => TestBed.resetTestingModule());

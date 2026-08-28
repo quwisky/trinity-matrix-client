@@ -38,6 +38,18 @@ describe('NavigationFocusService', () => {
   }
 
   describe('focusEnteringPage', () => {
+    it('prefers a feature-owned route focus target over the outer page heading', () => {
+      mountPage(
+        '<div><h1>Settings</h1><section><h2 data-route-focus>Appearance</h2></section></div>',
+      );
+
+      svc.focusEnteringPage();
+
+      expect(document.activeElement).toBe(
+        document.querySelector('[data-route-focus]'),
+      );
+    });
+
     it('focuses the page heading ([role=heading] first) and makes it focusable', () => {
       mountPage(
         '<div><header><span role="heading">Settings</span></header><main>body</main></div>',

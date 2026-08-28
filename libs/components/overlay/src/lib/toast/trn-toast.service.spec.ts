@@ -1,5 +1,7 @@
 import { TestBed } from '@angular/core/testing';
+import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { toast } from '@spartan-ng/brain/sonner';
+import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TrnToastService } from './trn-toast.service';
 
@@ -12,9 +14,13 @@ vi.mock('@spartan-ng/brain/sonner', () => ({
 
 describe('TrnToastService', () => {
   let svc: TrnToastService;
+  const announce = vi.fn().mockResolvedValue(undefined);
 
   beforeEach(() => {
     vi.clearAllMocks();
+    TestBed.configureTestingModule({
+      providers: [MockProvider(LiveAnnouncer, { announce })],
+    });
     svc = TestBed.inject(TrnToastService);
   });
 
@@ -85,5 +91,30 @@ describe('TrnToastService', () => {
     forwarded.action.onClick(new MouseEvent('click'));
 
     expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('announces a dialog-time error outside the aria-hidden app root', () => {
+    const root = document.createElement('trn-root');
+    root.setAttribute('aria-hidden', 'true');
+    document.body.append(root);
+
+    try {
+      svc.show('Could not open Encryption. Please try again.', {
+        variant: 'destructive',
+      });
+
+      expect(announce).toHaveBeenCalledWith(
+        'Could not open Encryption. Please try again.',
+        'assertive',
+      );
+    } finally {
+      root.remove();
+    }
+  });
+
+  it('lets Sonner announce normally when the app root is not hidden', () => {
+    svc.show('Saved', { variant: 'success' });
+
+    expect(announce).not.toHaveBeenCalled();
   });
 });

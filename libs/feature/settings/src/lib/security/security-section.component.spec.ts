@@ -42,10 +42,14 @@ async function build(
       MockProvider(EncryptionDialogService, { openUnlock, openVerify }),
       MockProvider(TrnAlertService, { prompt }),
       MockProvider(TrnToastService, { show: toastShow }),
-      MockProvider(Router, { navigate }),
+      MockProvider(Router, {
+        navigate,
+        url: '/rooms/!current:example.org',
+      }),
     ],
   });
   return {
+    fixture,
     cmp: fixture.componentInstance,
     container,
     refresh,
@@ -135,6 +139,22 @@ describe('SecuritySectionComponent', () => {
     cmp.verifySession();
 
     expect(openVerify).toHaveBeenCalledWith({ returnTo: '/settings/security' });
+  });
+
+  it('keeps nested verification modal and returns to the current room', async () => {
+    const { fixture, cmp, openVerify } = await build({ verified: false });
+    fixture.componentRef.setInput('inSettingsDialog', true);
+    fixture.detectChanges();
+
+    cmp.verifySession();
+
+    expect(openVerify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        returnTo: '/rooms/!current:example.org',
+        forceDialog: true,
+        isOwnerActive: expect.any(Function),
+      }),
+    );
   });
 
   it('marks the session verified and hides the verify action when verified', async () => {

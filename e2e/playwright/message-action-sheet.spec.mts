@@ -120,8 +120,8 @@ async function expectMessageClearOfSheet(
   });
   const sheetBox = await sheet.boundingBox();
   expect(sheetBox).not.toBeNull();
-  expect(geometry.row.top).toBeGreaterThanOrEqual(geometry.scroller.top);
-  expect(geometry.row.bottom).toBeLessThanOrEqual(geometry.scroller.bottom);
+  expect(geometry.row.top).toBeGreaterThanOrEqual(geometry.scroller.top - 1);
+  expect(geometry.row.bottom).toBeLessThanOrEqual(geometry.scroller.bottom + 1);
   // CDP reports fractional CSS pixels after Android device-scale conversion; allow
   // sub-pixel rounding while preserving the intended eight-pixel visual gap.
   expect(geometry.row.bottom + 8).toBeLessThanOrEqual(sheetBox!.y + 0.5);
@@ -162,6 +162,13 @@ test.describe('Message actions on a phone', () => {
     request,
   }) => {
     const rowSel = await openRoomWithMessage(page, request, 'a');
+
+    const row = page.locator(rowSel);
+    await expect(row.locator('.msg__toolbar')).toHaveCount(0);
+    const bodyWidth = await row
+      .locator('.msg__body')
+      .evaluate((body) => body.getBoundingClientRect().width);
+    expect(bodyWidth).toBeGreaterThan(200);
 
     await longPress(page, rowSel);
 

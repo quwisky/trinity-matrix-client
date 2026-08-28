@@ -1,12 +1,34 @@
+:host {
+  // One 0.9375rem line at 1.4 leading + 11px block padding on both sides + the field border.
+  // Kept as a construction rather than a literal 45px so Appearance text scaling grows the
+  // voice replacement with the textarea it stands in for.
+  --composer-resting-field-height: calc(1.3125rem + 24px);
+
+  display: block;
+  background: var(--trinity-surface-workspace);
+}
+
 .composer__banner {
-  padding: 4px 16px;
-  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: var(--trinity-density-item-gap);
+  min-height: calc(
+    var(--trinity-density-control-size) + 2 * var(--trinity-space-2)
+  );
+  margin-inline: var(--trinity-density-composer-padding-inline);
+  padding: var(--trinity-space-2) var(--trinity-space-3);
+  border-left: 2px solid var(--trinity-accent);
+  border-radius: var(--trinity-shape-control-radius)
+    var(--trinity-shape-control-radius) 0 0;
+  background: var(--trinity-surface-raised);
+  font-size: var(--trinity-type-metadata-size);
+  line-height: var(--trinity-type-metadata-line-height);
   color: var(--trinity-text-muted);
 
   kbd {
     padding: 1px 4px;
-    border-radius: 3px;
-    background: var(--trinity-rail);
+    border-radius: var(--trinity-radius-sm);
+    background: var(--trinity-surface-frame);
     font-family: inherit;
     font-size: 11px;
   }
@@ -17,15 +39,24 @@
 }
 
 .composer__cancel {
-  margin-left: 6px;
+  margin-left: auto;
+  min-width: var(--trinity-density-control-size);
+  min-height: var(--trinity-density-control-size);
   border: none;
+  border-radius: var(--trinity-shape-control-radius);
   background: none;
   color: var(--trinity-text-muted);
   font-size: 12px;
   cursor: pointer;
 
-  &:hover {
-    color: var(--trinity-text-bright);
+  &:hover:where(:not(:disabled)) {
+    background: var(--trinity-state-hover-surface);
+    color: var(--trinity-state-hover-foreground);
+  }
+
+  &:focus-visible {
+    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+    outline-offset: calc(-1 * var(--trinity-focus-ring-width));
   }
 }
 
@@ -43,7 +74,8 @@
   // off notched devices and, with the keyboard's native resize mode, while the soft
   // keyboard is up (the WebView shrinks, hiding the indicator) — so the input sits
   // flush above the keyboard when typing and above the indicator otherwise.
-  padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
+  padding: var(--trinity-space-3) var(--trinity-density-composer-padding-inline)
+    calc(var(--trinity-space-5) + env(safe-area-inset-bottom));
 }
 
 // The field: one box with the insert button, the input and the emoji/send buttons inside it.
@@ -62,7 +94,7 @@
   display: grid;
   grid-template-columns: auto 1fr auto auto;
   align-items: end;
-  gap: 4px;
+  gap: var(--trinity-density-composer-field-gap);
 
   // The box lives here now rather than on the textarea, which is what puts the buttons INSIDE
   // it. The textarea keeps only its vertical padding; the horizontal inset is this padding
@@ -75,9 +107,10 @@
   // The text consequently starts 50px into the FIELD (6 + 40 + the 4px gap) where it started
   // 58px into the old row (40 + 4 + the textarea's own 14px). Both measured from the same
   // edge, that is an 8px shift left — the visible half of moving the buttons inside.
-  padding-inline: 6px;
-  border-radius: var(--trinity-radius);
-  background: var(--trinity-sidebar);
+  padding-inline: var(--trinity-density-composer-field-inset);
+  border: 1px solid var(--trinity-border-subtle);
+  border-radius: var(--trinity-shape-container-radius);
+  background: var(--trinity-surface-raised);
 
   // The field's own area is a press target for the input it draws (see `onFieldPress`), and
   // it shares the input's fill, so it has to read as one: without this the dead zone shows an
@@ -93,8 +126,8 @@
   // outline the whole input as well as the button, which is a claim the old ring on the
   // textarea could not make.
   &:has(.composer__input:focus-visible) {
-    outline: 2px solid var(--trinity-accent);
-    outline-offset: -2px;
+    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+    outline-offset: calc(-1 * var(--trinity-focus-ring-width));
   }
 
   // Send is withheld while recording, and an empty fourth track is still a track: `gap` lays
@@ -106,6 +139,14 @@
   &:not(:has(.composer__send)) {
     grid-template-columns: auto 1fr auto;
   }
+}
+
+// Voice capture is a replacement state for the field, not an extra row above it. Keep the
+// textarea in the DOM so its draft and caret survive, but remove its box while the recording
+// control owns this plane. Both rows derive from the same action-size token, so their resting
+// heights remain equal in precise- and coarse-pointer layouts.
+.composer:has(.composer__recording) .composer__field {
+  display: none;
 }
 
 // The preview and the textarea share one grid cell, so the preview needs no box of its own —
@@ -172,11 +213,13 @@
   display: flex;
   flex: 1;
   align-items: center;
-  gap: 10px;
+  gap: var(--trinity-density-row-gap);
   width: 100%;
-  padding: 6px 10px;
-  border-radius: var(--trinity-radius);
-  background: var(--trinity-rail);
+  min-height: var(--composer-resting-field-height);
+  padding-inline: var(--trinity-density-composer-field-inset);
+  border: 1px solid var(--trinity-border-subtle);
+  border-radius: var(--trinity-shape-container-radius);
+  background: var(--trinity-surface-raised);
 }
 
 .composer__recording-cancel,
@@ -185,17 +228,23 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: var(--trinity-density-composer-action-size);
+  height: var(--trinity-density-composer-action-size);
   border: none;
-  border-radius: var(--trinity-radius);
+  border-radius: var(--trinity-shape-control-radius);
   background: none;
   color: var(--trinity-text-muted);
   font-size: 18px;
   cursor: pointer;
 
   &:hover {
-    color: var(--trinity-text-bright);
+    background: var(--trinity-state-hover-surface);
+    color: var(--trinity-state-hover-foreground);
+  }
+
+  &:focus-visible {
+    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+    outline-offset: calc(-1 * var(--trinity-focus-ring-width));
   }
 }
 
@@ -244,17 +293,28 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: var(--trinity-density-composer-action-size);
+  height: var(--trinity-density-composer-action-size);
   border: none;
-  border-radius: var(--trinity-radius);
+  border-radius: var(--trinity-shape-control-radius);
   background: none;
   color: var(--trinity-text-muted);
   font-size: 20px;
   cursor: pointer;
 
-  &:hover {
-    color: var(--trinity-text-bright);
+  &:hover:where(:not(:disabled)) {
+    background: var(--trinity-state-hover-surface);
+    color: var(--trinity-state-hover-foreground);
+  }
+
+  &:active:where(:not(:disabled)) {
+    background: var(--trinity-state-pressed-surface);
+    color: var(--trinity-state-pressed-foreground);
+  }
+
+  &:focus-visible {
+    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+    outline-offset: calc(-1 * var(--trinity-focus-ring-width));
   }
 
   &:disabled {
@@ -326,7 +386,12 @@
   .composer__send,
   .composer__recording-cancel,
   .composer__recording-send {
-    min-width: 44px;
-    min-height: 44px;
+    min-width: var(--trinity-interaction-target-min-size);
+    min-height: var(--trinity-interaction-target-min-size);
+  }
+
+  .composer__cancel {
+    min-width: var(--trinity-interaction-target-min-size);
+    min-height: var(--trinity-interaction-target-min-size);
   }
 }

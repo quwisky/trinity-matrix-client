@@ -12,6 +12,8 @@ export * from './lib/action-sheet/trn-action-sheet.service';
 export * from './lib/action-sheet/trn-action-sheet.component';
 export * from './lib/action-sheet/trn-action-sheet-ref';
 export * from './lib/toast/trn-toast.service';
+export * from './lib/toast/trn-toaster.component';
+export * from './lib/dropdown/trn-dropdown-menu';
 export * from './lib/anchored/trn-anchored-overlay.directive';
 // How a modal'd component closes itself: `inject(TrnDialogRef).close(value)`.
 //

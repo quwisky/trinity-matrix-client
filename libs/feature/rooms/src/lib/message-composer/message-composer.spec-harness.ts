@@ -21,8 +21,20 @@ import {
   type GifResult,
 } from '@trinity/data-access/gif';
 import { TrnToastService } from '@trinity/components/overlay';
+import { SettingsDialogService } from '@trinity/components/settings-dialog';
 import { MessageComposerComponent } from './message-composer.component';
 import { Router } from '@angular/router';
+
+/** Per-test interaction model; desktop remains the default for the composer suite. */
+const platform = vi.hoisted(() => ({ mobile: false }));
+vi.mock('@trinity/platform-native', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@trinity/platform-native')>()),
+  isMobileOs: () => platform.mobile,
+}));
+
+export function setMobilePlatform(mobile: boolean): void {
+  platform.mobile = mobile;
+}
 
 // The draft store persists to Capacitor Preferences (debounced); stub it so the
 // composer's real DraftStoreService is a no-op on the storage side.
@@ -91,6 +103,9 @@ export function renderComposer(
     inputs,
     providers: [
       MockProvider(TrnToastService),
+      // Settings presentation is verified in its own library. Composer tests exercise only
+      // the boundary and may override this default when they assert a manage-packs call.
+      MockProvider(SettingsDialogService),
       MockProvider(Router, { navigate: vi.fn().mockResolvedValue(true) }),
       ...providers,
     ],

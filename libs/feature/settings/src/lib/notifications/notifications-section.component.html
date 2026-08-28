@@ -1,19 +1,12 @@
 <div>
-  <h2
-    class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-  >
-    Notifications
-  </h2>
-  <p class="px-4 py-1 text-13 text-muted-foreground">
-    Choose what notifies you. These rules apply to every device signed in to
-    your account.
-  </p>
+  <trn-settings-section-heading
+    title="Notifications"
+    description="Choose what notifies you. These rules apply to every device signed in to your account."
+    [primary]="true"
+  />
 
   @for (rule of toggles; track rule.id) {
-    <label
-      class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
-      [attr.data-testid]="'notif-' + rule.id"
-    >
+    <label trnSettingsToggleRow [attr.data-testid]="'notif-' + rule.id">
       <trn-switch
         [checked]="checked(rule)"
         (checkedChange)="toggle(rule, $event)"
@@ -22,10 +15,7 @@
     </label>
   }
 
-  <label
-    class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
-    data-testid="notif-sound"
-  >
+  <label trnSettingsToggleRow data-testid="notif-sound">
     <trn-switch
       [checked]="soundChecked()"
       (checkedChange)="toggleSound($event)"

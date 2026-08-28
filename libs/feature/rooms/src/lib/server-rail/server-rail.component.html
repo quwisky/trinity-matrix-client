@@ -2,15 +2,16 @@
   <div class="item" [class.active]="recentActive()">
     <span class="indicator"></span>
     <button
+      trnIconButton
       class="pill recent"
-      [class.round]="recentActive()"
       (click)="showRecent.emit()"
       [attr.aria-current]="recentActive() ? 'true' : null"
       aria-label="Recent activity"
-      title="Recent activity"
+      trnTooltip="Recent activity"
+      position="right"
       data-testid="rail-recent"
     >
-      <trn-icon name="clock" />
+      <trn-icon name="clock" motion="pop" />
     </button>
     @if (unread().recent > 0) {
       <span
@@ -29,10 +30,8 @@
   >
     <span class="indicator"></span>
     <button
+      trnIconButton
       class="pill home"
-      [class.round]="
-        activeSpaceId() === null && !roomsActive() && !recentActive()
-      "
       (click)="selectSpace.emit(null)"
       [attr.aria-current]="
         activeSpaceId() === null && !roomsActive() && !recentActive()
@@ -40,9 +39,10 @@
           : null
       "
       aria-label="Home"
-      title="Home"
+      trnTooltip="Home"
+      position="right"
     >
-      <trn-icon name="house" />
+      <trn-icon name="house" motion="pop" />
     </button>
     @if (unread().home > 0) {
       <span
@@ -56,14 +56,16 @@
   <div class="item" [class.active]="roomsActive()">
     <span class="indicator"></span>
     <button
+      trnIconButton
       class="pill rooms"
       (click)="showRooms.emit()"
       [attr.aria-current]="roomsActive() ? 'true' : null"
       aria-label="Rooms"
-      title="Rooms"
+      trnTooltip="Rooms"
+      position="right"
       data-testid="rail-rooms"
     >
-      <trn-icon name="door-open" />
+      <trn-icon name="door-open" motion="pop" />
     </button>
     @if (unread().rooms > 0) {
       <span
@@ -94,14 +96,15 @@
             ? space.name + ' — ' + badgeFor(space.accountId)!.name
             : space.name
         "
-        [title]="space.name"
+        [trnTooltip]="space.name"
+        position="right"
       >
         <trn-avatar
           [mxc]="space.avatarMxc"
           [accountId]="space.accountId"
           [initial]="space.initial"
           [name]="space.name"
-          [square]="activeSpaceId() !== space.id || roomsActive()"
+          shape="place"
           [size]="48"
           [accountBadge]="badgeFor(space.accountId)"
         />
@@ -119,12 +122,14 @@
   <div class="item">
     <span class="indicator"></span>
     <button
+      trnIconButton
       class="pill add"
       (click)="createSpace.emit()"
       aria-label="Create a space"
-      title="Create a space"
+      trnTooltip="Create a space"
+      position="right"
     >
-      +
+      <trn-icon name="plus" motion="rotate" />
     </button>
   </div>
 </nav>

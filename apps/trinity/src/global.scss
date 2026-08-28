@@ -15,9 +15,112 @@
  */
 button:focus-visible,
 a:focus-visible,
+[role='button']:focus-visible,
+[role='link']:focus-visible,
+input:not([data-slot='input']):focus-visible,
+select:not([data-slot='input']):focus-visible,
+textarea:not([data-slot='input'], [data-slot='textarea']):focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid var(--trinity-accent);
-  outline-offset: 2px;
+  outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+  outline-offset: var(--trinity-focus-ring-offset);
+}
+
+button:disabled,
+[aria-disabled='true'] {
+  opacity: var(--trinity-disabled-opacity);
+}
+
+/*
+ * Shared visible-scrollbar contract. The selector has deliberately zero specificity so a
+ * component can opt out with `.no-scrollbar`; that utility keeps compact navigation and
+ * select panels scrollable without drawing a second bar. Chromium gives the standards
+ * properties precedence over its pseudo-elements, so Firefox receives those properties in
+ * a separate engine branch while Blink/WebKit keep the exact tokenized geometry below.
+ * Firefox 153 claims support for the WebKit selector family without painting it, which makes
+ * selector-based feature detection a false positive; `-moz-appearance` is the reliable split.
+ */
+@supports (-moz-appearance: none) {
+  :where(:not(.no-scrollbar)) {
+    scrollbar-width: thin;
+    scrollbar-color: var(--trinity-scrollbar-thumb)
+      var(--trinity-scrollbar-track);
+  }
+}
+
+@supports selector(::-webkit-scrollbar-thumb) {
+  :where(:not(.no-scrollbar))::-webkit-scrollbar {
+    width: var(--trinity-scrollbar-size);
+    height: var(--trinity-scrollbar-size);
+  }
+
+  :where(:not(.no-scrollbar))::-webkit-scrollbar-thumb {
+    border-radius: var(--trinity-scrollbar-radius);
+    background: var(--trinity-scrollbar-thumb);
+  }
+
+  :where(:not(.no-scrollbar))::-webkit-scrollbar-track,
+  :where(:not(.no-scrollbar))::-webkit-scrollbar-corner {
+    background: var(--trinity-scrollbar-track);
+  }
+}
+
+/*
+ * Shared icon-button interaction contract.
+ *
+ * `TrnButton` publishes the marker for every `size="icon*"` public button, while
+ * `TrnIconButton` lets purpose-built controls keep meaningful component-owned geometry. These
+ * rules are intentionally unlayered so the invariant state treatment wins over layered vendor
+ * utilities. Contextual rest treatments still belong to the caller; cursor and interaction
+ * feedback are shared everywhere, while only public square controls receive the common radius.
+ */
+:is(button, a)[data-trn-icon-button] {
+  cursor: pointer;
+  transition:
+    background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
+    color var(--trinity-duration-fast) var(--trinity-ease-standard),
+    border-color var(--trinity-duration-fast) var(--trinity-ease-standard),
+    box-shadow var(--trinity-duration-fast) var(--trinity-ease-standard);
+}
+
+:is(button, a)[trnBtn][data-trn-icon-button] {
+  border-radius: var(--trinity-shape-control-radius);
+}
+
+@media (hover: hover) {
+  :is(button, a)[data-trn-icon-button]:not(
+      :disabled,
+      [aria-disabled='true'],
+      [data-disabled='true'],
+      [data-disabled='']
+    ) {
+    &:hover {
+      background: var(--trinity-state-hover-surface);
+    }
+  }
+}
+
+:is(button, a)[data-trn-icon-button]:not(
+    :disabled,
+    [aria-disabled='true'],
+    [data-disabled='true'],
+    [data-disabled='']
+  ) {
+  &:active {
+    background: var(--trinity-state-pressed-surface);
+
+    // Helm moves every pressed button down by 1px. Icon actions animate only their inner glyph,
+    // so keep the control and its hit target fixed in both normal and reduced-motion modes.
+    translate: none;
+  }
+}
+
+:is(button, a)[data-trn-icon-button]:is(
+    :disabled,
+    [aria-disabled='true'],
+    [data-disabled='true'],
+    [data-disabled='']
+  ) {
+  cursor: default;
 }
 
 /*
@@ -85,6 +188,8 @@ router-outlet + * {
   padding-top: env(safe-area-inset-top);
   padding-right: calc(0.75rem + env(safe-area-inset-right));
   padding-left: calc(0.75rem + env(safe-area-inset-left));
+  background: var(--trinity-surface-panel);
+  color: var(--trinity-text-bright);
 }
 
 /* Respect users who prefer reduced motion. */
@@ -118,9 +223,9 @@ router-outlet + * {
  * is false for a mouse — including a narrow Electron window — so the desktop layout
  * is untouched (icon buttons stay 32×32 there). */
 @media (pointer: coarse) {
-  button[hlmBtn][data-slot='button'],
-  a[hlmBtn][data-slot='button'] {
-    min-width: 44px;
-    min-height: 44px;
+  button[trnBtn][data-slot='button'],
+  a[trnBtn][data-slot='button'] {
+    min-width: var(--trinity-interaction-target-min-size);
+    min-height: var(--trinity-interaction-target-min-size);
   }
 }

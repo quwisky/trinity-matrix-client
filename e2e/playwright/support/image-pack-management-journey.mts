@@ -21,11 +21,26 @@ export async function openImagePackJourneyRoom(
 }
 
 async function leaveSettings(page: Page): Promise<void> {
+  const close = page.getByTestId('close-settings');
+  if (await close.isVisible()) {
+    await close.click();
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeHidden();
+    return;
+  }
   for (let attempt = 0; attempt < 2; attempt += 1) {
     if (await page.getByTestId('rail-rooms').isVisible()) return;
     await page.getByRole('button', { name: 'Back' }).click();
   }
   await expect(page.getByTestId('rail-rooms')).toBeVisible();
+}
+
+/** Web/Electron modal and installed-native route share the same section controls. */
+async function openStickerSettings(page: Page): Promise<void> {
+  await page.getByTestId('open-settings').click();
+  await page.getByTestId('settings-nav-stickers').click();
+  await expect(page.getByTestId('image-pack-source')).toBeVisible({
+    timeout: 20_000,
+  });
 }
 
 export interface InstalledImagePackContext {
@@ -193,9 +208,7 @@ export async function runImagePackManagementJourney({
   await expect(page.getByTestId('insert-sticker')).toBeHidden();
   await page.keyboard.press('Escape');
 
-  await page.getByTestId('open-settings').click();
-  await page.getByTestId('settings-nav-stickers').click();
-  await page.waitForURL(/\/settings\/stickers(?:\?|$)/, { timeout: 20_000 });
+  await openStickerSettings(page);
   const sourceInput = page.getByTestId('image-pack-source');
   // Angular signal forms consume the real keyboard event sequence in Electron's
   // production renderer; `fill()`'s single synthetic input event is reset there.
@@ -251,8 +264,7 @@ export async function runImagePackManagementJourney({
   });
   await page.keyboard.press('Escape');
 
-  await page.getByTestId('open-settings').click();
-  await page.getByTestId('settings-nav-stickers').click();
+  await openStickerSettings(page);
   const disabledPack = page
     .getByTestId('installed-image-pack')
     .filter({ hasText: 'Fun pack' });
@@ -331,8 +343,7 @@ export async function runImagePackManagementJourney({
     ),
   ).toBe(true);
 
-  await page.getByTestId('open-settings').click();
-  await page.getByTestId('settings-nav-stickers').click();
+  await openStickerSettings(page);
   const packToRemove = page
     .getByTestId('installed-image-pack')
     .filter({ hasText: 'Fun pack' });

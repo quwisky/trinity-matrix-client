@@ -1,16 +1,6 @@
-<hlm-avatar
-  [style.width.px]="size()"
-  [style.height.px]="size()"
-  [style.borderRadius]="square() ? '30%' : null"
->
+<hlm-avatar [style.width.px]="size()" [style.height.px]="size()">
   @if (src()) {
-    <img
-      decoding="async"
-      hlmAvatarImage
-      [src]="src()"
-      [alt]="name()"
-      [style.borderRadius]="square() ? '30%' : null"
-    />
+    <img decoding="async" hlmAvatarImage [src]="src()" [alt]="name()" />
   }
   <span
     hlmAvatarFallback
@@ -18,7 +8,6 @@
     [style.background]="color()"
     [style.color]="initialColor()"
     [style.font-size.px]="size() * 0.4"
-    [style.borderRadius]="square() ? '30%' : null"
     >{{ initial() }}</span
   >
 </hlm-avatar>

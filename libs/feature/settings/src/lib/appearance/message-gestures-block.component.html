@@ -1,23 +1,31 @@
-<h2
-  id="appearance-message-swipe-heading"
-  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+<trn-settings-group
+  title="Message gestures"
+  headingId="appearance-message-gestures-heading"
+  description="Choose what a sideways drag does on phones and other touch-first devices."
 >
-  Message gestures
-</h2>
-<div class="px-4 py-2">
-  <trn-select
-    data-testid="message-swipe-select"
-    aria-labelledby="appearance-message-swipe-heading"
-    placeholder="Select a direction"
-    triggerClass="w-full"
-    [options]="swipeOptions"
-    [value]="gestures.messageSwipe()"
-    (valueChange)="onMessageSwipeChange($event)"
-  />
-</div>
-<p class="block px-4 py-2 text-13 text-muted-foreground">
-  On a phone, drag a message sideways to reply to it — or to edit it, if it is
-  one of yours you can still change. The icon behind the message says which
-  before you let go. Off by default, because a swipe over the timeline competes
-  with your phone's own back gesture.
-</p>
+  <div trnSettingsFieldRow>
+    <span class="min-w-0">
+      <strong
+        id="appearance-message-swipe-heading"
+        class="block text-sm font-semibold text-[var(--trinity-text-bright)]"
+        >Swipe action</strong
+      >
+      <small class="block text-13 text-[var(--trinity-text-muted)]"
+        >The revealed icon confirms the action before release</small
+      >
+    </span>
+    <trn-select
+      data-testid="message-swipe-select"
+      aria-labelledby="appearance-message-swipe-heading"
+      placeholder="Select a direction"
+      triggerClass="w-full"
+      [options]="swipeOptions"
+      [value]="gestures.messageSwipe()"
+      (valueChange)="onMessageSwipeChange($event)"
+    />
+  </div>
+  <p class="text-13 text-[var(--trinity-text-muted)]">
+    Off by default because a timeline swipe can compete with your phone's own
+    back gesture.
+  </p>
+</trn-settings-group>

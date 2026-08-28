@@ -30,6 +30,9 @@ export interface AccountBadge {
   readonly avatarMxc?: string | null;
 }
 
+/** Semantic avatar geometry: identities are circular; rooms and spaces are squircles. */
+export type AvatarShape = 'person' | 'place';
+
 /** The two inks an initial may be drawn in; the higher-contrast one wins. */
 const INK_DARK = '#1a1a1a';
 const INK_LIGHT = '#ffffff';
@@ -87,12 +90,16 @@ function readableInk(hex: string): string {
  * {@link AVATAR_RESOLVER} (authenticated blob URL) when one is provided.
  *
  * The helm avatar is fixed-size, circular, and neutral-filled, so `size` (arbitrary
- * px), `square` (rounded-rect for spaces), and the name-hashed fallback colour are
- * applied as inline styles, which win over hlm's utility classes.
+ * px), semantic `shape`, and the name-hashed fallback colour are applied through this
+ * wrapper. The shape rule also covers Helm's decorative `::after` outline.
  */
 @Component({
   selector: 'trn-avatar',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '[attr.data-shape]': 'shape()',
+    '[style.--trn-avatar-radius]': 'shapeRadius()',
+  },
   imports: [HlmAvatar, HlmAvatarImage, HlmAvatarFallback],
   templateUrl: './avatar.component.html',
   styles: [
@@ -100,6 +107,12 @@ function readableInk(hex: string): string {
       :host {
         display: inline-flex;
         position: relative;
+      }
+      hlm-avatar,
+      hlm-avatar::after,
+      [hlmAvatarImage],
+      [hlmAvatarFallback] {
+        border-radius: var(--trn-avatar-radius);
       }
       .presence-dot {
         position: absolute;
@@ -148,7 +161,7 @@ export class AvatarComponent {
   readonly name = input('');
   readonly initial = input('?');
   readonly size = input(40);
-  readonly square = input(false);
+  readonly shape = input<AvatarShape>('person');
   /** Online-status indicator; omit (null) to render no presence dot. */
   readonly presence = input<PresenceState | null>(null);
   /**
@@ -159,6 +172,13 @@ export class AvatarComponent {
   readonly accountBadge = input<AccountBadge | null>(null);
 
   private readonly resolver = inject(AVATAR_RESOLVER, { optional: true });
+
+  /** One inherited radius drives the Helm host, image, fallback and outline together. */
+  readonly shapeRadius = computed(() =>
+    this.shape() === 'place'
+      ? 'var(--trinity-shape-place-radius, 30%)'
+      : 'var(--trinity-shape-person-radius, 50%)',
+  );
 
   /** Diameter of the presence dot, scaled to the avatar (floored so it stays visible). */
   readonly dotSize = computed(() => Math.max(8, Math.round(this.size() * 0.3)));

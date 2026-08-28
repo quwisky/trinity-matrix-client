@@ -115,6 +115,11 @@ metadata without an SDK import of its own.
 New SDK interaction belongs in a `data-access-*` service. See
 [state and reactivity](state-and-reactivity.md) for the shape those services take.
 
+The proposed visual evolution of those UI layers is documented separately in the
+[modern UI redesign plan](modern-ui-redesign.md). It keeps the same dependency direction and
+cross-platform bundle while modernising the shared design system and high-traffic surfaces in
+reviewable phases.
+
 ## Crossing a forbidden edge on purpose
 
 Some legitimate needs run against the grain of the layering. The encryption unlock dialog has to be
@@ -187,7 +192,11 @@ Four details are not obvious from the table:
   initialised, otherwise calls `matrix.restoreAll()`, which activates the persisted account and
   warms the rest in the background. Any failure maps to a redirect to `/login`.
 - **`/settings` has no default child redirect.** Bare `/settings` renders the settings shell with
-  an empty detail outlet; the fourteen sections are children of it.
+  an empty detail outlet; the fourteen sections are children of it. In-app entry points on web and
+  Electron normally open the same registry in `SettingsDialogComponent` without navigating. The
+  route remains the installed-mobile target and bookmark/deep-link surface. A failed modal chunk
+  leaves the current room route intact and produces a retryable error instead of attempting the
+  same unavailable feature chunk through the router.
 - **The `canDeactivate` guards on the two encryption routes exist because those pages display a
   recovery key exactly once and never persist it.** The browser Back button would otherwise
   discard it silently. Those guards are also why `main.ts` passes

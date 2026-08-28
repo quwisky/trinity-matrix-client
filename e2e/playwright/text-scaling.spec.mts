@@ -1,15 +1,16 @@
 import { test, expect, type Page } from './support/fixtures.mts';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers the text-size setting (Settings → Appearance → Text size). The lever is the ROOT
 // font size, applied as a percentage, so everything that inherits from it scales.
 //
 // The assertion that matters is the COMPUTED size of a real message, not the value on
-// <html>. `.msg__text` sets no font-size of its own and inherits — but that is a property of
-// a stylesheet, and a stylesheet can change. Asserting the root alone would keep passing if
-// some component later hard-coded a size onto the message body, which is exactly the
-// regression this setting exists to avoid.
+// <html>. `.msg__text` consumes a root-relative semantic message role, but that is a
+// stylesheet contract and can drift. Asserting the root alone would keep passing if a
+// component later hard-coded a size onto the message body, which is exactly the regression
+// this setting exists to avoid.
 //
 // It also pins the deliberate LIMIT: chrome that hard-codes px does not scale (147 such
 // declarations remain, to be converted surface by surface), so the setting's own note says
@@ -58,6 +59,9 @@ async function backToRoom(page: Page, roomName: string): Promise<void> {
 
 const px = (locator: ReturnType<Page['locator']>) =>
   locator.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+
+const lineHeightPx = (locator: ReturnType<Page['locator']>) =>
+  locator.evaluate((el) => parseFloat(getComputedStyle(el).lineHeight));
 
 /**
  * The room-list column and the chat column must butt up against each other: no overlap
@@ -121,16 +125,24 @@ test.describe('Text size', () => {
     const roomNameEl = page.locator('.channel__name').first();
 
     const before = await px(message);
+    const lineHeightBefore = await lineHeightPx(message);
     const chromeBefore = await px(roomNameEl);
+    expect(before).toBe(16);
+    expect(lineHeightBefore).toBe(24);
     // The default must leave <html> untouched, so the browser's own setting still wins.
     expect(
       await page.evaluate(() => document.documentElement.style.fontSize),
     ).toBe('');
 
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-appearance').click();
-    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'appearance');
+    const previewBody = page.locator('.preview__body');
+    await expect(previewBody).toBeVisible();
+    expect(await px(previewBody)).toBe(before);
+    expect(await lineHeightPx(previewBody)).toBe(lineHeightBefore);
     await choose(page, 'text-scale-select', 'text-scale-larger');
+
+    expect(await px(previewBody)).toBe(20);
+    expect(await lineHeightPx(previewBody)).toBe(30);
 
     expect(
       await page.evaluate(() => document.documentElement.style.fontSize),
@@ -157,18 +169,14 @@ test.describe('Text size', () => {
     // Every step, not just the one above: the overlap was worst at Small, which a test that
     // only ever picked Larger would have missed entirely.
     for (const step of ['small', 'default', 'large'] as const) {
-      await page.getByTestId('open-settings').click();
-      await page.getByTestId('settings-nav-appearance').click();
-      await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+      await openSettingsSection(page, 'appearance');
       await choose(page, 'text-scale-select', `text-scale-${step}`);
       await page.goto('/rooms');
       await openRoom(page, roomName);
       await expectColumnsMeet(page, step);
     }
 
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-appearance').click();
-    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'appearance');
     await choose(page, 'text-scale-select', 'text-scale-larger');
     await page.goto('/rooms');
     await openRoom(page, roomName);
@@ -255,9 +263,7 @@ test.describe('Code size', () => {
       ),
     ).toBe('');
 
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-appearance').click();
-    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'appearance');
     await choose(page, 'code-scale-select', 'code-scale-larger');
     await backToRoom(page, roomName);
 
@@ -271,9 +277,7 @@ test.describe('Code size', () => {
     // Now the composition. Text size moves the root; code must follow it AND keep the
     // enlargement, so the ratio between the two survives. If the code size were absolute,
     // this ratio would collapse back towards the correction.
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-appearance').click();
-    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'appearance');
     await choose(page, 'text-scale-select', 'text-scale-larger');
     await backToRoom(page, roomName);
 
@@ -399,9 +403,7 @@ test.describe('Code line numbers', () => {
     const text = await longBlock.evaluate((el) => el.textContent ?? '');
     expect(text).toBe(long);
 
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-appearance').click();
-    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'appearance');
     await choose(page, 'code-lines-select', 'code-lines-always');
     await backToRoom(page, roomName);
 
@@ -411,9 +413,7 @@ test.describe('Code line numbers', () => {
     expect(await firstNumber(shortBlock)).toContain('counter');
     expect(await shortBlock.locator('code').getAttribute('rows')).toBeNull();
 
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-appearance').click();
-    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'appearance');
     await choose(page, 'code-lines-select', 'code-lines-off');
     await backToRoom(page, roomName);
 

@@ -12,6 +12,36 @@ describe('AvatarComponent', () => {
   const fallback = (host: HTMLElement) =>
     host.querySelector('[data-slot="avatar-fallback"]');
 
+  it('uses circular person geometry by default', async () => {
+    const { fixture } = await render(AvatarComponent, {
+      inputs: { initial: 'A' },
+    });
+    const host = fixture.nativeElement as HTMLElement;
+
+    expect(host.getAttribute('data-shape')).toBe('person');
+    expect(host.style.getPropertyValue('--trn-avatar-radius')).toBe(
+      'var(--trinity-shape-person-radius, 50%)',
+    );
+  });
+
+  it('applies one stable place radius contract to the whole avatar', async () => {
+    const { fixture, container } = await render(AvatarComponent, {
+      inputs: { initial: 'R', shape: 'place' },
+    });
+    const host = fixture.nativeElement as HTMLElement;
+
+    expect(host.getAttribute('data-shape')).toBe('place');
+    expect(host.style.getPropertyValue('--trn-avatar-radius')).toBe(
+      'var(--trinity-shape-place-radius, 30%)',
+    );
+    expect(container.querySelector('hlm-avatar')).not.toBeNull();
+    expect(fallback(container)).not.toBeNull();
+
+    fixture.componentRef.setInput('initial', 'S');
+    await fixture.whenStable();
+    expect(host.getAttribute('data-shape')).toBe('place');
+  });
+
   it('shows the initials fallback when no image source is given', async () => {
     const { fixture, container } = await render(AvatarComponent, {
       inputs: { initial: 'A', name: 'Alice' },

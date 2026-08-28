@@ -120,6 +120,8 @@ describe('MessageRowComponent — the long press on a mobile OS', () => {
     vi.useFakeTimers();
     const { container, pressed } = await renderRow();
 
+    expect(container.querySelector('.msg__toolbar')).toBeNull();
+
     longPress(container);
 
     expect(pressed.length).toBe(1);
@@ -143,9 +145,8 @@ describe('MessageRowComponent — the long press on a mobile OS', () => {
   });
 
   it('offers nothing at all on a row with no actions', async () => {
-    // `onPointerDown` returns early on `!this.toolbar()`, and that early return is the ONLY
-    // thing keeping the gesture off read-only, redacted and decryption-failed rows. Moving
-    // the mobile branch inside the timer rather than ahead of that check is deliberate.
+    // The explicit action-capability predicate is what keeps the gesture off read-only,
+    // redacted and decryption-failed rows now that mobile does not render a toolbar.
     state.mobile = true;
     vi.useFakeTimers();
     const { container, pressed } = await renderRow({ readOnly: true });
@@ -190,14 +191,12 @@ describe('MessageRowComponent — the long press on a mobile OS', () => {
     // menu on top of the sheet is not.
     state.mobile = true;
     const { container, fixture } = await renderRow();
-    // `toolbar` is a private viewChild; reached the same way `message-list-base.spec.ts`
-    // reaches its protected members, because what is being asserted is the collaboration.
+    // Mobile has no inaccessible hidden toolbar to open or reserve layout space for.
     const bar = (
       fixture.componentInstance as unknown as {
         toolbar: () => { openMoreMenu: () => void } | undefined;
       }
     ).toolbar();
-    const openMore = vi.spyOn(bar!, 'openMoreMenu');
     const event = new MouseEvent('contextmenu', {
       bubbles: true,
       cancelable: true,
@@ -206,7 +205,7 @@ describe('MessageRowComponent — the long press on a mobile OS', () => {
     container.querySelector('.msg')?.dispatchEvent(event);
 
     expect(event.defaultPrevented).toBe(true);
-    expect(openMore).not.toHaveBeenCalled();
+    expect(bar).toBeUndefined();
   });
 
   it('still opens the overflow menu on a right-click everywhere else', async () => {

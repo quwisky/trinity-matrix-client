@@ -5,19 +5,24 @@
 .banner {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 16px;
-  font-size: 14px;
+  gap: var(--trinity-density-row-gap);
+  padding: var(--trinity-density-row-padding-block)
+    var(--trinity-density-row-padding-inline);
+  font-size: var(--trinity-type-body-size);
+  font-weight: var(--trinity-type-body-weight);
+  line-height: var(--trinity-type-body-line-height);
 }
 
 .banner[data-tone='neutral'] {
-  background: var(--trinity-active);
-  color: var(--trinity-text);
+  background: var(--trinity-status-neutral-surface);
+  color: var(--trinity-status-neutral-foreground);
 }
 
 .banner[data-tone='accent'] {
-  background: var(--trinity-accent);
-  color: var(--trinity-accent-foreground);
+  --trinity-focus-ring: var(--trinity-focus-ring-on-attention);
+
+  background: var(--trinity-state-attention-surface);
+  color: var(--trinity-state-attention-foreground);
 }
 
 .banner__icon {
@@ -34,7 +39,7 @@
 .banner__actions {
   flex: 0 0 auto;
   display: flex;
-  gap: 6px;
+  gap: var(--trinity-density-item-gap);
   flex-wrap: wrap;
   justify-content: flex-end;
 }

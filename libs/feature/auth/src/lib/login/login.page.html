@@ -51,7 +51,7 @@
     </div>
 
     <button
-      hlmBtn
+      trnBtn
       class="login-card__submit w-full"
       [disabled]="busy()"
       (click)="discover()"
@@ -91,7 +91,7 @@
             (keyup.enter)="loginPassword()"
           />
           <button
-            hlmBtn
+            trnBtn
             variant="ghost"
             size="icon"
             type="button"
@@ -103,13 +103,16 @@
             [disabled]="busy()"
             (click)="passwordVisible.set(!passwordVisible())"
           >
-            <trn-icon [name]="passwordVisible() ? 'eye-off' : 'eye'" />
+            <trn-icon
+              [name]="passwordVisible() ? 'eye-off' : 'eye'"
+              motion="pop"
+            />
           </button>
         </div>
       </div>
 
       <button
-        hlmBtn
+        trnBtn
         class="login-card__submit w-full"
         [disabled]="busy()"
         (click)="loginPassword()"
@@ -121,7 +124,7 @@
     <!-- ── Step 2b: SSO ───────────────────────────────── -->
     @if (ssoSupported()) {
       <button
-        hlmBtn
+        trnBtn
         variant="outline"
         class="login-card__sso w-full"
         [disabled]="busy()"
@@ -135,7 +138,7 @@
          positively report open before this action appears; unknown fails closed. -->
     @if (registrationAvailability() === 'open' && !reauthUserId()) {
       <button
-        hlmBtn
+        trnBtn
         variant="outline"
         class="login-card__sso w-full"
         [disabled]="busy()"
@@ -149,7 +152,7 @@
     <!-- ── Step 2c: OIDC (next-gen auth) ──────────────── -->
     @if (oidcSupported()) {
       <button
-        hlmBtn
+        trnBtn
         class="login-card__submit w-full"
         [disabled]="busy()"
         (click)="startOidc()"
@@ -160,7 +163,7 @@
 
       @if (oidcRegistrationSupported() && !reauthUserId()) {
         <button
-          hlmBtn
+          trnBtn
           variant="outline"
           class="w-full"
           [disabled]="busy()"
@@ -191,7 +194,7 @@
   <!-- ── Add / re-auth: cancel back to the app ──────────── -->
   @if (addMode || reauthUserId()) {
     <button
-      hlmBtn
+      trnBtn
       variant="ghost"
       class="login-card__cancel w-full"
       [disabled]="busy()"
@@ -227,7 +230,7 @@
              they were sRGB and the resting tint comes out ~4.41:1, which is both wrong and
              plausible. Pinned by clear-all-data.spec.mts. -->
   <button
-    hlmBtn
+    trnBtn
     variant="ghost"
     size="sm"
     class="mt-4 w-full text-danger hover:text-danger"

@@ -16,17 +16,28 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: var(--trinity-density-composer-action-size);
+  height: var(--trinity-density-composer-action-size);
   border: none;
-  border-radius: var(--trinity-radius);
+  border-radius: var(--trinity-shape-control-radius);
   background: none;
   color: var(--trinity-text-muted);
   font-size: 20px;
   cursor: pointer;
 
-  &:hover {
-    color: var(--trinity-text-bright);
+  &:hover:where(:not(:disabled)) {
+    background: var(--trinity-state-hover-surface);
+    color: var(--trinity-state-hover-foreground);
+  }
+
+  &:active:where(:not(:disabled)) {
+    background: var(--trinity-state-pressed-surface);
+    color: var(--trinity-state-pressed-foreground);
+  }
+
+  &:focus-visible {
+    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+    outline-offset: calc(-1 * var(--trinity-focus-ring-width));
   }
 
   &:disabled {
@@ -46,7 +57,7 @@
   }
 
   .composer__attach {
-    min-width: 44px;
-    min-height: 44px;
+    min-width: var(--trinity-interaction-target-min-size);
+    min-height: var(--trinity-interaction-target-min-size);
   }
 }

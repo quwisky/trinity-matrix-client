@@ -100,3 +100,11 @@ Thumbs.db
 # only a bare `storybook build` invoked by hand, whose default output dir is `./storybook-static`
 # relative to wherever it was run — hence unanchored.
 storybook-static
+
+# Review media is generated outside the source tree and attached directly to pull requests.
+# Product artwork belongs in the platform/app asset roots; prototypes, captures and Playwright
+# pixel baselines must never be committed.
+/docs/evidence/
+/e2e/design-prototypes/
+/e2e/design-baselines/
+/e2e/**/*-snapshots/

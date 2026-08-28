@@ -6,36 +6,49 @@
 .toolbar {
   display: flex;
   overflow: hidden;
-  border: 1px solid var(--trinity-divider);
-  border-radius: var(--trinity-radius);
-  background: var(--trinity-sidebar);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 30%);
+  border: 1px solid var(--trinity-border-subtle);
+  border-radius: var(--trinity-shape-container-radius);
+  background: var(--trinity-surface-floating);
+  box-shadow: var(--trinity-shadow-floating);
 }
 
 .toolbar__picker {
   position: absolute;
-  right: 0;
-  bottom: calc(100% + 4px);
+  inset-block: auto calc(100% + 4px);
+  inset-inline-end: 0;
   display: flex;
-  gap: 2px;
-  padding: 4px;
-  border: 1px solid var(--trinity-divider);
-  border-radius: var(--trinity-radius);
-  background: var(--trinity-sidebar);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 30%);
+  gap: var(--trinity-density-item-gap);
+  padding: var(--trinity-density-item-gap);
+  border: 1px solid var(--trinity-border-subtle);
+  border-radius: var(--trinity-shape-container-radius);
+  background: var(--trinity-surface-floating);
+  box-shadow: var(--trinity-shadow-floating);
+}
+
+:host(.toolbar-host--picker-below) .toolbar__picker {
+  inset-block: calc(100% + 4px) auto;
 }
 
 .toolbar__emoji {
   padding: 3px 4px;
   border: none;
-  border-radius: var(--trinity-radius-sm);
+  border-radius: var(--trinity-shape-control-radius);
   background: none;
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
+  transition:
+    background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
+    color var(--trinity-duration-fast) var(--trinity-ease-standard);
 
-  &:hover {
-    background: var(--trinity-hover);
+  &:hover:where(:not(:disabled)) {
+    background: var(--trinity-state-hover-surface);
+    color: var(--trinity-state-hover-foreground);
+  }
+
+  &:active:where(:not(:disabled)) {
+    background: var(--trinity-state-pressed-surface);
+    color: var(--trinity-state-pressed-foreground);
   }
 }
 
@@ -44,27 +57,49 @@
   align-items: center;
   justify-content: center;
   color: var(--trinity-text-muted);
-
-  &:hover {
-    color: var(--trinity-text-bright);
-  }
 }
 
 .toolbar__btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+
+  // A floating precise-pointer control only needs the WCAG 2.5.8 24px target. The
+  // any-coarse-pointer override below restores the 44px floor for touch-capable desktops.
+  width: max(
+    24px,
+    calc(var(--trinity-density-control-size) - var(--trinity-space-3)),
+    var(--trinity-interaction-target-min-size)
+  );
+  height: max(
+    24px,
+    calc(var(--trinity-density-control-size) - var(--trinity-space-3)),
+    var(--trinity-interaction-target-min-size)
+  );
   border: none;
+  border-radius: var(--trinity-shape-control-radius);
   background: none;
   color: var(--trinity-text-muted);
   font-size: 18px;
   cursor: pointer;
+  transition:
+    background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
+    color var(--trinity-duration-fast) var(--trinity-ease-standard);
 
-  &:hover {
-    background: var(--trinity-hover);
-    color: var(--trinity-text-bright);
+  &:hover:where(:not(:disabled)) {
+    background: var(--trinity-state-hover-surface);
+    color: var(--trinity-state-hover-foreground);
+  }
+
+  &:active:where(:not(:disabled)) {
+    background: var(--trinity-state-pressed-surface);
+    color: var(--trinity-state-pressed-foreground);
+  }
+
+  // The toolbar clips its rounded outer edge. Pull the keyboard ring inside the button so
+  // the first and last controls do not lose half their indicator to that clipping boundary.
+  &:focus-visible {
+    outline-offset: calc(-1 * var(--trinity-focus-ring-width));
   }
 }
 
@@ -72,21 +107,20 @@
   color: var(--trinity-danger);
 }
 
-// Touch targets: 44px wherever a finger can reach these buttons, 32px otherwise.
+// Touch targets: the shared interaction minimum becomes 44px wherever a finger can reach
+// these buttons and remains zero on precise pointers.
 
-// Still keyed on `(pointer: coarse)` after #220 moved phones and tablets to a bottom
+// Still keyed on pointer capability after #220 moved phones and tablets to a bottom
 // sheet, and the two predicates are not in conflict — they answer different questions.
 // `isMobileOs()` picks the INTERACTION MODEL: a sheet is an iOS/Android convention, and a
-// Windows laptop with a touchscreen should not be given one. `(pointer: coarse)` asks
+// Windows laptop with a touchscreen should not be given one. `any-pointer: coarse` asks
 // whether a finger is driving, which is what decides how big a target has to be.
 
 // So on a phone this block is inert (the bar is never revealed there) and on a hybrid
 // laptop it is load-bearing (the bar IS revealed, and can be tapped). Right in both.
-@media (pointer: coarse) {
+@media (any-pointer: coarse) {
   .toolbar__btn,
-  .toolbar__emoji,
-  .toolbar__emoji--more,
-  .toolbar__picker {
+  .toolbar__emoji {
     min-width: 44px;
     min-height: 44px;
   }

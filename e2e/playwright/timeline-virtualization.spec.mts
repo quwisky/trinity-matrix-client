@@ -141,5 +141,40 @@ test.describe('Timeline virtualization', () => {
     await expect
       .poll(() => rows.count(), { timeout: 10_000 })
       .toBeLessThan(MAX_RENDERED);
+
+    // Composer-driven viewport resizes must exercise the ACTUAL windowed path, not a short
+    // room that the virtual list deliberately renders in full. A bottom pin follows growth;
+    // even one pixel of deliberate reading offset does not.
+    const composer = page.getByTestId('composer-input');
+    await composer.fill('one line');
+    await composer.fill('one\ntwo\nthree\nfour\nfive\nsix');
+    await expect
+      .poll(() =>
+        timeline.evaluate(
+          (element) =>
+            element.scrollHeight - element.scrollTop - element.clientHeight,
+        ),
+      )
+      .toBeLessThan(1);
+    await expect
+      .poll(() => rows.count(), { timeout: 10_000 })
+      .toBeLessThan(MAX_RENDERED);
+
+    for (const bottomGap of [1, 119]) {
+      await timeline.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+        element.dispatchEvent(new Event('scroll'));
+      });
+      await composer.fill('one line');
+      await timeline.evaluate((element, gap) => {
+        element.scrollTop = element.scrollHeight - element.clientHeight - gap;
+        element.dispatchEvent(new Event('scroll'));
+      }, bottomGap);
+      const before = await timeline.evaluate((element) => element.scrollTop);
+      await composer.fill('one\ntwo\nthree\nfour\nfive\nsix');
+      await expect
+        .poll(() => timeline.evaluate((element) => element.scrollTop))
+        .toBe(before);
+    }
   });
 });

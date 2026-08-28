@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 import { nxE2EPreset } from '@nx/playwright/preset';
-import { workspaceRoot } from '@nx/devkit';
+import { appE2EConfig } from './playwright/support/app-e2e-config.mts';
 
 // Base URL of the app under test. The webServer below builds the dev bundle and
 // serves www/ statically (the same proven path the legacy e2e/ harness uses — it
@@ -36,30 +36,9 @@ export default defineConfig({
   // event-propagation specs (rename, reactions, polls, threads). 120s (well under the
   // 240s webServer budget) gives realistic headroom; retries still catch the rare tail.
   timeout: 120_000,
-  // Bring up / tear down the disposable Synapse homeserver (Docker). Gracefully
-  // skips when Docker is unavailable; auth-only specs skip themselves then.
-  globalSetup: './playwright/support/global-setup.mts',
-  globalTeardown: './playwright/support/global-teardown.mts',
-  use: {
-    baseURL,
-    // Accept the disposable Synapse + Caddy self-signed cert (the app CSP only
-    // allows https:/wss: for connect-src, so the HS must be served over TLS).
-    ignoreHTTPSErrors: true,
-    // retain-on-failure, NOT on-first-retry: the latter traces the *retry*, which for a
-    // flaky spec is the attempt that passed — leaving the failing attempt with no trace at
-    // all. Measured on a full CI-mode run, two specs burned 212s of 464s total test time on
-    // failed first attempts that were consequently undiagnosable. Traces are still only
-    // kept for failures, so a green run costs nothing.
-    trace: 'retain-on-failure',
-  },
-  webServer: {
-    command:
-      'pnpm exec nx run trinity:build:development && node e2e/playwright/support/serve-www.mjs',
-    url: baseURL,
-    reuseExistingServer: !process.env['CI'],
-    timeout: 240_000,
-    cwd: workspaceRoot,
-  },
+  // Shared with the current-interface evidence suite: Synapse lifecycle, app server, self-signed
+  // TLS policy and retain-on-failure traces must not drift between real-app browser harnesses.
+  ...appE2EConfig(baseURL),
   // Chromium only: the app ships to Capacitor/Electron (Blink/WebKit) WebViews;
   // these UI journeys are representative in Chromium, matching the legacy harness.
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],

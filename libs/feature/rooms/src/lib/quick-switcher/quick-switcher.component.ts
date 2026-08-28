@@ -16,9 +16,13 @@ import {
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AccountBadgesService } from '../shared/account-badges.service';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
-import { AvatarComponent, type AccountBadge } from '@trinity/components/avatar';
+import {
+  AvatarComponent,
+  type AccountBadge,
+  type AvatarShape,
+} from '@trinity/components/avatar';
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnInput } from '@trinity/components/input';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
@@ -74,7 +78,7 @@ const KIND_ICON: Record<SwitcherKind, TrnIconName> = {
     TrnIconComponent,
     AvatarComponent,
     TrnSpinnerComponent,
-    HlmButton,
+    TrnButton,
     TrnInput,
   ],
   templateUrl: './quick-switcher.component.html',
@@ -197,5 +201,26 @@ export class QuickSwitcherComponent {
 
   kindIcon(kind: SwitcherKind): TrnIconName {
     return KIND_ICON[kind];
+  }
+
+  /** People and DMs are circular; every room-like destination is a stable squircle. */
+  avatarShape(result: SwitcherResult): AvatarShape {
+    switch (result.kind) {
+      case 'user':
+      case 'dm':
+        return 'person';
+      case 'room':
+      case 'space':
+        return 'place';
+      case 'invite':
+        return result.isDirect ? 'person' : 'place';
+      default:
+        return this.unreachableSwitcherResult(result);
+    }
+  }
+
+  /** Compile-time exhaustiveness guard for future switcher result kinds. */
+  private unreachableSwitcherResult(result: never): never {
+    throw new Error(`Unsupported switcher result: ${String(result)}`);
   }
 }

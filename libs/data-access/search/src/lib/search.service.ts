@@ -20,9 +20,8 @@ import {
 /** What a {@link SwitcherResult} points at, driving its icon and the jump on select. */
 export type SwitcherKind = 'room' | 'space' | 'dm' | 'invite' | 'user';
 
-/** A single ranked row in the quick switcher. */
-export interface SwitcherResult {
-  kind: SwitcherKind;
+/** Fields shared by every ranked quick-switcher row. */
+interface SwitcherResultBase {
   /** `roomId` for room/space/dm/invite; `userId` for a directory person. */
   id: string;
   title: string;
@@ -40,6 +39,20 @@ export interface SwitcherResult {
    * it, and jumping to one switches to that account first. */
   accountId?: string;
 }
+
+/**
+ * A single ranked row in the quick switcher. Invite rows require their direct-message
+ * classification so consumers cannot silently guess the avatar's identity geometry.
+ */
+export type SwitcherResult =
+  | (SwitcherResultBase & {
+      kind: 'invite';
+      isDirect: boolean;
+    })
+  | (SwitcherResultBase & {
+      kind: Exclude<SwitcherKind, 'invite'>;
+      isDirect?: never;
+    });
 
 /** What the switcher dismisses with when a row is chosen. */
 export interface SwitcherSelection {
@@ -90,9 +103,8 @@ export interface ServerMessageSearch {
   nextBatch: string | null;
 }
 
-/** Memoized, lowercased projection of a searchable source row. */
-interface SwitcherEntry {
-  kind: SwitcherKind;
+/** Fields shared by every memoized, lowercased searchable source row. */
+interface SwitcherEntryBase {
   id: string;
   title: string;
   subtitle?: string;
@@ -107,6 +119,14 @@ interface SwitcherEntry {
   encrypted?: boolean;
   accountId?: string;
 }
+
+/** Invite entries carry the same required classification as their public result. */
+type SwitcherEntry =
+  | (SwitcherEntryBase & { kind: 'invite'; isDirect: boolean })
+  | (SwitcherEntryBase & {
+      kind: Exclude<SwitcherKind, 'invite'>;
+      isDirect?: never;
+    });
 
 const SCORE_EXACT = 1000;
 const SCORE_PREFIX = 100;
@@ -205,6 +225,7 @@ export class SearchService {
         titleLower,
         haystack: titleLower,
         activityTs: 0,
+        isDirect: invite.isDirect,
       });
     }
 
@@ -241,19 +262,23 @@ export class SearchService {
           a.entry.title.localeCompare(b.entry.title),
       )
       .slice(0, limit)
-      .map(({ entry, score }) => ({
-        kind: entry.kind,
-        id: entry.id,
-        title: entry.title,
-        ...(entry.subtitle ? { subtitle: entry.subtitle } : {}),
-        avatarMxc: entry.avatarMxc,
-        initial: entry.initial,
-        score,
-        ...(entry.encrypted !== undefined
-          ? { encrypted: entry.encrypted }
-          : {}),
-        ...(entry.accountId ? { accountId: entry.accountId } : {}),
-      }));
+      .map(({ entry, score }): SwitcherResult => {
+        const common: SwitcherResultBase = {
+          id: entry.id,
+          title: entry.title,
+          ...(entry.subtitle ? { subtitle: entry.subtitle } : {}),
+          avatarMxc: entry.avatarMxc,
+          initial: entry.initial,
+          score,
+          ...(entry.encrypted !== undefined
+            ? { encrypted: entry.encrypted }
+            : {}),
+          ...(entry.accountId ? { accountId: entry.accountId } : {}),
+        };
+        return entry.kind === 'invite'
+          ? { ...common, kind: 'invite', isDirect: entry.isDirect }
+          : { ...common, kind: entry.kind };
+      });
   }
 
   /**

@@ -1,14 +1,13 @@
+@use '../styles/mixins' as *;
+
 :host {
   display: block;
 }
 
 .picker {
-  width: min(24rem, calc(100vw - 2rem));
-  padding: 0.75rem;
-  border: 1px solid var(--trinity-divider);
-  border-radius: var(--trinity-radius);
-  background: var(--trinity-sidebar);
-  box-shadow: 0 4px 16px rgb(0 0 0 / 40%);
+  @include picker-surface(24rem);
+
+  padding: var(--trinity-space-4);
 }
 
 .picker__search-label {
@@ -24,8 +23,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.5rem;
+  gap: var(--trinity-space-5);
+  margin-bottom: var(--trinity-space-3);
   color: var(--trinity-text);
   font-size: 0.875rem;
   font-weight: 700;
@@ -36,7 +35,7 @@
   min-height: 2.75rem;
   padding: 0 0.625rem;
   border: 0;
-  border-radius: var(--trinity-radius-sm);
+  border-radius: var(--trinity-shape-control-radius);
   background: transparent;
   color: var(--trinity-link);
   cursor: pointer;
@@ -52,15 +51,16 @@
   min-height: 2.75rem;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--trinity-divider);
-  border-radius: var(--trinity-radius-sm);
-  background: var(--trinity-rail);
+  border-radius: var(--trinity-shape-control-radius);
+  background: var(--trinity-surface-workspace);
   color: var(--trinity-text);
 }
 
 .picker__scroll {
   max-height: min(28rem, 55vh);
-  margin-top: 0.75rem;
-  overflow-y: auto;
+  margin-top: var(--trinity-space-4);
+
+  @include scrollable;
 }
 
 .picker__pack + .picker__pack {
@@ -102,11 +102,13 @@
 
 .picker__item {
   display: grid;
+  grid-template-rows: minmax(0, 3rem) auto;
+  gap: 0.125rem;
   min-width: 2.75rem;
   min-height: 4.5rem;
   padding: 0.25rem;
   border: 0;
-  border-radius: var(--trinity-radius-sm);
+  border-radius: var(--trinity-shape-control-radius);
   background: transparent;
   place-items: center;
   cursor: pointer;
@@ -114,14 +116,24 @@
 
 .picker__item:hover,
 .picker__item:focus-visible {
-  background: var(--trinity-hover);
+  background: var(--trinity-state-hover-surface);
 }
 
 .picker__item trn-sticker-image {
   display: block;
   max-width: 4rem;
-  max-height: 4rem;
+  max-height: 3rem;
   pointer-events: none;
+}
+
+.picker__shortcode {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--trinity-text-muted);
+  font-size: 0.625rem;
+  line-height: 1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .picker__attribution {
@@ -130,6 +142,5 @@
 }
 
 .picker__empty {
-  padding: 2rem 0.5rem;
-  text-align: center;
+  @include picker-status;
 }

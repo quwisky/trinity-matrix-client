@@ -7,7 +7,10 @@
  */
 export const TRN_ICON_MOTIONS = [
   'nudge-left',
+  'nudge-up',
+  'nudge-down',
   'nudge-up-right',
+  'pop',
   'rotate',
 ] as const;
 

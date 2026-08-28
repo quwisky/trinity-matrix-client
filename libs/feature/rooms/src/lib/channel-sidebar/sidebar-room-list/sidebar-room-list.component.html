@@ -10,9 +10,10 @@
         [initial]="invite.initial"
         [name]="invite.name"
         [size]="32"
+        [shape]="invite.isDirect ? 'person' : 'place'"
       />
       <div class="invite__text">
-        <span class="invite__name" [title]="invite.name">{{
+        <span class="invite__name" [trnTooltip]="invite.name">{{
           invite.name
         }}</span>
         <span class="invite__meta"
@@ -22,6 +23,7 @@
       </div>
       <div class="invite__actions">
         <button
+          trnIconButton
           class="invite__btn accept"
           (click)="
             acceptInvite.emit({
@@ -30,11 +32,12 @@
             })
           "
           [attr.aria-label]="'Accept invite to ' + invite.name"
-          title="Accept"
+          trnTooltip="Accept"
         >
-          <trn-icon name="check" />
+          <trn-icon name="check" motion="pop" />
         </button>
         <button
+          trnIconButton
           class="invite__btn decline"
           (click)="
             declineInvite.emit({
@@ -43,9 +46,9 @@
             })
           "
           [attr.aria-label]="'Decline invite to ' + invite.name"
-          title="Decline"
+          trnTooltip="Decline"
         >
-          <trn-icon name="x" />
+          <trn-icon name="x" motion="rotate" />
         </button>
       </div>
     </div>
@@ -106,7 +109,6 @@
       [class.active]="activeRoomId() === room.id"
       [class.unread]="room.hasUnread"
       (click)="selectRoom.emit(room.id)"
-      [title]="room.name"
     >
       <trn-avatar
         class="channel__avatar"
@@ -115,6 +117,7 @@
         [initial]="room.initial"
         [name]="room.name"
         [size]="36"
+        [shape]="room.directUserId ? 'person' : 'place'"
         [presence]="presenceOf(room)"
         [accountBadge]="badgeFor(room.accountId)"
       />
@@ -151,20 +154,22 @@
       }
     </button>
     <button
+      trnIconButton
       class="channel__menu"
-      [hlmDropdownMenuTrigger]="roomMenu"
+      [trnDropdownMenuTrigger]="roomMenu"
       align="end"
       [attr.aria-label]="'Options for ' + room.name"
-      title="Room options"
+      trnTooltip="Room options"
+      position="right"
     >
-      <trn-icon name="ellipsis-vertical" />
+      <trn-icon name="ellipsis-vertical" motion="pop" />
     </button>
   </div>
 
   <ng-template #roomMenu>
-    <div hlmDropdownMenu>
+    <div trnDropdownMenu>
       <button
-        hlmDropdownMenuItem
+        trnDropdownMenuItem
         (triggered)="toggleFavourite(room)"
         data-testid="room-favourite"
       >
@@ -172,7 +177,7 @@
         {{ room.favourite ? 'Unfavourite' : 'Favourite' }}
       </button>
       <button
-        hlmDropdownMenuItem
+        trnDropdownMenuItem
         (triggered)="toggleLowPriority(room)"
         data-testid="room-low-priority"
       >
@@ -181,7 +186,7 @@
       </button>
       @if (room.hasUnread) {
         <button
-          hlmDropdownMenuItem
+          trnDropdownMenuItem
           (triggered)="
             markRead.emit({ roomId: room.id, accountIds: room.accountIds })
           "
@@ -194,7 +199,7 @@
         <!-- Not offered for the room being read: the flag is cleared when a room is
            opened, and this one already is, so it would stick until you left. -->
         <button
-          hlmDropdownMenuItem
+          trnDropdownMenuItem
           (triggered)="
             markUnread.emit({ roomId: room.id, accountIds: room.accountIds })
           "
@@ -204,20 +209,20 @@
           Mark as unread
         </button>
       }
-      <div hlmDropdownMenuSeparator></div>
+      <div trnDropdownMenuSeparator></div>
       <button
-        hlmDropdownMenuItem
-        [hlmDropdownMenuSubTrigger]="notifyMenu"
+        trnDropdownMenuItem
+        [trnDropdownMenuSubTrigger]="notifyMenu"
         data-testid="room-notify"
       >
         <trn-icon name="bell" />
         Notifications
-        <hlm-dropdown-menu-item-sub-indicator />
+        <trn-dropdown-menu-item-sub-indicator />
       </button>
-      <div hlmDropdownMenuSeparator></div>
+      <div trnDropdownMenuSeparator></div>
       @if (spaceActive()) {
         <button
-          hlmDropdownMenuItem
+          trnDropdownMenuItem
           variant="destructive"
           (triggered)="removeRoom.emit(room.id)"
           data-testid="room-remove"
@@ -227,7 +232,7 @@
         </button>
       }
       <button
-        hlmDropdownMenuItem
+        trnDropdownMenuItem
         variant="destructive"
         (triggered)="
           leaveRoom.emit({ roomId: room.id, accountId: room.accountId })
@@ -240,10 +245,10 @@
     </div>
 
     <ng-template #notifyMenu>
-      <div hlmDropdownMenuSub>
+      <div trnDropdownMenuSub>
         @let mode = notifyMode(room);
         <button
-          hlmDropdownMenuRadio
+          trnDropdownMenuRadio
           [checked]="mode === 'all'"
           [keepOpen]="false"
           (triggered)="
@@ -255,11 +260,11 @@
           "
           data-testid="room-notify-all"
         >
-          <hlm-dropdown-menu-radio-indicator />
+          <trn-dropdown-menu-radio-indicator />
           All messages
         </button>
         <button
-          hlmDropdownMenuRadio
+          trnDropdownMenuRadio
           [checked]="mode === 'mentions'"
           [keepOpen]="false"
           (triggered)="
@@ -271,11 +276,11 @@
           "
           data-testid="room-notify-mentions"
         >
-          <hlm-dropdown-menu-radio-indicator />
+          <trn-dropdown-menu-radio-indicator />
           Mentions &amp; keywords only
         </button>
         <button
-          hlmDropdownMenuRadio
+          trnDropdownMenuRadio
           [checked]="mode === 'mute'"
           [keepOpen]="false"
           (triggered)="
@@ -287,7 +292,7 @@
           "
           data-testid="room-notify-mute"
         >
-          <hlm-dropdown-menu-radio-indicator />
+          <trn-dropdown-menu-radio-indicator />
           Mute
         </button>
       </div>

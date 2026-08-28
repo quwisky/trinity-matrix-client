@@ -9,10 +9,10 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnToastService } from '@trinity/components/overlay';
 import { RoomSettingsService } from '@trinity/data-access/rooms';
-import { AvatarComponent } from '@trinity/components/avatar';
+import { AvatarComponent, type AvatarShape } from '@trinity/components/avatar';
 
 /**
  * Matrix caps an avatar at the homeserver's upload limit; 8 MB is the common Synapse default and
@@ -37,7 +37,7 @@ const MAX_AVATAR_BYTES = 8 * 1024 * 1024;
 @Component({
   selector: 'trn-avatar-field',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, HlmButton],
+  imports: [AvatarComponent, TrnButton],
   templateUrl: './avatar-field.component.html',
   styleUrl: './avatar-field.component.scss',
 })
@@ -51,6 +51,8 @@ export class AvatarFieldComponent {
   readonly name = input('');
   readonly avatarMxc = input<string | null>(null);
   readonly initial = input('');
+  /** Room/space settings default to place geometry; callers may override explicitly. */
+  readonly shape = input<AvatarShape>('place');
   /** False hides the button entirely — the image still shows. */
   readonly editable = input(false);
   /** How the surface names itself in a toast: "room" or "space". */

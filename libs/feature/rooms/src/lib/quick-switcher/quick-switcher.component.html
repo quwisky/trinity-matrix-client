@@ -3,7 +3,7 @@
 >
   <div class="flex items-center gap-2 border-b border-solid border-border p-3">
     <h2 class="flex-1 text-base font-semibold">Jump to…</h2>
-    <button hlmBtn variant="ghost" size="sm" (click)="dismiss(null)">
+    <button trnBtn variant="ghost" size="sm" (click)="dismiss(null)">
       Cancel
     </button>
   </div>
@@ -58,7 +58,7 @@
           [initial]="result.initial"
           [name]="result.title"
           [size]="40"
-          [square]="result.kind === 'space'"
+          [shape]="avatarShape(result)"
           [accountBadge]="badgeFor(result)"
         />
         <span class="min-w-0 flex-1">

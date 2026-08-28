@@ -2,98 +2,68 @@
    there is more than one to offer, a plain attach button when there is not. Keeps
    the row to +, input, emoji and send. -->
 @if (hasMenu()) {
-  <button
-    type="button"
-    class="composer__attach"
-    [hlmDropdownMenuTrigger]="insertMenu"
-    trnTooltip="Add to message"
-    aria-label="Add to message"
-    data-testid="composer-insert"
-    [disabled]="editing()"
-  >
-    @if (locationSharing() || gifDownloading()) {
-      <trn-spinner class="text-base" />
-    } @else {
-      <trn-icon name="plus" />
-    }
-  </button>
-  <ng-template #insertMenu>
-    <!-- Each item repeats its inline twin's [disabled] rather than the trigger
-       carrying the union: an upload in flight blocks another *attachment*, it is
-       no reason to stop someone starting a poll. Only editing() is whole-tray. -->
-    <div hlmDropdownMenu aria-label="Add to message">
-      <button
-        hlmDropdownMenuItem
-        class="composer__insert-item"
-        (triggered)="attachFile.emit()"
-        data-testid="insert-attach"
-      >
-        <trn-icon name="paperclip" />
-        Attach a file
-      </button>
-      @if (gifEnabled()) {
-        <button
-          hlmDropdownMenuItem
-          class="composer__insert-item"
-          [disabled]="uploading() || gifDownloading()"
-          (triggered)="pickGif.emit()"
-          data-testid="insert-gif"
-        >
-          <trn-icon name="image-play" />
-          GIF
-        </button>
+  @if (mobileInteraction) {
+    <button
+      #mobileTrigger
+      type="button"
+      trnIconButton
+      class="composer__attach"
+      trnTooltip="Add to message"
+      aria-label="Add to message"
+      aria-haspopup="dialog"
+      [attr.aria-expanded]="mobileSheetOpen()"
+      data-testid="composer-insert"
+      [disabled]="editing()"
+      (click)="openMobileSheet()"
+    >
+      @if (locationSharing() || gifDownloading()) {
+        <trn-spinner class="text-base" />
+      } @else {
+        <trn-icon name="plus" motion="rotate" />
       }
-      @if (richActions()) {
-        @if (stickerEnabled()) {
+    </button>
+  } @else {
+    <button
+      type="button"
+      trnIconButton
+      class="composer__attach"
+      [trnDropdownMenuTrigger]="insertMenu"
+      trnTooltip="Add to message"
+      aria-label="Add to message"
+      data-testid="composer-insert"
+      [disabled]="editing()"
+    >
+      @if (locationSharing() || gifDownloading()) {
+        <trn-spinner class="text-base" />
+      } @else {
+        <trn-icon name="plus" motion="rotate" />
+      }
+    </button>
+    <ng-template #insertMenu>
+      <!-- One model feeds both interaction surfaces, including per-action disabled state. -->
+      <div trnDropdownMenu aria-label="Add to message">
+        @for (action of insertActions(); track action.testId) {
           <button
-            hlmDropdownMenuItem
+            trnDropdownMenuItem
             class="composer__insert-item"
-            (triggered)="pickSticker.emit()"
-            data-testid="insert-sticker"
+            [disabled]="action.disabled"
+            (triggered)="action.run()"
+            [attr.data-testid]="action.testId"
           >
-            <trn-icon name="image" />
-            Sticker
+            <trn-icon [name]="action.icon" />
+            {{ action.text }}
           </button>
         }
-        <button
-          hlmDropdownMenuItem
-          class="composer__insert-item"
-          (triggered)="createPoll.emit()"
-          data-testid="insert-poll"
-        >
-          <trn-icon name="vote" />
-          Poll
-        </button>
-        <button
-          hlmDropdownMenuItem
-          class="composer__insert-item"
-          [disabled]="locationSharing()"
-          (triggered)="shareLocation.emit()"
-          data-testid="insert-location"
-        >
-          <trn-icon name="map-pin" />
-          Location
-        </button>
-        @if (voiceSupported() && !recording()) {
-          <button
-            hlmDropdownMenuItem
-            class="composer__insert-item"
-            [disabled]="uploading()"
-            (triggered)="recordVoice.emit()"
-            data-testid="insert-voice"
-          >
-            <trn-icon name="mic" />
-            Voice message
-          </button>
-        }
-      }
-    </div>
-  </ng-template>
+      </div>
+    </ng-template>
+  }
 } @else {
   <!-- Nothing to collect in a tray (thread composer, no GIF provider), so the `+`
      stays a plain attach button. -->
   <button
+    #plainTrigger
     type="button"
+    trnIconButton
     class="composer__attach"
     trnTooltip="Attach"
     aria-label="Attach a file"
@@ -101,6 +71,6 @@
     [disabled]="editing()"
     (click)="attachFile.emit()"
   >
-    <trn-icon name="plus" />
+    <trn-icon name="plus" motion="rotate" />
   </button>
 }

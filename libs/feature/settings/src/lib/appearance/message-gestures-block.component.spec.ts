@@ -36,13 +36,13 @@ describe('MessageGesturesBlockComponent', () => {
     const { container } = await renderBlock();
 
     const select = container.querySelector(
-      '[data-testid=message-swipe-select]',
+      '[data-testid=message-swipe-select] [role=combobox]',
     );
     expect(select).not.toBeNull();
     const labelledBy = select?.getAttribute('aria-labelledby');
     expect(labelledBy).toBeTruthy();
     expect(container.querySelector(`#${labelledBy}`)?.textContent).toContain(
-      'Message gestures',
+      'Swipe action',
     );
   });
 

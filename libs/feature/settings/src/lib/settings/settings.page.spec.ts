@@ -9,7 +9,10 @@ import { SettingsPage } from './settings.page';
 
 // A trivial routed stand-in for each section sub-page, so the shell can be tested
 // without pulling in the sections' SDK-backed services.
-@Component({ selector: 'trn-stub-section', template: 'section' })
+@Component({
+  selector: 'trn-stub-section',
+  template: '<h2>Section heading</h2>',
+})
 class StubSectionComponent {}
 
 const SECTIONS = [
@@ -224,14 +227,72 @@ describe('SettingsPage (shell)', () => {
     const { harness, shell } = await harnessAt('/settings/appearance');
 
     expect(shell.sectionActive()).toBe(true);
-    // Which pane shows is now a `max-md:hidden` on each pane rather than a modifier class
-    // on their parent, so assert the panes themselves — narrower markup, and a stronger
-    // claim: the old check only said a class was present somewhere.
+    // Which pane shows is a component-owned class on each pane rather than a Tailwind
+    // breakpoint utility competing with the unlayered settings stylesheet.
     const el = harness.fixture.nativeElement as HTMLElement;
     const nav = el.querySelector('nav')!;
     const detail = el.querySelector('section')!;
-    expect(nav.classList.contains('max-md:hidden')).toBe(true);
-    expect(detail.classList.contains('max-md:hidden')).toBe(false);
+    expect(nav.classList.contains('settings-pane--hidden')).toBe(true);
+    expect(detail.classList.contains('settings-pane--hidden')).toBe(false);
+  });
+
+  it('moves focus to a directly opened section heading', async () => {
+    stubMatchMedia(false);
+    const { harness } = await harnessAt('/settings/appearance');
+
+    harness.detectChanges();
+    await flush();
+
+    const heading = (
+      harness.fixture.nativeElement as HTMLElement
+    ).querySelector('[data-testid=settings-detail] h2');
+    expect(document.activeElement).toBe(heading);
+    expect(heading?.getAttribute('tabindex')).toBe('-1');
+  });
+
+  it('skips the mobile directory entry when a drilled-in section grows wide', async () => {
+    const media = stubMatchMedia(false);
+    const { harness, shell } = await harnessAt('/settings');
+    const historyGo = vi
+      .spyOn(TestBed.inject(Location), 'historyGo')
+      .mockImplementation(() => undefined);
+
+    shell.onSectionNavigate();
+    await harness.navigateByUrl('/settings/appearance');
+    media.fireChange(true);
+    harness.detectChanges();
+    shell.goBack();
+
+    expect(historyGo).toHaveBeenCalledWith(-2);
+  });
+
+  it('forgets a mobile push after history returns to the directory', async () => {
+    const media = stubMatchMedia(false);
+    const { harness, shell, router } = await harnessAt('/settings');
+    const location = TestBed.inject(Location);
+    const historyGo = vi
+      .spyOn(location, 'historyGo')
+      .mockImplementation(() => undefined);
+    const back = vi.spyOn(location, 'back').mockImplementation(() => undefined);
+
+    shell.onSectionNavigate();
+    await harness.navigateByUrl('/settings/appearance');
+    await harness.navigateByUrl('/settings'); // browser/system Back equivalent
+    harness.detectChanges();
+    await flush();
+
+    const link = (
+      harness.fixture.nativeElement as HTMLElement
+    ).querySelector<HTMLElement>('[data-testid=settings-nav-appearance]');
+    expect(link?.hasAttribute('data-route-focus')).toBe(true);
+
+    media.fireChange(true);
+    harness.detectChanges();
+    expect(await settle(router, '/settings/profile')).toBe('/settings/profile');
+    shell.goBack();
+
+    expect(back).toHaveBeenCalledOnce();
+    expect(historyGo).not.toHaveBeenCalled();
   });
 
   it('leaves settings via history when the header back button is clicked at the index', async () => {

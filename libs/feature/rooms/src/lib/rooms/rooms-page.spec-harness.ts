@@ -21,6 +21,7 @@ import {
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 
 import { TrnActionSheetService } from '@trinity/components/overlay';
+import { SettingsDialogService } from '@trinity/components/settings-dialog';
 import { MockProvider } from 'ng-mocks';
 import { BehaviorSubject, of } from 'rxjs';
 import { vi } from 'vitest';
@@ -127,6 +128,10 @@ export const SHARED_MOCKS: Provider[] = [
   MessageActionsService,
   ShellShortcutsService,
   SessionActionsService,
+  // Settings presentation has its own focused component-library suite. Room-shell tests only
+  // need the session coordinator's boundary and must not construct a real dialog service from
+  // their deliberately minimal Router stub.
+  MockProvider(SettingsDialogService),
   MockProvider(CryptoService),
   MockProvider(PinnedMessagesService),
   // A Router whose `navigate` actually MOVES the route, because the store now reads the room

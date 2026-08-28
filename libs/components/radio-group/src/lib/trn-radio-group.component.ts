@@ -10,6 +10,8 @@ import {
   HlmRadioIndicator,
 } from '@trinity/helm/radio-group';
 
+export type TrnRadioGroupVariant = 'list' | 'segmented';
+
 /** One choice in a {@link TrnRadioGroupComponent}. */
 export interface TrnRadioOption<T> {
   readonly value: T;
@@ -62,10 +64,66 @@ export interface TrnRadioOption<T> {
   // Measured in Chromium against the real class strings — first option x=16 -> x=0 and the
   // section 20px taller — which no test in this repo can see, since jsdom does no layout.
   // A component STYLE rather than a Tailwind class so the spec below can assert it.
-  styles: [':host { display: block; }'],
+  styles: [
+    `
+      :host {
+        display: block;
+      }
+
+      :host([data-variant='segmented']) hlm-radio-group {
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(0, 1fr);
+        gap: var(--trinity-space-1);
+        padding: var(--trinity-space-1);
+        border: 1px solid var(--trinity-border-subtle);
+        border-radius: var(--trinity-shape-control-radius);
+        background: var(--trinity-surface-floating);
+      }
+
+      :host([data-variant='segmented']) label {
+        min-height: max(
+          var(--trinity-density-control-size),
+          var(--trinity-interaction-target-min-size)
+        );
+        justify-content: center;
+        padding-inline: var(--trinity-space-3);
+        border-radius: calc(var(--trinity-shape-control-radius) - 2px);
+        color: var(--trinity-text-muted);
+        transition:
+          background-color var(--trinity-duration-fast)
+            var(--trinity-ease-standard),
+          color var(--trinity-duration-fast) var(--trinity-ease-standard),
+          box-shadow var(--trinity-duration-fast) var(--trinity-ease-standard);
+        text-align: center;
+        overflow-wrap: anywhere;
+      }
+
+      :host([data-variant='segmented']) label:hover {
+        background: var(--trinity-state-hover-surface);
+        color: var(--trinity-state-hover-foreground);
+      }
+
+      :host([data-variant='segmented']) label.trn-radio-option--selected {
+        background: var(--trinity-state-selected-surface);
+        color: var(--trinity-state-selected-foreground);
+        box-shadow: var(--trinity-shadow-raised);
+      }
+
+      :host([data-variant='segmented']) label:has(input:focus-visible) {
+        outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+        outline-offset: var(--trinity-focus-ring-offset);
+      }
+
+      :host([data-variant='segmented']) hlm-radio-indicator {
+        display: none;
+      }
+    `,
+  ],
   host: {
     // Routed to the inner group below; a duplicate here would name an element with no role.
     '[attr.aria-labelledby]': 'null',
+    '[attr.data-variant]': 'variant()',
   },
   template: `
     <hlm-radio-group
@@ -76,6 +134,7 @@ export interface TrnRadioOption<T> {
       @for (option of options(); track option.value) {
         <label
           class="flex cursor-pointer items-center gap-3 text-sm font-medium"
+          [class.trn-radio-option--selected]="option.value === value()"
           [attr.data-testid]="option.testId"
         >
           <hlm-radio [value]="option.value"><hlm-radio-indicator /></hlm-radio>
@@ -86,6 +145,7 @@ export interface TrnRadioOption<T> {
   `,
 })
 export class TrnRadioGroupComponent<T> {
+  readonly variant = input<TrnRadioGroupVariant>('list');
   readonly options = input.required<readonly TrnRadioOption<T>[]>();
   readonly value = input<T | null>(null);
 

@@ -65,17 +65,18 @@ const specs = globSync('e2e/**/*.{mts,mjs}', { cwd: workspaceRoot })
   .sort();
 
 /**
- * Every E2E module is an intentional cache-input superset for this guard.
+ * Every E2E module is an intentional target-input superset for this guard.
  *
  * The current checks exclude shared helpers and most Synapse modules after globbing, then read
- * `start.mjs` directly. Hashing the whole source corpus keeps both paths covered and means a
- * future check cannot silently become uncached merely because it starts reading another helper.
+ * `start.mjs` directly. Declaring the whole source corpus documents both paths and means a future
+ * check cannot silently read outside the target's model merely because it starts using another
+ * helper. The target itself is uncached because another guard reads the Git index.
  */
 const e2eSources = globSync('e2e/**/*.{mts,mjs}', {
   cwd: workspaceRoot,
 }).sort();
 const scriptsProject = JSON.parse(read('scripts/project.json'));
-const cachedE2eSources = globSync(
+const configuredE2eSources = globSync(
   scriptsProject.targets.test.inputs
     .filter(
       (input) =>
@@ -88,9 +89,9 @@ const cachedE2eSources = globSync(
   .sort();
 
 describe('e2e harness constants', () => {
-  it('hashes the complete E2E module corpus in the scripts:test cache key', () => {
-    expect(cachedE2eSources).toEqual(e2eSources);
-    expect(cachedE2eSources).toContain(DEFINITION);
+  it('declares the complete E2E module corpus in the scripts:test inputs', () => {
+    expect(configuredE2eSources).toEqual(e2eSources);
+    expect(configuredE2eSources).toContain(DEFINITION);
   });
 
   it('finds the specs at all, so an empty sweep cannot pass', () => {

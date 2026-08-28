@@ -49,8 +49,8 @@ All notable changes to this project are documented here. The format is based on
   you are on.
 
 - **A density setting.** Under Settings → Appearance, "Compact" tightens the spacing in
-  the message list so more of a conversation fits on screen. Other parts of the app keep
-  their spacing for now.
+  the room shell, message list and composer so more of a conversation fits on screen. It
+  never shrinks a touch target below the shared 44px floor.
 
 - **The member list has a filter.** Type a name or a user id above the list to narrow it —
   useful in a room where scrolling to find someone was the only option. Large rooms also
@@ -76,6 +76,118 @@ All notable changes to this project are documented here. The format is based on
   rather than dark grey. Pick it under Settings → Appearance, in either light or dark mode.
 
 ### Changed
+
+- **Scrollbars now look like one family everywhere.** Timelines, sidebars, dialogs, pickers and
+  horizontal overflow use the former room-container design: an 8px rounded thumb in the active
+  palette's rail colour over a transparent track. Firefox keeps its platform-native thin geometry.
+  Intentionally hidden bars in the Settings directory and dropdown panels remain scrollable.
+
+- **Visual review files no longer live in the source tree.** Design exploration, screenshots, GIFs
+  and pixel baselines are kept out of the repository. UI proof is uploaded directly to pull
+  requests, while automated coverage uses semantic, contrast, responsive and measured-layout
+  checks against the real application.
+
+- **Chat messages are easier to read at the default text size.** Conversation prose now starts at
+  16px with 1.5 line spacing, while compact authors, timestamps, replies and navigation chrome keep
+  their existing hierarchy. The Appearance preview uses the same message typography as the live
+  timeline, and every Text size option continues to scale it from the browser or device default.
+
+- **Settings content now follows the modern grouped hierarchy.** Appearance combines a compact
+  conversation preview, a segmented mode picker and labelled two-column control rows, while every
+  section gains a clear title and supporting description. Related controls use calmer group
+  headings, switches sit on the logical trailing edge, and select fields expose their visible
+  labels to assistive technology. Select values and switch labels retain readable theme-aware
+  foregrounds in dark mode. The dialog title shares the navigation pane's inline inset in both
+  density modes and right-to-left layouts. The layout remains contained at 125% text and Compact
+  density.
+
+- **Read-receipt avatars keep the full timeline edge beside authenticity shields.** A shield now
+  reserves space only beside the message content; the “seen by” row spans underneath it and remains
+  aligned to the trailing edge in both left-to-right and right-to-left interfaces. Both controls stay
+  in normal layout flow, so virtualized timeline measurement includes them without covering text.
+
+- **Icon buttons now behave as one family.** Standard square actions and purpose-built controls
+  such as reaction chips, server-rail pills, avatar actions, composer controls and the floating
+  message toolbar use the same pointer cursor, hover and pressed surfaces while preserving their
+  meaningful resting shapes and contextual contrast. Custom controls also keep their glyphs
+  centred inside the full hit target, including Settings in the floating account dock. Icon labels in
+  navigation, member, receipt and message actions now use Trinity's themeable tooltip instead of the
+  browser's native one, and shared tooltips keep a dark, readable surface when dark mode is selected.
+  Tooltips in vertically stacked lists open sideways instead of covering the previous control, while
+  sticker shortcodes stay visible below their images without a floating overlay. Each action gets a
+  small semantic glyph
+  motion—for example, Back nudges left, Settings rotates and Search pops—with keyboard parity and a
+  static reduced-motion fallback that never shifts the control.
+
+- **The modern interface is now hardened across the supported screen sizes.** The quieter layered
+  room shell, responsive auth and encryption tasks, grouped settings workspace, compact density and
+  floating pickers now share one tested visual system from 1440px desktop windows down to 320px
+  phones. Light, dark, Onyx and Amethyst are covered across that matrix, including 125% text and
+  keyboard, forced-colour, reduced-motion and genuine WebKit paths. The Electron and Android
+  wrappers are also checked against the exact same production web payload rather than independent
+  rebuilds, with unexpected wrapper files rejected.
+
+- **Sign-in, encryption and secondary surfaces now share the modern interface.** Authentication
+  and registration use a roomier, branded task card; encryption setup, recovery and verification
+  use the same bounded routed surface and a distinct scroll-safe dialog treatment. Security
+  warnings and recovery keys remain the strongest elements in those flows. GIF, sticker, emoji
+  and user pickers now share the floating-surface vocabulary, and the full-screen image viewer
+  adds a visible Close control without changing Escape or backdrop dismissal. Incoming device
+  verification dialogs now announce their purpose to assistive technology.
+
+- **Interface controls now go through Trinity's public component tier.** Buttons, dropdown
+  menus and the toast viewport keep the same behaviour and appearance, but feature code no
+  longer imports the vendored Helm kit directly. The lint boundary now has no exceptions.
+
+- **The composer insert menu now follows the device.** On iOS and Android, including mobile web
+  and installed PWAs, the `+` opens a thumb-sized bottom sheet for files, GIFs, stickers, polls,
+  location and voice. Desktop web and Electron keep the compact anchored menu. Dismissing the
+  sheet or choosing an action without a successor restores focus to the `+`; GIF, sticker and
+  poll choices transfer focus into the picker or dialog they open. Switching rooms or changing
+  any action's availability closes stale choices and restores the viable replacement trigger.
+
+- **Settings opens over your work on web and desktop.** Web and Electron now present the grouped,
+  bounded Settings workspace as a named dialog without changing the room URL. Escape, the
+  backdrop and the visible Close button dismiss it; keyboard focus stays inside and returns to
+  its opener. Short windows keep overflow in the detail pane, and narrow web windows retain the
+  one-pane directory drill-in inside the dialog, including nested device-verification and recovery
+  overlays. Failed or superseded dialog loads leave the current room in place. Installed Android
+  and iOS apps, bookmarks and direct `/settings/...` links keep the routed flow. Appearance still
+  includes the live theme, palette, text-size, time-format and density preview.
+
+- **Messages and the composer now share a clearer conversation hierarchy.** Message bodies,
+  authors, timestamps, replies, threads, reactions, receipts, status rows and typing/divider
+  chrome now consume semantic type, surface, state and density roles. The floating message
+  toolbar is narrower and raised over the row boundary, allowing message bodies to use the
+  full timeline width without changing measured row heights. Its actions remain fully
+  hit-testable on short grouped rows, clamp to the live scroll edge and flip quick reactions
+  toward available space; hybrid touch desktops retain a non-overlapping 44px action track.
+  Reply/edit context, attachments and the input read
+  as one composer surface. Edit mode has a touch cancel action, and voice recording moves
+  keyboard focus into and back out of its replacement controls. Growing the composer or opening
+  the software keyboard keeps an exactly bottom-pinned conversation at the newest message and
+  preserves every scrolled-up reading position in both the simple and virtual timelines.
+
+- **The conversation shell is calmer and more compact.** The space rail, room list,
+  conversation header, member list and account dock now share recessed semantic surfaces,
+  clearer selected and pressed states, stable space squircles and density-aware spacing.
+  Resizable pane widths and virtualized member-row measurements stay unchanged, and Compact
+  density never reduces a coarse-pointer target below 44px.
+
+- **The desktop account dock now floats above navigation.** Web and Electron inset the
+  bottom-left identity panel as one raised surface across the Space rail and room sidebar,
+  while reserving enough scroll space that the last Space, room and keyboard-focused row stay
+  visible. Phones keep the touch-first panel in normal flow above the device safe area.
+
+- **Shared controls now use one modern interaction language.** Floating message actions, status
+  banners and file attachments share tokenised hover, press, focus, disabled, shape, type and
+  density roles. Keyboard focus uses a measured high-contrast ring in every theme, and Compact
+  density now tightens these pieces of chrome without shrinking touch targets.
+
+- **People and places now keep distinct, stable avatar shapes.** People and direct messages stay
+  circular, while rooms and spaces use squircles throughout navigation, search, directories and
+  settings. Selecting or hovering a space no longer changes its fundamental shape; background,
+  indicator and focus states carry selection instead.
 
 - **Menus, tooltips and the indeterminate progress bar now hold still on their own for
   reduced motion.** They already did, but only because a blanket rule elsewhere in the app
@@ -197,11 +309,10 @@ All notable changes to this project are documented here. The format is based on
   were. Tall images are no longer cropped to fit, either, and the placeholder shown while one
   loads is finally a different colour from the box around it, so you can see it at all.
 
-- **Message actions no longer sit on top of the message above.** The hover toolbar was
-  positioned deliberately outside its own row, which on a phone — where it was always visible —
-  meant every message permanently covered the top of the one before it. It stays inside its own
-  message now, and on a phone or tablet the actions arrive as a bottom sheet on a long press
-  rather than as a floating bar at all.
+- **Message actions no longer permanently cover neighboring messages.** The hover toolbar used
+  to be forced open on every phone row. Phones and tablets now use a bottom sheet on long press;
+  desktop and web show one compact, raised floating bar only for the active row, leaving
+  the message body its full available width.
 
 - **Starting the app no longer shows a blank screen.** Trinity has to open its local
   database, load the encryption engine and reconnect before it can show you anything, and
