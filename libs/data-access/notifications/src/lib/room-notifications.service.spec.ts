@@ -1,9 +1,14 @@
+import { effect } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { ClientEvent } from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { RoomNotificationsService } from './room-notifications.service';
+import {
+  RoomNotificationsService,
+  type RoomNotifyMode,
+} from './room-notifications.service';
 
 const ROOM = '!r:hs';
 
@@ -15,17 +20,58 @@ interface Rule {
 
 /** A fake client whose push-rule methods record calls and mutate an in-memory ruleset. */
 function makeClient(seed: { override?: Rule[]; room?: Rule[] } = {}) {
-  const client = {
-    pushRules: {
-      global: { override: seed.override ?? [], room: seed.room ?? [] },
+  const serverRules = {
+    global: {
+      override: structuredClone(seed.override ?? []),
+      room: structuredClone(seed.room ?? []),
     },
+  };
+  const client = {
+    pushRules: structuredClone(serverRules),
     getRoomPushRule: vi.fn((_scope: string, roomId: string) =>
       client.pushRules.global.room.find((r) => r.rule_id === roomId),
     ),
-    setRoomMutePushRule: vi.fn(() => Promise.resolve()),
-    addPushRule: vi.fn(() => Promise.resolve({})),
-    deletePushRule: vi.fn(() => Promise.resolve({})),
-    getPushRules: vi.fn(() => Promise.resolve(client.pushRules)),
+    setRoomMutePushRule: vi.fn(
+      async (_scope: string, roomId: string, mute: boolean) => {
+        serverRules.global.room = mute ? [dontNotify(roomId)] : [];
+      },
+    ),
+    addPushRule: vi.fn(
+      async (
+        _scope: string,
+        kind: string,
+        roomId: string,
+        body: { actions: string[] },
+      ) => {
+        const rule = { rule_id: roomId, enabled: true, actions: body.actions };
+        if (kind === 'override') {
+          serverRules.global.override = [rule];
+        } else {
+          serverRules.global.room = [rule];
+        }
+        return {};
+      },
+    ),
+    deletePushRule: vi.fn(
+      async (_scope: string, kind: string, roomId: string) => {
+        if (kind === 'override') {
+          serverRules.global.override = serverRules.global.override.filter(
+            (rule) => rule.rule_id !== roomId,
+          );
+        } else {
+          serverRules.global.room = serverRules.global.room.filter(
+            (rule) => rule.rule_id !== roomId,
+          );
+        }
+        return {};
+      },
+    ),
+    getPushRules: vi.fn(async () => {
+      client.pushRules = structuredClone(serverRules);
+      return client.pushRules;
+    }),
+    on: vi.fn(),
+    off: vi.fn(),
   };
   return client;
 }
@@ -38,6 +84,8 @@ function setup(seed?: { override?: Rule[]; room?: Rule[] }) {
       MockProvider(MatrixClientService, {
         isInitialized: true,
         instance: client as never,
+        accountIds: (() => ['@me:hs']) as never,
+        all: () => [{ client }] as never,
       }),
     ],
   });
@@ -79,6 +127,25 @@ describe('RoomNotificationsService', () => {
         override: [{ rule_id: ROOM, enabled: false, actions: ['dont_notify'] }],
       });
       expect(svc.modeFor(ROOM)).toBe('all');
+    });
+
+    it('reacts to push rules delivered by account-data sync', () => {
+      const { svc, client } = setup();
+      const observed: RoomNotifyMode[] = [];
+      TestBed.runInInjectionContext(() =>
+        effect(() => observed.push(svc.modeFor(ROOM))),
+      );
+      svc.connect();
+      TestBed.tick();
+
+      client.pushRules.global.room = [dontNotify(ROOM)];
+      const handler = client.on.mock.calls.find(
+        ([event]) => event === ClientEvent.AccountData,
+      )?.[1] as (() => void) | undefined;
+      handler?.();
+      TestBed.tick();
+
+      expect(observed.at(-1)).toBe('mentions');
     });
   });
 
@@ -141,6 +208,37 @@ describe('RoomNotificationsService', () => {
       expect(client.addPushRule).not.toHaveBeenCalled();
       expect(client.setRoomMutePushRule).not.toHaveBeenCalled();
     });
+
+    it('restores the previous server mode when a multi-step update fails', async () => {
+      const originalMute = dontNotify(ROOM);
+      const serverRules = {
+        global: { override: [originalMute], room: [] as Rule[] },
+      };
+      const { svc, client } = setup({ override: [originalMute] });
+      client.deletePushRule.mockImplementation(async () => {
+        serverRules.global.override = [];
+        return {};
+      });
+      client.setRoomMutePushRule.mockRejectedValueOnce(
+        new Error('homeserver unavailable'),
+      );
+      client.addPushRule.mockImplementation(async () => {
+        serverRules.global.override = [originalMute];
+        return {};
+      });
+      client.getPushRules.mockImplementation(async () => {
+        client.pushRules = structuredClone(serverRules);
+        return client.pushRules;
+      });
+
+      await expect(
+        firstValueFrom(svc.setMode(ROOM, 'mentions')),
+      ).rejects.toThrow('homeserver unavailable');
+
+      expect(serverRules.global.override).toEqual([originalMute]);
+      expect(client.pushRules).toEqual(serverRules);
+      expect(svc.modeFor(ROOM)).toBe('mute');
+    });
   });
 });
 
@@ -159,9 +257,11 @@ describe('RoomNotificationsService per-account rules', () => {
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: activeClient as never,
-          clientFor: vi.fn((id: string) =>
-            id === '@owner:hs' ? (ownerClient as never) : null,
-          ),
+          clientFor: vi.fn((id: string) => {
+            if (id === '@owner:hs') return ownerClient as never;
+            if (id === '@active:hs') return activeClient as never;
+            return null;
+          }),
         }),
       ],
     });
@@ -188,6 +288,25 @@ describe('RoomNotificationsService per-account rules', () => {
 
     expect(ownerClient.setRoomMutePushRule).toHaveBeenCalled();
     expect(activeClient.setRoomMutePushRule).not.toHaveBeenCalled();
+  });
+
+  it('restores every account when one merged-row update fails', async () => {
+    const { svc, activeClient, ownerClient } = setupOwned();
+    ownerClient.addPushRule.mockRejectedValueOnce(new Error('owner offline'));
+
+    await expect(
+      firstValueFrom(
+        svc.setModeForAccounts(ROOM, 'mute', ['@owner:hs', '@active:hs']),
+      ),
+    ).rejects.toMatchObject({ restored: true });
+
+    expect(svc.modeFor(ROOM)).toBe('all');
+    expect(svc.modeFor(ROOM, '@owner:hs')).toBe('mentions');
+    expect(activeClient.deletePushRule).toHaveBeenCalledWith(
+      'global',
+      'override',
+      ROOM,
+    );
   });
 
   it('reports "all" and refuses to write when the owning account has no client', async () => {

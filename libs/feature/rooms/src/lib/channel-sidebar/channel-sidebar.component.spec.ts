@@ -1159,7 +1159,7 @@ describe('ChannelSidebarComponent', () => {
   });
 
   it('reads the level from the account that owns the row, not the active one', async () => {
-    const { fixture } = await renderSidebar({
+    const { fixture, container } = await renderSidebar({
       inputs: { rooms: [room({ id: '!a:hs' })] },
       notifyMode: 'mentions',
     });
@@ -1169,6 +1169,12 @@ describe('ChannelSidebarComponent', () => {
     // A mixed-in row's push rules live on ITS account; reading them from the active client
     // would report the wrong level and silently mute/unmute the wrong account.
     expect(modeForSpy).toHaveBeenCalledWith('!a:hs', '@alt:hs');
+    fixture.detectChanges();
+    expect(
+      container
+        .querySelector('[data-testid="room-muted"]')
+        ?.getAttribute('aria-label'),
+    ).toBe('Room muted; mentions and keywords still notify');
   });
 
   it('emits setNotifyMode when a level is chosen from the submenu', async () => {

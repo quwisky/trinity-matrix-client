@@ -68,18 +68,28 @@ your own username presented as a keyword you could delete.
 
 Open the `⋮` menu on a room in the sidebar and choose **Notifications**:
 
-| Mode                       | Behaviour                                                         |
-| -------------------------- | ----------------------------------------------------------------- |
-| All messages               | The default. Your account-wide rules decide.                      |
-| Mentions and keywords only | Ordinary messages stop notifying; mentions and keywords still do. |
-| Mute                       | Nothing from this room notifies, mentions included.               |
+| Mode                            | Behaviour                                                         |
+| ------------------------------- | ----------------------------------------------------------------- |
+| All messages                    | The default. Your account-wide rules decide.                      |
+| Mute except mentions & keywords | Ordinary messages stop notifying; mentions and keywords still do. |
+| Mute everything                 | Nothing from this room notifies, mentions included.               |
 
-The difference between the last two is not cosmetic. "Mentions and keywords only" is a
+The difference between the last two is not cosmetic. "Mute except mentions & keywords" is a
 room-scoped rule, and the rules that fire on a mention or a keyword are evaluated _ahead_ of
-it, so they still win. "Mute" is written as an override rule that is itself evaluated before
-those, so nothing gets past it. That is the mechanism behind "a muted room stays muted".
+it, so they still win. "Mute everything" is written as an override rule that is itself
+evaluated before those, so nothing gets past it. That is the mechanism behind "a muted room
+stays muted".
+
+Some Matrix clients, including FluffyChat's quick room action, call the first of those modes
+simply **Mute**. Trinity recognizes the same standard room rule, shows a crossed-out bell in
+the room list, and names the remaining mention behaviour explicitly so it is not confused
+with silencing everything.
 
 Per-room modes are push rules as well, so they follow your account to your other devices.
+Changes made in another client appear as soon as sync delivers them, without reopening the
+menu or reloading Trinity. If one part of a multi-step server update fails, Trinity restores
+the previous mode; a merged multi-account row is restored on every account rather than left
+with conflicting settings.
 
 ## How a notification reaches you
 

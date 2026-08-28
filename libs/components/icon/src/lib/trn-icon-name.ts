@@ -16,6 +16,7 @@ export const TRN_ICON_NAMES = [
   'arrow-down-wide-narrow',
   'arrow-left',
   'bell',
+  'bell-off',
   'bold',
   'braces',
   'calendar-search',

@@ -27,7 +27,11 @@ room rule. `mentions` is a room-kind `dont_notify` rule, which leaves the overri
 highlight rules free to fire. `mute` is an **override** `dont_notify` rule, because
 overrides are evaluated ahead of the highlight rules and a room-kind rule would not
 silence a mention. After a write it refreshes the client's cached ruleset, so the UI
-shows the new level without waiting for the `m.push_rules` sync echo.
+shows the new level without waiting for the `m.push_rules` sync echo. It also listens for
+that account-data event on every live account and writes a revision signal, which is required
+to repaint the zoneless room list when another client changes a rule. Writes are compensating
+transactions: a partial endpoint failure restores the previous mode on every account in a
+merged room row, then refreshes each cached ruleset before reporting the error.
 
 `PushRulesService` exposes nine labelled account-level toggles backed by predefined
 rules: the master kill switch (marked `invert`, because the rule being _enabled_ means

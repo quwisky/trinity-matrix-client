@@ -10,7 +10,10 @@ import { TestBed } from '@angular/core/testing';
 import { AuthService } from '@trinity/data-access/auth';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaService } from '@trinity/data-access/media';
-import { RoomNotificationsService } from '@trinity/data-access/notifications';
+import {
+  RoomNotificationUpdateError,
+  RoomNotificationsService,
+} from '@trinity/data-access/notifications';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
   RoomsService,
@@ -183,7 +186,10 @@ describe('RoomsPage action error feedback', () => {
         MockProvider(AuthService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService, { show: toastShow }),
-        MockProvider(RoomNotificationsService, { setMode: setNotifyMode }),
+        MockProvider(RoomNotificationsService, {
+          connect: vi.fn(),
+          setModeForAccounts: setNotifyMode,
+        }),
       ],
     });
     return shellFrom();
@@ -230,6 +236,22 @@ describe('RoomsPage action error feedback', () => {
 
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
+      expect.objectContaining({ variant: 'destructive' }),
+    );
+  });
+
+  it('explains when a failed notification update was restored', () => {
+    const shell = build();
+    setNotifyMode.mockReturnValue(
+      throwError(
+        () => new RoomNotificationUpdateError(new Error('offline'), true),
+      ),
+    );
+
+    shell.readState.onSetNotifyMode({ roomId: '!r:hs', mode: 'mute' });
+
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.stringContaining('previous setting was restored'),
       expect.objectContaining({ variant: 'destructive' }),
     );
   });

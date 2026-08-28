@@ -263,6 +263,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Room mutes now stay in sync with other Matrix clients.** A mute set from FluffyChat or
+  another device updates Trinity's room list live and shows a crossed-out bell without a
+  reload. The menu distinguishes **Mute except mentions & keywords** from **Mute everything**,
+  and a failed multi-step push-rule update restores the previous homeserver state across every
+  account represented by a merged room row instead of leaving the UI and server disagreeing.
+
 - **Network failures no longer leave actions spinning forever.** Matrix requests now stop
   waiting after a bounded deadline, request controls release on completion or cancellation,
   and failed room invitations, room joins, and directory requests explain whether to

@@ -16,7 +16,12 @@ async function seedRoom(
   request: APIRequestContext,
   hs: string,
   runId: string,
-): Promise<{ user: SynapseSession; roomName: string }> {
+): Promise<{
+  user: SynapseSession;
+  roomName: string;
+  roomId: string;
+  accessToken: string;
+}> {
   const username = `notif-user-${runId}`;
   const password = `${username}-pass`;
   const roomName = `Notify E2E ${runId}`;
@@ -31,14 +36,18 @@ async function seedRoom(
       },
     })
     .then((r) => r.json());
-  await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-    headers: { Authorization: `Bearer ${access_token}` },
-    data: { name: roomName },
-  });
+  const { room_id } = await request
+    .post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: { Authorization: `Bearer ${access_token}` },
+      data: { name: roomName },
+    })
+    .then((r) => r.json());
 
   return {
     user: { available: true, hs, user: username, pass: password },
     roomName,
+    roomId: room_id,
+    accessToken: access_token,
   };
 }
 
@@ -58,9 +67,14 @@ type Level = (typeof LEVELS)[number];
 // Open the room row's ⋮ menu in the channel list, then its Notifications submenu.
 async function openNotifyMenu(page: Page, roomName: string): Promise<void> {
   const row = page.locator('.channel-row', { hasText: roomName }).first();
-  await row.hover();
-  await row.getByRole('button', { name: `Options for ${roomName}` }).click();
-  await page.getByTestId('room-notify').click(); // reveal the Notifications submenu
+  const notifyEntry = page.getByTestId('room-notify');
+  // Escape closes one overlay layer at a time. Reuse a parent room menu that is already
+  // open instead of toggling its kebab and accidentally closing it.
+  if (!(await notifyEntry.isVisible())) {
+    await row.hover();
+    await row.getByRole('button', { name: `Options for ${roomName}` }).click();
+  }
+  await notifyEntry.click(); // reveal the Notifications submenu
   await expect(page.getByTestId('room-notify-all')).toBeVisible({
     timeout: 10_000,
   });
@@ -93,15 +107,69 @@ async function expectChecked(page: Page, level: Level): Promise<void> {
   }
 }
 
+async function setRemoteMentions(
+  request: APIRequestContext,
+  hs: string,
+  accessToken: string,
+  roomId: string,
+): Promise<void> {
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  const ruleId = encodeURIComponent(roomId);
+  const removed = await request.delete(
+    `${hs}/_matrix/client/v3/pushrules/global/override/${ruleId}`,
+    { headers },
+  );
+  expect(removed.ok()).toBe(true);
+  const added = await request.put(
+    `${hs}/_matrix/client/v3/pushrules/global/room/${ruleId}`,
+    { headers, data: { actions: ['dont_notify'] } },
+  );
+  expect(added.ok()).toBe(true);
+}
+
+/** Wait for the app's sync loop to consume the remotely-written room rule. */
+async function waitForRemoteMentions(
+  page: Page,
+  roomId: string,
+): Promise<void> {
+  await page.waitForResponse(
+    async (response) => {
+      if (
+        response.request().method() !== 'GET' ||
+        !/\/_matrix\/client\/(?:v3|r0)\/sync$/.test(
+          new URL(response.url()).pathname,
+        ) ||
+        !response.ok()
+      ) {
+        return false;
+      }
+      const body = (await response.json().catch(() => null)) as {
+        account_data?: {
+          events?: Array<{
+            type?: string;
+            content?: { global?: { room?: Array<{ rule_id?: string }> } };
+          }>;
+        };
+      } | null;
+      return !!body?.account_data?.events?.some(
+        (event) =>
+          event.type === 'm.push_rules' &&
+          event.content?.global?.room?.some((rule) => rule.rule_id === roomId),
+      );
+    },
+    { timeout: 30_000 },
+  );
+}
+
 test.describe('Per-room notifications', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('sets each notification level from the room menu and remembers it', async ({
+  test('persists, syncs, and restores per-room notification levels', async ({
     page,
     request,
   }) => {
     const runId = `${Date.now().toString(36)}n`;
-    const { user, roomName } = await seedRoom(
+    const { user, roomName, roomId, accessToken } = await seedRoom(
       request,
       session.hs as string,
       runId,
@@ -114,13 +182,59 @@ test.describe('Per-room notifications', () => {
     await openNotifyMenu(page, roomName);
     await expectChecked(page, 'all');
 
-    // Walk every level in turn: pick it (which writes push rules + closes the menu),
-    // then reopen and confirm it is now the persisted, checked radio. This exercises the
-    // add-override (mute), room-rule (mentions), and clear (back to all) write paths.
-    for (const level of ['mute', 'mentions', 'all'] as const) {
-      await pickLevel(page, level); // menu is already open from the previous reopen
-      await openNotifyMenu(page, roomName);
-      await expectChecked(page, level);
-    }
+    // The local mute write survives a full application reload because the next client
+    // initialization reads the homeserver rules rather than browser-only state.
+    await pickLevel(page, 'mute');
+    await page.reload();
+    await openRoom(page, roomName);
+    await openNotifyMenu(page, roomName);
+    await expectChecked(page, 'mute');
+
+    // Simulate another device changing the room to mentions-only. The already-open client
+    // must consume m.push_rules through /sync and show it without a reload.
+    await page.keyboard.press('Escape');
+    const remoteSync = waitForRemoteMentions(page, roomId);
+    await setRemoteMentions(request, session.hs as string, accessToken, roomId);
+    await remoteSync;
+    const remoteRow = page
+      .locator('.channel-row', { hasText: roomName })
+      .first();
+    await expect(remoteRow.getByTestId('room-muted')).toHaveAttribute(
+      'aria-label',
+      'Room muted; mentions and keywords still notify',
+    );
+    await openNotifyMenu(page, roomName);
+    await expectChecked(page, 'mentions');
+
+    // Fail the second endpoint in mentions → mute after the room rule was removed. Trinity
+    // compensates back to mentions and explains the rollback instead of leaving stale UI.
+    let failedOverride = false;
+    await page.route('**/pushrules/global/override/**', async (route) => {
+      if (!failedOverride && route.request().method() === 'PUT') {
+        failedOverride = true;
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            errcode: 'M_UNKNOWN',
+            error: 'Injected notification-rule failure',
+          }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+    await page.getByTestId('room-notify-mute').click();
+    await expect(page.getByText(/previous setting was restored/i)).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.unroute('**/pushrules/global/override/**');
+    await openNotifyMenu(page, roomName);
+    await expectChecked(page, 'mentions');
+
+    // Clear both server rules and prove the final transition back to the default.
+    await pickLevel(page, 'all');
+    await openNotifyMenu(page, roomName);
+    await expectChecked(page, 'all');
   });
 });

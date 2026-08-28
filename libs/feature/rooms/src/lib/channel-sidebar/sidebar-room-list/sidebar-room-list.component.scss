@@ -170,6 +170,11 @@
   font-style: italic;
 }
 
+.channel__muted {
+  flex: 0 0 auto;
+  color: var(--trinity-text-muted);
+}
+
 .channel__badge {
   flex: 0 0 auto;
   min-width: 16px;
