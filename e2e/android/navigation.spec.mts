@@ -2,9 +2,46 @@ import { openSettingsFromRooms } from '../playwright/journeys/navigation.mts';
 import { login, synapseSession } from '../playwright/support/app.mts';
 import { expect, test } from './fixtures.mts';
 
+process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
+
 const session = synapseSession();
+const composerRoomName = `Android insert ${Date.now()}`;
+
+async function seedComposerRoom(): Promise<void> {
+  const loginResponse = await fetch(`${session.hs}/_matrix/client/v3/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: 'm.login.password',
+      identifier: { type: 'm.id.user', user: session.user },
+      password: session.pass,
+    }),
+  });
+  if (!loginResponse.ok) {
+    throw new Error(`Android room-seed login failed: ${loginResponse.status}`);
+  }
+  const { access_token: token } = (await loginResponse.json()) as {
+    access_token: string;
+  };
+  const roomResponse = await fetch(
+    `${session.hs}/_matrix/client/v3/createRoom`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name: composerRoomName }),
+    },
+  );
+  if (!roomResponse.ok) {
+    throw new Error(`Android room seed failed: ${roomResponse.status}`);
+  }
+}
 
 test.describe('Android navigation', () => {
+  test.beforeAll(seedComposerRoom);
+
   test('logs in, opens settings by touch, and handles hardware Back', async ({
     app,
     page,
@@ -64,6 +101,42 @@ test.describe('Android navigation', () => {
 
       await app.device.input.press('Back');
       await page.waitForURL(/\/rooms(\/|$)/, { timeout: 20_000 });
+    });
+  });
+
+  test.describe('phone-sized composer', () => {
+    test.use({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      isMobile: true,
+    });
+
+    test('uses a native-style sheet that hardware Back dismisses', async ({
+      app,
+      page,
+    }) => {
+      await login(page, session, app.navigate);
+      await page.getByTestId('rail-rooms').click();
+      await expect(page.getByTestId('rail-rooms')).toHaveAttribute(
+        'aria-current',
+        'true',
+      );
+      const room = page
+        .locator('button.channel', { hasText: composerRoomName })
+        .first();
+      await room.waitFor({ state: 'visible', timeout: 30_000 });
+      await room.click();
+
+      const trigger = page.getByTestId('composer-insert');
+      await app.touch(trigger);
+      await expect(page.getByTestId('action-sheet-surface')).toBeVisible();
+      await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+      await app.device.input.press('Back');
+      await expect(page.getByTestId('action-sheet-surface')).toBeHidden();
+      await expect(trigger).toBeFocused();
+      await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      await expect(page.getByTestId('composer-input')).toBeVisible();
     });
   });
 });

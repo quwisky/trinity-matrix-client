@@ -209,6 +209,7 @@ separate acts, and only the first one is automated.
 | Deep links           | `appUrlOpen` for a warm open, `getLaunchUrl` for a cold start                                                                                                      |
 | Android back button  | The app owns the whole chain: an open overlay always consumes the press (dismissed unless it set `disableClose`), else step back through history, else minimize    |
 | iOS history swipe    | Native Back/Forward stays enabled while no dialog or registered panel can intercept; both edges yield while one is active, and the drawer opens from an inset band |
+| Composer insert      | The `+` opens the shared bottom sheet on the iOS/Android interaction model, including mobile web/PWAs. Desktop web and Electron retain an anchored menu            |
 | Media capture        | `MediaPickerService` opens the Capacitor gallery picker on native; elsewhere the composer falls back to a hidden file input                                        |
 | Saving an attachment | Bytes are written to the cache and handed to the OS share sheet, rather than triggering a browser download                                                         |
 | Service worker       | Not registered. The shell and the crypto module are already local files                                                                                            |

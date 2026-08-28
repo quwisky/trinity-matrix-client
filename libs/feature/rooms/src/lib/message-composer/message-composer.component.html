@@ -152,6 +152,7 @@
     (pointerdown)="onFieldPress($event)"
   >
     <trn-composer-insert-menu
+      [contextKey]="roomId()"
       [hasMenu]="hasInsertMenu()"
       [editing]="editing()"
       [uploading]="contextUploadProgress() !== null"

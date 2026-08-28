@@ -394,12 +394,11 @@ Acceptance:
 
 ### Phase 3 - timeline and composer
 
-Status: implemented, with two deliberately deferred product slices. The initial/room-switch
+Status: implemented, with one deliberately deferred product slice. The initial/room-switch
 skeleton waits for a truthful asynchronous loading state in `@trinity/data-access/timeline`:
 `TimelineService.open()` currently projects the SDK's in-memory timeline synchronously, and an
-empty message array is also a real empty room, so treating it as loading would flash or lie. A
-native-style mobile insert sheet likewise remains Phase 5 interaction work; Phase 3 refines the
-existing anchored insert menu without changing its platform behaviour.
+empty message array is also a real empty room, so treating it as loading would flash or lie. The
+platform-specific insert interaction is implemented in Phase 5.
 
 Primary ownership:
 
@@ -463,6 +462,13 @@ Acceptance:
 - search, if included, is keyboard reachable and announces result counts.
 
 ### Phase 5 - mobile refinement
+
+Status: implemented. The composer keeps one ordered action model but presents it according to the
+operating-system interaction model: iOS and Android, including mobile web/PWAs, use the shared
+bottom sheet; desktop web and Electron keep the anchored menu. Sheet snapshots close when their
+room or capabilities change, dismissals restore the trigger, and a selected action is allowed to
+place focus in the picker or dialog it opens. Existing identity-dock, drawer, safe-area and message
+gesture contracts remain unchanged.
 
 Primary ownership:
 

@@ -8,6 +8,11 @@ import {
   type ActionSheetData,
 } from './trn-action-sheet.component';
 
+export interface TrnActionSheetOptions {
+  /** Let the opener own restoration when choosing a row launches another surface. */
+  restoreFocus?: boolean;
+}
+
 /**
  * Bottom-sheet action menu — the spartan replacement for Ionic's
  * `ActionSheetController`. Opens {@link TrnActionSheetComponent} in a
@@ -27,7 +32,11 @@ export class TrnActionSheetService {
   private readonly dialog = inject(Dialog);
   private readonly overlay = inject(Overlay);
 
-  open(data: ActionSheetData, ariaLabel?: string): TrnActionSheetRef {
+  open(
+    data: ActionSheetData,
+    ariaLabel?: string,
+    options: TrnActionSheetOptions = {},
+  ): TrnActionSheetRef {
     const ref = this.dialog.open<
       void,
       ActionSheetData,
@@ -35,6 +44,7 @@ export class TrnActionSheetService {
     >(TrnActionSheetComponent, {
       data,
       ariaLabel: ariaLabel ?? data.header,
+      restoreFocus: options.restoreFocus ?? true,
       backdropClass: ['cdk-overlay-dark-backdrop'],
       positionStrategy: this.overlay
         .position()
