@@ -1,0 +1,28 @@
+<figure class="preview" aria-labelledby="appearance-preview-caption">
+  <figcaption id="appearance-preview-caption" class="preview__caption">
+    <strong>Preview</strong>
+    <span class="preview__description"
+      >See how conversation density and colour work together.</span
+    >
+    <span class="preview__state" data-testid="appearance-preview-state">
+      {{ themeLabel() }} · {{ paletteLabel() }} · {{ densityLabel() }}
+    </span>
+  </figcaption>
+
+  <div
+    class="preview__canvas"
+    data-testid="appearance-preview"
+    aria-hidden="true"
+  >
+    <span class="preview__avatar">M</span>
+    <span class="preview__message">
+      <span class="preview__author"
+        >Mira Okafor <small>{{ timeLabel() }}</small></span
+      >
+      <span class="preview__body"
+        >Selected state stays clear without changing avatar shape.</span
+      >
+      <span class="preview__reaction">Check 4</span>
+    </span>
+  </div>
+</figure>

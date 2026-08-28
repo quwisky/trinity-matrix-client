@@ -269,8 +269,8 @@ test.describe('Message markdown', () => {
         toolbarOpacity: getComputedStyle(toolbarEl).opacity,
         // Do the two boxes overlap at all? Asserting non-intersection rather than a vertical
         // gap holds however they are separated — the caption moved to the block's left when
-        // the toolbar moved inside the row, and a vertical-gap assertion would have called
-        // that a regression when it is the fix.
+        // the toolbar was raised over the row boundary, and a vertical-gap assertion would
+        // have called that a regression when it is the fix.
         overlaps:
           captionLeft < toolbar.right &&
           captionRight > toolbar.left &&
@@ -319,7 +319,7 @@ test.describe('Message markdown', () => {
     await login(page, { available: true, hs, user, pass } as SynapseSession);
     await openRoom(page, roomName);
 
-    const source = 'def greet(n):';
+    const source = `def greet(n): return "${'scrollbar-proof-'.repeat(16)}"`;
     await sendLines(page, ['```python', source, '```']);
 
     // Settle on the remote echo first. The row is re-created when the real event id
@@ -361,13 +361,76 @@ test.describe('Message markdown', () => {
     // the message's text — assert it the way the browser sees it.
     const pre = page.locator('.msg__text--html pre').first();
     await expect(pre).toHaveAttribute('language', 'python');
+
+    // This is a real horizontal overflow surface, not a synthetic test node. Its bar uses
+    // the same geometry and theme-aware thumb as vertical panels throughout the shell.
+    const horizontalScrollbar = await pre.evaluate((element) => {
+      const probe = document.createElement('span');
+      probe.style.cssText =
+        'position:absolute;height:var(--trinity-scrollbar-size);background:var(--trinity-scrollbar-thumb)';
+      const railProbe = document.createElement('span');
+      railProbe.style.cssText =
+        'position:absolute;background:var(--trinity-rail)';
+      element.append(probe);
+      element.append(railProbe);
+      const probeStyle = getComputedStyle(probe);
+      const railProbeStyle = getComputedStyle(railProbe);
+      const usesWebkit =
+        !navigator.userAgent.includes('Firefox') &&
+        CSS.supports('selector(::-webkit-scrollbar-thumb)');
+      const bar = usesWebkit
+        ? getComputedStyle(element, '::-webkit-scrollbar')
+        : undefined;
+      const thumb = usesWebkit
+        ? getComputedStyle(element, '::-webkit-scrollbar-thumb')
+        : undefined;
+      const originalScrollLeft = element.scrollLeft;
+      element.scrollLeft = element.scrollWidth;
+      const result = {
+        usesWebkit,
+        overflow: element.scrollWidth - element.clientWidth,
+        scrollLeft: element.scrollLeft,
+        standardColor: getComputedStyle(element).scrollbarColor,
+        height: bar?.height,
+        thumb: thumb?.backgroundColor,
+        expectedHeight: probeStyle.height,
+        expectedThumb: probeStyle.backgroundColor,
+        expectedRail: railProbeStyle.backgroundColor,
+      };
+      element.scrollLeft = originalScrollLeft;
+      probe.remove();
+      railProbe.remove();
+      return result;
+    });
+    expect(horizontalScrollbar.overflow).toBeGreaterThan(0);
+    expect(horizontalScrollbar.scrollLeft).toBeGreaterThan(0);
+    expect(horizontalScrollbar.expectedRail).not.toBe('rgba(0, 0, 0, 0)');
+    expect(horizontalScrollbar.expectedThumb).toBe(
+      horizontalScrollbar.expectedRail,
+    );
+    if (horizontalScrollbar.usesWebkit) {
+      expect(horizontalScrollbar.height).toBe(
+        horizontalScrollbar.expectedHeight,
+      );
+      expect(horizontalScrollbar.thumb).toBe(horizontalScrollbar.expectedThumb);
+    } else {
+      expect(horizontalScrollbar.standardColor).toContain(
+        horizontalScrollbar.expectedRail,
+      );
+    }
+
     const captionStyle = () =>
       pre.evaluate((el) => {
         const style = getComputedStyle(el, '::after');
         return { content: style.content, opacity: style.opacity };
       });
 
-    expect((await captionStyle()).content).toContain('python');
+    const caption = await captionStyle();
+    // Firefox serializes generated attr() content as the function rather than its value.
+    expect(
+      caption.content === 'attr(language)' ||
+        caption.content.includes('python'),
+    ).toBe(true);
     expect((await captionStyle()).opacity).toBe(isAndroidE2E ? '1' : '0');
     if (!isAndroidE2E) {
       await pre.hover();

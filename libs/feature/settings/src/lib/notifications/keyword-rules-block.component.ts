@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, form } from '@angular/forms/signals';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnSwitchComponent } from '@trinity/components/switch';
 import { TrnInput } from '@trinity/components/input';
 import { TrnToastService } from '@trinity/components/overlay';
@@ -18,6 +18,7 @@ import {
   KeywordValidationError,
   type KeywordRule,
 } from '@trinity/data-access/notifications';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
 /**
  * The keyword list in Settings → Notifications: words that notify wherever they are said.
@@ -34,7 +35,13 @@ import {
   selector: 'trn-keyword-rules',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './keyword-rules-block.component.html',
-  imports: [FormField, HlmButton, TrnSwitchComponent, TrnInput],
+  imports: [
+    FormField,
+    TrnButton,
+    TrnSwitchComponent,
+    TrnInput,
+    SettingsSectionHeadingComponent,
+  ],
 })
 export class KeywordRulesBlockComponent implements OnInit {
   private readonly keywordsSvc = inject(KeywordRulesService);

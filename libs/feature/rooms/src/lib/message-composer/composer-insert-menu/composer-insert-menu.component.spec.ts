@@ -1,15 +1,27 @@
 import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ComposerInsertMenuComponent } from './composer-insert-menu.component';
+
+const platform = vi.hoisted(() => ({ mobile: false }));
+vi.mock('@trinity/platform-native', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@trinity/platform-native')>()),
+  isMobileOs: () => platform.mobile,
+}));
 
 /** Open the tray and return the items CDK rendered at the document root. */
 function trayItems(): HTMLButtonElement[] {
   return [
     ...document.querySelectorAll<HTMLButtonElement>(
-      '[hlmdropdownmenuitem][data-testid^=insert-]',
+      '[trndropdownmenuitem][data-testid^=insert-]',
     ),
   ];
+}
+
+function sheetItems(): HTMLButtonElement[] {
+  return [
+    ...document.querySelectorAll<HTMLButtonElement>('[data-testid^=insert-]'),
+  ].filter((item) => item.closest('trn-action-sheet'));
 }
 
 describe('ComposerInsertMenuComponent', () => {
@@ -68,6 +80,7 @@ describe('ComposerInsertMenuComponent', () => {
         gifEnabled: true,
         richActions: true,
         voiceSupported: true,
+        stickerEnabled: true,
       },
     });
 
@@ -79,6 +92,7 @@ describe('ComposerInsertMenuComponent', () => {
     expect(trayItems().map((el) => el.getAttribute('data-testid'))).toEqual([
       'insert-attach',
       'insert-gif',
+      'insert-sticker',
       'insert-poll',
       'insert-location',
       'insert-voice',
@@ -118,6 +132,7 @@ describe('ComposerInsertMenuComponent', () => {
         gifEnabled: true,
         richActions: true,
         voiceSupported: true,
+        stickerEnabled: true,
         uploading: true,
       },
     });
@@ -135,6 +150,7 @@ describe('ComposerInsertMenuComponent', () => {
     expect(disabled).toEqual({
       'insert-attach': false,
       'insert-gif': true,
+      'insert-sticker': false,
       'insert-poll': false,
       'insert-location': false,
       'insert-voice': true,
@@ -168,12 +184,16 @@ describe('ComposerInsertMenuComponent', () => {
         gifEnabled: true,
         richActions: true,
         voiceSupported: true,
+        stickerEnabled: true,
       },
     });
     const fired: string[] = [];
     fixture.componentInstance.attachFile.subscribe(() => fired.push('attach'));
     fixture.componentInstance.pickGif.subscribe(() => fired.push('gif'));
     fixture.componentInstance.createPoll.subscribe(() => fired.push('poll'));
+    fixture.componentInstance.pickSticker.subscribe(() =>
+      fired.push('sticker'),
+    );
     fixture.componentInstance.shareLocation.subscribe(() =>
       fired.push('location'),
     );
@@ -183,6 +203,7 @@ describe('ComposerInsertMenuComponent', () => {
     for (const testid of [
       'insert-attach',
       'insert-gif',
+      'insert-sticker',
       'insert-poll',
       'insert-location',
       'insert-voice',
@@ -197,7 +218,272 @@ describe('ComposerInsertMenuComponent', () => {
       await fixture.whenStable();
     }
 
-    expect(fired).toEqual(['attach', 'gif', 'poll', 'location', 'voice']);
+    expect(fired).toEqual([
+      'attach',
+      'gif',
+      'sticker',
+      'poll',
+      'location',
+      'voice',
+    ]);
+  });
+
+  it('uses the complete ordered action sheet on the iOS/Android interaction model', async () => {
+    platform.mobile = true;
+    const { fixture, container } = await render(ComposerInsertMenuComponent, {
+      inputs: {
+        contextKey: '!room:example.org',
+        hasMenu: true,
+        gifEnabled: true,
+        richActions: true,
+        voiceSupported: true,
+        stickerEnabled: true,
+        uploading: true,
+      },
+    });
+
+    const trigger = container.querySelector<HTMLButtonElement>(
+      '[data-testid=composer-insert]',
+    );
+    expect(trigger?.getAttribute('aria-haspopup')).toBe('dialog');
+    expect(trigger?.getAttribute('aria-expanded')).toBe('false');
+    trigger?.click();
+    await fixture.whenStable();
+
+    expect(trigger?.getAttribute('aria-expanded')).toBe('true');
+    expect(
+      sheetItems().map((item) => item.getAttribute('data-testid')),
+    ).toEqual([
+      'insert-attach',
+      'insert-gif',
+      'insert-sticker',
+      'insert-poll',
+      'insert-location',
+      'insert-voice',
+    ]);
+    expect(
+      Object.fromEntries(
+        sheetItems().map((item) => [
+          item.getAttribute('data-testid'),
+          item.disabled,
+        ]),
+      ),
+    ).toEqual({
+      'insert-attach': false,
+      'insert-gif': true,
+      'insert-sticker': false,
+      'insert-poll': false,
+      'insert-location': false,
+      'insert-voice': true,
+    });
+  });
+
+  it.each([
+    ['contextKey', '!second:example.org'],
+    ['hasMenu', false],
+    ['editing', true],
+    ['uploading', true],
+    ['gifEnabled', false],
+    ['gifDownloading', true],
+    ['richActions', false],
+    ['voiceSupported', false],
+    ['recording', true],
+    ['locationSharing', true],
+    ['stickerEnabled', false],
+  ] as const)(
+    'dismisses a stale mobile sheet when %s changes',
+    async (inputName, nextValue) => {
+      platform.mobile = true;
+      const { fixture, container } = await render(ComposerInsertMenuComponent, {
+        inputs: {
+          contextKey: '!first:example.org',
+          hasMenu: true,
+          gifEnabled: true,
+          richActions: true,
+          voiceSupported: true,
+          stickerEnabled: true,
+        },
+      });
+      const trigger = container.querySelector<HTMLButtonElement>(
+        '[data-testid=composer-insert]',
+      );
+      trigger?.click();
+      await fixture.whenStable();
+      expect(document.querySelector('trn-action-sheet')).not.toBeNull();
+
+      fixture.componentRef.setInput(inputName, nextValue);
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(document.querySelector('trn-action-sheet')).toBeNull();
+      expect(
+        container
+          .querySelector('[data-testid=composer-insert]')
+          ?.getAttribute('aria-expanded') ?? 'false',
+      ).toBe('false');
+      const replacement = container.querySelector<HTMLButtonElement>(
+        inputName === 'hasMenu'
+          ? '[data-testid=composer-insert-attach]'
+          : '[data-testid=composer-insert]',
+      );
+      if (replacement && !replacement.disabled) {
+        await Promise.resolve();
+        expect(document.activeElement).toBe(replacement);
+      }
+    },
+  );
+
+  it.each([
+    [
+      { gifEnabled: false },
+      [
+        ['insert-attach', false],
+        ['insert-sticker', false],
+        ['insert-poll', false],
+        ['insert-location', false],
+        ['insert-voice', false],
+      ],
+    ],
+    [
+      { richActions: false },
+      [
+        ['insert-attach', false],
+        ['insert-gif', false],
+      ],
+    ],
+    [
+      { voiceSupported: false },
+      [
+        ['insert-attach', false],
+        ['insert-gif', false],
+        ['insert-sticker', false],
+        ['insert-poll', false],
+        ['insert-location', false],
+      ],
+    ],
+    [
+      { recording: true },
+      [
+        ['insert-attach', false],
+        ['insert-gif', false],
+        ['insert-sticker', false],
+        ['insert-poll', false],
+        ['insert-location', false],
+      ],
+    ],
+    [
+      { stickerEnabled: false },
+      [
+        ['insert-attach', false],
+        ['insert-gif', false],
+        ['insert-poll', false],
+        ['insert-location', false],
+        ['insert-voice', false],
+      ],
+    ],
+    [
+      { uploading: true },
+      [
+        ['insert-attach', false],
+        ['insert-gif', true],
+        ['insert-sticker', false],
+        ['insert-poll', false],
+        ['insert-location', false],
+        ['insert-voice', true],
+      ],
+    ],
+    [
+      { gifDownloading: true },
+      [
+        ['insert-attach', false],
+        ['insert-gif', true],
+        ['insert-sticker', false],
+        ['insert-poll', false],
+        ['insert-location', false],
+        ['insert-voice', false],
+      ],
+    ],
+    [
+      { locationSharing: true },
+      [
+        ['insert-attach', false],
+        ['insert-gif', false],
+        ['insert-sticker', false],
+        ['insert-poll', false],
+        ['insert-location', true],
+        ['insert-voice', false],
+      ],
+    ],
+  ] as const)(
+    'keeps the mobile sheet capability matrix current for %o',
+    async (changedInputs, expected) => {
+      platform.mobile = true;
+      const { fixture, container } = await render(ComposerInsertMenuComponent, {
+        inputs: {
+          hasMenu: true,
+          gifEnabled: true,
+          richActions: true,
+          voiceSupported: true,
+          stickerEnabled: true,
+          ...changedInputs,
+        },
+      });
+
+      container
+        .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
+        ?.click();
+      await fixture.whenStable();
+      const rows = sheetItems();
+      expect(
+        rows.map((row) => [row.dataset['testid'] ?? '', row.disabled]),
+      ).toEqual(expected);
+    },
+  );
+
+  it('restores the mobile trigger after dismissal and non-surface actions', async () => {
+    platform.mobile = true;
+    const { fixture, container } = await render(ComposerInsertMenuComponent, {
+      inputs: { hasMenu: true, richActions: true },
+    });
+    const trigger = container.querySelector<HTMLButtonElement>(
+      '[data-testid=composer-insert]',
+    );
+
+    trigger?.click();
+    await fixture.whenStable();
+    document.querySelector<HTMLButtonElement>('.cdk-overlay-backdrop')?.click();
+    await fixture.whenStable();
+    await Promise.resolve();
+    expect(document.activeElement).toBe(trigger);
+
+    trigger?.click();
+    await fixture.whenStable();
+    sheetItems()
+      .find((item) => item.dataset['testid'] === 'insert-location')
+      ?.click();
+    await fixture.whenStable();
+    await Promise.resolve();
+
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('does not steal focus back after an action launches another surface', async () => {
+    platform.mobile = true;
+    const { fixture, container } = await render(ComposerInsertMenuComponent, {
+      inputs: { hasMenu: true, richActions: true },
+    });
+    const trigger = container.querySelector<HTMLButtonElement>(
+      '[data-testid=composer-insert]',
+    );
+    trigger?.click();
+    await fixture.whenStable();
+    sheetItems()
+      .find((item) => item.dataset['testid'] === 'insert-poll')
+      ?.click();
+    await fixture.whenStable();
+    await Promise.resolve();
+
+    expect(document.activeElement).not.toBe(trigger);
   });
 
   it('names the trigger for screen readers', async () => {
@@ -212,5 +498,8 @@ describe('ComposerInsertMenuComponent', () => {
     ).toBe('Add to message');
   });
 
-  afterEach(() => TestBed.resetTestingModule());
+  afterEach(() => {
+    platform.mobile = false;
+    TestBed.resetTestingModule();
+  });
 });

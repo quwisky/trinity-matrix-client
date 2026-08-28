@@ -112,6 +112,7 @@
         "./libs/components/progress/src/index.ts"
       ],
       "@trinity/components/card": ["./libs/components/card/src/index.ts"],
+      "@trinity/components/button": ["./libs/components/button/src/index.ts"],
       "@trinity/components/checkbox": [
         "./libs/components/checkbox/src/index.ts"
       ],
@@ -144,6 +145,9 @@
       ],
       "@trinity/components/qr-scanner": [
         "./libs/components/qr-scanner/src/index.ts"
+      ],
+      "@trinity/components/settings-dialog": [
+        "./libs/components/settings-dialog/src/index.ts"
       ]
     },
     "noUncheckedSideEffectImports": false,

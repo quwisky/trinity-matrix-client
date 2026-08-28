@@ -19,7 +19,7 @@ import {
 } from '@angular/forms/signals';
 import { ActivatedRoute, Router } from '@angular/router';
 import { finalize, forkJoin, map, switchMap, throwError } from 'rxjs';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { AuthCardComponent } from '../auth-card/auth-card.component';
 import { TrnCardImports } from '@trinity/components/card';
 import { TrnCheckboxComponent } from '@trinity/components/checkbox';
@@ -43,7 +43,7 @@ import { ExternalBrowserService } from '@trinity/platform-native';
   imports: [
     AuthCardComponent,
     FormField,
-    HlmButton,
+    TrnButton,
     TrnCardImports,
     TrnCheckboxComponent,
     TrnIconComponent,

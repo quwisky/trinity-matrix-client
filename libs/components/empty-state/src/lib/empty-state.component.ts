@@ -45,7 +45,7 @@ import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
  *   body="Reply in a thread to start one."
  *   data-testid="threads-empty"
  * >
- *   <button trnEmptyStateActions hlmBtn size="sm">Start one</button>
+ *   <button trnEmptyStateActions trnBtn size="sm">Start one</button>
  * </trn-empty-state>
  * ```
  */

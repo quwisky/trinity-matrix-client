@@ -24,7 +24,7 @@ test.use({ ...devices['Pixel 5'] });
 test.describe('Sidebar on a touch device', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('reveals each room’s ⋮ and gives it a 44px target', async ({
+  test('keeps the rail, room, menu and identity-dock controls touch-sized', async ({
     page,
     request,
   }) => {
@@ -60,11 +60,45 @@ test.describe('Sidebar on a touch device', () => {
     }));
     expect(coarse).toEqual({ noHover: true, coarsePointer: true });
 
+    // Phones keep the identity dock in normal flow rather than letting a desktop overlay
+    // cover the last room or duplicate the shell's safe-area ownership.
+    await expect(page.locator('trn-sidebar-user-panel')).toHaveCSS(
+      'position',
+      'static',
+    );
+    await expect(page.locator('trn-sidebar-user-panel')).toHaveCSS(
+      'display',
+      'block',
+    );
+    const mobileDockFlow = await page.evaluate(() => {
+      const scroller = document.querySelector<HTMLElement>('.sidebar__scroll');
+      const dock = document.querySelector<HTMLElement>('.userbar');
+      if (!scroller || !dock) throw new Error('missing mobile identity dock');
+      const scrollerBox = scroller.getBoundingClientRect();
+      const dockBox = dock.getBoundingClientRect();
+      return scrollerBox.bottom <= dockBox.top + 1;
+    });
+    expect(mobileDockFlow).toBe(true);
+
+    const targets = [
+      page.getByTestId('rail-rooms'),
+      page.getByTestId('user-menu-trigger'),
+      page.getByTestId('open-settings'),
+    ];
+    for (const target of targets) {
+      const targetBox = await target.boundingBox();
+      expect(targetBox?.width ?? 0).toBeGreaterThanOrEqual(44);
+      expect(targetBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+    }
+
     await page.getByTestId('rail-rooms').click();
     const row = page.locator('.channel-row', {
       has: page.locator('.channel', { hasText: roomName }),
     });
     await row.first().waitFor({ state: 'visible', timeout: 30_000 });
+
+    const channelBox = await row.first().locator('.channel').boundingBox();
+    expect(channelBox?.height ?? 0).toBeGreaterThanOrEqual(44);
 
     const kebab = row.first().locator('.channel__menu');
     // Visible without any hover — there is no hover on this device to give.

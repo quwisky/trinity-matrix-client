@@ -42,7 +42,9 @@ describe('CodeAppearanceBlockComponent', () => {
   it('renders the control with an accessible name', async () => {
     const { container } = await renderBlock();
 
-    const select = container.querySelector('[data-testid=code-scale-select]');
+    const select = container.querySelector(
+      '[data-testid=code-scale-select] [role=combobox]',
+    );
     expect(select).not.toBeNull();
     const id = select?.getAttribute('aria-labelledby');
     expect(container.querySelector(`#${id}`)?.textContent?.trim()).toBe(
@@ -92,7 +94,10 @@ describe('CodeAppearanceBlockComponent', () => {
     });
 
     const { container } = await renderBlock();
-    const select = container.querySelector('[data-testid=code-lines-select]');
+    const selectHost = container.querySelector(
+      '[data-testid=code-lines-select]',
+    );
+    const select = selectHost?.querySelector('[role=combobox]');
     const id = select?.getAttribute('aria-labelledby');
     expect(container.querySelector(`#${id}`)?.textContent?.trim()).toBe(
       'Line numbers',
@@ -101,7 +106,7 @@ describe('CodeAppearanceBlockComponent', () => {
     // #168 was about. `auto` shares no substring with its label, so this needs no negative
     // half: reading anything other than the sentence means the id leaked through.
     expect(
-      select?.querySelector('hlm-select-trigger')?.textContent?.trim(),
+      selectHost?.querySelector('hlm-select-trigger')?.textContent?.trim(),
     ).toBe('Blocks over 5 lines');
   });
 

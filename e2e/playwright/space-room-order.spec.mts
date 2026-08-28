@@ -6,6 +6,7 @@ import {
 } from './support/fixtures.mts';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers issue #34: how rooms are ordered inside a space.
 //
@@ -258,9 +259,7 @@ test.describe('Room order inside a space', () => {
     await expect(roomNames(page)).toHaveText(curated, { timeout: 30_000 });
 
     // 4. Changing the account default does NOT disturb a space that has its own choice.
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-appearance').click();
-    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'appearance');
     await chooseOption(page, 'space-order-select', 'space-order-alphabetical');
 
     await page.goto('/rooms');

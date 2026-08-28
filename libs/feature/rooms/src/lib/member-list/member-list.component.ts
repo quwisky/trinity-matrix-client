@@ -19,6 +19,7 @@ import { type PresenceState } from '@trinity/util/matrix';
 import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnInput } from '@trinity/components/input';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import {
   buildPrefixSums,
   computeWindow,
@@ -44,9 +45,9 @@ interface MemberRow {
  * Both are fixed by `member-list.component.scss` rather than measured, which is the one
  * meaningful difference from the timeline's use of this same windowing math: a message row
  * is whatever height its content makes it, a member row is an avatar and one ellipsised
- * line. `ROW_PX` is 32px of avatar plus 6px of padding either side — and the
- * `(pointer: coarse)` rule sets `min-height: 44px`, the same number, so touch does not
- * diverge. If either changes, the spacers drift and the scrollbar lies; the spec pins them.
+ * line. `ROW_PX` is 32px of avatar plus 6px of padding either side; the stylesheet fixes
+ * that border box at 44px for every pointer and density. If either measurement changes, the
+ * spacers drift and the scrollbar lies; source and rendered-layout specs pin them together.
  */
 const HEADER_PX = 34;
 const ROW_PX = 44;
@@ -112,7 +113,13 @@ const ROLE_ICON: Record<MemberRole, TrnIconName> = {
 @Component({
   selector: 'trn-member-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, TrnIconComponent, TrnInput, EmptyStateComponent],
+  imports: [
+    AvatarComponent,
+    TrnIconComponent,
+    TrnInput,
+    TrnTooltip,
+    EmptyStateComponent,
+  ],
   templateUrl: './member-list.component.html',
   styleUrl: './member-list.component.scss',
 })

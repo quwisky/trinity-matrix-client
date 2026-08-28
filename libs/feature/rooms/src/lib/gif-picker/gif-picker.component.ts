@@ -1,10 +1,13 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
+  afterNextRender,
   computed,
   inject,
   output,
   signal,
+  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
@@ -18,7 +21,7 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnInput } from '@trinity/components/input';
 import {
   GIF_PROVIDERS,
@@ -40,7 +43,7 @@ const SEARCH_DEBOUNCE_MS = 350;
 @Component({
   selector: 'trn-gif-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmButton, TrnInput, GifThumbComponent],
+  imports: [TrnButton, TrnInput, GifThumbComponent],
   templateUrl: './gif-picker.component.html',
   styleUrl: './gif-picker.component.scss',
 })
@@ -55,6 +58,8 @@ export class GifPickerComponent {
 
   private readonly gifs = inject(GifService);
   private readonly settings = inject(GifSettingsService);
+  private readonly searchInput =
+    viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
   /** Fires when the user asks to retry after a load failure. */
   private readonly retry$ = new Subject<void>();
@@ -67,6 +72,9 @@ export class GifPickerComponent {
   );
 
   constructor() {
+    // Opening the picker is a focus transfer from the composer's mobile action sheet.
+    afterNextRender(() => this.searchInput()?.nativeElement.focus());
+
     // The initial '' emission loads trending; each edit debounces into a search.
     const typed$ = toObservable(this.query).pipe(
       debounceTime(SEARCH_DEBOUNCE_MS),

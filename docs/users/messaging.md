@@ -112,6 +112,11 @@ media, not an end-to-end encrypted attachment: the homeservers involved can see 
 room is encrypted. The sticker event that references the media is encrypted normally, and
 Trinity warns about the distinction whenever you send a sticker in an encrypted room.
 
+On iOS and Android, including the mobile website and an installed PWA, tapping the `+` opens
+these insert actions in a bottom sheet sized for a thumb. Tap outside it, press Back or press
+Escape with a keyboard to dismiss it and return focus to `+`. Desktop web and Electron show the
+same ordered actions in an anchored menu instead.
+
 **Files and images.** Attach a file, or paste an image straight into the message box. A
 picked or pasted file is _staged_ rather than sent immediately, so you can type a caption
 for it; the send goes out on the next Enter. Images get a client-side thumbnail, and an
@@ -258,8 +263,11 @@ spot; it appears in the panel once the timeline has loaded far enough back to in
 
 ## Per-message actions
 
-The hover toolbar keeps React, Reply and Reply-in-thread inline. Everything else is behind
-the `⋯` overflow:
+On desktop and web with a precise pointer, the compact hover toolbar floats over the message's
+upper trailing edge so the body can use the full timeline width. Hybrid touch desktops keep
+larger, non-overlapping targets. At a timeline edge the toolbar stays inside the visible area,
+and quick reactions open toward the side with room. The toolbar keeps React, Reply and
+Reply-in-thread inline; everything else is behind the `⋯` overflow:
 
 | Action         | Notes                                                                               |
 | -------------- | ----------------------------------------------------------------------------------- |

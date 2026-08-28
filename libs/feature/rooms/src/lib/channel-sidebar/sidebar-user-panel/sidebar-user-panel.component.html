@@ -1,12 +1,12 @@
 <footer class="userbar">
   <button
     class="userbar__trigger"
-    [hlmDropdownMenuTrigger]="accountMenu"
+    [trnDropdownMenuTrigger]="accountMenu"
     side="top"
     align="start"
     [attr.aria-label]="accountSummaryLabel()"
     data-testid="user-menu-trigger"
-    (hlmDropdownMenuOpened)="accountsOpened.emit()"
+    (trnDropdownMenuOpened)="accountsOpened.emit()"
     (pointerenter)="accountsOpened.emit()"
     (focus)="accountsOpened.emit()"
   >
@@ -52,24 +52,25 @@
     </div>
   </button>
   <button
+    trnIconButton
     class="userbar__settings"
     (click)="openSettings.emit()"
     aria-label="Settings"
-    title="Settings"
+    trnTooltip="Settings"
     data-testid="open-settings"
   >
-    <trn-icon name="settings" />
+    <trn-icon name="settings" motion="rotate" />
   </button>
 </footer>
 
 <ng-template #accountMenu>
-  <div hlmDropdownMenu>
-    <div hlmDropdownMenuLabel>Accounts</div>
-    <div hlmDropdownMenuSeparator></div>
+  <div trnDropdownMenu>
+    <div trnDropdownMenuLabel>Accounts</div>
+    <div trnDropdownMenuSeparator></div>
     @for (account of accounts(); track account.userId) {
       <button
         class="account-row"
-        hlmDropdownMenuItem
+        trnDropdownMenuItem
         (triggered)="switchAccount.emit(account.userId)"
         data-testid="account-row"
         [attr.aria-current]="account.userId === activeUserId()"
@@ -106,7 +107,7 @@
     @for (userId of reauthAccounts(); track userId) {
       <button
         class="account-row"
-        hlmDropdownMenuItem
+        trnDropdownMenuItem
         (triggered)="reauthAccount.emit(userId)"
         data-testid="reauth-row"
       >
@@ -119,12 +120,12 @@
       </button>
     }
     @if (canPickAccounts()) {
-      <div hlmDropdownMenuSeparator></div>
+      <div trnDropdownMenuSeparator></div>
       @if (pickAccountsInDialog()) {
         <!-- Narrow layout: a submenu would have nowhere to fly out to, so this opens a
              dialog instead. Same testid, so the affordance is one thing to drive either way. -->
         <button
-          hlmDropdownMenuItem
+          trnDropdownMenuItem
           (triggered)="openAccountPicker.emit()"
           data-testid="show-accounts"
         >
@@ -133,28 +134,28 @@
         </button>
       } @else {
         <button
-          hlmDropdownMenuItem
-          [hlmDropdownMenuSubTrigger]="showAccountsMenu"
+          trnDropdownMenuItem
+          [trnDropdownMenuSubTrigger]="showAccountsMenu"
           data-testid="show-accounts"
         >
           <trn-icon name="users" />
           Show accounts
-          <hlm-dropdown-menu-item-sub-indicator />
+          <trn-dropdown-menu-item-sub-indicator />
         </button>
       }
     }
-    <div hlmDropdownMenuSeparator></div>
+    <div trnDropdownMenuSeparator></div>
     <button
-      hlmDropdownMenuItem
+      trnDropdownMenuItem
       (triggered)="addAccount.emit()"
       data-testid="add-account"
     >
       <trn-icon name="user-plus" />
       Add account
     </button>
-    <div hlmDropdownMenuSeparator></div>
+    <div trnDropdownMenuSeparator></div>
     <button
-      hlmDropdownMenuItem
+      trnDropdownMenuItem
       variant="destructive"
       (triggered)="logout.emit(activeUserId() ?? '')"
       data-testid="logout"
@@ -170,20 +171,20 @@
        CDK early-returns on a disabled item, so it can neither be unticked nor drift out of
        sync with the state that refuses to drop it. -->
   <ng-template #showAccountsMenu>
-    <div hlmDropdownMenuSub>
-      <div hlmDropdownMenuLabel>Show accounts</div>
-      <div hlmDropdownMenuSeparator></div>
+    <div trnDropdownMenuSub>
+      <div trnDropdownMenuLabel>Show accounts</div>
+      <div trnDropdownMenuSeparator></div>
       @for (account of accounts(); track account.userId) {
         @let isActive = account.userId === activeUserId();
         <button
           class="account-pick"
-          hlmDropdownMenuCheckbox
+          trnDropdownMenuCheckbox
           [checked]="shownAccountIds().has(account.userId)"
           [disabled]="isActive"
           (triggered)="toggleAccountShown.emit(account.userId)"
           [attr.data-testid]="'show-account-' + account.userId"
         >
-          <hlm-dropdown-menu-checkbox-indicator />
+          <trn-dropdown-menu-checkbox-indicator />
           <trn-avatar
             [mxc]="account.avatarMxc"
             [accountId]="account.userId"

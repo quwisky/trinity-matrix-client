@@ -19,6 +19,20 @@ Top to bottom, the rail holds:
 
 Each pill carries an unread badge, exact up to 99 and then shown as `99+`.
 
+The rail, room list and account dock follow the display density chosen under
+**Settings → Appearance**. The message list and composer follow it too: Compact reduces unused
+spacing across the whole conversation shell while keeping the same actions and never shrinking a
+touch target. Space icons keep their squircle shape when selected; the indicator and background
+carry the active state instead.
+
+Replies, edit context, pending attachments and the message field now read as one composer. A
+one-line Markdown preview occupies exactly the same field height as the text it replaces; expected
+growth from multiple lines, attachment batches or the formatting bar leaves the newest message
+pinned only when you were exactly at the bottom and leaves your reading position alone as soon as
+you scroll away, even by one pixel. Edit mode includes a visible cancel action for touch devices;
+voice recording moves keyboard focus to its Cancel control and returns it to the message field
+when recording ends.
+
 The rail is flat. A space nested inside another space gets its own top-level pill rather
 than appearing as a second level of rail. Nested navigation inside the rail is not built.
 

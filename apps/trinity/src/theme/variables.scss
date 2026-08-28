@@ -47,26 +47,59 @@
   --trinity-radius-md: calc(var(--radius) - 2px); // 6px
   --trinity-radius-xl: 0.75rem; // 12px — cards / dialogs / menus
   --trinity-radius-pill: 9999px; // badges, chips, capsules
+
+  // Component-facing shape roles. The scale above describes measurements; these aliases say
+  // why a radius is used, so later tuning does not require every consumer to choose again.
+  --trinity-shape-control-radius: var(--trinity-radius-md);
+  --trinity-shape-container-radius: var(--trinity-radius);
+  --trinity-shape-overlay-radius: var(--trinity-radius-xl);
+
   // Semantic identity geometry. Selection never changes these roles: people/DMs remain
   // circular, while rooms/spaces remain stable squircles.
   --trinity-shape-person-radius: 50%;
   --trinity-shape-place-radius: 30%;
 
   // --- Typography (mode- & palette-agnostic; a palette may override) -------------
-  // Roles, not sizes. `--trinity-text-sm` is the message body and the sidebar row —
-  // the workhorse — and is the same 13px the `text-13` utility emits, which stays as
-  // an alias until its call sites migrate. Each size carries its own line-height so a
-  // consumer cannot pair a size with the wrong leading.
+  // Roles, not sizes. `--trinity-text-sm` is the compact workhorse used by sidebar rows
+  // and chrome, and is the same 13px the `text-13` utility emits, which stays as an alias
+  // until its call sites migrate. Conversation prose gets the roomier `md` step instead.
+  // Each size carries its own line-height so a consumer cannot pair a size with the wrong
+  // leading.
   // These are `rem`, so Settings → Appearance → Text size (a % on the root) scales
   // them; a px value here would pin them and silently break that preference.
   --trinity-text-xs: 0.6875rem; // 11px — timestamps, meta, badge text
   --trinity-text-xs--line-height: 1.45;
-  --trinity-text-sm: 0.8125rem; // 13px — message body, sidebar rows, most chrome
+  --trinity-text-sm: 0.8125rem; // 13px — sidebar rows and most chrome
   --trinity-text-sm--line-height: 1.375;
   --trinity-text-base: 0.9375rem; // 15px — dialog body, settings prose
   --trinity-text-base--line-height: 1.5;
+  --trinity-text-md: 1rem; // 16px — message prose
+  --trinity-text-md--line-height: 1.5;
   --trinity-text-lg: 1.25rem; // 20px — page and section headings
   --trinity-text-lg--line-height: 1.3;
+
+  // Semantic typography roles. Size, leading and weight travel together; a component should
+  // not silently pair a role's size with arbitrary leading. Metadata also gets stable number
+  // widths so timestamps and byte counts do not jitter as their digits change.
+  --trinity-type-caption-size: var(--trinity-text-xs);
+  --trinity-type-caption-line-height: var(--trinity-text-xs--line-height);
+  --trinity-type-caption-weight: 500;
+  --trinity-type-metadata-size: var(--trinity-text-xs);
+  --trinity-type-metadata-line-height: var(--trinity-text-xs--line-height);
+  --trinity-type-metadata-weight: 400;
+  --trinity-type-metadata-numeric: tabular-nums;
+  --trinity-type-body-size: var(--trinity-text-sm);
+  --trinity-type-body-line-height: var(--trinity-text-sm--line-height);
+  --trinity-type-body-weight: 400;
+  --trinity-type-message-size: var(--trinity-text-md);
+  --trinity-type-message-line-height: var(--trinity-text-md--line-height);
+  --trinity-type-message-weight: 400;
+  --trinity-type-control-size: var(--trinity-text-sm);
+  --trinity-type-control-line-height: var(--trinity-text-sm--line-height);
+  --trinity-type-control-weight: 600;
+  --trinity-type-title-size: var(--trinity-text-lg);
+  --trinity-type-title-line-height: var(--trinity-text-lg--line-height);
+  --trinity-type-title-weight: 700;
 
   // --- Spacing (mode- & palette-agnostic) ---------------------------------------
   // A 4px rhythm. Named by step rather than by use, because the same gap means
@@ -79,6 +112,32 @@
   --trinity-space-6: 24px;
   --trinity-space-7: 32px;
 
+  // Every visible overflow surface shares the former room-container scrollbar
+  // treatment. The thumb follows the active rail surface; `.no-scrollbar` remains
+  // the deliberate exception for compact navigation and select panels.
+  --trinity-scrollbar-size: 8px;
+  --trinity-scrollbar-radius: var(--trinity-radius-sm);
+  --trinity-scrollbar-thumb: var(--trinity-rail);
+  --trinity-scrollbar-track: transparent;
+
+  // Component-density roles. Compact mode re-cuts their source spacing steps below; the
+  // physical control size is separately reduced only for pointer-precise desktop layouts.
+  // The coarse-pointer floor in global.scss remains 44px in every density.
+  --trinity-density-item-gap: var(--trinity-space-2);
+  --trinity-density-row-gap: var(--trinity-space-3);
+  --trinity-density-row-padding-block: var(--trinity-space-3);
+  --trinity-density-row-padding-inline: var(--trinity-space-4);
+  --trinity-density-control-size: 2rem;
+  --trinity-interaction-target-min-size: 0px;
+  --trinity-density-shell-gap: 8px;
+  --trinity-density-shell-padding-inline: 8px;
+  --trinity-density-channel-padding-block: 5px;
+  --trinity-density-message-column-gap: 12px;
+  --trinity-density-composer-padding-inline: 16px;
+  --trinity-density-composer-field-gap: 4px;
+  --trinity-density-composer-field-inset: 6px;
+  --trinity-density-composer-action-size: 40px;
+
   // --- Elevation ----------------------------------------------------------------
   // Overridden per mode: a shadow that reads on white is invisible on #313338, which
   // is why the dark block below raises the alpha rather than reusing these.
@@ -87,14 +146,16 @@
   --trinity-shadow-overlay: 0 12px 32px rgb(0 0 0 / 18%);
   --trinity-camera-scrim: rgb(0 0 0 / 35%);
 
+  // QR modules require a stable light quiet zone regardless of mode or palette.
+  --trinity-qr-surface: #fff;
+
   // --- Z-index layers -----------------------------------------------------------
-  // Named because the bare numbers in the tree (5, 10, 20, 40) carry no relation to
+  // Named because the bare numbers in the tree (5, 20, 30, 40) carry no relation to
   // each other and nothing said which was meant to sit over which. These govern
   // APP-level stacking only — a component stacking its own two children is local and
   // stays a literal. Above all of them sits the CDK overlay container (1000 by
   // default), which is why a dialog covers everything here without being listed.
   --trinity-z-sticky: 5; // pinned affordances inside a scroller (jump-to-unread)
-  --trinity-z-floating: 10; // a component's own popovers (emoji picker, suggestions)
   --trinity-z-overlay: 20; // a sheet over one pane (the drag-and-drop target)
   --trinity-z-scrim: 30; // the dimmer behind a panel — under it, over everything else
   --trinity-z-panel: 40; // a panel over the shell (mobile room list)
@@ -107,7 +168,6 @@
   --trinity-duration-press: 90ms; // pointer/key down — immediate, but still legible
   --trinity-duration-fast: 120ms; // hover/focus tints — must not be perceptible as motion
   --trinity-duration-base: 200ms; // the default for anything entering or leaving
-  --trinity-duration-slow: 320ms; // full-surface transitions (panels, sheets)
 
   // Two durations for motion that is not a transition. They are named by role rather than
   // by length because they are not points on the same scale as the three above: those say
@@ -124,13 +184,6 @@
     1
   ); // entering: fast in, settles
 
-  --trinity-ease-accelerate: cubic-bezier(
-    0.3,
-    0,
-    1,
-    1
-  ); // leaving: takes off, gone
-
   // --- Code size (mode- & palette-agnostic) -------------------------------------
   // A unitless MULTIPLIER, not a size. rendered-markdown.scss multiplies the 85%
   // optical correction by it, so code stays a proportion of whatever Settings →
@@ -141,18 +194,24 @@
   --trinity-code-scale: 1;
 
   // --- Mode- & palette-invariant Helm bindings (define once) --------------------
-  // Card/popover text tracks the base foreground; the brand tokens track the Trinity
-  // accent; the input outline tracks the border. Palettes reset the *source* token
-  // (--foreground / --trinity-accent / --border) and these follow for free. (The
+  // Card/popover text tracks the base foreground; primary tracks the Trinity accent; Helm's
+  // translucent focus halo tracks its own high-contrast source; and input tracks the border.
+  // Palettes reset the *source* tokens and these follow for free. (The
   // secondary/accent surface text is a touch lighter than --foreground in light, so it
   // is set per mode below rather than bound here.)
   --card-foreground: var(--foreground);
   --popover-foreground: var(--foreground);
+
+  // Tooltips stay dark in light mode instead of becoming another pale surface. The dark
+  // mode override below switches the fill to the palette-aware elevated surface while
+  // keeping the same readable foreground pairing.
+  --trinity-tooltip-surface: var(--foreground);
+  --trinity-tooltip-foreground: var(--background);
   --secondary-foreground: hsl(240deg 5.9% 10%);
   --accent-foreground: hsl(240deg 5.9% 10%);
   --primary: var(--trinity-accent);
   --primary-foreground: hsl(0deg 0% 100%);
-  --ring: var(--trinity-accent);
+  --ring: var(--trinity-focus-ring-halo);
   --input: var(--border);
 
   // Warning is identical across modes; destructive/success flip in dark (see below).
@@ -269,6 +328,41 @@
   // the sidebar tone in both modes.
   --trinity-surface: var(--trinity-sidebar);
 
+  // Semantic surface hierarchy. The established palette primitives above remain supported
+  // aliases while feature phases migrate; new component work should consume these roles.
+  --trinity-surface-frame: var(--trinity-rail);
+  --trinity-surface-navigation: var(--trinity-sidebar);
+  --trinity-surface-navigation-header: var(--trinity-sidebar-header);
+  --trinity-surface-workspace: var(--trinity-chat);
+  --trinity-surface-raised: var(--trinity-surface);
+  --trinity-surface-floating: var(--trinity-sidebar);
+  --trinity-surface-panel: var(--trinity-members);
+  --trinity-border-subtle: var(--trinity-divider);
+  --trinity-border-strong: var(--trinity-active);
+
+  // Interaction-state contract. A state always carries both surface and foreground even when
+  // today's pair aliases another role; that keeps future palette tuning atomic. Focus uses the
+  // measured text-link colour rather than the accent fill, which falls below 3:1 on some dark
+  // interactive grounds. scripts/contrast-matrix.spec.mjs enforces the non-text threshold.
+  --trinity-state-hover-surface: var(--trinity-hover);
+  --trinity-state-hover-foreground: var(--trinity-text-bright);
+  --trinity-state-pressed-surface: var(--trinity-active);
+  --trinity-state-pressed-foreground: var(--trinity-text-bright);
+  --trinity-state-selected-surface: var(--trinity-active);
+  --trinity-state-selected-foreground: var(--trinity-text-bright);
+  --trinity-state-selected-hover-surface: var(--trinity-active);
+  --trinity-state-selected-hover-foreground: var(--trinity-text-bright);
+  --trinity-state-attention-surface: var(--trinity-accent);
+  --trinity-state-attention-foreground: var(--trinity-accent-foreground);
+  --trinity-status-neutral-surface: var(--trinity-active);
+  --trinity-status-neutral-foreground: var(--trinity-text);
+  --trinity-focus-ring: var(--trinity-link);
+  --trinity-focus-ring-on-attention: var(--trinity-state-attention-foreground);
+  --trinity-focus-ring-halo: #000;
+  --trinity-focus-ring-width: 2px;
+  --trinity-focus-ring-offset: 2px;
+  --trinity-disabled-opacity: 0.48;
+
   // --- Trinity text -------------------------------------------------------------
   --trinity-text: #313338;
   --trinity-text-muted: #5b5d65; // 4.55:1 on --trinity-active (was #5c5e66, 4.48:1)
@@ -297,6 +391,8 @@
 // Default palette — dark
 // -----------------------------------------------------------------------------
 :root.dark {
+  --trinity-focus-ring-halo: #fff;
+
   // Syntax highlighting. Measured against the dark rails — #1e1f22 (default) and
   // #1c1826 (amethyst) — where One Dark's published values clear 4.5:1 unchanged;
   // worst case 5.16:1. `-plain`/`-punctuation` are var() references and follow the
@@ -352,6 +448,8 @@
   --accent-foreground: var(--foreground);
   --card: var(--trinity-sidebar); // #2b2d31
   --popover: var(--trinity-sidebar);
+  --trinity-tooltip-surface: var(--popover);
+  --trinity-tooltip-foreground: var(--popover-foreground);
   --secondary: var(--trinity-hover); // #35373c
   --muted: var(--trinity-hover);
   --muted-foreground: hsl(
@@ -510,7 +608,6 @@
     --trinity-duration-press: 0.01ms;
     --trinity-duration-fast: 0.01ms;
     --trinity-duration-base: 0.01ms;
-    --trinity-duration-slow: 0.01ms;
     --trinity-duration-pulse: 0.01ms;
     --trinity-duration-flash: 0.01ms;
   }
@@ -518,9 +615,9 @@
 
 // --- Density ---------------------------------------------------------------------
 // Compact tightens the SPACING SCALE, so anything reading `--trinity-space-*` follows
-// without knowing the preference exists. Today that is the message row, which is what a
-// chat client's density setting is really about; everything else is unchanged until it
-// adopts the tokens.
+// without knowing the preference exists. Message rows and the shared banner, media bubble,
+// and message toolbar currently consume the density contract; later components follow as
+// they adopt the same roles.
 
 // The five smallest steps only. 24px and 32px are section-level gaps — squeezing those
 // makes a settings page look broken rather than dense — and the 4px rhythm is kept: the
@@ -536,4 +633,21 @@
   --trinity-space-3: 4px;
   --trinity-space-4: 8px;
   --trinity-space-5: 12px;
+  --trinity-density-control-size: 1.75rem;
+  --trinity-density-shell-gap: 4px;
+  --trinity-density-shell-padding-inline: 6px;
+  --trinity-density-channel-padding-block: 3px;
+  --trinity-density-message-column-gap: 8px;
+  --trinity-density-composer-padding-inline: 12px;
+  --trinity-density-composer-field-gap: 2px;
+  --trinity-density-composer-field-inset: 4px;
+  --trinity-density-composer-action-size: 36px;
+}
+
+// Density may make precise-pointer chrome smaller, but never makes a finger target smaller.
+// Components consume this minimum alongside their density-controlled width/height or padding.
+@media (pointer: coarse) {
+  :root {
+    --trinity-interaction-target-min-size: 44px;
+  }
 }

@@ -31,6 +31,11 @@ import {
 import { isDateFormat, isTimeFormat } from '@trinity/util/matrix';
 import { CodeAppearanceBlockComponent } from './code-appearance-block.component';
 import { MessageGesturesBlockComponent } from './message-gestures-block.component';
+import { AppearancePreviewComponent } from './appearance-preview.component';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
+import { SettingsToggleRowDirective } from '../shared/settings-toggle-row.directive';
+import { SettingsFieldRowDirective } from '../shared/settings-field-row.directive';
+import { SettingsGroupComponent } from '../shared/settings-group/settings-group.component';
 
 /**
  * Appearance settings sub-page: light/dark/system mode, colour palette, text and code size,
@@ -50,6 +55,11 @@ import { MessageGesturesBlockComponent } from './message-gestures-block.componen
     TrnSwitchComponent,
     CodeAppearanceBlockComponent,
     MessageGesturesBlockComponent,
+    AppearancePreviewComponent,
+    SettingsSectionHeadingComponent,
+    SettingsToggleRowDirective,
+    SettingsFieldRowDirective,
+    SettingsGroupComponent,
   ],
 })
 export class AppearanceSettingsComponent {
@@ -73,6 +83,17 @@ export class AppearanceSettingsComponent {
    * single-digit month, so 12- vs 24-hour and every date order are all visibly distinct.
    */
   readonly sample = new Date(2026, 6, 24, 15, 45).getTime();
+
+  readonly paletteLabel = computed(
+    () =>
+      this.theme.palettes.find((option) => option.id === this.theme.palette())
+        ?.label ?? this.theme.palette(),
+  );
+  readonly densityLabel = computed(
+    () =>
+      this.theme.densities.find((option) => option.id === this.theme.density())
+        ?.label ?? this.theme.density(),
+  );
 
   /** Apply + persist the chosen light/dark mode when the radio group changes. */
   onThemeChange(value: string): void {

@@ -7,8 +7,8 @@
 .composer__upload {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 16px;
+  gap: var(--trinity-density-row-gap);
+  padding: var(--trinity-space-2) var(--trinity-density-composer-padding-inline);
 
   trn-progress {
     flex: 1;
@@ -27,10 +27,11 @@
 // of each carrying the full gap. Capped and scrollable because a batch is unbounded and the
 // composer must not grow until it pushes the timeline off screen.
 .composer__pending-list {
-  margin: 0 16px 8px;
+  margin: 0 var(--trinity-density-composer-padding-inline)
+    var(--trinity-space-3);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--trinity-density-item-gap);
 
   // Deliberately NOT a whole number of rows. Rows are 52px with a 4px gap, so they occupy
   // 0-52, 56-108, 112-164, 168-220: a 168px cap lands exactly on the fourth row's top edge and
@@ -43,10 +44,11 @@
 .composer__pending {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--trinity-density-row-gap);
   padding: 6px 8px;
-  border-radius: var(--trinity-radius);
-  background: var(--trinity-sidebar);
+  border: 1px solid var(--trinity-border-subtle);
+  border-radius: var(--trinity-shape-container-radius);
+  background: var(--trinity-surface-raised);
 }
 
 // A failed row has to be tellable from a pending one at a glance; the tint is the cue, and
@@ -55,7 +57,7 @@
   background: color-mix(
     in srgb,
     var(--trinity-danger) 12%,
-    var(--trinity-sidebar)
+    var(--trinity-surface-raised)
   );
 }
 
@@ -120,7 +122,7 @@
 @media (pointer: coarse) {
   .composer__pending-remove,
   .composer__pending-retry {
-    min-width: 44px;
-    min-height: 44px;
+    min-width: var(--trinity-interaction-target-min-size);
+    min-height: var(--trinity-interaction-target-min-size);
   }
 }

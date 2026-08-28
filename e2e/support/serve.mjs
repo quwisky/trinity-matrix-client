@@ -3,7 +3,7 @@
 // /login) resolve to the Angular app instead of 404ing.
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { extname, join, normalize } from 'node:path';
+import { extname, resolve, sep } from 'node:path';
 
 const MIME = {
   '.html': 'text/html',
@@ -17,20 +17,35 @@ const MIME = {
   '.ico': 'image/x-icon',
 };
 
-export function serve(root, port) {
+export function serve(root, port, mounts = {}) {
   const server = createServer(async (req, res) => {
     const urlPath = decodeURIComponent(
       new URL(req.url, 'http://localhost').pathname,
     );
-    const ext = extname(urlPath);
+    const mount = Object.entries(mounts).find(
+      ([prefix]) => urlPath === prefix || urlPath.startsWith(`${prefix}/`),
+    );
+    const fileRoot = mount?.[1] ?? root;
+    const mountedPath = mount ? urlPath.slice(mount[0].length) : urlPath;
+    const ext = extname(mountedPath);
     // SPA fallback: paths without a file extension serve index.html as text/html.
     const isRoute = !ext;
-    const filePath = isRoute
-      ? join(root, 'index.html')
-      : join(root, normalize(urlPath));
+    const absoluteRoot = resolve(fileRoot);
+    const filePath = resolve(
+      absoluteRoot,
+      isRoute ? 'index.html' : mountedPath.replace(/^[/\\]+/, ''),
+    );
     const contentType = isRoute
       ? 'text/html'
       : (MIME[ext] ?? 'application/octet-stream');
+    if (
+      filePath !== absoluteRoot &&
+      !filePath.startsWith(`${absoluteRoot}${sep}`)
+    ) {
+      res.writeHead(404);
+      res.end('Not found');
+      return;
+    }
     try {
       const body = await readFile(filePath);
       res.writeHead(200, { 'Content-Type': contentType });

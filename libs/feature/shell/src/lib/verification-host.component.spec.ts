@@ -84,6 +84,7 @@ describe('VerificationHostComponent', () => {
       expect.any(Function),
       expect.objectContaining({
         inputs: { asModal: true },
+        ariaLabel: 'Verify device',
         disableClose: true,
       }),
     );

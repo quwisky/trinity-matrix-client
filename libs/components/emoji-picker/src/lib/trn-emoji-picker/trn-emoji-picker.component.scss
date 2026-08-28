@@ -21,10 +21,13 @@
   display: block;
 
   .emoji-mart {
-    background: var(--background);
-    border-color: var(--border);
+    overflow: hidden;
+    border-color: var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-overlay-radius);
+    background: var(--trinity-surface-floating);
     color: var(--foreground);
     font-family: inherit;
+    box-shadow: var(--trinity-shadow-overlay);
   }
 
   // Only the idle and hover states are ours to paint. The vendor inline-styles the anchor
@@ -45,7 +48,7 @@
 
   .emoji-mart-search {
     input {
-      background: var(--background);
+      background: var(--trinity-surface-workspace);
       border-color: var(--border);
       color: var(--foreground);
 
@@ -70,7 +73,7 @@
   // Category headings are sticky and painted opaque by the vendor so rows do not show
   // through; that opaque fill has to be OUR surface or a band of #fff crosses dark mode.
   .emoji-mart-category-label span {
-    background: var(--background);
+    background: var(--trinity-surface-floating);
     color: var(--foreground);
   }
 
@@ -82,31 +85,6 @@
     color: var(--muted-foreground);
   }
 
-  // The last surface the vendor leaves on UA defaults, and it is always drawn: the list is
-  // `overflow-y: scroll`, not `auto`, so on any platform with classic scrollbars the bar is
-  // painted whether or not it is needed (the vendor even reserves `measureScrollbar` px for
-  // it in `getWidth()`). Nothing above sets `scrollbar-color`, and the app ships
-  // `color-scheme: light dark`, so the UA follows the OS rather than the Trinity theme —
-  // Trinity dark on a light desktop drew a pale bar down the edge of a fully themed panel.
-  // ---
-  // The three declarations are inlined rather than `@include scrollable`: that mixin lives in
-  // libs/feature/rooms, which this tier may not reach. Overflow is deliberately left alone —
-  // changing it would change the width the vendor reserves.
-  .emoji-mart-scroll {
-    scrollbar-width: thin;
-    scrollbar-color: var(--trinity-rail) transparent;
-
-    &::-webkit-scrollbar {
-      width: 8px;
-    }
-
-    &::-webkit-scrollbar-thumb {
-      background: var(--trinity-rail);
-      border-radius: var(--trinity-radius-sm);
-    }
-
-    &::-webkit-scrollbar-track {
-      background: transparent;
-    }
-  }
+  // The vendor list deliberately keeps `overflow-y: scroll` because its width calculation
+  // reserves the scrollbar. The global visible-scrollbar contract supplies its appearance.
 }

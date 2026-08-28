@@ -4,7 +4,7 @@ import {
   inject,
   output,
 } from '@angular/core';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TimelineService } from '@trinity/data-access/timeline';
 import { BannerComponent } from '@trinity/components/banner';
 import { TrnIconComponent } from '@trinity/components/icon';
@@ -18,7 +18,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
 @Component({
   selector: 'trn-tombstone-banner',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnIconComponent, HlmButton, BannerComponent],
+  imports: [TrnIconComponent, TrnButton, BannerComponent],
   templateUrl: './tombstone-banner.component.html',
 })
 export class TombstoneBannerComponent {

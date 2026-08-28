@@ -84,9 +84,9 @@ export async function resolveTokenSrgb(
  * CSS colour syntax the stylesheet can produce and hands back composited sRGB bytes, which
  * is the number a person actually sees.
  *
- * Backgrounds are collected up the ancestor chain until a fully opaque one is found and
- * composited in order, so a translucent wrapper between the element and its surface is
- * accounted for rather than mistaken for the surface. Not finding an opaque ancestor throws:
+ * Backgrounds are collected from the element up its ancestor chain until a fully opaque one is
+ * found and composited in order, so a translucent wrapper between the element and its surface is
+ * accounted for rather than mistaken for the surface. Not finding an opaque surface throws:
  * defaulting to white there would fabricate a passing ratio on a dark theme.
  */
 export async function measureContrast(
@@ -125,9 +125,11 @@ export async function measureContrast(
         return readPixel().a === 255;
       };
 
-      // Nearest opaque ancestor first, then every translucent background below it.
+      // Nearest opaque surface first, then every translucent background below it. Start at
+      // the measured element because controls such as tooltips can own the first opaque paint;
+      // in that case no ancestor colour participates in the pixels a person sees.
       const stack: string[] = [];
-      let node: HTMLElement | null = element.parentElement;
+      let node: HTMLElement | null = element;
       let base: string | null = null;
       while (node) {
         const background = getComputedStyle(node).backgroundColor;
@@ -144,11 +146,7 @@ export async function measureContrast(
         );
       }
 
-      const layers = [
-        base,
-        ...stack,
-        getComputedStyle(element).backgroundColor,
-      ];
+      const layers = [base, ...stack];
       ctx.clearRect(0, 0, 1, 1);
       for (const layer of layers) {
         paint(layer);

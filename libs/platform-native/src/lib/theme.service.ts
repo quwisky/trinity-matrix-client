@@ -69,12 +69,10 @@ export const DEFAULT_TEXT_SCALE: TextScale = 'default';
  * Two steps, not a scale: the useful question is "fit more on screen or not", and a
  * four-step spacing slider asks the reader to tune something they cannot see the units of.
  *
- * What it reaches today is worth stating plainly, because the name promises more than it
- * currently delivers: density re-cuts the `--trinity-space-*` tokens, and the only
- * stylesheet reading those today is the message row. So compact tightens the timeline —
- * which is the thing a chat client's density setting is actually about — and everything
- * else is unchanged until it adopts the tokens, at which point it follows for free. That
- * is the reason this drives TOKENS rather than a per-component override.
+ * Density re-cuts the shared spacing tokens. Message rows, banners, media bubbles and the
+ * message toolbar consume those roles today; later components follow as they adopt them.
+ * Coarse-pointer targets retain their shared 44px minimum independently of visual density.
+ * That is the reason this drives TOKENS rather than per-component overrides.
  */
 export const TRINITY_DENSITIES = [
   { id: 'cosy', label: 'Cosy' },

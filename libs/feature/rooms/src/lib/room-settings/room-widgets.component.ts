@@ -28,7 +28,7 @@ import {
   type WidgetEmbed,
   type WidgetLaunch,
 } from '@trinity/data-access/widgets';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { RoomWidgetFrameComponent } from './room-widget-frame/room-widget-frame.component';
 import { RoomWidgetCreateComponent } from './room-widget-create/room-widget-create.component';
@@ -43,7 +43,7 @@ interface WidgetEntry {
 @Component({
   selector: 'trn-room-widgets',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmButton, RoomWidgetCreateComponent],
+  imports: [TrnButton, RoomWidgetCreateComponent],
   templateUrl: './room-widgets.component.html',
   styleUrl: './room-widgets.component.scss',
 })

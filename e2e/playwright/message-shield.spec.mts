@@ -1,6 +1,6 @@
 import { test, expect, type Page } from './support/fixtures.mts';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import { passwordLogin, registerUser } from './support/account.mts';
 
 // Covers per-message authenticity shields (message-row `data-testid="msg-shield-*"`):
 // that a plaintext room raises none — shields are resolved only for encrypted events —
@@ -80,33 +80,24 @@ test.describe('Message authenticity shields', () => {
 
     await registerUser(request, owner, ownerPass);
     await registerUser(request, reader, readerPass);
-    const login1 = await request
-      .post(`${hs}/_matrix/client/v3/login`, {
-        data: {
-          type: 'm.login.password',
-          identifier: { type: 'm.id.user', user: owner },
-          password: ownerPass,
-        },
-      })
-      .then((r) => r.json());
-    const ownerAuth = { Authorization: `Bearer ${login1.access_token}` };
-    const readerLogin = await request
-      .post(`${hs}/_matrix/client/v3/login`, {
-        data: {
-          type: 'm.login.password',
-          identifier: { type: 'm.id.user', user: reader },
-          password: readerPass,
-        },
-      })
-      .then((r) => r.json());
-    const readerAuth = { Authorization: `Bearer ${readerLogin.access_token}` };
-    const readerId = readerLogin.user_id as string;
+    const ownerSession = await passwordLogin(request, hs, owner, ownerPass);
+    const readerSession = await passwordLogin(request, hs, reader, readerPass);
+    const ownerAuth = {
+      Authorization: `Bearer ${ownerSession.accessToken}`,
+    };
+    const readerAuth = {
+      Authorization: `Bearer ${readerSession.accessToken}`,
+    };
 
     // A plaintext room (no encryption initial_state) — its messages get no shield.
     const { room_id } = await request
       .post(`${hs}/_matrix/client/v3/createRoom`, {
         headers: ownerAuth,
-        data: { name: roomName, preset: 'private_chat', invite: [readerId] },
+        data: {
+          name: roomName,
+          preset: 'private_chat',
+          invite: [readerSession.userId],
+        },
       })
       .then((r) => r.json());
     // The reader must actually join, else the room lands as an invite (not a joined
@@ -152,25 +143,29 @@ test.describe('Message authenticity shields', () => {
     const runId = `${Date.now().toString(36)}st`;
     const user = `shield-tip-${runId}`;
     const pass = `${user}-pass`;
+    const seerUser = `shield-seer-${runId}`;
+    const seerPass = `${seerUser}-pass`;
+    const seerName = `Shield reader ${runId}`;
     const roomName = `Sealed ${runId}`;
     // Long enough to wrap to the row's right edge: the shield must reserve its own
     // column rather than let the text run underneath it.
     const body = `encrypted from an unsigned device ${runId} — long enough that this line wraps all the way across the message body and reaches the right-hand edge of the row`;
 
     await registerUser(request, user, pass);
-    const session1 = await request
-      .post(`${hs}/_matrix/client/v3/login`, {
-        data: {
-          type: 'm.login.password',
-          identifier: { type: 'm.id.user', user },
-          password: pass,
-        },
-      })
-      .then((r) => r.json());
+    await registerUser(request, seerUser, seerPass);
+    const ownerSession = await passwordLogin(request, hs, user, pass);
+    const seerSession = await passwordLogin(request, hs, seerUser, seerPass);
+    const seerAuth = {
+      Authorization: `Bearer ${seerSession.accessToken}`,
+    };
+    await request.put(
+      `${hs}/_matrix/client/v3/profile/${encodeURIComponent(seerSession.userId)}/displayname`,
+      { headers: seerAuth, data: { displayname: seerName } },
+    );
 
     const { room_id } = await request
       .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: { Authorization: `Bearer ${session1.access_token}` },
+        headers: { Authorization: `Bearer ${ownerSession.accessToken}` },
         data: {
           name: roomName,
           preset: 'private_chat',
@@ -185,6 +180,17 @@ test.describe('Message authenticity shields', () => {
       })
       .then((r) => r.json());
     expect(room_id).toBeTruthy();
+    const ownerAuth = {
+      Authorization: `Bearer ${ownerSession.accessToken}`,
+    };
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/invite`,
+      { headers: ownerAuth, data: { user_id: seerSession.userId } },
+    );
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/join`,
+      { headers: seerAuth },
+    );
 
     // Device A: owns the cross-signing identity every other device is judged against.
     const asSession = { available: true, hs, user, pass } as SynapseSession;
@@ -208,8 +214,25 @@ test.describe('Message authenticity shields', () => {
     await expect(page.locator('.msg__text', { hasText: runId })).toBeVisible({
       timeout: 60_000,
     });
-    const shield = page.locator('[data-testid^="msg-shield-"]').first();
+    const shieldRow = page
+      .locator('.msg', { has: page.locator('.msg__text', { hasText: body }) })
+      .first();
+    const shield = shieldRow.locator('[data-testid^="msg-shield-"]');
     await expect(shield).toBeVisible({ timeout: 60_000 });
+    const eventId = await shieldRow.getAttribute('data-mid');
+    expect(eventId).toBeTruthy();
+
+    // Put a genuine receipt on this exact shielded event. The regression only exists when
+    // both controls share a row; a mocked receipt would not prove that the Matrix projection
+    // and the real browser layout meet at the same message.
+    const receiptResponse = await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/receipt/m.read/${encodeURIComponent(eventId as string)}`,
+      { headers: seerAuth, data: {} },
+    );
+    expect(receiptResponse.ok()).toBe(true);
+    const receipts = shieldRow.getByTestId('read-receipts');
+    await expect(receipts).toBeVisible({ timeout: 30_000 });
+    await expect(receipts).toHaveAttribute('aria-label', new RegExp(seerName));
 
     // The custom tooltip owns the wording now, so no native one may linger.
     await expect(shield).not.toHaveAttribute('title', /./);
@@ -231,27 +254,60 @@ test.describe('Message authenticity shields', () => {
       /intercept|read by|eavesdrop|compromised|leaked/i,
     );
 
-    // Placement, measured: flush with the row's trailing edge, top-aligned, and
-    // clear of the wrapped text.
-    const geometry = await page.evaluate(() => {
-      const el = document.querySelector('[data-testid^="msg-shield-"]');
-      const rowEl = el?.closest('.msg');
-      const textEl = rowEl?.querySelector('.msg__text');
-      if (!el || !rowEl || !textEl) return null;
-      const row = rowEl.getBoundingClientRect();
-      const style = getComputedStyle(rowEl);
-      const box = el.getBoundingClientRect();
-      return {
-        rowLevelChild: el.parentElement === rowEl,
-        gapToRowEnd: row.right - parseFloat(style.paddingRight) - box.right,
-        gapToRowTop: box.top - (row.top + parseFloat(style.paddingTop)),
-        overlapsText: box.left < textEl.getBoundingClientRect().right,
-      };
-    });
-    expect(geometry).not.toBeNull();
-    expect(geometry!.rowLevelChild).toBe(true);
-    expect(geometry!.gapToRowEnd).toBeCloseTo(0, 0);
-    expect(geometry!.gapToRowTop).toBeLessThanOrEqual(4);
-    expect(geometry!.overlapsText).toBe(false);
+    // Placement, measured in both writing directions: the shield owns only the content
+    // row's trailing column. Receipts span the complete body below it, stay flush with the
+    // logical trailing edge, and remain in flow for virtual-row measurement.
+    for (const direction of ['ltr', 'rtl'] as const) {
+      const geometry = await shield.evaluate(async (shieldEl, dir) => {
+        document.documentElement.dir = dir;
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        );
+
+        const rowEl = shieldEl.closest('.msg');
+        const bodyEl = rowEl?.querySelector('.msg__body');
+        const contentEl = bodyEl?.querySelector('.msg__content');
+        const receiptEl = rowEl?.querySelector('[data-testid=read-receipts]');
+        if (!rowEl || !bodyEl || !contentEl || !receiptEl) {
+          return null;
+        }
+
+        const row = rowEl.getBoundingClientRect();
+        const body = bodyEl.getBoundingClientRect();
+        const content = contentEl.getBoundingClientRect();
+        const shieldBox = shieldEl.getBoundingClientRect();
+        const receipt = receiptEl.getBoundingClientRect();
+        const overlaps = (a: DOMRect, b: DOMRect): boolean =>
+          a.left < b.right &&
+          a.right > b.left &&
+          a.top < b.bottom &&
+          a.bottom > b.top;
+        const trailingGap = (box: DOMRect): number =>
+          dir === 'rtl' ? box.left - body.left : body.right - box.right;
+
+        return {
+          shieldIsBodyChild: shieldEl.parentElement === bodyEl,
+          receiptIsBodyChild: receiptEl.parentElement === bodyEl,
+          shieldTrailingGap: trailingGap(shieldBox),
+          receiptTrailingGap: trailingGap(receipt),
+          contentOverlapsShield: overlaps(content, shieldBox),
+          receiptOverlapsContent: overlaps(receipt, content),
+          receiptOverlapsShield: overlaps(receipt, shieldBox),
+          rowContainsReceipt:
+            receipt.top >= row.top - 1 && receipt.bottom <= row.bottom + 1,
+        };
+      }, direction);
+
+      expect(geometry).not.toBeNull();
+      expect(geometry!.shieldIsBodyChild).toBe(true);
+      expect(geometry!.receiptIsBodyChild).toBe(true);
+      expect(Math.abs(geometry!.shieldTrailingGap)).toBeLessThanOrEqual(1);
+      expect(Math.abs(geometry!.receiptTrailingGap)).toBeLessThanOrEqual(1);
+      expect(geometry!.contentOverlapsShield).toBe(false);
+      expect(geometry!.receiptOverlapsContent).toBe(false);
+      expect(geometry!.receiptOverlapsShield).toBe(false);
+      expect(geometry!.rowContainsReceipt).toBe(true);
+    }
+    await page.evaluate(() => document.documentElement.removeAttribute('dir'));
   });
 });

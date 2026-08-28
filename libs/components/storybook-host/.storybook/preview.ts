@@ -6,20 +6,24 @@ import { type Decorator, type Preview } from '@storybook/angular-vite';
 import { TRINITY_PALETTES } from '@trinity/platform-native';
 
 /**
- * The two theme axes, exposed as toolbar controls so every story can be flipped through
+ * Palette, mode and density, exposed as toolbar controls so every story can be flipped through
  * every combination.
  *
  * This is the reason Storybook is here. A palette is meant to be a data change — a block of
  * token overrides plus a registry entry — and the only way to know that held was to launch
- * the app and navigate to each surface. Two dropdowns make it something you look at.
+ * the app and navigate to each surface. Three dropdowns make it something you look at.
  *
  * The palette list is read from `TRINITY_PALETTES` rather than restated, so a new palette
  * appears in the toolbar the moment it is registered. If it looks wrong here, the token layer
  * is incomplete — which is the contract, stated in the redesign epic.
  */
 
-/** How the app itself applies the axes: a class for mode, an attribute for palette. */
-function applyTheme(palette: string, mode: 'light' | 'dark'): void {
+/** How the app applies these axes: a class for mode and attributes for palette/density. */
+function applyAppearance(
+  palette: string,
+  mode: 'light' | 'dark',
+  density: 'cosy' | 'compact',
+): void {
   const root = document.documentElement;
   root.classList.toggle('dark', mode === 'dark');
   // The default palette applies NO attribute — it is the `:root` block in variables.scss.
@@ -28,14 +32,20 @@ function applyTheme(palette: string, mode: 'light' | 'dark'): void {
   } else {
     root.setAttribute('data-theme', palette);
   }
+  if (density === 'cosy') {
+    root.removeAttribute('data-density');
+  } else {
+    root.setAttribute('data-density', density);
+  }
 }
 
 const withTheme: Decorator = (story, context) => {
-  const { palette, mode } = context.globals as {
+  const { palette, mode, density } = context.globals as {
     palette: string;
     mode: 'light' | 'dark';
+    density: 'cosy' | 'compact';
   };
-  applyTheme(palette, mode);
+  applyAppearance(palette, mode, density);
   // `global-styles.scss` paints these tokens on the preview body. This decorator only changes
   // which values they resolve to, keeping theme state separate from canvas presentation.
   return story();
@@ -64,6 +74,18 @@ const preview: Preview = {
         items: [
           { value: 'light', title: 'Light' },
           { value: 'dark', title: 'Dark' },
+        ],
+        dynamicTitle: true,
+      },
+    },
+    density: {
+      description: 'Component density',
+      defaultValue: 'cosy',
+      toolbar: {
+        icon: 'component',
+        items: [
+          { value: 'cosy', title: 'Cosy' },
+          { value: 'compact', title: 'Compact' },
         ],
         dynamicTitle: true,
       },

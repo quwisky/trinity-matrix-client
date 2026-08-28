@@ -1,7 +1,10 @@
 import { signal } from '@angular/core';
 import { type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnActionSheetService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
 
 // `isMobileOs` is a plain exported function, so the barrel is mocked and the rest passed
@@ -27,7 +30,6 @@ vi.mock('@trinity/platform-native', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@trinity/platform-native')>()),
   isMobileOs: () => platform.mobile,
 }));
-import { TrnActionSheetService } from '@trinity/components/overlay';
 import {
   ThreadsService,
   TimelineActionsService,

@@ -104,18 +104,18 @@ describe('channel sidebar stylesheet ownership', () => {
   });
 
   it('keeps the touch affordances with the markup they target', () => {
-    // The specific rules the extraction stranded. Checked by name rather than by the
-    // generic rule above, because a media query's contents are what actually went missing
-    // and both classes are otherwise styled in the right file.
+    // The specific rules the extraction stranded. The menu reveal remains a local media
+    // query; the target floor now comes from a shared responsive token, but it still has
+    // to be consumed by the child rules because parent styles cannot cross encapsulation.
     const childScssText = read(CHILD, 'scss');
     expect(childScssText).toMatch(
       /@media \(hover: none\)[\s\S]*?\.channel__menu/,
     );
     expect(childScssText).toMatch(
-      /@media \(pointer: coarse\)[\s\S]*?\.channel__menu/,
+      /\.channel__menu\s*\{[\s\S]*?var\(--trinity-interaction-target-min-size\)/,
     );
     expect(childScssText).toMatch(
-      /@media \(pointer: coarse\)[\s\S]*?\.invite__btn/,
+      /\.invite__btn\s*\{[\s\S]*?var\(--trinity-interaction-target-min-size\)/,
     );
   });
 });

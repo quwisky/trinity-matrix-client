@@ -1,11 +1,16 @@
-import { Location } from '@angular/common';
+import { DOCUMENT, Location } from '@angular/common';
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
+  Injector,
   computed,
   effect,
   inject,
+  signal,
+  viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import {
@@ -17,36 +22,13 @@ import {
   RouterOutlet,
 } from '@angular/router';
 import { filter, map } from 'rxjs';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import { PageHeaderComponent } from '@trinity/components/page-header';
 import { BUILD_INFO } from '@trinity/platform-native';
 import { MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
-import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
-
-/** One row of the settings submenu, routing to its section sub-page. */
-interface SettingsMenuItem {
-  readonly path: string;
-  readonly label: string;
-  readonly icon: TrnIconName;
-}
-
-const MENU: readonly SettingsMenuItem[] = [
-  { path: 'profile', label: 'Profile', icon: 'user' },
-  { path: 'presence', label: 'Presence', icon: 'circle-dot' },
-  { path: 'appearance', label: 'Appearance', icon: 'palette' },
-  { path: 'devices', label: 'Devices', icon: 'monitor-smartphone' },
-  { path: 'account', label: 'Account', icon: 'key-round' },
-  { path: 'security', label: 'Security', icon: 'lock' },
-  { path: 'notifications', label: 'Notifications', icon: 'bell' },
-  { path: 'server', label: 'Server', icon: 'server' },
-  { path: 'privacy', label: 'Privacy', icon: 'shield' },
-  { path: 'gifs', label: 'GIFs', icon: 'image' },
-  { path: 'stickers', label: 'Stickers & emoji', icon: 'smile' },
-  { path: 'shortcuts', label: 'Keyboard shortcuts', icon: 'keyboard' },
-  { path: 'experimental', label: 'Experimental', icon: 'flask-conical' },
-  { path: 'advanced', label: 'Advanced', icon: 'braces' },
-];
+import { TrnIconComponent } from '@trinity/components/icon';
+import { SETTINGS_SECTIONS } from '../settings-sections';
 
 /**
  * Settings shell: a submenu of sections beside a routed detail outlet. On the wide
@@ -58,18 +40,19 @@ const MENU: readonly SettingsMenuItem[] = [
   selector: 'trn-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './settings.page.html',
+  styleUrl: './settings.page.scss',
   // The page sits on the app's content surface, matching the rooms main pane and thread
   // panels; painting the host covers the transparent header + panes (else it falls back to
   // the darker shell background, which is wrong in dark mode). Its panes own scrolling, so
   // clip their overflow at the shell: without this a framed Electron viewport can include
   // descendant overflow in the document and paint a second scrollbar beside the detail pane.
   host: {
-    class: 'flex h-full flex-col overflow-hidden bg-[var(--trinity-chat)]',
+    class: 'settings-page',
   },
   imports: [
     PageHeaderComponent,
     TrnIconComponent,
-    HlmButton,
+    TrnButton,
     TrnTooltip,
     RouterLink,
     RouterLinkActive,
@@ -82,8 +65,15 @@ export class SettingsPage {
   private readonly route = inject(ActivatedRoute);
   private readonly destroyRef = inject(DestroyRef);
   private readonly build = inject(BUILD_INFO);
+  private readonly document = inject(DOCUMENT);
+  private readonly injector = inject(Injector);
+  private readonly nav = viewChild<ElementRef<HTMLElement>>('nav');
+  private readonly detail = viewChild<ElementRef<HTMLElement>>('detail');
+  private lastFocusedSection: string | null = null;
 
-  readonly menu = MENU;
+  readonly menu = SETTINGS_SECTIONS;
+  /** A narrow directory click adds `/settings` behind the section in history. */
+  private readonly narrowSectionPushed = signal(false);
 
   /** "Trinity v0.0.1 · a1b2c3d" for the settings footer. */
   readonly buildLabel = `Trinity v${this.build.version} · ${this.build.commit}`;
@@ -113,16 +103,77 @@ export class SettingsPage {
   protected readonly wide = mediaQuerySignal(MD_QUERY, this.destroyRef);
 
   constructor() {
+    // Browser Back, Android hardware Back and iOS history gestures bypass goBack(). When
+    // one of them pops a narrow drill-in back to the directory, clear the remembered push
+    // and mark its originating link before the shell's NavigationEnd focus pass runs.
+    effect(() => {
+      if (this.activePath() !== null || !this.narrowSectionPushed()) {
+        return;
+      }
+      this.markDirectoryFocusTarget();
+      this.narrowSectionPushed.set(false);
+    });
+
     // The wide two-pane layout must never show an empty detail pane: land the bare
     // `/settings` index on the first section. Narrow leaves the index on the list.
     effect(() => {
-      if (this.wide() && !this.sectionActive()) {
-        void this.router.navigate([MENU[0].path], {
+      const wide = this.wide();
+      if (wide && !this.sectionActive()) {
+        void this.router.navigate([SETTINGS_SECTIONS[0].path], {
           relativeTo: this.route,
           replaceUrl: true,
         });
       }
     });
+  }
+
+  /** Mark the activated child heading as the app shell's route-focus destination. */
+  onSectionActivated(): void {
+    afterNextRender(
+      () => {
+        const heading =
+          this.detail()?.nativeElement.querySelector<HTMLElement>('h2');
+        if (!heading) {
+          return;
+        }
+        this.clearRouteFocusTargets();
+        heading.dataset['routeFocus'] = '';
+        heading.tabIndex = -1;
+        heading.focus({ preventScroll: true });
+        this.lastFocusedSection = this.currentSection();
+      },
+      { injector: this.injector },
+    );
+  }
+
+  /** Mark the mobile directory link that the shell focus manager should restore. */
+  private markDirectoryFocusTarget(): void {
+    const path = this.currentSection() ?? this.lastFocusedSection;
+    if (!path) {
+      return;
+    }
+    this.clearRouteFocusTargets();
+    const link = this.nav()?.nativeElement.querySelector<HTMLElement>(
+      `[data-testid="settings-nav-${path}"]`,
+    );
+    if (link) {
+      link.dataset['routeFocus'] = '';
+    }
+  }
+
+  private clearRouteFocusTargets(): void {
+    for (const target of this.document.querySelectorAll<HTMLElement>(
+      '[data-route-focus]',
+    )) {
+      delete target.dataset['routeFocus'];
+    }
+  }
+
+  /** Remember the one history entry a mobile drill-in adds behind its detail route. */
+  onSectionNavigate(): void {
+    if (!this.wide()) {
+      this.narrowSectionPushed.set(true);
+    }
   }
 
   /**
@@ -133,8 +184,19 @@ export class SettingsPage {
    */
   goBack(): void {
     if (!this.wide() && this.sectionActive()) {
+      this.markDirectoryFocusTarget();
+      if (this.narrowSectionPushed()) {
+        this.narrowSectionPushed.set(false);
+        this.location.back();
+        return;
+      }
       // Up to the list, replacing the section so a later Back doesn't retrace into it.
       void this.router.navigate(['/settings'], { replaceUrl: true });
+      return;
+    }
+    if (this.wide() && this.narrowSectionPushed()) {
+      this.narrowSectionPushed.set(false);
+      this.location.historyGo(-2);
       return;
     }
     this.location.back();

@@ -5,7 +5,7 @@ import {
   input,
 } from '@angular/core';
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { AccountScopeService } from '@trinity/data-access/rooms';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
@@ -29,7 +29,7 @@ import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sideb
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './account-picker.component.html',
   styleUrl: './account-picker.component.scss',
-  imports: [AvatarComponent, HlmButton],
+  imports: [AvatarComponent, TrnButton],
 })
 export class AccountPickerComponent {
   private readonly scope = inject(AccountScopeService);

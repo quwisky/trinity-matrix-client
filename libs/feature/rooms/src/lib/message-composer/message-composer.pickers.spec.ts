@@ -2,23 +2,143 @@ import {
   gifProviders,
   gifResult,
   renderComposer,
+  setMobilePlatform,
   stubObjectUrls,
 } from './message-composer.spec-harness';
 import { ApplicationRef, signal, type Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
-import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from 'vitest';
 import { type BatchItem } from '../shared/send-media-batch';
 import { MockProvider } from 'ng-mocks';
 import { VoiceRecorderService } from '@trinity/platform-native';
-import { GifSettingsService } from '@trinity/data-access/gif';
-import { TrnToastService } from '@trinity/components/overlay';
+import { GifService, GifSettingsService } from '@trinity/data-access/gif';
+import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { LocationShareService } from '../location-share/location-share.service';
-import { Router } from '@angular/router';
+import { MediaService, type ImagePack } from '@trinity/data-access/media';
+import { CreatePollService } from '../poll/create-poll.service';
+import { CreatePollDialogComponent } from '../poll/create-poll-dialog.component';
+import { SettingsDialogService } from '@trinity/components/settings-dialog';
+
+const stickerPack: ImagePack = {
+  id: '!pack:hs:fun',
+  roomId: '!pack:hs',
+  stateKey: 'fun',
+  name: 'Fun',
+  attribution: null,
+  scope: { emoticon: null, sticker: 'account' },
+  images: [
+    {
+      shortcode: 'party',
+      url: 'mxc://hs/party',
+      body: 'Party parrot',
+      mimetype: 'image/png',
+      width: 32,
+      height: 32,
+      info: { mimetype: 'image/png', w: 32, h: 32 },
+      usage: ['sticker'],
+      packId: '!pack:hs:fun',
+      packName: 'Fun',
+    },
+  ],
+};
 
 describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray and voice', () => {
   beforeEach(() => stubObjectUrls());
+  afterEach(() => {
+    setMobilePlatform(false);
+  });
+
+  it('hands mobile Poll focus to the real poll dialog', async () => {
+    setMobilePlatform(true);
+    const { fixture, container } = await renderComposer({}, [
+      MockProvider(CreatePollService, {
+        open: vi.fn(() => {
+          TestBed.inject(TrnDialogService).open(CreatePollDialogComponent, {
+            ariaLabel: 'Create poll',
+            autoFocus: '[data-testid=poll-question]',
+          });
+          return Promise.resolve();
+        }),
+      }),
+    ]);
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
+      ?.click();
+    await fixture.whenStable();
+    document
+      .querySelector<HTMLButtonElement>('[data-testid=insert-poll]')
+      ?.click();
+    TestBed.inject(ApplicationRef).tick();
+    await fixture.whenStable();
+
+    expect(document.querySelector('[data-testid=poll-question]')).toBe(
+      document.activeElement,
+    );
+  });
+
+  it('hands mobile GIF focus to the real GIF search', async () => {
+    setMobilePlatform(true);
+    const { fixture, container } = await renderComposer({}, [
+      ...gifProviders(),
+      MockProvider(GifService, {
+        search: vi.fn(() => of([])),
+        download: vi.fn(),
+      }),
+    ]);
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
+      ?.click();
+    await fixture.whenStable();
+    document
+      .querySelector<HTMLButtonElement>('[data-testid=insert-gif]')
+      ?.click();
+    TestBed.inject(ApplicationRef).tick();
+    await fixture.whenStable();
+
+    expect(document.querySelector('[data-testid=gif-search]')).toBe(
+      document.activeElement,
+    );
+  });
+
+  it('hands mobile Sticker focus to the real sticker search', async () => {
+    setMobilePlatform(true);
+    const { fixture, container } = await renderComposer(
+      { stickerPacks: [stickerPack] },
+      [
+        MockProvider(MediaService, {
+          resolveMedia: vi.fn(() => of('blob:sticker')),
+          pin: vi.fn(),
+          unpin: vi.fn(),
+        }),
+      ],
+    );
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
+      ?.click();
+    await fixture.whenStable();
+    document
+      .querySelector<HTMLButtonElement>('[data-testid=insert-sticker]')
+      ?.click();
+    TestBed.inject(ApplicationRef).tick();
+    await fixture.whenStable();
+
+    expect(document.querySelector('[data-testid=sticker-search]')).toBe(
+      document.activeElement,
+    );
+  });
 
   it('toggles the emoji picker open and closed from the button', async () => {
     const { fixture, container } = await renderComposer();
@@ -139,18 +259,22 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
   });
 
   it('opens image-pack settings with the active room as context', async () => {
-    const navigate = vi.fn().mockResolvedValue(true);
+    const open = vi.fn().mockResolvedValue(undefined);
     const { fixture } = await renderComposer({ roomId: '!room:hs' }, [
-      MockProvider(Router, { navigate }),
+      MockProvider(SettingsDialogService, { open }),
     ]);
     fixture.componentInstance.stickerPickerOpen.set(true);
 
     fixture.componentInstance.manageImagePacks();
 
     expect(fixture.componentInstance.stickerPickerOpen()).toBe(false);
-    expect(navigate).toHaveBeenCalledWith(['/settings/stickers'], {
-      queryParams: { roomId: '!room:hs' },
-    });
+    expect(open).toHaveBeenCalledWith(
+      expect.objectContaining({
+        section: 'stickers',
+        roomId: '!room:hs',
+        restoreFocus: expect.any(Function),
+      }),
+    );
   });
 
   it('downloads a chosen GIF and sends it as media, closing the picker', async () => {

@@ -64,12 +64,17 @@ Chromium keeps its desktop user agent and silently takes the desktop path. Note 
 Playwright counts `opacity: 0` as **visible**, so assert on the class that hides a thing rather
 than on its visibility.
 
-**`scripts/*.spec.mjs` are source-shape guards** (17 of them) encoding decisions the type system
+**`scripts/*.spec.mjs` are source-shape guards** encoding decisions the type system
 cannot: the module boundaries, the styling idiom LEDGER, the breakpoint copies, the
 `hostDirectives` contract, the config-key ledger, the `trn-message-row` consumer list. When one
 fails, read its docstring before changing the code — it usually knows something you do not.
 Deleting a component stylesheet means pruning `styling-idiom.spec.mjs`, which asserts exact
 equality.
+
+**Never commit design prototypes, screenshots, GIF proof, or pixel baselines.** Generate UI proof
+under ignored test output and attach it directly to the pull request. Application assets such as
+icons, splash screens and bundled artwork remain tracked in their platform/app asset directories.
+`scripts/repository-media-policy.spec.mjs` enforces the distinction.
 
 **Native (Capacitor)** — each `*:run`/`*:build` rebuilds `www/` and `cap sync`s first; re-run a
 `*:sync` after any web change. Android needs `ANDROID_HOME`; iOS needs macOS + Xcode.

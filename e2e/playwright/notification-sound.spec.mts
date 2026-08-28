@@ -1,6 +1,7 @@
 import { test, expect, type APIRequestContext } from './support/fixtures.mts';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers the global "Play a sound" switch (Settings → Notifications). The preference lives in
 // ACCOUNT DATA, so the assertion is what the SERVER holds afterwards, read straight back —
@@ -60,9 +61,7 @@ test.describe('Notification sound', () => {
     expect(await storedSound(request, hs, userId, token)).toBeUndefined();
 
     await login(page, { available: true, hs, user, pass } as SynapseSession);
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-notifications').click();
-    await page.waitForURL(/\/settings\/notifications$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'notifications');
 
     const sound = page.getByTestId('notif-sound');
     await expect(sound).toBeVisible({ timeout: 15_000 });
@@ -81,6 +80,7 @@ test.describe('Notification sound', () => {
 
     // And it is what the app shows after a reload — the setting is state, not a toggle
     // that only lived in the page that set it.
+    await page.goto('/settings/notifications');
     await page.reload();
     await page.waitForURL(/\/settings\/notifications$/, { timeout: 20_000 });
     await expect(

@@ -193,12 +193,9 @@ const UI_BOUNDARY = [
   // `ui:public` (libs/components) may name every vendor, and that is the point rather than
   // an oversight: it IS a wrapper layer, the same status `ui:vendor-wrapper` has.
   //
-  // What is NOT yet true is the other direction. Nothing keys on `ui:public`, so nothing stops
-  // feature code reaching straight past the tier into `@trinity/helm/*` — 59 files still do,
-  // 50 of them for `button`. The tier is structure today, not a rule; closing it needs the
-  // remaining kit libraries wrapped first, which is the same staging the vendor bans used.
-  // Recorded here rather than implied, because an earlier revision of this comment claimed the
-  // consumer side was already enforced, which would have let a reader believe the gate was shut.
+  // The other direction is closed by the consumer-side direct-import rule: features/apps may
+  // name this public tier, never `@trinity/helm/*`. The public tier itself stays vendor-capable
+  // because absorbing that dependency is its architectural job.
   //
   // The asymmetry that follows: the one tier whose job is to absorb a substrate swap is also
   // the one place a fifth vendor could appear with no lint signal, so a change to this row has
@@ -482,7 +479,7 @@ describe('UI vendor boundary', () => {
     expect(kit.rules['no-restricted-imports']).toBeUndefined();
   });
 
-  it('closes the vendored kit to consumer tiers, staged to the libraries still unwrapped', async () => {
+  it('closes the vendored kit to consumer tiers with no staged exceptions', async () => {
     // The consumer half of the public tier. `@nx/enforce-module-boundaries` cannot express
     // it — `notDependOnLibsWithTags` is transitive, and the tier depends on the kit by
     // design, so it fails on the very path it should bless. A direct-import rule is the
@@ -511,19 +508,13 @@ describe('UI vendor boundary', () => {
       expect(kitGroup(await resolve(wrapper)), wrapper).toBeUndefined();
     }
 
-    // The staging list, exact and shrinking. A fifth exception cannot arrive unnoticed, and
-    // removing one as its wrapper lands is a deliberate edit here. Empty means the tier is
-    // fully closed — at which point this expectation is the thing that says so.
+    // Exact and exception-free. Adding a carve-out for a future kit package must change this
+    // assertion and cannot arrive hidden inside a broad glob edit.
     expect(
       kitGroup(
         await resolve('libs/feature/settings/src/lib/settings.routes.ts'),
       ),
-    ).toEqual([
-      KIT,
-      '!@trinity/helm/button',
-      '!@trinity/helm/dropdown-menu',
-      '!@trinity/helm/sonner',
-    ]);
+    ).toEqual([KIT]);
 
     // Splitting the globs is what keeps both bans alive: flat config replaces a rule's
     // options wholesale, so the SDK pattern has to be restated in the consumer block.
@@ -539,6 +530,15 @@ describe('UI vendor boundary', () => {
         anywhere,
       ).toBe(true);
     }
+
+    const directKitImports = globSync(
+      ['libs/feature/**/*.ts', 'apps/**/*.ts'],
+      { cwd: workspaceRoot },
+    ).flatMap((file) => {
+      const source = readFileSync(join(workspaceRoot, file), 'utf8');
+      return source.includes("from '@trinity/helm/") ? [file] : [];
+    });
+    expect(directKitImports).toEqual([]);
   });
 
   it('keeps the matrix-js-sdk dynamic-import ban after the staging block was deleted', async () => {

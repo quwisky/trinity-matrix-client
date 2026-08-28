@@ -60,6 +60,7 @@ disposable Synapse. Paths are relative to the repo root, so always invoke via th
 | `pnpm e2e:media`                              | **Note-to-self encrypted media send** — pick a file → encrypt → upload → decrypt own echo.                                                 |
 | `pnpm e2e:reply`                              | **Reply header + preview** — a reply keeps its own author/avatar even as a same-sender continuation, and renders the quoted reply preview. |
 | `pnpm e2e:verify:up` / `pnpm e2e:verify:down` | Bring the Synapse+Caddy+Dex harness up / tear it down by hand.                                                                             |
+| `pnpm exec nx run trinity-e2e:scrollbars-e2e` | Run the focused native-scrollbar contract in Chromium, Firefox and WebKit against disposable Synapse.                                      |
 | `pnpm e2e:android`                            | Build and install Android, then run every web journey plus native-only journeys in its API 36 WebView.                                     |
 | `pnpm electron:e2e`                           | Build and launch Electron, then run desktop shell checks and the image-pack manager journey against disposable Synapse.                    |
 

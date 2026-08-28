@@ -63,6 +63,15 @@ describe('GifPickerComponent', () => {
     URL.revokeObjectURL = vi.fn();
   });
 
+  it('focuses search when the picker opens', async () => {
+    const fixture = setup();
+    await fixture.whenStable();
+
+    expect(document.activeElement).toBe(
+      fixture.nativeElement.querySelector('[data-testid=gif-search]'),
+    );
+  });
+
   it('loads trending GIFs on open (empty query, debounced)', async () => {
     const search = vi.fn(() => of(results));
     const fixture = setup(search);

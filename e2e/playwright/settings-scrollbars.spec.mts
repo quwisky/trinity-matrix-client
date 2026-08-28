@@ -1,4 +1,4 @@
-import { test, expect, type Page } from './support/fixtures.mts';
+import { test, expect, type Locator, type Page } from './support/fixtures.mts';
 import { login, synapseSession } from './support/app.mts';
 
 // One scrollbar in Settings, never two.
@@ -17,11 +17,11 @@ const session = synapseSession();
 /**
  * Every element that overflows vertically AND would paint a scrollbar.
  *
- * Read from `scrollbar-width`, not from `offsetWidth - clientWidth`. The gutter measurement
- * is the obvious one and it is useless here: headless Chromium draws OVERLAY scrollbars, so
- * the gutter is 0 whether or not a bar appears — a first version of this spec passed with
- * the fix removed. `scrollbar-width` is the property the fix actually sets, and it is
- * readable in the engine that would draw the bar.
+ * The gutter measurement is the obvious one and it is useless here: overlay scrollbars leave
+ * it at 0 whether or not a bar appears. Chromium/WebKit expose their pseudo-element paint;
+ * headless Firefox normalizes `scrollbar-width` to `none` even when the authored `thin` rule
+ * applies, so its intentional hidden exception is identified by the explicit class and its
+ * standards paint is asserted separately below.
  */
 async function scrollbarPainters(page: Page): Promise<string[]> {
   return page.evaluate(() => {
@@ -31,9 +31,15 @@ async function scrollbarPainters(page: Page): Promise<string[]> {
       const scrolls =
         (style.overflowY === 'auto' || style.overflowY === 'scroll') &&
         node.scrollHeight > node.clientHeight + 1;
-      const webkitScrollbar = getComputedStyle(node, '::-webkit-scrollbar');
-      const hidden =
-        style.scrollbarWidth === 'none' || webkitScrollbar.display === 'none';
+      const webkitScrollbar =
+        !navigator.userAgent.includes('Firefox') &&
+        CSS.supports('selector(::-webkit-scrollbar-thumb)')
+          ? getComputedStyle(node, '::-webkit-scrollbar')
+          : undefined;
+      const hidden = navigator.userAgent.includes('Firefox')
+        ? node.classList.contains('no-scrollbar')
+        : style.scrollbarWidth === 'none' ||
+          webkitScrollbar?.display === 'none';
       if (scrolls && !hidden) {
         found.push(
           `${node.tagName}[${node.getAttribute('data-testid') ?? node.className.slice(0, 30)}]`,
@@ -46,19 +52,66 @@ async function scrollbarPainters(page: Page): Promise<string[]> {
   });
 }
 
+async function visibleScrollbarPaint(scroller: Locator) {
+  return scroller.evaluate((element) => {
+    const probe = document.createElement('span');
+    probe.style.cssText = [
+      'position:absolute',
+      'width:var(--trinity-scrollbar-size)',
+      'border-radius:var(--trinity-scrollbar-radius)',
+      'background:var(--trinity-scrollbar-thumb)',
+    ].join(';');
+    const railProbe = document.createElement('span');
+    railProbe.style.cssText =
+      'position:absolute;background:var(--trinity-rail)';
+    element.append(probe);
+    element.append(railProbe);
+
+    const probeStyle = getComputedStyle(probe);
+    const railProbeStyle = getComputedStyle(railProbe);
+    const usesWebkit =
+      !navigator.userAgent.includes('Firefox') &&
+      CSS.supports('selector(::-webkit-scrollbar-thumb)');
+    const bar = usesWebkit
+      ? getComputedStyle(element, '::-webkit-scrollbar')
+      : undefined;
+    const thumb = usesWebkit
+      ? getComputedStyle(element, '::-webkit-scrollbar-thumb')
+      : undefined;
+    const track = usesWebkit
+      ? getComputedStyle(element, '::-webkit-scrollbar-track')
+      : undefined;
+    const corner = usesWebkit
+      ? getComputedStyle(element, '::-webkit-scrollbar-corner')
+      : undefined;
+    const elementStyle = getComputedStyle(element);
+    const paint = {
+      usesWebkit,
+      standardWidth: elementStyle.scrollbarWidth,
+      standardColor: elementStyle.scrollbarColor,
+      width: bar?.width,
+      height: bar?.height,
+      thumb: thumb?.backgroundColor,
+      radius: thumb?.borderRadius,
+      track: track?.backgroundColor,
+      corner: corner?.backgroundColor,
+      expectedSize: probeStyle.width,
+      expectedThumb: probeStyle.backgroundColor,
+      expectedRail: railProbeStyle.backgroundColor,
+      expectedRadius: probeStyle.borderRadius,
+    };
+    probe.remove();
+    railProbe.remove();
+    return paint;
+  });
+}
+
 test.describe('Settings scrollbars', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  // Short enough that the section list overflows in every section — that is what put a
-  // second bar beside the content's.
-  test.use({ viewport: { width: 1280, height: 560 } });
-
-  test('never draws the list its own bar, and still draws the content its one', async ({
+  test('owns exactly one painted scrollbar at every desktop acceptance size', async ({
     page,
   }) => {
-    await login(page, session);
-    await page.getByTestId('open-settings').click();
-
     // Per section, and EXACT — not "at most one". A `<= 1` assertion passes at zero, so a
     // section that rendered nothing at all would have satisfied it; and the rule has two
     // halves ("never the outer, only the inner when necessary"), of which only the first
@@ -70,16 +123,56 @@ test.describe('Settings scrollbars', () => {
       privacy: [],
     };
 
-    for (const [section, bars] of Object.entries(expected)) {
-      await page.getByTestId(`settings-nav-${section}`).click();
-      await page.waitForURL(new RegExp(`/settings/${section}$`), {
-        timeout: 20_000,
-      });
-      // The pane has rendered, so an empty result below means "no bar" rather than
-      // "nothing to measure".
-      await expect(page.getByTestId('settings-detail')).not.toBeEmpty();
+    const viewports = [
+      { width: 1280, height: 700 },
+      { width: 1024, height: 700 },
+      { width: 1280, height: 862 },
+    ];
 
-      await expect.poll(() => scrollbarPainters(page)).toEqual(bars);
+    await login(page, session);
+    const roomUrl = page.url();
+    await page.getByTestId('open-settings').click();
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page).toHaveURL(roomUrl);
+
+    for (const viewport of viewports) {
+      await page.setViewportSize(viewport);
+      for (const [section, bars] of Object.entries(expected)) {
+        await page.getByTestId(`settings-nav-${section}`).click();
+        await expect(page.getByTestId('settings-detail')).not.toBeEmpty();
+
+        await expect.poll(() => scrollbarPainters(page)).toEqual(bars);
+        const geometry = await page.evaluate(() => {
+          const workspace = document.querySelector<HTMLElement>(
+            '[data-testid=settings-workspace]',
+          );
+          const shell = document.querySelector<HTMLElement>(
+            '[data-testid=settings-dialog]',
+          );
+          if (!workspace || !shell) throw new Error('settings shell missing');
+          const frame = workspace.getBoundingClientRect();
+          return {
+            documentOverflow:
+              document.documentElement.scrollHeight -
+              document.documentElement.clientHeight,
+            shellOverflowY: getComputedStyle(shell).overflowY,
+            frame: {
+              top: frame.top,
+              right: frame.right,
+              bottom: frame.bottom,
+              left: frame.left,
+            },
+          };
+        });
+        expect(geometry.documentOverflow).toBeLessThanOrEqual(1);
+        expect(geometry.shellOverflowY).toBe('hidden');
+        expect(geometry.frame.left).toBeGreaterThan(0);
+        expect(geometry.frame.right).toBeLessThan(viewport.width);
+        expect(geometry.frame.top).toBeGreaterThan(0);
+        expect(geometry.frame.bottom).toBeLessThanOrEqual(viewport.height + 1);
+      }
     }
   });
 
@@ -89,6 +182,7 @@ test.describe('Settings scrollbars', () => {
     // Hiding a scrollbar must not take the scrolling away — the list is taller than the
     // window here, and everything below the fold has to stay reachable.
     await login(page, session);
+    await page.setViewportSize({ width: 1280, height: 560 });
     await page.getByTestId('open-settings').click();
     const nav = page.locator('nav[aria-label="Settings sections"]');
     await expect(nav).toBeVisible({ timeout: 20_000 });
@@ -110,16 +204,16 @@ test.describe('Settings scrollbars', () => {
     // an element scrolled out of an `overflow: auto` ancestor still has a bounding box, so
     // that assertion passes whether or not the list scrolls. A click has to reach it.
     await page.getByTestId('settings-nav-advanced').click();
-    await page.waitForURL(/\/settings\/advanced$/, { timeout: 20_000 });
+    await expect(page.getByTestId('settings-detail')).not.toBeEmpty();
   });
 
   test('keeps notification overflow inside the settings shell', async ({
     page,
   }) => {
     await login(page, session);
+    await page.setViewportSize({ width: 1280, height: 700 });
     await page.getByTestId('open-settings').click();
     await page.getByTestId('settings-nav-notifications').click();
-    await page.waitForURL(/\/settings\/notifications$/, { timeout: 20_000 });
 
     // The detail pane owns vertical scrolling. Its routed content must not enlarge the
     // document's scrollable overflow area in a framed Electron window, where the title-bar
@@ -127,12 +221,72 @@ test.describe('Settings scrollbars', () => {
     await expect
       .poll(() =>
         page
-          .locator('trn-settings')
+          .getByTestId('settings-dialog')
           .evaluate((shell) => getComputedStyle(shell).overflowY),
       )
       .toBe('hidden');
     await expect
       .poll(() => scrollbarPainters(page))
       .toEqual(['SECTION[settings-detail]']);
+  });
+
+  test('uses the shared visible design across mode and palette changes', async ({
+    page,
+  }) => {
+    await login(page, session);
+    await page.setViewportSize({ width: 1280, height: 700 });
+    await page.getByTestId('open-settings').click();
+    await page.getByTestId('settings-nav-notifications').click();
+
+    const detail = page.getByTestId('settings-detail');
+    const nav = page.locator('nav[aria-label="Settings sections"]');
+    await expect
+      .poll(() => scrollbarPainters(page))
+      .toEqual(['SECTION[settings-detail]']);
+
+    for (const theme of [
+      {
+        palette: 'amethyst',
+        dark: false,
+        expectedRail: 'rgb(231, 226, 240)',
+      },
+      { palette: 'onyx', dark: true, expectedRail: 'rgb(0, 0, 0)' },
+    ]) {
+      await page.evaluate(({ palette, dark }) => {
+        document.documentElement.dataset['theme'] = palette;
+        document.documentElement.classList.toggle('dark', dark);
+      }, theme);
+
+      const paint = await visibleScrollbarPaint(detail);
+      expect.soft(paint.expectedRail).toBe(theme.expectedRail);
+      expect.soft(paint.expectedThumb).toBe(paint.expectedRail);
+      if (paint.usesWebkit) {
+        expect.soft(paint.width).toBe(paint.expectedSize);
+        expect.soft(paint.height).toBe(paint.expectedSize);
+        expect.soft(paint.thumb).toBe(paint.expectedThumb);
+        expect.soft(paint.radius).toBe(paint.expectedRadius);
+        expect.soft(paint.track).toBe('rgba(0, 0, 0, 0)');
+        expect.soft(paint.corner).toBe('rgba(0, 0, 0, 0)');
+      } else {
+        expect.soft(paint.standardColor).toContain(paint.expectedThumb);
+      }
+    }
+
+    const hidden = await nav.evaluate((element) => ({
+      standard: getComputedStyle(element).scrollbarWidth,
+      usesWebkit:
+        !navigator.userAgent.includes('Firefox') &&
+        CSS.supports('selector(::-webkit-scrollbar-thumb)'),
+      webkit:
+        !navigator.userAgent.includes('Firefox') &&
+        CSS.supports('selector(::-webkit-scrollbar-thumb)')
+          ? getComputedStyle(element, '::-webkit-scrollbar').display
+          : undefined,
+    }));
+    if (hidden.usesWebkit) {
+      expect(hidden.webkit).toBe('none');
+    } else {
+      await expect(nav).toHaveClass(/\bno-scrollbar\b/);
+    }
   });
 });

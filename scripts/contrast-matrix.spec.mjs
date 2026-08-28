@@ -88,6 +88,55 @@ const ROLES = [
       '--trinity-active',
     ],
   },
+  {
+    text: '--trinity-state-hover-foreground',
+    on: ['--trinity-state-hover-surface'],
+  },
+  {
+    text: '--trinity-state-pressed-foreground',
+    on: ['--trinity-state-pressed-surface'],
+  },
+  {
+    text: '--trinity-state-selected-foreground',
+    on: ['--trinity-state-selected-surface'],
+  },
+  {
+    text: '--trinity-state-selected-hover-foreground',
+    on: ['--trinity-state-selected-hover-surface'],
+  },
+  {
+    text: '--trinity-state-attention-foreground',
+    on: ['--trinity-state-attention-surface'],
+  },
+  {
+    text: '--trinity-tooltip-foreground',
+    on: ['--trinity-tooltip-surface'],
+  },
+  {
+    text: '--trinity-status-neutral-foreground',
+    on: ['--trinity-status-neutral-surface'],
+  },
+];
+
+/** Focus is a non-text visual indicator, so WCAG's 3:1 component threshold applies. */
+const NON_TEXT_ROLES = [
+  {
+    foreground: '--trinity-focus-ring',
+    on: [
+      '--trinity-surface-frame',
+      '--trinity-surface-navigation',
+      '--trinity-surface-workspace',
+      '--trinity-surface-raised',
+      '--trinity-surface-floating',
+      '--trinity-surface-panel',
+      '--trinity-state-hover-surface',
+      '--trinity-state-pressed-surface',
+    ],
+  },
+  {
+    foreground: '--trinity-focus-ring-on-attention',
+    on: ['--trinity-state-attention-surface'],
+  },
 ];
 
 /**
@@ -210,17 +259,42 @@ function resolve(token, palette, mode, seen = new Set()) {
 }
 
 /**
- * A CSS colour -> [r, g, b], or null if this parser does not understand the notation.
+ * An opaque CSS colour -> [r, g, b], or null if this parser cannot measure it safely.
  *
  * Both notations in use are handled, and that is deliberate rather than incidental: half the
  * token system is authored in `hsl()` (`--foreground`, `--muted-foreground`, `--destructive`)
  * and the `--trinity-*` roles in hex. A parser that quietly returned null for one of them would
  * drop those pairs out of the matrix and still report a clean run — which is why what it cannot
- * parse is asserted below rather than filtered away.
+ * parse is asserted below rather than filtered away. Alpha is fail-closed too: discarding it
+ * would let transparent text or surfaces report the contrast of their invisible RGB channels.
  */
 function toRgb(value) {
   if (!value) return null;
   const text = value.trim();
+
+  const functional = /^(rgba?|hsla?)\((.*)\)$/i.exec(text);
+  if (functional) {
+    const [, functionName, body] = functional;
+    const slashAlpha = /\/\s*([\d.]+)(%)?\s*$/.exec(body);
+    const commaParts = body.split(',').map((part) => part.trim());
+    const legacyAlpha =
+      !slashAlpha && commaParts.length === 4
+        ? /^([\d.]+)(%)?$/.exec(commaParts[3])
+        : null;
+    if (
+      (body.includes('/') && !slashAlpha) ||
+      (commaParts.length > 3 && !legacyAlpha)
+    ) {
+      return null;
+    }
+    const alpha = slashAlpha ?? legacyAlpha;
+    if (alpha) {
+      const opacity = Number(alpha[1]) / (alpha[2] ? 100 : 1);
+      if (opacity !== 1) return null;
+    } else if (/a$/i.test(functionName)) {
+      return null;
+    }
+  }
 
   const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(text);
   if (hex) {
@@ -306,6 +380,30 @@ function* pairs() {
 
 const measured = [...pairs()];
 
+function* nonTextPairs() {
+  for (const palette of palettes) {
+    for (const mode of ['light', 'dark']) {
+      for (const role of NON_TEXT_ROLES) {
+        for (const surface of role.on) {
+          const foreground = toRgb(resolve(role.foreground, palette, mode));
+          const background = toRgb(resolve(surface, palette, mode));
+          if (foreground && background) {
+            yield {
+              palette,
+              mode,
+              foreground: role.foreground,
+              surface,
+              ratio: ratio(foreground, background),
+            };
+          }
+        }
+      }
+    }
+  }
+}
+
+const measuredNonText = [...nonTextPairs()];
+
 describe('contrast matrix', () => {
   it('measures something, so an empty matrix cannot pass as a clean one', () => {
     // A parser change that stopped matching the palette blocks would otherwise report every
@@ -319,6 +417,14 @@ describe('contrast matrix', () => {
     expect(ratio([255, 255, 255], [49, 51, 56])).toBeCloseTo(12.63, 1);
   });
 
+  it('rejects translucent colours instead of measuring invisible RGB channels', () => {
+    expect(toRgb('rgb(0 0 0 / 0.25)')).toBeNull();
+    expect(toRgb('rgb(0 0 0 / -0.1)')).toBeNull();
+    expect(toRgb('rgb(0 0 0 / 1e-1)')).toBeNull();
+    expect(toRgb('rgba(255, 255, 255, 50%)')).toBeNull();
+    expect(toRgb('hsl(240deg 5% 10% / 1)')).toEqual(hslToRgb(240, 0.05, 0.1));
+  });
+
   it('can actually measure every role it was given', () => {
     // The failure this closes: `toRgb` returning null drops the pair out of the matrix, so a
     // token written in a notation the parser does not know is not measured AND not reported —
@@ -330,7 +436,9 @@ describe('contrast matrix', () => {
         for (const role of [...ROLES, ...HELM_ROLES]) {
           for (const token of [role.text, ...role.on]) {
             const value = resolve(token, palette, mode);
-            if (value && !toRgb(value)) {
+            if (!value) {
+              unmeasurable.push(`${palette}/${mode}: ${token} is not defined`);
+            } else if (!toRgb(value)) {
               unmeasurable.push(`${palette}/${mode}: ${token} = ${value}`);
             }
           }
@@ -341,12 +449,47 @@ describe('contrast matrix', () => {
     expect([...new Set(unmeasurable)].sort()).toEqual([]);
   });
 
+  it('keeps the tooltip surface dark in every dark palette', () => {
+    const failures = palettes.flatMap((palette) => {
+      const value = resolve('--trinity-tooltip-surface', palette, 'dark');
+      const colour = toRgb(value);
+      if (!value || !colour) {
+        return [`${palette}/dark: tooltip surface is not measurable`];
+      }
+      const level = luminance(colour);
+      return level < 0.2
+        ? []
+        : [
+            `${palette}/dark: --trinity-tooltip-surface = ${value} (${level.toFixed(3)} luminance)`,
+          ];
+    });
+
+    expect(failures).toEqual([]);
+  });
+
   it('clears WCAG AA for every text role on every surface it lands on', () => {
     const failures = measured
       .filter((m) => m.ratio < AA)
       .map(
         (m) =>
           `${m.palette}/${m.mode}: ${m.text} on ${m.surface} = ${m.ratio.toFixed(2)}:1`,
+      )
+      .sort();
+
+    expect(failures).toEqual([]);
+  });
+
+  it('keeps the focus indicator above the non-text contrast floor on every surface', () => {
+    expect(measuredNonText.length).toBe(
+      palettes.length *
+        2 *
+        NON_TEXT_ROLES.reduce((total, role) => total + role.on.length, 0),
+    );
+    const failures = measuredNonText
+      .filter((measurement) => measurement.ratio < 3)
+      .map(
+        (measurement) =>
+          `${measurement.palette}/${measurement.mode}: ${measurement.foreground} on ${measurement.surface} = ${measurement.ratio.toFixed(2)}:1`,
       )
       .sort();
 

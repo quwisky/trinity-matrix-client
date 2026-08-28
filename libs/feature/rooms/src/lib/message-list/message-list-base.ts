@@ -59,6 +59,7 @@ import {
   type MentionMember,
 } from '../message-composer/message-composer.component';
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
+import { observeScrollerHeight } from './scroller-height-anchor';
 
 /**
  * How long after a jump a width change still counts as "the same jump".
@@ -564,6 +565,7 @@ export abstract class MessageListBase {
   private pendingJumpAt = 0;
   private lastScrollerWidth = 0;
   private widthRo?: ResizeObserver;
+  private stopHeightWatcher?: () => void;
 
   /**
    * Remember a jump so a width change can re-apply it. Called BY the subclasses' `jumpTo`,
@@ -605,6 +607,25 @@ export abstract class MessageListBase {
     });
     this.widthRo.observe(el);
     this.listDestroyRef.onDestroy(() => this.widthRo?.disconnect());
+  }
+
+  /**
+   * Keep a bottom-pinned conversation pinned when the composer, formatting bar or software
+   * keyboard changes the scroller's viewport height. A reader who has scrolled up needs no
+   * compensation: the scroller's top edge and scrollTop remain unchanged, so their anchor
+   * stays put. This exact pin is intentionally separate from the subclasses' 120px
+   * near-bottom state for incoming messages. The optional callback lets the virtual list
+   * keep its window-height signal in step with the same observation.
+   */
+  protected watchScrollerHeight(
+    resized?: (height: number, scrollTop: number) => void,
+  ): void {
+    const el = this.scrollEl()?.nativeElement;
+    if (!el || this.stopHeightWatcher) {
+      return;
+    }
+    this.stopHeightWatcher = observeScrollerHeight(el, resized);
+    this.listDestroyRef.onDestroy(() => this.stopHeightWatcher?.());
   }
 
   /** Scroll a message into view (each scroll strategy implements it differently). */

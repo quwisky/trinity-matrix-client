@@ -76,3 +76,29 @@ export const NoActions: Story = {
       </trn-banner>`,
   }),
 };
+
+/** Disabled actions keep native semantics and use the shared disabled recipe. */
+export const DisabledAction: Story = {
+  render: () => ({
+    template: `
+      <trn-banner tone="neutral">
+        <trn-icon trnBannerIcon name="cloud-off" />
+        Reconnecting before this action becomes available.
+        <span trnBannerActions>
+          <button hlmBtn size="sm" disabled>Retry now</button>
+        </span>
+      </trn-banner>`,
+  }),
+};
+
+/** The same component under the root-level density contract. */
+export const Compact: Story = {
+  globals: { density: 'compact' },
+  render: () => ({
+    template: `
+      <trn-banner tone="neutral">
+        <trn-icon trnBannerIcon name="loader-circle" />
+        Compact density keeps status chrome quiet.
+      </trn-banner>`,
+  }),
+};

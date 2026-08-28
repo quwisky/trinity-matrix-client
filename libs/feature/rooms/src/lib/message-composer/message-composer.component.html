@@ -1,15 +1,27 @@
 @if (editing()) {
-  <div class="composer__banner">Editing message — <kbd>Esc</kbd> to cancel</div>
+  <div class="composer__banner">
+    Editing message — <kbd>Esc</kbd> to cancel
+    <button
+      type="button"
+      trnIconButton
+      class="composer__cancel"
+      aria-label="Cancel edit"
+      (click)="cancelEdit.emit()"
+    >
+      <trn-icon name="x" motion="rotate" />
+    </button>
+  </div>
 } @else if (replyingTo()) {
   <div class="composer__banner">
     Replying to <strong>{{ replyingTo() }}</strong>
     <button
       type="button"
+      trnIconButton
       class="composer__cancel"
       aria-label="Cancel reply"
       (click)="cancelReply.emit()"
     >
-      <trn-icon name="x" />
+      <trn-icon name="x" motion="rotate" />
     </button>
   </div>
 }
@@ -71,14 +83,19 @@
   </ng-template>
   @if (recordingVoice()) {
     <div class="composer__recording" data-testid="composer-voice-recording">
+      <span class="sr-only" role="status" aria-live="polite"
+        >Voice recording started</span
+      >
       <button
+        #voiceCancel
         type="button"
+        trnIconButton
         class="composer__recording-cancel"
         aria-label="Cancel voice recording"
         data-testid="composer-voice-cancel"
         (click)="cancelVoiceRecording()"
       >
-        <trn-icon name="trash-2" />
+        <trn-icon name="trash-2" motion="nudge-down" />
       </button>
       <span class="composer__recording-dot" aria-hidden="true"></span>
       <span class="composer__recording-time" data-testid="composer-voice-time">
@@ -86,6 +103,7 @@
       </span>
       <button
         type="button"
+        trnIconButton
         class="composer__recording-send"
         aria-label="Send voice message"
         data-testid="composer-voice-send"
@@ -138,6 +156,7 @@
     (pointerdown)="onFieldPress($event)"
   >
     <trn-composer-insert-menu
+      [contextKey]="roomId()"
       [hasMenu]="hasInsertMenu()"
       [editing]="editing()"
       [uploading]="contextUploadProgress() !== null"
@@ -221,6 +240,7 @@
     ></textarea>
     <button
       type="button"
+      trnIconButton
       class="composer__emoji"
       trnTooltip="Emoji"
       aria-label="Insert emoji"
@@ -228,7 +248,7 @@
       [attr.aria-controls]="pickerOpen() ? pickerId : null"
       (click)="toggleEmojiPicker()"
     >
-      <trn-icon name="smile" />
+      <trn-icon name="smile" motion="pop" />
     </button>
     <!-- Shown at every width and pointer type: touch has no reliable Enter-to-send, and on
        a pointer device it is still the discoverable way to send when Enter is ambiguous
@@ -237,6 +257,7 @@
     @if (!recordingVoice()) {
       <button
         type="button"
+        trnIconButton
         class="composer__send"
         trnTooltip="Send"
         aria-label="Send message"
