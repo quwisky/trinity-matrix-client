@@ -41,10 +41,11 @@ choose an explicit semantic `motion` (`nudge-left`, `nudge-up`, `nudge-down`, `n
 `pop` or `rotate`); motion never moves the hit target, and reduced-motion mode removes the glyph
 transform while retaining colour and focus feedback.
 
-Themeable icon-only labels use `trnTooltip` alongside their `aria-label`, not a native `title`: the
-native surface is browser/OS chrome and cannot follow Trinity's theme. The account-dock Settings
-control follows this contract. The public tooltip wrapper keeps Helm's geometry and motion but
-replaces its inverted colours with the semantic `--trinity-tooltip-surface` /
+Themeable interactive labels use `trnTooltip` alongside their `aria-label`, not a native `title`: the
+native surface is browser/OS chrome and cannot follow Trinity's theme. A source guard keeps native
+titles off every button and link; vertically stacked navigation and member labels open sideways so a
+hoverable overlay cannot cover the preceding control. The public tooltip wrapper keeps Helm's geometry
+and motion but replaces its inverted colours with the semantic `--trinity-tooltip-surface` /
 `--trinity-tooltip-foreground` pair. Light mode preserves the dark tooltip treatment; dark mode
 resolves the surface through the active palette's elevated popover tokens, including the arrow.
 

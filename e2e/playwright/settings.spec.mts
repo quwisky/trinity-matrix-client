@@ -5,6 +5,11 @@ import {
   readPreference,
   synapseSession,
 } from './support/app.mts';
+import {
+  AA_NORMAL_TEXT,
+  measureContrast,
+  resolveTokenSrgb,
+} from './support/contrast.mts';
 
 // Authenticated journeys through Settings — theme switching, profile editing,
 // device management, and the responsive section submenu (two-pane on desktop,
@@ -160,51 +165,39 @@ test.describe('Settings', () => {
     await settingsButton.hover();
     const tooltip = page.getByRole('tooltip');
     await expect(tooltip).toHaveText('Settings');
-
-    const paint = await tooltip.evaluate((element) => {
-      const channels = (value: string): number[] =>
-        (value.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
-      const luminance = (value: string): number => {
-        const [red = 0, green = 0, blue = 0] = channels(value).map(
-          (channel) => {
-            const srgb = channel / 255;
-            return srgb <= 0.04045
-              ? srgb / 12.92
-              : ((srgb + 0.055) / 1.055) ** 2.4;
-          },
-        );
-        return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
-      };
-      const probe = document.createElement('span');
-      probe.style.cssText =
-        'position:fixed;background:var(--trinity-tooltip-surface);color:var(--trinity-tooltip-foreground)';
-      document.body.append(probe);
-      const style = getComputedStyle(element);
-      const expected = getComputedStyle(probe);
-      const background = style.backgroundColor;
-      const foreground = style.color;
-      const lighter = Math.max(luminance(background), luminance(foreground));
-      const darker = Math.min(luminance(background), luminance(foreground));
-      const result = {
-        dark: document.documentElement.classList.contains('dark'),
-        background,
-        foreground,
-        expectedBackground: expected.backgroundColor,
-        expectedForeground: expected.color,
-        backgroundLuminance: luminance(background),
-        contrast: (lighter + 0.05) / (darker + 0.05),
-        arrowFill: getComputedStyle(element.querySelector('svg')!).fill,
-      };
-      probe.remove();
-      return result;
+    await tooltip.evaluate((element) => {
+      element.setAttribute('data-testid', 'settings-tooltip');
+    });
+    const paint = await measureContrast(page, 'settings-tooltip');
+    const expectedBackground = await resolveTokenSrgb(
+      page,
+      'settings-tooltip',
+      '--trinity-tooltip-surface',
+    );
+    const expectedForeground = await resolveTokenSrgb(
+      page,
+      'settings-tooltip',
+      '--trinity-tooltip-foreground',
+    );
+    const arrowPaint = await tooltip.locator('svg').evaluate((element) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 1;
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      if (!context) throw new Error('tooltip arrow: no 2d canvas context');
+      context.fillStyle = getComputedStyle(element).fill;
+      context.fillRect(0, 0, 1, 1);
+      const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data;
+      return { r, g, b, a };
     });
 
-    expect(paint.dark).toBe(true);
-    expect(paint.background).toBe(paint.expectedBackground);
-    expect(paint.foreground).toBe(paint.expectedForeground);
-    expect(paint.backgroundLuminance).toBeLessThan(0.2);
-    expect(paint.contrast).toBeGreaterThanOrEqual(4.5);
-    expect(paint.arrowFill).toBe(paint.background);
+    expect(await hasDarkPalette(page)).toBe(true);
+    expect(paint.background).toEqual(expectedBackground);
+    expect(paint.text).toEqual(expectedForeground);
+    expect(
+      Math.max(paint.background.r, paint.background.g, paint.background.b),
+    ).toBeLessThan(96);
+    expect(paint.ratio).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
+    expect(arrowPaint).toEqual({ ...expectedBackground, a: 255 });
 
     await page.mouse.move(0, 0);
     await settingsButton.click();

@@ -17,14 +17,17 @@ class HostComponent {}
 
 describe('TrnTooltip', () => {
   it('owns a semantic surface pair without retaining the inverted kit colours', () => {
-    expect(TRN_TOOLTIP_CONTENT_CLASSES).toContain('bg-tooltip');
-    expect(TRN_TOOLTIP_CONTENT_CLASSES).toContain('text-tooltip-foreground');
-    expect(TRN_TOOLTIP_CONTENT_CLASSES).not.toContain('bg-foreground');
-    expect(TRN_TOOLTIP_CONTENT_CLASSES).not.toContain('text-background');
-    expect(TRN_TOOLTIP_SVG_CLASSES).toContain('bg-tooltip');
-    expect(TRN_TOOLTIP_SVG_CLASSES).toContain('fill-tooltip');
-    expect(TRN_TOOLTIP_SVG_CLASSES).not.toContain('bg-foreground');
-    expect(TRN_TOOLTIP_SVG_CLASSES).not.toContain('fill-foreground');
+    const content = TRN_TOOLTIP_CONTENT_CLASSES.split(/\s+/);
+    const arrow = TRN_TOOLTIP_SVG_CLASSES.split(/\s+/);
+
+    expect(content).toContain('bg-tooltip');
+    expect(content).toContain('text-tooltip-foreground');
+    expect(content).not.toContain('bg-foreground');
+    expect(content).not.toContain('text-background');
+    expect(arrow).toContain('bg-tooltip');
+    expect(arrow).toContain('fill-tooltip');
+    expect(arrow).not.toContain('bg-foreground');
+    expect(arrow).not.toContain('fill-foreground');
   });
 
   it('publishes the message under our own name', async () => {

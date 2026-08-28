@@ -7,7 +7,7 @@
         class="sidebar__action"
         (click)="openSwitcher.emit()"
         aria-label="Search (Ctrl/Cmd+K)"
-        title="Search (Ctrl/Cmd+K)"
+        trnTooltip="Search (Ctrl/Cmd+K)"
         data-testid="open-switcher"
       >
         <trn-icon name="command" motion="pop" />
@@ -23,7 +23,7 @@
           class="sidebar__action"
           (click)="createRoom.emit()"
           aria-label="Create a channel"
-          title="Create a channel"
+          trnTooltip="Create a channel"
         >
           <trn-icon name="plus" motion="rotate" />
         </button>
@@ -33,7 +33,7 @@
           [trnDropdownMenuTrigger]="spaceMenu"
           align="end"
           [attr.aria-label]="'More actions in ' + spaceName()"
-          title="More actions"
+          trnTooltip="More actions"
           data-testid="space-actions-overflow"
         >
           <trn-icon name="ellipsis-vertical" motion="pop" />
@@ -47,7 +47,7 @@
             class="sidebar__action"
             (click)="markAllRead.emit()"
             aria-label="Mark all as read"
-            title="Mark all as read"
+            trnTooltip="Mark all as read"
             data-testid="mark-all-read"
           >
             <trn-icon name="check-check" motion="pop" />
@@ -58,7 +58,7 @@
           class="sidebar__action"
           (click)="newChat.emit()"
           aria-label="New room or direct message"
-          title="New room or direct message"
+          trnTooltip="New room or direct message"
         >
           <trn-icon name="plus" motion="rotate" />
         </button>
@@ -93,7 +93,7 @@
         class="sidebar__filter-clear"
         (click)="clearFilter(); filterBox.focus()"
         aria-label="Clear filter"
-        title="Clear filter"
+        trnTooltip="Clear filter"
         data-testid="sidebar-filter-clear"
       >
         <trn-icon name="x" motion="rotate" />
@@ -152,7 +152,7 @@
               <div class="joinable__text">
                 <span
                   class="joinable__name"
-                  [title]="child.topic || child.name"
+                  [trnTooltip]="child.topic || child.name"
                   >{{ child.name }}</span
                 >
                 @if (child.suggested) {
@@ -164,7 +164,6 @@
                 (click)="joinRoom.emit(child)"
                 [attr.aria-label]="'Join ' + child.name"
                 [attr.data-testid]="'join-child-' + child.roomId"
-                title="Join"
               >
                 Join
               </button>
@@ -185,7 +184,7 @@
                 shape="place"
               />
               <div class="joinable__text">
-                <span class="joinable__name" [title]="child.name">{{
+                <span class="joinable__name" [trnTooltip]="child.name">{{
                   child.name
                 }}</span>
               </div>
@@ -194,7 +193,6 @@
                   class="joinable__action"
                   (click)="openChildSpace.emit(child.roomId)"
                   [attr.aria-label]="'Open ' + child.name"
-                  title="Open"
                 >
                   Open
                 </button>
@@ -203,7 +201,6 @@
                   class="joinable__action"
                   (click)="joinRoom.emit(child)"
                   [attr.aria-label]="'Join ' + child.name"
-                  title="Join"
                 >
                   Join
                 </button>

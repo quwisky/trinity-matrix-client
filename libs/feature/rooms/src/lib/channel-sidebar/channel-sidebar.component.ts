@@ -8,6 +8,7 @@ import {
   output,
 } from '@angular/core';
 import { TrnIconButton } from '@trinity/components/button';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import {
   TrnDropdownMenu,
   TrnDropdownMenuItem,
@@ -53,6 +54,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     TrnIconButton,
+    TrnTooltip,
     EmptyStateComponent,
     SidebarRoomListComponent,
     AvatarComponent,

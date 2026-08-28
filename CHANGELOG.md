@@ -86,9 +86,12 @@ All notable changes to this project are documented here. The format is based on
   such as reaction chips, server-rail pills, avatar actions, composer controls and the floating
   message toolbar use the same pointer cursor, hover and pressed surfaces while preserving their
   meaningful resting shapes and contextual contrast. Custom controls also keep their glyphs
-  centred inside the full hit target, including Settings in the floating account dock. Its label
-  now uses Trinity's themeable tooltip instead of the browser's native one, and shared tooltips keep
-  a dark, readable surface when dark mode is selected. Each action gets a small semantic glyph
+  centred inside the full hit target, including Settings in the floating account dock. Icon labels in
+  navigation, member, receipt and message actions now use Trinity's themeable tooltip instead of the
+  browser's native one, and shared tooltips keep a dark, readable surface when dark mode is selected.
+  Tooltips in vertically stacked lists open sideways instead of covering the previous control, while
+  sticker shortcodes stay visible below their images without a floating overlay. Each action gets a
+  small semantic glyph
   motion—for example, Back nudges left, Settings rotates and Search pops—with keyboard parity and a
   static reduced-motion fallback that never shifts the control.
 

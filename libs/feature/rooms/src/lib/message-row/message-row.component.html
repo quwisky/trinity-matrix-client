@@ -191,7 +191,7 @@
           class="msg__receipts msg__target"
           data-testid="read-receipts"
           [attr.aria-label]="seenByLabel(r.readReceipts)"
-          [title]="seenByLabel(r.readReceipts)"
+          [trnTooltip]="seenByLabel(r.readReceipts)"
           (click)="seenByOpen.set(!seenByOpen())"
         >
           @for (receipt of r.readReceipts; track receipt.userId) {

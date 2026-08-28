@@ -6,6 +6,7 @@ import {
 } from '@angular/core';
 import { AvatarComponent, type AccountBadge } from '@trinity/components/avatar';
 import { TrnIconButton } from '@trinity/components/button';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import { type SpaceSummary } from '@trinity/data-access/rooms';
 import { unreadBadgeLabel } from '../shared/unread-badge';
 import { TrnIconComponent } from '@trinity/components/icon';
@@ -29,7 +30,7 @@ export interface RailUnread {
 @Component({
   selector: 'trn-server-rail',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, TrnIconButton, TrnIconComponent],
+  imports: [AvatarComponent, TrnIconButton, TrnIconComponent, TrnTooltip],
   templateUrl: './server-rail.component.html',
   styleUrl: './server-rail.component.scss',
 })

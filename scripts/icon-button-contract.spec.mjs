@@ -145,6 +145,16 @@ describe('icon-button contract', () => {
     expect(incomplete).toEqual([]);
   });
 
+  it('never delegates interactive labels to native title tooltips', () => {
+    const incomplete = controlBlocks
+      .filter(({ openingTag }) =>
+        /(?:\[attr\.title\]|\[title\]|\btitle)=/.test(openingTag),
+      )
+      .map(({ file, line }) => `${file}:${line}`);
+
+    expect(incomplete).toEqual([]);
+  });
+
   it('keeps the purpose-built icon-control inventory exact', () => {
     expect(countsByFile(bespokeIconButtons)).toEqual(expectedBespokeCounts);
   });

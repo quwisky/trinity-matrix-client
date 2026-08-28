@@ -19,6 +19,7 @@ import { type PresenceState } from '@trinity/util/matrix';
 import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnInput } from '@trinity/components/input';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import {
   buildPrefixSums,
   computeWindow,
@@ -112,7 +113,13 @@ const ROLE_ICON: Record<MemberRole, TrnIconName> = {
 @Component({
   selector: 'trn-member-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, TrnIconComponent, TrnInput, EmptyStateComponent],
+  imports: [
+    AvatarComponent,
+    TrnIconComponent,
+    TrnInput,
+    TrnTooltip,
+    EmptyStateComponent,
+  ],
   templateUrl: './member-list.component.html',
   styleUrl: './member-list.component.scss',
 })

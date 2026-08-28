@@ -1,7 +1,9 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { AvatarComponent } from '@trinity/components/avatar';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import { PresenceService } from '@trinity/data-access/profile';
 import { type MemberSummary } from '@trinity/data-access/rooms';
 import { type PresenceState } from '@trinity/util/matrix';
@@ -392,7 +394,7 @@ describe('MemberListComponent — filtering', () => {
     // The two questions a filter answers are different: a reader scanning for someone
     // they can see types the display name, one disambiguating types the id. A
     // name-only filter would return both Bos and answer neither.
-    const { container } = await render(MemberListComponent, {
+    const { fixture, container } = await render(MemberListComponent, {
       inputs: {
         members: [
           member({ userId: '@bo:hs', name: 'Bo' }),
@@ -404,10 +406,13 @@ describe('MemberListComponent — filtering', () => {
 
     await filterBy(container, 'robert');
 
+    const row = container.querySelector<HTMLElement>('.member');
     expect(container.querySelectorAll('.member').length).toBe(1);
-    expect(container.querySelector('.member')?.getAttribute('title')).toBe(
-      '@robert:hs',
-    );
+    expect(row?.textContent).toContain('Bo');
+    expect(row?.hasAttribute('title')).toBe(false);
+    expect(
+      fixture.debugElement.query(By.directive(TrnTooltip)).nativeElement,
+    ).toBe(row);
   });
 
   it('is case-insensitive on both sides', async () => {

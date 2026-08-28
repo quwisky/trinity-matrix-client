@@ -7,7 +7,8 @@
       (click)="showRecent.emit()"
       [attr.aria-current]="recentActive() ? 'true' : null"
       aria-label="Recent activity"
-      title="Recent activity"
+      trnTooltip="Recent activity"
+      position="right"
       data-testid="rail-recent"
     >
       <trn-icon name="clock" motion="pop" />
@@ -38,7 +39,8 @@
           : null
       "
       aria-label="Home"
-      title="Home"
+      trnTooltip="Home"
+      position="right"
     >
       <trn-icon name="house" motion="pop" />
     </button>
@@ -59,7 +61,8 @@
       (click)="showRooms.emit()"
       [attr.aria-current]="roomsActive() ? 'true' : null"
       aria-label="Rooms"
-      title="Rooms"
+      trnTooltip="Rooms"
+      position="right"
       data-testid="rail-rooms"
     >
       <trn-icon name="door-open" motion="pop" />
@@ -93,7 +96,8 @@
             ? space.name + ' — ' + badgeFor(space.accountId)!.name
             : space.name
         "
-        [title]="space.name"
+        [trnTooltip]="space.name"
+        position="right"
       >
         <trn-avatar
           [mxc]="space.avatarMxc"
@@ -122,7 +126,8 @@
       class="pill add"
       (click)="createSpace.emit()"
       aria-label="Create a space"
-      title="Create a space"
+      trnTooltip="Create a space"
+      position="right"
     >
       <trn-icon name="plus" motion="rotate" />
     </button>

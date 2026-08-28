@@ -8,7 +8,8 @@
       <button
         type="button"
         class="toolbar__emoji"
-        [title]="emoji"
+        [trnTooltip]="emoji"
+        [attr.aria-label]="emoji"
         (click)="pick(emoji)"
       >
         {{ emoji }}
@@ -18,7 +19,7 @@
       type="button"
       trnIconButton
       class="toolbar__emoji toolbar__emoji--more"
-      title="More emoji"
+      trnTooltip="More emoji"
       aria-label="More emoji"
       data-testid="react-more"
       (click)="pickMore()"
