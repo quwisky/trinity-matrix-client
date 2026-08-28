@@ -22,19 +22,21 @@ with. The other two layers are delivery mechanisms and are per-install.
 Three services in `@trinity/data-access/notifications` write push rules, and they are
 deliberately separate because they address different rule buckets.
 
-`RoomNotificationsService` maps a per-room mode onto rules. `all` is the absence of any
-room rule. `mentions` is a room-kind `dont_notify` rule, which leaves the override
-highlight rules free to fire. `mute` is an **override** `dont_notify` rule, because
+`RoomNotificationsService` maps a per-room mode onto rules. `all` has no enabled
+room-specific mute rule. `mentions` enables a room-kind `dont_notify` rule, which leaves the
+override highlight rules free to fire. `mute` enables an **override** `dont_notify` rule, because
 overrides are evaluated ahead of the highlight rules and a room-kind rule would not
 silence a mention. After a write it refreshes the client's cached ruleset, so the UI
 shows the new level without waiting for the `m.push_rules` sync echo. It also listens for
 that account-data event on every live account and writes a revision signal, which is required
 to repaint the zoneless room list when another client changes a rule. Writes are compensating
 transactions: each one refreshes the homeserver before snapshotting the exact affected rules,
-serializes overlapping choices for that room, verifies the requested postcondition, and on a
-partial endpoint failure restores the full rule bodies and enabled states on every account in a
-merged row. Unrecognized custom rules are preserved rather than rewritten. The row aggregates
-all contributing accounts and exposes `mixed` when their modes differ.
+serializes all writes that could replace an account's shared rules cache, verifies the requested
+postcondition, and on a partial endpoint failure restores the full rule bodies and enabled states
+on every account in a merged row. Existing standard rules are disabled rather than deleted, so
+their priority among user rules survives both normal changes and rollback. Unrecognized custom
+rules are preserved rather than rewritten. The row aggregates all contributing accounts and
+exposes `mixed` when their modes differ.
 
 `PushRulesService` exposes nine labelled account-level toggles backed by predefined
 rules: the master kill switch (marked `invert`, because the rule being _enabled_ means

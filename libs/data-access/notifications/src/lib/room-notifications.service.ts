@@ -12,7 +12,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 /**
  * Per-room notification level:
- * - `all` — notify for every message (the default; no room push rules).
+ * - `all` — notify for every message (the default; no enabled room mute rules).
  * - `mentions` — only mentions/keywords notify (a room-kind `dont_notify` rule; the
  *   override highlight rules still fire).
  * - `mute` — nothing notifies, mentions included (an override `dont_notify` rule on the
@@ -51,7 +51,8 @@ export class RoomNotificationsService {
   private readonly matrix = inject(MatrixClientService);
   private readonly _revision = signal(0);
   private readonly boundClients = new Set<MatrixClient>();
-  private readonly updateQueues = new Map<string, Promise<void>>();
+  /** Push-rule refreshes replace an account's whole cache, so writes share one queue. */
+  private updateQueue: Promise<void> = Promise.resolve();
   private connected = false;
 
   private readonly onAccountData = (): void => this.bumpRevision();
@@ -147,18 +148,16 @@ export class RoomNotificationsService {
     accountIds?: readonly string[],
   ): Observable<void> {
     return defer(() => {
-      const ids = accountIds?.length ? [...new Set(accountIds)] : [undefined];
-      const clients = ids.map((accountId) => this.clientOwning(accountId));
-      if (clients.some((client) => !client)) {
+      const activeId = this.activeAccountId();
+      const ids = accountIds?.length
+        ? [...new Set(accountIds)]
+        : activeId
+          ? [activeId]
+          : [];
+      if (!ids.length) {
         return throwError(() => new Error('Not signed in.'));
       }
-      return from(
-        this.enqueueModeUpdate(
-          clients.map((client) => client as MatrixClient),
-          roomId,
-          mode,
-        ),
-      );
+      return from(this.enqueueModeUpdate(ids, roomId, mode));
     });
   }
 
@@ -168,6 +167,15 @@ export class RoomNotificationsService {
       return this.matrix.clientFor(accountId);
     }
     return this.matrix.isInitialized ? this.matrix.instance : null;
+  }
+
+  private activeAccountId(): string | null {
+    if (!this.matrix.isInitialized) {
+      return null;
+    }
+    return (
+      this.matrix.activeUserId?.() ?? this.matrix.instance.getUserId() ?? null
+    );
   }
 
   private async applyModes(
@@ -214,8 +222,11 @@ export class RoomNotificationsService {
     // a merged sidebar row remains one coherent preference.
     const restorations = await Promise.allSettled(
       targets.map(async ({ client, previous }) => {
-        await this.refreshRules(client).catch(() => undefined);
-        await this.restoreRules(client, roomId, previous);
+        let currentStateKnown = true;
+        await this.refreshRules(client).catch(() => {
+          currentStateKnown = false;
+        });
+        await this.restoreRules(client, roomId, previous, !currentStateKnown);
         await this.refreshRules(client);
         if (!this.rulesMatchSnapshot(client, roomId, previous)) {
           throw new Error(
@@ -237,24 +248,32 @@ export class RoomNotificationsService {
     throw new RoomNotificationUpdateError(failure.reason, restored);
   }
 
-  /** Serialize a room's writes so an earlier rollback cannot overwrite a later choice. */
+  /**
+   * Serialize every push-rule write. A refresh replaces the client's complete ruleset, so
+   * room-scoped queues can still race each other's cache assignments. Account ids—not SDK
+   * clients—are captured, allowing a queued update to use a replacement client after reauth.
+   */
   private enqueueModeUpdate(
-    clients: readonly MatrixClient[],
+    accountIds: readonly string[],
     roomId: string,
     mode: RoomNotifyMode,
   ): Promise<void> {
-    const previous = this.updateQueues.get(roomId) ?? Promise.resolve();
-    const current = previous
+    const current = this.updateQueue
       .catch(() => undefined)
-      .then(() => this.applyModes(clients, roomId, mode));
-    this.updateQueues.set(roomId, current);
-    void current
-      .finally(() => {
-        if (this.updateQueues.get(roomId) === current) {
-          this.updateQueues.delete(roomId);
+      .then(() => {
+        const clients = accountIds.map((accountId) =>
+          this.matrix.clientFor(accountId),
+        );
+        if (clients.some((client) => !client)) {
+          throw new Error('Not signed in.');
         }
-      })
-      .catch(() => undefined);
+        return this.applyModes(
+          clients.map((client) => client as MatrixClient),
+          roomId,
+          mode,
+        );
+      });
+    this.updateQueue = current;
     return current;
   }
 
@@ -277,17 +296,17 @@ export class RoomNotificationsService {
   ): Promise<void> {
     switch (mode) {
       case 'all':
-        await this.removeOverrideMute(client, roomId);
-        await this.removeRoomMute(client, roomId);
+        await this.disableOverrideMute(client, roomId);
+        await this.disableRoomMute(client, roomId);
         break;
       case 'mentions':
-        await this.removeOverrideMute(client, roomId);
+        await this.disableOverrideMute(client, roomId);
         // Room-kind dont_notify — override highlight rules still notify.
         await this.addRoomMute(client, roomId);
         break;
       case 'mute':
-        // Clear the room-kind rule, then add an override that beats the highlights.
-        await this.removeRoomMute(client, roomId);
+        // Disable rather than delete so rollback cannot lose the rule's priority.
+        await this.disableRoomMute(client, roomId);
         await this.addOverrideMute(client, roomId);
         break;
     }
@@ -393,18 +412,21 @@ export class RoomNotificationsService {
     client: MatrixClient,
     roomId: string,
     snapshot: RoomRuleSnapshot,
+    force: boolean,
   ): Promise<void> {
     await this.restoreRule(
       client,
       PushRuleKind.RoomSpecific,
       roomId,
       snapshot.room,
+      force,
     );
     await this.restoreRule(
       client,
       PushRuleKind.Override,
       roomId,
       snapshot.override,
+      force,
     );
   }
 
@@ -413,16 +435,22 @@ export class RoomNotificationsService {
     kind: PushRuleKind.RoomSpecific | PushRuleKind.Override,
     roomId: string,
     snapshot: IPushRule | undefined,
+    force: boolean,
   ): Promise<void> {
     const current = this.ruleFor(client, kind, roomId);
     if (!snapshot) {
-      if (current) {
-        await client.deletePushRule('global', kind, roomId);
+      if (force || current) {
+        await client.deletePushRule('global', kind, roomId).catch((error) => {
+          if (!this.isMissingRuleError(error)) {
+            throw error;
+          }
+        });
       }
       return;
     }
 
-    const bodyReplaced = !current || !this.ruleBodiesEqual(current, snapshot);
+    const bodyReplaced =
+      force || !current || !this.ruleBodiesEqual(current, snapshot);
     if (bodyReplaced) {
       await client.addPushRule('global', kind, roomId, {
         actions: structuredClone(snapshot.actions),
@@ -434,9 +462,18 @@ export class RoomNotificationsService {
           : {}),
       });
     }
-    if (bodyReplaced || current.enabled !== snapshot.enabled) {
+    if (force || bodyReplaced || current.enabled !== snapshot.enabled) {
       await client.setPushRuleEnabled('global', kind, roomId, snapshot.enabled);
     }
+  }
+
+  private isMissingRuleError(error: unknown): boolean {
+    return (
+      !!error &&
+      typeof error === 'object' &&
+      'errcode' in error &&
+      error.errcode === 'M_NOT_FOUND'
+    );
   }
 
   private rulesMatchSnapshot(
@@ -515,12 +552,17 @@ export class RoomNotificationsService {
     });
   }
 
-  private async removeOverrideMute(
+  private async disableOverrideMute(
     client: MatrixClient,
     roomId: string,
   ): Promise<void> {
     if (this.overrideMuteRule(client, roomId)) {
-      await client.deletePushRule('global', PushRuleKind.Override, roomId);
+      await client.setPushRuleEnabled(
+        'global',
+        PushRuleKind.Override,
+        roomId,
+        false,
+      );
     }
   }
 
@@ -546,13 +588,18 @@ export class RoomNotificationsService {
     });
   }
 
-  private async removeRoomMute(
+  private async disableRoomMute(
     client: MatrixClient,
     roomId: string,
   ): Promise<void> {
     const existing = this.ruleFor(client, PushRuleKind.RoomSpecific, roomId);
     if (existing?.enabled && this.isStandardRoomMute(existing)) {
-      await client.deletePushRule('global', PushRuleKind.RoomSpecific, roomId);
+      await client.setPushRuleEnabled(
+        'global',
+        PushRuleKind.RoomSpecific,
+        roomId,
+        false,
+      );
     }
   }
 }

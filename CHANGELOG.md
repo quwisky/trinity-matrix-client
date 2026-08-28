@@ -266,9 +266,10 @@ All notable changes to this project are documented here. The format is based on
 - **Room mutes now stay in sync with other Matrix clients.** A mute set from FluffyChat or
   another device updates Trinity's room list live and shows a crossed-out bell without a
   reload. The menu distinguishes **Mute except mentions & keywords** from **Mute everything**,
-  exposes disagreements across merged accounts, and applies rapid choices in order. A failed
-  multi-step push-rule update restores the exact previous homeserver rules across every account
-  represented by a merged room row instead of leaving the UI and server disagreeing.
+  exposes disagreements across merged accounts, and applies rapid choices in order across the
+  shared rules cache. A failed multi-step push-rule update restores the exact previous homeserver
+  rules and their priority across every account represented by a merged room row instead of
+  leaving the UI and server disagreeing.
 
 - **Network failures no longer leave actions spinning forever.** Matrix requests now stop
   waiting after a bounded deadline, request controls release on completion or cancellation,
