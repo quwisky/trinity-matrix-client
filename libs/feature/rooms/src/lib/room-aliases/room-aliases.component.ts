@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, form } from '@angular/forms/signals';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnInput } from '@trinity/components/input';
 import { TrnToastService } from '@trinity/components/overlay';
 import { RoomAliasesService } from '@trinity/data-access/rooms';
@@ -28,7 +28,7 @@ const INVALID_LOCALPART = /[\s:#]/;
   selector: 'trn-room-aliases',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './room-aliases.component.html',
-  imports: [FormField, HlmButton, TrnInput],
+  imports: [FormField, TrnButton, TrnInput],
 })
 export class RoomAliasesComponent implements OnInit {
   readonly roomId = input.required<string>();

@@ -40,7 +40,7 @@ describe('AccountPickerComponent', () => {
     )!;
 
   // These two attributes are the contract multi-account.spec.mts asserts against the SUBMENU,
-  // where hlmDropdownMenuCheckbox supplies them for free. The dialog has to reproduce them or
+  // where trnDropdownMenuCheckbox supplies them for free. The dialog has to reproduce them or
   // the mobile path silently diverges from the desktop one.
   it('marks each row checked or unchecked, and locks the active account', async () => {
     const { container } = await renderPicker();

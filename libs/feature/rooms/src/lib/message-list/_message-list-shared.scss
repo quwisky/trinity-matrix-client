@@ -11,7 +11,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--trinity-chat);
+  background: var(--trinity-surface-workspace);
 }
 
 // Anchors the jump-to-latest pill just above the composer (the scroll region's
@@ -55,8 +55,9 @@
 
 .load-older {
   text-align: center;
-  padding: 8px 0 12px;
-  font-size: 13px;
+  padding: var(--trinity-space-3) 0 var(--trinity-space-4);
+  font-size: var(--trinity-type-control-size);
+  line-height: var(--trinity-type-control-line-height);
   color: var(--trinity-text-muted);
 }
 
@@ -66,37 +67,62 @@
 
 .jump-unread {
   position: absolute;
-  top: 8px;
+  top: var(--trinity-space-3);
   left: 50%;
   z-index: var(--trinity-z-sticky);
-  padding: 4px 12px;
+  min-height: var(--trinity-density-control-size);
+  min-width: var(--trinity-interaction-target-min-size);
+  padding: var(--trinity-space-2) var(--trinity-space-4);
   border: none;
   border-radius: var(--trinity-radius-pill);
   background: var(--trinity-accent);
   color: var(--trinity-accent-foreground);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--trinity-type-control-size);
+  font-weight: var(--trinity-type-control-weight);
   cursor: pointer;
-  box-shadow: 0 2px 8px rgb(0 0 0 / 30%);
+  box-shadow: var(--trinity-shadow-floating);
   transform: translateX(-50%);
+}
+
+@media (pointer: coarse) {
+  .jump-unread {
+    min-height: var(--trinity-interaction-target-min-size);
+  }
 }
 
 .jump-latest {
   position: absolute;
-  right: 16px;
-  bottom: 12px;
+  right: var(--trinity-space-5);
+  bottom: var(--trinity-space-4);
   z-index: var(--trinity-z-sticky);
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--trinity-divider);
+  width: var(--trinity-density-control-size);
+  height: var(--trinity-density-control-size);
+  min-width: var(--trinity-interaction-target-min-size);
+  min-height: var(--trinity-interaction-target-min-size);
+  border: 1px solid var(--trinity-border-subtle);
   border-radius: var(--trinity-radius-pill);
-  background: var(--trinity-surface);
+  background: var(--trinity-surface-floating);
   color: var(--trinity-text);
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgb(0 0 0 / 30%);
+  box-shadow: var(--trinity-shadow-floating);
+
+  &:hover {
+    background: var(--trinity-state-hover-surface);
+    color: var(--trinity-state-hover-foreground);
+  }
+
+  &:active {
+    background: var(--trinity-state-pressed-surface);
+    color: var(--trinity-state-pressed-foreground);
+  }
+
+  &:focus-visible {
+    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+    outline-offset: var(--trinity-focus-ring-offset);
+  }
 }

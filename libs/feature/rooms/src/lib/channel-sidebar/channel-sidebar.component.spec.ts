@@ -11,10 +11,7 @@ import {
   MixedInvitesService,
   type PendingInvite,
 } from '@trinity/data-access/invites';
-import {
-  PresenceService,
-  type UserProfile,
-} from '@trinity/data-access/profile';
+import { PresenceService } from '@trinity/data-access/profile';
 import {
   AccountScopeService,
   RoomsService,
@@ -29,10 +26,7 @@ import {
   type RoomNotifyMode,
 } from '@trinity/data-access/notifications';
 import { type PresenceState } from '@trinity/util/matrix';
-import {
-  ChannelSidebarComponent,
-  type AccountSummary,
-} from './channel-sidebar.component';
+import { ChannelSidebarComponent } from './channel-sidebar.component';
 
 /**
  * The room-list child, resolved from a rendered sidebar.
@@ -124,10 +118,7 @@ async function renderSidebar(
       filterQuery?: string;
       spaceActive?: boolean;
       activeRoomId?: string | null;
-      user?: UserProfile;
-      accounts?: AccountSummary[];
       activeUserId?: string | null;
-      reauthAccounts?: string[];
       sortMode?: RoomSortMode;
       sortOverridden?: boolean;
       defaultSortMode?: RoomSortMode;
@@ -634,175 +625,6 @@ describe('ChannelSidebarComponent', () => {
     const { container } = await renderSidebar();
 
     expect(container.querySelector('.invite')).toBeNull();
-  });
-
-  it('emits logout from the account menu opened via the user bar', async () => {
-    const { fixture, container } = await renderSidebar();
-
-    let loggedOut = false;
-    fixture.componentInstance.logout.subscribe(() => (loggedOut = true));
-
-    // Open the account menu from the user-bar trigger, then trigger Log out
-    // (the item lives in a CDK menu rendered into the overlay container).
-    container.querySelector<HTMLElement>('.userbar__trigger')!.click();
-    fixture.detectChanges();
-
-    const logoutItem = document.querySelector<HTMLElement>(
-      '[data-testid="logout"]',
-    );
-    expect(logoutItem).toBeTruthy();
-    logoutItem?.click();
-
-    expect(loggedOut).toBe(true);
-  });
-
-  it('lists accounts, marks the active one, and shows per-account unread', async () => {
-    const { fixture, container } = await renderSidebar({
-      inputs: {
-        accounts: [
-          { userId: '@me:hs', displayName: 'Me', avatarMxc: null, unread: 0 },
-          { userId: '@alt:hs', displayName: 'Alt', avatarMxc: null, unread: 3 },
-        ],
-        activeUserId: '@me:hs',
-      },
-    });
-
-    container.querySelector<HTMLElement>('.userbar__trigger')!.click();
-    fixture.detectChanges();
-
-    const rows = document.querySelectorAll<HTMLElement>(
-      '[data-testid="account-row"]',
-    );
-    expect(rows).toHaveLength(2);
-    const active = Array.from(rows).find(
-      (r) => r.getAttribute('aria-current') === 'true',
-    );
-    expect(active?.textContent).toContain('@me:hs');
-    expect(
-      document.querySelector('.account-row__badge')?.textContent?.trim(),
-    ).toBe('3');
-  });
-
-  it('shows each account\u2019s homeserver version, and omits the line without one', async () => {
-    // #155: the version where accounts are already listed. Omitted rather than shown as
-    // "Unknown" for a server that does not publish one \u2014 nobody opens the switcher to read
-    // that, and a reserved empty line makes the menu taller for nothing.
-    const { fixture, container } = await renderSidebar({
-      inputs: {
-        accounts: [
-          {
-            userId: '@me:hs',
-            displayName: 'Me',
-            avatarMxc: null,
-            unread: 0,
-            server: 'Synapse 1.158.0',
-          },
-          {
-            userId: '@alt:hs',
-            displayName: 'Alt',
-            avatarMxc: null,
-            unread: 0,
-            server: null,
-          },
-        ],
-        activeUserId: '@me:hs',
-      },
-    });
-
-    container.querySelector<HTMLElement>('.userbar__trigger')!.click();
-    fixture.detectChanges();
-
-    const lines = document.querySelectorAll(
-      '[data-testid="account-row-server"]',
-    );
-    expect(lines).toHaveLength(1);
-    expect(lines[0].textContent?.trim()).toBe('Synapse 1.158.0');
-  });
-
-  it('forwards the account menu being opened, so the host can look the versions up', async () => {
-    const { fixture, container } = await renderSidebar({
-      inputs: {
-        accounts: [
-          { userId: '@me:hs', displayName: 'Me', avatarMxc: null, unread: 0 },
-        ],
-        activeUserId: '@me:hs',
-      },
-    });
-
-    let asked = 0;
-    fixture.componentInstance.accountsOpened.subscribe(() => (asked += 1));
-    container.querySelector<HTMLElement>('.userbar__trigger')!.click();
-
-    expect(asked).toBe(1);
-  });
-
-  it('emits switchAccount when a non-active account row is clicked', async () => {
-    const { fixture, container } = await renderSidebar({
-      inputs: {
-        accounts: [
-          { userId: '@me:hs', displayName: 'Me', avatarMxc: null, unread: 0 },
-          { userId: '@alt:hs', displayName: 'Alt', avatarMxc: null, unread: 3 },
-        ],
-        activeUserId: '@me:hs',
-      },
-    });
-
-    let switched: string | null = null;
-    fixture.componentInstance.switchAccount.subscribe((id) => (switched = id));
-
-    container.querySelector<HTMLElement>('.userbar__trigger')!.click();
-    fixture.detectChanges();
-
-    const altRow = Array.from(
-      document.querySelectorAll<HTMLElement>('[data-testid="account-row"]'),
-    ).find((r) => r.textContent?.includes('@alt:hs'));
-    altRow?.click();
-
-    expect(switched).toBe('@alt:hs');
-  });
-
-  it('lists soft-logged-out accounts and emits reauthAccount when clicked', async () => {
-    const { fixture, container } = await renderSidebar({
-      inputs: { reauthAccounts: ['@dormant:hs'] },
-    });
-
-    let reauthed: string | null = null;
-    fixture.componentInstance.reauthAccount.subscribe((id) => (reauthed = id));
-
-    container.querySelector<HTMLElement>('.userbar__trigger')!.click();
-    fixture.detectChanges();
-
-    const row = document.querySelector<HTMLElement>(
-      '[data-testid="reauth-row"]',
-    );
-    expect(row?.textContent).toContain('@dormant:hs');
-    row?.click();
-
-    expect(reauthed).toBe('@dormant:hs');
-  });
-
-  it('emits addAccount from the account menu', async () => {
-    const { fixture, container } = await renderSidebar();
-
-    let added = false;
-    fixture.componentInstance.addAccount.subscribe(() => (added = true));
-
-    container.querySelector<HTMLElement>('.userbar__trigger')!.click();
-    fixture.detectChanges();
-
-    document.querySelector<HTMLElement>('[data-testid="add-account"]')?.click();
-
-    expect(added).toBe(true);
-  });
-
-  it('emits openSettings from the user-panel settings button', async () => {
-    const { fixture, container } = await renderSidebar();
-
-    let opened = false;
-    fixture.componentInstance.openSettings.subscribe(() => (opened = true));
-    container.querySelector<HTMLElement>('.userbar__settings')!.click();
-
-    expect(opened).toBe(true);
   });
 
   it('emits openSwitcher from the header search button', async () => {

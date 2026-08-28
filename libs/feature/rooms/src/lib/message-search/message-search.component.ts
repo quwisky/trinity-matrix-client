@@ -21,7 +21,7 @@ import { TimelineService } from '@trinity/data-access/timeline';
 import { runWithBusy } from '@trinity/util/ui';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { AvatarComponent } from '@trinity/components/avatar';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnInput } from '@trinity/components/input';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { TrnIconComponent } from '@trinity/components/icon';
@@ -72,7 +72,7 @@ interface HighlightPart {
     TrnIconComponent,
     AvatarComponent,
     TrnSpinnerComponent,
-    HlmButton,
+    TrnButton,
     TrnInput,
   ],
   templateUrl: './message-search.component.html',

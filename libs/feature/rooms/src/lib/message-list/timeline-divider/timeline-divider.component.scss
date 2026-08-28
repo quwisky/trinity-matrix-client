@@ -40,7 +40,7 @@
     content: '';
     flex: 1;
     height: 1px;
-    background: var(--trinity-divider);
+    background: var(--trinity-border-subtle);
   }
 }
 
@@ -56,8 +56,9 @@
   gap: 8px;
   margin: 8px 0;
   color: var(--trinity-link);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--trinity-type-caption-size);
+  line-height: var(--trinity-type-caption-line-height);
+  font-weight: var(--trinity-type-caption-weight);
 
   &::before,
   &::after {

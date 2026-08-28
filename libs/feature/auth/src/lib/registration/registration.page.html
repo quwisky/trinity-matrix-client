@@ -82,7 +82,7 @@
             "
           />
           <button
-            hlmBtn
+            trnBtn
             variant="ghost"
             size="icon"
             type="button"
@@ -94,7 +94,10 @@
             [disabled]="busy()"
             (click)="passwordVisible.set(!passwordVisible())"
           >
-            <trn-icon [name]="passwordVisible() ? 'eye-off' : 'eye'" />
+            <trn-icon
+              [name]="passwordVisible() ? 'eye-off' : 'eye'"
+              motion="pop"
+            />
           </button>
         </div>
         @if (
@@ -148,7 +151,7 @@
       </div>
 
       <button
-        hlmBtn
+        trnBtn
         class="registration-card__submit w-full"
         [disabled]="busy()"
         (click)="createAccount()"
@@ -202,7 +205,7 @@
             }
           </div>
           <button
-            hlmBtn
+            trnBtn
             class="w-full"
             [disabled]="busy()"
             (click)="provideEmail()"
@@ -214,11 +217,11 @@
           <p class="registration-card__copy">
             Open the verification link sent by the homeserver, then return here.
           </p>
-          <button hlmBtn class="w-full" [disabled]="busy()" (click)="poll()">
+          <button trnBtn class="w-full" [disabled]="busy()" (click)="poll()">
             I verified my email
           </button>
           <button
-            hlmBtn
+            trnBtn
             variant="ghost"
             class="mt-2 w-full"
             [disabled]="busy()"
@@ -245,7 +248,7 @@
                   </span>
                 </label>
                 <button
-                  hlmBtn
+                  trnBtn
                   variant="link"
                   class="ml-8 h-auto p-0"
                   (click)="openPolicy(policy)"
@@ -256,7 +259,7 @@
             }
           </ul>
           <button
-            hlmBtn
+            trnBtn
             class="mt-4 w-full"
             [disabled]="busy() || !termsAccepted()"
             (click)="acceptTerms()"
@@ -301,7 +304,7 @@
             }
           </div>
           <button
-            hlmBtn
+            trnBtn
             class="w-full"
             [disabled]="busy()"
             (click)="submitToken()"
@@ -315,7 +318,7 @@
             return to Trinity.
           </p>
           <button
-            hlmBtn
+            trnBtn
             class="w-full"
             [disabled]="busy()"
             (click)="openFallback($any(stage()).url)"
@@ -324,7 +327,7 @@
             Open verification
           </button>
           <button
-            hlmBtn
+            trnBtn
             variant="outline"
             class="mt-2 w-full"
             [disabled]="busy() || !fallbackOpened()"
@@ -341,7 +344,7 @@
           </p>
           @if ($any(stage()).retryable) {
             <button
-              hlmBtn
+              trnBtn
               class="w-full"
               [disabled]="busy()"
               (click)="retryEstablishment()"
@@ -372,7 +375,7 @@
   }
 
   <button
-    hlmBtn
+    trnBtn
     variant="ghost"
     class="mt-4 w-full"
     [disabled]="busy()"

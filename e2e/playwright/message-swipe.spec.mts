@@ -282,7 +282,9 @@ test.describe('Swipe a message', () => {
     // drives. A `--swipe-progress` written to an element nothing consumes would satisfy the
     // unit test and show nothing on screen.
     const { other } = await openRoom(page, request, 'p', 'right');
-    const box = (await page.locator(other).boundingBox())!;
+    const row = page.locator(other);
+    await row.scrollIntoViewIfNeeded();
+    const box = (await row.boundingBox())!;
     const y = box.y + box.height / 2;
     const icon = page.locator(`${other} .msg__swipe`);
 
@@ -294,37 +296,50 @@ test.describe('Swipe a message', () => {
       }));
 
     // A short drag: on its way, not yet committing.
-    await page.mouse.move(0, 0);
     const cdp = await page.context().newCDPSession(page);
-    const at = async (x: number) =>
-      cdp.send('Input.dispatchTouchEvent', {
-        type: 'touchMove',
-        touchPoints: [{ x, y, id: 1 }],
+    let currentX = box.x + box.width * 0.35;
+    const at = async (x: number) => {
+      // Feed the compositor a real path rather than one large move. Android/Chromium can
+      // consume the first move to resolve the touch-action axis without forwarding it as a
+      // pointermove, which left the progress assertion at zero while the release journeys
+      // (whose shared helper already sends ten moves) remained green.
+      const from = currentX;
+      for (let step = 1; step <= 4; step++) {
+        currentX = from + ((x - from) * step) / 4;
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [{ x: currentX, y, id: 1 }],
+        });
+      }
+    };
+    try {
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x: currentX, y, id: 1 }],
       });
-    await cdp.send('Input.dispatchTouchEvent', {
-      type: 'touchStart',
-      touchPoints: [{ x: box.x + box.width * 0.4, y, id: 1 }],
-    });
 
-    // Polled, not read straight after the send: `Input.dispatchTouchEvent` resolves when the
-    // event is dispatched, and the handler's style write lands a tick later.
-    await at(box.x + box.width * 0.5);
-    await expect.poll(async () => (await shown()).opacity).toBeGreaterThan(0);
-    const partly = await shown();
-    expect(partly.opacity).toBeLessThan(1);
+      // Polled, not read straight after the send: `Input.dispatchTouchEvent` resolves when the
+      // event is dispatched, and the handler's style write lands a tick later.
+      // Twenty percent of the row is still short of the 25% commit threshold, while being
+      // far enough past Chromium's gesture-axis arbitration to guarantee pointer moves.
+      await at(box.x + box.width * 0.55);
+      await expect.poll(async () => (await shown()).opacity).toBeGreaterThan(0);
+      const partly = await shown();
+      expect(partly.opacity).toBeLessThan(1);
 
-    await at(box.x + box.width * 0.95);
-    await expect.poll(async () => (await shown()).opacity).toBe(1);
-    const committed = await shown();
-    // Grown, and recoloured — "let go now and it will act", said before letting go.
-    expect(committed.scale).not.toBe(partly.scale);
-    expect(committed.colour).not.toBe(partly.colour);
-
-    await cdp.send('Input.dispatchTouchEvent', {
-      type: 'touchEnd',
-      touchPoints: [],
-    });
-    await cdp.detach();
+      await at(box.x + box.width * 0.95);
+      await expect.poll(async () => (await shown()).opacity).toBe(1);
+      const committed = await shown();
+      // Grown, and recoloured — "let go now and it will act", said before letting go.
+      expect(committed.scale).not.toBe(partly.scale);
+      expect(committed.colour).not.toBe(partly.colour);
+    } finally {
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchEnd',
+        touchPoints: [],
+      });
+      await cdp.detach();
+    }
   });
 
   test('does nothing at all while the setting is off', async ({
@@ -599,23 +614,10 @@ test.describe('Swipe a message', () => {
     await page.getByTestId('message-swipe-select').locator('button').click();
     await page.getByTestId('message-swipe-right').click();
 
-    // Out of settings the way the app offers, and back to the same room. In-app navigation
-    // throughout — a `goto` would be a reload and would not establish the claim at all.
-    // Twice, because below the members breakpoint a section is its own sub-page: the first
-    // Back leaves Appearance for the section list, the second leaves settings.
-    // Twice, each awaited. A click inside `expect.poll` reads the URL before the SPA
-    // navigation settles, so it fires again and pops PAST the room — the repo's own
-    // read-once-while-converging flake shape.
-    // Out of settings by history, bounded. `page.goBack()` is a popstate the Angular router
-    // handles — no document load, so the "without a reload" claim is preserved; a `goto`
-    // would have destroyed the very thing under test. Looping because how many entries
-    // settings pushed depends on the layout, and asserting after so a silent no-op fails.
-    for (let attempt = 0; attempt < 4; attempt++) {
-      if (!/\/settings/.test(new URL(page.url()).pathname)) {
-        break;
-      }
-      await page.goBack();
-    }
+    // Dismiss the web modal without navigating or reloading, then return to the same room.
+    // This proves the live signal update rather than merely its persisted reload path.
+    await page.getByTestId('close-settings').click();
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeHidden();
     expect(new URL(page.url()).pathname).not.toMatch(/\/settings/);
 
     await page.getByTestId('rail-rooms').click();

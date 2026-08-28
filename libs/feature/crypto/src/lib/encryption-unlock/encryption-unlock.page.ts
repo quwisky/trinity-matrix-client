@@ -20,7 +20,7 @@ import { CryptoService } from '@trinity/data-access/crypto';
 import { AuthService } from '@trinity/data-access/auth';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
 import { PageHeaderComponent } from '@trinity/components/page-header';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnInput } from '@trinity/components/input';
 import { TrnLabel } from '@trinity/components/label';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
@@ -53,7 +53,7 @@ import {
     NgTemplateOutlet,
     PageHeaderComponent,
     RecoveryKeySaveComponent,
-    HlmButton,
+    TrnButton,
     TrnInput,
     TrnLabel,
     TrnSpinnerComponent,

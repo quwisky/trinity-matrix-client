@@ -17,6 +17,8 @@ import {
 } from '@trinity/data-access/notifications';
 import { KeywordRulesBlockComponent } from './keyword-rules-block.component';
 import { PushGatewayBlockComponent } from './push-gateway-block.component';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
+import { SettingsToggleRowDirective } from '../shared/settings-toggle-row.directive';
 
 /**
  * Notifications settings sub-page: account-level toggles for which events notify,
@@ -32,6 +34,8 @@ import { PushGatewayBlockComponent } from './push-gateway-block.component';
     TrnSwitchComponent,
     KeywordRulesBlockComponent,
     PushGatewayBlockComponent,
+    SettingsSectionHeadingComponent,
+    SettingsToggleRowDirective,
   ],
 })
 export class NotificationsSectionComponent implements OnInit, OnDestroy {

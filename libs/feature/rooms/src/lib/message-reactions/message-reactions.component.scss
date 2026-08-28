@@ -1,25 +1,39 @@
 .reactions {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 4px;
+  gap: var(--trinity-density-item-gap);
+  margin-top: var(--trinity-space-2);
 }
 
 .reaction {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--trinity-density-item-gap);
   padding: 1px 7px;
-  border: 1px solid var(--trinity-divider);
+  border: 1px solid var(--trinity-border-subtle);
   border-radius: var(--trinity-radius-pill);
-  background: var(--trinity-sidebar);
+  background: var(--trinity-surface-raised);
   color: var(--trinity-text);
-  font-size: 13px;
+  font-size: var(--trinity-type-body-size);
   line-height: 18px;
   cursor: pointer;
+  transition:
+    background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
+    border-color var(--trinity-duration-fast) var(--trinity-ease-standard),
+    color var(--trinity-duration-fast) var(--trinity-ease-standard);
 
   &:hover {
-    border-color: var(--trinity-text-muted);
+    border-color: var(--trinity-border-strong);
+    background: var(--trinity-state-hover-surface);
+  }
+
+  &:active {
+    background: var(--trinity-state-pressed-surface);
+  }
+
+  &:focus-visible {
+    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+    outline-offset: var(--trinity-focus-ring-offset);
   }
 }
 
@@ -36,19 +50,20 @@
 
   &:hover {
     border-color: transparent;
-    background: var(--trinity-hover);
-    color: var(--trinity-text-bright);
+    background: var(--trinity-state-hover-surface);
+    color: var(--trinity-state-hover-foreground);
   }
 }
 
 .reaction--mine {
   border-color: var(--trinity-accent);
-  background: var(--trinity-active);
+  background: var(--trinity-state-selected-surface);
 }
 
 .reaction__count {
   color: var(--trinity-text-muted);
-  font-size: 12px;
+  font-size: var(--trinity-type-metadata-size);
+  line-height: var(--trinity-type-metadata-line-height);
 }
 
 .reaction--mine .reaction__count {
@@ -56,9 +71,10 @@
 }
 
 // Touch targets: reaction chips are dense and frequently tapped — give them a taller
-// minimum hit area on touch only (kept to 40px so a row of chips stays compact).
+// minimum hit area on touch only. Density changes chrome, never the finger target.
 @media (pointer: coarse) {
   .reaction {
-    min-height: 40px;
+    min-width: var(--trinity-interaction-target-min-size);
+    min-height: var(--trinity-interaction-target-min-size);
   }
 }

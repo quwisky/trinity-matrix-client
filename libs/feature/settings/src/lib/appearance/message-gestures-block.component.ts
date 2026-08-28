@@ -7,6 +7,7 @@ import {
   MessageGestureSettingsService,
   isSwipeAction,
 } from '@trinity/platform-native';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
 /**
  * How a touch gesture acts on a message, as its own block on the Appearance page.
@@ -20,7 +21,7 @@ import {
   selector: 'trn-message-gestures-block',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './message-gestures-block.component.html',
-  imports: [TrnSelectComponent],
+  imports: [TrnSelectComponent, SettingsSectionHeadingComponent],
 })
 export class MessageGesturesBlockComponent {
   readonly gestures = inject(MessageGestureSettingsService);

@@ -1,3 +1,5 @@
+import { By } from '@angular/platform-browser';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import { render } from '@trinity/testing';
 import { SidebarUserPanelComponent } from './sidebar-user-panel.component';
 
@@ -46,6 +48,20 @@ describe('SidebarUserPanelComponent', () => {
     container.querySelector<HTMLElement>('.userbar__settings')!.click();
 
     expect(opened).toBe(true);
+  });
+
+  it('uses the themeable tooltip contract instead of a native title', async () => {
+    const { fixture, container } = await render(SidebarUserPanelComponent, {
+      inputs: { user: USER },
+    });
+    const button = container.querySelector<HTMLElement>(
+      '[data-testid="open-settings"]',
+    );
+
+    expect(button?.hasAttribute('title')).toBe(false);
+    expect(
+      fixture.debugElement.query(By.directive(TrnTooltip)).nativeElement,
+    ).toBe(button);
   });
 
   it('asks the host to look up the homeserver versions when the menu is opened', async () => {

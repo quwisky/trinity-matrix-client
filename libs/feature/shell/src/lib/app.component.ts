@@ -25,8 +25,11 @@ import {
   NativeNavigationService,
   getTrinityDesktopBridge,
 } from '@trinity/platform-native';
-import { HlmToaster } from '@trinity/helm/sonner';
-import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnDialogService,
+  TrnToasterComponent,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { VerificationHostComponent } from './verification-host.component';
 
@@ -37,7 +40,7 @@ import { VerificationHostComponent } from './verification-host.component';
   imports: [
     RouterOutlet,
     VerificationHostComponent,
-    HlmToaster,
+    TrnToasterComponent,
     TrnSpinnerComponent,
   ],
 })

@@ -4,7 +4,7 @@ import {
   moduleMetadata,
   type StoryObj,
 } from '@storybook/angular-vite';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton, TrnIconButton } from '@trinity/components/button';
 import { type TrnIconMotion } from '../trn-icon-motion';
 import { provideTrnIcons } from '../trn-icon.icons';
 import { TrnIconComponent } from './trn-icon.component';
@@ -14,7 +14,7 @@ const meta: Meta<TrnIconComponent> = {
   component: TrnIconComponent,
   decorators: [
     applicationConfig({ providers: [provideTrnIcons()] }),
-    moduleMetadata({ imports: [HlmButton, TrnIconComponent] }),
+    moduleMetadata({ imports: [TrnButton, TrnIconButton, TrnIconComponent] }),
   ],
   parameters: {
     docs: {
@@ -33,7 +33,13 @@ type Story = StoryObj<TrnIconComponent>;
 
 const motionButton = (
   motion: TrnIconMotion,
-  icon: 'arrow-left' | 'send' | 'settings',
+  icon:
+    | 'arrow-left'
+    | 'chevron-down'
+    | 'chevron-up'
+    | 'search'
+    | 'send'
+    | 'settings',
   label: string,
   disabled = false,
 ) => ({
@@ -41,8 +47,8 @@ const motionButton = (
     <div class="flex items-center gap-3 p-4" data-testid="motion-row">
       <button
         type="button"
-        hlmBtn
-        variant="outline"
+        trnBtn
+        variant="ghost"
         size="icon"
         aria-label="${label}"
         data-testid="motion-button"
@@ -60,9 +66,24 @@ export const NudgeLeft: Story = {
   render: () => motionButton('nudge-left', 'arrow-left', 'Back'),
 };
 
+/** Directional controls move toward the destination they advertise. */
+export const NudgeUp: Story = {
+  render: () => motionButton('nudge-up', 'chevron-up', 'Move up'),
+};
+
+/** Directional controls move toward the destination they advertise. */
+export const NudgeDown: Story = {
+  render: () => motionButton('nudge-down', 'chevron-down', 'Move down'),
+};
+
 /** A send affordance moves along the paper-plane's direction of travel. */
 export const NudgeUpRight: Story = {
   render: () => motionButton('nudge-up-right', 'send', 'Send'),
+};
+
+/** Discovery and reveal actions grow slightly without changing their hit area. */
+export const Pop: Story = {
+  render: () => motionButton('pop', 'search', 'Search'),
 };
 
 /** Settings turns slightly without making a full distracting revolution. */
@@ -83,17 +104,76 @@ export const AllVariants: Story = {
   render: () => ({
     template: `
       <div class="flex flex-wrap gap-3 p-4">
-        <button type="button" hlmBtn variant="outline" aria-label="Back">
+        <button type="button" trnBtn variant="ghost" size="icon" aria-label="Back">
           <trn-icon name="arrow-left" motion="nudge-left" />
-          Nudge left
         </button>
-        <button type="button" hlmBtn variant="outline" aria-label="Send">
+        <button type="button" trnBtn variant="ghost" size="icon" aria-label="Move up">
+          <trn-icon name="chevron-up" motion="nudge-up" />
+        </button>
+        <button type="button" trnBtn variant="ghost" size="icon" aria-label="Move down">
+          <trn-icon name="chevron-down" motion="nudge-down" />
+        </button>
+        <button type="button" trnBtn variant="ghost" size="icon" aria-label="Send">
           <trn-icon name="send" motion="nudge-up-right" />
-          Nudge up-right
         </button>
-        <button type="button" hlmBtn variant="outline" aria-label="Settings">
+        <button type="button" trnBtn variant="ghost" size="icon" aria-label="Search">
+          <trn-icon name="search" motion="pop" />
+        </button>
+        <button type="button" trnBtn variant="ghost" size="icon" aria-label="Settings">
           <trn-icon name="settings" motion="rotate" />
-          Rotate
+        </button>
+      </div>`,
+  }),
+};
+
+/** The public button keeps invariant interaction styling across size and contextual tone. */
+export const Treatments: Story = {
+  render: () => ({
+    template: `
+      <div class="flex flex-wrap items-center gap-3 p-4">
+        <button type="button" trnBtn variant="ghost" size="icon-xs" aria-label="Small action">
+          <trn-icon name="search" motion="pop" />
+        </button>
+        <button
+          type="button"
+          trnBtn
+          variant="ghost"
+          size="icon-sm"
+          class="text-danger hover:text-danger"
+          aria-label="Destructive action"
+        >
+          <trn-icon name="trash-2" motion="nudge-down" />
+        </button>
+        <button
+          type="button"
+          trnBtn
+          variant="secondary"
+          size="icon-lg"
+          class="border border-border shadow-sm"
+          aria-label="Floating action"
+        >
+          <trn-icon name="x" motion="rotate" />
+        </button>
+        <button
+          type="button"
+          trnBtn
+          variant="ghost"
+          size="icon"
+          aria-label="Unavailable action"
+          disabled
+        >
+          <trn-icon name="settings" motion="rotate" />
+        </button>
+        <a trnBtn variant="ghost" size="icon" href="#target" aria-label="Linked action">
+          <trn-icon name="arrow-left" motion="nudge-left" />
+        </a>
+        <button
+          type="button"
+          trnIconButton
+          class="grid size-12 place-items-center rounded-full bg-secondary"
+          aria-label="Purpose-built action"
+        >
+          <trn-icon name="camera" motion="pop" />
         </button>
       </div>`,
   }),

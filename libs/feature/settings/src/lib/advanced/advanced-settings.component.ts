@@ -12,7 +12,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Capacitor } from '@capacitor/core';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnLabel } from '@trinity/components/label';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { TrnTextarea } from '@trinity/components/textarea';
@@ -38,6 +38,7 @@ import {
   RESET_CONFIG_MISTYPED_MESSAGE,
   confirmResetConfigIntent,
 } from './reset-config';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
 /** Two digits, so the dated filename sorts lexically. */
 function pad(value: number): string {
@@ -101,7 +102,13 @@ function exportFileName(now: Date): string {
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './advanced-settings.component.html',
   host: { class: 'block' },
-  imports: [ConfigEditorOutletDirective, HlmButton, TrnLabel, TrnTextarea],
+  imports: [
+    ConfigEditorOutletDirective,
+    TrnButton,
+    TrnLabel,
+    TrnTextarea,
+    SettingsSectionHeadingComponent,
+  ],
 })
 export class AdvancedSettingsComponent {
   private readonly config = inject(AppConfigService);

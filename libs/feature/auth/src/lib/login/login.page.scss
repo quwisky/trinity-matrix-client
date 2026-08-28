@@ -1,3 +1,5 @@
+@use '../styles/auth-form' as auth;
+
 // The login form's own fields, on the surface `auth-card.component.scss` paints.
 
 // The split is the styling guard's doing and it is right: a component may only style what
@@ -9,66 +11,55 @@
 // branches, and the callback leg's is one line of utilities. Emulated encapsulation scopes
 // this to whoever declared the element, which is the same rule the styling guard enforces.
 .login-card__subtitle {
-  margin: 0;
-  font-size: 1rem;
-  line-height: 1.4;
-  color: var(--trinity-text-muted);
+  @include auth.subtitle;
 }
 
 .login-card__homeserver {
-  margin: 6px 0 0;
-  font-size: 0.875rem;
-  word-break: break-all;
-  color: var(--trinity-link);
+  @include auth.homeserver;
 }
 
 // Individual field wrapper — vertical spacing between stacked inputs.
 .login-card__field {
-  margin-bottom: 16px;
+  @include auth.field;
 }
 
 // Stacked field label (trnLabel) — uppercase / muted, matching the prior Ionic
 // look. View-encapsulation specificity beats the trnLabel Tailwind utilities.
 .login-card__label {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 0.6875rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--trinity-text-muted);
+  @include auth.label;
 }
 
 // Native field (trnInput) — Discord-style filled box on the card surface so it
 // reads consistently in light + dark; the spartan border/ring stays for focus.
 .login-card__field input {
-  width: 100%;
-  background: var(--trinity-active);
-  color: var(--trinity-text-bright);
-  border-color: transparent;
+  @include auth.input;
 }
 
 // Primary action buttons (Continue / Sign in) — use the spartan --primary token
 // (blurple) via the helm button. Top margin separates the button from the last field.
 .login-card__submit {
-  display: block;
-  margin-top: 20px;
+  @include auth.primary-action;
 }
 
 // SSO secondary action — slightly less emphasis, smaller gap above.
 .login-card__sso {
-  display: block;
-  margin-top: 12px;
+  display: flex;
+  min-height: 40px;
+  margin-top: var(--trinity-space-4);
 }
 
 // Loading indicator.
 .login-card__busy {
-  padding-top: 16px;
+  @include auth.busy;
 }
 
 // Inline error message.
 .login-card__error {
-  margin: 12px 0 0;
-  font-size: 0.875rem;
+  @include auth.error;
+
   text-align: center;
+}
+
+.login-card__cancel {
+  margin-top: var(--trinity-space-3);
 }

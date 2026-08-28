@@ -5,6 +5,7 @@ import {
   input,
   output,
 } from '@angular/core';
+import { TrnIconButton } from '@trinity/components/button';
 import { TrnSeparatorDirective } from '@trinity/components/separator';
 import {
   TrnToggleGroupComponent,
@@ -72,6 +73,7 @@ const GROUPS: readonly (readonly ToolbarAction[])[] = [
   selector: 'trn-composer-toolbar',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    TrnIconButton,
     TrnIconComponent,
     TrnToggleGroupComponent,
     TrnToggleGroupItemDirective,

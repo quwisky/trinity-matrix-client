@@ -1,17 +1,46 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
+  ElementRef,
+  computed,
+  effect,
+  inject,
   input,
   output,
+  signal,
+  untracked,
+  viewChild,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { TrnIconButton } from '@trinity/components/button';
 import {
-  HlmDropdownMenu,
-  HlmDropdownMenuItem,
-  HlmDropdownMenuTrigger,
-} from '@trinity/helm/dropdown-menu';
+  TrnActionSheetService,
+  TrnDropdownMenu,
+  TrnDropdownMenuItem,
+  TrnDropdownMenuTrigger,
+  type ActionSheetButton,
+  type TrnActionSheetRef,
+} from '@trinity/components/overlay';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { TrnTooltip } from '@trinity/components/tooltip';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
+import { isMobileOs } from '@trinity/platform-native';
+
+interface ComposerInsertAction {
+  readonly text: string;
+  readonly icon: TrnIconName;
+  readonly testId: string;
+  readonly disabled: boolean;
+  /** The launched surface deliberately owns focus after the sheet closes. */
+  readonly transfersFocus: boolean;
+  readonly run: () => void;
+}
+
+interface OwnedSheet {
+  readonly ref: TrnActionSheetRef;
+  restoreOnDismiss: boolean;
+}
 
 /**
  * The composer's `+`: every way something other than typed text gets into a message.
@@ -25,10 +54,11 @@ import { TrnIconComponent } from '@trinity/components/icon';
   selector: 'trn-composer-insert-menu',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    TrnIconButton,
     TrnIconComponent,
-    HlmDropdownMenu,
-    HlmDropdownMenuItem,
-    HlmDropdownMenuTrigger,
+    TrnDropdownMenu,
+    TrnDropdownMenuItem,
+    TrnDropdownMenuTrigger,
     TrnSpinnerComponent,
     TrnTooltip,
   ],
@@ -36,8 +66,22 @@ import { TrnIconComponent } from '@trinity/components/icon';
   styleUrl: './composer-insert-menu.component.scss',
 })
 export class ComposerInsertMenuComponent {
+  private readonly actionSheet = inject(TrnActionSheetService);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly mobileTrigger =
+    viewChild<ElementRef<HTMLButtonElement>>('mobileTrigger');
+  private readonly plainTrigger =
+    viewChild<ElementRef<HTMLButtonElement>>('plainTrigger');
+
+  /** iOS/Android interaction model, including mobile web/PWAs; Electron is excluded. */
+  protected readonly mobileInteraction = isMobileOs();
+  protected readonly mobileSheetOpen = signal(false);
+  private ownedSheet: OwnedSheet | null = null;
+
   /** Whether the `+` opens a tray rather than acting as a plain attach button. */
   readonly hasMenu = input(false);
+  /** Room/thread identity; changing it invalidates an open sheet's action snapshot. */
+  readonly contextKey = input<string | null>(null);
   /** Edit mode disables the whole tray — an edit can't become an attachment. */
   readonly editing = input(false);
   /** Whether an attachment upload is in flight (blocks another attachment only). */
@@ -68,4 +112,161 @@ export class ComposerInsertMenuComponent {
   readonly shareLocation = output<void>();
   readonly recordVoice = output<void>();
   readonly pickSticker = output<void>();
+
+  /** One action model feeds both the anchored desktop menu and mobile action sheet. */
+  protected readonly insertActions = computed<readonly ComposerInsertAction[]>(
+    () => {
+      const actions: ComposerInsertAction[] = [
+        {
+          text: 'Attach a file',
+          icon: 'paperclip',
+          testId: 'insert-attach',
+          disabled: false,
+          transfersFocus: false,
+          run: () => this.attachFile.emit(),
+        },
+      ];
+      if (this.gifEnabled()) {
+        actions.push({
+          text: 'GIF',
+          icon: 'image-play',
+          testId: 'insert-gif',
+          disabled: this.uploading() || this.gifDownloading(),
+          transfersFocus: true,
+          run: () => this.pickGif.emit(),
+        });
+      }
+      if (this.richActions()) {
+        if (this.stickerEnabled()) {
+          actions.push({
+            text: 'Sticker',
+            icon: 'image',
+            testId: 'insert-sticker',
+            disabled: false,
+            transfersFocus: true,
+            run: () => this.pickSticker.emit(),
+          });
+        }
+        actions.push(
+          {
+            text: 'Poll',
+            icon: 'vote',
+            testId: 'insert-poll',
+            disabled: false,
+            transfersFocus: true,
+            run: () => this.createPoll.emit(),
+          },
+          {
+            text: 'Location',
+            icon: 'map-pin',
+            testId: 'insert-location',
+            disabled: this.locationSharing(),
+            transfersFocus: false,
+            run: () => this.shareLocation.emit(),
+          },
+        );
+        if (this.voiceSupported() && !this.recording()) {
+          actions.push({
+            text: 'Voice message',
+            icon: 'mic',
+            testId: 'insert-voice',
+            disabled: this.uploading(),
+            transfersFocus: false,
+            run: () => this.recordVoice.emit(),
+          });
+        }
+      }
+      return actions;
+    },
+  );
+
+  constructor() {
+    // A sheet is a snapshot. The composer survives room changes and async capability
+    // changes, so never leave stale actions standing over a new context.
+    effect(() => {
+      this.contextKey();
+      this.hasMenu();
+      this.editing();
+      this.uploading();
+      this.gifEnabled();
+      this.gifDownloading();
+      this.richActions();
+      this.voiceSupported();
+      this.recording();
+      this.locationSharing();
+      this.stickerEnabled();
+      // A capability/context update can remove the focused row. Give focus back to the
+      // replacement trigger instead of letting CDK drop it on the document body. The
+      // destroy path remains non-restoring because its composer is leaving too.
+      untracked(() => this.closeMobileSheet(true));
+    });
+    this.destroyRef.onDestroy(() => this.closeMobileSheet(false));
+  }
+
+  protected openMobileSheet(): void {
+    if (this.editing()) return;
+    this.closeMobileSheet(false);
+
+    let invocation: OwnedSheet | null = null;
+    const buttons: ActionSheetButton[] = this.insertActions().map((action) => ({
+      text: action.text,
+      icon: action.icon,
+      testId: action.testId,
+      disabled: action.disabled,
+      handler: () => {
+        const current = invocation;
+        if (!current) return;
+        current.restoreOnDismiss = !action.transfersFocus;
+        if (this.ownedSheet === current) {
+          this.ownedSheet = null;
+          this.mobileSheetOpen.set(false);
+        }
+        action.run();
+      },
+    }));
+    const ref = this.actionSheet.open(
+      { header: 'Add to message', buttons },
+      'Add to message',
+      // Selection can open a poll, GIF or sticker surface. CDK restoring the `+`
+      // afterward would steal focus from it, so this invocation owns restoration and
+      // applies it only to dismissals and actions that do not launch a focus owner.
+      { restoreFocus: false },
+    );
+    const owned: OwnedSheet = {
+      ref,
+      restoreOnDismiss: true,
+    };
+    invocation = owned;
+    this.ownedSheet = owned;
+    this.mobileSheetOpen.set(true);
+
+    ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      if (this.ownedSheet === owned) {
+        this.ownedSheet = null;
+        this.mobileSheetOpen.set(false);
+      }
+      // `TrnActionSheetComponent` closes before it runs the handler. Defer this check
+      // one microtask so the chosen action can publish its focus-transfer contract.
+      queueMicrotask(() => {
+        if (owned.restoreOnDismiss) {
+          this.focusViableTrigger();
+        }
+      });
+    });
+  }
+
+  private closeMobileSheet(restoreOnDismiss: boolean): void {
+    const invocation = this.ownedSheet;
+    if (!invocation) return;
+    invocation.restoreOnDismiss = restoreOnDismiss;
+    invocation.ref.close();
+  }
+
+  private focusViableTrigger(): void {
+    const trigger =
+      this.mobileTrigger()?.nativeElement ?? this.plainTrigger()?.nativeElement;
+    if (trigger?.isConnected && !trigger.disabled) {
+      trigger.focus();
+    }
+  }
 }

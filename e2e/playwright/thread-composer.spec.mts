@@ -94,6 +94,17 @@ test.describe('Thread composer', () => {
     ).toBeVisible({ timeout: 20_000 });
     // The command was interpreted, not sent as literal text.
     await expect(thread).not.toContainText('/me waves');
+
+    // The shared Phase 3 treatment reaches the thread surface too: its composer is the same
+    // integrated bordered field and its read-only/message rows consume the message body role.
+    await expect(thread.getByTestId('composer-field')).toHaveCSS(
+      'border-top-style',
+      'solid',
+    );
+    await expect(thread.locator('.msg__text', { hasText: 'waves' })).toHaveCSS(
+      'font-size',
+      '13px',
+    );
   });
 
   // The thread panel is the one place the indicator sits in a NON-flex parent

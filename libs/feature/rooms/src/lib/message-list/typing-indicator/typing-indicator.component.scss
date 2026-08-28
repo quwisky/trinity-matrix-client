@@ -24,14 +24,14 @@
 // and 6px of the jump survives the fix.
 .typing-slot {
   min-height: calc(1.2rem + 6px);
-  padding: 2px 16px 4px;
+  padding: var(--trinity-space-1) var(--trinity-space-5) var(--trinity-space-2);
 }
 
 .typing-indicator {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
+  gap: var(--trinity-space-2);
+  font-size: var(--trinity-type-body-size);
   font-style: italic;
   line-height: 1.2rem;
   color: var(--trinity-text-muted);

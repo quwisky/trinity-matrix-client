@@ -108,10 +108,10 @@
     // the edit-history diff (which compares the text of two rendered revisions).
     // BOTTOM-RIGHT. Two things have to be avoided and they pull in opposite directions.
 
-    // Vertically: the message's hover toolbar now sits inside the row at its top edge, and
-    // the block is hovered whenever the message is, so the two are always shown together. A
-    // caption at the block's TOP lands under the toolbar on a continuation row, which has no
-    // author header to push the block down. Hence the bottom.
+    // Vertically: the message's hover toolbar straddles the row's upper edge, and the block
+    // is hovered whenever the message is, so the two are always shown together. A caption at
+    // the block's TOP can still land under that compact corner on a continuation row, which
+    // has no author header to push the block down. Hence the bottom.
 
     // Horizontally: the end of the last line is the one part of a code block that is
     // reliably blank — code is left-aligned, and with line numbers on the left is where the

@@ -14,8 +14,8 @@
 
 .toolbar__picker {
   position: absolute;
-  right: 0;
-  bottom: calc(100% + 4px);
+  inset-block: auto calc(100% + 4px);
+  inset-inline-end: 0;
   display: flex;
   gap: var(--trinity-density-item-gap);
   padding: var(--trinity-density-item-gap);
@@ -23,6 +23,10 @@
   border-radius: var(--trinity-shape-container-radius);
   background: var(--trinity-surface-floating);
   box-shadow: var(--trinity-shadow-floating);
+}
+
+:host(.toolbar-host--picker-below) .toolbar__picker {
+  inset-block: calc(100% + 4px) auto;
 }
 
 .toolbar__emoji {
@@ -37,12 +41,12 @@
     background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
     color var(--trinity-duration-fast) var(--trinity-ease-standard);
 
-  &:hover:not(:disabled) {
+  &:hover:where(:not(:disabled)) {
     background: var(--trinity-state-hover-surface);
     color: var(--trinity-state-hover-foreground);
   }
 
-  &:active:not(:disabled) {
+  &:active:where(:not(:disabled)) {
     background: var(--trinity-state-pressed-surface);
     color: var(--trinity-state-pressed-foreground);
   }
@@ -59,10 +63,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: var(--trinity-density-control-size);
-  height: var(--trinity-density-control-size);
-  min-width: var(--trinity-interaction-target-min-size);
-  min-height: var(--trinity-interaction-target-min-size);
+
+  // A floating precise-pointer control only needs the WCAG 2.5.8 24px target. The
+  // any-coarse-pointer override below restores the 44px floor for touch-capable desktops.
+  width: max(
+    24px,
+    calc(var(--trinity-density-control-size) - var(--trinity-space-3)),
+    var(--trinity-interaction-target-min-size)
+  );
+  height: max(
+    24px,
+    calc(var(--trinity-density-control-size) - var(--trinity-space-3)),
+    var(--trinity-interaction-target-min-size)
+  );
   border: none;
   border-radius: var(--trinity-shape-control-radius);
   background: none;
@@ -73,12 +86,12 @@
     background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
     color var(--trinity-duration-fast) var(--trinity-ease-standard);
 
-  &:hover:not(:disabled) {
+  &:hover:where(:not(:disabled)) {
     background: var(--trinity-state-hover-surface);
     color: var(--trinity-state-hover-foreground);
   }
 
-  &:active:not(:disabled) {
+  &:active:where(:not(:disabled)) {
     background: var(--trinity-state-pressed-surface);
     color: var(--trinity-state-pressed-foreground);
   }
@@ -97,19 +110,18 @@
 // Touch targets: the shared interaction minimum becomes 44px wherever a finger can reach
 // these buttons and remains zero on precise pointers.
 
-// Still keyed on `(pointer: coarse)` after #220 moved phones and tablets to a bottom
+// Still keyed on pointer capability after #220 moved phones and tablets to a bottom
 // sheet, and the two predicates are not in conflict — they answer different questions.
 // `isMobileOs()` picks the INTERACTION MODEL: a sheet is an iOS/Android convention, and a
-// Windows laptop with a touchscreen should not be given one. `(pointer: coarse)` asks
+// Windows laptop with a touchscreen should not be given one. `any-pointer: coarse` asks
 // whether a finger is driving, which is what decides how big a target has to be.
 
 // So on a phone this block is inert (the bar is never revealed there) and on a hybrid
 // laptop it is load-bearing (the bar IS revealed, and can be tapped). Right in both.
-@media (pointer: coarse) {
-  .toolbar__emoji,
-  .toolbar__emoji--more,
-  .toolbar__picker {
-    min-width: var(--trinity-interaction-target-min-size);
-    min-height: var(--trinity-interaction-target-min-size);
+@media (any-pointer: coarse) {
+  .toolbar__btn,
+  .toolbar__emoji {
+    min-width: 44px;
+    min-height: 44px;
   }
 }

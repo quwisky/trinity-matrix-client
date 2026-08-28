@@ -34,7 +34,7 @@
 
   @if (canLocate) {
     <button
-      hlmBtn
+      trnBtn
       variant="outline"
       size="sm"
       class="self-start"
@@ -60,9 +60,9 @@
   </span>
 
   <div class="flex justify-end gap-2">
-    <button hlmBtn variant="ghost" (click)="cancel()">Cancel</button>
+    <button trnBtn variant="ghost" (click)="cancel()">Cancel</button>
     <button
-      hlmBtn
+      trnBtn
       [disabled]="!coords()"
       (click)="share()"
       data-testid="manual-location-share"

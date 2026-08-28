@@ -133,9 +133,11 @@ describe('component styling reach', () => {
       }
       const own = classesUsed(component.html);
       const defined = new Set(
-        [...sheetText(component.style).matchAll(/\.([a-zA-Z][\w-]*)/g)].map(
-          (match) => match[1],
-        ),
+        [
+          ...sheetText(component.style).matchAll(
+            /(?<![\w-])\.([a-zA-Z][\w-]*)/g,
+          ),
+        ].map((match) => match[1]),
       );
 
       for (const name of defined) {

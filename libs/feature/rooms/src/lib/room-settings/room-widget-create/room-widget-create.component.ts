@@ -8,7 +8,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { FormField, form, submit, validate } from '@angular/forms/signals';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnInput } from '@trinity/components/input';
 import { TrnLabel } from '@trinity/components/label';
 import { TrnToastService } from '@trinity/components/overlay';
@@ -30,7 +30,7 @@ const EMPTY_DRAFT: WidgetDraftModel = { name: '', rawUrl: '' };
 @Component({
   selector: 'trn-room-widget-create',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormField, HlmButton, TrnInput, TrnLabel],
+  imports: [FormField, TrnButton, TrnInput, TrnLabel],
   templateUrl: './room-widget-create.component.html',
   styleUrl: './room-widget-create.component.scss',
 })

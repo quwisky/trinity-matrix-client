@@ -6,6 +6,7 @@ import {
 } from './support/fixtures.mts';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers the "Send read receipts" privacy toggle (Settings → Privacy). With it
 // OFF, reading a message must still clear the reader's own unread state — but
@@ -129,9 +130,7 @@ test.describe('Read-receipt privacy', () => {
       user: readerUser,
       pass: readerPass,
     } as SynapseSession);
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-privacy').click();
-    await page.waitForURL(/\/settings\/privacy$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'privacy');
     const toggle = page
       .getByTestId('privacy-send-read-receipts')
       .locator('trn-switch');

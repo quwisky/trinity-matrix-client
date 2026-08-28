@@ -16,6 +16,7 @@
       @for (entry of group; track entry.action) {
         <button
           trnToggleGroupItem
+          trnIconButton
           type="button"
           class="toolbar__button"
           [value]="entry.action"
@@ -25,7 +26,7 @@
           [attr.data-testid]="'format-' + entry.action"
           (click)="apply(entry.action)"
         >
-          <trn-icon [name]="entry.icon" />
+          <trn-icon [name]="entry.icon" motion="pop" />
         </button>
       }
       @if (!last) {
@@ -66,6 +67,7 @@
        precedent the reaction pills already set. -->
   <button
     type="button"
+    trnIconButton
     class="toolbar__button"
     [class.toolbar__button--on]="previewing()"
     [attr.aria-pressed]="previewing()"
@@ -74,6 +76,6 @@
     data-testid="composer-preview-toggle"
     (click)="togglePreview.emit()"
   >
-    <trn-icon name="eye" />
+    <trn-icon name="eye" motion="pop" />
   </button>
 </div>

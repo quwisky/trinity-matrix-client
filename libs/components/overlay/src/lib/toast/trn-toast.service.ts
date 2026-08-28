@@ -1,4 +1,6 @@
-import { Injectable } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
+import { Injectable, inject } from '@angular/core';
+import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { toast } from '@spartan-ng/brain/sonner';
 
 export type ToastVariant = 'default' | 'destructive' | 'success';
@@ -32,6 +34,9 @@ export interface ToastOptions {
  */
 @Injectable({ providedIn: 'root' })
 export class TrnToastService {
+  private readonly document = inject(DOCUMENT);
+  private readonly liveAnnouncer = inject(LiveAnnouncer);
+
   show(message: string, opts: ToastOptions = {}): void {
     const duration = opts.duration ?? 3000;
     // sonner keeps a toast until dismissed when the duration is Infinity; our `0`
@@ -62,6 +67,18 @@ export class TrnToastService {
         break;
       default:
         toast(message, options);
+    }
+
+    // CDK marks the app root aria-hidden while a modal is open. Sonner's live region
+    // lives inside that root, so screen readers cannot hear a toast at precisely the
+    // moment a dialog error most needs announcing. LiveAnnouncer owns a body-level
+    // aria-live node that CDK exempts from hiding. Announce only in this state to avoid
+    // duplicating Sonner's normal announcement when no modal is present.
+    if (this.document.querySelector('body > trn-root[aria-hidden="true"]')) {
+      void this.liveAnnouncer.announce(
+        message,
+        opts.variant === 'destructive' ? 'assertive' : 'polite',
+      );
     }
   }
 }

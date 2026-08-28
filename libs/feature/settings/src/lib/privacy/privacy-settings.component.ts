@@ -2,13 +2,19 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { TrnSwitchComponent } from '@trinity/components/switch';
 import { PrivacySettingsService } from '@trinity/platform-native';
 import { UrlPreviewService } from '@trinity/data-access/timeline';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
+import { SettingsToggleRowDirective } from '../shared/settings-toggle-row.directive';
 
 /** Privacy settings sub-page: device-scoped toggles for what others can see. */
 @Component({
   selector: 'trn-privacy-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './privacy-settings.component.html',
-  imports: [TrnSwitchComponent],
+  imports: [
+    TrnSwitchComponent,
+    SettingsSectionHeadingComponent,
+    SettingsToggleRowDirective,
+  ],
 })
 export class PrivacySettingsComponent {
   readonly privacy = inject(PrivacySettingsService);
