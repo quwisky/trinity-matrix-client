@@ -109,6 +109,10 @@ const ROLES = [
     on: ['--trinity-state-attention-surface'],
   },
   {
+    text: '--trinity-tooltip-foreground',
+    on: ['--trinity-tooltip-surface'],
+  },
+  {
     text: '--trinity-status-neutral-foreground',
     on: ['--trinity-status-neutral-surface'],
   },

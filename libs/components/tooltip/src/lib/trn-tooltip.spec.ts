@@ -3,7 +3,11 @@ import { By } from '@angular/platform-browser';
 import { BrnTooltip } from '@spartan-ng/brain/tooltip';
 import { render } from '@trinity/testing';
 import { describe, expect, it } from 'vitest';
-import { TrnTooltip } from './trn-tooltip';
+import {
+  TRN_TOOLTIP_CONTENT_CLASSES,
+  TRN_TOOLTIP_SVG_CLASSES,
+  TrnTooltip,
+} from './trn-tooltip';
 
 @Component({
   imports: [TrnTooltip],
@@ -12,6 +16,17 @@ import { TrnTooltip } from './trn-tooltip';
 class HostComponent {}
 
 describe('TrnTooltip', () => {
+  it('owns a semantic surface pair without retaining the inverted kit colours', () => {
+    expect(TRN_TOOLTIP_CONTENT_CLASSES).toContain('bg-tooltip');
+    expect(TRN_TOOLTIP_CONTENT_CLASSES).toContain('text-tooltip-foreground');
+    expect(TRN_TOOLTIP_CONTENT_CLASSES).not.toContain('bg-foreground');
+    expect(TRN_TOOLTIP_CONTENT_CLASSES).not.toContain('text-background');
+    expect(TRN_TOOLTIP_SVG_CLASSES).toContain('bg-tooltip');
+    expect(TRN_TOOLTIP_SVG_CLASSES).toContain('fill-tooltip');
+    expect(TRN_TOOLTIP_SVG_CLASSES).not.toContain('bg-foreground');
+    expect(TRN_TOOLTIP_SVG_CLASSES).not.toContain('fill-foreground');
+  });
+
   it('publishes the message under our own name', async () => {
     // The defect control, and the reason this wrapper composes brain directly instead of the
     // kit directive: the message is published by the kit as `hlmTooltip`, and re-aliasing it

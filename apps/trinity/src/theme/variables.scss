@@ -187,6 +187,12 @@
   // is set per mode below rather than bound here.)
   --card-foreground: var(--foreground);
   --popover-foreground: var(--foreground);
+
+  // Tooltips stay dark in light mode instead of becoming another pale surface. The dark
+  // mode override below switches the fill to the palette-aware elevated surface while
+  // keeping the same readable foreground pairing.
+  --trinity-tooltip-surface: var(--foreground);
+  --trinity-tooltip-foreground: var(--background);
   --secondary-foreground: hsl(240deg 5.9% 10%);
   --accent-foreground: hsl(240deg 5.9% 10%);
   --primary: var(--trinity-accent);
@@ -428,6 +434,8 @@
   --accent-foreground: var(--foreground);
   --card: var(--trinity-sidebar); // #2b2d31
   --popover: var(--trinity-sidebar);
+  --trinity-tooltip-surface: var(--popover);
+  --trinity-tooltip-foreground: var(--popover-foreground);
   --secondary: var(--trinity-hover); // #35373c
   --muted: var(--trinity-hover);
   --muted-foreground: hsl(

@@ -7,6 +7,7 @@ import {
 } from '@angular/core';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { TrnIconButton } from '@trinity/components/button';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import { type UserProfile } from '@trinity/data-access/profile';
 import {
   TrnDropdownMenu,
@@ -47,6 +48,7 @@ export interface AccountSummary extends UserProfile {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     TrnIconButton,
+    TrnTooltip,
     AvatarComponent,
     TrnIconComponent,
     TrnDropdownMenuTrigger,

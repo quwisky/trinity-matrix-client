@@ -146,6 +146,70 @@ test.describe('Settings', () => {
     await page.getByTestId('theme-dark').click();
     await expect.poll(() => hasDarkPalette(page)).toBe(true);
 
+    // The account-dock gear used to expose a native `title`, which the browser painted as
+    // a light OS tooltip regardless of Trinity's selected theme. Close the dialog and drive
+    // that exact control: a role=tooltip proves it now uses the design-system overlay, while
+    // computed paint proves the public wrapper resolves its semantic pair in a real cascade.
+    await page.getByTestId('close-settings').click();
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeHidden();
+    const settingsButton = page.getByRole('button', {
+      name: 'Settings',
+      exact: true,
+    });
+    await expect(settingsButton).not.toHaveAttribute('title');
+    await settingsButton.hover();
+    const tooltip = page.getByRole('tooltip');
+    await expect(tooltip).toHaveText('Settings');
+
+    const paint = await tooltip.evaluate((element) => {
+      const channels = (value: string): number[] =>
+        (value.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+      const luminance = (value: string): number => {
+        const [red = 0, green = 0, blue = 0] = channels(value).map(
+          (channel) => {
+            const srgb = channel / 255;
+            return srgb <= 0.04045
+              ? srgb / 12.92
+              : ((srgb + 0.055) / 1.055) ** 2.4;
+          },
+        );
+        return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+      };
+      const probe = document.createElement('span');
+      probe.style.cssText =
+        'position:fixed;background:var(--trinity-tooltip-surface);color:var(--trinity-tooltip-foreground)';
+      document.body.append(probe);
+      const style = getComputedStyle(element);
+      const expected = getComputedStyle(probe);
+      const background = style.backgroundColor;
+      const foreground = style.color;
+      const lighter = Math.max(luminance(background), luminance(foreground));
+      const darker = Math.min(luminance(background), luminance(foreground));
+      const result = {
+        dark: document.documentElement.classList.contains('dark'),
+        background,
+        foreground,
+        expectedBackground: expected.backgroundColor,
+        expectedForeground: expected.color,
+        backgroundLuminance: luminance(background),
+        contrast: (lighter + 0.05) / (darker + 0.05),
+        arrowFill: getComputedStyle(element.querySelector('svg')!).fill,
+      };
+      probe.remove();
+      return result;
+    });
+
+    expect(paint.dark).toBe(true);
+    expect(paint.background).toBe(paint.expectedBackground);
+    expect(paint.foreground).toBe(paint.expectedForeground);
+    expect(paint.backgroundLuminance).toBeLessThan(0.2);
+    expect(paint.contrast).toBeGreaterThanOrEqual(4.5);
+    expect(paint.arrowFill).toBe(paint.background);
+
+    await page.mouse.move(0, 0);
+    await settingsButton.click();
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
+    await openSection(page, 'appearance');
     await page.getByTestId('theme-light').click();
     await expect.poll(() => hasDarkPalette(page)).toBe(false);
   });
