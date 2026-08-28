@@ -91,9 +91,11 @@ menu or reloading Trinity. If one part of a multi-step server update fails, Trin
 the exact previous server rules, including their priority; a merged multi-account row is
 restored on every account rather than left with conflicting settings. Rapid choices—even in
 different rooms—are applied in order because the homeserver returns one shared ruleset per
-account, and custom rules Trinity does not recognize are left untouched. If the accounts behind
-a merged row already disagree, the room shows **Different across accounts** until you choose one
-mode to apply everywhere.
+account, and custom rules Trinity does not recognize are left untouched. If another device makes
+a newer change while Trinity is restoring a failed update, that newer state wins and Trinity asks
+you to reopen the menu rather than overwriting it. If the accounts behind a merged row already
+disagree, the room shows **Different across accounts** until you choose one mode to apply
+everywhere.
 
 ## How a notification reaches you
 

@@ -35,8 +35,10 @@ serializes all writes that could replace an account's shared rules cache, verifi
 postcondition, and on a partial endpoint failure restores the full rule bodies and enabled states
 on every account in a merged row. Existing standard rules are disabled rather than deleted, so
 their priority among user rules survives both normal changes and rollback. Unrecognized custom
-rules are preserved rather than rewritten. The row aggregates all contributing accounts and
-exposes `mixed` when their modes differ.
+rules are preserved rather than rewritten. Compensation restores only states that still match
+the transaction's own writes; a newer edit from another device is left untouched and the UI
+reports that restoration could not be confirmed. The row aggregates all contributing accounts
+and exposes `mixed` when their modes differ.
 
 `PushRulesService` exposes nine labelled account-level toggles backed by predefined
 rules: the master kill switch (marked `invert`, because the rule being _enabled_ means

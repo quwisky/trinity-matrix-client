@@ -222,11 +222,13 @@ export class RoomNotificationsService {
     // a merged sidebar row remains one coherent preference.
     const restorations = await Promise.allSettled(
       targets.map(async ({ client, previous }) => {
-        let currentStateKnown = true;
-        await this.refreshRules(client).catch(() => {
-          currentStateKnown = false;
-        });
-        await this.restoreRules(client, roomId, previous, !currentStateKnown);
+        await this.refreshRules(client);
+        await this.restoreRules(
+          client,
+          roomId,
+          previous,
+          this.rulesForMode(previous, roomId, mode),
+        );
         await this.refreshRules(client);
         if (!this.rulesMatchSnapshot(client, roomId, previous)) {
           throw new Error(
@@ -411,23 +413,46 @@ export class RoomNotificationsService {
   private async restoreRules(
     client: MatrixClient,
     roomId: string,
-    snapshot: RoomRuleSnapshot,
-    force: boolean,
+    previous: RoomRuleSnapshot,
+    written: RoomRuleSnapshot,
   ): Promise<void> {
-    await this.restoreRule(
+    await this.restoreOwnedRule(
       client,
       PushRuleKind.RoomSpecific,
       roomId,
-      snapshot.room,
-      force,
+      previous.room,
+      written.room,
     );
-    await this.restoreRule(
+    await this.restoreOwnedRule(
       client,
       PushRuleKind.Override,
       roomId,
-      snapshot.override,
-      force,
+      previous.override,
+      written.override,
     );
+  }
+
+  /**
+   * Restore one endpoint only when it is unchanged from either the pre-write snapshot or
+   * the exact state this transaction intended to write. A newer remote edit must win.
+   */
+  private async restoreOwnedRule(
+    client: MatrixClient,
+    kind: PushRuleKind.RoomSpecific | PushRuleKind.Override,
+    roomId: string,
+    previous: IPushRule | undefined,
+    written: IPushRule | undefined,
+  ): Promise<void> {
+    const current = this.ruleFor(client, kind, roomId);
+    if (this.rulesEqual(current, previous)) {
+      return;
+    }
+    if (!this.rulesEqual(current, written)) {
+      throw new Error(
+        'A newer notification-rule change was preserved instead of being overwritten.',
+      );
+    }
+    await this.restoreRule(client, kind, roomId, previous);
   }
 
   private async restoreRule(
@@ -435,22 +460,16 @@ export class RoomNotificationsService {
     kind: PushRuleKind.RoomSpecific | PushRuleKind.Override,
     roomId: string,
     snapshot: IPushRule | undefined,
-    force: boolean,
   ): Promise<void> {
     const current = this.ruleFor(client, kind, roomId);
     if (!snapshot) {
-      if (force || current) {
-        await client.deletePushRule('global', kind, roomId).catch((error) => {
-          if (!this.isMissingRuleError(error)) {
-            throw error;
-          }
-        });
+      if (current) {
+        await client.deletePushRule('global', kind, roomId);
       }
       return;
     }
 
-    const bodyReplaced =
-      force || !current || !this.ruleBodiesEqual(current, snapshot);
+    const bodyReplaced = !current || !this.ruleBodiesEqual(current, snapshot);
     if (bodyReplaced) {
       await client.addPushRule('global', kind, roomId, {
         actions: structuredClone(snapshot.actions),
@@ -462,18 +481,64 @@ export class RoomNotificationsService {
           : {}),
       });
     }
-    if (force || bodyReplaced || current.enabled !== snapshot.enabled) {
+    if (bodyReplaced || current.enabled !== snapshot.enabled) {
       await client.setPushRuleEnabled('global', kind, roomId, snapshot.enabled);
     }
   }
 
-  private isMissingRuleError(error: unknown): boolean {
-    return (
-      !!error &&
-      typeof error === 'object' &&
-      'errcode' in error &&
-      error.errcode === 'M_NOT_FOUND'
-    );
+  private rulesForMode(
+    previous: RoomRuleSnapshot,
+    roomId: string,
+    mode: RoomNotifyMode,
+  ): RoomRuleSnapshot {
+    const withEnabled = (
+      rule: IPushRule | undefined,
+      enabled: boolean,
+    ): IPushRule | undefined =>
+      rule ? { ...structuredClone(rule), enabled } : undefined;
+    const roomRule = (): IPushRule =>
+      previous.room
+        ? { ...structuredClone(previous.room), enabled: true }
+        : {
+            rule_id: roomId,
+            enabled: true,
+            default: false,
+            actions: [PushRuleActionName.DontNotify],
+          };
+    const overrideRule = (): IPushRule =>
+      previous.override
+        ? { ...structuredClone(previous.override), enabled: true }
+        : {
+            rule_id: roomId,
+            enabled: true,
+            default: false,
+            actions: [PushRuleActionName.DontNotify],
+            conditions: [
+              {
+                kind: ConditionKind.EventMatch,
+                key: 'room_id',
+                pattern: roomId,
+              },
+            ],
+          };
+
+    switch (mode) {
+      case 'all':
+        return {
+          room: withEnabled(previous.room, false),
+          override: withEnabled(previous.override, false),
+        };
+      case 'mentions':
+        return {
+          room: roomRule(),
+          override: withEnabled(previous.override, false),
+        };
+      case 'mute':
+        return {
+          room: withEnabled(previous.room, false),
+          override: overrideRule(),
+        };
+    }
   }
 
   private rulesMatchSnapshot(

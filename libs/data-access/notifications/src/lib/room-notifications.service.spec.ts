@@ -305,7 +305,7 @@ describe('RoomNotificationsService', () => {
       );
     });
 
-    it('forces exact rollback when both compensating cache reads fail', async () => {
+    it('does not overwrite unverified state when the compensating read fails', async () => {
       const original = roomMute(ROOM);
       const { svc, client, serverRules } = setup({ room: [original] });
       const readRules = client.getPushRules.getMockImplementation()!;
@@ -315,13 +315,34 @@ describe('RoomNotificationsService', () => {
         .mockRejectedValueOnce(new Error('compensating refresh failed'))
         .mockImplementationOnce(readRules);
 
-      await expect(firstValueFrom(svc.setMode(ROOM, 'mute'))).rejects.toThrow(
-        'post-write refresh failed',
-      );
+      await expect(
+        firstValueFrom(svc.setMode(ROOM, 'mute')),
+      ).rejects.toMatchObject({ restored: false });
 
-      expect(serverRules.global.room).toEqual([original]);
-      expect(serverRules.global.override).toEqual([]);
-      expect(svc.modeFor(ROOM)).toBe('mentions');
+      expect(serverRules.global.room).toEqual([roomMute(ROOM, false)]);
+      expect(serverRules.global.override).toEqual([overrideMute(ROOM)]);
+      expect(svc.modeFor(ROOM)).toBe('mute');
+    });
+
+    it('preserves a newer remote edit instead of compensating over it', async () => {
+      const original = roomMute(ROOM);
+      const remote = { ...roomMute(ROOM), actions: ['notify'] };
+      const { svc, client, serverRules } = setup({ room: [original] });
+      const readRules = client.getPushRules.getMockImplementation()!;
+      client.getPushRules
+        .mockImplementationOnce(readRules)
+        .mockImplementationOnce(() => {
+          serverRules.global.room = [remote];
+          return readRules();
+        });
+      client.addPushRule.mockRejectedValueOnce(new Error('override failed'));
+
+      await expect(
+        firstValueFrom(svc.setMode(ROOM, 'mute')),
+      ).rejects.toMatchObject({ restored: false });
+
+      expect(serverRules.global.room).toEqual([remote]);
+      expect(client.addPushRule).toHaveBeenCalledTimes(1);
     });
 
     it('snapshots fresh server state before compensating a failed update', async () => {

@@ -269,7 +269,8 @@ All notable changes to this project are documented here. The format is based on
   exposes disagreements across merged accounts, and applies rapid choices in order across the
   shared rules cache. A failed multi-step push-rule update restores the exact previous homeserver
   rules and their priority across every account represented by a merged room row instead of
-  leaving the UI and server disagreeing.
+  leaving the UI and server disagreeing, while preserving any newer same-rule edit made by
+  another device during compensation.
 
 - **Network failures no longer leave actions spinning forever.** Matrix requests now stop
   waiting after a bounded deadline, request controls release on completion or cancellation,
