@@ -77,10 +77,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
-- **Icon buttons now behave as one family.** Square actions use the same shape, pointer cursor,
-  hover and pressed surfaces across the app while preserving contextual danger and lightbox
-  contrast. Each action also gets a small semantic glyph motion—for example, Back nudges left,
-  Settings rotates and Search pops—with keyboard parity and a static reduced-motion fallback.
+- **Icon buttons now behave as one family.** Standard square actions and purpose-built controls
+  such as reaction chips, server-rail pills, avatar actions, composer controls and the floating
+  message toolbar use the same pointer cursor, hover and pressed surfaces while preserving their
+  meaningful resting shapes and contextual contrast. Each action also gets a small semantic glyph
+  motion—for example, Back nudges left, Settings rotates and Search pops—with keyboard parity and
+  a static reduced-motion fallback that never shifts the control itself.
 
 - **The modern interface is now hardened across the supported screen sizes.** The quieter layered
   room shell, responsive auth and encryption tasks, grouped settings workspace, compact density and

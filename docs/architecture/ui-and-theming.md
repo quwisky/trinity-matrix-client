@@ -31,6 +31,15 @@ and page header — live there too. Button is exposed as `trnBtn`; dropdown dire
 root toaster are exposed from `@trinity/components/overlay`. These public APIs compose or host
 kit primitives, which is the tier's job, without leaking Helm selectors or types to features.
 
+Icon-only actions use one of two public contracts. A standard square action uses `trnBtn` with
+an `icon*` size, which supplies the shared shape and automatically opts into the common pointer,
+hover and pressed states. A purpose-built control whose geometry carries meaning—a reaction chip,
+server-rail pill, avatar action or compact toolbar button—uses `trnIconButton` instead. It keeps
+that geometry but receives the same interaction states. In both forms the inner `<trn-icon>` must
+choose an explicit semantic `motion` (`nudge-left`, `nudge-up`, `nudge-down`, `nudge-up-right`,
+`pop` or `rotate`); motion never moves the hit target, and reduced-motion mode removes the glyph
+transform while retaining colour and focus feedback.
+
 `libs/ui` is gone entirely. What was left after the components moved out was not UI: the
 `runWithBusy` / `mediaQuerySignal` / internal-URL helpers went to `@trinity/util/ui`
 (`type:util`, reachable from every layer rather than only from above), and the

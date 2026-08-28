@@ -33,14 +33,13 @@ button:disabled,
 /*
  * Shared icon-button interaction contract.
  *
- * `TrnButton` publishes the marker for every `size="icon*"` public button. This rule is
- * intentionally unlayered so the invariant state treatment wins over Helm's layered variant
- * utilities without reaching into the vendored component. Contextual rest treatments still
- * belong to the caller: the lightbox keeps its floating contrast and destructive actions keep
- * their danger foreground. Only shape, cursor and interaction feedback are standardized here.
+ * `TrnButton` publishes the marker for every `size="icon*"` public button, while
+ * `TrnIconButton` lets purpose-built controls keep meaningful component-owned geometry. These
+ * rules are intentionally unlayered so the invariant state treatment wins over layered vendor
+ * utilities. Contextual rest treatments still belong to the caller; cursor and interaction
+ * feedback are shared everywhere, while only public square controls receive the common radius.
  */
-:is(button, a)[trnBtn][data-trn-icon-button] {
-  border-radius: var(--trinity-shape-control-radius);
+:is(button, a)[data-trn-icon-button] {
   cursor: pointer;
   transition:
     background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
@@ -49,8 +48,12 @@ button:disabled,
     box-shadow var(--trinity-duration-fast) var(--trinity-ease-standard);
 }
 
+:is(button, a)[trnBtn][data-trn-icon-button] {
+  border-radius: var(--trinity-shape-control-radius);
+}
+
 @media (hover: hover) {
-  :is(button, a)[trnBtn][data-trn-icon-button]:not(
+  :is(button, a)[data-trn-icon-button]:not(
       :disabled,
       [aria-disabled='true'],
       [data-disabled='true'],
@@ -62,7 +65,7 @@ button:disabled,
   }
 }
 
-:is(button, a)[trnBtn][data-trn-icon-button]:not(
+:is(button, a)[data-trn-icon-button]:not(
     :disabled,
     [aria-disabled='true'],
     [data-disabled='true'],
@@ -70,10 +73,14 @@ button:disabled,
   ) {
   &:active {
     background: var(--trinity-state-pressed-surface);
+
+    // Helm moves every pressed button down by 1px. Icon actions animate only their inner glyph,
+    // so keep the control and its hit target fixed in both normal and reduced-motion modes.
+    translate: none;
   }
 }
 
-:is(button, a)[trnBtn][data-trn-icon-button]:is(
+:is(button, a)[data-trn-icon-button]:is(
     :disabled,
     [aria-disabled='true'],
     [data-disabled='true'],

@@ -23,6 +23,7 @@
       </div>
       <div class="invite__actions">
         <button
+          trnIconButton
           class="invite__btn accept"
           (click)="
             acceptInvite.emit({
@@ -33,9 +34,10 @@
           [attr.aria-label]="'Accept invite to ' + invite.name"
           title="Accept"
         >
-          <trn-icon name="check" />
+          <trn-icon name="check" motion="pop" />
         </button>
         <button
+          trnIconButton
           class="invite__btn decline"
           (click)="
             declineInvite.emit({
@@ -46,7 +48,7 @@
           [attr.aria-label]="'Decline invite to ' + invite.name"
           title="Decline"
         >
-          <trn-icon name="x" />
+          <trn-icon name="x" motion="rotate" />
         </button>
       </div>
     </div>
@@ -153,13 +155,14 @@
       }
     </button>
     <button
+      trnIconButton
       class="channel__menu"
       [trnDropdownMenuTrigger]="roomMenu"
       align="end"
       [attr.aria-label]="'Options for ' + room.name"
       title="Room options"
     >
-      <trn-icon name="ellipsis-vertical" />
+      <trn-icon name="ellipsis-vertical" motion="pop" />
     </button>
   </div>
 

@@ -9,6 +9,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { CdkMenuTrigger } from '@angular/cdk/menu';
+import { TrnIconButton } from '@trinity/components/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import { TrnIconComponent } from '@trinity/components/icon';
 import {
@@ -74,6 +75,7 @@ let nextPickerId = 0;
     '[class.toolbar-host--picker-below]': 'pickerBelow()',
   },
   imports: [
+    TrnIconButton,
     TrnIconComponent,
     TrnTooltip,
     HlmDropdownMenu,

@@ -14,6 +14,7 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
+import { TrnIconButton } from '@trinity/components/button';
 import { TrnTextarea } from '@trinity/components/textarea';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import {
@@ -107,6 +108,7 @@ let nextPickerId = 0;
   selector: 'trn-message-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    TrnIconButton,
     TrnIconComponent,
     TrnTooltip,
     TrnTextarea,

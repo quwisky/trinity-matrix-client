@@ -37,4 +37,18 @@ export class TrnButton {
   );
 }
 
-export const TrnButtonImports = [TrnButton] as const;
+/**
+ * Opts a purpose-built icon control into Trinity's shared interaction contract.
+ *
+ * Use this only when `trnBtn` would replace meaningful component-owned geometry, such as a
+ * circular avatar action, server-rail pill, reaction chip or compact message toolbar control.
+ */
+@Directive({
+  selector: 'button[trnIconButton], a[trnIconButton]',
+  host: {
+    '[attr.data-trn-icon-button]': "''",
+  },
+})
+export class TrnIconButton {}
+
+export const TrnButtonImports = [TrnButton, TrnIconButton] as const;

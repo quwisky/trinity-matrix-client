@@ -16,13 +16,14 @@
     }
     <button
       type="button"
+      trnIconButton
       class="toolbar__emoji toolbar__emoji--more"
       title="More emoji"
       aria-label="More emoji"
       data-testid="react-more"
       (click)="pickMore()"
     >
-      <trn-icon name="plus" />
+      <trn-icon name="plus" motion="rotate" />
     </button>
   </div>
 }
@@ -30,6 +31,7 @@
 <div class="toolbar" role="toolbar" aria-label="Message actions">
   <button
     type="button"
+    trnIconButton
     class="toolbar__btn"
     trnTooltip="Add reaction"
     aria-label="Add reaction"
@@ -38,33 +40,36 @@
     (keydown.escape)="pickerOpen.set(false)"
     (click)="togglePicker()"
   >
-    <trn-icon name="smile" />
+    <trn-icon name="smile" motion="pop" />
   </button>
 
   <button
     type="button"
+    trnIconButton
     class="toolbar__btn"
     trnTooltip="Reply"
     aria-label="Reply"
     (click)="action.emit({ type: 'reply' })"
   >
-    <trn-icon name="reply" />
+    <trn-icon name="reply" motion="nudge-left" />
   </button>
 
   @if (caps().canThread) {
     <button
       type="button"
+      trnIconButton
       class="toolbar__btn"
       trnTooltip="Reply in thread"
       aria-label="Reply in thread"
       (click)="action.emit({ type: 'thread' })"
     >
-      <trn-icon name="messages-square" />
+      <trn-icon name="messages-square" motion="pop" />
     </button>
   }
 
   <button
     type="button"
+    trnIconButton
     class="toolbar__btn"
     [hlmDropdownMenuTrigger]="moreMenu"
     align="end"
@@ -72,7 +77,7 @@
     aria-label="More actions"
     data-testid="msg-more"
   >
-    <trn-icon name="ellipsis" />
+    <trn-icon name="ellipsis" motion="pop" />
   </button>
 </div>
 

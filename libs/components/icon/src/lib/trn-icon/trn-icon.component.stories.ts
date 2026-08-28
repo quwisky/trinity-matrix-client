@@ -4,7 +4,7 @@ import {
   moduleMetadata,
   type StoryObj,
 } from '@storybook/angular-vite';
-import { TrnButton } from '@trinity/components/button';
+import { TrnButton, TrnIconButton } from '@trinity/components/button';
 import { type TrnIconMotion } from '../trn-icon-motion';
 import { provideTrnIcons } from '../trn-icon.icons';
 import { TrnIconComponent } from './trn-icon.component';
@@ -14,7 +14,7 @@ const meta: Meta<TrnIconComponent> = {
   component: TrnIconComponent,
   decorators: [
     applicationConfig({ providers: [provideTrnIcons()] }),
-    moduleMetadata({ imports: [TrnButton, TrnIconComponent] }),
+    moduleMetadata({ imports: [TrnButton, TrnIconButton, TrnIconComponent] }),
   ],
   parameters: {
     docs: {
@@ -167,6 +167,14 @@ export const Treatments: Story = {
         <a trnBtn variant="ghost" size="icon" href="#target" aria-label="Linked action">
           <trn-icon name="arrow-left" motion="nudge-left" />
         </a>
+        <button
+          type="button"
+          trnIconButton
+          class="grid size-12 place-items-center rounded-full bg-secondary"
+          aria-label="Purpose-built action"
+        >
+          <trn-icon name="camera" motion="pop" />
+        </button>
       </div>`,
   }),
 };

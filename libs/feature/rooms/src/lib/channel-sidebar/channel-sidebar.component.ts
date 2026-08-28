@@ -8,6 +8,7 @@ import {
   model,
   output,
 } from '@angular/core';
+import { TrnIconButton } from '@trinity/components/button';
 import {
   TrnDropdownMenu,
   TrnDropdownMenuItem,
@@ -63,6 +64,7 @@ export type { AccountSummary };
   selector: 'trn-channel-sidebar',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    TrnIconButton,
     EmptyStateComponent,
     SidebarUserPanelComponent,
     SidebarRoomListComponent,

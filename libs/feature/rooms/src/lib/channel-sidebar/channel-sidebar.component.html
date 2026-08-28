@@ -3,13 +3,14 @@
     <span class="sidebar__title">{{ spaceName() }}</span>
     <div class="sidebar__actions">
       <button
+        trnIconButton
         class="sidebar__action"
         (click)="openSwitcher.emit()"
         aria-label="Search (Ctrl/Cmd+K)"
         title="Search (Ctrl/Cmd+K)"
         data-testid="open-switcher"
       >
-        <trn-icon name="command" />
+        <trn-icon name="command" motion="pop" />
       </button>
       <!-- A space keeps only its two most-reached-for actions out here; the rest live in the
            overflow. The sidebar is a fixed 280px at EVERY breakpoint, so this is not a
@@ -18,14 +19,16 @@
            touch (44px targets) they were wider than the sidebar itself. -->
       @if (spaceActive()) {
         <button
+          trnIconButton
           class="sidebar__action"
           (click)="createRoom.emit()"
           aria-label="Create a channel"
           title="Create a channel"
         >
-          <trn-icon name="plus" />
+          <trn-icon name="plus" motion="rotate" />
         </button>
         <button
+          trnIconButton
           class="sidebar__action"
           [trnDropdownMenuTrigger]="spaceMenu"
           align="end"
@@ -33,29 +36,31 @@
           title="More actions"
           data-testid="space-actions-overflow"
         >
-          <trn-icon name="ellipsis-vertical" />
+          <trn-icon name="ellipsis-vertical" motion="pop" />
         </button>
       } @else {
         <!-- Home has three buttons and already fits, so it keeps the flat row: an overflow
              holding a single conditional item would be worse than the row it replaced. -->
         @if (hasAnyUnread()) {
           <button
+            trnIconButton
             class="sidebar__action"
             (click)="markAllRead.emit()"
             aria-label="Mark all as read"
             title="Mark all as read"
             data-testid="mark-all-read"
           >
-            <trn-icon name="check-check" />
+            <trn-icon name="check-check" motion="pop" />
           </button>
         }
         <button
+          trnIconButton
           class="sidebar__action"
           (click)="newChat.emit()"
           aria-label="New room or direct message"
           title="New room or direct message"
         >
-          <trn-icon name="plus" />
+          <trn-icon name="plus" motion="rotate" />
         </button>
       }
     </div>
@@ -84,13 +89,14 @@
            that the active element falls back to <body> and the next Tab restarts from the
            top of the document. -->
       <button
+        trnIconButton
         class="sidebar__filter-clear"
         (click)="clearFilter(); filterBox.focus()"
         aria-label="Clear filter"
         title="Clear filter"
         data-testid="sidebar-filter-clear"
       >
-        <trn-icon name="x" />
+        <trn-icon name="x" motion="rotate" />
       </button>
     }
   </div>

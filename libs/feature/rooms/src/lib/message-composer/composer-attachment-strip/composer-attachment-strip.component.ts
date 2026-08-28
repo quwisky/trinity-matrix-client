@@ -5,6 +5,7 @@ import {
   input,
   output,
 } from '@angular/core';
+import { TrnIconButton } from '@trinity/components/button';
 import { TrnProgressComponent } from '@trinity/components/progress';
 import { TrnIconComponent } from '@trinity/components/icon';
 import { type BatchProgress } from '../../shared/send-media-batch';
@@ -21,7 +22,7 @@ import { type StagedAttachment } from '../staged-attachment';
 @Component({
   selector: 'trn-composer-attachment-strip',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnIconComponent, TrnProgressComponent],
+  imports: [TrnIconButton, TrnIconComponent, TrnProgressComponent],
   templateUrl: './composer-attachment-strip.component.html',
   styleUrl: './composer-attachment-strip.component.scss',
 })

@@ -3,10 +3,10 @@ import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { HlmButton } from '@trinity/helm/button';
 import { describe, expect, it } from 'vitest';
-import { TrnButton } from './trn-button';
+import { TrnButton, TrnIconButton } from './trn-button';
 
 @Component({
-  imports: [TrnButton],
+  imports: [TrnButton, TrnIconButton],
   template: `<button trnBtn variant="destructive" size="sm" disabled>
     Erase
   </button>`,
@@ -14,13 +14,15 @@ import { TrnButton } from './trn-button';
 class HostComponent {}
 
 @Component({
-  imports: [TrnButton],
+  imports: [TrnButton, TrnIconButton],
   template: `
     @for (size of iconSizes; track size) {
       <button trnBtn [size]="size">Icon</button>
     }
     <button trnBtn size="default">Label</button>
-    <button trnBtn [size]="dynamicSize()">Dynamic</button>
+    <button data-testid="dynamic" trnBtn [size]="dynamicSize()">Dynamic</button>
+    <a data-testid="icon-link" trnBtn size="icon" href="#target">Link</a>
+    <button data-testid="bespoke" trnIconButton>Bespoke</button>
   `,
 })
 class IconHostComponent {
@@ -43,7 +45,7 @@ describe('TrnButton', () => {
   });
 
   it('marks every icon size without marking labelled sizes', async () => {
-    const { container } = await render(IconHostComponent);
+    const { container, fixture } = await render(IconHostComponent);
     const buttons = [...container.querySelectorAll('button')];
 
     expect(
@@ -53,12 +55,25 @@ describe('TrnButton', () => {
     ).toBe(true);
     expect(buttons[4].hasAttribute('data-trn-icon-button')).toBe(false);
     expect(buttons[5].hasAttribute('data-trn-icon-button')).toBe(false);
+    expect(
+      container
+        .querySelector('[data-testid="icon-link"]')
+        ?.hasAttribute('data-trn-icon-button'),
+    ).toBe(true);
+    expect(
+      fixture.debugElement.queryAll(By.directive(TrnIconButton)),
+    ).toHaveLength(1);
+    expect(
+      container
+        .querySelector('[data-testid="bespoke"]')
+        ?.hasAttribute('data-trn-icon-button'),
+    ).toBe(true);
   });
 
   it('updates the marker when a bound size changes', async () => {
     const { container, fixture } = await render(IconHostComponent);
     const host = fixture.componentInstance;
-    const dynamic = container.querySelectorAll('button')[5];
+    const dynamic = container.querySelector('[data-testid="dynamic"]')!;
 
     expect(dynamic.hasAttribute('data-trn-icon-button')).toBe(false);
 
