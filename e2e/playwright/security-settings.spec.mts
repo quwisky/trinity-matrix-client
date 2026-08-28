@@ -48,4 +48,37 @@ test.describe('Security settings', () => {
     // `/encryption/setup?returnTo=…` — don't anchor the match to the path end.
     await page.waitForURL(/\/encryption\/setup(\?|$)/, { timeout: 20_000 });
   });
+
+  test('keeps verification nested in the narrow web settings dialog', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}narrow-sec`;
+    const user = `sec-user-${runId}`;
+    const pass = `${user}-pass`;
+
+    await page.setViewportSize({ width: 700, height: 760 });
+    await registerUser(request, user, pass);
+    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    const roomUrl = page.url();
+
+    await openSettingsSection(page, 'security');
+    const verify = page.getByTestId('security-verify');
+    await expect(verify).toBeVisible({ timeout: 15_000 });
+    await verify.click();
+
+    const encryption = page.getByRole('dialog', { name: 'Encryption' });
+    await expect(encryption).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
+    await expect(page).toHaveURL(roomUrl);
+
+    await encryption.getByRole('button', { name: 'Close' }).click();
+    await expect(encryption).toBeHidden();
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
+    await expect(page).toHaveURL(roomUrl);
+    await expect(verify).toBeFocused();
+  });
 });

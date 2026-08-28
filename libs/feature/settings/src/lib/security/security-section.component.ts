@@ -6,6 +6,7 @@ import {
   ElementRef,
   OnInit,
   inject,
+  input,
   signal,
   viewChild,
 } from '@angular/core';
@@ -42,6 +43,10 @@ export class SecuritySectionComponent implements OnInit {
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly document = inject(DOCUMENT);
+  private destroyed = false;
+
+  /** True when this section is mounted inside the web/Electron settings modal. */
+  readonly inSettingsDialog = input(false);
 
   private readonly fileInput =
     viewChild<ElementRef<HTMLInputElement>>('keyFile');
@@ -56,6 +61,12 @@ export class SecuritySectionComponent implements OnInit {
   /** True while an export/import is in flight (disables the buttons). */
   readonly busy = signal(false);
 
+  constructor() {
+    this.destroyRef.onDestroy(() => {
+      this.destroyed = true;
+    });
+  }
+
   ngOnInit(): void {
     // Recompute against the live crypto state when the page opens (it's connected at
     // shell startup, but a re-read guarantees the panel reflects the current account).
@@ -65,13 +76,19 @@ export class SecuritySectionComponent implements OnInit {
   /** First-device setup: generate a recovery key + bootstrap cross-signing/backup. */
   setUp(): void {
     void this.router.navigate(['/encryption/setup'], {
-      queryParams: { returnTo: RETURN_TO },
+      queryParams: { returnTo: this.returnTo() },
     });
   }
 
   /** Trust this device from the account's saved recovery key. */
   unlock(): void {
-    void this.dialogs.openUnlock({ returnTo: RETURN_TO });
+    const forceDialog = this.inSettingsDialog();
+    void this.dialogs.openUnlock({
+      returnTo: this.returnTo(),
+      ...(forceDialog
+        ? { forceDialog: true, isOwnerActive: () => !this.destroyed }
+        : {}),
+    });
   }
 
   /**
@@ -80,12 +97,29 @@ export class SecuritySectionComponent implements OnInit {
    * rather than asking the user to find the same words a second time.
    */
   resetRecovery(): void {
-    void this.dialogs.openUnlock({ returnTo: RETURN_TO, offerReset: true });
+    const forceDialog = this.inSettingsDialog();
+    void this.dialogs.openUnlock({
+      returnTo: this.returnTo(),
+      ...(forceDialog
+        ? { forceDialog: true, isOwnerActive: () => !this.destroyed }
+        : {}),
+      offerReset: true,
+    });
   }
 
   /** Verify this session against another signed-in one (emoji SAS). */
   verifySession(): void {
-    void this.dialogs.openVerify({ returnTo: RETURN_TO });
+    const forceDialog = this.inSettingsDialog();
+    void this.dialogs.openVerify({
+      returnTo: this.returnTo(),
+      ...(forceDialog
+        ? { forceDialog: true, isOwnerActive: () => !this.destroyed }
+        : {}),
+    });
+  }
+
+  private returnTo(): string {
+    return this.inSettingsDialog() ? this.router.url : RETURN_TO;
   }
 
   /** Export this device's room keys to a passphrase-encrypted file. */

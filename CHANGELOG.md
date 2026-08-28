@@ -108,9 +108,10 @@ All notable changes to this project are documented here. The format is based on
   bounded Settings workspace as a named dialog without changing the room URL. Escape, the
   backdrop and the visible Close button dismiss it; keyboard focus stays inside and returns to
   its opener. Short windows keep overflow in the detail pane, and narrow web windows retain the
-  one-pane directory drill-in inside the dialog. Installed Android and iOS apps, bookmarks and
-  direct `/settings/...` links keep the routed flow. Appearance still includes the live theme,
-  palette, text-size, time-format and density preview.
+  one-pane directory drill-in inside the dialog, including nested device-verification and recovery
+  overlays. Failed or superseded dialog loads leave the current room in place. Installed Android
+  and iOS apps, bookmarks and direct `/settings/...` links keep the routed flow. Appearance still
+  includes the live theme, palette, text-size, time-format and density preview.
 
 - **Messages and the composer now share a clearer conversation hierarchy.** Message bodies,
   authors, timestamps, replies, threads, reactions, receipts, status rows and typing/divider

@@ -1,7 +1,15 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { Router } from '@angular/router';
-import { TrnDialogRef, TrnDialogService } from '@trinity/components/overlay';
+import {
+  NavigationStart,
+  Router,
+  type Event as RouterEvent,
+} from '@angular/router';
+import {
+  TrnDialogRef,
+  TrnDialogService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { Subject } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,6 +24,9 @@ class StubSettingsDialogComponent {}
 
 function setup(config?: Partial<SettingsDialogConfig>) {
   const closed = new Subject<unknown>();
+  const routerEvents = new Subject<RouterEvent>();
+  const navigate = vi.fn().mockResolvedValue(true);
+  const toast = { show: vi.fn() };
   const ref = new TrnDialogRef({ closed, close: vi.fn() });
   const value = {
     load: vi.fn().mockResolvedValue(StubSettingsDialogComponent),
@@ -25,8 +36,9 @@ function setup(config?: Partial<SettingsDialogConfig>) {
   TestBed.configureTestingModule({
     providers: [
       SettingsDialogService,
-      MockProvider(Router),
+      MockProvider(Router, { events: routerEvents, navigate }),
       MockProvider(TrnDialogService, { open: vi.fn().mockReturnValue(ref) }),
+      MockProvider(TrnToastService, toast),
       { provide: SETTINGS_DIALOG_CONFIG, useValue: value },
     ],
   });
@@ -36,6 +48,8 @@ function setup(config?: Partial<SettingsDialogConfig>) {
     dialog: TestBed.inject(TrnDialogService),
     config: value,
     closed,
+    routerEvents,
+    toast,
   };
 }
 
@@ -97,13 +111,51 @@ describe('SettingsDialogService', () => {
     expect(restoreFocus).toHaveBeenCalledOnce();
   });
 
-  it('falls back to the deep-link route when lazy loading fails', async () => {
-    const { service, router } = setup({
+  it('keeps the current route and reports when lazy loading fails', async () => {
+    const restoreFocus = vi.fn();
+    const { service, router, toast } = setup({
       load: () => Promise.reject(new Error('chunk unavailable')),
     });
 
-    await service.open({ section: 'security' });
+    await service.open({ section: 'security', restoreFocus });
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
 
-    expect(router.navigate).toHaveBeenCalledWith(['/settings', 'security'], {});
+    expect(router.navigate).not.toHaveBeenCalled();
+    expect(toast.show).toHaveBeenCalledWith(
+      'Could not open Settings. Please try again.',
+      { duration: 5000, variant: 'destructive' },
+    );
+    expect(restoreFocus).toHaveBeenCalledOnce();
+  });
+
+  it('does not open after navigation invalidates a pending load', async () => {
+    let resolve!: (component: typeof StubSettingsDialogComponent) => void;
+    const loading = new Promise<typeof StubSettingsDialogComponent>((done) => {
+      resolve = done;
+    });
+    const { service, dialog, routerEvents, toast } = setup({
+      load: () => loading,
+    });
+
+    const pending = service.open();
+    routerEvents.next(new NavigationStart(1, '/login'));
+    resolve(StubSettingsDialogComponent);
+    await pending;
+
+    expect(dialog.open).not.toHaveBeenCalled();
+    expect(toast.show).not.toHaveBeenCalled();
+  });
+
+  it('does not restore the old owner when navigation closes the dialog', async () => {
+    const restoreFocus = vi.fn();
+    const { service, closed, routerEvents } = setup();
+
+    await service.open({ restoreFocus });
+    routerEvents.next(new NavigationStart(1, '/encryption/setup'));
+    closed.next(undefined);
+    closed.complete();
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+
+    expect(restoreFocus).not.toHaveBeenCalled();
   });
 });

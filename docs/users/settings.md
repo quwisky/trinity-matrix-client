@@ -9,8 +9,8 @@ to it with an internal back button.
 
 Installed Android and iOS apps use the full-page routed flow so system Back and native history keep
 their expected meaning. A direct `/settings` or `/settings/<section>` link also opens that routed
-page on every platform; this makes settings sections bookmarkable and provides a fallback if the
-dialog's lazy-loaded code is unavailable.
+page on every platform, which keeps settings sections bookmarkable. If the dialog code cannot load,
+Trinity keeps the current room open and shows an error so you can retry without losing your place.
 
 !!! warning "Preferences do not follow your account"
 

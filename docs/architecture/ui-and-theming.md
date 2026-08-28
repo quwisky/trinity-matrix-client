@@ -806,7 +806,12 @@ component loaders are absent. See
 open `SettingsDialogComponent`, while `Capacitor.isNativePlatform()` routes Android and iOS to
 `/settings`. The app supplies the feature component through `SETTINGS_DIALOG_CONFIG`, so the
 public UI library never imports a feature. Direct settings URLs remain the canonical deep-link
-fallback. The presenter coalesces repeated opens while the lazy chunk loads and ignores a second
-trigger while one dialog is active.
+surface. A failed modal load leaves the current route intact and reports an error; a navigation
+that starts while the chunk is pending cancels its presentation. The presenter coalesces repeated
+opens while the lazy chunk loads and ignores a second trigger while one dialog is active. Security
+and Devices force their nested verification/recovery overlays to stay modal even in the narrow web
+drill-in, rather than returning the user through a routed Settings page.
 
-Toasts render through a single `<hlm-toaster/>` mounted in `AppComponent`.
+Toasts render through a single `<hlm-toaster/>` mounted in `AppComponent`. While CDK marks the app
+root `aria-hidden` for a modal, `TrnToastService` mirrors new messages through CDK's body-level
+`LiveAnnouncer`; outside a modal Sonner owns the announcement, avoiding duplicate speech.

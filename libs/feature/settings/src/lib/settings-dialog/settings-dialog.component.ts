@@ -56,7 +56,9 @@ export class SettingsDialogComponent {
   readonly sectionInputs = computed<Record<string, unknown>>(() =>
     this.selectedPath() === 'stickers' && this.initialSource()
       ? { initialSource: this.initialSource() }
-      : {},
+      : this.selectedPath() === 'security' || this.selectedPath() === 'devices'
+        ? { inSettingsDialog: true }
+        : {},
   );
   readonly advancedInjector = createEnvironmentInjector(
     [provideConfigEditor()],

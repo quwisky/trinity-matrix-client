@@ -197,7 +197,7 @@ bootstrapApplication(AppComponent, {
     },
     // All in-app Settings entry points use one lazy presenter: a named modal on web and
     // Electron, native routing on Android/iOS. Direct /settings URLs remain canonical
-    // deep links and the safe fallback if the settings chunk cannot load as a dialog.
+    // deep links; a failed dialog chunk leaves the working room in place and reports it.
     {
       provide: SETTINGS_DIALOG_CONFIG,
       useValue: SETTINGS_DIALOG_APP_CONFIG,

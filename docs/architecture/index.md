@@ -194,7 +194,9 @@ Four details are not obvious from the table:
 - **`/settings` has no default child redirect.** Bare `/settings` renders the settings shell with
   an empty detail outlet; the fourteen sections are children of it. In-app entry points on web and
   Electron normally open the same registry in `SettingsDialogComponent` without navigating. The
-  route remains the installed-mobile target, bookmark/deep-link surface and lazy-load fallback.
+  route remains the installed-mobile target and bookmark/deep-link surface. A failed modal chunk
+  leaves the current room route intact and produces a retryable error instead of attempting the
+  same unavailable feature chunk through the router.
 - **The `canDeactivate` guards on the two encryption routes exist because those pages display a
   recovery key exactly once and never persist it.** The browser Back button would otherwise
   discard it silently. Those guards are also why `main.ts` passes
