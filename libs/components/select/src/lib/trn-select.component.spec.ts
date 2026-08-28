@@ -59,6 +59,16 @@ describe('TrnSelectComponent', () => {
     expect(container.querySelector('button')?.className).toContain('w-full');
   });
 
+  it('keeps the shared coarse-pointer target floor on the trigger', async () => {
+    const { container } = await render(HostComponent);
+    const buttonClass = container.querySelector('button')?.className;
+
+    expect(buttonClass).toContain(
+      'min-h-[max(var(--trinity-density-control-size),var(--trinity-interaction-target-min-size))]',
+    );
+    expect(buttonClass).toContain('text-[var(--trinity-text-bright)]');
+  });
+
   it('forwards its accessible name to the actual combobox trigger', async () => {
     const { container } = await render(HostComponent);
     const button = container.querySelector('[role=combobox]');

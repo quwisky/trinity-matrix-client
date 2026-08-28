@@ -149,6 +149,28 @@ test.describe('Settings', () => {
       page.getByRole('combobox', { name: 'Conversation density' }),
     ).toBeVisible();
 
+    const pointerOption = page.getByTestId('theme-light');
+    await pointerOption.click();
+    expect(
+      await pointerOption.evaluate(
+        (element) => getComputedStyle(element).outlineStyle,
+      ),
+    ).toBe('none');
+
+    const lightRadio = page.getByRole('radio', { name: 'Light' });
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    await expect(lightRadio).toBeFocused();
+    const focusPaint = await pointerOption.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        style: style.outlineStyle,
+        width: Number.parseFloat(style.outlineWidth),
+      };
+    });
+    expect(focusPaint.style).not.toBe('none');
+    expect(focusPaint.width).toBeGreaterThanOrEqual(2);
+
     const densityRow = page.getByTestId('density-select').locator('..');
     const densityLabel = page.locator('#appearance-density-heading');
     const densityControl = page.getByRole('combobox', {
@@ -180,6 +202,40 @@ test.describe('Settings', () => {
       notificationBox!.x + notificationBox!.width / 2,
     );
 
+    const settingsDetail = page.getByTestId('settings-detail');
+    await settingsDetail.evaluate((element) => {
+      (element as HTMLElement).dir = 'rtl';
+    });
+    await openSection(page, 'appearance');
+    const [rtlLabelBox, rtlControlBox] = await Promise.all([
+      densityLabel.boundingBox(),
+      densityControl.boundingBox(),
+    ]);
+    expect(rtlLabelBox).not.toBeNull();
+    expect(rtlControlBox).not.toBeNull();
+    expect(rtlControlBox!.x + rtlControlBox!.width).toBeLessThanOrEqual(
+      rtlLabelBox!.x,
+    );
+    expect(
+      await page
+        .getByTestId('settings-detail')
+        .evaluate((element) => element.scrollWidth - element.clientWidth),
+    ).toBeLessThanOrEqual(1);
+
+    await openSection(page, 'notifications');
+    const [rtlNotificationBox, rtlSwitchBox] = await Promise.all([
+      notificationRow.boundingBox(),
+      notificationSwitch.boundingBox(),
+    ]);
+    expect(rtlNotificationBox).not.toBeNull();
+    expect(rtlSwitchBox).not.toBeNull();
+    expect(rtlSwitchBox!.x + rtlSwitchBox!.width).toBeLessThan(
+      rtlNotificationBox!.x + rtlNotificationBox!.width / 2,
+    );
+    await settingsDetail.evaluate((element) => {
+      (element as HTMLElement).dir = 'ltr';
+    });
+
     await openSection(page, 'profile');
     await expect(
       page.getByText('Manage the name and avatar people see across Matrix.'),
@@ -210,6 +266,60 @@ test.describe('Settings', () => {
     await openSection(page, 'appearance');
     await page.getByTestId('theme-dark').click();
     await expect.poll(() => hasDarkPalette(page)).toBe(true);
+
+    const paletteTrigger = page.getByRole('combobox', { name: 'Palette' });
+    await paletteTrigger.evaluate((element) => {
+      element.setAttribute('data-testid', 'dark-palette-trigger');
+    });
+    const selectText = await resolveTokenSrgb(
+      page,
+      'dark-palette-trigger',
+      '--trinity-text-bright',
+    );
+    await expect
+      .poll(
+        async () => (await measureContrast(page, 'dark-palette-trigger')).text,
+      )
+      .toEqual(selectText);
+    const selectPaint = await measureContrast(page, 'dark-palette-trigger');
+    expect(selectPaint.ratio).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
+
+    await paletteTrigger.evaluate((element) => {
+      element.setAttribute('data-placeholder', '');
+    });
+    const placeholderText = await resolveTokenSrgb(
+      page,
+      'dark-palette-trigger',
+      '--muted-foreground',
+    );
+    await expect
+      .poll(
+        async () => (await measureContrast(page, 'dark-palette-trigger')).text,
+      )
+      .toEqual(placeholderText);
+    await paletteTrigger.evaluate((element) => {
+      element.removeAttribute('data-placeholder');
+    });
+    await expect
+      .poll(
+        async () => (await measureContrast(page, 'dark-palette-trigger')).text,
+      )
+      .toEqual(selectText);
+
+    await openSection(page, 'notifications');
+    const switchLabel = page.locator('[data-testid^="notif-"]').first();
+    await switchLabel.evaluate((element) => {
+      element.setAttribute('data-testid', 'dark-switch-label');
+    });
+    const switchPaint = await measureContrast(page, 'dark-switch-label');
+    expect(switchPaint.text).toEqual(
+      await resolveTokenSrgb(
+        page,
+        'dark-switch-label',
+        '--trinity-text-bright',
+      ),
+    );
+    expect(switchPaint.ratio).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
 
     // The account-dock gear used to expose a native `title`, which the browser painted as
     // a light OS tooltip regardless of Trinity's selected theme. Close the dialog and drive
@@ -767,6 +877,53 @@ test.describe('Settings', () => {
       await expect(
         page.getByRole('heading', { name: 'Appearance' }),
       ).toBeFocused();
+
+      await page.getByTestId('text-scale-select').getByRole('combobox').click();
+      await page.getByTestId('text-scale-larger').click();
+      await page.getByTestId('density-select').getByRole('combobox').click();
+      await page.getByTestId('density-compact').click();
+
+      const appearanceGeometry = () =>
+        page.evaluate(() => {
+          const detail = document.querySelector<HTMLElement>(
+            '[data-testid=settings-detail]',
+          );
+          if (!detail) throw new Error('settings detail pane missing');
+          const pane = detail.getBoundingClientRect();
+          const controls = [
+            ...detail.querySelectorAll<HTMLElement>(
+              '[role=combobox], [data-testid^=theme-]',
+            ),
+          ]
+            .map((element) => element.getBoundingClientRect())
+            .filter((box) => box.width > 0 && box.height > 0);
+          return {
+            documentOverflow:
+              document.documentElement.scrollWidth -
+              document.documentElement.clientWidth,
+            detailOverflow: detail.scrollWidth - detail.clientWidth,
+            controlsInside: controls.every(
+              (control) =>
+                control.left >= pane.left - 1 &&
+                control.right <= pane.right + 1,
+            ),
+          };
+        });
+
+      const pixelGeometry = await appearanceGeometry();
+      expect(pixelGeometry.documentOverflow).toBeLessThanOrEqual(1);
+      expect(pixelGeometry.detailOverflow).toBeLessThanOrEqual(1);
+      expect(pixelGeometry.controlsInside).toBe(true);
+      expect(
+        (await page.getByRole('combobox', { name: 'Palette' }).boundingBox())
+          ?.height ?? 0,
+      ).toBeGreaterThanOrEqual(44);
+
+      await page.setViewportSize({ width: 320, height: 568 });
+      const narrowGeometry = await appearanceGeometry();
+      expect(narrowGeometry.documentOverflow).toBeLessThanOrEqual(1);
+      expect(narrowGeometry.detailOverflow).toBeLessThanOrEqual(1);
+      expect(narrowGeometry.controlsInside).toBe(true);
       await page.goBack();
       await expect(appearance).toBeFocused();
     });

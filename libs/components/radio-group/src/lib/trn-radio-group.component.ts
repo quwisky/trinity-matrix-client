@@ -110,7 +110,7 @@ export interface TrnRadioOption<T> {
         box-shadow: var(--trinity-shadow-raised);
       }
 
-      :host([data-variant='segmented']) label:has(brn-radio:focus-visible) {
+      :host([data-variant='segmented']) label:has(input:focus-visible) {
         outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
         outline-offset: var(--trinity-focus-ring-offset);
       }

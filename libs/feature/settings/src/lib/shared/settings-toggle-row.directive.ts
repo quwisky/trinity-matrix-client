@@ -10,7 +10,7 @@ import { Directive, input } from '@angular/core';
     class:
       'mx-4 flex cursor-pointer flex-row-reverse items-center justify-between gap-[var(--trinity-density-row-gap)] border-t border-solid border-[var(--trinity-border-subtle)] px-[var(--trinity-density-row-padding-inline)] py-[var(--trinity-density-row-padding-block)] text-start text-[length:var(--trinity-type-control-size)] leading-[var(--trinity-type-control-line-height)] font-[var(--trinity-type-control-weight)] hover:bg-[var(--trinity-state-hover-surface)]',
     style:
-      'min-height: max(var(--trinity-density-control-size), var(--trinity-interaction-target-min-size))',
+      'min-height: max(var(--trinity-density-control-size), var(--trinity-interaction-target-min-size)); color: var(--trinity-text-bright)',
     '[style.margin-inline-start]':
       "nested() ? 'calc(var(--trinity-space-4) + var(--trinity-space-4))' : null",
   },

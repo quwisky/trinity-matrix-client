@@ -5,11 +5,14 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
   selector: 'trn-settings-group',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
-    class: 'grid gap-[var(--trinity-space-4)]',
+    class: 'block',
   },
   template: `
-    <section [attr.aria-labelledby]="headingId()">
-      <header class="mb-[var(--trinity-space-4)]">
+    <section
+      class="grid gap-[var(--trinity-space-4)]"
+      [attr.aria-labelledby]="headingId()"
+    >
+      <header>
         <h3
           class="m-0 text-[length:var(--trinity-type-body-size)] leading-[var(--trinity-type-body-line-height)] font-semibold text-[var(--trinity-text-bright)]"
           [id]="headingId()"

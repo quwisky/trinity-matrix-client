@@ -16,6 +16,7 @@ describe('SettingsGroupComponent', () => {
     const heading = container.querySelector('h3');
 
     expect(section?.getAttribute('aria-labelledby')).toBe('layout-heading');
+    expect(section?.className).toContain('grid');
     expect(heading?.id).toBe('layout-heading');
     expect(section?.textContent).toContain(
       'Choose the spacing used by the application.',

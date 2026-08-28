@@ -81,7 +81,8 @@ All notable changes to this project are documented here. The format is based on
   conversation preview, a segmented mode picker and labelled two-column control rows, while every
   section gains a clear title and supporting description. Related controls use calmer group
   headings, switches sit on the logical trailing edge, and select fields expose their visible
-  labels to assistive technology. The layout remains contained at 125% text and Compact density.
+  labels to assistive technology. Select values and switch labels retain readable theme-aware
+  foregrounds in dark mode. The layout remains contained at 125% text and Compact density.
 
 - **Read-receipt avatars keep the full timeline edge beside authenticity shields.** A shield now
   reserves space only beside the message content; the “seen by” row spans underneath it and remains
