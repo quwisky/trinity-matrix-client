@@ -77,6 +77,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Visual review files no longer live in the source tree.** Design exploration, screenshots, GIFs
+  and pixel baselines are kept out of the repository. UI proof is uploaded directly to pull
+  requests, while automated coverage uses semantic, contrast, responsive and measured-layout
+  checks against the real application.
+
 - **Chat messages are easier to read at the default text size.** Conversation prose now starts at
   16px with 1.5 line spacing, while compact authors, timestamps, replies and navigation chrome keep
   their existing hierarchy. The Appearance preview uses the same message typography as the live

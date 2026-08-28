@@ -296,7 +296,6 @@ test.describe('Message grouping', () => {
       .poll(() => filler.evaluate((node) => node.clientHeight))
       .toBeGreaterThan(600);
 
-    const scroll = page.locator('.scroll').first();
     const firstActionRow = page
       .locator('.msg--cont')
       .filter({ hasText: `edge filler ${runId} 32` });

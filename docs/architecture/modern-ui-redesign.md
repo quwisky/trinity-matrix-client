@@ -321,32 +321,28 @@ there should be no long-lived branch containing the entire redesign.
 
 The semantic-avatar slice is the Phase 0 pilot for this plan. It preserves the existing 30% place
 radius rather than claiming a newly measured target, moves that value behind one semantic token,
-and adds Storybook plus real-browser comparisons so later prototypes can tune it centrally. It does
-not complete Phase 0: the reference screenshots, viewport fixtures and broader desktop/phone
-prototypes below remain the gate before finalising the rest of the Phase 1 token system.
+and adds Storybook plus real-browser comparisons so later phases can tune it centrally.
 
-### Phase 0 - baselines and prototypes
+### Phase 0 - direction and responsive contracts
 
-Status: in progress. The semantic-avatar pilot is implemented in PR #271. The first follow-up
-slice adds canonical viewport/device profiles and non-shipping workspace/settings candidates under
-`e2e/design-prototypes/`. The next slice records the real current room shell, appearance settings,
-login and safe encryption introduction under `e2e/design-baselines/`, including compact-height
-room/settings evidence. The current archive is deliberately non-gating so later redesign phases can
-change without rewriting the historical “before” state. Product-direction approval is still a
-human gate, not an automated test result.
+Status: implemented. The semantic-avatar pilot is implemented in PR #271. Canonical desktop,
+compact-window and full-device viewport fixtures are reusable by real-application Playwright
+journeys. Product-direction review remains a human gate: visual proof is uploaded directly to the
+pull request and is never stored in the source tree.
 
 Deliverables:
 
-- capture reference screenshots for the room shell, settings, login and encryption flows;
 - define desktop, compact-window and phone viewport fixtures;
-- prototype the workspace surface, shape rules and settings layout in Storybook or static branches;
+- explore the workspace surface, shape rules and settings layout in Storybook or short-lived local
+  work;
 - choose measurable token targets only after comparing light, dark and Onyx together.
 
 Acceptance:
 
-- product direction is approved from at least one desktop and one phone prototype;
-- no prototype requires a new framework or direct vendor imports from feature code;
-- baseline screenshots cover long names, unread badges, a busy timeline, empty states and errors.
+- product direction is reviewed with desktop and phone proof uploaded to the pull request;
+- design exploration requires no new framework or direct vendor imports from feature code;
+- semantic and geometry journeys cover long names, unread badges, busy timelines and responsive
+  controls.
 
 ### Phase 1 - foundations
 
@@ -354,7 +350,7 @@ Status: implemented. The first foundations slice introduces component-facing sur
 typography, density and interaction roles while preserving the existing palette primitives. It
 applies the recipes to the banner, message toolbar and media bubble and tests their rendered
 states through Storybook. Final value tuning and a production font decision remain gated on the
-Phase 0 human prototype approval; the system font remains authoritative until that decision is
+Phase 0 human design approval; the system font remains authoritative until that decision is
 recorded.
 
 Primary ownership:
@@ -385,7 +381,7 @@ Status: implemented. The shell now consumes the Phase 1 surface, state, shape, f
 roles across the rail, room list, shared conversation header, member list and identity dock. The
 recessed workspace is paint-only so persisted pane geometry and outward focus rings remain intact;
 the member list keeps its fixed 34px section headers and 44px rows because those measurements feed
-its virtual window. Final font and value tuning remains behind the Phase 0 human prototype approval
+its virtual window. Final font and value tuning remains behind the Phase 0 human design approval
 gate described above.
 
 Primary ownership:
@@ -564,11 +560,10 @@ Acceptance:
 
 ### Phase 7 - hardening and rollout
 
-Status: implemented. A separate shipped-interface suite now pixel-gates nine deterministic real-app
-compositions while semantic geometry, contrast, focus, reduced-motion and overflow checks cover a
-seven-project representative cross-cutting matrix, including genuine WebKit plus full Pixel 5 and
-320x568 device descriptors. The Phase 0
-archive remains immutable. Three unused global compatibility tokens were removed, and a source-shape
+Status: implemented. A separate shipped-interface suite checks semantic geometry, contrast, focus,
+reduced motion, unread content, safe setup and overflow across a seven-project representative
+cross-cutting matrix, including genuine WebKit plus full Pixel 5 and 320x568 device descriptors.
+Three unused global compatibility tokens were removed, and a source-shape
 guard now rejects future unused central tokens. Production rollout builds `www/` once, records a
 sorted SHA-256 manifest and verifies the exact unchanged payload after Electron and Capacitor copy
 it; only Capacitor's two named bootstrap scripts may be additional files.
@@ -580,10 +575,10 @@ skeletons plus settings search remain the separately recorded follow-up work fro
 
 Deliverables:
 
-- visual regression coverage for the agreed reference screens;
+- semantic, contrast and responsive coverage for the agreed reference screens;
 - accessibility, contrast, responsive and performance sweep;
 - removal of obsolete compatibility inputs and unused tokens;
-- user documentation and screenshots updated to the shipped interface;
+- user documentation updated and pull-request visual proof uploaded outside the repository;
 - release notes/changelog entry describing visible changes and any moved controls.
 
 Acceptance:
@@ -608,9 +603,9 @@ Every implementation issue selects the relevant rows; the phase-closing PR runs 
 | Motion       | normal and `prefers-reduced-motion: reduce`                                |
 | Content      | empty, loading, error, offline, long names, unread-heavy and busy timeline |
 
-Visual assertions belong in Playwright, not jsdom. Existing behavioral tests should remain focused
-on semantics; add screenshot tests only for stable representative compositions, with fonts and data
-made deterministic.
+Layout assertions belong in Playwright, not jsdom. Existing behavioural tests remain focused on
+semantics, computed styles and measured geometry. Screenshots and GIFs used for human review are
+uploaded directly to the pull request and never committed as baselines or documentation assets.
 
 ## Implementation loop for every issue
 

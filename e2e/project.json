@@ -29,27 +29,8 @@
         "cwd": "{projectRoot}"
       }
     },
-    "design-e2e": {
-      "//": "Non-shipping redesign candidates rendered against the built application tokens. Linux-generated snapshots are the visual authority; semantic assertions run across every canonical redesign viewport.",
-      "cache": false,
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "playwright test -c playwright.design.config.mts",
-        "cwd": "{projectRoot}"
-      }
-    },
-    "design-current-e2e": {
-      "//": "Manual Phase 0 evidence journey against the real app and a fixed-port Synapse stack. Non-parallel because it owns that external stack; PNG promotion is a separate atomic command.",
-      "cache": false,
-      "parallelism": false,
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "node design-baselines/prepare.mjs && playwright test -c playwright.current-baselines.config.mts",
-        "cwd": "{projectRoot}"
-      }
-    },
-    "phase7-visual-e2e": {
-      "//": "Shipped real-app pixel and semantic evidence. Separate from the immutable Phase 0 archive; serialized because it owns the fixed Synapse stack and deterministic accounts.",
+    "phase7-e2e": {
+      "//": "Shipped real-app semantic, responsive, contrast and geometry coverage. Serialized because it owns the fixed Synapse stack and deterministic accounts.",
       "cache": false,
       "parallelism": false,
       "executor": "nx:run-commands",

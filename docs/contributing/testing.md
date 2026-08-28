@@ -626,73 +626,32 @@ The release pipeline runs no browser or Electron end-to-end test at all — see
 [CI and releases](ci-and-releases.md) for what does gate a tag, and for the
 repository-level invariant specs that guard configuration a green run cannot see.
 
-## Redesign prototype evidence
+## Shipped-interface responsive checks and pull-request proof
 
-The non-shipping scenes in `e2e/design-prototypes/` render against the built application's real
-theme stylesheet without adding an Angular route or production asset. They provide deterministic
-comparison material for the modern UI redesign across the canonical desktop, compact-window and
-full mobile-device profiles.
+Phase 7 provides a separate real-application semantic and geometry gate:
 
 ```bash
-pnpm e2e:design
-pnpm exec nx run trinity-e2e:design-e2e -- --update-snapshots
-```
-
-Playwright's managed Linux Chromium is authoritative for committed pixel baselines. The scenes
-load the locked Storybook package's bundled Nunito Sans files instead of a system font; the harness
-also fixes content and times, waits for the font, disables animation and carets, and requests
-reduced motion. Semantic checks cover landmarks, navigation state, accessible names, labels,
-representative contrast for both screens in every reference theme, overflow, composer reachability,
-and two-dimensional phone target size on both screens. See
-[`e2e/design-prototypes/README.md`](../../e2e/design-prototypes/README.md) for the profile matrix,
-state coverage and the human approval checklist.
-
-## Current-interface redesign archive
-
-The Phase 0 “before” archive is separate from the proposed static scenes. It drives the real built
-application against disposable Synapse at desktop-wide, desktop-compact and full Pixel 5 profiles:
-
-```bash
-pnpm e2e:design:current
-pnpm e2e:design:current:update
-```
-
-The first command requires a clean tracked worktree, forces a fresh local application build,
-performs semantic/layout checks and writes ephemeral captures under `dist/`. The second runs the
-same journey and only then atomically promotes a complete Linux set into
-`e2e/design-baselines/archive/`. Those PNGs are historical comparison material, not pixel gates;
-later redesign phases are expected to look different. Promotion verifies the capture-time commit
-and Git tree against the still-clean checkout. The provenance manifest records that identity and
-the exact capture environment because the current application deliberately uses its platform
-system font.
-
-This target is manual while its additional app build, Synapse lifecycle and three UI logins are
-measured. It is non-cacheable and non-parallel because it owns the same fixed-port stack as the
-canonical web, Android and protocol harnesses. See
-[`e2e/design-baselines/README.md`](../../e2e/design-baselines/README.md) for isolation, normalization,
-security and archive rules.
-
-## Shipped-interface visual regression
-
-Phase 7 keeps the Phase 0 archive immutable and adds a separate real-application gate:
-
-```bash
-pnpm e2e:design:shipped
+pnpm e2e:ui:shipped
 ```
 
 It creates and records a production build, then drives seven representative cross-cutting
 viewport/device profiles against disposable Synapse, including genuine WebKit plus full Pixel 5
-and 320x568 mobile descriptors rather than resized desktop Chromium. Nine stable auth, room,
-settings, encryption and emoji-picker compositions are pixel-gated with deterministic fonts and
-copy; every project also checks geometry, horizontal overflow, rendered contrast, focus and the
-production reduced-motion contract. See [`e2e/phase7/README.md`](../../e2e/phase7/README.md) for the
-matrix and snapshot-update policy.
+and 320x568 mobile descriptors rather than resized desktop Chromium. The suite checks geometry,
+horizontal overflow, rendered contrast, focus, accessible names, unread content, safe encryption
+setup and the production reduced-motion contract with Trinity's production typography. See
+[`e2e/phase7/README.md`](../../e2e/phase7/README.md) for the matrix.
+
+Visual proof is a review artifact, not source. Capture screenshots and GIFs under ignored
+Playwright output or another temporary directory, upload them directly to the pull request, then
+discard the local copies. Never commit prototypes, proof media or pixel baselines. Failure-only
+screenshots, traces and videos remain useful diagnostics, but they stay in ignored local output or
+short-lived CI artifacts.
 
 For cross-platform rollout evidence, the shipped-interface command builds `www/` once and hashes it
 before either wrapper copies it:
 
 ```bash
-pnpm e2e:design:shipped
+pnpm e2e:ui:shipped
 pnpm electron:build:prebuilt
 TRINITY_E2E_PREBUILT_WWW=1 pnpm e2e:android -- --grep @phase7-smoke
 pnpm bundle:manifest:verify

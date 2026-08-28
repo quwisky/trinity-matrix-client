@@ -9,11 +9,10 @@ const { defaultBrowserType: _safariBrowser, ...desktopSafari } =
   devices['Desktop Safari'];
 
 /**
- * Real shipped-interface evidence for Phase 7.
+ * Real shipped-interface semantic and responsive coverage for Phase 7.
  *
- * This is deliberately separate from the immutable Phase 0 archive and from the static design
- * prototypes. Seven projects cover a representative cross-cutting responsive, appearance,
- * density and browser matrix, while the spec pixel-gates only nine stable surfaces.
+ * Seven projects cover a representative cross-cutting appearance, density, viewport and browser
+ * matrix without storing pixel baselines in the repository.
  */
 export default defineConfig({
   ...nxE2EPreset(import.meta.dirname, { testDir: './phase7' }),

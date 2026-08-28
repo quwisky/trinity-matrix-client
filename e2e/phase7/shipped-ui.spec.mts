@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import {
   expect,
   test,
@@ -14,38 +12,28 @@ import {
   synapseSession,
   type SynapseSession,
 } from '../playwright/support/app.mts';
-import { registerUser } from '../playwright/support/account.mts';
+import { passwordLogin, registerUser } from '../playwright/support/account.mts';
 import {
   AA_NORMAL_TEXT,
   measureContrast,
 } from '../playwright/support/contrast.mts';
 
 const session = synapseSession();
-const regularFont = readFileSync(
-  resolve(
-    import.meta.dirname,
-    '../../node_modules/storybook/assets/browser/nunito-sans-regular.woff2',
-  ),
-);
-const boldFont = readFileSync(
-  resolve(
-    import.meta.dirname,
-    '../../node_modules/storybook/assets/browser/nunito-sans-bold.woff2',
-  ),
-);
+const ROOM_MESSAGES = [
+  'The shipped interface keeps the conversation as the visual focus.',
+  'Compact density and larger text remain independent choices.',
+  'Web, Electron and Android share this exact application payload.',
+] as const;
 
 type Mode = 'light' | 'dark';
 type Palette = 'trinity' | 'amethyst' | 'onyx';
 type Density = 'cosy' | 'compact';
 type TextScale = 'default' | 'larger';
-type Surface = 'login' | 'room' | 'settings' | 'crypto' | 'emoji';
-
 interface Appearance {
   mode: Mode;
   palette: Palette;
   density: Density;
   textScale: TextScale;
-  screenshots: readonly Surface[];
 }
 
 const MATRIX: Record<string, Appearance> = {
@@ -54,49 +42,42 @@ const MATRIX: Record<string, Appearance> = {
     palette: 'trinity',
     density: 'cosy',
     textScale: 'default',
-    screenshots: ['room'],
   },
   'standard-amethyst-cosy': {
     mode: 'dark',
     palette: 'amethyst',
     density: 'cosy',
     textScale: 'default',
-    screenshots: ['room', 'emoji'],
   },
   'tablet-light-compact': {
     mode: 'light',
     palette: 'trinity',
     density: 'compact',
     textScale: 'default',
-    screenshots: ['room'],
   },
   'compact-light-large': {
     mode: 'light',
     palette: 'trinity',
     density: 'compact',
     textScale: 'larger',
-    screenshots: ['settings'],
   },
   'pixel-onyx-cosy': {
     mode: 'dark',
     palette: 'onyx',
     density: 'cosy',
     textScale: 'default',
-    screenshots: ['room', 'emoji'],
   },
   'small-light-large': {
     mode: 'light',
     palette: 'trinity',
     density: 'compact',
     textScale: 'larger',
-    screenshots: ['login', 'crypto'],
   },
   'webkit-compact-light': {
     mode: 'light',
     palette: 'trinity',
     density: 'compact',
     textScale: 'default',
-    screenshots: [],
   },
 };
 
@@ -109,73 +90,71 @@ async function seedRoom(
   projectName: string,
 ): Promise<{ credentials: SynapseSession; roomName: string }> {
   const suffix = slug(projectName);
-  const user = `phase7-${suffix}`;
-  const pass = `${user}-pass`;
+  const reader = `phase7-${suffix}-reader`;
+  const readerPass = `${reader}-pass`;
+  const sender = `phase7-${suffix}-sender`;
+  const senderPass = `${sender}-pass`;
   const roomName = `Phase 7 ${suffix}`;
-  await registerUser(request, user, pass);
-  const auth = await request
-    .post(`${session.hs}/_matrix/client/v3/login`, {
+  await registerUser(request, reader, readerPass);
+  await registerUser(request, sender, senderPass);
+  const readerSession = await passwordLogin(
+    request,
+    session.hs as string,
+    reader,
+    readerPass,
+  );
+  const senderSession = await passwordLogin(
+    request,
+    session.hs as string,
+    sender,
+    senderPass,
+  );
+  const readerHeaders = {
+    Authorization: `Bearer ${readerSession.accessToken}`,
+  };
+  const senderHeaders = {
+    Authorization: `Bearer ${senderSession.accessToken}`,
+  };
+  const created = await request.post(
+    `${session.hs}/_matrix/client/v3/createRoom`,
+    {
+      headers: readerHeaders,
       data: {
-        type: 'm.login.password',
-        identifier: { type: 'm.id.user', user },
-        password: pass,
+        name: roomName,
+        preset: 'private_chat',
+        invite: [senderSession.userId],
       },
-    })
-    .then((response) => response.json());
-  const headers = { Authorization: `Bearer ${auth.access_token as string}` };
-  const roomId = await request
-    .post(`${session.hs}/_matrix/client/v3/createRoom`, {
-      headers,
-      data: { name: roomName, preset: 'private_chat' },
-    })
-    .then((response) => response.json())
-    .then((json) => json.room_id as string);
+    },
+  );
+  expect(created.ok(), 'create shipped-interface room').toBe(true);
+  const roomId = ((await created.json()) as { room_id: string }).room_id;
+  const joined = await request.post(
+    `${session.hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
+    { headers: senderHeaders },
+  );
+  expect(joined.ok(), 'join shipped-interface sender').toBe(true);
 
-  const messages = [
-    'The shipped interface keeps the conversation as the visual focus.',
-    'Compact density and larger text remain independent choices.',
-    'Web, Electron and Android share this exact application payload.',
-  ];
-  for (const [index, body] of messages.entries()) {
+  for (const [index, body] of ROOM_MESSAGES.entries()) {
     const response = await request.put(
       `${session.hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${suffix}-${index}`,
-      { headers, data: { msgtype: 'm.text', body } },
+      { headers: senderHeaders, data: { msgtype: 'm.text', body } },
     );
     expect(response.ok(), `seed message ${index}`).toBe(true);
   }
   return {
-    credentials: { available: true, hs: session.hs, user, pass },
+    credentials: {
+      available: true,
+      hs: session.hs,
+      user: reader,
+      pass: readerPass,
+    },
     roomName,
   };
-}
-
-async function installDeterministicFont(page: Page): Promise<void> {
-  await page.route('**/__phase7-font-regular.woff2', (route) =>
-    route.fulfill({ body: regularFont, contentType: 'font/woff2' }),
-  );
-  await page.route('**/__phase7-font-bold.woff2', (route) =>
-    route.fulfill({ body: boldFont, contentType: 'font/woff2' }),
-  );
 }
 
 async function stabilize(page: Page): Promise<void> {
   await page.addStyleTag({
     content: `
-      @font-face {
-        font-family: "Trinity Phase 7";
-        src: url("/__phase7-font-regular.woff2") format("woff2");
-        font-weight: 400 600;
-        font-display: block;
-      }
-      @font-face {
-        font-family: "Trinity Phase 7";
-        src: url("/__phase7-font-bold.woff2") format("woff2");
-        font-weight: 700 900;
-        font-display: block;
-      }
-      html, body, button, input, select, textarea {
-        font-family: "Trinity Phase 7", sans-serif !important;
-      }
       *, *::before, *::after {
         animation: none !important;
         caret-color: transparent !important;
@@ -187,14 +166,7 @@ async function stabilize(page: Page): Promise<void> {
     `,
   });
   await page.evaluate(async () => {
-    await document.fonts.load('16px "Trinity Phase 7"');
-    await document.fonts.load('700 16px "Trinity Phase 7"');
     await document.fonts.ready;
-    for (const time of document.querySelectorAll('.msg__gutter, .msg__time')) {
-      time.textContent = '09:41';
-    }
-    const build = document.querySelector('[data-testid="settings-build"]');
-    if (build) build.textContent = 'Trinity shipped interface';
   });
 }
 
@@ -240,6 +212,9 @@ async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();
   const room = page.locator('.channel', { hasText: roomName }).first();
   await room.waitFor({ state: 'visible', timeout: 30_000 });
+  await expect(room.locator('.channel__badge')).toBeVisible({
+    timeout: 20_000,
+  });
   await room.click();
   await expect(page.getByTestId('composer-input')).toBeVisible({
     timeout: 20_000,
@@ -281,18 +256,6 @@ async function expectReadable(page: Page, heading: Locator): Promise<void> {
   expect(contrast.ratio).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
 }
 
-async function screenshot(
-  target: Locator,
-  surface: Surface,
-  appearance: Appearance,
-): Promise<void> {
-  if (!appearance.screenshots.includes(surface)) return;
-  await expect(target).toHaveScreenshot(`${surface}.png`, {
-    animations: 'disabled',
-    caret: 'hide',
-  });
-}
-
 async function attachPerformanceEvidence(
   page: Page,
   testInfo: TestInfo,
@@ -325,7 +288,7 @@ async function attachPerformanceEvidence(
 test.describe('@phase7 shipped UI', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('matches the approved representative visual and semantic matrix', async ({
+  test('satisfies the representative semantic and responsive matrix', async ({
     browserName,
     page,
     request,
@@ -340,7 +303,6 @@ test.describe('@phase7 shipped UI', () => {
       request,
       testInfo.project.name,
     );
-    await installDeterministicFont(page);
     await page.emulateMedia({
       colorScheme: appearance.mode,
       reducedMotion: 'reduce',
@@ -356,9 +318,9 @@ test.describe('@phase7 shipped UI', () => {
     });
     await stabilize(page);
     const loginCard = page.locator('.login-card');
+    await expectInsideViewport(page, loginCard, 'login card');
     await expectNoHorizontalScroll(page);
     await expectReadable(page, page.getByRole('heading', { level: 1 }));
-    await screenshot(loginCard, 'login', appearance);
 
     await signIn(page, credentials);
     await openRoom(page, roomName);
@@ -367,7 +329,25 @@ test.describe('@phase7 shipped UI', () => {
     await expectInsideViewport(page, shell, 'room shell');
     await expectNoHorizontalScroll(page);
     await expectReadable(page, page.getByRole('heading', { name: roomName }));
-    await screenshot(shell, 'room', appearance);
+    for (const body of ROOM_MESSAGES) {
+      await expect(
+        page.locator('.main .msg__text', { hasText: body }),
+      ).toBeVisible();
+    }
+    await expect(page.getByTestId('composer-input')).toHaveAccessibleName(
+      new RegExp(roomName),
+    );
+    if ((page.viewportSize()?.width ?? Number.POSITIVE_INFINITY) < 768) {
+      for (const target of [
+        page.getByTestId('back-to-rooms'),
+        page.getByTestId('composer-send'),
+      ]) {
+        const box = await target.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box!.width).toBeGreaterThanOrEqual(44);
+        expect(box!.height).toBeGreaterThanOrEqual(44);
+      }
+    }
 
     const emojiTrigger = page.getByRole('button', { name: 'Insert emoji' });
     await emojiTrigger.click();
@@ -378,7 +358,6 @@ test.describe('@phase7 shipped UI', () => {
     await expect(
       emoji.locator('.emoji-mart-search input'),
     ).toHaveAccessibleName(/search/i);
-    await screenshot(emoji, 'emoji', appearance);
     await page.keyboard.press('Escape');
     await expect(emoji).toBeHidden();
     await expect(emojiTrigger).toBeFocused();
@@ -396,7 +375,17 @@ test.describe('@phase7 shipped UI', () => {
     await expect(
       page.getByTestId('palette-select').getByRole('combobox'),
     ).toHaveAccessibleName('Palette');
-    await screenshot(settings, 'settings', appearance);
+    await expect(
+      page.getByTestId('text-scale-select').getByRole('combobox'),
+    ).toHaveAccessibleName('Text size');
+    const settingsNavigation = page.getByRole('navigation', {
+      name: 'Settings sections',
+    });
+    if ((page.viewportSize()?.width ?? Number.POSITIVE_INFINITY) < 768) {
+      await expect(settingsNavigation).toBeHidden();
+    } else {
+      await expect(settingsNavigation).toBeVisible();
+    }
 
     await page.goto('/encryption/setup', { waitUntil: 'domcontentloaded' });
     const crypto = page.locator('.crypto-surface');
@@ -408,7 +397,7 @@ test.describe('@phase7 shipped UI', () => {
       page,
       page.getByRole('heading', { name: 'Secure your messages' }),
     );
-    await screenshot(crypto, 'crypto', appearance);
+    await expect(page.getByTestId('recovery-key')).toHaveCount(0);
 
     if (testInfo.project.name === 'tablet-light-compact') {
       await page.emulateMedia({

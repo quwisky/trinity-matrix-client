@@ -173,7 +173,7 @@ are iterating in Xcode or Android Studio.
 | `pnpm ios:build`              | `cap build ios --scheme App`                         | macOS, Xcode, signing identity           |
 
 The `*:prebuilt` commands exist for cross-platform evidence, not ordinary iteration.
-`pnpm e2e:design:shipped` creates a production `www/`, records it, and tests that payload; Electron
+`pnpm e2e:ui:shipped` creates a production `www/`, records it, and tests that payload; Electron
 and Android can then copy it without rebuilding. `pnpm bundle:manifest:verify` proves both wrapper
 trees have the exact recorded web file set and bytes; only Android's named `cordova.js` and
 `cordova_plugins.js` bootstrap files are allowed in addition.

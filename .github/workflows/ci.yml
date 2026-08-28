@@ -226,7 +226,6 @@ jobs:
             dist/.playwright/e2e/test-output/
             dist/.playwright/e2e/blob-report/
             dist/.playwright/storybook/
-            dist/.playwright/design-prototypes/
             dist/.playwright/styling/
           if-no-files-found: warn
           retention-days: 7
