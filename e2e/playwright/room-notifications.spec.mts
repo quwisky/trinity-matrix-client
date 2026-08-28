@@ -118,7 +118,7 @@ async function setRemoteMentions(
   const ruleId = encodeURIComponent(roomId);
   const added = await request.put(
     `${hs}/_matrix/client/v3/pushrules/global/room/${ruleId}`,
-    // FluffyChat 2.7.2 uses matrix-dart 10.2.2, whose mentions-only/muted
+    // FluffyChat 2.7.2 uses matrix-dart 7.2.4, whose mentions-only/muted
     // room rule is the Matrix v1.7+ canonical empty effective action list.
     { headers, data: { actions: [] } },
   );
