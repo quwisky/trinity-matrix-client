@@ -448,6 +448,9 @@ Acceptance:
   quick-reaction placement uses the live clipping bounds rather than grouping state, while
   hybrid touch desktops retain a non-overlapping 44px action track and edit/recording
   replacement controls expose complete touch and keyboard focus paths;
+- an authenticity shield reserves a trailing column beside message content only; read receipts
+  and their expanded label span the complete body below it, align to the logical trailing edge in
+  both writing directions, and remain in flow so virtual-row measurement includes their height;
 - keyboard send, IME, paste, draft, mobile sheet and long-press flows retain their tests;
 - Compact visibly increases useful conversation area without reducing touch targets.
 

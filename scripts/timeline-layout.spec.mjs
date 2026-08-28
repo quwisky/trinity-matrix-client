@@ -20,6 +20,9 @@ const listCss = read(
 const rowCss = read(
   'libs/feature/rooms/src/lib/message-row/message-row.component.scss',
 );
+const rowHtml = read(
+  'libs/feature/rooms/src/lib/message-row/message-row.component.html',
+);
 const composerCss = read(
   'libs/feature/rooms/src/lib/message-composer/message-composer.component.scss',
 );
@@ -62,6 +65,25 @@ describe('modern timeline layout contracts', () => {
       /\.msg__toolbar\s*\{[^}]*position:\s*absolute;[^}]*inset-inline-end:/s,
     );
     expect(rowCss).toMatch(/\.msg__toolbar\s*\{[^}]*translate:/s);
+  });
+
+  it('reserves the shield column without narrowing read receipts', () => {
+    expect(rowCss).toMatch(
+      /\.msg__body\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto;/s,
+    );
+    expect(rowCss).toMatch(
+      /\.msg__shield\s*\{[^}]*grid-row:\s*1;[^}]*grid-column:\s*2;[^}]*margin-inline-start:\s*var\(--trinity-space-3\);/s,
+    );
+    expect(rowCss).not.toMatch(/\.msg__body\s*\{[^}]*column-gap:/s);
+    expect(rowCss).toMatch(
+      /\.msg__receipts\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*justify-self:\s*end;/s,
+    );
+    expect(rowCss).not.toMatch(
+      /\.msg__(?:shield|receipts)\s*\{[^}]*position:\s*absolute;/s,
+    );
+    expect(rowHtml).toMatch(
+      /class="msg__content"[\s\S]*class="msg__shield msg__target"[\s\S]*class="msg__receipts msg__target"/,
+    );
   });
 
   it('keeps input and preview in one stable grid cell', () => {

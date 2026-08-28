@@ -118,18 +118,17 @@
 }
 
 // Authenticity shield: grey = caution (default), red = warning. It qualifies the whole
-// message rather than any run of text, so it parks at the row's trailing edge, top-aligned
-// with the first line — the same place on a header row and a grouped one. Kept a flex item
-// (not absolutely positioned) so it reserves its own column and a long line wraps before
-// it rather than running underneath.
+// message rather than any run of text, so it owns the body's trailing grid cell, top-aligned
+// with the first line in both header and grouped layouts. It stays in flow so long content
+// wraps before the icon and virtual row measurement includes every painted control.
 .msg__shield {
-  flex: 0 0 auto;
+  grid-row: 1;
+  grid-column: 2;
   display: flex;
   align-items: center;
   justify-content: center;
-  align-self: flex-start;
   margin-top: 2px;
-  margin-left: 8px;
+  margin-inline-start: var(--trinity-space-3);
   color: var(--trinity-text-muted);
   font-size: 13px;
   cursor: help;
@@ -243,6 +242,15 @@
 .msg__body {
   min-width: 0;
   flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+// The content alone reserves the trailing authenticity column. Read receipts sit on the next
+// grid row and span both columns, so a shield cannot move their inline edge toward the middle.
+.msg__content {
+  min-width: 0;
 }
 
 // A full-width reply preview sits on its own line above the message, indented
@@ -489,14 +497,11 @@
 // event", so moving it would claim someone had read messages they had not — the app would be
 // stating something false about who saw what. Receipts stay on the event they belong to.
 .msg__receipts {
+  grid-column: 1 / -1;
+  justify-self: end;
   display: flex;
   gap: 2px;
-
-  // A <button> shrink-wraps to its content, so `justify-content: flex-end` had no free space
-  // to push against — right-align the whole control with an auto margin.
-  width: fit-content;
   margin-top: 3px;
-  margin-left: auto;
   padding: 0;
   border: none;
   border-radius: var(--trinity-radius-pill);
@@ -515,12 +520,12 @@
 }
 
 .msg__seen-by {
-  display: block;
+  grid-column: 1 / -1;
   margin-top: 2px;
   color: var(--trinity-text-muted);
   font-size: var(--trinity-type-metadata-size);
   line-height: var(--trinity-type-metadata-line-height);
-  text-align: right;
+  text-align: end;
 }
 
 // The action revealed behind a row as it slides. Counter-translated by the same custom property, so it holds still while the row moves over

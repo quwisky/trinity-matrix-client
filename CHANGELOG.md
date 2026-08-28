@@ -77,6 +77,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Read-receipt avatars keep the full timeline edge beside authenticity shields.** A shield now
+  reserves space only beside the message content; the “seen by” row spans underneath it and remains
+  aligned to the trailing edge in both left-to-right and right-to-left interfaces. Both controls stay
+  in normal layout flow, so virtualized timeline measurement includes them without covering text.
+
 - **Icon buttons now behave as one family.** Standard square actions and purpose-built controls
   such as reaction chips, server-rail pills, avatar actions, composer controls and the floating
   message toolbar use the same pointer cursor, hover and pressed surfaces while preserving their

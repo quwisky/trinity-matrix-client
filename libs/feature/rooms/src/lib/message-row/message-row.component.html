@@ -80,10 +80,69 @@
          every change to a message had to be made in both copies or it was made in
          neither. The class is now a `.msg--cont .msg__text` rule in the stylesheet. -->
     <div class="msg__body">
-      @if (r.showHeader) {
-        <div class="msg__head">
-          <span class="msg__author">{{ r.senderName }}</span>
-          <span class="msg__time">{{ fmt.dateTime(r.timestamp) }}</span>
+      <div class="msg__content">
+        @if (r.showHeader) {
+          <div class="msg__head">
+            <span class="msg__author">{{ r.senderName }}</span>
+            <span class="msg__time">{{ fmt.dateTime(r.timestamp) }}</span>
+            @if (showEditedMarker()) {
+              <button
+                type="button"
+                class="msg__edited msg__target"
+                data-testid="msg-edited"
+                aria-label="(edited) — show edit history"
+                (click)="action.emit({ type: 'edit-history' })"
+              >
+                (edited)
+              </button>
+            }
+          </div>
+        }
+        @if (r.poll; as poll) {
+          <trn-poll
+            [poll]="poll"
+            [canEnd]="r.isOwn"
+            [pending]="!!r.status"
+            (vote)="pollVote.emit({ pollId: poll.id, answerId: $event })"
+            (end)="pollEnd.emit(poll.id)"
+          />
+        } @else if (r.location; as location) {
+          <trn-location [location]="location" />
+        } @else if (r.media?.isVoice) {
+          <trn-voice-message [media]="r.media!" />
+        } @else if (r.media) {
+          <trn-media-attachment class="msg__media" [media]="r.media" />
+          @if (r.captionHtml) {
+            <div
+              class="msg__text msg__text--html"
+              trnSpoilerReveal
+              trnMatrixLink
+              [trnInlineMxcImages]="r.captionHtml ?? ''"
+              (matrixLink)="matrixLink.emit($event)"
+              [innerHTML]="r.captionHtml"
+            ></div>
+          } @else if (r.caption) {
+            <p class="msg__text">{{ r.caption }}</p>
+          }
+        } @else if (r.html) {
+          <div
+            class="msg__text msg__text--html"
+            trnSpoilerReveal
+            trnMatrixLink
+            [trnInlineMxcImages]="r.html ?? ''"
+            (matrixLink)="matrixLink.emit($event)"
+            [innerHTML]="r.html"
+          ></div>
+        } @else {
+          <p class="msg__text">{{ r.body }}</p>
+        }
+        @if (r.previewUrl) {
+          <trn-link-preview
+            [url]="r.previewUrl"
+            [encrypted]="r.previewEncrypted ?? true"
+          />
+        }
+        @if (!r.showHeader) {
           @if (showEditedMarker()) {
             <button
               type="button"
@@ -95,72 +154,37 @@
               (edited)
             </button>
           }
-        </div>
-      }
-      @if (r.poll; as poll) {
-        <trn-poll
-          [poll]="poll"
-          [canEnd]="r.isOwn"
-          [pending]="!!r.status"
-          (vote)="pollVote.emit({ pollId: poll.id, answerId: $event })"
-          (end)="pollEnd.emit(poll.id)"
-        />
-      } @else if (r.location; as location) {
-        <trn-location [location]="location" />
-      } @else if (r.media?.isVoice) {
-        <trn-voice-message [media]="r.media!" />
-      } @else if (r.media) {
-        <trn-media-attachment class="msg__media" [media]="r.media" />
-        @if (r.captionHtml) {
-          <div
-            class="msg__text msg__text--html"
-            trnSpoilerReveal
-            trnMatrixLink
-            [trnInlineMxcImages]="r.captionHtml ?? ''"
-            (matrixLink)="matrixLink.emit($event)"
-            [innerHTML]="r.captionHtml"
-          ></div>
-        } @else if (r.caption) {
-          <p class="msg__text">{{ r.caption }}</p>
         }
-      } @else if (r.html) {
-        <div
-          class="msg__text msg__text--html"
-          trnSpoilerReveal
-          trnMatrixLink
-          [trnInlineMxcImages]="r.html ?? ''"
-          (matrixLink)="matrixLink.emit($event)"
-          [innerHTML]="r.html"
-        ></div>
-      } @else {
-        <p class="msg__text">{{ r.body }}</p>
-      }
-      @if (r.previewUrl) {
-        <trn-link-preview
-          [url]="r.previewUrl"
-          [encrypted]="r.previewEncrypted ?? true"
-        />
-      }
-      @if (!r.showHeader) {
-        @if (showEditedMarker()) {
-          <button
-            type="button"
-            class="msg__edited msg__target"
-            data-testid="msg-edited"
-            aria-label="(edited) — show edit history"
-            (click)="action.emit({ type: 'edit-history' })"
-          >
-            (edited)
-          </button>
+        @if (r.reactions.length) {
+          <trn-message-reactions
+            [reactions]="r.reactions"
+            (toggleReaction)="action.emit({ type: 'react', key: $event })"
+            (showReactors)="action.emit({ type: 'reactors' })"
+          />
         }
-      }
-      @if (r.reactions.length) {
-        <trn-message-reactions
-          [reactions]="r.reactions"
-          (toggleReaction)="action.emit({ type: 'react', key: $event })"
-          (showReactors)="action.emit({ type: 'reactors' })"
+      </div>
+
+      <!-- The shield and receipts share the body grid but not a column. Message content
+           reserves the shield's trailing column; receipts span both columns below, so the
+           shield never pushes their avatars toward the middle of the timeline. -->
+      @if (r.shield; as shield) {
+        <trn-icon
+          [name]="shieldIcon(shield.level)"
+          class="msg__shield msg__target"
+          [class.msg__shield--red]="shield.level === 'red'"
+          [trnTooltip]="shieldTip"
+          tabindex="0"
+          [label]="shield.reason"
+          [attr.data-testid]="'msg-shield-' + shield.level"
         />
+        <ng-template #shieldTip>
+          <span class="msg__shield-tip" data-testid="msg-shield-tip">
+            <strong class="msg__shield-tip-reason">{{ shield.reason }}</strong>
+            <span class="msg__shield-tip-detail">{{ shield.explanation }}</span>
+          </span>
+        </ng-template>
       }
+
       @if (r.readReceipts.length) {
         <button
           type="button"
@@ -188,28 +212,6 @@
         }
       }
     </div>
-    <!-- A row-level property, not part of the text: one shield for both the header and
-         grouped layouts, parked at the row's trailing edge. The icon alone says something
-         is off but not what, so it carries a tooltip that names the finding and explains
-         it. tabindex makes that reachable by keyboard (brn opens on focus as well as
-         hover) and the open tooltip is wired up as the icon's aria-describedby. -->
-    @if (r.shield; as shield) {
-      <trn-icon
-        [name]="shieldIcon(shield.level)"
-        class="msg__shield msg__target"
-        [class.msg__shield--red]="shield.level === 'red'"
-        [trnTooltip]="shieldTip"
-        tabindex="0"
-        [label]="shield.reason"
-        [attr.data-testid]="'msg-shield-' + shield.level"
-      />
-      <ng-template #shieldTip>
-        <span class="msg__shield-tip" data-testid="msg-shield-tip">
-          <strong class="msg__shield-tip-reason">{{ shield.reason }}</strong>
-          <span class="msg__shield-tip-detail">{{ shield.explanation }}</span>
-        </span>
-      </ng-template>
-    }
 
     @if (threadSummary(); as thread) {
       <button
