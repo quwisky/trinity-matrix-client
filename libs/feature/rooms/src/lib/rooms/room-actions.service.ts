@@ -14,6 +14,7 @@ import {
   TrnAlertService,
   TrnDialogService,
 } from '@trinity/components/overlay';
+import { matrixRequestErrorHandling } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import {
@@ -139,14 +140,19 @@ export class RoomActionsService {
   /** Move to a room's upgraded successor (from the tombstone banner): join it, then open it. */
   onGoToUpgradedRoom(roomId: string): void {
     this.status.error.set(null);
-    runWithBusy(this.publicRooms.join(roomId), this.status).subscribe(
-      (joinedId) => {
-        // Surface the successor in the sidebar (Home shows DMs only) so it isn't
-        // opened-but-invisible, mirroring onExploreRooms.
-        this.nav.onShowRooms();
-        this.nav.onSelectRoom(joinedId);
-      },
-    );
+    runWithBusy(
+      this.publicRooms.join(roomId),
+      this.status,
+      matrixRequestErrorHandling(
+        'join upgraded room',
+        'Could not join the room. Try again.',
+      ),
+    ).subscribe((joinedId) => {
+      // Surface the successor in the sidebar (Home shows DMs only) so it isn't
+      // opened-but-invisible, mirroring onExploreRooms.
+      this.nav.onShowRooms();
+      this.nav.onSelectRoom(joinedId);
+    });
   }
 
   /** Prompt for a name, create a standalone encrypted room, then select it. */
@@ -217,7 +223,14 @@ export class RoomActionsService {
     if (!userId) {
       return; // cancelled
     }
-    runWithBusy(this.rooms.inviteUser(targetId, userId), this.status).subscribe(
+    runWithBusy(
+      this.rooms.inviteUser(targetId, userId),
+      this.status,
+      matrixRequestErrorHandling(
+        'invite user to room',
+        'Could not invite this user. Try again.',
+      ),
+    ).subscribe(
       () => void this.status.showSuccess(`Invitation sent to ${userId}.`),
     );
   }

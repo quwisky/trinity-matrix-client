@@ -651,12 +651,18 @@ matches and then waits for an echo it never caused, so the deterministic writer 
 
 **Symptom.** Against a homeserver that accepts the socket and never answers.
 
-**Cause.** `createClient` passes no `localTimeoutMs`, and matrix-js-sdk's fetch layer only
-attaches a timeout signal when one is given. Nothing below these calls bounds anything.
+**Cause.** Older clients passed no `localTimeoutMs`; matrix-js-sdk therefore attached no
+timeout signal to ordinary requests. A homeserver that accepted a socket and never answered
+could keep both the request and its UI busy state pending indefinitely.
 
-**Fix.** Wrap every homeserver round-trip in the crypto flows with the local `withTimeout`
-helper, which also attaches a no-op catch to the losing promise so its later rejection does
-not surface as unhandled.
+**Fix.** Account clients now use a 30-second default request deadline. Crypto flows retain
+their local `withTimeout` guards where they need a tighter single-call limit or a larger
+whole-operation budget; the helper also catches a losing promise's later rejection so it
+does not surface as unhandled. `runWithBusy` clears action state from `finalize`, including
+empty completion and cancellation, and the rooms shell presents captured errors directly
+from its page-scoped status service. Do not rely on a component effect that reads only an
+error signal: in the zoneless app, a failed action may change no template-read state that
+would schedule another render pass.
 
 ### An unverified message renders exactly like a verified one
 
@@ -789,13 +795,15 @@ alias. Nothing enforces either — only the comments at the sites.
 error reaches the caller. Or a busy spinner sticks on forever.
 
 **Cause.** `runWithBusy`'s `catchError` writes the message into the `error` signal and
-returns `EMPTY`, so the failure is swallowed by design and the template's error banner is
-the only channel. Separately, `busy` is set eagerly at call time, before the returned
-Observable is subscribed, so calling it and never subscribing leaves `busy` stuck true
-because `finalize` never runs.
+returns `EMPTY`, so the failure is swallowed by design. In a zoneless surface, relying on a
+component effect to notice an error signal can also miss the presentation when the failure
+does not otherwise schedule rendering.
 
-**Fix.** Put failure handling in the template, subscribe to everything you call, and do not
-use it on a path that must triage its own errors.
+**Fix.** Subscribe to everything you call, keep cleanup in `finalize`, and do not use the
+helper on a path that must triage its own errors. Request-facing actions should provide the
+safe formatter/reporter hooks, and zoneless shells should present the captured error through
+their status service rather than waiting for a component effect. The helper starts state on
+subscription and clears it on every termination path, including cancellation and teardown.
 
 ### The app is wedged and there is no way to clear its data
 

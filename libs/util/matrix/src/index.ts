@@ -15,6 +15,7 @@ export * from './lib/typing';
 export * from './lib/matrix-to';
 export * from './lib/poll';
 export * from './lib/transient-errors';
+export * from './lib/request-failure';
 export * from './lib/password-uia';
 export * from './lib/attachment-crypto';
 export * from './lib/key-file-crypto';

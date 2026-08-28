@@ -5,6 +5,7 @@ import {
   type PendingInvite,
 } from '@trinity/data-access/invites';
 import { AccountScopeService } from '@trinity/data-access/rooms';
+import { matrixRequestErrorHandling } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { AccountRoutingService } from './account-routing.service';
@@ -41,6 +42,10 @@ export class InviteActionsService {
     runWithBusy(
       this.invites.acceptInvite(roomId, accountId),
       this.status,
+      matrixRequestErrorHandling(
+        'accept room invite',
+        'Could not join the room. Try again.',
+      ),
     ).subscribe(() => {
       // Open what was just joined. A joined space needs nothing — it appears in the rail.
       //
@@ -72,6 +77,10 @@ export class InviteActionsService {
     runWithBusy(
       this.invites.declineInvite(roomId, accountId),
       this.status,
+      matrixRequestErrorHandling(
+        'decline room invite',
+        'Could not decline the invitation. Try again.',
+      ),
     ).subscribe();
   }
 

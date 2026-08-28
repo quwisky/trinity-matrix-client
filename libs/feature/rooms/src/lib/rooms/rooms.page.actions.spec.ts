@@ -36,6 +36,7 @@ import {
 } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
+import { MatrixError } from '@trinity/util/matrix';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
@@ -737,7 +738,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     );
   });
 
-  it('captures an invite failure in spaceError without a success toast', async () => {
+  it('captures an invite failure and shows an error toast', async () => {
     const shell = build();
     setRouteRoom('!r:hs');
     pick.mockResolvedValue('@bob:hs');
@@ -745,22 +746,53 @@ describe('RoomsPage room / DM / invite actions', () => {
 
     await shell.rooms.onInviteToRoom();
 
-    // runWithBusy records the message in spaceError (the shell's effect toasts it,
-    // like the create-space path); no success toast on failure.
-    expect(shell.status.error()).toBe('forbidden');
-    expect(toastShow).not.toHaveBeenCalled();
+    // runWithBusy records and presents the failure without relying on a render pass.
+    expect(shell.status.error()).toBe('Could not invite this user. Try again.');
+    expect(toastShow).toHaveBeenCalledWith(
+      'Could not invite this user. Try again.',
+      expect.objectContaining({ variant: 'destructive' }),
+    );
   });
 
-  it('shows the user that failure, rather than only recording it', () => {
-    // The sibling above asserts no toast — true only because nothing has flushed yet. The
-    // page turns `status.error` into a danger toast from a constructor effect, and every
-    // failure test in this file stopped at the signal, so deleting that effect outright
-    // left all 192 tests green: the error was recorded and never shown. What was missing
-    // was a flush AFTER the failure, not a rendered harness.
+  it('recovers from an HTTP invite failure and allows an immediate retry', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const shell = build();
+    setRouteRoom('!r:hs');
+    pick.mockResolvedValue('@bob:remote.example');
+    inviteUser
+      .mockReturnValueOnce(
+        throwError(() => new MatrixError({ errcode: 'M_FORBIDDEN' }, 403)),
+      )
+      .mockReturnValueOnce(of(undefined));
+
+    await shell.rooms.onInviteToRoom();
+
+    expect(shell.status.busy()).toBe(false);
+    expect(shell.status.error()).toBe('You do not have permission to do that.');
+    expect(warn).toHaveBeenCalledWith(
+      '[trinity] Matrix request failed',
+      expect.objectContaining({ operation: 'invite user to room' }),
+    );
+
+    await shell.rooms.onInviteToRoom();
+
+    expect(inviteUser).toHaveBeenCalledTimes(2);
+    expect(shell.status.busy()).toBe(false);
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.stringContaining('Invitation sent'),
+      expect.objectContaining({ variant: 'success' }),
+    );
+    warn.mockRestore();
+  });
+
+  it('shows a queued failure without a component render pass', async () => {
+    // The app is zoneless. Presenting from ShellStatusService keeps this reliable even
+    // when the failed action changes no template-read signal that would schedule a tick.
     const shell = build();
     shell.status.error.set('forbidden');
+    shell.status.presentError();
 
-    TestBed.tick();
+    await Promise.resolve();
 
     expect(toastShow).toHaveBeenCalledWith(
       'forbidden',
@@ -796,6 +828,42 @@ describe('RoomsPage room / DM / invite actions', () => {
 
     expect(acceptInvite).toHaveBeenCalledWith('!i:hs', undefined);
     expect(shell.store.activeRoomId()).toBe('!i:hs');
+  });
+
+  it('recovers from an HTTP join failure and allows an immediate retry', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const shell = build();
+    pending.set([pendingInvite({ roomId: '!i:remote.example' })]);
+    acceptInvite
+      .mockReturnValueOnce(
+        throwError(
+          () =>
+            new MatrixError(
+              { errcode: 'M_UNKNOWN', error: 'upstream unavailable' },
+              502,
+            ),
+        ),
+      )
+      .mockReturnValueOnce(of(undefined));
+
+    shell.invites.onAcceptInvite({ roomId: '!i:remote.example' });
+
+    expect(shell.status.busy()).toBe(false);
+    expect(shell.status.error()).toBe(
+      'The homeserver is unavailable. Try again.',
+    );
+    expect(shell.store.activeRoomId()).toBeNull();
+    expect(warn).toHaveBeenCalledWith(
+      '[trinity] Matrix request failed',
+      expect.objectContaining({ operation: 'accept room invite' }),
+    );
+
+    shell.invites.onAcceptInvite({ roomId: '!i:remote.example' });
+
+    expect(acceptInvite).toHaveBeenCalledTimes(2);
+    expect(shell.status.busy()).toBe(false);
+    expect(shell.store.activeRoomId()).toBe('!i:remote.example');
+    warn.mockRestore();
   });
 
   it('leaves a room invite on a view that can actually show the room', () => {

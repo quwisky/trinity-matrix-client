@@ -61,7 +61,7 @@
   </form>
 
   @if (error(); as message) {
-    <p class="text-sm text-danger" data-testid="directory-error">
+    <p class="text-sm text-danger" role="alert" data-testid="directory-error">
       {{ message }}
     </p>
   }

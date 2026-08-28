@@ -347,15 +347,9 @@ export class RoomsPage implements OnInit, OnDestroy {
     // In the constructor, not ngOnInit: `TestBed.inject(RoomsPage)` never runs lifecycle
     // hooks, so binding there left the callback unset for all 170 unit tests.
     this.nav.bindFocus(() => this.focusActiveView());
-    // Space-management failures (create/leave) have no inline echo in the shell, so
-    // surface each new error as a danger toast. runWithBusy captures the message
-    // into ShellStatusService.error; this reacts to that signal turning non-null.
-    effect(() => {
-      const message = this.status.error();
-      if (message) {
-        void this.status.showError(message);
-      }
-    });
+    // ShellStatusService presents runWithBusy failures directly. In the zoneless app,
+    // a component effect that only reads the error signal is not a reliable render
+    // trigger when the failed action changes no template-read state.
     // If every account is gone (e.g. a server-side soft-logout of the last one), the
     // shell has nothing to show — return to login instead of leaving it broken.
     effect(() => {

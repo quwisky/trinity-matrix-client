@@ -20,6 +20,21 @@ function isTransientStatus(status: number | undefined): boolean {
 }
 
 /**
+ * Matrix's fetch transport preserves AbortError for both its local request
+ * deadline and deliberate request cancellation instead of wrapping it in a
+ * ConnectionError. Either case is expected transport control flow rather than
+ * an application defect.
+ */
+export function isMatrixRequestAbortError(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'name' in err &&
+    err.name === 'AbortError'
+  );
+}
+
+/**
  * True when `err` represents a transient homeserver hiccup worth retrying/quieting:
  * a connection-level failure, or an HTTP/Matrix error that is rate-limited (429) or
  * server-side (5xx). Genuine client errors (4xx except 429), plain `Error`s and
