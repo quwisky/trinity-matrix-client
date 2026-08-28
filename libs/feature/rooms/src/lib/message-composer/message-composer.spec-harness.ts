@@ -24,6 +24,17 @@ import { TrnToastService } from '@trinity/components/overlay';
 import { MessageComposerComponent } from './message-composer.component';
 import { Router } from '@angular/router';
 
+/** Per-test interaction model; desktop remains the default for the composer suite. */
+const platform = vi.hoisted(() => ({ mobile: false }));
+vi.mock('@trinity/platform-native', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@trinity/platform-native')>()),
+  isMobileOs: () => platform.mobile,
+}));
+
+export function setMobilePlatform(mobile: boolean): void {
+  platform.mobile = mobile;
+}
+
 // The draft store persists to Capacitor Preferences (debounced); stub it so the
 // composer's real DraftStoreService is a no-op on the storage side.
 vi.mock('@capacitor/preferences', () => ({

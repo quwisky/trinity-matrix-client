@@ -82,7 +82,7 @@ All notable changes to this project are documented here. The format is based on
   location and voice. Desktop web and Electron keep the compact anchored menu. Dismissing the
   sheet or choosing an action without a successor restores focus to the `+`; GIF, sticker and
   poll choices transfer focus into the picker or dialog they open. Switching rooms or changing
-  any action's availability closes stale choices.
+  any action's availability closes stale choices and restores the viable replacement trigger.
 
 - **Settings is easier to scan without growing a second scrollbar.** Desktop and Electron now use
   a centred, bounded settings workspace with grouped navigation, sentence-case section hierarchy

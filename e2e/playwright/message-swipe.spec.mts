@@ -312,32 +312,34 @@ test.describe('Swipe a message', () => {
         });
       }
     };
-    await cdp.send('Input.dispatchTouchEvent', {
-      type: 'touchStart',
-      touchPoints: [{ x: currentX, y, id: 1 }],
-    });
+    try {
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x: currentX, y, id: 1 }],
+      });
 
-    // Polled, not read straight after the send: `Input.dispatchTouchEvent` resolves when the
-    // event is dispatched, and the handler's style write lands a tick later.
-    // Twenty percent of the row is still short of the 25% commit threshold, while being
-    // far enough past Chromium's gesture-axis arbitration to guarantee pointer moves.
-    await at(box.x + box.width * 0.55);
-    await expect.poll(async () => (await shown()).opacity).toBeGreaterThan(0);
-    const partly = await shown();
-    expect(partly.opacity).toBeLessThan(1);
+      // Polled, not read straight after the send: `Input.dispatchTouchEvent` resolves when the
+      // event is dispatched, and the handler's style write lands a tick later.
+      // Twenty percent of the row is still short of the 25% commit threshold, while being
+      // far enough past Chromium's gesture-axis arbitration to guarantee pointer moves.
+      await at(box.x + box.width * 0.55);
+      await expect.poll(async () => (await shown()).opacity).toBeGreaterThan(0);
+      const partly = await shown();
+      expect(partly.opacity).toBeLessThan(1);
 
-    await at(box.x + box.width * 0.95);
-    await expect.poll(async () => (await shown()).opacity).toBe(1);
-    const committed = await shown();
-    // Grown, and recoloured — "let go now and it will act", said before letting go.
-    expect(committed.scale).not.toBe(partly.scale);
-    expect(committed.colour).not.toBe(partly.colour);
-
-    await cdp.send('Input.dispatchTouchEvent', {
-      type: 'touchEnd',
-      touchPoints: [],
-    });
-    await cdp.detach();
+      await at(box.x + box.width * 0.95);
+      await expect.poll(async () => (await shown()).opacity).toBe(1);
+      const committed = await shown();
+      // Grown, and recoloured — "let go now and it will act", said before letting go.
+      expect(committed.scale).not.toBe(partly.scale);
+      expect(committed.colour).not.toBe(partly.colour);
+    } finally {
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchEnd',
+        touchPoints: [],
+      });
+      await cdp.detach();
+    }
   });
 
   test('does nothing at all while the setting is off', async ({

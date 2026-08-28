@@ -321,25 +321,102 @@ describe('ComposerInsertMenuComponent', () => {
           .querySelector('[data-testid=composer-insert]')
           ?.getAttribute('aria-expanded') ?? 'false',
       ).toBe('false');
+      const replacement = container.querySelector<HTMLButtonElement>(
+        inputName === 'hasMenu'
+          ? '[data-testid=composer-insert-attach]'
+          : '[data-testid=composer-insert]',
+      );
+      if (replacement && !replacement.disabled) {
+        await Promise.resolve();
+        expect(document.activeElement).toBe(replacement);
+      }
     },
   );
 
   it.each([
-    [{ gifEnabled: false }, ['insert-gif'], []],
+    [
+      { gifEnabled: false },
+      [
+        ['insert-attach', false],
+        ['insert-sticker', false],
+        ['insert-poll', false],
+        ['insert-location', false],
+        ['insert-voice', false],
+      ],
+    ],
     [
       { richActions: false },
-      ['insert-sticker', 'insert-poll', 'insert-location', 'insert-voice'],
-      [],
+      [
+        ['insert-attach', false],
+        ['insert-gif', false],
+      ],
     ],
-    [{ voiceSupported: false }, ['insert-voice'], []],
-    [{ recording: true }, ['insert-voice'], []],
-    [{ stickerEnabled: false }, ['insert-sticker'], []],
-    [{ uploading: true }, [], ['insert-gif', 'insert-voice']],
-    [{ gifDownloading: true }, [], ['insert-gif']],
-    [{ locationSharing: true }, [], ['insert-location']],
+    [
+      { voiceSupported: false },
+      [
+        ['insert-attach', false],
+        ['insert-gif', false],
+        ['insert-sticker', false],
+        ['insert-poll', false],
+        ['insert-location', false],
+      ],
+    ],
+    [
+      { recording: true },
+      [
+        ['insert-attach', false],
+        ['insert-gif', false],
+        ['insert-sticker', false],
+        ['insert-poll', false],
+        ['insert-location', false],
+      ],
+    ],
+    [
+      { stickerEnabled: false },
+      [
+        ['insert-attach', false],
+        ['insert-gif', false],
+        ['insert-poll', false],
+        ['insert-location', false],
+        ['insert-voice', false],
+      ],
+    ],
+    [
+      { uploading: true },
+      [
+        ['insert-attach', false],
+        ['insert-gif', true],
+        ['insert-sticker', false],
+        ['insert-poll', false],
+        ['insert-location', false],
+        ['insert-voice', true],
+      ],
+    ],
+    [
+      { gifDownloading: true },
+      [
+        ['insert-attach', false],
+        ['insert-gif', true],
+        ['insert-sticker', false],
+        ['insert-poll', false],
+        ['insert-location', false],
+        ['insert-voice', false],
+      ],
+    ],
+    [
+      { locationSharing: true },
+      [
+        ['insert-attach', false],
+        ['insert-gif', false],
+        ['insert-sticker', false],
+        ['insert-poll', false],
+        ['insert-location', true],
+        ['insert-voice', false],
+      ],
+    ],
   ] as const)(
     'keeps the mobile sheet capability matrix current for %o',
-    async (changedInputs, withheld, disabled) => {
+    async (changedInputs, expected) => {
       platform.mobile = true;
       const { fixture, container } = await render(ComposerInsertMenuComponent, {
         inputs: {
@@ -357,16 +434,9 @@ describe('ComposerInsertMenuComponent', () => {
         ?.click();
       await fixture.whenStable();
       const rows = sheetItems();
-      const rowsById = new Map(
-        rows.map((row) => [row.dataset['testid'] ?? '', row]),
-      );
-
-      for (const testId of withheld) {
-        expect(rowsById.has(testId)).toBe(false);
-      }
-      for (const testId of disabled) {
-        expect(rowsById.get(testId)?.disabled).toBe(true);
-      }
+      expect(
+        rows.map((row) => [row.dataset['testid'] ?? '', row.disabled]),
+      ).toEqual(expected);
     },
   );
 

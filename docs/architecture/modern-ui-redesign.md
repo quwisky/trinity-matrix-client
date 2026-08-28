@@ -468,7 +468,8 @@ operating-system interaction model: iOS and Android, including mobile web/PWAs, 
 bottom sheet; desktop web and Electron keep the anchored menu. Sheet snapshots close when their
 room or capabilities change. Dismissals and actions without a successor restore the trigger;
 GIF, sticker and poll actions transfer focus into the picker or dialog they open. Installed-WebView
-coverage measures the software-keyboard viewport and checks that the sheet composes its base
+coverage proves native IME resize and its dismissal before the sheet opens, then checks the sheet
+against the settled visual viewport. A source-shape guard pins composition of the sheet's base
 padding with the device safe-area inset exactly once. Existing identity-dock, drawer, safe-area and
 message gesture contracts remain unchanged.
 

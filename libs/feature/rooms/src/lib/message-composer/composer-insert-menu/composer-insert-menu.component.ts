@@ -70,6 +70,8 @@ export class ComposerInsertMenuComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly mobileTrigger =
     viewChild<ElementRef<HTMLButtonElement>>('mobileTrigger');
+  private readonly plainTrigger =
+    viewChild<ElementRef<HTMLButtonElement>>('plainTrigger');
 
   /** iOS/Android interaction model, including mobile web/PWAs; Electron is excluded. */
   protected readonly mobileInteraction = isMobileOs();
@@ -193,7 +195,10 @@ export class ComposerInsertMenuComponent {
       this.recording();
       this.locationSharing();
       this.stickerEnabled();
-      untracked(() => this.closeMobileSheet(false));
+      // A capability/context update can remove the focused row. Give focus back to the
+      // replacement trigger instead of letting CDK drop it on the document body. The
+      // destroy path remains non-restoring because its composer is leaving too.
+      untracked(() => this.closeMobileSheet(true));
     });
     this.destroyRef.onDestroy(() => this.closeMobileSheet(false));
   }
@@ -244,7 +249,7 @@ export class ComposerInsertMenuComponent {
       // one microtask so the chosen action can publish its focus-transfer contract.
       queueMicrotask(() => {
         if (owned.restoreOnDismiss) {
-          this.mobileTrigger()?.nativeElement.focus();
+          this.focusViableTrigger();
         }
       });
     });
@@ -255,5 +260,13 @@ export class ComposerInsertMenuComponent {
     if (!invocation) return;
     invocation.restoreOnDismiss = restoreOnDismiss;
     invocation.ref.close();
+  }
+
+  private focusViableTrigger(): void {
+    const trigger =
+      this.mobileTrigger()?.nativeElement ?? this.plainTrigger()?.nativeElement;
+    if (trigger?.isConnected && !trigger.disabled) {
+      trigger.focus();
+    }
   }
 }

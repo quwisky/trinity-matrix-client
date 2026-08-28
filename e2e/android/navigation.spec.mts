@@ -130,7 +130,7 @@ test.describe('Android navigation', () => {
     });
     test.beforeAll(async ({ request }) => seedComposerRoom(request));
 
-    test('keeps the native sheet inside the keyboard viewport and dismisses it with hardware Back', async ({
+    test('dismisses the native keyboard before opening a bounded sheet and handles hardware Back', async ({
       app,
       page,
     }) => {
@@ -172,21 +172,24 @@ test.describe('Android navigation', () => {
       await expect(sheet).toBeVisible();
       await expect(trigger).toHaveAttribute('aria-expanded', 'true');
 
+      // Moving from the editor to the non-input `+` deliberately dismisses Android's IME.
+      // Prove that transition before measuring the sheet; otherwise the geometry assertion
+      // could silently switch between keyboard and full viewports.
+      await expect
+        .poll(
+          () =>
+            page.evaluate(
+              () => window.visualViewport?.height ?? window.innerHeight,
+            ),
+          { timeout: 10_000 },
+        )
+        .toBeGreaterThan(fullViewportHeight - 20);
+
       const geometry = await page.evaluate(() => {
         const surface = document.querySelector<HTMLElement>(
           '[data-testid=action-sheet-surface]',
         );
         if (!surface) throw new Error('action sheet surface is missing');
-        const probe = document.createElement('div');
-        probe.style.paddingBottom = 'env(safe-area-inset-bottom)';
-        document.body.append(probe);
-        const safeAreaInset = Number.parseFloat(
-          getComputedStyle(probe).paddingBottom,
-        );
-        probe.remove();
-        const rootFontSize = Number.parseFloat(
-          getComputedStyle(document.documentElement).fontSize,
-        );
         const box = surface.getBoundingClientRect();
         const viewport = window.visualViewport;
         return {
@@ -196,20 +199,12 @@ test.describe('Android navigation', () => {
           viewportBottom:
             (viewport?.offsetTop ?? 0) +
             (viewport?.height ?? window.innerHeight),
-          actualPadding: Number.parseFloat(
-            getComputedStyle(surface).paddingBottom,
-          ),
-          expectedPadding: rootFontSize * 0.375 + safeAreaInset,
         };
       });
       expect(geometry.top).toBeGreaterThanOrEqual(geometry.viewportTop - 1);
       expect(geometry.bottom).toBeLessThanOrEqual(
         geometry.viewportBottom + 1,
       );
-      expect(
-        Math.abs(geometry.actualPadding - geometry.expectedPadding),
-      ).toBeLessThanOrEqual(1);
-
       await app.device.input.press('Back');
       await expect(sheet).toBeHidden();
       await expect(trigger).toBeFocused();
