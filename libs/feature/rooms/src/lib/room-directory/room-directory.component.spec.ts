@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
-import { of, throwError, Subject } from 'rxjs';
+import { EMPTY, of, throwError, Subject } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import {
@@ -10,6 +10,7 @@ import {
   type PublicRoomSummary,
 } from '@trinity/data-access/rooms';
 import { AvatarComponent } from '@trinity/components/avatar';
+import { ConnectionError, MatrixError } from '@trinity/util/matrix';
 import { RoomDirectoryComponent } from './room-directory.component';
 
 function room(over: Partial<PublicRoomSummary> = {}): PublicRoomSummary {
@@ -209,15 +210,80 @@ describe('RoomDirectoryComponent', () => {
     expect(close).not.toHaveBeenCalled();
     expect(cmp.joining()).toBeNull(); // cleared for a retry
     expect(toastShow).toHaveBeenCalledWith(
-      expect.stringContaining('Could not join'),
+      'nope',
       expect.objectContaining({ variant: 'destructive' }),
     );
   });
 
+  it('releases a failed HTTP join and shows actionable retry guidance', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const join = vi.fn(() =>
+      throwError(
+        () =>
+          new MatrixError(
+            { errcode: 'M_UNKNOWN', error: 'upstream unavailable' },
+            503,
+          ),
+      ),
+    );
+    const { cmp, toastShow } = await build({ join });
+
+    cmp.join(room({ name: 'General' }));
+
+    expect(cmp.joining()).toBeNull();
+    expect(toastShow).toHaveBeenCalledWith(
+      'The homeserver is unavailable. Try again.',
+      expect.objectContaining({ variant: 'destructive' }),
+    );
+    warn.mockRestore();
+  });
+
+  it('releases a join that completes without a result', async () => {
+    const join = vi.fn(() => EMPTY);
+    const { cmp } = await build({ join });
+
+    cmp.join(room());
+
+    expect(cmp.joining()).toBeNull();
+  });
+
   it('surfaces a directory load failure', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const search = vi.fn(() => throwError(() => new Error('down')));
     const { cmp } = await build({ search });
     expect(cmp.error()).toBe('Could not load the room directory.');
+    expect(warn).toHaveBeenCalledWith(
+      '[trinity] Matrix request failed',
+      expect.objectContaining({ operation: 'load room directory' }),
+    );
+    warn.mockRestore();
+  });
+
+  it('turns a connection failure into actionable retry guidance', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const search = vi.fn(() =>
+      throwError(() => new ConnectionError('fetch failed')),
+    );
+    const { cmp } = await build({ search });
+
+    expect(cmp.error()).toBe('Check your connection and try again.');
+    expect(cmp.loading()).toBe(false);
+    warn.mockRestore();
+  });
+
+  it('releases loading after an empty response and allows a retry', async () => {
+    const search = vi
+      .fn()
+      .mockReturnValueOnce(EMPTY)
+      .mockReturnValueOnce(of(page()));
+    const { cmp } = await build({ search });
+
+    expect(cmp.loading()).toBe(false);
+
+    cmp.search();
+
+    expect(search).toHaveBeenCalledTimes(2);
+    expect(cmp.rooms()).toEqual([room()]);
   });
 
   it('closes resolving null when dismissed', async () => {

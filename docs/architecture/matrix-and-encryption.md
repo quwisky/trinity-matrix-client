@@ -505,10 +505,10 @@ my recovery key" gate, and lives only in a component signal.
 
     The check **fails open on purpose**: only a pointer the server positively reports
     blocks setup. An unreachable server, a 5xx, or `M_NOT_FOUND` all let it proceed. It is
-    also bounded by a local `withTimeout` helper, because `createClient` passes no
-    `localTimeoutMs` and matrix-js-sdk's fetch layer only attaches a timeout signal when
-    one is given — an accepted-but-unanswered socket would otherwise hang first-run setup
-    forever.
+    also bounded by a local 10-second `withTimeout` helper, which is intentionally tighter
+    than the account client's 30-second `localTimeoutMs`. The SDK fetch layer attaches that
+    client deadline to ordinary Matrix requests, while destructive crypto sequences keep
+    their own whole-operation budgets.
 
 ### Later device
 

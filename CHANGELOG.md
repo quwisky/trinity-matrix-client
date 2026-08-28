@@ -263,6 +263,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Network failures no longer leave actions spinning forever.** Matrix requests now stop
+  waiting after a bounded deadline, request controls release on completion or cancellation,
+  and failed room invitations, room joins, and directory requests explain whether to
+  reconnect, wait, sign in, or retry. Background request logs retain the operation and error
+  category without recording response bodies, request URLs, or tokens.
+
 - **Settings no longer shows two scrollbars side by side.** On a short window the list of
   sections scrolled independently of the section you were reading, so both drew a scrollbar
   next to each other — most visible under Notifications and Appearance, whose content is long

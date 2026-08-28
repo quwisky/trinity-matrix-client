@@ -1132,9 +1132,9 @@ describe('CryptoService', () => {
 
     it('gives up on a destructive tail that stops answering, and says it may be half-done', async () => {
       // bootstrapSecretStorage is ~6 echo-waiting account-data writes plus the backup
-      // deletions, and nothing under it is bounded (createClient passes no
-      // localTimeoutMs). Unbounded, a stalled sync there spins forever with the new 4S key
-      // possibly already live and its recovery key never shown.
+      // deletions. Each request has the client deadline, but the sequence still needs one
+      // whole-operation bound so a stalled sync cannot keep the new 4S key live while its
+      // recovery key is never shown.
       vi.useFakeTimers();
       try {
         const { svc, crypto } = setup({ defaultKeyId: 'old-key' });

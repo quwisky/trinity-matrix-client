@@ -2,7 +2,6 @@ import {
   Component,
   DestroyRef,
   Injectable,
-  effect,
   inject,
   signal,
   type Type,
@@ -33,11 +32,9 @@ import { ROUTE_PROVIDER } from './rooms-page.spec-harness';
  * The two framework behaviours the #62 decomposition rests on, pinned before anything
  * moves.
  *
- * Neither is covered by `rooms.page.spec.ts`, and the second one is worse than uncovered:
- * that spec builds the page with `TestBed.inject(RoomsPage)` and never renders it, so the
- * page's `effect()` is created without a `ViewContext` and never runs. Its assertions that
- * no extra toast appeared therefore pass because nothing executes, not because the
- * behaviour holds. Both suites below render a real component so the effects actually run.
+ * Neither is covered by `rooms.page.spec.ts`: that spec builds the page with
+ * `TestBed.inject(RoomsPage)` and never renders it. Both suites below render a real
+ * component so page-scoped lifetimes and presentation behaviour match the shipped app.
  */
 
 /** Registers its teardown through the DestroyRef it was injected with. */
@@ -97,26 +94,15 @@ describe('page-scoped providers own the component lifetime', () => {
 
 /**
  * The error channel as the page builds it today: one writable error signal fed by
- * `runWithBusy`, and exactly one effect reading it.
+ * `runWithBusy`, with presentation owned by the same page-scoped service.
  */
 /**
- * A host that provides the REAL ShellStatusService and wires the same effect RoomsPage
- * wires, so the dedupe below is a property of the shipped error channel rather than of a
- * signal declared in this file.
+ * A host that provides the REAL ShellStatusService, so the dedupe below is a property of
+ * the shipped error channel rather than of a signal declared in this file.
  */
 @Component({ template: '', providers: [ShellStatusService] })
 class ErrorChannelHostComponent {
   readonly status = inject(ShellStatusService);
-
-  constructor() {
-    // Mirrors rooms.page.ts: one effect, reading the one error signal.
-    effect(() => {
-      const message = this.status.error();
-      if (message) {
-        void this.status.showError(message);
-      }
-    });
-  }
 
   fail(message: string): void {
     runWithBusy(
@@ -145,45 +131,42 @@ function buildErrorChannel(): {
   return { host: fixture.componentInstance, toasts: () => shown, fixture };
 }
 
-describe('one error channel produces one toast per flush', () => {
+describe('one error channel produces one toast per turn', () => {
   // Why this matters: `spaceBusy`/`spaceError` look like space state but are read across
-  // four of the five handler clusters, and a single effect toasts on them. Giving each
-  // extracted coordinator its own pair would turn one effect into N. The dedupe below is
-  // the property that would silently break.
-  it('toasts once for two failures that land in the same flush', () => {
-    const { host, toasts, fixture } = buildErrorChannel();
+  // four of the five handler clusters. Giving each extracted coordinator its own pair
+  // would turn one presentation channel into N. The dedupe below is the property that
+  // would silently break.
+  it('toasts once for two failures that land in the same turn', async () => {
+    const { host, toasts } = buildErrorChannel();
 
     host.fail('first');
     host.fail('second');
-    fixture.detectChanges();
+    await Promise.resolve();
 
-    // A signal read in an effect sees only the latest value per flush, so two failures
-    // in one turn surface as one toast carrying the second message.
+    // Presentation reads the latest signal value once its queued microtask runs.
     expect(toasts()).toEqual(['second']);
   });
 
-  it('toasts twice for two failures in separate flushes', () => {
-    const { host, toasts, fixture } = buildErrorChannel();
+  it('toasts twice for two failures in separate turns', async () => {
+    const { host, toasts } = buildErrorChannel();
 
     host.fail('first');
-    fixture.detectChanges();
+    await Promise.resolve();
     host.fail('second');
-    fixture.detectChanges();
+    await Promise.resolve();
 
     expect(toasts()).toEqual(['first', 'second']);
   });
 
-  it('clears the error before each run, so an identical failure toasts again', () => {
-    const { host, toasts, fixture } = buildErrorChannel();
+  it('clears the error before each run, so an identical failure toasts again', async () => {
+    const { host, toasts } = buildErrorChannel();
 
     host.fail('same');
-    fixture.detectChanges();
+    await Promise.resolve();
     host.fail('same');
-    fixture.detectChanges();
+    await Promise.resolve();
 
-    // `runWithBusy` nulls `error` synchronously at call time, so the signal changes
-    // value twice and the effect re-runs. Without that reset the second failure would
-    // be swallowed as a no-op write.
+    // `runWithBusy` nulls `error` synchronously at call time before capturing it again.
     expect(toasts()).toEqual(['same', 'same']);
   });
 });

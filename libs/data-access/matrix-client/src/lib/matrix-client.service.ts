@@ -43,6 +43,9 @@ import {
 import { SecretStorageKeyHolder } from './secret-storage-key-holder';
 import { TrinityOidcTokenRefresher } from './oidc-token-refresher';
 
+/** Default deadline for ordinary Matrix HTTP requests made by an account client. */
+const MATRIX_REQUEST_TIMEOUT_MS = 30_000;
+
 /** One signed-in account's live client + the per-account state bound to it. */
 interface AccountClient {
   readonly userId: string;
@@ -488,6 +491,10 @@ export class MatrixClientService {
               : null;
           created = createClient({
             baseUrl: session.baseUrl,
+            // Without a client-level deadline, a socket that accepts a request and never
+            // answers leaves every downstream busy/finalize path pending indefinitely.
+            // Long-poll sync calls pass their own larger local timeout to the SDK.
+            localTimeoutMs: MATRIX_REQUEST_TIMEOUT_MS,
             accessToken: session.accessToken,
             userId: session.userId,
             deviceId: session.deviceId,

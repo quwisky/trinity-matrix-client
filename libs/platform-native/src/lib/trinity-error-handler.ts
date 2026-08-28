@@ -1,5 +1,8 @@
 import { ErrorHandler, Injectable } from '@angular/core';
-import { isTransientMatrixError } from '@trinity/util/matrix';
+import {
+  isTransientMatrixError,
+  matrixRequestFailureDiagnostic,
+} from '@trinity/util/matrix';
 
 /**
  * App-wide {@link ErrorHandler} that quiets transient homeserver noise.
@@ -24,7 +27,10 @@ import { isTransientMatrixError } from '@trinity/util/matrix';
 export class TrinityErrorHandler extends ErrorHandler {
   override handleError(error: unknown): void {
     if (isTransientMatrixError(error)) {
-      console.debug('[trinity] transient homeserver error (ignored):', error);
+      console.debug(
+        '[trinity] transient homeserver error (ignored)',
+        matrixRequestFailureDiagnostic('background Matrix request', error),
+      );
       return;
     }
     super.handleError(error);

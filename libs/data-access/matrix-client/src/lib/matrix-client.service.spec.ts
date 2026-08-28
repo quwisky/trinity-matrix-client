@@ -127,6 +127,7 @@ describe('MatrixClientService', () => {
         accessToken: 'tok',
         userId: '@me:hs',
         deviceId: 'DEV',
+        localTimeoutMs: 30_000,
       }),
     );
     expect(client.initRustCrypto).toHaveBeenCalledOnce();

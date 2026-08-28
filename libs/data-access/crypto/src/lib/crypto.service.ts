@@ -473,9 +473,9 @@ async function readServerDefaultKeyId(
     return null;
   }
   try {
-    // Bounded: `createClient` passes no `localTimeoutMs`, so a socket the homeserver
-    // accepts and never answers would otherwise hang first-run setup before it had done
-    // anything at all. A timeout lands in the same catch as every other read failure.
+    // Use the tighter crypto-flow deadline rather than the client's 30-second default, so
+    // a socket the homeserver accepts and never answers cannot hold first-run setup. A
+    // timeout lands in the same catch as every other read failure.
     const content = await withTimeout(
       client.http.authedRequest<{ key?: string }>(
         Method.Get,

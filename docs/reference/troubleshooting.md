@@ -651,12 +651,18 @@ matches and then waits for an echo it never caused, so the deterministic writer 
 
 **Symptom.** Against a homeserver that accepts the socket and never answers.
 
-**Cause.** `createClient` passes no `localTimeoutMs`, and matrix-js-sdk's fetch layer only
-attaches a timeout signal when one is given. Nothing below these calls bounds anything.
+**Cause.** Older clients passed no `localTimeoutMs`; matrix-js-sdk therefore attached no
+timeout signal to ordinary requests. A homeserver that accepted a socket and never answered
+could keep both the request and its UI busy state pending indefinitely.
 
-**Fix.** Wrap every homeserver round-trip in the crypto flows with the local `withTimeout`
-helper, which also attaches a no-op catch to the losing promise so its later rejection does
-not surface as unhandled.
+**Fix.** Account clients now use a 30-second default request deadline. Crypto flows retain
+their local `withTimeout` guards where they need a tighter single-call limit or a larger
+whole-operation budget; the helper also catches a losing promise's later rejection so it
+does not surface as unhandled. `runWithBusy` clears action state from `finalize`, including
+empty completion and cancellation, and the rooms shell presents captured errors directly
+from its page-scoped status service. Do not rely on a component effect that reads only an
+error signal: in the zoneless app, a failed action may change no template-read state that
+would schedule another render pass.
 
 ### An unverified message renders exactly like a verified one
 

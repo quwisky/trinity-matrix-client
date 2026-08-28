@@ -1,5 +1,5 @@
 import { ErrorHandler } from '@angular/core';
-import { ConnectionError, HTTPError } from '@trinity/util/matrix';
+import { ConnectionError, HTTPError, MatrixError } from '@trinity/util/matrix';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TrinityErrorHandler } from './trinity-error-handler';
 
@@ -27,8 +27,35 @@ describe('TrinityErrorHandler', () => {
     handler.handleError(new HTTPError('503', 503));
 
     expect(debugSpy).toHaveBeenCalledTimes(1);
+    expect(debugSpy).toHaveBeenCalledWith(
+      '[trinity] transient homeserver error (ignored)',
+      {
+        operation: 'background Matrix request',
+        kind: 'server',
+        httpStatus: 503,
+      },
+    );
     expect(superSpy).not.toHaveBeenCalled();
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not log a Matrix error URL or response body', () => {
+    const error = new MatrixError(
+      {
+        errcode: 'M_UNKNOWN',
+        error: 'secret response text',
+        access_token: 'secret token',
+      },
+      503,
+      'https://hs.example/path?access_token=secret',
+    );
+
+    handler.handleError(error);
+
+    const logged = JSON.stringify(debugSpy.mock.calls);
+    expect(logged).not.toContain('secret');
+    expect(logged).not.toContain('access_token');
+    expect(logged).not.toContain('hs.example');
   });
 
   it('swallows a transient error delivered as a raw rejection reason', () => {

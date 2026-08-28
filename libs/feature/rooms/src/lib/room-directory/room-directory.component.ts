@@ -8,7 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Subscription } from 'rxjs';
+import { Subscription, finalize } from 'rxjs';
 import { FormField, FormRoot, form } from '@angular/forms/signals';
 import { TrnButton } from '@trinity/components/button';
 import { TrnInput } from '@trinity/components/input';
@@ -18,7 +18,12 @@ import {
   type PublicRoomSummary,
 } from '@trinity/data-access/rooms';
 import { AvatarComponent } from '@trinity/components/avatar';
-import { initialOf } from '@trinity/util/matrix';
+import {
+  describeMatrixRequestFailure,
+  initialOf,
+  matrixRequestErrorHandling,
+  reportMatrixRequestFailure,
+} from '@trinity/util/matrix';
 
 /** What the directory resolves when a room/space is joined from it. */
 export interface DirectoryJoin {
@@ -105,13 +110,20 @@ export class RoomDirectoryComponent implements OnInit {
     this.joining.set(room.roomId);
     this.directory
       .join(room.alias ?? room.roomId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => this.joining.set(null)),
+      )
       .subscribe({
         next: (roomId) =>
           this.dialogRef.close({ roomId, isSpace: room.isSpace }),
-        error: () => {
-          this.joining.set(null);
-          this.toast.show(`Could not join ${room.name}.`, {
+        error: (error: unknown) => {
+          const handling = matrixRequestErrorHandling(
+            'join room from directory',
+            `Could not join ${room.name}. Try again.`,
+          );
+          handling.reportError(error);
+          this.toast.show(handling.formatError(error), {
             duration: 4000,
             variant: 'destructive',
           });
@@ -141,18 +153,28 @@ export class RoomDirectoryComponent implements OnInit {
         since,
         spaces: this.mode() === 'spaces',
       })
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => this.loading.set(false)),
+      )
       .subscribe({
         next: (page) => {
           this.rooms.update((current) =>
             reset ? page.rooms : [...current, ...page.rooms],
           );
           this.nextBatch.set(page.nextBatch);
-          this.loading.set(false);
         },
-        error: () => {
-          this.loading.set(false);
-          this.error.set('Could not load the room directory.');
+        error: (error: unknown) => {
+          reportMatrixRequestFailure('load room directory', error);
+          const failure = describeMatrixRequestFailure(
+            error,
+            'Could not load the room directory. Try again.',
+          );
+          this.error.set(
+            failure.kind === 'unexpected'
+              ? 'Could not load the room directory.'
+              : failure.message,
+          );
           // On a failed RESET (a new term, or a rooms/spaces mode switch) the previous
           // query's results and pagination token no longer belong to what the UI now
           // claims to be showing: stale room hits would render under "Explore spaces",

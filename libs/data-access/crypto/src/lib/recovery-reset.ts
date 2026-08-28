@@ -188,9 +188,9 @@ export async function runRecoveryReset(
     const recoveryKey = await crypto.createRecoveryKeyFromPassphrase();
     // The biggest writes of the whole reset, and the ones most able to hang: ~6
     // echo-waiting account-data writes (`addKey`, `setDefaultKeyId`, three
-    // `m.cross_signing.*` stores) plus `deleteAllKeyBackupVersions`. Nothing below them
-    // bounds anything — `createClient` passes no `localTimeoutMs`, and fetch.js only
-    // attaches a timeout signal when one is given — so this is the only backstop.
+    // `m.cross_signing.*` stores) plus `deleteAllKeyBackupVersions`. Individual Matrix
+    // requests have the client's 30-second deadline; this larger budget remains the only
+    // backstop for the whole multi-request destructive sequence.
     await withTimeout(
       crypto.bootstrapSecretStorage({
         setupNewKeyBackup: true,
@@ -269,9 +269,8 @@ function replayAccepted(
  * or without a dehydrated device (`M_NOT_FOUND`) is the common case, and no failure here
  * is worth failing a reset that already succeeded.
  *
- * Bounded as well as swallowed. It heads the destructive tail, and nothing under it can
- * time out (`createClient` passes no `localTimeoutMs`), so an unanswered socket here would
- * stall the reset before the tail it is meant to open.
+ * Bounded as well as swallowed. It heads the destructive tail and uses the crypto flow's
+ * tighter limit rather than waiting for the account client's default request deadline.
  */
 async function deleteDehydratedDevice(client: MatrixClient): Promise<void> {
   try {
@@ -407,9 +406,9 @@ async function realignLocalPointer(
  * The *read* needs the same bound, for a reason that is easy to miss: `getDefaultKeyId`
  * answers from the local store only while `isInitialSyncComplete()` (client.js:1346-1358).
  * A stalled long-poll is abandoned after ~110s (sync.js) — inside the budget the tail above
- * is deliberately given — and from that moment this is a bare network GET on a client that
- * passes no `localTimeoutMs`. A timeout here is harmless: it lands in the same catch, and
- * an undropped description is inert.
+ * is deliberately given — and from that moment this is a bare network GET. The local
+ * timeout is tighter than the client's default; timing out here is harmless because it
+ * lands in the same catch and an undropped description is inert.
  */
 async function dropStaleKeyDescription(
   storage: ServerSideSecretStorage,
