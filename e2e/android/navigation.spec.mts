@@ -57,7 +57,7 @@ async function seedComposerRoom(request: APIRequestContext): Promise<void> {
 }
 
 test.describe('Android navigation', () => {
-  test('logs in, opens settings by touch, and handles hardware Back', async ({
+  test('@phase7-smoke logs in, opens settings by touch, and handles hardware Back', async ({
     app,
     page,
   }) => {

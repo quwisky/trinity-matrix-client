@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, form } from '@angular/forms/signals';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnSwitchComponent } from '@trinity/components/switch';
 import { TrnInput } from '@trinity/components/input';
 import { TrnToastService } from '@trinity/components/overlay';
@@ -37,7 +37,7 @@ import { SettingsSectionHeadingComponent } from '../shared/settings-section-head
   templateUrl: './keyword-rules-block.component.html',
   imports: [
     FormField,
-    HlmButton,
+    TrnButton,
     TrnSwitchComponent,
     TrnInput,
     SettingsSectionHeadingComponent,

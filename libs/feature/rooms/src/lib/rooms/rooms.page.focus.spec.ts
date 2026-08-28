@@ -47,6 +47,7 @@ import { MockComponent, MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
+import { SidebarUserPanelComponent } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
 import { SimpleMessageListComponent } from '../message-list/simple-message-list/simple-message-list.component';
@@ -224,6 +225,7 @@ describe('RoomsPage rendered right-panel focus', () => {
         imports: [
           ServerRailComponent,
           ChannelSidebarComponent,
+          SidebarUserPanelComponent,
           PaneHandleComponent,
           SimpleMessageListComponent,
           VirtualMessageListComponent,
@@ -270,6 +272,7 @@ describe('RoomsPage rendered right-panel focus', () => {
         imports: [
           MockComponent(ServerRailComponent),
           MockComponent(ChannelSidebarComponent),
+          MockComponent(SidebarUserPanelComponent),
           MockComponent(PaneHandleComponent),
           MockComponent(SimpleMessageListComponent),
           MockComponent(VirtualMessageListComponent),

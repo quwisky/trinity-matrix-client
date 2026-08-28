@@ -5,7 +5,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { HomeserverInfoService } from '@trinity/data-access/homeserver';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { BUILD_INFO } from '@trinity/platform-native';
@@ -42,7 +42,7 @@ import { SettingsSectionHeadingComponent } from '../shared/settings-section-head
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './server-section.component.html',
   imports: [
-    HlmButton,
+    TrnButton,
     HomeserverBlockComponent,
     SettingsSectionHeadingComponent,
   ],

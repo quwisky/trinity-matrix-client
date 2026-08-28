@@ -1,41 +1,27 @@
+@use '../styles/auth-form' as auth;
+
 .registration-card__subtitle {
-  margin: 0;
-  font-size: 1rem;
-  line-height: 1.4;
-  color: var(--trinity-text-muted);
+  @include auth.subtitle;
 }
 
 .registration-card__homeserver {
-  margin: 6px 0 0;
-  font-size: 0.875rem;
-  word-break: break-all;
-  color: var(--trinity-link);
+  @include auth.homeserver;
 }
 
 .registration-card__field {
-  margin-bottom: 16px;
+  @include auth.field;
 }
 
 .registration-card__label {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 0.6875rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--trinity-text-muted);
+  @include auth.label;
 }
 
 .registration-card__field input {
-  width: 100%;
-  background: var(--trinity-active);
-  color: var(--trinity-text-bright);
-  border-color: transparent;
+  @include auth.input;
 }
 
 .registration-card__submit {
-  display: block;
-  margin-top: 20px;
+  @include auth.primary-action;
 }
 
 .registration-card__copy,
@@ -66,8 +52,7 @@
 .registration-card__field-error,
 .registration-card__stage-error,
 .registration-card__error {
-  margin: 8px 0 0;
-  font-size: 0.875rem;
+  @include auth.error;
 }
 
 .registration-card__stage-error {
@@ -79,5 +64,5 @@
 }
 
 .registration-card__busy {
-  padding-top: 16px;
+  @include auth.busy;
 }

@@ -153,6 +153,177 @@ async function expectInside(child: Locator, parent: Locator): Promise<void> {
   );
 }
 
+async function expectFloatingDockContract(page: Page): Promise<void> {
+  const geometry = await page.evaluate(() => {
+    const shell = document.querySelector<HTMLElement>('.shell-side');
+    const rail = document.querySelector<HTMLElement>('.rail');
+    const sidebar = document.querySelector<HTMLElement>('.sidebar');
+    const roomScroller =
+      document.querySelector<HTMLElement>('.sidebar__scroll');
+    const host = document.querySelector<HTMLElement>('trn-sidebar-user-panel');
+    const dock = document.querySelector<HTMLElement>('.userbar');
+    const settingsButton = document.querySelector<HTMLElement>(
+      '[data-testid="open-settings"]',
+    );
+    const settingsIcon = settingsButton?.querySelector<HTMLElement>('trn-icon');
+    const lastSpace = rail?.lastElementChild as HTMLElement | null;
+    const lastRoom = roomScroller?.lastElementChild as HTMLElement | null;
+    if (
+      !shell ||
+      !rail ||
+      !sidebar ||
+      !roomScroller ||
+      !host ||
+      !dock ||
+      !settingsButton ||
+      !settingsIcon ||
+      !lastSpace ||
+      !lastRoom
+    ) {
+      throw new Error('missing floating identity dock geometry');
+    }
+
+    shell.style.setProperty('--trinity-navigation-safe-area-bottom', '24px');
+    rail.scrollTop = rail.scrollHeight;
+    roomScroller.scrollTop = roomScroller.scrollHeight;
+    const shellBox = shell.getBoundingClientRect();
+    const railBox = rail.getBoundingClientRect();
+    const sidebarBox = sidebar.getBoundingClientRect();
+    const dockBox = dock.getBoundingClientRect();
+    const settingsButtonBox = settingsButton.getBoundingClientRect();
+    const settingsIconBox = settingsIcon.getBoundingClientRect();
+    const spaceBox = lastSpace.getBoundingClientRect();
+    const roomBox = lastRoom.getBoundingClientRect();
+    const railStyle = getComputedStyle(rail);
+    const roomStyle = getComputedStyle(roomScroller);
+    const result = {
+      compact: document.documentElement.dataset['density'] === 'compact',
+      hostPosition: getComputedStyle(host).position,
+      railScrollPaddingEnd: Number.parseFloat(railStyle.scrollPaddingBlockEnd),
+      roomScrollPaddingEnd: Number.parseFloat(roomStyle.scrollPaddingBlockEnd),
+      dockInsideInline:
+        dockBox.left >= shellBox.left - 1 &&
+        dockBox.right <= shellBox.right + 1,
+      dockInsideBlock:
+        dockBox.top >= shellBox.top - 1 &&
+        dockBox.bottom <= shellBox.bottom + 1,
+      clearsSafeArea: dockBox.bottom <= shellBox.bottom - 24,
+      spansRailAndRooms:
+        dockBox.left < railBox.right && dockBox.right > sidebarBox.left,
+      lastSpaceClearsDock: spaceBox.bottom <= dockBox.top - 1,
+      lastRoomClearsDock: roomBox.bottom <= dockBox.top - 1,
+      settingsIconOffsetX: Math.abs(
+        settingsButtonBox.left +
+          settingsButtonBox.width / 2 -
+          (settingsIconBox.left + settingsIconBox.width / 2),
+      ),
+      settingsIconOffsetY: Math.abs(
+        settingsButtonBox.top +
+          settingsButtonBox.height / 2 -
+          (settingsIconBox.top + settingsIconBox.height / 2),
+      ),
+    };
+    shell.style.removeProperty('--trinity-navigation-safe-area-bottom');
+    return result;
+  });
+
+  expect(geometry.railScrollPaddingEnd).toBe(geometry.compact ? 64 : 68);
+  expect(geometry.roomScrollPaddingEnd).toBe(geometry.compact ? 64 : 68);
+  expect(geometry.settingsIconOffsetX).toBeLessThanOrEqual(1);
+  expect(geometry.settingsIconOffsetY).toBeLessThanOrEqual(1);
+  expect(geometry).toMatchObject({
+    hostPosition: 'absolute',
+    dockInsideInline: true,
+    dockInsideBlock: true,
+    clearsSafeArea: true,
+    spansRailAndRooms: true,
+    lastSpaceClearsDock: true,
+    lastRoomClearsDock: true,
+  });
+
+  for (const [testId, scrollerSelector] of [
+    ['dock-focus-space', '.rail'],
+    ['dock-focus-room', '.sidebar__scroll'],
+  ] as const) {
+    const beforeFocus = await page.evaluate(
+      ({ id, selector }) => {
+        const row = document.querySelector<HTMLElement>(
+          `[data-testid="${id}"]`,
+        );
+        const dock = document.querySelector<HTMLElement>('.userbar');
+        const scroller = document.querySelector<HTMLElement>(selector);
+        if (!row || !dock || !scroller) {
+          throw new Error(`missing ${id} pre-focus geometry`);
+        }
+        scroller.scrollTop = 0;
+        return {
+          scrollTop: scroller.scrollTop,
+          needsScroll:
+            row.getBoundingClientRect().bottom >
+            dock.getBoundingClientRect().top,
+        };
+      },
+      { id: testId, selector: scrollerSelector },
+    );
+    expect(beforeFocus).toEqual({ scrollTop: 0, needsScroll: true });
+
+    await page.getByTestId(testId).locator('button').first().focus();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          ({ id, selector }) => {
+            const row = document.querySelector<HTMLElement>(
+              `[data-testid="${id}"]`,
+            );
+            const dock = document.querySelector<HTMLElement>('.userbar');
+            const scroller = document.querySelector<HTMLElement>(selector);
+            if (!row || !dock || !scroller) {
+              throw new Error(`missing ${id} focus geometry`);
+            }
+            return (
+              scroller.scrollTop > 0 &&
+              document.activeElement === row.querySelector('button') &&
+              row.getBoundingClientRect().bottom <=
+                dock.getBoundingClientRect().top - 1
+            );
+          },
+          { id: testId, selector: scrollerSelector },
+        ),
+      )
+      .toBe(true);
+  }
+}
+
+async function expectAccountMenuAboveDock(page: Page): Promise<void> {
+  const membersBackdrop = page.getByTestId('members-backdrop');
+  if (await membersBackdrop.isVisible()) {
+    await membersBackdrop.click({ position: { x: 8, y: 8 } });
+    await expect(membersBackdrop).toBeHidden();
+  }
+
+  const trigger = page.getByTestId('user-menu-trigger');
+  await trigger.click();
+  const menu = page.getByRole('menu').last();
+  await expect(menu).toBeVisible();
+
+  // The anchored overlay may meet the dock inside the 4px spacing token (including its
+  // shadow), but it must remain above the dock controls after its entrance motion settles.
+  await expect
+    .poll(async () => {
+      const [menuBox, dockBox] = await Promise.all([
+        menu.boundingBox(),
+        page.locator('.userbar').boundingBox(),
+      ]);
+      return Boolean(
+        menuBox && dockBox && menuBox.y + menuBox.height <= dockBox.y + 4,
+      );
+    })
+    .toBe(true);
+
+  await page.keyboard.press('Escape');
+  await expect(trigger).toBeFocused();
+}
+
 async function expectScrollContract(
   page: Page,
   viewport: { width: number; height: number },
@@ -212,6 +383,7 @@ async function expectScrollContract(
     'position',
     viewport.width >= 1100 ? 'static' : 'fixed',
   );
+  await expectFloatingDockContract(page);
 }
 
 /**
@@ -221,7 +393,11 @@ async function expectScrollContract(
  */
 async function fillNavigationScrollers(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const fill = (rootSelector: string, sourceSelector: string) => {
+    const fill = (
+      rootSelector: string,
+      sourceSelector: string,
+      focusTestId?: string,
+    ) => {
       const root = document.querySelector<HTMLElement>(rootSelector);
       const source = document.querySelector<HTMLElement>(sourceSelector);
       if (!root || !source) throw new Error(`cannot fill ${rootSelector}`);
@@ -234,9 +410,22 @@ async function fillNavigationScrollers(page: Page): Promise<void> {
         root.append(clone);
         copies++;
       }
+      if (focusTestId) {
+        root
+          .querySelector(`[data-testid="${focusTestId}"]`)
+          ?.removeAttribute('data-testid');
+        const last = root.lastElementChild as HTMLElement | null;
+        last?.removeAttribute('aria-hidden');
+        last?.removeAttribute('inert');
+        last?.setAttribute('data-testid', focusTestId);
+      }
     };
-    fill('.rail', '.rail .item');
-    fill('.sidebar__scroll', '.sidebar__scroll .channel-row');
+    fill('.rail', '.rail .item', 'dock-focus-space');
+    fill(
+      '.sidebar__scroll',
+      '.sidebar__scroll .channel-row',
+      'dock-focus-room',
+    );
     fill('.members', '.members .member');
   });
 }
@@ -421,6 +610,18 @@ test.describe('Modern room shell layout', () => {
         { width: 900, height: 700 },
       ]) {
         await expectScrollContract(page, viewport);
+      }
+
+      await expectAccountMenuAboveDock(page);
+
+      if (density === 'compact') {
+        await page.evaluate(() => {
+          document.documentElement.dir = 'rtl';
+        });
+        await expectFloatingDockContract(page);
+        await page.evaluate(() => {
+          document.documentElement.removeAttribute('dir');
+        });
       }
     }
   });

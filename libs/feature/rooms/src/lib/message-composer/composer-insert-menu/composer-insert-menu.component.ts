@@ -13,13 +13,12 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import {
-  HlmDropdownMenu,
-  HlmDropdownMenuItem,
-  HlmDropdownMenuTrigger,
-} from '@trinity/helm/dropdown-menu';
+import { TrnIconButton } from '@trinity/components/button';
 import {
   TrnActionSheetService,
+  TrnDropdownMenu,
+  TrnDropdownMenuItem,
+  TrnDropdownMenuTrigger,
   type ActionSheetButton,
   type TrnActionSheetRef,
 } from '@trinity/components/overlay';
@@ -55,10 +54,11 @@ interface OwnedSheet {
   selector: 'trn-composer-insert-menu',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    TrnIconButton,
     TrnIconComponent,
-    HlmDropdownMenu,
-    HlmDropdownMenuItem,
-    HlmDropdownMenuTrigger,
+    TrnDropdownMenu,
+    TrnDropdownMenuItem,
+    TrnDropdownMenuTrigger,
     TrnSpinnerComponent,
     TrnTooltip,
   ],

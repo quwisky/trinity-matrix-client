@@ -17,7 +17,7 @@ import { Observable } from 'rxjs';
 import { VerificationService } from '@trinity/data-access/crypto';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
 import { PageHeaderComponent } from '@trinity/components/page-header';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { QrScannerComponent } from '@trinity/components/qr-scanner';
 import { QrCodeService } from '@trinity/platform-native/qr-code';
@@ -38,7 +38,7 @@ import { SasCompareComponent } from './sas-compare.component';
   imports: [
     NgTemplateOutlet,
     PageHeaderComponent,
-    HlmButton,
+    TrnButton,
     SasCompareComponent,
     QrScannerComponent,
     TrnSpinnerComponent,

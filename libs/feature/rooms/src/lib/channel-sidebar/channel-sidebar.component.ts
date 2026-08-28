@@ -2,37 +2,34 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
-  DestroyRef,
   inject,
   input,
   model,
   output,
 } from '@angular/core';
+import { TrnIconButton } from '@trinity/components/button';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import {
-  HlmDropdownMenu,
-  HlmDropdownMenuItem,
-  HlmDropdownMenuItemSubIndicator,
-  HlmDropdownMenuLabel,
-  HlmDropdownMenuRadio,
-  HlmDropdownMenuRadioIndicator,
-  HlmDropdownMenuSeparator,
-  HlmDropdownMenuSub,
-  HlmDropdownMenuSubTrigger,
-  HlmDropdownMenuTrigger,
-} from '@trinity/helm/dropdown-menu';
+  TrnDropdownMenu,
+  TrnDropdownMenuItem,
+  TrnDropdownMenuItemSubIndicatorComponent,
+  TrnDropdownMenuLabel,
+  TrnDropdownMenuRadio,
+  TrnDropdownMenuRadioIndicatorComponent,
+  TrnDropdownMenuSeparator,
+  TrnDropdownMenuSub,
+  TrnDropdownMenuSubTrigger,
+  TrnDropdownMenuTrigger,
+} from '@trinity/components/overlay';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnInput } from '@trinity/components/input';
-import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { AvatarComponent, type AccountBadge } from '@trinity/components/avatar';
 import {
   InvitesService,
   MixedInvitesService,
   type PendingInvite,
 } from '@trinity/data-access/invites';
-import {
-  PresenceService,
-  type UserProfile,
-} from '@trinity/data-access/profile';
+import { PresenceService } from '@trinity/data-access/profile';
 import {
   AccountScopeService,
   DEFAULT_ROOM_SORT,
@@ -48,37 +45,31 @@ import {
   type RoomNotifyMode,
 } from '@trinity/data-access/notifications';
 import { matchesRoomFilter, normalizeRoomFilter } from './room-filter';
-import { AccountPickerService } from '../account-picker/account-picker.service';
-import {
-  SidebarUserPanelComponent,
-  type AccountSummary,
-} from './sidebar-user-panel/sidebar-user-panel.component';
 import { SidebarRoomListComponent } from './sidebar-room-list/sidebar-room-list.component';
 import { TrnIconComponent } from '@trinity/components/icon';
 
-export type { AccountSummary };
-
-/** Discord channel sidebar: space header, invites, room list, and the user panel. */
+/** Discord channel sidebar: space header, invites, and room list. */
 @Component({
   selector: 'trn-channel-sidebar',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    TrnIconButton,
+    TrnTooltip,
     EmptyStateComponent,
-    SidebarUserPanelComponent,
     SidebarRoomListComponent,
     AvatarComponent,
     TrnIconComponent,
     TrnInput,
-    HlmDropdownMenuTrigger,
-    HlmDropdownMenu,
-    HlmDropdownMenuItem,
-    HlmDropdownMenuItemSubIndicator,
-    HlmDropdownMenuLabel,
-    HlmDropdownMenuRadio,
-    HlmDropdownMenuRadioIndicator,
-    HlmDropdownMenuSeparator,
-    HlmDropdownMenuSub,
-    HlmDropdownMenuSubTrigger,
+    TrnDropdownMenuTrigger,
+    TrnDropdownMenu,
+    TrnDropdownMenuItem,
+    TrnDropdownMenuItemSubIndicatorComponent,
+    TrnDropdownMenuLabel,
+    TrnDropdownMenuRadio,
+    TrnDropdownMenuRadioIndicatorComponent,
+    TrnDropdownMenuSeparator,
+    TrnDropdownMenuSub,
+    TrnDropdownMenuSubTrigger,
   ],
   templateUrl: './channel-sidebar.component.html',
   styleUrl: './channel-sidebar.component.scss',
@@ -100,18 +91,6 @@ export class ChannelSidebarComponent {
   protected readonly typingByRoom = this.roomsSvc.typingByRoom;
   private readonly presence = inject(PresenceService);
   private readonly roomNotifications = inject(RoomNotificationsService);
-  private readonly accountPicker = inject(AccountPickerService);
-
-  /**
-   * True on the narrow single-pane layout, where this sidebar is a full-screen page and its
-   * user panel is a bar across the bottom of the viewport. A signal rather than a one-shot
-   * read so rotating a phone re-renders the affordance instead of stranding whichever one the
-   * page happened to load with.
-   */
-  protected readonly narrowLayout = mediaQuerySignal(
-    BELOW_MD_QUERY,
-    inject(DestroyRef),
-  );
 
   readonly spaceName = input('Home');
   /** Whether a space (not Home) is selected — gates the header space actions. */
@@ -191,21 +170,6 @@ export class ChannelSidebarComponent {
     this.clearFilter();
   }
 
-  /** The account badge for a room row (mixed view), or null when not badged. */
-  /**
-   * Show the account picker as a dialog (narrow layout only — see {@link narrowLayout}).
-   *
-   * The dialog writes through AccountScopeService itself rather than routing back out via
-   * `toggleAccountShown`, so these ticks do not pass through RoomsPage the way the submenu's
-   * do. Both end in the same service call.
-   */
-  protected onOpenAccountPicker(): void {
-    void this.accountPicker.open({
-      accounts: this.accounts(),
-      activeUserId: this.activeUserId(),
-    });
-  }
-
   /** Not-yet-joined channels of the active space (the "More Channels" list). */
   readonly joinableRooms = this.spacesSvc.notJoinedRooms;
   /** Sub-spaces of the active space (joined → Open, otherwise Join). */
@@ -242,30 +206,13 @@ export class ChannelSidebarComponent {
     ),
   );
   readonly activeRoomId = input<string | null>(null);
-  /** The signed-in user (name + handle + avatar) for the bottom user panel. */
-  readonly user = input<UserProfile>({
-    userId: '',
-    displayName: '',
-    avatarMxc: null,
-  });
-  /** Every signed-in account, for the switcher list in the user panel. */
-  readonly accounts = input<AccountSummary[]>([]);
   /** The user id of the account currently in view (marked with a check). */
   readonly activeUserId = input<string | null>(null);
-  /** User ids of accounts the server signed out that need re-authentication. */
-  readonly reauthAccounts = input<readonly string[]>([]);
   /**
    * Owning-account badge per account id (mixed-account view): account id → its avatar/
    * initial/name. Empty when not in mixed mode — room rows then show no badge.
    */
   readonly accountBadges = input<ReadonlyMap<string, AccountBadge>>(new Map());
-  /**
-   * The accounts the view currently draws from (the user's picker selection). Passed to the
-   * user panel, which renders the picker and the stacked-avatar indicator.
-   */
-  readonly shownAccountIds = input<ReadonlySet<string>>(new Set());
-  /** The user ticked/unticked an account in the picker. */
-  readonly toggleAccountShown = output<string>();
   readonly selectRoom = output<string>();
   /** Header "+" on Home — raise the new-room / new-DM chooser. */
   readonly newChat = output<void>();
@@ -299,18 +246,6 @@ export class ChannelSidebarComponent {
   readonly declineInvite = output<{ roomId: string; accountId: string }>();
   /** Header search icon — open the global quick switcher (Ctrl/Cmd+K). */
   readonly openSwitcher = output<void>();
-  /** User-panel gear — open the settings page. */
-  readonly openSettings = output<void>();
-  /** The account menu was reached for — see {@link SidebarUserPanelComponent.accountsOpened}. */
-  readonly accountsOpened = output<void>();
-  /** Switch the active account to the given user id (a switcher row that isn't active). */
-  readonly switchAccount = output<string>();
-  /** Re-authenticate a soft-logged-out account by its user id. */
-  readonly reauthAccount = output<string>();
-  /** User panel "Add account" — start a login in add mode. */
-  readonly addAccount = output<void>();
-  /** Sign out the given account (the active one, from the user panel). */
-  readonly logout = output<string>();
   /** Set a room's notification level (all / mentions / mute) from its ⋮ menu. */
   readonly setNotifyMode = output<{
     roomId: string;

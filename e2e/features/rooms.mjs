@@ -214,7 +214,7 @@ async function clickActionSheetButton(page, buttonText) {
  * canConfirm() computed re-evaluates), click the confirm button, then wait for
  * the modal to dismiss.
  *
- * The confirm button is a plain `<button hlmBtn>` in the modal header whose
+ * The confirm button is a plain `<button trnBtn>` in the modal header whose
  * text matches `confirmLabelText`; Playwright's click() already waits for it
  * to lose its `disabled` attribute (actionability), so no manual poll is
  * needed — `[disabled]="!canConfirm()"` clears once the MXID validates.

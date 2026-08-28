@@ -185,7 +185,7 @@ describe('MessageComposerComponent — staging files for the next send', () => {
       .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
       ?.click();
     await fixture.whenStable();
-    // hlmDropdownMenuItem reflects [disabled] as the data-disabled attribute.
+    // trnDropdownMenuItem reflects [disabled] as the data-disabled attribute.
     const disabled = (): string | null | undefined =>
       document
         .querySelector('[data-testid=insert-attach]')

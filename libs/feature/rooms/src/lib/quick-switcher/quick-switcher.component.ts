@@ -22,7 +22,7 @@ import {
   type AvatarShape,
 } from '@trinity/components/avatar';
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnInput } from '@trinity/components/input';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
@@ -78,7 +78,7 @@ const KIND_ICON: Record<SwitcherKind, TrnIconName> = {
     TrnIconComponent,
     AvatarComponent,
     TrnSpinnerComponent,
-    HlmButton,
+    TrnButton,
     TrnInput,
   ],
   templateUrl: './quick-switcher.component.html',

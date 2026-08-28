@@ -6,6 +6,7 @@ import {
 } from './support/fixtures.mts';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers changing your own account password from Settings → Account: the form
 // (data-testid current-password/new-password/confirm-password → change-password)
@@ -34,9 +35,7 @@ async function loginStatus(
 
 /** From /rooms, open Settings and drill into the Account section. */
 async function openAccountSection(page: Page): Promise<void> {
-  await page.getByTestId('open-settings').click();
-  await page.getByTestId('settings-nav-account').click();
-  await page.waitForURL(/\/settings\/account$/, { timeout: 20_000 });
+  await openSettingsSection(page, 'account');
   await expect(page.getByTestId('current-password')).toBeVisible({
     timeout: 15_000,
   });

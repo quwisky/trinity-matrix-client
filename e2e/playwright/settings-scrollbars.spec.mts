@@ -70,15 +70,17 @@ test.describe('Settings scrollbars', () => {
     ];
 
     await login(page, session);
+    const roomUrl = page.url();
     await page.getByTestId('open-settings').click();
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page).toHaveURL(roomUrl);
 
     for (const viewport of viewports) {
       await page.setViewportSize(viewport);
       for (const [section, bars] of Object.entries(expected)) {
         await page.getByTestId(`settings-nav-${section}`).click();
-        await page.waitForURL(new RegExp(`/settings/${section}$`), {
-          timeout: 20_000,
-        });
         await expect(page.getByTestId('settings-detail')).not.toBeEmpty();
 
         await expect.poll(() => scrollbarPainters(page)).toEqual(bars);
@@ -86,7 +88,9 @@ test.describe('Settings scrollbars', () => {
           const workspace = document.querySelector<HTMLElement>(
             '[data-testid=settings-workspace]',
           );
-          const shell = document.querySelector<HTMLElement>('trn-settings');
+          const shell = document.querySelector<HTMLElement>(
+            '[data-testid=settings-dialog]',
+          );
           if (!workspace || !shell) throw new Error('settings shell missing');
           const frame = workspace.getBoundingClientRect();
           return {
@@ -140,7 +144,7 @@ test.describe('Settings scrollbars', () => {
     // an element scrolled out of an `overflow: auto` ancestor still has a bounding box, so
     // that assertion passes whether or not the list scrolls. A click has to reach it.
     await page.getByTestId('settings-nav-advanced').click();
-    await page.waitForURL(/\/settings\/advanced$/, { timeout: 20_000 });
+    await expect(page.getByTestId('settings-detail')).not.toBeEmpty();
   });
 
   test('keeps notification overflow inside the settings shell', async ({
@@ -150,7 +154,6 @@ test.describe('Settings scrollbars', () => {
     await page.setViewportSize({ width: 1280, height: 700 });
     await page.getByTestId('open-settings').click();
     await page.getByTestId('settings-nav-notifications').click();
-    await page.waitForURL(/\/settings\/notifications$/, { timeout: 20_000 });
 
     // The detail pane owns vertical scrolling. Its routed content must not enlarge the
     // document's scrollable overflow area in a framed Electron window, where the title-bar
@@ -158,7 +161,7 @@ test.describe('Settings scrollbars', () => {
     await expect
       .poll(() =>
         page
-          .locator('trn-settings')
+          .getByTestId('settings-dialog')
           .evaluate((shell) => getComputedStyle(shell).overflowY),
       )
       .toBe('hidden');

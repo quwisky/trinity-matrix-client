@@ -4,7 +4,9 @@ import {
   DestroyRef,
   ElementRef,
   computed,
+  effect,
   inject,
+  input,
   signal,
   viewChild,
 } from '@angular/core';
@@ -28,7 +30,7 @@ import {
   type ImagePackUsage,
   validateImagePackSource,
 } from '@trinity/data-access/media';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { firstValueFrom } from 'rxjs';
 import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
@@ -42,7 +44,7 @@ interface SourceFormModel {
   imports: [
     FormField,
     FormRoot,
-    HlmButton,
+    TrnButton,
     TrnCheckboxComponent,
     TrnInput,
     TrnLabel,
@@ -63,7 +65,10 @@ export class ImagePacksSectionComponent {
     viewChild<ElementRef<HTMLElement>>('installedHeading');
   private readonly sourceInput =
     viewChild<ElementRef<HTMLInputElement>>('sourceInput');
+  private sourceSeeded = false;
 
+  /** Initial room/account source supplied by the modal presenter. */
+  readonly initialSource = input<string>();
   readonly installed = this.management.installed;
   readonly discovery = signal<ImagePackDiscovery | null>(null);
   readonly finding = signal(false);
@@ -92,10 +97,16 @@ export class ImagePacksSectionComponent {
   constructor() {
     this.management.connect();
     this.destroyRef.onDestroy(() => this.management.disconnect());
-    const roomId = this.route.snapshot.queryParamMap.get('roomId');
-    if (roomId) {
-      this.sourceForm.source().value.set(roomId);
-    }
+    effect(() => {
+      if (this.sourceSeeded) return;
+      const source =
+        this.initialSource() ??
+        this.route.snapshot.queryParamMap.get('roomId') ??
+        undefined;
+      if (!source) return;
+      this.sourceSeeded = true;
+      this.sourceForm.source().value.set(source);
+    });
   }
 
   async find(): Promise<void> {

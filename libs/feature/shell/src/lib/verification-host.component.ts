@@ -93,6 +93,7 @@ export class VerificationHostComponent {
       // an in-flight verification dangling.
       const ref = this.dialog.open<void, unknown>(DeviceVerificationPage, {
         inputs: { asModal: true },
+        ariaLabel: 'Verify device',
         disableClose: true,
       });
       this.ref = ref;

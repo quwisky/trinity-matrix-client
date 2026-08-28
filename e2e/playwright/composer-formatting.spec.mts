@@ -11,6 +11,7 @@ import {
   type SynapseSession,
 } from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers the composer's formatting affordances (issue #29, second half): the toolbar, the
 // rebindable chords behind it, markdown-aware Shift+Enter, and the preview toggle.
@@ -154,8 +155,7 @@ test.describe('Composer formatting', () => {
     await expect(composer).toHaveValue('say **hello** there');
 
     // Rebind bold, in the Formatting group the settings list now renders.
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-shortcuts').click();
+    await openSettingsSection(page, 'shortcuts');
     await expect(page.getByTestId('shortcut-group-formatting')).toBeVisible();
     await page.getByTestId('shortcut-edit-format.bold').click();
     await page.keyboard.press('Control+Shift+B');
@@ -278,9 +278,7 @@ test.describe('Composer formatting', () => {
 
     await expect(page.getByTestId('format-bold')).toBeVisible();
 
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-appearance').click();
-    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'appearance');
     const toolbarToggle = page
       .getByTestId('composer-show-toolbar')
       .locator('trn-switch');

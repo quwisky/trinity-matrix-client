@@ -5,7 +5,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import {
   KeyboardShortcutsService,
@@ -38,7 +38,7 @@ interface ShortcutGroup {
   selector: 'trn-shortcuts-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './shortcuts-section.component.html',
-  imports: [HlmButton, SettingsSectionHeadingComponent],
+  imports: [TrnButton, SettingsSectionHeadingComponent],
   host: {
     class: 'block',
     // Active only while capturing (guarded inside the handler), so it never intercepts

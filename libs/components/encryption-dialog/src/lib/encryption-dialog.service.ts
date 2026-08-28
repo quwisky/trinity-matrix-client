@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import type { Type } from '@angular/core';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { MD_QUERY, matchesQuery } from '@trinity/util/ui';
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
@@ -15,6 +15,10 @@ export interface EncryptionDialogOptions {
    * mode, where dismissing the modal simply reveals the underlying view.
    */
   returnTo?: string;
+  /** Keep a nested web flow modal even when the viewport is below the desktop breakpoint. */
+  forceDialog?: boolean;
+  /** Whether the UI that requested a forced nested dialog is still mounted. */
+  isOwnerActive?: () => boolean;
   /**
    * Open the flow already offering the recovery-key reset, for a caller whose own label
    * promised it. Without this a second entry point lands the user on "Enter your recovery
@@ -41,6 +45,7 @@ export interface EncryptionDialogOptions {
 export class EncryptionDialogService {
   private readonly router = inject(Router);
   private readonly dialog = inject(TrnDialogService);
+  private readonly toast = inject(TrnToastService);
   private readonly components = inject(ENCRYPTION_DIALOG_COMPONENTS, {
     optional: true,
   });
@@ -61,20 +66,35 @@ export class EncryptionDialogService {
     opts?: EncryptionDialogOptions,
   ): Promise<void> {
     const load = this.components?.[kind];
-    if (load && this.isDesktopLayout()) {
-      const component = (await load()) as Type<unknown>;
+    if (opts?.forceDialog && !load) {
+      if (this.ownerIsActive(opts)) this.showOpenFailure();
+      return;
+    }
+    if (load && (opts?.forceDialog || this.isDesktopLayout())) {
+      let component: Type<unknown>;
+      try {
+        component = (await load()) as Type<unknown>;
+      } catch {
+        if (this.ownerIsActive(opts)) this.showOpenFailure();
+        return;
+      }
+      if (!this.ownerIsActive(opts)) return;
       // Force the in-dialog Close control: a backdrop/escape tap must not leave an
       // in-flight verification dangling, so the page owns clean teardown.
-      this.dialog.open(component, {
-        // Only when asked: `verify` has no such input, and setInput rejects one it
-        // does not declare.
-        inputs: {
-          asModal: true,
-          ...(opts?.offerReset ? { offerReset: true } : {}),
-        },
-        disableClose: true,
-        ariaLabel: 'Encryption',
-      });
+      try {
+        this.dialog.open(component, {
+          // Only when asked: `verify` has no such input, and setInput rejects one it
+          // does not declare.
+          inputs: {
+            asModal: true,
+            ...(opts?.offerReset ? { offerReset: true } : {}),
+          },
+          disableClose: true,
+          ariaLabel: 'Encryption',
+        });
+      } catch {
+        if (this.ownerIsActive(opts)) this.showOpenFailure();
+      }
       return;
     }
     const queryParams = {
@@ -85,6 +105,21 @@ export class EncryptionDialogService {
       [path],
       Object.keys(queryParams).length ? { queryParams } : {},
     );
+  }
+
+  private ownerIsActive(opts?: EncryptionDialogOptions): boolean {
+    try {
+      return opts?.isOwnerActive?.() ?? true;
+    } catch {
+      return false;
+    }
+  }
+
+  private showOpenFailure(): void {
+    this.toast.show('Could not open Encryption. Please try again.', {
+      duration: 5000,
+      variant: 'destructive',
+    });
   }
 
   /**

@@ -20,6 +20,9 @@ const listCss = read(
 const rowCss = read(
   'libs/feature/rooms/src/lib/message-row/message-row.component.scss',
 );
+const rowHtml = read(
+  'libs/feature/rooms/src/lib/message-row/message-row.component.html',
+);
 const composerCss = read(
   'libs/feature/rooms/src/lib/message-composer/message-composer.component.scss',
 );
@@ -49,17 +52,38 @@ describe('modern timeline layout contracts', () => {
       '--message-body-indent: calc(40px + var(--trinity-density-message-column-gap));',
     );
     expect(rowCss.match(/var\(--message-body-indent\)/g)?.length).toBe(4);
+    // Precise-pointer floating actions do not consume the message's inline width or measured
+    // height. The sole `:has()` track is scoped to the hybrid-touch accessibility override.
     expect(rowCss).toMatch(
-      /\.msg:has\(\.msg__toolbar\)\s*\{[^}]*--message-action-size:\s*max\([\s\S]*?--trinity-density-control-size[\s\S]*?--trinity-interaction-target-min-size[\s\S]*?\);[^}]*min-height:\s*calc\(var\(--message-action-size\) \+ 2px\);[^}]*padding-right:\s*calc\(/s,
+      /@media \(any-pointer: coarse\)\s*\{\s*\.msg:has\(\.msg__toolbar\)\s*\{[^}]*padding-inline-end:[^}]*\}\s*\.msg__toolbar\s*\{[^}]*translate:\s*none;[^}]*\}\s*\}/s,
     );
     expect(rowCss).not.toMatch(/\.msg\s*\{[^}]*min-height:/s);
   });
 
-  it('keeps the toolbar attached inside its owning measured row', () => {
+  it('keeps the toolbar attached without participating in row measurement', () => {
     expect(rowCss).toMatch(
-      /\.msg__toolbar\s*\{[^}]*position:\s*absolute;[^}]*top:\s*0;/s,
+      /\.msg__toolbar\s*\{[^}]*position:\s*absolute;[^}]*inset-inline-end:/s,
     );
-    expect(rowCss).not.toMatch(/\.msg__toolbar\s*\{[^}]*top:\s*-/s);
+    expect(rowCss).toMatch(/\.msg__toolbar\s*\{[^}]*translate:/s);
+  });
+
+  it('reserves the shield column without narrowing read receipts', () => {
+    expect(rowCss).toMatch(
+      /\.msg__body\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto;/s,
+    );
+    expect(rowCss).toMatch(
+      /\.msg__shield\s*\{[^}]*grid-row:\s*1;[^}]*grid-column:\s*2;[^}]*margin-inline-start:\s*var\(--trinity-space-3\);/s,
+    );
+    expect(rowCss).not.toMatch(/\.msg__body\s*\{[^}]*column-gap:/s);
+    expect(rowCss).toMatch(
+      /\.msg__receipts\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*justify-self:\s*end;/s,
+    );
+    expect(rowCss).not.toMatch(
+      /\.msg__(?:shield|receipts)\s*\{[^}]*position:\s*absolute;/s,
+    );
+    expect(rowHtml).toMatch(
+      /class="msg__content"[\s\S]*class="msg__shield msg__target"[\s\S]*class="msg__receipts msg__target"/,
+    );
   });
 
   it('keeps input and preview in one stable grid cell', () => {

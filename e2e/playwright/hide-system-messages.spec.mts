@@ -6,6 +6,7 @@ import {
 } from './support/fixtures.mts';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers issue #21: the Settings → Appearance toggles that hide system lines (joins,
 // profile changes, room changes) from the timeline. Two users so a real
@@ -116,9 +117,7 @@ test.describe('Hide system messages', () => {
     await expect(message).toBeVisible();
 
     // Turn joins/leaves off in Settings → Appearance.
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-appearance').click();
-    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'appearance');
     const membershipToggle = page
       .getByTestId('timeline-show-membership')
       .locator('trn-switch');

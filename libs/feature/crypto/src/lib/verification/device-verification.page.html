@@ -1,16 +1,12 @@
 @if (asModal()) {
-  <div
-    class="flex max-h-[90vh] w-[92vw] max-w-105 flex-col overflow-hidden rounded-xl border border-solid border-border bg-card text-card-foreground shadow-lg"
-  >
-    <div
-      class="flex items-center gap-2 border-b border-solid border-border p-3"
-    >
-      <h2 class="flex-1 text-base font-semibold">Verify device</h2>
-      <button hlmBtn variant="ghost" size="sm" (click)="cancelAndLeave()">
+  <div class="crypto-modal">
+    <div class="crypto-modal__header">
+      <h2 class="crypto-modal__title">Verify device</h2>
+      <button trnBtn variant="ghost" size="sm" (click)="cancelAndLeave()">
         Close
       </button>
     </div>
-    <div class="overflow-y-auto p-4">
+    <div class="crypto-modal__body">
       <ng-container [ngTemplateOutlet]="body" />
     </div>
   </div>
@@ -18,7 +14,7 @@
   <trn-page-header title="Verify device">
     <button
       trnHeaderActions
-      hlmBtn
+      trnBtn
       variant="ghost"
       size="sm"
       (click)="cancelAndLeave()"
@@ -27,13 +23,19 @@
     </button>
   </trn-page-header>
 
-  <main class="flex-1 overflow-y-auto p-4">
-    <ng-container [ngTemplateOutlet]="body" />
+  <main class="crypto-route">
+    <section class="crypto-surface">
+      <ng-container [ngTemplateOutlet]="body" />
+    </section>
   </main>
 }
 
 <ng-template #body>
-  <div data-testid="verify-page" [attr.data-stage]="active()?.stage ?? 'idle'">
+  <div
+    class="crypto-flow"
+    data-testid="verify-page"
+    [attr.data-stage]="active()?.stage ?? 'idle'"
+  >
     @if (active(); as v) {
       @switch (v.stage) {
         @case ('requested') {
@@ -69,7 +71,7 @@
               </p>
             }
             <button
-              hlmBtn
+              trnBtn
               class="mt-4 w-full"
               data-testid="verify-accept"
               [disabled]="busy()"
@@ -78,7 +80,7 @@
               Accept
             </button>
             <button
-              hlmBtn
+              trnBtn
               variant="ghost"
               class="mt-2 w-full"
               [disabled]="busy()"
@@ -122,7 +124,7 @@
               </p>
               @if (v.qrShowAvailable) {
                 <button
-                  hlmBtn
+                  trnBtn
                   class="mt-4 w-full"
                   data-testid="verify-show-qr"
                   [disabled]="busy()"
@@ -133,7 +135,7 @@
               }
               @if (v.qrScanAvailable && cameraSupported) {
                 <button
-                  hlmBtn
+                  trnBtn
                   variant="secondary"
                   class="mt-2 w-full"
                   data-testid="verify-scan-qr"
@@ -152,7 +154,7 @@
               </p>
             }
             <button
-              hlmBtn
+              trnBtn
               [variant]="
                 v.isSelfVerification &&
                 (v.qrShowAvailable || (v.qrScanAvailable && cameraSupported))
@@ -198,7 +200,7 @@
               Waiting for the other device to scan this code…
             </p>
           </div>
-          <button hlmBtn variant="ghost" class="mt-2 w-full" (click)="hideQr()">
+          <button trnBtn variant="ghost" class="mt-2 w-full" (click)="hideQr()">
             Choose another method
           </button>
         }
@@ -211,7 +213,7 @@
             shown here.
           </p>
           <button
-            hlmBtn
+            trnBtn
             class="mt-4 w-full"
             data-testid="verify-confirm-qr"
             [disabled]="busy()"
@@ -220,7 +222,7 @@
             Yes, it scanned this code
           </button>
           <button
-            hlmBtn
+            trnBtn
             variant="ghost"
             class="mt-2 w-full"
             [disabled]="busy()"
@@ -269,7 +271,7 @@
             <p class="text-muted-foreground">
               This session is now trusted. Your encrypted history will sync.
             </p>
-            <button hlmBtn class="mt-4 w-full" (click)="finish()">Done</button>
+            <button trnBtn class="mt-4 w-full" (click)="finish()">Done</button>
           </div>
         }
         @case ('cancelled') {
@@ -279,7 +281,7 @@
               Verification stopped
             </h2>
             <p class="text-muted-foreground">{{ v.cancelReason }}</p>
-            <button hlmBtn class="mt-4 w-full" (click)="finish()">Close</button>
+            <button trnBtn class="mt-4 w-full" (click)="finish()">Close</button>
           </div>
         }
       }
@@ -294,7 +296,7 @@
         recovery key.
       </p>
       <button
-        hlmBtn
+        trnBtn
         class="mt-4 w-full"
         data-testid="verify-start"
         [disabled]="busy()"

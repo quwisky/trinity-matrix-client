@@ -3,3 +3,28 @@
 .heading {
   @include heading;
 }
+
+.crypto-route {
+  @include route;
+}
+
+.crypto-surface {
+  @include surface;
+}
+
+.lead {
+  @include lead;
+}
+
+.primary-action {
+  margin-top: var(--trinity-space-6);
+}
+
+.status {
+  @include status;
+}
+
+.error {
+  margin: var(--trinity-space-4) 0 0;
+  color: var(--trinity-danger);
+}
