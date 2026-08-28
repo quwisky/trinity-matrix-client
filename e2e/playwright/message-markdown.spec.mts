@@ -368,8 +368,13 @@ test.describe('Message markdown', () => {
       const probe = document.createElement('span');
       probe.style.cssText =
         'position:absolute;height:var(--trinity-scrollbar-size);background:var(--trinity-scrollbar-thumb)';
+      const railProbe = document.createElement('span');
+      railProbe.style.cssText =
+        'position:absolute;background:var(--trinity-rail)';
       element.append(probe);
+      element.append(railProbe);
       const probeStyle = getComputedStyle(probe);
+      const railProbeStyle = getComputedStyle(railProbe);
       const bar = getComputedStyle(element, '::-webkit-scrollbar');
       const thumb = getComputedStyle(element, '::-webkit-scrollbar-thumb');
       const result = {
@@ -378,13 +383,18 @@ test.describe('Message markdown', () => {
         thumb: thumb.backgroundColor,
         expectedHeight: probeStyle.height,
         expectedThumb: probeStyle.backgroundColor,
+        expectedRail: railProbeStyle.backgroundColor,
       };
       probe.remove();
+      railProbe.remove();
       return result;
     });
     expect(horizontalScrollbar.overflow).toBeGreaterThan(0);
     expect(horizontalScrollbar.height).toBe(horizontalScrollbar.expectedHeight);
     expect(horizontalScrollbar.thumb).toBe(horizontalScrollbar.expectedThumb);
+    expect(horizontalScrollbar.expectedThumb).toBe(
+      horizontalScrollbar.expectedRail,
+    );
 
     const captionStyle = () =>
       pre.evaluate((el) => {

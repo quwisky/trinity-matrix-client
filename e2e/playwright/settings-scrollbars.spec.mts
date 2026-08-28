@@ -61,9 +61,14 @@ async function visibleScrollbarPaint(scroller: Locator) {
       'border-radius:var(--trinity-scrollbar-radius)',
       'background:var(--trinity-scrollbar-thumb)',
     ].join(';');
+    const railProbe = document.createElement('span');
+    railProbe.style.cssText =
+      'position:absolute;background:var(--trinity-rail)';
     element.append(probe);
+    element.append(railProbe);
 
     const probeStyle = getComputedStyle(probe);
+    const railProbeStyle = getComputedStyle(railProbe);
     const usesWebkit =
       !navigator.userAgent.includes('Firefox') &&
       CSS.supports('selector(::-webkit-scrollbar-thumb)');
@@ -92,9 +97,11 @@ async function visibleScrollbarPaint(scroller: Locator) {
       corner: corner?.backgroundColor,
       expectedSize: probeStyle.width,
       expectedThumb: probeStyle.backgroundColor,
+      expectedRail: railProbeStyle.backgroundColor,
       expectedRadius: probeStyle.borderRadius,
     };
     probe.remove();
+    railProbe.remove();
     return paint;
   });
 }
@@ -247,6 +254,7 @@ test.describe('Settings scrollbars', () => {
       }, theme);
 
       const paint = await visibleScrollbarPaint(detail);
+      expect.soft(paint.expectedThumb).toBe(paint.expectedRail);
       if (paint.usesWebkit) {
         expect.soft(paint.width).toBe(paint.expectedSize);
         expect.soft(paint.height).toBe(paint.expectedSize);

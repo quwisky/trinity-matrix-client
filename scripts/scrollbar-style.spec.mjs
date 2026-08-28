@@ -44,7 +44,7 @@ describe('shared scrollbar design', () => {
       '--trinity-scrollbar-radius: var(--trinity-radius-sm);',
     );
     expect(variables).toContain(
-      '--trinity-scrollbar-thumb: var(--trinity-text-muted);',
+      '--trinity-scrollbar-thumb: var(--trinity-rail);',
     );
     expect(variables).toContain('--trinity-scrollbar-track: transparent;');
 

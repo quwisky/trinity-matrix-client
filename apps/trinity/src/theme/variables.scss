@@ -112,12 +112,12 @@
   --trinity-space-6: 24px;
   --trinity-space-7: 32px;
 
-  // Every visible overflow surface shares one theme-aware scrollbar contract.
-  // The thumb follows the active mode and palette; `.no-scrollbar` remains the
-  // deliberate exception for compact navigation and select panels.
+  // Every visible overflow surface shares the former room-container scrollbar
+  // treatment. The thumb follows the active rail surface; `.no-scrollbar` remains
+  // the deliberate exception for compact navigation and select panels.
   --trinity-scrollbar-size: 8px;
   --trinity-scrollbar-radius: var(--trinity-radius-sm);
-  --trinity-scrollbar-thumb: var(--trinity-text-muted);
+  --trinity-scrollbar-thumb: var(--trinity-rail);
   --trinity-scrollbar-track: transparent;
 
   // Component-density roles. Compact mode re-cuts their source spacing steps below; the

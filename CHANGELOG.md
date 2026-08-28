@@ -78,8 +78,8 @@ All notable changes to this project are documented here. The format is based on
 ### Changed
 
 - **Scrollbars now look like one family everywhere.** Timelines, sidebars, dialogs, pickers and
-  horizontal overflow use the same slim, rounded, theme-aware bar in web and desktop builds. The
-  colour follows light, dark, Amethyst and Onyx; Firefox keeps its platform-native thin geometry.
+  horizontal overflow use the former room-container design: an 8px rounded thumb in the active
+  palette's rail colour over a transparent track. Firefox keeps its platform-native thin geometry.
   Intentionally hidden bars in the Settings directory and dropdown panels remain scrollable.
 
 - **Visual review files no longer live in the source tree.** Design exploration, screenshots, GIFs
