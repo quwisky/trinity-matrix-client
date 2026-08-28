@@ -77,6 +77,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Scrollbars now look like one family everywhere.** Timelines, sidebars, dialogs, pickers and
+  horizontal overflow use the same slim, rounded, theme-aware bar in web and desktop builds. The
+  design follows light, dark, Amethyst, Onyx and density settings; intentionally hidden bars in
+  the Settings directory and dropdown panels remain scrollable.
+
 - **Visual review files no longer live in the source tree.** Design exploration, screenshots, GIFs
   and pixel baselines are kept out of the repository. UI proof is uploaded directly to pull
   requests, while automated coverage uses semantic, contrast, responsive and measured-layout

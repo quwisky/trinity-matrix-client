@@ -31,6 +31,36 @@ button:disabled,
 }
 
 /*
+ * Shared visible-scrollbar contract. The selector has deliberately zero specificity so a
+ * component can opt out with `.no-scrollbar`; that utility keeps compact navigation and
+ * select panels scrollable without drawing a second bar. Chromium gives the standards
+ * properties precedence over its pseudo-elements, so Firefox receives those properties in
+ * a separate capability branch while Blink/WebKit keep the exact tokenized geometry below.
+ */
+@supports not selector(::-webkit-scrollbar) {
+  :where(:not(.no-scrollbar)) {
+    scrollbar-width: thin;
+    scrollbar-color: var(--trinity-scrollbar-thumb)
+      var(--trinity-scrollbar-track);
+  }
+}
+
+:where(:not(.no-scrollbar))::-webkit-scrollbar {
+  width: var(--trinity-scrollbar-size);
+  height: var(--trinity-scrollbar-size);
+}
+
+:where(:not(.no-scrollbar))::-webkit-scrollbar-thumb {
+  border-radius: var(--trinity-scrollbar-radius);
+  background: var(--trinity-scrollbar-thumb);
+}
+
+:where(:not(.no-scrollbar))::-webkit-scrollbar-track,
+:where(:not(.no-scrollbar))::-webkit-scrollbar-corner {
+  background: var(--trinity-scrollbar-track);
+}
+
+/*
  * Shared icon-button interaction contract.
  *
  * `TrnButton` publishes the marker for every `size="icon*"` public button, while

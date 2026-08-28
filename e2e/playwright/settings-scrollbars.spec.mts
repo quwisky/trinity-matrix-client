@@ -1,4 +1,4 @@
-import { test, expect, type Page } from './support/fixtures.mts';
+import { test, expect, type Locator, type Page } from './support/fixtures.mts';
 import { login, synapseSession } from './support/app.mts';
 
 // One scrollbar in Settings, never two.
@@ -43,6 +43,38 @@ async function scrollbarPainters(page: Page): Promise<string[]> {
     };
     walk(document.body);
     return found;
+  });
+}
+
+async function visibleScrollbarPaint(scroller: Locator) {
+  return scroller.evaluate((element) => {
+    const probe = document.createElement('span');
+    probe.style.cssText = [
+      'position:absolute',
+      'width:var(--trinity-scrollbar-size)',
+      'border-radius:var(--trinity-scrollbar-radius)',
+      'background:var(--trinity-scrollbar-thumb)',
+    ].join(';');
+    element.append(probe);
+
+    const probeStyle = getComputedStyle(probe);
+    const bar = getComputedStyle(element, '::-webkit-scrollbar');
+    const thumb = getComputedStyle(element, '::-webkit-scrollbar-thumb');
+    const track = getComputedStyle(element, '::-webkit-scrollbar-track');
+    const corner = getComputedStyle(element, '::-webkit-scrollbar-corner');
+    const paint = {
+      width: bar.width,
+      height: bar.height,
+      thumb: thumb.backgroundColor,
+      radius: thumb.borderRadius,
+      track: track.backgroundColor,
+      corner: corner.backgroundColor,
+      expectedSize: probeStyle.width,
+      expectedThumb: probeStyle.backgroundColor,
+      expectedRadius: probeStyle.borderRadius,
+    };
+    probe.remove();
+    return paint;
   });
 }
 
@@ -168,5 +200,44 @@ test.describe('Settings scrollbars', () => {
     await expect
       .poll(() => scrollbarPainters(page))
       .toEqual(['SECTION[settings-detail]']);
+  });
+
+  test('uses the shared visible design across mode and palette changes', async ({
+    page,
+  }) => {
+    await login(page, session);
+    await page.setViewportSize({ width: 1280, height: 700 });
+    await page.getByTestId('open-settings').click();
+    await page.getByTestId('settings-nav-notifications').click();
+
+    const detail = page.getByTestId('settings-detail');
+    const nav = page.locator('nav[aria-label="Settings sections"]');
+    await expect
+      .poll(() => scrollbarPainters(page))
+      .toEqual(['SECTION[settings-detail]']);
+
+    for (const theme of [
+      { palette: 'amethyst', dark: false },
+      { palette: 'onyx', dark: true },
+    ]) {
+      await page.evaluate(({ palette, dark }) => {
+        document.documentElement.dataset['theme'] = palette;
+        document.documentElement.classList.toggle('dark', dark);
+      }, theme);
+
+      const paint = await visibleScrollbarPaint(detail);
+      expect.soft(paint.width).toBe(paint.expectedSize);
+      expect.soft(paint.height).toBe(paint.expectedSize);
+      expect.soft(paint.thumb).toBe(paint.expectedThumb);
+      expect.soft(paint.radius).toBe(paint.expectedRadius);
+      expect.soft(paint.track).toBe('rgba(0, 0, 0, 0)');
+      expect.soft(paint.corner).toBe('rgba(0, 0, 0, 0)');
+    }
+
+    const hidden = await nav.evaluate((element) => ({
+      standard: getComputedStyle(element).scrollbarWidth,
+      webkit: getComputedStyle(element, '::-webkit-scrollbar').display,
+    }));
+    expect(hidden).toEqual({ standard: 'none', webkit: 'none' });
   });
 });

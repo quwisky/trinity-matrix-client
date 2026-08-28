@@ -112,6 +112,14 @@
   --trinity-space-6: 24px;
   --trinity-space-7: 32px;
 
+  // Every visible overflow surface shares one theme-aware scrollbar contract.
+  // The thumb follows the active mode and palette; `.no-scrollbar` remains the
+  // deliberate exception for compact navigation and select panels.
+  --trinity-scrollbar-size: var(--trinity-space-3);
+  --trinity-scrollbar-radius: var(--trinity-radius-sm);
+  --trinity-scrollbar-thumb: var(--trinity-text-muted);
+  --trinity-scrollbar-track: transparent;
+
   // Component-density roles. Compact mode re-cuts their source spacing steps below; the
   // physical control size is separately reduced only for pointer-precise desktop layouts.
   // The coarse-pointer floor in global.scss remains 44px in every density.
