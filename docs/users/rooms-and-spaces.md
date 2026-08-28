@@ -145,7 +145,8 @@ Every room row has an overflow menu:
   favouriting in another client shows up here and the list re-partitions live.
 - **Mark as read** or **Mark as unread**.
 - **Notifications**: All messages, Mute except mentions & keywords, or Mute everything. A
-  crossed-out bell marks either muted mode, including a mute set from another Matrix client. See
+  crossed-out bell marks either muted mode, including a mute set from another Matrix client.
+  A merged row says **Different across accounts** when its accounts disagree. See
   [notifications](notifications.md).
 - **Remove from space**, when the row is a space child and you may curate the space.
 - **Leave room**, behind a confirmation.

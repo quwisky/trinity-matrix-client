@@ -26,6 +26,7 @@ import { unreadBadgeLabel } from '../../shared/unread-badge';
 import { RoomsService, type RoomSummary } from '@trinity/data-access/rooms';
 import {
   RoomNotificationsService,
+  type RoomNotifyDisplayMode,
   type RoomNotifyMode,
 } from '@trinity/data-access/notifications';
 import { PresenceService } from '@trinity/data-access/profile';
@@ -193,7 +194,7 @@ export class SidebarRoomListComponent {
    * ⋮ menu's radio checks. Re-read each time the submenu opens (the write is delegated to
    * the host via {@link setNotifyMode}), so the check reflects the persisted preference.
    */
-  notifyMode(room: RoomSummary): RoomNotifyMode {
-    return this.roomNotifications.modeFor(room.id, room.accountId);
+  notifyMode(room: RoomSummary): RoomNotifyDisplayMode {
+    return this.roomNotifications.modeForAccounts(room.id, room.accountIds);
   }
 }

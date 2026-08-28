@@ -140,7 +140,9 @@
           [label]="
             mode === 'mentions'
               ? 'Room muted; mentions and keywords still notify'
-              : 'Room fully muted'
+              : mode === 'mute'
+                ? 'Room fully muted'
+                : 'Notification settings differ between accounts'
           "
           data-testid="room-muted"
         />
@@ -261,6 +263,15 @@
     <ng-template #notifyMenu>
       <div trnDropdownMenuSub>
         @let mode = notifyMode(room);
+        @if (mode === 'mixed') {
+          <p
+            class="notify-menu__mixed"
+            role="status"
+            data-testid="room-notify-mixed"
+          >
+            Different across accounts
+          </p>
+        }
         <button
           trnDropdownMenuRadio
           [checked]="mode === 'all'"

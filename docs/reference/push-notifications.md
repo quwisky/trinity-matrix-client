@@ -30,8 +30,11 @@ silence a mention. After a write it refreshes the client's cached ruleset, so th
 shows the new level without waiting for the `m.push_rules` sync echo. It also listens for
 that account-data event on every live account and writes a revision signal, which is required
 to repaint the zoneless room list when another client changes a rule. Writes are compensating
-transactions: a partial endpoint failure restores the previous mode on every account in a
-merged room row, then refreshes each cached ruleset before reporting the error.
+transactions: each one refreshes the homeserver before snapshotting the exact affected rules,
+serializes overlapping choices for that room, verifies the requested postcondition, and on a
+partial endpoint failure restores the full rule bodies and enabled states on every account in a
+merged row. Unrecognized custom rules are preserved rather than rewritten. The row aggregates
+all contributing accounts and exposes `mixed` when their modes differ.
 
 `PushRulesService` exposes nine labelled account-level toggles backed by predefined
 rules: the master kill switch (marked `invert`, because the rule being _enabled_ means

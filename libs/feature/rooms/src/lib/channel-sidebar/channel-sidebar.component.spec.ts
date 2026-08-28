@@ -23,6 +23,7 @@ import {
 } from '@trinity/data-access/rooms';
 import {
   RoomNotificationsService,
+  type RoomNotifyDisplayMode,
   type RoomNotifyMode,
 } from '@trinity/data-access/notifications';
 import { type PresenceState } from '@trinity/util/matrix';
@@ -106,8 +107,8 @@ function child(over: Partial<SpaceChildRoom> = {}): SpaceChildRoom {
  * and invites now come from `SpacesService`/`InvitesService` signals (not inputs),
  * so tests seed and later mutate those signals directly.
  */
-/** Spy behind RoomNotificationsService.modeFor, so tests can assert the account it was
- * asked about (a mixed-in row must be read from ITS account, not the active one). */
+/** Spy behind RoomNotificationsService.modeForAccounts, so tests can assert every account
+ * represented by a merged row contributes to the displayed state. */
 let modeForSpy: Mock;
 
 async function renderSidebar(
@@ -134,7 +135,7 @@ async function renderSidebar(
     /** Cross-account invites, used instead of `invites` when `mixing` is true. */
     mixedInvites?: PendingInvite[];
     mixing?: boolean;
-    notifyMode?: RoomNotifyMode;
+    notifyMode?: RoomNotifyDisplayMode;
     typingByRoom?: Record<string, readonly string[]>;
   } = {},
 ) {
@@ -170,7 +171,7 @@ async function renderSidebar(
         ).asReadonly(),
       }),
       MockProvider(RoomNotificationsService, {
-        modeFor: modeForSpy,
+        modeForAccounts: modeForSpy,
       }),
       { provide: PresenceService, useValue: presenceStub },
     ],
@@ -1158,23 +1159,60 @@ describe('ChannelSidebarComponent', () => {
     expect(notify?.textContent).toContain('Notifications');
   });
 
-  it('reads the level from the account that owns the row, not the active one', async () => {
+  it('reads the level from every account represented by the row', async () => {
     const { fixture, container } = await renderSidebar({
       inputs: { rooms: [room({ id: '!a:hs' })] },
       notifyMode: 'mentions',
     });
 
-    const foreign = room({ id: '!a:hs', accountId: '@alt:hs' });
+    const foreign = room({
+      id: '!a:hs',
+      accountId: '@alt:hs',
+      accountIds: ['@alt:hs'],
+    });
     expect(roomList(fixture).notifyMode(foreign)).toBe('mentions');
-    // A mixed-in row's push rules live on ITS account; reading them from the active client
-    // would report the wrong level and silently mute/unmute the wrong account.
-    expect(modeForSpy).toHaveBeenCalledWith('!a:hs', '@alt:hs');
+    expect(modeForSpy).toHaveBeenCalledWith('!a:hs', ['@alt:hs']);
     fixture.detectChanges();
     expect(
       container
         .querySelector('[data-testid="room-muted"]')
         ?.getAttribute('aria-label'),
     ).toBe('Room muted; mentions and keywords still notify');
+  });
+
+  it('shows an accessible mixed state when merged accounts disagree', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({
+            id: '!a:hs',
+            accountIds: ['@me:hs', '@alt:hs'],
+          }),
+        ],
+      },
+      notifyMode: 'mixed',
+    });
+
+    expect(
+      container
+        .querySelector('[data-testid="room-muted"]')
+        ?.getAttribute('aria-label'),
+    ).toBe('Notification settings differ between accounts');
+    container.querySelector<HTMLElement>('.channel__menu')!.click();
+    fixture.detectChanges();
+    document.querySelector<HTMLElement>('[data-testid="room-notify"]')!.click();
+    fixture.detectChanges();
+
+    expect(
+      document.querySelector('[data-testid="room-notify-mixed"]')?.textContent,
+    ).toContain('Different across accounts');
+    for (const mode of ['all', 'mentions', 'mute'] as const) {
+      expect(
+        document
+          .querySelector(`[data-testid="room-notify-${mode}"]`)
+          ?.getAttribute('aria-checked'),
+      ).toBe('false');
+    }
   });
 
   it('emits setNotifyMode when a level is chosen from the submenu', async () => {

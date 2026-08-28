@@ -88,8 +88,11 @@ with silencing everything.
 Per-room modes are push rules as well, so they follow your account to your other devices.
 Changes made in another client appear as soon as sync delivers them, without reopening the
 menu or reloading Trinity. If one part of a multi-step server update fails, Trinity restores
-the previous mode; a merged multi-account row is restored on every account rather than left
-with conflicting settings.
+the exact previous server rules; a merged multi-account row is restored on every account
+rather than left with conflicting settings. Rapid choices are applied in order, and custom
+rules Trinity does not recognize are left untouched. If the accounts behind a merged row
+already disagree, the room shows **Different across accounts** until you choose one mode to
+apply everywhere.
 
 ## How a notification reaches you
 

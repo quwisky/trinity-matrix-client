@@ -80,16 +80,17 @@ async function openNotifyMenu(page: Page, roomName: string): Promise<void> {
   });
 }
 
-// Pick a level radio and wait for the service's push-rule cache refresh — the
-// `GET /pushrules/` that `applyMode` issues after every write — so the reopened menu
-// reflects the persisted choice deterministically (works for every level transition,
-// which write different rule endpoints). Selecting a radio also closes the menu.
+// Pick a level radio and wait for both push-rule reads: the fresh pre-write snapshot and
+// the postcondition refresh. The reopened menu then reflects the verified server state
+// deterministically for every transition. Selecting a radio also closes the menu.
 async function pickLevel(page: Page, level: Level): Promise<void> {
+  let refreshes = 0;
   await Promise.all([
     page.waitForResponse(
       (r) =>
         /\/pushrules\/?$/.test(new URL(r.url()).pathname) &&
-        r.request().method() === 'GET',
+        r.request().method() === 'GET' &&
+        ++refreshes === 2,
       { timeout: 15_000 },
     ),
     page.getByTestId(`room-notify-${level}`).click(),
