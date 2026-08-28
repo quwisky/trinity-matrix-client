@@ -8,7 +8,7 @@
       <!-- Variant carries the pressed state visually, as the room-directory tabs do;
            aria-pressed alone would leave a sighted user unable to tell it apart. -->
       <button
-        hlmBtn
+        trnBtn
         type="button"
         size="sm"
         [variant]="showDiff() ? 'default' : 'outline'"
@@ -48,7 +48,7 @@
             }}</time>
             @if (entry.removable) {
               <button
-                hlmBtn
+                trnBtn
                 type="button"
                 variant="ghost"
                 size="sm"
@@ -91,7 +91,7 @@
 
   <div class="flex justify-end">
     <button
-      hlmBtn
+      trnBtn
       variant="ghost"
       size="sm"
       data-testid="edit-history-close"

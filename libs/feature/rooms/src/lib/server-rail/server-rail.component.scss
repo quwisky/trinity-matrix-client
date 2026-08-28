@@ -13,6 +13,17 @@
   align-items: center;
   padding: 12px 0;
   gap: var(--trinity-density-shell-gap);
+
+  @media #{$md} {
+    // The identity dock spans this rail and the room list at desktop widths. Give the last
+    // Space the same visual and focus-driven clearance as the room scroller beside it.
+    padding-block-end: calc(
+      var(--trinity-navigation-dock-height) + var(--trinity-space-5)
+    );
+    scroll-padding-block-end: calc(
+      var(--trinity-navigation-dock-height) + var(--trinity-space-5)
+    );
+  }
 }
 
 // A visible section divider on the rail. `--trinity-divider` is tuned for the lighter

@@ -6,7 +6,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnInput } from '@trinity/components/input';
 import { TrnLabel } from '@trinity/components/label';
 import {
@@ -16,6 +16,7 @@ import {
 import { PresenceService } from '@trinity/data-access/profile';
 import { presenceLabel, type PresenceState } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
 /** The presence states a user can set for themselves (Matrix has no "invisible"). */
 const PRESENCE_OPTIONS: readonly PresenceState[] = [
@@ -36,7 +37,13 @@ const MAX_STATUS_LENGTH = 60;
   selector: 'trn-presence-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './presence-section.component.html',
-  imports: [HlmButton, TrnInput, TrnLabel, TrnRadioGroupComponent],
+  imports: [
+    TrnButton,
+    TrnInput,
+    TrnLabel,
+    TrnRadioGroupComponent,
+    SettingsSectionHeadingComponent,
+  ],
 })
 export class PresenceSectionComponent {
   private readonly presence = inject(PresenceService);

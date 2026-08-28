@@ -10,7 +10,7 @@ import {
   untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnCheckboxComponent } from '@trinity/components/checkbox';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
@@ -62,7 +62,7 @@ export interface ManagedChild {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     EmptyStateComponent,
-    HlmButton,
+    TrnButton,
     TrnCheckboxComponent,
     AvatarComponent,
     TrnIconComponent,

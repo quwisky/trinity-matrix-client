@@ -1,9 +1,5 @@
 <div>
-  <h2
-    class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-  >
-    Devices
-  </h2>
+  <trn-settings-section-heading title="Devices" [primary]="true" />
 
   @for (device of devices(); track device.id) {
     <div
@@ -36,7 +32,7 @@
 
       <div class="ml-auto flex shrink-0 items-center gap-1">
         <button
-          hlmBtn
+          trnBtn
           variant="ghost"
           size="icon"
           [disabled]="busy()"
@@ -45,11 +41,11 @@
           data-testid="rename-device"
           (click)="rename(device)"
         >
-          <trn-icon name="pencil" size="1.125rem" />
+          <trn-icon name="pencil" size="1.125rem" motion="nudge-up-right" />
         </button>
         @if (!device.isCurrent) {
           <button
-            hlmBtn
+            trnBtn
             variant="ghost"
             size="icon"
             class="text-danger hover:text-danger"
@@ -59,7 +55,7 @@
             data-testid="remove-device"
             (click)="remove(device)"
           >
-            <trn-icon name="trash-2" size="1.125rem" />
+            <trn-icon name="trash-2" size="1.125rem" motion="nudge-down" />
           </button>
         }
       </div>
@@ -85,7 +81,7 @@
   @if (hasUnverified()) {
     <div class="px-4 py-2">
       <button
-        hlmBtn
+        trnBtn
         variant="ghost"
         size="sm"
         data-testid="verify-devices"

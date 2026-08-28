@@ -1,5 +1,6 @@
 import { test, expect, type Locator } from './support/fixtures.mts';
 import { login, synapseSession } from './support/app.mts';
+import { openSettingsSection } from './journeys/navigation.mts';
 
 // A switch has to LOOK like the value it holds, and that claim can only be made in a
 // browser.
@@ -104,9 +105,7 @@ test.describe('Switch reflects its value', () => {
 
   test.beforeEach(async ({ page }) => {
     await login(page, session);
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-privacy').click();
-    await page.waitForURL(/\/settings\/privacy$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'privacy');
   });
 
   test('the track and the thumb both change when it is toggled', async ({

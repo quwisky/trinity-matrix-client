@@ -6,7 +6,7 @@ import {
   signal,
 } from '@angular/core';
 import { TitleCasePipe } from '@angular/common';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnInput } from '@trinity/components/input';
 import { TrnLabel } from '@trinity/components/label';
 import {
@@ -19,6 +19,7 @@ import {
   isGifProviderId,
   type GifProviderId,
 } from '@trinity/data-access/gif';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
 /**
  * GIF-picker settings: choose a provider (KLIPY / GIPHY) and paste its API key.
@@ -32,10 +33,11 @@ import {
   host: { class: 'block' },
   imports: [
     TitleCasePipe,
-    HlmButton,
+    TrnButton,
     TrnInput,
     TrnLabel,
     TrnRadioGroupComponent,
+    SettingsSectionHeadingComponent,
   ],
 })
 export class GifsSectionComponent {

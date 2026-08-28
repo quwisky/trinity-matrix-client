@@ -6,6 +6,7 @@ import {
 } from './support/fixtures.mts';
 import { login, synapseSession } from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers issue #22: the Settings → Appearance dropdowns that choose how times and dates are
 // written. The unit tests cover the formatting itself; what only a real browser can prove is
@@ -105,9 +106,7 @@ test.describe('Date and time format', () => {
     await expect(firstTimestamp(page)).toBeVisible({ timeout: 20_000 });
 
     // Settings → Appearance → both dropdowns.
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-appearance').click();
-    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'appearance');
     await chooseFormat(page, 'time-format-select', 'time-format-h24');
     await chooseFormat(page, 'date-format-select', 'date-format-iso');
 

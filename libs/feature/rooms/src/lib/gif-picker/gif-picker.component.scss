@@ -1,19 +1,15 @@
+@use '../styles/mixins' as *;
+
 :host {
   display: block;
 }
 
 .gif-picker {
-  display: flex;
-  flex-direction: column;
-  width: 320px;
-  max-width: 80vw;
+  @include picker-surface(320px);
+
   height: 360px;
   max-height: 60vh;
-  padding: 8px;
-  border: 1px solid var(--trinity-divider);
-  border-radius: var(--trinity-radius);
-  background: var(--trinity-sidebar);
-  box-shadow: 0 4px 16px rgb(0 0 0 / 40%);
+  padding: var(--trinity-space-3);
 }
 
 .gif-picker__search {
@@ -23,14 +19,15 @@
 .gif-picker__body {
   flex: 1;
   min-height: 0;
-  margin-top: 8px;
-  overflow-y: auto;
+  margin-top: var(--trinity-space-3);
+
+  @include scrollable;
 }
 
 .gif-picker__grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 6px;
+  gap: var(--trinity-space-2);
 }
 
 .gif-picker__item {
@@ -38,30 +35,24 @@
   overflow: hidden;
   aspect-ratio: 1 / 1;
   border: none;
-  border-radius: var(--trinity-radius-sm);
-  background: var(--trinity-rail);
+  border-radius: var(--trinity-shape-control-radius);
+  background: var(--trinity-surface-workspace);
   cursor: pointer;
 
   &:hover {
-    outline: 2px solid var(--trinity-accent);
+    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+    outline-offset: calc(-1 * var(--trinity-focus-ring-offset));
   }
 }
 
 .gif-picker__status {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 16px;
-  color: var(--trinity-text-muted);
-  font-size: 13px;
-  text-align: center;
+  @include picker-status;
 }
 
 .gif-picker__attribution {
   flex-shrink: 0;
-  padding-top: 6px;
+  padding-top: var(--trinity-space-2);
   color: var(--trinity-text-muted);
-  font-size: 12px;
+  font-size: var(--trinity-type-caption-size);
   text-align: right;
 }

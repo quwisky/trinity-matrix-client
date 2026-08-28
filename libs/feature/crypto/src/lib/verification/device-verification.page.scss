@@ -4,6 +4,39 @@
   @include heading;
 }
 
+.crypto-route {
+  @include route;
+}
+
+.crypto-surface {
+  @include surface;
+}
+
+.crypto-modal {
+  @include modal;
+}
+
+.crypto-modal__header {
+  @include modal-header;
+}
+
+.crypto-modal__title {
+  flex: 1;
+  margin: 0;
+  color: var(--trinity-text-bright);
+  font-size: var(--trinity-type-control-size);
+  font-weight: 700;
+}
+
+.crypto-modal__body {
+  @include modal-body;
+}
+
+.crypto-flow > .text-muted-foreground,
+.center p {
+  @include lead;
+}
+
 .center {
   text-align: center;
   padding: 12px 0;
@@ -37,12 +70,7 @@
 }
 
 .privacy-warning {
-  margin: 12px 0;
-  padding: 12px;
-  border: 1px solid var(--warning);
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--warning) 12%, transparent);
-  color: var(--foreground);
+  @include warning;
 }
 
 .qr-code {
@@ -50,6 +78,9 @@
   width: min(100%, 320px);
   height: auto;
   margin: 16px auto;
-  border-radius: var(--radius);
+  padding: var(--trinity-space-3);
+  border: 1px solid var(--trinity-border-subtle);
+  border-radius: var(--trinity-shape-container-radius);
+  background: var(--trinity-qr-surface);
   image-rendering: pixelated;
 }

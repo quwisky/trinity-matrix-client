@@ -1,12 +1,5 @@
-<h2
-  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
->
-  Experimental
-</h2>
-<label
-  class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
-  data-testid="flag-virtual-timeline"
->
+<trn-settings-section-heading title="Experimental" [primary]="true" />
+<label trnSettingsToggleRow data-testid="flag-virtual-timeline">
   <trn-switch
     [checked]="flags.virtualTimeline()"
     (checkedChange)="flags.setVirtualTimeline($event)"

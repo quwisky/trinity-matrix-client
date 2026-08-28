@@ -8,7 +8,7 @@ import {
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { AvatarComponent } from '@trinity/components/avatar';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import { TrnIconComponent } from '@trinity/components/icon';
 import {
@@ -39,7 +39,7 @@ const MAX_AVATARS = 4;
     EmptyStateComponent,
     TrnIconComponent,
     AvatarComponent,
-    HlmButton,
+    TrnButton,
     TrnTooltip,
   ],
   templateUrl: './threads-list.component.html',

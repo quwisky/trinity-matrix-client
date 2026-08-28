@@ -22,6 +22,14 @@ test('touch press moves the glyph and returns without sticky hover', async ({
   const x = box!.x + box!.width / 2;
   const y = box!.y + box!.height / 2;
   const cdp = await context.newCDPSession(page);
+  const expectedPressed = await page.evaluate(() => {
+    const probe = document.createElement('div');
+    probe.style.backgroundColor = 'var(--trinity-state-pressed-surface)';
+    document.body.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  });
 
   try {
     await cdp.send('Input.emulateTouchFromMouseEvent', {
@@ -30,6 +38,7 @@ test('touch press moves the glyph and returns without sticky hover', async ({
       y: Math.round(y),
       button: 'left',
     });
+    await expect(button).toHaveCSS('background-color', expectedPressed);
     await expect
       .poll(() =>
         icon.evaluate((element) => {

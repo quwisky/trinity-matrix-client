@@ -10,6 +10,10 @@
   --trn-icon-motion-y: 0;
   --trn-icon-motion-rotation: 0deg;
   --trn-icon-motion-scale: 1;
+  --trn-icon-motion-target-x: 0;
+  --trn-icon-motion-target-y: 0;
+  --trn-icon-motion-target-rotation: 0deg;
+  --trn-icon-motion-target-scale: 1;
   --trn-icon-motion-duration: var(--trinity-duration-fast);
 
   ng-icon {
@@ -24,19 +28,26 @@
 
 :host([data-motion='nudge-left']) {
   --trn-icon-motion-target-x: -0.125em;
-  --trn-icon-motion-target-y: 0;
-  --trn-icon-motion-target-rotation: 0deg;
+}
+
+:host([data-motion='nudge-up']) {
+  --trn-icon-motion-target-y: -0.125em;
+}
+
+:host([data-motion='nudge-down']) {
+  --trn-icon-motion-target-y: 0.125em;
 }
 
 :host([data-motion='nudge-up-right']) {
   --trn-icon-motion-target-x: 0.125em;
   --trn-icon-motion-target-y: -0.125em;
-  --trn-icon-motion-target-rotation: 0deg;
+}
+
+:host([data-motion='pop']) {
+  --trn-icon-motion-target-scale: 1.1;
 }
 
 :host([data-motion='rotate']) {
-  --trn-icon-motion-target-x: 0;
-  --trn-icon-motion-target-y: 0;
   --trn-icon-motion-target-rotation: 30deg;
 }
 
@@ -46,6 +57,14 @@
   --trn-icon-motion-x: var(--trn-icon-motion-target-x);
   --trn-icon-motion-y: var(--trn-icon-motion-target-y);
   --trn-icon-motion-rotation: var(--trn-icon-motion-target-rotation);
+  --trn-icon-motion-scale: var(--trn-icon-motion-target-scale);
+}
+
+:host-context(a[href]:not([aria-disabled='true']):focus-visible) {
+  --trn-icon-motion-x: var(--trn-icon-motion-target-x);
+  --trn-icon-motion-y: var(--trn-icon-motion-target-y);
+  --trn-icon-motion-rotation: var(--trn-icon-motion-target-rotation);
+  --trn-icon-motion-scale: var(--trn-icon-motion-target-scale);
 }
 
 // Hover only exists on devices that actually have it, avoiding a sticky translated icon after
@@ -55,10 +74,26 @@
     --trn-icon-motion-x: var(--trn-icon-motion-target-x);
     --trn-icon-motion-y: var(--trn-icon-motion-target-y);
     --trn-icon-motion-rotation: var(--trn-icon-motion-target-rotation);
+    --trn-icon-motion-scale: var(--trn-icon-motion-target-scale);
+  }
+
+  :host-context(a[href]:not([aria-disabled='true']):hover) {
+    --trn-icon-motion-x: var(--trn-icon-motion-target-x);
+    --trn-icon-motion-y: var(--trn-icon-motion-target-y);
+    --trn-icon-motion-rotation: var(--trn-icon-motion-target-rotation);
+    --trn-icon-motion-scale: var(--trn-icon-motion-target-scale);
   }
 }
 
 :host-context(button:enabled:not([aria-disabled='true']):active) {
+  --trn-icon-motion-x: var(--trn-icon-motion-target-x);
+  --trn-icon-motion-y: var(--trn-icon-motion-target-y);
+  --trn-icon-motion-rotation: var(--trn-icon-motion-target-rotation);
+  --trn-icon-motion-scale: 0.9;
+  --trn-icon-motion-duration: var(--trinity-duration-press);
+}
+
+:host-context(a[href]:not([aria-disabled='true']):active) {
   --trn-icon-motion-x: var(--trn-icon-motion-target-x);
   --trn-icon-motion-y: var(--trn-icon-motion-target-y);
   --trn-icon-motion-rotation: var(--trn-icon-motion-target-rotation);

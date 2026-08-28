@@ -11,8 +11,10 @@ import {
   TRINITY_TEXT_SCALES,
   TRINITY_CODE_SCALES,
   TRINITY_CODE_LINE_MODES,
+  TRINITY_DENSITIES,
   type CodeLineMode,
   type CodeScale,
+  type Density,
   type Palette,
   type ResolvedTheme,
   type TextScale,
@@ -35,6 +37,7 @@ describe('AppearanceSettingsComponent', () => {
   let textScale: ReturnType<typeof signal<TextScale>>;
   let codeScale: ReturnType<typeof signal<CodeScale>>;
   let codeLines: ReturnType<typeof signal<CodeLineMode>>;
+  let density: ReturnType<typeof signal<Density>>;
   let showMembership: ReturnType<typeof signal<boolean>>;
   let showProfile: ReturnType<typeof signal<boolean>>;
   let showRoomChanges: ReturnType<typeof signal<boolean>>;
@@ -55,6 +58,7 @@ describe('AppearanceSettingsComponent', () => {
     textScale = signal<TextScale>('default');
     codeScale = signal<CodeScale>('default');
     codeLines = signal<CodeLineMode>('auto');
+    density = signal<Density>('cosy');
     showMembership = signal(true);
     showProfile = signal(true);
     showRoomChanges = signal(true);
@@ -83,6 +87,8 @@ describe('AppearanceSettingsComponent', () => {
           codeScales: TRINITY_CODE_SCALES,
           codeLines,
           codeLineModes: TRINITY_CODE_LINE_MODES,
+          density,
+          densities: TRINITY_DENSITIES,
         }),
         MockProvider(ComposerSettingsService, {
           showFormattingToolbar,
@@ -119,6 +125,25 @@ describe('AppearanceSettingsComponent', () => {
     );
     expect(systemInput?.checked).toBe(true);
     expect(container.textContent).toContain('dark'); // resolved-theme note
+  });
+
+  it('renders a labelled live preview of the active appearance recipe', async () => {
+    const { container, fixture } = await renderPage();
+    const preview = container.querySelector('[data-testid=appearance-preview]');
+    const state = container.querySelector(
+      '[data-testid=appearance-preview-state]',
+    );
+
+    expect(preview).not.toBeNull();
+    expect(preview?.getAttribute('aria-hidden')).toBe('true');
+    expect(state?.textContent).toContain('dark · Trinity · Cosy');
+
+    resolved.set('light');
+    palette.set('onyx');
+    density.set('compact');
+    fixture.detectChanges();
+
+    expect(state?.textContent).toContain('light · Onyx · Compact');
   });
 
   it('applies the chosen theme on change', async () => {

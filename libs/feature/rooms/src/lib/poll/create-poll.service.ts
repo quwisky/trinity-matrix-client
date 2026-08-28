@@ -22,7 +22,10 @@ export class CreatePollService {
     const poll = await this.dialog.openAndWait<
       NewPoll,
       CreatePollDialogComponent
-    >(CreatePollDialogComponent, { ariaLabel: 'Create poll' });
+    >(CreatePollDialogComponent, {
+      ariaLabel: 'Create poll',
+      autoFocus: '[data-testid=poll-question]',
+    });
     if (!poll) {
       return;
     }

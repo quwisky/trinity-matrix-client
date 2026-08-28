@@ -17,12 +17,12 @@ import {
   type WidgetBridgeSession,
   type WidgetEmbed,
 } from '@trinity/data-access/widgets';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 
 @Component({
   selector: 'trn-room-widget-frame',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmButton],
+  imports: [TrnButton],
   templateUrl: './room-widget-frame.component.html',
   styleUrl: './room-widget-frame.component.scss',
 })

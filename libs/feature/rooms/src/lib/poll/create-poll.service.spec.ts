@@ -22,16 +22,28 @@ function setup(
       MockProvider(TrnToastService, { show }),
     ],
   });
-  return { svc: TestBed.inject(CreatePollService), createPoll, show };
+  return {
+    svc: TestBed.inject(CreatePollService),
+    createPoll,
+    openAndWait,
+    show,
+  };
 }
 
 describe('CreatePollService', () => {
   it('creates the poll returned by the dialog', async () => {
-    const { svc, createPoll } = setup({
+    const { svc, createPoll, openAndWait } = setup({
       question: 'Best fruit?',
       options: ['Apple', 'Pear'],
     });
     await svc.open();
+    expect(openAndWait).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        ariaLabel: 'Create poll',
+        autoFocus: '[data-testid=poll-question]',
+      }),
+    );
     expect(createPoll).toHaveBeenCalledWith('Best fruit?', ['Apple', 'Pear']);
   });
 

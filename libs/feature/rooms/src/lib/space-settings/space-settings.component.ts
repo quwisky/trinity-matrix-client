@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, FormRoot, form } from '@angular/forms/signals';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnSelectComponent } from '@trinity/components/select';
 import {
   TrnTabPanelComponent,
@@ -72,7 +72,7 @@ const OTHER_RULE_LABELS: Partial<Record<JoinRule, string>> = {
     TrnTabPanelComponent,
     FormField,
     FormRoot,
-    HlmButton,
+    TrnButton,
     TrnInput,
     AvatarFieldComponent,
     BannedMembersComponent,

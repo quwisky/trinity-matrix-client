@@ -4,6 +4,8 @@ import {
   inject,
   input,
 } from '@angular/core';
+import { TrnButton } from '@trinity/components/button';
+import { TrnIconComponent } from '@trinity/components/icon';
 import { TrnDialogRef } from '@trinity/components/overlay';
 
 /**
@@ -18,25 +20,20 @@ import { TrnDialogRef } from '@trinity/components/overlay';
  * at the top of the stacking order rather than one living inside a row whose ancestors are
  * free to clip it or open a stacking context around it.
  *
- * The image is the dialog's whole surface: clicking it closes, which is what `zoom-out` has
- * always promised, and clicking beside it is a backdrop click that CDK closes for us.
+ * The viewer fills the dialog pane and closes on any click, which is what `zoom-out` has
+ * always promised. Its padded surround is therefore the usable backdrop; CDK's own backdrop
+ * sits physically behind the full-viewport pane and still owns modal isolation.
  */
 @Component({
   selector: 'trn-lightbox',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [TrnButton, TrnIconComponent],
   host: {
-    class:
-      'flex h-screen w-screen cursor-zoom-out items-center justify-center p-6',
+    class: 'lightbox',
     '(click)': 'close()',
   },
-  template: `
-    <img
-      decoding="async"
-      class="max-h-full max-w-full object-contain"
-      [src]="src()"
-      [alt]="filename()"
-    />
-  `,
+  templateUrl: './lightbox.component.html',
+  styleUrl: './lightbox.component.scss',
 })
 export class LightboxComponent {
   readonly src = input.required<string>();

@@ -167,14 +167,9 @@ test.describe('Message grouping', () => {
     // evidence.)
     expect(gap.start.marginTop).toBe(0);
 
-    // The hover toolbar belongs to its own row. It used to be parked at `top: -16px`, i.e.
-    // deliberately over the row ABOVE — which on a touch device, where the bar is always
-    // open, meant every row permanently covered the top of its predecessor. Measured as a
-    // box containment rather than read off the stylesheet, because that is the actual claim.
-    // A CONTINUATION row specifically, not the first row that happens to carry a bar. A group
-    // start is ~60px — taller than the 34px bar — so the residual measured on one is 0 no
-    // matter how tall the bar grows, and the bound below would pass by construction. The
-    // 26px continuation is the row the reasoning is about and the only one that can fail.
+    // The hover toolbar floats over the trailing row boundary instead of reserving a permanent
+    // action gutter. Measure a CONTINUATION row specifically: it has no author header or group
+    // padding to disguise either a lost strip of message width or excessive vertical overlap.
     const containment = await page.evaluate(() => {
       const row = [...document.querySelectorAll('.msg--cont')].find(
         (candidate) => candidate.querySelector('.msg__toolbar'),
@@ -188,15 +183,51 @@ test.describe('Message grouping', () => {
       const r = row.getBoundingClientRect();
       const b = bar.getBoundingClientRect();
       const t = text.getBoundingClientRect();
+      const messageRows = [...document.querySelectorAll('.msg')].filter(
+        (candidate) => candidate.querySelector('.msg__text'),
+      );
+      const previousText =
+        messageRows[messageRows.indexOf(row) - 1]?.querySelector<HTMLElement>(
+          '.msg__text',
+        );
+      const previousTextBox = previousText?.getBoundingClientRect();
+      const body = row.querySelector('.msg__body')?.getBoundingClientRect();
+      const rowStyle = getComputedStyle(row);
+      const lineHeight = parseFloat(getComputedStyle(text).lineHeight);
       const buttons = [...bar.querySelectorAll<HTMLElement>('button')];
       return {
         rowTop: r.top,
         barTop: b.top,
         rowHeight: r.height,
         barHeight: b.height,
+        barWidth: b.width,
         overflowAbove: r.top - b.top,
         overflowBelow: b.bottom - r.bottom,
-        textToolbarGap: b.left - t.right,
+        bodyEndGap:
+          body === undefined
+            ? null
+            : r.right - parseFloat(rowStyle.paddingInlineEnd) - body.right,
+        textOverlap: Math.max(
+          0,
+          Math.min(b.bottom, t.bottom) - Math.max(b.top, t.top),
+        ),
+        lineHeight,
+        previousTextOverlap:
+          previousTextBox === undefined
+            ? null
+            : Math.max(
+                0,
+                Math.min(b.bottom, previousTextBox.bottom) -
+                  Math.max(b.top, previousTextBox.top),
+              ),
+        previousLineHeight:
+          previousText == null
+            ? null
+            : parseFloat(getComputedStyle(previousText).lineHeight),
+        buttonSizes: buttons.map((button) => {
+          const box = button.getBoundingClientRect();
+          return { width: box.width, height: box.height };
+        }),
         allButtonsHit: buttons.every((button) => {
           const box = button.getBoundingClientRect();
           const hit = document.elementFromPoint(
@@ -211,21 +242,150 @@ test.describe('Message grouping', () => {
     if (!containment) {
       throw new Error('expected a continuation row carrying a toolbar');
     }
-    // Zero or negative: the bar starts at or below its row's top edge, never above it. That
-    // is the defect this replaced — a bar at `top: -16px` painted over the row before it.
-    expect(containment.overflowAbove).toBeLessThanOrEqual(0);
-
-    // The measured row reserves the toolbar's whole block size. Nothing may overflow into
-    // the following positioned row, and every button centre must hit its owning button.
+    // Full message width: the body reaches the row content edge rather than stopping before
+    // a four-button action track. The toolbar is compact and straddles only the upper boundary.
+    expect(containment.bodyEndGap).not.toBeNull();
+    expect(Math.abs(containment.bodyEndGap ?? Infinity)).toBeLessThanOrEqual(1);
+    expect(containment.barWidth).toBeLessThanOrEqual(100);
+    expect(containment.overflowAbove).toBeGreaterThan(0);
+    expect(containment.overflowAbove).toBeLessThanOrEqual(
+      (containment.barHeight * 2) / 3 + 1,
+    );
     expect(containment.overflowBelow).toBeLessThanOrEqual(1);
-    expect(containment.textToolbarGap).toBeGreaterThanOrEqual(0);
+    expect(containment.textOverlap).toBeLessThanOrEqual(
+      containment.lineHeight / 2 + 1,
+    );
+    expect(containment.previousTextOverlap).not.toBeNull();
+    expect(containment.previousLineHeight).not.toBeNull();
+    expect(containment.previousTextOverlap ?? Infinity).toBeLessThanOrEqual(
+      (containment.previousLineHeight ?? 0) - 1,
+    );
+    expect(
+      containment.buttonSizes.every(
+        ({ width, height }) => width >= 24 && height >= 24,
+      ),
+    ).toBe(true);
     expect(containment.allButtonsHit).toBe(true);
 
-    const eventHeight = await page
-      .locator('.msg--event')
-      .first()
-      .evaluate((row) => row.getBoundingClientRect().height);
-    expect(eventHeight).toBeLessThan(containment.barHeight);
+    // A continuation can become the first visible row after normal or virtual scrolling.
+    // Clamp against the real scrollport rather than assuming only group starts reach its edge.
+    // End the synthetic continuation-row reveal first: a pointer can only hover one row at a
+    // time, and leaving both bars forced open would manufacture an impossible collision.
+    await page
+      .locator('.msg--cont.msg--revealed')
+      .evaluateAll((rows) =>
+        rows.forEach((row) => row.classList.remove('msg--revealed')),
+      );
+    const scroll = page.locator('.scroll').first();
+    await scroll.evaluate((element) => {
+      element.style.flex = '0 0 180px';
+      element.style.height = '180px';
+      element.style.paddingBottom = '200px';
+      element.scrollTop = 0;
+    });
+    const firstActionRow = page
+      .locator('.msg--cont', {
+        has: page.locator('.msg__toolbar'),
+      })
+      .first();
+    await firstActionRow.evaluate((row) => {
+      const scroller = row.closest('.scroll');
+      if (!scroller) return;
+      const rowBox = row.getBoundingClientRect();
+      const scrollBox = scroller.getBoundingClientRect();
+      scroller.scrollTop += rowBox.top - scrollBox.top;
+    });
+    await expect
+      .poll(() =>
+        firstActionRow.evaluate((row) => {
+          const scroller = row.closest('.scroll');
+          if (!scroller) return Infinity;
+          return Math.abs(
+            row.getBoundingClientRect().top -
+              scroller.getBoundingClientRect().top,
+          );
+        }),
+      )
+      .toBeLessThanOrEqual(1);
+    await firstActionRow.hover();
+    await expect(firstActionRow.locator('.msg__toolbar')).toHaveCSS(
+      'opacity',
+      '1',
+    );
+    await firstActionRow.getByRole('button', { name: 'Add reaction' }).click();
+    await expect(firstActionRow.locator('.toolbar__picker')).toBeVisible();
+    await expect
+      .poll(() =>
+        firstActionRow
+          .locator('.msg__toolbar')
+          .evaluate((bar) =>
+            bar.classList.contains('toolbar-host--picker-below'),
+          ),
+      )
+      .toBe(true);
+    const topEdge = await firstActionRow.evaluate((row) => {
+      const scroller = row.closest('.scroll');
+      const bar = row.querySelector<HTMLElement>('.msg__toolbar');
+      const picker = row.querySelector<HTMLElement>('.toolbar__picker');
+      if (!scroller || !bar || !picker) return null;
+      const measure = () => {
+        const scrollBox = scroller.getBoundingClientRect();
+        const boxes = [bar, picker].map((element) =>
+          element.getBoundingClientRect(),
+        );
+        const controls = [
+          ...bar.querySelectorAll<HTMLElement>('.toolbar > button'),
+          ...picker.querySelectorAll<HTMLElement>('button'),
+        ];
+        return {
+          contained: boxes.every(
+            (box) =>
+              box.top >= scrollBox.top - 1 &&
+              box.right <= scrollBox.right + 1 &&
+              box.bottom <= scrollBox.bottom + 1 &&
+              box.left >= scrollBox.left - 1,
+          ),
+          blockedControls: controls.flatMap((control) => {
+            const box = control.getBoundingClientRect();
+            const hit = document.elementFromPoint(
+              box.left + box.width / 2,
+              box.top + box.height / 2,
+            );
+            if (hit !== null && control.contains(hit)) return [];
+            return [
+              {
+                label:
+                  control.getAttribute('aria-label') ??
+                  control.getAttribute('title') ??
+                  control.textContent?.trim() ??
+                  '',
+                blocker:
+                  hit instanceof HTMLElement
+                    ? `${hit.tagName.toLowerCase()}.${hit.className}`
+                    : null,
+              },
+            ];
+          }),
+        };
+      };
+      const ltr = measure();
+      document.documentElement.dir = 'rtl';
+      const rtl = measure();
+      document.documentElement.removeAttribute('dir');
+      return { ltr, rtl };
+    });
+    expect(topEdge).not.toBeNull();
+    expect(topEdge?.ltr.contained).toBe(true);
+    expect(topEdge?.ltr.blockedControls).toEqual([]);
+    expect(topEdge?.rtl.contained).toBe(true);
+    expect(topEdge?.rtl.blockedControls).toEqual([]);
+    await firstActionRow.getByRole('button', { name: 'Add reaction' }).click();
+    await page.locator('[data-testid="composer-input"]').hover();
+    await scroll.evaluate((element) => {
+      element.style.removeProperty('flex');
+      element.style.removeProperty('height');
+      element.style.removeProperty('padding-bottom');
+    });
 
     // Compact is a rendered timeline mode, not merely an attribute or a token declaration.
     // Tighten the live document and prove the measured conversation consumes less vertical
@@ -244,6 +404,10 @@ test.describe('Message grouping', () => {
       html.setAttribute('data-density', 'compact');
     });
     await expect(page.locator('.msg').first()).toHaveCSS('column-gap', '8px');
+    await page
+      .locator('.msg--cont .msg__toolbar')
+      .first()
+      .dispatchEvent('pointerenter', { pointerType: 'mouse' });
 
     const compact = await page.evaluate(() => {
       const rows = [...document.querySelectorAll<HTMLElement>('.msg')].filter(
@@ -253,8 +417,16 @@ test.describe('Message grouping', () => {
       const cont = rows.find((row) => row.classList.contains('msg--cont'));
       const bar = cont?.querySelector<HTMLElement>('.msg__toolbar');
       if (!start || !cont || !bar) return null;
+      cont.classList.add('msg--revealed');
       const rowBox = cont.getBoundingClientRect();
       const barBox = bar.getBoundingClientRect();
+      const text = cont.querySelector<HTMLElement>('.msg__text');
+      const textBox = text?.getBoundingClientRect();
+      const bodyBox = cont
+        .querySelector<HTMLElement>('.msg__body')
+        ?.getBoundingClientRect();
+      const rowStyle = getComputedStyle(cont);
+      const buttons = [...bar.querySelectorAll<HTMLElement>('button')];
       return {
         rowsHeight: rows.reduce(
           (total, row) => total + row.getBoundingClientRect().height,
@@ -263,6 +435,36 @@ test.describe('Message grouping', () => {
         startPaddingTop: parseFloat(getComputedStyle(start).paddingTop),
         startMarginTop: parseFloat(getComputedStyle(start).marginTop),
         continuationPaddingTop: parseFloat(getComputedStyle(cont).paddingTop),
+        bodyEndGap:
+          bodyBox === undefined
+            ? null
+            : rowBox.right -
+              parseFloat(rowStyle.paddingInlineEnd) -
+              bodyBox.right,
+        barWidth: barBox.width,
+        barHeight: barBox.height,
+        textOverlap:
+          textBox === undefined
+            ? null
+            : Math.max(
+                0,
+                Math.min(barBox.bottom, textBox.bottom) -
+                  Math.max(barBox.top, textBox.top),
+              ),
+        lineHeight:
+          text === null ? null : parseFloat(getComputedStyle(text).lineHeight),
+        buttonSizes: buttons.map((button) => {
+          const box = button.getBoundingClientRect();
+          return { width: box.width, height: box.height };
+        }),
+        allButtonsHit: buttons.every((button) => {
+          const box = button.getBoundingClientRect();
+          const hit = document.elementFromPoint(
+            box.left + box.width / 2,
+            box.top + box.height / 2,
+          );
+          return hit !== null && button.contains(hit);
+        }),
         overflowAbove: rowBox.top - barBox.top,
         overflowBelow: barBox.bottom - rowBox.bottom,
       };
@@ -272,7 +474,71 @@ test.describe('Message grouping', () => {
     expect(compact.startPaddingTop).toBe(12);
     expect(compact.startMarginTop).toBe(0);
     expect(compact.continuationPaddingTop).toBe(0);
-    expect(compact.overflowAbove).toBeLessThanOrEqual(0);
+    expect(compact.bodyEndGap).not.toBeNull();
+    expect(Math.abs(compact.bodyEndGap ?? Infinity)).toBeLessThanOrEqual(1);
+    expect(compact.barWidth).toBeLessThanOrEqual(100);
+    expect(compact.overflowAbove).toBeGreaterThan(0);
+    expect(compact.overflowAbove).toBeLessThanOrEqual(
+      (compact.barHeight * 2) / 3 + 1,
+    );
     expect(compact.overflowBelow).toBeLessThanOrEqual(1);
+    expect(compact.textOverlap).not.toBeNull();
+    expect(compact.lineHeight).not.toBeNull();
+    expect(compact.textOverlap ?? Infinity).toBeLessThanOrEqual(
+      (compact.lineHeight ?? 0) / 2 + 1,
+    );
+    expect(
+      compact.buttonSizes.every(
+        ({ width, height }) => width >= 24 && height >= 24,
+      ),
+    ).toBe(true);
+    expect(compact.allButtonsHit).toBe(true);
+
+    // A desktop user agent with touch emulation keeps the desktop toolbar interaction model
+    // while exercising the coarse-pointer capability used by hybrid laptops.
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setTouchEmulationEnabled', {
+      enabled: true,
+      maxTouchPoints: 5,
+    });
+    await expect
+      .poll(() =>
+        page.evaluate(() => matchMedia('(any-pointer: coarse)').matches),
+      )
+      .toBe(true);
+    await firstActionRow.evaluate((row) => row.classList.add('msg--revealed'));
+    await firstActionRow.locator('.msg__toolbar').evaluate((bar) => {
+      bar.dispatchEvent(
+        new PointerEvent('pointerenter', { pointerType: 'mouse' }),
+      );
+    });
+    await firstActionRow
+      .getByRole('button', { name: 'Add reaction' })
+      .evaluate((button: HTMLButtonElement) => button.click());
+    await expect(firstActionRow.locator('.toolbar__picker')).toBeVisible();
+    const hybridControls = await firstActionRow.evaluate((row) => {
+      const controls = [
+        ...row.querySelectorAll<HTMLElement>('.toolbar > button'),
+        ...row.querySelectorAll<HTMLElement>('.toolbar__picker button'),
+      ];
+      return controls.map((control) => {
+        const box = control.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          box.left + box.width / 2,
+          box.top + box.height / 2,
+        );
+        return {
+          width: box.width,
+          height: box.height,
+          hit: hit !== null && control.contains(hit),
+        };
+      });
+    });
+    expect(
+      hybridControls.every(
+        ({ width, height, hit }) => width >= 44 && height >= 44 && hit,
+      ),
+    ).toBe(true);
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: false });
   });
 });

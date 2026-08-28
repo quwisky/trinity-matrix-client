@@ -25,7 +25,7 @@ import {
   switchMap,
   throwError,
 } from 'rxjs';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnCardImports } from '@trinity/components/card';
 import { TrnInput } from '@trinity/components/input';
 import { TrnLabel } from '@trinity/components/label';
@@ -64,7 +64,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
   imports: [
     AuthCardComponent,
     FormField,
-    HlmButton,
+    TrnButton,
     TrnCardImports,
     TrnInput,
     TrnLabel,
