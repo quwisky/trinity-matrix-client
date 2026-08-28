@@ -193,9 +193,9 @@ jobs:
       # verifies its palette × mode canvas and focused text contrast in the installed browser.
       - run: pnpm exec nx run trinity-e2e:storybook-e2e
 
-      # Non-shipping redesign candidates, rendered against the application stylesheet. Linux is
-      # the committed pixel authority; semantic checks cover the full canonical viewport matrix.
-      - run: pnpm exec nx run trinity-e2e:design-e2e
+      # Real production UI semantics, contrast and geometry across the canonical viewport matrix.
+      # Review screenshots are PR uploads, never committed pixel baselines.
+      - run: pnpm exec nx run trinity-e2e:phase7-e2e
 
       # Separate from the Synapse suite: this serves the already-built app and checks CSS
       # capability queries in desktop and real mobile-device browser profiles.
@@ -226,6 +226,7 @@ jobs:
             dist/.playwright/e2e/test-output/
             dist/.playwright/e2e/blob-report/
             dist/.playwright/storybook/
+            dist/.playwright/phase7/
             dist/.playwright/styling/
           if-no-files-found: warn
           retention-days: 7

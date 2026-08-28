@@ -20,18 +20,32 @@ const PRODUCT_MEDIA_ROOTS = [
   'ios/App/App/Assets.xcassets/',
 ];
 const RASTER_MEDIA = /\.(?:gif|jpe?g|png|webp)$/i;
-const PROTOTYPE_PATH = /(^|\/)prototypes?(\/|$)/i;
+const REVIEW_ARTIFACT_PATH =
+  /(^|[\/._-])(?:baselines?|evidence|mockups?|proof|prototypes?|screenshots?)(?=$|[\/._-])/i;
+
+const isReviewArtifactPath = (file) => REVIEW_ARTIFACT_PATH.test(file);
 
 describe('repository review-media policy', () => {
   it('keeps prototypes and review evidence out of tracked source', () => {
     const forbidden = trackedFiles.filter(
       (file) =>
-        file.startsWith('docs/evidence/') ||
-        PROTOTYPE_PATH.test(file) ||
+        isReviewArtifactPath(file) ||
         (file.includes('-snapshots/') && RASTER_MEDIA.test(file)),
     );
 
     expect(forbidden).toEqual([]);
+  });
+
+  it('recognises review artifacts even outside the old dedicated directories', () => {
+    expect(isReviewArtifactPath('docs/modern-ui-prototype.html')).toBe(true);
+    expect(isReviewArtifactPath('docs/design-mockup.md')).toBe(true);
+    expect(
+      isReviewArtifactPath('apps/trinity/src/assets/screenshots/proof.png'),
+    ).toBe(true);
+    expect(isReviewArtifactPath('docs/accessibility-evidence.md')).toBe(true);
+    expect(
+      isReviewArtifactPath('apps/trinity/src/assets/icon/icon-512.png'),
+    ).toBe(false);
   });
 
   it('tracks raster media only when it is a shipping application asset', () => {

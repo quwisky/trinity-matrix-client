@@ -256,6 +256,46 @@ async function expectReadable(page: Page, heading: Locator): Promise<void> {
   expect(contrast.ratio).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
 }
 
+async function expectAppearanceApplied(
+  page: Page,
+  appearance: Appearance,
+): Promise<void> {
+  const expectedScale = appearance.textScale === 'larger' ? 1.25 : 1;
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const root = document.documentElement;
+        return {
+          mode: root.classList.contains('dark') ? 'dark' : 'light',
+          palette: root.getAttribute('data-theme') ?? 'trinity',
+          density: root.getAttribute('data-density') ?? 'cosy',
+          rootSize: Number.parseFloat(getComputedStyle(root).fontSize),
+        };
+      }),
+    )
+    .toEqual({
+      mode: appearance.mode,
+      palette: appearance.palette,
+      density: appearance.density,
+      rootSize: 16 * expectedScale,
+    });
+
+  const message = page.locator('.main .msg__text', {
+    hasText: ROOM_MESSAGES[0],
+  });
+  await expect
+    .poll(() =>
+      message.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          lineHeight: Number.parseFloat(style.lineHeight),
+          size: Number.parseFloat(style.fontSize),
+        };
+      }),
+    )
+    .toEqual({ lineHeight: 24 * expectedScale, size: 16 * expectedScale });
+}
+
 async function attachPerformanceEvidence(
   page: Page,
   testInfo: TestInfo,
@@ -327,6 +367,11 @@ test.describe('@phase7 shipped UI', () => {
     await stabilize(page);
     const shell = page.locator('.rooms-shell');
     await expectInsideViewport(page, shell, 'room shell');
+    await expectInsideViewport(
+      page,
+      page.getByTestId('composer-field'),
+      'message composer',
+    );
     await expectNoHorizontalScroll(page);
     await expectReadable(page, page.getByRole('heading', { name: roomName }));
     for (const body of ROOM_MESSAGES) {
@@ -334,6 +379,7 @@ test.describe('@phase7 shipped UI', () => {
         page.locator('.main .msg__text', { hasText: body }),
       ).toBeVisible();
     }
+    await expectAppearanceApplied(page, appearance);
     await expect(page.getByTestId('composer-input')).toHaveAccessibleName(
       new RegExp(roomName),
     );
