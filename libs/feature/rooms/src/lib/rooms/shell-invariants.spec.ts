@@ -169,6 +169,16 @@ describe('one error channel produces one toast per turn', () => {
     // `runWithBusy` nulls `error` synchronously at call time before capturing it again.
     expect(toasts()).toEqual(['same', 'same']);
   });
+
+  it('suppresses a queued toast after the page-scoped channel is destroyed', async () => {
+    const { host, toasts, fixture } = buildErrorChannel();
+
+    host.fail('too late');
+    fixture.destroy();
+    await Promise.resolve();
+
+    expect(toasts()).toEqual([]);
+  });
 });
 
 /**

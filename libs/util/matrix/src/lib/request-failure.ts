@@ -1,4 +1,9 @@
-import { ConnectionError, HTTPError, MatrixError } from './transient-errors';
+import {
+  ConnectionError,
+  HTTPError,
+  isMatrixRequestAbortError,
+  MatrixError,
+} from './transient-errors';
 
 /** Stable failure groups used for user messages and privacy-safe diagnostics. */
 export type MatrixRequestFailureKind =
@@ -46,12 +51,39 @@ export interface MatrixRequestErrorHandling {
 
 const DEFAULT_MESSAGE = 'Something went wrong. Try again.';
 const TOKEN_ERRORS = new Set(['M_UNKNOWN_TOKEN', 'M_MISSING_TOKEN']);
+const MAX_RETRY_AFTER_MS = 24 * 60 * 60 * 1000;
+const MATRIX_ERRCODE = /^[A-Z][A-Z0-9_.-]{0,127}$/;
+const ERROR_NAME = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
+
+function hasErrorName(error: unknown, name: string): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    error.name === name
+  );
+}
+
+function safeHttpStatus(value: unknown): number | undefined {
+  return Number.isInteger(value) && Number(value) >= 100 && Number(value) <= 599
+    ? Number(value)
+    : undefined;
+}
+
+function safeErrcode(value: unknown): string | undefined {
+  return typeof value === 'string' && MATRIX_ERRCODE.test(value)
+    ? value
+    : undefined;
+}
 
 function retryAfterMs(error: HTTPError): number | undefined {
   if (!error.isRateLimitError()) return undefined;
   try {
     const delay = error.getRetryAfterMs();
-    return delay !== null && Number.isFinite(delay) && delay >= 0
+    return delay !== null &&
+      Number.isFinite(delay) &&
+      delay >= 0 &&
+      delay <= MAX_RETRY_AFTER_MS
       ? delay
       : undefined;
   } catch {
@@ -60,6 +92,7 @@ function retryAfterMs(error: HTTPError): number | undefined {
 }
 
 function isTimeout(error: unknown): boolean {
+  if (isMatrixRequestAbortError(error)) return true;
   if (!(error instanceof Error)) return false;
   return (
     error.name === 'TimeoutError' ||
@@ -76,7 +109,7 @@ function failure(
 ): MatrixRequestFailure {
   const diagnostic: MatrixRequestFailureMetadata = { kind, ...extra };
   if (kind === 'unexpected' && error instanceof Error) {
-    diagnostic.errorName = error.name || 'Error';
+    diagnostic.errorName = ERROR_NAME.test(error.name) ? error.name : 'Error';
   }
   return { kind, message, diagnostic };
 }
@@ -95,13 +128,30 @@ export function describeMatrixRequestFailure(
     return failure('timeout', 'The request timed out. Try again.', error);
   }
 
+  if (hasErrorName(error, 'TokenRefreshLogoutError')) {
+    return failure(
+      'authentication',
+      'Your session has expired. Sign in again.',
+      error,
+    );
+  }
+
+  if (hasErrorName(error, 'TokenRefreshError')) {
+    return failure(
+      'network',
+      'Your session could not be refreshed. Check your connection and try again.',
+      error,
+    );
+  }
+
   if (error instanceof ConnectionError) {
     return failure('network', 'Check your connection and try again.', error);
   }
 
   if (error instanceof HTTPError) {
-    const httpStatus = error.httpStatus;
-    const errcode = error instanceof MatrixError ? error.errcode : undefined;
+    const httpStatus = safeHttpStatus(error.httpStatus);
+    const errcode =
+      error instanceof MatrixError ? safeErrcode(error.errcode) : undefined;
     const metadata = {
       ...(httpStatus !== undefined ? { httpStatus } : {}),
       ...(errcode ? { errcode } : {}),
@@ -151,8 +201,13 @@ export function describeMatrixRequestFailure(
     return failure('http', fallbackMessage, error, metadata);
   }
 
+  // Operation-specific request boundaries deliberately replace unmatched errors:
+  // SDK wrapper messages can retain a response body or request URL. Callers that use
+  // the default are domain/UI helpers and retain their existing specific validation.
   const message =
-    error instanceof Error && error.message.trim()
+    fallbackMessage === DEFAULT_MESSAGE &&
+    error instanceof Error &&
+    error.message.trim()
       ? error.message
       : fallbackMessage;
   return failure('unexpected', message, error);

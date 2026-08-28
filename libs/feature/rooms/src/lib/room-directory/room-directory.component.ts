@@ -72,7 +72,7 @@ export class RoomDirectoryComponent implements OnInit {
 
   readonly hasMore = computed(() => this.nextBatch() !== null);
   readonly isEmpty = computed(
-    () => !this.loading() && this.rooms().length === 0,
+    () => !this.loading() && !this.error() && this.rooms().length === 0,
   );
 
   ngOnInit(): void {

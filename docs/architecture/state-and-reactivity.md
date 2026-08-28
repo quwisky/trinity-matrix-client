@@ -308,16 +308,18 @@ runWithBusy(this.auth.changePassword(current, next), {
 
 It sets `busy` true and clears `error`, then pipes `takeUntilDestroyed` → `catchError` →
 `finalize`. Pages either call it inline like this with a per-action busy signal, or wrap it once in
-a private `withBusy()` helper backed by page-level `busy` and `error` signals.
+a private `withBusy()` helper backed by page-level `busy` and `error` signals. State changes are
+lazy: they start only when the returned Observable is subscribed. `finalize` clears `busy` after
+success, failure, empty completion, explicit cancellation, or owner teardown.
 
-!!! warning "The failure is swallowed, and busy is set eagerly"
+!!! warning "The failure is swallowed"
 
     `catchError` writes the message into the `error` signal and returns `EMPTY`, so the
     subscriber's `next` callback **never runs on failure**. Cleanup or navigation placed there is
-    silently skipped, and nothing reaches the caller — the template's error banner is the only
-    channel by design. Separately, `busy` is set to `true` at call time, before the returned
-    Observable is subscribed, so calling `runWithBusy` and never subscribing leaves `busy` stuck
-    true because `finalize` never runs.
+    silently skipped, and nothing reaches the caller. Request-facing call sites can supply a safe
+    formatter, diagnostic reporter, and immediate presenter; the rooms shell uses that presenter
+    because a zoneless failure may not schedule the component effect that formerly showed its
+    toast. Do not pass a raw SDK message through a formatter: it can retain a response body or URL.
 
 ## Revision counters, and what replaced them
 

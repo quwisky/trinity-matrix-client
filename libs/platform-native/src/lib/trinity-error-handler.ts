@@ -1,5 +1,6 @@
 import { ErrorHandler, Injectable } from '@angular/core';
 import {
+  isMatrixRequestAbortError,
   isTransientMatrixError,
   matrixRequestFailureDiagnostic,
 } from '@trinity/util/matrix';
@@ -26,7 +27,7 @@ import {
 @Injectable()
 export class TrinityErrorHandler extends ErrorHandler {
   override handleError(error: unknown): void {
-    if (isTransientMatrixError(error)) {
+    if (isTransientMatrixError(error) || isMatrixRequestAbortError(error)) {
       console.debug(
         '[trinity] transient homeserver error (ignored)',
         matrixRequestFailureDiagnostic('background Matrix request', error),

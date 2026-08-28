@@ -266,8 +266,9 @@ All notable changes to this project are documented here. The format is based on
 - **Network failures no longer leave actions spinning forever.** Matrix requests now stop
   waiting after a bounded deadline, request controls release on completion or cancellation,
   and failed room invitations, room joins, and directory requests explain whether to
-  reconnect, wait, sign in, or retry. Background request logs retain the operation and error
-  category without recording response bodies, request URLs, or tokens.
+  reconnect, wait, sign in, or retry. A directory failure no longer also claims that no rooms
+  were found. Raw SDK wrapper text stays out of both the UI and logs; diagnostics retain only
+  the operation and a bounded, allowlisted error category.
 
 - **Settings no longer shows two scrollbars side by side.** On a short window the list of
   sections scrolled independently of the section you were reading, so both drew a scrollbar

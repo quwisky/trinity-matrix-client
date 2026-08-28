@@ -1,7 +1,22 @@
 import { ConnectionError, HTTPError, MatrixError } from 'matrix-js-sdk';
 import { defer, firstValueFrom, of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { isTransientMatrixError, retryTransient } from './transient-errors';
+import {
+  isMatrixRequestAbortError,
+  isTransientMatrixError,
+  retryTransient,
+} from './transient-errors';
+
+describe('isMatrixRequestAbortError', () => {
+  it('recognizes the AbortError preserved by the Matrix fetch transport', () => {
+    expect(
+      isMatrixRequestAbortError(
+        new DOMException('The operation was aborted.', 'AbortError'),
+      ),
+    ).toBe(true);
+    expect(isMatrixRequestAbortError(new Error('aborted'))).toBe(false);
+  });
+});
 
 describe('isTransientMatrixError', () => {
   it('treats a ConnectionError as transient', () => {

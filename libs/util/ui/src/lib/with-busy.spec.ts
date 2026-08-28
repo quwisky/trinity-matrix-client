@@ -4,12 +4,20 @@ import { describe, expect, it, vi } from 'vitest';
 import { runWithBusy } from './with-busy';
 
 function state() {
+  const destroyCallbacks: Array<() => void> = [];
   return {
     busy: signal(false),
     error: signal<string | null>('old error'),
     destroyRef: {
-      onDestroy: vi.fn(() => () => undefined),
+      onDestroy: vi.fn((callback: () => void) => {
+        destroyCallbacks.push(callback);
+        return () => {
+          const index = destroyCallbacks.indexOf(callback);
+          if (index !== -1) destroyCallbacks.splice(index, 1);
+        };
+      }),
     } as unknown as DestroyRef,
+    destroy: () => destroyCallbacks.splice(0).forEach((callback) => callback()),
   };
 }
 
@@ -35,6 +43,18 @@ describe('runWithBusy', () => {
 
     subscription.unsubscribe();
 
+    expect(current.busy()).toBe(false);
+  });
+
+  it('unsubscribes and clears busy when its owner is destroyed', () => {
+    const current = state();
+    const subscription = runWithBusy(NEVER, current).subscribe();
+
+    expect(current.busy()).toBe(true);
+
+    current.destroy();
+
+    expect(subscription.closed).toBe(true);
     expect(current.busy()).toBe(false);
   });
 

@@ -795,13 +795,15 @@ alias. Nothing enforces either — only the comments at the sites.
 error reaches the caller. Or a busy spinner sticks on forever.
 
 **Cause.** `runWithBusy`'s `catchError` writes the message into the `error` signal and
-returns `EMPTY`, so the failure is swallowed by design and the template's error banner is
-the only channel. Separately, `busy` is set eagerly at call time, before the returned
-Observable is subscribed, so calling it and never subscribing leaves `busy` stuck true
-because `finalize` never runs.
+returns `EMPTY`, so the failure is swallowed by design. In a zoneless surface, relying on a
+component effect to notice an error signal can also miss the presentation when the failure
+does not otherwise schedule rendering.
 
-**Fix.** Put failure handling in the template, subscribe to everything you call, and do not
-use it on a path that must triage its own errors.
+**Fix.** Subscribe to everything you call, keep cleanup in `finalize`, and do not use the
+helper on a path that must triage its own errors. Request-facing actions should provide the
+safe formatter/reporter hooks, and zoneless shells should present the captured error through
+their status service rather than waiting for a component effect. The helper starts state on
+subscription and clears it on every termination path, including cancellation and teardown.
 
 ### The app is wedged and there is no way to clear its data
 

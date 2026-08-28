@@ -747,9 +747,9 @@ describe('RoomsPage room / DM / invite actions', () => {
     await shell.rooms.onInviteToRoom();
 
     // runWithBusy records and presents the failure without relying on a render pass.
-    expect(shell.status.error()).toBe('forbidden');
+    expect(shell.status.error()).toBe('Could not invite this user. Try again.');
     expect(toastShow).toHaveBeenCalledWith(
-      'forbidden',
+      'Could not invite this user. Try again.',
       expect.objectContaining({ variant: 'destructive' }),
     );
   });

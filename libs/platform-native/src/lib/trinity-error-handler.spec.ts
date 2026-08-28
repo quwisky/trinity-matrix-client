@@ -68,6 +68,21 @@ describe('TrinityErrorHandler', () => {
     expect(superSpy).not.toHaveBeenCalled();
   });
 
+  it('quietly handles a Matrix request deadline AbortError', () => {
+    handler.handleError(
+      new DOMException('The operation was aborted.', 'AbortError'),
+    );
+
+    expect(debugSpy).toHaveBeenCalledWith(
+      '[trinity] transient homeserver error (ignored)',
+      {
+        operation: 'background Matrix request',
+        kind: 'timeout',
+      },
+    );
+    expect(superSpy).not.toHaveBeenCalled();
+  });
+
   it('delegates a genuine error to the default handler', () => {
     const genuine = new TypeError('x');
 

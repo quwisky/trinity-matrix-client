@@ -210,7 +210,7 @@ describe('RoomDirectoryComponent', () => {
     expect(close).not.toHaveBeenCalled();
     expect(cmp.joining()).toBeNull(); // cleared for a retry
     expect(toastShow).toHaveBeenCalledWith(
-      'nope',
+      'Could not join General. Try again.',
       expect.objectContaining({ variant: 'destructive' }),
     );
   });
@@ -250,8 +250,12 @@ describe('RoomDirectoryComponent', () => {
   it('surfaces a directory load failure', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const search = vi.fn(() => throwError(() => new Error('down')));
-    const { cmp } = await build({ search });
+    const { cmp, container } = await build({ search });
     expect(cmp.error()).toBe('Could not load the room directory.');
+    expect(
+      container.querySelector('[data-testid=directory-error]'),
+    ).toHaveAttribute('role', 'alert');
+    expect(container.querySelector('[data-testid=directory-empty]')).toBeNull();
     expect(warn).toHaveBeenCalledWith(
       '[trinity] Matrix request failed',
       expect.objectContaining({ operation: 'load room directory' }),
