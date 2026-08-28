@@ -345,6 +345,56 @@ describe('RoomNotificationsService', () => {
       expect(client.addPushRule).toHaveBeenCalledTimes(1);
     });
 
+    it('restores the owned override when preserving a newer room-rule edit', async () => {
+      const originalRoom = roomMute(ROOM);
+      const originalOverride = overrideMute(ROOM);
+      const remoteRoom = { ...roomMute(ROOM), actions: ['notify'] };
+      const { svc, client, serverRules } = setup({
+        room: [originalRoom],
+        override: [originalOverride],
+      });
+      const readRules = client.getPushRules.getMockImplementation()!;
+      client.getPushRules
+        .mockImplementationOnce(readRules)
+        .mockRejectedValueOnce(new Error('post-write refresh failed'))
+        .mockImplementationOnce(() => {
+          serverRules.global.room = [remoteRoom];
+          return readRules();
+        });
+
+      await expect(
+        firstValueFrom(svc.setMode(ROOM, 'all')),
+      ).rejects.toMatchObject({ restored: false });
+
+      expect(serverRules.global.room).toEqual([remoteRoom]);
+      expect(serverRules.global.override).toEqual([originalOverride]);
+    });
+
+    it('restores the owned room rule when preserving a newer override edit', async () => {
+      const originalRoom = roomMute(ROOM);
+      const originalOverride = overrideMute(ROOM);
+      const remoteOverride = { ...overrideMute(ROOM), actions: ['notify'] };
+      const { svc, client, serverRules } = setup({
+        room: [originalRoom],
+        override: [originalOverride],
+      });
+      const readRules = client.getPushRules.getMockImplementation()!;
+      client.getPushRules
+        .mockImplementationOnce(readRules)
+        .mockRejectedValueOnce(new Error('post-write refresh failed'))
+        .mockImplementationOnce(() => {
+          serverRules.global.override = [remoteOverride];
+          return readRules();
+        });
+
+      await expect(
+        firstValueFrom(svc.setMode(ROOM, 'all')),
+      ).rejects.toMatchObject({ restored: false });
+
+      expect(serverRules.global.room).toEqual([originalRoom]);
+      expect(serverRules.global.override).toEqual([remoteOverride]);
+    });
+
     it('snapshots fresh server state before compensating a failed update', async () => {
       const { svc, client, serverRules } = setup();
       // Another client changed the homeserver, but this SDK cache has not synced it yet.

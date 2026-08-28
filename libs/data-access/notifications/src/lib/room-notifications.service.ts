@@ -416,43 +416,46 @@ export class RoomNotificationsService {
     previous: RoomRuleSnapshot,
     written: RoomRuleSnapshot,
   ): Promise<void> {
-    await this.restoreOwnedRule(
-      client,
-      PushRuleKind.RoomSpecific,
-      roomId,
-      previous.room,
-      written.room,
+    const rules = [
+      {
+        kind: PushRuleKind.RoomSpecific,
+        previous: previous.room,
+        written: written.room,
+      },
+      {
+        kind: PushRuleKind.Override,
+        previous: previous.override,
+        written: written.override,
+      },
+    ] as const;
+    const conflicts = rules.filter(
+      ({ kind, previous: before, written: after }) => {
+        const current = this.ruleFor(client, kind, roomId);
+        return (
+          !this.rulesEqual(current, before) && !this.rulesEqual(current, after)
+        );
+      },
     );
-    await this.restoreOwnedRule(
-      client,
-      PushRuleKind.Override,
-      roomId,
-      previous.override,
-      written.override,
+    const owned = rules.filter(({ kind, previous: before, written: after }) => {
+      const current = this.ruleFor(client, kind, roomId);
+      return (
+        !this.rulesEqual(current, before) && this.rulesEqual(current, after)
+      );
+    });
+    const results = await Promise.allSettled(
+      owned.map(({ kind, previous: before }) =>
+        this.restoreRule(client, kind, roomId, before),
+      ),
     );
-  }
 
-  /**
-   * Restore one endpoint only when it is unchanged from either the pre-write snapshot or
-   * the exact state this transaction intended to write. A newer remote edit must win.
-   */
-  private async restoreOwnedRule(
-    client: MatrixClient,
-    kind: PushRuleKind.RoomSpecific | PushRuleKind.Override,
-    roomId: string,
-    previous: IPushRule | undefined,
-    written: IPushRule | undefined,
-  ): Promise<void> {
-    const current = this.ruleFor(client, kind, roomId);
-    if (this.rulesEqual(current, previous)) {
-      return;
-    }
-    if (!this.rulesEqual(current, written)) {
+    if (
+      conflicts.length > 0 ||
+      results.some((result) => result.status === 'rejected')
+    ) {
       throw new Error(
         'A newer notification-rule change was preserved instead of being overwritten.',
       );
     }
-    await this.restoreRule(client, kind, roomId, previous);
   }
 
   private async restoreRule(
