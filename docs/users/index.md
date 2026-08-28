@@ -5,6 +5,12 @@ holds navigation scopes and your Matrix Spaces, a sidebar lists the rooms in the
 scope, and the rest of the window is one conversation. On a phone the same three surfaces
 become a single pane you move between.
 
+The interface uses a recessed frame, quieter navigation and one raised conversation workspace.
+People stay circular while rooms and spaces use stable squircles, selected items keep their shape,
+and low-frequency room or composer actions move into clearly labelled overflow menus. Choose
+**Cosy** or **Compact** under Settings → Appearance; density changes shell, settings, timeline and
+composer spacing without shrinking touch targets below the mobile minimum.
+
 This section describes what the application does today. Everything listed here is in the
 shipped code; the things that are not are listed at the bottom of this page.
 

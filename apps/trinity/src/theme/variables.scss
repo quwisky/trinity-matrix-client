@@ -136,13 +136,12 @@
   --trinity-qr-surface: #fff;
 
   // --- Z-index layers -----------------------------------------------------------
-  // Named because the bare numbers in the tree (5, 10, 20, 40) carry no relation to
+  // Named because the bare numbers in the tree (5, 20, 30, 40) carry no relation to
   // each other and nothing said which was meant to sit over which. These govern
   // APP-level stacking only — a component stacking its own two children is local and
   // stays a literal. Above all of them sits the CDK overlay container (1000 by
   // default), which is why a dialog covers everything here without being listed.
   --trinity-z-sticky: 5; // pinned affordances inside a scroller (jump-to-unread)
-  --trinity-z-floating: 10; // a component's own popovers (emoji picker, suggestions)
   --trinity-z-overlay: 20; // a sheet over one pane (the drag-and-drop target)
   --trinity-z-scrim: 30; // the dimmer behind a panel — under it, over everything else
   --trinity-z-panel: 40; // a panel over the shell (mobile room list)
@@ -155,7 +154,6 @@
   --trinity-duration-press: 90ms; // pointer/key down — immediate, but still legible
   --trinity-duration-fast: 120ms; // hover/focus tints — must not be perceptible as motion
   --trinity-duration-base: 200ms; // the default for anything entering or leaving
-  --trinity-duration-slow: 320ms; // full-surface transitions (panels, sheets)
 
   // Two durations for motion that is not a transition. They are named by role rather than
   // by length because they are not points on the same scale as the three above: those say
@@ -171,13 +169,6 @@
     0,
     1
   ); // entering: fast in, settles
-
-  --trinity-ease-accelerate: cubic-bezier(
-    0.3,
-    0,
-    1,
-    1
-  ); // leaving: takes off, gone
 
   // --- Code size (mode- & palette-agnostic) -------------------------------------
   // A unitless MULTIPLIER, not a size. rendered-markdown.scss multiplies the 85%
@@ -595,7 +586,6 @@
     --trinity-duration-press: 0.01ms;
     --trinity-duration-fast: 0.01ms;
     --trinity-duration-base: 0.01ms;
-    --trinity-duration-slow: 0.01ms;
     --trinity-duration-pulse: 0.01ms;
     --trinity-duration-flash: 0.01ms;
   }

@@ -48,6 +48,16 @@
         "cwd": "{projectRoot}"
       }
     },
+    "phase7-visual-e2e": {
+      "//": "Shipped real-app pixel and semantic evidence. Separate from the immutable Phase 0 archive; serialized because it owns the fixed Synapse stack and deterministic accounts.",
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "playwright test -c playwright.phase7.config.mts",
+        "cwd": "{projectRoot}"
+      }
+    },
     "styling-e2e": {
       "//": "A separate browser lifecycle from the Synapse-backed app journeys. It is intentionally uncached because its webServer builds application/theme files outside the e2e project input graph.",
       "cache": false,

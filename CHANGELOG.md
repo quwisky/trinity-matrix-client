@@ -77,6 +77,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **The modern interface is now hardened across the supported screen sizes.** The quieter layered
+  room shell, responsive auth and encryption tasks, grouped settings workspace, compact density and
+  floating pickers now share one tested visual system from 1440px desktop windows down to 320px
+  phones. Light, dark, Onyx and Amethyst are covered across that matrix, including 125% text and
+  keyboard, forced-colour and reduced-motion paths. The Electron and Android wrappers are also
+  checked against the exact same production web payload rather than independent rebuilds.
+
 - **Sign-in, encryption and secondary surfaces now share the modern interface.** Authentication
   and registration use a roomier, branded task card; encryption setup, recovery and verification
   use the same bounded routed surface and a distinct scroll-safe dialog treatment. Security

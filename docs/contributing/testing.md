@@ -672,6 +672,36 @@ canonical web, Android and protocol harnesses. See
 [`e2e/design-baselines/README.md`](../../e2e/design-baselines/README.md) for isolation, normalization,
 security and archive rules.
 
+## Shipped-interface visual regression
+
+Phase 7 keeps the Phase 0 archive immutable and adds a separate real-application gate:
+
+```bash
+pnpm e2e:design:shipped
+```
+
+It drives six pairwise viewport/device profiles against disposable Synapse, including full Pixel 5
+and 320x568 mobile descriptors rather than resized desktop Chromium. Nine stable auth, room,
+settings, encryption and emoji-picker compositions are pixel-gated with deterministic fonts and
+copy; every project also checks geometry, horizontal overflow, rendered contrast, focus and
+reduced-motion behaviour. See [`e2e/phase7/README.md`](../../e2e/phase7/README.md) for the matrix and
+snapshot-update policy.
+
+For cross-platform rollout evidence, build `www/` once and hash it before either wrapper copies it:
+
+```bash
+pnpm build
+pnpm bundle:manifest:write
+TRINITY_E2E_PREBUILT_WWW=1 pnpm e2e:design:shipped
+pnpm electron:build:prebuilt
+TRINITY_E2E_PREBUILT_WWW=1 pnpm e2e:android -- --grep @phase7-smoke
+pnpm bundle:manifest:verify
+```
+
+The verifier requires every production-web file to exist byte-for-byte in `electron/www` and the
+Capacitor asset tree. Android may add its two native bootstrap scripts; those do not replace or
+alter the application payload.
+
 ## The styling blind spot, and what closes it
 
 Three separate blocking bugs in the redesign phases were invisible to a completely green

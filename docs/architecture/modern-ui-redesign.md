@@ -1,6 +1,7 @@
 # Modern UI redesign plan
 
-Status: proposed
+Status: implemented through Phase 7; the human direction approval and explicitly deferred items
+below remain open.
 
 This plan modernises Trinity using the interaction and visual-system ideas behind Discord's
 2025-2026 refresh while keeping Trinity recognisably its own Matrix client. It is not a request
@@ -532,6 +533,18 @@ Acceptance:
 - no feature library imports a vendor UI package directly.
 
 ### Phase 7 - hardening and rollout
+
+Status: implemented. A separate shipped-interface suite now pixel-gates nine deterministic real-app
+compositions while semantic geometry, contrast, focus, reduced-motion and overflow checks cover a
+six-project pairwise matrix, including full Pixel 5 and 320x568 device descriptors. The Phase 0
+archive remains immutable. Three unused global compatibility tokens were removed, and a source-shape
+guard now rejects future unused central tokens. Production rollout builds `www/` once, records a
+sorted SHA-256 manifest and verifies the unchanged payload after Electron and Capacitor copy it.
+
+Web, Linux Electron and Android WebView are the installed/runtime evidence available from the Linux
+release environment. iOS still requires the existing macOS/Xcode gate; Phase 7 does not claim a local
+iOS run. Phase 0 human design approval remains a product decision, and truthful timeline loading
+skeletons plus settings search remain the separately recorded follow-up work from Phases 3 and 4.
 
 Deliverables:
 

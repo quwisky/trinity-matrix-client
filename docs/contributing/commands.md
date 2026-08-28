@@ -113,6 +113,7 @@ from `libs/spartan/tests` instead.
 | ---------------------------------- | ----------------------------------------------------------------- |
 | `pnpm electron:install`            | Install `electron/` dependencies and download the Electron binary |
 | `pnpm electron:build`              | Web build, then copy `www/` into the shell and compile it         |
+| `pnpm electron:build:prebuilt`     | Copy an existing `www/` into the shell and compile it             |
 | `pnpm electron:start`              | Build, then launch the desktop app                                |
 | `pnpm -C electron test`            | Electron main-process unit tests, Node environment                |
 | `pnpm -C electron run compile`     | Type-check the shell only                                         |
@@ -157,18 +158,24 @@ Each of these runs `pnpm build` and then `cap sync` before it does anything else
 so a web change is always included. Re-run a `*:sync` after any web change if you
 are iterating in Xcode or Android Studio.
 
-| Command                      | What it does                                         | Needs                                    |
-| ---------------------------- | ---------------------------------------------------- | ---------------------------------------- |
-| `pnpm android:sync`          | Build and sync only                                  | Android SDK                              |
-| `pnpm android:run`           | Build, sync, launch on a device or emulator          | Android SDK                              |
-| `pnpm android:open`          | Open the project in Android Studio                   | Android Studio                           |
-| `pnpm android:build`         | Debug APK into `android/app/build/outputs/apk/debug` | Android SDK                              |
-| `pnpm android:build:release` | Release AAB                                          | Android SDK, signing keystore            |
-| `pnpm e2e:android`           | Installed API 36 WebView journeys via Playwright     | JDK 21, API 36 SDK/emulator, Docker, KVM |
-| `pnpm ios:sync`              | Build and sync only                                  | macOS, Xcode                             |
-| `pnpm ios:run`               | Build, sync, launch on a simulator                   | macOS, Xcode                             |
-| `pnpm ios:open`              | Open the project in Xcode                            | macOS, Xcode                             |
-| `pnpm ios:build`             | `cap build ios --scheme App`                         | macOS, Xcode, signing identity           |
+| Command                       | What it does                                         | Needs                                    |
+| ----------------------------- | ---------------------------------------------------- | ---------------------------------------- |
+| `pnpm android:sync`           | Build and sync only                                  | Android SDK                              |
+| `pnpm android:run`            | Build, sync, launch on a device or emulator          | Android SDK                              |
+| `pnpm android:open`           | Open the project in Android Studio                   | Android Studio                           |
+| `pnpm android:build`          | Debug APK into `android/app/build/outputs/apk/debug` | Android SDK                              |
+| `pnpm android:build:prebuilt` | Sync an existing `www/`, then build the debug APK    | Android SDK                              |
+| `pnpm android:build:release`  | Release AAB                                          | Android SDK, signing keystore            |
+| `pnpm e2e:android`            | Installed API 36 WebView journeys via Playwright     | JDK 21, API 36 SDK/emulator, Docker, KVM |
+| `pnpm ios:sync`               | Build and sync only                                  | macOS, Xcode                             |
+| `pnpm ios:run`                | Build, sync, launch on a simulator                   | macOS, Xcode                             |
+| `pnpm ios:open`               | Open the project in Xcode                            | macOS, Xcode                             |
+| `pnpm ios:build`              | `cap build ios --scheme App`                         | macOS, Xcode, signing identity           |
+
+The `*:prebuilt` commands exist for cross-platform evidence, not ordinary iteration. Run one
+production `pnpm build`, record it with `pnpm bundle:manifest:write`, then let Electron and Android
+copy that payload without rebuilding. `pnpm bundle:manifest:verify` proves every recorded web file
+is byte-identical in both wrapper trees; Android's additional native bootstrap files are allowed.
 
 ## End to end harnesses
 
