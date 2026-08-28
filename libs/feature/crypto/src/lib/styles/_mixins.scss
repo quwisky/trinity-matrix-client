@@ -24,6 +24,10 @@
   overflow-y: auto;
   padding: clamp(var(--trinity-space-5), 4vw, var(--trinity-space-7));
   background: var(--trinity-surface-frame);
+
+  @media (max-width: 479px) {
+    padding: 0;
+  }
 }
 
 @mixin surface {
@@ -36,9 +40,10 @@
   box-shadow: var(--trinity-shadow-raised);
 
   @media (max-width: 479px) {
-    padding: var(--trinity-space-5);
+    padding: var(--trinity-space-6);
     border: 0;
     border-radius: 0;
+    background: transparent;
     box-shadow: none;
   }
 }
