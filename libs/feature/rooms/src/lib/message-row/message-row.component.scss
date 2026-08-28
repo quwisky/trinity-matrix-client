@@ -12,6 +12,7 @@
   position: relative;
   display: flex;
   flex-wrap: wrap;
+  min-height: calc(var(--trinity-density-control-size) + 2px);
   gap: var(--trinity-density-message-column-gap);
 
   // The swipe offset, written straight to the element by `paintSwipe` on every pointermove.
@@ -124,6 +125,9 @@
 // it rather than running underneath.
 .msg__shield {
   flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   align-self: flex-start;
   margin-top: 2px;
   margin-left: 8px;
@@ -579,11 +583,16 @@
 }
 
 @media (pointer: coarse) {
+  .msg {
+    min-height: calc(var(--trinity-interaction-target-min-size) + 2px);
+  }
+
   .msg__reply,
   .msg__thread,
   .msg__retry,
   .msg__receipts,
-  .msg__edited {
+  .msg__edited,
+  .msg__shield {
     min-width: var(--trinity-interaction-target-min-size);
     min-height: var(--trinity-interaction-target-min-size);
   }

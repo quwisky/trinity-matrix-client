@@ -207,7 +207,7 @@ describe.each(LISTS)('message list — jump across a resize (%s)', (_l, List) =>
     fireResize();
     vi.advanceTimersByTime(20);
 
-    expect(scroll.scrollTop).toBe(scroll.scrollHeight);
+    expect(scroll.scrollTop).toBe(scroll.scrollHeight - scroll.clientHeight);
   });
 
   it('preserves a scrolled-up reading anchor when the viewport height changes', async () => {
@@ -232,5 +232,77 @@ describe.each(LISTS)('message list — jump across a resize (%s)', (_l, List) =>
     vi.advanceTimersByTime(20);
 
     expect(scroll.scrollTop).toBe(100);
+  });
+
+  it.each([1, 119])(
+    'does not treat a reader %dpx from the bottom as exactly pinned',
+    async (bottomGap) => {
+      const { container, fixture } = await create();
+      const scroll = setScrollGeometry(container, {
+        clientHeight: 500,
+        scrollHeight: 1_000,
+        scrollTop: 500,
+      });
+      fireResize();
+      vi.advanceTimersByTime(20);
+
+      scroll.scrollTop = 500 - bottomGap;
+      (
+        fixture.componentInstance as MessageListBase & { onScroll(): void }
+      ).onScroll();
+      Object.defineProperty(scroll, 'clientHeight', {
+        value: 400,
+        configurable: true,
+      });
+      fireResize();
+      vi.advanceTimersByTime(20);
+
+      expect(scroll.scrollTop).toBe(500 - bottomGap);
+    },
+  );
+
+  it('does not override a scroll that happens after resize delivery', async () => {
+    const { container, fixture } = await create();
+    const scroll = setScrollGeometry(container, {
+      clientHeight: 500,
+      scrollHeight: 1_000,
+      scrollTop: 500,
+    });
+    fireResize();
+    vi.advanceTimersByTime(20);
+
+    Object.defineProperty(scroll, 'clientHeight', {
+      value: 400,
+      configurable: true,
+    });
+    fireResize();
+    scroll.scrollTop = 499;
+    (
+      fixture.componentInstance as MessageListBase & { onScroll(): void }
+    ).onScroll();
+    vi.advanceTimersByTime(20);
+
+    expect(scroll.scrollTop).toBe(499);
+  });
+
+  it('cancels queued anchoring when the list is destroyed', async () => {
+    const { container, fixture } = await create();
+    const cancelFrame = vi.spyOn(globalThis, 'cancelAnimationFrame');
+    const scroll = setScrollGeometry(container, {
+      clientHeight: 500,
+      scrollHeight: 1_000,
+      scrollTop: 500,
+    });
+    fireResize();
+    vi.advanceTimersByTime(20);
+
+    Object.defineProperty(scroll, 'clientHeight', {
+      value: 400,
+      configurable: true,
+    });
+    fireResize();
+    fixture.destroy();
+
+    expect(cancelFrame).toHaveBeenCalled();
   });
 });

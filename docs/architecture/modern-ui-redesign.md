@@ -423,7 +423,10 @@ Acceptance:
   replaces that field at the same resting height, and reply/edit headers share one measured height;
   multiline, attachment, upload and formatting growth remains allowed;
 - when composer or viewport height changes, a bottom-pinned timeline stays pinned and a scrolled-up
-  timeline preserves its reading anchor in both simple and virtual modes;
+  timeline preserves its reading anchor in both simple and virtual modes, including a one-pixel
+  bottom offset and a genuinely windowed room above the 80-row render-all threshold;
+- message toolbar controls stay contained and hit-testable inside their measured row, while edit
+  and recording replacement controls expose complete touch and keyboard focus paths;
 - keyboard send, IME, paste, draft, mobile sheet and long-press flows retain their tests;
 - Compact visibly increases useful conversation area without reducing touch targets.
 

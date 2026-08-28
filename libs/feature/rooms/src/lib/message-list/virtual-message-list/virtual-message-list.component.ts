@@ -316,13 +316,10 @@ export class VirtualMessageListComponent extends MessageListBase {
         return; // jsdom / SSR — degrades to render-all via estimate heights.
       }
       this.ro = new ResizeObserver((entries) => this.onRowsResized(entries));
-      this.watchScrollerHeight(
-        () => untracked(() => this.atBottomSig()),
-        (height, scrollTop) => {
-          this.viewportH.set(height);
-          this.scrollTop.set(scrollTop);
-        },
-      );
+      this.watchScrollerHeight((height, scrollTop) => {
+        this.viewportH.set(height);
+        this.scrollTop.set(scrollTop);
+      });
       this.watchScrollerWidth();
       this.reconcileObserved(this.rowHosts());
     });

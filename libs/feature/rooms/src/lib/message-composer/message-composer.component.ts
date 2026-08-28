@@ -358,6 +358,8 @@ export class MessageComposerComponent {
   private readonly field: ComposerTextField;
   private readonly fileInput =
     viewChild<ElementRef<HTMLInputElement>>('fileInput');
+  private readonly voiceCancel =
+    viewChild<ElementRef<HTMLButtonElement>>('voiceCancel');
   private readonly injector = inject(Injector);
   private readonly emojiIndex = inject(TrnEmojiIndex);
 
@@ -973,18 +975,31 @@ export class MessageComposerComponent {
   }
 
   /** Begin recording a voice message; toasts and resets if the mic is unavailable. */
-  startVoiceRecording(): Promise<void> {
-    return this.attachments.startVoiceRecording();
+  async startVoiceRecording(): Promise<void> {
+    await this.attachments.startVoiceRecording();
+    if (this.recordingVoice()) {
+      afterNextRender(() => this.voiceCancel()?.nativeElement.focus(), {
+        injector: this.injector,
+      });
+    }
   }
 
   /** Stop recording and send the clip as a voice message. */
   stopVoiceRecording(): void {
+    const wasRecording = this.recordingVoice();
     this.attachments.stopVoiceRecording();
+    if (wasRecording) {
+      this.field.focusAfterRender();
+    }
   }
 
   /** Abort the recording, discarding the clip. */
   cancelVoiceRecording(): void {
+    const wasRecording = this.recordingVoice();
     this.attachments.cancelVoiceRecording();
+    if (wasRecording) {
+      this.field.focusAfterRender();
+    }
   }
 
   /** A GIF was chosen → download it and send it through the media path. */

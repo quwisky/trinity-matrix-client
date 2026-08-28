@@ -484,50 +484,64 @@ test.describe('Composer formatting', () => {
     }
   });
 
-  test('composer growth preserves the timeline anchor in both list strategies', async ({
+  test('composer growth preserves the simple timeline anchor', async ({
     page,
     request,
   }) => {
     const { composer, openRoom } = await openComposer(page, request, 'ah', 40);
     const scroller = page.locator('.scroll');
 
-    for (const virtual of [false, true]) {
-      await seedPreference(
-        page,
-        'trinity.flags.virtual-timeline',
-        String(virtual),
+    await seedPreference(page, 'trinity.flags.virtual-timeline', 'false');
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await openRoom();
+    await expect(page.locator('trn-simple-message-list')).toBeVisible();
+    await expect(page.locator('.msg__text')).toHaveCount(20, {
+      timeout: 30_000,
+    });
+    await scroller.evaluate((element) => {
+      element.scrollTop = 0;
+      element.dispatchEvent(new Event('scroll'));
+    });
+    await expect(page.locator('.msg__text')).toHaveCount(40, {
+      timeout: 30_000,
+    });
+
+    await scroller.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+      element.dispatchEvent(new Event('scroll'));
+    });
+    await composer.fill('one line');
+    await composer.fill('one\ntwo\nthree\nfour\nfive\nsix');
+    await expect
+      .poll(() =>
+        scroller.evaluate(
+          (element) =>
+            element.scrollHeight - element.scrollTop - element.clientHeight,
+        ),
+      )
+      .toBeLessThanOrEqual(1);
+
+    await composer.fill('short again');
+    await scroller.evaluate((element) => {
+      element.scrollTop = Math.max(
+        0,
+        element.scrollHeight - element.clientHeight - 200,
       );
-      await page.reload({ waitUntil: 'domcontentloaded' });
-      await openRoom();
-      await expect(page.locator('.msg__text')).toHaveCount(40, {
-        timeout: 30_000,
-      });
-
-      await scroller.evaluate((element) => {
-        element.scrollTop = element.scrollHeight;
-        element.dispatchEvent(new Event('scroll'));
-      });
-      await composer.fill('one line');
-      await composer.fill('one\ntwo\nthree\nfour\nfive\nsix');
-      await expect
-        .poll(() =>
-          scroller.evaluate(
-            (element) =>
-              element.scrollHeight - element.scrollTop - element.clientHeight,
-          ),
-        )
-        .toBeLessThanOrEqual(1);
-
-      await scroller.evaluate((element) => {
-        element.scrollTop = Math.floor(element.scrollHeight / 3);
-        element.dispatchEvent(new Event('scroll'));
-      });
-      const before = await scroller.evaluate((element) => element.scrollTop);
-      await composer.fill('short again');
-      await expect
-        .poll(() => scroller.evaluate((element) => element.scrollTop))
-        .toBe(before);
-    }
+      element.dispatchEvent(new Event('scroll'));
+    });
+    await expect
+      .poll(() =>
+        scroller.evaluate(
+          (element) =>
+            element.scrollHeight - element.scrollTop - element.clientHeight,
+        ),
+      )
+      .toBeGreaterThanOrEqual(199);
+    const before = await scroller.evaluate((element) => element.scrollTop);
+    await composer.fill('one\ntwo\nthree\nfour\nfive\nsix');
+    await expect
+      .poll(() => scroller.evaluate((element) => element.scrollTop))
+      .toBe(before);
   });
 });
 

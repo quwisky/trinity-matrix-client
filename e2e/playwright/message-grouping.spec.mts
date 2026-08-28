@@ -179,8 +179,10 @@ test.describe('Message grouping', () => {
       if (!row || !bar) {
         return null;
       }
+      row.classList.add('msg--revealed');
       const r = row.getBoundingClientRect();
       const b = bar.getBoundingClientRect();
+      const buttons = [...bar.querySelectorAll<HTMLElement>('button')];
       return {
         rowTop: r.top,
         barTop: b.top,
@@ -188,6 +190,14 @@ test.describe('Message grouping', () => {
         barHeight: b.height,
         overflowAbove: r.top - b.top,
         overflowBelow: b.bottom - r.bottom,
+        allButtonsHit: buttons.every((button) => {
+          const box = button.getBoundingClientRect();
+          const hit = document.elementFromPoint(
+            box.left + box.width / 2,
+            box.top + box.height / 2,
+          );
+          return hit !== null && button.contains(hit);
+        }),
       };
     });
 
@@ -198,16 +208,10 @@ test.describe('Message grouping', () => {
     // is the defect this replaced — a bar at `top: -16px` painted over the row before it.
     expect(containment.overflowAbove).toBeLessThanOrEqual(0);
 
-    // And the other direction, which the assertion above cannot see.
-    //
-    // The pointer model owns the button size: 34px with a mouse and a larger touch target
-    // on Android. In either case `top: 0` means the only permitted overflow is exactly the
-    // height difference; an extra offset would cover still more of the following row.
-    const expectedOverflow = Math.max(
-      0,
-      containment.barHeight - containment.rowHeight,
-    );
-    expect(containment.overflowBelow).toBeLessThanOrEqual(expectedOverflow + 1);
+    // The measured row reserves the toolbar's whole block size. Nothing may overflow into
+    // the following positioned row, and every button centre must hit its owning button.
+    expect(containment.overflowBelow).toBeLessThanOrEqual(1);
+    expect(containment.allButtonsHit).toBe(true);
 
     // Compact is a rendered timeline mode, not merely an attribute or a token declaration.
     // Tighten the live document and prove the measured conversation consumes less vertical
@@ -215,10 +219,12 @@ test.describe('Message grouping', () => {
     const cosyRowsHeight = await page
       .locator('.msg')
       .evaluateAll((rows) =>
-        rows.reduce(
-          (total, row) => total + row.getBoundingClientRect().height,
-          0,
-        ),
+        rows
+          .filter((row) => row.querySelector('.msg__text'))
+          .reduce(
+            (total, row) => total + row.getBoundingClientRect().height,
+            0,
+          ),
       );
     await page.locator('html').evaluate((html) => {
       html.setAttribute('data-density', 'compact');
@@ -245,7 +251,6 @@ test.describe('Message grouping', () => {
         continuationPaddingTop: parseFloat(getComputedStyle(cont).paddingTop),
         overflowAbove: rowBox.top - barBox.top,
         overflowBelow: barBox.bottom - rowBox.bottom,
-        permittedOverflow: Math.max(0, barBox.height - rowBox.height),
       };
     });
     if (!compact) throw new Error('expected compact grouped message geometry');
@@ -254,8 +259,6 @@ test.describe('Message grouping', () => {
     expect(compact.startMarginTop).toBe(0);
     expect(compact.continuationPaddingTop).toBe(0);
     expect(compact.overflowAbove).toBeLessThanOrEqual(0);
-    expect(compact.overflowBelow).toBeLessThanOrEqual(
-      compact.permittedOverflow + 1,
-    );
+    expect(compact.overflowBelow).toBeLessThanOrEqual(1);
   });
 });

@@ -49,7 +49,7 @@
   font-size: 12px;
   cursor: pointer;
 
-  &:hover {
+  &:hover:where(:not(:disabled)) {
     background: var(--trinity-state-hover-surface);
     color: var(--trinity-state-hover-foreground);
   }
@@ -302,7 +302,7 @@
   font-size: 20px;
   cursor: pointer;
 
-  &:hover {
+  &:hover:where(:not(:disabled)) {
     background: var(--trinity-state-hover-surface);
     color: var(--trinity-state-hover-foreground);
   }

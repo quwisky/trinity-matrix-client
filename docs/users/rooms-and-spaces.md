@@ -28,8 +28,10 @@ carry the active state instead.
 Replies, edit context, pending attachments and the message field now read as one composer. A
 one-line Markdown preview occupies exactly the same field height as the text it replaces; expected
 growth from multiple lines, attachment batches or the formatting bar leaves the newest message
-pinned when you were already at the bottom and leaves your reading position alone when you were
-scrolling through history.
+pinned only when you were exactly at the bottom and leaves your reading position alone as soon as
+you scroll away, even by one pixel. Edit mode includes a visible cancel action for touch devices;
+voice recording moves keyboard focus to its Cancel control and returns it to the message field
+when recording ends.
 
 The rail is flat. A space nested inside another space gets its own top-level pill rather
 than appearing as a second level of rail. Nested navigation inside the rail is not built.

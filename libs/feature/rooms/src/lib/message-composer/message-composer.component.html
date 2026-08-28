@@ -1,5 +1,15 @@
 @if (editing()) {
-  <div class="composer__banner">Editing message — <kbd>Esc</kbd> to cancel</div>
+  <div class="composer__banner">
+    Editing message — <kbd>Esc</kbd> to cancel
+    <button
+      type="button"
+      class="composer__cancel"
+      aria-label="Cancel edit"
+      (click)="cancelEdit.emit()"
+    >
+      <trn-icon name="x" />
+    </button>
+  </div>
 } @else if (replyingTo()) {
   <div class="composer__banner">
     Replying to <strong>{{ replyingTo() }}</strong>
@@ -71,7 +81,11 @@
   </ng-template>
   @if (recordingVoice()) {
     <div class="composer__recording" data-testid="composer-voice-recording">
+      <span class="sr-only" role="status" aria-live="polite"
+        >Voice recording started</span
+      >
       <button
+        #voiceCancel
         type="button"
         class="composer__recording-cancel"
         aria-label="Cancel voice recording"

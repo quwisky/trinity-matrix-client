@@ -71,6 +71,7 @@
   left: 50%;
   z-index: var(--trinity-z-sticky);
   min-height: var(--trinity-density-control-size);
+  min-width: var(--trinity-interaction-target-min-size);
   padding: var(--trinity-space-2) var(--trinity-space-4);
   border: none;
   border-radius: var(--trinity-radius-pill);
@@ -81,6 +82,12 @@
   cursor: pointer;
   box-shadow: var(--trinity-shadow-floating);
   transform: translateX(-50%);
+}
+
+@media (pointer: coarse) {
+  .jump-unread {
+    min-height: var(--trinity-interaction-target-min-size);
+  }
 }
 
 .jump-latest {

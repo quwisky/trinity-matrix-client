@@ -127,13 +127,21 @@ describe('MessageComposerComponent — the field, edit mode and drafts', () => {
   });
 
   it('emits cancel on Escape in edit mode', async () => {
-    const { fixture } = await renderComposer({ editing: true });
+    const { fixture, container } = await renderComposer({ editing: true });
     const cmp = fixture.componentInstance;
 
     let cancelled = false;
     cmp.cancelEdit.subscribe(() => (cancelled = true));
     cmp.onEscape();
 
+    expect(cancelled).toBe(true);
+
+    cancelled = false;
+    const cancel = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Cancel edit"]',
+    );
+    expect(cancel).not.toBeNull();
+    cancel?.click();
     expect(cancelled).toBe(true);
   });
 

@@ -64,7 +64,8 @@ test.describe('Voice messages', () => {
 
     // Start recording from the composer's `+` tray; the recording bar appears.
     await page.getByTestId('composer-insert').click();
-    await page.getByTestId('insert-voice').click();
+    await page.getByTestId('insert-voice').focus();
+    await page.keyboard.press('Enter');
     await expect(page.getByTestId('composer-voice-recording')).toBeVisible({
       timeout: 15_000,
     });
@@ -73,10 +74,18 @@ test.describe('Voice messages', () => {
         ?.height ?? 0;
     expect(Math.abs(recordingHeight - restingFieldHeight)).toBeLessThan(1);
     await expect(page.getByTestId('composer-field')).not.toBeVisible();
+    await expect(page.getByTestId('composer-voice-cancel')).toBeFocused();
+    const recordingStatus = page.getByText('Voice recording started', {
+      exact: true,
+    });
+    await expect(recordingStatus).toHaveAttribute('role', 'status');
 
     // Capture ~1.2s of the fake tone, then send.
     await page.waitForTimeout(1200);
-    await page.getByTestId('composer-voice-send').click();
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId('composer-voice-send')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('composer-input')).toBeFocused();
 
     // The clip uploads and renders in the timeline as a voice player.
     await expect(page.getByTestId('voice-message').first()).toBeVisible({

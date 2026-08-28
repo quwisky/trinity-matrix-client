@@ -49,6 +49,9 @@ describe('modern timeline layout contracts', () => {
       '--message-body-indent: calc(40px + var(--trinity-density-message-column-gap));',
     );
     expect(rowCss.match(/var\(--message-body-indent\)/g)?.length).toBe(4);
+    expect(rowCss).toContain(
+      'min-height: calc(var(--trinity-density-control-size) + 2px);',
+    );
   });
 
   it('keeps the toolbar attached inside its owning measured row', () => {

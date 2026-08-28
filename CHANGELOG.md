@@ -81,9 +81,11 @@ All notable changes to this project are documented here. The format is based on
   authors, timestamps, replies, threads, reactions, receipts, status rows and typing/divider
   chrome now consume semantic type, surface, state and density roles. The floating message
   toolbar stays attached to its own measured row, while reply/edit context, attachments and
-  the input read as one composer surface. Growing the composer or opening the software keyboard
-  keeps a bottom-pinned conversation at the newest message and preserves a scrolled-up reading
-  position in both the simple and virtual timelines.
+  the input read as one composer surface. Its actions remain fully hit-testable on short grouped
+  rows, edit mode has a touch cancel action, and voice recording moves keyboard focus into and
+  back out of its replacement controls. Growing the composer or opening the software keyboard
+  keeps an exactly bottom-pinned conversation at the newest message and preserves every
+  scrolled-up reading position in both the simple and virtual timelines.
 
 - **The conversation shell is calmer and more compact.** The space rail, room list,
   conversation header, member list and account dock now share recessed semantic surfaces,

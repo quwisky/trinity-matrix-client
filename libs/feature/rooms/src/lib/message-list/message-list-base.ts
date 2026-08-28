@@ -613,19 +613,18 @@ export abstract class MessageListBase {
    * Keep a bottom-pinned conversation pinned when the composer, formatting bar or software
    * keyboard changes the scroller's viewport height. A reader who has scrolled up needs no
    * compensation: the scroller's top edge and scrollTop remain unchanged, so their anchor
-   * stays put. The subclasses provide their own pinned state because their scroll strategies
-   * store it differently; the optional callback lets the virtual list keep its window height
-   * signal in step with the same observation.
+   * stays put. This exact pin is intentionally separate from the subclasses' 120px
+   * near-bottom state for incoming messages. The optional callback lets the virtual list
+   * keep its window-height signal in step with the same observation.
    */
   protected watchScrollerHeight(
-    isPinned: () => boolean,
     resized?: (height: number, scrollTop: number) => void,
   ): void {
     const el = this.scrollEl()?.nativeElement;
     if (!el || this.stopHeightWatcher) {
       return;
     }
-    this.stopHeightWatcher = observeScrollerHeight(el, isPinned, resized);
+    this.stopHeightWatcher = observeScrollerHeight(el, resized);
     this.listDestroyRef.onDestroy(() => this.stopHeightWatcher?.());
   }
 

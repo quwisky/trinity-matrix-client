@@ -101,7 +101,7 @@ export class SimpleMessageListComponent extends MessageListBase {
       if (this.scrollEl()) {
         untracked(() => {
           this.watchScrollerWidth();
-          this.watchScrollerHeight(() => this.atBottom);
+          this.watchScrollerHeight();
         });
       }
     });
