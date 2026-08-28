@@ -118,6 +118,11 @@
   --trinity-density-shell-gap: 8px;
   --trinity-density-shell-padding-inline: 8px;
   --trinity-density-channel-padding-block: 5px;
+  --trinity-density-message-column-gap: 12px;
+  --trinity-density-composer-padding-inline: 16px;
+  --trinity-density-composer-field-gap: 4px;
+  --trinity-density-composer-field-inset: 6px;
+  --trinity-density-composer-action-size: 40px;
 
   // --- Elevation ----------------------------------------------------------------
   // Overridden per mode: a shadow that reads on white is invisible on #313338, which
@@ -617,6 +622,11 @@
   --trinity-density-shell-gap: 4px;
   --trinity-density-shell-padding-inline: 6px;
   --trinity-density-channel-padding-block: 3px;
+  --trinity-density-message-column-gap: 8px;
+  --trinity-density-composer-padding-inline: 12px;
+  --trinity-density-composer-field-gap: 2px;
+  --trinity-density-composer-field-inset: 4px;
+  --trinity-density-composer-action-size: 36px;
 }
 
 // Density may make precise-pointer chrome smaller, but never makes a finger target smaller.

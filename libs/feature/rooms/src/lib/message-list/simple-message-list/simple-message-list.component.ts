@@ -99,7 +99,10 @@ export class SimpleMessageListComponent extends MessageListBase {
     // so there is no single render to hang it on; `watchScrollerWidth` is idempotent.
     effect(() => {
       if (this.scrollEl()) {
-        untracked(() => this.watchScrollerWidth());
+        untracked(() => {
+          this.watchScrollerWidth();
+          this.watchScrollerHeight(() => this.atBottom);
+        });
       }
     });
 

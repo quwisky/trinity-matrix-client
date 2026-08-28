@@ -331,7 +331,7 @@ Acceptance:
 
 ### Phase 1 - foundations
 
-Status: in progress. The first foundations slice introduces component-facing surface, shape,
+Status: implemented. The first foundations slice introduces component-facing surface, shape,
 typography, density and interaction roles while preserving the existing palette primitives. It
 applies the recipes to the banner, message toolbar and media bubble and tests their rendered
 states through Storybook. Final value tuning and a production font decision remain gated on the
@@ -394,6 +394,13 @@ Acceptance:
 
 ### Phase 3 - timeline and composer
 
+Status: implemented, with two deliberately deferred product slices. The initial/room-switch
+skeleton waits for a truthful asynchronous loading state in `@trinity/data-access/timeline`:
+`TimelineService.open()` currently projects the SDK's in-memory timeline synchronously, and an
+empty message array is also a real empty room, so treating it as loading would flash or lie. A
+native-style mobile insert sheet likewise remains Phase 5 interaction work; Phase 3 refines the
+existing anchored insert menu without changing its platform behaviour.
+
 Primary ownership:
 
 - `libs/feature/rooms/src/lib/message-list/`
@@ -406,13 +413,17 @@ Deliverables:
 - tokenised message hierarchy and metadata;
 - attached message toolbar surface;
 - consistent reply, thread, reaction, receipt and status treatments;
-- initial/room-switch message skeleton;
+- initial/room-switch message skeleton once data access exposes a truthful loading interval;
 - integrated reply/edit composer header and refined insert menu.
 
 Acceptance:
 
 - virtualization measurements and scroll anchoring remain stable;
-- composer height does not jump between input, preview, reply, edit, upload and recording states;
+- equivalent one-line/empty input and preview states share a field height, the recording row
+  replaces that field at the same resting height, and reply/edit headers share one measured height;
+  multiline, attachment, upload and formatting growth remains allowed;
+- when composer or viewport height changes, a bottom-pinned timeline stays pinned and a scrolled-up
+  timeline preserves its reading anchor in both simple and virtual modes;
 - keyboard send, IME, paste, draft, mobile sheet and long-press flows retain their tests;
 - Compact visibly increases useful conversation area without reducing touch targets.
 

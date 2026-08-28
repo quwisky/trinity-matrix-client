@@ -120,6 +120,27 @@ describe.each(LISTS)('message list — jump across a resize (%s)', (_l, List) =>
     }
   }
 
+  function setScrollGeometry(
+    container: HTMLElement,
+    geometry: {
+      readonly clientHeight: number;
+      readonly scrollHeight: number;
+      readonly scrollTop: number;
+    },
+  ): HTMLElement {
+    const scroll = container.querySelector('.scroll') as HTMLElement;
+    Object.defineProperties(scroll, {
+      clientHeight: { value: geometry.clientHeight, configurable: true },
+      scrollHeight: { value: geometry.scrollHeight, configurable: true },
+      scrollTop: {
+        value: geometry.scrollTop,
+        configurable: true,
+        writable: true,
+      },
+    });
+    return scroll;
+  }
+
   it('re-aims a recent jump when the scroller changes width', async () => {
     const { container, fixture } = await create();
     const list = fixture.componentInstance as MessageListBase;
@@ -167,5 +188,49 @@ describe.each(LISTS)('message list — jump across a resize (%s)', (_l, List) =>
     fireResize();
 
     expect(jumpTo).not.toHaveBeenCalled();
+  });
+
+  it('stays pinned to the newest message when the viewport height changes', async () => {
+    const { container } = await create();
+    const scroll = setScrollGeometry(container, {
+      clientHeight: 500,
+      scrollHeight: 1_000,
+      scrollTop: 500,
+    });
+    fireResize();
+    vi.advanceTimersByTime(20);
+
+    Object.defineProperty(scroll, 'clientHeight', {
+      value: 400,
+      configurable: true,
+    });
+    fireResize();
+    vi.advanceTimersByTime(20);
+
+    expect(scroll.scrollTop).toBe(scroll.scrollHeight);
+  });
+
+  it('preserves a scrolled-up reading anchor when the viewport height changes', async () => {
+    const { container, fixture } = await create();
+    const scroll = setScrollGeometry(container, {
+      clientHeight: 500,
+      scrollHeight: 1_000,
+      scrollTop: 500,
+    });
+    fireResize();
+    vi.advanceTimersByTime(20);
+
+    scroll.scrollTop = 100;
+    (
+      fixture.componentInstance as MessageListBase & { onScroll(): void }
+    ).onScroll();
+    Object.defineProperty(scroll, 'clientHeight', {
+      value: 400,
+      configurable: true,
+    });
+    fireResize();
+    vi.advanceTimersByTime(20);
+
+    expect(scroll.scrollTop).toBe(100);
   });
 });

@@ -114,7 +114,6 @@ export class VirtualMessageListComponent extends MessageListBase {
   private readonly heightVersion = signal(0);
   private measured = new Map<string, number>();
   private ro?: ResizeObserver;
-  private containerRo?: ResizeObserver;
   /** Currently-observed `.msg` elements → their row id. */
   private readonly observed = new Map<Element, string>();
   // Reference row + its viewport offset, captured before a load-older so scroll can
@@ -317,20 +316,19 @@ export class VirtualMessageListComponent extends MessageListBase {
         return; // jsdom / SSR — degrades to render-all via estimate heights.
       }
       this.ro = new ResizeObserver((entries) => this.onRowsResized(entries));
-      this.containerRo = new ResizeObserver(() => {
-        const e = this.scrollEl()?.nativeElement;
-        if (e) {
-          this.viewportH.set(e.clientHeight);
-        }
-      });
-      this.containerRo.observe(el);
+      this.watchScrollerHeight(
+        () => untracked(() => this.atBottomSig()),
+        (height, scrollTop) => {
+          this.viewportH.set(height);
+          this.scrollTop.set(scrollTop);
+        },
+      );
       this.watchScrollerWidth();
       this.reconcileObserved(this.rowHosts());
     });
 
     this.destroyRef.onDestroy(() => {
       this.ro?.disconnect();
-      this.containerRo?.disconnect();
     });
   }
 

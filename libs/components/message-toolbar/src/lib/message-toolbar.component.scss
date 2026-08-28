@@ -37,12 +37,12 @@
     background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
     color var(--trinity-duration-fast) var(--trinity-ease-standard);
 
-  &:hover:not(:disabled) {
+  &:hover:where(:not(:disabled)) {
     background: var(--trinity-state-hover-surface);
     color: var(--trinity-state-hover-foreground);
   }
 
-  &:active:not(:disabled) {
+  &:active:where(:not(:disabled)) {
     background: var(--trinity-state-pressed-surface);
     color: var(--trinity-state-pressed-foreground);
   }
@@ -73,12 +73,12 @@
     background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
     color var(--trinity-duration-fast) var(--trinity-ease-standard);
 
-  &:hover:not(:disabled) {
+  &:hover:where(:not(:disabled)) {
     background: var(--trinity-state-hover-surface);
     color: var(--trinity-state-hover-foreground);
   }
 
-  &:active:not(:disabled) {
+  &:active:where(:not(:disabled)) {
     background: var(--trinity-state-pressed-surface);
     color: var(--trinity-state-pressed-foreground);
   }

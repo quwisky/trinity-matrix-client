@@ -7,10 +7,12 @@
 }
 
 .msg {
+  --message-body-indent: calc(40px + var(--trinity-density-message-column-gap));
+
   position: relative;
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--trinity-density-message-column-gap);
 
   // The swipe offset, written straight to the element by `paintSwipe` on every pointermove.
   // The fallback is `none`, not `0`: `0` is a valid length, so every untouched row in the
@@ -39,7 +41,7 @@
   margin: 0 calc(-1 * var(--trinity-space-5));
 
   &:hover {
-    background: var(--trinity-hover);
+    background: var(--trinity-state-hover-surface);
   }
 }
 
@@ -83,7 +85,8 @@
 .msg__event-text {
   min-width: 0;
   color: var(--trinity-text-muted);
-  font-size: 12px;
+  font-size: var(--trinity-type-metadata-size);
+  line-height: var(--trinity-type-metadata-line-height);
   text-align: center;
   overflow-wrap: anywhere;
 }
@@ -99,8 +102,9 @@
   background: none;
   color: var(--trinity-text-muted);
   font: inherit;
-  font-size: 12px;
-  line-height: inherit;
+  min-height: var(--trinity-interaction-target-min-size);
+  font-size: var(--trinity-type-metadata-size);
+  line-height: var(--trinity-type-metadata-line-height);
   cursor: pointer;
 
   &:hover {
@@ -109,9 +113,7 @@
   }
 
   &:focus-visible {
-    outline: 2px solid var(--trinity-accent);
-    outline-offset: 2px;
-    border-radius: var(--trinity-radius-sm);
+    border-radius: var(--trinity-shape-control-radius);
   }
 }
 
@@ -136,9 +138,7 @@
 
 // Focusable so the tooltip is reachable without a mouse; show that focus.
 .msg__shield:focus-visible {
-  outline: 2px solid var(--trinity-accent);
-  outline-offset: 2px;
-  border-radius: var(--trinity-radius-sm);
+  border-radius: var(--trinity-shape-control-radius);
 }
 
 // The tooltip body renders in a CDK overlay, detached from this row — but it is an
@@ -212,7 +212,9 @@
   align-self: center;
   text-align: right;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: var(--trinity-type-metadata-size);
+  line-height: var(--trinity-type-metadata-line-height);
+  font-variant-numeric: var(--trinity-type-metadata-numeric);
   color: var(--trinity-text-muted);
   opacity: 0;
 }
@@ -231,21 +233,28 @@
 .msg__reply {
   position: relative;
 
-  // Full row minus the 52px indent, so the margin-box stays within the row
+  // Full row minus the avatar + density gap indent, so the margin-box stays within the row
   // (otherwise a long body overflows and adds a horizontal scrollbar).
-  flex: 0 0 calc(100% - 52px);
+  flex: 0 0 calc(100% - var(--message-body-indent));
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  margin: 0 0 2px 52px;
+  margin: 0 0 2px var(--message-body-indent);
   padding: 0;
   border: none;
+  border-radius: var(--trinity-shape-control-radius);
   background: none;
   color: var(--trinity-text-muted);
-  font-size: 13px;
+  font-size: var(--trinity-type-body-size);
+  line-height: var(--trinity-type-body-line-height);
   text-align: left;
   cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    background: var(--trinity-state-hover-surface);
+  }
 
   &::before {
     content: '';
@@ -285,22 +294,29 @@
 .msg__head {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--trinity-density-row-gap);
 }
 
 .msg__author {
-  font-weight: 600;
+  font-size: var(--trinity-type-control-size);
+  line-height: var(--trinity-type-control-line-height);
+  font-weight: var(--trinity-type-control-weight);
   color: var(--trinity-text-bright);
 }
 
 .msg__time {
-  font-size: 12px;
+  font-size: var(--trinity-type-metadata-size);
+  line-height: var(--trinity-type-metadata-line-height);
+  font-variant-numeric: var(--trinity-type-metadata-numeric);
   color: var(--trinity-text-muted);
 }
 
 .msg__text {
   margin: 2px 0 0;
   color: var(--trinity-text);
+  font-size: var(--trinity-type-body-size);
+  line-height: var(--trinity-type-body-line-height);
+  font-weight: var(--trinity-type-body-weight);
   overflow-wrap: anywhere;
 }
 
@@ -331,8 +347,8 @@
   display: inline-block;
   padding: 8px 12px;
   border-left: 3px solid var(--trinity-accent);
-  border-radius: var(--trinity-radius-sm);
-  background: var(--trinity-sidebar);
+  border-radius: var(--trinity-shape-control-radius);
+  background: var(--trinity-surface-raised);
   color: var(--trinity-text);
   font-style: italic;
 }
@@ -343,29 +359,26 @@
 }
 
 // Compact "💬 N replies · last reply <time>" affordance under a thread root,
-// indented to align with the message body (avatar 40 + gap 12).
+// indented to align with the message body (avatar 40 + the active density gap).
 .msg__thread {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin: 4px 0 0 52px;
+  margin: 4px 0 0 var(--message-body-indent);
   padding: 4px 10px;
-  border: 1px solid var(--trinity-divider);
+  min-height: var(--trinity-density-control-size);
+  border: 1px solid var(--trinity-border-subtle);
   border-radius: var(--trinity-radius-pill);
-  background: var(--trinity-sidebar);
+  background: var(--trinity-surface-raised);
   color: var(--trinity-link);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--trinity-type-control-size);
+  line-height: var(--trinity-type-control-line-height);
+  font-weight: var(--trinity-type-control-weight);
   cursor: pointer;
 
   &:hover {
-    background: var(--trinity-hover);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--trinity-accent);
-    outline-offset: 2px;
+    background: var(--trinity-state-hover-surface);
   }
 }
 
@@ -419,12 +432,15 @@
 
 .msg__retry {
   flex-basis: 100%;
-  margin-left: 52px; // align under the message body (avatar 40 + gap 12)
+  margin-left: var(--message-body-indent);
   padding: 0;
   border: none;
   background: none;
   color: var(--trinity-danger);
-  font-size: 13px;
+  min-height: var(--trinity-interaction-target-min-size);
+  border-radius: var(--trinity-shape-control-radius);
+  font-size: var(--trinity-type-control-size);
+  line-height: var(--trinity-type-control-line-height);
   text-align: left;
   cursor: pointer;
 
@@ -466,16 +482,32 @@
   margin-left: auto;
   padding: 0;
   border: none;
+  border-radius: var(--trinity-radius-pill);
   background: none;
   opacity: 0.85;
   cursor: pointer;
+
+  &:hover {
+    background: var(--trinity-state-hover-surface);
+  }
+}
+
+.msg__edited:focus-visible,
+.msg__shield:focus-visible,
+.msg__reply:focus-visible,
+.msg__thread:focus-visible,
+.msg__retry:focus-visible,
+.msg__receipts:focus-visible {
+  outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+  outline-offset: var(--trinity-focus-ring-offset);
 }
 
 .msg__seen-by {
   display: block;
   margin-top: 2px;
   color: var(--trinity-text-muted);
-  font-size: 12px;
+  font-size: var(--trinity-type-metadata-size);
+  line-height: var(--trinity-type-metadata-line-height);
   text-align: right;
 }
 
@@ -544,4 +576,15 @@
 // A leftward drag uncovers the right-hand end, so the icon waits there instead.
 .msg__swipe--end {
   justify-content: flex-end;
+}
+
+@media (pointer: coarse) {
+  .msg__reply,
+  .msg__thread,
+  .msg__retry,
+  .msg__receipts,
+  .msg__edited {
+    min-width: var(--trinity-interaction-target-min-size);
+    min-height: var(--trinity-interaction-target-min-size);
+  }
 }

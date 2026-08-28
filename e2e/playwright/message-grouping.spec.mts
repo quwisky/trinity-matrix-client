@@ -208,5 +208,54 @@ test.describe('Message grouping', () => {
       containment.barHeight - containment.rowHeight,
     );
     expect(containment.overflowBelow).toBeLessThanOrEqual(expectedOverflow + 1);
+
+    // Compact is a rendered timeline mode, not merely an attribute or a token declaration.
+    // Tighten the live document and prove the measured conversation consumes less vertical
+    // space while the two virtualization/toolbar contracts above remain true.
+    const cosyRowsHeight = await page
+      .locator('.msg')
+      .evaluateAll((rows) =>
+        rows.reduce(
+          (total, row) => total + row.getBoundingClientRect().height,
+          0,
+        ),
+      );
+    await page.locator('html').evaluate((html) => {
+      html.setAttribute('data-density', 'compact');
+    });
+    await expect(page.locator('.msg').first()).toHaveCSS('column-gap', '8px');
+
+    const compact = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll<HTMLElement>('.msg')].filter(
+        (row) => row.querySelector('.msg__text'),
+      );
+      const start = rows.find((row) => !row.classList.contains('msg--cont'));
+      const cont = rows.find((row) => row.classList.contains('msg--cont'));
+      const bar = cont?.querySelector<HTMLElement>('.msg__toolbar');
+      if (!start || !cont || !bar) return null;
+      const rowBox = cont.getBoundingClientRect();
+      const barBox = bar.getBoundingClientRect();
+      return {
+        rowsHeight: rows.reduce(
+          (total, row) => total + row.getBoundingClientRect().height,
+          0,
+        ),
+        startPaddingTop: parseFloat(getComputedStyle(start).paddingTop),
+        startMarginTop: parseFloat(getComputedStyle(start).marginTop),
+        continuationPaddingTop: parseFloat(getComputedStyle(cont).paddingTop),
+        overflowAbove: rowBox.top - barBox.top,
+        overflowBelow: barBox.bottom - rowBox.bottom,
+        permittedOverflow: Math.max(0, barBox.height - rowBox.height),
+      };
+    });
+    if (!compact) throw new Error('expected compact grouped message geometry');
+    expect(compact.rowsHeight).toBeLessThan(cosyRowsHeight);
+    expect(compact.startPaddingTop).toBe(12);
+    expect(compact.startMarginTop).toBe(0);
+    expect(compact.continuationPaddingTop).toBe(0);
+    expect(compact.overflowAbove).toBeLessThanOrEqual(0);
+    expect(compact.overflowBelow).toBeLessThanOrEqual(
+      compact.permittedOverflow + 1,
+    );
   });
 });

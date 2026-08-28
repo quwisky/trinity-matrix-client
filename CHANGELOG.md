@@ -49,8 +49,8 @@ All notable changes to this project are documented here. The format is based on
   you are on.
 
 - **A density setting.** Under Settings → Appearance, "Compact" tightens the spacing in
-  the message list so more of a conversation fits on screen. Other parts of the app keep
-  their spacing for now.
+  the room shell, message list and composer so more of a conversation fits on screen. It
+  never shrinks a touch target below the shared 44px floor.
 
 - **The member list has a filter.** Type a name or a user id above the list to narrow it —
   useful in a room where scrolling to find someone was the only option. Large rooms also
@@ -76,6 +76,14 @@ All notable changes to this project are documented here. The format is based on
   rather than dark grey. Pick it under Settings → Appearance, in either light or dark mode.
 
 ### Changed
+
+- **Messages and the composer now share a clearer conversation hierarchy.** Message bodies,
+  authors, timestamps, replies, threads, reactions, receipts, status rows and typing/divider
+  chrome now consume semantic type, surface, state and density roles. The floating message
+  toolbar stays attached to its own measured row, while reply/edit context, attachments and
+  the input read as one composer surface. Growing the composer or opening the software keyboard
+  keeps a bottom-pinned conversation at the newest message and preserves a scrolled-up reading
+  position in both the simple and virtual timelines.
 
 - **The conversation shell is calmer and more compact.** The space rail, room list,
   conversation header, member list and account dock now share recessed semantic surfaces,

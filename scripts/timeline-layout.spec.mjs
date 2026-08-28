@@ -1,0 +1,97 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+/**
+ * Source-shape contracts for the modern timeline and composer.
+ *
+ * Browser tests own rendered geometry and scroll anchoring. These checks pin only the source
+ * choices that make those measurements meaningful: the observed row box, density recipes,
+ * toolbar containment, and the shared input/preview grid construction.
+ */
+
+const root = join(import.meta.dirname, '..');
+const read = (file) => readFileSync(join(root, file), 'utf8');
+
+const variables = read('apps/trinity/src/theme/variables.scss');
+const listCss = read(
+  'libs/feature/rooms/src/lib/message-list/_message-list-shared.scss',
+);
+const rowCss = read(
+  'libs/feature/rooms/src/lib/message-row/message-row.component.scss',
+);
+const composerCss = read(
+  'libs/feature/rooms/src/lib/message-composer/message-composer.component.scss',
+);
+const composerHtml = read(
+  'libs/feature/rooms/src/lib/message-composer/message-composer.component.html',
+);
+const toolbarCss = read(
+  'libs/components/message-toolbar/src/lib/message-toolbar.component.scss',
+);
+
+describe('modern timeline layout contracts', () => {
+  it('keeps message rows as the measured border box with in-box group spacing', () => {
+    expect(rowCss).toMatch(/:host\s*\{[^}]*display:\s*contents;/s);
+    expect(rowCss).toMatch(
+      /\.msg\s*\{[\s\S]*?padding:\s*var\(--trinity-space-5\)[^;]*;[\s\S]*?margin:\s*0 calc\(-1 \* var\(--trinity-space-5\)\);[\s\S]*?&:hover/,
+    );
+    expect(rowCss).toMatch(/\.msg--cont\s*\{[^}]*padding-top:\s*0;/s);
+    expect(rowCss).not.toMatch(/\.msg\s*\{[^}]*margin-block/s);
+  });
+
+  it('keeps scroller inset and row bleed on the same density-aware token', () => {
+    expect(listCss).toMatch(
+      /\.scroll\s*\{[^}]*padding:\s*var\(--trinity-space-5\) var\(--trinity-space-5\)/s,
+    );
+    expect(rowCss).toContain('margin: 0 calc(-1 * var(--trinity-space-5));');
+    expect(rowCss).toContain(
+      '--message-body-indent: calc(40px + var(--trinity-density-message-column-gap));',
+    );
+    expect(rowCss.match(/var\(--message-body-indent\)/g)?.length).toBe(4);
+  });
+
+  it('keeps the toolbar attached inside its owning measured row', () => {
+    expect(rowCss).toMatch(
+      /\.msg__toolbar\s*\{[^}]*position:\s*absolute;[^}]*top:\s*0;/s,
+    );
+    expect(rowCss).not.toMatch(/\.msg__toolbar\s*\{[^}]*top:\s*-/s);
+  });
+
+  it('keeps input and preview in one stable grid cell', () => {
+    expect(composerCss).toMatch(
+      /\.composer__field\s*\{[^}]*grid-template-columns:\s*auto 1fr auto auto;[^}]*align-items:\s*end;/s,
+    );
+    expect(composerCss).toMatch(
+      /\.composer__preview,\s*\.composer__input\s*\{[^}]*grid-column:\s*2;[^}]*grid-row:\s*1;/s,
+    );
+    expect(composerHtml).toMatch(
+      /class="composer__input"[\s\S]*?\[class\.composer__input--hidden\]="previewing\(\)"/,
+    );
+    expect(composerCss).toMatch(
+      /\.composer:has\(\.composer__recording\) \.composer__field\s*\{[^}]*display:\s*none;/s,
+    );
+    expect(composerCss).toMatch(
+      /\.composer__banner\s*\{[\s\S]*?min-height:\s*calc\([\s\S]*?var\(--trinity-density-control-size\)[\s\S]*?var\(--trinity-space-2\)[\s\S]*?\);[\s\S]*?\.composer__cancel/s,
+    );
+    expect(composerCss).toMatch(
+      /\.composer__recording\s*\{[\s\S]*?min-height:\s*var\(--composer-resting-field-height\);[\s\S]*?\.composer__recording-cancel/s,
+    );
+  });
+
+  it('defines both density recipes and keeps specialized toolbar danger stronger', () => {
+    for (const token of [
+      '--trinity-density-message-column-gap',
+      '--trinity-density-composer-padding-inline',
+      '--trinity-density-composer-field-gap',
+      '--trinity-density-composer-field-inset',
+      '--trinity-density-composer-action-size',
+    ]) {
+      expect(variables.match(new RegExp(`${token}\\s*:`, 'g'))?.length).toBe(2);
+    }
+    expect(toolbarCss).toContain('&:hover:where(:not(:disabled))');
+    expect(toolbarCss).toMatch(
+      /\.toolbar__btn--danger:hover\s*\{[^}]*color:\s*var\(--trinity-danger\)/s,
+    );
+  });
+});
