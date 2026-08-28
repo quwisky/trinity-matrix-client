@@ -118,7 +118,9 @@ All notable changes to this project are documented here. The format is based on
   chrome now consume semantic type, surface, state and density roles. The floating message
   toolbar is narrower and raised over the row boundary, allowing message bodies to use the
   full timeline width without changing measured row heights. Its actions remain fully
-  hit-testable on short grouped rows, while reply/edit context, attachments and the input read
+  hit-testable on short grouped rows, clamp to the live scroll edge and flip quick reactions
+  toward available space; hybrid touch desktops retain a non-overlapping 44px action track.
+  Reply/edit context, attachments and the input read
   as one composer surface. Edit mode has a touch cancel action, and voice recording moves
   keyboard focus into and back out of its replacement controls. Growing the composer or opening
   the software keyboard keeps an exactly bottom-pinned conversation at the newest message and

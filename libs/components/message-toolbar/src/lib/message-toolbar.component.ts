@@ -1,6 +1,8 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
+  inject,
   input,
   output,
   signal,
@@ -66,6 +68,11 @@ let nextPickerId = 0;
 @Component({
   selector: 'trn-message-toolbar',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '(pointerenter)': 'placeToolbar()',
+    '(focusin)': 'placeToolbar()',
+    '[class.toolbar-host--picker-below]': 'pickerBelow()',
+  },
   imports: [
     TrnIconComponent,
     TrnTooltip,
@@ -78,6 +85,8 @@ let nextPickerId = 0;
   styleUrl: './message-toolbar.component.scss',
 })
 export class MessageToolbarComponent {
+  private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
+
   readonly caps = input<MessageToolbarCaps>({
     canEdit: false,
     canDelete: false,
@@ -102,6 +111,7 @@ export class MessageToolbarComponent {
 
   readonly quickEmojis = QUICK_EMOJIS;
   readonly pickerOpen = signal(false);
+  readonly pickerBelow = signal(false);
   /** Unique id linking the reaction toggle to its picker via aria-controls. */
   readonly pickerId = `trn-reaction-picker-${nextPickerId++}`;
 
@@ -112,6 +122,65 @@ export class MessageToolbarComponent {
    */
   openMoreMenu(): void {
     this.moreTrigger()?.open();
+  }
+
+  /**
+   * Toggle quick reactions and choose the side with enough room in the nearest clipping
+   * container. Grouping cannot answer this: virtualization can put a continuation at the
+   * scrollport edge, while a group start can be the newest row at the bottom.
+   */
+  togglePicker(): void {
+    if (this.pickerOpen()) {
+      this.pickerOpen.set(false);
+      return;
+    }
+
+    this.pickerOpen.set(true);
+    requestAnimationFrame(() => this.placePicker());
+  }
+
+  /** Clamp the raised toolbar to the real upper clipping edge before it is shown. */
+  placeToolbar(): void {
+    const host = this.element.nativeElement;
+    const row = host.parentElement;
+    if (!row) return;
+
+    const bounds = this.verticalBounds(host);
+    const rowTop = row.getBoundingClientRect().top;
+    const raisedShift = -(host.getBoundingClientRect().height / 2 + 4);
+    const clampedShift = Math.max(raisedShift, bounds.top - rowTop);
+    host.style.setProperty(
+      '--message-toolbar-translate-y',
+      `${clampedShift}px`,
+    );
+  }
+
+  private placePicker(): void {
+    const host = this.element.nativeElement;
+    const picker = host.querySelector<HTMLElement>('.toolbar__picker');
+    if (!picker) return;
+
+    const bounds = this.verticalBounds(host);
+    const hostBox = host.getBoundingClientRect();
+    const pickerHeight = picker.getBoundingClientRect().height + 4;
+    const spaceAbove = hostBox.top - bounds.top;
+    const spaceBelow = bounds.bottom - hostBox.bottom;
+    this.pickerBelow.set(spaceAbove < pickerHeight && spaceBelow > spaceAbove);
+  }
+
+  private verticalBounds(host: HTMLElement): { top: number; bottom: number } {
+    for (
+      let parent = host.parentElement;
+      parent;
+      parent = parent.parentElement
+    ) {
+      const overflow = getComputedStyle(parent).overflowY;
+      if (/auto|scroll|hidden|clip/.test(overflow)) {
+        const box = parent.getBoundingClientRect();
+        return { top: box.top, bottom: box.bottom };
+      }
+    }
+    return { top: 0, bottom: window.innerHeight };
   }
 
   pick(emoji: string): void {

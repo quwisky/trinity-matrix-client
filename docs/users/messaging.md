@@ -263,9 +263,11 @@ spot; it appears in the panel once the timeline has loaded far enough back to in
 
 ## Per-message actions
 
-On desktop and web, the compact hover toolbar floats over the message's upper trailing edge
-so the body can use the full timeline width. It keeps React, Reply and Reply-in-thread inline.
-Everything else is behind the `⋯` overflow:
+On desktop and web with a precise pointer, the compact hover toolbar floats over the message's
+upper trailing edge so the body can use the full timeline width. Hybrid touch desktops keep
+larger, non-overlapping targets. At a timeline edge the toolbar stays inside the visible area,
+and quick reactions open toward the side with room. The toolbar keeps React, Reply and
+Reply-in-thread inline; everything else is behind the `⋯` overflow:
 
 | Action         | Notes                                                                               |
 | -------------- | ----------------------------------------------------------------------------------- |

@@ -425,9 +425,11 @@ Acceptance:
 - when composer or viewport height changes, a bottom-pinned timeline stays pinned and a scrolled-up
   timeline preserves its reading anchor in both simple and virtual modes, including a one-pixel
   bottom offset and a genuinely windowed room above the 80-row render-all threshold;
-- message bodies use the full row content width; the compact toolbar stays out of flow,
-  raised and hit-testable without changing virtual-row measurements, while edit and
-  recording replacement controls expose complete touch and keyboard focus paths;
+- precise-pointer message bodies use the full row content width; the compact toolbar stays out
+  of flow, raised and hit-testable without changing virtual-row measurements; toolbar and
+  quick-reaction placement uses the live clipping bounds rather than grouping state, while
+  hybrid touch desktops retain a non-overlapping 44px action track and edit/recording
+  replacement controls expose complete touch and keyboard focus paths;
 - keyboard send, IME, paste, draft, mobile sheet and long-press flows retain their tests;
 - Compact visibly increases useful conversation area without reducing touch targets.
 

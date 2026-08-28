@@ -49,9 +49,11 @@ describe('modern timeline layout contracts', () => {
       '--message-body-indent: calc(40px + var(--trinity-density-message-column-gap));',
     );
     expect(rowCss.match(/var\(--message-body-indent\)/g)?.length).toBe(4);
-    // The floating actions must never consume the message's inline width or measured height.
-    // Rendered browser coverage owns their visual overlap and hit-testing bounds.
-    expect(rowCss).not.toMatch(/\.msg:has\(\.msg__toolbar\)/);
+    // Precise-pointer floating actions do not consume the message's inline width or measured
+    // height. The sole `:has()` track is scoped to the hybrid-touch accessibility override.
+    expect(rowCss).toMatch(
+      /@media \(any-pointer: coarse\)\s*\{\s*\.msg:has\(\.msg__toolbar\)\s*\{[^}]*padding-inline-end:[^}]*\}\s*\.msg__toolbar\s*\{[^}]*translate:\s*none;[^}]*\}\s*\}/s,
+    );
     expect(rowCss).not.toMatch(/\.msg\s*\{[^}]*min-height:/s);
   });
 

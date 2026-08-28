@@ -177,13 +177,27 @@
   z-index: var(--trinity-z-sticky);
   opacity: 0;
   pointer-events: none;
-  translate: 0 calc(-50% - var(--trinity-space-2));
+  translate: 0 var(--message-toolbar-translate-y, calc(-50% - 4px));
   transition: opacity var(--trinity-duration-fast) var(--trinity-ease-standard);
 }
 
 .msg:is(:hover, :focus-within, .msg--revealed) .msg__toolbar {
   opacity: 1;
   pointer-events: auto;
+}
+
+// Mobile OSes use the action sheet and never render this bar. A hybrid desktop can still accept
+// touch even when its primary pointer is fine, so preserve a non-overlapping 44px action track in
+// that capability case. Precise-pointer desktop/web keeps the full-width floating treatment.
+@media (any-pointer: coarse) {
+  .msg:has(.msg__toolbar) {
+    min-height: 46px;
+    padding-inline-end: calc(var(--trinity-space-6) + 178px);
+  }
+
+  .msg__toolbar {
+    translate: none;
+  }
 }
 
 // `.msg--revealed` is what replaced the old `@media (hover: none)` override.

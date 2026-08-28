@@ -36,7 +36,7 @@
     [attr.aria-expanded]="pickerOpen()"
     [attr.aria-controls]="pickerOpen() ? pickerId : null"
     (keydown.escape)="pickerOpen.set(false)"
-    (click)="pickerOpen.set(!pickerOpen())"
+    (click)="togglePicker()"
   >
     <trn-icon name="smile" />
   </button>
