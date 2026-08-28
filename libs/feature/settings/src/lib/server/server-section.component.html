@@ -1,10 +1,6 @@
 <div>
-  <div class="flex items-center justify-between px-4 pt-5 pb-1">
-    <h2
-      class="text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-    >
-      Server
-    </h2>
+  <div class="flex items-center justify-between pr-4">
+    <trn-settings-section-heading title="Server" [primary]="true" />
     @if (accounts().length) {
       <button
         hlmBtn

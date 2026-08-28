@@ -12,59 +12,59 @@
   </button>
 </trn-page-header>
 
-<!-- Narrow: one pane at a time — the index lists the categories, opening one swaps to its
-     detail, and the header's back returns to the list. Wide: both, side by side. -->
-<div class="flex min-h-0 flex-1 flex-col md:flex-row">
-  <nav
-    class="no-scrollbar flex flex-col gap-0.5 p-2 md:w-60 md:flex-none md:overflow-y-auto md:border-r md:border-[var(--trinity-divider)]"
-    aria-label="Settings sections"
-    [class.max-md:hidden]="sectionActive()"
-  >
-    @for (item of menu; track item.path) {
-      <!-- `is-active` carries no styles of its own; it is the hook the icon's
-           `group-[.is-active]` variant keys on, since a child cannot see its parent's
-           state any other way. The active cues are md-only: on a narrow screen the list
-           is gone the moment a section opens, so there is nothing to mark. -->
-      <a
-        class="group flex cursor-pointer items-center gap-3 rounded-[var(--trinity-radius)] px-3 py-2.5 text-sm font-medium text-[var(--trinity-text)] no-underline hover:bg-[var(--trinity-hover)]"
-        [routerLink]="item.path"
-        [replaceUrl]="wide()"
-        routerLinkActive="is-active md:bg-[var(--trinity-hover)] md:shadow-[inset_3px_0_0_var(--trinity-accent)]"
-        ariaCurrentWhenActive="page"
-        [attr.data-testid]="'settings-nav-' + item.path"
-      >
-        <trn-icon
-          [name]="item.icon"
-          class="flex-none text-lg text-[var(--trinity-text-muted)] md:group-[.is-active]:text-link"
-        />
-        <span class="min-w-0 flex-1">{{ item.label }}</span>
-        <!-- A mobile drill-in affordance; the sidebar shows the active highlight instead.
+<!-- Parent-height, not viewport-height: Electron's title-bar inset and the app shell already
+     took their space before this page was laid out. The frame therefore cannot enlarge the
+     document or become a second scroll owner in short windows. -->
+<div class="settings-stage">
+  <div class="settings-workspace" data-testid="settings-workspace">
+    <nav
+      #nav
+      class="settings-nav no-scrollbar"
+      aria-label="Settings sections"
+      [class.settings-pane--hidden]="sectionActive() && !wide()"
+    >
+      @for (item of menu; track item.path; let index = $index) {
+        @if (index === 0 || menu[index - 1].group !== item.group) {
+          <p class="settings-nav__group">{{ item.group }}</p>
+        }
+        <!-- `is-active` carries no styles of its own; it is the hook the icon's
+           active visual recipe keys on. On mobile the directory disappears when a detail
+           opens; on desktop it remains the stable location cue. -->
+        <a
+          class="settings-nav__item"
+          [routerLink]="item.path"
+          [replaceUrl]="wide()"
+          routerLinkActive="is-active"
+          ariaCurrentWhenActive="page"
+          [attr.data-testid]="'settings-nav-' + item.path"
+          (click)="onSectionNavigate()"
+        >
+          <trn-icon [name]="item.icon" class="settings-nav__icon" />
+          <span class="settings-nav__label">{{ item.label }}</span>
+          <!-- A mobile drill-in affordance; the sidebar shows the active highlight instead.
              NOT rendered rather than hidden with `md:hidden`: Tailwind's utilities live in
              `@layer utilities` and a component's own `:host { display: … }` is unlayered,
              and an unlayered author declaration beats a layered one whatever the
              specificity — so the class applies and does nothing. `wide()` is the same
              768px boundary the `md:` variant compiles to (both read MD_QUERY). -->
-        @if (!wide()) {
-          <trn-icon
-            name="chevron-right"
-            class="flex-none text-base text-[var(--trinity-text-muted)]"
-          />
-        }
-      </a>
-    }
-    <!-- Version + commit of the running build, tucked below the section list. -->
-    <p
-      class="mt-auto mb-0 px-3 pt-2.5 pb-1 text-xs text-[var(--trinity-text-muted)] select-text"
-      data-testid="settings-build"
+          @if (!wide()) {
+            <trn-icon name="chevron-right" class="settings-nav__chevron" />
+          }
+        </a>
+      }
+      <p class="settings-nav__build" data-testid="settings-build">
+        {{ buildLabel }}
+      </p>
+    </nav>
+    <section
+      #detail
+      class="settings-detail"
+      [class.settings-pane--hidden]="!sectionActive() && !wide()"
+      data-testid="settings-detail"
     >
-      {{ buildLabel }}
-    </p>
-  </nav>
-  <section
-    class="min-w-0 flex-1 overflow-y-auto"
-    [class.max-md:hidden]="!sectionActive()"
-    data-testid="settings-detail"
-  >
-    <router-outlet />
-  </section>
+      <div class="settings-detail__content">
+        <router-outlet (activate)="onSectionActivated()" />
+      </div>
+    </section>
+  </div>
 </div>

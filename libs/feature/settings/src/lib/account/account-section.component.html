@@ -1,9 +1,5 @@
 <div>
-  <h2
-    class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-  >
-    Account
-  </h2>
+  <trn-settings-section-heading title="Account" [primary]="true" />
 
   @if (accountManagement(); as management) {
     <!-- OIDC account: credentials + device management live at the provider. -->

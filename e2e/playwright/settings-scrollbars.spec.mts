@@ -49,16 +49,9 @@ async function scrollbarPainters(page: Page): Promise<string[]> {
 test.describe('Settings scrollbars', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  // Short enough that the section list overflows in every section — that is what put a
-  // second bar beside the content's.
-  test.use({ viewport: { width: 1280, height: 560 } });
-
-  test('never draws the list its own bar, and still draws the content its one', async ({
+  test('owns exactly one painted scrollbar at every desktop acceptance size', async ({
     page,
   }) => {
-    await login(page, session);
-    await page.getByTestId('open-settings').click();
-
     // Per section, and EXACT — not "at most one". A `<= 1` assertion passes at zero, so a
     // section that rendered nothing at all would have satisfied it; and the rule has two
     // halves ("never the outer, only the inner when necessary"), of which only the first
@@ -70,16 +63,52 @@ test.describe('Settings scrollbars', () => {
       privacy: [],
     };
 
-    for (const [section, bars] of Object.entries(expected)) {
-      await page.getByTestId(`settings-nav-${section}`).click();
-      await page.waitForURL(new RegExp(`/settings/${section}$`), {
-        timeout: 20_000,
-      });
-      // The pane has rendered, so an empty result below means "no bar" rather than
-      // "nothing to measure".
-      await expect(page.getByTestId('settings-detail')).not.toBeEmpty();
+    const viewports = [
+      { width: 1280, height: 700 },
+      { width: 1024, height: 700 },
+      { width: 1280, height: 862 },
+    ];
 
-      await expect.poll(() => scrollbarPainters(page)).toEqual(bars);
+    await login(page, session);
+    await page.getByTestId('open-settings').click();
+
+    for (const viewport of viewports) {
+      await page.setViewportSize(viewport);
+      for (const [section, bars] of Object.entries(expected)) {
+        await page.getByTestId(`settings-nav-${section}`).click();
+        await page.waitForURL(new RegExp(`/settings/${section}$`), {
+          timeout: 20_000,
+        });
+        await expect(page.getByTestId('settings-detail')).not.toBeEmpty();
+
+        await expect.poll(() => scrollbarPainters(page)).toEqual(bars);
+        const geometry = await page.evaluate(() => {
+          const workspace = document.querySelector<HTMLElement>(
+            '[data-testid=settings-workspace]',
+          );
+          const shell = document.querySelector<HTMLElement>('trn-settings');
+          if (!workspace || !shell) throw new Error('settings shell missing');
+          const frame = workspace.getBoundingClientRect();
+          return {
+            documentOverflow:
+              document.documentElement.scrollHeight -
+              document.documentElement.clientHeight,
+            shellOverflowY: getComputedStyle(shell).overflowY,
+            frame: {
+              top: frame.top,
+              right: frame.right,
+              bottom: frame.bottom,
+              left: frame.left,
+            },
+          };
+        });
+        expect(geometry.documentOverflow).toBeLessThanOrEqual(1);
+        expect(geometry.shellOverflowY).toBe('hidden');
+        expect(geometry.frame.left).toBeGreaterThan(0);
+        expect(geometry.frame.right).toBeLessThan(viewport.width);
+        expect(geometry.frame.top).toBeGreaterThan(0);
+        expect(geometry.frame.bottom).toBeLessThanOrEqual(viewport.height + 1);
+      }
     }
   });
 
@@ -89,6 +118,7 @@ test.describe('Settings scrollbars', () => {
     // Hiding a scrollbar must not take the scrolling away — the list is taller than the
     // window here, and everything below the fold has to stay reachable.
     await login(page, session);
+    await page.setViewportSize({ width: 1280, height: 560 });
     await page.getByTestId('open-settings').click();
     const nav = page.locator('nav[aria-label="Settings sections"]');
     await expect(nav).toBeVisible({ timeout: 20_000 });
@@ -117,6 +147,7 @@ test.describe('Settings scrollbars', () => {
     page,
   }) => {
     await login(page, session);
+    await page.setViewportSize({ width: 1280, height: 700 });
     await page.getByTestId('open-settings').click();
     await page.getByTestId('settings-nav-notifications').click();
     await page.waitForURL(/\/settings\/notifications$/, { timeout: 20_000 });

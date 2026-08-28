@@ -103,7 +103,7 @@ test.describe('Settings', () => {
     expect(detailBox).not.toBeNull();
     // Beside, not stacked: the detail starts after the nav ends.
     expect(detailBox!.x).toBeGreaterThanOrEqual(navBox!.x + navBox!.width - 1);
-    expect(navBox!.width).toBe(240);
+    expect(navBox!.width).toBe(256);
 
     // The mobile drill-in chevron is suppressed in the sidebar — and it is suppressed by
     // NOT BEING RENDERED, which is why this asserts absence rather than a computed style.
@@ -162,10 +162,16 @@ test.describe('Settings', () => {
       page.evaluate(() =>
         document.documentElement.getAttribute('data-density'),
       );
+    const previewGap = () =>
+      page
+        .locator('.preview__message')
+        .first()
+        .evaluate((element) => getComputedStyle(element).columnGap);
 
     // The default leaves no attribute, and the scale is the 4px rhythm's 16px step.
     expect(await densityAttr()).toBeNull();
     expect(await spaceToken()).toBe('16px');
+    expect(await previewGap()).toBe('12px');
 
     const trigger = page.getByTestId('density-select').locator('button');
     await trigger.click();
@@ -177,12 +183,55 @@ test.describe('Settings', () => {
     // `[data-density]` selector, so the unit spec can only see the attribute.
     await expect.poll(densityAttr).toBe('compact');
     await expect.poll(spaceToken).toBe('12px');
+    await expect.poll(previewGap).toBe('8px');
+    await expect(page.getByTestId('appearance-preview-state')).toContainText(
+      'Compact',
+    );
 
     // Back to cosy → the attribute goes and the scale returns.
     await trigger.click();
     await page.getByTestId('density-cosy').click();
     await expect.poll(densityAttr).toBeNull();
     await expect.poll(spaceToken).toBe('16px');
+  });
+
+  test('125% text and Compact keep settings controls inside their pane', async ({
+    page,
+  }) => {
+    await openSection(page, 'appearance');
+
+    await page.getByTestId('text-scale-select').locator('button').click();
+    await page.getByTestId('text-scale-larger').click();
+    await page.getByTestId('density-select').locator('button').click();
+    await page.getByTestId('density-compact').click();
+
+    const geometry = await page.evaluate(() => {
+      const detail = document.querySelector<HTMLElement>(
+        '[data-testid=settings-detail]',
+      );
+      const preview = document.querySelector<HTMLElement>(
+        '[data-testid=appearance-preview]',
+      );
+      if (!detail || !preview) throw new Error('settings geometry missing');
+      const pane = detail.getBoundingClientRect();
+      const sample = preview.getBoundingClientRect();
+      const controls = [...detail.querySelectorAll<HTMLElement>('button')].map(
+        (control) => control.getBoundingClientRect(),
+      );
+      return {
+        horizontalOverflow: detail.scrollWidth - detail.clientWidth,
+        previewInside:
+          sample.left >= pane.left - 1 && sample.right <= pane.right + 1,
+        controlsInside: controls.every(
+          (control) =>
+            control.left >= pane.left - 1 && control.right <= pane.right + 1,
+        ),
+      };
+    });
+
+    expect(geometry.horizontalOverflow).toBeLessThanOrEqual(1);
+    expect(geometry.previewInside).toBe(true);
+    expect(geometry.controlsInside).toBe(true);
   });
 
   // The kit's overlay panels animate open with `animate-in` from `tw-animate-css`, which
@@ -238,6 +287,11 @@ test.describe('Settings', () => {
 
     // The default palette sets no data-theme attribute.
     expect(await paletteAttr(page)).toBeNull();
+    const previewAccent = () =>
+      page
+        .locator('.preview__identity--active')
+        .evaluate((element) => getComputedStyle(element).backgroundColor);
+    const initialPreviewAccent = await previewAccent();
 
     const trigger = page.getByTestId('palette-select').locator('button');
     const amethyst = page.getByTestId('palette-amethyst');
@@ -255,6 +309,7 @@ test.describe('Settings', () => {
     await expect(amethyst).toHaveCount(0); // closed after selecting
     // #168: and the closed trigger reads the label, not the stored id `amethyst`.
     await expect(trigger).toHaveText('Amethyst');
+    expect(await previewAccent()).not.toBe(initialPreviewAccent);
 
     // Back to the default palette → the attribute is removed again.
     await trigger.click();
@@ -486,11 +541,15 @@ test.describe('Settings', () => {
     await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
     await expect(page.getByTestId('theme-dark')).toBeVisible();
     await expect(appearance).toBeHidden();
+    await expect(
+      page.getByRole('heading', { name: 'Appearance' }),
+    ).toBeFocused();
 
     // The header back returns to the category list.
     await page.getByRole('button', { name: 'Back' }).click();
     await expect(appearance).toBeVisible();
     await expect(page.getByTestId('theme-dark')).toBeHidden();
+    await expect(appearance).toBeFocused();
   });
 
   test('mobile: a deep-linked section can still reach the list via back', async ({
@@ -504,6 +563,9 @@ test.describe('Settings', () => {
     });
     // Single-pane detail view: the category list is collapsed.
     await expect(page.getByTestId('settings-nav-appearance')).toBeHidden();
+    await expect(
+      page.getByRole('heading', { name: 'Appearance' }),
+    ).toBeFocused();
 
     // Header back goes UP to the list even though history holds no /settings entry
     // (Location.back() would leave settings; the shell routes up instead).
@@ -511,5 +573,27 @@ test.describe('Settings', () => {
     await page.waitForURL(/\/settings$/, { timeout: 20_000 });
     await expect(page.getByTestId('settings-nav-appearance')).toBeVisible();
     await expect(page.getByTestId('theme-dark')).toBeHidden();
+  });
+
+  test('mobile: resizing a drilled-in section wide still exits settings in one back', async ({
+    page,
+  }) => {
+    // Return to the room first so there is a real destination behind Settings.
+    await page.getByRole('button', { name: 'Back' }).click();
+    await page.waitForURL(/\/rooms/, { timeout: 20_000 });
+
+    await page.setViewportSize({ width: 375, height: 800 });
+    await page.getByTestId('open-settings').click();
+    const appearance = page.getByTestId('settings-nav-appearance');
+    await expect(appearance).toBeVisible({ timeout: 20_000 });
+    await appearance.click();
+    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+
+    // The navigation model changes from mobile push to desktop replace when the
+    // viewport crosses 768px. The old mobile directory entry must not trap Back.
+    await page.setViewportSize({ width: 1024, height: 700 });
+    await expect(appearance).toBeVisible();
+    await page.getByRole('button', { name: 'Back' }).click();
+    await page.waitForURL(/\/rooms/, { timeout: 20_000 });
   });
 });

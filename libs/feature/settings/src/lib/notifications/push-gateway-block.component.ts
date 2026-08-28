@@ -20,6 +20,7 @@ import {
   PushGatewayTrustDialogComponent,
   type PushGatewayTrustData,
 } from './push-gateway-trust-dialog.component';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
 /**
  * The push-gateway block inside the Notifications section (device-local; see
@@ -36,7 +37,7 @@ import {
   selector: 'trn-push-gateway-block',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './push-gateway-block.component.html',
-  imports: [HlmButton, TrnInput, TrnLabel],
+  imports: [HlmButton, TrnInput, TrnLabel, SettingsSectionHeadingComponent],
 })
 export class PushGatewayBlockComponent {
   private readonly gateway = inject(PushGatewayService);

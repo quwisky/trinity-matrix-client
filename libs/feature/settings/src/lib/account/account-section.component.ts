@@ -23,6 +23,7 @@ import { TrnToastService } from '@trinity/components/overlay';
 import { runWithBusy } from '@trinity/util/ui';
 import { AuthService, type AccountManagement } from '@trinity/data-access/auth';
 import { TrnIconComponent } from '@trinity/components/icon';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
 /** Minimum length we require for a new password (a light client-side guard). */
 const MIN_PASSWORD = 8;
@@ -92,6 +93,7 @@ const passwordSchema = schema<PasswordModel>((path) => {
     FormField,
     FormRoot,
     TrnIconComponent,
+    SettingsSectionHeadingComponent,
     HlmButton,
     TrnInput,
     TrnLabel,

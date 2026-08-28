@@ -16,6 +16,7 @@ import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { CryptoService } from '@trinity/data-access/crypto';
 import { EncryptionDialogService } from '@trinity/components/encryption-dialog';
 import { downloadTextFile } from '../download-text-file';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
 /** Where the encryption flows return after finishing on the routed (mobile) path. */
 const RETURN_TO = '/settings/security';
@@ -31,7 +32,7 @@ const RETURN_TO = '/settings/security';
   selector: 'trn-security-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './security-section.component.html',
-  imports: [HlmButton],
+  imports: [HlmButton, SettingsSectionHeadingComponent],
 })
 export class SecuritySectionComponent implements OnInit {
   private readonly crypto = inject(CryptoService);

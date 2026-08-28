@@ -14,6 +14,7 @@ import { EncryptionDialogService } from '@trinity/components/encryption-dialog';
 import { runWithBusy } from '@trinity/util/ui';
 import { DevicesService, type DeviceInfo } from '@trinity/data-access/crypto';
 import { TrnIconComponent } from '@trinity/components/icon';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
 /**
  * Device-management section of the Settings page: lists the user's sessions with
@@ -25,7 +26,13 @@ import { TrnIconComponent } from '@trinity/components/icon';
   selector: 'trn-devices-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './devices-section.component.html',
-  imports: [TrnIconComponent, TrnBadge, HlmButton, TrnTooltip],
+  imports: [
+    TrnIconComponent,
+    TrnBadge,
+    HlmButton,
+    TrnTooltip,
+    SettingsSectionHeadingComponent,
+  ],
 })
 export class DevicesSectionComponent {
   private readonly devicesSvc = inject(DevicesService);

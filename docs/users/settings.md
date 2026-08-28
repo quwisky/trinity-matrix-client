@@ -1,8 +1,9 @@
 # Settings
 
-Settings is a two-pane screen: a list of fourteen sections beside the section you have open.
-Below 768 pixels wide the list is the page, and opening a section swaps to it with a back
-button.
+Settings is a grouped directory of fourteen sections beside the section you have open. On a wide
+screen it sits in a bounded workspace and the section detail owns scrolling; the directory stays
+independently reachable without drawing a competing scrollbar. Below 768 pixels wide the list is
+the page, and opening a section swaps to it with a back button.
 
 !!! warning "Preferences do not follow your account"
 
@@ -53,6 +54,11 @@ Set yourself Online, Away or Offline, with an optional status message of up to 6
 characters. Matrix has no "invisible" state, so Trinity does not offer one.
 
 ## Appearance
+
+The top of Appearance includes a small live conversation preview. It follows the selected mode,
+palette, text size, time format and density immediately, so you can compare the combined result
+without leaving Settings. It is only a preview: its room names and messages are illustrative and
+none of them are interactive.
 
 **Theme.** Light, Dark, or follow the system setting. The page states which one is currently
 resolved, which matters when you have chosen "system".

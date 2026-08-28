@@ -15,6 +15,7 @@ import {
   runWithBusy,
 } from '@trinity/util/ui';
 import { HomeserverBlockComponent } from './homeserver-block.component';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
 /**
  * Server section: one block per signed-in account, saying what that account's homeserver is
@@ -40,7 +41,11 @@ import { HomeserverBlockComponent } from './homeserver-block.component';
   selector: 'trn-server-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './server-section.component.html',
-  imports: [HlmButton, HomeserverBlockComponent],
+  imports: [
+    HlmButton,
+    HomeserverBlockComponent,
+    SettingsSectionHeadingComponent,
+  ],
 })
 export class ServerSectionComponent {
   private readonly matrix = inject(MatrixClientService);

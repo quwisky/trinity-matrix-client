@@ -1,9 +1,8 @@
-<h2
-  id="appearance-mode-heading"
-  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
->
-  Appearance
-</h2>
+<trn-settings-section-heading
+  title="Appearance"
+  headingId="appearance-mode-heading"
+  [primary]="true"
+/>
 <trn-radio-group
   class="px-4 py-2"
   aria-labelledby="appearance-mode-heading"
@@ -15,12 +14,17 @@
   Showing the {{ theme.resolved() }} theme.
 </p>
 
-<h2
-  id="appearance-text-size-heading"
-  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
->
-  Text size
-</h2>
+<trn-appearance-preview
+  [themeLabel]="theme.resolved()"
+  [paletteLabel]="paletteLabel()"
+  [densityLabel]="densityLabel()"
+  [timeLabel]="format.sampleTime(sample, format.timeFormat())"
+/>
+
+<trn-settings-section-heading
+  title="Text size"
+  headingId="appearance-text-size-heading"
+/>
 <div class="px-4 py-2">
   <trn-select
     data-testid="text-scale-select"
@@ -37,12 +41,10 @@
   app keep a fixed size for now.
 </p>
 
-<h2
-  id="appearance-density-heading"
-  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
->
-  Density
-</h2>
+<trn-settings-section-heading
+  title="Density"
+  headingId="appearance-density-heading"
+/>
 <div class="px-4 py-2">
   <trn-select
     data-testid="density-select"
@@ -63,12 +65,10 @@
 
 <trn-message-gestures-block />
 
-<h2
-  id="appearance-palette-heading"
-  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
->
-  Palette
-</h2>
+<trn-settings-section-heading
+  title="Palette"
+  headingId="appearance-palette-heading"
+/>
 <div class="px-4 py-2">
   <trn-select
     data-testid="palette-select"
@@ -81,12 +81,10 @@
   />
 </div>
 
-<h2
-  id="appearance-time-heading"
-  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
->
-  Time format
-</h2>
+<trn-settings-section-heading
+  title="Time format"
+  headingId="appearance-time-heading"
+/>
 <div class="px-4 py-2">
   <trn-select
     data-testid="time-format-select"
@@ -99,12 +97,10 @@
   />
 </div>
 
-<h2
-  id="appearance-date-heading"
-  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
->
-  Date format
-</h2>
+<trn-settings-section-heading
+  title="Date format"
+  headingId="appearance-date-heading"
+/>
 <div class="px-4 py-2">
   <trn-select
     data-testid="date-format-select"
@@ -124,12 +120,10 @@
   language.
 </p>
 
-<h2
-  id="appearance-space-order-heading"
-  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
->
-  Room order in spaces
-</h2>
+<trn-settings-section-heading
+  title="Room order in spaces"
+  headingId="appearance-space-order-heading"
+/>
 <p class="block px-4 py-2 text-13 text-muted-foreground">
   How rooms are listed inside a space — every other list is ordered by recent
   activity. Saved per account on this device; a space you order individually
@@ -151,21 +145,16 @@
   group.
 </p>
 
-<h2
-  id="appearance-timeline-heading"
-  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
->
-  Timeline
-</h2>
+<trn-settings-section-heading
+  title="Timeline"
+  headingId="appearance-timeline-heading"
+/>
 <p class="block px-4 py-2 text-13 text-muted-foreground">
   In busy or bridged rooms, membership and profile churn can drown out the
   conversation. Hiding a category removes those lines entirely — it doesn't
   change your unread counts.
 </p>
-<label
-  class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
-  data-testid="timeline-show-membership"
->
+<label trnSettingsToggleRow data-testid="timeline-show-membership">
   <trn-switch
     [checked]="systemLines.showMembership()"
     (checkedChange)="systemLines.setShowMembership($event)"
@@ -176,10 +165,7 @@
   Includes invites, knocks, kicks and bans.
 </p>
 
-<label
-  class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
-  data-testid="timeline-show-profile"
->
+<label trnSettingsToggleRow data-testid="timeline-show-profile">
   <trn-switch
     [checked]="systemLines.showProfile()"
     (checkedChange)="systemLines.setShowProfile($event)"
@@ -187,10 +173,7 @@
   Show display name and avatar changes
 </label>
 
-<label
-  class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
-  data-testid="timeline-show-room-changes"
->
+<label trnSettingsToggleRow data-testid="timeline-show-room-changes">
   <trn-switch
     [checked]="systemLines.showRoomChanges()"
     (checkedChange)="systemLines.setShowRoomChanges($event)"
@@ -203,16 +186,11 @@
   shows whether a room is encrypted.
 </p>
 
-<h2
-  id="appearance-composer-heading"
-  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
->
-  Composer
-</h2>
-<label
-  class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
-  data-testid="composer-show-toolbar"
->
+<trn-settings-section-heading
+  title="Composer"
+  headingId="appearance-composer-heading"
+/>
+<label trnSettingsToggleRow data-testid="composer-show-toolbar">
   <trn-switch
     [checked]="composer.showFormattingToolbar()"
     (checkedChange)="composer.setShowFormattingToolbar($event)"
@@ -223,10 +201,7 @@
   The row of bold, italic and link buttons above the message box, kept in view
   whether or not you are using it.
 </p>
-<label
-  class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
-  data-testid="composer-format-on-selection"
->
+<label trnSettingsToggleRow data-testid="composer-format-on-selection">
   <trn-switch
     [checked]="composer.formatOnSelection()"
     (checkedChange)="composer.setFormatOnSelection($event)"

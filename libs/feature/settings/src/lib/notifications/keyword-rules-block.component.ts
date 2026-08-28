@@ -18,6 +18,7 @@ import {
   KeywordValidationError,
   type KeywordRule,
 } from '@trinity/data-access/notifications';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
 /**
  * The keyword list in Settings → Notifications: words that notify wherever they are said.
@@ -34,7 +35,13 @@ import {
   selector: 'trn-keyword-rules',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './keyword-rules-block.component.html',
-  imports: [FormField, HlmButton, TrnSwitchComponent, TrnInput],
+  imports: [
+    FormField,
+    HlmButton,
+    TrnSwitchComponent,
+    TrnInput,
+    SettingsSectionHeadingComponent,
+  ],
 })
 export class KeywordRulesBlockComponent implements OnInit {
   private readonly keywordsSvc = inject(KeywordRulesService);

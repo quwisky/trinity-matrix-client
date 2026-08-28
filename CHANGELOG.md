@@ -77,6 +77,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Settings is easier to scan without growing a second scrollbar.** Desktop and Electron now use
+  a centred, bounded settings workspace with grouped navigation, sentence-case section hierarchy
+  and density-aware toggle rows. Appearance adds a live preview of the selected theme, palette,
+  text size, time format and density. Short windows keep overflow in the detail pane, mobile keeps
+  its one-pane drill-in flow, and route changes move keyboard focus to the new section or back to
+  its directory link.
+
 - **Messages and the composer now share a clearer conversation hierarchy.** Message bodies,
   authors, timestamps, replies, threads, reactions, receipts, status rows and typing/divider
   chrome now consume semantic type, surface, state and density roles. The floating message

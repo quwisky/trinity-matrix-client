@@ -448,6 +448,15 @@ hand-authored component SCSS.
 | Z-index layers      | `--trinity-z-sticky` (5) → `-floating` (10) → `-overlay` (20) → `-panel` (40). **App-level only** — a component stacking its own children is local and stays a literal. The CDK overlay container sits above all of them at 1000.                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | Motion              | `--trinity-duration-press` for the down response and `-fast` / `-base` / `-slow` for transitions, plus `--trinity-duration-pulse` / `-flash` for motion that is not one (an ambient loop, a one-shot cue). `--trinity-ease-standard` / `-decelerate` / `-accelerate`. All collapsed to 0.01ms under `prefers-reduced-motion` at the bottom of `variables.scss` — which is why a literal duration is a bug, not a style. An `infinite` animation needs `global.scss`'s `animation-iteration-count` too: collapsing its duration alone makes it repeat per frame rather than stop.                                                                     |
 
+Settings is the worked feature-level composition of these roles. Its wide frame is bounded by the
+height supplied by the app shell, never by another viewport unit; the directory remains scrollable
+with a hidden gutter while the detail pane is the one painted scroll owner. Paint containment on
+the routed Settings host prevents a long detail from enlarging the document's root scroll extent.
+`SettingsSectionHeadingComponent` and `SettingsToggleRowDirective` keep sentence-case type and
+density consistent without weakening native heading, label or switch semantics. The Appearance
+preview is intentionally feature-local and token-only: it demonstrates the same surface, identity,
+type and density roles without importing the room feature or duplicating theme values.
+
 **Helm and shadcn tokens** (`--background`, `--card`, `--primary`, `--muted-foreground`,
 `--border`, and the rest) are consumed by the generated Helm components through Tailwind
 colour utilities.

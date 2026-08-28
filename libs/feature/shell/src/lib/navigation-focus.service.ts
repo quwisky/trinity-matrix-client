@@ -45,7 +45,9 @@ export class NavigationFocusService {
       return;
     }
     const target =
-      page.querySelector<HTMLElement>('[role="heading"], h1, main') ?? page;
+      page.querySelector<HTMLElement>('[data-route-focus]') ??
+      page.querySelector<HTMLElement>('[role="heading"], h1, main') ??
+      page;
     // Headings/<main> aren't focusable by default; make it programmatically
     // focusable without adding it to the tab order.
     if (target.tabIndex < 0) {

@@ -15,6 +15,7 @@ import {
   isBrowserReserved,
   type ShortcutView,
 } from '@trinity/platform-native';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
 /** A shortcut row plus the presentational bits the template needs. */
 interface ShortcutRow extends ShortcutView {
@@ -37,7 +38,7 @@ interface ShortcutGroup {
   selector: 'trn-shortcuts-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './shortcuts-section.component.html',
-  imports: [HlmButton],
+  imports: [HlmButton, SettingsSectionHeadingComponent],
   host: {
     class: 'block',
     // Active only while capturing (guarded inside the handler), so it never intercepts
