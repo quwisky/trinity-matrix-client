@@ -1,0 +1,18 @@
+<button
+  trnBtn
+  type="button"
+  variant="secondary"
+  size="icon-lg"
+  class="lightbox__close"
+  aria-label="Close image viewer"
+  data-testid="lightbox-close"
+>
+  <trn-icon name="x" motion="rotate" />
+</button>
+
+<img
+  decoding="async"
+  class="lightbox__image"
+  [src]="src()"
+  [alt]="filename()"
+/>

@@ -101,6 +101,18 @@
 
   flex: 1;
   padding: 12px var(--trinity-density-shell-padding-inline);
+
+  @media #{$md} {
+    // The desktop identity dock floats over this scroller. Leave enough real content space
+    // for the last room and tell focus-driven scrolling about the same obstruction, so a
+    // keyboard-selected row can always settle fully above the dock.
+    padding-block-end: calc(
+      var(--trinity-navigation-dock-height) + var(--trinity-space-5)
+    );
+    scroll-padding-block-end: calc(
+      var(--trinity-navigation-dock-height) + var(--trinity-space-5)
+    );
+  }
 }
 
 // Separates the Favourites group from the rooms below it.

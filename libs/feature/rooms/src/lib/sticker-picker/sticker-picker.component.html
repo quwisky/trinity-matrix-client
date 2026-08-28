@@ -59,11 +59,13 @@
               type="button"
               class="picker__item"
               [attr.aria-label]="labelFor(image)"
-              [attr.title]="':' + image.shortcode + ':'"
               [attr.data-testid]="'sticker-' + image.shortcode"
               (click)="selected.emit(image)"
             >
               <trn-sticker-image [image]="image" />
+              <span class="picker__shortcode" aria-hidden="true"
+                >:{{ image.shortcode }}:</span
+              >
             </button>
           }
         </div>

@@ -13,6 +13,7 @@ import {
   type SynapseSession,
 } from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import { openSettingsSection } from './journeys/navigation.mts';
 
 // GIF picker journeys. The send path round-trips through the REAL disposable
 // Synapse (upload → m.image → sync), like every app-journey spec; only the
@@ -186,10 +187,8 @@ test.describe('GIF picker', () => {
     const { reader } = await seedRoom(request, hs, runId);
 
     await login(page, reader);
-    await page.getByTestId('open-settings').click();
     // GIF config lives on the GIFs section sub-page of the settings submenu.
-    await page.getByTestId('settings-nav-gifs').click();
-    await page.waitForURL(/\/settings\/gifs$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'gifs');
 
     const read = (): Promise<string | null> =>
       readPreference(page, GIF_CONFIG_KEY);
@@ -216,9 +215,11 @@ test.describe('GIF picker', () => {
       .toMatchObject({ provider: 'giphy', apiKey: '' });
     await expect(page.getByTestId('gif-clear')).toHaveCount(0); // picker disabled
 
-    // The remembered choice survives a reload: the deep-linked GIFs sub-page
+    // The remembered choice survives a reload: navigate to the deliberate routed
+    // deep-link fallback, then reload that GIFs sub-page.
     // restores and the key field is still GIPHY's, not KLIPY's (GifSettingsService
     // .init reads the provider back at startup).
+    await page.goto('/settings/gifs');
     await page.reload();
     await page.waitForURL(/\/settings\/gifs$/, { timeout: 20_000 });
     await expect(page.locator('label[for="gif-api-key"]')).toHaveText(

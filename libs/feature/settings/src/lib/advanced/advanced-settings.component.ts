@@ -12,7 +12,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Capacitor } from '@capacitor/core';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnLabel } from '@trinity/components/label';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { TrnTextarea } from '@trinity/components/textarea';
@@ -104,7 +104,7 @@ function exportFileName(now: Date): string {
   host: { class: 'block' },
   imports: [
     ConfigEditorOutletDirective,
-    HlmButton,
+    TrnButton,
     TrnLabel,
     TrnTextarea,
     SettingsSectionHeadingComponent,

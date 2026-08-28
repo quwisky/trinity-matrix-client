@@ -1,5 +1,5 @@
 import { test, expect } from './support/fixtures.mts';
-import { focusInside, openSettingsFromRooms } from './journeys/navigation.mts';
+import { openSettingsFromRooms } from './journeys/navigation.mts';
 import { login, synapseSession } from './support/app.mts';
 
 // Historical context: this file used to guard the IonRouterOutlet transition lock
@@ -27,7 +27,7 @@ test.describe('Route transitions', () => {
     'requires the disposable Synapse homeserver (Docker)',
   );
 
-  test('navigates from rooms to settings via the settings button', async ({
+  test('opens settings from rooms without replacing the room route', async ({
     page,
   }) => {
     await login(page, session);
@@ -39,18 +39,24 @@ test.describe('Route transitions', () => {
     await openSettingsFromRooms(page);
   });
 
-  // NavigationFocusService moves focus into the entering page after each route
-  // change (replacing Ionic's focus manager). After rooms → settings, focus should
-  // land inside the settings page (its heading), not stay on the settings button
-  // that triggered the navigation.
-  test('relocates focus into the entering page', async ({ page }) => {
+  // CDK owns the equivalent modal behavior: focus enters the named dialog, remains
+  // trapped there, and returns to the persistent opener after dismissal.
+  test('traps focus inside settings and restores the opener', async ({
+    page,
+  }) => {
     await login(page, session);
 
-    await page.getByTestId('open-settings').click();
-    await page.waitForURL(/\/settings(\/|$)/, { timeout: 20_000 });
+    const opener = page.getByTestId('open-settings');
+    await opener.focus();
+    await opener.click();
+    const dialog = page.getByRole('dialog', { name: 'Settings' });
+    await expect(dialog).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('[data-settings-autofocus]')).toBeFocused();
 
-    await expect
-      .poll(() => focusInside(page, 'trn-settings'), { timeout: 10_000 })
-      .toBe(true);
+    await page.keyboard.press('Shift+Tab');
+    await expect(dialog.locator(':focus')).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(opener).toBeFocused();
   });
 });

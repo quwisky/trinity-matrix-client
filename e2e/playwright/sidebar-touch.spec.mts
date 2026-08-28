@@ -60,6 +60,26 @@ test.describe('Sidebar on a touch device', () => {
     }));
     expect(coarse).toEqual({ noHover: true, coarsePointer: true });
 
+    // Phones keep the identity dock in normal flow rather than letting a desktop overlay
+    // cover the last room or duplicate the shell's safe-area ownership.
+    await expect(page.locator('trn-sidebar-user-panel')).toHaveCSS(
+      'position',
+      'static',
+    );
+    await expect(page.locator('trn-sidebar-user-panel')).toHaveCSS(
+      'display',
+      'block',
+    );
+    const mobileDockFlow = await page.evaluate(() => {
+      const scroller = document.querySelector<HTMLElement>('.sidebar__scroll');
+      const dock = document.querySelector<HTMLElement>('.userbar');
+      if (!scroller || !dock) throw new Error('missing mobile identity dock');
+      const scrollerBox = scroller.getBoundingClientRect();
+      const dockBox = dock.getBoundingClientRect();
+      return scrollerBox.bottom <= dockBox.top + 1;
+    });
+    expect(mobileDockFlow).toBe(true);
+
     const targets = [
       page.getByTestId('rail-rooms'),
       page.getByTestId('user-menu-trigger'),

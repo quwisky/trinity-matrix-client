@@ -6,6 +6,7 @@ import {
   type SynapseSession,
 } from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import { openSettingsSection } from './journeys/navigation.mts';
 
 // Two things, both needing a Synapse homeserver (Docker); self-skips otherwise.
 //
@@ -64,9 +65,7 @@ test.describe('Push gateway', () => {
     await registerUser(request, user, pass);
 
     await login(page, { available: true, hs, user, pass } as SynapseSession);
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-notifications').click();
-    await page.waitForURL(/\/settings\/notifications$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'notifications');
 
     // The block composes into the section...
     await expect(

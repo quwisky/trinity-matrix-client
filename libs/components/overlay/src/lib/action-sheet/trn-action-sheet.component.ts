@@ -10,6 +10,8 @@ import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
 
 export interface ActionSheetButton {
   text: string;
+  /** A disabled row stays visible for context but cannot receive focus or run its handler. */
+  disabled?: boolean;
   role?: 'cancel' | 'destructive';
   handler?: () => void;
   /** Leading icon, for a sheet standing in for a menu that had one. */
@@ -123,6 +125,7 @@ export interface ActionSheetData {
             variant="ghost"
             class="min-h-11 w-full justify-start gap-3"
             [class.text-danger]="button.role === 'destructive'"
+            [disabled]="button.disabled"
             [attr.data-testid]="button.testId"
             (click)="onClick(button)"
           >
@@ -150,6 +153,9 @@ export class TrnActionSheetComponent {
   }
 
   protected onClick(button: ActionSheetButton): void {
+    // Native `disabled` blocks user clicks. Keep the guard as the actual contract too:
+    // tests, assistive tooling and future adapters can invoke this method directly.
+    if (button.disabled) return;
     this.ref.close();
     if (button.role !== 'cancel') {
       button.handler?.();

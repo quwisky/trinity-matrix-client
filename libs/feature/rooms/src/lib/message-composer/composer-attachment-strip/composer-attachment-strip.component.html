@@ -42,23 +42,25 @@
           </span>
           <button
             type="button"
+            trnIconButton
             class="composer__pending-retry"
             [disabled]="!canRetry()"
             [attr.aria-label]="'Retry ' + attachment.file.name"
             data-testid="composer-pending-retry"
             (click)="retryStaged.emit(attachment.id)"
           >
-            <trn-icon name="rotate-ccw" />
+            <trn-icon name="rotate-ccw" motion="rotate" />
           </button>
         }
         <button
           type="button"
+          trnIconButton
           class="composer__pending-remove"
           [attr.aria-label]="'Remove ' + attachment.file.name"
           data-testid="composer-pending-remove"
           (click)="removeStaged.emit(attachment.id)"
         >
-          <trn-icon name="x" />
+          <trn-icon name="x" motion="rotate" />
         </button>
       </li>
     }

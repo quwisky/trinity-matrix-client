@@ -31,11 +31,18 @@ test.describe('Electron settings geometry', () => {
         BrowserWindow.getAllWindows()[0]?.setSize(1024, 620);
       });
       await login(page, session, electronNavigate);
+      const roomUrl = page.url();
       await page.getByTestId('open-settings').click();
+      await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(page).toHaveURL(roomUrl);
       // The Appearance page is intentionally used for the native geometry proof:
       // unlike Notifications, its overflow does not depend on account seed data.
       await page.getByTestId('settings-nav-appearance').click();
-      await page.waitForURL(/\/settings\/appearance$/, { timeout: 30_000 });
+      await expect(page.getByTestId('theme-dark')).toBeVisible({
+        timeout: 30_000,
+      });
 
       const geometry = await page.evaluate(() => {
         const nav = document.querySelector<HTMLElement>('.settings-nav');

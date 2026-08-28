@@ -179,9 +179,9 @@ describe('MediaAttachmentComponent', () => {
   });
 
   it('releases the pin when the reader dismisses the overlay themselves', async () => {
-    // Escape and a backdrop click are CDK's to handle, so nothing in this component runs on
-    // that path — the unpin has to hang off `closed`, not off `closeLightbox()`. Hanging it
-    // off the method would leak the URL on every dismissal that is not programmatic.
+    // Escape and viewer-surface dismissal do not call this smart component's
+    // closeLightbox(), so the unpin has to hang off `closed`. Hanging it off the method
+    // would leak the URL on every dismissal that is not programmatic.
     mediaService.resolveMedia.mockImplementation(
       (_m: MediaPayload, variant: string) =>
         of(variant === 'full' ? 'blob:full' : 'blob:thumb'),
@@ -191,7 +191,11 @@ describe('MediaAttachmentComponent', () => {
     TestBed.tick();
     mediaService.unpin.mockClear();
 
-    (lightboxImage()?.parentElement as HTMLElement).click();
+    const close = document.querySelector<HTMLButtonElement>(
+      '[data-testid=lightbox-close]',
+    );
+    expect(close?.getAttribute('aria-label')).toBe('Close image viewer');
+    close?.click();
 
     expect(lightboxImage()).toBeNull();
     expect(mediaService.unpin).toHaveBeenCalledWith('blob:full');

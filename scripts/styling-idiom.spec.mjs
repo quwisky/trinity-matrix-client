@@ -6,7 +6,7 @@ import { inlineStyleSheets } from './inline-styles.mjs';
 /**
  * Trinity styles components two ways, and the redesign wants one.
  *
- * Sixty-one components own a `.scss` file; forty-six templates reach for Tailwind utilities. Both
+ * Dozens of components own a `.scss` file and templates also reach for Tailwind utilities. Both
  * are legitimate today, and the redesign's direction is to shrink the first set as components
  * move onto tokens and utilities — but a spec asserting that end state would fail sixty times
  * on the day it landed and be deleted the first time it cried wolf.
@@ -30,6 +30,7 @@ const workspaceRoot = join(import.meta.dirname, '..');
 
 /** Shared partials are not component stylesheets; they are the mixins those files `@use`. */
 const SHARED_PARTIALS = [
+  'libs/feature/auth/src/lib/styles/_auth-form.scss',
   'libs/feature/crypto/src/lib/styles/_mixins.scss',
   'libs/feature/rooms/src/lib/message-list/_message-list-shared.scss',
   'libs/feature/rooms/src/lib/styles/_mixins.scss',
@@ -85,6 +86,7 @@ const LEDGER = [
   'libs/feature/rooms/src/lib/link-preview/link-preview.component.scss',
   'libs/feature/rooms/src/lib/location-share/location.component.scss',
   'libs/feature/rooms/src/lib/manage-space-rooms/manage-space-rooms.component.scss',
+  'libs/feature/rooms/src/lib/media-attachment/lightbox/lightbox.component.scss',
   'libs/feature/rooms/src/lib/member-info/member-info.component.scss',
   'libs/feature/rooms/src/lib/member-list/member-list.component.scss',
   'libs/feature/rooms/src/lib/message-composer/composer-attachment-strip/composer-attachment-strip.component.scss',
@@ -122,8 +124,11 @@ const LEDGER = [
   'libs/feature/rooms/src/lib/user-picker/user-picker.component.scss',
   'libs/feature/rooms/src/lib/voice-message/voice-message.component.scss',
   'libs/feature/settings/src/lib/advanced/config-editor/config-editor.component.scss',
+  'libs/feature/settings/src/lib/appearance/appearance-preview.component.scss',
   'libs/feature/settings/src/lib/image-packs/image-packs-section.component.scss',
   'libs/feature/settings/src/lib/server/homeserver-block.component.scss',
+  'libs/feature/settings/src/lib/settings-dialog/settings-dialog.component.scss',
+  'libs/feature/settings/src/lib/settings/settings.page.scss',
 ];
 
 /**

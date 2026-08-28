@@ -4,6 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AuthService } from '@trinity/data-access/auth';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { TrnAlertService } from '@trinity/components/overlay';
+import { SettingsDialogService } from '@trinity/components/settings-dialog';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
 
 /**
@@ -19,11 +20,12 @@ export class SessionActionsService {
   private readonly auth = inject(AuthService);
   private readonly matrix = inject(MatrixClientService);
   private readonly router = inject(Router);
+  private readonly settings = inject(SettingsDialogService);
   private readonly alert = inject(TrnAlertService);
   private readonly destroyRef = inject(DestroyRef);
 
   goToSettings(): void {
-    void this.router.navigateByUrl('/settings');
+    void this.settings.open();
   }
 
   /** Switch the active account (no-op when it is already active). */

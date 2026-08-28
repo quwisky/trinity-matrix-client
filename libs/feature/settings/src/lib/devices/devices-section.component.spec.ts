@@ -89,7 +89,10 @@ describe('DevicesSectionComponent', () => {
           prompt: alertPrompt,
         }),
         MockProvider(TrnDialogService, { open: dialogOpen }),
-        MockProvider(Router, { navigate }),
+        MockProvider(Router, {
+          navigate,
+          url: '/rooms/!current:example.org',
+        }),
         {
           provide: ENCRYPTION_DIALOG_COMPONENTS,
           useValue: {
@@ -188,6 +191,23 @@ describe('DevicesSectionComponent', () => {
           inputs: { asModal: true },
           disableClose: true,
         }),
+      ),
+    );
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('keeps verification modal when Settings uses a narrow web dialog', async () => {
+    stubViewport(false);
+    const { fixture } = await renderSection();
+    fixture.componentRef.setInput('inSettingsDialog', true);
+    fixture.detectChanges();
+
+    fixture.componentInstance.verifyDevices();
+
+    await vi.waitFor(() =>
+      expect(dialogOpen).toHaveBeenCalledWith(
+        StubVerifyPage,
+        expect.objectContaining({ inputs: { asModal: true } }),
       ),
     );
     expect(navigate).not.toHaveBeenCalled();

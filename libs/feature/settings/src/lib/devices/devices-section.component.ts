@@ -4,11 +4,13 @@ import {
   DestroyRef,
   computed,
   inject,
+  input,
   signal,
 } from '@angular/core';
+import { Router } from '@angular/router';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { TrnBadge } from '@trinity/components/badge';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import { EncryptionDialogService } from '@trinity/components/encryption-dialog';
 import { runWithBusy } from '@trinity/util/ui';
@@ -29,7 +31,7 @@ import { SettingsSectionHeadingComponent } from '../shared/settings-section-head
   imports: [
     TrnIconComponent,
     TrnBadge,
-    HlmButton,
+    TrnButton,
     TrnTooltip,
     SettingsSectionHeadingComponent,
   ],
@@ -38,7 +40,12 @@ export class DevicesSectionComponent {
   private readonly devicesSvc = inject(DevicesService);
   private readonly alert = inject(TrnAlertService);
   private readonly dialogs = inject(EncryptionDialogService);
+  private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private destroyed = false;
+
+  /** True when this section is mounted inside the web/Electron settings modal. */
+  readonly inSettingsDialog = input(false);
 
   readonly devices = this.devicesSvc.devices;
   readonly loading = signal(false);
@@ -50,6 +57,9 @@ export class DevicesSectionComponent {
   );
 
   constructor() {
+    this.destroyRef.onDestroy(() => {
+      this.destroyed = true;
+    });
     runWithBusy(this.devicesSvc.list(), {
       busy: this.loading,
       error: this.error,
@@ -96,7 +106,13 @@ export class DevicesSectionComponent {
    */
   verifyDevices(): void {
     // Return to the Devices sub-page, not the settings index (the category list).
-    void this.dialogs.openVerify({ returnTo: '/settings/devices' });
+    const forceDialog = this.inSettingsDialog();
+    void this.dialogs.openVerify({
+      returnTo: forceDialog ? this.router.url : '/settings/devices',
+      ...(forceDialog
+        ? { forceDialog: true, isOwnerActive: () => !this.destroyed }
+        : {}),
+    });
   }
 
   private applyRename(id: string, name: string): void {

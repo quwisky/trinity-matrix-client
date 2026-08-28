@@ -6,7 +6,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnInput } from '@trinity/components/input';
 import { TrnLabel } from '@trinity/components/label';
 import {
@@ -38,7 +38,7 @@ const MAX_STATUS_LENGTH = 60;
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './presence-section.component.html',
   imports: [
-    HlmButton,
+    TrnButton,
     TrnInput,
     TrnLabel,
     TrnRadioGroupComponent,

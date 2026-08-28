@@ -16,7 +16,7 @@ import {
   validateTree,
 } from '@angular/forms/signals';
 import { Browser } from '@capacitor/browser';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton, TrnIconButton } from '@trinity/components/button';
 import { TrnInput } from '@trinity/components/input';
 import { TrnLabel } from '@trinity/components/label';
 import { TrnToastService } from '@trinity/components/overlay';
@@ -93,8 +93,9 @@ const passwordSchema = schema<PasswordModel>((path) => {
     FormField,
     FormRoot,
     TrnIconComponent,
+    TrnIconButton,
     SettingsSectionHeadingComponent,
-    HlmButton,
+    TrnButton,
     TrnInput,
     TrnLabel,
   ],

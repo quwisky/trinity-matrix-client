@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, FormRoot, disabled, form } from '@angular/forms/signals';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnSelectComponent } from '@trinity/components/select';
 import {
   TrnTabPanelComponent,
@@ -95,7 +95,7 @@ const HISTORY_OPTIONS = [
     TrnTabPanelComponent,
     FormField,
     FormRoot,
-    HlmButton,
+    TrnButton,
     TrnCheckboxComponent,
     TrnInput,
     AvatarFieldComponent,
