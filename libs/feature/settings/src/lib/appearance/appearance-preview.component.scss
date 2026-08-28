@@ -90,8 +90,9 @@
 .preview__body {
   overflow-wrap: anywhere;
   color: var(--trinity-text);
-  font-size: var(--trinity-type-body-size);
-  line-height: var(--trinity-type-body-line-height);
+  font-size: var(--trinity-type-message-size);
+  line-height: var(--trinity-type-message-line-height);
+  font-weight: var(--trinity-type-message-weight);
 }
 
 .preview__reaction {

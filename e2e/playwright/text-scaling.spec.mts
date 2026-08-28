@@ -7,10 +7,10 @@ import { openSettingsSection } from './journeys/navigation.mts';
 // font size, applied as a percentage, so everything that inherits from it scales.
 //
 // The assertion that matters is the COMPUTED size of a real message, not the value on
-// <html>. `.msg__text` sets no font-size of its own and inherits — but that is a property of
-// a stylesheet, and a stylesheet can change. Asserting the root alone would keep passing if
-// some component later hard-coded a size onto the message body, which is exactly the
-// regression this setting exists to avoid.
+// <html>. `.msg__text` consumes a root-relative semantic message role, but that is a
+// stylesheet contract and can drift. Asserting the root alone would keep passing if a
+// component later hard-coded a size onto the message body, which is exactly the regression
+// this setting exists to avoid.
 //
 // It also pins the deliberate LIMIT: chrome that hard-codes px does not scale (147 such
 // declarations remain, to be converted surface by surface), so the setting's own note says
@@ -59,6 +59,9 @@ async function backToRoom(page: Page, roomName: string): Promise<void> {
 
 const px = (locator: ReturnType<Page['locator']>) =>
   locator.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+
+const lineHeightPx = (locator: ReturnType<Page['locator']>) =>
+  locator.evaluate((el) => parseFloat(getComputedStyle(el).lineHeight));
 
 /**
  * The room-list column and the chat column must butt up against each other: no overlap
@@ -122,14 +125,24 @@ test.describe('Text size', () => {
     const roomNameEl = page.locator('.channel__name').first();
 
     const before = await px(message);
+    const lineHeightBefore = await lineHeightPx(message);
     const chromeBefore = await px(roomNameEl);
+    expect(before).toBe(16);
+    expect(lineHeightBefore).toBe(24);
     // The default must leave <html> untouched, so the browser's own setting still wins.
     expect(
       await page.evaluate(() => document.documentElement.style.fontSize),
     ).toBe('');
 
     await openSettingsSection(page, 'appearance');
+    const previewBody = page.locator('.preview__body');
+    await expect(previewBody).toBeVisible();
+    expect(await px(previewBody)).toBe(before);
+    expect(await lineHeightPx(previewBody)).toBe(lineHeightBefore);
     await choose(page, 'text-scale-select', 'text-scale-larger');
+
+    expect(await px(previewBody)).toBe(20);
+    expect(await lineHeightPx(previewBody)).toBe(30);
 
     expect(
       await page.evaluate(() => document.documentElement.style.fontSize),

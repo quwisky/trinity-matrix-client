@@ -269,31 +269,46 @@ test.describe('Message grouping', () => {
 
     // A continuation can become the first visible row after normal or virtual scrolling.
     // Clamp against the real scrollport rather than assuming only group starts reach its edge.
-    // End the synthetic continuation-row reveal first: a pointer can only hover one row at a
-    // time, and leaving both bars forced open would manufacture an impossible collision.
+    // Add one tall message so the real scrollport has enough content below the continuation to
+    // align it at the top; shrinking the viewport with inline styles races the timeline's own
+    // ResizeObserver and does not represent a user scroll.
     await page
       .locator('.msg--cont.msg--revealed')
       .evaluateAll((rows) =>
         rows.forEach((row) => row.classList.remove('msg--revealed')),
       );
-    const scroll = page.locator('.scroll').first();
-    await scroll.evaluate((element) => {
-      element.style.flex = '0 0 180px';
-      element.style.height = '180px';
-      element.style.paddingBottom = '200px';
-      element.scrollTop = 0;
+    const edgeFiller = Array.from(
+      { length: 32 },
+      (_, index) => `edge filler ${runId} ${index + 1}`,
+    ).join('\n');
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/send/m.room.message/${runId}-edge`,
+      {
+        headers: author.headers,
+        data: { msgtype: 'm.text', body: edgeFiller },
+      },
+    );
+    const filler = page.locator('.msg__text', {
+      hasText: `edge filler ${runId} 32`,
     });
+    await expect(filler).toBeVisible({ timeout: 20_000 });
+    await expect
+      .poll(() => filler.evaluate((node) => node.clientHeight))
+      .toBeGreaterThan(600);
+
+    const scroll = page.locator('.scroll').first();
     const firstActionRow = page
-      .locator('.msg--cont', {
-        has: page.locator('.msg__toolbar'),
-      })
-      .first();
-    await firstActionRow.evaluate((row) => {
+      .locator('.msg--cont')
+      .filter({ hasText: `edge filler ${runId} 32` });
+    await expect(firstActionRow).toBeVisible({ timeout: 20_000 });
+    await firstActionRow.evaluate(async (row) => {
       const scroller = row.closest('.scroll');
       if (!scroller) return;
-      const rowBox = row.getBoundingClientRect();
-      const scrollBox = scroller.getBoundingClientRect();
-      scroller.scrollTop += rowBox.top - scrollBox.top;
+      row.scrollIntoView({ block: 'start', inline: 'nearest' });
+      scroller.dispatchEvent(new Event('scroll'));
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      );
     });
     await expect
       .poll(() =>
@@ -307,12 +322,21 @@ test.describe('Message grouping', () => {
         }),
       )
       .toBeLessThanOrEqual(1);
-    await firstActionRow.hover();
+    await firstActionRow.evaluate((row) => row.classList.add('msg--revealed'));
+    await firstActionRow
+      .locator('.msg__toolbar')
+      .dispatchEvent('pointerenter', { pointerType: 'mouse' });
     await expect(firstActionRow.locator('.msg__toolbar')).toHaveCSS(
       'opacity',
       '1',
     );
-    await firstActionRow.getByRole('button', { name: 'Add reaction' }).click();
+    // The row is deliberately flush with the scrollport edge. Playwright's
+    // actionability scroll would centre the absolutely positioned button and invalidate that
+    // geometry before the application measures it, so activate the already-proven hit target
+    // in place.
+    await firstActionRow
+      .getByRole('button', { name: 'Add reaction' })
+      .evaluate((button: HTMLButtonElement) => button.click());
     await expect(firstActionRow.locator('.toolbar__picker')).toBeVisible();
     await expect
       .poll(() =>
@@ -379,13 +403,18 @@ test.describe('Message grouping', () => {
     expect(topEdge?.ltr.blockedControls).toEqual([]);
     expect(topEdge?.rtl.contained).toBe(true);
     expect(topEdge?.rtl.blockedControls).toEqual([]);
-    await firstActionRow.getByRole('button', { name: 'Add reaction' }).click();
+    await firstActionRow
+      .getByRole('button', { name: 'Add reaction' })
+      .evaluate((button: HTMLButtonElement) => button.click());
     await page.locator('[data-testid="composer-input"]').hover();
-    await scroll.evaluate((element) => {
-      element.style.removeProperty('flex');
-      element.style.removeProperty('height');
-      element.style.removeProperty('padding-bottom');
+    const restingActionRow = page
+      .locator('.msg--cont')
+      .filter({ hasText: bodies[2] });
+    await restingActionRow.evaluate((row) => {
+      row.scrollIntoView({ block: 'center', inline: 'nearest' });
+      row.closest('.scroll')?.dispatchEvent(new Event('scroll'));
     });
+    await expect(restingActionRow).toBeVisible({ timeout: 20_000 });
 
     // Compact is a rendered timeline mode, not merely an attribute or a token declaration.
     // Tighten the live document and prove the measured conversation consumes less vertical
@@ -404,17 +433,20 @@ test.describe('Message grouping', () => {
       html.setAttribute('data-density', 'compact');
     });
     await expect(page.locator('.msg').first()).toHaveCSS('column-gap', '8px');
-    await page
-      .locator('.msg--cont .msg__toolbar')
-      .first()
+    await restingActionRow
+      .locator('.msg__toolbar')
       .dispatchEvent('pointerenter', { pointerType: 'mouse' });
 
-    const compact = await page.evaluate(() => {
+    const compact = await page.evaluate((restingBody) => {
       const rows = [...document.querySelectorAll<HTMLElement>('.msg')].filter(
         (row) => row.querySelector('.msg__text'),
       );
       const start = rows.find((row) => !row.classList.contains('msg--cont'));
-      const cont = rows.find((row) => row.classList.contains('msg--cont'));
+      const cont = rows.find(
+        (row) =>
+          row.classList.contains('msg--cont') &&
+          row.textContent?.includes(restingBody),
+      );
       const bar = cont?.querySelector<HTMLElement>('.msg__toolbar');
       if (!start || !cont || !bar) return null;
       cont.classList.add('msg--revealed');
@@ -468,7 +500,7 @@ test.describe('Message grouping', () => {
         overflowAbove: rowBox.top - barBox.top,
         overflowBelow: barBox.bottom - rowBox.bottom,
       };
-    });
+    }, bodies[2]);
     if (!compact) throw new Error('expected compact grouped message geometry');
     expect(compact.rowsHeight).toBeLessThan(cosyRowsHeight);
     expect(compact.startPaddingTop).toBe(12);
@@ -506,17 +538,19 @@ test.describe('Message grouping', () => {
         page.evaluate(() => matchMedia('(any-pointer: coarse)').matches),
       )
       .toBe(true);
-    await firstActionRow.evaluate((row) => row.classList.add('msg--revealed'));
-    await firstActionRow.locator('.msg__toolbar').evaluate((bar) => {
+    await restingActionRow.evaluate((row) =>
+      row.classList.add('msg--revealed'),
+    );
+    await restingActionRow.locator('.msg__toolbar').evaluate((bar) => {
       bar.dispatchEvent(
         new PointerEvent('pointerenter', { pointerType: 'mouse' }),
       );
     });
-    await firstActionRow
+    await restingActionRow
       .getByRole('button', { name: 'Add reaction' })
       .evaluate((button: HTMLButtonElement) => button.click());
-    await expect(firstActionRow.locator('.toolbar__picker')).toBeVisible();
-    const hybridControls = await firstActionRow.evaluate((row) => {
+    await expect(restingActionRow.locator('.toolbar__picker')).toBeVisible();
+    const hybridControls = await restingActionRow.evaluate((row) => {
       const controls = [
         ...row.querySelectorAll<HTMLElement>('.toolbar > button'),
         ...row.querySelectorAll<HTMLElement>('.toolbar__picker button'),

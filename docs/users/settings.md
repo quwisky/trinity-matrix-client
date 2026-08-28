@@ -80,8 +80,10 @@ defines both a light and a dark set.
 
 **Text size.** Small, Default, Large or Larger. It is a proportion of whatever your browser
 or device is already set to, so if you have raised your default text size there, this adds to
-it rather than replacing it. Message text and everything written around it scales; parts of
-the app's chrome still keep a fixed size for now.
+it rather than replacing it. At Default, chat messages use a 16px base with 1.5 line spacing;
+the smaller author, timestamp and reply-preview text keeps the conversation hierarchy clear.
+Message text and everything written around it scales; parts of the app's chrome still keep a
+fixed size for now.
 
 **Code size.** Smaller, Default or Larger, for code inside messages — both code written
 inside a sentence and whole blocks. It is _relative_ to Text size, so the two work together

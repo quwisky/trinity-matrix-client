@@ -339,9 +339,9 @@
 .msg__text {
   margin: 2px 0 0;
   color: var(--trinity-text);
-  font-size: var(--trinity-type-body-size);
-  line-height: var(--trinity-type-body-line-height);
-  font-weight: var(--trinity-type-body-weight);
+  font-size: var(--trinity-type-message-size);
+  line-height: var(--trinity-type-message-line-height);
+  font-weight: var(--trinity-type-message-weight);
   overflow-wrap: anywhere;
 }
 

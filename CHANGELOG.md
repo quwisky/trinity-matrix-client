@@ -77,6 +77,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Chat messages are easier to read at the default text size.** Conversation prose now starts at
+  16px with 1.5 line spacing, while compact authors, timestamps, replies and navigation chrome keep
+  their existing hierarchy. The Appearance preview uses the same message typography as the live
+  timeline, and every Text size option continues to scale it from the browser or device default.
+
 - **Settings content now follows the modern grouped hierarchy.** Appearance combines a compact
   conversation preview, a segmented mode picker and labelled two-column control rows, while every
   section gains a clear title and supporting description. Related controls use calmer group

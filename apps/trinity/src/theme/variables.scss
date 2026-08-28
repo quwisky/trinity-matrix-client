@@ -60,18 +60,21 @@
   --trinity-shape-place-radius: 30%;
 
   // --- Typography (mode- & palette-agnostic; a palette may override) -------------
-  // Roles, not sizes. `--trinity-text-sm` is the message body and the sidebar row —
-  // the workhorse — and is the same 13px the `text-13` utility emits, which stays as
-  // an alias until its call sites migrate. Each size carries its own line-height so a
-  // consumer cannot pair a size with the wrong leading.
+  // Roles, not sizes. `--trinity-text-sm` is the compact workhorse used by sidebar rows
+  // and chrome, and is the same 13px the `text-13` utility emits, which stays as an alias
+  // until its call sites migrate. Conversation prose gets the roomier `md` step instead.
+  // Each size carries its own line-height so a consumer cannot pair a size with the wrong
+  // leading.
   // These are `rem`, so Settings → Appearance → Text size (a % on the root) scales
   // them; a px value here would pin them and silently break that preference.
   --trinity-text-xs: 0.6875rem; // 11px — timestamps, meta, badge text
   --trinity-text-xs--line-height: 1.45;
-  --trinity-text-sm: 0.8125rem; // 13px — message body, sidebar rows, most chrome
+  --trinity-text-sm: 0.8125rem; // 13px — sidebar rows and most chrome
   --trinity-text-sm--line-height: 1.375;
   --trinity-text-base: 0.9375rem; // 15px — dialog body, settings prose
   --trinity-text-base--line-height: 1.5;
+  --trinity-text-md: 1rem; // 16px — message prose
+  --trinity-text-md--line-height: 1.5;
   --trinity-text-lg: 1.25rem; // 20px — page and section headings
   --trinity-text-lg--line-height: 1.3;
 
@@ -88,6 +91,9 @@
   --trinity-type-body-size: var(--trinity-text-sm);
   --trinity-type-body-line-height: var(--trinity-text-sm--line-height);
   --trinity-type-body-weight: 400;
+  --trinity-type-message-size: var(--trinity-text-md);
+  --trinity-type-message-line-height: var(--trinity-text-md--line-height);
+  --trinity-type-message-weight: 400;
   --trinity-type-control-size: var(--trinity-text-sm);
   --trinity-type-control-line-height: var(--trinity-text-sm--line-height);
   --trinity-type-control-weight: 600;

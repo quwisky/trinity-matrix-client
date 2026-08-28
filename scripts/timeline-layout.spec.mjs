@@ -67,6 +67,20 @@ describe('modern timeline layout contracts', () => {
     expect(rowCss).toMatch(/\.msg__toolbar\s*\{[^}]*translate:/s);
   });
 
+  it('keeps conversation prose on its dedicated readable type role', () => {
+    expect(variables).toContain('--trinity-text-md: 1rem;');
+    expect(variables).toContain('--trinity-text-md--line-height: 1.5;');
+    expect(variables).toContain(
+      '--trinity-type-message-size: var(--trinity-text-md);',
+    );
+    expect(variables).toContain(
+      '--trinity-type-message-line-height: var(--trinity-text-md--line-height);',
+    );
+    expect(rowCss).toMatch(
+      /\.msg__text\s*\{[^}]*font-size:\s*var\(--trinity-type-message-size\);[^}]*line-height:\s*var\(--trinity-type-message-line-height\);/s,
+    );
+  });
+
   it('reserves the shield column without narrowing read receipts', () => {
     expect(rowCss).toMatch(
       /\.msg__body\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto;/s,
