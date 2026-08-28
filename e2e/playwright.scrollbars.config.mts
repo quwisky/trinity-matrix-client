@@ -8,7 +8,8 @@ const baseURL = 'http://localhost:4200';
 export default defineConfig({
   ...nxE2EPreset(import.meta.dirname, { testDir: './playwright' }),
   ...appE2EConfig(baseURL, { reuseExistingServer: false }),
-  testMatch: 'settings-scrollbars.spec.mts',
+  testMatch: ['settings-scrollbars.spec.mts', 'message-markdown.spec.mts'],
+  grep: /Settings scrollbars|syntax-highlights a fenced block/,
   retries: 0,
   workers: 1,
   timeout: 120_000,

@@ -375,26 +375,49 @@ test.describe('Message markdown', () => {
       element.append(railProbe);
       const probeStyle = getComputedStyle(probe);
       const railProbeStyle = getComputedStyle(railProbe);
-      const bar = getComputedStyle(element, '::-webkit-scrollbar');
-      const thumb = getComputedStyle(element, '::-webkit-scrollbar-thumb');
+      const usesWebkit =
+        !navigator.userAgent.includes('Firefox') &&
+        CSS.supports('selector(::-webkit-scrollbar-thumb)');
+      const bar = usesWebkit
+        ? getComputedStyle(element, '::-webkit-scrollbar')
+        : undefined;
+      const thumb = usesWebkit
+        ? getComputedStyle(element, '::-webkit-scrollbar-thumb')
+        : undefined;
+      const originalScrollLeft = element.scrollLeft;
+      element.scrollLeft = element.scrollWidth;
       const result = {
+        usesWebkit,
         overflow: element.scrollWidth - element.clientWidth,
-        height: bar.height,
-        thumb: thumb.backgroundColor,
+        scrollLeft: element.scrollLeft,
+        standardColor: getComputedStyle(element).scrollbarColor,
+        height: bar?.height,
+        thumb: thumb?.backgroundColor,
         expectedHeight: probeStyle.height,
         expectedThumb: probeStyle.backgroundColor,
         expectedRail: railProbeStyle.backgroundColor,
       };
+      element.scrollLeft = originalScrollLeft;
       probe.remove();
       railProbe.remove();
       return result;
     });
     expect(horizontalScrollbar.overflow).toBeGreaterThan(0);
-    expect(horizontalScrollbar.height).toBe(horizontalScrollbar.expectedHeight);
-    expect(horizontalScrollbar.thumb).toBe(horizontalScrollbar.expectedThumb);
+    expect(horizontalScrollbar.scrollLeft).toBeGreaterThan(0);
+    expect(horizontalScrollbar.expectedRail).not.toBe('rgba(0, 0, 0, 0)');
     expect(horizontalScrollbar.expectedThumb).toBe(
       horizontalScrollbar.expectedRail,
     );
+    if (horizontalScrollbar.usesWebkit) {
+      expect(horizontalScrollbar.height).toBe(
+        horizontalScrollbar.expectedHeight,
+      );
+      expect(horizontalScrollbar.thumb).toBe(horizontalScrollbar.expectedThumb);
+    } else {
+      expect(horizontalScrollbar.standardColor).toContain(
+        horizontalScrollbar.expectedRail,
+      );
+    }
 
     const captionStyle = () =>
       pre.evaluate((el) => {
@@ -402,7 +425,12 @@ test.describe('Message markdown', () => {
         return { content: style.content, opacity: style.opacity };
       });
 
-    expect((await captionStyle()).content).toContain('python');
+    const caption = await captionStyle();
+    // Firefox serializes generated attr() content as the function rather than its value.
+    expect(
+      caption.content === 'attr(language)' ||
+        caption.content.includes('python'),
+    ).toBe(true);
     expect((await captionStyle()).opacity).toBe(isAndroidE2E ? '1' : '0');
     if (!isAndroidE2E) {
       await pre.hover();

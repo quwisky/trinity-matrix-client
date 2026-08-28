@@ -245,8 +245,12 @@ test.describe('Settings scrollbars', () => {
       .toEqual(['SECTION[settings-detail]']);
 
     for (const theme of [
-      { palette: 'amethyst', dark: false },
-      { palette: 'onyx', dark: true },
+      {
+        palette: 'amethyst',
+        dark: false,
+        expectedRail: 'rgb(231, 226, 240)',
+      },
+      { palette: 'onyx', dark: true, expectedRail: 'rgb(0, 0, 0)' },
     ]) {
       await page.evaluate(({ palette, dark }) => {
         document.documentElement.dataset['theme'] = palette;
@@ -254,6 +258,7 @@ test.describe('Settings scrollbars', () => {
       }, theme);
 
       const paint = await visibleScrollbarPaint(detail);
+      expect.soft(paint.expectedRail).toBe(theme.expectedRail);
       expect.soft(paint.expectedThumb).toBe(paint.expectedRail);
       if (paint.usesWebkit) {
         expect.soft(paint.width).toBe(paint.expectedSize);
