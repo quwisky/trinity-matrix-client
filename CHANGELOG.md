@@ -82,7 +82,8 @@ All notable changes to this project are documented here. The format is based on
   use the same bounded routed surface and a distinct scroll-safe dialog treatment. Security
   warnings and recovery keys remain the strongest elements in those flows. GIF, sticker, emoji
   and user pickers now share the floating-surface vocabulary, and the full-screen image viewer
-  adds a visible Close control without changing Escape or backdrop dismissal.
+  adds a visible Close control without changing Escape or backdrop dismissal. Incoming device
+  verification dialogs now announce their purpose to assistive technology.
 
 - **Interface controls now go through Trinity's public component tier.** Buttons, dropdown
   menus and the toast viewport keep the same behaviour and appearance, but feature code no

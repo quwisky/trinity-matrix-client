@@ -505,7 +505,10 @@ share the same floating radius, elevation and tokenised state treatment; the med
 visible Close action while preserving Escape, backdrop and focus restoration. The empty-state and
 toast primitives were audited and already matched the shared vocabulary. Feature and application
 code now have no direct Helm imports: public button, dropdown and toaster APIs close the final
-vendor-boundary exceptions.
+vendor-boundary exceptions. A Synapse-backed browser regression exercises the auth card, emoji
+overlay, routed encryption surface and real media lightbox at 320x568 and 1280x720 with Compact
+density and 125% text, including focus containment, Escape, surrounding-viewer dismissal and focus
+restoration.
 
 Primary ownership:
 
@@ -525,6 +528,7 @@ Acceptance:
 
 - security warnings and recovery material remain more prominent than surrounding chrome;
 - focus trapping, autofocus, escape/back and destructive confirmations remain unchanged;
+- compact and desktop reference viewports keep the changed task and overlay surfaces in bounds;
 - no feature library imports a vendor UI package directly.
 
 ### Phase 7 - hardening and rollout
