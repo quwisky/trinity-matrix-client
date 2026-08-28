@@ -20,16 +20,14 @@ import {
 import { type BatchItem } from '../shared/send-media-batch';
 import { MockProvider } from 'ng-mocks';
 import { VoiceRecorderService } from '@trinity/platform-native';
-import { GifSettingsService } from '@trinity/data-access/gif';
-import { TrnToastService } from '@trinity/components/overlay';
+import { GifService, GifSettingsService } from '@trinity/data-access/gif';
+import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { LocationShareService } from '../location-share/location-share.service';
 import { Router } from '@angular/router';
-import { GifService } from '@trinity/data-access/gif';
 import { MediaService, type ImagePack } from '@trinity/data-access/media';
 import { CreatePollService } from '../poll/create-poll.service';
 import { CreatePollDialogComponent } from '../poll/create-poll-dialog.component';
-import { TrnDialogService } from '@trinity/components/overlay';
 
 const stickerPack: ImagePack = {
   id: '!pack:hs:fun',

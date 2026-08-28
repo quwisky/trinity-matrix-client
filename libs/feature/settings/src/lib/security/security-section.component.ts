@@ -11,7 +11,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { CryptoService } from '@trinity/data-access/crypto';
 import { EncryptionDialogService } from '@trinity/components/encryption-dialog';
@@ -32,7 +32,7 @@ const RETURN_TO = '/settings/security';
   selector: 'trn-security-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './security-section.component.html',
-  imports: [HlmButton, SettingsSectionHeadingComponent],
+  imports: [TrnButton, SettingsSectionHeadingComponent],
 })
 export class SecuritySectionComponent implements OnInit {
   private readonly crypto = inject(CryptoService);

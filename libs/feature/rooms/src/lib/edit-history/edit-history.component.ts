@@ -14,7 +14,7 @@ import {
   TrnAlertService,
   TrnToastService,
 } from '@trinity/components/overlay';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { EditHistoryService } from '@trinity/data-access/timeline';
 import {
@@ -54,7 +54,7 @@ const REFRESH_DELAY_MS = 600;
   templateUrl: './edit-history.component.html',
   styleUrl: './edit-history.component.scss',
   imports: [
-    HlmButton,
+    TrnButton,
     TrnSpinnerComponent,
     SpoilerRevealDirective,
     MatrixLinkDirective,

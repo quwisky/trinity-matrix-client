@@ -77,6 +77,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Interface controls now go through Trinity's public component tier.** Buttons, dropdown
+  menus and the toast viewport keep the same behaviour and appearance, but feature code no
+  longer imports the vendored Helm kit directly. The lint boundary now has no exceptions.
+
 - **The composer insert menu now follows the device.** On iOS and Android, including mobile web
   and installed PWAs, the `+` opens a thumb-sized bottom sheet for files, GIFs, stickers, polls,
   location and voice. Desktop web and Electron keep the compact anchored menu. Dismissing the

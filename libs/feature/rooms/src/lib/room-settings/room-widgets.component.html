@@ -43,7 +43,7 @@
         <div class="room-widgets__actions">
           @if (entry.embed.url) {
             <button
-              hlmBtn
+              trnBtn
               type="button"
               (click)="embedWidget(entry.widget)"
               [attr.aria-label]="'Open ' + entry.widget.name + ' in Trinity'"
@@ -53,7 +53,7 @@
             </button>
           }
           <a
-            hlmBtn
+            trnBtn
             variant="outline"
             [href]="entry.launch.url"
             target="_blank"
@@ -81,7 +81,7 @@
       }
       @if (canRemove(entry.widget)) {
         <button
-          hlmBtn
+          trnBtn
           type="button"
           variant="destructive"
           [disabled]="isRemoving(entry.widget.id)"

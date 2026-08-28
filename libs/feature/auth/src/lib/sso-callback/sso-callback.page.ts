@@ -9,7 +9,7 @@ import {
 import { Location } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, type ParamMap } from '@angular/router';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { AuthService } from '@trinity/data-access/auth';
 import { AuthCardComponent } from '../auth-card/auth-card.component';
@@ -34,7 +34,7 @@ import { OidcStateStore } from '../oidc-state.store';
   selector: 'trn-sso-callback',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './sso-callback.page.html',
-  imports: [HlmButton, TrnSpinnerComponent, AuthCardComponent],
+  imports: [TrnButton, TrnSpinnerComponent, AuthCardComponent],
 })
 export class SsoCallbackPage implements OnInit {
   private readonly auth = inject(AuthService);

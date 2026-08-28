@@ -14,12 +14,10 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
-  HlmDropdownMenu,
-  HlmDropdownMenuItem,
-  HlmDropdownMenuTrigger,
-} from '@trinity/helm/dropdown-menu';
-import {
   TrnActionSheetService,
+  TrnDropdownMenu,
+  TrnDropdownMenuItem,
+  TrnDropdownMenuTrigger,
   type ActionSheetButton,
   type TrnActionSheetRef,
 } from '@trinity/components/overlay';
@@ -56,9 +54,9 @@ interface OwnedSheet {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     TrnIconComponent,
-    HlmDropdownMenu,
-    HlmDropdownMenuItem,
-    HlmDropdownMenuTrigger,
+    TrnDropdownMenu,
+    TrnDropdownMenuItem,
+    TrnDropdownMenuTrigger,
     TrnSpinnerComponent,
     TrnTooltip,
   ],

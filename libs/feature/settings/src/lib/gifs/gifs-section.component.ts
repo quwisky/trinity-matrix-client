@@ -6,7 +6,7 @@ import {
   signal,
 } from '@angular/core';
 import { TitleCasePipe } from '@angular/common';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnInput } from '@trinity/components/input';
 import { TrnLabel } from '@trinity/components/label';
 import {
@@ -33,7 +33,7 @@ import { SettingsSectionHeadingComponent } from '../shared/settings-section-head
   host: { class: 'block' },
   imports: [
     TitleCasePipe,
-    HlmButton,
+    TrnButton,
     TrnInput,
     TrnLabel,
     TrnRadioGroupComponent,

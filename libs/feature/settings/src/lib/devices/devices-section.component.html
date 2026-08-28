@@ -32,7 +32,7 @@
 
       <div class="ml-auto flex shrink-0 items-center gap-1">
         <button
-          hlmBtn
+          trnBtn
           variant="ghost"
           size="icon"
           [disabled]="busy()"
@@ -45,7 +45,7 @@
         </button>
         @if (!device.isCurrent) {
           <button
-            hlmBtn
+            trnBtn
             variant="ghost"
             size="icon"
             class="text-danger hover:text-danger"
@@ -81,7 +81,7 @@
   @if (hasUnverified()) {
     <div class="px-4 py-2">
       <button
-        hlmBtn
+        trnBtn
         variant="ghost"
         size="sm"
         data-testid="verify-devices"

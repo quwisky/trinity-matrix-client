@@ -22,7 +22,7 @@ import {
   RouterOutlet,
 } from '@angular/router';
 import { filter, map } from 'rxjs';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import { PageHeaderComponent } from '@trinity/components/page-header';
 import { BUILD_INFO } from '@trinity/platform-native';
@@ -116,7 +116,7 @@ const MENU: readonly SettingsMenuItem[] = [
   imports: [
     PageHeaderComponent,
     TrnIconComponent,
-    HlmButton,
+    TrnButton,
     TrnTooltip,
     RouterLink,
     RouterLinkActive,

@@ -5,7 +5,7 @@ import {
   inject,
 } from '@angular/core';
 import { Router } from '@angular/router';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { CryptoService } from '@trinity/data-access/crypto';
 import { EncryptionDialogService } from '@trinity/components/encryption-dialog';
 import { BannerComponent } from '@trinity/components/banner';
@@ -34,7 +34,7 @@ interface BannerAction {
   selector: 'trn-encryption-banner',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrls: ['encryption-banner.component.scss'],
-  imports: [TrnIconComponent, HlmButton, BannerComponent],
+  imports: [TrnIconComponent, TrnButton, BannerComponent],
   templateUrl: './encryption-banner.component.html',
 })
 export class EncryptionBannerComponent {

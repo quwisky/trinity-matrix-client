@@ -13,7 +13,7 @@ vi.mock('@trinity/platform-native', async (importOriginal) => ({
 function trayItems(): HTMLButtonElement[] {
   return [
     ...document.querySelectorAll<HTMLButtonElement>(
-      '[hlmdropdownmenuitem][data-testid^=insert-]',
+      '[trndropdownmenuitem][data-testid^=insert-]',
     ),
   ];
 }

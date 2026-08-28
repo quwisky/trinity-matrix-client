@@ -8,7 +8,7 @@ import {
 } from '@angular/core';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { TrnBadge } from '@trinity/components/badge';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import { EncryptionDialogService } from '@trinity/components/encryption-dialog';
 import { runWithBusy } from '@trinity/util/ui';
@@ -29,7 +29,7 @@ import { SettingsSectionHeadingComponent } from '../shared/settings-section-head
   imports: [
     TrnIconComponent,
     TrnBadge,
-    HlmButton,
+    TrnButton,
     TrnTooltip,
     SettingsSectionHeadingComponent,
   ],

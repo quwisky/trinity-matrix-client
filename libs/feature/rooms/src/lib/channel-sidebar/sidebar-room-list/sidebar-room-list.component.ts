@@ -8,16 +8,16 @@ import {
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import {
-  HlmDropdownMenu,
-  HlmDropdownMenuItem,
-  HlmDropdownMenuItemSubIndicator,
-  HlmDropdownMenuRadio,
-  HlmDropdownMenuRadioIndicator,
-  HlmDropdownMenuSeparator,
-  HlmDropdownMenuSub,
-  HlmDropdownMenuSubTrigger,
-  HlmDropdownMenuTrigger,
-} from '@trinity/helm/dropdown-menu';
+  TrnDropdownMenu,
+  TrnDropdownMenuItem,
+  TrnDropdownMenuItemSubIndicatorComponent,
+  TrnDropdownMenuRadio,
+  TrnDropdownMenuRadioIndicatorComponent,
+  TrnDropdownMenuSeparator,
+  TrnDropdownMenuSub,
+  TrnDropdownMenuSubTrigger,
+  TrnDropdownMenuTrigger,
+} from '@trinity/components/overlay';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { AvatarComponent, type AccountBadge } from '@trinity/components/avatar';
 import { unreadBadgeLabel } from '../../shared/unread-badge';
@@ -55,15 +55,15 @@ import { TrnIconComponent } from '@trinity/components/icon';
     AvatarComponent,
     TrnIconComponent,
     NgTemplateOutlet,
-    HlmDropdownMenuTrigger,
-    HlmDropdownMenu,
-    HlmDropdownMenuItem,
-    HlmDropdownMenuItemSubIndicator,
-    HlmDropdownMenuRadio,
-    HlmDropdownMenuRadioIndicator,
-    HlmDropdownMenuSeparator,
-    HlmDropdownMenuSub,
-    HlmDropdownMenuSubTrigger,
+    TrnDropdownMenuTrigger,
+    TrnDropdownMenu,
+    TrnDropdownMenuItem,
+    TrnDropdownMenuItemSubIndicatorComponent,
+    TrnDropdownMenuRadio,
+    TrnDropdownMenuRadioIndicatorComponent,
+    TrnDropdownMenuSeparator,
+    TrnDropdownMenuSub,
+    TrnDropdownMenuSubTrigger,
   ],
 })
 export class SidebarRoomListComponent {

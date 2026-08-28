@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, form } from '@angular/forms/signals';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnCheckboxComponent } from '@trinity/components/checkbox';
 import { TrnInput } from '@trinity/components/input';
@@ -55,7 +55,7 @@ export interface AddCandidate {
   imports: [
     EmptyStateComponent,
     FormField,
-    HlmButton,
+    TrnButton,
     TrnCheckboxComponent,
     TrnInput,
     AvatarComponent,

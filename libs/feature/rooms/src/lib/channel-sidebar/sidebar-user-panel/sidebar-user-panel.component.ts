@@ -8,17 +8,17 @@ import {
 import { AvatarComponent } from '@trinity/components/avatar';
 import { type UserProfile } from '@trinity/data-access/profile';
 import {
-  HlmDropdownMenu,
-  HlmDropdownMenuCheckbox,
-  HlmDropdownMenuCheckboxIndicator,
-  HlmDropdownMenuItem,
-  HlmDropdownMenuItemSubIndicator,
-  HlmDropdownMenuLabel,
-  HlmDropdownMenuSeparator,
-  HlmDropdownMenuSub,
-  HlmDropdownMenuSubTrigger,
-  HlmDropdownMenuTrigger,
-} from '@trinity/helm/dropdown-menu';
+  TrnDropdownMenu,
+  TrnDropdownMenuCheckbox,
+  TrnDropdownMenuCheckboxIndicatorComponent,
+  TrnDropdownMenuItem,
+  TrnDropdownMenuItemSubIndicatorComponent,
+  TrnDropdownMenuLabel,
+  TrnDropdownMenuSeparator,
+  TrnDropdownMenuSub,
+  TrnDropdownMenuSubTrigger,
+  TrnDropdownMenuTrigger,
+} from '@trinity/components/overlay';
 import { initialOf } from '@trinity/util/matrix';
 import { unreadBadgeLabel } from '../../shared/unread-badge';
 import { TrnIconComponent } from '@trinity/components/icon';
@@ -47,16 +47,16 @@ export interface AccountSummary extends UserProfile {
   imports: [
     AvatarComponent,
     TrnIconComponent,
-    HlmDropdownMenuTrigger,
-    HlmDropdownMenu,
-    HlmDropdownMenuCheckbox,
-    HlmDropdownMenuCheckboxIndicator,
-    HlmDropdownMenuItem,
-    HlmDropdownMenuItemSubIndicator,
-    HlmDropdownMenuLabel,
-    HlmDropdownMenuSeparator,
-    HlmDropdownMenuSub,
-    HlmDropdownMenuSubTrigger,
+    TrnDropdownMenuTrigger,
+    TrnDropdownMenu,
+    TrnDropdownMenuCheckbox,
+    TrnDropdownMenuCheckboxIndicatorComponent,
+    TrnDropdownMenuItem,
+    TrnDropdownMenuItemSubIndicatorComponent,
+    TrnDropdownMenuLabel,
+    TrnDropdownMenuSeparator,
+    TrnDropdownMenuSub,
+    TrnDropdownMenuSubTrigger,
   ],
   templateUrl: './sidebar-user-panel.component.html',
   styleUrl: './sidebar-user-panel.component.scss',
@@ -131,7 +131,7 @@ export class SidebarUserPanelComponent {
    * version lazily — nobody may ever look at it, so nothing is spent until someone reaches
    * for the menu.
    *
-   * Raised from three places, and all three are needed. `hlmDropdownMenuOpened` rather than
+   * Raised from three places, and all three are needed. `trnDropdownMenuOpened` rather than
    * `(click)`, because CDK's trigger opens on ArrowDown/ArrowUp by calling `open()` directly
    * without dispatching a click — so a keyboard user got no lookup at all — and because
    * `(click)` also fired on the click that CLOSES the menu. `pointerenter` and `focus` are

@@ -20,17 +20,17 @@ import {
   viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import {
   BELOW_MD_QUERY,
   BELOW_MEMBERS_QUERY,
   mediaQuerySignal,
 } from '@trinity/util/ui';
 import {
-  HlmDropdownMenu,
-  HlmDropdownMenuItem,
-  HlmDropdownMenuTrigger,
-} from '@trinity/helm/dropdown-menu';
+  TrnDropdownMenu,
+  TrnDropdownMenuItem,
+  TrnDropdownMenuTrigger,
+} from '@trinity/components/overlay';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import { CryptoService } from '@trinity/data-access/crypto';
@@ -141,10 +141,10 @@ const PANEL_DRAWER_PX = 480;
   imports: [
     EmptyStateComponent,
     PageHeaderComponent,
-    HlmButton,
-    HlmDropdownMenu,
-    HlmDropdownMenuItem,
-    HlmDropdownMenuTrigger,
+    TrnButton,
+    TrnDropdownMenu,
+    TrnDropdownMenuItem,
+    TrnDropdownMenuTrigger,
     TrnTooltip,
     TrnIconComponent,
     AvatarComponent,

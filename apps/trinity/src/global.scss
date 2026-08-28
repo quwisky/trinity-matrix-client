@@ -130,8 +130,8 @@ router-outlet + * {
  * is false for a mouse — including a narrow Electron window — so the desktop layout
  * is untouched (icon buttons stay 32×32 there). */
 @media (pointer: coarse) {
-  button[hlmBtn][data-slot='button'],
-  a[hlmBtn][data-slot='button'] {
+  button[trnBtn][data-slot='button'],
+  a[trnBtn][data-slot='button'] {
     min-width: var(--trinity-interaction-target-min-size);
     min-height: var(--trinity-interaction-target-min-size);
   }

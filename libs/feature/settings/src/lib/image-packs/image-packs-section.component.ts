@@ -28,7 +28,7 @@ import {
   type ImagePackUsage,
   validateImagePackSource,
 } from '@trinity/data-access/media';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { firstValueFrom } from 'rxjs';
 import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
@@ -42,7 +42,7 @@ interface SourceFormModel {
   imports: [
     FormField,
     FormRoot,
-    HlmButton,
+    TrnButton,
     TrnCheckboxComponent,
     TrnInput,
     TrnLabel,

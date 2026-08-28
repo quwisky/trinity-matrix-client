@@ -111,7 +111,7 @@
       <trn-page-header variant="chat">
         <button
           trnHeaderLeading
-          hlmBtn
+          trnBtn
           variant="ghost"
           size="icon"
           class="md:hidden"
@@ -162,7 +162,7 @@
         <ng-container trnHeaderActions>
           @if (vm.activeRoom()) {
             <button
-              hlmBtn
+              trnBtn
               variant="ghost"
               size="icon"
               (click)="messageActions.openMessageSearch()"
@@ -173,7 +173,7 @@
               <trn-icon size="1.25rem" name="search" />
             </button>
             <button
-              hlmBtn
+              trnBtn
               variant="ghost"
               size="icon"
               class="max-md:hidden"
@@ -185,7 +185,7 @@
               <trn-icon size="1.25rem" name="user-plus" />
             </button>
             <button
-              hlmBtn
+              trnBtn
               variant="ghost"
               size="icon"
               class="max-md:hidden"
@@ -197,7 +197,7 @@
               <trn-icon size="1.25rem" name="settings" motion="rotate" />
             </button>
             <button
-              hlmBtn
+              trnBtn
               variant="ghost"
               size="icon"
               (click)="messageActions.openThreadsList()"
@@ -208,7 +208,7 @@
               <trn-icon size="1.25rem" name="messages-square" />
             </button>
             <button
-              hlmBtn
+              trnBtn
               variant="ghost"
               size="icon"
               class="header-pin max-md:hidden"
@@ -225,7 +225,7 @@
               }
             </button>
             <button
-              hlmBtn
+              trnBtn
               variant="ghost"
               size="icon"
               class="max-md:hidden"
@@ -244,11 +244,11 @@
                here at all widths rather than spending a permanent slot in a header that
                already carries six. -->
             <button
-              hlmBtn
+              trnBtn
               variant="ghost"
               size="icon"
               class="header-pin"
-              [hlmDropdownMenuTrigger]="roomActionsMenu"
+              [trnDropdownMenuTrigger]="roomActionsMenu"
               align="end"
               aria-label="More actions"
               data-testid="room-actions-overflow"
@@ -261,10 +261,10 @@
               }
             </button>
             <ng-template #roomActionsMenu>
-              <div hlmDropdownMenu>
+              <div trnDropdownMenu>
                 <button
                   class="md:hidden"
-                  hlmDropdownMenuItem
+                  trnDropdownMenuItem
                   (triggered)="roomActions.onInviteToRoom()"
                   data-testid="overflow-invite-people"
                 >
@@ -273,7 +273,7 @@
                 </button>
                 <button
                   class="md:hidden"
-                  hlmDropdownMenuItem
+                  trnDropdownMenuItem
                   (triggered)="roomActions.onOpenRoomSettings()"
                   data-testid="overflow-open-room-settings"
                 >
@@ -282,7 +282,7 @@
                 </button>
                 <button
                   class="md:hidden"
-                  hlmDropdownMenuItem
+                  trnDropdownMenuItem
                   (triggered)="messageActions.openPinnedPanel()"
                   data-testid="overflow-open-pinned"
                 >
@@ -295,7 +295,7 @@
                   }
                 </button>
                 <button
-                  hlmDropdownMenuItem
+                  trnDropdownMenuItem
                   (triggered)="messageActions.jumpToDate()"
                   data-testid="overflow-jump-to-date"
                 >
@@ -304,7 +304,7 @@
                 </button>
                 <button
                   class="md:hidden"
-                  hlmDropdownMenuItem
+                  trnDropdownMenuItem
                   (triggered)="toggleMembers()"
                   data-testid="overflow-toggle-members"
                 >

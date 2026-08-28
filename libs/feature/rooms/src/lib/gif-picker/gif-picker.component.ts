@@ -21,7 +21,7 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnInput } from '@trinity/components/input';
 import {
   GIF_PROVIDERS,
@@ -43,7 +43,7 @@ const SEARCH_DEBOUNCE_MS = 350;
 @Component({
   selector: 'trn-gif-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmButton, TrnInput, GifThumbComponent],
+  imports: [TrnButton, TrnInput, GifThumbComponent],
   templateUrl: './gif-picker.component.html',
   styleUrl: './gif-picker.component.scss',
 })
