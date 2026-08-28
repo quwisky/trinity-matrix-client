@@ -314,9 +314,22 @@ export class RoomsService {
    * the normal member event remains authoritative and re-reads the SDK state afterward.
    */
   removeMemberFromProjection(roomId: string, userId: string): void {
-    const pending = this.pendingMemberRemovals.get(roomId) ?? new Set<string>();
-    pending.add(userId);
-    this.pendingMemberRemovals.set(roomId, pending);
+    // The authoritative membership event can beat the HTTP response back to us. Only
+    // create a tombstone while the SDK still reports the member as joined; otherwise a
+    // late response would hide a legitimate later rejoin forever because there is no
+    // second non-join event left to clear it.
+    const room = this.matrix.isInitialized
+      ? this.matrix.instance.getRoom(roomId)
+      : null;
+    const stillJoined = room
+      ?.getJoinedMembers()
+      .some((member) => member.userId === userId);
+    if (stillJoined) {
+      const pending =
+        this.pendingMemberRemovals.get(roomId) ?? new Set<string>();
+      pending.add(userId);
+      this.pendingMemberRemovals.set(roomId, pending);
+    }
 
     const members = this.memberSignals.get(roomId);
     if (!members) {

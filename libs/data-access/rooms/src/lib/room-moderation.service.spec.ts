@@ -83,6 +83,7 @@ function setup(
   });
   return {
     svc: TestBed.inject(RoomModerationService),
+    matrix: TestBed.inject(MatrixClientService),
     kick,
     ban,
     unban,
@@ -120,6 +121,22 @@ describe('RoomModerationService', () => {
     await expect(firstValueFrom(svc.kick('!r:hs', '@bob:hs'))).rejects.toThrow(
       'forbidden',
     );
+    expect(removeMemberFromProjection).not.toHaveBeenCalled();
+  });
+
+  it('does not project a late moderation result into a new account', async () => {
+    let resolveKick!: () => void;
+    const pendingKick = new Promise<void>((resolve) => {
+      resolveKick = resolve;
+    });
+    const { svc, matrix, kick, removeMemberFromProjection } = setup();
+    kick.mockReturnValueOnce(pendingKick);
+
+    const result = firstValueFrom(svc.kick('!r:hs', '@bob:hs'));
+    (matrix as unknown as { instance: object }).instance = {};
+    resolveKick();
+    await result;
+
     expect(removeMemberFromProjection).not.toHaveBeenCalled();
   });
 

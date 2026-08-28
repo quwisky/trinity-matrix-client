@@ -1778,6 +1778,35 @@ describe('RoomsService membersFor', () => {
     ]);
   });
 
+  it('does not tombstone a rejoin when sync beats the moderation response', async () => {
+    const roster = [
+      fakeMember({ userId: '@ada:hs', name: 'Ada' }),
+      fakeMember({ userId: '@bo:hs', name: 'Bo' }),
+    ];
+    const room = fakeRoom({
+      roomId: '!a:hs',
+      name: 'general',
+      members: roster,
+    });
+    const { svc, client } = setup([room]);
+    const members = svc.membersFor('!a:hs');
+
+    roster.splice(1, 1);
+    fireMemberChange(client, '!a:hs', '@bo:hs', 'leave');
+    await Promise.resolve();
+
+    // The successful HTTP response arrives after its authoritative sync echo.
+    svc.removeMemberFromProjection('!a:hs', '@bo:hs');
+    roster.push(fakeMember({ userId: '@bo:hs', name: 'Bo' }));
+    fireMemberChange(client, '!a:hs', '@bo:hs');
+    await Promise.resolve();
+
+    expect(members().map((member) => member.userId)).toEqual([
+      '@ada:hs',
+      '@bo:hs',
+    ]);
+  });
+
   it('re-reads the room a member event names', async () => {
     // Held here and mutated: fakeRoom reads `members` live on every getJoinedMembers().
     const roster = [fakeMember({ userId: '@ada:hs', name: 'Ada' })];

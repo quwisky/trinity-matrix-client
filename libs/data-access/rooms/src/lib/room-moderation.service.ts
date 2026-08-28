@@ -40,8 +40,13 @@ export class RoomModerationService {
       if (!this.matrix.isInitialized) {
         return throwError(() => new Error('Not signed in.'));
       }
-      return from(this.matrix.instance.kick(roomId, userId, reason)).pipe(
-        tap(() => this.rooms.removeMemberFromProjection(roomId, userId)),
+      const client = this.matrix.instance;
+      return from(client.kick(roomId, userId, reason)).pipe(
+        tap(() => {
+          if (this.matrix.isInitialized && this.matrix.instance === client) {
+            this.rooms.removeMemberFromProjection(roomId, userId);
+          }
+        }),
         map(() => void 0),
       );
     });
@@ -53,8 +58,13 @@ export class RoomModerationService {
       if (!this.matrix.isInitialized) {
         return throwError(() => new Error('Not signed in.'));
       }
-      return from(this.matrix.instance.ban(roomId, userId, reason)).pipe(
-        tap(() => this.rooms.removeMemberFromProjection(roomId, userId)),
+      const client = this.matrix.instance;
+      return from(client.ban(roomId, userId, reason)).pipe(
+        tap(() => {
+          if (this.matrix.isInitialized && this.matrix.instance === client) {
+            this.rooms.removeMemberFromProjection(roomId, userId);
+          }
+        }),
         map(() => void 0),
       );
     });
