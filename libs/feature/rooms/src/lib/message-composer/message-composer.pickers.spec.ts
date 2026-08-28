@@ -24,10 +24,10 @@ import { GifService, GifSettingsService } from '@trinity/data-access/gif';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { LocationShareService } from '../location-share/location-share.service';
-import { Router } from '@angular/router';
 import { MediaService, type ImagePack } from '@trinity/data-access/media';
 import { CreatePollService } from '../poll/create-poll.service';
 import { CreatePollDialogComponent } from '../poll/create-poll-dialog.component';
+import { SettingsDialogService } from '@trinity/components/settings-dialog';
 
 const stickerPack: ImagePack = {
   id: '!pack:hs:fun',
@@ -259,18 +259,22 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
   });
 
   it('opens image-pack settings with the active room as context', async () => {
-    const navigate = vi.fn().mockResolvedValue(true);
+    const open = vi.fn().mockResolvedValue(undefined);
     const { fixture } = await renderComposer({ roomId: '!room:hs' }, [
-      MockProvider(Router, { navigate }),
+      MockProvider(SettingsDialogService, { open }),
     ]);
     fixture.componentInstance.stickerPickerOpen.set(true);
 
     fixture.componentInstance.manageImagePacks();
 
     expect(fixture.componentInstance.stickerPickerOpen()).toBe(false);
-    expect(navigate).toHaveBeenCalledWith(['/settings/stickers'], {
-      queryParams: { roomId: '!room:hs' },
-    });
+    expect(open).toHaveBeenCalledWith(
+      expect.objectContaining({
+        section: 'stickers',
+        roomId: '!room:hs',
+        restoreFocus: expect.any(Function),
+      }),
+    );
   });
 
   it('downloads a chosen GIF and sends it as media, closing the picker', async () => {

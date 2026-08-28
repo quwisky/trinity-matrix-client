@@ -1,6 +1,7 @@
 import { test, expect } from './support/fixtures.mts';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers the global Notifications settings (Settings → Notifications): each toggle maps
 // to a predefined push rule and writes via PushRulesService.setOn → setPushRuleEnabled.
@@ -46,9 +47,7 @@ test.describe('Notification settings', () => {
     const before = await ruleEnabled();
 
     await login(page, { available: true, hs, user, pass } as SynapseSession);
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-notifications').click();
-    await page.waitForURL(/\/settings\/notifications$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'notifications');
 
     const checkbox = page.getByTestId(`notif-${RULE_ID}`).locator('trn-switch');
     await expect(checkbox).toBeVisible({ timeout: 15_000 });

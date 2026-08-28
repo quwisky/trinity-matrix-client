@@ -1,6 +1,7 @@
 import { test, expect } from './support/fixtures.mts';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers the Security settings section (Settings → Security): it surfaces this account's
 // encryption posture from CryptoService and launches the existing setup/verify flows. A
@@ -25,9 +26,7 @@ test.describe('Security settings', () => {
     await registerUser(request, user, pass);
     await login(page, { available: true, hs, user, pass } as SynapseSession);
 
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-security').click();
-    await page.waitForURL(/\/settings\/security$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'security');
 
     // The section renders its status cards.
     await expect(page.getByTestId('security-settings')).toBeVisible({

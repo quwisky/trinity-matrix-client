@@ -614,23 +614,10 @@ test.describe('Swipe a message', () => {
     await page.getByTestId('message-swipe-select').locator('button').click();
     await page.getByTestId('message-swipe-right').click();
 
-    // Out of settings the way the app offers, and back to the same room. In-app navigation
-    // throughout — a `goto` would be a reload and would not establish the claim at all.
-    // Twice, because below the members breakpoint a section is its own sub-page: the first
-    // Back leaves Appearance for the section list, the second leaves settings.
-    // Twice, each awaited. A click inside `expect.poll` reads the URL before the SPA
-    // navigation settles, so it fires again and pops PAST the room — the repo's own
-    // read-once-while-converging flake shape.
-    // Out of settings by history, bounded. `page.goBack()` is a popstate the Angular router
-    // handles — no document load, so the "without a reload" claim is preserved; a `goto`
-    // would have destroyed the very thing under test. Looping because how many entries
-    // settings pushed depends on the layout, and asserting after so a silent no-op fails.
-    for (let attempt = 0; attempt < 4; attempt++) {
-      if (!/\/settings/.test(new URL(page.url()).pathname)) {
-        break;
-      }
-      await page.goBack();
-    }
+    // Dismiss the web modal without navigating or reloading, then return to the same room.
+    // This proves the live signal update rather than merely its persisted reload path.
+    await page.getByTestId('close-settings').click();
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeHidden();
     expect(new URL(page.url()).pathname).not.toMatch(/\/settings/);
 
     await page.getByTestId('rail-rooms').click();

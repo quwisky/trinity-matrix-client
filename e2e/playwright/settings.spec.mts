@@ -43,10 +43,10 @@ const hasDarkPalette = (page: Page): Promise<boolean> =>
 const paletteAttr = (page: Page): Promise<string | null> =>
   page.evaluate(() => document.documentElement.getAttribute('data-theme'));
 
-/** Open a settings section from the submenu and wait for its sub-page URL. */
+/** Open a settings section inside the web modal. */
 async function openSection(page: Page, path: string): Promise<void> {
   await page.getByTestId(`settings-nav-${path}`).click();
-  await page.waitForURL(new RegExp(`/settings/${path}$`), { timeout: 20_000 });
+  await expect(page.getByTestId('settings-detail')).not.toBeEmpty();
 }
 
 test.describe('Settings', () => {
@@ -58,8 +58,10 @@ test.describe('Settings', () => {
   test.beforeEach(async ({ page }) => {
     await login(page, session);
     await page.getByTestId('open-settings').click();
-    // The settings shell (submenu) loads; on the desktop viewport it auto-lands
-    // on the first section (Profile).
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible({
+      timeout: 20_000,
+    });
+    // The modal shell loads; on the desktop viewport it auto-lands on Profile.
     await expect(page.getByTestId('settings-nav-profile')).toBeVisible({
       timeout: 20_000,
     });
@@ -71,7 +73,7 @@ test.describe('Settings', () => {
     for (const path of SECTIONS) {
       await expect(page.getByTestId(`settings-nav-${path}`)).toBeVisible();
     }
-    // Selecting a section routes to its sub-page and shows that section.
+    // Selecting a section swaps the modal detail without changing the room URL.
     await openSection(page, 'appearance');
     await expect(page.getByTestId('theme-dark')).toBeVisible();
     await openSection(page, 'experimental');
@@ -81,9 +83,9 @@ test.describe('Settings', () => {
   test('desktop: auto-selects the first section and shows both panes', async ({
     page,
   }) => {
-    // The default (wide) viewport auto-redirects the bare index into the first
-    // section, and renders the submenu AND the section detail together (two-pane).
-    await page.waitForURL(/\/settings\/profile$/, { timeout: 20_000 });
+    // The default (wide) viewport auto-selects the first section and renders the
+    // submenu and detail together without replacing the underlying room route.
+    await expect(page).not.toHaveURL(/\/settings/);
     await expect(page.getByTestId('settings-nav-profile')).toBeVisible();
     await expect(page.getByTestId('display-name-input')).toBeVisible();
     // The active section link is marked current for assistive tech.
@@ -98,10 +100,7 @@ test.describe('Settings', () => {
     // unit suite can only see that a class string is present. Measured here instead.
     const nav = page.locator('nav[aria-label="Settings sections"]');
     const navBox = await nav.boundingBox();
-    const detailBox = await page
-      .locator('section:has(> router-outlet), section')
-      .first()
-      .boundingBox();
+    const detailBox = await page.getByTestId('settings-detail').boundingBox();
     expect(navBox).not.toBeNull();
     expect(detailBox).not.toBeNull();
     // Beside, not stacked: the detail starts after the nav ends.
@@ -128,17 +127,18 @@ test.describe('Settings', () => {
     expect(shadow).not.toBe('none');
   });
 
-  test('desktop: back leaves settings without retracing visited sections', async ({
+  test('desktop: close leaves settings without changing the room route', async ({
     page,
   }) => {
-    // Lateral section switches on the two-pane layout must not stack history.
+    const roomUrl = page.url();
+    // Lateral section switches on the two-pane layout stay local to the modal.
     await openSection(page, 'appearance');
     await openSection(page, 'devices');
     await openSection(page, 'gifs');
 
-    // A single back exits settings entirely, not to a previously-viewed section.
-    await page.getByRole('button', { name: 'Back' }).click();
-    await page.waitForURL(/\/rooms/, { timeout: 20_000 });
+    await page.getByTestId('close-settings').click();
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeHidden();
+    await expect(page).toHaveURL(roomUrl);
   });
 
   test('toggles the app theme between dark and light', async ({ page }) => {
@@ -513,7 +513,8 @@ test.describe('Settings', () => {
     await checkbox.click();
     await expect.poll(read).toBe('false'); // persisted to Preferences
 
-    // Survives a reload — the deep-linked sub-page restores and the flag reads back.
+    // Survives a reload through the deliberate routed deep-link fallback.
+    await page.goto('/settings/experimental');
     await page.reload();
     await expect(
       page.getByTestId('flag-virtual-timeline').locator('trn-switch'),
@@ -578,48 +579,41 @@ test.describe('Settings', () => {
     await expect(page.getByTestId('theme-dark')).toBeHidden();
   });
 
-  test('mobile: resizing a drilled-in section wide still exits settings in one back', async ({
+  test('narrow web: resizing a drilled-in modal wide keeps one dialog', async ({
     page,
   }) => {
-    // Return to the room first so there is a real destination behind Settings.
-    await page.getByRole('button', { name: 'Back' }).click();
-    await page.waitForURL(/\/rooms/, { timeout: 20_000 });
-
+    await page.getByTestId('close-settings').click();
     await page.setViewportSize({ width: 375, height: 800 });
     await page.getByTestId('open-settings').click();
     const appearance = page.getByTestId('settings-nav-appearance');
     await expect(appearance).toBeVisible({ timeout: 20_000 });
     await appearance.click();
-    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await expect(page.getByTestId('theme-dark')).toBeVisible();
 
-    // The navigation model changes from mobile push to desktop replace when the
-    // viewport crosses 768px. The old mobile directory entry must not trap Back.
+    // Crossing the responsive boundary changes the modal composition, not its
+    // presentation model or the underlying URL.
     await page.setViewportSize({ width: 1024, height: 700 });
     await expect(appearance).toBeVisible();
-    await page.getByRole('button', { name: 'Back' }).click();
-    await page.waitForURL(/\/rooms/, { timeout: 20_000 });
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toHaveCount(1);
+    await page.getByTestId('close-settings').click();
+    await expect(page).not.toHaveURL(/\/settings/);
   });
 
-  test('mobile: browser Back restores directory focus and clears drill-in history', async ({
-    page,
-  }) => {
-    await page.getByRole('button', { name: 'Back' }).click();
-    await page.waitForURL(/\/rooms/, { timeout: 20_000 });
-
+  test('narrow web: modal back restores directory focus', async ({ page }) => {
+    await page.getByTestId('close-settings').click();
     await page.setViewportSize({ width: 375, height: 800 });
     await page.getByTestId('open-settings').click();
     const appearance = page.getByTestId('settings-nav-appearance');
     await appearance.click();
-    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
-
-    await page.goBack();
-    await page.waitForURL(/\/settings$/, { timeout: 20_000 });
+    await page
+      .getByRole('button', { name: 'Back to settings sections' })
+      .click();
     await expect(appearance).toBeFocused();
 
     await page.setViewportSize({ width: 1024, height: 700 });
-    await page.waitForURL(/\/settings\/profile$/, { timeout: 20_000 });
-    await page.getByRole('button', { name: 'Back' }).click();
-    await page.waitForURL(/\/rooms/, { timeout: 20_000 });
+    await expect(page.getByTestId('display-name-input')).toBeVisible();
+    await page.getByTestId('close-settings').click();
+    await expect(page).not.toHaveURL(/\/settings/);
   });
 
   test.describe('Pixel 5 profile', () => {

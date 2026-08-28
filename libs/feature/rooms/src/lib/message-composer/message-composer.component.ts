@@ -63,7 +63,7 @@ import {
 import { type MentionMember } from './mention-autocomplete';
 import { StickerPickerComponent } from '../sticker-picker/sticker-picker.component';
 import { InlineMxcImagesDirective } from '../inline-mxc-images/inline-mxc-images.directive';
-import { Router } from '@angular/router';
+import { SettingsDialogService } from '@trinity/components/settings-dialog';
 
 /**
  * A room member offered by the @-mention autocomplete. Re-exported here because it is the
@@ -143,7 +143,7 @@ let nextPickerId = 0;
   styleUrl: './message-composer.component.scss',
 })
 export class MessageComposerComponent {
-  private readonly router = inject(Router);
+  private readonly settings = inject(SettingsDialogService);
   /**
    * Unique per instance, because two composers are routinely alive at once: the room's own
    * and the thread panel's. A shared literal put the same `id` on both open panels and left
@@ -969,8 +969,10 @@ export class MessageComposerComponent {
 
   manageImagePacks(): void {
     this.stickerPickerOpen.set(false);
-    void this.router.navigate(['/settings/stickers'], {
-      queryParams: this.roomId() ? { roomId: this.roomId() } : undefined,
+    void this.settings.open({
+      section: 'stickers',
+      roomId: this.roomId() ?? undefined,
+      restoreFocus: () => this.field.focus(),
     });
   }
 

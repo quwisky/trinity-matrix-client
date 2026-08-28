@@ -1,9 +1,16 @@
 # Settings
 
-Settings is a grouped directory of fourteen sections beside the section you have open. On a wide
-screen it sits in a bounded workspace and the section detail owns scrolling; the directory stays
-independently reachable without drawing a competing scrollbar. Below 768 pixels wide the list is
-the page, and opening a section swaps to it with a back button.
+Settings is a grouped directory of fourteen sections beside the section you have open. On web and
+Electron it opens as a dialog over the room you were using, so closing it returns you to exactly
+that place without a route change. On a wide screen the section detail owns scrolling while the
+directory stays independently reachable without drawing a competing scrollbar. Below 768 pixels
+wide the same dialog uses a one-pane flow: the directory appears first, and opening a section swaps
+to it with an internal back button.
+
+Installed Android and iOS apps use the full-page routed flow so system Back and native history keep
+their expected meaning. A direct `/settings` or `/settings/<section>` link also opens that routed
+page on every platform; this makes settings sections bookmarkable and provides a fallback if the
+dialog's lazy-loaded code is unavailable.
 
 !!! warning "Preferences do not follow your account"
 

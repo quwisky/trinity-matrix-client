@@ -34,9 +34,10 @@ kit primitives, which is the tier's job, without leaking Helm selectors or types
 `libs/ui` is gone entirely. What was left after the components moved out was not UI: the
 `runWithBusy` / `mediaQuerySignal` / internal-URL helpers went to `@trinity/util/ui`
 (`type:util`, reachable from every layer rather than only from above), and the
-`EncryptionDialogService` seam became `@trinity/components/encryption-dialog` — its own
-library rather than part of `@trinity/components/overlay`, which stays the generic swappable
-dialog wrapper and is not taught one domain's routes and loader token.
+`EncryptionDialogService` and `SettingsDialogService` seams became
+`@trinity/components/encryption-dialog` and `@trinity/components/settings-dialog` — their own
+libraries rather than part of `@trinity/components/overlay`, which stays the generic swappable
+dialog wrapper and is not taught domain routes or loader tokens.
 
 That tier is closed from both sides. The vendor bans stop everything below the UI layer
 naming `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` or `@ctrl/ngx-emoji-mart`; and a
@@ -449,10 +450,11 @@ hand-authored component SCSS.
 | Z-index layers      | `--trinity-z-sticky` (5) → `-floating` (10) → `-overlay` (20) → `-panel` (40). **App-level only** — a component stacking its own children is local and stays a literal. The CDK overlay container sits above all of them at 1000.                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | Motion              | `--trinity-duration-press` for the down response and `-fast` / `-base` / `-slow` for transitions, plus `--trinity-duration-pulse` / `-flash` for motion that is not one (an ambient loop, a one-shot cue). `--trinity-ease-standard` / `-decelerate` / `-accelerate`. All collapsed to 0.01ms under `prefers-reduced-motion` at the bottom of `variables.scss` — which is why a literal duration is a bug, not a style. An `infinite` animation needs `global.scss`'s `animation-iteration-count` too: collapsing its duration alone makes it repeat per frame rather than stop.                                                                     |
 
-Settings is the worked feature-level composition of these roles. Its wide frame is bounded by the
-height supplied by the app shell, never by another viewport unit; the directory remains scrollable
-with a hidden gutter while the detail pane is the one painted scroll owner. Paint containment on
-the routed Settings host prevents a long detail from enlarging the document's root scroll extent.
+Settings is the worked feature-level composition of these roles. Web and Electron mount its bounded
+workspace in a CDK dialog; the installed mobile apps and direct deep links mount the same section
+registry in the routed shell. The directory remains scrollable with a hidden gutter while the
+detail pane is the one painted scroll owner. Paint containment on both shells prevents a long
+detail from enlarging the document's root scroll extent.
 `SettingsSectionHeadingComponent` and `SettingsToggleRowDirective` keep sentence-case type and
 density consistent without weakening native heading, label or switch semantics. The Appearance
 preview is intentionally feature-local and token-only: it demonstrates the same surface, identity,
@@ -799,5 +801,12 @@ modals at 768px and above, and as routed pages below. The routes stay the canoni
 deep-link and mobile target, and the service falls back to routing whenever the lazy
 component loaders are absent. See
 [matrix and encryption](matrix-and-encryption.md) for what those flows do.
+
+`SettingsDialogService` uses platform capability rather than viewport size: web and Electron
+open `SettingsDialogComponent`, while `Capacitor.isNativePlatform()` routes Android and iOS to
+`/settings`. The app supplies the feature component through `SETTINGS_DIALOG_CONFIG`, so the
+public UI library never imports a feature. Direct settings URLs remain the canonical deep-link
+fallback. The presenter coalesces repeated opens while the lazy chunk loads and ignores a second
+trigger while one dialog is active.
 
 Toasts render through a single `<hlm-toaster/>` mounted in `AppComponent`.
