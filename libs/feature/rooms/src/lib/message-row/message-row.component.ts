@@ -156,6 +156,8 @@ export type MessageSwipeAction = 'edit' | 'reply';
 export class MessageRowComponent {
   /** Timestamps go through the app-wide format preference, never a DatePipe. */
   readonly fmt = inject(DateTimeFormatService);
+  /** Phones and tablets use the action sheet and do not render the desktop toolbar. */
+  readonly mobileActions = isMobileOs();
   private readonly destroyRef = inject(DestroyRef);
 
   private readonly host = inject(ElementRef<HTMLElement>);
@@ -211,17 +213,21 @@ export class MessageRowComponent {
     if ((event.target as HTMLElement | null)?.closest('a, img, video, audio')) {
       return;
     }
+    // Android fires `contextmenu` at the end of a long press, so on a mobile OS this
+    // arrives right after the sheet has opened. Swallowing the native menu is still
+    // wanted; opening a SECOND menu on top of the sheet is not.
+    if (this.mobileActions) {
+      if (!this.hasMessageActions()) {
+        return;
+      }
+      event.preventDefault();
+      return;
+    }
     const bar = this.toolbar();
     if (!bar) {
       return; // read-only rows and system events have no actions to offer
     }
     event.preventDefault();
-    // Android fires `contextmenu` at the end of a long press, so on a mobile OS this
-    // arrives right after the sheet has opened. Swallowing the native menu is still
-    // wanted; opening a SECOND menu on top of the sheet is not.
-    if (isMobileOs()) {
-      return;
-    }
     bar.openMoreMenu();
   }
 
@@ -259,7 +265,7 @@ export class MessageRowComponent {
       event.stopPropagation();
     }
 
-    if (!this.toolbar()) {
+    if (!this.hasMessageActions()) {
       return;
     }
     // A long press on a link or an attachment belongs to the BROWSER — "Open in new tab",
@@ -301,7 +307,7 @@ export class MessageRowComponent {
       // platforms do for a long press — and which cannot cover the message it acts on,
       // be dismissed by a stray scroll, or open a picker off the top of the scroller.
       // Everywhere else the hover bar is right, and is left exactly as it was.
-      if (isMobileOs()) {
+      if (this.mobileActions) {
         // The press won; the drag is no longer a candidate. Without this the sheet opens and
         // a continued drag still commits underneath its backdrop.
         this.cancelSwipe();
@@ -310,6 +316,14 @@ export class MessageRowComponent {
       }
       this.revealToolbar();
     }, LONG_PRESS_MS);
+  }
+
+  /** Whether this row has the actions represented by the desktop bar or mobile sheet. */
+  private hasMessageActions(): boolean {
+    const row = this.row();
+    return (
+      !this.caps().readOnly && !row.decryptionFailed && row.kind !== 'redacted'
+    );
   }
 
   /**

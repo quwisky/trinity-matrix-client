@@ -248,7 +248,12 @@
       </button>
     }
 
-    @if (!caps().readOnly && !r.decryptionFailed && r.kind !== 'redacted') {
+    @if (
+      !mobileActions &&
+      !caps().readOnly &&
+      !r.decryptionFailed &&
+      r.kind !== 'redacted'
+    ) {
       <trn-message-toolbar
         class="msg__toolbar"
         [caps]="toolbarCaps()"
