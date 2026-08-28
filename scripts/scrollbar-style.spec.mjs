@@ -21,6 +21,8 @@ const stylesheetFiles = globSync(['apps/**/*.{css,scss}', 'libs/**/*.scss'], {
 const scrollbarOwner = (source) =>
   /scrollbar-(?:color|width)\s*:|::-(?:webkit-)?scrollbar/.test(source);
 
+const occurrences = (source, pattern) => source.match(pattern)?.length ?? 0;
+
 describe('shared scrollbar design', () => {
   it('owns every visible scrollbar design in the global stylesheet', () => {
     const owners = stylesheetFiles.filter((file) => scrollbarOwner(read(file)));
@@ -37,9 +39,7 @@ describe('shared scrollbar design', () => {
     const variables = read(TOKEN_STYLESHEET);
     const global = read(GLOBAL_STYLESHEET);
 
-    expect(variables).toContain(
-      '--trinity-scrollbar-size: var(--trinity-space-3);',
-    );
+    expect(variables).toContain('--trinity-scrollbar-size: 8px;');
     expect(variables).toContain(
       '--trinity-scrollbar-radius: var(--trinity-radius-sm);',
     );
@@ -55,8 +55,21 @@ describe('shared scrollbar design', () => {
       /::-webkit-scrollbar-thumb\s*\{[^}]*border-radius:\s*var\(--trinity-scrollbar-radius\);[^}]*background:\s*var\(--trinity-scrollbar-thumb\);/s,
     );
     expect(global).toMatch(
-      /::-webkit-scrollbar-(?:track|corner)[\s\S]*background:\s*var\(--trinity-scrollbar-track\);/,
+      /::-webkit-scrollbar-track,\s*:where\(:not\(\.no-scrollbar\)\)::-webkit-scrollbar-corner\s*\{[^}]*background:\s*var\(--trinity-scrollbar-track\);/s,
     );
+
+    expect(global).toMatch(
+      /@supports \(-moz-appearance:\s*none\)\s*\{\s*:where\(:not\(\.no-scrollbar\)\)\s*\{[^}]*scrollbar-width:\s*thin;[^}]*scrollbar-color:\s*var\(--trinity-scrollbar-thumb\)\s*var\(--trinity-scrollbar-track\);/s,
+    );
+    expect(global).toMatch(
+      /@supports selector\(::-webkit-scrollbar-thumb\)\s*\{\s*:where\(:not\(\.no-scrollbar\)\)::-webkit-scrollbar\s*\{/s,
+    );
+    expect(occurrences(global, /scrollbar-width\s*:/g)).toBe(1);
+    expect(occurrences(global, /scrollbar-color\s*:/g)).toBe(1);
+    expect(occurrences(global, /::-webkit-scrollbar(?!-)/g)).toBe(1);
+    expect(occurrences(global, /::-webkit-scrollbar-thumb/g)).toBe(2);
+    expect(occurrences(global, /::-webkit-scrollbar-track/g)).toBe(1);
+    expect(occurrences(global, /::-webkit-scrollbar-corner/g)).toBe(1);
     expect(global).not.toContain('scrollbar-gutter');
   });
 
@@ -70,5 +83,6 @@ describe('shared scrollbar design', () => {
       /@utility no-scrollbar\s*\{[^}]*scrollbar-width:\s*none;/s,
     );
     expect(utility).toMatch(/::-webkit-scrollbar\s*\{[^}]*display:\s*none;/s);
+    expect(utility).toContain('@supports selector(::-webkit-scrollbar-thumb)');
   });
 });

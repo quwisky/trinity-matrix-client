@@ -48,6 +48,16 @@
         "cwd": "{projectRoot}"
       }
     },
+    "scrollbars-e2e": {
+      "//": "Focused Chromium, Firefox and WebKit scrollbar contract against the real app and disposable Synapse.",
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "playwright test -c playwright.scrollbars.config.mts",
+        "cwd": "{projectRoot}"
+      }
+    },
     "android-e2e": {
       "//": "Owns an installed API 36 WebView, a fixed-port Synapse stack, and adb reverse state. Those external resources are intentionally serialized and never cacheable.",
       "cache": false,

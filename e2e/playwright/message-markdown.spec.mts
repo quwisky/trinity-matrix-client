@@ -319,7 +319,7 @@ test.describe('Message markdown', () => {
     await login(page, { available: true, hs, user, pass } as SynapseSession);
     await openRoom(page, roomName);
 
-    const source = 'def greet(n):';
+    const source = `def greet(n): return "${'scrollbar-proof-'.repeat(16)}"`;
     await sendLines(page, ['```python', source, '```']);
 
     // Settle on the remote echo first. The row is re-created when the real event id
@@ -361,6 +361,31 @@ test.describe('Message markdown', () => {
     // the message's text — assert it the way the browser sees it.
     const pre = page.locator('.msg__text--html pre').first();
     await expect(pre).toHaveAttribute('language', 'python');
+
+    // This is a real horizontal overflow surface, not a synthetic test node. Its bar uses
+    // the same geometry and theme-aware thumb as vertical panels throughout the shell.
+    const horizontalScrollbar = await pre.evaluate((element) => {
+      const probe = document.createElement('span');
+      probe.style.cssText =
+        'position:absolute;height:var(--trinity-scrollbar-size);background:var(--trinity-scrollbar-thumb)';
+      element.append(probe);
+      const probeStyle = getComputedStyle(probe);
+      const bar = getComputedStyle(element, '::-webkit-scrollbar');
+      const thumb = getComputedStyle(element, '::-webkit-scrollbar-thumb');
+      const result = {
+        overflow: element.scrollWidth - element.clientWidth,
+        height: bar.height,
+        thumb: thumb.backgroundColor,
+        expectedHeight: probeStyle.height,
+        expectedThumb: probeStyle.backgroundColor,
+      };
+      probe.remove();
+      return result;
+    });
+    expect(horizontalScrollbar.overflow).toBeGreaterThan(0);
+    expect(horizontalScrollbar.height).toBe(horizontalScrollbar.expectedHeight);
+    expect(horizontalScrollbar.thumb).toBe(horizontalScrollbar.expectedThumb);
+
     const captionStyle = () =>
       pre.evaluate((el) => {
         const style = getComputedStyle(el, '::after');

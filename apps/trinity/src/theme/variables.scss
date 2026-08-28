@@ -115,7 +115,7 @@
   // Every visible overflow surface shares one theme-aware scrollbar contract.
   // The thumb follows the active mode and palette; `.no-scrollbar` remains the
   // deliberate exception for compact navigation and select panels.
-  --trinity-scrollbar-size: var(--trinity-space-3);
+  --trinity-scrollbar-size: 8px;
   --trinity-scrollbar-radius: var(--trinity-radius-sm);
   --trinity-scrollbar-thumb: var(--trinity-text-muted);
   --trinity-scrollbar-track: transparent;

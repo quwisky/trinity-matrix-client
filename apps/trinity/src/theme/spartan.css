@@ -150,7 +150,8 @@
  *
  * The same shape as the `data-checked` bug: `hlm-select-content` carries this class today and
  * it compiled to nothing at all, so the select panel has been drawing a scrollbar the kit
- * meant to suppress. Copied from `@spartan-ng/brain/hlm-tailwind-preset.css` verbatim.
+ * meant to suppress. The WebKit half is capability-fenced because Firefox 153 partially
+ * parses that pseudo-element and otherwise applies `display: none` to every scrollbar.
  *
  * It is also what the settings section list uses. A pane that scrolls beside another pane
  * that scrolls puts two bars side by side, and the outer one is the one nobody asked for:
@@ -162,8 +163,10 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 
-  &::-webkit-scrollbar {
-    display: none;
+  @supports selector(::-webkit-scrollbar-thumb) {
+    &::-webkit-scrollbar {
+      display: none;
+    }
   }
 }
 

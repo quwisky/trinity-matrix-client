@@ -17,11 +17,11 @@ const session = synapseSession();
 /**
  * Every element that overflows vertically AND would paint a scrollbar.
  *
- * Read from `scrollbar-width`, not from `offsetWidth - clientWidth`. The gutter measurement
- * is the obvious one and it is useless here: headless Chromium draws OVERLAY scrollbars, so
- * the gutter is 0 whether or not a bar appears — a first version of this spec passed with
- * the fix removed. `scrollbar-width` is the property the fix actually sets, and it is
- * readable in the engine that would draw the bar.
+ * The gutter measurement is the obvious one and it is useless here: overlay scrollbars leave
+ * it at 0 whether or not a bar appears. Chromium/WebKit expose their pseudo-element paint;
+ * headless Firefox normalizes `scrollbar-width` to `none` even when the authored `thin` rule
+ * applies, so its intentional hidden exception is identified by the explicit class and its
+ * standards paint is asserted separately below.
  */
 async function scrollbarPainters(page: Page): Promise<string[]> {
   return page.evaluate(() => {
@@ -31,9 +31,15 @@ async function scrollbarPainters(page: Page): Promise<string[]> {
       const scrolls =
         (style.overflowY === 'auto' || style.overflowY === 'scroll') &&
         node.scrollHeight > node.clientHeight + 1;
-      const webkitScrollbar = getComputedStyle(node, '::-webkit-scrollbar');
-      const hidden =
-        style.scrollbarWidth === 'none' || webkitScrollbar.display === 'none';
+      const webkitScrollbar =
+        !navigator.userAgent.includes('Firefox') &&
+        CSS.supports('selector(::-webkit-scrollbar-thumb)')
+          ? getComputedStyle(node, '::-webkit-scrollbar')
+          : undefined;
+      const hidden = navigator.userAgent.includes('Firefox')
+        ? node.classList.contains('no-scrollbar')
+        : style.scrollbarWidth === 'none' ||
+          webkitScrollbar?.display === 'none';
       if (scrolls && !hidden) {
         found.push(
           `${node.tagName}[${node.getAttribute('data-testid') ?? node.className.slice(0, 30)}]`,
@@ -58,17 +64,32 @@ async function visibleScrollbarPaint(scroller: Locator) {
     element.append(probe);
 
     const probeStyle = getComputedStyle(probe);
-    const bar = getComputedStyle(element, '::-webkit-scrollbar');
-    const thumb = getComputedStyle(element, '::-webkit-scrollbar-thumb');
-    const track = getComputedStyle(element, '::-webkit-scrollbar-track');
-    const corner = getComputedStyle(element, '::-webkit-scrollbar-corner');
+    const usesWebkit =
+      !navigator.userAgent.includes('Firefox') &&
+      CSS.supports('selector(::-webkit-scrollbar-thumb)');
+    const bar = usesWebkit
+      ? getComputedStyle(element, '::-webkit-scrollbar')
+      : undefined;
+    const thumb = usesWebkit
+      ? getComputedStyle(element, '::-webkit-scrollbar-thumb')
+      : undefined;
+    const track = usesWebkit
+      ? getComputedStyle(element, '::-webkit-scrollbar-track')
+      : undefined;
+    const corner = usesWebkit
+      ? getComputedStyle(element, '::-webkit-scrollbar-corner')
+      : undefined;
+    const elementStyle = getComputedStyle(element);
     const paint = {
-      width: bar.width,
-      height: bar.height,
-      thumb: thumb.backgroundColor,
-      radius: thumb.borderRadius,
-      track: track.backgroundColor,
-      corner: corner.backgroundColor,
+      usesWebkit,
+      standardWidth: elementStyle.scrollbarWidth,
+      standardColor: elementStyle.scrollbarColor,
+      width: bar?.width,
+      height: bar?.height,
+      thumb: thumb?.backgroundColor,
+      radius: thumb?.borderRadius,
+      track: track?.backgroundColor,
+      corner: corner?.backgroundColor,
       expectedSize: probeStyle.width,
       expectedThumb: probeStyle.backgroundColor,
       expectedRadius: probeStyle.borderRadius,
@@ -226,18 +247,33 @@ test.describe('Settings scrollbars', () => {
       }, theme);
 
       const paint = await visibleScrollbarPaint(detail);
-      expect.soft(paint.width).toBe(paint.expectedSize);
-      expect.soft(paint.height).toBe(paint.expectedSize);
-      expect.soft(paint.thumb).toBe(paint.expectedThumb);
-      expect.soft(paint.radius).toBe(paint.expectedRadius);
-      expect.soft(paint.track).toBe('rgba(0, 0, 0, 0)');
-      expect.soft(paint.corner).toBe('rgba(0, 0, 0, 0)');
+      if (paint.usesWebkit) {
+        expect.soft(paint.width).toBe(paint.expectedSize);
+        expect.soft(paint.height).toBe(paint.expectedSize);
+        expect.soft(paint.thumb).toBe(paint.expectedThumb);
+        expect.soft(paint.radius).toBe(paint.expectedRadius);
+        expect.soft(paint.track).toBe('rgba(0, 0, 0, 0)');
+        expect.soft(paint.corner).toBe('rgba(0, 0, 0, 0)');
+      } else {
+        expect.soft(paint.standardColor).toContain(paint.expectedThumb);
+      }
     }
 
     const hidden = await nav.evaluate((element) => ({
       standard: getComputedStyle(element).scrollbarWidth,
-      webkit: getComputedStyle(element, '::-webkit-scrollbar').display,
+      usesWebkit:
+        !navigator.userAgent.includes('Firefox') &&
+        CSS.supports('selector(::-webkit-scrollbar-thumb)'),
+      webkit:
+        !navigator.userAgent.includes('Firefox') &&
+        CSS.supports('selector(::-webkit-scrollbar-thumb)')
+          ? getComputedStyle(element, '::-webkit-scrollbar').display
+          : undefined,
     }));
-    expect(hidden).toEqual({ standard: 'none', webkit: 'none' });
+    if (hidden.usesWebkit) {
+      expect(hidden.webkit).toBe('none');
+    } else {
+      await expect(nav).toHaveClass(/\bno-scrollbar\b/);
+    }
   });
 });

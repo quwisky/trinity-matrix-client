@@ -708,6 +708,7 @@ are covered in [CI and releases](ci-and-releases.md).
 | `contrast-matrix.spec.mjs`       | A text role below WCAG AA on a surface it can land on, in any palette × mode               |
 | `message-list-bindings.spec.mjs` | The windowed and simple message lists drifting apart on the bindings they share            |
 | `scroll-behaviour.spec.mjs`      | A programmatic scroll that hard-codes `behavior: 'smooth'`, which no stylesheet can undo   |
+| `scrollbar-style.spec.mjs`       | Visible scrollbar paint outside the global token contract, or a drifting hidden exception  |
 | `shorthand-overrides.spec.mjs`   | A shorthand silently re-initialising a longhand an earlier rule set                        |
 | `styling-idiom.spec.mjs`         | A new component stylesheet, or one orphaned when its `styleUrl` went away                  |
 | `styling-tokens.spec.mjs`        | A hand-picked z-index or duration where the scale has a token                              |
