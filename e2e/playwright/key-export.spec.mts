@@ -6,6 +6,7 @@ import {
   type SynapseSession,
 } from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers encrypted room-key export / import (Settings → Security → Encrypted key export):
 // exporting prompts for a passphrase and downloads a megolm `.txt`; importing that file back
@@ -35,9 +36,7 @@ test.describe('Encrypted key export', () => {
     await registerUser(request, user, pass);
     await login(page, { available: true, hs, user, pass } as SynapseSession);
 
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-security').click();
-    await page.waitForURL(/\/settings\/security$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'security');
     await expect(page.getByTestId('security-key-export')).toBeVisible({
       timeout: 15_000,
     });

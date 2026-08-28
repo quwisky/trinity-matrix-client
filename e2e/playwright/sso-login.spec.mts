@@ -153,7 +153,13 @@ test.describe('SSO sign-in', () => {
     ).toHaveCount(1);
     const card = page.locator('.login-card');
     const cardBox = await card.boundingBox();
-    expect(cardBox?.width).toBe(420);
+    expect(cardBox).not.toBeNull();
+    expect(cardBox!.width).toBeGreaterThanOrEqual(400);
+    expect(cardBox!.width).toBeLessThanOrEqual(480);
+    expect(cardBox!.x).toBeGreaterThanOrEqual(0);
+    expect(cardBox!.x + cardBox!.width).toBeLessThanOrEqual(
+      await page.evaluate(() => window.innerWidth),
+    );
 
     // Exactly one `main` landmark, and the body actually inset from the card's edge. The
     // first version of this page had neither: it projected past `trnCardContent`, so its

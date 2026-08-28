@@ -9,6 +9,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { TrnIconButton } from '@trinity/components/button';
 import { Subscription } from 'rxjs';
 import { MediaService } from '@trinity/data-access/media';
 import { type MediaPayload } from '@trinity/util/matrix';
@@ -28,7 +29,7 @@ const MIN_BAR_HEIGHT = 12;
 @Component({
   selector: 'trn-voice-message',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnIconComponent],
+  imports: [TrnIconButton, TrnIconComponent],
   templateUrl: './voice-message.component.html',
   styleUrl: './voice-message.component.scss',
 })

@@ -269,8 +269,8 @@ test.describe('Message markdown', () => {
         toolbarOpacity: getComputedStyle(toolbarEl).opacity,
         // Do the two boxes overlap at all? Asserting non-intersection rather than a vertical
         // gap holds however they are separated — the caption moved to the block's left when
-        // the toolbar moved inside the row, and a vertical-gap assertion would have called
-        // that a regression when it is the fix.
+        // the toolbar was raised over the row boundary, and a vertical-gap assertion would
+        // have called that a regression when it is the fix.
         overlaps:
           captionLeft < toolbar.right &&
           captionRight > toolbar.left &&

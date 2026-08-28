@@ -4,8 +4,14 @@ import {
   type APIRequestContext,
   type Page,
 } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import {
+  login,
+  seedPreference,
+  synapseSession,
+  type SynapseSession,
+} from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers the composer's formatting affordances (issue #29, second half): the toolbar, the
 // rebindable chords behind it, markdown-aware Shift+Enter, and the preview toggle.
@@ -20,6 +26,7 @@ async function openComposer(
   page: Page,
   request: APIRequestContext,
   tag: string,
+  messageCount = 0,
 ) {
   const hs = session.hs as string;
   const runId = `${Date.now().toString(36)}${tag}`;
@@ -38,10 +45,22 @@ async function openComposer(
     })
     .then((r) => r.json())
     .then((j) => j.access_token as string);
-  await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-    headers: { Authorization: `Bearer ${token}` },
-    data: { name: roomName, preset: 'private_chat' },
-  });
+  const roomId = await request
+    .post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { name: roomName, preset: 'private_chat' },
+    })
+    .then((r) => r.json())
+    .then((j) => j.room_id as string);
+  for (let index = 0; index < messageCount; index++) {
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${runId}-${index}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { msgtype: 'm.text', body: `Anchor message ${index}` },
+      },
+    );
+  }
 
   await login(page, { available: true, hs, user, pass } as SynapseSession);
   /** Open the seeded room from the rail, returning the composer once it is up. */
@@ -136,8 +155,7 @@ test.describe('Composer formatting', () => {
     await expect(composer).toHaveValue('say **hello** there');
 
     // Rebind bold, in the Formatting group the settings list now renders.
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-shortcuts').click();
+    await openSettingsSection(page, 'shortcuts');
     await expect(page.getByTestId('shortcut-group-formatting')).toBeVisible();
     await page.getByTestId('shortcut-edit-format.bold').click();
     await page.keyboard.press('Control+Shift+B');
@@ -260,9 +278,7 @@ test.describe('Composer formatting', () => {
 
     await expect(page.getByTestId('format-bold')).toBeVisible();
 
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-appearance').click();
-    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'appearance');
     const toolbarToggle = page
       .getByTestId('composer-show-toolbar')
       .locator('trn-switch');
@@ -464,6 +480,66 @@ test.describe('Composer formatting', () => {
       const { writing, previewing } = await heightAcrossToggle(draft);
       expect(Math.abs(previewing - writing)).toBeLessThan(1);
     }
+  });
+
+  test('composer growth preserves the simple timeline anchor', async ({
+    page,
+    request,
+  }) => {
+    const { composer, openRoom } = await openComposer(page, request, 'ah', 40);
+    const scroller = page.locator('.scroll');
+
+    await seedPreference(page, 'trinity.flags.virtual-timeline', 'false');
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await openRoom();
+    await expect(page.locator('trn-simple-message-list')).toBeVisible();
+    await expect(page.locator('.msg__text')).toHaveCount(20, {
+      timeout: 30_000,
+    });
+    await scroller.evaluate((element) => {
+      element.scrollTop = 0;
+      element.dispatchEvent(new Event('scroll'));
+    });
+    await expect(page.locator('.msg__text')).toHaveCount(40, {
+      timeout: 30_000,
+    });
+
+    await scroller.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+      element.dispatchEvent(new Event('scroll'));
+    });
+    await composer.fill('one line');
+    await composer.fill('one\ntwo\nthree\nfour\nfive\nsix');
+    await expect
+      .poll(() =>
+        scroller.evaluate(
+          (element) =>
+            element.scrollHeight - element.scrollTop - element.clientHeight,
+        ),
+      )
+      .toBeLessThanOrEqual(1);
+
+    await composer.fill('short again');
+    await scroller.evaluate((element) => {
+      element.scrollTop = Math.max(
+        0,
+        element.scrollHeight - element.clientHeight - 200,
+      );
+      element.dispatchEvent(new Event('scroll'));
+    });
+    await expect
+      .poll(() =>
+        scroller.evaluate(
+          (element) =>
+            element.scrollHeight - element.scrollTop - element.clientHeight,
+        ),
+      )
+      .toBeGreaterThanOrEqual(199);
+    const before = await scroller.evaluate((element) => element.scrollTop);
+    await composer.fill('one\ntwo\nthree\nfour\nfive\nsix');
+    await expect
+      .poll(() => scroller.evaluate((element) => element.scrollTop))
+      .toBe(before);
   });
 });
 

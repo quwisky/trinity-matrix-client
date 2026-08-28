@@ -53,13 +53,16 @@ describe('StickerPickerComponent', () => {
     fixture.detectChanges();
   });
 
-  it('renders labelled native buttons and emits the chosen sticker', () => {
+  it('renders labelled buttons with visible shortcodes and emits the chosen sticker', () => {
     const selected = vi.fn();
     fixture.componentInstance.selected.subscribe(selected);
     const button = fixture.nativeElement.querySelector(
       '[data-testid="sticker-party"]',
     ) as HTMLButtonElement;
     expect(button.getAttribute('aria-label')).toContain('Party parrot');
+    expect(button.querySelector('.picker__shortcode')?.textContent).toContain(
+      ':party:',
+    );
     button.click();
     expect(selected).toHaveBeenCalledWith(
       expect.objectContaining({ shortcode: 'party' }),

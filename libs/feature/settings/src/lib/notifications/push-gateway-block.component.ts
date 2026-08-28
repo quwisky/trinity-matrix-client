@@ -7,7 +7,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnInput } from '@trinity/components/input';
 import { TrnLabel } from '@trinity/components/label';
 import { TrnDialogService } from '@trinity/components/overlay';
@@ -20,6 +20,7 @@ import {
   PushGatewayTrustDialogComponent,
   type PushGatewayTrustData,
 } from './push-gateway-trust-dialog.component';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
 /**
  * The push-gateway block inside the Notifications section (device-local; see
@@ -36,7 +37,7 @@ import {
   selector: 'trn-push-gateway-block',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './push-gateway-block.component.html',
-  imports: [HlmButton, TrnInput, TrnLabel],
+  imports: [TrnButton, TrnInput, TrnLabel, SettingsSectionHeadingComponent],
 })
 export class PushGatewayBlockComponent {
   private readonly gateway = inject(PushGatewayService);

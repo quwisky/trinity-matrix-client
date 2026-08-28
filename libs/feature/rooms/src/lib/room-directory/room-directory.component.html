@@ -8,7 +8,7 @@
 
   <div class="flex gap-1">
     <button
-      hlmBtn
+      trnBtn
       type="button"
       size="sm"
       [variant]="mode() === 'rooms' ? 'default' : 'ghost'"
@@ -19,7 +19,7 @@
       Rooms
     </button>
     <button
-      hlmBtn
+      trnBtn
       type="button"
       size="sm"
       [variant]="mode() === 'spaces' ? 'default' : 'ghost'"
@@ -50,7 +50,7 @@
       data-testid="directory-search"
     />
     <button
-      hlmBtn
+      trnBtn
       type="submit"
       size="sm"
       [disabled]="loading()"
@@ -105,7 +105,7 @@
               }
             </span>
             <button
-              hlmBtn
+              trnBtn
               type="button"
               variant="outline"
               size="sm"
@@ -121,7 +121,7 @@
 
       @if (hasMore()) {
         <button
-          hlmBtn
+          trnBtn
           type="button"
           variant="ghost"
           size="sm"
@@ -138,7 +138,7 @@
 
   <div class="flex justify-end">
     <button
-      hlmBtn
+      trnBtn
       type="button"
       variant="ghost"
       (click)="close()"

@@ -438,7 +438,11 @@ async function main(): Promise<void> {
   await selectOrStartDevice();
   await validateAndWaitForBoot();
   process.env['TRINITY_E2E_PLATFORM'] = 'android';
-  await run('pnpm', ['android:build']);
+  await run('pnpm', [
+    process.env['TRINITY_E2E_PREBUILT_WWW']
+      ? 'android:build:prebuilt'
+      : 'android:build',
+  ]);
   await run(join(workspaceRoot, 'android/gradlew'), [
     '-p',
     'android',

@@ -78,6 +78,17 @@ describe('ImagePacksSectionComponent', () => {
     ).not.toBeNull();
   });
 
+  it('accepts the initial source from the modal presenter', async () => {
+    const fixture = TestBed.createComponent(ImagePacksSectionComponent);
+    fixture.componentRef.setInput('initialSource', '!room:example.org');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.sourceForm.source().value()).toBe(
+      '!room:example.org',
+    );
+  });
+
   it('discovers and installs one selected state key', async () => {
     const fixture = TestBed.createComponent(ImagePacksSectionComponent);
     fixture.detectChanges();

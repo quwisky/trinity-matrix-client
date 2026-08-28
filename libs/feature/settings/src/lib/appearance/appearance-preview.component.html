@@ -1,0 +1,45 @@
+<figure class="preview" aria-labelledby="appearance-preview-caption">
+  <figcaption id="appearance-preview-caption" class="preview__caption">
+    <span>
+      <strong>Live preview</strong>
+      <span class="preview__description">Theme, palette, type and spacing</span>
+    </span>
+    <span class="preview__state" data-testid="appearance-preview-state">
+      {{ themeLabel() }} · {{ paletteLabel() }} · {{ densityLabel() }}
+    </span>
+  </figcaption>
+
+  <div class="preview__app" data-testid="appearance-preview" aria-hidden="true">
+    <div class="preview__rail">
+      <span class="preview__identity preview__identity--active"></span>
+      <span class="preview__identity"></span>
+      <span class="preview__identity preview__identity--person"></span>
+    </div>
+    <div class="preview__rooms">
+      <span class="preview__workspace">Trinity friends</span>
+      <span class="preview__room preview__room--active"># general</span>
+      <span class="preview__room"># design</span>
+      <span class="preview__room"># weekend</span>
+    </div>
+    <div class="preview__chat">
+      <div class="preview__header"># general</div>
+      <div class="preview__timeline">
+        <div class="preview__message">
+          <span class="preview__avatar"></span>
+          <span>
+            <strong>Alex</strong>
+            <small>{{ timeLabel() }}</small>
+            <span class="preview__body">The new layout feels much calmer.</span>
+          </span>
+        </div>
+        <div class="preview__message preview__message--continuation">
+          <span class="preview__gutter">✓</span>
+          <span class="preview__body"
+            >And the important actions stay close.</span
+          >
+        </div>
+      </div>
+      <div class="preview__composer">Message #general</div>
+    </div>
+  </div>
+</figure>

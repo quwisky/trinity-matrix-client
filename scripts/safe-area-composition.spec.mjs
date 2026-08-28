@@ -211,4 +211,21 @@ describe('safe-area helpers and padding utilities', () => {
 
     expect(clashes).toEqual([]);
   });
+
+  it('pins the action-sheet base padding and safe area in one declaration', () => {
+    // Emulator families are allowed to report a zero bottom inset. A rendered equality on
+    // those devices is therefore vacuous: deleting env() would still pass. Keep the exact
+    // composition source-guarded, while the installed-WebView journey owns real geometry.
+    const source = read(
+      'libs/components/overlay/src/lib/action-sheet/trn-action-sheet.component.ts',
+    );
+    expect(source).toMatch(
+      /\.sheet\s*\{\s*padding-bottom:\s*calc\(0\.375rem \+ env\(safe-area-inset-bottom\)\);\s*\}/,
+    );
+    expect(
+      source.match(
+        /padding-bottom:\s*calc\(0\.375rem \+ env\(safe-area-inset-bottom\)\);/g,
+      ),
+    ).toHaveLength(1);
+  });
 });

@@ -71,7 +71,9 @@ describe('PageHeaderComponent', () => {
     fixture.componentRef.setInput('variant', 'chat');
     fixture.detectChanges();
     // chat: chat background, no safe-top, no min-h-14 (fixed h-14 instead).
-    expect(header().className).toContain('bg-[var(--trinity-chat)]');
+    expect(header().className).toContain(
+      'bg-[var(--trinity-surface-workspace)]',
+    );
     expect(header().className).not.toContain('safe-top');
     expect(header().className).not.toContain('min-h-14');
     // The toolbar text color lives on the header (not just the h1) so the

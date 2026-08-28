@@ -40,6 +40,32 @@ describe('TrnActionSheetService', () => {
     clickButton('Cancel');
     expect(handler).not.toHaveBeenCalled();
   });
+
+  it('keeps a disabled row visible but unfocusable and inert', () => {
+    const svc = TestBed.inject(TrnActionSheetService);
+    const handler = vi.fn();
+    svc.open({
+      buttons: [
+        {
+          text: 'Voice message',
+          disabled: true,
+          handler,
+          testId: 'voice',
+        },
+      ],
+    });
+    render();
+
+    const row = document.querySelector<HTMLButtonElement>(
+      '[data-testid=voice]',
+    );
+    expect(row?.disabled).toBe(true);
+    row?.click();
+    render();
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(document.querySelector('trn-action-sheet')).not.toBeNull();
+  });
 });
 
 describe('TrnActionSheetService — the message-sheet surface', () => {

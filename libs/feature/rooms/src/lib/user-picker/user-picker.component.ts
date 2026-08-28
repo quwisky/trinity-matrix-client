@@ -24,7 +24,7 @@ import { isValidUserId } from '@trinity/util/matrix';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { TrnInput } from '@trinity/components/input';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 
@@ -52,7 +52,7 @@ const MIN_SEARCH_LENGTH = 2;
     EmptyStateComponent,
     AvatarComponent,
     TrnSpinnerComponent,
-    HlmButton,
+    TrnButton,
     TrnInput,
   ],
   templateUrl: './user-picker.component.html',

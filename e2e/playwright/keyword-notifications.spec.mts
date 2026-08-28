@@ -1,6 +1,7 @@
 import { test, expect, type APIRequestContext } from './support/fixtures.mts';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers keyword notification rules (Settings → Notifications → Keywords). Adding a word
 // writes a `content` push rule keyed by the word itself, and a message containing it must
@@ -92,9 +93,7 @@ test.describe('Keyword notifications', () => {
       user: readerUser,
       pass: readerPass,
     } as SynapseSession);
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-notifications').click();
-    await page.waitForURL(/\/settings\/notifications$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'notifications');
 
     const input = page.getByTestId('keyword-input');
     await expect(input).toBeVisible({ timeout: 15_000 });
@@ -209,9 +208,7 @@ test.describe('Keyword notifications', () => {
       user: readerUser,
       pass: readerPass,
     } as SynapseSession);
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-notifications').click();
-    await page.waitForURL(/\/settings\/notifications$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'notifications');
     const input = page.getByTestId('keyword-input');
     await expect(input).toBeVisible({ timeout: 15_000 });
     await input.fill(KEYWORD);

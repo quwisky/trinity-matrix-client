@@ -220,6 +220,21 @@ test.describe('Member role sections', () => {
       'Member — 1',
     ]);
 
+    // These are inputs to the virtual window, not merely visual preferences. Assert the
+    // browser's actual boxes so a density or box-model change cannot make its spacers drift.
+    const headerHeights = await page
+      .locator('.members__section-label')
+      .evaluateAll((elements) =>
+        elements.map((element) => element.getBoundingClientRect().height),
+      );
+    expect(headerHeights).toEqual([34, 34, 34]);
+    const rowHeights = await page
+      .locator('.members .member')
+      .evaluateAll((elements) =>
+        elements.map((element) => element.getBoundingClientRect().height),
+      );
+    expect(rowHeights).toEqual([44, 44, 44]);
+
     // Each section is a named group for assistive tech (role + pluralised count).
     const groupLabels = await page
       .locator('.members__section')

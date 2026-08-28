@@ -5,7 +5,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/button';
 import { HomeserverInfoService } from '@trinity/data-access/homeserver';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { BUILD_INFO } from '@trinity/platform-native';
@@ -15,6 +15,7 @@ import {
   runWithBusy,
 } from '@trinity/util/ui';
 import { HomeserverBlockComponent } from './homeserver-block.component';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
 /**
  * Server section: one block per signed-in account, saying what that account's homeserver is
@@ -40,7 +41,11 @@ import { HomeserverBlockComponent } from './homeserver-block.component';
   selector: 'trn-server-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './server-section.component.html',
-  imports: [HlmButton, HomeserverBlockComponent],
+  imports: [
+    TrnButton,
+    HomeserverBlockComponent,
+    SettingsSectionHeadingComponent,
+  ],
 })
 export class ServerSectionComponent {
   private readonly matrix = inject(MatrixClientService);

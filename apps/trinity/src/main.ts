@@ -53,11 +53,13 @@ import {
 import { AVATAR_RESOLVER } from '@trinity/components/avatar';
 import { provideTrnIcons } from '@trinity/components/icon';
 import { provideTrnOverlayDefaults } from '@trinity/components/overlay';
+import { SETTINGS_DIALOG_CONFIG } from '@trinity/components/settings-dialog';
 
 import { routes } from './app/app.routes';
 import { AppComponent, NavigationFocusService } from '@trinity/feature/shell';
 import { environment } from './environments/environment';
 import { BUILD_INFO_VALUE } from './app/build-info';
+import { SETTINGS_DIALOG_APP_CONFIG } from './app/settings-dialog.config';
 
 // Desktop (hand-rolled Electron) detection. Capacitor.isNativePlatform() is FALSE in
 // this shell, so the service worker must be gated on this flag too. The predicate lives
@@ -192,6 +194,13 @@ bootstrapApplication(AppComponent, {
             (m) => m.DeviceVerificationPage,
           ),
       } satisfies EncryptionDialogLoaders,
+    },
+    // All in-app Settings entry points use one lazy presenter: a named modal on web and
+    // Electron, native routing on Android/iOS. Direct /settings URLs remain canonical
+    // deep links; a failed dialog chunk leaves the working room in place and reports it.
+    {
+      provide: SETTINGS_DIALOG_CONFIG,
+      useValue: SETTINGS_DIALOG_APP_CONFIG,
     },
     // Precache the app shell + crypto WASM for offline (web/PWA only). Native
     // (Capacitor) and desktop (Electron) already load these as bundled assets and

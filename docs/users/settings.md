@@ -1,8 +1,16 @@
 # Settings
 
-Settings is a two-pane screen: a list of fourteen sections beside the section you have open.
-Below 768 pixels wide the list is the page, and opening a section swaps to it with a back
-button.
+Settings is a grouped directory of fourteen sections beside the section you have open. On web and
+Electron it opens as a dialog over the room you were using, so closing it returns you to exactly
+that place without a route change. On a wide screen the section detail owns scrolling while the
+directory stays independently reachable without drawing a competing scrollbar. Below 768 pixels
+wide the same dialog uses a one-pane flow: the directory appears first, and opening a section swaps
+to it with an internal back button.
+
+Installed Android and iOS apps use the full-page routed flow so system Back and native history keep
+their expected meaning. A direct `/settings` or `/settings/<section>` link also opens that routed
+page on every platform, which keeps settings sections bookmarkable. If the dialog code cannot load,
+Trinity keeps the current room open and shows an error so you can retry without losing your place.
 
 !!! warning "Preferences do not follow your account"
 
@@ -53,6 +61,11 @@ Set yourself Online, Away or Offline, with an optional status message of up to 6
 characters. Matrix has no "invisible" state, so Trinity does not offer one.
 
 ## Appearance
+
+The top of Appearance includes a small live conversation preview. It follows the selected mode,
+palette, text size, time format and density immediately, so you can compare the combined result
+without leaving Settings. It is only a preview: its room names and messages are illustrative and
+none of them are interactive.
 
 **Theme.** Light, Dark, or follow the system setting. The page states which one is currently
 resolved, which matters when you have chosen "system".
@@ -282,9 +295,9 @@ setting for long-lived rooms.
 ## Accounts
 
 Signing in to more than one account at a time, and choosing which of them the room list draws
-from, is not in Settings — it lives in the user panel at the bottom of the sidebar (and, on a
-narrow layout, in a dedicated account dialog, because a flyout there would land on top of the
-menu that opened it).
+from, is not in Settings — it lives in the user panel floating across the bottom of the desktop
+Spaces and room navigation. On a narrow layout the panel stays in the list flow and opens a
+dedicated account dialog, because a flyout there would land on top of the menu that opened it.
 
 Two ideas are distinct there. The **active** account is the one every action runs as: sending,
 creating rooms, sending receipts. The **mixed** set is which accounts contribute rooms to the

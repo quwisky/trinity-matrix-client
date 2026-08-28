@@ -1,7 +1,7 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EncryptionDialogService } from './encryption-dialog.service';
@@ -21,28 +21,32 @@ function stubViewport(matches: boolean): void {
 }
 
 function setup(opts: { loaders?: EncryptionDialogLoaders | null } = {}) {
+  const toast = { show: vi.fn() };
   TestBed.configureTestingModule({
     providers: [
       EncryptionDialogService,
       MockProvider(Router),
       MockProvider(TrnDialogService),
-      ...(opts.loaders === undefined
-        ? [
+      MockProvider(TrnToastService, toast),
+      ...(opts.loaders === null
+        ? []
+        : [
             {
               provide: ENCRYPTION_DIALOG_COMPONENTS,
-              useValue: {
-                unlock: () => Promise.resolve(StubUnlockPage),
-                verify: () => Promise.resolve(StubVerifyPage),
-              } satisfies EncryptionDialogLoaders,
+              useValue:
+                opts.loaders ??
+                ({
+                  unlock: () => Promise.resolve(StubUnlockPage),
+                  verify: () => Promise.resolve(StubVerifyPage),
+                } satisfies EncryptionDialogLoaders),
             },
-          ]
-        : []),
+          ]),
     ],
   });
   const service = TestBed.inject(EncryptionDialogService);
   const { navigate } = TestBed.inject(Router);
   const { open } = TestBed.inject(TrnDialogService);
-  return { service, navigate, open };
+  return { service, navigate, open, toast };
 }
 
 describe('EncryptionDialogService', () => {
@@ -105,6 +109,63 @@ describe('EncryptionDialogService', () => {
       expect(navigate).toHaveBeenCalledWith(['/encryption/verify'], {
         queryParams: { returnTo: '/settings' },
       });
+    });
+
+    it('keeps a flow nested in another web dialog modal', async () => {
+      const { service, navigate, open } = setup();
+
+      await service.openVerify({
+        returnTo: '/settings/devices',
+        forceDialog: true,
+      });
+
+      expect(open).toHaveBeenCalledWith(
+        StubVerifyPage,
+        expect.objectContaining({ inputs: { asModal: true } }),
+      );
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('does not open a nested flow after its owner is destroyed', async () => {
+      let resolve!: (component: typeof StubVerifyPage) => void;
+      const loading = new Promise<typeof StubVerifyPage>((done) => {
+        resolve = done;
+      });
+      const { service, open, toast } = setup({
+        loaders: {
+          unlock: () => Promise.resolve(StubUnlockPage),
+          verify: () => loading,
+        },
+      });
+      let active = true;
+
+      const pending = service.openVerify({
+        forceDialog: true,
+        isOwnerActive: () => active,
+      });
+      active = false;
+      resolve(StubVerifyPage);
+      await pending;
+
+      expect(open).not.toHaveBeenCalled();
+      expect(toast.show).not.toHaveBeenCalled();
+    });
+
+    it('reports a nested loader failure without routing', async () => {
+      const { service, navigate, toast } = setup({
+        loaders: {
+          unlock: () => Promise.resolve(StubUnlockPage),
+          verify: () => Promise.reject(new Error('chunk unavailable')),
+        },
+      });
+
+      await service.openVerify({ forceDialog: true });
+
+      expect(navigate).not.toHaveBeenCalled();
+      expect(toast.show).toHaveBeenCalledWith(
+        'Could not open Encryption. Please try again.',
+        { duration: 5000, variant: 'destructive' },
+      );
     });
   });
 

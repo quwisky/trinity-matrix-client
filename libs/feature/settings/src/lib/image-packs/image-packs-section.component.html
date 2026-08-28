@@ -1,6 +1,10 @@
 <section class="packs" aria-labelledby="image-packs-title">
   <header class="packs__header">
-    <h2 id="image-packs-title">Stickers &amp; emoji</h2>
+    <trn-settings-section-heading
+      title="Stickers & emoji"
+      headingId="image-packs-title"
+      [primary]="true"
+    />
     <p>
       Install image packs for sending stickers and custom emoji suggestions.
       Packs stay in their source rooms; Trinity only saves a reference to your
@@ -74,7 +78,7 @@
           }
         </div>
         <button
-          hlmBtn
+          trnBtn
           type="button"
           variant="outline"
           size="sm"
@@ -123,7 +127,7 @@
           data-testid="image-pack-source"
         />
         <button
-          hlmBtn
+          trnBtn
           type="submit"
           [disabled]="busyId() !== null"
           [attr.aria-busy]="finding() ? 'true' : null"
@@ -172,7 +176,7 @@
             }
           </div>
           <button
-            hlmBtn
+            trnBtn
             type="button"
             size="sm"
             #installButton

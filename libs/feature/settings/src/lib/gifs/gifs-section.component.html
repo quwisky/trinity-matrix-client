@@ -1,9 +1,5 @@
 <div>
-  <h2
-    class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-  >
-    GIFs
-  </h2>
+  <trn-settings-section-heading title="GIFs" [primary]="true" />
 
   @if (migratedFrom(); as retired) {
     <p
@@ -44,7 +40,7 @@
       />
     </div>
     <button
-      hlmBtn
+      trnBtn
       size="sm"
       class="ml-auto shrink-0"
       [disabled]="!dirty()"
@@ -55,7 +51,7 @@
     </button>
     @if (configured()) {
       <button
-        hlmBtn
+        trnBtn
         variant="ghost"
         size="sm"
         class="shrink-0"

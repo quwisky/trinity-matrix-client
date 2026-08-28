@@ -55,7 +55,7 @@ export class PageHeaderComponent {
    * buttons — which have no color of their own — inherit `--trinity-text-bright`. */
   protected readonly headerClass = computed(() =>
     this.variant() === 'chat'
-      ? 'flex h-14 shrink-0 items-center gap-1 border-b border-solid border-border px-2 bg-[var(--trinity-chat)] text-[var(--trinity-text-bright)]'
+      ? 'flex h-14 shrink-0 items-center gap-1 border-b border-solid border-[var(--trinity-border-subtle)] px-2 bg-[var(--trinity-surface-workspace)] text-[var(--trinity-text-bright)]'
       : 'safe-top flex min-h-14 shrink-0 items-center gap-2 border-b border-solid border-border px-3',
   );
 

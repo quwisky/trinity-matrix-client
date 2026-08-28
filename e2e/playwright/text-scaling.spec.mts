@@ -1,6 +1,7 @@
 import { test, expect, type Page } from './support/fixtures.mts';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers the text-size setting (Settings → Appearance → Text size). The lever is the ROOT
 // font size, applied as a percentage, so everything that inherits from it scales.
@@ -127,9 +128,7 @@ test.describe('Text size', () => {
       await page.evaluate(() => document.documentElement.style.fontSize),
     ).toBe('');
 
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-appearance').click();
-    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'appearance');
     await choose(page, 'text-scale-select', 'text-scale-larger');
 
     expect(
@@ -157,18 +156,14 @@ test.describe('Text size', () => {
     // Every step, not just the one above: the overlap was worst at Small, which a test that
     // only ever picked Larger would have missed entirely.
     for (const step of ['small', 'default', 'large'] as const) {
-      await page.getByTestId('open-settings').click();
-      await page.getByTestId('settings-nav-appearance').click();
-      await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+      await openSettingsSection(page, 'appearance');
       await choose(page, 'text-scale-select', `text-scale-${step}`);
       await page.goto('/rooms');
       await openRoom(page, roomName);
       await expectColumnsMeet(page, step);
     }
 
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-appearance').click();
-    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'appearance');
     await choose(page, 'text-scale-select', 'text-scale-larger');
     await page.goto('/rooms');
     await openRoom(page, roomName);
@@ -255,9 +250,7 @@ test.describe('Code size', () => {
       ),
     ).toBe('');
 
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-appearance').click();
-    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'appearance');
     await choose(page, 'code-scale-select', 'code-scale-larger');
     await backToRoom(page, roomName);
 
@@ -271,9 +264,7 @@ test.describe('Code size', () => {
     // Now the composition. Text size moves the root; code must follow it AND keep the
     // enlargement, so the ratio between the two survives. If the code size were absolute,
     // this ratio would collapse back towards the correction.
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-appearance').click();
-    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'appearance');
     await choose(page, 'text-scale-select', 'text-scale-larger');
     await backToRoom(page, roomName);
 
@@ -399,9 +390,7 @@ test.describe('Code line numbers', () => {
     const text = await longBlock.evaluate((el) => el.textContent ?? '');
     expect(text).toBe(long);
 
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-appearance').click();
-    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'appearance');
     await choose(page, 'code-lines-select', 'code-lines-always');
     await backToRoom(page, roomName);
 
@@ -411,9 +400,7 @@ test.describe('Code line numbers', () => {
     expect(await firstNumber(shortBlock)).toContain('counter');
     expect(await shortBlock.locator('code').getAttribute('rows')).toBeNull();
 
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-appearance').click();
-    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'appearance');
     await choose(page, 'code-lines-select', 'code-lines-off');
     await backToRoom(page, roomName);
 

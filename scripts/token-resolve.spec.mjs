@@ -17,10 +17,11 @@ import { describe, expect, it } from 'vitest';
  *     palette defines, so `color-mix()` was invalid and the sheet rendered with no background
  *     at all — the whole point of the overlay (#159).
  *
- * The check is deliberately one-directional: it fails on a token that is USED but never
- * DEFINED. It says nothing about tokens that are defined and unused, because the palette
- * files legitimately define the full vocabulary whether or not today's components reach for
- * all of it.
+ * Phase 7 closes the other direction for the GLOBAL vocabulary too: a token declared in the
+ * central variables file must have a real consumer somewhere in source. Palette blocks may
+ * repeat those declarations, but they do not justify an otherwise dead API. Component-local
+ * custom properties remain outside that check because template bindings and vendor contracts
+ * can consume them dynamically.
  *
  * Lives in `scripts` for the same reason `confirmation-words.spec.mjs` does: it reads across
  * libs that the Nx module boundaries stop any single project from importing.
@@ -87,6 +88,17 @@ describe('trinity design tokens', () => {
     expect(unresolved).toEqual([]);
   });
 
+  it('keeps no unused global token compatibility aliases', () => {
+    const globalDefinitions = new Set(
+      [...variables.matchAll(definitionPattern)].map(([, token]) => token),
+    );
+    const unused = [...globalDefinitions]
+      .filter((token) => !used.has(token))
+      .sort();
+
+    expect(unused).toEqual([]);
+  });
+
   it('keeps semantic foundation roles pointing inward to the established primitives', () => {
     const aliases = {
       '--trinity-shape-control-radius': '--trinity-radius-md',
@@ -98,6 +110,7 @@ describe('trinity design tokens', () => {
       '--trinity-surface-workspace': '--trinity-chat',
       '--trinity-surface-raised': '--trinity-surface',
       '--trinity-surface-floating': '--trinity-sidebar',
+      '--trinity-surface-panel': '--trinity-members',
       '--trinity-state-hover-surface': '--trinity-hover',
       '--trinity-state-pressed-surface': '--trinity-active',
       '--trinity-status-neutral-surface': '--trinity-active',

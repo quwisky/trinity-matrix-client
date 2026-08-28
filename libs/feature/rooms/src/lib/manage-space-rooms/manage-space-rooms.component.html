@@ -33,7 +33,7 @@
         </label>
 
         <button
-          hlmBtn
+          trnBtn
           type="button"
           variant="ghost"
           size="icon"
@@ -42,10 +42,10 @@
           [attr.aria-label]="'Move ' + child.name + ' up'"
           [attr.data-testid]="'move-up-' + child.childId"
         >
-          <trn-icon name="chevron-up" />
+          <trn-icon name="chevron-up" motion="nudge-up" />
         </button>
         <button
-          hlmBtn
+          trnBtn
           type="button"
           variant="ghost"
           size="icon"
@@ -54,7 +54,7 @@
           [attr.aria-label]="'Move ' + child.name + ' down'"
           [attr.data-testid]="'move-down-' + child.childId"
         >
-          <trn-icon name="chevron-down" />
+          <trn-icon name="chevron-down" motion="nudge-down" />
         </button>
       </li>
     } @empty {
@@ -71,7 +71,7 @@
 
   <div class="manage-rooms__actions">
     <button
-      hlmBtn
+      trnBtn
       type="button"
       (click)="close()"
       data-testid="manage-space-rooms-done"

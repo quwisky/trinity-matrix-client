@@ -1,13 +1,9 @@
 <div>
-  <div class="flex items-center justify-between px-4 pt-5 pb-1">
-    <h2
-      class="text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-    >
-      Keyboard shortcuts
-    </h2>
+  <div class="flex items-center justify-between pr-4">
+    <trn-settings-section-heading title="Keyboard shortcuts" [primary]="true" />
     @if (hasCustomBindings()) {
       <button
-        hlmBtn
+        trnBtn
         variant="ghost"
         size="sm"
         (click)="resetAll()"
@@ -54,7 +50,7 @@
             >
               Press a combination… (Esc to cancel)
             </span>
-            <button hlmBtn variant="ghost" size="sm" (click)="cancelCapture()">
+            <button trnBtn variant="ghost" size="sm" (click)="cancelCapture()">
               Cancel
             </button>
           } @else {
@@ -88,7 +84,7 @@
 
             @if (row.rebindable) {
               <button
-                hlmBtn
+                trnBtn
                 variant="outline"
                 size="sm"
                 (click)="edit(row)"
@@ -98,7 +94,7 @@
               </button>
               @if (!row.isDefault) {
                 <button
-                  hlmBtn
+                  trnBtn
                   variant="ghost"
                   size="sm"
                   (click)="reset(row.id)"

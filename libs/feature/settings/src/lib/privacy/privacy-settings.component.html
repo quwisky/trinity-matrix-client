@@ -1,12 +1,5 @@
-<h2
-  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
->
-  Privacy
-</h2>
-<label
-  class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
-  data-testid="privacy-send-read-receipts"
->
+<trn-settings-section-heading title="Privacy" [primary]="true" />
+<label trnSettingsToggleRow data-testid="privacy-send-read-receipts">
   <trn-switch
     [checked]="privacy.sendReadReceipts()"
     (checkedChange)="privacy.setSendReadReceipts($event)"
@@ -18,10 +11,7 @@
   still clear, but your reading stays private to you on this device.
 </p>
 
-<label
-  class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
-  data-testid="privacy-link-previews"
->
+<label trnSettingsToggleRow data-testid="privacy-link-previews">
   <trn-switch
     [checked]="privacy.linkPreviews()"
     (checkedChange)="privacy.setLinkPreviews($event)"
@@ -44,7 +34,8 @@
 
 @if (privacy.linkPreviews()) {
   <label
-    class="flex cursor-pointer items-center gap-3 py-2 pr-4 pl-8 text-sm font-medium"
+    trnSettingsToggleRow
+    [nested]="true"
     data-testid="privacy-link-previews-encrypted"
   >
     <trn-switch
@@ -53,7 +44,7 @@
     />
     Show link previews in encrypted rooms
   </label>
-  <p class="block py-2 pr-4 pl-8 text-13 text-muted-foreground">
+  <p class="block py-2 ps-8 pe-4 text-13 text-muted-foreground">
     ⚠ Off by default. Turning this on sends links from your encrypted messages
     to your homeserver to fetch a preview — disclosing a link it otherwise
     couldn't see.
