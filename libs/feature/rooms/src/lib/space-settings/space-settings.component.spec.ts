@@ -20,7 +20,6 @@ async function build(
     canEditTopic: boolean;
     canEditAvatar: boolean;
     canEditJoinRule: boolean;
-    canManageBans: boolean;
     canManageAliases: boolean;
   }> = {},
   over: {
@@ -247,13 +246,12 @@ describe('SpaceSettingsComponent', () => {
     expect(cmp.canSave()).toBe(true);
   });
 
-  it('hides bans and addresses the viewer cannot manage', async () => {
+  it('keeps bans readable but hides addresses the viewer cannot manage', async () => {
     const { container } = await build({
-      canManageBans: false,
       canManageAliases: false,
     });
 
-    expect(container.querySelector('trn-banned-members')).toBeNull();
+    expect(container.querySelector('trn-banned-members')).not.toBeNull();
     expect(container.querySelector('trn-room-aliases')).toBeNull();
   });
 
@@ -268,20 +266,21 @@ describe('SpaceSettingsComponent', () => {
     ).not.toBeNull();
   });
 
-  it('splits the dialog into General and Access, mirroring room settings', async () => {
-    const { cmp, container } = await build({ canManageBans: false });
+  it('splits the dialog into General, Access, and Bans', async () => {
+    const { cmp, container } = await build();
 
     expect(cmp.settingsTabs().map((tab) => tab.value)).toEqual([
       'general',
       'access',
+      'bans',
     ]);
     expect(
       container.querySelector('[data-testid=space-settings-tab-bans]'),
-    ).toBeNull();
+    ).not.toBeNull();
   });
 
-  it('adds a Bans tab only where there is a list behind it', async () => {
-    const { cmp, container } = await build({ canManageBans: true });
+  it('keeps the Bans tab when the viewer can manage bans', async () => {
+    const { cmp, container } = await build();
 
     expect(cmp.settingsTabs().map((tab) => tab.value)).toEqual([
       'general',
@@ -297,7 +296,6 @@ describe('SpaceSettingsComponent', () => {
     // Eager panels mean an inactive one is only `hidden`, so a dialog-wide query finds every
     // field either way; containment is what distinguishes a real split from added chrome.
     const { container } = await build({
-      canManageBans: true,
       canManageAliases: true,
     });
     const panel = (name: string) =>

@@ -49,6 +49,8 @@ function setup(
   } = {},
 ) {
   const sendStateEvent = vi.fn().mockResolvedValue({});
+  // A getter below lets tests sign in after construction without replacing the room.
+  let signedIn = !opts.signedOut;
   // Mutable and returned, so a test can change what the space declares and then fire the
   // listener — the only way to observe that the projection re-reads.
   const events = (opts.children ?? []).map(childEvent);
@@ -58,8 +60,11 @@ function setup(
   const room = opts.noRoom
     ? null
     : {
+        getMyMembership: () => (signedIn ? 'join' : 'leave'),
+        getMember: () => ({ powerLevel: 100, membership: 'join' }),
         getLiveTimeline: () => ({
           getState: () => ({
+            hasSufficientPowerLevelFor: () => opts.may ?? true,
             maySendStateEvent: () => opts.may ?? true,
             getStateEvents,
           }),
@@ -74,7 +79,6 @@ function setup(
   };
   // A getter, so a test can sign in after the service exists — the real service's
   // `isInitialized` moves under it too.
-  let signedIn = !opts.signedOut;
   TestBed.configureTestingModule({
     providers: [
       SpaceChildrenService,

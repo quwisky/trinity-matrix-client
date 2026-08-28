@@ -77,15 +77,13 @@
         }
       </trn-tab-panel>
 
-      @if (canManageBans()) {
-        <trn-tab-panel
-          value="bans"
-          panelClass="flex flex-col gap-3 pt-3"
-          data-testid="space-settings-panel-bans"
-        >
-          <trn-banned-members [roomId]="spaceId()" />
-        </trn-tab-panel>
-      }
+      <trn-tab-panel
+        value="bans"
+        panelClass="flex flex-col gap-3 pt-3"
+        data-testid="space-settings-panel-bans"
+      >
+        <trn-banned-members [roomId]="spaceId()" />
+      </trn-tab-panel>
     </trn-tabs>
 
     <div class="space-settings__actions">

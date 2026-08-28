@@ -10,7 +10,8 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { switchMap, type Observable } from 'rxjs';
-import { TrnButton } from '@trinity/components/button';
+import { TrnActionAvailability, TrnButton } from '@trinity/components/button';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import {
   TrnDialogRef,
   TrnAlertService,
@@ -18,7 +19,9 @@ import {
 } from '@trinity/components/overlay';
 import {
   RoomModerationService,
+  RoomActionPermissionsService,
   RoomsService,
+  type ActionAvailability,
   type MemberSummary,
 } from '@trinity/data-access/rooms';
 import {
@@ -55,7 +58,13 @@ const ROLE_PRESETS = [
 @Component({
   selector: 'trn-member-info',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, TrnButton, TrnIconComponent],
+  imports: [
+    AvatarComponent,
+    TrnButton,
+    TrnActionAvailability,
+    TrnTooltip,
+    TrnIconComponent,
+  ],
   templateUrl: './member-info.component.html',
   styleUrl: './member-info.component.scss',
   host: {
@@ -67,14 +76,6 @@ export class MemberInfoComponent {
   readonly member = input.required<MemberSummary>();
   /** The room the member is being viewed in (scopes the moderation actions). */
   readonly roomId = input.required<string>();
-  /** Whether the viewer may remove this member (host computes it from power levels). */
-  readonly canKick = input(false);
-  /** Whether the viewer may ban this member. */
-  readonly canBan = input(false);
-  /** Whether the viewer may change this member's power level (promote / demote). */
-  readonly canSetPower = input(false);
-  /** The viewer's own power level — caps which roles they can assign. */
-  readonly myPower = input(0);
 
   /**
    * Present when this is a DIALOG, absent when it is the shell's right-hand panel.
@@ -111,6 +112,7 @@ export class MemberInfoComponent {
   private readonly toast = inject(TrnToastService);
   private readonly matrix = inject(MatrixClientService);
   private readonly moderation = inject(RoomModerationService);
+  private readonly permissionsService = inject(RoomActionPermissionsService);
   private readonly ignoredUsers = inject(IgnoredUsersService);
   private readonly rooms = inject(RoomsService);
   private readonly verification = inject(VerificationService);
@@ -136,17 +138,35 @@ export class MemberInfoComponent {
   /** Whether the room is a direct message — a DM has no owner. See {@link memberRole}. */
   readonly direct = input(false);
 
-  readonly role = computed(
-    () =>
-      MEMBER_ROLE_LABEL[memberRole(this.member(), { direct: this.direct() })],
+  readonly permissions = computed(() =>
+    this.permissionsService.member(this.roomId(), this.member().userId),
   );
 
-  /** Roles the viewer may assign: presets at or below their own level, minus the current one. */
+  readonly liveMember = computed<MemberSummary>(() => ({
+    ...this.member(),
+    powerLevel: this.permissions().targetPower,
+  }));
+
+  readonly role = computed(
+    () =>
+      MEMBER_ROLE_LABEL[
+        memberRole(this.liveMember(), { direct: this.direct() })
+      ],
+  );
+
+  /** Every meaningful preset except the current one; unavailable choices explain why. */
   readonly roleOptions = computed(() => {
-    const my = this.myPower();
-    const current = this.member().powerLevel;
-    return ROLE_PRESETS.filter((r) => r.level <= my && r.level !== current);
+    const current = this.permissions().targetPower;
+    return ROLE_PRESETS.filter((role) => role.level !== current);
   });
+
+  rolePermission(level: number): ActionAvailability {
+    return this.permissionsService.role(
+      this.roomId(),
+      this.member().userId,
+      level,
+    );
+  }
 
   /** Start (or reuse) a direct message with this member — the host does the navigation. */
   message(): void {
@@ -216,6 +236,9 @@ export class MemberInfoComponent {
 
   /** Remove the member from the room (with an optional reason), on confirmation. */
   async kick(): Promise<void> {
+    if (!this.permissions().kick.available) {
+      return;
+    }
     const reason = await this.alert.prompt({
       header: 'Remove from room',
       message: `Remove ${this.member().name} from this room? They can rejoin if invited (or if the room is public).`,
@@ -238,6 +261,9 @@ export class MemberInfoComponent {
 
   /** Ban the member from the room (with an optional reason), on confirmation. */
   async ban(): Promise<void> {
+    if (!this.permissions().ban.available) {
+      return;
+    }
     const reason = await this.alert.prompt({
       header: 'Ban from room',
       message: `Ban ${this.member().name}? They won't be able to rejoin until they're unbanned.`,
@@ -260,6 +286,9 @@ export class MemberInfoComponent {
 
   /** Promote / demote the member to a preset role, on confirmation. */
   async setRole(option: { label: string; level: number }): Promise<void> {
+    if (!this.rolePermission(option.level).available) {
+      return;
+    }
     const confirmed = await this.alert.confirm({
       header: 'Change role',
       message: `Change ${this.member().name}'s role to ${option.label}?`,

@@ -124,6 +124,9 @@ async function renderSidebar(
       sortOverridden?: boolean;
       defaultSortMode?: RoomSortMode;
       canCurateSpace?: boolean;
+      curateSpaceReason?: string | null;
+      canInviteToSpace?: boolean;
+      inviteToSpaceReason?: string | null;
       canConfigureSpace?: boolean;
       accountBadges?: ReadonlyMap<string, AccountBadge>;
     };
@@ -376,7 +379,11 @@ describe('ChannelSidebarComponent', () => {
   // render's leftover overlay instead of this one's.
   it('leaves mark-all-read out of the overflow when nothing is unread', async () => {
     const { fixture, container } = await renderSidebar({
-      inputs: { spaceActive: true },
+      inputs: {
+        spaceActive: true,
+        canCurateSpace: true,
+        canInviteToSpace: true,
+      },
     });
 
     container
@@ -401,7 +408,11 @@ describe('ChannelSidebarComponent', () => {
 
   it('shows the space actions and emits createRoom / inviteToSpace / leaveSpace', async () => {
     const { fixture, container } = await renderSidebar({
-      inputs: { spaceActive: true },
+      inputs: {
+        spaceActive: true,
+        canCurateSpace: true,
+        canInviteToSpace: true,
+      },
     });
 
     let created = false;
@@ -419,15 +430,15 @@ describe('ChannelSidebarComponent', () => {
       .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
       .click();
     fixture.detectChanges();
-    document
-      .querySelector<HTMLElement>('[data-testid="space-invite"]')!
-      .click();
+    document.querySelector<HTMLElement>('[data-testid="space-leave"]')!.click();
     fixture.detectChanges();
     container
       .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
       .click();
     fixture.detectChanges();
-    document.querySelector<HTMLElement>('[data-testid="space-leave"]')!.click();
+    document
+      .querySelector<HTMLElement>('[data-testid="space-invite"]')!
+      .click();
 
     expect(created).toBe(true);
     expect(invited).toBe(true);
@@ -491,28 +502,43 @@ describe('ChannelSidebarComponent', () => {
     expect(organised).toBe(true);
   });
 
-  it('hides the curation actions without power to curate', async () => {
-    // Curating is its own power level, so this is gated separately from Space settings —
-    // a row that always failed on click would read as a broken feature.
+  it('explains and blocks curation actions without power to curate', async () => {
+    // Keep unavailable actions discoverable while making their state and reason explicit.
     const { fixture, container } = await renderSidebar({
       inputs: {
         spaceActive: true,
         canCurateSpace: false,
+        curateSpaceReason: 'You need permission to manage this space.',
         canConfigureSpace: true,
       },
     });
+
+    let added = false;
+    let organised = false;
+    fixture.componentInstance.addToSpace.subscribe(() => (added = true));
+    fixture.componentInstance.manageSpaceRooms.subscribe(
+      () => (organised = true),
+    );
 
     container
       .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
       .click();
     fixture.detectChanges();
 
-    expect(
-      document.querySelector('[data-testid="space-add-rooms"]'),
-    ).toBeNull();
-    expect(
-      document.querySelector('[data-testid="space-manage-rooms"]'),
-    ).toBeNull();
+    const add = document.querySelector<HTMLElement>(
+      '[data-testid="space-add-rooms"]',
+    )!;
+    const organise = document.querySelector<HTMLElement>(
+      '[data-testid="space-manage-rooms"]',
+    )!;
+    expect(add.getAttribute('aria-disabled')).toBe('true');
+    expect(add.getAttribute('aria-description')).toBe(
+      'You need permission to manage this space.',
+    );
+    add.click();
+    organise.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(added).toBe(false);
+    expect(organised).toBe(false);
     // The settings row is governed by a different permission and stays.
     expect(
       document.querySelector('[data-testid="open-space-settings"]'),
@@ -868,7 +894,10 @@ describe('ChannelSidebarComponent', () => {
 
   it('emits removeRoom for a joined channel only while a space is active', async () => {
     const { fixture, container } = await renderSidebar({
-      inputs: { rooms: [room({ id: '!a:hs', name: 'general' })] },
+      inputs: {
+        rooms: [room({ id: '!a:hs', name: 'general' })],
+        canCurateSpace: true,
+      },
     });
 
     const kebab = (): HTMLElement =>

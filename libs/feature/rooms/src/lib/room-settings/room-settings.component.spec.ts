@@ -32,7 +32,6 @@ async function build(
     canEditAvatar: boolean;
     canEditJoinRule: boolean;
     canEditHistory: boolean;
-    canManageBans: boolean;
     canManageAliases: boolean;
     allowedSpaceIds: string[];
     parentSpaces: { id: string; name: string }[];
@@ -461,33 +460,36 @@ describe('RoomSettingsComponent', () => {
     expect(close).toHaveBeenCalledWith(true);
   });
 
-  it('hides the banned-members section when the viewer cannot manage bans', async () => {
-    const { container } = await build({ canManageBans: false });
-    expect(container.querySelector('[data-testid=banned-members]')).toBeNull();
-  });
-
-  it('shows the banned-members section when the viewer can manage bans', async () => {
-    const { container } = await build({ canManageBans: true });
+  it('keeps the ban list readable when the viewer cannot unban', async () => {
+    const { container } = await build();
     expect(
       container.querySelector('[data-testid=banned-members]'),
     ).not.toBeNull();
   });
 
-  it('splits the dialog into General, Access, and Widgets', async () => {
-    const { cmp, container } = await build({ canManageBans: false });
+  it('shows the banned-members section when the viewer can manage bans', async () => {
+    const { container } = await build();
+    expect(
+      container.querySelector('[data-testid=banned-members]'),
+    ).not.toBeNull();
+  });
+
+  it('splits the dialog into General, Access, Widgets, and Bans', async () => {
+    const { cmp, container } = await build();
 
     expect(cmp.settingsTabs().map((tab) => tab.value)).toEqual([
       'general',
       'access',
       'widgets',
+      'bans',
     ]);
     expect(
       container.querySelector('[data-testid=room-settings-tab-bans]'),
-    ).toBeNull();
+    ).not.toBeNull();
   });
 
-  it('adds a Bans tab only where there is a list behind it', async () => {
-    const { cmp, container } = await build({ canManageBans: true });
+  it('keeps the Bans tab when the viewer can manage bans', async () => {
+    const { cmp, container } = await build();
 
     expect(cmp.settingsTabs().map((tab) => tab.value)).toEqual([
       'general',
@@ -505,7 +507,6 @@ describe('RoomSettingsComponent', () => {
     // dialog finds every field either way. Asserting CONTAINMENT is what tells a real split
     // from markup that merely gained some tab chrome.
     const { container } = await build({
-      canManageBans: true,
       canManageAliases: true,
     });
     const panel = (name: string) =>
@@ -527,7 +528,7 @@ describe('RoomSettingsComponent', () => {
   it('keeps Save and Cancel outside the tabs, always reachable', async () => {
     // The panels are eager precisely so one form spans them; the actions must not sit on a
     // panel, or saving would depend on which tab happened to be open.
-    const { container } = await build({ canManageBans: true });
+    const { container } = await build();
     const inAnyPanel = (testId: string) =>
       [
         ...container.querySelectorAll('[data-testid^=room-settings-panel-]'),

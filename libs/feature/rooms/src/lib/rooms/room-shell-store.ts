@@ -9,7 +9,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { map } from 'rxjs';
 import { decodeRoomSegment } from '@trinity/util/matrix';
-import type { MemberSummary, ModerationCaps } from '@trinity/data-access/rooms';
+import type { MemberSummary } from '@trinity/data-access/rooms';
 import { BELOW_MEMBERS_QUERY, matchesQuery } from '@trinity/util/ui';
 
 /**
@@ -25,14 +25,11 @@ export type RightPanel =
   | { readonly kind: 'thread'; readonly rootEventId: string }
   | { readonly kind: 'pinned' }
   | { readonly kind: 'search' }
-  // Member info carries its subject AND the viewer's power over them, because the caps are
-  // resolved against the room at the moment the row is clicked. Recomputing them from the
-  // slot later would ask a different question — "can I moderate them now" — which is the
-  // same answer today and not the one the panel was opened with.
+  // Member info carries its subject. Permission is deliberately not snapshotted here: the
+  // panel projects it from live room state so a remote promotion/demotion updates in place.
   | {
       readonly kind: 'member';
       readonly member: MemberSummary;
-      readonly caps: ModerationCaps;
       readonly direct: boolean;
     }
   | null;
@@ -147,7 +144,7 @@ export class RoomShellStore {
   readonly rightPanel = linkedSignal<string | null, RightPanel>({
     // Keyed on the OPEN ROOM, because four of the six surfaces are about a particular room
     // and cannot follow the user out of it. A thread names a root event, pinned and search
-    // hand back an event id, and member info carries both its subject and the caps resolved
+    // hand back an event id, and member info carries its subject
     // against the room whose row was clicked — while the template binds every panel to
     // `room.id`, the room that is open NOW. Left to persist, switching rooms with member
     // info open pointed "Remove from room" at a room the user never opened it for.

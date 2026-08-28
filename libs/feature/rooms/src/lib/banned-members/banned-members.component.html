@@ -8,6 +8,7 @@
   } @else {
     <ul class="flex flex-col gap-2">
       @for (member of banned(); track member.userId) {
+        @let permission = unbanPermission(member.userId);
         <li
           class="flex items-center justify-between gap-3"
           data-testid="banned-member"
@@ -27,6 +28,9 @@
             size="sm"
             [disabled]="isPending(member.userId)"
             (click)="unban(member)"
+            [trnActionAllowed]="permission.available"
+            [trnActionDisabledReason]="permission.reason"
+            [trnTooltip]="permission.reason ?? 'Unban member'"
             data-testid="banned-member-unban"
           >
             {{ isPending(member.userId) ? 'Unbanning…' : 'Unban' }}

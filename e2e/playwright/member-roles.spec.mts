@@ -245,18 +245,23 @@ test.describe('Member role sections', () => {
       'Member, 1 member',
     ]);
 
-    // The right member sits under the right header (matched by user id via [title]).
-    await expect(sectionFor(page, 'Owner').locator('.member')).toHaveAttribute(
-      'title',
-      admin.userId,
-    );
+    // The right member sits under the right header. User IDs now live in the design
+    // tooltip, so locate rows by their stable test hook and visible display name.
     await expect(
-      sectionFor(page, 'Moderator').locator('.member'),
-    ).toHaveAttribute('title', moderator.userId);
-    await expect(sectionFor(page, 'Member').locator('.member')).toHaveAttribute(
-      'title',
-      plain.userId,
-    );
+      sectionFor(page, 'Owner')
+        .getByTestId('member-row')
+        .filter({ hasText: admin.name }),
+    ).toHaveCount(1);
+    await expect(
+      sectionFor(page, 'Moderator')
+        .getByTestId('member-row')
+        .filter({ hasText: moderator.name }),
+    ).toHaveCount(1);
+    await expect(
+      sectionFor(page, 'Member')
+        .getByTestId('member-row')
+        .filter({ hasText: plain.name }),
+    ).toHaveCount(1);
     await expect(
       sectionFor(page, 'Moderator').locator('.member__name'),
     ).toHaveText(moderator.name);
@@ -336,7 +341,7 @@ test.describe('Member role sections', () => {
     await expect(sectionFor(page, 'Owner')).toHaveCount(0);
 
     // And the panel agrees — it reads the same classification as the list.
-    await page.locator(`.member[title="${me.userId}"]`).click();
+    await page.getByTestId('member-row').filter({ hasText: meUser }).click();
     await expect(page.getByTestId('member-info')).toBeVisible({
       timeout: 10_000,
     });
@@ -364,7 +369,10 @@ test.describe('Member role sections', () => {
       timeout: 20_000,
     });
 
-    await page.locator(`.member[title="${admin.userId}"]`).click();
+    await page
+      .getByTestId('member-row')
+      .filter({ hasText: admin.name })
+      .click();
 
     await expect(page.getByTestId('member-info')).toBeVisible({
       timeout: 10_000,
@@ -400,14 +408,16 @@ test.describe('Member role sections', () => {
     ]);
 
     // And the right person is in each — the creator above, the promotee below.
-    await expect(sectionFor(page, 'Owner').locator('.member')).toHaveAttribute(
-      'title',
-      admin.userId,
-    );
-    await expect(sectionFor(page, 'Admin').locator('.member')).toHaveAttribute(
-      'title',
-      promoted.userId,
-    );
+    await expect(
+      sectionFor(page, 'Owner')
+        .getByTestId('member-row')
+        .filter({ hasText: admin.name }),
+    ).toHaveCount(1);
+    await expect(
+      sectionFor(page, 'Admin')
+        .getByTestId('member-row')
+        .filter({ hasText: promoted.name }),
+    ).toHaveCount(1);
   });
 
   test('re-partitions live when a member is promoted to moderator', async ({
@@ -451,7 +461,50 @@ test.describe('Member role sections', () => {
       { timeout: 20_000 },
     );
     await expect(
-      sectionFor(page, 'Moderator').locator('.member'),
-    ).toHaveAttribute('title', plain.userId);
+      sectionFor(page, 'Moderator')
+        .getByTestId('member-row')
+        .filter({ hasText: plain.name }),
+    ).toHaveCount(1);
+  });
+
+  test('disables member actions live when the viewer loses power', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}perm`;
+    const { reader, roomName, roomId, admin, extras } = await seedRoleRoom(
+      request,
+      hs,
+      runId,
+      [0],
+    );
+    const [plain] = extras;
+
+    await login(page, reader);
+    await openRoomWithMembers(page, roomName);
+    await page
+      .getByTestId('member-row')
+      .filter({ hasText: plain.name })
+      .click();
+
+    const kick = page.getByTestId('member-info-kick');
+    await expect(kick).not.toHaveAttribute('aria-disabled', 'true');
+
+    // The open panel must react to a power-level event from another Matrix request; no
+    // close/reopen or local action is allowed to hide a stale permission snapshot.
+    await setPowerLevel(request, hs, admin, roomId, admin.userId, 0);
+    await expect(kick).toHaveAttribute('aria-disabled', 'true', {
+      timeout: 20_000,
+    });
+    await expect(kick).toHaveAttribute(
+      'aria-description',
+      'You can only manage members with a lower role.',
+    );
+
+    await kick.focus();
+    await expect(page.getByRole('tooltip')).toContainText(
+      'You can only manage members with a lower role.',
+    );
   });
 });

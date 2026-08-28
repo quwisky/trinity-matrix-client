@@ -82,8 +82,9 @@ const HISTORY_OPTIONS = [
  * history visibility). The opener seeds the current values and which fields the viewer's
  * power level lets them change; fields they can't edit render read-only. Save writes only
  * the fields that changed and closes resolving `true` (so the host can refresh/toast);
- * errors keep the dialog open with a toast. Viewers who can ban also see the room's banned
- * members (with an Unban action) via {@link BannedMembersComponent}. Presented via
+ * errors keep the dialog open with a toast. The room's banned members remain readable;
+ * each Unban action independently reflects its live permission via
+ * {@link BannedMembersComponent}. Presented via
  * {@link TrnDialogService}.
  */
 @Component({
@@ -130,8 +131,6 @@ export class RoomSettingsComponent implements OnInit {
   readonly parentSpaces = input<readonly ParentSpace[]>([]);
   /** Whether this room's version can enforce a `restricted` rule at all (v8+). */
   readonly supportsRestricted = input(false);
-  /** Whether the viewer may manage (view + lift) this room's bans. */
-  readonly canManageBans = input(false);
   /** Whether the viewer may manage this room's published addresses. */
   readonly canManageAliases = input(false);
 
@@ -186,10 +185,8 @@ export class RoomSettingsComponent implements OnInit {
   /**
    * The tabs this dialog offers.
    *
-   * `Bans` is conditional for the same reason its panel was: without the permission there is
-   * nothing behind it, and a tab that opens on an empty panel is worse than no tab. `General`
-   * and `Access` are always present, which is what keeps the initial tab valid — a `tab`
-   * naming a panel that is not rendered would show nothing at all.
+   * The Bans tab remains readable without moderation power. Its individual Unban actions
+   * stay visible but explain why they are unavailable.
    */
   readonly settingsTabs = computed<TrnTabOption[]>(() => [
     { value: 'general', label: 'General', testId: 'room-settings-tab-general' },
@@ -199,15 +196,7 @@ export class RoomSettingsComponent implements OnInit {
       label: 'Widgets',
       testId: 'room-settings-tab-widgets',
     },
-    ...(this.canManageBans()
-      ? [
-          {
-            value: 'bans',
-            label: 'Bans',
-            testId: 'room-settings-tab-bans',
-          },
-        ]
-      : []),
+    { value: 'bans', label: 'Bans', testId: 'room-settings-tab-bans' },
   ]);
 
   readonly historyOptions = HISTORY_OPTIONS;

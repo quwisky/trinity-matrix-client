@@ -21,6 +21,7 @@ import {
 } from '@trinity/util/matrix';
 import { spaceChildIdsOf } from './room-projection';
 import { compareOrder } from './space-child-order';
+import { RoomActionPermissionsService } from './room-action-permissions.service';
 
 /** Children fetched per `getRoomHierarchy` page. */
 const HIERARCHY_LIMIT = 100;
@@ -130,6 +131,7 @@ type SpaceChildBase = Omit<SpaceChildRoom, 'joined'>;
 @Injectable({ providedIn: 'root' })
 export class SpacesService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly actionPermissions = inject(RoomActionPermissionsService);
 
   private readonly _spaces = signal<SpaceSummary[]>([]);
   /** The user's joined spaces, sorted by name; live as the client syncs. */
@@ -371,6 +373,9 @@ export class SpacesService {
     options: CreateRoomInSpaceOptions,
   ): Observable<string> {
     return defer(() => {
+      this.actionPermissions.assert(
+        this.actionPermissions.room(spaceId).curateSpace,
+      );
       const client = this.matrix.instance;
       const via = serverNameOf(client.getUserId());
       return from(
@@ -449,16 +454,19 @@ export class SpacesService {
    * Cold: runs on subscribe.
    */
   removeRoomFromSpace(spaceId: string, childId: string): Observable<void> {
-    return defer(() =>
-      from(
+    return defer(() => {
+      this.actionPermissions.assert(
+        this.actionPermissions.room(spaceId).curateSpace,
+      );
+      return from(
         this.matrix.instance.sendStateEvent(
           spaceId,
           EventType.SpaceChild,
           {},
           childId,
         ),
-      ),
-    ).pipe(map(() => void 0));
+      ).pipe(map(() => void 0));
+    });
   }
 
   /**

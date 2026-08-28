@@ -23,6 +23,7 @@ function setup(
     bans?: FakeBan[];
     kickError?: Error;
     banError?: Error;
+    targetMembership?: string;
   } = {},
 ) {
   const kick = opts.kickError
@@ -43,7 +44,9 @@ function setup(
     : {
         getMember: (id: string) => ({
           powerLevel: id === me ? myLevel : targetLevel,
+          membership: id === me ? 'join' : (opts.targetMembership ?? 'join'),
         }),
+        getMyMembership: () => 'join',
         getMembersWithMembership: (_membership: string) =>
           (opts.bans ?? []).map((b) => ({
             userId: b.userId,
@@ -141,7 +144,7 @@ describe('RoomModerationService', () => {
   });
 
   it('unban is cold and lifts the ban on subscribe', async () => {
-    const { svc, unban } = setup();
+    const { svc, unban } = setup({ targetMembership: 'ban' });
 
     const action = svc.unban('!r:hs', '@bob:hs');
     expect(unban).not.toHaveBeenCalled(); // cold
@@ -166,16 +169,6 @@ describe('RoomModerationService', () => {
   it('bannedMembers is empty for an unknown room', () => {
     const { svc } = setup({ noRoom: true });
     expect(svc.bannedMembers('!r:hs')).toEqual([]);
-  });
-
-  it('canManageBans is true when the viewer meets the ban power level', () => {
-    expect(setup({ myLevel: 100 }).svc.canManageBans('!r:hs')).toBe(true);
-  });
-
-  it('canManageBans is false when the viewer lacks the ban power level', () => {
-    expect(
-      setup({ myLevel: 0, may: () => false }).svc.canManageBans('!r:hs'),
-    ).toBe(false);
   });
 
   it('setPowerLevel is cold and promotes/demotes on subscribe', async () => {
@@ -257,7 +250,7 @@ describe('RoomModerationService', () => {
       kick: false,
       ban: false,
       setPower: false,
-      myPower: 0,
+      myPower: 100,
     });
   });
 });

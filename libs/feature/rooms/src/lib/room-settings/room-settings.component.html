@@ -113,15 +113,13 @@
         <trn-room-widgets [roomId]="roomId()" />
       </trn-tab-panel>
 
-      @if (canManageBans()) {
-        <trn-tab-panel
-          value="bans"
-          panelClass="flex flex-col gap-3 pt-3"
-          data-testid="room-settings-panel-bans"
-        >
-          <trn-banned-members [roomId]="roomId()" />
-        </trn-tab-panel>
-      }
+      <trn-tab-panel
+        value="bans"
+        panelClass="flex flex-col gap-3 pt-3"
+        data-testid="room-settings-panel-bans"
+      >
+        <trn-banned-members [roomId]="roomId()" />
+      </trn-tab-panel>
     </trn-tabs>
 
     @if (noSpaceChosen()) {

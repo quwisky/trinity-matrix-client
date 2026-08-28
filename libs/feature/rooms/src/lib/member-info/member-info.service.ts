@@ -1,9 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { TrnDialogService } from '@trinity/components/overlay';
-import {
-  type MemberSummary,
-  type ModerationCaps,
-} from '@trinity/data-access/rooms';
+import { type MemberSummary } from '@trinity/data-access/rooms';
 import { MemberInfoComponent } from './member-info.component';
 
 /**
@@ -17,18 +14,12 @@ export class MemberInfoService {
   private readonly dialog = inject(TrnDialogService);
 
   /**
-   * Open the info panel for `member` in `roomId`; `caps` decides whether the
-   * kick / ban actions show. Resolves their id to message, or null.
+   * Open the info panel for `member` in `roomId`. Live room state decides which
+   * moderation actions are available. Resolves their id to message, or null.
    */
   open(
     member: MemberSummary,
     roomId: string,
-    caps: ModerationCaps = {
-      kick: false,
-      ban: false,
-      setPower: false,
-      myPower: 0,
-    },
     /** True for a direct message, where nobody is the owner. */
     direct = false,
   ): Promise<string | null> {
@@ -39,10 +30,6 @@ export class MemberInfoService {
         inputs: {
           member,
           roomId,
-          canKick: caps.kick,
-          canBan: caps.ban,
-          canSetPower: caps.setPower,
-          myPower: caps.myPower,
           direct,
         },
       },

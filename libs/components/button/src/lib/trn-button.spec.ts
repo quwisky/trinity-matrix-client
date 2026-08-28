@@ -3,7 +3,7 @@ import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { HlmButton } from '@trinity/helm/button';
 import { describe, expect, it } from 'vitest';
-import { TrnButton, TrnIconButton } from './trn-button';
+import { TrnActionAvailability, TrnButton, TrnIconButton } from './trn-button';
 
 @Component({
   imports: [TrnButton, TrnIconButton],
@@ -28,6 +28,21 @@ class HostComponent {}
 class IconHostComponent {
   readonly iconSizes = ['icon', 'icon-xs', 'icon-sm', 'icon-lg'] as const;
   readonly dynamicSize = signal<'default' | 'icon'>('default');
+}
+
+@Component({
+  imports: [TrnActionAvailability],
+  template: `<button
+    [trnActionAllowed]="allowed()"
+    trnActionDisabledReason="Only room admins can do this."
+    (click)="activations.update((value) => value + 1)"
+  >
+    Restricted action
+  </button>`,
+})
+class AvailabilityHostComponent {
+  readonly allowed = signal(false);
+  readonly activations = signal(0);
 }
 
 describe('TrnButton', () => {
@@ -82,5 +97,32 @@ describe('TrnButton', () => {
     await fixture.whenStable();
 
     expect(dynamic.hasAttribute('data-trn-icon-button')).toBe(true);
+  });
+
+  it('keeps unavailable actions focusable and blocks pointer or keyboard activation', async () => {
+    const { container, fixture } = await render(AvailabilityHostComponent);
+    const host = fixture.componentInstance;
+    const button = container.querySelector('button')!;
+
+    expect(button.disabled).toBe(false);
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(button.getAttribute('aria-description')).toBe(
+      'Only room admins can do this.',
+    );
+
+    button.click();
+    button.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+    );
+    button.dispatchEvent(
+      new KeyboardEvent('keydown', { key: ' ', bubbles: true }),
+    );
+    expect(host.activations()).toBe(0);
+
+    host.allowed.set(true);
+    fixture.detectChanges();
+    button.click();
+    expect(host.activations()).toBe(1);
+    expect(button.hasAttribute('aria-disabled')).toBe(false);
   });
 });

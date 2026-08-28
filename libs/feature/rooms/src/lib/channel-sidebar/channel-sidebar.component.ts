@@ -7,7 +7,10 @@ import {
   model,
   output,
 } from '@angular/core';
-import { TrnIconButton } from '@trinity/components/button';
+import {
+  TrnActionAvailability,
+  TrnIconButton,
+} from '@trinity/components/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import {
   TrnDropdownMenu,
@@ -54,6 +57,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     TrnIconButton,
+    TrnActionAvailability,
     TrnTooltip,
     EmptyStateComponent,
     SidebarRoomListComponent,
@@ -107,6 +111,9 @@ export class ChannelSidebarComponent {
    * hold it without being able to rename the space, and vice versa.
    */
   readonly canCurateSpace = input(false);
+  readonly curateSpaceReason = input<string | null>(null);
+  readonly canInviteToSpace = input(false);
+  readonly inviteToSpaceReason = input<string | null>(null);
   /** Already narrowed by {@link filterQuery} — the shell filters, so that the Alt+↑/↓ room
    * walk steps through exactly what is on screen (`RoomShellStore.roomFilter`). */
   readonly rooms = input<RoomSummary[]>([]);

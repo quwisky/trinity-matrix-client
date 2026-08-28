@@ -18,7 +18,7 @@ import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
   RoomsService,
   RoomSettingsService,
-  RoomModerationService,
+  RoomActionPermissionsService,
   RoomAliasesService,
   PublicRoomsService,
   SpacesService,
@@ -67,13 +67,11 @@ describe('RoomsPage action error feedback', () => {
   let roomsSignal: WritableSignal<RoomSummary[]>;
   let editableFields: Mock;
   let currentAccess: Mock;
-  let canManageBans: Mock;
   let canManageAliases: Mock;
   let parentSpaceIds: Mock;
   let railSpacesSignal: ReturnType<typeof signal<SpaceSummary[]>>;
   let supportsRestricted: Mock;
   let canCurate: Mock;
-  let spaceCanModerate: Mock;
   let spaceMemberInfoOpen: Mock;
   let createSpace: Mock;
   let addExistingRoom: Mock;
@@ -107,7 +105,6 @@ describe('RoomsPage action error feedback', () => {
     railSpacesSignal = signal<SpaceSummary[]>([]);
     supportsRestricted = vi.fn(() => false);
     canCurate = vi.fn(() => true);
-    spaceCanModerate = vi.fn(() => ({}) as never);
     spaceMemberInfoOpen = vi.fn().mockResolvedValue(null);
     createSpace = vi.fn(() => of('!new-space:hs'));
     addExistingRoom = vi.fn(() => of(undefined));
@@ -116,7 +113,6 @@ describe('RoomsPage action error feedback', () => {
       topic: '',
       avatarMxc: null as string | null,
     }));
-    canManageBans = vi.fn(() => false);
     canManageAliases = vi.fn(() => false);
     joinPublicRoom = vi.fn(() => of('!new:hs'));
     markReadFn = vi.fn(() => of(undefined));
@@ -140,10 +136,6 @@ describe('RoomsPage action error feedback', () => {
           supportsRestricted,
           currentIdentity,
         }),
-        MockProvider(RoomModerationService, {
-          canManageBans,
-          canModerate: spaceCanModerate,
-        }),
         MockProvider(MemberInfoService, { open: spaceMemberInfoOpen }),
         MockProvider(RoomAliasesService, { canManageAliases }),
         MockProvider(PublicRoomsService, { join: joinPublicRoom }),
@@ -162,6 +154,21 @@ describe('RoomsPage action error feedback', () => {
           mixing: signal(false),
         }),
         MockProvider(SpaceChildrenService, { canCurate, addExistingRoom }),
+        MockProvider(RoomActionPermissionsService, {
+          connect: vi.fn(),
+          room: () => {
+            const curate = canCurate();
+            return {
+              invite: { available: true, reason: null },
+              curateSpace: {
+                available: curate,
+                reason: curate
+                  ? null
+                  : 'You need permission to manage this space.',
+              },
+            };
+          },
+        }),
         MockProvider(TrnAlertService, { confirm: alertConfirm }),
         MockProvider(TimelineService),
         MockProvider(TimelineActionsService, { edit, sendMedia }),
@@ -368,8 +375,7 @@ describe('RoomsPage action error feedback', () => {
         inputs: expect.objectContaining({ spaceId: '!s:hs' }),
       }),
     );
-    // Moderation caps are resolved against the SPACE, so kick/ban act where the user is.
-    expect(spaceCanModerate).toHaveBeenCalledWith('!s:hs', '@a:hs');
+    // The member panel keeps the SPACE id and resolves its permissions live there.
   });
 
   it('does not open member info when the members dialog is dismissed', async () => {
@@ -383,8 +389,6 @@ describe('RoomsPage action error feedback', () => {
     shell.spaces.onOpenSpaceMembers();
     await Promise.resolve();
     await Promise.resolve();
-
-    expect(spaceCanModerate).not.toHaveBeenCalled();
   });
 
   it('creates a subspace and links it into the active space', async () => {
@@ -501,7 +505,6 @@ describe('RoomsPage action error feedback', () => {
       joinRule: true,
       history: false,
     });
-    canManageBans.mockReturnValue(true);
     canManageAliases.mockReturnValue(false);
 
     shell.spaces.onOpenSpaceSettings();
@@ -525,7 +528,6 @@ describe('RoomsPage action error feedback', () => {
           canEditTopic: true,
           canEditAvatar: false,
           canEditJoinRule: true,
-          canManageBans: true,
           canManageAliases: false,
         }),
       },

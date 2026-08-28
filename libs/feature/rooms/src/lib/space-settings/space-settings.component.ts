@@ -92,8 +92,6 @@ export class SpaceSettingsComponent implements OnInit {
   readonly canEditTopic = input(false);
   readonly canEditAvatar = input(false);
   readonly canEditJoinRule = input(false);
-  /** Whether the viewer may manage (view + lift) this space's bans. */
-  readonly canManageBans = input(false);
   /** Whether the viewer may manage this space's published addresses. */
   readonly canManageAliases = input(false);
 
@@ -116,7 +114,7 @@ export class SpaceSettingsComponent implements OnInit {
     () => this.canEditName() || this.canEditTopic() || this.canEditJoinRule(),
   );
 
-  /** Mirrors {@link RoomSettingsComponent}: `Bans` only exists where there is a list behind it. */
+  /** Bans remain readable; each Unban action owns its live permission explanation. */
   readonly settingsTabs = computed<TrnTabOption[]>(() => [
     {
       value: 'general',
@@ -124,15 +122,7 @@ export class SpaceSettingsComponent implements OnInit {
       testId: 'space-settings-tab-general',
     },
     { value: 'access', label: 'Access', testId: 'space-settings-tab-access' },
-    ...(this.canManageBans()
-      ? [
-          {
-            value: 'bans',
-            label: 'Bans',
-            testId: 'space-settings-tab-bans',
-          },
-        ]
-      : []),
+    { value: 'bans', label: 'Bans', testId: 'space-settings-tab-bans' },
   ]);
 
   /**

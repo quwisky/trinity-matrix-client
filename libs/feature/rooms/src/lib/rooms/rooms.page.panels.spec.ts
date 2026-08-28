@@ -16,7 +16,6 @@ import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
   RoomsService,
   RoomSettingsService,
-  RoomModerationService,
   RoomAliasesService,
   PublicRoomsService,
   SpacesService,
@@ -63,13 +62,11 @@ describe('RoomsPage panels, pins and media', () => {
   let roomsSignal: WritableSignal<RoomSummary[]>;
   let editableFields: Mock;
   let currentAccess: Mock;
-  let canManageBans: Mock;
   let canManageAliases: Mock;
   let parentSpaceIds: Mock;
   let railSpacesSignal: ReturnType<typeof signal<SpaceSummary[]>>;
   let supportsRestricted: Mock;
   let canCurate: Mock;
-  let spaceCanModerate: Mock;
   let spaceMemberInfoOpen: Mock;
   let createSpace: Mock;
   let addExistingRoom: Mock;
@@ -103,7 +100,6 @@ describe('RoomsPage panels, pins and media', () => {
     railSpacesSignal = signal<SpaceSummary[]>([]);
     supportsRestricted = vi.fn(() => false);
     canCurate = vi.fn(() => true);
-    spaceCanModerate = vi.fn(() => ({}) as never);
     spaceMemberInfoOpen = vi.fn().mockResolvedValue(null);
     createSpace = vi.fn(() => of('!new-space:hs'));
     addExistingRoom = vi.fn(() => of(undefined));
@@ -112,7 +108,6 @@ describe('RoomsPage panels, pins and media', () => {
       topic: '',
       avatarMxc: null as string | null,
     }));
-    canManageBans = vi.fn(() => false);
     canManageAliases = vi.fn(() => false);
     joinPublicRoom = vi.fn(() => of('!new:hs'));
     markReadFn = vi.fn(() => of(undefined));
@@ -135,10 +130,6 @@ describe('RoomsPage panels, pins and media', () => {
           currentAccess,
           supportsRestricted,
           currentIdentity,
-        }),
-        MockProvider(RoomModerationService, {
-          canManageBans,
-          canModerate: spaceCanModerate,
         }),
         MockProvider(MemberInfoService, { open: spaceMemberInfoOpen }),
         MockProvider(RoomAliasesService, { canManageAliases }),
@@ -226,7 +217,6 @@ describe('RoomsPage panels, pins and media', () => {
       historyVisibility: 'world_readable',
       allowedSpaceIds: [],
     });
-    canManageBans.mockReturnValue(true);
     canManageAliases.mockReturnValue(true);
     // Deliberately NOT the summary's 'General': that is `room.name || roomId`, which the
     // SDK fabricates from the member list for a nameless room. The dialog must seed from
@@ -241,7 +231,6 @@ describe('RoomsPage panels, pins and media', () => {
 
     expect(editableFields).toHaveBeenCalledWith('!r:hs');
     expect(currentAccess).toHaveBeenCalledWith('!r:hs');
-    expect(canManageBans).toHaveBeenCalledWith('!r:hs');
     expect(canManageAliases).toHaveBeenCalledWith('!r:hs');
     expect(TestBed.inject(TrnDialogService).openAndWait).toHaveBeenCalledWith(
       RoomSettingsComponent,
@@ -259,7 +248,6 @@ describe('RoomsPage panels, pins and media', () => {
           canEditAvatar: false,
           canEditJoinRule: true,
           canEditHistory: false,
-          canManageBans: true,
           canManageAliases: true,
         }),
       },
@@ -548,7 +536,7 @@ describe('RoomsPage panels, pins and media', () => {
 
   it('drops a room-scoped panel when the open room changes', () => {
     // Four of the six surfaces are ABOUT a room — a thread root, a pinned/search hit, a
-    // member and the caps resolved against their room — while the template binds each of
+    // member from their room — while the template binds each of
     // them to the room that is open NOW. Left to persist across a switch they describe one
     // room beside another room's timeline. Back to what this width shows by default.
     const shell = build();

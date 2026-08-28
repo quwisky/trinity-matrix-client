@@ -48,6 +48,7 @@ import {
   initialOf,
   isMarkedUnread,
 } from './room-projection';
+import { RoomActionPermissionsService } from './room-action-permissions.service';
 
 /** Fields a {@link RoomsService.createRoom} call accepts. */
 export interface CreateRoomOptions {
@@ -161,6 +162,7 @@ export interface MemberSummary {
 export class RoomsService {
   private readonly matrix = inject(MatrixClientService);
   private readonly privacy = inject(PrivacySettingsService);
+  private readonly actionPermissions = inject(RoomActionPermissionsService);
 
   /**
    * The other party in each of our DMs, refreshed by {@link refresh}. A DM has no
@@ -913,6 +915,7 @@ export class RoomsService {
       if (!isValidUserId(userId)) {
         return throwError(() => new Error(`Invalid user id: ${userId}`));
       }
+      this.actionPermissions.assert(this.actionPermissions.room(roomId).invite);
       return from(this.matrix.instance.invite(roomId, userId)).pipe(
         map(() => void 0),
       );

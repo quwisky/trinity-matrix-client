@@ -51,6 +51,9 @@
         "
         [canConfigureSpace]="vm.canConfigureSpace()"
         [canCurateSpace]="vm.canCurateSpace()"
+        [curateSpaceReason]="vm.spaceCuratePermission().reason"
+        [canInviteToSpace]="vm.spaceInvitePermission().available"
+        [inviteToSpaceReason]="vm.spaceInvitePermission().reason"
         [rooms]="vm.filteredRooms()"
         [hasAnyUnread]="vm.anyRoomUnread()"
         [(filterQuery)]="store.roomFilter"
@@ -186,7 +189,9 @@
               size="icon"
               class="max-md:hidden"
               (click)="roomActions.onInviteToRoom()"
-              trnTooltip="Invite people"
+              [trnActionAllowed]="vm.roomInvitePermission().available"
+              [trnActionDisabledReason]="vm.roomInvitePermission().reason"
+              [trnTooltip]="vm.roomInvitePermission().reason ?? 'Invite people'"
               aria-label="Invite people"
               data-testid="invite-people"
             >
@@ -278,6 +283,11 @@
                   class="md:hidden"
                   trnDropdownMenuItem
                   (triggered)="roomActions.onInviteToRoom()"
+                  [trnActionAllowed]="vm.roomInvitePermission().available"
+                  [trnActionDisabledReason]="vm.roomInvitePermission().reason"
+                  [trnTooltip]="
+                    vm.roomInvitePermission().reason ?? 'Invite people'
+                  "
                   data-testid="overflow-invite-people"
                 >
                   <trn-icon name="user-plus" />
@@ -538,10 +548,6 @@
                   aria-label="Member info"
                   [member]="panel.member"
                   [roomId]="room.id"
-                  [canKick]="panel.caps.kick"
-                  [canBan]="panel.caps.ban"
-                  [canSetPower]="panel.caps.setPower"
-                  [myPower]="panel.caps.myPower"
                   [direct]="panel.direct"
                   (messageUser)="memberActions.onMemberMessage($event)"
                   (dismissed)="memberActions.onMemberPanelDismissed()"

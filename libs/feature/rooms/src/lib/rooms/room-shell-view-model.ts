@@ -6,8 +6,8 @@ import {
   AccountScopeService,
   MixedRoomsService,
   MixedSpacesService,
+  RoomActionPermissionsService,
   RoomsService,
-  SpaceChildrenService,
   SpaceRoomOrderService,
   SpacesService,
   UnreadAggregatorService,
@@ -45,7 +45,7 @@ export class RoomShellViewModel {
   private readonly store = inject(RoomShellStore);
   private readonly rooms = inject(RoomsService);
   private readonly spaces = inject(SpacesService);
-  private readonly spaceChildren = inject(SpaceChildrenService);
+  private readonly permissions = inject(RoomActionPermissionsService);
   private readonly mixedRooms = inject(MixedRoomsService);
   private readonly mixedSpaces = inject(MixedSpacesService);
   private readonly accountScope = inject(AccountScopeService);
@@ -287,6 +287,13 @@ export class RoomShellViewModel {
     return id ? (this.rooms.rooms().find((r) => r.id === id) ?? null) : null;
   });
 
+  readonly roomInvitePermission = computed(() => {
+    const roomId = this.store.activeRoomId();
+    return roomId
+      ? this.permissions.room(roomId).invite
+      : { available: false, reason: 'Open a room before inviting people.' };
+  });
+
   readonly members = computed(() => {
     // Scoped to the open room: the signal is written only when a member event names it,
     // so a busy unrelated room cannot wake this list.
@@ -386,13 +393,30 @@ export class RoomShellViewModel {
    * one without the other — but it carries the same mixed-account guard, since the write
    * still goes through the ACTIVE client.
    */
-  readonly canCurateSpace = computed(() => {
+  readonly spaceCuratePermission = computed(() => {
     const spaceId = this.store.activeSpaceId();
-    return (
-      !!spaceId &&
-      this.ownsActiveSpace() &&
-      this.spaceChildren.canCurate(spaceId)
-    );
+    if (!spaceId || !this.ownsActiveSpace()) {
+      return {
+        available: false,
+        reason: 'Switch to the account that owns this space.',
+      };
+    }
+    return this.permissions.room(spaceId).curateSpace;
+  });
+
+  readonly canCurateSpace = computed(
+    () => this.spaceCuratePermission().available,
+  );
+
+  readonly spaceInvitePermission = computed(() => {
+    const spaceId = this.store.activeSpaceId();
+    if (!spaceId || !this.ownsActiveSpace()) {
+      return {
+        available: false,
+        reason: 'Switch to the account that owns this space.',
+      };
+    }
+    return this.permissions.room(spaceId).invite;
   });
 
   /** Whether the active space belongs to the signed-in account. */

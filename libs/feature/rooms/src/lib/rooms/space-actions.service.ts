@@ -1,7 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import {
   RoomAliasesService,
-  RoomModerationService,
   RoomSettingsService,
   RoomsService,
   SpaceChildrenService,
@@ -48,7 +47,6 @@ export class SpaceActionsService {
   private readonly spaceOrder = inject(SpaceRoomOrderService);
   private readonly roomSettings = inject(RoomSettingsService);
   private readonly aliases = inject(RoomAliasesService);
-  private readonly moderation = inject(RoomModerationService);
   private readonly alert = inject(TrnAlertService);
   private readonly dialog = inject(TrnDialogService);
 
@@ -84,7 +82,7 @@ export class SpaceActionsService {
       confirmText: 'Create',
       maxLength: 100,
     });
-    if (name !== null) {
+    if (name !== null && this.vm.canCurateSpace()) {
       this.applyCreateSubspace(parentId, name);
     }
   }
@@ -92,7 +90,7 @@ export class SpaceActionsService {
   /** Sidebar "+": prompt for a name and create a room inside the active space. */
   async onCreateChannel(): Promise<void> {
     const spaceId = this.store.activeSpaceId();
-    if (!spaceId) {
+    if (!spaceId || !this.vm.canCurateSpace()) {
       return; // the affordance is hidden on Home, but guard regardless
     }
     this.status.error.set(null);
@@ -103,7 +101,7 @@ export class SpaceActionsService {
       confirmText: 'Create',
       maxLength: 100,
     });
-    if (name !== null) {
+    if (name !== null && this.vm.canCurateSpace()) {
       this.applyCreateChannel(spaceId, name);
     }
   }
@@ -194,19 +192,20 @@ export class SpaceActionsService {
   /** Sidebar remove icon on a joined channel: confirm, then unlink it from the space. */
   async onRemoveFromSpace(roomId: string): Promise<void> {
     const spaceId = this.store.activeSpaceId();
-    if (!spaceId) {
+    if (!spaceId || !this.vm.canCurateSpace()) {
       return; // the affordance only shows in a space, but guard regardless
     }
     this.status.error.set(null);
     const name =
       this.rooms.rooms().find((r) => r.id === roomId)?.name ?? 'this channel';
     if (
-      await this.alert.confirm({
+      (await this.alert.confirm({
         header: 'Remove from space',
         message: `Remove “${name}” from “${this.vm.activeSpaceName()}”? You stay in the room — it’s just unlinked from this space.`,
         confirmText: 'Remove',
         destructive: true,
-      })
+      })) &&
+      this.vm.canCurateSpace()
     ) {
       this.applyRemoveFromSpace(spaceId, roomId);
     }
@@ -262,7 +261,6 @@ export class SpaceActionsService {
         canEditTopic: editable.topic,
         canEditAvatar: editable.avatar,
         canEditJoinRule: editable.joinRule,
-        canManageBans: this.moderation.canManageBans(spaceId),
         canManageAliases: this.aliases.canManageAliases(spaceId),
       },
     });

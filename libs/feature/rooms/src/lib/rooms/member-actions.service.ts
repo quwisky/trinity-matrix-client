@@ -1,9 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import {
-  RoomModerationService,
-  RoomsService,
-  type MemberSummary,
-} from '@trinity/data-access/rooms';
+import { RoomsService, type MemberSummary } from '@trinity/data-access/rooms';
 import { runWithBusy } from '@trinity/util/ui';
 import { MemberInfoService } from '../member-info/member-info.service';
 import { UserCardService } from '../user-card/user-card.service';
@@ -27,7 +23,6 @@ export class MemberActionsService {
   private readonly nav = inject(RoomShellNavigationService);
   private readonly status = inject(ShellStatusService);
   private readonly rooms = inject(RoomsService);
-  private readonly moderation = inject(RoomModerationService);
   private readonly memberInfo = inject(MemberInfoService);
   private readonly userCard = inject(UserCardService);
 
@@ -52,22 +47,14 @@ export class MemberActionsService {
    * `activeRoomId` is what keeps the slot meaning "the open room's right-hand panel".
    */
   async openMemberInfo(member: MemberSummary, roomId: string): Promise<void> {
-    // Kick/ban actions are gated by the viewer's power over this member; the panel
-    // announces a user id only for "Message" (kick/ban close it themselves via sync).
-    const caps = this.moderation.canModerate(roomId, member.userId);
     const direct = this.rooms.directRoomIds().has(roomId);
 
     if (roomId === this.store.activeRoomId()) {
-      this.store.rightPanel.set({ kind: 'member', member, caps, direct });
+      this.store.rightPanel.set({ kind: 'member', member, direct });
       return;
     }
 
-    const messageUserId = await this.memberInfo.open(
-      member,
-      roomId,
-      caps,
-      direct,
-    );
+    const messageUserId = await this.memberInfo.open(member, roomId, direct);
     if (messageUserId) {
       this.startDirectMessage(messageUserId);
     }

@@ -4,12 +4,16 @@ import { NEVER, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { TrnToastService } from '@trinity/components/overlay';
 import {
+  RoomActionPermissionsService,
   RoomModerationService,
   type BannedMember,
 } from '@trinity/data-access/rooms';
 import { BannedMembersComponent } from './banned-members.component';
 
-async function build(bans: BannedMember[], over: { unban?: Mock } = {}) {
+async function build(
+  bans: BannedMember[],
+  over: { unban?: Mock; canUnban?: boolean } = {},
+) {
   const unban = over.unban ?? vi.fn(() => of(undefined));
   const bannedMembers = vi.fn(() => bans);
   const toastShow = vi.fn();
@@ -17,6 +21,15 @@ async function build(bans: BannedMember[], over: { unban?: Mock } = {}) {
     inputs: { roomId: '!r:hs' },
     providers: [
       MockProvider(RoomModerationService, { bannedMembers, unban }),
+      MockProvider(RoomActionPermissionsService, {
+        unban: () => ({
+          available: over.canUnban ?? true,
+          reason:
+            over.canUnban === false
+              ? 'You need permission to unban this member.'
+              : null,
+        }),
+      }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
   });
@@ -97,5 +110,24 @@ describe('BannedMembersComponent', () => {
     cmp.unban({ userId: '@bob:hs', name: 'Bob', reason: null });
 
     expect(unban).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an unavailable unban action focusable and blocks activation', async () => {
+    const { container, unban } = await build(
+      [{ userId: '@bob:hs', name: 'Bob', reason: null }],
+      { canUnban: false },
+    );
+
+    const button = container.querySelector<HTMLButtonElement>(
+      '[data-testid="banned-member-unban"]',
+    )!;
+    expect(button.disabled).toBe(false);
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(button.getAttribute('aria-description')).toBe(
+      'You need permission to unban this member.',
+    );
+    button.click();
+
+    expect(unban).not.toHaveBeenCalled();
   });
 });

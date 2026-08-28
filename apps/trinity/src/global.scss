@@ -30,6 +30,10 @@ button:disabled,
   opacity: var(--trinity-disabled-opacity);
 }
 
+[data-trn-action-disabled] {
+  cursor: not-allowed;
+}
+
 /*
  * Shared visible-scrollbar contract. The selector has deliberately zero specificity so a
  * component can opt out with `.no-scrollbar`; that utility keeps compact navigation and

@@ -459,7 +459,6 @@ describe('RoomsPage mobile navigation', () => {
         powerLevel: 0,
         isCreator: false,
       },
-      caps: { kick: false, ban: false, setPower: false, myPower: 0 },
       direct: false,
     });
 
@@ -529,7 +528,6 @@ describe('RoomsPage mobile navigation', () => {
       powerLevel: 0,
       isCreator: false,
     },
-    caps: { kick: false, ban: false, setPower: false, myPower: 0 },
     direct: false,
   };
 
