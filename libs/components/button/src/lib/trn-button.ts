@@ -1,4 +1,4 @@
-import { Directive } from '@angular/core';
+import { computed, Directive, inject } from '@angular/core';
 import { HlmButton } from '@trinity/helm/button';
 
 /**
@@ -12,6 +12,9 @@ import { HlmButton } from '@trinity/helm/button';
 @Directive({
   selector: 'button[trnBtn], a[trnBtn]',
   exportAs: 'trnBtn',
+  host: {
+    '[attr.data-trn-icon-button]': "iconButton() ? '' : null",
+  },
   hostDirectives: [
     {
       directive: HlmButton,
@@ -20,6 +23,32 @@ import { HlmButton } from '@trinity/helm/button';
     },
   ],
 })
-export class TrnButton {}
+export class TrnButton {
+  private readonly helm = inject(HlmButton, { self: true });
 
-export const TrnButtonImports = [TrnButton] as const;
+  /**
+   * Icon sizes opt into Trinity's shared icon-button interaction contract.
+   *
+   * Keep this derived from Helm's public input instead of reading the host attribute: bound
+   * sizes need to update reactively, and the public wrapper is the layer that owns the marker.
+   */
+  protected readonly iconButton = computed(() =>
+    this.helm.size()?.startsWith('icon'),
+  );
+}
+
+/**
+ * Opts a purpose-built icon control into Trinity's shared interaction contract.
+ *
+ * Use this only when `trnBtn` would replace meaningful component-owned geometry, such as a
+ * circular avatar action, server-rail pill, reaction chip or compact message toolbar control.
+ */
+@Directive({
+  selector: 'button[trnIconButton], a[trnIconButton]',
+  host: {
+    '[attr.data-trn-icon-button]': "''",
+  },
+})
+export class TrnIconButton {}
+
+export const TrnButtonImports = [TrnButton, TrnIconButton] as const;

@@ -31,12 +31,31 @@ and page header — live there too. Button is exposed as `trnBtn`; dropdown dire
 root toaster are exposed from `@trinity/components/overlay`. These public APIs compose or host
 kit primitives, which is the tier's job, without leaking Helm selectors or types to features.
 
+Icon-only actions use one of two public contracts. A standard square action uses `trnBtn` with
+an `icon*` size, which supplies the shared shape and automatically opts into the common pointer,
+hover and pressed states. A purpose-built control whose geometry carries meaning—a reaction chip,
+server-rail pill, avatar action or compact toolbar button—uses `trnIconButton` instead. It keeps
+that geometry but receives the same interaction states; the owning component must explicitly
+centre its glyph within that custom box. In both forms the inner `<trn-icon>` must
+choose an explicit semantic `motion` (`nudge-left`, `nudge-up`, `nudge-down`, `nudge-up-right`,
+`pop` or `rotate`); motion never moves the hit target, and reduced-motion mode removes the glyph
+transform while retaining colour and focus feedback.
+
+Themeable interactive labels use `trnTooltip` alongside their `aria-label`, not a native `title`: the
+native surface is browser/OS chrome and cannot follow Trinity's theme. A source guard keeps native
+titles off every button and link; vertically stacked navigation and member labels open sideways so a
+hoverable overlay cannot cover the preceding control. The public tooltip wrapper keeps Helm's geometry
+and motion but replaces its inverted colours with the semantic `--trinity-tooltip-surface` /
+`--trinity-tooltip-foreground` pair. Light mode preserves the dark tooltip treatment; dark mode
+resolves the surface through the active palette's elevated popover tokens, including the arrow.
+
 `libs/ui` is gone entirely. What was left after the components moved out was not UI: the
 `runWithBusy` / `mediaQuerySignal` / internal-URL helpers went to `@trinity/util/ui`
 (`type:util`, reachable from every layer rather than only from above), and the
-`EncryptionDialogService` seam became `@trinity/components/encryption-dialog` — its own
-library rather than part of `@trinity/components/overlay`, which stays the generic swappable
-dialog wrapper and is not taught one domain's routes and loader token.
+`EncryptionDialogService` and `SettingsDialogService` seams became
+`@trinity/components/encryption-dialog` and `@trinity/components/settings-dialog` — their own
+libraries rather than part of `@trinity/components/overlay`, which stays the generic swappable
+dialog wrapper and is not taught domain routes or loader tokens.
 
 That tier is closed from both sides. The vendor bans stop everything below the UI layer
 naming `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` or `@ctrl/ngx-emoji-mart`; and a
@@ -449,10 +468,11 @@ hand-authored component SCSS.
 | Z-index layers      | `--trinity-z-sticky` (5) → `-floating` (10) → `-overlay` (20) → `-panel` (40). **App-level only** — a component stacking its own children is local and stays a literal. The CDK overlay container sits above all of them at 1000.                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | Motion              | `--trinity-duration-press` for the down response and `-fast` / `-base` / `-slow` for transitions, plus `--trinity-duration-pulse` / `-flash` for motion that is not one (an ambient loop, a one-shot cue). `--trinity-ease-standard` / `-decelerate` / `-accelerate`. All collapsed to 0.01ms under `prefers-reduced-motion` at the bottom of `variables.scss` — which is why a literal duration is a bug, not a style. An `infinite` animation needs `global.scss`'s `animation-iteration-count` too: collapsing its duration alone makes it repeat per frame rather than stop.                                                                     |
 
-Settings is the worked feature-level composition of these roles. Its wide frame is bounded by the
-height supplied by the app shell, never by another viewport unit; the directory remains scrollable
-with a hidden gutter while the detail pane is the one painted scroll owner. Paint containment on
-the routed Settings host prevents a long detail from enlarging the document's root scroll extent.
+Settings is the worked feature-level composition of these roles. Web and Electron mount its bounded
+workspace in a CDK dialog; the installed mobile apps and direct deep links mount the same section
+registry in the routed shell. The directory remains scrollable with a hidden gutter while the
+detail pane is the one painted scroll owner. Paint containment on both shells prevents a long
+detail from enlarging the document's root scroll extent.
 `SettingsSectionHeadingComponent` and `SettingsToggleRowDirective` keep sentence-case type and
 density consistent without weakening native heading, label or switch semantics. The Appearance
 preview is intentionally feature-local and token-only: it demonstrates the same surface, identity,
@@ -722,9 +742,9 @@ that `message-row`'s scoped styles cannot reach.
 
 One placement detail with a reason: a fenced block's language caption is generated from the
 `language` attribute and positioned **bottom**-right, not top-right. The message hover
-toolbar is anchored across the row's top edge, so a top-right caption lands underneath it on
-a continuation row. Using generated content also keeps the caption out of the element's text,
-so it cannot be selected, copied, or picked up by the edit-history diff.
+toolbar floats across the row's upper trailing boundary, so a top-right caption can land
+underneath it on a continuation row. Using generated content also keeps the caption out of
+the element's text, so it cannot be selected, copied, or picked up by the edit-history diff.
 
 ## The HTML allowlist
 
@@ -800,4 +820,16 @@ deep-link and mobile target, and the service falls back to routing whenever the 
 component loaders are absent. See
 [matrix and encryption](matrix-and-encryption.md) for what those flows do.
 
-Toasts render through a single `<hlm-toaster/>` mounted in `AppComponent`.
+`SettingsDialogService` uses platform capability rather than viewport size: web and Electron
+open `SettingsDialogComponent`, while `Capacitor.isNativePlatform()` routes Android and iOS to
+`/settings`. The app supplies the feature component through `SETTINGS_DIALOG_CONFIG`, so the
+public UI library never imports a feature. Direct settings URLs remain the canonical deep-link
+surface. A failed modal load leaves the current route intact and reports an error; a navigation
+that starts while the chunk is pending cancels its presentation. The presenter coalesces repeated
+opens while the lazy chunk loads and ignores a second trigger while one dialog is active. Security
+and Devices force their nested verification/recovery overlays to stay modal even in the narrow web
+drill-in, rather than returning the user through a routed Settings page.
+
+Toasts render through a single `<hlm-toaster/>` mounted in `AppComponent`. While CDK marks the app
+root `aria-hidden` for a modal, `TrnToastService` mirrors new messages through CDK's body-level
+`LiveAnnouncer`; outside a modal Sonner owns the announcement, avoiding duplicate speech.

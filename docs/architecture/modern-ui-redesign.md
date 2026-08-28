@@ -1,6 +1,7 @@
 # Modern UI redesign plan
 
-Status: proposed
+Status: implemented through Phase 7; the human direction approval and explicitly deferred items
+below remain open.
 
 This plan modernises Trinity using the interaction and visual-system ideas behind Discord's
 2025-2026 refresh while keeping Trinity recognisably its own Matrix client. It is not a request
@@ -125,6 +126,21 @@ layouts, remove the decorative outer radius and use the full viewport.
 An action moved into overflow must retain a tooltip or label, keyboard access and an efficient route
 for frequent users. Destructive actions remain separated and use the existing danger roles.
 
+#### Icon buttons
+
+Square icon actions use the public `trnBtn` contract with an `icon*` size and the ghost
+treatment. The wrapper marks those controls so the unlayered application interaction rule can
+give every one the same control radius, pointer cursor, tokenised hover/pressed surface, focus
+baseline and disabled behavior without changing the vendored Helm layer. Context may still add a
+resting treatment when meaning or contrast requires it: destructive device actions keep their
+danger foreground, and the image viewer's Close control keeps its bordered floating surface.
+
+Not every button that contains an icon is a square icon action. Navigation rows, server-rail
+destinations, reaction chips, media playback, attachment previews, formatting toggles, composer
+controls and the compact floating message toolbar retain purpose-built geometry and target sizes.
+Their component styles are an explicit audited exception; new bespoke icon-control surfaces must
+be added to the source-shape inventory rather than silently bypassing the public contract.
+
 ### Motion confirms cause and effect
 
 Use the existing motion vocabulary:
@@ -134,9 +150,12 @@ Use the existing motion vocabulary:
 - 200ms menus, toolbars and local transitions;
 - 320ms full-surface panel changes.
 
-Prefer opacity and transform. Icons may use the existing semantic motions when the motion explains
-the result (send, rotate settings, back nudge); they should not animate merely because they are
-hovered. Every motion must collapse under `prefers-reduced-motion`.
+Prefer opacity and transform. Every public square icon action chooses an explicit, restrained
+semantic gesture for hover, keyboard focus and press: directional actions nudge toward their
+result, settings and Close rotate slightly, and discovery or reveal actions pop. The gesture moves
+only the inner glyph, never its layout box or hit target. Decorative icons remain static, the same
+action should reuse the same gesture everywhere, and every motion must collapse under
+`prefers-reduced-motion`.
 
 ## Target experience
 
@@ -383,13 +402,16 @@ Deliverables:
 - stable space squircles and refined active/unread states;
 - density-aware rail, channel, member and user-panel spacing;
 - unified header action hierarchy and right-panel family;
-- modern identity dock in the channel sidebar.
+- modern identity dock spanning the Space rail and room sidebar, floating above both independent
+  scroll surfaces at desktop widths while retaining an in-flow touch layout below the two-pane
+  breakpoint.
 
 Acceptance:
 
 - persisted pane widths, min/max bounds and drag handles behave unchanged;
 - 1280x720, 1024x768 and 900x700 have one vertical scroll owner per pane;
 - long space/room/account names truncate without hiding actions or badges;
+- the last Space and room, including focus-driven scrolling, clear the floating identity dock;
 - keyboard and touch access remains complete at every density.
 
 ### Phase 3 - timeline and composer
@@ -424,8 +446,14 @@ Acceptance:
 - when composer or viewport height changes, a bottom-pinned timeline stays pinned and a scrolled-up
   timeline preserves its reading anchor in both simple and virtual modes, including a one-pixel
   bottom offset and a genuinely windowed room above the 80-row render-all threshold;
-- message toolbar controls stay contained and hit-testable inside their measured row, while edit
-  and recording replacement controls expose complete touch and keyboard focus paths;
+- precise-pointer message bodies use the full row content width; the compact toolbar stays out
+  of flow, raised and hit-testable without changing virtual-row measurements; toolbar and
+  quick-reaction placement uses the live clipping bounds rather than grouping state, while
+  hybrid touch desktops retain a non-overlapping 44px action track and edit/recording
+  replacement controls expose complete touch and keyboard focus paths;
+- an authenticity shield reserves a trailing column beside message content only; read receipts
+  and their expanded label span the complete body below it, align to the logical trailing edge in
+  both writing directions, and remain in flow so virtual-row measurement includes their height;
 - keyboard send, IME, paste, draft, mobile sheet and long-press flows retain their tests;
 - Compact visibly increases useful conversation area without reducing touch targets.
 
@@ -532,6 +560,20 @@ Acceptance:
 - no feature library imports a vendor UI package directly.
 
 ### Phase 7 - hardening and rollout
+
+Status: implemented. A separate shipped-interface suite now pixel-gates nine deterministic real-app
+compositions while semantic geometry, contrast, focus, reduced-motion and overflow checks cover a
+seven-project representative cross-cutting matrix, including genuine WebKit plus full Pixel 5 and
+320x568 device descriptors. The Phase 0
+archive remains immutable. Three unused global compatibility tokens were removed, and a source-shape
+guard now rejects future unused central tokens. Production rollout builds `www/` once, records a
+sorted SHA-256 manifest and verifies the exact unchanged payload after Electron and Capacitor copy
+it; only Capacitor's two named bootstrap scripts may be additional files.
+
+Web, Linux Electron and Android WebView are the installed/runtime evidence available from the Linux
+release environment. iOS still requires the existing macOS/Xcode gate; Phase 7 does not claim a local
+iOS run. Phase 0 human design approval remains a product decision, and truthful timeline loading
+skeletons plus settings search remain the separately recorded follow-up work from Phases 3 and 4.
 
 Deliverables:
 

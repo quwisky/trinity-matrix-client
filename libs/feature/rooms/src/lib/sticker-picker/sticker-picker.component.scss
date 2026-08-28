@@ -102,6 +102,8 @@
 
 .picker__item {
   display: grid;
+  grid-template-rows: minmax(0, 3rem) auto;
+  gap: 0.125rem;
   min-width: 2.75rem;
   min-height: 4.5rem;
   padding: 0.25rem;
@@ -120,8 +122,18 @@
 .picker__item trn-sticker-image {
   display: block;
   max-width: 4rem;
-  max-height: 4rem;
+  max-height: 3rem;
   pointer-events: none;
+}
+
+.picker__shortcode {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--trinity-text-muted);
+  font-size: 0.625rem;
+  line-height: 1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .picker__attribution {

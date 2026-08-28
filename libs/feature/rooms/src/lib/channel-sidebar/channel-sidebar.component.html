@@ -3,13 +3,14 @@
     <span class="sidebar__title">{{ spaceName() }}</span>
     <div class="sidebar__actions">
       <button
+        trnIconButton
         class="sidebar__action"
         (click)="openSwitcher.emit()"
         aria-label="Search (Ctrl/Cmd+K)"
-        title="Search (Ctrl/Cmd+K)"
+        trnTooltip="Search (Ctrl/Cmd+K)"
         data-testid="open-switcher"
       >
-        <trn-icon name="command" />
+        <trn-icon name="command" motion="pop" />
       </button>
       <!-- A space keeps only its two most-reached-for actions out here; the rest live in the
            overflow. The sidebar is a fixed 280px at EVERY breakpoint, so this is not a
@@ -18,44 +19,48 @@
            touch (44px targets) they were wider than the sidebar itself. -->
       @if (spaceActive()) {
         <button
+          trnIconButton
           class="sidebar__action"
           (click)="createRoom.emit()"
           aria-label="Create a channel"
-          title="Create a channel"
+          trnTooltip="Create a channel"
         >
-          <trn-icon name="plus" />
+          <trn-icon name="plus" motion="rotate" />
         </button>
         <button
+          trnIconButton
           class="sidebar__action"
           [trnDropdownMenuTrigger]="spaceMenu"
           align="end"
           [attr.aria-label]="'More actions in ' + spaceName()"
-          title="More actions"
+          trnTooltip="More actions"
           data-testid="space-actions-overflow"
         >
-          <trn-icon name="ellipsis-vertical" />
+          <trn-icon name="ellipsis-vertical" motion="pop" />
         </button>
       } @else {
         <!-- Home has three buttons and already fits, so it keeps the flat row: an overflow
              holding a single conditional item would be worse than the row it replaced. -->
         @if (hasAnyUnread()) {
           <button
+            trnIconButton
             class="sidebar__action"
             (click)="markAllRead.emit()"
             aria-label="Mark all as read"
-            title="Mark all as read"
+            trnTooltip="Mark all as read"
             data-testid="mark-all-read"
           >
-            <trn-icon name="check-check" />
+            <trn-icon name="check-check" motion="pop" />
           </button>
         }
         <button
+          trnIconButton
           class="sidebar__action"
           (click)="newChat.emit()"
           aria-label="New room or direct message"
-          title="New room or direct message"
+          trnTooltip="New room or direct message"
         >
-          <trn-icon name="plus" />
+          <trn-icon name="plus" motion="rotate" />
         </button>
       }
     </div>
@@ -84,13 +89,14 @@
            that the active element falls back to <body> and the next Tab restarts from the
            top of the document. -->
       <button
+        trnIconButton
         class="sidebar__filter-clear"
         (click)="clearFilter(); filterBox.focus()"
         aria-label="Clear filter"
-        title="Clear filter"
+        trnTooltip="Clear filter"
         data-testid="sidebar-filter-clear"
       >
-        <trn-icon name="x" />
+        <trn-icon name="x" motion="rotate" />
       </button>
     }
   </div>
@@ -146,7 +152,7 @@
               <div class="joinable__text">
                 <span
                   class="joinable__name"
-                  [title]="child.topic || child.name"
+                  [trnTooltip]="child.topic || child.name"
                   >{{ child.name }}</span
                 >
                 @if (child.suggested) {
@@ -158,7 +164,6 @@
                 (click)="joinRoom.emit(child)"
                 [attr.aria-label]="'Join ' + child.name"
                 [attr.data-testid]="'join-child-' + child.roomId"
-                title="Join"
               >
                 Join
               </button>
@@ -179,7 +184,7 @@
                 shape="place"
               />
               <div class="joinable__text">
-                <span class="joinable__name" [title]="child.name">{{
+                <span class="joinable__name" [trnTooltip]="child.name">{{
                   child.name
                 }}</span>
               </div>
@@ -188,7 +193,6 @@
                   class="joinable__action"
                   (click)="openChildSpace.emit(child.roomId)"
                   [attr.aria-label]="'Open ' + child.name"
-                  title="Open"
                 >
                   Open
                 </button>
@@ -197,7 +201,6 @@
                   class="joinable__action"
                   (click)="joinRoom.emit(child)"
                   [attr.aria-label]="'Join ' + child.name"
-                  title="Join"
                 >
                   Join
                 </button>
@@ -208,23 +211,6 @@
       }
     }
   </div>
-
-  <trn-sidebar-user-panel
-    [user]="user()"
-    [accounts]="accounts()"
-    [activeUserId]="activeUserId()"
-    [reauthAccounts]="reauthAccounts()"
-    [shownAccountIds]="shownAccountIds()"
-    [pickAccountsInDialog]="narrowLayout()"
-    (openAccountPicker)="onOpenAccountPicker()"
-    (toggleAccountShown)="toggleAccountShown.emit($event)"
-    (openSettings)="openSettings.emit()"
-    (accountsOpened)="accountsOpened.emit()"
-    (switchAccount)="switchAccount.emit($event)"
-    (reauthAccount)="reauthAccount.emit($event)"
-    (addAccount)="addAccount.emit()"
-    (logout)="logout.emit($event)"
-  />
 
   <!-- The space's own actions. Ordered by how often they are reached for, with the two
        destructive-adjacent ones last and separated: Leave sat one 30px target from Invite in

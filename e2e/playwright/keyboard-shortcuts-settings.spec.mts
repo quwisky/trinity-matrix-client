@@ -1,6 +1,7 @@
 import { test, expect } from './support/fixtures.mts';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers the "Keyboard shortcuts" settings section (issue #13): the list is reachable from
 // Settings, a rebound chord takes effect (the new chord switches rooms, the old one no
@@ -51,9 +52,7 @@ test.describe('Keyboard shortcuts settings', () => {
     };
 
     // Open Settings → Keyboard shortcuts and rebind "Hop to the previous room" to Alt+J.
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-shortcuts').click();
-    await page.waitForURL(/\/settings\/shortcuts$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'shortcuts');
     const hopRow = page.getByTestId('shortcut-room.hop.back');
     await expect(hopRow).toContainText('Hop to the previous room');
     await page.getByTestId('shortcut-edit-room.hop.back').click();
@@ -81,9 +80,7 @@ test.describe('Keyboard shortcuts settings', () => {
     await expect(active).toHaveText(new RegExp(b), { timeout: 10_000 });
 
     // Reset all restores the default chord.
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-shortcuts').click();
-    await page.waitForURL(/\/settings\/shortcuts$/, { timeout: 20_000 });
+    await openSettingsSection(page, 'shortcuts');
     await page.getByTestId('shortcuts-reset-all').click();
     await page.getByTestId('alert-confirm').click();
     await expect(hopRow.getByTestId('shortcut-binding')).toContainText(

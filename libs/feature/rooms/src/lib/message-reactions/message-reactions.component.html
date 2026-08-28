@@ -15,12 +15,13 @@
   }
   <button
     type="button"
+    trnIconButton
     class="reaction reaction--who"
     data-testid="reactions-who"
     aria-label="See who reacted"
     trnTooltip="See who reacted"
     (click)="showReactors.emit()"
   >
-    <trn-icon name="users" />
+    <trn-icon name="users" motion="pop" />
   </button>
 </div>

@@ -94,7 +94,10 @@
             [disabled]="busy()"
             (click)="passwordVisible.set(!passwordVisible())"
           >
-            <trn-icon [name]="passwordVisible() ? 'eye-off' : 'eye'" />
+            <trn-icon
+              [name]="passwordVisible() ? 'eye-off' : 'eye'"
+              motion="pop"
+            />
           </button>
         </div>
         @if (

@@ -1,20 +1,47 @@
 @use '../../styles/mixins' as *;
 
-// This component wraps the sidebar's footer; stay layout-transparent so the
-// footer remains the .sidebar flex column's fixed 52px bottom bar.
+// Narrow layouts keep the panel in the room-list column of the navigation grid. At desktop
+// width the host floats across both the Space rail and room list, leaving `.userbar`
+// responsible only for the dock's visual surface.
 :host {
-  display: contents;
+  display: block;
+  grid-column: 2;
+  grid-row: 2;
+  height: var(--trinity-navigation-dock-height);
+
+  @media #{$md} {
+    grid-column: 1 / -1;
+    position: absolute;
+    inset-inline: var(--trinity-space-3);
+    inset-block-end: calc(
+      var(--trinity-space-3) + var(--trinity-navigation-safe-area-bottom)
+    );
+    z-index: var(--trinity-z-sticky);
+  }
 }
 
 .userbar {
-  height: 52px;
-  flex: 0 0 52px;
+  --userbar-avatar-ring: var(--trinity-surface-navigation-header);
+
+  box-sizing: border-box;
+  height: var(--trinity-navigation-dock-height);
+  flex: 0 0 var(--trinity-navigation-dock-height);
   display: flex;
   align-items: center;
   gap: var(--trinity-density-shell-gap);
   padding: 0 var(--trinity-density-shell-padding-inline);
   background: var(--trinity-surface-navigation-header);
   box-shadow: inset 0 1px 0 var(--trinity-border-subtle);
+
+  @media #{$md} {
+    --userbar-avatar-ring: var(--trinity-surface-floating);
+
+    height: 100%;
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-container-radius);
+    background: var(--trinity-surface-floating);
+    box-shadow: var(--trinity-shadow-floating);
+  }
 }
 
 .userbar__trigger {
@@ -55,6 +82,10 @@
 .userbar__settings {
   @include interactive-row;
 
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
   font-size: 18px;
   padding: 6px;
   min-width: var(--trinity-interaction-target-min-size);
@@ -150,7 +181,7 @@
 .userbar__stack-item {
   position: relative;
   border-radius: 50%;
-  box-shadow: 0 0 0 2px var(--trinity-surface-navigation-header);
+  box-shadow: 0 0 0 2px var(--userbar-avatar-ring);
 
   &:not(:first-child) {
     margin-left: -10px;

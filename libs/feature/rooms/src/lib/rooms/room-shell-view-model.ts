@@ -27,7 +27,7 @@ import {
   type UserProfile,
 } from '@trinity/data-access/profile';
 import { type RailUnread } from '../server-rail/server-rail.component';
-import { type AccountSummary } from '../channel-sidebar/channel-sidebar.component';
+import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 
 /**
  * Everything the rooms shell derives, and nothing it does.

@@ -6,6 +6,7 @@
     <button
       #mobileTrigger
       type="button"
+      trnIconButton
       class="composer__attach"
       trnTooltip="Add to message"
       aria-label="Add to message"
@@ -18,12 +19,13 @@
       @if (locationSharing() || gifDownloading()) {
         <trn-spinner class="text-base" />
       } @else {
-        <trn-icon name="plus" />
+        <trn-icon name="plus" motion="rotate" />
       }
     </button>
   } @else {
     <button
       type="button"
+      trnIconButton
       class="composer__attach"
       [trnDropdownMenuTrigger]="insertMenu"
       trnTooltip="Add to message"
@@ -34,7 +36,7 @@
       @if (locationSharing() || gifDownloading()) {
         <trn-spinner class="text-base" />
       } @else {
-        <trn-icon name="plus" />
+        <trn-icon name="plus" motion="rotate" />
       }
     </button>
     <ng-template #insertMenu>
@@ -61,6 +63,7 @@
   <button
     #plainTrigger
     type="button"
+    trnIconButton
     class="composer__attach"
     trnTooltip="Attach"
     aria-label="Attach a file"
@@ -68,6 +71,6 @@
     [disabled]="editing()"
     (click)="attachFile.emit()"
   >
-    <trn-icon name="plus" />
+    <trn-icon name="plus" motion="rotate" />
   </button>
 }

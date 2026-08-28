@@ -29,6 +29,7 @@
          the paragraph above is why the two are not interchangeable here. -->
     <aside #listView tabindex="-1" class="shell-side w-full">
       <trn-server-rail
+        class="shell-side__rail"
         [spaces]="vm.railSpaces()"
         [activeSpaceId]="store.activeSpaceId()"
         [recentActive]="store.recentView()"
@@ -41,6 +42,7 @@
         (showRooms)="nav.onShowRooms()"
       />
       <trn-channel-sidebar
+        class="shell-side__rooms"
         [spaceName]="vm.sidebarTitle()"
         [spaceActive]="
           !store.recentView() &&
@@ -53,20 +55,12 @@
         [hasAnyUnread]="vm.anyRoomUnread()"
         [(filterQuery)]="store.roomFilter"
         [activeRoomId]="store.activeRoomId()"
-        [user]="vm.userProfile()"
-        [accounts]="vm.accounts()"
         [activeUserId]="vm.activeAccountId()"
-        [reauthAccounts]="vm.reauthAccounts()"
         [accountBadges]="vm.accountBadges()"
-        [shownAccountIds]="shownAccountIds()"
         [sortMode]="vm.spaceSortMode()"
         [sortOverridden]="vm.spaceSortOverridden()"
         [defaultSortMode]="vm.defaultSpaceSortMode()"
-        (toggleAccountShown)="routing.onToggleAccountShown($event)"
         (selectRoom)="routing.onSelectRoomRow($event)"
-        (switchAccount)="session.switchAccount($event)"
-        (reauthAccount)="session.reauthAccount($event)"
-        (addAccount)="session.addAccount()"
         (openSwitcher)="shortcutActions.openSwitcher()"
         (newChat)="roomActions.onNewChat()"
         (createRoom)="spaceActions.onCreateChannel()"
@@ -83,14 +77,28 @@
         (openChildSpace)="nav.onSelectSpace($event)"
         (acceptInvite)="inviteActions.onAcceptInvite($event)"
         (declineInvite)="inviteActions.onDeclineInvite($event)"
-        (openSettings)="session.goToSettings()"
-        (accountsOpened)="vm.loadHomeserverInfo()"
-        (logout)="session.logout($event)"
         (setNotifyMode)="readState.onSetNotifyMode($event)"
         (markRead)="readState.onMarkRead($event)"
         (markUnread)="readState.onMarkUnread($event)"
         (markAllRead)="readState.onMarkAllRead()"
         (setSortMode)="spaceActions.onSetSpaceSort($event)"
+      />
+      <trn-sidebar-user-panel
+        class="shell-side__dock"
+        [user]="vm.userProfile()"
+        [accounts]="vm.accounts()"
+        [activeUserId]="vm.activeAccountId()"
+        [reauthAccounts]="vm.reauthAccounts()"
+        [shownAccountIds]="shownAccountIds()"
+        [pickAccountsInDialog]="mobileMasterDetail()"
+        (openAccountPicker)="onOpenAccountPicker()"
+        (toggleAccountShown)="routing.onToggleAccountShown($event)"
+        (openSettings)="session.goToSettings()"
+        (accountsOpened)="vm.loadHomeserverInfo()"
+        (switchAccount)="session.switchAccount($event)"
+        (reauthAccount)="session.reauthAccount($event)"
+        (addAccount)="session.addAccount()"
+        (logout)="session.logout($event)"
       />
     </aside>
 
@@ -170,7 +178,7 @@
               aria-label="Search messages in this room"
               data-testid="search-messages"
             >
-              <trn-icon size="1.25rem" name="search" />
+              <trn-icon size="1.25rem" name="search" motion="pop" />
             </button>
             <button
               trnBtn
@@ -182,7 +190,11 @@
               aria-label="Invite people"
               data-testid="invite-people"
             >
-              <trn-icon size="1.25rem" name="user-plus" />
+              <trn-icon
+                size="1.25rem"
+                name="user-plus"
+                motion="nudge-up-right"
+              />
             </button>
             <button
               trnBtn
@@ -205,7 +217,7 @@
               aria-label="Threads"
               data-testid="open-threads"
             >
-              <trn-icon size="1.25rem" name="messages-square" />
+              <trn-icon size="1.25rem" name="messages-square" motion="pop" />
             </button>
             <button
               trnBtn
@@ -217,7 +229,7 @@
               aria-label="Pinned messages"
               data-testid="open-pinned"
             >
-              <trn-icon size="1.25rem" name="pin" />
+              <trn-icon size="1.25rem" name="pin" motion="nudge-up" />
               @if (pinned.pinnedMessages().length > 0) {
                 <span class="header-pin__badge" aria-hidden="true">{{
                   pinned.pinnedMessages().length
@@ -235,7 +247,7 @@
               aria-label="Members"
               data-testid="toggle-members"
             >
-              <trn-icon size="1.25rem" name="users" />
+              <trn-icon size="1.25rem" name="users" motion="pop" />
             </button>
 
             <!-- Present at EVERY breakpoint. Below md it also absorbs the demoted header
@@ -253,7 +265,7 @@
               aria-label="More actions"
               data-testid="room-actions-overflow"
             >
-              <trn-icon size="1.25rem" name="ellipsis-vertical" />
+              <trn-icon size="1.25rem" name="ellipsis-vertical" motion="pop" />
               @if (pinned.pinnedMessages().length > 0) {
                 <span class="header-pin__badge" aria-hidden="true">{{
                   pinned.pinnedMessages().length

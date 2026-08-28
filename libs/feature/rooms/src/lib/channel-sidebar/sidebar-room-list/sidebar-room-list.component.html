@@ -13,7 +13,7 @@
         [shape]="invite.isDirect ? 'person' : 'place'"
       />
       <div class="invite__text">
-        <span class="invite__name" [title]="invite.name">{{
+        <span class="invite__name" [trnTooltip]="invite.name">{{
           invite.name
         }}</span>
         <span class="invite__meta"
@@ -23,6 +23,7 @@
       </div>
       <div class="invite__actions">
         <button
+          trnIconButton
           class="invite__btn accept"
           (click)="
             acceptInvite.emit({
@@ -31,11 +32,12 @@
             })
           "
           [attr.aria-label]="'Accept invite to ' + invite.name"
-          title="Accept"
+          trnTooltip="Accept"
         >
-          <trn-icon name="check" />
+          <trn-icon name="check" motion="pop" />
         </button>
         <button
+          trnIconButton
           class="invite__btn decline"
           (click)="
             declineInvite.emit({
@@ -44,9 +46,9 @@
             })
           "
           [attr.aria-label]="'Decline invite to ' + invite.name"
-          title="Decline"
+          trnTooltip="Decline"
         >
-          <trn-icon name="x" />
+          <trn-icon name="x" motion="rotate" />
         </button>
       </div>
     </div>
@@ -107,7 +109,6 @@
       [class.active]="activeRoomId() === room.id"
       [class.unread]="room.hasUnread"
       (click)="selectRoom.emit(room.id)"
-      [title]="room.name"
     >
       <trn-avatar
         class="channel__avatar"
@@ -153,13 +154,15 @@
       }
     </button>
     <button
+      trnIconButton
       class="channel__menu"
       [trnDropdownMenuTrigger]="roomMenu"
       align="end"
       [attr.aria-label]="'Options for ' + room.name"
-      title="Room options"
+      trnTooltip="Room options"
+      position="right"
     >
-      <trn-icon name="ellipsis-vertical" />
+      <trn-icon name="ellipsis-vertical" motion="pop" />
     </button>
   </div>
 

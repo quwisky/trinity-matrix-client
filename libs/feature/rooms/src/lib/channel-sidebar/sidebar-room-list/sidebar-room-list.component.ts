@@ -7,6 +7,8 @@ import {
   output,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
+import { TrnIconButton } from '@trinity/components/button';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import {
   TrnDropdownMenu,
   TrnDropdownMenuItem,
@@ -51,6 +53,8 @@ import { TrnIconComponent } from '@trinity/components/icon';
   templateUrl: 'sidebar-room-list.component.html',
   styleUrls: ['sidebar-room-list.component.scss'],
   imports: [
+    TrnIconButton,
+    TrnTooltip,
     EmptyStateComponent,
     AvatarComponent,
     TrnIconComponent,

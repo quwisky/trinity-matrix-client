@@ -52,13 +52,14 @@
     </div>
   </button>
   <button
+    trnIconButton
     class="userbar__settings"
     (click)="openSettings.emit()"
     aria-label="Settings"
-    title="Settings"
+    trnTooltip="Settings"
     data-testid="open-settings"
   >
-    <trn-icon name="settings" />
+    <trn-icon name="settings" motion="rotate" />
   </button>
 </footer>
 

@@ -58,9 +58,18 @@
 }
 
 .shell-side {
-  display: flex;
+  position: relative;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
   height: 100%;
+  min-height: 0;
   background: var(--trinity-surface-frame);
+
+  // One measurement owns the shell-spanning dock and the clearance inherited by both
+  // independent navigation scrollers.
+  --trinity-navigation-dock-height: 52px;
+  --trinity-navigation-safe-area-bottom: env(safe-area-inset-bottom);
 
   @media #{$md} {
     width: var(--shell-sidebar-w, 352px);
@@ -74,8 +83,21 @@
 
   // Outer-left column: clear the left cutout on a landscape notch (left) and the home
   // indicator (bottom, where the user footer sits). The top inset is on .rooms-shell.
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: var(--trinity-navigation-safe-area-bottom);
   padding-left: env(safe-area-inset-left);
+}
+
+.shell-side__rail {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  min-height: 0;
+}
+
+.shell-side__rooms {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  min-height: 0;
 }
 
 // The two mobile pages take programmatic focus on a view switch (tabindex="-1", so

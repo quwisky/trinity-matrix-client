@@ -27,72 +27,8 @@ import { TrnTooltip } from '@trinity/components/tooltip';
 import { PageHeaderComponent } from '@trinity/components/page-header';
 import { BUILD_INFO } from '@trinity/platform-native';
 import { MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
-import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
-
-/** One row of the settings submenu, routing to its section sub-page. */
-interface SettingsMenuItem {
-  readonly path: string;
-  readonly label: string;
-  readonly icon: TrnIconName;
-  readonly group: 'Account' | 'Preferences' | 'App' | 'Developer';
-}
-
-const MENU: readonly SettingsMenuItem[] = [
-  { path: 'profile', label: 'Profile', icon: 'user', group: 'Account' },
-  {
-    path: 'presence',
-    label: 'Presence',
-    icon: 'circle-dot',
-    group: 'Account',
-  },
-  {
-    path: 'devices',
-    label: 'Devices',
-    icon: 'monitor-smartphone',
-    group: 'Account',
-  },
-  { path: 'account', label: 'Account', icon: 'key-round', group: 'Account' },
-  { path: 'security', label: 'Security', icon: 'lock', group: 'Account' },
-  {
-    path: 'appearance',
-    label: 'Appearance',
-    icon: 'palette',
-    group: 'Preferences',
-  },
-  {
-    path: 'notifications',
-    label: 'Notifications',
-    icon: 'bell',
-    group: 'Preferences',
-  },
-  { path: 'privacy', label: 'Privacy', icon: 'shield', group: 'Preferences' },
-  { path: 'server', label: 'Server', icon: 'server', group: 'App' },
-  { path: 'gifs', label: 'GIFs', icon: 'image', group: 'App' },
-  {
-    path: 'stickers',
-    label: 'Stickers & emoji',
-    icon: 'smile',
-    group: 'App',
-  },
-  {
-    path: 'shortcuts',
-    label: 'Keyboard shortcuts',
-    icon: 'keyboard',
-    group: 'App',
-  },
-  {
-    path: 'experimental',
-    label: 'Experimental',
-    icon: 'flask-conical',
-    group: 'Developer',
-  },
-  {
-    path: 'advanced',
-    label: 'Advanced',
-    icon: 'braces',
-    group: 'Developer',
-  },
-];
+import { TrnIconComponent } from '@trinity/components/icon';
+import { SETTINGS_SECTIONS } from '../settings-sections';
 
 /**
  * Settings shell: a submenu of sections beside a routed detail outlet. On the wide
@@ -135,7 +71,7 @@ export class SettingsPage {
   private readonly detail = viewChild<ElementRef<HTMLElement>>('detail');
   private lastFocusedSection: string | null = null;
 
-  readonly menu = MENU;
+  readonly menu = SETTINGS_SECTIONS;
   /** A narrow directory click adds `/settings` behind the section in history. */
   private readonly narrowSectionPushed = signal(false);
 
@@ -183,7 +119,7 @@ export class SettingsPage {
     effect(() => {
       const wide = this.wide();
       if (wide && !this.sectionActive()) {
-        void this.router.navigate([MENU[0].path], {
+        void this.router.navigate([SETTINGS_SECTIONS[0].path], {
           relativeTo: this.route,
           replaceUrl: true,
         });

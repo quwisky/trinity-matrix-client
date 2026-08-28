@@ -585,6 +585,11 @@ export class MessageRowComponent {
     this.revealed.set(false);
   }
 
+  /** Place floating actions against the live scrollport before hover reveals them. */
+  placeToolbar(): void {
+    this.toolbar()?.placeToolbar();
+  }
+
   /** An action was chosen, so the bar has done its job. */
   onToolbarAction(event: MessageRowAction): void {
     this.hideToolbar();

@@ -13,6 +13,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { TrnIconButton } from '@trinity/components/button';
 import {
   TrnActionSheetService,
   TrnDropdownMenu,
@@ -53,6 +54,7 @@ interface OwnedSheet {
   selector: 'trn-composer-insert-menu',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    TrnIconButton,
     TrnIconComponent,
     TrnDropdownMenu,
     TrnDropdownMenuItem,

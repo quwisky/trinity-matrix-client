@@ -71,6 +71,8 @@ import { AvatarComponent } from '@trinity/components/avatar';
 import { PageHeaderComponent } from '@trinity/components/page-header';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
+import { SidebarUserPanelComponent } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
+import { AccountPickerService } from '../account-picker/account-picker.service';
 import { MemberListComponent } from '../member-list/member-list.component';
 import { ThreadsListComponent } from '../thread/threads-list.component';
 import { ThreadViewComponent } from '../thread/thread-view.component';
@@ -150,6 +152,7 @@ const PANEL_DRAWER_PX = 480;
     AvatarComponent,
     ServerRailComponent,
     ChannelSidebarComponent,
+    SidebarUserPanelComponent,
     MemberListComponent,
     // The five surfaces the right-hand slot can show. Imported by the page rather than
     // opened by a service, which is the whole of this change: presentation is the shell's
@@ -184,7 +187,7 @@ export class RoomsPage implements OnInit, OnDestroy {
    * Fields rather than call-time reads: `mediaQuerySignal` registers a listener bound to the
    * `DestroyRef` handed to it, so creating one per call would leak one per invocation.
    */
-  private readonly mobileMasterDetail = mediaQuerySignal(
+  protected readonly mobileMasterDetail = mediaQuerySignal(
     BELOW_MD_QUERY,
     inject(DestroyRef),
   );
@@ -295,6 +298,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly spaceChildren = inject(SpaceChildrenService);
   private readonly push = inject(PushService);
   private readonly notifications = inject(NotificationService);
+  private readonly accountPicker = inject(AccountPickerService);
   private readonly router = inject(Router);
   private readonly injector = inject(Injector);
   readonly store = inject(RoomShellStore);
@@ -310,6 +314,14 @@ export class RoomsPage implements OnInit, OnDestroy {
   readonly messageActions = inject(MessageActionsService);
   readonly shortcutActions = inject(ShellShortcutsService);
   readonly session = inject(SessionActionsService);
+
+  /** Phones use a dialog because the narrow navigation has no room for the desktop submenu. */
+  protected onOpenAccountPicker(): void {
+    void this.accountPicker.open({
+      accounts: this.vm.accounts(),
+      activeUserId: this.vm.activeAccountId(),
+    });
+  }
 
   readonly imagePacks = computed(() => {
     const roomId = this.store.activeRoomId();

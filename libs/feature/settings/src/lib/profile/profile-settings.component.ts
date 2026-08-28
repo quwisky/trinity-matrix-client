@@ -8,7 +8,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { TrnButton } from '@trinity/components/button';
+import { TrnButton, TrnIconButton } from '@trinity/components/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import { TrnInput } from '@trinity/components/input';
 import { TrnLabel } from '@trinity/components/label';
@@ -26,6 +26,7 @@ import { SettingsSectionHeadingComponent } from '../shared/settings-section-head
   imports: [
     AvatarComponent,
     TrnIconComponent,
+    TrnIconButton,
     TrnButton,
     TrnTooltip,
     TrnInput,
