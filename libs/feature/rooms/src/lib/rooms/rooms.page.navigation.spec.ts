@@ -25,7 +25,6 @@ import {
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AccountProfilesService } from '@trinity/data-access/profile';
 import { MediaPipeline } from '@trinity/data-access/media';
-import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
   RoomsService,
   SpacesService,
@@ -35,7 +34,6 @@ import {
 } from '@trinity/data-access/rooms';
 import {
   ConversationRuntime,
-  ThreadsService,
   TimelineActionsService,
 } from '@trinity/data-access/timeline';
 import {
@@ -131,7 +129,6 @@ describe('RoomsPage quick switcher', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(ThreadsService),
         MockProvider(AccountRuntimeService),
         MockProvider(TrnDialogService, { hasOpen: dialogHasOpen }),
         MockProvider(TrnAlertService),
@@ -319,12 +316,10 @@ describe('RoomsPage quick switcher', () => {
 // button (`backToList`) returns to the list. At md+ both columns are static columns.
 describe('RoomsPage mobile navigation', () => {
   let timelineOpen: Mock;
-  let threadsOpen: Mock;
   let releaseAll: Mock;
 
   function build() {
     timelineOpen = vi.fn();
-    threadsOpen = vi.fn();
     releaseAll = vi.fn();
     TestBed.configureTestingModule({
       providers: [
@@ -357,7 +352,6 @@ describe('RoomsPage mobile navigation', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(ThreadsService, { open: threadsOpen }),
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
@@ -386,8 +380,6 @@ describe('RoomsPage mobile navigation', () => {
 
     expect(shell.store.activeRoomId()).toBeNull();
     expect(TestBed.inject(RoomsTimelineStub).close).toHaveBeenCalled();
-    expect(TestBed.inject(ThreadsService).close).toHaveBeenCalled();
-    expect(TestBed.inject(PinnedMessagesService).close).toHaveBeenCalled();
   });
 
   it('closing a room resets an open members drawer so it does not carry to the next room', () => {
@@ -796,7 +788,6 @@ describe('RoomsPage mobile navigation', () => {
 
     expect(shell.store.activeRoomId()).toBe('!r:hs');
     expect(timelineOpen).toHaveBeenCalledWith('!r:hs');
-    expect(threadsOpen).toHaveBeenCalledWith('!r:hs');
     expect(releaseAll).toHaveBeenCalled();
   });
 });
@@ -861,7 +852,6 @@ describe('RoomsPage account switcher summary', () => {
           infos: homeservers.asReadonly(),
           loadAll: loadAllHomeservers,
         }),
-        MockProvider(ThreadsService),
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
@@ -1009,7 +999,6 @@ describe('RoomsPage keyboard room switching', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(ThreadsService),
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
@@ -1282,7 +1271,6 @@ describe('RoomsPage room-in-URL deep link', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(ThreadsService),
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
@@ -1426,8 +1414,6 @@ describe('RoomsPage room-in-URL deep link', () => {
       roomId: '!open:hs',
     });
 
-    const threads = TestBed.inject(ThreadsService);
-    const pinned = TestBed.inject(PinnedMessagesService);
     const media = TestBed.inject(MediaPipeline);
     conversationBlur.mockClear();
     // The effect already called releaseAll on the way in, so without this the assertion
@@ -1437,9 +1423,6 @@ describe('RoomsPage room-in-URL deep link', () => {
     shell.page.ngOnDestroy();
 
     expect(conversationBlur).toHaveBeenCalled();
-    expect(threads.close).toHaveBeenCalled();
-    expect(threads.closeThread).toHaveBeenCalled();
-    expect(pinned.close).toHaveBeenCalled();
     expect(media.releaseAll).toHaveBeenCalled();
   });
 });

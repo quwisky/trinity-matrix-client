@@ -87,6 +87,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Threads and pinned messages now belong to the exact Conversation.** Thread lists and pins
+  no longer follow mutable root services: Conversation Runtime exposes keyed Account-and-Room
+  children, with an additional immutable root key for an opened thread. Navigation, Account
+  switching, blur and eviction release stale thread generations, and cold RxJS commands reject
+  instead of retargeting. Thread reactions, redactions, retries, receipts and staged attachments
+  reuse the shared message and Media Pipeline adapters. Pin changes delegate current RoomState
+  permission policy and publish only server-authoritative `m.room.pinned_events`; the former
+  pinned-message library and thread action facade are removed.
+
 - **Message actions now stay with the exact Conversation that owns them.** Replies, edits,
   reactions, deletions, failed-send retries and main-timeline read acknowledgements no longer act
   through a mutable focused-room singleton. They run as cold, typed RxJS commands bound to an

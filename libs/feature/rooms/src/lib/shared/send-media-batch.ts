@@ -32,7 +32,7 @@ export interface BatchOutcome {
   readonly failed: boolean;
 }
 
-/** Sends one file; the shape both `TimelineActionsService` and `ThreadsService` already have. */
+/** Sends one file through either a Conversation or exact-thread media capability. */
 export type SendOneMedia = (
   file: File,
   caption: string,

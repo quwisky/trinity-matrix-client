@@ -14,7 +14,6 @@ import {
   NotificationService,
   PushService,
 } from '@trinity/data-access/notifications';
-import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
   IgnoredUsersService,
   PresenceService,
@@ -30,10 +29,7 @@ import {
   type MemberSummary,
   type RoomSummary,
 } from '@trinity/data-access/rooms';
-import {
-  ThreadsService,
-  TimelineActionsService,
-} from '@trinity/data-access/timeline';
+import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import {
   BackInterceptorService,
@@ -171,15 +167,6 @@ describe('RoomsPage rendered right-panel focus', () => {
         MockProvider(MixedInvitesService, { setAccounts: vi.fn() }),
         MockProvider(InvitesService, { connect: vi.fn() }),
         MockProvider(TimelineActionsService),
-        { provide: ThreadsService, useValue: { summaries: signal({}) } },
-        {
-          provide: PinnedMessagesService,
-          useValue: {
-            pinnedMessages: signal([]),
-            canPin: signal(false),
-            pinnedEventIds: signal<string[]>([]),
-          },
-        },
         MockProvider(FeatureFlagsService, { virtualTimeline: signal(false) }),
         MockProvider(MatrixClientService, {
           activeUserId: signal<string | null>('@me:hs'),

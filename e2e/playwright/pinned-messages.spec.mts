@@ -5,7 +5,7 @@ import { registerUser } from './support/account.mts';
 // Covers the pinned-messages panel end to end: the room toolbar's pin button
 // (`data-testid="open-pinned"`) opens PinnedPanelService's side panel
 // (`data-testid="pinned-panel"`), which lists every `m.room.pinned_events` entry
-// (`data-testid="pinned-item"`) projected live by PinnedMessagesService. Unpinning
+// (`data-testid="pinned-item"`) projected live by the exact Conversation pins child. Unpinning
 // (`data-testid="pinned-unpin"`) rewrites the state event and the row drops out of the
 // live projection WITHOUT closing the panel — the property the unit spec asserts
 // against a mock, exercised here against a real homeserver round-trip.

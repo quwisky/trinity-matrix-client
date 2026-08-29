@@ -15,3 +15,4 @@ export * from './lib/mixed-rooms.service';
 export * from './lib/mixed-spaces.service';
 export * from './lib/unread-aggregator.service';
 export * from './lib/room-message-governance.service';
+export * from './lib/room-pin-governance.service';

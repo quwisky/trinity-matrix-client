@@ -125,6 +125,38 @@ describe('MediaPipeline', () => {
     );
   });
 
+  it('sends staged media to the exact thread root through the SDK thread overload', async () => {
+    const { pipeline, client } = setup();
+    const staged = pipeline.stage(
+      new File([new Uint8Array([1, 2, 3, 4])], 'thread.png', {
+        type: 'image/png',
+      }),
+    );
+    if (staged.kind !== 'staged') return;
+
+    const events = await firstValueFrom(
+      pipeline
+        .transfer({
+          key: KEY,
+          threadRootId: '$thread-root',
+          media: staged.media,
+          caption: 'in thread',
+        })
+        .pipe(toArray()),
+    );
+
+    expect(events.at(-1)).toEqual({ kind: 'sent', eventId: '$event' });
+    expect(client.sendMessage).toHaveBeenCalledWith(
+      KEY.roomId,
+      '$thread-root',
+      expect.objectContaining({
+        body: 'in thread',
+        filename: 'secret.png',
+      }),
+      'txn-1',
+    );
+  });
+
   it('rejects invalid staged input as a typed terminal outcome', () => {
     const { pipeline } = setup();
 

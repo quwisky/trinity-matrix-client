@@ -10,7 +10,6 @@ import { Observable, defer, from, of, tap } from 'rxjs';
 import { encodeRoomSegment } from '@trinity/util/matrix';
 import { MediaPipeline } from '@trinity/data-access/media';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
   AccountScopeService,
   MixedRoomsService,
@@ -18,10 +17,7 @@ import {
   SpacesService,
   type RoomSummary,
 } from '@trinity/data-access/rooms';
-import {
-  ConversationRuntime,
-  ThreadsService,
-} from '@trinity/data-access/timeline';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { BELOW_MEMBERS_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { MruRoomsService } from '../shortcuts/mru-rooms.service';
 import type { AccountSwitchDestination } from './account-switch.models';
@@ -48,8 +44,6 @@ export class RoomShellNavigationService {
   private readonly accountScope = inject(AccountScopeService);
   private readonly media = inject(MediaPipeline);
   private readonly matrix = inject(MatrixClientService);
-  private readonly pinned = inject(PinnedMessagesService);
-  private readonly threads = inject(ThreadsService);
   private readonly conversations = inject(ConversationRuntime);
   private readonly mru = inject(MruRoomsService);
   private readonly router = inject(Router);
@@ -95,9 +89,6 @@ export class RoomShellNavigationService {
     this.media.releaseAll();
     if (!roomId) {
       this.conversations.blur();
-      this.threads.close();
-      this.threads.closeThread();
-      this.pinned.close();
       if (!isFirstRun) {
         untracked(() => this.focusActiveView());
       }
@@ -113,8 +104,6 @@ export class RoomShellNavigationService {
     const accountId = this.matrix.activeUserId();
     if (!accountId) return;
     this.conversations.focus({ accountId, roomId });
-    this.threads.open(roomId); // thread summaries, for the per-message indicators
-    this.pinned.open(roomId);
     // Opening the room is the user dealing with it, so the come-back-to-it flag goes.
     // Cleared HERE rather than on the auto-ack in TimelineService: that path is gated on
     // the window having focus and dedupes repeat acks, so a room opened in a background
@@ -297,9 +286,6 @@ export class RoomShellNavigationService {
    */
   releaseOpenRoom(): void {
     this.conversations.blur();
-    this.threads.close();
-    this.threads.closeThread();
-    this.pinned.close();
     this.media.releaseAll();
   }
 

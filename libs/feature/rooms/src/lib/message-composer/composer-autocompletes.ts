@@ -24,7 +24,7 @@ export interface ComposerAutocompletePorts {
    * Whether a leading slash is READ as a command on the way out.
    *
    * A port rather than something the menus work out, because it is a fact about the composer's
-   * MODE: only `TimelineActionsService.send` and `ThreadsService.sendThreadMessage` run
+   * MODE: only ordinary Conversation and exact-thread sends run
    * `slashCommandContent`, while a reply, an edit and an attachment caption route through
    * `replyMessageContent` / `editMessageContent` / `mediaCaptionFields`, none of which look at
    * a leading slash. Offering a command in those states completes something that then sends as

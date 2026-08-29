@@ -1,11 +1,9 @@
 import { signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
 import { render, fireEvent } from '@trinity/testing';
 import {
-  PinnedMessagesService,
+  ConversationRuntime,
   type PinnedMessageView,
-} from '@trinity/data-access/pinned';
-import { MockProvider } from 'ng-mocks';
+} from '@trinity/data-access/timeline';
 import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { PinnedMessagesPanelComponent } from './pinned-messages-panel.component';
@@ -22,9 +20,9 @@ function pin(over: Partial<PinnedMessageView> = {}): PinnedMessageView {
 }
 
 /**
- * Render the panel with a stubbed PinnedMessagesService, capturing what it announces.
- * The panel reads the live projection directly (the shell has already opened it for
- * the active room), so the signals ARE the inputs — there is nothing to thread in.
+ * Render the panel with a stubbed exact-Conversation pins child, capturing what it
+ * announces. The panel reads the live projection directly, so the signals ARE the
+ * inputs — there is nothing to thread in.
  * It is presentational: `selected` / `dismissed` are the whole contract with the host.
  */
 async function renderPanel(
@@ -32,6 +30,9 @@ async function renderPanel(
 ) {
   const selected: string[] = [];
   let dismissals = 0;
+  const unpin = vi.fn(() =>
+    of({ kind: 'applied' as const, operation: 'unpin' as const }),
+  );
   const { container } = await render(PinnedMessagesPanelComponent, {
     on: {
       selected: (eventId: string) => selected.push(eventId),
@@ -40,14 +41,19 @@ async function renderPanel(
       },
     },
     providers: [
-      MockProvider(PinnedMessagesService, {
-        pinnedMessages: signal(options.pinned ?? []).asReadonly(),
-        canPin: signal(options.canPin ?? true).asReadonly(),
-        unpin: vi.fn(() => of(void 0)),
-      }),
+      {
+        provide: ConversationRuntime,
+        useValue: {
+          pins: {
+            messages: signal(options.pinned ?? []).asReadonly(),
+            canMutate: signal(options.canPin ?? true).asReadonly(),
+            unpin,
+          },
+        },
+      },
     ],
   });
-  return { container, selected, dismissals: () => dismissals };
+  return { container, selected, unpin, dismissals: () => dismissals };
 }
 
 /** The row buttons, identified by the aria-label the template builds. */
@@ -116,15 +122,13 @@ describe('PinnedMessagesPanelComponent', () => {
   });
 
   it('unpins in place without announcing anything', async () => {
-    const { container, selected, dismissals } = await renderPanel({
+    const { container, selected, dismissals, unpin } = await renderPanel({
       pinned: [pin({ id: '$a', senderName: 'Alice' })],
       canPin: true,
     });
-    const svc = TestBed.inject(PinnedMessagesService);
-
     fireEvent.click(unpinButton(container, 'Alice')!);
 
-    expect(svc.unpin).toHaveBeenCalledWith('$a');
+    expect(unpin).toHaveBeenCalledWith('$a');
     // The live projection drops the row; the panel must not ask the host to close it.
     expect(dismissals()).toBe(0);
     expect(selected).toEqual([]);

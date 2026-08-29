@@ -56,17 +56,26 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
         return of(this.rejected('reaction', 'conversation-unavailable'));
       }
       const { client, room } = context;
-      if (!this.event(room, request.messageId)) {
+      if (!this.event(room, request.messageId, request.threadRootId)) {
         return of(this.rejected('reaction', 'message-unavailable'));
       }
       const mine = myReactionId(client, room, request.messageId, reaction);
       const action = mine
-        ? client.redactEvent(room.roomId, mine)
-        : client.sendEvent(
-            room.roomId,
-            EventType.Reaction,
-            annotationContent(request.messageId, reaction) as never,
-          );
+        ? request.threadRootId
+          ? client.redactEvent(room.roomId, request.threadRootId, mine)
+          : client.redactEvent(room.roomId, mine)
+        : request.threadRootId
+          ? client.sendEvent(
+              room.roomId,
+              request.threadRootId,
+              EventType.Reaction,
+              annotationContent(request.messageId, reaction) as never,
+            )
+          : client.sendEvent(
+              room.roomId,
+              EventType.Reaction,
+              annotationContent(request.messageId, reaction) as never,
+            );
       return from(action).pipe(
         map(() => this.applied('reaction')),
         catchError((error: unknown) =>
@@ -88,9 +97,14 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
       if (!context) {
         return of(this.rejected('redaction', 'conversation-unavailable'));
       }
-      return from(
-        context.client.redactEvent(context.room.roomId, request.messageId),
-      ).pipe(
+      const action = request.threadRootId
+        ? context.client.redactEvent(
+            context.room.roomId,
+            request.threadRootId,
+            request.messageId,
+          )
+        : context.client.redactEvent(context.room.roomId, request.messageId);
+      return from(action).pipe(
         map(() => this.applied('redaction')),
         catchError((error: unknown) =>
           of(this.requestRejected('redaction', error)),
@@ -107,7 +121,11 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
       if (!context) {
         return of(this.rejected('retry', 'conversation-unavailable'));
       }
-      const event = this.event(context.room, request.messageId);
+      const event = this.event(
+        context.room,
+        request.messageId,
+        request.threadRootId,
+      );
       if (!event) return of(this.rejected('retry', 'message-unavailable'));
       if (
         event.status !== EventStatus.NOT_SENT &&
@@ -133,7 +151,11 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
       if (!context) {
         return of(this.rejected('receipt', 'conversation-unavailable'));
       }
-      const event = this.event(context.room, request.messageId);
+      const event = this.event(
+        context.room,
+        request.messageId,
+        request.threadRootId,
+      );
       if (!event || event.status) {
         return of(this.rejected('receipt', 'message-unavailable'));
       }
@@ -146,7 +168,10 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
           defer(() => from(context.client.sendReadReceipt(event, receiptType))),
         );
       }
-      if (typeof context.client.setRoomReadMarkers === 'function') {
+      if (
+        !request.threadRootId &&
+        typeof context.client.setRoomReadMarkers === 'function'
+      ) {
         operations.push(
           defer(() =>
             from(
@@ -173,9 +198,12 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
     return client && room ? { client, room } : null;
   }
 
-  private event(room: Room, messageId: string) {
+  private event(room: Room, messageId: string, threadRootId?: string) {
     return (
       room.findEventById?.(messageId) ??
+      room
+        .getThread?.(threadRootId ?? '')
+        ?.events.find((event) => event.getId() === messageId) ??
       room
         .getLiveTimeline()
         .getEvents()

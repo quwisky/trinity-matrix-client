@@ -1,11 +1,11 @@
 import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import {
-  ThreadsService,
+  ConversationRuntime,
   type ThreadSummary,
 } from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/components/avatar';
-import { MockComponent, MockProvider } from 'ng-mocks';
+import { MockComponent } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
 import { ThreadsListComponent } from './threads-list.component';
 
@@ -31,7 +31,12 @@ async function build(threads: ThreadSummary[] = []) {
   const { fixture, container } = await render(ThreadsListComponent, {
     inputs: { roomId: '!r:hs' },
     imports: [MockComponent(AvatarComponent)],
-    providers: [MockProvider(ThreadsService, { threadList })],
+    providers: [
+      {
+        provide: ConversationRuntime,
+        useValue: { threads: { list: threadList.asReadonly() } },
+      },
+    ],
   });
   /** Everything this panel announces, in order, so a test can pin both channels. */
   const picked: string[] = [];

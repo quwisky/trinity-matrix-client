@@ -12,7 +12,7 @@ import { TrnButton } from '@trinity/components/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import { TrnIconComponent } from '@trinity/components/icon';
 import {
-  ThreadsService,
+  ConversationRuntime,
   type ThreadSummary,
 } from '@trinity/data-access/timeline';
 
@@ -23,8 +23,8 @@ const MAX_AVATARS = 4;
  * Threads-list panel: every thread in the active room, newest activity first,
  * each row showing the root preview, reply count, last-activity time, a
  * participant avatar cluster, and an unread badge. Reads the live
- * {@link ThreadsService.threadList} (already projected for the active room by the
- * rooms shell), so it reacts to new threads, replies, and unread changes.
+ * Conversation Runtime's live thread list (already projected for the active room),
+ * so it reacts to new threads, replies, and unread changes.
  *
  * Presentational: rendered in the rooms shell's right-hand panel slot, with `roomId`
  * as a signal input. It opens nothing itself — tapping a row announces the chosen root
@@ -49,7 +49,7 @@ export class ThreadsListComponent {
   /** Timestamps go through the app-wide format preference, never a DatePipe. */
   readonly fmt = inject(DateTimeFormatService);
 
-  private readonly threadsSvc = inject(ThreadsService);
+  private readonly threadProjection = inject(ConversationRuntime).threads;
 
   /** The room whose threads are listed (used by the page to open a thread). */
   readonly roomId = input.required<string>();
@@ -60,7 +60,7 @@ export class ThreadsListComponent {
   readonly dismissed = output<void>();
 
   /** The active room's threads, newest activity first. */
-  readonly threads = this.threadsSvc.threadList;
+  readonly threads = this.threadProjection.list;
 
   /** Avatars shown per row, capped — the rest collapse into a "+N" chip. */
   readonly maxAvatars = MAX_AVATARS;

@@ -124,7 +124,7 @@ export class MixedRoomsService {
    * Coalesce a burst of events into one rebuild on the next microtask, via the shared
    * primitive. This service is keyed on the ACCOUNT SET rather than one active client, so
    * it takes the batching alone and not `projectFromClient` — the same split
-   * {@link TimelineService} and `PinnedMessagesService` use.
+   * Timeline and exact-Conversation pin projections use.
    */
   private readonly flusher = coalesce(() => {
     if (this.accounts.size > 1) {

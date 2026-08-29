@@ -14,7 +14,6 @@ import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { type PendingInvite } from '@trinity/data-access/invites';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaPipeline } from '@trinity/data-access/media';
-import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
   RoomsService,
   RoomModerationService,
@@ -24,10 +23,7 @@ import {
   type SpaceChildRoom,
   type SpaceSummary,
 } from '@trinity/data-access/rooms';
-import {
-  ThreadsService,
-  TimelineActionsService,
-} from '@trinity/data-access/timeline';
+import { TimelineActionsService } from '@trinity/data-access/timeline';
 import {
   TrnActionSheetService,
   TrnAlertService,
@@ -101,7 +97,6 @@ describe('RoomsPage space actions', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(ThreadsService),
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
@@ -311,8 +306,6 @@ describe('RoomsPage space actions', () => {
     // its decryption) with no way to re-bind short of a reload.
     const shell = build();
     const timeline = TestBed.inject(RoomsTimelineStub);
-    const threads = TestBed.inject(ThreadsService);
-    const pinned = TestBed.inject(PinnedMessagesService);
     shell.nav.onSelectRoom('!r:hs');
     expect(shell.store.activeRoomId()).toBe('!r:hs');
     // Opening is a navigation now and the projections follow the URL from an effect, so
@@ -327,9 +320,6 @@ describe('RoomsPage space actions', () => {
     TestBed.tick(); // and again for the teardown the closed URL triggers
 
     expect(timeline.close).toHaveBeenCalled();
-    expect(threads.close).toHaveBeenCalled();
-    expect(threads.closeThread).toHaveBeenCalled();
-    expect(pinned.close).toHaveBeenCalled();
   });
 
   it('routes to /login in add mode from "Add account"', () => {
@@ -473,7 +463,6 @@ describe('RoomsPage room / DM / invite actions', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(ThreadsService),
         MockProvider(TrnDialogService, { openAndWait: dialogOpen }),
         MockProvider(TrnAlertService, { prompt: alertPrompt }),
         MockProvider(TrnToastService, { show: toastShow }),
@@ -1143,7 +1132,6 @@ describe('RoomsPage space hierarchy actions', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(ThreadsService),
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),

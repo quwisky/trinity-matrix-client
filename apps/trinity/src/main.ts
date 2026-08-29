@@ -27,11 +27,14 @@ import {
 import {
   AccountScopeService,
   RoomMessageGovernanceService,
+  RoomPinGovernanceService,
   SpaceRoomOrderService,
 } from '@trinity/data-access/rooms';
 import {
   CONVERSATION_MESSAGE_POLICY,
+  CONVERSATION_PIN_POLICY,
   type ConversationMessagePolicy,
+  type ConversationPinPolicy,
 } from '@trinity/data-access/timeline';
 import {
   AppBadgeService,
@@ -93,6 +96,17 @@ bootstrapApplication(AppComponent, {
           canRedactOthers: (key) => governance.canRedactOthers(key),
           authorizeRedaction: ({ key, messageId }) =>
             governance.authorizeRedaction({ ...key, messageId }),
+        };
+      },
+    },
+    {
+      provide: CONVERSATION_PIN_POLICY,
+      useFactory: (): ConversationPinPolicy => {
+        const governance = inject(RoomPinGovernanceService);
+        return {
+          canMutate: (key) => governance.canMutate(key),
+          authorize: (key, operation, eventId) =>
+            governance.authorize(key, operation, eventId),
         };
       },
     },

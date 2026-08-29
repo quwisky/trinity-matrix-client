@@ -15,7 +15,6 @@ import {
   RoomNotificationUpdateError,
   RoomNotificationsService,
 } from '@trinity/data-access/notifications';
-import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
   RoomsService,
   RoomSettingsService,
@@ -29,10 +28,7 @@ import {
   type RoomSummary,
   type SpaceSummary,
 } from '@trinity/data-access/rooms';
-import {
-  ThreadsService,
-  TimelineActionsService,
-} from '@trinity/data-access/timeline';
+import { TimelineActionsService } from '@trinity/data-access/timeline';
 import {
   TrnAlertService,
   TrnDialogService,
@@ -182,7 +178,6 @@ describe('RoomsPage action error feedback', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(ThreadsService),
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
@@ -259,9 +254,6 @@ describe('RoomsPage action error feedback', () => {
     TestBed.tick(); // run the teardown the now-roomless URL triggers
     // Tear every open-room projection down so none keeps listening on it.
     expect(TestBed.inject(RoomsTimelineStub).close).toHaveBeenCalled();
-    expect(TestBed.inject(ThreadsService).close).toHaveBeenCalled();
-    expect(TestBed.inject(ThreadsService).closeThread).toHaveBeenCalled();
-    expect(TestBed.inject(PinnedMessagesService).close).toHaveBeenCalled();
     expect(media.releaseAll).toHaveBeenCalled();
   });
 

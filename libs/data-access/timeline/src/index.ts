@@ -5,6 +5,7 @@ export type {
 } from './lib/timeline.service';
 export { ConversationRuntime } from './lib/conversation-runtime.service';
 export { CONVERSATION_MESSAGE_POLICY } from './lib/conversation-message-adapter.service';
+export { CONVERSATION_PIN_POLICY } from './lib/conversation-pins.controller';
 export type {
   ConversationKey,
   ConversationMessageFailure,
@@ -14,6 +15,21 @@ export type {
   ConversationMessages,
   ConversationRedactionDecision,
 } from './lib/conversation-messages';
+export type {
+  ConversationPinDecision,
+  ConversationPinOutcome,
+  ConversationPinPolicy,
+  ConversationPins,
+  PinnedMessageView,
+} from './lib/conversation-pins';
+export type {
+  ConversationThread,
+  ConversationThreadKey,
+  ConversationThreadOutcome,
+  ConversationThreads,
+  ThreadParticipant,
+  ThreadSummary,
+} from './lib/conversation-threads';
 export type {
   ConversationCompose,
   ConversationComposeIntent,
@@ -29,7 +45,6 @@ export type {
   ConversationTimeline,
 } from './lib/conversation-runtime.service';
 export * from './lib/timeline-actions.service';
-export * from './lib/threads.service';
 export * from './lib/url-preview.service';
 export * from './lib/edit-history.service';
 export * from './lib/message-presentation';

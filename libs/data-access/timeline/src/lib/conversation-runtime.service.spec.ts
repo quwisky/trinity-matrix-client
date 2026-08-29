@@ -25,6 +25,8 @@ import type {
   ConversationMessageOperation,
 } from './conversation-messages';
 import type { MessageView } from './message-presentation';
+import type { ThreadsService } from './threads.service';
+import type { ConversationPinsController } from './conversation-pins.controller';
 
 const ALICE = '@alice:example.org';
 const BOB = '@bob:example.org';
@@ -86,9 +88,39 @@ function setup(
     create: vi.fn((key) => {
       const visible = signal(false);
       const released = signal(false);
+      const threads = {
+        summaries: signal({}).asReadonly(),
+        threadList: signal([]).asReadonly(),
+        threadMessages: signal([...messages]).asReadonly(),
+        loadingOlderThread: signal(false).asReadonly(),
+        canPaginateThread: signal(false).asReadonly(),
+        attachThreadRoot: vi.fn(),
+        closeThread: vi.fn(),
+        paginateOpenThread: vi.fn(() => of(void 0)),
+        sendToThread: vi.fn(() => of(void 0)),
+        editInThread: vi.fn(() => of(void 0)),
+        replyInThread: vi.fn(() => of(void 0)),
+      } as unknown as ThreadsService;
+      const pins = {
+        eventIds: signal([]).asReadonly(),
+        messages: signal([]).asReadonly(),
+        canMutate: signal(false).asReadonly(),
+        isPinned: vi.fn(() => false),
+        pin: vi.fn(() => of({ kind: 'applied', operation: 'pin' })),
+        unpin: vi.fn(() => of({ kind: 'applied', operation: 'unpin' })),
+        release: vi.fn(),
+      } as unknown as ConversationPinsController;
       const controller: TestConversationTimelineController = {
         timeline: timeline(key.roomId, messages),
-        setVisible: (next) => visible.set(next),
+        threads,
+        pins,
+        setVisible: (next) => {
+          visible.set(next);
+          if (!next) {
+            threads.closeThread();
+            pins.release();
+          }
+        },
         release: () => released.set(true),
         resources: () => ({ listenerCount: 11, retainedBytes: 64 }),
         visible,
@@ -674,5 +706,151 @@ describe('ConversationRuntime', () => {
     runtime.focus({ accountId: ALICE, roomId: '!second:example.org' });
 
     expect(first.timeline.setTyping).toHaveBeenLastCalledWith(false, 'room');
+  });
+
+  it('creates one exact keyed thread child and routes message actions through it', async () => {
+    const { runtime, controller, messageAdapter } = setup(2, undefined, [
+      message('$reply'),
+    ]);
+    const conversation = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+
+    const thread = conversation.threads.forRoot('$root');
+
+    expect(thread?.key).toEqual({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+      rootEventId: '$root',
+    });
+    expect(
+      controller('!room:example.org').threads.attachThreadRoot,
+    ).toHaveBeenCalledWith('$root');
+    const command = thread?.toggleReaction('$reply', '👍');
+    expect(messageAdapter.toggleReaction).not.toHaveBeenCalled();
+    await expect(firstValueFrom(command!)).resolves.toEqual({
+      kind: 'applied',
+      operation: 'reaction',
+    });
+    expect(messageAdapter.toggleReaction).toHaveBeenCalledWith({
+      key: conversation.key,
+      threadRootId: '$root',
+      messageId: '$reply',
+      reaction: '👍',
+    });
+  });
+
+  it('permanently releases the previous root child when thread navigation changes', async () => {
+    const { runtime, controller, messageAdapter } = setup();
+    const conversation = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+    const first = conversation.threads.forRoot('$first')!;
+    const staleCommand = first.retry('$echo');
+    const staleInvalidSend = first.send('   ');
+
+    const second = conversation.threads.forRoot('$second')!;
+
+    expect(second).not.toBe(first);
+    expect(
+      controller('!room:example.org').threads.closeThread,
+    ).toHaveBeenCalled();
+    await expect(firstValueFrom(staleCommand)).resolves.toMatchObject({
+      kind: 'rejected',
+      operation: 'retry',
+      failure: 'conversation-unavailable',
+    });
+    expect(messageAdapter.retry).not.toHaveBeenCalled();
+    await expect(firstValueFrom(staleInvalidSend)).resolves.toMatchObject({
+      kind: 'rejected',
+      operation: 'send',
+      failure: 'conversation-unavailable',
+    });
+    expect(first.messages()).toEqual([]);
+  });
+
+  it('releases the active thread on parent blur and rejects its staged media', async () => {
+    const { runtime, controller, mediaPipeline } = setup();
+    const conversation = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+    const thread = conversation.threads.forRoot('$root')!;
+    const staged = Object.freeze({
+      id: 'thread-media',
+      filename: 'thread.png',
+      mimeType: 'image/png',
+      size: 4,
+      previewUrl: null,
+    }) as StagedMediaReference;
+
+    runtime.blur();
+
+    expect(
+      controller('!room:example.org').threads.closeThread,
+    ).toHaveBeenCalled();
+    await expect(
+      firstValueFrom(thread.media.send(staged, 'caption')),
+    ).resolves.toEqual({
+      kind: 'rejected',
+      failure: 'conversation-unavailable',
+      retryable: false,
+    });
+    expect(mediaPipeline.transfer).not.toHaveBeenCalled();
+  });
+
+  it('routes thread media through the staged pipeline with the exact root key', () => {
+    const { runtime, mediaPipeline } = setup();
+    const conversation = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+    const thread = conversation.threads.forRoot('$root')!;
+    const staged = Object.freeze({
+      id: 'thread-media',
+      filename: 'thread.png',
+      mimeType: 'image/png',
+      size: 4,
+      previewUrl: null,
+    }) as StagedMediaReference;
+
+    const subscription = thread.media.send(staged, 'caption').subscribe();
+
+    expect(mediaPipeline.transfer).toHaveBeenCalledWith({
+      key: conversation.key,
+      threadRootId: '$root',
+      media: staged,
+      caption: 'caption',
+    });
+    subscription.unsubscribe();
+  });
+
+  it('keeps pin commands cold and rejects the retained exact handle', async () => {
+    const { runtime, controller } = setup();
+    const conversation = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+    const pinController = controller('!room:example.org').pins;
+    const command = conversation.pins.pin('$message');
+
+    expect(pinController.pin).not.toHaveBeenCalled();
+    await expect(firstValueFrom(command)).resolves.toEqual({
+      kind: 'applied',
+      operation: 'pin',
+    });
+    expect(pinController.pin).toHaveBeenCalledWith('$message');
+
+    runtime.focus({ accountId: BOB, roomId: '!other:example.org' });
+    await expect(
+      firstValueFrom(conversation.pins.unpin('$message')),
+    ).resolves.toMatchObject({
+      kind: 'rejected',
+      operation: 'unpin',
+      failure: 'conversation-unavailable',
+    });
+    expect(pinController.unpin).not.toHaveBeenCalled();
   });
 });

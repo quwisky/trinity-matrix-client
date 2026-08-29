@@ -103,7 +103,7 @@ still fails the scope rule. That is the intended behaviour, not a misconfigurati
 
 This is not a style preference; it is checkable, and it currently holds absolutely. Across every
 non-spec file in `libs/feature/*`, `libs/components/*` and `libs/platform-native` there are zero imports from
-`matrix-js-sdk`. The SDK appears only under `libs/data-access/` — in thirteen of its fifteen
+`matrix-js-sdk`. The SDK appears only under `libs/data-access/` — in twelve of its fourteen
 libraries; `data-access-accounts` composes the Matrix adapter, while `data-access-gif` talks to
 KLIPY and Giphy, so neither imports the SDK — and in
 `libs/util/matrix`, which models its types.

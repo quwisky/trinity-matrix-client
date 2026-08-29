@@ -5,7 +5,6 @@ import {
   convertToParamMap,
   type ParamMap,
 } from '@angular/router';
-import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import { RoomsService } from '@trinity/data-access/rooms';
 import {
   ConversationRuntime,
@@ -59,6 +58,13 @@ describe('MessageActionsService', () => {
   const retry = vi.fn<() => Observable<ConversationMessageOutcome>>(() =>
     applied('retry'),
   );
+  const isPinned = vi.fn(() => false);
+  const pin = vi.fn(() =>
+    of({ kind: 'applied' as const, operation: 'pin' as const }),
+  );
+  const unpin = vi.fn(() =>
+    of({ kind: 'applied' as const, operation: 'unpin' as const }),
+  );
   const votePoll = vi.fn(() => of(undefined));
   const endPoll = vi.fn(() => of(undefined));
   const sendSticker = vi.fn(() => of(undefined));
@@ -89,6 +95,7 @@ describe('MessageActionsService', () => {
         timeline: inject(ConversationTimelineStub),
         compose: { setDraft, submit: submitText, setTyping },
         messages: { redact, toggleReaction, retry },
+        pins: { isPinned, pin, unpin },
       }),
     },
     MockProvider(TimelineActionsService, {
@@ -96,7 +103,6 @@ describe('MessageActionsService', () => {
       endPoll,
       sendSticker,
     }),
-    MockProvider(PinnedMessagesService),
     MockProvider(RoomsService),
     MockProvider(TrnToastService, { show: toastShow }),
     MockProvider(AccountRoutingService),

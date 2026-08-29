@@ -1,11 +1,9 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import {
   Direction,
-  EventType,
   MatrixEvent,
   MatrixEventEvent,
   NotificationCountType,
-  ReceiptType,
   RoomEvent,
   RoomStateEvent,
   ThreadEvent,
@@ -17,6 +15,7 @@ import {
 } from 'matrix-js-sdk';
 import {
   Observable,
+  Subscription,
   defer,
   finalize,
   from,
@@ -25,9 +24,7 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { MediaPipeline, MediaService } from '@trinity/data-access/media';
-import { PrivacySettingsService } from '@trinity/platform-native';
+import { MediaPipeline } from '@trinity/data-access/media';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import {
   collectMessageSenders,
@@ -38,59 +35,18 @@ import { resolveShieldsInto, shieldKey } from './shields';
 import { eventRevision } from './timeline.service';
 import { projectMessage } from './project-message';
 import type { MessageShield, MessageView } from './message-presentation';
+import type { ConversationKey } from './conversation-messages';
+import { CONVERSATION_MESSAGE_ADAPTER } from './conversation-message-adapter.service';
+import type { ThreadParticipant, ThreadSummary } from './conversation-threads';
 import {
-  annotationContent,
   editMessageContent,
-  mediaCaptionFields,
   messagePreview,
-  myReactionId,
   renderMarkdown,
   replyMessageContent,
   slashCommandContent,
   textMessageContent,
   type Mention,
 } from '@trinity/util/matrix';
-
-/** A distinct participant of a thread, for compact avatar/name display. */
-export interface ThreadParticipant {
-  id: string;
-  name: string;
-  initial: string;
-  avatarMxc: string | null;
-}
-
-/**
- * A compact, render-ready summary of a thread keyed by its root event — drives the
- * main-timeline "💬 N replies · last reply <time>" indicator. No SDK types leak out.
- */
-export interface ThreadSummary {
-  /** The event id of the thread root (the message the thread hangs off). */
-  rootEventId: string;
-  /** Short plain-text preview of the thread root, or null. */
-  rootPreview: string | null;
-  /** Display name of the thread root's sender, or null. */
-  rootSenderName: string | null;
-  /** Number of replies (excludes the root). */
-  replyCount: number;
-  /** Timestamp of the most recent reply, or null when not yet known. */
-  latestReplyTs: number | null;
-  /**
-   * Timestamp of the thread's most recent activity — the latest reply, falling
-   * back to the root's own timestamp. Always set, so it sorts a threads list
-   * cleanly (newest first) even for a root that has no replies yet.
-   */
-  latestActivityTs: number;
-  /** Short plain-text preview of the most recent reply, or null. */
-  latestReplyPreview: string | null;
-  /** Display name of the most recent reply's sender, or null. */
-  latestReplySenderName: string | null;
-  /** Distinct participants (capped) for an avatar cluster. */
-  participants: ThreadParticipant[];
-  /** Total unread notifications for this thread (0 when read / unknown). */
-  unreadCount: number;
-  /** Whether this thread has an unread highlight (mention/keyword). */
-  highlight: boolean;
-}
 
 /** Most participant avatars shown in a summary cluster before "+N". */
 const MAX_PARTICIPANTS = 8;
@@ -104,24 +60,21 @@ const THREAD_SCROLLBACK = 30;
  * event handlers, async-decryption re-mapping). Two independent views:
  *
  *  - {@link summaries}: a map of thread-root id → {@link ThreadSummary} for the
- *    *active* room, opened with {@link open}/{@link close}, feeding the main
+ *    exact room, bound with {@link attach}/{@link close}, feeding the main
  *    timeline's thread indicators.
  *  - {@link threadMessages}: the live, decrypted {@link MessageView}s of a *single*
- *    opened thread (root first, then replies), opened with {@link openThread}/
- *    {@link closeThread} when a thread view is presented.
+ *    opened thread (root first, then replies), bound with
+ *    {@link attachThreadRoot}/{@link closeThread} when a thread view is presented.
  *
- * In-thread composing (send/reply/edit/delete/react) is layered on top via the
- * thread-scoped action methods below: each delegates to the same SDK calls the main
- * timeline uses, but passes the opened thread's root id as the `threadId` so the SDK
- * keeps the message in the thread (adding the `m.thread` relation for sends/replies)
- * and the optimistic local echo surfaces through {@link threadMessages}.
+ * Text send/reply/edit are the package-internal SDK adapter for the public exact-root
+ * child. Message relations and staged media use the shared Conversation adapters, so
+ * no second public action facade can drift from the room path.
  */
-@Injectable({ providedIn: 'root' })
+@Injectable()
 export class ThreadsService {
-  private readonly matrix = inject(MatrixClientService);
-  private readonly mediaSvc = inject(MediaService);
   private readonly mediaPipeline = inject(MediaPipeline);
-  private readonly privacy = inject(PrivacySettingsService);
+  private readonly messageAdapter = inject(CONVERSATION_MESSAGE_ADAPTER);
+  private conversationKey: ConversationKey | null = null;
 
   private readonly _summaries = signal<Record<string, ThreadSummary>>({});
   /** Thread summaries for the active room, keyed by thread-root event id. */
@@ -159,12 +112,12 @@ export class ThreadsService {
   // Latest thread event we have already sent a read receipt for, so live replies
   // arriving while the thread is open mark read without re-sending on every refresh.
   private lastReadEventId: string | null = null;
+  private threadReceiptSubscription: Subscription | null = null;
 
   // --- Summaries (active room) ---------------------------------------------
   /**
-   * The client {@link openSummaries} attached to. `matrix.instance` follows the ACTIVE
-   * account, so re-reading it on close after an account switch would detach from the
-   * new client and leak this listener on the old one.
+   * The exact Account client {@link attach} bound. Re-reading a mutable active pointer
+   * on close would detach from the new client and leak this listener on the old one.
    */
   private summariesClient: MatrixClient | null = null;
   private summariesRoom: Room | null = null;
@@ -217,7 +170,7 @@ export class ThreadsService {
 
   // --- Opened thread --------------------------------------------------------
   private thread: Thread | null = null;
-  /** The client {@link openThread} attached to — see {@link summariesClient}. */
+  /** The exact Account client {@link attachThreadRoot} inherited — see {@link summariesClient}. */
   private threadClient: MatrixClient | null = null;
   private threadRoom: Room | null = null;
   private threadRoomId: string | null = null;
@@ -281,20 +234,41 @@ export class ThreadsService {
     this.refreshThread();
   };
 
+  resources(): { listenerCount: number; retainedBytes: number } {
+    const summaryListeners = this.summariesRoom ? 7 : 0;
+    const summaryClientListeners = this.summariesClient ? 1 : 0;
+    const threadRoomListeners = this.threadRoom ? 4 : 0;
+    const threadClientListeners = this.threadClient ? 4 : 0;
+    const threadListeners = this.thread ? 3 : 0;
+    return {
+      listenerCount:
+        summaryListeners +
+        summaryClientListeners +
+        threadRoomListeners +
+        threadClientListeners +
+        threadListeners,
+      retainedBytes:
+        this._threadMessages().length * 8 +
+        Object.keys(this._summaries()).length * 8,
+    };
+  }
+
   /** Start projecting a room's thread summaries; attaches live + decryption listeners. */
-  open(roomId: string): void {
-    if (this.summariesRoomId === roomId || !this.matrix.isInitialized) {
+  attach(key: ConversationKey, client: MatrixClient): void {
+    if (
+      this.summariesRoomId === key.roomId &&
+      this.summariesClient === client
+    ) {
       return;
     }
     this.close();
-
-    const client = this.matrix.instance;
-    const room = client.getRoom(roomId);
-    if (!room) {
+    const room = client.getRoom(key.roomId);
+    if (!room || client.getUserId() !== key.accountId) {
       return;
     }
 
-    this.summariesRoomId = roomId;
+    this.conversationKey = Object.freeze({ ...key });
+    this.summariesRoomId = key.roomId;
     this.summariesRoom = room;
     this.summariesClient = client;
     // The room re-emits its threads' Update/NewReply + Timeline, so listening at
@@ -325,12 +299,13 @@ export class ThreadsService {
       room.off(RoomEvent.Receipt, this.onSummariesChanged);
       room.off(RoomStateEvent.Members, this.onSummariesMember);
     }
-    // Detach from the client openSummaries() attached to, not `matrix.instance`.
+    // Detach from the exact Account client attach() bound.
     this.summariesClient?.off(
       MatrixEventEvent.Decrypted,
       this.onSummariesDecrypted,
     );
     this.summariesClient = null;
+    this.conversationKey = null;
     this.summariesRoom = null;
     this.summariesRoomId = null;
     this.summaryCache.clear();
@@ -341,20 +316,16 @@ export class ThreadsService {
    * Open a single thread for viewing: project the root + its replies into
    * {@link threadMessages} and attach live + decryption listeners on the thread.
    */
-  openThread(roomId: string, rootEventId: string): void {
-    if (!this.matrix.isInitialized) {
-      return;
-    }
+  attachThreadRoot(rootEventId: string): void {
     this.closeThread();
-
-    const client = this.matrix.instance;
-    const room = client.getRoom(roomId);
-    if (!room) {
+    const client = this.summariesClient;
+    const room = this.summariesRoom;
+    if (!client || !room || !rootEventId) {
       return;
     }
 
     this.threadRoom = room;
-    this.threadRoomId = roomId;
+    this.threadRoomId = room.roomId;
     this.threadClient = client;
     this._openThreadRootId.set(rootEventId);
     // Attach an already-aggregated Thread (e.g. opening from a "N replies"
@@ -400,7 +371,7 @@ export class ThreadsService {
       room.off(RoomStateEvent.Members, this.onThreadMember);
       room.off(RoomEvent.Receipt, this.onThreadChanged);
     }
-    // Detach from the client openThread() attached to, not `matrix.instance`.
+    // Detach from the exact Account client attachThreadRoot() inherited.
     const client = this.threadClient;
     if (client) {
       client.off(MatrixEventEvent.Decrypted, this.onThreadDecrypted);
@@ -412,6 +383,8 @@ export class ThreadsService {
     this.thread = null;
     this.threadRoom = null;
     this.threadRoomId = null;
+    this.threadReceiptSubscription?.unsubscribe();
+    this.threadReceiptSubscription = null;
     this.lastReadEventId = null;
     this.threadRelevantSenders.clear();
     this.threadShields.clear();
@@ -445,15 +418,16 @@ export class ThreadsService {
       !thread ||
       !timeline ||
       this._loadingOlderThread() ||
-      !this.matrix.isInitialized
+      !this.threadClient
     ) {
       return of(void 0);
     }
     return defer(() => {
+      const client = this.threadClient;
+      if (!client || this.thread !== thread) return of(void 0);
       this._loadingOlderThread.set(true);
       return from(
-        // Resolved on subscribe: `instance` follows the active account.
-        this.matrix.instance.paginateEventTimeline(timeline, {
+        client.paginateEventTimeline(timeline, {
           backwards: true,
           limit: THREAD_SCROLLBACK,
         }),
@@ -471,13 +445,6 @@ export class ThreadsService {
   // SDK `threadId`, so the message stays in the thread and its optimistic echo +
   // failed/retry state surface through `threadMessages` exactly like the timeline.
 
-  /**
-   * Send a message into the opened thread. Markdown renders to sanitized HTML, like
-   * the main composer. Passing the thread root as `threadId` makes the SDK add the
-   * `m.thread` relation (`{ rel_type: 'm.thread', event_id, is_falling_back: true,
-   * 'm.in_reply_to': { event_id: <latest reply ?? root> } }`) and route the echo
-   * into the thread timeline. Encrypted rooms reuse the SDK's E2EE send path.
-   */
   /**
    * Create + attach the Thread just before the first reply is sent, if one doesn't
    * exist yet. matrix-js-sdk doesn't form a Thread from the sender's own first reply
@@ -505,9 +472,9 @@ export class ThreadsService {
     // Thread the optimistic echo has nowhere to land and vanishes. Fetch the root
     // so the Thread can be created; if it can't be fetched, surface the error
     // rather than sending a reply that won't show.
-    return from(
-      this.matrix.instance.fetchRoomEvent(room.roomId, rootEventId),
-    ).pipe(
+    const client = this.threadClient;
+    if (!client) return of(void 0);
+    return from(client.fetchRoomEvent(room.roomId, rootEventId)).pipe(
       map((raw) =>
         this.createThreadFromRoot(room, rootEventId, new MatrixEvent(raw)),
       ),
@@ -546,48 +513,6 @@ export class ThreadsService {
       return this.ensureThread(room, threadId).pipe(
         switchMap(() =>
           from(client.sendMessage(roomId, threadId, content as never)),
-        ),
-      );
-    }).pipe(map(() => void 0));
-  }
-
-  /**
-   * Upload and send an attachment into the opened thread (encrypting the bytes first
-   * in an E2EE room), reusing {@link MediaService}. `progress` reports an upload
-   * fraction in [0, 1]; once sent, the SDK echo + retry path takes over.
-   */
-  sendMediaToThread(
-    file: File,
-    caption: string,
-    progress?: (fraction: number) => void,
-  ): Observable<void> {
-    return defer(() => {
-      const ctx = this.threadContext();
-      if (!ctx || !file || file.size === 0) {
-        return of(void 0);
-      }
-      const { client, room, roomId, threadId } = ctx;
-      // Read on subscribe too: a room can become encrypted while an unsent action
-      // is held, and uploading plaintext bytes into an E2EE room is not recoverable.
-      const encrypt = room.hasEncryptionStateEvent();
-      return this.mediaSvc.uploadMedia(file, encrypt, progress).pipe(
-        switchMap((media) =>
-          // Ensure the local Thread (fetching the root if needed) before sending,
-          // so the media echo lands in the thread; a fetch failure aborts the send.
-          this.ensureThread(room, threadId).pipe(
-            switchMap(() => {
-              const content = {
-                msgtype: media.msgtype,
-                ...mediaCaptionFields(media.body, caption),
-                info: media.info,
-                ...(media.file ? { file: media.file } : { url: media.mxc }),
-              };
-              // A valid media payload; the SDK's content union doesn't model it.
-              return from(
-                client.sendMessage(roomId, threadId, content as never),
-              );
-            }),
-          ),
         ),
       );
     }).pipe(map(() => void 0));
@@ -644,60 +569,6 @@ export class ThreadsService {
     }).pipe(map(() => void 0));
   }
 
-  /** Delete (redact) a message in the thread. */
-  redactInThread(messageId: string): Observable<void> {
-    return defer(() => {
-      const ctx = this.threadContext();
-      if (!ctx) {
-        return of(void 0);
-      }
-      const { client, roomId, threadId } = ctx;
-      return from(client.redactEvent(roomId, threadId, messageId));
-    }).pipe(map(() => void 0));
-  }
-
-  /**
-   * Toggle the current user's reaction to a thread message: add the `m.annotation`
-   * if absent, else redact their existing one. Reactions aggregate on the room's
-   * relations (no thread rel_type), but the echo is routed via `threadId`.
-   */
-  toggleReactionInThread(messageId: string, key: string): Observable<void> {
-    return defer(() => {
-      const ctx = this.threadContext();
-      if (!ctx) {
-        return of(void 0);
-      }
-      const { client, room, roomId, threadId } = ctx;
-      const mine = myReactionId(client, room, messageId, key);
-      if (mine) {
-        return from(client.redactEvent(roomId, threadId, mine));
-      }
-      return from(
-        client.sendEvent(
-          roomId,
-          threadId,
-          EventType.Reaction,
-          annotationContent(messageId, key) as never,
-        ),
-      );
-    }).pipe(map(() => void 0));
-  }
-
-  /** Resend a thread message that failed to send. */
-  retryInThread(messageId: string): void {
-    const ctx = this.threadContext();
-    if (!ctx) {
-      return;
-    }
-    const { client, room } = ctx;
-    const event =
-      this.thread?.events.find((e) => e.getId() === messageId) ??
-      room.findEventById(messageId);
-    if (event) {
-      client.resendEvent(event, room).catch(() => undefined);
-    }
-  }
-
   /** The active opened-thread send context, or null when nothing is composable. */
   private threadContext(): {
     client: MatrixClient;
@@ -707,11 +578,12 @@ export class ThreadsService {
   } | null {
     const room = this.threadRoom;
     const threadId = this._openThreadRootId();
-    if (!room || !threadId || !this.matrix.isInitialized) {
+    const client = this.threadClient;
+    if (!room || !threadId || !client) {
       return null;
     }
     return {
-      client: this.matrix.instance,
+      client,
       room,
       roomId: room.roomId,
       threadId,
@@ -723,7 +595,8 @@ export class ThreadsService {
     if (!room) {
       return;
     }
-    const client = this.matrix.instance;
+    const client = this.summariesClient;
+    if (!client) return;
     const summaries: Record<string, ThreadSummary> = {};
     const seen = new Set<string>();
     for (const thread of room.getThreads()) {
@@ -756,7 +629,8 @@ export class ThreadsService {
     if (!room || !rootEventId) {
       return;
     }
-    const client = this.matrix.instance;
+    const client = this.threadClient;
+    if (!client) return;
     const thread = this.thread ?? room.getThread(rootEventId);
     const ordered = this.orderedThreadEvents(room, rootEventId, thread);
 
@@ -853,9 +727,7 @@ export class ThreadsService {
     events?: readonly MatrixEvent[],
   ): Promise<void> {
     const rootEventId = this._openThreadRootId();
-    const crypto = this.matrix.isInitialized
-      ? (this.matrix.instance.getCrypto?.() ?? null)
-      : null;
+    const crypto = this.threadClient?.getCrypto?.() ?? null;
     if (!crypto || !rootEventId) {
       return;
     }
@@ -880,7 +752,9 @@ export class ThreadsService {
    */
   private markThreadRead(): void {
     const thread = this.thread;
-    if (!thread || !this.matrix.isInitialized) {
+    const key = this.conversationKey;
+    const rootEventId = this._openThreadRootId();
+    if (!thread || !key || !rootEventId) {
       return;
     }
     const latest = [...(thread.events ?? [])].reverse().find((e) => !e.status);
@@ -890,19 +764,14 @@ export class ThreadsService {
       return;
     }
     this.lastReadEventId = id;
-    try {
-      // The event carries its thread id, so the SDK scopes the receipt to the
-      // thread (rather than the main timeline) automatically. Respect the read-
-      // receipt privacy toggle: send privately (`m.read.private`) when it's off.
-      const receiptType = this.privacy.sendReadReceipts()
-        ? ReceiptType.Read
-        : ReceiptType.ReadPrivate;
-      void this.matrix.instance
-        .sendReadReceipt(target, receiptType)
-        ?.catch(() => undefined);
-    } catch {
-      // A missing/unsupported receipt API must never break thread viewing.
-    }
+    this.threadReceiptSubscription?.unsubscribe();
+    this.threadReceiptSubscription = this.messageAdapter
+      .acknowledge({ key, messageId: id, threadRootId: rootEventId })
+      .subscribe((outcome) => {
+        if (outcome.kind === 'rejected' && this.lastReadEventId === id) {
+          this.lastReadEventId = null;
+        }
+      });
   }
 
   private summaryFor(

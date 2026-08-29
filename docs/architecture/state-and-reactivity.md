@@ -127,7 +127,8 @@ evidence rather than a portable unit-test assertion. There is no duplicate SDK s
 ## Conversation Runtime
 
 `ConversationRuntime` owns the messaging lifetime of one immutable Account-and-Room pair. A
-handle freezes that key and exposes a timeline child; it never reads the route and never retargets
+handle freezes that key and exposes named timeline, compose, message, media, thread and pin
+children; it never reads the route and never retargets
 when Active Account changes. `RoomShellNavigationService` is the Workspace adapter: it focuses the
 key derived from the active Account and routed Room, or blurs the current handle when the Room
 leaves the Workspace. Feature surfaces consume `ConversationRuntime.timeline`, a stable proxy for
@@ -163,6 +164,22 @@ local dedupe marker after the typed command succeeds. Closing the child cancels 
 receipt subscription. Relation and receipt updates then arrive through the existing SDK listeners
 and are projected back into immutable `MessageView` values.
 
+Threads are one further keyed child: `threads.forRoot(rootEventId)` returns an immutable
+Account-and-Room-and-root handle. Only one root child is live per Conversation. Navigating to a
+different root, blurring the parent, eviction and runtime teardown permanently release the old
+generation; a command assembled before release rejects when subscribed rather than reaching a
+new thread. Text send/edit/reply use the package-internal thread adapter, while reactions,
+redactions and retry reuse the Conversation message adapter with the exact root key. Thread
+attachments reuse Media Pipeline with that same root in its transfer target, so retry state and
+Matrix transaction ids cannot cross between the room and a thread.
+
+Pinned messages are the handle's `pins` child, not a root service. It projects
+`m.room.pinned_events` and resolves display rows from the exact Room's SDK store. Pin and unpin are
+cold typed commands; Room Administration supplies the current `maySendStateEvent` decision
+through a composition-root port. Successful requests do not publish optimistic state: the next
+authoritative room-state event does. Unpin may remove an unloaded or redacted stale id, while a
+new pin must resolve to a message in that Conversation.
+
 Each handle also exposes an exact-Conversation media command. Host-acquired `File` objects are
 immediately staged by Media Pipeline and replaced with an opaque `StagedMediaReference`; the
 Conversation sees that reference, a caption, and its immutable Account-and-Room key, never raw
@@ -188,14 +205,17 @@ duplicate an event already on the wire, while the persisted snapshot remains rec
 handle is later recreated. No command owns a detached subscription.
 
 Focus enables foreground effects such as read receipts, typing and room actions. Blur disables
-those effects but leaves the Matrix listeners attached, so the projection remains warm. Each
+those effects but leaves the bounded main-timeline listeners attached, so that projection remains
+warm. Thread summaries and pins detach and clear on blur, then reconcile from the exact Room when
+focus returns; an open root child is also permanently released. Each
 Account retains at most two blurred handles in least-recently-used order. A retained child keeps
 the latest 100 raw timeline events in its application projection and at most 200 sender
 dependencies; focusing it rebuilds the complete loaded projection from `matrix-js-sdk`, which
 remains authoritative. In a browser that is 11 listeners and at most 11,200 deterministic modeled
 bytes per retained handle, or 22 listeners and 22,400 bytes for the two-entry per-Account retained
-set. The one globally focused handle may add 11 listeners; its visible projection is not part of
-the retention-memory baseline.
+set. A focused handle adds eight thread-summary listeners and three pin listeners; an opened root
+adds another eleven thread listeners. Their focused payload diagnostics count projected summaries,
+pin ids, resolved pin rows and thread messages, but none enter the retention-memory baseline.
 
 Eviction marks the exact handle `retired`, removes it from the keyed registry and destroys its
 child injector. That object can never become focused again; reopening the same key creates a new
@@ -354,14 +374,14 @@ string and keeps the flat hyphenated form, so the command stays
 Six take **only** `coalesce()`, and each says why at the call site. The split is not arbitrary — it
 follows from what the service's lifetime is keyed to:
 
-| Service                   | Keyed to               | Why the client half does not apply                                                                                                       |
-| ------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `TimelineService`         | One Conversation child | Package-internal implementation bound to an immutable Account-and-Room handle; Conversation Runtime owns its `open()`/`close()` lifetime |
-| `PinnedMessagesService`   | The routed open room   | The shell explicitly opens and closes its Room binding; it does not follow the mutable active client                                     |
-| `MixedRoomsService`       | The mixed account set  | Attaches listeners per account and reconciles them against the live set, rather than following one active client                         |
-| `MixedSpacesService`      | The mixed account set  | Same                                                                                                                                     |
-| `MixedInvitesService`     | The mixed account set  | Same                                                                                                                                     |
-| `UnreadAggregatorService` | The mixed account set  | Same                                                                                                                                     |
+| Service                      | Keyed to                       | Why the client half does not apply                                                                                                       |
+| ---------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `TimelineService`            | One Conversation child         | Package-internal implementation bound to an immutable Account-and-Room handle; Conversation Runtime owns its `open()`/`close()` lifetime |
+| `ConversationPinsController` | One focused Conversation child | Conversation Runtime binds its exact Room, detaches it on blur, and reconciles from SDK state on refocus                                 |
+| `MixedRoomsService`          | The mixed account set          | Attaches listeners per account and reconciles them against the live set, rather than following one active client                         |
+| `MixedSpacesService`         | The mixed account set          | Same                                                                                                                                     |
+| `MixedInvitesService`        | The mixed account set          | Same                                                                                                                                     |
+| `UnreadAggregatorService`    | The mixed account set          | Same                                                                                                                                     |
 
 `NotificationService` takes neither. It binds per account, with push scoring, own-message
 suppression and event dedupe all keyed by account, and an account-set effect in its constructor is
@@ -486,8 +506,8 @@ whether the value can be projected by the service that owns the
 events — the answer has been "yes, project it" five times running. Which projection shape
 depends on what it is keyed on, and only two of those five used `projectFromClient`:
 it decides listener lifecycle, coalescing and account-switch re-projection for a read model
-keyed on ONE active client. `PinnedMessagesService` is room-scoped and takes `coalesce`
-alone; `membersFor` writes per-room signals from the owning service's own listeners. Where the
+keyed on ONE active client. `ConversationPinsController` is exact-Conversation-scoped and takes
+`coalesce` alone; `membersFor` writes per-room signals from the owning service's own listeners. Where the
 projection is keyed on the ACCOUNT SET rather than one active client, reconcile a listener per
 account instead (`AccountProfilesService`, `MixedRoomsService`, `UnreadAggregatorService`) — and
 keep the `held.client === client` identity re-check, or re-adding a signed-in account strands

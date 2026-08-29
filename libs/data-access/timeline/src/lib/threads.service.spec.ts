@@ -1,4 +1,3 @@
-import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
@@ -18,8 +17,9 @@ import { describe, expect, it, type Mock, vi } from 'vitest';
 import { ThreadsService } from './threads.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaService, type UploadedMedia } from '@trinity/data-access/media';
-import { PrivacySettingsService } from '@trinity/platform-native';
 import { switchableMatrixProvider } from './timeline.spec-harness';
+import { CONVERSATION_MESSAGE_ADAPTER } from './conversation-message-adapter.service';
+import type { ConversationMessageOutcome } from './conversation-messages';
 
 const MEMBERS: Record<string, string> = {
   '@me:hs': 'Me',
@@ -80,17 +80,9 @@ function fakeEvent(o: {
 
 type FakeEvent = ReturnType<typeof fakeEvent>;
 
-function fakeReaction(sender: string, id = '$re', redacted = false) {
-  return {
-    getSender: () => sender,
-    getId: () => id,
-    isRedacted: () => redacted,
-  };
-}
-
-function fakeRelations(annotations: [string, Set<unknown>][]) {
-  return { getSortedAnnotationsByKey: () => annotations };
-}
+type FakeRelations = {
+  getSortedAnnotationsByKey: () => [string, Set<unknown>][];
+};
 
 function fakeThread(o: {
   id: string;
@@ -138,9 +130,9 @@ function fakeMediaService() {
 function setup(
   threads: FakeThread[],
   sent: unknown[][] = [],
-  reactions: Record<string, ReturnType<typeof fakeRelations>> = {},
+  reactions: Record<string, FakeRelations> = {},
   extraEvents: FakeEvent[] = [],
-  sendReadReceipts = true,
+  _sendReadReceipts = true,
   getEncryptionInfoForEvent?: Mock,
 ) {
   const all = [
@@ -243,6 +235,12 @@ function setup(
       : {}),
     ...emitter(),
   };
+  const acknowledge = vi.fn(() =>
+    of<ConversationMessageOutcome>({
+      kind: 'applied',
+      operation: 'receipt',
+    }),
+  );
   TestBed.configureTestingModule({
     providers: [
       ThreadsService,
@@ -255,13 +253,15 @@ function setup(
       MockProvider(MediaService, {
         uploadMedia: fakeMediaService().uploadMedia,
       }),
-      MockProvider(PrivacySettingsService, {
-        sendReadReceipts: signal(sendReadReceipts).asReadonly(),
-      }),
+      { provide: CONVERSATION_MESSAGE_ADAPTER, useValue: { acknowledge } },
     ],
   });
   const svc = TestBed.inject(ThreadsService);
-  return { svc, room, client, sent };
+  svc.attach(
+    { accountId: '@me:hs', roomId: '!r:hs' },
+    client as unknown as MatrixClient,
+  );
+  return { svc, room, client, sent, acknowledge };
 }
 
 describe('ThreadsService', () => {
@@ -282,7 +282,6 @@ describe('ThreadsService', () => {
         length: 1,
       }),
     ]);
-    svc.open('!r:hs');
 
     const summary = svc.summaries()['$root'];
     expect(summary).toMatchObject({
@@ -308,7 +307,7 @@ describe('ThreadsService', () => {
       body: 'a reply',
       ts: 1000,
     });
-    const { svc, room } = setup([
+    const { svc, room, client } = setup([
       fakeThread({
         id: '$root',
         rootEvent: root,
@@ -328,7 +327,11 @@ describe('ThreadsService', () => {
             name: MEMBERS[id] ?? id,
             getMxcAvatarUrl: () => null,
           }) as unknown as typeof room.getMember;
-    svc.open('!r:hs');
+    svc.close();
+    svc.attach(
+      { accountId: '@me:hs', roomId: '!r:hs' },
+      client as unknown as MatrixClient,
+    );
 
     const before = svc.summaries()['$root'];
     const bobBefore = before.participants.find((p) => p.id === '@b:hs');
@@ -369,7 +372,6 @@ describe('ThreadsService', () => {
         length: 1,
       }),
     ]);
-    svc.open('!r:hs');
     const before = svc.summaries()['$root'];
 
     // A member the summary doesn't render → no rebuild, same object identity.
@@ -397,7 +399,7 @@ describe('ThreadsService', () => {
     const { svc } = setup([
       fakeThread({ id: '$root', rootEvent: root, events: [root, reply] }),
     ]);
-    svc.openThread('!r:hs', '$root');
+    svc.attachThreadRoot('$root');
 
     const msgs = svc.threadMessages();
     expect(msgs.map((m) => m.id)).toEqual(['$root', '$r1']);
@@ -406,7 +408,7 @@ describe('ThreadsService', () => {
   });
 
   it('follows a read receipt onto an open thread’s replies', async () => {
-    // A receipt is none of the thread-level events openThread listens to, so without a
+    // A receipt is none of the thread-level events attachThreadRoot listens to, so without a
     // room-level Receipt listener the "seen by" avatars under a reply sat unchanged
     // until some unrelated event happened to re-refresh the thread. The summaries
     // projection has bound this all along; the open thread had not.
@@ -415,7 +417,7 @@ describe('ThreadsService', () => {
     const { svc, room } = setup([
       fakeThread({ id: '$root', rootEvent: root, events: [root, reply] }),
     ]);
-    svc.openThread('!r:hs', '$root');
+    svc.attachThreadRoot('$root');
     expect(svc.threadMessages()[1].readReceipts).toEqual([]);
 
     let readers: string[] = [];
@@ -439,7 +441,7 @@ describe('ThreadsService', () => {
     const { svc, room } = setup([
       fakeThread({ id: '$root', rootEvent: root, events: [root, reply] }),
     ]);
-    svc.openThread('!r:hs', '$root');
+    svc.attachThreadRoot('$root');
     const before = svc.threadMessages();
 
     // A member event for someone the thread renders re-projects it — but nothing these
@@ -478,7 +480,7 @@ describe('ThreadsService', () => {
             name: MEMBERS[id] ?? id,
             getMxcAvatarUrl: () => null,
           }) as unknown as typeof room.getMember;
-    svc.openThread('!r:hs', '$root');
+    svc.attachThreadRoot('$root');
 
     const before = svc.threadMessages().find((m) => m.id === '$r1');
     expect(before?.replyTo?.senderName).toBe('@a:hs'); // mxid fallback
@@ -510,7 +512,7 @@ describe('ThreadsService', () => {
       memberCalls++;
       return base(id);
     };
-    svc.openThread('!r:hs', '$root');
+    svc.attachThreadRoot('$root');
     const baseline = memberCalls;
 
     // A member the thread doesn't render → gated out, no re-projection.
@@ -544,7 +546,7 @@ describe('ThreadsService', () => {
     const { svc } = setup([
       fakeThread({ id: '$root', rootEvent: root, events: [root, reply, edit] }),
     ]);
-    svc.openThread('!r:hs', '$root');
+    svc.attachThreadRoot('$root');
 
     // The edit (an m.replace relation) is filtered out by isDisplayableMessage —
     // only the root and the original reply remain.
@@ -555,7 +557,7 @@ describe('ThreadsService', () => {
     // "Reply in thread" on a plain message: no thread exists yet, but the root does.
     const root = fakeEvent({ id: '$root', sender: '@me:hs', body: 'root msg' });
     const { svc, room } = setup([], [], {}, [root]);
-    svc.openThread('!r:hs', '$root');
+    svc.attachThreadRoot('$root');
 
     // Opening alone must NOT create a thread — else an empty 0-reply thread lingers
     // if the user never sends. The view is just the root.
@@ -583,7 +585,7 @@ describe('ThreadsService', () => {
   it('fetches the thread root when missing so the first reply still shows', async () => {
     // Replying in a thread whose root isn't in memory (scrolled out / unsynced).
     const { svc, room, client, sent } = setup([]);
-    svc.openThread('!r:hs', '$missing');
+    svc.attachThreadRoot('$missing');
     expect(room.getThread('$missing')).toBeNull();
 
     await firstValueFrom(svc.sendToThread('hi'));
@@ -606,7 +608,7 @@ describe('ThreadsService', () => {
     (client.fetchRoomEvent as Mock).mockRejectedValueOnce(
       new Error('not found'),
     );
-    svc.openThread('!r:hs', '$gone');
+    svc.attachThreadRoot('$gone');
 
     // The send surfaces the fetch error instead of emitting a homeless echo.
     await expect(firstValueFrom(svc.sendToThread('hi'))).rejects.toThrow(
@@ -623,7 +625,7 @@ describe('ThreadsService', () => {
       // events lacks the root — it should still appear first.
       fakeThread({ id: '$root', rootEvent: root, events: [reply] }),
     ]);
-    svc.openThread('!r:hs', '$root');
+    svc.attachThreadRoot('$root');
 
     expect(svc.threadMessages().map((m) => m.id)).toEqual(['$root', '$r1']);
   });
@@ -649,7 +651,7 @@ describe('ThreadsService', () => {
       getInfo,
     );
 
-    svc.openThread('!r:hs', '$root');
+    svc.attachThreadRoot('$root');
 
     await vi.waitFor(() =>
       expect(
@@ -665,7 +667,7 @@ describe('ThreadsService', () => {
     const { svc } = setup([
       fakeThread({ id: '$root', rootEvent: root, events: [root, failed] }),
     ]);
-    svc.openThread('!r:hs', '$root');
+    svc.attachThreadRoot('$root');
 
     const failedView = svc.threadMessages().find((m) => m.id === '$f');
     expect(failedView?.decryptionFailed).toBe(true);
@@ -674,23 +676,26 @@ describe('ThreadsService', () => {
 
   it('clears state on close / closeThread', () => {
     const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root msg' });
-    const { svc } = setup([
+    const { svc, client } = setup([
       fakeThread({ id: '$root', rootEvent: root, events: [root] }),
     ]);
 
-    svc.open('!r:hs');
     expect(Object.keys(svc.summaries())).toHaveLength(1);
     svc.close();
     expect(svc.summaries()).toEqual({});
 
-    svc.openThread('!r:hs', '$root');
+    svc.attach(
+      { accountId: '@me:hs', roomId: '!r:hs' },
+      client as unknown as MatrixClient,
+    );
+    svc.attachThreadRoot('$root');
     expect(svc.threadMessages()).toHaveLength(1);
     svc.closeThread();
     expect(svc.threadMessages()).toEqual([]);
     expect(svc.openThreadRootId()).toBeNull();
   });
 
-  it('detaches the client listeners openThread attached on closeThread', () => {
+  it('detaches the client listeners attachThreadRoot inherited on closeThread', () => {
     const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root msg' });
     const { svc, client } = setup([
       fakeThread({ id: '$root', rootEvent: root, events: [root] }),
@@ -698,8 +703,9 @@ describe('ThreadsService', () => {
     const on = vi.spyOn(client, 'on');
     const off = vi.spyOn(client, 'off');
 
-    svc.openThread('!r:hs', '$root');
-    const attached = on.mock.calls;
+    svc.attachThreadRoot('$root');
+    // Only the final four calls belong to the exact thread child under test.
+    const attached = on.mock.calls.slice(-4);
     expect(attached.map(([event]) => event)).toEqual([
       MatrixEventEvent.Decrypted,
       CryptoEvent.UserTrustStatusChanged,
@@ -717,10 +723,9 @@ describe('ThreadsService', () => {
   });
 
   it('detaches thread listeners from the account it opened on, not the active one', () => {
-    // `MatrixClientService.instance` follows the ACTIVE account. openThread() binds
-    // its client-level listeners (Decrypted/Crypto) to whichever client was active
-    // then; re-reading `instance` on close after an account switch detaches from the
-    // NEW client and leaks every listener on the old one — which is still syncing.
+    // The child binds its client-level listeners (Decrypted/Crypto) to one exact
+    // Account. Closing after an account switch must detach from that original client,
+    // not whichever account is active now.
     const rootA = fakeEvent({ id: '$a', sender: '@a:hs', body: 'first root' });
     const rootB = fakeEvent({ id: '$b', sender: '@a:hs', body: 'second root' });
     const threads = [
@@ -729,6 +734,7 @@ describe('ThreadsService', () => {
     ];
     const room = {
       roomId: '!r:hs',
+      getThreads: () => threads,
       getThread: (id: string) => threads.find((t) => t.id === id) ?? null,
       findEventById: (id: string) =>
         [rootA, rootB].find((e) => e.getId() === id),
@@ -758,18 +764,30 @@ describe('ThreadsService', () => {
         MockProvider(MediaService, {
           uploadMedia: fakeMediaService().uploadMedia,
         }),
-        MockProvider(PrivacySettingsService, {
-          sendReadReceipts: signal(true).asReadonly(),
-        }),
+        {
+          provide: CONVERSATION_MESSAGE_ADAPTER,
+          useValue: {
+            acknowledge: () =>
+              of({ kind: 'applied' as const, operation: 'receipt' as const }),
+          },
+        },
       ],
     });
     const svc = TestBed.inject(ThreadsService);
 
-    svc.openThread('!r:hs', '$a');
-    expect(clientA.listenerCount(MatrixEventEvent.Decrypted)).toBe(1);
+    svc.attach(
+      { accountId: '@me:hs', roomId: '!r:hs' },
+      clientA as unknown as MatrixClient,
+    );
+    svc.attachThreadRoot('$a');
+    expect(clientA.listenerCount(MatrixEventEvent.Decrypted)).toBe(2);
 
     active.client = clientB; // the user switches accounts
-    svc.openThread('!r:hs', '$b'); // closes the first thread on the way in
+    svc.attach(
+      { accountId: '@me:hs', roomId: '!r:hs' },
+      clientB as unknown as MatrixClient,
+    ); // closes the first Account's exact child on the way in
+    svc.attachThreadRoot('$b');
 
     expect(clientA.listenerCount(MatrixEventEvent.Decrypted)).toBe(0);
     expect(clientA.listenerCount(CryptoEvent.UserTrustStatusChanged)).toBe(0);
@@ -790,7 +808,7 @@ describe('ThreadsService', () => {
         [],
         {},
       );
-      out.svc.openThread('!r:hs', '$root');
+      out.svc.attachThreadRoot('$root');
       return out;
     }
 
@@ -881,90 +899,6 @@ describe('ThreadsService', () => {
       expect(content['formatted_body']).toContain('</mx-reply>replying');
     });
 
-    it('redacts a thread message', async () => {
-      const { svc, sent } = openedThread();
-
-      await firstValueFrom(svc.redactInThread('$r1'));
-
-      expect(sent[0]).toEqual(['redact', '$root', '$r1']);
-    });
-
-    it('sends an annotation when reacting to a thread message', async () => {
-      const { svc, sent } = openedThread();
-
-      await firstValueFrom(svc.toggleReactionInThread('$r1', '👍'));
-
-      expect(sent[0][0]).toBe('event');
-      expect(sent[0][1]).toBe('$root'); // threadId
-      expect(sent[0][2]).toBe('m.reaction');
-      expect((sent[0][3] as Record<string, unknown>)['m.relates_to']).toEqual({
-        rel_type: 'm.annotation',
-        event_id: '$r1',
-        key: '👍',
-      });
-    });
-
-    it('redacts the existing reaction when toggling it off in a thread', async () => {
-      const root = fakeEvent({
-        id: '$root',
-        sender: '@a:hs',
-        body: 'root msg',
-      });
-      const reply = fakeEvent({ id: '$r1', sender: '@b:hs', body: 'a reply' });
-      const { svc, sent } = setup(
-        [fakeThread({ id: '$root', rootEvent: root, events: [root, reply] })],
-        [],
-        {
-          $r1: fakeRelations([
-            ['👍', new Set([fakeReaction('@me:hs', '$mine')])],
-          ]),
-        },
-      );
-      svc.openThread('!r:hs', '$root');
-
-      await firstValueFrom(svc.toggleReactionInThread('$r1', '👍'));
-
-      expect(sent[0]).toEqual(['redact', '$root', '$mine']);
-    });
-
-    it('sends media into the thread, routed by the thread root id', async () => {
-      const { svc, sent } = openedThread();
-
-      await firstValueFrom(
-        svc.sendMediaToThread(
-          new File([new Uint8Array([1, 2, 3, 4])], 'pic.png', {
-            type: 'image/png',
-          }),
-          '',
-        ),
-      );
-
-      expect(sent[0][0]).toBe('message');
-      expect(sent[0][1]).toBe('$root'); // threadId
-      const content = sent[0][2] as Record<string, unknown>;
-      expect(content['msgtype']).toBe('m.image');
-      expect(content['url']).toBe('mxc://hs/up');
-      expect(content['body']).toBe('pic.png'); // no caption → body is the filename
-      expect(content['filename']).toBeUndefined();
-    });
-
-    it('sends a caption with thread media as MSC2530 body + filename', async () => {
-      const { svc, sent } = openedThread();
-
-      await firstValueFrom(
-        svc.sendMediaToThread(
-          new File([new Uint8Array([1, 2, 3, 4])], 'pic.png', {
-            type: 'image/png',
-          }),
-          'in-thread caption',
-        ),
-      );
-
-      const content = sent[0][2] as Record<string, unknown>;
-      expect(content['body']).toBe('in-thread caption'); // body carries the caption
-      expect(content['filename']).toBe('pic.png'); // real name preserved
-    });
-
     it('resolves the thread context on subscribe, not when called', async () => {
       // The in-thread actions are cold, so the thread (and the account behind it)
       // must be resolved at subscribe. Capturing the context eagerly means a send
@@ -976,28 +910,6 @@ describe('ThreadsService', () => {
       await firstValueFrom(send$);
 
       expect(sent).toHaveLength(0);
-    });
-
-    it('retries a failed thread echo via resendEvent', () => {
-      const root = fakeEvent({
-        id: '$root',
-        sender: '@a:hs',
-        body: 'root msg',
-      });
-      const echo = fakeEvent({
-        id: '$echo',
-        sender: '@me:hs',
-        body: 'oops',
-        status: 'not_sent',
-      });
-      const { svc, sent } = setup([
-        fakeThread({ id: '$root', rootEvent: root, events: [root, echo] }),
-      ]);
-      svc.openThread('!r:hs', '$root');
-
-      svc.retryInThread('$echo');
-
-      expect(sent[0]).toEqual(['resend', '$echo']);
     });
 
     it('reflects an optimistic echo and re-maps its send status on update', () => {
@@ -1012,7 +924,7 @@ describe('ThreadsService', () => {
         events: [root],
       });
       const { svc, room } = setup([thread]);
-      svc.openThread('!r:hs', '$root');
+      svc.attachThreadRoot('$root');
       expect(svc.threadMessages().map((m) => m.id)).toEqual(['$root']);
 
       // Optimistic local echo: a pending reply appears in the thread timeline.
@@ -1054,7 +966,7 @@ describe('ThreadsService', () => {
           paginationToken: 'tok',
         }),
       ]);
-      svc.openThread('!r:hs', '$root');
+      svc.attachThreadRoot('$root');
 
       expect(svc.canPaginateThread()).toBe(true);
     });
@@ -1096,7 +1008,7 @@ describe('ThreadsService', () => {
         return Promise.resolve(true);
       };
 
-      svc.openThread('!r:hs', '$root');
+      svc.attachThreadRoot('$root');
       expect(svc.threadMessages().map((m) => m.id)).toEqual(['$root', '$r2']);
       expect(svc.canPaginateThread()).toBe(true);
 
@@ -1139,7 +1051,7 @@ describe('ThreadsService', () => {
         body: 'reply',
         ts: 1000,
       });
-      const { svc, room } = setup([
+      const { svc, room, client } = setup([
         fakeThread({
           id: '$root',
           rootEvent: root,
@@ -1154,8 +1066,11 @@ describe('ThreadsService', () => {
         }
       ).getThreadUnreadNotificationCount = (_id, type) =>
         type === 'highlight' ? 1 : 3;
-
-      svc.open('!r:hs');
+      svc.close();
+      svc.attach(
+        { accountId: '@me:hs', roomId: '!r:hs' },
+        client as unknown as MatrixClient,
+      );
 
       const summary = svc.summaries()['$root'];
       expect(summary.unreadCount).toBe(3);
@@ -1168,7 +1083,6 @@ describe('ThreadsService', () => {
         fakeThread({ id: '$root', rootEvent: root, events: [root] }),
       ]);
       // setup()'s room has no getThreadUnreadNotificationCount — must not throw.
-      svc.open('!r:hs');
 
       expect(svc.summaries()['$root'].unreadCount).toBe(0);
       expect(svc.summaries()['$root'].highlight).toBe(false);
@@ -1198,7 +1112,6 @@ describe('ThreadsService', () => {
         }
       ).getThreadUnreadNotificationCount = () => total;
 
-      svc.open('!r:hs');
       expect(svc.summaries()['$root'].unreadCount).toBe(0);
 
       total = 4;
@@ -1206,7 +1119,7 @@ describe('ThreadsService', () => {
       expect(svc.summaries()['$root'].unreadCount).toBe(4);
     });
 
-    it('marks the opened thread read via a thread-scoped read receipt', () => {
+    it('marks the opened thread read through the exact-root message adapter', () => {
       const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
       const reply = fakeEvent({
         id: '$r1',
@@ -1214,26 +1127,20 @@ describe('ThreadsService', () => {
         body: 'reply',
         ts: 1000,
       });
-      const receipts: [string, string][] = [];
-      const { svc, client } = setup([
+      const { svc, acknowledge } = setup([
         fakeThread({ id: '$root', rootEvent: root, events: [root, reply] }),
       ]);
-      (
-        client as unknown as {
-          sendReadReceipt: (e: FakeEvent, t: string) => Promise<unknown>;
-        }
-      ).sendReadReceipt = (event, type) => {
-        receipts.push([event.getId(), type]);
-        return Promise.resolve({});
-      };
 
-      svc.openThread('!r:hs', '$root');
+      svc.attachThreadRoot('$root');
 
-      // Receipt for the latest reply (not the root), with ReceiptType.Read.
-      expect(receipts).toEqual([['$r1', 'm.read']]);
+      expect(acknowledge).toHaveBeenCalledWith({
+        key: { accountId: '@me:hs', roomId: '!r:hs' },
+        messageId: '$r1',
+        threadRootId: '$root',
+      });
     });
 
-    it('sends a private thread receipt when send-read-receipts is off', () => {
+    it('does not acknowledge the same latest thread event twice', () => {
       const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
       const reply = fakeEvent({
         id: '$r1',
@@ -1241,35 +1148,34 @@ describe('ThreadsService', () => {
         body: 'reply',
         ts: 1000,
       });
-      const receipts: [string, string][] = [];
-      const { svc, client } = setup(
-        [fakeThread({ id: '$root', rootEvent: root, events: [root, reply] })],
-        [],
-        {},
-        [],
-        false, // send-read-receipts off → ack privately
-      );
-      (
-        client as unknown as {
-          sendReadReceipt: (e: FakeEvent, t: string) => Promise<unknown>;
-        }
-      ).sendReadReceipt = (event, type) => {
-        receipts.push([event.getId(), type]);
-        return Promise.resolve({});
-      };
+      const thread = fakeThread({
+        id: '$root',
+        rootEvent: root,
+        events: [root, reply],
+      });
+      const { svc, room, acknowledge } = setup([thread]);
 
-      svc.openThread('!r:hs', '$root');
+      svc.attachThreadRoot('$root');
+      room.emit(RoomEvent.Receipt);
 
-      expect(receipts).toEqual([['$r1', 'm.read.private']]);
+      expect(acknowledge).toHaveBeenCalledTimes(1);
     });
 
-    it('does not throw when the read-receipt API is unavailable', () => {
+    it('does not throw when the message adapter rejects the acknowledgement', () => {
       const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
-      const { svc } = setup([
+      const { svc, acknowledge } = setup([
         fakeThread({ id: '$root', rootEvent: root, events: [root] }),
       ]);
-      // setup()'s client has no sendReadReceipt — opening must still succeed.
-      expect(() => svc.openThread('!r:hs', '$root')).not.toThrow();
+      acknowledge.mockReturnValue(
+        of({
+          kind: 'rejected',
+          operation: 'receipt',
+          failure: 'request-rejected',
+          retryable: true,
+        }),
+      );
+
+      expect(() => svc.attachThreadRoot('$root')).not.toThrow();
       expect(svc.threadMessages().map((m) => m.id)).toEqual(['$root']);
     });
   });
@@ -1309,7 +1215,6 @@ describe('ThreadsService', () => {
         length: 1,
       });
       const { svc } = setup([older, newer]);
-      svc.open('!r:hs');
 
       const list = svc.threadList();
       expect(list.map((t) => t.rootEventId)).toEqual(['$new', '$old']);

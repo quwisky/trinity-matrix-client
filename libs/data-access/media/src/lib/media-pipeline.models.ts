@@ -45,6 +45,7 @@ export interface MediaConversationKey {
 
 export interface MediaTransferRequest {
   readonly key: MediaConversationKey;
+  readonly threadRootId?: string;
   readonly media: StagedMediaReference;
   readonly caption: string;
 }
