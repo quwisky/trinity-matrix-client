@@ -1,10 +1,8 @@
 import { type Signal, computed, signal } from '@angular/core';
 import { Observable, defaultIfEmpty, defer, finalize, of, take } from 'rxjs';
 import { type Mention } from '@trinity/util/matrix';
-import {
-  type ConversationKey,
-  type ConversationState,
-} from './conversation-runtime.service';
+import { type ConversationState } from './conversation-runtime.service';
+import { type ConversationKey } from './conversation-messages';
 
 export type ConversationComposeIntent =
   | { readonly kind: 'message' }
@@ -51,8 +49,6 @@ export interface ConversationCompose {
   readonly intent: Signal<ConversationComposeIntent>;
   readonly sending: Signal<boolean>;
   setDraft(draft: string): void;
-  beginReply(eventId: string): void;
-  beginEdit(eventId: string, draft?: string): void;
   cancelIntent(): void;
   setTyping(typing: boolean): void;
   submit(
@@ -110,9 +106,6 @@ export class ConversationComposeController {
       intent: this.intentState.asReadonly(),
       sending: this.sendingState.asReadonly(),
       setDraft: (draft: string) => this.setDraft(draft),
-      beginReply: (eventId: string) => this.setTarget('reply', eventId),
-      beginEdit: (eventId: string, draft = '') =>
-        this.beginEdit(eventId, draft),
       cancelIntent: () => this.cancelIntent(),
       setTyping: (typing: boolean) => this.ports.setTyping(typing),
       submit: (mentions: readonly Mention[] = []) => this.submit(mentions),
@@ -121,6 +114,16 @@ export class ConversationComposeController {
 
   stopTyping(): void {
     this.ports.setTyping(false);
+  }
+
+  beginReply(eventId: string): void {
+    this.setTarget('reply', eventId);
+  }
+
+  beginEdit(eventId: string, draft = ''): void {
+    if (!eventId) return;
+    this.editDraftState.set(draft);
+    this.setTarget('edit', eventId);
   }
 
   private setDraft(draft: string): void {
@@ -140,12 +143,6 @@ export class ConversationComposeController {
     this.revision += 1;
     this.intentState.set(Object.freeze({ kind, eventId }));
     this.persistSnapshot();
-  }
-
-  private beginEdit(eventId: string, draft: string): void {
-    if (!eventId) return;
-    this.editDraftState.set(draft);
-    this.setTarget('edit', eventId);
   }
 
   private cancelIntent(): void {

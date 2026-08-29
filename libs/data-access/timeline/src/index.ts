@@ -4,6 +4,16 @@ export type {
   TypingOwner,
 } from './lib/timeline.service';
 export { ConversationRuntime } from './lib/conversation-runtime.service';
+export { CONVERSATION_MESSAGE_POLICY } from './lib/conversation-message-adapter.service';
+export type {
+  ConversationKey,
+  ConversationMessageFailure,
+  ConversationMessageOperation,
+  ConversationMessageOutcome,
+  ConversationMessagePolicy,
+  ConversationMessages,
+  ConversationRedactionDecision,
+} from './lib/conversation-messages';
 export type {
   ConversationCompose,
   ConversationComposeIntent,
@@ -13,7 +23,6 @@ export type {
 export type {
   ConversationHandle,
   ConversationMedia,
-  ConversationKey,
   ConversationResources,
   ConversationRuntimeDiagnostics,
   ConversationState,

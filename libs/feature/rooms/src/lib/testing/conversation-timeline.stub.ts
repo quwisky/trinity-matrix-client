@@ -2,6 +2,7 @@ import { Injectable, computed, signal } from '@angular/core';
 import type {
   ConversationCompose,
   ConversationComposeIntent,
+  ConversationMessages,
   ConversationTimeline,
 } from '@trinity/data-access/timeline';
 import { of } from 'rxjs';
@@ -33,10 +34,12 @@ export class ConversationComposeStub implements ConversationCompose {
     else this.messageDraftState.set(draft);
   }
 
+  /** Internal test hook used by the public ConversationMessagesStub. */
   beginReply(eventId: string): void {
     this.intentState.set({ kind: 'reply', eventId });
   }
 
+  /** Internal test hook used by the public ConversationMessagesStub. */
   beginEdit(eventId: string, draft = ''): void {
     this.editDraftState.set(draft);
     this.intentState.set({ kind: 'edit', eventId });
@@ -50,6 +53,34 @@ export class ConversationComposeStub implements ConversationCompose {
   setSending(sending: boolean): void {
     this.sendingState.set(sending);
   }
+}
+
+/** Message-command double that keeps reply/edit tests on the public runtime seam. */
+export class ConversationMessagesStub implements ConversationMessages {
+  constructor(private readonly compose: ConversationComposeStub) {}
+
+  beginReply(messageId: string) {
+    this.compose.beginReply(messageId);
+    return { kind: 'applied' as const, operation: 'reply' as const };
+  }
+
+  beginEdit(messageId: string, draft: string) {
+    this.compose.beginEdit(messageId, draft);
+    return { kind: 'applied' as const, operation: 'edit' as const };
+  }
+
+  readonly toggleReaction: ConversationMessages['toggleReaction'] = vi.fn(() =>
+    of({ kind: 'applied' as const, operation: 'reaction' as const }),
+  );
+  readonly redact: ConversationMessages['redact'] = vi.fn(() =>
+    of({ kind: 'applied' as const, operation: 'redaction' as const }),
+  );
+  readonly retry: ConversationMessages['retry'] = vi.fn(() =>
+    of({ kind: 'applied' as const, operation: 'retry' as const }),
+  );
+  readonly acknowledge: ConversationMessages['acknowledge'] = vi.fn(() =>
+    of({ kind: 'applied' as const, operation: 'receipt' as const }),
+  );
 }
 
 /** Safe test double for the public Conversation timeline capability. */

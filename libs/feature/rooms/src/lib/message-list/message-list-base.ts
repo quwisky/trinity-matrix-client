@@ -231,6 +231,7 @@ export abstract class MessageListBase {
   readonly pollEnd = output<string>();
 
   protected readonly compose = inject(ConversationRuntime).compose;
+  protected readonly messageCommands = inject(ConversationRuntime).messages;
   readonly editingId = computed(() => {
     const intent = this.compose.intent();
     return intent.kind === 'edit' ? intent.eventId : null;
@@ -489,11 +490,11 @@ export abstract class MessageListBase {
   }
 
   startEdit(row: MessageRow): void {
-    this.compose.beginEdit(row.id, row.body);
+    this.messageCommands.beginEdit(row.id, row.body);
   }
 
   startReply(row: MessageRow): void {
-    this.compose.beginReply(row.id);
+    this.messageCommands.beginReply(row.id);
   }
 
   cancelEdit(): void {
@@ -532,7 +533,7 @@ export abstract class MessageListBase {
     const msgs = this.messages();
     for (let i = msgs.length - 1; i >= 0; i--) {
       if (this.isEditable(msgs[i])) {
-        this.compose.beginEdit(msgs[i].id, msgs[i].body);
+        this.messageCommands.beginEdit(msgs[i].id, msgs[i].body);
         return;
       }
     }

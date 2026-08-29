@@ -24,6 +24,14 @@ import {
 } from './conversation-compose';
 import { ConversationActionContextService } from './conversation-action-context.service';
 import { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
+import { CONVERSATION_MESSAGE_ADAPTER } from './conversation-message-adapter.service';
+import {
+  type ConversationKey,
+  type ConversationMessageOperation,
+  type ConversationMessageOutcome,
+  type ConversationMessages,
+} from './conversation-messages';
+import { isEditableMessage } from './message-presentation';
 import { TimelineService } from './timeline.service';
 
 export { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
@@ -35,11 +43,6 @@ export type {
 export const CONVERSATION_RUNTIME_BASELINE = {
   retainedHandlesPerAccount: 2,
 } as const;
-
-export interface ConversationKey {
-  readonly accountId: string;
-  readonly roomId: string;
-}
 
 function composeDraftKey(key: ConversationKey): string {
   return `conversation:${JSON.stringify([key.accountId, key.roomId])}`;
@@ -73,6 +76,7 @@ export interface ConversationHandle {
   readonly state: Signal<ConversationState>;
   readonly timeline: ConversationTimeline;
   readonly compose: ConversationCompose;
+  readonly messages: ConversationMessages;
   readonly media: ConversationMedia;
 }
 
@@ -197,6 +201,7 @@ export class ConversationRuntime {
   private readonly factory = inject(CONVERSATION_TIMELINE_FACTORY);
   private readonly drafts = inject(DraftStoreService);
   private readonly textSender = inject(CONVERSATION_TEXT_SENDER);
+  private readonly messageAdapter = inject(CONVERSATION_MESSAGE_ADAPTER);
   private readonly mediaPipeline = inject(MediaPipeline);
   private readonly retainedPerAccount = Math.max(
     0,
@@ -220,6 +225,7 @@ export class ConversationRuntime {
   readonly focused = this.focusedHandle.asReadonly();
   readonly timeline = this.focusedTimeline();
   readonly compose = this.focusedCompose();
+  readonly messages = this.focusedMessages();
   readonly media = this.focusedMedia();
   readonly diagnostics = computed<ConversationRuntimeDiagnostics>(() => {
     const entries = [...this.entries.values()].flatMap((account) => [
@@ -316,11 +322,90 @@ export class ConversationRuntime {
       setTyping: (typing) => controller.timeline.setTyping(typing, 'room'),
       send: (request) => this.textSender.send(request),
     });
+    const availableMessage = (messageId: string) =>
+      controller.timeline
+        .messages()
+        .find((message) => message.id === messageId);
+    const rejected = (
+      operation: ConversationMessageOperation,
+      failure: Extract<
+        ConversationMessageOutcome,
+        { kind: 'rejected' }
+      >['failure'],
+    ): ConversationMessageOutcome => ({
+      kind: 'rejected',
+      operation,
+      failure,
+      retryable: false,
+    });
+    const applied = (
+      operation: ConversationMessageOperation,
+    ): ConversationMessageOutcome => ({ kind: 'applied', operation });
+    const messages: ConversationMessages = {
+      beginReply: (messageId: string): ConversationMessageOutcome => {
+        if (state() !== 'focused') {
+          return rejected('reply', 'conversation-unavailable');
+        }
+        const message = availableMessage(messageId);
+        if (!message) {
+          return rejected('reply', 'message-unavailable');
+        }
+        composeController.beginReply(messageId);
+        return applied('reply');
+      },
+      beginEdit: (
+        messageId: string,
+        draft: string,
+      ): ConversationMessageOutcome => {
+        if (state() !== 'focused') {
+          return rejected('edit', 'conversation-unavailable');
+        }
+        const message = availableMessage(messageId);
+        if (!message || !isEditableMessage(message)) {
+          return rejected('edit', 'message-unavailable');
+        }
+        composeController.beginEdit(messageId, draft);
+        return applied('edit');
+      },
+      toggleReaction: (messageId: string, reaction: string) =>
+        defer(() =>
+          state() === 'focused'
+            ? this.messageAdapter.toggleReaction({
+                key: immutableKey,
+                messageId,
+                reaction,
+              })
+            : of(rejected('reaction', 'conversation-unavailable')),
+        ),
+      redact: (messageId: string) =>
+        defer(() =>
+          state() === 'focused'
+            ? this.messageAdapter.redact({ key: immutableKey, messageId })
+            : of(rejected('redaction', 'conversation-unavailable')),
+        ),
+      retry: (messageId: string) =>
+        defer(() =>
+          state() === 'focused'
+            ? this.messageAdapter.retry({ key: immutableKey, messageId })
+            : of(rejected('retry', 'conversation-unavailable')),
+        ),
+      acknowledge: (messageId: string) =>
+        defer(() =>
+          state() === 'focused'
+            ? this.messageAdapter.acknowledge({
+                key: immutableKey,
+                messageId,
+              })
+            : of(rejected('receipt', 'conversation-unavailable')),
+        ),
+    };
+    Object.freeze(messages);
     const handle = Object.freeze({
       key: immutableKey,
       state: state.asReadonly(),
       timeline: controller.timeline,
       compose: composeController.compose,
+      messages,
       media: Object.freeze({
         send: (media: StagedMediaReference, caption: string) =>
           defer(() =>
@@ -423,9 +508,6 @@ export class ConversationRuntime {
       ),
       sending: computed(() => focused()?.compose.sending() ?? false),
       setDraft: (draft) => focused()?.compose.setDraft(draft),
-      beginReply: (eventId) => focused()?.compose.beginReply(eventId),
-      beginEdit: (eventId, draft) =>
-        focused()?.compose.beginEdit(eventId, draft),
       cancelIntent: () => focused()?.compose.cancelIntent(),
       setTyping: (typing) => focused()?.compose.setTyping(typing),
       submit: (mentions) =>
@@ -453,6 +535,47 @@ export class ConversationRuntime {
               failure: 'conversation-unavailable' as const,
               retryable: false,
             }),
+        ),
+    };
+  }
+
+  private focusedMessages(): ConversationMessages {
+    const focused = this.focusedHandle.asReadonly();
+    const unavailable = (
+      operation: ConversationMessageOperation,
+    ): ConversationMessageOutcome => ({
+      kind: 'rejected',
+      operation,
+      failure: 'conversation-unavailable',
+      retryable: false,
+    });
+    return {
+      beginReply: (messageId) =>
+        focused()?.messages.beginReply(messageId) ?? unavailable('reply'),
+      beginEdit: (messageId, draft) =>
+        focused()?.messages.beginEdit(messageId, draft) ?? unavailable('edit'),
+      toggleReaction: (messageId, reaction) =>
+        defer(
+          () =>
+            focused()?.messages.toggleReaction(messageId, reaction) ??
+            of(unavailable('reaction')),
+        ),
+      redact: (messageId) =>
+        defer(
+          () =>
+            focused()?.messages.redact(messageId) ??
+            of(unavailable('redaction')),
+        ),
+      retry: (messageId) =>
+        defer(
+          () =>
+            focused()?.messages.retry(messageId) ?? of(unavailable('retry')),
+        ),
+      acknowledge: (messageId) =>
+        defer(
+          () =>
+            focused()?.messages.acknowledge(messageId) ??
+            of(unavailable('receipt')),
         ),
     };
   }

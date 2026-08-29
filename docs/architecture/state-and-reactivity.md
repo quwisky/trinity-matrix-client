@@ -144,6 +144,25 @@ The stable `ConversationRuntime.compose` proxy lets feature surfaces update that
 typing without gaining a writable signal or SDK reference. The component retains only transient
 textarea mechanics: caret, focus, autocomplete, attachment staging and toolbar state.
 
+Message relations and actions enter through the same handle's `messages` surface. Reply and edit
+intent begin only when the immutable Message Presentation model still says the target is eligible;
+reaction toggles, redactions, failed-send retries and read acknowledgements are cold, finite RxJS
+commands keyed to that handle's frozen Account-and-Room identity. Expected failures are typed
+outcomes with retryability and no exception or event-content metadata. The Matrix adapter re-reads
+the target and the current user's reaction from the SDK when subscribed, so SDK relation events
+remain authoritative and Trinity creates no second relation store. The focused proxy also resolves
+on subscription, while a command invoked through a retained exact handle is rejected rather than
+silently retargeted.
+
+Conversation owns the command orchestration, not room authority. Its redaction port is implemented
+by Room Administration and bound in the application composition root; the adapter delegates each
+event decision to the SDK RoomState policy before sending. Timeline projection asks that same port
+for the moderator affordance. Automatic main-timeline receipts use the Conversation adapter too,
+including the public/private privacy choice and persisted fully-read marker, and only advance the
+local dedupe marker after the typed command succeeds. Closing the child cancels its in-flight
+receipt subscription. Relation and receipt updates then arrive through the existing SDK listeners
+and are projected back into immutable `MessageView` values.
+
 Each handle also exposes an exact-Conversation media command. Host-acquired `File` objects are
 immediately staged by Media Pipeline and replaced with an opaque `StagedMediaReference`; the
 Conversation sees that reference, a caption, and its immutable Account-and-Room key, never raw
@@ -183,7 +202,8 @@ child injector. That object can never become focused again; reopening the same k
 handle. Runtime teardown performs the same release for every remaining child. Diagnostics report
 the last synchronous attach-to-presentable duration, active/focused/retained/retired handle counts,
 total listeners and retained modeled bytes without recording Account ids, Room ids or content.
-Timeline actions remain cold RxJS Observables and resolve the focused child on subscription.
+Remaining transitional timeline actions stay cold RxJS Observables and resolve the focused child
+on subscription; message relations and actions no longer use that singleton surface.
 
 ## Active-client projection adapter
 

@@ -10,7 +10,10 @@ import {
 import { MessageSheetViewportSession } from '../message-actions/message-sheet-viewport-session';
 import { MessageListBase } from './message-list-base';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
-import { ConversationComposeStub } from '../testing/conversation-timeline.stub';
+import {
+  ConversationComposeStub,
+  ConversationMessagesStub,
+} from '../testing/conversation-timeline.stub';
 
 /**
  * The mobile long press opens its sheet HERE, on the list, rather than on the row that was
@@ -72,12 +75,16 @@ function lastSheet(open: ReturnType<typeof vi.fn>) {
 function build() {
   const close = vi.fn();
   const open = vi.fn().mockReturnValue({ close, closed: new Subject() });
+  const compose = new ConversationComposeStub();
   TestBed.configureTestingModule({
     providers: [
       { provide: TrnActionSheetService, useValue: { open } },
       {
         provide: ConversationRuntime,
-        useValue: { compose: new ConversationComposeStub() },
+        useValue: {
+          compose,
+          messages: new ConversationMessagesStub(compose),
+        },
       },
     ],
   });

@@ -12,6 +12,7 @@ import { RoomsService } from '@trinity/data-access/rooms';
 import { TrnDialogService } from '@trinity/components/overlay';
 import { isMobileOs } from '@trinity/platform-native';
 import {
+  type ConversationMessageOutcome,
   ConversationRuntime,
   TimelineActionsService,
 } from '@trinity/data-access/timeline';
@@ -54,6 +55,7 @@ export class MessageActionsService {
   private readonly conversations = inject(ConversationRuntime);
   private readonly timeline = this.conversations.timeline;
   private readonly compose = this.conversations.compose;
+  private readonly messageCommands = this.conversations.messages;
   private readonly timelineActions = inject(TimelineActionsService);
   private readonly pinned = inject(PinnedMessagesService);
   private readonly dialog = inject(TrnDialogService);
@@ -366,22 +368,43 @@ export class MessageActionsService {
   // Delete/react have no visible local echo, so a failure would otherwise be
   // silent — surface it as a toast.
   onDelete(messageId: string): void {
-    this.runAction(
-      this.timelineActions.redact(messageId),
+    this.runMessageAction(
+      this.messageCommands.redact(messageId),
       'Could not delete the message.',
     );
   }
 
   onReact(reaction: { id: string; key: string }): void {
-    this.runAction(
-      this.timelineActions.toggleReaction(reaction.id, reaction.key),
+    this.runMessageAction(
+      this.messageCommands.toggleReaction(reaction.id, reaction.key),
       'Could not update the reaction.',
+    );
+  }
+
+  onRetry(messageId: string): void {
+    this.runMessageAction(
+      this.messageCommands.retry(messageId),
+      'Could not retry the message.',
     );
   }
 
   /** Run a fire-and-forget timeline action, surfacing a failure as a toast. */
   private runAction(action: Observable<void>, failureMessage: string): void {
     action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      error: () => void this.status.showError(failureMessage),
+    });
+  }
+
+  private runMessageAction(
+    action: Observable<ConversationMessageOutcome>,
+    failureMessage: string,
+  ): void {
+    action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (outcome) => {
+        if (outcome.kind === 'rejected') {
+          void this.status.showError(failureMessage);
+        }
+      },
       error: () => void this.status.showError(failureMessage),
     });
   }

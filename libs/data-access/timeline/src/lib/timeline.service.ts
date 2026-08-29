@@ -3,7 +3,6 @@ import {
   Direction,
   EventType,
   MatrixEventEvent,
-  ReceiptType,
   RoomEvent,
   RoomMemberEvent,
   RoomStateEvent,
@@ -24,16 +23,14 @@ import {
   of,
   switchMap,
   tap,
+  type Subscription,
 } from 'rxjs';
 import {
   coalesce,
   MatrixClientService,
 } from '@trinity/data-access/matrix-client';
 import { MediaPipeline } from '@trinity/data-access/media';
-import {
-  PrivacySettingsService,
-  SystemLineSettingsService,
-} from '@trinity/platform-native';
+import { SystemLineSettingsService } from '@trinity/platform-native';
 import {
   collectMessageSenders,
   isDisplayableMessage,
@@ -55,6 +52,10 @@ import type {
   ReactionDetail,
   SystemLineCategory,
 } from './message-presentation';
+import {
+  CONVERSATION_MESSAGE_ADAPTER,
+  CONVERSATION_MESSAGE_POLICY,
+} from './conversation-message-adapter.service';
 
 const SCROLLBACK = 30;
 const RETAINED_EVENT_BYTES = 64;
@@ -159,9 +160,10 @@ export type TypingOwner = 'room' | 'thread';
 @Injectable()
 export class TimelineService {
   private readonly matrix = inject(MatrixClientService);
-  private readonly privacy = inject(PrivacySettingsService);
   private readonly systemLines = inject(SystemLineSettingsService);
   private readonly mediaPipeline = inject(MediaPipeline);
+  private readonly messageAdapter = inject(CONVERSATION_MESSAGE_ADAPTER);
+  private readonly messagePolicy = inject(CONVERSATION_MESSAGE_POLICY);
 
   private readonly _messages = signal<MessageView[]>([]);
   readonly messages = this._messages.asReadonly();
@@ -311,6 +313,8 @@ export class TimelineService {
   // the room is open mark read without re-sending on every refresh — and
   // pagination/backfill (which leaves the latest unchanged) doesn't re-ack.
   private lastReadEventId: string | null = null;
+  private readReceiptInFlightId: string | null = null;
+  private readReceiptSubscription: Subscription | null = null;
 
   // The persisted fully-read marker (`m.fully_read`) as it stood when the room was
   // opened — captured once so the "New messages" divider stays put for the whole
@@ -481,6 +485,9 @@ export class TimelineService {
 
   /** Detach listeners and clear the timeline. */
   close(): void {
+    this.readReceiptSubscription?.unsubscribe();
+    this.readReceiptSubscription = null;
+    this.readReceiptInFlightId = null;
     // Don't leave ourselves marked as typing in a room we're navigating away from —
     // addressed to the client this room was OPENED on, for the same reason the listener
     // detach below is. `setTyping` resolves through `openContext()`, i.e. `matrix.instance`,
@@ -541,10 +548,11 @@ export class TimelineService {
       this._canRedactOthers.set(false);
       return;
     }
-    const level = room.getMember(userId)?.powerLevel ?? 0;
     this._canRedactOthers.set(
-      liveRoomState(room)?.hasSufficientPowerLevelFor?.('redact', level) ??
-        false,
+      this.messagePolicy.canRedactOthers({
+        accountId: userId,
+        roomId: room.roomId,
+      }),
     );
   }
 
@@ -1045,26 +1053,44 @@ export class TimelineService {
     const list = events ?? this.room.getLiveTimeline().getEvents();
     const latest = [...list].reverse().find((e) => !e.status);
     const id = latest?.getId() ?? null;
-    if (!latest || !id || id === this.lastReadEventId) {
+    if (
+      !latest ||
+      !id ||
+      id === this.lastReadEventId ||
+      id === this.readReceiptInFlightId
+    ) {
       return;
     }
-    this.lastReadEventId = id;
-    try {
-      // When the user has turned off read receipts, still ack — but privately
-      // (`m.read.private`), so their unread badge clears without other users
-      // seeing that they read it.
-      const receiptType = this.privacy.sendReadReceipts()
-        ? ReceiptType.Read
-        : ReceiptType.ReadPrivate;
-      void client.sendReadReceipt(latest, receiptType)?.catch(() => undefined);
-      // Also advance the persisted fully-read marker so the unread anchor survives
-      // reloads and other devices (the divider reads it on the next open).
-      void client
-        .setRoomReadMarkers(this.room.roomId, id)
-        ?.catch(() => undefined);
-    } catch {
-      // A missing/unsupported receipt API must never break room viewing.
+    const accountId = client.getUserId();
+    if (!accountId) {
+      return;
     }
+    const roomId = this.room.roomId;
+    this.readReceiptSubscription?.unsubscribe();
+    this.readReceiptInFlightId = id;
+    const subscription = this.messageAdapter
+      .acknowledge({ key: { accountId, roomId }, messageId: id })
+      .pipe(
+        finalize(() => {
+          if (this.readReceiptInFlightId === id) {
+            this.readReceiptInFlightId = null;
+            this.readReceiptSubscription = null;
+          }
+        }),
+      )
+      .subscribe({
+        next: (outcome) => {
+          if (
+            outcome.kind === 'applied' &&
+            this.connectedClient === client &&
+            this.room?.roomId === roomId
+          ) {
+            this.lastReadEventId = id;
+          }
+        },
+        error: () => undefined,
+      });
+    this.readReceiptSubscription = subscription.closed ? null : subscription;
   }
 
   /** The room's persisted fully-read marker event id (`m.fully_read`), or null. */

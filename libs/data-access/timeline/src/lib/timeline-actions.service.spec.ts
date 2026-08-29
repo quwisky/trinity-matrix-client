@@ -7,8 +7,6 @@ import { TimelineService } from './timeline.service';
 import {
   fakeClient,
   fakeEvent,
-  fakeReaction,
-  fakeRelations,
   fakeRoom,
   mediaProvider,
   setupActions,
@@ -156,41 +154,6 @@ describe('TimelineActionsService', () => {
     const svc = setupActions([], sent);
     await firstValueFrom(svc.endPoll('$p'));
     expect(sent.find((c) => c[0] === 'event')?.[1]).toBe('m.poll.end');
-  });
-
-  it('redacts a message', async () => {
-    const sent: unknown[][] = [];
-    const svc = setupActions([], sent);
-
-    await firstValueFrom(svc.redact('$x'));
-
-    expect(sent[0]).toEqual(['redact', '$x']);
-  });
-
-  it('sends an annotation when reacting to a message', async () => {
-    const sent: unknown[][] = [];
-    const svc = setupActions([], sent);
-
-    await firstValueFrom(svc.toggleReaction('$m', '👍'));
-
-    expect(sent[0][0]).toBe('event');
-    expect(sent[0][1]).toBe('m.reaction');
-    expect((sent[0][2] as Record<string, unknown>)['m.relates_to']).toEqual({
-      rel_type: 'm.annotation',
-      event_id: '$m',
-      key: '👍',
-    });
-  });
-
-  it('redacts the existing reaction when toggling it off', async () => {
-    const sent: unknown[][] = [];
-    const svc = setupActions([], sent, {
-      $m: fakeRelations([['👍', new Set([fakeReaction('@me:hs', '$mine')])]]),
-    });
-
-    await firstValueFrom(svc.toggleReaction('$m', '👍'));
-
-    expect(sent[0]).toEqual(['redact', '$mine']);
   });
 
   describe('sendMedia', () => {

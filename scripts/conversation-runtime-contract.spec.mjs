@@ -5,7 +5,15 @@ import { describe, expect, it } from 'vitest';
 const workspaceRoot = join(import.meta.dirname, '..');
 const runtimeImplementation =
   'libs/data-access/timeline/src/lib/conversation-runtime.service.ts';
+const composeImplementation =
+  'libs/data-access/timeline/src/lib/conversation-compose.ts';
 const timelineEntrypoint = 'libs/data-access/timeline/src/index.ts';
+const messageAdapterImplementation =
+  'libs/data-access/timeline/src/lib/conversation-message-adapter.service.ts';
+const timelineImplementation =
+  'libs/data-access/timeline/src/lib/timeline.service.ts';
+const legacyActionsImplementation =
+  'libs/data-access/timeline/src/lib/timeline-actions.service.ts';
 
 function source(file) {
   return readFileSync(join(workspaceRoot, file), 'utf8');
@@ -82,5 +90,51 @@ describe('Conversation Runtime production boundary', () => {
 
     expect(runtime).toContain('this.matrix.clientFor(key.accountId)');
     expect(runtime).toContain('timeline.open(key.roomId, client);');
+  });
+
+  it('owns message relations, actions and receipts behind the exact Conversation handle', () => {
+    const runtime = source(runtimeImplementation);
+    const compose = source(composeImplementation);
+    const entrypoint = source(timelineEntrypoint);
+    const adapter = source(messageAdapterImplementation);
+    const timeline = source(timelineImplementation);
+    const legacyActions = source(legacyActionsImplementation);
+    const roomFeature = productionSources
+      .filter((file) => file.startsWith('libs/feature/rooms/'))
+      .map(source)
+      .join('\n');
+
+    expect(runtime).toContain('readonly messages: ConversationMessages;');
+    expect(runtime).toContain('this.messageAdapter.toggleReaction({');
+    const composeContract = compose.match(
+      /export interface ConversationCompose \{([\s\S]*?)\n\}/,
+    )?.[1];
+    expect(composeContract).not.toMatch(/\bbegin(?:Reply|Edit)\s*\(/);
+    expect(entrypoint).not.toContain('CONVERSATION_MESSAGE_ADAPTER');
+    expect(entrypoint).not.toContain('ConversationMessageAdapter');
+    expect(adapter).toContain('this.matrix.clientFor(request.key.accountId)');
+    expect(adapter).toContain('myReactionId(');
+    expect(adapter).toContain('this.policy.authorizeRedaction(request)');
+    expect(adapter).not.toMatch(/\b(?:signal|Subject|BehaviorSubject)\s*[<(]/);
+    expect(timeline).not.toContain('.sendReadReceipt(');
+    expect(timeline).not.toContain('.setRoomReadMarkers(');
+    expect(legacyActions).not.toMatch(
+      /\b(?:retry|redact|toggleReaction)\s*\(messageId:/,
+    );
+    expect(roomFeature).not.toContain('timelineActions.redact(');
+    expect(roomFeature).not.toContain('timelineActions.toggleReaction(');
+    expect(roomFeature).not.toContain('timelineActions.retry(');
+  });
+
+  it('binds Room Administration governance at the application composition root', () => {
+    const main = source('apps/trinity/src/main.ts');
+    const governance = source(
+      'libs/data-access/rooms/src/lib/room-message-governance.service.ts',
+    );
+
+    expect(main).toContain('provide: CONVERSATION_MESSAGE_POLICY');
+    expect(main).toContain('inject(RoomMessageGovernanceService)');
+    expect(governance).toContain('maySendRedactionForEvent');
+    expect(governance).toContain('this.matrix.clientFor(key.accountId)');
   });
 });

@@ -26,8 +26,13 @@ import {
 } from '@trinity/data-access/gif';
 import {
   AccountScopeService,
+  RoomMessageGovernanceService,
   SpaceRoomOrderService,
 } from '@trinity/data-access/rooms';
+import {
+  CONVERSATION_MESSAGE_POLICY,
+  type ConversationMessagePolicy,
+} from '@trinity/data-access/timeline';
 import {
   AppBadgeService,
   PUSH_CONFIG,
@@ -80,6 +85,17 @@ bootstrapApplication(AppComponent, {
     // event handlers write signals, which schedule change detection directly. See
     // docs/architecture/state-and-reactivity.md.
     provideZonelessChangeDetection(),
+    {
+      provide: CONVERSATION_MESSAGE_POLICY,
+      useFactory: (): ConversationMessagePolicy => {
+        const governance = inject(RoomMessageGovernanceService);
+        return {
+          canRedactOthers: (key) => governance.canRedactOthers(key),
+          authorizeRedaction: ({ key, messageId }) =>
+            governance.authorizeRedaction({ ...key, messageId }),
+        };
+      },
+    },
     {
       provide: ACCOUNT_LIFECYCLE_PORT,
       useFactory: (): AccountLifecyclePort => {

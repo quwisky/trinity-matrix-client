@@ -7,14 +7,17 @@ import {
 } from '@trinity/data-access/timeline';
 import { MessageListBase } from './message-list-base';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
-import { ConversationComposeStub } from '../testing/conversation-timeline.stub';
+import {
+  ConversationComposeStub,
+  ConversationMessagesStub,
+} from '../testing/conversation-timeline.stub';
 
 let compose: ConversationComposeStub;
 
 beforeEach(() => {
   compose = new ConversationComposeStub();
   TestBed.overrideProvider(ConversationRuntime, {
-    useValue: { compose },
+    useValue: { compose, messages: new ConversationMessagesStub(compose) },
   });
 });
 
