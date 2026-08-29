@@ -87,6 +87,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **The public design system now has an executable ownership contract.** Foundations, controls,
+  overlays, navigation and layout, and generic content each have an explicit Trinity entrypoint;
+  product-specific components carry removal owners and follow-up tickets instead of silently
+  becoming permanent shared UI. The sign-in screen is the first production tracer: its field
+  composition and labels now come through the public tier, with source, interaction and
+  accessibility checks guarding the boundary.
+
 - **The architecture migration now has an executable contract.** Trinity's domain language,
   capability ownership, dependency roles, runtime seams and migration policy are recorded in a
   glossary and accepted decisions. Every shipped Nx project now carries target role and capability

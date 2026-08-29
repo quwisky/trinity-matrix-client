@@ -100,6 +100,21 @@ async function renderLogin(
 }
 
 describe('LoginPage', () => {
+  it('renders the homeserver through the public field contract', async () => {
+    const { fixture } = await renderLogin(
+      {} as unknown as Partial<AuthService>,
+    );
+    const root = fixture.nativeElement as HTMLElement;
+    const field = root.querySelector('trn-field');
+    const label = field?.querySelector('label');
+    const input = field?.querySelector('input');
+
+    expect(label?.htmlFor).toBe('homeserver');
+    expect(input?.id).toBe('homeserver');
+    expect(label?.textContent?.trim()).toBe('Homeserver');
+    expect(label?.getAttribute('data-variant')).toBe('eyebrow');
+  });
+
   it('renders its page title as the first and only heading', async () => {
     const { fixture } = await renderLogin(
       {} as unknown as Partial<AuthService>,

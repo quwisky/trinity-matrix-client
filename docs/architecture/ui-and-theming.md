@@ -16,20 +16,47 @@ once.
 | Components | `libs/components/*`, aliased `@trinity/components/*`                    | Trinity's public tier: the wrappers and components features reach for.  |
 | Features   | `libs/feature/*`, aliased `@trinity/feature/*`                          | Screens and the components that make them up.                           |
 
-Seventeen libraries live under `libs/spartan/`. Sixteen are generated Helm — avatar, badge,
-button, card, checkbox, dropdown-menu, input, label, progress, radio-group, select, sonner,
-spinner, textarea, tooltip, utils — and are the ones with an `ng-package.json`. The
-seventeenth, `tests`, is a Trinity-authored project holding the specs that pin Helm's
-behaviour, so those specs stay in the vendor tier. All are tagged `type:ui`, `scope:shared`
-and `ui:vendor-wrapper`.
+The libraries under `libs/spartan/` are generated Helm primitives and a Trinity-authored
+`tests` project that pins their behaviour inside the vendor tier. All are tagged `type:ui`,
+`scope:shared` and `ui:vendor-wrapper`.
 
 The Trinity-authored wrappers that used to sit among them — the overlay adapters,
 `<trn-icon>` and `<trn-emoji-picker>` — now live in `libs/components/` with the rest of the
-public tier (twenty-nine libraries, tagged `ui:public`). Trinity's own presentational components
+public tier (tagged `ui:public`). Trinity's own presentational components
 — `<trn-avatar>` (with its `AVATAR_RESOLVER` seam), banner, media bubble, message toolbar
 and page header — live there too. Button is exposed as `trnBtn`; dropdown directives and the
 root toaster are exposed from `@trinity/components/overlay`. These public APIs compose or host
 kit primitives, which is the tier's job, without leaking Helm selectors or types to features.
+
+### The public design-system contract
+
+`architecture/design-system.json` is the machine-readable ownership ledger for the public
+tier. `scripts/design-system-contract.mjs` compares it with the live Nx graph and TypeScript
+entrypoints, so every `ui:public` project must appear exactly once and every consumable API must
+resolve through `@trinity/components/*`. `pnpm architecture:check` runs that contract alongside
+the wider architecture contract.
+
+| Category            | Public responsibility                                              |
+| ------------------- | ------------------------------------------------------------------ |
+| `foundations`       | Iconography and UI utilities that other public components compose. |
+| `controls`          | User-input primitives and field composition.                       |
+| `overlays`          | Generic dialogs, sheets, menus and notifications.                  |
+| `navigation-layout` | Structural surfaces, navigation, tabs and page hierarchy.          |
+| `generic-content`   | Domain-neutral presentation such as avatars, banners and progress. |
+
+The ledger also records two deliberately different kinds of non-category entry. A
+`nonConsumable` project supports the tier itself but is not application API. A
+`migrationException` is product-owned presentation that still crosses a capability seam; it
+must name its target owner, explain why it remains public and carry the tickets that remove the
+exception. That makes the transitional state visible without pretending it is the desired
+design system.
+
+The login page is the first production proof screen. It composes labels, inputs, buttons,
+cards, icons, overlays and progress only through Trinity entrypoints, including
+`@trinity/components/field` for the native label/control association. The executable ledger
+pins those imports and selectors; unit and browser tests pin the interaction and accessible
+name. Subsequent feature migrations should add or replace proof screens only when they exercise
+a genuinely new public contract, rather than turning the ledger into a list of every consumer.
 
 Icon-only actions use one of two public contracts. A standard square action uses `trnBtn` with
 an `icon*` size, which supplies the shared shape and automatically opts into the common pointer,

@@ -7,7 +7,7 @@
     "prepare": "husky",
     "format": "nx format:write --all",
     "format:check": "nx format:check --all",
-    "architecture:check": "node scripts/architecture-contract.mjs check",
+    "architecture:check": "node scripts/architecture-contract.mjs check && node scripts/design-system-contract.mjs",
     "architecture:map": "node scripts/architecture-contract.mjs write-map",
     "start": "nx serve trinity",
     "build": "nx build trinity",

@@ -1,6 +1,6 @@
 # Architecture overview
 
-Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 75
+Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 76
 libraries under `libs/`, grouped by layer into `libs/data-access/`, `libs/feature/`,
 `libs/util/` and `libs/components/` (the public component tier), alongside
 `libs/platform-native`, `libs/testing` and the `libs/spartan/`
