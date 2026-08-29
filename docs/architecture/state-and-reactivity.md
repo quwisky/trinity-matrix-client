@@ -305,7 +305,7 @@ follows from what the service's lifetime is keyed to:
 | Service                   | Keyed to               | Why the client half does not apply                                                                                                       |
 | ------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `TimelineService`         | One Conversation child | Package-internal implementation bound to an immutable Account-and-Room handle; Conversation Runtime owns its `open()`/`close()` lifetime |
-| `PinnedMessagesService`   | The open room          | Same                                                                                                                                     |
+| `PinnedMessagesService`   | The routed open room   | The shell explicitly opens and closes its Room binding; it does not follow the mutable active client                                     |
 | `MixedRoomsService`       | The mixed account set  | Attaches listeners per account and reconciles them against the live set, rather than following one active client                         |
 | `MixedSpacesService`      | The mixed account set  | Same                                                                                                                                     |
 | `MixedInvitesService`     | The mixed account set  | Same                                                                                                                                     |

@@ -132,24 +132,22 @@ export interface TimelineContext {
 }
 
 /**
- * Projects the *active* room's live timeline into a `messages` signal of view
- * models. Re-maps on new events and on async E2EE decryption. The shell opens one
- * room at a time; `matrix-js-sdk` remains the source of truth.
+ * Projects one immutable Conversation child's live timeline into a `messages` signal
+ * of view models. Re-maps on new events and on async E2EE decryption;
+ * `matrix-js-sdk` remains the source of truth.
  *
  * With thread support enabled on the client (see {@link MatrixClientService}), the
  * SDK routes threaded replies into per-thread timelines, so they are absent from
  * the room's live timeline here — only thread *roots* remain in the main view. The
  * thread roots and their replies are projected separately by `ThreadsService`.
  *
- * Deliberately not a `projectFromClient` projection: this service is scoped to the OPEN
- * ROOM, binding to a `Room` as well as to the client, so its lifetime is open()/close()
- * rather than the client's. That is also why it needs no account-switch re-projection —
- * a switch closes the open room. Note it closes it ASYNCHRONOUSLY: closing navigates to
- * `/rooms`, and the teardown follows the URL through `projectOpenRoom`, so `close()` runs
- * after `matrix.setActive` has already flipped the active client. Everything here that
- * touches the client on the way out therefore addresses `connectedClient`, never
- * `matrix.instance` — the listener detach and the typing-stop both. It does take the
- * shared `coalesce`, which is the half that applies.
+ * Deliberately not a `projectFromClient` projection: Conversation Runtime creates this
+ * package-internal child for one frozen Account-and-Room key, opens it once with that
+ * Account's explicit client, and owns its blur/retain/retire lifetime. A blurred child
+ * stays attached but suppresses foreground effects; retirement calls `close()` and
+ * destroys its child injector. Everything that touches the client therefore addresses
+ * `connectedClient`, never the mutable Active Account pointer. It does take the shared
+ * `coalesce`, which is the half that applies.
  */
 /**
  * Which composer a typing report came from. `m.typing` is one flag per room; this says who

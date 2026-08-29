@@ -38,7 +38,13 @@ describe('Conversation Runtime production boundary', () => {
 
     const entrypoint = source(timelineEntrypoint);
     expect(entrypoint).not.toContain("export * from './lib/timeline.service'");
+    expect(entrypoint).not.toContain(
+      "export * from './lib/conversation-runtime.service'",
+    );
     expect(entrypoint).not.toMatch(/\bTimeline(?:Service|Context)\b/);
+    expect(entrypoint).not.toMatch(
+      /\bConversationTimeline(?:Controller|Factory)\b|\bCONVERSATION_(?:TIMELINE_FACTORY|RETENTION_LIMIT)\b/,
+    );
   });
 
   it('keeps the room feature behind data-access instead of the Matrix SDK', () => {

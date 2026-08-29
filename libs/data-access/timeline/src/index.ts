@@ -3,7 +3,15 @@ export type {
   RoomTombstone,
   TypingOwner,
 } from './lib/timeline.service';
-export * from './lib/conversation-runtime.service';
+export { ConversationRuntime } from './lib/conversation-runtime.service';
+export type {
+  ConversationHandle,
+  ConversationKey,
+  ConversationResources,
+  ConversationRuntimeDiagnostics,
+  ConversationState,
+  ConversationTimeline,
+} from './lib/conversation-runtime.service';
 export * from './lib/timeline-actions.service';
 export * from './lib/threads.service';
 export * from './lib/url-preview.service';
