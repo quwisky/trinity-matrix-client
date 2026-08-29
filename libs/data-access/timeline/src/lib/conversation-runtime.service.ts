@@ -11,8 +11,20 @@ import {
 } from '@angular/core';
 import { defer, of } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { DraftStoreService } from '@trinity/platform-native';
+import {
+  ConversationComposeController,
+  type ConversationCompose,
+} from './conversation-compose';
 import { ConversationActionContextService } from './conversation-action-context.service';
+import { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
 import { TimelineService } from './timeline.service';
+
+export { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
+export type {
+  ConversationTextSendRequest,
+  ConversationTextSender,
+} from './conversation-compose';
 
 export const CONVERSATION_RUNTIME_BASELINE = {
   retainedHandlesPerAccount: 2,
@@ -48,6 +60,7 @@ export interface ConversationHandle {
   readonly key: ConversationKey;
   readonly state: Signal<ConversationState>;
   readonly timeline: ConversationTimeline;
+  readonly compose: ConversationCompose;
 }
 
 export interface ConversationResources {
@@ -147,6 +160,7 @@ interface ConversationEntry {
   readonly handle: ConversationHandle;
   readonly state: ReturnType<typeof signal<ConversationState>>;
   readonly controller: ConversationTimelineController;
+  readonly composeController: ConversationComposeController;
   lastFocused: number;
 }
 
@@ -160,6 +174,8 @@ interface ConversationEntry {
 @Injectable({ providedIn: 'root' })
 export class ConversationRuntime {
   private readonly factory = inject(CONVERSATION_TIMELINE_FACTORY);
+  private readonly drafts = inject(DraftStoreService);
+  private readonly textSender = inject(CONVERSATION_TEXT_SENDER);
   private readonly retainedPerAccount = Math.max(
     0,
     inject(CONVERSATION_RETENTION_LIMIT),
@@ -177,6 +193,7 @@ export class ConversationRuntime {
 
   readonly focused = this.focusedHandle.asReadonly();
   readonly timeline = this.focusedTimeline();
+  readonly compose = this.focusedCompose();
   readonly diagnostics = computed<ConversationRuntimeDiagnostics>(() => {
     const entries = [...this.entries.values()].flatMap((account) => [
       ...account.values(),
@@ -231,6 +248,7 @@ export class ConversationRuntime {
     this.focusedHandle.set(null);
     if (!entry || entry.handle !== handle) return;
     entry.state.set('retained');
+    entry.composeController.stopTyping();
     entry.controller.setVisible(false);
     this.evictRetained(handle.key.accountId);
   }
@@ -258,15 +276,25 @@ export class ConversationRuntime {
     const controller = this.factory.create(immutableKey);
     this.lastAttachDurationMs.set(performance.now() - startedAt);
     const state = signal<ConversationState>('retained');
+    const composeController = new ConversationComposeController({
+      key: immutableKey,
+      state: state.asReadonly(),
+      initialDraft: this.drafts.get(key.roomId),
+      persistDraft: (draft) => this.drafts.set(key.roomId, draft),
+      setTyping: (typing) => controller.timeline.setTyping(typing, 'room'),
+      send: (request) => this.textSender.send(request),
+    });
     const handle = Object.freeze({
       key: immutableKey,
       state: state.asReadonly(),
       timeline: controller.timeline,
+      compose: composeController.compose,
     });
     const entry: ConversationEntry = {
       handle,
       state,
       controller,
+      composeController,
       lastFocused: 0,
     };
     const account = this.entries.get(key.accountId) ?? new Map();
@@ -315,6 +343,33 @@ export class ConversationRuntime {
     };
   }
 
+  private focusedCompose(): ConversationCompose {
+    const focused = this.focusedHandle.asReadonly();
+    return {
+      draft: computed(() => focused()?.compose.draft() ?? ''),
+      intent: computed(
+        () => focused()?.compose.intent() ?? ({ kind: 'message' } as const),
+      ),
+      sending: computed(() => focused()?.compose.sending() ?? false),
+      setDraft: (draft) => focused()?.compose.setDraft(draft),
+      beginReply: (eventId) => focused()?.compose.beginReply(eventId),
+      beginEdit: (eventId, draft) =>
+        focused()?.compose.beginEdit(eventId, draft),
+      cancelIntent: () => focused()?.compose.cancelIntent(),
+      setTyping: (typing) => focused()?.compose.setTyping(typing),
+      submit: (mentions) =>
+        defer(
+          () =>
+            focused()?.compose.submit(mentions) ??
+            of({
+              kind: 'rejected' as const,
+              failure: 'conversation-unavailable' as const,
+              retryable: false,
+            }),
+        ),
+    };
+  }
+
   private entry(key: ConversationKey): ConversationEntry | null {
     return this.entries.get(key.accountId)?.get(key.roomId) ?? null;
   }
@@ -342,6 +397,7 @@ export class ConversationRuntime {
       if (account.size === 0) this.entries.delete(accountId);
     }
     entry.state.set('retired');
+    entry.composeController.stopTyping();
     this.retiredHandles.update((count) => count + 1);
     entry.controller.release();
   }

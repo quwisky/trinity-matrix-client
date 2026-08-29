@@ -5,19 +5,13 @@ import { MediaService, type ImagePackImage } from '@trinity/data-access/media';
 import { type VoiceRecording } from '@trinity/platform-native';
 import {
   annotationContent,
-  editMessageContent,
   locationMessageContent,
   mediaCaptionFields,
   myReactionId,
   pollEndContent,
   pollResponseContent,
   pollStartContent,
-  renderMarkdown,
-  replyMessageContent,
-  slashCommandContent,
-  textMessageContent,
   voiceMessageContent,
-  type Mention,
 } from '@trinity/util/matrix';
 import { ConversationActionContextService } from './conversation-action-context.service';
 
@@ -33,9 +27,9 @@ function voiceExtension(mimeType: string): string {
 }
 
 /**
- * Everything the user *writes* to a room's timeline: messages, replies, edits,
- * redactions, reactions, polls, attachments, voice clips, shared locations and
- * forwards.
+ * Non-compose writes to a room's timeline: redactions, reactions, polls, attachments,
+ * voice clips, shared locations and forwards. Text, reply and edit composition belongs
+ * to each immutable Conversation handle and its typed submit command.
  *
  * The counterpart to the Conversation Runtime's timeline projection, which owns
  * every listener; nothing here subscribes to the SDK or holds room state. The open
@@ -51,29 +45,6 @@ function voiceExtension(mimeType: string): string {
 export class TimelineActionsService {
   private readonly actionContext = inject(ConversationActionContextService);
   private readonly mediaSvc = inject(MediaService);
-
-  /**
-   * Send a message to the active room. Markdown is rendered to HTML, sanitized,
-   * and sent as `formatted_body` — but only when it actually adds formatting; plain
-   * text is sent as-is. The local echo appears via the timeline listener.
-   */
-  send(body: string, mentions: Mention[] = []): Observable<void> {
-    const text = body.trim();
-    return defer(() => {
-      const ctx = this.actionContext.resolve();
-      if (!ctx || !text) {
-        return of(void 0);
-      }
-      const { client, room } = ctx;
-      // A leading slash command (/me, /shrug, /plain, /spoiler) rewrites the content;
-      // otherwise build the normal text content (rather than sendText/HtmlMessage) so
-      // mentions carry `m.mentions` + matrix.to pills. The SDK creates the local echo.
-      const content =
-        slashCommandContent(text, renderMarkdown, mentions) ??
-        textMessageContent(text, renderMarkdown(text), mentions);
-      return from(client.sendMessage(room.roomId, content as never));
-    }).pipe(map(() => void 0));
-  }
 
   /** Send a shared location (`m.location`) to the active room. Cold — runs on subscribe. */
   sendLocation(lat: number, lng: number): Observable<void> {
@@ -269,31 +240,6 @@ export class TimelineActionsService {
     }).pipe(map(() => void 0));
   }
 
-  /** Edit a previously-sent message via an `m.replace` relation. */
-  edit(
-    messageId: string,
-    newBody: string,
-    mentions: Mention[] = [],
-  ): Observable<void> {
-    const text = newBody.trim();
-    return defer(() => {
-      const ctx = this.actionContext.resolve();
-      if (!ctx || !text) {
-        return of(void 0);
-      }
-      const { client, room } = ctx;
-      const content = editMessageContent(
-        messageId,
-        text,
-        renderMarkdown(text),
-        mentions,
-      );
-      // `content` is a valid m.replace payload; the SDK's content union doesn't
-      // model it, so assert past it.
-      return from(client.sendMessage(room.roomId, content as never));
-    }).pipe(map(() => void 0));
-  }
-
   /** Resend a message that failed to send. */
   retry(messageId: string): void {
     const ctx = this.actionContext.resolve();
@@ -307,30 +253,6 @@ export class TimelineActionsService {
     if (event) {
       ctx.client.resendEvent(event, ctx.room).catch(() => undefined);
     }
-  }
-
-  /** Send a reply to a message (`m.in_reply_to`), with a plain-text quote fallback. */
-  reply(
-    messageId: string,
-    body: string,
-    mentions: Mention[] = [],
-  ): Observable<void> {
-    const text = body.trim();
-    return defer(() => {
-      const ctx = this.actionContext.resolve();
-      if (!ctx || !text) {
-        return of(void 0);
-      }
-      const { client, room } = ctx;
-      const content = replyMessageContent(
-        room,
-        messageId,
-        text,
-        renderMarkdown(text),
-        mentions,
-      );
-      return from(client.sendMessage(room.roomId, content as never));
-    }).pipe(map(() => void 0));
   }
 
   /** Delete (redact) a message. */

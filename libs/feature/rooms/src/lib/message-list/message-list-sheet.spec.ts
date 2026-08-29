@@ -3,10 +3,14 @@ import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Subject } from 'rxjs';
 import { TrnActionSheetService } from '@trinity/components/overlay';
-import { type MessageView } from '@trinity/data-access/timeline';
+import {
+  ConversationRuntime,
+  type MessageView,
+} from '@trinity/data-access/timeline';
 import { MessageSheetViewportSession } from '../message-actions/message-sheet-viewport-session';
 import { MessageListBase } from './message-list-base';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
+import { ConversationComposeStub } from '../testing/conversation-timeline.stub';
 
 /**
  * The mobile long press opens its sheet HERE, on the list, rather than on the row that was
@@ -69,7 +73,13 @@ function build() {
   const close = vi.fn();
   const open = vi.fn().mockReturnValue({ close, closed: new Subject() });
   TestBed.configureTestingModule({
-    providers: [{ provide: TrnActionSheetService, useValue: { open } }],
+    providers: [
+      { provide: TrnActionSheetService, useValue: { open } },
+      {
+        provide: ConversationRuntime,
+        useValue: { compose: new ConversationComposeStub() },
+      },
+    ],
   });
   const fixture = TestBed.createComponent(TestListComponent);
   fixture.componentRef.setInput('roomId', '!r:hs');

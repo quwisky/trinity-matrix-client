@@ -5,6 +5,12 @@ export type {
 } from './lib/timeline.service';
 export { ConversationRuntime } from './lib/conversation-runtime.service';
 export type {
+  ConversationCompose,
+  ConversationComposeIntent,
+  ConversationTextSendFailure,
+  ConversationTextSendOutcome,
+} from './lib/conversation-compose';
+export type {
   ConversationHandle,
   ConversationKey,
   ConversationResources,

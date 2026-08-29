@@ -24,6 +24,7 @@ import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.ser
 import {
   isEditableMessage,
   isQuotableMessage,
+  ConversationRuntime,
   type MessageView,
   type ThreadSummary,
 } from '@trinity/data-access/timeline';
@@ -220,16 +221,8 @@ export abstract class MessageListBase {
     onOutcomes: (outcomes: readonly BatchOutcome[]) => void;
   }>();
   readonly retry = output<string>();
-  readonly editMessage = output<{
-    id: string;
-    body: string;
-    mentions: Mention[];
-  }>();
   readonly deleteMessage = output<string>();
   readonly react = output<{ id: string; key: string }>();
-  readonly reply = output<{ id: string; body: string; mentions: Mention[] }>();
-  /** The composer's typing state changed — host debounces it into a typing notification. */
-  readonly typing = output<boolean>();
   /** A `matrix.to` permalink clicked in a message body, for the host to route in-app. */
   readonly matrixLink = output<MatrixLinkClick>();
   /** A vote cast on a poll (the host sends the response). */
@@ -237,12 +230,19 @@ export abstract class MessageListBase {
   /** A request to close a poll (the host sends the end event). */
   readonly pollEnd = output<string>();
 
-  readonly editingId = signal<string | null>(null);
+  protected readonly compose = inject(ConversationRuntime).compose;
+  readonly editingId = computed(() => {
+    const intent = this.compose.intent();
+    return intent.kind === 'edit' ? intent.eventId : null;
+  });
   readonly editingDraft = computed(
     () => this.messages().find((m) => m.id === this.editingId())?.body ?? '',
   );
 
-  readonly replyingToId = signal<string | null>(null);
+  readonly replyingToId = computed(() => {
+    const intent = this.compose.intent();
+    return intent.kind === 'reply' ? intent.eventId : null;
+  });
   readonly replyingToName = computed(
     () =>
       this.messages().find((m) => m.id === this.replyingToId())?.senderName ??
@@ -462,8 +462,6 @@ export abstract class MessageListBase {
     // A sheet is about ONE message in ONE room; leaving it standing over a different
     // room's timeline would offer actions against an event that is no longer on screen.
     this.messageSheet.close(this);
-    this.editingId.set(null);
-    this.replyingToId.set(null);
     this.announcement.set('');
     this.rowCache.clear();
   }
@@ -491,13 +489,19 @@ export abstract class MessageListBase {
   }
 
   startEdit(row: MessageRow): void {
-    this.replyingToId.set(null);
-    this.editingId.set(row.id);
+    this.compose.beginEdit(row.id, row.body);
   }
 
   startReply(row: MessageRow): void {
-    this.editingId.set(null);
-    this.replyingToId.set(row.id);
+    this.compose.beginReply(row.id);
+  }
+
+  cancelEdit(): void {
+    if (this.compose.intent().kind === 'edit') this.compose.cancelIntent();
+  }
+
+  cancelReply(): void {
+    if (this.compose.intent().kind === 'reply') this.compose.cancelIntent();
   }
 
   /**
@@ -509,7 +513,7 @@ export abstract class MessageListBase {
    * it would rewrite the original rather than answer it.
    */
   startQuote(row: MessageRow): void {
-    this.editingId.set(null);
+    this.cancelEdit();
     this.composer()?.insertQuote(quoteBlock(row.body));
   }
 
@@ -528,7 +532,7 @@ export abstract class MessageListBase {
     const msgs = this.messages();
     for (let i = msgs.length - 1; i >= 0; i--) {
       if (this.isEditable(msgs[i])) {
-        this.editingId.set(msgs[i].id);
+        this.compose.beginEdit(msgs[i].id, msgs[i].body);
         return;
       }
     }
@@ -825,16 +829,6 @@ export abstract class MessageListBase {
   }
 
   onSubmit({ text, mentions }: ComposerSubmit): void {
-    const editId = this.editingId();
-    const replyId = this.replyingToId();
-    if (editId) {
-      this.editMessage.emit({ id: editId, body: text, mentions });
-      this.editingId.set(null);
-    } else if (replyId) {
-      this.reply.emit({ id: replyId, body: text, mentions });
-      this.replyingToId.set(null);
-    } else {
-      this.send.emit({ body: text, mentions });
-    }
+    this.send.emit({ body: text, mentions });
   }
 }

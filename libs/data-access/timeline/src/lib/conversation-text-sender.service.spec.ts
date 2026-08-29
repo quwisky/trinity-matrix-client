@@ -1,0 +1,173 @@
+import { TestBed } from '@angular/core/testing';
+import { firstValueFrom } from 'rxjs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ConversationActionContextService } from './conversation-action-context.service';
+import { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
+import { fakeEvent, fakeRoom } from './timeline.spec-harness';
+
+const KEY = {
+  accountId: '@alice:example.org',
+  roomId: '!r:hs',
+} as const;
+
+function setup({ localEcho = true, rejected = false } = {}) {
+  const original = fakeEvent({
+    id: '$original',
+    sender: '@alice:example.org',
+    body: 'original text',
+  });
+  const event = fakeEvent({
+    id: '$event',
+    sender: '@alice:example.org',
+    body: 'sent text',
+  });
+  const sourceRoom = fakeRoom([original, event]);
+  const room = {
+    ...sourceRoom,
+    findEventById: vi.fn((eventId: string) =>
+      eventId === '$event' && !localEcho
+        ? undefined
+        : sourceRoom.findEventById(eventId),
+    ),
+  };
+  const client = {
+    sendMessage: vi.fn((_roomId: string, _content: unknown) =>
+      rejected
+        ? Promise.reject(new Error('offline'))
+        : Promise.resolve({ event_id: '$event' }),
+    ),
+  };
+  TestBed.configureTestingModule({
+    providers: [ConversationActionContextService],
+  });
+  const context = TestBed.inject(ConversationActionContextService);
+  context.bind(() => ({ client, room }) as never);
+  return {
+    sender: TestBed.inject(CONVERSATION_TEXT_SENDER),
+    client,
+    room,
+  };
+}
+
+afterEach(() => TestBed.resetTestingModule());
+
+describe('MatrixConversationTextSender', () => {
+  it('is cold and accepts only the SDK-authoritative local echo', async () => {
+    const { sender, client, room } = setup();
+    const command = sender.send({
+      key: KEY,
+      body: 'hello',
+      mentions: [],
+      intent: { kind: 'message' },
+    });
+
+    expect(client.sendMessage).not.toHaveBeenCalled();
+    await expect(firstValueFrom(command)).resolves.toEqual({
+      kind: 'accepted',
+      eventId: '$event',
+    });
+    expect(room.findEventById).toHaveBeenCalledWith('$event');
+  });
+
+  it('maps an expected SDK rejection to a safe retryable outcome', async () => {
+    const { sender } = setup({ rejected: true });
+
+    await expect(
+      firstValueFrom(
+        sender.send({
+          key: KEY,
+          body: 'hello',
+          mentions: [],
+          intent: { kind: 'message' },
+        }),
+      ),
+    ).resolves.toEqual({ kind: 'rejected', retryable: true });
+  });
+
+  it('builds formatted text, mentions and slash commands inside the Conversation adapter', async () => {
+    const { sender, client } = setup();
+
+    await firstValueFrom(
+      sender.send({
+        key: KEY,
+        body: 'hi **@Bob**',
+        mentions: [{ userId: '@bob:hs', display: '@Bob' }],
+        intent: { kind: 'message' },
+      }),
+    );
+    await firstValueFrom(
+      sender.send({
+        key: KEY,
+        body: '/me waves',
+        mentions: [],
+        intent: { kind: 'message' },
+      }),
+    );
+
+    const formatted = client.sendMessage.mock.calls[0][1] as Record<
+      string,
+      unknown
+    >;
+    expect(formatted['m.mentions']).toEqual({ user_ids: ['@bob:hs'] });
+    expect(formatted['formatted_body']).toContain('<strong>');
+    expect(formatted['formatted_body']).toContain(
+      'https://matrix.to/#/@bob:hs',
+    );
+    expect(client.sendMessage.mock.calls[1][1]).toMatchObject({
+      msgtype: 'm.emote',
+      body: 'waves',
+    });
+  });
+
+  it('builds reply and edit relations from Conversation-owned targets', async () => {
+    const { sender, client } = setup();
+
+    await firstValueFrom(
+      sender.send({
+        key: KEY,
+        body: 'reply text',
+        mentions: [],
+        intent: { kind: 'reply', eventId: '$original' },
+      }),
+    );
+    await firstValueFrom(
+      sender.send({
+        key: KEY,
+        body: 'edited **text**',
+        mentions: [],
+        intent: { kind: 'edit', eventId: '$original' },
+      }),
+    );
+
+    const reply = client.sendMessage.mock.calls[0][1] as Record<
+      string,
+      unknown
+    >;
+    expect(reply['m.relates_to']).toEqual({
+      'm.in_reply_to': { event_id: '$original' },
+    });
+    expect(reply['formatted_body']).toContain('<mx-reply>');
+
+    const edit = client.sendMessage.mock.calls[1][1] as Record<string, unknown>;
+    expect(edit['m.relates_to']).toEqual({
+      rel_type: 'm.replace',
+      event_id: '$original',
+    });
+    expect(edit['m.new_content']).toMatchObject({ body: 'edited **text**' });
+  });
+
+  it('uses the error channel when an accepted event has no authoritative local echo', async () => {
+    const { sender } = setup({ localEcho: false });
+
+    await expect(
+      firstValueFrom(
+        sender.send({
+          key: KEY,
+          body: 'hello',
+          mentions: [],
+          intent: { kind: 'message' },
+        }),
+      ),
+    ).rejects.toThrow('without exposing its local echo');
+  });
+});

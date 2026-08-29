@@ -10,11 +10,12 @@ import { RoomsService } from '@trinity/data-access/rooms';
 import {
   ConversationRuntime,
   TimelineActionsService,
+  type ConversationTextSendOutcome,
 } from '@trinity/data-access/timeline';
 import { TrnToastService } from '@trinity/components/overlay';
 import { encodeRoomSegment } from '@trinity/util/matrix';
 import { MockProvider } from 'ng-mocks';
-import { BehaviorSubject, Subject, config, of, throwError } from 'rxjs';
+import { BehaviorSubject, Observable, Subject, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { AccountRoutingService } from './account-routing.service';
 import { MemberActionsService } from './member-actions.service';
@@ -46,8 +47,6 @@ class HostComponent {
 }
 
 describe('MessageActionsService', () => {
-  const send = vi.fn(() => of(undefined));
-  const reply = vi.fn(() => of(undefined));
   const redact = vi.fn(() => of(undefined));
   const toggleReaction = vi.fn(() => of(undefined));
   const votePoll = vi.fn(() => of(undefined));
@@ -55,6 +54,10 @@ describe('MessageActionsService', () => {
   const sendSticker = vi.fn(() => of(undefined));
   const loadOlder = vi.fn(() => of(undefined));
   const setTyping = vi.fn();
+  const setDraft = vi.fn();
+  const submitText = vi.fn<() => Observable<ConversationTextSendOutcome>>(() =>
+    of({ kind: 'sent', eventId: '$sent' }),
+  );
   const toastShow = vi.fn();
   let roomEncrypted = false;
 
@@ -72,11 +75,12 @@ describe('MessageActionsService', () => {
     },
     {
       provide: ConversationRuntime,
-      useFactory: () => ({ timeline: inject(ConversationTimelineStub) }),
+      useFactory: () => ({
+        timeline: inject(ConversationTimelineStub),
+        compose: { setDraft, submit: submitText, setTyping },
+      }),
     },
     MockProvider(TimelineActionsService, {
-      send,
-      reply,
       redact,
       toggleReaction,
       votePoll,
@@ -138,51 +142,18 @@ describe('MessageActionsService', () => {
 
       actions.onSend({ body: 'hello', mentions: [] });
 
-      expect(send).toHaveBeenCalledWith('hello', []);
+      expect(setDraft).toHaveBeenCalledWith('hello');
+      expect(submitText).toHaveBeenCalledWith([]);
     });
 
-    it('does not toast when a send fails, because the local echo shows it', async () => {
-      // `onSend` subscribes with no error callback on purpose: a failed send is surfaced
-      // by the local echo's failed/retry state, not by a toast. RxJS therefore reports the
-      // error as unhandled and rethrows it asynchronously, where the app's global
-      // ErrorHandler takes it. Capturing it here is not cosmetic — left uncaptured it
-      // fails the whole Vitest run as an unhandled error while every test still passes,
-      // which is how this reached CI.
+    it('does not toast for a typed send rejection because the local echo owns retry UI', () => {
       const { actions } = build();
-      const unhandled: unknown[] = [];
-      const previous = config.onUnhandledError;
-      config.onUnhandledError = (error) => unhandled.push(error);
-
-      try {
-        send.mockReturnValueOnce(throwError(() => new Error('offline')));
-        actions.onSend({ body: 'x', mentions: [] });
-        // RxJS reports an unhandled error on a macrotask, not inline, so the handler has
-        // to stay installed across one tick or the report lands on the real one.
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      } finally {
-        config.onUnhandledError = previous;
-      }
+      submitText.mockReturnValueOnce(
+        of({ kind: 'rejected', failure: 'send-rejected', retryable: true }),
+      );
+      actions.onSend({ body: 'x', mentions: [] });
 
       expect(toastShow).not.toHaveBeenCalled();
-      expect(unhandled).toHaveLength(1);
-    });
-
-    it('replies against the event being answered', () => {
-      const { actions } = build();
-
-      actions.onReply({ id: '$root', body: 'sure', mentions: [] });
-
-      expect(reply).toHaveBeenCalledWith('$root', 'sure', []);
-    });
-
-    it('forwards typing state straight through', () => {
-      const { actions } = build();
-
-      actions.onTyping(true);
-      actions.onTyping(false);
-
-      expect(setTyping).toHaveBeenNthCalledWith(1, true);
-      expect(setTyping).toHaveBeenNthCalledWith(2, false);
     });
 
     it('warns that sticker media stays public in an encrypted room', () => {

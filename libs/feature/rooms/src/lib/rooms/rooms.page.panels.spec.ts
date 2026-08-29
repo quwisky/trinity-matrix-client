@@ -53,7 +53,6 @@ import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
 beforeEach(() => setRouteRoom(null));
 
 describe('RoomsPage panels, pins and media', () => {
-  let edit: Mock;
   let toastShow: Mock;
   let sendMedia: Mock;
   let setNotifyMode: Mock;
@@ -78,7 +77,6 @@ describe('RoomsPage panels, pins and media', () => {
 
   function build() {
     toastShow = vi.fn();
-    edit = vi.fn();
     sendMedia = vi.fn(() => of(undefined));
     setNotifyMode = vi.fn(() => of(undefined));
     leaveRoom = vi.fn(() => of(undefined));
@@ -149,7 +147,7 @@ describe('RoomsPage panels, pins and media', () => {
         }),
         MockProvider(SpaceChildrenService, { canCurate, addExistingRoom }),
         MockProvider(TrnAlertService, { confirm: alertConfirm }),
-        MockProvider(TimelineActionsService, { edit, sendMedia }),
+        MockProvider(TimelineActionsService, { sendMedia }),
         MockProvider(MediaService),
         MockProvider(MatrixClientService, {
           isInitialized: true,

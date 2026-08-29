@@ -3,7 +3,10 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { afterEach, describe, expect, it, beforeEach, vi } from 'vitest';
-import { type MessageView } from '@trinity/data-access/timeline';
+import {
+  ConversationRuntime,
+  type MessageView,
+} from '@trinity/data-access/timeline';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { By } from '@angular/platform-browser';
 import { SimpleMessageListComponent } from './simple-message-list.component';
@@ -11,6 +14,7 @@ import { MessageComposerComponent } from '../../message-composer/message-compose
 import { DayBoundaryService } from '../day-boundary.service';
 import { ReactionPickerService } from '../../reaction-picker/reaction-picker.service';
 import { MessageSourceService } from '../../message-source/message-source.service';
+import { ConversationComposeStub } from '../../testing/conversation-timeline.stub';
 
 function msg(
   id: string,
@@ -93,6 +97,12 @@ const afterDivider = (el: Element | null | undefined): Element | null => {
 };
 
 describe('SimpleMessageListComponent', () => {
+  beforeEach(() => {
+    TestBed.overrideProvider(ConversationRuntime, {
+      useValue: { compose: new ConversationComposeStub() },
+    });
+  });
+
   it('renders a row per message and groups consecutive senders', async () => {
     const { container } = await render(SimpleMessageListComponent, {
       inputs: {
@@ -234,7 +244,7 @@ describe('SimpleMessageListComponent', () => {
     expect(cmp.rowCaps(row).deletable).toBe(true);
   });
 
-  it('resets the edit/reply target and suppresses announcements on room change', async () => {
+  it('suppresses announcements while Conversation Runtime changes rooms', async () => {
     const { fixture } = await render(SimpleMessageListComponent, {
       inputs: {
         roomId: '!a:hs',
@@ -243,20 +253,15 @@ describe('SimpleMessageListComponent', () => {
     });
     const cmp = fixture.componentInstance;
 
-    // In-progress reply in room A.
-    cmp.replyingToId.set('$1');
-    expect(cmp.replyingToId()).toBe('$1');
-
-    // Switch to room B: the stale target must clear (else the next plain send is
-    // routed as a cross-room reply), and B's newest must NOT be announced as a
-    // live incoming message (lastId was reset, so it reads as a fresh load).
+    // Conversation Runtime swaps the keyed compose intent before this input changes.
+    // The list only resets its presentation bookkeeping, so B's newest must NOT be
+    // announced as a live incoming message (lastId reads it as a fresh load).
     fixture.componentRef.setInput('roomId', '!b:hs');
     fixture.componentRef.setInput('messages', [
       msg('$9', '@b:hs', 'Bob', 5000),
     ]);
     fixture.detectChanges();
 
-    expect(cmp.replyingToId()).toBeNull();
     expect(cmp.announcement()).toBe('');
   });
 
@@ -732,24 +737,24 @@ describe('SimpleMessageListComponent', () => {
       expect(container.querySelector('.typing-slot')).not.toBeNull();
     });
 
-    it('routes a submit to editMessage while editing, then clears the target', async () => {
+    it('routes an edit submit through the Conversation command and retains intent until settlement', async () => {
       const cmp = await make();
-      let edited: { id: string; body: string } | null = null;
-      cmp.editMessage.subscribe((e) => (edited = e));
-      cmp.editingId.set('$7');
+      let sent: { body: string } | null = null;
+      cmp.send.subscribe((event) => (sent = event));
+      cmp.startEdit(row('$7'));
       cmp.onSubmit({ text: 'fixed', mentions: [] });
-      expect(edited).toEqual({ id: '$7', body: 'fixed', mentions: [] });
-      expect(cmp.editingId()).toBeNull();
+      expect(sent).toEqual({ body: 'fixed', mentions: [] });
+      expect(cmp.editingId()).toBe('$7');
     });
 
-    it('routes a submit to reply while replying, then clears the target', async () => {
+    it('routes a reply submit through the Conversation command and retains intent until settlement', async () => {
       const cmp = await make();
-      let replied: { id: string; body: string } | null = null;
-      cmp.reply.subscribe((e) => (replied = e));
-      cmp.replyingToId.set('$3');
+      let sent: { body: string } | null = null;
+      cmp.send.subscribe((event) => (sent = event));
+      cmp.startReply(row('$3'));
       cmp.onSubmit({ text: 're', mentions: [] });
-      expect(replied).toEqual({ id: '$3', body: 're', mentions: [] });
-      expect(cmp.replyingToId()).toBeNull();
+      expect(sent).toEqual({ body: 're', mentions: [] });
+      expect(cmp.replyingToId()).toBe('$3');
     });
 
     it('quotes a message into the composer as a > block', async () => {
@@ -769,23 +774,21 @@ describe('SimpleMessageListComponent', () => {
       expect(composerOf(fixture).text()).toBe('> body $1\n\n');
     });
 
-    it('cancels an edit when quoting, but keeps the reply target', async () => {
+    it('keeps the reply target when quoting', async () => {
       const { fixture } = await render(SimpleMessageListComponent, {
         providers: [MockProvider(TrnAlertService)],
         inputs: { messages: [msg('$1', '@a:hs', 'Alice', 1000)] },
       });
       const cmp = fixture.componentInstance;
-      cmp.editingId.set('$9');
-      cmp.replyingToId.set('$7');
+      cmp.startReply(row('$7'));
 
       cmp.startQuote({
         ...msg('$1', '@a:hs', 'Alice', 1000),
         showHeader: true,
       });
 
-      // Editing holds the original's body in the composer — inserting a quote there would
-      // rewrite that message rather than answer it. A reply is a send target, not composer
-      // content, so quoting while replying composes rather than conflicts.
+      // A reply is a send target, not composer content, so quoting while replying composes
+      // rather than conflicts.
       expect(cmp.editingId()).toBeNull();
       expect(cmp.replyingToId()).toBe('$7');
     });
@@ -821,12 +824,12 @@ describe('SimpleMessageListComponent', () => {
 
     it('makes startEdit and startReply mutually exclusive', async () => {
       const cmp = await make();
-      cmp.replyingToId.set('$1');
+      cmp.startReply(row('$1'));
       cmp.startEdit(row('$2'));
       expect(cmp.editingId()).toBe('$2');
       expect(cmp.replyingToId()).toBeNull();
 
-      cmp.editingId.set('$9');
+      cmp.startEdit(row('$9'));
       cmp.startReply(row('$3'));
       expect(cmp.replyingToId()).toBe('$3');
       expect(cmp.editingId()).toBeNull();
@@ -1196,10 +1199,11 @@ describe('SimpleMessageListComponent', () => {
     });
     const cmp = fixture.componentInstance;
     const sent: string[] = [];
-    const edited: string[] = [];
     cmp.send.subscribe((e) => sent.push(e.body));
-    cmp.editMessage.subscribe((e) => edited.push(e.body));
-    cmp.editingId.set('$1'); // an edit started while the files were uploading
+    cmp.startEdit({
+      ...msg('$1', '@a:hs', 'Alice', 1000),
+      showHeader: true,
+    }); // an edit started while the files were uploading
 
     fixture.debugElement
       .query(By.directive(MessageComposerComponent))
@@ -1209,6 +1213,5 @@ describe('SimpleMessageListComponent', () => {
       });
 
     expect(sent).toEqual(['both of these']);
-    expect(edited).toEqual([]);
   });
 });
