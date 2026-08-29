@@ -54,14 +54,9 @@
 }
 
 .member-info__handle {
-  width: 100%;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  font: inherit;
   font-size: 12px;
-  text-align: center;
   color: var(--trinity-text-muted);
+  overflow-wrap: anywhere;
   cursor: text;
   user-select: text;
 

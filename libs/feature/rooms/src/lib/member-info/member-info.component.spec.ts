@@ -239,9 +239,8 @@ describe('MemberInfoComponent', () => {
     const { container } = await build(member({ powerLevel: 100 }));
     expect(container.textContent).toContain('Bob');
     expect(
-      container.querySelector<HTMLInputElement>(
-        '[data-testid="member-info-handle"]',
-      )?.value,
+      container.querySelector('[data-testid="member-info-handle"]')
+        ?.textContent,
     ).toBe('@bob:hs');
     expect(container.textContent).toContain('Admin');
   });
@@ -435,17 +434,16 @@ describe('MemberInfoComponent', () => {
     );
   });
 
-  it('selects the complete user id when the handle receives keyboard focus', async () => {
+  it('makes the complete user id keyboard focusable', async () => {
     const { container } = await build();
-    const handle = container.querySelector<HTMLInputElement>(
+    const handle = container.querySelector<HTMLElement>(
       '[data-testid="member-info-handle"]',
     )!;
 
     handle.focus();
 
     expect(document.activeElement).toBe(handle);
-    expect(handle.selectionStart).toBe(0);
-    expect(handle.selectionEnd).toBe('@bob:hs'.length);
+    expect(handle.tabIndex).toBe(0);
   });
 
   it('closes resolving null when dismissed', async () => {

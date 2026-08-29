@@ -121,7 +121,7 @@ export class MemberInfoComponent {
   private readonly alert = inject(TrnAlertService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly userIdHandle =
-    viewChild<ElementRef<HTMLInputElement>>('userIdHandle');
+    viewChild<ElementRef<HTMLElement>>('userIdHandle');
 
   /** Whether this member is ignored (blocked); flips locally when toggled. */
   readonly ignored = linkedSignal(() =>
@@ -234,11 +234,15 @@ export class MemberInfoComponent {
   /** Focus and select the complete MXID for keyboard-accessible manual copying. */
   selectUserId(): void {
     const handle = this.userIdHandle()?.nativeElement;
-    if (!handle) {
+    const selection = handle?.ownerDocument.getSelection();
+    if (!handle || !selection) {
       return;
     }
     handle.focus();
-    handle.select();
+    const range = handle.ownerDocument.createRange();
+    range.selectNodeContents(handle);
+    selection.removeAllRanges();
+    selection.addRange(range);
   }
 
   /** Block or unblock the member (account-wide ignore); flips the button on success. */

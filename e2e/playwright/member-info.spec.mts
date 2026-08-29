@@ -136,7 +136,7 @@ test.describe('Member info panel', () => {
     const panel = page.getByTestId('member-info');
     await expect(panel).toBeVisible({ timeout: 10_000 });
     await expect(panel.getByTestId('member-info-name')).toHaveText(memberName);
-    await expect(panel.getByTestId('member-info-handle')).toHaveValue(
+    await expect(panel.getByTestId('member-info-handle')).toHaveText(
       memberB.userId,
     );
     await expect(panel).toContainText('Member');

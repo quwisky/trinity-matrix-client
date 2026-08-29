@@ -25,7 +25,7 @@ test.describe('Electron member clipboard', () => {
   }) => {
     const hs = session.hs as string;
     const runId = Date.now().toString(36);
-    const username = `clipboard-user-${runId}`;
+    const username = `clipboard-user-${runId}-${'long'.repeat(20)}`;
     const password = `${username}-pass`;
     const displayName = `Clipboard display ${runId}`;
     const roomName = `Clipboard room ${runId}`;
@@ -92,12 +92,23 @@ test.describe('Electron member clipboard', () => {
         .toBe(true);
 
       const handle = page.getByTestId('member-info-handle');
-      await expect(handle).toHaveValue(account.userId);
+      await expect(handle).toHaveText(account.userId);
+      const handleLayout = await handle.evaluate((node) => ({
+        clientWidth: node.clientWidth,
+        scrollWidth: node.scrollWidth,
+      }));
+      expect(handleLayout.scrollWidth).toBeLessThanOrEqual(
+        handleLayout.clientWidth + 1,
+      );
       await expect
         .poll(() =>
           handle.evaluate((node) => getComputedStyle(node).userSelect),
         )
         .toBe('text');
+      await handle.focus();
+      await expect
+        .poll(() => page.evaluate(() => getSelection()?.toString()))
+        .toBe(account.userId);
       await page.getByTestId('member-info-copy').click();
       await expect(
         page.getByText('User ID copied.', { exact: true }),

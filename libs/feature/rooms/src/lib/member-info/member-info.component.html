@@ -31,16 +31,17 @@
     <span class="member-info__name" data-testid="member-info-name">{{
       member().name
     }}</span>
-    <input
+    <span
       #userIdHandle
       class="member-info__handle"
       data-testid="member-info-handle"
-      type="text"
-      readonly
-      [value]="member().userId"
+      tabindex="0"
+      role="textbox"
+      aria-readonly="true"
       [attr.aria-label]="'Matrix user ID ' + member().userId"
       (focus)="selectUserId()"
-    />
+      >{{ member().userId }}</span
+    >
     <span class="member-info__role" data-testid="member-info-role">{{
       role()
     }}</span>
