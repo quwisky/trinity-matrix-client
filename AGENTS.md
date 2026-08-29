@@ -21,6 +21,22 @@ CI · conventions) · [docs/platforms/](docs/platforms/index.md) (web · desktop
 [docs/reference/troubleshooting.md](docs/reference/troubleshooting.md) (the gotcha index) ·
 [docs/reference/push-notifications.md](docs/reference/push-notifications.md).
 
+## Agent skills
+
+### Issue tracker
+
+Issues and specs are tracked in GitHub Issues for `quwisky/trinity-matrix-client`. See
+`docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Triage uses the five canonical mattpocock/skills labels. See
+`docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Domain documentation uses a single-context layout. See `docs/agents/domain.md`.
+
 ## Commands
 
 This project is **pnpm-only** (a `preinstall` guard aborts npm/yarn) and needs **Node 24.15+**.
