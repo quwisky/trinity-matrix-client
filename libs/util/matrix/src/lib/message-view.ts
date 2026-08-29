@@ -19,7 +19,9 @@ import {
 
 /**
  * Shared, framework-free projection of a `matrix-js-sdk` {@link MatrixEvent} into a
- * plain {@link MessageView}. Extracted from `TimelineService` so the main timeline
+ * plain legacy view. The Conversations capability now owns text and system-event
+ * presentation; this temporary adapter remains only for media, polls, stickers, and
+ * locations until #307-#309 remove it.
  * AND the threads view render identical view models with identical decryption
  * ("unable to decrypt") and sanitization handling — no SDK types leak past here.
  */
@@ -222,7 +224,7 @@ export interface ReplyPreview {
 }
 
 /** A single rendered timeline message (plain view model — no SDK types leak out). */
-export interface MessageView {
+interface LegacyMessageView {
   id: string;
   senderId: string;
   senderName: string;
@@ -344,12 +346,12 @@ export function readReceiptsFor(
  * Project a single timeline (or thread) event into a {@link MessageView}, resolving
  * the sender from room state, decryption state, reactions, and reply preview.
  */
-export function buildMessageView(
+function buildLegacyMessageView(
   client: MatrixClient,
   room: Room,
   event: MatrixEvent,
   shield: MessageShield | null = null,
-): MessageView {
+): LegacyMessageView {
   const senderId = event.getSender() ?? '';
   const member = room.getMember(senderId);
   // `||` (not `??`) so an empty display name still falls back to the mxid.
@@ -412,20 +414,20 @@ export function buildMessageView(
 }
 
 /**
- * {@link buildMessageView} guarded against a hostile/malformed event: any projection
+ * The legacy builder guarded against a hostile/malformed event: any projection
  * error degrades that one event to an 'unsupported' row instead of throwing out of the
  * timeline/thread projection loop (which would leave the whole room unrenderable and
  * re-crash on every resync). Callers project untrusted, federated events, so they must
- * use this rather than {@link buildMessageView} directly.
+ * use this temporary adapter rather than calling its implementation directly.
  */
-export function safeBuildMessageView(
+export function safeBuildLegacyMessageView(
   client: MatrixClient,
   room: Room,
   event: MatrixEvent,
   shield: MessageShield | null = null,
-): MessageView {
+): LegacyMessageView {
   try {
-    return buildMessageView(client, room, event, shield);
+    return buildLegacyMessageView(client, room, event, shield);
   } catch {
     return unsupportedView(client, event);
   }
@@ -435,7 +437,7 @@ export function safeBuildMessageView(
 function unsupportedView(
   client: MatrixClient,
   event: MatrixEvent,
-): MessageView {
+): LegacyMessageView {
   const read = <T>(fn: () => T, fallback: T): T => {
     try {
       return fn();
@@ -482,42 +484,6 @@ export function isDisplayableMessage(event: MatrixEvent): boolean {
     (event.getType() === EventType.RoomMessage ||
       event.getType() === EventType.Sticker) &&
     !event.isRelation(RelationType.Replace)
-  );
-}
-
-/**
- * Whether the current user may edit this view: own, confirmed (no pending/failed
- * send), decrypted, and an editable *text* kind. Only `text`/`emote`/`notice` carry
- * an editable body — media, polls, and locations are not free text and a
- * text `m.replace` would corrupt them (a poll/location has no `media` to gate on).
- * Shared by the main timeline and the in-thread composer so the rule stays in one place.
- */
-export function isEditableMessage(message: MessageView): boolean {
-  return (
-    message.isOwn &&
-    !message.status &&
-    !message.decryptionFailed &&
-    (message.kind === 'text' ||
-      message.kind === 'emote' ||
-      message.kind === 'notice')
-  );
-}
-
-/**
- * A message whose text is worth pulling into the composer as a quote.
- *
- * Not gated on ownership, unlike {@link isEditableMessage} — quoting someone else is the
- * whole point. Media is excluded because its `body` is the filename, and quoting
- * `IMG_1234.jpg` helps nobody; so are polls, whose text is a question rather than a
- * statement, and anything that failed to decrypt, whose body is a placeholder.
- */
-export function isQuotableMessage(message: MessageView): boolean {
-  return (
-    !message.decryptionFailed &&
-    (message.kind === 'text' ||
-      message.kind === 'emote' ||
-      message.kind === 'notice') &&
-    message.body.trim() !== ''
   );
 }
 
@@ -919,8 +885,7 @@ const NODE_TYPE_TEXT = 3;
  *
  * A registration seam rather than a direct import: this module is in the app's EAGER
  * bundle, so importing a highlighter here would put every grammar in the initial
- * chunk. The implementation lives behind `@trinity/util/matrix/code-highlight`, which
- * only the lazily-loaded rooms route pulls in.
+ * chunk. The implementation lives inside the lazy Conversations feature.
  *
  * Clears the memo, because anything cached before installation was scrubbed without
  * highlighting and would otherwise stay that way for the life of the process.
@@ -1419,7 +1384,7 @@ export interface RenderedText {
  * renders `textHtml` (so bare URLs are clickable), while an MSC2530 media caption renders
  * `html` — deliberately un-linkified, since a caption is a label rather than prose.
  *
- * Shared by {@link buildMessageView} and the edit-history projection so a past revision
+ * Shared by Message Presentation and the edit-history projection so a past revision
  * renders exactly as the live message does.
  */
 export function renderTextBody(
@@ -1428,19 +1393,33 @@ export function renderTextBody(
   /** The viewer, so a mention OF them can be marked. Omitted where it is unknown. */
   selfUserId = '',
 ): RenderedText {
-  const raw = (content['body'] as string) ?? '';
-  const text = isReply ? stripReplyFallbackText(raw) : raw;
-  // Markdown is delivered as HTML in `formatted_body` (format = custom HTML).
   const rawHtml =
     content['format'] === 'org.matrix.custom.html' &&
     typeof content['formatted_body'] === 'string'
       ? (content['formatted_body'] as string)
       : null;
-  const strippedHtml =
-    isReply && rawHtml ? stripReplyFallbackHtml(rawHtml) : rawHtml;
   // From `m.mentions`, never from the body: the sender writes the body, so a link in it
   // proves only that they typed your id, not that they addressed you.
-  const addressesViewer = mentionsViewer(content, selfUserId);
+  return renderNormalizedTextBody(
+    typeof content['body'] === 'string' ? content['body'] : '',
+    rawHtml,
+    isReply,
+    mentionsViewer(content, selfUserId),
+  );
+}
+
+/** Render text after a Matrix adapter has normalized its content fields. */
+export function renderNormalizedTextBody(
+  body: string,
+  formattedBody: string | null,
+  isReply: boolean,
+  addressesViewer: boolean,
+): RenderedText {
+  const text = isReply ? stripReplyFallbackText(body) : body;
+  const strippedHtml =
+    isReply && formattedBody
+      ? stripReplyFallbackHtml(formattedBody)
+      : formattedBody;
   const html =
     strippedHtml === null
       ? null
@@ -1472,7 +1451,7 @@ function renderBody(
     };
   }
   const content = event.getContent();
-  const { text, html, textHtml } = renderTextBody(
+  const { text, html } = renderTextBody(
     content,
     !!event.replyEventId,
     selfUserId,
@@ -1511,12 +1490,6 @@ function renderBody(
     };
   }
   switch (content.msgtype) {
-    case MsgType.Text:
-      return { body: text, html: textHtml, kind: 'text', media: null };
-    case MsgType.Emote:
-      return { body: text, html: textHtml, kind: 'emote', media: null };
-    case MsgType.Notice:
-      return { body: text, html: textHtml, kind: 'notice', media: null };
     case MsgType.Location: {
       const geo = parseGeoUri(content['geo_uri']);
       if (!geo) {

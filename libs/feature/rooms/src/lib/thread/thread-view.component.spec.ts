@@ -34,9 +34,9 @@ import {
   ConversationRuntime,
   ThreadsService,
   TimelineActionsService,
+  type MessageView,
 } from '@trinity/data-access/timeline';
 import { RoomsService, type MemberSummary } from '@trinity/data-access/rooms';
-import { type MessageView } from '@trinity/util/matrix';
 import { MockProvider } from 'ng-mocks';
 import {
   MessageGestureSettingsService,

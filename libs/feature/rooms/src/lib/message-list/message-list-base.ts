@@ -21,16 +21,18 @@ import { ReportService } from '../report/report.service';
 import { MessageSourceService } from '../message-source/message-source.service';
 import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
-import { type ThreadSummary } from '@trinity/data-access/timeline';
+import {
+  isEditableMessage,
+  isQuotableMessage,
+  type MessageView,
+  type ThreadSummary,
+} from '@trinity/data-access/timeline';
 import {
   dayLabel,
   hasUsableTimestamp,
-  isEditableMessage,
-  isQuotableMessage,
   messagePermalink,
   quoteBlock,
   startOfLocalDay,
-  type MessageView,
   type Mention,
 } from '@trinity/util/matrix';
 import {
@@ -323,7 +325,7 @@ export abstract class MessageListBase {
     const nextCache = new Map<string, RowCacheEntry>();
     // The calendar day the rows so far belong to, or null before the first row with a
     // usable timestamp. A row whose timestamp is missing or implausible (a malformed event
-    // degraded to `timestamp: 0` by safeBuildMessageView) neither opens nor closes a day:
+    // degraded to `timestamp: 0` by Message Presentation) neither opens nor closes a day:
     // it inherits this, so it mints no 1970 separator AND the next real row is still
     // compared against the last real day rather than against 1970.
     let currentDayStart: number | null = null;

@@ -34,13 +34,8 @@ import {
   SystemLineSettingsService,
 } from '@trinity/platform-native';
 import {
-  safeBuildMessageView,
-  buildTimelineEventView,
-  describeTimelineEvent,
-  type SystemLineCategory,
   collectMessageSenders,
   isDisplayableMessage,
-  isDisplayableStateEvent,
   isPollStart,
   pollSignature,
   reactionDetailsFor,
@@ -49,11 +44,16 @@ import {
   TYPING_REFRESH_MS,
   TYPING_TIMEOUT_MS,
   liveRoomState,
-  type MessageView,
-  type MessageShield,
-  type ReactionDetail,
 } from '@trinity/util/matrix';
 import { resolveShieldsInto, shieldKey } from './shields';
+import { projectMessage } from './project-message';
+import { isPresentableSystemEvent } from './normalize-timeline-event';
+import type {
+  MessageShield,
+  MessageView,
+  ReactionDetail,
+  SystemLineCategory,
+} from './message-presentation';
 
 const SCROLLBACK = 30;
 const RETAINED_EVENT_BYTES = 64;
@@ -295,7 +295,7 @@ export class TimelineService {
   private room: Room | null = null;
 
   // Per-event projection cache keyed by event id. Each entry stores the view model
-  // and a `rev` fingerprint of everything {@link buildMessageView} reads that can
+  // and a `rev` fingerprint of everything Message Presentation reads that can
   // change while the room is open (see {@link eventRevision}). On refresh an event
   // is re-projected only when its fingerprint changes; otherwise the existing view
   // object is reused so its OnPush row never re-renders — instead of rebuilding the
@@ -852,24 +852,29 @@ export class TimelineService {
       .filter(
         (e) =>
           !isThreadReply(e) &&
-          (isDisplayableMessage(e) || isDisplayableStateEvent(e)),
+          (isDisplayableMessage(e) || isPresentableSystemEvent(e)),
       )
       .map((e): MessageView | null => {
         const id = e.getId() ?? '';
-        // A state / membership change → a compact "system" line. The summary fully
-        // determines the row, so it doubles as the cache rev (and re-derives on a late
-        // display-name resolution); a no-op change (null) is dropped entirely.
+        // A state / membership change is normalized and presented before this capability
+        // applies the user's category visibility. A no-op change returns null and is
+        // dropped entirely.
         if (!isDisplayableMessage(e)) {
-          const line = describeTimelineEvent(e, room);
+          const view = projectMessage(client, room, e);
           // Dropped when there is nothing to say (a no-op change) or when the user has
           // hidden this category. Returning null collapses the row entirely — no gap or
           // placeholder — and keeps `seen` clean so the view cache prunes it.
-          if (!line || !this.showsCategory(line.category)) {
+          if (
+            !view ||
+            view.kind !== 'event' ||
+            !view.systemCategory ||
+            !this.showsCategory(view.systemCategory)
+          ) {
             return null;
           }
-          const summary = line.text;
+          const summary = view.summary ?? view.body;
           seen.add(id);
-          // A system line renders no "seen by" avatars (buildTimelineEventView sets
+          // A system line renders no "seen by" avatars (Message Presentation sets
           // `readReceipts: []`), so its readers are nobody this row depends on.
           collectMessageSenders(client, room, e, relevant, { receipts: false });
           // A membership line names the TARGET (state_key), whose display name can
@@ -883,7 +888,6 @@ export class TimelineService {
           if (cached && cached.rev === summary) {
             return cached.view;
           }
-          const view = buildTimelineEventView(client, room, e, summary);
           this.viewCache.set(id, { rev: summary, view });
           return view;
         }
@@ -907,7 +911,10 @@ export class TimelineService {
         if (cached && cached.rev === rev) {
           return cached.view;
         }
-        const view = safeBuildMessageView(client, room, e, shield);
+        const view = projectMessage(client, room, e, shield);
+        if (!view) {
+          return null;
+        }
         this.viewCache.set(id, { rev, view });
         return view;
       })
@@ -1064,7 +1071,7 @@ function isThreadReply(event: MatrixEvent): boolean {
 }
 
 /**
- * A compact fingerprint of every per-event input {@link buildMessageView} reads
+ * A compact fingerprint of every per-event input Message Presentation reads
  * that can change while the room is open: send status, redaction, decryption,
  * edits (captured via the effective content + replacing-event presence),
  * aggregated reactions, the reply preview (see {@link replyTargetSignature}), and

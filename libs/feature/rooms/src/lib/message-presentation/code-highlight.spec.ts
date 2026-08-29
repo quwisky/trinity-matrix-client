@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest';
-import { sanitizeMatrixHtml, setCodeHighlighter } from './message-view';
+import { sanitizeMatrixHtml, setCodeHighlighter } from '@trinity/util/matrix';
 // Importing the module registers the real highlighter by side effect — the same way the
 // lazily-loaded rooms route does it in the app.
 import './code-highlight';

@@ -32,7 +32,7 @@
       "metric": "message-projection",
       "scope": "A normalized Matrix event becomes a safe presented message.",
       "unit": "milliseconds per event and batch",
-      "current": "The 1,738-line message projection is the comparison path; benchmark instrumentation is introduced by #305.",
+      "current": "Message Presentation reports content-free event count, batch duration, and average per-event duration while turning normalized text and system events into immutable render models. Focused tests exercise representative plain, formatted, hostile, and system-event batches.",
       "owner": "Conversations",
       "issue": "#305"
     },

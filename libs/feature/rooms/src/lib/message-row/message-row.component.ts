@@ -18,8 +18,11 @@ import {
   type MessageToolbarCaps,
 } from '@trinity/components/message-toolbar';
 import { TrnTooltip } from '@trinity/components/tooltip';
-import { type ThreadSummary } from '@trinity/data-access/timeline';
-import { type MessageView, type ReceiptView } from '@trinity/util/matrix';
+import {
+  type MessageView,
+  type ReceiptView,
+  type ThreadSummary,
+} from '@trinity/data-access/timeline';
 import { MessageReactionsComponent } from '../message-reactions/message-reactions.component';
 import { MediaAttachmentComponent } from '../media-attachment/media-attachment.component';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';

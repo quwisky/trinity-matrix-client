@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
 import {
-  buildTimelineEventView,
-  describeTimelineEvent,
-  isDisplayableStateEvent,
-} from './timeline-event';
+  isPresentableSystemEvent,
+  normalizeTimelineEvent,
+} from './normalize-timeline-event';
+import {
+  presentNormalizedTimelineEvent,
+  type SystemLineCategory,
+} from './message-presentation';
 
 interface EventInit {
   type: string;
@@ -48,8 +51,14 @@ const room = {
  * `{ text, category }`; these tests assert wording, and the category has its own describe.
  */
 function text(event: MatrixEvent, r: Room | undefined = room): string | null {
-  return describeTimelineEvent(event, r)?.text ?? null;
+  if (!r) return null;
+  const normalized = normalizeTimelineEvent(client, r, event, null);
+  return normalized
+    ? (presentNormalizedTimelineEvent(normalized)?.body ?? null)
+    : null;
 }
+
+const client = { getUserId: () => '@me:hs' } as unknown as MatrixClient;
 
 /** Convenience: summary of a membership transition. */
 function membership(
@@ -68,32 +77,32 @@ function membership(
   );
 }
 
-describe('isDisplayableStateEvent', () => {
+describe('isPresentableSystemEvent', () => {
   it('accepts supported, non-redacted state events', () => {
-    expect(isDisplayableStateEvent(stateEvent({ type: 'm.room.name' }))).toBe(
+    expect(isPresentableSystemEvent(stateEvent({ type: 'm.room.name' }))).toBe(
       true,
     );
-    expect(isDisplayableStateEvent(stateEvent({ type: 'm.room.member' }))).toBe(
-      true,
-    );
+    expect(
+      isPresentableSystemEvent(stateEvent({ type: 'm.room.member' })),
+    ).toBe(true);
   });
 
   it('rejects redacted, non-state, and unsupported events', () => {
     expect(
-      isDisplayableStateEvent(
+      isPresentableSystemEvent(
         stateEvent({ type: 'm.room.name', redacted: true }),
       ),
     ).toBe(false);
     expect(
-      isDisplayableStateEvent(
+      isPresentableSystemEvent(
         stateEvent({ type: 'm.room.name', state: false }),
       ),
     ).toBe(false);
     expect(
-      isDisplayableStateEvent(stateEvent({ type: 'm.room.message' })),
+      isPresentableSystemEvent(stateEvent({ type: 'm.room.message' })),
     ).toBe(false);
     expect(
-      isDisplayableStateEvent(stateEvent({ type: 'm.room.power_levels' })),
+      isPresentableSystemEvent(stateEvent({ type: 'm.room.power_levels' })),
     ).toBe(false);
   });
 });
@@ -324,9 +333,8 @@ describe('describeTimelineEvent — room state', () => {
   });
 });
 
-describe('buildTimelineEventView', () => {
+describe('system event presentation model', () => {
   it('projects an event into a kind:"event" view carrying the summary', () => {
-    const client = { getUserId: () => '@me:hs' } as unknown as MatrixClient;
     const event = stateEvent({
       type: 'm.room.name',
       content: { name: 'General' },
@@ -334,17 +342,18 @@ describe('buildTimelineEventView', () => {
       id: '$name',
       ts: 4242,
     });
-    const view = buildTimelineEventView(client, room, event, 'Mod set it');
+    const normalized = normalizeTimelineEvent(client, room, event, null);
+    const view = normalized ? presentNormalizedTimelineEvent(normalized) : null;
 
-    expect(view.kind).toBe('event');
-    expect(view.summary).toBe('Mod set it');
-    expect(view.body).toBe('Mod set it');
-    expect(view.id).toBe('$name');
-    expect(view.timestamp).toBe(4242);
-    expect(view.senderName).toBe('Mod');
-    expect(view.isOwn).toBe(false);
-    expect(view.reactions).toEqual([]);
-    expect(view.readReceipts).toEqual([]);
+    expect(view?.kind).toBe('event');
+    expect(view?.summary).toBe('Mod set the room name to "General"');
+    expect(view?.body).toBe('Mod set the room name to "General"');
+    expect(view?.id).toBe('$name');
+    expect(view?.timestamp).toBe(4242);
+    expect(view?.senderName).toBe('Mod');
+    expect(view?.isOwn).toBe(false);
+    expect(view?.reactions).toEqual([]);
+    expect(view?.readReceipts).toEqual([]);
   });
 });
 
@@ -352,8 +361,12 @@ describe('buildTimelineEventView', () => {
 // profile is the subtle one: both are m.room.member events, told apart only by comparing
 // the previous content. Getting that wrong would hide the wrong half of the churn.
 describe('describeTimelineEvent — categories', () => {
-  const categoryOf = (event: MatrixEvent) =>
-    describeTimelineEvent(event, room)?.category ?? null;
+  const categoryOf = (event: MatrixEvent): SystemLineCategory | null => {
+    const normalized = normalizeTimelineEvent(client, room, event, null);
+    return normalized
+      ? (presentNormalizedTimelineEvent(normalized)?.systemCategory ?? null)
+      : null;
+  };
 
   const member = (
     membershipTo: string,

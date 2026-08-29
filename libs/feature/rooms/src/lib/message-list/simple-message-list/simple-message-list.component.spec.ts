@@ -3,7 +3,7 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { afterEach, describe, expect, it, beforeEach, vi } from 'vitest';
-import { type MessageView } from '@trinity/util/matrix';
+import { type MessageView } from '@trinity/data-access/timeline';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { By } from '@angular/platform-browser';
 import { SimpleMessageListComponent } from './simple-message-list.component';
@@ -974,7 +974,7 @@ describe('SimpleMessageListComponent', () => {
     const separators = (container: Element) =>
       Array.from(container.querySelectorAll('[data-testid=day-separator]'));
 
-    // safeBuildMessageView degrades an unreadable origin_server_ts to 0. Bucketing that as a
+    // Message Presentation degrades an unreadable origin_server_ts to 0. Bucketing that as a
     // real day mints a "1 January 1970" separator above it AND a second one on the next real
     // message, which is compared against 1970 rather than against the last real day.
     it('mints no 1970 separator for a message with no usable timestamp', async () => {

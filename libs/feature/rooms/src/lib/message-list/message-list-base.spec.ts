@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { type MessageView } from '@trinity/util/matrix';
+import { type MessageView } from '@trinity/data-access/timeline';
 import { MessageListBase } from './message-list-base';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
 

@@ -142,9 +142,9 @@ The web build emits to root `www/` (not `dist/`), which Capacitor and Electron w
 `scope:*` + `ui:*` tags in each `project.json`). The former monolithic `@trinity/core` was dissolved into
 typed, per-domain libs (do **not** import `@trinity/core` — it no longer exists):
 
-- `@trinity/util/matrix` `[type:util]` — pure, DI-free Matrix models/helpers (`MessageView` +
-  `buildMessageView`/`initialOf`/`isEditableMessage`, `MediaPayload`, `MatrixSession`, markdown/sanitize,
-  `crypto-wasm-loader`, attachment-crypto). No Angular DI. Everything may depend on it.
+- `@trinity/util/matrix` `[type:util]` — pure, DI-free Matrix models/helpers (`MediaPayload`,
+  `MatrixSession`, markdown/sanitize, `crypto-wasm-loader`, attachment-crypto). No Angular DI.
+  Everything may depend on it. Render-ready message models belong to Conversations.
 - `@trinity/runtime/projection` `[type:data-access]`, `[role:kernel]` — Projection Runtime: the
   bounded active-account, all-live-accounts, exact-account, and exact-conversation lifecycle
   primitive. It owns attachment, coalesced reconciliation, generation-safe publication, reset,
@@ -168,9 +168,10 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   `homeserver`, `widgets`), each at `libs/data-access/<domain>`.
   Cross-domain injects are inter-lib edges (search→rooms/invites, auth→accounts, notification→rooms/timeline,
   timeline→media).
-- `@trinity/data-access/timeline` also owns `ConversationRuntime`: immutable Account-and-Room
-  handles with one timeline child each, a two-entry per-Account retained LRU, permanent retirement,
-  and a stable focused-timeline interface consumed by room features.
+- `@trinity/data-access/timeline` owns `ConversationRuntime` and Message Presentation: immutable
+  Account-and-Room handles with one timeline child each, a two-entry per-Account retained LRU,
+  permanent retirement, and a stable focused-timeline interface. Normalize SDK events first, then
+  expose immutable `MessageView` models from this public entrypoint.
 - `@trinity/feature/*` `[type:feature]` — screens/pages incl. `feature-shell` (the app shell moved out of
   `apps/trinity`). May depend on `data-access-*` + `ui` + `util` + `platform`, **never another feature**.
 - `@trinity/components/*` (`libs/components/*`) `[type:ui]`, tagged `ui:public` — the **public

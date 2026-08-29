@@ -144,18 +144,16 @@ project's `project.json`. The ladder and the reasoning behind it are in
 [Libraries](../architecture/libraries.md); the rule contributors hit most often is
 that a `type:feature` library may never import another `type:feature` library.
 
-Two barrels are deliberately incomplete, and nothing enforces either:
+One barrel is deliberately incomplete:
 
 - `libs/feature/shell/src/index.ts` does not re-export `home.page`. That barrel is
   eagerly imported by `main.ts` for `AppComponent`, so anything in it ships in the
   eager chunk. The page is reached through the `@trinity/feature/shell/home-page`
   alias instead.
-- `code-highlight.ts` is kept out of the `util-matrix` barrel and reached through
-  `@trinity/util/matrix/code-highlight`, because `message-view.ts` is eager and the
-  Shiki grammars are roughly 813 kB raw.
-
-Adding either to its barrel ships a large payload into the initial bundle with no
-error anywhere.
+  The Shiki highlighter needs no public entrypoint: it lives in
+  `libs/feature/rooms/src/lib/message-presentation/` and the lazy rooms page imports it
+  relatively. Keep it there; moving it behind an eagerly imported barrel ships the grammar
+  payload in the initial bundle.
 
 ## Styles
 

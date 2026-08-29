@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Subject } from 'rxjs';
 import { TrnActionSheetService } from '@trinity/components/overlay';
-import { type MessageView } from '@trinity/util/matrix';
+import { type MessageView } from '@trinity/data-access/timeline';
 import { MessageSheetViewportSession } from '../message-actions/message-sheet-viewport-session';
 import { MessageListBase } from './message-list-base';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';

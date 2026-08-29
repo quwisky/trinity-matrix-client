@@ -4,7 +4,7 @@ import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { MockComponent } from 'ng-mocks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type MessageView } from '@trinity/util/matrix';
+import { type MessageView } from '@trinity/data-access/timeline';
 import { MessageComposerComponent } from '../../message-composer/message-composer.component';
 import { DayBoundaryService } from '../day-boundary.service';
 import { VirtualMessageListComponent } from './virtual-message-list.component';

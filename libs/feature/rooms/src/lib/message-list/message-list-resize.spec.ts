@@ -4,7 +4,7 @@ import { render } from '@trinity/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SimpleMessageListComponent } from './simple-message-list/simple-message-list.component';
 import { VirtualMessageListComponent } from './virtual-message-list/virtual-message-list.component';
-import type { MessageView } from '@trinity/util/matrix';
+import type { MessageView } from '@trinity/data-access/timeline';
 import type { MessageListBase } from './message-list-base';
 
 /** The minimum a list needs to render a row and know its id. */

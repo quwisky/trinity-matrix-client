@@ -1179,6 +1179,50 @@ describe('TimelineService', () => {
       expect(m.caption).toBeNull(); // no MSC2530 filename → no caption
     });
 
+    it('deep-freezes legacy poll payloads at the presentation boundary', () => {
+      const svc = setup([
+        fakeEvent({
+          id: '$poll',
+          sender: '@a:hs',
+          type: 'm.poll.start',
+          content: {
+            'm.poll.start': {
+              question: { 'm.text': 'Choose one' },
+              answers: [
+                { id: 'a', 'm.text': 'A' },
+                { id: 'b', 'm.text': 'B' },
+              ],
+            },
+          },
+        }),
+      ]);
+
+      const poll = svc.messages()[0].poll;
+      expect(poll?.options).toHaveLength(2);
+      expect(Object.isFrozen(poll)).toBe(true);
+      expect(Object.isFrozen(poll?.options)).toBe(true);
+      expect(Object.isFrozen(poll?.options[0])).toBe(true);
+    });
+
+    it('freezes legacy location payloads at the presentation boundary', () => {
+      const svc = setup([
+        fakeEvent({
+          id: '$location',
+          sender: '@a:hs',
+          msgtype: 'm.location',
+          content: {
+            msgtype: 'm.location',
+            body: 'Meeting point',
+            geo_uri: 'geo:47.4979,19.0402',
+          },
+        }),
+      ]);
+
+      const location = svc.messages()[0].location;
+      expect(location).toMatchObject({ lat: 47.4979, lng: 19.0402 });
+      expect(Object.isFrozen(location)).toBe(true);
+    });
+
     it('projects an MSC2530 caption alongside a media message', () => {
       const svc = setup([
         fakeEvent({
@@ -1261,6 +1305,8 @@ describe('TimelineService', () => {
         waveform: [0, 512, 1024],
         durationMs: 3000,
       });
+      expect(Object.isFrozen(m.media)).toBe(true);
+      expect(Object.isFrozen(m.media?.waveform)).toBe(true);
     });
 
     it('caps a hostile voice message’s waveform length (DoS guard)', () => {

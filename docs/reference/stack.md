@@ -159,12 +159,11 @@ The three `@shikijs/*` packages must move together. `@shikijs/langs-precompiled`
 usable here at all: it emits `v`-flag regular-expression literals, which are below the
 Safari 16.4 floor the browserslist policy sets.
 
-The grammars are roughly 813 KB raw and 134 kB gzipped. `message-view.ts` consumes the
-highlighter and sits in the eager chunk, so exporting `code-highlight` from the
-`@trinity/util/matrix` barrel would drag every grammar into the initial bundle. It is
-reachable only through the `@trinity/util/matrix/code-highlight` path alias and imported
-for side effect at the top of the rooms page, which puts it in the lazy rooms chunk.
-Nothing enforces that — only the comment at the barrel.
+The grammars are roughly 813 KB raw and 134 kB gzipped. Their implementation lives in
+`libs/feature/rooms/src/lib/message-presentation/code-highlight.ts` and is imported
+relatively for side effect at the top of the lazy rooms page. It registers the synchronous
+highlighter before the first Message Presentation pass without creating a public secondary
+entrypoint that an eager consumer could import.
 
 ### The web build output goes to www, flat
 
