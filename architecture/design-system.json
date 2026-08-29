@@ -1,0 +1,171 @@
+{
+  "categories": {
+    "foundations": [
+      {
+        "project": "components-icon",
+        "entrypoint": "@trinity/components/icon"
+      },
+      {
+        "project": "components-utils",
+        "entrypoint": "@trinity/components/utils"
+      }
+    ],
+    "controls": [
+      {
+        "project": "components-button",
+        "entrypoint": "@trinity/components/button"
+      },
+      {
+        "project": "components-checkbox",
+        "entrypoint": "@trinity/components/checkbox"
+      },
+      {
+        "project": "components-emoji-picker",
+        "entrypoint": "@trinity/components/emoji-picker"
+      },
+      {
+        "project": "components-field",
+        "entrypoint": "@trinity/components/field"
+      },
+      {
+        "project": "components-input",
+        "entrypoint": "@trinity/components/input"
+      },
+      {
+        "project": "components-label",
+        "entrypoint": "@trinity/components/label"
+      },
+      {
+        "project": "components-qr-scanner",
+        "entrypoint": "@trinity/components/qr-scanner"
+      },
+      {
+        "project": "components-radio-group",
+        "entrypoint": "@trinity/components/radio-group"
+      },
+      {
+        "project": "components-select",
+        "entrypoint": "@trinity/components/select"
+      },
+      {
+        "project": "components-switch",
+        "entrypoint": "@trinity/components/switch"
+      },
+      {
+        "project": "components-textarea",
+        "entrypoint": "@trinity/components/textarea"
+      },
+      {
+        "project": "components-toggle-group",
+        "entrypoint": "@trinity/components/toggle-group"
+      }
+    ],
+    "overlays": [
+      {
+        "project": "components-overlay",
+        "entrypoint": "@trinity/components/overlay"
+      }
+    ],
+    "navigation-layout": [
+      {
+        "project": "components-card",
+        "entrypoint": "@trinity/components/card"
+      },
+      {
+        "project": "components-page-header",
+        "entrypoint": "@trinity/components/page-header"
+      },
+      {
+        "project": "components-separator",
+        "entrypoint": "@trinity/components/separator"
+      },
+      {
+        "project": "components-tabs",
+        "entrypoint": "@trinity/components/tabs"
+      }
+    ],
+    "generic-content": [
+      {
+        "project": "components-avatar",
+        "entrypoint": "@trinity/components/avatar"
+      },
+      {
+        "project": "components-badge",
+        "entrypoint": "@trinity/components/badge"
+      },
+      {
+        "project": "components-banner",
+        "entrypoint": "@trinity/components/banner"
+      },
+      {
+        "project": "components-empty-state",
+        "entrypoint": "@trinity/components/empty-state"
+      },
+      {
+        "project": "components-progress",
+        "entrypoint": "@trinity/components/progress"
+      },
+      {
+        "project": "components-spinner",
+        "entrypoint": "@trinity/components/spinner"
+      },
+      {
+        "project": "components-tooltip",
+        "entrypoint": "@trinity/components/tooltip"
+      }
+    ]
+  },
+  "migrationExceptions": [
+    {
+      "project": "components-encryption-dialog",
+      "entrypoint": "@trinity/components/encryption-dialog",
+      "targetOwner": "Trust application composition",
+      "removeBy": "#319, #322",
+      "reason": "The current cross-feature loader seam remains public until Trust owns the workflow."
+    },
+    {
+      "project": "components-media-bubble",
+      "entrypoint": "@trinity/components/media-bubble",
+      "targetOwner": "Conversations",
+      "removeBy": "#307, #322",
+      "reason": "Message-specific media presentation moves with the Conversation capability."
+    },
+    {
+      "project": "components-message-toolbar",
+      "entrypoint": "@trinity/components/message-toolbar",
+      "targetOwner": "Conversations",
+      "removeBy": "#308, #322",
+      "reason": "Message actions are product presentation rather than domain-neutral UI."
+    },
+    {
+      "project": "components-settings-dialog",
+      "entrypoint": "@trinity/components/settings-dialog",
+      "targetOwner": "Settings application composition",
+      "removeBy": "#313, #322",
+      "reason": "The current settings loader seam remains public until Settings owns the workflow."
+    }
+  ],
+  "nonConsumable": [
+    {
+      "project": "components-storybook-host",
+      "reason": "The Storybook host documents the public tier but is not an application entrypoint."
+    }
+  ],
+  "proofScreens": [
+    {
+      "project": "feature-auth",
+      "source": "libs/feature/auth/src/lib/login/login.page.ts",
+      "template": "libs/feature/auth/src/lib/login/login.page.html",
+      "publicEntrypoints": [
+        "@trinity/components/button",
+        "@trinity/components/card",
+        "@trinity/components/field",
+        "@trinity/components/icon",
+        "@trinity/components/input",
+        "@trinity/components/overlay",
+        "@trinity/components/spinner"
+      ],
+      "requiredSelectors": ["<trn-field", "<trn-field-label", "trnInput"]
+    }
+  ]
+}

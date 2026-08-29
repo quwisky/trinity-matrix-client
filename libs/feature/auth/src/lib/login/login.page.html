@@ -34,10 +34,10 @@
 
   @if (!baseUrl() && !reauthUserId()) {
     <!-- ── Step 1: Homeserver (skipped in re-auth: the HS is known) ── -->
-    <div class="login-card__field">
-      <label trnLabel for="homeserver" class="login-card__label"
-        >Homeserver</label
-      >
+    <trn-field class="login-card__field">
+      <trn-field-label controlId="homeserver" variant="eyebrow">
+        Homeserver
+      </trn-field-label>
       <input
         trnInput
         id="homeserver"
@@ -48,7 +48,7 @@
         [formField]="homeserverForm.homeserver"
         (keyup.enter)="discover()"
       />
-    </div>
+    </trn-field>
 
     <button
       trnBtn
@@ -61,10 +61,10 @@
   } @else {
     <!-- ── Step 2: Username + Password ────────────────── -->
     @if (passwordSupported()) {
-      <div class="login-card__field">
-        <label trnLabel for="username" class="login-card__label"
-          >Username</label
-        >
+      <trn-field class="login-card__field">
+        <trn-field-label controlId="username" variant="eyebrow">
+          Username
+        </trn-field-label>
         <input
           #usernameInput
           trnInput
@@ -75,12 +75,12 @@
           [formField]="credentialsForm.username"
           (keyup.enter)="loginPassword()"
         />
-      </div>
+      </trn-field>
 
-      <div class="login-card__field">
-        <label trnLabel for="password" class="login-card__label"
-          >Password</label
-        >
+      <trn-field class="login-card__field">
+        <trn-field-label controlId="password" variant="eyebrow">
+          Password
+        </trn-field-label>
         <div class="relative">
           <input
             trnInput
@@ -109,7 +109,7 @@
             />
           </button>
         </div>
-      </div>
+      </trn-field>
 
       <button
         trnBtn

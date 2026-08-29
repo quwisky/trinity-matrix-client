@@ -27,8 +27,8 @@ import {
 } from 'rxjs';
 import { TrnButton } from '@trinity/components/button';
 import { TrnCardImports } from '@trinity/components/card';
+import { TrnFieldImports } from '@trinity/components/field';
 import { TrnInput } from '@trinity/components/input';
-import { TrnLabel } from '@trinity/components/label';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import {
   AuthService,
@@ -66,8 +66,8 @@ import { TrnIconComponent } from '@trinity/components/icon';
     FormField,
     TrnButton,
     TrnCardImports,
+    TrnFieldImports,
     TrnInput,
-    TrnLabel,
     TrnSpinnerComponent,
     TrnIconComponent,
   ],

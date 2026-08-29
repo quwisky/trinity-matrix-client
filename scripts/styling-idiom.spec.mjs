@@ -60,6 +60,8 @@ const componentStylesheets = stylesheets.filter(
 const LEDGER = [
   'libs/components/banner/src/lib/banner.component.scss',
   'libs/components/emoji-picker/src/lib/trn-emoji-picker/trn-emoji-picker.component.scss',
+  'libs/components/field/src/lib/field-label/trn-field-label.component.scss',
+  'libs/components/field/src/lib/field/trn-field.component.scss',
   'libs/components/icon/src/lib/trn-icon/trn-icon.component.scss',
   'libs/components/media-bubble/src/lib/media-bubble.component.scss',
   'libs/components/message-toolbar/src/lib/message-toolbar.component.scss',
@@ -107,7 +109,6 @@ const LEDGER = [
   'libs/feature/rooms/src/lib/quick-switcher/quick-switcher.component.scss',
   'libs/feature/rooms/src/lib/reaction-picker/reaction-picker.component.scss',
   'libs/feature/rooms/src/lib/reactions-dialog/reactions-dialog.component.scss',
-  'libs/feature/rooms/src/lib/room-link-preview/room-link-preview.component.scss',
   'libs/feature/rooms/src/lib/room-settings/room-settings.component.scss',
   'libs/feature/rooms/src/lib/room-settings/room-widget-create/room-widget-create.component.scss',
   'libs/feature/rooms/src/lib/room-settings/room-widget-frame/room-widget-frame.component.scss',

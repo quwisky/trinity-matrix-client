@@ -1,0 +1,12 @@
+:host,
+label {
+  display: block;
+}
+
+.trn-field-label--eyebrow {
+  color: var(--trinity-text-muted);
+  font-size: var(--trinity-type-caption-size);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}

@@ -1,6 +1,6 @@
 # Library inventory
 
-The workspace holds one application and 75 libraries. Every shipped library carries its current
+The workspace holds one application and 76 libraries. Every shipped library carries its current
 `type:*` and `scope:*` tags plus target `role:*` and `capability:*` metadata; UI libraries also
 carry a `ui:*` tag that
 separates Trinity's own wrapper layer from the vendored kit; those tags are what
@@ -17,7 +17,7 @@ Libraries are imported through `@trinity/*` path aliases declared in
 never by relative path across a library boundary. Imports _within_ a library stay relative.
 
 `libs/` itself has seven entries. Four are layer parents holding that layer's libraries:
-`data-access/` (14), `feature/` (5), `util/` (2) and `components/` (27) — the public component
+`data-access/` (14), `feature/` (5), `util/` (2) and `components/` (31) — the public component
 tier feature code reaches for. `spartan/` (22) groups the generated Helm components plus the
 `tests` project that holds the specs pinning their behaviour. The remaining two are single
 libraries sitting directly under `libs/`: `platform-native` and `testing`.
@@ -122,6 +122,7 @@ reach a service.
 | `libs/components/encryption-dialog` | `@trinity/components/encryption-dialog` | `type:ui`, `scope:shared`, `ui:public` | `EncryptionDialogService` and its `ENCRYPTION_DIALOG_COMPONENTS` loader token: presents the unlock and device-verification flows as a dialog on wide layouts and a route on narrow ones. Its own library rather than part of `overlay`, which stays the generic dialog wrapper                    |
 | `libs/components/settings-dialog`   | `@trinity/components/settings-dialog`   | `type:ui`, `scope:shared`, `ui:public` | `SettingsDialogService` and `SETTINGS_DIALOG_CONFIG`: lazy-loads one settings modal on web/Electron, routes installed Android/iOS, reports load failures without leaving the current route, and prevents stale or duplicate opens without importing the settings feature                          |
 | `libs/components/emoji-picker`      | `@trinity/components/emoji-picker`      | `type:ui`, `scope:shared`, `ui:public` | Trinity-authored: `<trn-emoji-picker>` over `TrnEmojiPick`, plus the `TrnEmojiIndex` facade the `:shortcode` autocomplete uses — the only importer of `@ctrl/ngx-emoji-mart`                                                                                                                      |
+| `libs/components/field`             | `@trinity/components/field`             | `type:ui`, `scope:shared`, `ui:public` | Trinity-authored field composition: `<trn-field>` groups projected controls without changing their native behaviour, while `<trn-field-label>` owns the visual variant and native label/control association                                                                                       |
 | `libs/components/icon`              | `@trinity/components/icon`              | `type:ui`, `scope:shared`, `ui:public` | Trinity-authored: `<trn-icon>` over a closed `TrnIconName` union of the 82 icons in use, the single `TRN_ICONS` vendor map, and `provideTrnIcons()` — the only importer of `@ng-icons` outside the generated kit                                                                                  |
 | `libs/components/overlay`           | `@trinity/components/overlay`           | `type:ui`, `scope:shared`, `ui:public` | Trinity-authored imperative overlay adapters: `TrnDialogService`, `TrnAlertService`, `TrnActionSheetService`, `TrnToastService`, plus `TrnDialogRef`, Trinity's own two-method handle (`close`, `closed`) so a modalled component can close itself without naming `@angular/cdk` in its signature |
 
@@ -129,7 +130,7 @@ reach a service.
 API is ours, so the library underneath can be swapped without touching a call site. It is the
 only UI tier feature code is meant to reach.
 
-The seventeen libraries under `libs/spartan/` are `@spartan-ng/cli`-generated Helm components,
+The 22 libraries under `libs/spartan/` are `@spartan-ng/cli`-generated Helm components,
 all tagged `type:ui`, `scope:shared`, `ui:vendor-wrapper`, all with the `hlm` selector prefix
 (`libs/spartan/tests` is the odd one out — no components, just the two specs that pin
 generated-kit behaviour across several libraries at once):

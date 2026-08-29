@@ -23,12 +23,6 @@
   @include auth.field;
 }
 
-// Stacked field label (trnLabel) — uppercase / muted, matching the prior Ionic
-// look. View-encapsulation specificity beats the trnLabel Tailwind utilities.
-.login-card__label {
-  @include auth.label;
-}
-
 // Native field (trnInput) — Discord-style filled box on the card surface so it
 // reads consistently in light + dark; the spartan border/ring stays for focus.
 .login-card__field input {
