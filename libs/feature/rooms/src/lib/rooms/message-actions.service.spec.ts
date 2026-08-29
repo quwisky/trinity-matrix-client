@@ -8,6 +8,7 @@ import {
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import { RoomsService } from '@trinity/data-access/rooms';
 import {
+  ConversationRuntime,
   TimelineActionsService,
   TimelineService,
 } from '@trinity/data-access/timeline';
@@ -59,6 +60,10 @@ describe('MessageActionsService', () => {
 
   const MOCKS: Provider[] = [
     MockProvider(TimelineService, { loadOlder, setTyping, openContext }),
+    {
+      provide: ConversationRuntime,
+      useFactory: () => ({ timeline: inject(TimelineService) }),
+    },
     MockProvider(TimelineActionsService, {
       send,
       reply,

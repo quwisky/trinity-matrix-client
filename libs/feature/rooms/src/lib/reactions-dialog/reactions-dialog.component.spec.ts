@@ -1,5 +1,9 @@
+import { inject } from '@angular/core';
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { TimelineService } from '@trinity/data-access/timeline';
+import {
+  ConversationRuntime,
+  TimelineService,
+} from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { type ReactionDetail } from '@trinity/util/matrix';
 import { render } from '@trinity/testing';
@@ -35,6 +39,10 @@ describe('ReactionsDialogComponent', () => {
       providers: [
         MockProvider(TrnDialogRef, { close: vi.fn() }),
         MockProvider(TimelineService, { reactionDetails }),
+        {
+          provide: ConversationRuntime,
+          useFactory: () => ({ timeline: inject(TimelineService) }),
+        },
       ],
     });
     return { fixture, container, c: fixture.componentInstance };

@@ -17,7 +17,7 @@ import {
   type LoadedMessageSearch,
   type MessageHit,
 } from '@trinity/data-access/search';
-import { TimelineService } from '@trinity/data-access/timeline';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { runWithBusy } from '@trinity/util/ui';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { AvatarComponent } from '@trinity/components/avatar';
@@ -36,13 +36,13 @@ interface HighlightPart {
  * In-room message search, presented from the room header (parallel to the threads
  * list) in the rooms shell's right-hand panel slot. Scoped to the active room's
  * `roomId`, a signal input the host binds. Injects {@link SearchService} +
- * {@link TimelineService} directly so the matching logic stays in core and nothing is
+ * the focused Conversation timeline directly so matching stays in data access and nothing is
  * threaded through props.
  *
  * E2EE-honest by construction:
  *  - The instant results come from {@link SearchService.searchLoadedMessages}, over the
  *    already-loaded, *decrypted* timeline — recomputed reactively by reading
- *    `TimelineService.messages()`, so decryption + scrollback re-run the search.
+ *    the Conversation timeline's `messages()`, so decryption + scrollback re-run the search.
  *  - For an **encrypted** room that's the only path: a lock banner states it covers the
  *    loaded messages only, with a "Load older messages" affordance to widen it.
  *  - For an **unencrypted** room a "Search all messages" button runs the homeserver
@@ -82,7 +82,7 @@ export class MessageSearchComponent {
   /** Timestamps go through the app-wide format preference, never a DatePipe. */
   readonly fmt = inject(DateTimeFormatService);
   private readonly search = inject(SearchService);
-  private readonly timeline = inject(TimelineService);
+  private readonly timeline = inject(ConversationRuntime).timeline;
   private readonly destroyRef = inject(DestroyRef);
   private readonly queryField =
     viewChild<ElementRef<HTMLInputElement>>('queryField');
@@ -195,7 +195,7 @@ export class MessageSearchComponent {
       busy: this.loadingHistory,
       error: this.error,
       destroyRef: this.destroyRef,
-      // The `loaded` computed re-runs when TimelineService.messages() updates after
+      // The `loaded` computed re-runs when the Conversation timeline updates after
       // the scrollback, so no manual re-search is needed.
     }).subscribe();
   }

@@ -10,14 +10,14 @@ import {
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/button';
-import { TimelineService } from '@trinity/data-access/timeline';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { type ReactionDetail } from '@trinity/util/matrix';
 
 /**
  * Dialog listing everyone who reacted to a message, one section per emoji.
  *
- * Reads the reactors once, when it opens ({@link TimelineService.reactionDetails}) —
+ * Reads the reactors once from the focused Conversation timeline when it opens —
  * a snapshot, not a live tally. The pills under the message stay live either way, and
  * this is a list you open, read and close; re-ordering it under the reader's finger
  * while they scan for a name would be worse than showing the moment they asked about.
@@ -30,7 +30,7 @@ import { type ReactionDetail } from '@trinity/util/matrix';
   imports: [EmptyStateComponent, AvatarComponent, TrnButton],
 })
 export class ReactionsDialogComponent implements OnInit {
-  private readonly timeline = inject(TimelineService);
+  private readonly timeline = inject(ConversationRuntime).timeline;
   private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef);
 
   /** The message whose reactors to list (populated from the dialog's `inputs`). */

@@ -57,9 +57,9 @@ import {
   MixedSpacesService,
 } from '@trinity/data-access/rooms';
 import {
+  ConversationRuntime,
   ThreadsService,
   TimelineActionsService,
-  TimelineService,
 } from '@trinity/data-access/timeline';
 import {
   HapticsService,
@@ -109,7 +109,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
  * Discord-style authenticated shell: server rail + channel sidebar (in a
  * responsive Tailwind drawer — static column at md+, slide-in below), the read
  * timeline, and a member list.
- * Wired to live synced rooms via `RoomsService` + `TimelineService`.
+ * Wired to live synced rooms via `RoomsService` + `ConversationRuntime`.
  */
 /**
  * The drawer widths at the `members` breakpoint, mirroring `rooms.page.scss`.
@@ -291,7 +291,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly accountScope = inject(AccountScopeService);
   private readonly mixedInvites = inject(MixedInvitesService);
   readonly invites = inject(InvitesService);
-  readonly timeline = inject(TimelineService);
+  readonly timeline = inject(ConversationRuntime).timeline;
   readonly timelineActions = inject(TimelineActionsService);
   readonly threads = inject(ThreadsService);
   readonly pinned = inject(PinnedMessagesService);

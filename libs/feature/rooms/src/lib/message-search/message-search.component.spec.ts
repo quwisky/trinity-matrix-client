@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { inject, signal } from '@angular/core';
 import { type ComponentFixture } from '@angular/core/testing';
 import { fireEvent, render } from '@trinity/testing';
 import {
@@ -7,7 +7,10 @@ import {
   type MessageHit,
   type ServerMessageSearch,
 } from '@trinity/data-access/search';
-import { TimelineService } from '@trinity/data-access/timeline';
+import {
+  ConversationRuntime,
+  TimelineService,
+} from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
@@ -68,6 +71,10 @@ describe('MessageSearchComponent', () => {
           loadMoreHistory,
         }),
         MockProvider(TimelineService, { messages: signal([]) }),
+        {
+          provide: ConversationRuntime,
+          useFactory: () => ({ timeline: inject(TimelineService) }),
+        },
       ],
     });
     return { fixture, container, c: fixture.componentInstance };

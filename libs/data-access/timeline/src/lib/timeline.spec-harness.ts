@@ -10,6 +10,7 @@ import { of } from 'rxjs';
 import { vi } from 'vitest';
 import { TimelineService } from './timeline.service';
 import { TimelineActionsService } from './timeline-actions.service';
+import { ConversationRuntime } from './conversation-runtime.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaService, type UploadedMedia } from '@trinity/data-access/media';
 import {
@@ -342,6 +343,10 @@ export function setupActions(
     providers: [
       TimelineService,
       TimelineActionsService,
+      {
+        provide: ConversationRuntime,
+        useFactory: () => ({ timeline: TestBed.inject(TimelineService) }),
+      },
       matrixProvider(client),
       mediaProvider(),
     ],

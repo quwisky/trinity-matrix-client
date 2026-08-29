@@ -24,7 +24,7 @@
       "metric": "conversation-attach",
       "scope": "A visible conversation attaches its keyed projections and becomes presentable.",
       "unit": "milliseconds to first presentable snapshot",
-      "current": "Existing room-open journey; keyed instrumentation is introduced by #304.",
+      "current": "Conversation Runtime reports the last synchronous child attach-to-presentable duration. The production RoomShellNavigation journey focuses an immutable Account-and-Room key and every room surface consumes the focused timeline child interface.",
       "owner": "Conversations",
       "issue": "#304"
     },
@@ -48,10 +48,13 @@
       "metric": "retained-resources",
       "scope": "Blurred, retained, and evicted conversations release listeners and memory according to policy.",
       "unit": "handles, listeners, and retained bytes per account",
-      "current": "Projection Runtime reports handles, listeners, and deterministic retained payload bytes. The sync-state tracer retains one listener and at most 40 bytes across distinct published and pending enum values per live Account, then returns to zero on release; conversation byte policy remains in #304.",
+      "current": "Projection Runtime reports handles, listeners, and deterministic retained payload bytes. The sync-state tracer retains one listener and at most 40 bytes across distinct published and pending enum values per live Account. Conversation Runtime retains at most two blurred handles per Account; each keeps 11 browser listeners, the latest 100 projected events, at most 200 sender dependencies, and at most 11,200 deterministic modeled bytes. Eviction and teardown return a child to zero resources.",
       "baseline": {
         "listenerCountPerLiveAccount": 1,
-        "maxRetainedBytesPerLiveAccount": 40
+        "maxRetainedBytesPerLiveAccount": 40,
+        "conversationRetainedHandlesPerAccount": 2,
+        "conversationListenerCountPerBrowserHandle": 11,
+        "conversationMaxRetainedBytesPerHandle": 11200
       },
       "owner": "Conversations and Projection Runtime",
       "issue": "#301, #304"

@@ -821,6 +821,75 @@ describe('TimelineService', () => {
     expect(received).toHaveLength(0); // the closed room is never re-acked
   });
 
+  it('keeps a blurred timeline warm while suppressing foreground-only effects', async () => {
+    const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
+    const room = fakeRoom(events);
+    const sendReadReceipt = vi.fn((_event: ReturnType<typeof fakeEvent>) =>
+      Promise.resolve({}),
+    );
+    const scrollback = vi.fn(() => Promise.resolve(room));
+    const client = { ...fakeClient(room, []), sendReadReceipt, scrollback };
+    TestBed.configureTestingModule({
+      providers: [TimelineService, matrixProvider(client), mediaProvider()],
+    });
+    const svc = TestBed.inject(TimelineService);
+    svc.open('!r:hs');
+    sendReadReceipt.mockClear();
+    const loadOlder$ = svc.loadOlder();
+
+    svc.setVisible(false);
+    await firstValueFrom(loadOlder$);
+    events.push(fakeEvent({ id: '$b', sender: '@a:hs', body: 'still warm' }));
+    window.dispatchEvent(new Event('focus'));
+
+    expect(svc.openRoomId).toBe('!r:hs');
+    expect(svc.openContext()).toBeNull();
+    expect(scrollback).not.toHaveBeenCalled();
+    expect(sendReadReceipt).not.toHaveBeenCalled();
+
+    svc.setVisible(true);
+
+    expect(svc.openContext()?.room).toBe(room);
+    expect(sendReadReceipt).toHaveBeenCalledTimes(1);
+    expect(sendReadReceipt.mock.calls[0][0].getId()).toBe('$b');
+  });
+
+  it('reports deterministic retained resources and returns them to zero on release', () => {
+    const svc = setup([
+      fakeEvent({ id: '$a', sender: '@a:hs', body: 'one' }),
+      fakeEvent({ id: '$b', sender: '@b:hs', body: 'two' }),
+    ]);
+
+    expect(svc.resources()).toEqual({
+      listenerCount: 11,
+      retainedBytes: 160,
+    });
+
+    svc.close();
+
+    expect(svc.resources()).toEqual({ listenerCount: 0, retainedBytes: 0 });
+  });
+
+  it('bounds the application projection retained by a blurred conversation', () => {
+    const events = Array.from({ length: 150 }, (_, index) =>
+      fakeEvent({
+        id: `$${index}`,
+        sender: `@user-${index}:hs`,
+        body: `message ${index}`,
+      }),
+    );
+    const svc = setup(events);
+
+    svc.setVisible(false);
+
+    expect(svc.messages()).toHaveLength(100);
+    expect(svc.resources().retainedBytes).toBeLessThanOrEqual(11_200);
+
+    svc.setVisible(true);
+
+    expect(svc.messages()).toHaveLength(150);
+  });
+
   it('re-acks with the latest live event on refocus, not a stale snapshot', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(false); // start unfocused
     const received: { getId: () => string }[] = [];
@@ -905,6 +974,27 @@ describe('TimelineService', () => {
     svc.close();
 
     expect(clientA.listenerCount()).toBe(0); // A's listeners must be gone
+  });
+
+  it('projects through an explicitly keyed Account client instead of the active pointer', () => {
+    const room = fakeRoom([
+      fakeEvent({ id: '$keyed', sender: '@alice:hs', body: 'keyed' }),
+    ]);
+    const keyedClient = fakeClient(room, []);
+    const activeClient = fakeClient(fakeRoom([]), []);
+    TestBed.configureTestingModule({
+      providers: [
+        TimelineService,
+        matrixProvider(activeClient),
+        mediaProvider(),
+      ],
+    });
+    const svc = TestBed.inject(TimelineService);
+
+    svc.open('!r:hs', keyedClient as never);
+
+    expect(svc.openContext()?.client).toBe(keyedClient);
+    expect(svc.messages().map((message) => message.id)).toEqual(['$keyed']);
   });
 
   it('coalesces a burst of timeline events into a single re-projection', async () => {

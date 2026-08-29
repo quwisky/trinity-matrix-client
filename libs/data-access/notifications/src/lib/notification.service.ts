@@ -10,7 +10,7 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { TimelineService } from '@trinity/data-access/timeline';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { SessionStorageService } from '@trinity/platform-native';
 import { NotificationSoundService } from './notification-sound.service';
 import { getTrinityDesktopBridge } from '@trinity/platform-native';
@@ -74,7 +74,7 @@ export class NotificationService {
   private readonly matrix = inject(MatrixClientService);
   private readonly sound = inject(NotificationSoundService);
   private readonly router = inject(Router);
-  private readonly timeline = inject(TimelineService);
+  private readonly conversations = inject(ConversationRuntime);
   private readonly storage = inject(SessionStorageService);
 
   /** Whether {@link connect} has enabled us (and thus reconcile may attach). */
@@ -316,7 +316,7 @@ export class NotificationService {
     if (
       focused &&
       isActiveAccount &&
-      room.roomId === this.timeline.openRoomId
+      room.roomId === this.conversations.focused()?.key.roomId
     ) {
       return;
     }

@@ -7,7 +7,10 @@ import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationService } from './notification.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { TimelineService } from '@trinity/data-access/timeline';
+import {
+  ConversationRuntime,
+  TimelineService,
+} from '@trinity/data-access/timeline';
 import { SessionStorageService } from '@trinity/platform-native';
 import { encodeRoomSegment } from '@trinity/util/matrix';
 
@@ -82,6 +85,23 @@ function setup(
       }),
       MockProvider(Router, { navigate: vi.fn(() => Promise.resolve(true)) }),
       MockProvider(TimelineService),
+      {
+        provide: ConversationRuntime,
+        useFactory: () => {
+          const timeline = TestBed.inject(TimelineService);
+          return {
+            focused: () =>
+              timeline.openRoomId
+                ? {
+                    key: {
+                      accountId: activeUserId() ?? '',
+                      roomId: timeline.openRoomId,
+                    },
+                  }
+                : null,
+          };
+        },
+      },
       MockProvider(SessionStorageService, { setActive: storageSetActive }),
     ],
   });

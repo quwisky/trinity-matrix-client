@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 import { TimelineActionsService } from './timeline-actions.service';
+import { ConversationRuntime } from './conversation-runtime.service';
 import { TimelineService } from './timeline.service';
 import {
   fakeClient,
@@ -398,11 +399,9 @@ describe('TimelineActionsService', () => {
       expect(sent).toHaveLength(0);
     });
 
-    it('sends through the active account, re-resolved on every send', async () => {
-      // Multi-account: `MatrixClientService.instance` resolves whichever account is
-      // active at access time. sendMedia must therefore read it per send and never
-      // cache a client — otherwise a GIF (or any attachment) chosen after the user
-      // switches accounts would upload and post under the *previous* account.
+    it('keeps sending through the immutable Conversation account', async () => {
+      // A Conversation handle owns the client it opened on. Active Account can change
+      // while the handle is retained, but the handle must never silently retarget.
       const sentA: unknown[][] = [];
       const sentB: unknown[][] = [];
       const room = fakeRoom([]);
@@ -413,6 +412,10 @@ describe('TimelineActionsService', () => {
         providers: [
           TimelineService,
           TimelineActionsService,
+          {
+            provide: ConversationRuntime,
+            useFactory: () => ({ timeline: TestBed.inject(TimelineService) }),
+          },
           switchableMatrixProvider(active),
           mediaProvider(),
         ],
@@ -427,19 +430,18 @@ describe('TimelineActionsService', () => {
       active.client = clientB; // the user picks another account in the switcher
 
       await firstValueFrom(svc.sendMedia(gif(), ''));
-      expect(sentB).toHaveLength(1); // landed on the newly-active account
-      expect(sentA).toHaveLength(1); // and not a second time on the previous one
-      expect((sentB[0][1] as Record<string, unknown>)['msgtype']).toBe(
+      expect(sentA).toHaveLength(2);
+      expect(sentB).toHaveLength(0);
+      expect((sentA[1][1] as Record<string, unknown>)['msgtype']).toBe(
         'm.image',
       );
     });
 
-    it('resolves the active account on subscribe, not when called', async () => {
+    it('resolves the immutable Conversation on subscribe without retargeting', async () => {
       // These actions are documented as cold: calling them must do nothing until
-      // subscribed. So the account must be read at *subscribe* time — resolving it
-      // eagerly means an Observable held across an account switch (or replayed by a
-      // retry operator) would upload and post under the account that is no longer
-      // active.
+      // subscribed. Even when Active Account changes before subscription, the focused
+      // handle still names the original Account-and-Room pair; Workspace must focus a
+      // different handle to change the action target.
       const sentA: unknown[][] = [];
       const sentB: unknown[][] = [];
       const room = fakeRoom([]);
@@ -450,6 +452,10 @@ describe('TimelineActionsService', () => {
         providers: [
           TimelineService,
           TimelineActionsService,
+          {
+            provide: ConversationRuntime,
+            useFactory: () => ({ timeline: TestBed.inject(TimelineService) }),
+          },
           switchableMatrixProvider(active),
           mediaProvider(),
         ],
@@ -461,8 +467,8 @@ describe('TimelineActionsService', () => {
       active.client = clientB; // …account switched before anyone subscribes
       await firstValueFrom(send$);
 
-      expect(sentA).toHaveLength(0); // nothing escaped to the stale account
-      expect(sentB).toHaveLength(1);
+      expect(sentA).toHaveLength(1);
+      expect(sentB).toHaveLength(0);
     });
 
     it('is inert when the room closed before subscribe', async () => {

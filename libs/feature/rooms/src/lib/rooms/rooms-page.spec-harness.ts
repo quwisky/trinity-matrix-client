@@ -5,7 +5,7 @@
 // fork crossed the 2 GB heap ceiling around test 77 and died mid-run. vitest isolates per
 // FILE, so splitting the describes across files is what bounds the peak; this holds the
 // pieces they all shared.
-import { signal, type Provider } from '@angular/core';
+import { inject, signal, type Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   ActivatedRoute,
@@ -20,6 +20,12 @@ import {
   type PendingInvite,
 } from '@trinity/data-access/invites';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
+import {
+  ConversationRuntime,
+  TimelineService,
+  type ConversationHandle,
+  type ConversationKey,
+} from '@trinity/data-access/timeline';
 import { RoomNotificationsService } from '@trinity/data-access/notifications';
 import { RoomActionPermissionsService } from '@trinity/data-access/rooms';
 
@@ -133,6 +139,32 @@ export const SHARED_MOCKS: Provider[] = [
   ShellShortcutsService,
   SessionActionsService,
   WorkspaceAccountSwitchService,
+  {
+    provide: ConversationRuntime,
+    useFactory: () => {
+      const timeline = inject(TimelineService);
+      const focused = signal<ConversationHandle | null>(null);
+      return {
+        timeline,
+        focused: focused.asReadonly(),
+        focus: vi.fn((key: ConversationKey) => {
+          timeline.open(key.roomId);
+          const state = signal<'focused'>('focused');
+          const handle = {
+            key: Object.freeze({ ...key }),
+            state: state.asReadonly(),
+            timeline,
+          } satisfies ConversationHandle;
+          focused.set(handle);
+          return handle;
+        }),
+        blur: vi.fn(() => {
+          timeline.close();
+          focused.set(null);
+        }),
+      };
+    },
+  },
   // Settings presentation has its own focused component-library suite. Room-shell tests only
   // need the session coordinator's boundary and must not construct a real dialog service from
   // their deliberately minimal Router stub.

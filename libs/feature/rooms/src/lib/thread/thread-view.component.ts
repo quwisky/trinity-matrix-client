@@ -38,7 +38,7 @@ import { TrnTooltip } from '@trinity/components/tooltip';
 import {
   ThreadsService,
   TimelineActionsService,
-  TimelineService,
+  ConversationRuntime,
 } from '@trinity/data-access/timeline';
 import { RoomsService } from '@trinity/data-access/rooms';
 import {
@@ -125,7 +125,7 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   private readonly sourceSvc = inject(MessageSourceService);
   private readonly editHistorySvc = inject(EditHistoryDialogService);
   private readonly reactionsDialog = inject(ReactionsDialogService);
-  private readonly timeline = inject(TimelineService);
+  private readonly timeline = inject(ConversationRuntime).timeline;
   private readonly timelineActions = inject(TimelineActionsService);
   private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);

@@ -12,8 +12,8 @@ import { RoomsService } from '@trinity/data-access/rooms';
 import { TrnDialogService } from '@trinity/components/overlay';
 import { isMobileOs } from '@trinity/platform-native';
 import {
+  ConversationRuntime,
   TimelineActionsService,
-  TimelineService,
 } from '@trinity/data-access/timeline';
 import { type Mention } from '@trinity/util/matrix';
 import type { ImagePackImage } from '@trinity/data-access/media';
@@ -51,7 +51,7 @@ export class MessageActionsService {
   private readonly status = inject(ShellStatusService);
   private readonly rooms = inject(RoomsService);
   private readonly jumpToDateSvc = inject(JumpToDateService);
-  private readonly timeline = inject(TimelineService);
+  private readonly timeline = inject(ConversationRuntime).timeline;
   private readonly timelineActions = inject(TimelineActionsService);
   private readonly pinned = inject(PinnedMessagesService);
   private readonly dialog = inject(TrnDialogService);

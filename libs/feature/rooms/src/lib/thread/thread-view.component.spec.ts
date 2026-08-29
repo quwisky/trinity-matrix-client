@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { inject, signal } from '@angular/core';
 import { type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import {
@@ -31,6 +31,7 @@ vi.mock('@trinity/platform-native', async (importOriginal) => ({
   isMobileOs: () => platform.mobile,
 }));
 import {
+  ConversationRuntime,
   ThreadsService,
   TimelineActionsService,
   TimelineService,
@@ -161,6 +162,10 @@ async function build(
         typingNames: signal<string[]>(state.typingNames ?? []).asReadonly(),
         setTyping: setTypingCalls,
       }),
+      {
+        provide: ConversationRuntime,
+        useFactory: () => ({ timeline: inject(TimelineService) }),
+      },
       MockProvider(TimelineActionsService),
       MockProvider(RoomsService, { membersFor }),
       MockProvider(MessageSourceService, { open: sourceOpen }),

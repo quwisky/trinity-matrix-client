@@ -1,8 +1,9 @@
-import { signal } from '@angular/core';
+import { inject, signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  ConversationRuntime,
   TimelineService,
   type RoomTombstone,
 } from '@trinity/data-access/timeline';
@@ -14,6 +15,10 @@ async function build(tombstone: RoomTombstone | null) {
       MockProvider(TimelineService, {
         tombstone: signal<RoomTombstone | null>(tombstone).asReadonly(),
       }),
+      {
+        provide: ConversationRuntime,
+        useFactory: () => ({ timeline: inject(TimelineService) }),
+      },
     ],
   });
   return { cmp: fixture.componentInstance, container };
