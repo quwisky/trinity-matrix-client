@@ -72,16 +72,7 @@
           </span>
         </label>
 
-        @if (mayManageAliases()) {
-          <trn-room-aliases [roomId]="spaceId()" />
-        } @else {
-          <p
-            class="space-settings__note"
-            data-testid="space-aliases-unavailable"
-          >
-            Your role cannot change this space’s addresses.
-          </p>
-        }
+        <trn-room-aliases [roomId]="spaceId()" />
       </trn-tab-panel>
 
       <trn-tab-panel

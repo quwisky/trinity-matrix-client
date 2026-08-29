@@ -100,13 +100,7 @@
           />
         </label>
 
-        @if (mayManageAliases()) {
-          <trn-room-aliases [roomId]="roomId()" />
-        } @else {
-          <p class="room-settings__note" data-testid="room-aliases-unavailable">
-            Your role cannot change this room’s addresses.
-          </p>
-        }
+        <trn-room-aliases [roomId]="roomId()" />
       </trn-tab-panel>
 
       <trn-tab-panel

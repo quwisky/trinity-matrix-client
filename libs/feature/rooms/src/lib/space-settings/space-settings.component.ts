@@ -126,9 +126,6 @@ export class SpaceSettingsComponent implements OnInit {
   readonly mayEditJoinRule = computed(
     () => this.livePermissions().joinRule.available,
   );
-  readonly mayManageAliases = computed(
-    () => this.livePermissions().aliases.available,
-  );
   readonly saveUnavailableReason = computed(() =>
     this.canSave() ? null : 'Your role cannot change these space settings.',
   );

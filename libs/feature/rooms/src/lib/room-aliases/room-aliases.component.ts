@@ -9,11 +9,15 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormField, form } from '@angular/forms/signals';
-import { TrnButton } from '@trinity/components/button';
+import { FormField, disabled, form } from '@angular/forms/signals';
+import { TrnActionAvailability, TrnButton } from '@trinity/components/button';
 import { TrnInput } from '@trinity/components/input';
 import { TrnToastService } from '@trinity/components/overlay';
-import { RoomAliasesService } from '@trinity/data-access/rooms';
+import { TrnTooltip } from '@trinity/components/tooltip';
+import {
+  RoomActionPermissionsService,
+  RoomAliasesService,
+} from '@trinity/data-access/rooms';
 
 /** Reject alias localparts containing characters an `#alias:server` can't hold. */
 const INVALID_LOCALPART = /[\s:#]/;
@@ -21,19 +25,21 @@ const INVALID_LOCALPART = /[\s:#]/;
 /**
  * Manage a room's published addresses: list its local aliases, add or remove them in the
  * homeserver directory, and choose the main (canonical) one. Rendered inside the room
- * settings dialog for viewers whose power level lets them manage addresses. Backed by
+ * settings dialog. The list stays readable after a live power-level change while each
+ * mutation control becomes focusable-but-unavailable with an explanation. Backed by
  * {@link RoomAliasesService}; the synced client reflects canonical changes through state.
  */
 @Component({
   selector: 'trn-room-aliases',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './room-aliases.component.html',
-  imports: [FormField, TrnButton, TrnInput],
+  imports: [FormField, TrnButton, TrnActionAvailability, TrnInput, TrnTooltip],
 })
 export class RoomAliasesComponent implements OnInit {
   readonly roomId = input.required<string>();
 
   private readonly aliasesSvc = inject(RoomAliasesService);
+  private readonly permissions = inject(RoomActionPermissionsService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -48,10 +54,15 @@ export class RoomAliasesComponent implements OnInit {
 
   readonly serverName = this.aliasesSvc.serverName();
   readonly isEmpty = computed(() => this.aliases().length === 0);
+  readonly availability = computed(
+    () => this.permissions.settings(this.roomId()).aliases,
+  );
 
   /** The new-alias localpart (the app prepends `#` and appends `:server`). */
   private readonly aliasModel = signal({ localpart: '' });
-  readonly aliasForm = form(this.aliasModel);
+  readonly aliasForm = form(this.aliasModel, (path) => {
+    disabled(path.localpart, { when: () => !this.availability().available });
+  });
 
   ngOnInit(): void {
     this.canonical.set(this.aliasesSvc.currentCanonical(this.roomId()));
@@ -84,6 +95,9 @@ export class RoomAliasesComponent implements OnInit {
 
   /** Publish `#<localpart>:<server>` as a new local alias. */
   add(): void {
+    if (!this.availability().available) {
+      return;
+    }
     const localpart = this.aliasModel().localpart.trim().replace(/^#/, '');
     if (!this.serverName || !localpart || INVALID_LOCALPART.test(localpart)) {
       this.toast.show('Enter a valid address (letters, digits, no spaces).', {
@@ -126,7 +140,7 @@ export class RoomAliasesComponent implements OnInit {
 
   /** Remove a local alias; if it was the main one, the canonical clears too. */
   remove(alias: string): void {
-    if (this.isRemoving(alias)) {
+    if (this.isRemoving(alias) || !this.availability().available) {
       return;
     }
     this.setRemoving(alias, true);
@@ -157,6 +171,9 @@ export class RoomAliasesComponent implements OnInit {
 
   /** Make an existing local alias the room's main (canonical) address. */
   setMain(alias: string): void {
+    if (!this.availability().available) {
+      return;
+    }
     this.aliasesSvc
       .setCanonicalAlias(this.roomId(), alias)
       .pipe(takeUntilDestroyed(this.destroyRef))

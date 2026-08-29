@@ -165,8 +165,15 @@ describe('RoomSettingsComponent', () => {
     expect(name.disabled).toBe(true);
     expect(save.getAttribute('aria-disabled')).toBe('true');
     expect(
-      container.querySelector('[data-testid="room-aliases-unavailable"]'),
-    ).not.toBeNull();
+      container.querySelector<HTMLInputElement>(
+        '[data-testid=room-alias-input]',
+      )?.disabled,
+    ).toBe(true);
+    expect(
+      container
+        .querySelector('[data-testid=room-alias-add]')
+        ?.getAttribute('aria-disabled'),
+    ).toBe('true');
   });
 
   it('offers restricted only when the room sits in a space', async () => {
@@ -619,11 +626,16 @@ describe('RoomSettingsComponent', () => {
     ).not.toBeNull();
   });
 
-  it('shows the addresses section only when the viewer can manage aliases', async () => {
-    const { container } = await build({ canManageAliases: true });
+  it('keeps the addresses section readable when the viewer cannot manage aliases', async () => {
+    const { container } = await build({ canManageAliases: false });
     expect(
       container.querySelector('[data-testid=room-aliases]'),
     ).not.toBeNull();
+    expect(
+      container
+        .querySelector('[data-testid=room-alias-add]')
+        ?.getAttribute('aria-disabled'),
+    ).toBe('true');
   });
 
   it('disables the access controls and never writes them when not permitted', async () => {

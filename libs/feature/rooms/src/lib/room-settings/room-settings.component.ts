@@ -165,9 +165,6 @@ export class RoomSettingsComponent implements OnInit {
   readonly mayEditHistory = computed(
     () => this.livePermissions().history.available,
   );
-  readonly mayManageAliases = computed(
-    () => this.livePermissions().aliases.available,
-  );
   readonly saveUnavailableReason = computed(() =>
     this.canSave() ? null : 'Your role cannot change these room settings.',
   );

@@ -130,8 +130,15 @@ describe('SpaceSettingsComponent', () => {
     expect(name.disabled).toBe(true);
     expect(save.getAttribute('aria-disabled')).toBe('true');
     expect(
-      container.querySelector('[data-testid="space-aliases-unavailable"]'),
-    ).not.toBeNull();
+      container.querySelector<HTMLInputElement>(
+        '[data-testid=room-alias-input]',
+      )?.disabled,
+    ).toBe(true);
+    expect(
+      container
+        .querySelector('[data-testid=room-alias-add]')
+        ?.getAttribute('aria-disabled'),
+    ).toBe('true');
   });
 
   it('seeds the form from the current name, topic and join rule', async () => {
@@ -305,13 +312,18 @@ describe('SpaceSettingsComponent', () => {
     expect(cmp.canSave()).toBe(true);
   });
 
-  it('keeps bans readable but hides addresses the viewer cannot manage', async () => {
+  it('keeps bans and addresses readable when mutations are unavailable', async () => {
     const { container } = await build({
       canManageAliases: false,
     });
 
     expect(container.querySelector('trn-banned-members')).not.toBeNull();
-    expect(container.querySelector('trn-room-aliases')).toBeNull();
+    expect(container.querySelector('trn-room-aliases')).not.toBeNull();
+    expect(
+      container
+        .querySelector('[data-testid=room-alias-add]')
+        ?.getAttribute('aria-disabled'),
+    ).toBe('true');
   });
 
   it('offers no history visibility — a space has no timeline to hide', async () => {

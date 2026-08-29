@@ -170,9 +170,10 @@ status surface near the thumb zone.
 Room and space settings derive every state-backed field from the same live projection:
 name, topic, avatar, join rule, history visibility, and canonical aliases. A dialog that is
 already open disables those fields and its Save action after a remote role change without
-discarding the user's draft. Settings and alias services repeat the field-specific check at
-subscription time; avatar uploads check once before upload and again before publishing the
-state event.
+discarding the user's draft. Alias lists remain mounted and readable; the localpart draft is
+preserved while Add, Make main, and Remove become focusable-but-unavailable. Settings and
+alias services repeat the field-specific check at subscription time; avatar uploads check
+once before upload and again before publishing the state event.
 
 The UI guard is only feedback, never the authorization boundary. Every corresponding cold
 data-access mutation re-reads the permission after any picker or confirmation and immediately

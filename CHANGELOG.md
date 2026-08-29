@@ -278,8 +278,8 @@ All notable changes to this project are documented here. The format is based on
   banning members, and unbanning now follow the room's live Matrix power levels instead of
   a permission snapshot. Unavailable actions stay visible and focusable with a short
   explanation, including after a tap on mobile; they update when another client changes the
-  room's permissions and are checked again immediately before Trinity writes to the
-  homeserver.
+  room's permissions without hiding readable alias lists or discarding typed drafts, and
+  are checked again immediately before Trinity writes to the homeserver.
 
 - **Network failures no longer leave actions spinning forever.** Matrix requests now stop
   waiting after a bounded deadline, request controls release on completion or cancellation,
