@@ -10,9 +10,11 @@ import {
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/button';
-import { ConversationRuntime } from '@trinity/data-access/timeline';
+import {
+  ConversationRuntime,
+  type ReactionDetail,
+} from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/components/avatar';
-import { type ReactionDetail } from '@trinity/util/matrix';
 
 /**
  * Dialog listing everyone who reacted to a message, one section per emoji.

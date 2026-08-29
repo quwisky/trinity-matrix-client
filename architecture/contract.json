@@ -83,12 +83,6 @@
       "target": "./libs/platform-native/src/lib/qr-code.service.ts",
       "removeBy": "#312",
       "reason": "Lets the QR scanner consume one host operation without the broad platform barrel."
-    },
-    {
-      "alias": "@trinity/util/matrix/code-highlight",
-      "target": "./libs/util/matrix/src/lib/code-highlight.ts",
-      "removeBy": "#305",
-      "reason": "Keeps optional syntax-highlighting grammars out of the eager message projection chunk."
     }
   ],
   "multiCapabilityProjects": [
@@ -180,7 +174,7 @@
     },
     "messageViewLines": {
       "path": "libs/util/matrix/src/lib/message-view.ts",
-      "value": 1738,
+      "value": 1737,
       "removeBy": "#305-#309"
     },
     "roomsServiceLines": {

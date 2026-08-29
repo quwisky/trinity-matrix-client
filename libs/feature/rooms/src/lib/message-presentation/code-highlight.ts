@@ -35,18 +35,15 @@ import scala from '@shikijs/langs/scala';
 import shellsession from '@shikijs/langs/shellsession';
 import swift from '@shikijs/langs/swift';
 import toml from '@shikijs/langs/toml';
-import { setCodeHighlighter } from './message-view';
+import { setCodeHighlighter } from '@trinity/util/matrix';
 
 /**
  * Synchronous syntax highlighting for fenced code blocks in rendered Matrix HTML.
  *
- * **Not exported from the `@trinity/util/matrix` barrel**, and reachable only through the
- * `@trinity/util/matrix/code-highlight` path alias. That is load-bearing: `message-view.ts`
- * sits in the app's eager chunk, so a barrel export would put every grammar in the initial
- * bundle. Importing this module from the lazily-loaded rooms route puts it in the rooms
- * chunk instead. The module registers itself on evaluation, which happens before any
- * message view is projected, so highlighting is available for the first paint and the
- * render path stays entirely synchronous.
+ * Kept inside the lazily loaded Conversations feature rather than exported from a shared
+ * barrel. That is load-bearing: a barrel export would put every grammar in the initial
+ * bundle. The rooms route imports this module relatively, so it registers before its first
+ * Message Presentation pass while remaining in the rooms chunk.
  *
  * **Cost, stated plainly:** the grammars are static imports and they are downloaded and
  * parsed with the rooms chunk whether or not any message contains code. Measured from an
@@ -264,7 +261,7 @@ function highlight(
     // Construction and language lookup are INSIDE the guard, not just tokenization: if
     // `createHighlighterCoreSync` throws (an engine the browser rejects, a grammar that
     // fails to load) the throw would otherwise escape through sanitizeMatrixHtml into
-    // buildMessageView, where safeBuildMessageView turns the whole message into an
+    // Message Presentation, where the safe normalizer turns the whole message into an
     // "unsupported" placeholder — losing its text rather than just its colours.
     const shiki = instance();
     if (!shiki.getLoadedLanguages().includes(lang)) {

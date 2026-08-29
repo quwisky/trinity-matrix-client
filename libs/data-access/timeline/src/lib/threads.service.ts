@@ -30,15 +30,14 @@ import { MediaService } from '@trinity/data-access/media';
 import { PrivacySettingsService } from '@trinity/platform-native';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import {
-  safeBuildMessageView,
   collectMessageSenders,
   initialOf,
   isDisplayableMessage,
-  type MessageShield,
-  type MessageView,
 } from '@trinity/util/matrix';
 import { resolveShieldsInto, shieldKey } from './shields';
 import { eventRevision } from './timeline.service';
+import { projectMessage } from './project-message';
+import type { MessageShield, MessageView } from './message-presentation';
 import {
   annotationContent,
   editMessageContent,
@@ -232,7 +231,7 @@ export class ThreadsService {
   private readonly threadShields = new Map<string, MessageShield | null>();
   /**
    * Per-reply projection cache keyed by event id, mirroring TimelineService.viewCache:
-   * `rev` fingerprints everything buildMessageView reads that can change while the
+   * `rev` fingerprints everything Message Presentation reads that can change while the
    * thread is open (the shield folded in, since it resolves asynchronously). Without it
    * every refresh re-ran a markdown render + DOMPurify sanitize for EVERY reply — and
    * refreshThread is driven by Timeline/LocalEcho/Decrypted/Members, so a keystroke
@@ -783,7 +782,13 @@ export class ThreadsService {
         if (cached && cached.rev === rev) {
           return cached.view; // unchanged — keep the object so its OnPush row is untouched
         }
-        const view = safeBuildMessageView(client, room, e, shield);
+        const view = projectMessage(client, room, e, shield);
+        if (!view) {
+          // Thread timelines contain displayable message events only. A null here means an
+          // SDK event was reclassified between filtering and projection; retain an explicit
+          // fallback rather than leaking an absent row into the signal.
+          throw new Error('Displayable thread event produced no presentation');
+        }
         this.threadViewCache.set(id, { rev, view });
         return view;
       }),

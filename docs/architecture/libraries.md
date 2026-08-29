@@ -87,7 +87,7 @@ are the only places `matrix-js-sdk` is imported — thirteen of the fifteen do, 
 | `libs/data-access/profile`       | `@trinity/data-access/profile`       | `type:data-access`, `scope:matrix`     | Profile, presence and ignored users                                                                                                                                                                                                                                                                  |
 | `libs/data-access/rooms`         | `@trinity/data-access/rooms`         | `type:data-access`, `scope:matrix`     | The largest domain library: the room list, spaces, space children and per-space ordering, room settings, moderation and aliases, the public-room directory, the account scope, the three mixed-account projections, and the unread aggregator                                                        |
 | `libs/data-access/search`        | `@trinity/data-access/search`        | `type:data-access`, `scope:matrix`     | Quick-switcher ranking, directory search and in-room message search                                                                                                                                                                                                                                  |
-| `libs/data-access/timeline`      | `@trinity/data-access/timeline`      | `type:data-access`, `scope:matrix`     | `ConversationRuntime` owns immutable Account-and-Room handles and their child timeline projections; the library also contains `ThreadsService`, URL previews and edit history                                                                                                                        |
+| `libs/data-access/timeline`      | `@trinity/data-access/timeline`      | `type:data-access`, `scope:matrix`     | `ConversationRuntime` owns immutable Account-and-Room handles and their child timeline projections; Message Presentation normalizes and safely renders text plus system events into immutable models; the library also contains `ThreadsService`, URL previews and edit history                      |
 | `libs/data-access/widgets`       | `@trinity/data-access/widgets`       | `type:data-access`, `scope:matrix`     | Demand-driven room-widget discovery, safe URL-template expansion, and explicit disclosure metadata for external opening                                                                                                                                                                              |
 
 Data-access libraries may depend on one another, and several do. The real edges today are
@@ -176,14 +176,14 @@ Regenerating or adding Helm components goes through the CLI; see
 Almost every alias points at a library's barrel, its `src/index.ts`. Two point at a single file
 instead, and both exist for a bundling reason rather than a stylistic one.
 
-| Alias                                 | Target                                       | Why it bypasses the barrel                                                                                                                                                                                                                                           |
-| ------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@trinity/util/matrix/code-highlight` | `libs/util/matrix/src/lib/code-highlight.ts` | `message-view.ts` is in the eager chunk, and a barrel export would drag every Shiki grammar in with it. The module self-registers via `setCodeHighlighter()` when evaluated, so the render path stays synchronous; the lazily loaded rooms route is what pulls it in |
-| `@trinity/feature/shell/home-page`    | `libs/feature/shell/src/lib/home.page.ts`    | `main.ts` imports the `feature-shell` barrel eagerly for `AppComponent`, so re-exporting the dev-only E2EE spike harness would ship it, and `CryptoSpikeService` with it, in production                                                                              |
+| Alias                              | Target                                            | Why it bypasses the barrel                                                                                                                        |
+| ---------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@trinity/feature/shell/home-page` | `libs/feature/shell/src/lib/home.page.ts`         | `main.ts` imports the shell barrel eagerly, so re-exporting the development-only E2EE spike would ship its crypto harness in production.          |
+| `@trinity/platform-native/qr-code` | `libs/platform-native/src/lib/qr-code.service.ts` | The QR scanner consumes one host operation without importing the broad platform barrel; #312 replaces it with an operation-based host capability. |
 
-Nothing enforces either exclusion. Both barrels carry a comment explaining it, and that comment is
-the only guard. Before adding an export to a barrel that the app imports eagerly, check what it
-drags along.
+The architecture contract records both exceptions. Shiki is no longer one: its highlighter lives
+inside the lazy Conversations feature and `rooms.page.ts` imports it relatively, so no public alias
+can pull the grammars into the eager bundle.
 
 ## Libraries are not buildable
 

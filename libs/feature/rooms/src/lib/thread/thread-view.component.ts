@@ -39,15 +39,12 @@ import {
   ThreadsService,
   TimelineActionsService,
   ConversationRuntime,
-} from '@trinity/data-access/timeline';
-import { RoomsService } from '@trinity/data-access/rooms';
-import {
   isEditableMessage,
   isQuotableMessage,
-  messagePermalink,
-  quoteBlock,
   type MessageView,
-} from '@trinity/util/matrix';
+} from '@trinity/data-access/timeline';
+import { RoomsService } from '@trinity/data-access/rooms';
+import { messagePermalink, quoteBlock } from '@trinity/util/matrix';
 import {
   MessageRowComponent,
   type MessageLongPressContext,

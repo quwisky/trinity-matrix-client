@@ -646,7 +646,7 @@ without a specificity war.
 Eight roles colour fenced code blocks, consumed from exactly one place —
 `rendered-markdown.scss`, on the `tok-*` classes the highlighter emits. The role names must
 stay in step with `TOKEN_ROLES` in
-[`code-highlight.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/code-highlight.ts).
+[`code-highlight.ts`](https://github.com/quwisky/trinity-matrix-client/blob/refactor/refine-architecture/libs/feature/rooms/src/lib/message-presentation/code-highlight.ts).
 
 The backdrop is `--trinity-rail`, not the chat canvas — that is the `pre` background — and
 every value clears 4.5:1 against it in both shipped palettes (worst case 4.61:1 light,
@@ -666,11 +666,11 @@ combined, which is why it is deliberately absent. Measure before adding one —
 `gzip -c www/chunk-*.js | wc -c` on a production build, before and after, taking the largest
 chunk each time.
 
-The module is reachable **only** through the
-`@trinity/util/matrix/code-highlight` path alias and is imported for side effect at the top
-of `rooms.page.ts`, so the grammars land in the lazy rooms chunk. Exporting it from the
-`@trinity/util/matrix` barrel would drag every grammar into the eager bundle, because
-`message-view.ts` consumes the highlighter and sits there.
+The module is private to the Conversations feature and imported relatively for side effect at
+the top of `rooms.page.ts`, so the grammars land in the lazy rooms chunk. It registers the
+highlighter used by Message Presentation before the first timeline projection. Do not export it
+from a public barrel: that would make it possible for an eager consumer to pull every grammar into
+the initial bundle.
 
 ## Adding a palette
 

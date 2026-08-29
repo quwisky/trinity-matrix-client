@@ -207,6 +207,28 @@ that workflow.
 Runtime and creates a compatibility account-change `effect`, so both need an injection context
 owned by the service's injector.
 
+### Normalizing events for Message Presentation
+
+Conversation timelines never hand `MatrixEvent`, `Room`, or `MatrixClient` objects to feature
+code. `normalizeTimelineEvent` is the Matrix-facing adapter: it reads federated input defensively,
+resolves the bounded sender, reply, reaction, receipt, shield, and room context needed by the row,
+and emits a frozen discriminated record. Throwing getters and malformed text become an explicit
+unsupported record instead of aborting the room projection. Media, polls, stickers, and locations
+remain on the named legacy adapter until #307-#309 migrate those branches.
+
+Message Presentation accepts only those normalized records. It owns text/emote/notice rendering,
+supported membership and room-state summaries, immutable authenticity-shield data, formatted-body
+sanitization, the HTTP(S)-only link-preview candidate policy, and safe redacted, undecryptable, and
+unsupported fallbacks. The main timeline and thread timeline both call the same production
+entrypoint, and feature code imports `MessageView` from `@trinity/data-access/timeline` rather than
+the shared Matrix utility. Batch presentation reports only event counts and durations; identifiers
+and message bodies never enter its metrics.
+
+Shiki stays synchronous for first paint but its grammars now live beside the lazily loaded rooms
+feature and are imported relatively by `rooms.page.ts`. This removes the temporary
+`@trinity/util/matrix/code-highlight` secondary entrypoint without moving the grammar payload into
+the eager bundle.
+
 ### Room-action authorization
 
 Permission-sensitive room UI reads `RoomActionPermissionsService` from

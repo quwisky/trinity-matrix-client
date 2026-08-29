@@ -4,7 +4,7 @@ import {
   EventShieldReason,
   type EventEncryptionInfo,
 } from 'matrix-js-sdk/lib/crypto-api';
-import { type MessageShield } from '@trinity/util/matrix';
+import { type MessageShield } from './message-presentation';
 
 /**
  * Per-message authenticity shields, shared by {@link TimelineService} and

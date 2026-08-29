@@ -9,7 +9,7 @@
 import { formatDaySeparator, type DateTimePrefs } from './date-format';
 
 /**
- * Smallest timestamp treated as a real event time. `safeBuildMessageView`'s unsupported
+ * Smallest timestamp treated as a real event time. Message Presentation's unsupported
  * fallback reports `timestamp: 0` when `origin_server_ts` can't be read, and a hostile event
  * can report anything at all; without a floor, one malformed event mints a "1 January 1970"
  * separator and strands the message after it against 1970.

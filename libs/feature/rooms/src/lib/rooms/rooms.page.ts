@@ -3,7 +3,7 @@
 // consumes the highlighter) is in the eager bundle, so a barrel export would put every
 // grammar in the initial chunk. This route is lazily loaded, so the grammars land in the
 // rooms chunk — and it evaluates before any message view is projected.
-import '@trinity/util/matrix/code-highlight';
+import '../message-presentation/code-highlight';
 import {
   ChangeDetectionStrategy,
   Component,

@@ -79,7 +79,7 @@ describe('startOfNextLocalDay', () => {
 });
 
 describe('hasUsableTimestamp', () => {
-  // safeBuildMessageView degrades an unreadable origin_server_ts to 0. Bucketing that would
+  // Message Presentation degrades an unreadable origin_server_ts to 0. Bucketing that would
   // mint a "1 January 1970" separator, so it has to be rejected along with the other
   // impossible clocks. The high end matters just as much: origin_server_ts is a raw
   // federated number, and a bridge that reports microseconds or nanoseconds is a routine

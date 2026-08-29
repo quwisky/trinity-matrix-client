@@ -171,8 +171,8 @@
       counter-reset: code-line;
     }
 
-    // Syntax tokens, emitted by the sanitizer's highlighter (message-view.ts ->
-    // code-highlight.ts) AFTER DOMPurify — which is why these names are absent from
+    // Syntax tokens, emitted by Message Presentation's registered code highlighter AFTER
+    // DOMPurify — which is why these names are absent from
     // ALLOWED_CLASS: they are ours, not the sender's.
     .tok-keyword {
       color: var(--trinity-syntax-keyword);

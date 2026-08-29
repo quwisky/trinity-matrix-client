@@ -4,136 +4,15 @@ import {
   MAX_NAMED_REACTORS,
   collectMessageSenders,
   firstUrl,
-  isEditableMessage,
-  isQuotableMessage,
   linkifyText,
   parseGeoUri,
   parseLocationInput,
   reactionDetailsFor,
   reactionsFor,
-  safeBuildMessageView,
   sanitizeMatrixHtml,
   sanitizeOutgoingHtml,
   setCodeHighlighter,
-  type MessageKind,
-  type MessageView,
 } from './message-view';
-
-describe('safeBuildMessageView', () => {
-  it('degrades a hostile event that throws to an unsupported row (no crash)', () => {
-    // A projection error must not propagate — it would crash the whole timeline map.
-    const hostile = {
-      getSender: () => '@evil:hs',
-      getType: () => 'm.room.message',
-      isDecryptionFailure: () => false,
-      isRedacted: () => false,
-      getContent: () => {
-        throw new Error('boom');
-      },
-      getId: () => '$x',
-      getTs: () => 123,
-    } as unknown as MatrixEvent;
-    const room = { getMember: () => null } as unknown as Room;
-    const client = { getUserId: () => '@me:hs' } as unknown as MatrixClient;
-
-    const view = safeBuildMessageView(client, room, hostile);
-
-    expect(view.kind).toBe('unsupported');
-    expect(view.body).toBe('[unsupported message]');
-    expect(view.id).toBe('$x');
-    expect(view.senderId).toBe('@evil:hs');
-  });
-});
-
-function view(over: Partial<MessageView> = {}): MessageView {
-  return {
-    id: '$1',
-    senderId: '@me:hs',
-    senderName: 'Me',
-    senderInitial: 'M',
-    senderAvatarMxc: null,
-    body: 'hi',
-    html: null,
-    timestamp: 0,
-    isOwn: true,
-    decryptionFailed: false,
-    edited: false,
-    reactions: [],
-    replyTo: null,
-    status: null,
-    kind: 'text',
-    media: null,
-    caption: null,
-    captionHtml: null,
-    readReceipts: [],
-    poll: null,
-    ...over,
-  };
-}
-
-describe('isEditableMessage', () => {
-  it('allows editing own confirmed text/emote/notice messages', () => {
-    for (const kind of ['text', 'emote', 'notice'] as MessageKind[]) {
-      expect(isEditableMessage(view({ kind }))).toBe(true);
-    }
-  });
-
-  it('never edits polls or locations (a text replace would corrupt them)', () => {
-    // media is null for both, so the old `!message.media` gate wrongly allowed it.
-    expect(isEditableMessage(view({ kind: 'poll' }))).toBe(false);
-    expect(
-      isEditableMessage(
-        view({ kind: 'location', location: { lat: 1, lng: 2, label: 'x' } }),
-      ),
-    ).toBe(false);
-    expect(isEditableMessage(view({ kind: 'unsupported' }))).toBe(false);
-  });
-
-  it('never edits others’ messages, unsent/failed sends, or decryption failures', () => {
-    expect(isEditableMessage(view({ isOwn: false }))).toBe(false);
-    expect(isEditableMessage(view({ status: 'sending' }))).toBe(false);
-    expect(isEditableMessage(view({ status: 'failed' }))).toBe(false);
-    expect(isEditableMessage(view({ decryptionFailed: true }))).toBe(false);
-  });
-});
-
-describe('isQuotableMessage', () => {
-  it('quotes text/emote/notice regardless of who sent it', () => {
-    // The contrast with isEditableMessage: quoting someone else is the whole point.
-    for (const kind of ['text', 'emote', 'notice'] as MessageKind[]) {
-      expect(isQuotableMessage(view({ kind }))).toBe(true);
-      expect(isQuotableMessage(view({ kind, isOwn: false }))).toBe(true);
-    }
-  });
-
-  it('quotes a message that is still sending', () => {
-    // Unlike editing or threading, a quote copies text into the composer and never
-    // references the event, so an id the server has not seen yet does not matter.
-    expect(isQuotableMessage(view({ status: 'sending' }))).toBe(true);
-  });
-
-  it('never quotes media, polls or locations', () => {
-    // A media body is the filename; quoting "IMG_1234.jpg" helps nobody.
-    expect(
-      isQuotableMessage(
-        view({ kind: 'image', body: 'IMG_1234.jpg', media: null }),
-      ),
-    ).toBe(false);
-    expect(isQuotableMessage(view({ kind: 'poll' }))).toBe(false);
-    expect(
-      isQuotableMessage(
-        view({ kind: 'location', location: { lat: 1, lng: 2, label: 'x' } }),
-      ),
-    ).toBe(false);
-  });
-
-  it('never quotes a decryption failure or an empty body', () => {
-    // Both would put a placeholder or nothing at all into the composer.
-    expect(isQuotableMessage(view({ decryptionFailed: true }))).toBe(false);
-    expect(isQuotableMessage(view({ body: '' }))).toBe(false);
-    expect(isQuotableMessage(view({ body: '   ' }))).toBe(false);
-  });
-});
 
 describe('parseGeoUri', () => {
   it('parses lat/lng from a geo URI', () => {

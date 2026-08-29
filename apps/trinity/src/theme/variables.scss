@@ -299,7 +299,7 @@
   // --- Syntax highlighting ------------------------------------------------------
   // Consumed only by rendered-markdown.scss, on the `tok-*` classes the sanitizer's
   // highlighter emits inside `pre > code`. Eight roles, matching TOKEN_ROLES in
-  // libs/util/matrix/src/lib/code-highlight.ts — keep the two lists in step.
+  // libs/feature/rooms/src/lib/message-presentation/code-highlight.ts — keep the lists in step.
   // Measured against --trinity-rail, which is the `pre` background in BOTH palettes:
   // #e3e5e8 (default light) and #e7e2f0 (amethyst light). Every value below clears
   // 4.5:1 on both — worst case 4.61:1 — so a palette inherits these rather than

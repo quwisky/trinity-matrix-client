@@ -7,7 +7,7 @@ import {
 } from '@angular/core';
 import { TrnIconButton } from '@trinity/components/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
-import { type ReactionView } from '@trinity/util/matrix';
+import { type ReactionView } from '@trinity/data-access/timeline';
 import { TrnIconComponent } from '@trinity/components/icon';
 
 /** A reaction pill plus the "reacted by …" line shown on hover/focus. */
@@ -16,7 +16,7 @@ interface ReactionPill extends ReactionView {
 }
 
 /** Join names into a phrase: "A", "A and B", "A, B and C". */
-function listPhrase(items: string[]): string {
+function listPhrase(items: readonly string[]): string {
   if (items.length < 2) {
     return items[0] ?? '';
   }
@@ -49,7 +49,7 @@ function reactorsHint(reaction: ReactionView): string {
   styleUrl: './message-reactions.component.scss',
 })
 export class MessageReactionsComponent {
-  readonly reactions = input<ReactionView[]>([]);
+  readonly reactions = input<readonly ReactionView[]>([]);
   readonly toggleReaction = output<string>();
   /** Show everyone who reacted (the trailing chip). */
   readonly showReactors = output<void>();

@@ -3,7 +3,6 @@ export * from './lib/day-separator';
 export * from './lib/date-format';
 export * from './lib/edit-history';
 export * from './lib/edit-history-diff';
-export * from './lib/timeline-event';
 export * from './lib/media.model';
 export * from './lib/session.model';
 export * from './lib/rust-crypto-store';

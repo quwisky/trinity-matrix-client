@@ -1,6 +1,6 @@
 import { render } from '@trinity/testing';
 import { describe, expect, it } from 'vitest';
-import { type ReactionView } from '@trinity/util/matrix';
+import { type ReactionView } from '@trinity/data-access/timeline';
 import { MessageReactionsComponent } from './message-reactions.component';
 
 function reaction(over: Partial<ReactionView> = {}): ReactionView {

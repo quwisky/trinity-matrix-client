@@ -584,7 +584,7 @@ describe('MessageRowComponent', () => {
   });
 
   it('conceals a spoiler and reveals it on click', async () => {
-    // The html is what buildMessageView already ran through sanitizeMatrixHtml — the
+    // The html is what Message Presentation already ran through sanitizeMatrixHtml — the
     // mx-spoiler class (not data-mx-spoiler) is what survives Angular's [innerHTML]
     // re-sanitization and reaches the DOM.
     const { container } = await renderRow({

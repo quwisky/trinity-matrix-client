@@ -147,11 +147,10 @@ Every classified library has exactly one explicit primary entrypoint. Additional
 | `util-matrix`                  | `@trinity/util/matrix`                  | `./libs/util/matrix/src/index.ts`                  |
 | `util-ui`                      | `@trinity/util/ui`                      | `./libs/util/ui/src/index.ts`                      |
 
-| Secondary alias                       | Target                                              | Removal issue | Reason                                                                                 |
-| ------------------------------------- | --------------------------------------------------- | ------------- | -------------------------------------------------------------------------------------- |
-| `@trinity/feature/shell/home-page`    | `./libs/feature/shell/src/lib/home.page.ts`         | #314          | Keeps the development-only crypto spike out of the eager shell barrel.                 |
-| `@trinity/platform-native/qr-code`    | `./libs/platform-native/src/lib/qr-code.service.ts` | #312          | Lets the QR scanner consume one host operation without the broad platform barrel.      |
-| `@trinity/util/matrix/code-highlight` | `./libs/util/matrix/src/lib/code-highlight.ts`      | #305          | Keeps optional syntax-highlighting grammars out of the eager message projection chunk. |
+| Secondary alias                    | Target                                              | Removal issue | Reason                                                                            |
+| ---------------------------------- | --------------------------------------------------- | ------------- | --------------------------------------------------------------------------------- |
+| `@trinity/feature/shell/home-page` | `./libs/feature/shell/src/lib/home.page.ts`         | #314          | Keeps the development-only crypto spike out of the eager shell barrel.            |
+| `@trinity/platform-native/qr-code` | `./libs/platform-native/src/lib/qr-code.service.ts` | #312          | Lets the QR scanner consume one host operation without the broad platform barrel. |
 
 ## Source baselines
 
@@ -160,7 +159,7 @@ These are ratcheted snapshots. Any change fails until the measured value and led
 | Baseline                 | Current | Frozen value | Removal issue |
 | ------------------------ | ------: | -----------: | ------------- |
 | Application initializers |      17 |           17 | #314          |
-| Message projection lines |    1764 |         1738 | #305-#309     |
+| Message projection lines |    1737 |         1737 | #305-#309     |
 | Rooms service lines      |    1067 |         1067 | #317-#321     |
 
 ## Project classifications

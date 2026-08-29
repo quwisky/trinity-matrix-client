@@ -87,6 +87,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Text and room activity now cross a dedicated Message Presentation boundary.** Matrix
+  events are normalized into bounded plain records before Conversations renders them, and
+  text, formatted messages, system changes, authenticity shields and malformed-event
+  fallbacks become immutable presentation models. Sanitization, link-preview URL policy and
+  syntax highlighting are applied inside that boundary, while the timeline, threads and
+  message components no longer consume the legacy shared message projection directly.
+
 - **Open rooms now run through immutable Conversation handles.** A handle is keyed by exactly
   Account and Room, owns its own timeline child and remains anchored to the Matrix client that
   created it instead of following a global active-client pointer. Workspace focus controls read,
