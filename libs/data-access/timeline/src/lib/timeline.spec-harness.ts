@@ -10,7 +10,7 @@ import { of } from 'rxjs';
 import { vi } from 'vitest';
 import { TimelineService } from './timeline.service';
 import { TimelineActionsService } from './timeline-actions.service';
-import { ConversationRuntime } from './conversation-runtime.service';
+import { ConversationActionContextService } from './conversation-action-context.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaService, type UploadedMedia } from '@trinity/data-access/media';
 import {
@@ -343,14 +343,14 @@ export function setupActions(
     providers: [
       TimelineService,
       TimelineActionsService,
-      {
-        provide: ConversationRuntime,
-        useFactory: () => ({ timeline: TestBed.inject(TimelineService) }),
-      },
       matrixProvider(client),
       mediaProvider(),
     ],
   });
-  TestBed.inject(TimelineService).open('!r:hs');
+  const timeline = TestBed.inject(TimelineService);
+  timeline.open('!r:hs');
+  TestBed.inject(ConversationActionContextService).bind(() =>
+    timeline.openContext(),
+  );
   return TestBed.inject(TimelineActionsService);
 }

@@ -44,6 +44,17 @@ describe('Conversation Runtime production boundary', () => {
     expect(sdkConsumers).toEqual([]);
   });
 
+  it('does not expose the raw timeline SDK context through the Conversation capability', () => {
+    const runtime = source(runtimeImplementation);
+    const roomFeature = productionSources
+      .filter((file) => file.startsWith('libs/feature/rooms/'))
+      .map(source)
+      .join('\n');
+
+    expect(runtime).not.toMatch(/ConversationTimeline[\s\S]*?\| 'openContext'/);
+    expect(roomFeature).not.toContain('.openContext()');
+  });
+
   it('focuses the routed room through an Account-and-Room key', () => {
     const navigation = source(
       'libs/feature/rooms/src/lib/rooms/room-shell-navigation.service.ts',

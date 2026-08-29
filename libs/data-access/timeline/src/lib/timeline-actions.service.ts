@@ -19,7 +19,7 @@ import {
   voiceMessageContent,
   type Mention,
 } from '@trinity/util/matrix';
-import { ConversationRuntime } from './conversation-runtime.service';
+import { ConversationActionContextService } from './conversation-action-context.service';
 
 /** File extension for a recorded voice clip's MIME type (best-effort, default webm). */
 function voiceExtension(mimeType: string): string {
@@ -39,7 +39,7 @@ function voiceExtension(mimeType: string): string {
  *
  * The counterpart to the Conversation Runtime's timeline projection, which owns
  * every listener; nothing here subscribes to the SDK or holds room state. The open
- * room is asked for on subscribe via its `openContext`, so there is
+ * room is asked for on subscribe through the runtime's internal action context, so there is
  * one answer to "which room, on which account" rather than two.
  *
  * Every method returns a COLD Observable: nothing is sent until someone subscribes,
@@ -49,7 +49,7 @@ function voiceExtension(mimeType: string): string {
  */
 @Injectable({ providedIn: 'root' })
 export class TimelineActionsService {
-  private readonly timeline = inject(ConversationRuntime).timeline;
+  private readonly actionContext = inject(ConversationActionContextService);
   private readonly mediaSvc = inject(MediaService);
 
   /**
@@ -60,7 +60,7 @@ export class TimelineActionsService {
   send(body: string, mentions: Mention[] = []): Observable<void> {
     const text = body.trim();
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (!ctx || !text) {
         return of(void 0);
       }
@@ -78,7 +78,7 @@ export class TimelineActionsService {
   /** Send a shared location (`m.location`) to the active room. Cold — runs on subscribe. */
   sendLocation(lat: number, lng: number): Observable<void> {
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (!ctx) {
         return of(void 0);
       }
@@ -95,7 +95,7 @@ export class TimelineActionsService {
   /** Send an MSC2545 image-pack entry as a standalone `m.sticker` event. */
   sendSticker(sticker: ImagePackImage): Observable<void> {
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (
         !ctx ||
         !sticker.usage.includes('sticker') ||
@@ -120,7 +120,7 @@ export class TimelineActionsService {
    */
   sendVoiceMessage(recording: VoiceRecording): Observable<void> {
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (!ctx || recording.blob.size === 0) {
         return of(void 0);
       }
@@ -165,7 +165,7 @@ export class TimelineActionsService {
     targetRoomId: string,
   ): Observable<void> {
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (!ctx) {
         return throwError(() => new Error('Not signed in.'));
       }
@@ -184,7 +184,7 @@ export class TimelineActionsService {
   /** Start a single-select poll (MSC3381) in the open room. Cold: runs on subscribe. */
   createPoll(question: string, options: string[]): Observable<void> {
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       const clean = options.map((o) => o.trim()).filter(Boolean);
       if (!ctx || !question.trim() || clean.length < 2) {
         return of(void 0);
@@ -202,7 +202,7 @@ export class TimelineActionsService {
   /** Cast (or change) the local user's vote on a poll. Cold: runs on subscribe. */
   votePoll(pollId: string, answerId: string): Observable<void> {
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (!ctx) {
         return of(void 0);
       }
@@ -219,7 +219,7 @@ export class TimelineActionsService {
   /** Close a poll so no further votes count (creator action). Cold: runs on subscribe. */
   endPoll(pollId: string): Observable<void> {
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (!ctx) {
         return of(void 0);
       }
@@ -246,7 +246,7 @@ export class TimelineActionsService {
     progress?: (fraction: number) => void,
   ): Observable<void> {
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (!ctx || !file || file.size === 0) {
         return of(void 0);
       }
@@ -277,7 +277,7 @@ export class TimelineActionsService {
   ): Observable<void> {
     const text = newBody.trim();
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (!ctx || !text) {
         return of(void 0);
       }
@@ -296,7 +296,7 @@ export class TimelineActionsService {
 
   /** Resend a message that failed to send. */
   retry(messageId: string): void {
-    const ctx = this.timeline.openContext();
+    const ctx = this.actionContext.resolve();
     if (!ctx) {
       return;
     }
@@ -317,7 +317,7 @@ export class TimelineActionsService {
   ): Observable<void> {
     const text = body.trim();
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (!ctx || !text) {
         return of(void 0);
       }
@@ -336,7 +336,7 @@ export class TimelineActionsService {
   /** Delete (redact) a message. */
   redact(messageId: string): Observable<void> {
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (!ctx) {
         return of(void 0);
       }
@@ -350,7 +350,7 @@ export class TimelineActionsService {
    */
   toggleReaction(messageId: string, key: string): Observable<void> {
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (!ctx) {
         return of(void 0);
       }

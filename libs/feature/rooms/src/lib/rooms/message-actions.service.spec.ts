@@ -53,13 +53,23 @@ describe('MessageActionsService', () => {
   const votePoll = vi.fn(() => of(undefined));
   const endPoll = vi.fn(() => of(undefined));
   const sendSticker = vi.fn(() => of(undefined));
-  const openContext = vi.fn(() => null);
   const loadOlder = vi.fn(() => of(undefined));
   const setTyping = vi.fn();
   const toastShow = vi.fn();
+  let roomEncrypted = false;
 
   const MOCKS: Provider[] = [
-    MockProvider(TimelineService, { loadOlder, setTyping, openContext }),
+    {
+      provide: TimelineService,
+      useValue: {
+        loadOlder,
+        setTyping,
+        openRoomId: null,
+        get roomEncrypted() {
+          return roomEncrypted;
+        },
+      },
+    },
     {
       provide: ConversationRuntime,
       useFactory: () => ({ timeline: inject(TimelineService) }),
@@ -117,7 +127,10 @@ describe('MessageActionsService', () => {
     };
   }
 
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    roomEncrypted = false;
+  });
 
   describe('sending', () => {
     it('sends the body with its mentions', () => {
@@ -173,9 +186,7 @@ describe('MessageActionsService', () => {
     });
 
     it('warns that sticker media stays public in an encrypted room', () => {
-      openContext.mockReturnValueOnce({
-        room: { hasEncryptionStateEvent: () => true },
-      } as never);
+      roomEncrypted = true;
       const { actions } = build();
       const sticker = {
         shortcode: 'party',

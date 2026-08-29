@@ -1,8 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it } from 'vitest';
+import { ConversationActionContextService } from './conversation-action-context.service';
 import { TimelineActionsService } from './timeline-actions.service';
-import { ConversationRuntime } from './conversation-runtime.service';
 import { TimelineService } from './timeline.service';
 import {
   fakeClient,
@@ -412,15 +412,15 @@ describe('TimelineActionsService', () => {
         providers: [
           TimelineService,
           TimelineActionsService,
-          {
-            provide: ConversationRuntime,
-            useFactory: () => ({ timeline: TestBed.inject(TimelineService) }),
-          },
           switchableMatrixProvider(active),
           mediaProvider(),
         ],
       });
-      TestBed.inject(TimelineService).open('!r:hs');
+      const timeline = TestBed.inject(TimelineService);
+      timeline.open('!r:hs');
+      TestBed.inject(ConversationActionContextService).bind(() =>
+        timeline.openContext(),
+      );
       const svc = TestBed.inject(TimelineActionsService);
 
       await firstValueFrom(svc.sendMedia(gif(), ''));
@@ -452,15 +452,15 @@ describe('TimelineActionsService', () => {
         providers: [
           TimelineService,
           TimelineActionsService,
-          {
-            provide: ConversationRuntime,
-            useFactory: () => ({ timeline: TestBed.inject(TimelineService) }),
-          },
           switchableMatrixProvider(active),
           mediaProvider(),
         ],
       });
-      TestBed.inject(TimelineService).open('!r:hs');
+      const timeline = TestBed.inject(TimelineService);
+      timeline.open('!r:hs');
+      TestBed.inject(ConversationActionContextService).bind(() =>
+        timeline.openContext(),
+      );
       const svc = TestBed.inject(TimelineActionsService);
 
       const send$ = svc.sendMedia(gif(), ''); // built while A is active…

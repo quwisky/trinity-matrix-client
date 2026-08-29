@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { defer, of } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { ConversationActionContextService } from './conversation-action-context.service';
 import { TimelineService } from './timeline.service';
 
 export const CONVERSATION_RUNTIME_BASELINE = {
@@ -35,9 +36,9 @@ export type ConversationTimeline = Pick<
   | 'tombstone'
   | 'firstUnreadId'
   | 'openRoomId'
+  | 'roomEncrypted'
   | 'loadOlder'
   | 'jumpToDate'
-  | 'openContext'
   | 'setTyping'
   | 'rawEvent'
   | 'reactionDetails'
@@ -79,6 +80,7 @@ export interface ConversationTimelineFactory {
 class AngularConversationTimelineFactory implements ConversationTimelineFactory {
   private readonly parentInjector = inject(EnvironmentInjector);
   private readonly matrix = inject(MatrixClientService);
+  private readonly actionContext = inject(ConversationActionContextService);
 
   create(key: ConversationKey): ConversationTimelineController {
     const client = this.matrix.clientFor(key.accountId);
@@ -98,13 +100,22 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
       throw error;
     }
     let released = false;
+    const resolveActionContext = () => timeline.openContext();
     return {
       timeline,
-      setVisible: (visible) => timeline.setVisible(visible),
+      setVisible: (visible) => {
+        timeline.setVisible(visible);
+        if (visible) {
+          this.actionContext.bind(resolveActionContext);
+        } else {
+          this.actionContext.clear(resolveActionContext);
+        }
+      },
       resources: () => timeline.resources(),
       release: () => {
         if (released) return;
         released = true;
+        this.actionContext.clear(resolveActionContext);
         try {
           timeline.close();
         } finally {
@@ -284,6 +295,9 @@ export class ConversationRuntime {
       get openRoomId() {
         return focused()?.key.roomId ?? null;
       },
+      get roomEncrypted() {
+        return focused()?.timeline.roomEncrypted ?? false;
+      },
       loadOlder: () =>
         defer(() => focused()?.timeline.loadOlder() ?? of(void 0)),
       jumpToDate: (dayStartMs) =>
@@ -292,7 +306,6 @@ export class ConversationRuntime {
             focused()?.timeline.jumpToDate(dayStartMs) ??
             of({ kind: 'no-event' as const }),
         ),
-      openContext: () => focused()?.timeline.openContext() ?? null,
       setTyping: (typing, owner) =>
         focused()?.timeline.setTyping(typing, owner),
       rawEvent: (roomId, eventId) =>

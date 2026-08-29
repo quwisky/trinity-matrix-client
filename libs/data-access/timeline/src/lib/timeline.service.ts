@@ -289,6 +289,11 @@ export class TimelineService {
   get openRoomId(): string | null {
     return this.roomId;
   }
+
+  /** Whether the visible room declares the standard encrypted-room state event. */
+  get roomEncrypted(): boolean {
+    return this.visible && this.room?.hasEncryptionStateEvent() === true;
+  }
   private room: Room | null = null;
 
   // Per-event projection cache keyed by event id. Each entry stores the view model
