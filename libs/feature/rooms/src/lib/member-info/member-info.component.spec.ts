@@ -378,8 +378,22 @@ describe('MemberInfoComponent', () => {
       expect.anything(),
     );
     expect(toastShow).toHaveBeenCalledWith(
-      'Could not copy the user ID.',
-      expect.anything(),
+      'Could not copy the user ID. Select it above and copy it manually.',
+      expect.objectContaining({ variant: 'destructive' }),
+    );
+  });
+
+  it('offers the same manual fallback when the Clipboard API is unavailable', async () => {
+    vi.stubGlobal('navigator', {});
+    const { cmp, toastShow } = await build();
+
+    cmp.copyId();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(toastShow).toHaveBeenCalledWith(
+      'Could not copy the user ID. Select it above and copy it manually.',
+      expect.objectContaining({ variant: 'destructive' }),
     );
   });
 

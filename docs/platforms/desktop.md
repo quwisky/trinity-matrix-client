@@ -129,10 +129,11 @@ Two more policies are applied on top:
   `shell.openExternal` instead; prevents `will-navigate` away from the app origin; and
   prevents `will-attach-webview`. It is applied to the main window and, via
   `app.on('web-contents-created')`, to any contents created later.
-- `installPermissionPolicy()` allows only media and geolocation from Trinity's main app
-  frame. Media covers the microphone for voice messages and the camera for QR verification.
-  Electron approves permission requests that reach a ready app by default, so every other
-  powerful permission remains explicitly denied.
+- `installPermissionPolicy()` allows media, geolocation, and sanitized clipboard writes only
+  from Trinity's main app frame. Media covers the microphone for voice messages and the camera
+  for QR verification; clipboard writes power explicit Copy actions without granting clipboard
+  reads. Electron approves permission requests that reach a ready app by default, so remote
+  frames, reads, and every other powerful permission remain explicitly denied.
 
 Packaged macOS builds also declare `NSCameraUsageDescription` in `electron-builder.yml`
 and the camera entitlement in `build/entitlements.mac.plist`; the runtime permission

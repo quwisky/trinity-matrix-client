@@ -207,7 +207,11 @@ export class MemberInfoComponent {
     const value = this.member().userId;
     void (navigator.clipboard?.writeText(value) ?? Promise.reject()).then(
       () => this.toast.show('User ID copied.', { duration: 2000 }),
-      () => this.toast.show('Could not copy the user ID.', { duration: 2000 }),
+      () =>
+        this.toast.show(
+          'Could not copy the user ID. Select it above and copy it manually.',
+          { duration: 5000, variant: 'destructive' },
+        ),
     );
   }
 
