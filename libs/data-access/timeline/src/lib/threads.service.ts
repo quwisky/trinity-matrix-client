@@ -26,7 +26,7 @@ import {
   tap,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { MediaService } from '@trinity/data-access/media';
+import { MediaPipeline, MediaService } from '@trinity/data-access/media';
 import { PrivacySettingsService } from '@trinity/platform-native';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import {
@@ -120,6 +120,7 @@ const THREAD_SCROLLBACK = 30;
 export class ThreadsService {
   private readonly matrix = inject(MatrixClientService);
   private readonly mediaSvc = inject(MediaService);
+  private readonly mediaPipeline = inject(MediaPipeline);
   private readonly privacy = inject(PrivacySettingsService);
 
   private readonly _summaries = signal<Record<string, ThreadSummary>>({});
@@ -782,7 +783,13 @@ export class ThreadsService {
         if (cached && cached.rev === rev) {
           return cached.view; // unchanged — keep the object so its OnPush row is untouched
         }
-        const view = projectMessage(client, room, e, shield);
+        const view = projectMessage(
+          client,
+          room,
+          e,
+          shield,
+          this.mediaPipeline,
+        );
         if (!view) {
           // Thread timelines contain displayable message events only. A null here means an
           // SDK event was reclassified between filtering and projection; retain an explicit

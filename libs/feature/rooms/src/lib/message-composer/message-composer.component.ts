@@ -469,11 +469,15 @@ export class MessageComposerComponent {
       roomId: this.roomId,
       editing: this.editing,
       uploadProgress: this.contextUploadProgress,
-      sendMedia: (file, caption) => {
-        // A GIF is a one-item batch with a synthetic id: it was never staged, so nothing in
-        // the strip has to be reconciled when its outcome lands.
+      sendMedia: (attachment, caption) => {
         this.batches.dispatch(
-          [{ id: `direct-${file.name}`, file }],
+          [
+            {
+              id: attachment.id,
+              file: attachment.file,
+              media: attachment.media,
+            },
+          ],
           caption,
           [],
         );
@@ -823,7 +827,7 @@ export class MessageComposerComponent {
       // must not clear the composer as though it had gone out.
       if (
         !this.batches.dispatch(
-          batch.map(({ id, file }) => ({ id, file })),
+          batch.map(({ id, file, media }) => ({ id, file, media })),
           typed.trim(),
           mentions,
         )
@@ -1088,7 +1092,13 @@ export class MessageComposerComponent {
     this.text.set('');
     if (
       !this.batches.dispatch(
-        [{ id: attachment.id, file: attachment.file }],
+        [
+          {
+            id: attachment.id,
+            file: attachment.file,
+            media: attachment.media,
+          },
+        ],
         typed.trim(),
         mentions,
       )

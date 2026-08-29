@@ -43,7 +43,7 @@ function build(): FileSaveService {
   return TestBed.inject(FileSaveService);
 }
 
-describe('FileSaveService', () => {
+describe('FileSaveService host adapter', () => {
   beforeEach(() => {
     isNative.mockReturnValue(false);
     writeFile.mockReset().mockResolvedValue({ uri: 'file:///cache/pic.png' });

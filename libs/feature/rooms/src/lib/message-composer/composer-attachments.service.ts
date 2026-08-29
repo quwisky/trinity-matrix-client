@@ -8,14 +8,17 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnToastService } from '@trinity/components/overlay';
-import { VoiceRecorderService } from '@trinity/platform-native';
+import {
+  MediaPickerService,
+  VoiceRecorderService,
+} from '@trinity/platform-native';
 import {
   GifService,
   GifSettingsService,
   type GifResult,
 } from '@trinity/data-access/gif';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
-import { MediaPickerService } from '../media-picker/media-picker.service';
+import { MediaPipeline } from '@trinity/data-access/media';
 import { CreatePollService } from '../poll/create-poll.service';
 import { LocationShareService } from '../location-share/location-share.service';
 import {
@@ -41,7 +44,7 @@ export interface ComposerAttachmentsHost {
   /** Which file of how many is uploading and how far along, else null (idle). */
   readonly uploadProgress: Signal<BatchProgress | null>;
   /** Send a file as a media message, with `caption` as its caption. */
-  sendMedia(file: File, caption: string): void;
+  sendMedia(attachment: StagedAttachment, caption: string): void;
   /** End any active reply — a media or voice send carries no reply relation. */
   endReply(): void;
   /** Put the caret back in the textarea (a file was just staged for a caption). */
@@ -71,6 +74,7 @@ export class ComposerAttachmentsService {
   private readonly voiceRecorder = inject(VoiceRecorderService);
   private readonly gifs = inject(GifService);
   private readonly gifSettings = inject(GifSettingsService);
+  private readonly mediaPipeline = inject(MediaPipeline);
   private readonly destroyRef = inject(DestroyRef);
 
   /**
@@ -206,7 +210,7 @@ export class ComposerAttachmentsService {
   /** Drop every staged attachment (Escape, room change, or after they're sent). */
   clearStaged(): void {
     for (const attachment of this._staged()) {
-      releaseAttachment(attachment);
+      releaseAttachment(attachment, this.mediaPipeline);
     }
     this._staged.set([]);
   }
@@ -252,7 +256,7 @@ export class ComposerAttachmentsService {
     if (!doomed) {
       return; // unknown id: leave the array identity alone rather than re-rendering the strip
     }
-    releaseAttachment(doomed);
+    releaseAttachment(doomed, this.mediaPipeline);
     this._staged.set(current.filter((attachment) => attachment !== doomed));
   }
 
@@ -278,7 +282,8 @@ export class ComposerAttachmentsService {
           // A media send carries no reply relation (see the composer's submit());
           // close any active reply so its banner doesn't linger over the next message.
           this.host.endReply();
-          this.host.sendMedia(file, '');
+          const [attachment] = this.stageAll([file]);
+          if (attachment) this.host.sendMedia(attachment, '');
         },
         error: () => {
           this.gifDownloading.set(false);
@@ -408,13 +413,25 @@ export class ComposerAttachmentsService {
     this.stageAll(files);
   }
 
-  private stageAll(files: readonly File[]): void {
+  private stageAll(files: readonly File[]): readonly StagedAttachment[] {
     if (!files.length) {
-      return;
+      return [];
     }
-    const added = files.map(stageAttachment); // outside the updater: it allocates object URLs
+    const added = files
+      .map((file) => stageAttachment(file, this.mediaPipeline))
+      .filter(
+        (attachment): attachment is StagedAttachment => attachment !== null,
+      );
+    if (!added.length) {
+      this.toast.show('Empty attachments cannot be sent.', {
+        duration: 4000,
+        variant: 'destructive',
+      });
+      return [];
+    }
     this._staged.update((current) => [...current, ...added]);
     this.host.focusInput();
+    return added;
   }
 
   /** Surface a gallery-picker failure (notably denied photo access) as a toast. */

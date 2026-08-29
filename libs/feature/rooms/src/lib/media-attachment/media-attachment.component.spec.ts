@@ -11,21 +11,20 @@ import {
   vi,
   type Mock,
 } from 'vitest';
-import { MediaService } from '@trinity/data-access/media';
-import { type MediaPayload } from '@trinity/util/matrix';
+import {
+  MediaPipeline,
+  type PresentedMediaReference,
+} from '@trinity/data-access/media';
 import { MediaAttachmentComponent } from './media-attachment.component';
-import { FileSaveService } from '../media-save/file-save.service';
+import { FileSaveService } from '@trinity/platform-native';
 
-function imageMedia(): MediaPayload {
+function imageMedia(): PresentedMediaReference {
   return {
+    id: 'presented-media-image',
     kind: 'image',
-    mxc: 'mxc://hs/abc',
-    file: null,
     filename: 'pic.png',
     mimeType: 'image/png',
-    thumbnailMxc: null,
-    thumbnailFile: null,
-  };
+  } as PresentedMediaReference;
 }
 
 interface MediaServiceStub {
@@ -72,13 +71,13 @@ describe('MediaAttachmentComponent', () => {
    * configured on the `mediaService` / `fileSave` stubs *before* calling this
    * (render triggers the initial change detection that fires the resolve effect).
    */
-  function renderMedia(media: MediaPayload) {
+  function renderMedia(media: PresentedMediaReference) {
     return render(MediaAttachmentComponent, {
       inputs: { media },
       // MockProvider auto-mocks the service; the second arg wires our spies in
       // as the method implementations so assertions read the same references.
       providers: [
-        MockProvider(MediaService, mediaService),
+        MockProvider(MediaPipeline, mediaService),
         MockProvider(FileSaveService, fileSave),
       ],
     });
@@ -105,12 +104,12 @@ describe('MediaAttachmentComponent', () => {
   });
 
   it('does not resolve a thumbnail for a file attachment (download-only card)', async () => {
-    const media: MediaPayload = {
+    const media: PresentedMediaReference = {
       ...imageMedia(),
       kind: 'file',
       filename: 'report.pdf',
       mimeType: 'application/pdf',
-    };
+    } as PresentedMediaReference;
     const { fixture } = await renderMedia(media);
 
     // A file card never binds src — resolving (and decrypting) it would be wasted.
@@ -123,7 +122,7 @@ describe('MediaAttachmentComponent', () => {
     // Distinct URLs per variant so the lightbox pin is observable apart from the
     // thumbnail's.
     mediaService.resolveMedia.mockImplementation(
-      (_m: MediaPayload, variant: string) =>
+      (_m: PresentedMediaReference, variant: string) =>
         of(variant === 'full' ? 'blob:full' : 'blob:thumb'),
     );
     const { fixture } = await renderMedia(imageMedia());
@@ -152,7 +151,7 @@ describe('MediaAttachmentComponent', () => {
     // a second tap during the resolve reaches `next` twice: two dialogs, one remembered
     // ref, and closing the remembered one unpins a URL the other is still showing.
     mediaService.resolveMedia.mockImplementation(
-      (_m: MediaPayload, variant: string) =>
+      (_m: PresentedMediaReference, variant: string) =>
         of(variant === 'full' ? 'blob:full' : 'blob:thumb'),
     );
     const { fixture } = await renderMedia(imageMedia());
@@ -183,7 +182,7 @@ describe('MediaAttachmentComponent', () => {
     // closeLightbox(), so the unpin has to hang off `closed`. Hanging it off the method
     // would leak the URL on every dismissal that is not programmatic.
     mediaService.resolveMedia.mockImplementation(
-      (_m: MediaPayload, variant: string) =>
+      (_m: PresentedMediaReference, variant: string) =>
         of(variant === 'full' ? 'blob:full' : 'blob:thumb'),
     );
     const { fixture } = await renderMedia(imageMedia());
@@ -206,7 +205,7 @@ describe('MediaAttachmentComponent', () => {
     // rendering the PREVIOUS message's image. An overlay holds its own URL, pinned until it
     // closes, so the image the reader opened is theirs to dismiss.
     mediaService.resolveMedia.mockImplementation(
-      (_m: MediaPayload, variant: string) =>
+      (_m: PresentedMediaReference, variant: string) =>
         of(variant === 'full' ? 'blob:full' : 'blob:thumb'),
     );
     const { fixture } = await renderMedia(imageMedia());
@@ -216,7 +215,7 @@ describe('MediaAttachmentComponent', () => {
 
     fixture.componentRef.setInput('media', {
       ...imageMedia(),
-      mxc: 'mxc://hs/other',
+      id: 'presented-media-other',
       filename: 'other.png',
     });
     TestBed.tick();
@@ -227,7 +226,7 @@ describe('MediaAttachmentComponent', () => {
 
   it('unpins the full-res URL when destroyed with the lightbox still open', async () => {
     mediaService.resolveMedia.mockImplementation(
-      (_m: MediaPayload, variant: string) =>
+      (_m: PresentedMediaReference, variant: string) =>
         of(variant === 'full' ? 'blob:full' : 'blob:thumb'),
     );
     const { fixture } = await renderMedia(imageMedia());

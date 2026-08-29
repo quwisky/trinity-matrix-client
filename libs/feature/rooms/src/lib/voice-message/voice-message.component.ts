@@ -11,8 +11,10 @@ import {
 } from '@angular/core';
 import { TrnIconButton } from '@trinity/components/button';
 import { Subscription } from 'rxjs';
-import { MediaService } from '@trinity/data-access/media';
-import { type MediaPayload } from '@trinity/util/matrix';
+import {
+  MediaPipeline,
+  type PresentedMediaReference,
+} from '@trinity/data-access/media';
 import { TrnIconComponent } from '@trinity/components/icon';
 
 /** Bars whose height is scaled from a `[0, 1024]` waveform amplitude. */
@@ -23,7 +25,7 @@ const MIN_BAR_HEIGHT = 12;
 /**
  * A compact player for an MSC3245 voice message: a play/pause button, the recorded
  * waveform (bars filled up to the playback position), and a running time. Resolves the
- * clip's bytes through {@link MediaService} (the same authenticated/decrypting path as
+ * clip's bytes through {@link MediaPipeline} (the same authenticated/decrypting path as
  * other media) and plays them via a hidden `<audio>` element.
  */
 @Component({
@@ -34,9 +36,9 @@ const MIN_BAR_HEIGHT = 12;
   styleUrl: './voice-message.component.scss',
 })
 export class VoiceMessageComponent {
-  readonly media = input.required<MediaPayload>();
+  readonly media = input.required<PresentedMediaReference>();
 
-  private readonly mediaService = inject(MediaService);
+  private readonly mediaPipeline = inject(MediaPipeline);
   private readonly audio = viewChild<ElementRef<HTMLAudioElement>>('audio');
 
   /** Resolved (blob) URL for the audio, or null while loading. */
@@ -76,7 +78,7 @@ export class VoiceMessageComponent {
     effect((onCleanup) => {
       const media = this.media();
       this.src.set(null);
-      const sub: Subscription = this.mediaService
+      const sub: Subscription = this.mediaPipeline
         .resolveMedia(media, 'full')
         .subscribe((url) => {
           // Pin the clip's object URL while it's bound to <audio> — the shared media
@@ -95,8 +97,8 @@ export class VoiceMessageComponent {
     if (url === this.pinnedUrl) {
       return;
     }
-    this.mediaService.unpin(this.pinnedUrl);
-    this.mediaService.pin(url);
+    this.mediaPipeline.unpin(this.pinnedUrl);
+    this.mediaPipeline.pin(url);
     this.pinnedUrl = url;
   }
 

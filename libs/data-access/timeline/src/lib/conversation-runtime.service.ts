@@ -9,7 +9,12 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { defer, of } from 'rxjs';
+import { Observable, defer, of } from 'rxjs';
+import {
+  MediaPipeline,
+  type MediaTransferEvent,
+  type StagedMediaReference,
+} from '@trinity/data-access/media';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { DraftStoreService } from '@trinity/platform-native';
 import {
@@ -68,6 +73,15 @@ export interface ConversationHandle {
   readonly state: Signal<ConversationState>;
   readonly timeline: ConversationTimeline;
   readonly compose: ConversationCompose;
+  readonly media: ConversationMedia;
+}
+
+/** Exact-Conversation attachment command surface; staged bytes remain opaque. */
+export interface ConversationMedia {
+  send(
+    media: StagedMediaReference,
+    caption: string,
+  ): Observable<MediaTransferEvent>;
 }
 
 export interface ConversationResources {
@@ -183,6 +197,7 @@ export class ConversationRuntime {
   private readonly factory = inject(CONVERSATION_TIMELINE_FACTORY);
   private readonly drafts = inject(DraftStoreService);
   private readonly textSender = inject(CONVERSATION_TEXT_SENDER);
+  private readonly mediaPipeline = inject(MediaPipeline);
   private readonly retainedPerAccount = Math.max(
     0,
     inject(CONVERSATION_RETENTION_LIMIT),
@@ -205,6 +220,7 @@ export class ConversationRuntime {
   readonly focused = this.focusedHandle.asReadonly();
   readonly timeline = this.focusedTimeline();
   readonly compose = this.focusedCompose();
+  readonly media = this.focusedMedia();
   readonly diagnostics = computed<ConversationRuntimeDiagnostics>(() => {
     const entries = [...this.entries.values()].flatMap((account) => [
       ...account.values(),
@@ -305,6 +321,16 @@ export class ConversationRuntime {
       state: state.asReadonly(),
       timeline: controller.timeline,
       compose: composeController.compose,
+      media: Object.freeze({
+        send: (media: StagedMediaReference, caption: string) =>
+          defer(() =>
+            this.mediaPipeline.transfer({
+              key: immutableKey,
+              media,
+              caption,
+            }),
+          ),
+      }),
     });
     const entry: ConversationEntry = {
       handle,
@@ -406,6 +432,22 @@ export class ConversationRuntime {
         defer(
           () =>
             focused()?.compose.submit(mentions) ??
+            of({
+              kind: 'rejected' as const,
+              failure: 'conversation-unavailable' as const,
+              retryable: false,
+            }),
+        ),
+    };
+  }
+
+  private focusedMedia(): ConversationMedia {
+    const focused = this.focusedHandle.asReadonly();
+    return {
+      send: (media, caption) =>
+        defer(
+          () =>
+            focused()?.media.send(media, caption) ??
             of({
               kind: 'rejected' as const,
               failure: 'conversation-unavailable' as const,

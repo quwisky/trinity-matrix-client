@@ -14,6 +14,13 @@ const item = (
   failed = false,
 ): StagedAttachment => ({
   id: `id-${file.name}`,
+  media: {
+    id: `media-${file.name}`,
+    filename: file.name,
+    mimeType: file.type,
+    size: file.size,
+    previewUrl,
+  } as StagedAttachment['media'],
   file,
   previewUrl,
   failed,

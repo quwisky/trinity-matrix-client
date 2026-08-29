@@ -11,7 +11,10 @@ import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { MediaService } from '@trinity/data-access/media';
+import {
+  MediaPipeline,
+  type StagedMediaReference,
+} from '@trinity/data-access/media';
 import { RoomNotificationsService } from '@trinity/data-access/notifications';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
@@ -27,6 +30,7 @@ import {
   type SpaceSummary,
 } from '@trinity/data-access/rooms';
 import {
+  ConversationRuntime,
   ThreadsService,
   TimelineActionsService,
 } from '@trinity/data-access/timeline';
@@ -148,7 +152,7 @@ describe('RoomsPage panels, pins and media', () => {
         MockProvider(SpaceChildrenService, { canCurate, addExistingRoom }),
         MockProvider(TrnAlertService, { confirm: alertConfirm }),
         MockProvider(TimelineActionsService, { sendMedia }),
-        MockProvider(MediaService),
+        MockProvider(MediaPipeline),
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
@@ -946,6 +950,44 @@ describe('RoomsPage panels, pins and media', () => {
       expect.stringContaining('you left the room'),
       expect.anything(),
     );
+  });
+
+  it('pins the exact Account handle when another Account has the same room id', () => {
+    const shell = build();
+    const runtime = TestBed.inject(ConversationRuntime);
+    const sharedRoomId = '!shared:hs';
+    const first = runtime.focus({
+      accountId: '@first:hs',
+      roomId: sharedRoomId,
+    });
+    const sendThroughFirst = first.media.send as Mock;
+    sendThroughFirst.mockImplementation(() => {
+      runtime.focus({ accountId: '@second:hs', roomId: sharedRoomId });
+      return of({ kind: 'sent' as const, eventId: '$first' });
+    });
+    const media = {
+      id: 'staged-account-bound',
+      filename: 'secret.png',
+      mimeType: 'image/png',
+      size: 1,
+      previewUrl: null,
+    } as unknown as StagedMediaReference;
+
+    let outcomes: readonly { id: string; failed: boolean }[] = [];
+    shell.messages.onSendMedia({
+      items: [
+        { id: 'a', file: pngFile(), media },
+        { id: 'b', file: pngFile(), media },
+      ],
+      caption: '',
+      onOutcomes: (result) => (outcomes = result),
+    });
+
+    expect(sendThroughFirst).toHaveBeenCalledTimes(1);
+    expect(outcomes).toEqual([
+      { id: 'a', failed: false },
+      { id: 'b', failed: true },
+    ]);
   });
 
   it('clears uploadProgress and toasts when a media send fails', () => {

@@ -23,8 +23,9 @@ const productionSources = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
  * Freeze the Message Presentation boundary introduced by #305.
  *
  * Text and system events must cross the defensive Matrix normalizer and immutable
- * presenter. The old util projection remains only as a temporary fallback for media,
- * location, sticker, and poll migrations owned by later architecture tickets.
+ * presenter. The old util projection remains only as a temporary fallback for location,
+ * sticker, and poll migrations owned by later architecture tickets; media must be replaced
+ * by the Media Pipeline's opaque presentation reference before leaving data access.
  */
 describe('Message Presentation production boundary', () => {
   it('keeps the public presentation model in timeline data-access', () => {
@@ -60,10 +61,10 @@ describe('Message Presentation production boundary', () => {
 
   it('routes both timeline surfaces through the single projection entrypoint', () => {
     expect(source(`${timelineRoot}/timeline.service.ts`)).toMatch(
-      /projectMessage\(client, room, e(?:, shield)?\)/,
+      /projectMessage\(\s*client,\s*room,\s*e,\s*(?:null|shield),\s*this\.mediaPipeline,\s*\)/,
     );
-    expect(source(`${timelineRoot}/threads.service.ts`)).toContain(
-      'projectMessage(client, room, e, shield)',
+    expect(source(`${timelineRoot}/threads.service.ts`)).toMatch(
+      /projectMessage\(\s*client,\s*room,\s*e,\s*shield,\s*this\.mediaPipeline,\s*\)/,
     );
 
     const projection = source(`${timelineRoot}/project-message.ts`);
@@ -71,6 +72,7 @@ describe('Message Presentation production boundary', () => {
       'normalizeTimelineEvent(client, room, event, shield)',
     );
     expect(projection).toContain('presentNormalizedTimelineEvent(normalized)');
+    expect(projection).toContain('presentMedia.present(legacy.media, client)');
   });
 
   it('does not restore the retired util text or system-event API', () => {

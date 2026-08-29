@@ -7,7 +7,7 @@ import { MediaService } from '@trinity/data-access/media';
 import { UrlPreviewService } from '@trinity/data-access/timeline';
 import { PrivacySettingsService } from '@trinity/platform-native';
 import { DRAWER_OUTER_EDGE_PX } from '../rooms/drawer-swipe.directive';
-import { FileSaveService } from '../media-save/file-save.service';
+import { FileSaveService } from '@trinity/platform-native';
 import {
   MessageRowComponent,
   SWIPE_DEAD_ZONE_PX,

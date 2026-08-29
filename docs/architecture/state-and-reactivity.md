@@ -144,6 +144,18 @@ The stable `ConversationRuntime.compose` proxy lets feature surfaces update that
 typing without gaining a writable signal or SDK reference. The component retains only transient
 textarea mechanics: caret, focus, autocomplete, attachment staging and toolbar state.
 
+Each handle also exposes an exact-Conversation media command. Host-acquired `File` objects are
+immediately staged by Media Pipeline and replaced with an opaque `StagedMediaReference`; the
+Conversation sees that reference, a caption, and its immutable Account-and-Room key, never raw
+bytes, an active-client pointer, or platform identity. `media.send()` is a cold RxJS stream of
+validation, encryption, upload and send progress followed by one typed terminal outcome.
+Unsubscription aborts an in-flight upload and asks the SDK to cancel a pending local echo when it
+can. Retry retains the encrypted upload descriptor for that exact Account-and-Room target. An
+unchanged caption resends the SDK's `NOT_SENT`/queued/encrypting event; confirmed cancellation or
+an edited caption rotates to a fresh Matrix transaction id before creating a replacement echo.
+While the SDK still marks the echo `SENDING`, the command reports an indeterminate terminal
+outcome instead of risking a duplicate.
+
 `compose.submit()` is cold and finite. Subscription snapshots the immutable Conversation key,
 current text and intent, suppresses a duplicate interaction while that attempt is active, and
 hands the text to the focused child’s package-internal Matrix adapter. A `sent` outcome is emitted

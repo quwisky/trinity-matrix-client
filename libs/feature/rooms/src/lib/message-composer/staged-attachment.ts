@@ -9,6 +9,8 @@
  */
 export interface StagedAttachment {
   readonly id: string;
+  readonly media: StagedMediaReference;
+  /** Temporary thread compatibility; removed when #309 moves threads onto Conversation Runtime. */
   readonly file: File;
   /** Object URL previewing an image, else null. Revoked when the item leaves the strip. */
   readonly previewUrl: string | null;
@@ -29,20 +31,29 @@ export interface StagedAttachment {
 let nextId = 0;
 
 /** Stage a file, creating a preview URL for images only. */
-export function stageAttachment(file: File): StagedAttachment {
+export function stageAttachment(
+  file: File,
+  pipeline: MediaPipeline,
+): StagedAttachment | null {
+  const outcome = pipeline.stage(file);
+  if (outcome.kind === 'rejected') return null;
   return {
     id: `attachment-${++nextId}`,
+    media: outcome.media,
     file,
-    previewUrl: file.type.startsWith('image/')
-      ? URL.createObjectURL(file)
-      : null,
+    previewUrl: outcome.media.previewUrl,
     failed: false,
   };
 }
 
 /** Release the preview URL a staged attachment owns, if it has one. */
-export function releaseAttachment(attachment: StagedAttachment): void {
-  if (attachment.previewUrl) {
-    URL.revokeObjectURL(attachment.previewUrl);
-  }
+export function releaseAttachment(
+  attachment: StagedAttachment,
+  pipeline: MediaPipeline,
+): void {
+  pipeline.releaseStaged(attachment.media);
 }
+import {
+  MediaPipeline,
+  type StagedMediaReference,
+} from '@trinity/data-access/media';

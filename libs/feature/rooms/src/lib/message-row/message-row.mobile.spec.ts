@@ -7,7 +7,7 @@ import { of } from 'rxjs';
 import { MediaService } from '@trinity/data-access/media';
 import { UrlPreviewService } from '@trinity/data-access/timeline';
 import { PrivacySettingsService } from '@trinity/platform-native';
-import { FileSaveService } from '../media-save/file-save.service';
+import { FileSaveService } from '@trinity/platform-native';
 import {
   MessageRowComponent,
   type MessageLongPressContext,

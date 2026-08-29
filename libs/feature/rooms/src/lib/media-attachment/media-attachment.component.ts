@@ -16,15 +16,17 @@ import {
   TrnDialogService,
   type TrnDialogRef,
 } from '@trinity/components/overlay';
-import { MediaService } from '@trinity/data-access/media';
-import { type MediaPayload } from '@trinity/util/matrix';
-import { FileSaveService } from '../media-save/file-save.service';
+import {
+  MediaPipeline,
+  type PresentedMediaReference,
+} from '@trinity/data-access/media';
+import { FileSaveService } from '@trinity/platform-native';
 import { LightboxComponent } from './lightbox/lightbox.component';
 
 /**
- * Smart wrapper bridging the timeline's {@link MediaPayload} to the presentational
+ * Smart wrapper bridging the timeline's opaque media reference to the presentational
  * {@link MediaBubbleComponent}: resolves the thumbnail object URL via
- * {@link MediaService} (the only place that touches the SDK), pins it on screen so
+ * {@link MediaPipeline}, pins it on screen so
  * the cache won't revoke it, and drives full-resolution view + download.
  */
 @Component({
@@ -34,9 +36,9 @@ import { LightboxComponent } from './lightbox/lightbox.component';
   templateUrl: './media-attachment.component.html',
 })
 export class MediaAttachmentComponent {
-  readonly media = input.required<MediaPayload>();
+  readonly media = input.required<PresentedMediaReference>();
 
-  private readonly mediaService = inject(MediaService);
+  private readonly mediaPipeline = inject(MediaPipeline);
   private readonly dialogs = inject(TrnDialogService);
   private readonly fileSave = inject(FileSaveService);
   private readonly destroyRef = inject(DestroyRef);
@@ -90,7 +92,7 @@ export class MediaAttachmentComponent {
         return;
       }
       this.thumbnailSub = runWithBusy(
-        this.mediaService.resolveMedia(media, 'thumbnail'),
+        this.mediaPipeline.resolveMedia(media, 'thumbnail'),
         {
           busy: this.loading,
           error: this.errorMsg,
@@ -117,7 +119,7 @@ export class MediaAttachmentComponent {
       return;
     }
     this.lightboxPending = true;
-    this.mediaService
+    this.mediaPipeline
       .resolveMedia(this.media(), 'full')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
@@ -166,7 +168,7 @@ export class MediaAttachmentComponent {
       return; // a save is already in flight (avoid a concurrent native share)
     }
     this.saving.set(true);
-    this.mediaService
+    this.mediaPipeline
       .downloadMedia(this.media())
       .pipe(
         switchMap(({ blob, filename }) => this.fileSave.save(blob, filename)),
@@ -181,18 +183,18 @@ export class MediaAttachmentComponent {
   /** Swap the pinned thumbnail URL: unpin the previous, pin the next. */
   private repin(url: string | null): void {
     if (this.pinnedUrl && this.pinnedUrl !== url) {
-      this.mediaService.unpin(this.pinnedUrl);
+      this.mediaPipeline.unpin(this.pinnedUrl);
     }
     this.pinnedUrl = url;
-    this.mediaService.pin(url);
+    this.mediaPipeline.pin(url);
   }
 
   /** Swap the pinned full-resolution URL (lightbox): unpin the previous, pin the next. */
   private pinLightbox(url: string | null): void {
     if (this.lightboxPinnedUrl && this.lightboxPinnedUrl !== url) {
-      this.mediaService.unpin(this.lightboxPinnedUrl);
+      this.mediaPipeline.unpin(this.lightboxPinnedUrl);
     }
     this.lightboxPinnedUrl = url;
-    this.mediaService.pin(url);
+    this.mediaPipeline.pin(url);
   }
 }

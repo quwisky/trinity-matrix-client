@@ -28,7 +28,7 @@ export class GalleryPermissionDeniedError extends Error {
 }
 
 /**
- * Picks a media file for the composer. On a native platform it opens the
+ * Host adapter that picks media for the composer. On a native platform it opens the
  * Capacitor gallery picker and materializes the choice into a `File`; on the web
  * it is a no-op ({@link available} === false) and the composer falls back to a
  * hidden `<input type="file">` — which itself surfaces the native picker/camera

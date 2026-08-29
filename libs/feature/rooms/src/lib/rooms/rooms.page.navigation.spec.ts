@@ -24,7 +24,7 @@ import {
 } from '@trinity/data-access/homeserver';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AccountProfilesService } from '@trinity/data-access/profile';
-import { MediaService } from '@trinity/data-access/media';
+import { MediaPipeline } from '@trinity/data-access/media';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
   RoomsService,
@@ -118,7 +118,7 @@ describe('RoomsPage quick switcher', () => {
           },
         },
         MockProvider(TimelineActionsService),
-        MockProvider(MediaService),
+        MockProvider(MediaPipeline),
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
@@ -344,7 +344,7 @@ describe('RoomsPage mobile navigation', () => {
           },
         },
         MockProvider(TimelineActionsService),
-        MockProvider(MediaService, { releaseAll }),
+        MockProvider(MediaPipeline, { releaseAll }),
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
@@ -996,7 +996,7 @@ describe('RoomsPage keyboard room switching', () => {
           childRoomIds: vi.fn(() => []),
         }),
         MockProvider(TimelineActionsService),
-        MockProvider(MediaService, { releaseAll }),
+        MockProvider(MediaPipeline, { releaseAll }),
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
@@ -1269,7 +1269,7 @@ describe('RoomsPage room-in-URL deep link', () => {
           blur: conversationBlur,
         }),
         MockProvider(TimelineActionsService),
-        MockProvider(MediaService),
+        MockProvider(MediaPipeline),
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
@@ -1402,7 +1402,7 @@ describe('RoomsPage room-in-URL deep link', () => {
     TestBed.tick();
     expect(shell.store.activeRoomId()).toBe('!b:hs');
 
-    const media = TestBed.inject(MediaService);
+    const media = TestBed.inject(MediaPipeline);
     vi.mocked(media.releaseAll).mockClear();
 
     setMediaQuery(BELOW_MD_QUERY, true);
@@ -1428,7 +1428,7 @@ describe('RoomsPage room-in-URL deep link', () => {
 
     const threads = TestBed.inject(ThreadsService);
     const pinned = TestBed.inject(PinnedMessagesService);
-    const media = TestBed.inject(MediaService);
+    const media = TestBed.inject(MediaPipeline);
     conversationBlur.mockClear();
     // The effect already called releaseAll on the way in, so without this the assertion
     // below could not fail — deleting it from `releaseOpenRoom` left the suite green.

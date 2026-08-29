@@ -150,10 +150,14 @@ export const SHARED_MOCKS: Provider[] = [
     useFactory: () => {
       const timeline = inject(ConversationTimelineStub);
       const compose = new ConversationComposeStub();
+      const media = {
+        send: vi.fn(() => of({ kind: 'sent' as const, eventId: '$media' })),
+      };
       const focused = signal<ConversationHandle | null>(null);
       return {
         timeline,
         compose,
+        media,
         focused: focused.asReadonly(),
         focus: vi.fn((key: ConversationKey) => {
           timeline.focusRoom(key.roomId);
@@ -163,6 +167,7 @@ export const SHARED_MOCKS: Provider[] = [
             state: state.asReadonly(),
             timeline,
             compose,
+            media,
           } satisfies ConversationHandle;
           focused.set(handle);
           return handle;

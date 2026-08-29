@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
+import type { MatrixClient } from 'matrix-js-sdk';
 import {
   afterEach,
   beforeEach,
@@ -165,6 +166,43 @@ describe('MediaService', () => {
     const again = await firstValueFrom(svc.resolveMedia(media, 'full'));
     expect(again).toBe(url);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses an explicitly bound client for both media fetches and uploads', async () => {
+    const { svc, client: activeClient } = setup();
+    const exactClient = fakeClient({
+      getAccessToken: vi.fn(() => 'exact-token'),
+      uploadContent: vi
+        .fn()
+        .mockResolvedValue({ content_uri: 'mxc://exact/upload' }),
+    });
+
+    await firstValueFrom(
+      svc.resolveMedia(
+        plainMedia('mxc://hs/exact'),
+        'full',
+        exactClient as unknown as MatrixClient,
+      ),
+    );
+    await firstValueFrom(
+      svc.uploadMedia(
+        new File([new Uint8Array([1])], 'exact.txt', {
+          type: 'text/plain',
+        }),
+        false,
+        undefined,
+        undefined,
+        exactClient as unknown as MatrixClient,
+      ),
+    );
+
+    expect(fetchMock.mock.calls[0]?.[1].headers.Authorization).toBe(
+      'Bearer exact-token',
+    );
+    expect(exactClient.isVersionSupported).toHaveBeenCalledOnce();
+    expect(exactClient.uploadContent).toHaveBeenCalledOnce();
+    expect(activeClient.isVersionSupported).not.toHaveBeenCalled();
+    expect(activeClient.uploadContent).not.toHaveBeenCalled();
   });
 
   it('re-probes authed-media support after releaseAll (account/homeserver switch)', async () => {

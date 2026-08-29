@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { type BatchItem } from '../shared/send-media-batch';
 import { MockProvider } from 'ng-mocks';
 import { TrnToastService } from '@trinity/components/overlay';
-import { MediaPickerService } from '../media-picker/media-picker.service';
+import { MediaPickerService } from '@trinity/platform-native';
 
 describe('MessageComposerComponent — staging files for the next send', () => {
   beforeEach(() => stubObjectUrls());

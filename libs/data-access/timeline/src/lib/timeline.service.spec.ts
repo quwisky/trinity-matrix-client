@@ -1127,11 +1127,11 @@ describe('TimelineService', () => {
       expect(sticker.body).toBe('Party parrot');
       expect(sticker.media).toMatchObject({
         kind: 'image',
-        mxc: 'mxc://hs/parrot',
         mimeType: 'image/png',
         width: 64,
         height: 48,
       });
+      expect(sticker.media).not.toHaveProperty('mxc');
     });
 
     it('does not render a sticker with a remote image source', () => {
@@ -1151,7 +1151,7 @@ describe('TimelineService', () => {
       });
     });
 
-    it('projects an m.image event to an image MediaPayload', () => {
+    it('projects an m.image event to a safe opaque media reference', () => {
       const svc = setup([
         fakeEvent({
           id: '$img',
@@ -1168,15 +1168,50 @@ describe('TimelineService', () => {
       expect(m.body).toBe('pic.png'); // body falls back to the filename
       expect(m.media).toMatchObject({
         kind: 'image',
-        mxc: 'mxc://hs/abc',
-        file: null,
         mimeType: 'image/png',
         width: 800,
         height: 600,
         size: 1234,
         filename: 'pic.png',
       });
+      expect(m.media).not.toHaveProperty('mxc');
+      expect(m.media).not.toHaveProperty('file');
+      expect(m.media).not.toHaveProperty('key');
       expect(m.caption).toBeNull(); // no MSC2530 filename → no caption
+    });
+
+    it('keeps encrypted media source and key material behind the pipeline boundary', () => {
+      const svc = setup([
+        fakeEvent({
+          id: '$encrypted-image',
+          sender: '@a:hs',
+          msgtype: 'm.image',
+          body: 'secret.png',
+          file: {
+            url: 'mxc://hs/ciphertext',
+            key: { kty: 'oct', k: 'secret-key' },
+            iv: 'secret-iv',
+            hashes: { sha256: 'secret-hash' },
+            v: 'v2',
+          },
+          info: { mimetype: 'image/png', size: 1234 },
+        }),
+      ]);
+
+      const media = svc.messages()[0].media;
+
+      expect(media).toMatchObject({
+        kind: 'image',
+        filename: 'secret.png',
+        mimeType: 'image/png',
+        size: 1234,
+      });
+      expect(media).not.toHaveProperty('mxc');
+      expect(media).not.toHaveProperty('file');
+      expect(media).not.toHaveProperty('key');
+      expect(JSON.stringify(media)).not.toContain('secret-key');
+      expect(JSON.stringify(media)).not.toContain('ciphertext');
+      expect(JSON.stringify(media)).not.toContain('secret-iv');
     });
 
     it('deep-freezes legacy poll payloads at the presentation boundary', () => {
@@ -1344,7 +1379,7 @@ describe('TimelineService', () => {
       expect(media?.isVoice).toBeUndefined();
     });
 
-    it('projects an m.file event to a file MediaPayload', () => {
+    it('projects an m.file event to a safe opaque media reference', () => {
       const svc = setup([
         fakeEvent({
           id: '$file',
@@ -1360,11 +1395,11 @@ describe('TimelineService', () => {
       expect(m.kind).toBe('file');
       expect(m.media).toMatchObject({
         kind: 'file',
-        mxc: 'mxc://hs/doc',
         mimeType: 'application/pdf',
         size: 9000,
         filename: 'report.pdf',
       });
+      expect(m.media).not.toHaveProperty('mxc');
     });
 
     it('downgrades a script-bearing image MIME (svg) to a download-only file', () => {
