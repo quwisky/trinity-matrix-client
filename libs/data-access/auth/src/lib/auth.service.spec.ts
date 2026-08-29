@@ -16,6 +16,7 @@ vi.mock('matrix-js-sdk', async (importActual) => {
 });
 
 import { AutoDiscovery, MatrixError, createClient } from 'matrix-js-sdk';
+import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { AUTH_METADATA } from './auth-metadata.fixture';
 import { AuthService } from './auth.service';
 import {
@@ -60,6 +61,15 @@ describe('AuthService', () => {
     TestBed.configureTestingModule({
       providers: [
         AuthService,
+        MockProvider(AccountRuntimeService, {
+          establishAuthenticatedAccount: vi.fn(() =>
+            of({
+              kind: 'ready' as const,
+              accountId: '@me:hs',
+              placement: 'active' as const,
+            }),
+          ),
+        }),
         MockProvider(MatrixClientService, {
           accountIds: accountIds.asReadonly(),
           activeUserId: activeUserId.asReadonly(),
@@ -253,22 +263,13 @@ describe('AuthService', () => {
         loginRequest: vi.fn().mockResolvedValue(loginRes),
       } as never);
 
-    it('replace login drops prior caches + pusher, then inits', async () => {
+    it('replace login drops prior caches + pusher, then delegates replacement', async () => {
       stubLogin();
       const matrix = TestBed.inject(MatrixClientService);
-      const storage = TestBed.inject(SessionStorageService);
+      const accounts = TestBed.inject(AccountRuntimeService);
       const push = TestBed.inject(PushService);
       const avatars = TestBed.inject(AvatarService);
       vi.mocked(push.unregister).mockReturnValue(of(undefined));
-      vi.mocked(storage.save).mockReturnValue(
-        of({
-          baseUrl: 'https://hs',
-          userId: '@me:hs',
-          deviceId: 'DEV',
-          accessToken: 'tok',
-        }),
-      );
-      vi.mocked(matrix.init).mockReturnValue(of(undefined));
 
       await firstValueFrom(
         auth.loginWithPassword('https://hs', '@me:hs', 'pw'),
@@ -276,32 +277,39 @@ describe('AuthService', () => {
 
       expect(avatars.releaseAll).toHaveBeenCalled();
       expect(push.unregister).toHaveBeenCalled();
-      expect(matrix.init).toHaveBeenCalled();
+      expect(accounts.establishAuthenticatedAccount).toHaveBeenCalledWith(
+        expect.anything(),
+        {
+          placement: 'active',
+          liveAccounts: 'replace',
+          accountRecord: 'upsert',
+        },
+      );
+      expect(matrix.init).not.toHaveBeenCalled();
       expect(matrix.add).not.toHaveBeenCalled();
     });
 
-    it('add login keeps prior caches + pusher and adds alongside', async () => {
+    it('add login keeps prior caches + pusher and delegates additive placement', async () => {
       stubLogin();
       const matrix = TestBed.inject(MatrixClientService);
-      const storage = TestBed.inject(SessionStorageService);
+      const accounts = TestBed.inject(AccountRuntimeService);
       const push = TestBed.inject(PushService);
       const avatars = TestBed.inject(AvatarService);
-      vi.mocked(storage.save).mockReturnValue(
-        of({
-          baseUrl: 'https://hs',
-          userId: '@me:hs',
-          deviceId: 'DEV',
-          accessToken: 'tok',
-        }),
-      );
-      vi.mocked(matrix.add).mockReturnValue(of(undefined));
       vi.mocked(push.register).mockReturnValue(of(undefined));
 
       await firstValueFrom(
         auth.loginWithPassword('https://hs', '@me:hs', 'pw', 'add'),
       );
 
-      expect(matrix.add).toHaveBeenCalled();
+      expect(accounts.establishAuthenticatedAccount).toHaveBeenCalledWith(
+        expect.anything(),
+        {
+          placement: 'active',
+          liveAccounts: 'keep',
+          accountRecord: 'upsert',
+        },
+      );
+      expect(matrix.add).not.toHaveBeenCalled();
       expect(matrix.init).not.toHaveBeenCalled();
       expect(avatars.releaseAll).not.toHaveBeenCalled();
       expect(push.unregister).not.toHaveBeenCalled();
@@ -377,48 +385,44 @@ describe('AuthService', () => {
       },
     };
 
-    it('exchanges the grant and establishes the OIDC session (refresh token + binding persisted)', async () => {
+    it('exchanges the grant and delegates OIDC session establishment', async () => {
       const oidc = TestBed.inject(OidcClientService);
+      const accounts = TestBed.inject(AccountRuntimeService);
       const matrix = TestBed.inject(MatrixClientService);
-      const storage = TestBed.inject(SessionStorageService);
       const push = TestBed.inject(PushService);
       vi.mocked(oidc.completeGrant).mockReturnValue(of(grant) as never);
       vi.mocked(push.unregister).mockReturnValue(of(undefined));
-      vi.mocked(storage.save).mockImplementation((s) => of(s));
-      vi.mocked(matrix.init).mockReturnValue(of(undefined));
 
       await firstValueFrom(auth.completeOidcLogin('CODE', context));
 
       expect(oidc.completeGrant).toHaveBeenCalledWith('CODE', context);
-      // establish() persisted the full OIDC session, then brought the client up (replace).
-      expect(storage.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          baseUrl: 'https://hs',
-          userId: '@me:hs',
-          deviceId: 'DEV',
-          accessToken: 'atok',
-          refreshToken: 'rtok',
-          accessTokenExpiresAt: 1234,
-          oidc: grant.oidc,
-        }),
+      expect(accounts.establishAuthenticatedAccount).toHaveBeenCalledWith(
+        expect.anything(),
+        {
+          placement: 'active',
+          liveAccounts: 'replace',
+          accountRecord: 'upsert',
+        },
       );
-      expect(matrix.init).toHaveBeenCalled();
+      expect(matrix.init).not.toHaveBeenCalled();
       expect(matrix.add).not.toHaveBeenCalled();
     });
 
     it('adds the OIDC account alongside others in add mode', async () => {
       const oidc = TestBed.inject(OidcClientService);
+      const accounts = TestBed.inject(AccountRuntimeService);
       const matrix = TestBed.inject(MatrixClientService);
-      const storage = TestBed.inject(SessionStorageService);
       const push = TestBed.inject(PushService);
       vi.mocked(oidc.completeGrant).mockReturnValue(of(grant) as never);
-      vi.mocked(storage.save).mockImplementation((s) => of(s));
-      vi.mocked(matrix.add).mockReturnValue(of(undefined));
       vi.mocked(push.register).mockReturnValue(of(undefined));
 
       await firstValueFrom(auth.completeOidcLogin('CODE', context, 'add'));
 
-      expect(matrix.add).toHaveBeenCalled();
+      expect(accounts.establishAuthenticatedAccount).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ liveAccounts: 'keep' }),
+      );
+      expect(matrix.add).not.toHaveBeenCalled();
       expect(push.register).toHaveBeenCalled();
       expect(matrix.init).not.toHaveBeenCalled();
     });
@@ -453,19 +457,18 @@ describe('AuthService', () => {
 
     it('accepts a grant that matches the account being re-authenticated', async () => {
       const oidc = TestBed.inject(OidcClientService);
+      const accounts = TestBed.inject(AccountRuntimeService);
       const matrix = TestBed.inject(MatrixClientService);
-      const storage = TestBed.inject(SessionStorageService);
       const push = TestBed.inject(PushService);
       vi.mocked(oidc.completeGrant).mockReturnValue(of(grant) as never);
-      vi.mocked(storage.save).mockImplementation((s) => of(s));
-      vi.mocked(matrix.add).mockReturnValue(of(undefined));
       vi.mocked(push.register).mockReturnValue(of(undefined));
 
       await firstValueFrom(
         auth.completeOidcLogin('CODE', context, 'add', '@me:hs'),
       );
 
-      expect(matrix.add).toHaveBeenCalled();
+      expect(accounts.establishAuthenticatedAccount).toHaveBeenCalled();
+      expect(matrix.add).not.toHaveBeenCalled();
       expect(oidc.revokeTokens).not.toHaveBeenCalled();
     });
   });
@@ -487,19 +490,10 @@ describe('AuthService', () => {
         access_token: 'tok',
       });
       createClientMock.mockReturnValue({ loginRequest } as never);
+      const accounts = TestBed.inject(AccountRuntimeService);
       const matrix = TestBed.inject(MatrixClientService);
-      const storage = TestBed.inject(SessionStorageService);
       const push = TestBed.inject(PushService);
       const avatars = TestBed.inject(AvatarService);
-      vi.mocked(storage.save).mockReturnValue(
-        of({
-          baseUrl: 'https://hs',
-          userId: '@me:hs',
-          deviceId: 'DEV',
-          accessToken: 'tok',
-        }),
-      );
-      vi.mocked(matrix.add).mockReturnValue(of(undefined));
       vi.mocked(push.register).mockReturnValue(of(undefined));
 
       await firstValueFrom(
@@ -513,9 +507,11 @@ describe('AuthService', () => {
           device_id: 'DEV',
         }),
       );
-      // Additive path: save → add → register, leaving other accounts intact.
-      expect(storage.save).toHaveBeenCalled();
-      expect(matrix.add).toHaveBeenCalled();
+      expect(accounts.establishAuthenticatedAccount).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ liveAccounts: 'keep' }),
+      );
+      expect(matrix.add).not.toHaveBeenCalled();
       expect(push.register).toHaveBeenCalled();
       expect(matrix.init).not.toHaveBeenCalled();
       expect(avatars.releaseAll).not.toHaveBeenCalled();

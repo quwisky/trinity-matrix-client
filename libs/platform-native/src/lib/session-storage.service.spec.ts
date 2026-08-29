@@ -133,6 +133,55 @@ describe('SessionStorageService', () => {
     expect(await firstValueFrom(svc.save(ALICE))).toEqual(ALICE_STORED);
   });
 
+  it('persists an Account for establishment without changing the Active Account', async () => {
+    const { svc } = setup();
+    await firstValueFrom(svc.save(ALICE));
+
+    const stored = await firstValueFrom(
+      svc.persistForEstablishment(BOB, 'upsert'),
+    );
+
+    expect(stored).toEqual(BOB_STORED);
+    expect(await firstValueFrom(svc.snapshot())).toMatchObject({
+      activeAccountId: '@alice:hs',
+      accounts: [
+        expect.objectContaining({ userId: '@alice:hs' }),
+        expect.objectContaining({ userId: '@bob:other' }),
+      ],
+    });
+  });
+
+  it('preserves the atomic new-Account guard during establishment persistence', async () => {
+    const { svc } = setup();
+    await firstValueFrom(svc.save(ALICE));
+
+    await expect(
+      firstValueFrom(svc.persistForEstablishment(ALICE, 'new')),
+    ).rejects.toThrow(/already stored/i);
+    expect(await firstValueFrom(svc.load())).toEqual(ALICE_STORED);
+  });
+
+  it('commits Active placement only for an Account present in the registry', async () => {
+    const { svc } = setup();
+    await firstValueFrom(svc.save(ALICE));
+    await firstValueFrom(svc.persistForEstablishment(BOB, 'upsert'));
+
+    await firstValueFrom(svc.setActiveForEstablishment('@bob:other'));
+
+    expect(await firstValueFrom(svc.snapshot())).toMatchObject({
+      activeAccountId: '@bob:other',
+    });
+    await firstValueFrom(
+      svc.restoreActiveAfterFailedEstablishment('@alice:hs'),
+    );
+    expect(await firstValueFrom(svc.snapshot())).toMatchObject({
+      activeAccountId: '@alice:hs',
+    });
+    await expect(
+      firstValueFrom(svc.setActiveForEstablishment('@missing:hs')),
+    ).rejects.toThrow(/not stored/i);
+  });
+
   it('atomically rejects a new account that claims an existing MXID without mutation', async () => {
     const deleteDatabase = vi.fn();
     vi.stubGlobal('indexedDB', { deleteDatabase });

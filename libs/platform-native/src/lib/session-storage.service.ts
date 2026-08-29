@@ -36,6 +36,8 @@ export interface AccountRegistrySnapshot {
   readonly accounts: readonly AccountRecord[];
 }
 
+export type AccountPersistenceConstraint = 'upsert' | 'new';
+
 /** Registry of non-secret account records + the active pointer. */
 const ACCOUNTS_KEY = 'matrix.accounts';
 /** Per-account access-token key in secure storage: `${TOKEN_KEY_PREFIX}${userId}`. */
@@ -95,7 +97,9 @@ export class SessionStorageService {
    * the SDK default (which would collide with another account's crypto store).
    */
   save(session: MatrixSession): Observable<MatrixSession> {
-    return defer(() => from(this.serialize(() => this.upsert(session, false))));
+    return defer(() =>
+      from(this.serialize(() => this.upsert(session, 'upsert', 'activate'))),
+    );
   }
 
   /**
@@ -104,7 +108,42 @@ export class SessionStorageService {
    * an existing account's token, device binding, or crypto-store prefix.
    */
   saveNew(session: MatrixSession): Observable<MatrixSession> {
-    return defer(() => from(this.serialize(() => this.upsert(session, true))));
+    return defer(() =>
+      from(this.serialize(() => this.upsert(session, 'new', 'activate'))),
+    );
+  }
+
+  /**
+   * Persist authenticated material without moving the Active Account pointer.
+   * Account Runtime commits that pointer only after the live Matrix runtime is ready.
+   */
+  persistForEstablishment(
+    session: MatrixSession,
+    constraint: AccountPersistenceConstraint,
+  ): Observable<MatrixSession> {
+    return defer(() =>
+      from(
+        this.serialize(() =>
+          this.upsert(session, constraint, 'preserve-active'),
+        ),
+      ),
+    );
+  }
+
+  /** Commit the Active pointer for a live Account through a typed persistence boundary. */
+  setActiveForEstablishment(userId: string): Observable<void> {
+    return defer(() =>
+      from(this.serialize(() => this.setActiveInternal(userId, true))),
+    );
+  }
+
+  /** Compensate a failed live activation after Account Runtime persisted its pointer. */
+  restoreActiveAfterFailedEstablishment(
+    userId: string | null,
+  ): Observable<void> {
+    return defer(() =>
+      from(this.serialize(() => this.setActiveInternal(userId, true))),
+    );
   }
 
   /** Load a session — the active account by default, or a specific `userId`. */
@@ -245,14 +284,15 @@ export class SessionStorageService {
 
   private async upsert(
     session: MatrixSession,
-    requireNew: boolean,
+    constraint: AccountPersistenceConstraint,
+    activation: 'activate' | 'preserve-active',
   ): Promise<MatrixSession> {
     const { accessToken, refreshToken, ...incoming } = session;
     const registry = await this.readRegistry();
     const existing = registry.accounts.find(
       (a) => a.userId === incoming.userId,
     );
-    if (requireNew && existing) {
+    if (constraint === 'new' && existing) {
       throw new AccountAlreadyStoredError(incoming.userId);
     }
     const deviceChanged = !!existing && existing.deviceId !== incoming.deviceId;
@@ -290,7 +330,9 @@ export class SessionStorageService {
       ...registry.accounts.filter((a) => a.userId !== incoming.userId),
       record,
     ];
-    registry.activeUserId = incoming.userId;
+    if (activation === 'activate') {
+      registry.activeUserId = incoming.userId;
+    }
     await this.secure.set(this.tokenKey(incoming.userId), accessToken);
     // Persist (or clear) the OIDC refresh token alongside the access token: set it for
     // an OIDC login, remove any stale one when re-logging in without one (e.g. an
@@ -419,11 +461,23 @@ export class SessionStorageService {
       : null;
   }
 
-  private async setActiveInternal(userId: string): Promise<void> {
+  private async setActiveInternal(
+    userId: string | null,
+    requireStored = false,
+  ): Promise<void> {
     const registry = await this.readRegistry();
+    if (userId === null) {
+      registry.activeUserId = null;
+      await this.writeRegistry(registry);
+      return;
+    }
     if (registry.accounts.some((a) => a.userId === userId)) {
       registry.activeUserId = userId;
       await this.writeRegistry(registry);
+    } else if (requireStored) {
+      throw new Error(
+        `Cannot activate an Account that is not stored: ${userId}`,
+      );
     }
   }
 

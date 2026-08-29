@@ -1,7 +1,10 @@
 import { InjectionToken, Signal, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { MatrixAccountRuntimeAdapter } from './matrix-account-runtime.adapter';
+import type { AuthenticatedAccountGrant } from './authenticated-account-grant';
 import type {
+  AccountEstablishmentFailure,
+  AccountEstablishmentIntent,
   AccountRestoreFailure,
   AccountRestoreRole,
 } from './account-runtime.models';
@@ -19,6 +22,13 @@ export type AdapterAccountRestoreOutcome =
   | { readonly kind: 'reauthentication-required' }
   | { readonly kind: 'failed'; readonly failure: AccountRestoreFailure };
 
+export type AdapterAccountEstablishmentOutcome =
+  | { readonly kind: 'ready' }
+  | {
+      readonly kind: 'failed';
+      readonly failure: AccountEstablishmentFailure;
+    };
+
 export interface AccountRuntimeAdapter {
   readonly activeAccountId: Signal<string | null>;
   sweepOrphanedStores(): Observable<void>;
@@ -27,6 +37,10 @@ export interface AccountRuntimeAdapter {
     accountId: string,
     role: AccountRestoreRole,
   ): Observable<AdapterAccountRestoreOutcome>;
+  establishAccount(
+    grant: AuthenticatedAccountGrant,
+    intent: AccountEstablishmentIntent,
+  ): Observable<AdapterAccountEstablishmentOutcome>;
 }
 
 export interface AccountRestorePolicy {

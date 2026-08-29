@@ -17,6 +17,7 @@ import {
   throwError,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import type { AccountEstablishmentOutcome } from '@trinity/data-access/accounts';
 import { AvatarService } from '@trinity/data-access/media';
 import { MediaService } from '@trinity/data-access/media';
 import { PushService } from '@trinity/data-access/notifications';
@@ -43,6 +44,7 @@ import {
 } from './session-establishment.service';
 
 export type { LoginMode } from './session-establishment.service';
+export type { AccountEstablishmentOutcome } from '@trinity/data-access/accounts';
 
 const DEVICE_DISPLAY_NAME = 'Trinity';
 
@@ -143,7 +145,7 @@ export class AuthService {
     password: string,
     mode: LoginMode = 'replace',
     deviceId?: string,
-  ): Observable<void> {
+  ): Observable<AccountEstablishmentOutcome> {
     return defer(() =>
       from(
         createClient({ baseUrl }).loginRequest({
@@ -179,7 +181,7 @@ export class AuthService {
     loginToken: string,
     mode: LoginMode = 'replace',
     deviceId?: string,
-  ): Observable<void> {
+  ): Observable<AccountEstablishmentOutcome> {
     return defer(() =>
       from(
         createClient({ baseUrl }).loginRequest({
@@ -227,7 +229,7 @@ export class AuthService {
     context: OidcGrantContext,
     mode: LoginMode = 'replace',
     expectedUserId: string | null = null,
-  ): Observable<void> {
+  ): Observable<AccountEstablishmentOutcome> {
     return this.oidc.completeGrant(code, context).pipe(
       switchMap((grant) => this.rejectMismatchedGrant(grant, expectedUserId)),
       switchMap((grant) =>

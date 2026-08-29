@@ -55,6 +55,7 @@ import {
 import { AuthCardComponent } from '../auth-card/auth-card.component';
 import { OidcStateStore } from '../oidc-state.store';
 import { TrnIconComponent } from '@trinity/components/icon';
+import { accountEstablishmentError } from '../account-establishment-outcome';
 
 @Component({
   selector: 'trn-login',
@@ -311,7 +312,12 @@ export class LoginPage {
         this.loginMode(),
         this.reauthDeviceId ?? undefined,
       ),
-    ).subscribe(() => {
+    ).subscribe((outcome) => {
+      const error = accountEstablishmentError(outcome);
+      if (error) {
+        this.error.set(error);
+        return;
+      }
       void this.router.navigateByUrl('/rooms', { replaceUrl: true });
     });
   }

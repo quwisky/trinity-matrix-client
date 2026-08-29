@@ -286,6 +286,45 @@ describe('MatrixClientService', () => {
     expect(svc.instance).toBe(b);
   });
 
+  it('activates a fully started Account and can retire the other live runtimes', async () => {
+    const a = fakeClient();
+    const b = fakeClient();
+    vi.mocked(createClient)
+      .mockReturnValueOnce(a as never)
+      .mockReturnValueOnce(b as never);
+    const { svc } = setup();
+    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(svc.add(SESSION_B));
+
+    svc.activateAccount('@me:hs', 'replace');
+
+    expect(svc.activeUserId()).toBe('@me:hs');
+    expect(svc.accountIds()).toEqual(['@me:hs']);
+    expect(b.stopClient).toHaveBeenCalled();
+    expect(a.stopClient).not.toHaveBeenCalled();
+  });
+
+  it('rejects Active placement for an Account that is not live', () => {
+    const { svc } = setup();
+
+    expect(() => svc.activateAccount('@missing:hs', 'keep')).toThrow(
+      /not live/i,
+    );
+  });
+
+  it('rolls back a background Account start without wiping its stores', async () => {
+    const client = fakeClient();
+    vi.mocked(createClient).mockReturnValue(client as never);
+    const { svc } = setup();
+    await firstValueFrom(svc.restorePersisted(SESSION, 'background'));
+
+    await firstValueFrom(svc.rollbackAccountStart('@me:hs'));
+
+    expect(svc.accountIds()).toEqual([]);
+    expect(client.stopClient).toHaveBeenCalled();
+    expect(client.clearStores).not.toHaveBeenCalled();
+  });
+
   it('bridges sync state into the signal', async () => {
     const client = fakeClient();
     vi.mocked(createClient).mockReturnValue(client as never);

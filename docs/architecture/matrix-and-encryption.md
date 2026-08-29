@@ -131,6 +131,36 @@ represented in the cancelled state. Adapter defects use the Observable error cha
 distinct failed runtime phase. The former detached `MatrixClientService.restoreAll()` facade was
 removed when its production caller count reached zero.
 
+Successful authentication enters the same runtime through
+`establishAuthenticatedAccount(grant, intent)`. Password, SSO, OIDC, and registration adapters
+seal the authenticated `MatrixSession` in an `AuthenticatedAccountGrant`; the grant has no
+enumerable or serializable credential fields, and only the Account Runtime implementation can
+recover its payload. The intent separately names whether the Account record is new or upserted,
+whether it becomes Active, and whether other live Accounts are kept or replaced.
+
+The production adapter preserves the existing persisted-session format and crypto-store prefix.
+It writes the Account without changing the Active pointer, starts Matrix Runtime in the
+background, verifies that the Account is live, then commits the persisted and live Active
+placement only after startup succeeds. A missing live client at that commit boundary is an
+adapter defect, not an expected lifecycle outcome. If the persisted Active-pointer commit fails,
+the adapter stops and removes the newly started client without wiping its persisted stores and,
+when necessary, restores the prior persisted Active pointer. A failed command therefore leaves no
+background runtime syncing outside Account Runtime state and no pointer to an unplaced runtime.
+Inactive placement requires an existing Active Account and never moves either pointer. Identical
+grants and intents join one in-flight command; a different establishment or a concurrent restore
+returns `transition-in-progress`. Storage, network, reauthentication, and crypto failures are
+typed outcomes with safe Account metadata, while invalid grants and adapter invariants stay on the
+Observable error channel. A newly registered Account whose startup fails can retry the identical
+grant without attempting the atomic new-record write twice.
+
+`SessionEstablishmentService` is a temporary compatibility facade around this command. Its
+production caller counter is frozen at **2**: `AuthService` and `RegistrationService`. The
+source-shape guard in `scripts/account-runtime-facade.spec.mjs` prevents new callers and keeps the
+facade private; `session-establishment.integration.spec.ts` pins password, SSO, OIDC,
+registration-retry, and persisted-session parity through the production Account Runtime adapter.
+[Issue #303](https://github.com/quwisky/trinity-matrix-client/issues/303) owns removal after those
+auth orchestrators move behind the final Account Runtime ports.
+
 ### Projecting SDK events into signals
 
 Every service that bridges SDK events into signals goes through

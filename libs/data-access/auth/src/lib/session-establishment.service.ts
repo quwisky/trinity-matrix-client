@@ -1,10 +1,14 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, of, switchMap, tap } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  AccountRuntimeService,
+  AuthenticatedAccountGrant,
+  type AccountEstablishmentIntent,
+  type AccountEstablishmentOutcome,
+} from '@trinity/data-access/accounts';
 import { AvatarService, MediaService } from '@trinity/data-access/media';
 import { PushService } from '@trinity/data-access/notifications';
-import { SessionStorageService } from '@trinity/platform-native';
 import { MatrixSession, type OidcSessionBinding } from '@trinity/util/matrix';
+import { Observable, defer, map, of, switchMap } from 'rxjs';
 
 /** Whether a successful authentication replaces the current account or adds alongside it. */
 export type LoginMode = 'replace' | 'add';
@@ -20,125 +24,95 @@ export interface AuthenticatedSessionResponse {
 }
 
 /**
- * Persists an authenticated Matrix session and starts its client.
+ * Converts protocol-specific authentication responses into Account Runtime grants.
  *
- * Kept separate from the protocol-specific auth services so a successful registration
- * never has to repeat its account-creation request merely because local initialization
- * failed afterward.
+ * This compatibility facade retains the existing login command shape and ancillary
+ * cache/push behavior. Persistence and live-client placement belong exclusively to
+ * Account Runtime; auth code never receives the grant payload back after issuing it.
  */
 @Injectable({ providedIn: 'root' })
 export class SessionEstablishmentService {
-  private readonly matrix = inject(MatrixClientService);
-  private readonly storage = inject(SessionStorageService);
+  private readonly accounts = inject(AccountRuntimeService);
   private readonly avatars = inject(AvatarService);
   private readonly media = inject(MediaService);
   private readonly push = inject(PushService);
-  private readonly pendingNewSessions = new Map<
-    string,
-    { fingerprint: string; stored: MatrixSession }
-  >();
 
-  /** Persist and start a session, replacing the current account unless `mode` is `add`. */
+  /** Establish a session, replacing the current account unless `mode` is `add`. */
   establish(
     baseUrl: string,
-    res: AuthenticatedSessionResponse,
+    response: AuthenticatedSessionResponse,
     mode: LoginMode,
-  ): Observable<void> {
-    const session = this.toSession(baseUrl, res);
-    if (mode === 'add') {
-      // Additive: leave the other accounts' media/avatar caches + pusher untouched.
-      // Start with the STORED session so this account uses its own crypto-store
-      // prefix, not the SDK default (which would collide with the active account's).
-      // Then register a pusher for the new account (idempotent; no-op off native).
-      return this.storage.save(session).pipe(
-        switchMap((stored) => this.matrix.add(stored)),
-        switchMap(() => this.push.register()),
-      );
-    }
-    // Replace: drop the prior session's avatar/media blobs (re-login can switch
-    // accounts/homeservers without a logout) and its pusher, then start fresh.
-    this.avatars.releaseAll();
-    this.media.releaseAll();
-    return this.push.unregister().pipe(
-      switchMap(() => this.storage.save(session)),
-      switchMap((stored) => this.matrix.init(stored)),
-    );
+  ): Observable<AccountEstablishmentOutcome> {
+    return this.establishWithConstraint(baseUrl, response, mode, 'upsert');
   }
 
-  /**
-   * Establish an account returned by registration without ever replacing an existing MXID.
-   * A downstream startup failure may retry the exact response already persisted, but a
-   * different response must pass SessionStorageService's atomic new-account guard again.
-   */
+  /** Establish a newly registered account without replacing an existing record. */
   establishNew(
     baseUrl: string,
-    res: AuthenticatedSessionResponse,
+    response: AuthenticatedSessionResponse,
     mode: LoginMode,
-  ): Observable<void> {
-    const session = this.toSession(baseUrl, res);
-    const fingerprint = this.fingerprint(session);
-    const pending = this.pendingNewSessions.get(session.userId);
-    const stored$ =
-      pending?.fingerprint === fingerprint
-        ? of(pending.stored)
-        : this.storage.saveNew(session).pipe(
-            tap((stored) =>
-              this.pendingNewSessions.set(session.userId, {
-                fingerprint,
-                stored,
-              }),
+  ): Observable<AccountEstablishmentOutcome> {
+    return this.establishWithConstraint(baseUrl, response, mode, 'new');
+  }
+
+  private establishWithConstraint(
+    baseUrl: string,
+    response: AuthenticatedSessionResponse,
+    mode: LoginMode,
+    accountRecord: AccountEstablishmentIntent['accountRecord'],
+  ): Observable<AccountEstablishmentOutcome> {
+    return defer(() => {
+      const grant = AuthenticatedAccountGrant.issue(
+        this.toSession(baseUrl, response),
+      );
+      const intent: AccountEstablishmentIntent = {
+        placement: 'active',
+        liveAccounts: mode === 'add' ? 'keep' : 'replace',
+        accountRecord,
+      };
+
+      if (mode === 'add') {
+        return this.accounts
+          .establishAuthenticatedAccount(grant, intent)
+          .pipe(
+            switchMap((outcome) =>
+              outcome.kind === 'ready'
+                ? this.push.register().pipe(map(() => outcome))
+                : of(outcome),
             ),
           );
+      }
 
-    return stored$.pipe(
-      switchMap((stored) => this.startPersistedNew(stored, mode)),
-      tap(() => this.pendingNewSessions.delete(session.userId)),
-    );
+      // Push teardown must see the prior live clients. Account Runtime commits the new
+      // active placement only after this best-effort compatibility cleanup completes.
+      this.avatars.releaseAll();
+      this.media.releaseAll();
+      return this.push
+        .unregister()
+        .pipe(
+          switchMap(() =>
+            this.accounts.establishAuthenticatedAccount(grant, intent),
+          ),
+        );
+    });
   }
 
   private toSession(
     baseUrl: string,
-    res: AuthenticatedSessionResponse,
+    response: AuthenticatedSessionResponse,
   ): MatrixSession {
     return {
       baseUrl,
-      userId: res.user_id,
-      deviceId: res.device_id,
-      accessToken: res.access_token,
-      ...(res.refresh_token !== undefined
-        ? { refreshToken: res.refresh_token }
+      userId: response.user_id,
+      deviceId: response.device_id,
+      accessToken: response.access_token,
+      ...(response.refresh_token !== undefined
+        ? { refreshToken: response.refresh_token }
         : {}),
-      ...(res.accessTokenExpiresAt !== undefined
-        ? { accessTokenExpiresAt: res.accessTokenExpiresAt }
+      ...(response.accessTokenExpiresAt !== undefined
+        ? { accessTokenExpiresAt: response.accessTokenExpiresAt }
         : {}),
-      ...(res.oidc ? { oidc: res.oidc } : {}),
+      ...(response.oidc ? { oidc: response.oidc } : {}),
     };
-  }
-
-  private startPersistedNew(
-    stored: MatrixSession,
-    mode: LoginMode,
-  ): Observable<void> {
-    if (mode === 'add') {
-      return this.matrix
-        .add(stored)
-        .pipe(switchMap(() => this.push.register()));
-    }
-    this.avatars.releaseAll();
-    this.media.releaseAll();
-    return this.push
-      .unregister()
-      .pipe(switchMap(() => this.matrix.init(stored)));
-  }
-
-  private fingerprint(session: MatrixSession): string {
-    return JSON.stringify([
-      session.baseUrl,
-      session.userId,
-      session.deviceId,
-      session.accessToken,
-      session.refreshToken,
-      session.accessTokenExpiresAt,
-    ]);
   }
 }

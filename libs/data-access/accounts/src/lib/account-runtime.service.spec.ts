@@ -6,10 +6,15 @@ import {
   ACCOUNT_RESTORE_POLICY,
   ACCOUNT_RUNTIME_ADAPTER,
   type AccountRuntimeAdapter,
+  type AdapterAccountEstablishmentOutcome,
   type AdapterAccountRestoreOutcome,
   type SavedAccountsSnapshot,
 } from './account-runtime.adapter';
-import type { AccountRestoreRole } from './account-runtime.models';
+import { AuthenticatedAccountGrant } from './authenticated-account-grant';
+import type {
+  AccountEstablishmentIntent,
+  AccountRestoreRole,
+} from './account-runtime.models';
 import { AccountRuntimeService } from './account-runtime.service';
 
 interface TestAdapter {
@@ -17,6 +22,7 @@ interface TestAdapter {
   readonly activeAccountId: ReturnType<typeof signal<string | null>>;
   readonly readSavedAccounts: ReturnType<typeof vi.fn>;
   readonly restoreAccount: ReturnType<typeof vi.fn>;
+  readonly establishAccount: ReturnType<typeof vi.fn>;
 }
 
 function testAdapter(
@@ -37,18 +43,39 @@ function testAdapter(
       }),
     ),
   );
+  const establishAccount = vi.fn(
+    (_grant: AuthenticatedAccountGrant, _intent: AccountEstablishmentIntent) =>
+      of<AdapterAccountEstablishmentOutcome>({ kind: 'ready' }),
+  );
   return {
     activeAccountId,
     readSavedAccounts,
     restoreAccount,
+    establishAccount,
     adapter: {
       activeAccountId: activeAccountId.asReadonly(),
       sweepOrphanedStores: () => of(void 0),
       readSavedAccounts,
       restoreAccount,
+      establishAccount,
     },
   };
 }
+
+function grant(accessToken = 'access'): AuthenticatedAccountGrant {
+  return AuthenticatedAccountGrant.issue({
+    baseUrl: 'https://hs',
+    userId: '@new:hs',
+    deviceId: 'DEVICE',
+    accessToken,
+  });
+}
+
+const activeIntent = {
+  placement: 'active',
+  liveAccounts: 'keep',
+  accountRecord: 'upsert',
+} satisfies AccountEstablishmentIntent;
 
 function setup(test: TestAdapter, timeoutMs = 50): AccountRuntimeService {
   TestBed.configureTestingModule({
@@ -294,5 +321,100 @@ describe('AccountRuntimeService', () => {
       totalAccounts: 1,
       outcomes: [],
     });
+  });
+
+  it('joins repeated identical Account establishment while it is in flight', async () => {
+    const pending = new Subject<AdapterAccountEstablishmentOutcome>();
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: null,
+      accountIds: [],
+    });
+    test.establishAccount.mockReturnValue(pending);
+    const runtime = setup(test);
+    const firstGrant = grant();
+    const secondGrant = grant();
+
+    const first = firstValueFrom(
+      runtime.establishAuthenticatedAccount(firstGrant, activeIntent),
+    );
+    const second = firstValueFrom(
+      runtime.establishAuthenticatedAccount(secondGrant, activeIntent),
+    );
+
+    expect(test.establishAccount).toHaveBeenCalledOnce();
+    expect(runtime.state()).toEqual({
+      phase: 'establishing',
+      accountId: '@new:hs',
+      placement: 'active',
+    });
+    pending.next({ kind: 'ready' });
+    pending.complete();
+
+    await expect(first).resolves.toEqual({
+      kind: 'ready',
+      accountId: '@new:hs',
+      placement: 'active',
+    });
+    await expect(second).resolves.toEqual({
+      kind: 'ready',
+      accountId: '@new:hs',
+      placement: 'active',
+    });
+    expect(runtime.state()).toEqual({
+      phase: 'establishment-settled',
+      outcome: {
+        kind: 'ready',
+        accountId: '@new:hs',
+        placement: 'active',
+      },
+    });
+  });
+
+  it('returns transition-in-progress for a conflicting Account establishment', async () => {
+    const pending = new Subject<AdapterAccountEstablishmentOutcome>();
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: null,
+      accountIds: [],
+    });
+    test.establishAccount.mockReturnValue(pending);
+    const runtime = setup(test);
+    const first = runtime
+      .establishAuthenticatedAccount(grant('first'), activeIntent)
+      .subscribe();
+
+    await expect(
+      firstValueFrom(
+        runtime.establishAuthenticatedAccount(grant('second'), activeIntent),
+      ),
+    ).resolves.toEqual({
+      kind: 'transition-in-progress',
+      accountId: '@new:hs',
+      placement: 'active',
+    });
+    expect(test.establishAccount).toHaveBeenCalledOnce();
+
+    first.unsubscribe();
+  });
+
+  it('does not race saved-Account restoration with establishment', async () => {
+    const pending = new Subject<AdapterAccountEstablishmentOutcome>();
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: null,
+      accountIds: [],
+    });
+    test.establishAccount.mockReturnValue(pending);
+    const runtime = setup(test);
+    const establishment = runtime
+      .establishAuthenticatedAccount(grant(), activeIntent)
+      .subscribe();
+
+    const restore = await firstValueFrom(runtime.restoreSavedAccounts());
+
+    expect(restore.kind).toBe('transition-in-progress');
+    expect(test.readSavedAccounts).not.toHaveBeenCalled();
+    establishment.unsubscribe();
   });
 });

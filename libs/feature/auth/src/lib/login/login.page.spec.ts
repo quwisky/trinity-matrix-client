@@ -19,6 +19,12 @@ import { LoginPage } from './login.page';
 import { SsoStateStore } from '../sso-state.store';
 import { OidcStateStore } from '../oidc-state.store';
 
+const READY_OUTCOME = {
+  kind: 'ready',
+  accountId: '@me:hs',
+  placement: 'active',
+} as const;
+
 async function renderLogin(
   auth: Partial<AuthService>,
   opts: {
@@ -263,7 +269,7 @@ describe('LoginPage', () => {
   });
 
   it('logs in with a password and navigates to rooms', async () => {
-    const loginWithPassword = vi.fn(() => of(undefined));
+    const loginWithPassword = vi.fn(() => of(READY_OUTCOME));
     const { cmp, router } = await renderLogin({
       loginWithPassword,
     } as unknown as Partial<AuthService>);
@@ -286,7 +292,7 @@ describe('LoginPage', () => {
   });
 
   it('logs in in add mode when /login?add is set', async () => {
-    const loginWithPassword = vi.fn(() => of(undefined));
+    const loginWithPassword = vi.fn(() => of(READY_OUTCOME));
     const { cmp } = await renderLogin(
       { loginWithPassword } as unknown as Partial<AuthService>,
       { add: true },
@@ -308,7 +314,7 @@ describe('LoginPage', () => {
   });
 
   it('re-auth mode prefills the account and reuses its device (add + deviceId)', async () => {
-    const loginWithPassword = vi.fn(() => of(undefined));
+    const loginWithPassword = vi.fn(() => of(READY_OUTCOME));
     const getSupportedFlows = vi.fn(() => of(['m.login.password']));
     const { cmp } = await renderLogin(
       {
@@ -354,6 +360,25 @@ describe('LoginPage', () => {
     cmp.loginPassword();
 
     expect(cmp.error()).toBe('bad creds');
+    expect(router.navigateByUrl).not.toHaveBeenCalled();
+  });
+
+  it('surfaces an expected Account Runtime failure without navigating', async () => {
+    const { cmp, router } = await renderLogin({
+      loginWithPassword: vi.fn(() =>
+        of({
+          kind: 'failed' as const,
+          accountId: '@me:hs',
+          placement: 'active' as const,
+          failure: 'local-state-unavailable' as const,
+        }),
+      ),
+    } as unknown as Partial<AuthService>);
+    cmp.baseUrl.set('https://hs.example');
+
+    cmp.loginPassword();
+
+    expect(cmp.error()).toMatch(/local account storage/i);
     expect(router.navigateByUrl).not.toHaveBeenCalled();
   });
 

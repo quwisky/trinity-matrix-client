@@ -202,6 +202,11 @@ Four details are not obvious from the table:
   restores the remaining saved Accounts concurrently under per-Account deadlines. Navigation
   continues when the Active Account is ready even if an inactive Account needs reauthentication
   or fails, while an unavailable Active Account redirects to `/login`.
+- **Authentication does not own a live Account.** Password, SSO, OIDC, and registration produce
+  an opaque authenticated grant plus an explicit placement intent. Account Runtime alone persists
+  the Account, starts its Matrix runtime, and commits Active placement; expected lifecycle
+  failures remain typed through the compatibility auth facade and are translated into safe copy
+  only by the current login screens.
 - **`/settings` has no default child redirect.** Bare `/settings` renders the settings shell with
   an empty detail outlet; the fourteen sections are children of it. In-app entry points on web and
   Electron normally open the same registry in `SettingsDialogComponent` without navigating. The
