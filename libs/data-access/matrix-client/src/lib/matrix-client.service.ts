@@ -27,14 +27,16 @@ import {
   shareReplay,
   switchMap,
   tap,
+  throwError,
 } from 'rxjs';
 import {
   SessionStorageService,
   deleteDatabase,
   getTrinityDesktopBridge,
 } from '@trinity/platform-native';
-import { MatrixSession } from '@trinity/util/matrix';
 import {
+  describeMatrixRequestFailure,
+  MatrixSession,
   preloadCryptoWasm,
   rustCryptoStoreDbNames,
   syncStoreDbName,
@@ -45,6 +47,80 @@ import { TrinityOidcTokenRefresher } from './oidc-token-refresher';
 
 /** Default deadline for ordinary Matrix HTTP requests made by an account client. */
 const MATRIX_REQUEST_TIMEOUT_MS = 30_000;
+
+export type PersistedAccountStartOutcome =
+  | { readonly kind: 'ready' }
+  | {
+      readonly kind: 'failed';
+      readonly failure:
+        'reauthentication-required' | 'transient-network' | 'crypto-failure';
+    };
+
+export type PersistedAccountActivation = 'activate' | 'background';
+
+type PersistedAccountStartFailure = Extract<
+  PersistedAccountStartOutcome,
+  { kind: 'failed' }
+>['failure'];
+
+class MatrixClientStartupError extends Error {
+  constructor(
+    readonly failure: PersistedAccountStartFailure,
+    readonly original: unknown,
+  ) {
+    super(`Matrix Account startup failed: ${failure}`);
+  }
+}
+
+function expectedClientStartFailure(
+  error: unknown,
+): PersistedAccountStartFailure | null {
+  const candidate = isRecord(error) ? error : {};
+  const data = isRecord(candidate['data']) ? candidate['data'] : {};
+  const errcode =
+    typeof candidate['errcode'] === 'string'
+      ? candidate['errcode']
+      : typeof data['errcode'] === 'string'
+        ? data['errcode']
+        : null;
+  if (errcode === 'M_UNKNOWN_TOKEN' || errcode === 'M_MISSING_TOKEN') {
+    return 'reauthentication-required';
+  }
+  const described = describeMatrixRequestFailure(error).kind;
+  if (described === 'authentication') {
+    return 'reauthentication-required';
+  }
+  if (
+    described === 'network' ||
+    described === 'timeout' ||
+    described === 'rate-limit' ||
+    described === 'server'
+  ) {
+    return 'transient-network';
+  }
+  const status =
+    typeof candidate['httpStatus'] === 'number'
+      ? candidate['httpStatus']
+      : null;
+  const transientStatus =
+    status === 0 ||
+    status === 408 ||
+    status === 429 ||
+    (status !== null && status >= 500);
+  const transientName =
+    candidate['name'] === 'AbortError' || candidate['name'] === 'TimeoutError';
+  return transientStatus || transientName ? 'transient-network' : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function classifyCryptoStartupFailure(error: unknown): Observable<never> {
+  return throwError(
+    () => new MatrixClientStartupError('crypto-failure', error),
+  );
+}
 
 /** One signed-in account's live client + the per-account state bound to it. */
 interface AccountClient {
@@ -205,7 +281,7 @@ export class MatrixClientService {
   init(session: MatrixSession): Observable<void> {
     return defer(() => {
       this.teardownAll();
-      return this.start(session).pipe(
+      return this.startForExistingCaller(session).pipe(
         tap((account) => this._activeUserId.set(account.userId)),
         map(() => void 0),
       );
@@ -214,93 +290,46 @@ export class MatrixClientService {
 
   /** Add another account (keeping the others syncing) and make it active. */
   add(session: MatrixSession): Observable<void> {
-    return this.start(session).pipe(
+    return this.startForExistingCaller(session).pipe(
       tap((account) => this._activeUserId.set(account.userId)),
       map(() => void 0),
     );
   }
 
-  /** Start an account in the background WITHOUT making it active (see {@link restoreAll}). */
-  warm(session: MatrixSession): Observable<void> {
-    return this.start(session).pipe(map(() => void 0));
+  /** Start one persisted Account without leaking adapter errors into Account Runtime. */
+  restorePersisted(
+    session: MatrixSession,
+    activation: PersistedAccountActivation,
+  ): Observable<PersistedAccountStartOutcome> {
+    return this.start(session).pipe(
+      tap((account) => {
+        if (activation === 'activate') {
+          this._activeUserId.set(account.userId);
+        }
+      }),
+      map(() => ({ kind: 'ready' as const })),
+      catchError((error: unknown) =>
+        error instanceof MatrixClientStartupError
+          ? defer(() => {
+              if (error.failure === 'reauthentication-required') {
+                this.requireReauthentication(session.userId);
+              }
+              return of({ kind: 'failed' as const, failure: error.failure });
+            })
+          : throwError(() => error),
+      ),
+    );
+  }
+
+  /** Keep legacy reauthentication surfaces coherent during the Account Runtime migration. */
+  requireReauthentication(userId: string): void {
+    this.markSoftLoggedOut(userId);
   }
 
   /** Switch the active account (no-op if it isn't signed in). Cheap — it's already live. */
   setActive(userId: string): void {
     if (this.clients.has(userId)) {
       this._activeUserId.set(userId);
-    }
-  }
-
-  /** Restore the active persisted session on app start, if one exists. */
-  restore(): Observable<boolean> {
-    return this.storage
-      .load()
-      .pipe(
-        switchMap((session) =>
-          session ? this.init(session).pipe(map(() => true)) : of(false),
-        ),
-      );
-  }
-
-  /**
-   * Restore every persisted account on app start: the active one first (awaited, for
-   * a fast first paint), the rest warmed in the background so they sync too. Resolves
-   * true once the active account is up, false when nothing is stored.
-   */
-  restoreAll(): Observable<boolean> {
-    return defer(() => {
-      // Cold-start disk hygiene: reclaim crypto stores orphaned by earlier versions (a
-      // pre-fix sign-out deleted the wrong store) now, while no client holds them open.
-      // Fire-and-forget — it must never delay or fail account restore.
-      this.storage
-        .sweepOrphanedCryptoStores()
-        .subscribe({ error: () => undefined });
-      return this.storage.list();
-    }).pipe(
-      switchMap((records) => {
-        if (records.length === 0) {
-          return of(false);
-        }
-        return this.storage.load().pipe(
-          switchMap((active) => {
-            if (!active) {
-              return of(false);
-            }
-            return this.add(active).pipe(
-              tap(() => this.warmOthers(records, active.userId)),
-              map(() => true),
-            );
-          }),
-        );
-      }),
-    );
-  }
-
-  /** Start every stored account except the active one, in the background (best-effort). */
-  private warmOthers(
-    records: readonly { userId: string }[],
-    activeUserId: string,
-  ): void {
-    for (const record of records) {
-      if (record.userId === activeUserId) {
-        continue;
-      }
-      this.storage
-        .load(record.userId)
-        .pipe(
-          switchMap((session) => {
-            if (session) {
-              return this.warm(session);
-            }
-            // No token → soft-logged-out in a prior session; surface it as a re-auth
-            // candidate (its record + stores survive) so the switcher can offer sign-in.
-            this.markSoftLoggedOut(record.userId);
-            return of(void 0);
-          }),
-          catchError(() => of(void 0)),
-        )
-        .subscribe();
     }
   }
 
@@ -424,6 +453,19 @@ export class MatrixClientService {
     });
   }
 
+  /** Preserve the existing login/auth interface while Account Runtime consumes typed failures. */
+  private startForExistingCaller(
+    session: MatrixSession,
+  ): Observable<AccountClient> {
+    return this.start(session).pipe(
+      catchError((error: unknown) =>
+        throwError(() =>
+          error instanceof MatrixClientStartupError ? error.original : error,
+        ),
+      ),
+    );
+  }
+
   /**
    * One actual start attempt: awaits a pending wipe for the same account, then builds,
    * bootstraps and registers the client. See {@link start}, which owns the joining and
@@ -517,7 +559,9 @@ export class MatrixClientService {
             store ? store.startup().catch(() => undefined) : Promise.resolve(),
           );
         }),
-        switchMap(() => preloadCryptoWasm()),
+        switchMap(() =>
+          preloadCryptoWasm().pipe(catchError(classifyCryptoStartupFailure)),
+        ),
         switchMap(() =>
           // Per-account crypto store; unset prefix (migrated legacy account) → the
           // SDK default store, preserving its existing keys.
@@ -525,7 +569,7 @@ export class MatrixClientService {
             created!.initRustCrypto({
               cryptoDatabasePrefix: session.cryptoPrefix,
             }),
-          ),
+          ).pipe(catchError(classifyCryptoStartupFailure)),
         ),
         tap(() => {
           created!.on(ClientEvent.Sync, onSync);
@@ -534,6 +578,13 @@ export class MatrixClientService {
         switchMap(() =>
           from(
             created!.startClient({ initialSyncLimit: 20, threadSupport: true }),
+          ).pipe(
+            catchError((error: unknown) => {
+              const failure = expectedClientStartFailure(error);
+              return failure
+                ? throwError(() => new MatrixClientStartupError(failure, error))
+                : throwError(() => error);
+            }),
           ),
         ),
         map(() => {

@@ -6,7 +6,9 @@ Rust crypto stack is bootstrapped, and how the two authentication families work.
 user-facing view of encryption — what a recovery key is, what the shields mean — lives
 in [encryption](../users/encryption.md).
 
-Everything described here sits in two libraries:
+Everything described here sits in three libraries:
+[`libs/data-access/accounts`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/data-access/accounts)
+(saved Account restoration and outcomes),
 [`libs/data-access/matrix-client`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/data-access/matrix-client)
 (client lifecycle, registry, 4S key holder, token refresher) and
 [`libs/data-access/crypto`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/data-access/crypto)
@@ -115,11 +117,19 @@ that is half-built. Re-adding an account that is already in the map removes the 
 first, so a re-auth never orphans a running client or opens a second connection to the
 same IndexedDB.
 
-`restoreAll()` is what `authGuard` calls on a cold start. It fires the orphan sweep
-(below) fire-and-forget, lists the registry, awaits the **active** account's start for a
-fast first paint, then warms the rest in the background best-effort. A stored record with
-no token means it was soft-logged-out in an earlier session, so instead of resurrecting a
-failing ghost it is marked `softLoggedOut` and offered for re-auth.
+`AccountRuntimeService.restoreSavedAccounts()` is what `authGuard` calls on a cold start. The
+command is cold and finite: it sweeps orphaned stores, reads one secret-free Account snapshot,
+subscribes to the Active Account first, and restores the rest concurrently. Every Account has a
+deadline and exactly one terminal outcome (`ready`, `reauthentication-required`, `timed-out`, or a
+typed local-state/network/crypto failure). The final result distinguishes no saved Accounts, an
+unavailable Active Account, and an Active Account restored with degraded inactive Accounts.
+
+The read-only runtime signal publishes progress and settled results, including total duration,
+Active Account terminal time, and terminal Account counts. Cancellation tears down work that has
+not committed through Matrix Runtime's existing rollback path; already committed Accounts remain
+represented in the cancelled state. Adapter defects use the Observable error channel and a
+distinct failed runtime phase. The former detached `MatrixClientService.restoreAll()` facade was
+removed when its production caller count reached zero.
 
 ### Projecting SDK events into signals
 

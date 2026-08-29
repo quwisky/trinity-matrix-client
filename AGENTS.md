@@ -148,6 +148,10 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
 - `@trinity/platform-native` `[type:platform]` — Capacitor/native capabilities (session/secure storage,
   preferences, theme/status-bar, launcher badge, external browser, desktop bridge, error handler). Branches on
   `isNativePlatform()` internally. May depend only on `util`.
+- `@trinity/data-access/accounts` `[type:data-access]` — Account Runtime: read-only lifecycle state plus
+  cold, finite restoration commands with Active Account priority, bounded per-Account outcomes, cancellation,
+  repeatable attempts, and secret-safe failure metadata. Its production adapter composes session storage with
+  Matrix Runtime.
 - `@trinity/data-access/matrix-client` `[type:data-access]` — `MatrixClientService` + the 4S key service;
   the client/session foundation every domain data-access lib depends on.
 - `@trinity/data-access/*` `[type:data-access]` — one lib per Matrix domain (`media`, `rooms`,
@@ -201,7 +205,7 @@ against that path **before** `initRustCrypto()`. Crypto-api types are a **deep i
 `matrix-js-sdk/lib/crypto-api`, not re-exported from the package root (checked again in 42.x).
 
 **Routing** — all lazy-loaded standalone routes in `apps/trinity/src/app/app.routes.ts`, most behind
-`authGuard` (restores a persisted session or redirects to `/login`). On wide layouts the
+`authGuard` (restores saved Accounts through Account Runtime or redirects to `/login`). On wide layouts the
 `/encryption/*` routes are also presented as CDK dialogs. Production builds set
 `optimization.styles.inlineCritical: false` — the deferred stylesheet `onload` never fires over
 Electron's `trinity://` scheme, which broke the desktop dark theme.

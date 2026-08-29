@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "data-access-accounts",
+  "projectType": "library",
+  "sourceRoot": "libs/data-access/accounts/src",
+  "prefix": "trn",
+  "tags": [
+    "type:data-access",
+    "scope:matrix",
+    "role:capability",
+    "capability:accounts"
+  ],
+  "targets": {
+    "test": {},
+    "typecheck": {}
+  }
+}
