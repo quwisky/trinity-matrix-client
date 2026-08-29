@@ -1,6 +1,18 @@
 export type AccountRestoreFailure =
   'transient-network' | 'corrupt-local-state' | 'crypto-failure';
 
+export type AccountRuntimeOperation =
+  | 'restoring-accounts'
+  | 'establishing-account'
+  | 'switching-account'
+  | 'signing-out-account'
+  | 'resetting-installation';
+
+export type AccountLifecycleOperation = Extract<
+  AccountRuntimeOperation,
+  'signing-out-account' | 'resetting-installation'
+>;
+
 export type AccountRestoreRole = 'active' | 'inactive';
 
 interface AccountRestoreOutcomeBase {
@@ -51,11 +63,10 @@ export type AccountRestoreResult =
     })
   | (AccountRestoreResultBase & {
       readonly kind: 'transition-in-progress';
-      readonly operation:
-        | 'establishing-account'
-        | 'switching-account'
-        | 'signing-out-account'
-        | 'resetting-installation';
+      readonly operation: Exclude<
+        AccountRuntimeOperation,
+        'restoring-accounts'
+      >;
     });
 
 export type AccountEstablishmentPlacement = 'active' | 'inactive';
@@ -120,12 +131,7 @@ export type AccountSwitchOutcome =
   | {
       readonly kind: 'transition-in-progress';
       readonly accountId: string;
-      readonly operation:
-        | 'restoring-accounts'
-        | 'establishing-account'
-        | 'switching-account'
-        | 'signing-out-account'
-        | 'resetting-installation';
+      readonly operation: AccountRuntimeOperation;
     };
 
 export type AccountCleanupScope =
@@ -169,12 +175,7 @@ export type AccountSignOutOutcome =
   | {
       readonly kind: 'transition-in-progress';
       readonly accountId: string;
-      readonly operation:
-        | 'restoring-accounts'
-        | 'establishing-account'
-        | 'switching-account'
-        | 'signing-out-account'
-        | 'resetting-installation';
+      readonly operation: AccountRuntimeOperation;
     };
 
 export type InstallationResetOutcome =
@@ -185,12 +186,7 @@ export type InstallationResetOutcome =
     }
   | {
       readonly kind: 'transition-in-progress';
-      readonly operation:
-        | 'restoring-accounts'
-        | 'establishing-account'
-        | 'switching-account'
-        | 'signing-out-account'
-        | 'resetting-installation';
+      readonly operation: AccountRuntimeOperation;
     };
 
 export type AccountRuntimeState =

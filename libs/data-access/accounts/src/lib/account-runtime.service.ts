@@ -39,6 +39,7 @@ import type {
   AccountRestoreOutcome,
   AccountRestoreRole,
   AccountRestoreResult,
+  AccountRuntimeOperation,
   AccountRuntimeState,
   AccountSignOutOutcome,
   AccountSwitchOutcome,
@@ -239,20 +240,20 @@ export class AccountRuntimeService {
     );
   }
 
-  private blockingSwitchOperation():
-    | 'restoring-accounts'
-    | 'establishing-account'
-    | 'signing-out-account'
-    | 'resetting-installation'
-    | null {
+  private blockingSwitchOperation(): Exclude<
+    AccountRuntimeOperation,
+    'switching-account'
+  > | null {
     const phase = this.runtimeState().phase;
     if (phase === 'restoring') return 'restoring-accounts';
     if (phase === 'establishing') return 'establishing-account';
     return this.lifecycleWorkflow.operation;
   }
 
-  private blockingLifecycleOperation():
-    'restoring-accounts' | 'establishing-account' | 'switching-account' | null {
+  private blockingLifecycleOperation(): Exclude<
+    AccountRuntimeOperation,
+    'signing-out-account' | 'resetting-installation'
+  > | null {
     const phase = this.runtimeState().phase;
     if (phase === 'restoring') return 'restoring-accounts';
     if (phase === 'establishing') return 'establishing-account';
@@ -464,11 +465,10 @@ export class AccountRuntimeService {
 
   private transitionRestoreResult(
     durationMs: number,
-    operation:
-      | 'establishing-account'
-      | 'switching-account'
-      | 'signing-out-account'
-      | 'resetting-installation' = 'establishing-account',
+    operation: Exclude<
+      AccountRuntimeOperation,
+      'restoring-accounts'
+    > = 'establishing-account',
   ): AccountRestoreResult {
     return {
       kind: 'transition-in-progress',

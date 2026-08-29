@@ -19,15 +19,15 @@ import {
   type AdapterAccountSwitchOutcome,
 } from './account-runtime.adapter';
 import type {
+  AccountRuntimeOperation,
   AccountRuntimeState,
   AccountSwitchOutcome,
 } from './account-runtime.models';
 
-type BlockingAccountOperation =
-  | 'restoring-accounts'
-  | 'establishing-account'
-  | 'signing-out-account'
-  | 'resetting-installation';
+type BlockingAccountOperation = Exclude<
+  AccountRuntimeOperation,
+  'switching-account'
+>;
 
 interface InFlightAccountSwitch {
   readonly accountId: string;

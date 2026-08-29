@@ -10,15 +10,16 @@ import {
 } from 'rxjs';
 import { ACCOUNT_RUNTIME_ADAPTER } from './account-runtime.adapter';
 import type {
+  AccountLifecycleOperation,
+  AccountRuntimeOperation,
   AccountSignOutOutcome,
   InstallationResetOutcome,
 } from './account-runtime.models';
 
-export type LifecycleOperation =
-  'signing-out-account' | 'resetting-installation';
-
-type BlockingOperation =
-  'restoring-accounts' | 'establishing-account' | 'switching-account';
+type BlockingOperation = Exclude<
+  AccountRuntimeOperation,
+  AccountLifecycleOperation
+>;
 
 type InFlightLifecycle =
   | {
@@ -37,7 +38,7 @@ export class AccountLifecycleWorkflow {
   private readonly adapter = inject(ACCOUNT_RUNTIME_ADAPTER);
   private attempt: InFlightLifecycle | null = null;
 
-  get operation(): LifecycleOperation | null {
+  get operation(): AccountLifecycleOperation | null {
     if (!this.attempt) return null;
     return this.attempt.kind === 'sign-out'
       ? 'signing-out-account'
@@ -101,7 +102,7 @@ export class AccountLifecycleWorkflow {
 
   private signOutTransition(
     accountId: string,
-    operation: BlockingOperation | LifecycleOperation,
+    operation: AccountRuntimeOperation,
   ): AccountSignOutOutcome {
     return { kind: 'transition-in-progress', accountId, operation };
   }

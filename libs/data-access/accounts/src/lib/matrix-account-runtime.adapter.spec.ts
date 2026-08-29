@@ -52,8 +52,16 @@ function setup(activeAccountId: string | null = '@old:hs') {
         wipeIndexedDb: vi.fn(() =>
           Promise.resolve({ blocked: [], failed: [], enumerated: true }),
         ),
-        wipeKeyValueStores: vi.fn(() => Promise.resolve()),
-        wipeServiceWorker: vi.fn(() => Promise.resolve()),
+        wipeKeyValueStores: vi.fn(() =>
+          Promise.resolve({
+            secureStorage: true,
+            preferences: true,
+            webStorage: true,
+          }),
+        ),
+        wipeServiceWorker: vi.fn(() =>
+          Promise.resolve({ cacheStorage: true, registrations: true }),
+        ),
       }),
       { provide: ACCOUNT_LIFECYCLE_PORT, useValue: lifecycle },
     ],
@@ -118,7 +126,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
     vi.mocked(storage.load).mockReturnValue(
       of({ userId: '@last:hs', baseUrl: 'https://hs' } as never),
     );
-    vi.mocked(matrix.reset).mockImplementation(() => {
+    vi.mocked(matrix.remove).mockImplementation(() => {
       active.set(null);
       return of(void 0);
     });
@@ -133,9 +141,31 @@ describe('MatrixAccountRuntimeAdapter', () => {
       remainingAccountIds: [],
     });
     expect(lifecycle.unregisterNotifications).toHaveBeenCalledWith();
-    expect(matrix.reset).toHaveBeenCalledOnce();
+    expect(matrix.remove).toHaveBeenCalledWith('@last:hs');
     expect(lifecycle.releaseSharedCaches).toHaveBeenCalledOnce();
     expect(storage.clear).toHaveBeenCalledOnce();
+  });
+
+  it('wipes the explicit last Account even when it has no live client', async () => {
+    const { adapter, matrix, storage } = setup(null);
+    vi.mocked(matrix.clientFor).mockReturnValue(null);
+    vi.mocked(storage.list).mockReturnValue(
+      of([{ userId: '@stale:hs', baseUrl: 'https://hs', deviceId: 'A' }]),
+    );
+    vi.mocked(storage.load).mockReturnValue(of(null));
+    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
+    vi.mocked(storage.clear).mockReturnValue(of(void 0));
+
+    await expect(
+      firstValueFrom(adapter.signOutAccount('@stale:hs')),
+    ).resolves.toEqual({
+      kind: 'ready',
+      accountId: '@stale:hs',
+      activeAccountId: null,
+      remainingAccountIds: [],
+    });
+    expect(matrix.remove).toHaveBeenCalledWith('@stale:hs');
+    expect(matrix.reset).not.toHaveBeenCalled();
   });
 
   it('keeps a surviving Account active when outgoing crypto cleanup fails', async () => {
@@ -198,11 +228,15 @@ describe('MatrixAccountRuntimeAdapter', () => {
     );
     vi.mocked(wipe.wipeKeyValueStores).mockImplementation(() => {
       order.push('preferences');
-      return Promise.resolve();
+      return Promise.resolve({
+        secureStorage: true,
+        preferences: true,
+        webStorage: true,
+      });
     });
     vi.mocked(wipe.wipeServiceWorker).mockImplementation(() => {
       order.push('service-worker');
-      return Promise.resolve();
+      return Promise.resolve({ cacheStorage: true, registrations: true });
     });
 
     await expect(firstValueFrom(adapter.resetInstallation())).resolves.toEqual({
@@ -237,6 +271,35 @@ describe('MatrixAccountRuntimeAdapter', () => {
       issues: [{ scope: 'indexed-db', recovery: 'restart-application' }],
     });
     expect(JSON.stringify(outcome)).not.toContain('secret-account-db');
+  });
+
+  it('reports key-value and service-worker residue by typed safe scope', async () => {
+    const { adapter, matrix, storage, wipe } = setup();
+    vi.mocked(storage.list).mockReturnValue(of([]));
+    vi.mocked(matrix.signOutAll).mockReturnValue(of(void 0));
+    vi.mocked(matrix.stop).mockReturnValue(of(void 0));
+    vi.mocked(storage.clearAll).mockReturnValue(of([]));
+    vi.mocked(wipe.wipeKeyValueStores).mockResolvedValue({
+      secureStorage: false,
+      preferences: false,
+      webStorage: true,
+    });
+    vi.mocked(wipe.wipeServiceWorker).mockResolvedValue({
+      cacheStorage: false,
+      registrations: true,
+    });
+
+    await expect(firstValueFrom(adapter.resetInstallation())).resolves.toEqual({
+      kind: 'partial-cleanup',
+      issues: [
+        {
+          scope: 'secure-storage',
+          recovery: 'retry-installation-reset',
+        },
+        { scope: 'preferences', recovery: 'retry-installation-reset' },
+        { scope: 'service-worker', recovery: 'restart-application' },
+      ],
+    });
   });
   it('prepares only live Accounts for an Active Account switch', async () => {
     const { adapter, matrix } = setup();

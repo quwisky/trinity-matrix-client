@@ -56,9 +56,8 @@ export interface AccountManagement {
 }
 
 /**
- * Handles authentication: homeserver discovery (.well-known), password login,
- * SSO URL construction, and logout. On success it persists the session and hands
- * the live client to MatrixClientService.
+ * Handles homeserver discovery and authentication exchanges. Successful login methods
+ * issue an opaque Account grant to Account Runtime, which owns persistence and startup.
  *
  * Components talk to this service, never to matrix-js-sdk directly. Async APIs are
  * cold Observables.

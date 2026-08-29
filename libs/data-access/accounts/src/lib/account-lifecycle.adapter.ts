@@ -5,6 +5,7 @@ import {
   SessionStorageService,
   type AccountRecord,
 } from '@trinity/platform-native';
+import type { MatrixSession } from '@trinity/util/matrix';
 import {
   Observable,
   catchError,
@@ -120,19 +121,45 @@ export class AccountLifecycleAdapter {
           ),
         ),
         concatMap(() =>
-          this.capturePromise(
-            () => this.wipe.wipeKeyValueStores(),
-            issues,
-            'preferences',
-            'retry-installation-reset',
+          defer(() => from(this.wipe.wipeKeyValueStores())).pipe(
+            tap((report) => {
+              if (!report.secureStorage) {
+                this.addIssue(
+                  issues,
+                  'secure-storage',
+                  'retry-installation-reset',
+                );
+              }
+              if (!report.preferences || !report.webStorage) {
+                this.addIssue(
+                  issues,
+                  'preferences',
+                  'retry-installation-reset',
+                );
+              }
+            }),
+            catchError(() => {
+              this.addIssue(
+                issues,
+                'secure-storage',
+                'retry-installation-reset',
+              );
+              this.addIssue(issues, 'preferences', 'retry-installation-reset');
+              return of(undefined);
+            }),
           ),
         ),
         concatMap(() =>
-          this.capturePromise(
-            () => this.wipe.wipeServiceWorker(),
-            issues,
-            'service-worker',
-            'restart-application',
+          defer(() => from(this.wipe.wipeServiceWorker())).pipe(
+            tap((report) => {
+              if (!report.cacheStorage || !report.registrations) {
+                this.addIssue(issues, 'service-worker', 'restart-application');
+              }
+            }),
+            catchError(() => {
+              this.addIssue(issues, 'service-worker', 'restart-application');
+              return of(undefined);
+            }),
           ),
         ),
         map(() =>
@@ -149,11 +176,7 @@ export class AccountLifecycleAdapter {
     issues: AccountCleanupIssue[],
   ): Observable<{
     records: readonly AccountRecord[];
-    sessions: readonly (ReturnType<
-      SessionStorageService['load']
-    > extends Observable<infer T>
-      ? T
-      : never)[];
+    sessions: readonly (MatrixSession | null)[];
   }> {
     if (records.length === 0) return of({ records, sessions: [] });
     return forkJoin(
@@ -169,7 +192,7 @@ export class AccountLifecycleAdapter {
   }
 
   private courtesySignOut(
-    sessions: readonly ({ readonly oidc?: unknown } | null)[],
+    sessions: readonly (MatrixSession | null)[],
     issues: AccountCleanupIssue[],
   ): Observable<unknown> {
     const attempts = [
@@ -180,10 +203,16 @@ export class AccountLifecycleAdapter {
         'restart-application',
       ),
       ...sessions
-        .filter((session) => session?.oidc)
+        .filter(
+          (
+            session,
+          ): session is MatrixSession & {
+            readonly oidc: NonNullable<MatrixSession['oidc']>;
+          } => Boolean(session?.oidc),
+        )
         .map((session) =>
           this.capture(
-            this.lifecycle.revokeProviderSession(session as never),
+            this.lifecycle.revokeProviderSession(session),
             issues,
             'provider-session',
             'retry-installation-reset',
@@ -248,7 +277,7 @@ export class AccountLifecycleAdapter {
       reduce(() => undefined, undefined),
       concatMap(() =>
         remainingAccountIds.length === 0
-          ? this.clearLastAccount(issues)
+          ? this.clearLastAccount(accountId, issues)
           : this.removeOneAccount(accountId, remainingAccountIds, issues),
       ),
       map(() => {
@@ -275,9 +304,12 @@ export class AccountLifecycleAdapter {
     );
   }
 
-  private clearLastAccount(issues: AccountCleanupIssue[]): Observable<void> {
+  private clearLastAccount(
+    accountId: string,
+    issues: AccountCleanupIssue[],
+  ): Observable<void> {
     return this.capture(
-      this.matrix.reset(),
+      this.matrix.remove(accountId),
       issues,
       'crypto-and-cache',
       'restart-application',
@@ -356,20 +388,6 @@ export class AccountLifecycleAdapter {
         this.addIssue(issues, scope, recovery);
         return of(void 0);
       }),
-    );
-  }
-
-  private capturePromise(
-    source: () => Promise<unknown>,
-    issues: AccountCleanupIssue[],
-    scope: AccountCleanupIssue['scope'],
-    recovery: AccountCleanupIssue['recovery'],
-  ): Observable<void> {
-    return this.capture(
-      defer(() => from(source())),
-      issues,
-      scope,
-      recovery,
     );
   }
 

@@ -18,15 +18,24 @@ export interface WipeReport {
   readonly enumerated: boolean;
 }
 
+export interface KeyValueWipeReport {
+  readonly secureStorage: boolean;
+  readonly preferences: boolean;
+  readonly webStorage: boolean;
+}
+
+export interface ServiceWorkerWipeReport {
+  readonly cacheStorage: boolean;
+  readonly registrations: boolean;
+}
+
 /**
  * Deletes every local storage surface the app writes: IndexedDB (message sync + Rust
  * crypto), Capacitor Preferences, secure storage, raw web storage, and the service worker
  * with its caches.
  *
- * **Nothing here throws.** A factory reset that fails halfway and rejects tells the user
- * nothing about what survived, so each phase records its own outcome and the caller decides
- * what to say. The one outcome that must not be silent is `blocked`, which means data the
- * user asked to erase is still on disk.
+ * **Nothing here throws.** Each phase reports whether its approved scopes were cleared, so
+ * Account Runtime can finish the reset and still give typed recovery guidance for residue.
  *
  * It deliberately does NOT use matrix-js-sdk's `clearStores()`, whose `onblocked` handler
  * only logs — that promise never settles and the caller hangs. Deletion goes through
@@ -103,24 +112,29 @@ export class LocalDataWipeService {
    * `CapacitorStorage` group on every backend: prefixed localStorage keys on web/Electron,
    * the app-private group file on Android, prefixed `UserDefaults` keys on iOS.
    */
-  async wipeKeyValueStores(): Promise<void> {
+  async wipeKeyValueStores(): Promise<KeyValueWipeReport> {
     // Best-effort bulk sweep where the backend has one (native keychain/keystore). It is
     // NOT the primary mechanism: the caller removes each account's keys by name first,
     // which is what covers Electron and web. This only reclaims secrets orphaned by an
     // earlier bug, whose account is no longer listed and whose key nothing can name.
-    await this.secure.clearAll();
+    const secureStorage = await attemptAsync(() => this.secure.clearAll());
     // Guarded like every other step here. A rejection escaping this method would reject
     // the whole reset, and the caller's subscriber has no error path to catch it — the
     // page would sit on a disabled button with its data already deleted.
-    await safelyAsync(() => Preferences.clear());
+    const preferences = await attemptAsync(() => Preferences.clear());
 
     // Every platform, not just web. `sessionStorage` in particular is written on NATIVE by
     // the OIDC callback re-seed, so skipping it there would leave a PKCE `code_verifier`
     // behind — the one secret in this whole surface. On native the WebView's own storage
     // otherwise holds nothing of ours (Preferences is native), so clearing it costs
     // nothing; on web it catches anything living outside the `CapacitorStorage` namespace.
-    safely(() => globalThis.localStorage?.clear());
-    safely(() => globalThis.sessionStorage?.clear());
+    const localStorage = attempt(() => globalThis.localStorage?.clear());
+    const sessionStorage = attempt(() => globalThis.sessionStorage?.clear());
+    return {
+      secureStorage,
+      preferences,
+      webStorage: localStorage && sessionStorage,
+    };
   }
 
   /**
@@ -133,36 +147,42 @@ export class LocalDataWipeService {
    *
    * A no-op off web — the worker is only registered in a production browser build.
    */
-  async wipeServiceWorker(): Promise<void> {
+  async wipeServiceWorker(): Promise<ServiceWorkerWipeReport> {
+    let cacheStorage = true;
     if (typeof caches !== 'undefined') {
-      await safelyAsync(async () => {
+      cacheStorage = await attemptAsync(async () => {
         const keys = await caches.keys();
         await Promise.all(keys.map((key) => caches.delete(key)));
       });
     }
+    let registrations = true;
     const serviceWorker = globalThis.navigator?.serviceWorker;
     if (serviceWorker) {
-      await safelyAsync(async () => {
+      registrations = await attemptAsync(async () => {
         const registrations = await serviceWorker.getRegistrations();
         await Promise.all(registrations.map((r) => r.unregister()));
       });
     }
+    return { cacheStorage, registrations };
   }
 }
 
-/** Run a best-effort cleanup step, swallowing anything it throws. */
-function safely(step: () => void): void {
+/** Run a best-effort cleanup step and report whether it completed. */
+function attempt(step: () => void): boolean {
   try {
     step();
+    return true;
   } catch {
     // A storage-disabled context (Safari with cookies blocked) throws on access alone.
+    return false;
   }
 }
 
-async function safelyAsync(step: () => Promise<void>): Promise<void> {
+async function attemptAsync(step: () => Promise<unknown>): Promise<boolean> {
   try {
     await step();
+    return true;
   } catch {
-    // Same: a best-effort phase must not abort the ones after it.
+    return false;
   }
 }
