@@ -4,7 +4,12 @@
   "projectType": "library",
   "sourceRoot": "libs/data-access/matrix-client/src",
   "prefix": "trn",
-  "tags": ["type:data-access", "scope:shared"],
+  "tags": [
+    "type:data-access",
+    "scope:shared",
+    "role:adapter",
+    "capability:matrix-runtime"
+  ],
   "targets": {
     "test": {},
     "typecheck": {}

@@ -4,7 +4,7 @@
   "projectType": "application",
   "sourceRoot": "apps/trinity/src",
   "prefix": "trn",
-  "tags": ["type:app", "scope:matrix"],
+  "tags": ["type:app", "scope:matrix", "role:app", "capability:composition"],
   "targets": {
     "build-info": {
       "executor": "nx:run-commands",

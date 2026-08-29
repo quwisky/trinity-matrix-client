@@ -4,7 +4,14 @@
   "projectType": "library",
   "sourceRoot": "libs/feature/shell/src",
   "prefix": "trn",
-  "tags": ["type:feature", "scope:matrix"],
+  "tags": [
+    "type:feature",
+    "scope:matrix",
+    "role:application",
+    "capability:workspace",
+    "capability:runtime",
+    "capability:badge"
+  ],
   "targets": {
     "test": {},
     "typecheck": {}

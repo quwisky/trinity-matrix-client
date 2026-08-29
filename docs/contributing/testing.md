@@ -700,24 +700,25 @@ anything that needs one is by definition still on screen when the dependent meas
 
 ### The guard suite
 
-The two named above are not a pair. Nine specs under `scripts/` read the app's source as
-text, which is the only way to check something that spans libraries — the Nx boundaries stop
+The two named above are not a pair. Cross-project specs under `scripts/` read the app's source or
+resolved workspace metadata, which is the only way to check something that spans libraries — the Nx boundaries stop
 any single project from importing them all. They sit alongside the older repository
 invariants in the same project (`lint-invariants`, `host-directives`, `stack-versions`), which
 are covered in [CI and releases](ci-and-releases.md).
 
-| Spec                             | What it refuses to let through                                                             |
-| -------------------------------- | ------------------------------------------------------------------------------------------ |
-| `boot-splash.spec.mjs`           | A splash outside `<trn-root>`, one that needs a script, or colours drifted from the tokens |
-| `component-styling.spec.mjs`     | A class styled in one component and rendered only by another                               |
-| `contrast-matrix.spec.mjs`       | A text role below WCAG AA on a surface it can land on, in any palette × mode               |
-| `message-list-bindings.spec.mjs` | The windowed and simple message lists drifting apart on the bindings they share            |
-| `scroll-behaviour.spec.mjs`      | A programmatic scroll that hard-codes `behavior: 'smooth'`, which no stylesheet can undo   |
-| `scrollbar-style.spec.mjs`       | Visible scrollbar paint outside the global token contract, or a drifting hidden exception  |
-| `shorthand-overrides.spec.mjs`   | A shorthand silently re-initialising a longhand an earlier rule set                        |
-| `styling-idiom.spec.mjs`         | A new component stylesheet, or one orphaned when its `styleUrl` went away                  |
-| `styling-tokens.spec.mjs`        | A hand-picked z-index or duration where the scale has a token                              |
-| `token-resolve.spec.mjs`         | A `var(--trinity-…)` nothing defines — an invalid declaration the browser drops            |
+| Spec                             | What it refuses to let through                                                                                                 |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `architecture-contract.spec.mjs` | Unclassified projects, new dependency exceptions, implicit entrypoints, cycles, source-counter drift, or a stale generated map |
+| `boot-splash.spec.mjs`           | A splash outside `<trn-root>`, one that needs a script, or colours drifted from the tokens                                     |
+| `component-styling.spec.mjs`     | A class styled in one component and rendered only by another                                                                   |
+| `contrast-matrix.spec.mjs`       | A text role below WCAG AA on a surface it can land on, in any palette × mode                                                   |
+| `message-list-bindings.spec.mjs` | The windowed and simple message lists drifting apart on the bindings they share                                                |
+| `scroll-behaviour.spec.mjs`      | A programmatic scroll that hard-codes `behavior: 'smooth'`, which no stylesheet can undo                                       |
+| `scrollbar-style.spec.mjs`       | Visible scrollbar paint outside the global token contract, or a drifting hidden exception                                      |
+| `shorthand-overrides.spec.mjs`   | A shorthand silently re-initialising a longhand an earlier rule set                                                            |
+| `styling-idiom.spec.mjs`         | A new component stylesheet, or one orphaned when its `styleUrl` went away                                                      |
+| `styling-tokens.spec.mjs`        | A hand-picked z-index or duration where the scale has a token                                                                  |
+| `token-resolve.spec.mjs`         | A `var(--trinity-…)` nothing defines — an invalid declaration the browser drops                                                |
 
 They are ordinary Vitest specs, so `pnpm test` runs them with everything else. On their own:
 

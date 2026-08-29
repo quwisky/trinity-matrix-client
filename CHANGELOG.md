@@ -87,6 +87,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **The architecture migration now has an executable contract.** Trinity's domain language,
+  capability ownership, dependency roles, runtime seams and migration policy are recorded in a
+  glossary and accepted decisions. Every shipped Nx project now carries target role and capability
+  metadata alongside the existing layer tags; a generated dependency map freezes today's eight
+  cross-capability edges, multi-capability projects, public secondary entrypoints and source-size
+  ceilings so the incremental migration can shrink exceptions without silently adding new ones.
+
 - **Scrollbars now look like one family everywhere.** Timelines, sidebars, dialogs, pickers and
   horizontal overflow use the former room-container design: an 8px rounded thumb in the active
   palette's rail colour over a transparent track. Firefox keeps its platform-native thin geometry.

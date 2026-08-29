@@ -4,7 +4,12 @@
   "projectType": "library",
   "sourceRoot": "libs/feature/settings/src",
   "prefix": "trn",
-  "tags": ["type:feature", "scope:matrix"],
+  "tags": [
+    "type:feature",
+    "scope:matrix",
+    "role:application",
+    "capability:settings"
+  ],
   "targets": {
     "test": {},
     "typecheck": {}

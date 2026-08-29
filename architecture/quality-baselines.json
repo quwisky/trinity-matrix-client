@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "performance": [
+    {
+      "metric": "account-restore",
+      "scope": "All saved accounts reach a bounded terminal state, with the active account prioritised.",
+      "unit": "milliseconds and terminal accounts",
+      "current": "Existing restoreAll integration behavior; runtime instrumentation is introduced by #299.",
+      "owner": "Accounts",
+      "issue": "#299"
+    },
+    {
+      "metric": "active-account-switch",
+      "scope": "The selected account, visible projections, and repaired destination become coherent together.",
+      "unit": "milliseconds to projection barrier",
+      "current": "Existing switchAccount journey; barrier instrumentation is introduced by #301 and #302.",
+      "owner": "Accounts and Workspace",
+      "issue": "#301, #302"
+    },
+    {
+      "metric": "conversation-attach",
+      "scope": "A visible conversation attaches its keyed projections and becomes presentable.",
+      "unit": "milliseconds to first presentable snapshot",
+      "current": "Existing room-open journey; keyed instrumentation is introduced by #304.",
+      "owner": "Conversations",
+      "issue": "#304"
+    },
+    {
+      "metric": "message-projection",
+      "scope": "A normalized Matrix event becomes a safe presented message.",
+      "unit": "milliseconds per event and batch",
+      "current": "The 1,738-line message projection is the comparison path; benchmark instrumentation is introduced by #305.",
+      "owner": "Conversations",
+      "issue": "#305"
+    },
+    {
+      "metric": "workspace-transition",
+      "scope": "A semantic destination reaches a coherent Workspace view and canonical URL.",
+      "unit": "milliseconds to view and route commit",
+      "current": "Existing router-driven room navigation; instrumentation is introduced by #310 and #311.",
+      "owner": "Workspace",
+      "issue": "#310, #311"
+    },
+    {
+      "metric": "retained-resources",
+      "scope": "Blurred, retained, and evicted conversations release listeners and memory according to policy.",
+      "unit": "handles, listeners, and retained bytes per account",
+      "current": "Existing room-switch listener and heap observations; deterministic counters are introduced by #304.",
+      "owner": "Conversations and Projection Runtime",
+      "issue": "#301, #304"
+    },
+    {
+      "metric": "background-account-cpu",
+      "scope": "Connected inactive accounts continue normal sync without unbounded application projection work.",
+      "unit": "CPU time per minute per inactive account",
+      "current": "Existing concurrent-account sync is the comparison behavior; runtime telemetry is introduced by #299 and #301.",
+      "owner": "Accounts and Projection Runtime",
+      "issue": "#299, #301"
+    }
+  ],
+  "security": [
+    {
+      "id": "normalized-matrix-input",
+      "invariant": "Matrix events are normalized before capability and presentation code consumes them.",
+      "enforcement": "Adapter contract and hostile-input tests",
+      "issue": "#301, #305"
+    },
+    {
+      "id": "secret-safe-diagnostics",
+      "invariant": "Credentials, secret material, message bodies, and precise location are absent from diagnostics.",
+      "enforcement": "Typed failure metadata and hostile-adapter tests",
+      "issue": "#299, #307, #319"
+    },
+    {
+      "id": "sdk-import-containment",
+      "invariant": "Matrix SDK imports remain inside approved Matrix adapters and pure Matrix modeling utilities.",
+      "enforcement": "ESLint import boundaries and architecture dependency checks",
+      "issue": "#301, #326"
+    },
+    {
+      "id": "electron-ipc-boundary",
+      "invariant": "Electron IPC is versioned, sender-validated, and capability-scoped.",
+      "enforcement": "Host adapter contract and IPC security tests",
+      "issue": "#312, #325"
+    },
+    {
+      "id": "sensitive-preference-policy",
+      "invariant": "Sensitive preferences declare storage and export restrictions.",
+      "enforcement": "Preference catalog validation and export-schema guards",
+      "issue": "#313"
+    }
+  ]
+}

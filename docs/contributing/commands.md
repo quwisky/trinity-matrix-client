@@ -5,18 +5,20 @@ the repo up yet, start with [Getting started](getting-started.md).
 
 ## Web and day to day
 
-| Command                | What it does                                                                                  |
-| ---------------------- | --------------------------------------------------------------------------------------------- |
-| `pnpm start`           | `nx serve trinity` — dev server with hot reload on `http://localhost:4200`                    |
-| `pnpm build`           | `nx build trinity` — **production** bundle into root `www/`                                   |
-| `pnpm watch`           | Development build, rebuilt on change, no server                                               |
-| `pnpm test`            | `nx run-many -t test` — Vitest once across every project that has tests                       |
-| `pnpm lint`            | `nx run-many -t lint` — ESLint plus Nx module boundaries                                      |
-| `pnpm stylelint`       | Stylelint over `{apps,libs}/**/*.{scss,css}`                                                  |
-| `pnpm format`          | Prettier write, all files                                                                     |
-| `pnpm format:check`    | Prettier verify, all files — what CI runs                                                     |
-| `pnpm storybook`       | `nx storybook components-storybook-host` — every `libs/components/*` library in one Storybook |
-| `pnpm storybook:build` | Static Storybook build                                                                        |
+| Command                   | What it does                                                                                  |
+| ------------------------- | --------------------------------------------------------------------------------------------- |
+| `pnpm start`              | `nx serve trinity` — dev server with hot reload on `http://localhost:4200`                    |
+| `pnpm build`              | `nx build trinity` — **production** bundle into root `www/`                                   |
+| `pnpm watch`              | Development build, rebuilt on change, no server                                               |
+| `pnpm test`               | `nx run-many -t test` — Vitest once across every project that has tests                       |
+| `pnpm lint`               | `nx run-many -t lint` — ESLint plus Nx module boundaries                                      |
+| `pnpm stylelint`          | Stylelint over `{apps,libs}/**/*.{scss,css}`                                                  |
+| `pnpm format`             | Prettier write, all files                                                                     |
+| `pnpm format:check`       | Prettier verify, all files — what CI runs                                                     |
+| `pnpm architecture:check` | Validate roles, capabilities, entrypoints, frozen exceptions and the generated map            |
+| `pnpm architecture:map`   | Regenerate the committed dependency map after an intentional architecture change              |
+| `pnpm storybook`          | `nx storybook components-storybook-host` — every `libs/components/*` library in one Storybook |
+| `pnpm storybook:build`    | Static Storybook build                                                                        |
 
 Two of these surprise people:
 

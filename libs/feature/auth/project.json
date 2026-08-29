@@ -4,7 +4,12 @@
   "projectType": "library",
   "sourceRoot": "libs/feature/auth/src",
   "prefix": "trn",
-  "tags": ["type:feature", "scope:matrix"],
+  "tags": [
+    "type:feature",
+    "scope:matrix",
+    "role:capability",
+    "capability:accounts"
+  ],
   "targets": {
     "test": {},
     "typecheck": {}

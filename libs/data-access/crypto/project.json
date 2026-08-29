@@ -4,7 +4,12 @@
   "projectType": "library",
   "sourceRoot": "libs/data-access/crypto/src",
   "prefix": "trn",
-  "tags": ["type:data-access", "scope:matrix"],
+  "tags": [
+    "type:data-access",
+    "scope:matrix",
+    "role:capability",
+    "capability:trust"
+  ],
   "targets": {
     "test": {},
     "typecheck": {}

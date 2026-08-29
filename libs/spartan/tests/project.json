@@ -4,7 +4,13 @@
   "projectType": "library",
   "sourceRoot": "libs/spartan/tests/src",
   "prefix": "hlm",
-  "tags": ["type:ui", "scope:shared", "ui:vendor-wrapper"],
+  "tags": [
+    "type:ui",
+    "scope:shared",
+    "ui:vendor-wrapper",
+    "role:design-system",
+    "capability:design-system"
+  ],
   "targets": {
     "test": {},
     "typecheck": {}

@@ -4,7 +4,7 @@
   "projectType": "library",
   "sourceRoot": "libs/platform-native/src",
   "prefix": "trn",
-  "tags": ["type:platform", "scope:shared"],
+  "tags": ["type:platform", "scope:shared", "role:adapter", "capability:host"],
   "targets": {
     "test": {},
     "typecheck": {}

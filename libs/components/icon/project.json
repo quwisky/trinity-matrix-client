@@ -4,7 +4,13 @@
   "sourceRoot": "libs/components/icon/src",
   "prefix": "trn",
   "projectType": "library",
-  "tags": ["type:ui", "scope:shared", "ui:public"],
+  "tags": [
+    "type:ui",
+    "scope:shared",
+    "ui:public",
+    "role:design-system",
+    "capability:design-system"
+  ],
   "targets": {
     "test": {
       "//": "`trn-icon-name.spec.ts` greps the CALL SITES for `name=\"\u2026\"` to prove no icon is registered that nothing renders. Those files are outside this project, and the default inputs (`default` = {projectRoot}/**/*, plus `^production` = this project's own dependencies) do not see them \u2014 dependencies point INTO this library, never out. So deleting the last `<trn-icon name=\"vote\">` from a feature template left the guard neither affected nor cache-invalid: it replayed a cached pass while the glyph stayed in the eager root registration forever. These globs are the spec's CALL_SITES list; move the two together \u2014 `libs/ui` was dropped from both when that library was dissolved, and the spec failing on the missing directory is what said so.",

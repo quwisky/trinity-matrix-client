@@ -4,7 +4,14 @@
   "projectType": "library",
   "sourceRoot": "libs/data-access/search/src",
   "prefix": "trn",
-  "tags": ["type:data-access", "scope:matrix"],
+  "tags": [
+    "type:data-access",
+    "scope:matrix",
+    "role:capability",
+    "capability:discovery",
+    "capability:conversations",
+    "capability:room-library"
+  ],
   "targets": {
     "test": {},
     "typecheck": {}

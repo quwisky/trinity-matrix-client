@@ -1,10 +1,16 @@
 # Library inventory
 
-The workspace holds one application and 72 libraries. Every library carries a `type:*` and a
-`scope:*` tag in its `project.json`, and the UI libraries carry a third `ui:*` tag that
+The workspace holds one application and 75 libraries. Every shipped library carries its current
+`type:*` and `scope:*` tags plus target `role:*` and `capability:*` metadata; UI libraries also
+carry a `ui:*` tag that
 separates Trinity's own wrapper layer from the vendored kit; those tags are what
 [`@nx/enforce-module-boundaries`](https://github.com/quwisky/trinity-matrix-client/blob/develop/eslint.config.mjs)
 checks. See [the architecture overview](index.md) for what each tag permits.
+
+The role/capability metadata is an incremental overlay, not a claim that the move is already
+complete. Multi-capability projects and cross-capability edges are enumerated with removal issues
+in the [generated dependency map](generated/dependency-map.md); `pnpm architecture:check` rejects
+any unrecorded expansion.
 
 Libraries are imported through `@trinity/*` path aliases declared in
 [`tsconfig.base.json`](https://github.com/quwisky/trinity-matrix-client/blob/develop/tsconfig.base.json),
