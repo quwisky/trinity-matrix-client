@@ -34,3 +34,5 @@ export * from './lib/shortcuts/shortcut-overrides-config';
 export * from './lib/app-config.service';
 export * from './lib/mobile-os';
 export * from './lib/external-browser.service';
+export * from './lib/host-media/file-save.service';
+export * from './lib/host-media/media-picker.service';

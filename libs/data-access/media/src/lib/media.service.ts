@@ -13,7 +13,7 @@ import {
   takeUntil,
   throwError,
 } from 'rxjs';
-import { MsgType } from 'matrix-js-sdk';
+import { MsgType, type MatrixClient } from 'matrix-js-sdk';
 import { decryptAttachment, encryptAttachment } from '@trinity/util/matrix';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { fetchMediaBytes } from '@trinity/util/matrix';
@@ -138,17 +138,24 @@ export class MediaService {
   private readonly pinned = new Set<string>();
   /** Fires on {@link releaseAll} to cancel in-flight resolutions before teardown. */
   private readonly release$ = new Subject<void>();
-  /** Cached probe of whether the homeserver supports authenticated media. */
-  private authedMedia: Observable<boolean> | null = null;
+  /** Cached authenticated-media probe per exact client/account. */
+  private authedMedia = new WeakMap<MatrixClient, Observable<boolean>>();
+  /** Stable cache namespace per live client so identical MXCs cannot cross Accounts. */
+  private readonly clientIds = new WeakMap<MatrixClient, number>();
+  private nextClientId = 0;
 
   /**
    * Resolve a cached `blob:` URL for the thumbnail or full rendition of a media
    * attachment. Re-resolving the same source+variant returns the cached URL
    * without re-fetching.
    */
-  resolveMedia(media: MediaPayload, variant: MediaVariant): Observable<string> {
+  resolveMedia(
+    media: MediaPayload,
+    variant: MediaVariant,
+    client: MatrixClient = this.matrix.instance,
+  ): Observable<string> {
     const source = this.sourceFor(media, variant);
-    const key = this.cacheKey(source);
+    const key = this.cacheKey(client, source);
     const hit = this.cache.get(key);
     if (hit) {
       return of(hit.url);
@@ -161,7 +168,7 @@ export class MediaService {
     if (pending) {
       return pending;
     }
-    const obs = defer(() => this.fetchBlob(source)).pipe(
+    const obs = defer(() => this.fetchBlob(client, source)).pipe(
       // Cancel on releaseAll BEFORE store(): a late completion must not insert a
       // fresh object URL into the cache that teardown just cleared.
       takeUntil(this.release$),
@@ -176,9 +183,10 @@ export class MediaService {
   /** Resolve the full-resolution bytes + filename for a download/save. */
   downloadMedia(
     media: MediaPayload,
+    client: MatrixClient = this.matrix.instance,
   ): Observable<{ blob: Blob; filename: string }> {
     const source = this.sourceFor(media, 'full');
-    return defer(() => this.fetchBlob(source)).pipe(
+    return defer(() => this.fetchBlob(client, source)).pipe(
       map((blob) => ({ blob, filename: media.filename })),
     );
   }
@@ -194,23 +202,35 @@ export class MediaService {
     file: File,
     encrypt: boolean,
     progress?: (fraction: number) => void,
+    abortController?: AbortController,
+    client: MatrixClient = this.matrix.instance,
   ): Observable<UploadedMedia> {
-    return defer(() => from(this.doUpload(file, encrypt, progress)));
+    return defer(() =>
+      from(this.doUpload(client, file, encrypt, progress, abortController)),
+    );
   }
 
   private async doUpload(
+    client: MatrixClient,
     file: File,
     encrypt: boolean,
     progress?: (fraction: number) => void,
+    abortController?: AbortController,
   ): Promise<UploadedMedia> {
-    const client = this.matrix.instance;
+    abortController?.signal.throwIfAborted();
     const msgtype = msgTypeFor(file.type);
     // Probe dimensions/duration and (for images) render a downscaled thumbnail
     // before the main upload. For E2EE rooms this is the *only* thumbnail the
     // timeline can show — the server can't scale an encrypted original — so
     // without it every image row would fetch and decrypt the full-size bytes.
     const { dims, thumbnail } = await analyzeMedia(file);
-    const thumb = await this.uploadThumbnail(thumbnail, encrypt);
+    abortController?.signal.throwIfAborted();
+    const thumb = await this.uploadThumbnail(
+      client,
+      thumbnail,
+      encrypt,
+      abortController,
+    );
     const onProgress = progress
       ? (p: { loaded: number; total: number }) =>
           progress(p.total ? p.loaded / p.total : 0)
@@ -218,11 +238,13 @@ export class MediaService {
 
     if (encrypt) {
       const { data, info } = await encryptAttachment(await file.arrayBuffer());
+      abortController?.signal.throwIfAborted();
       const res = await client.uploadContent(new Blob([data]), {
         // Don't leak the plaintext filename/MIME on an encrypted upload.
         includeFilename: false,
         type: 'application/octet-stream',
         progressHandler: onProgress,
+        ...(abortController ? { abortController } : {}),
       });
       info.url = res.content_uri;
       return {
@@ -238,6 +260,7 @@ export class MediaService {
       name: file.name,
       type: file.type || 'application/octet-stream',
       progressHandler: onProgress,
+      ...(abortController ? { abortController } : {}),
     });
     return {
       msgtype,
@@ -256,13 +279,14 @@ export class MediaService {
    * resource (it is small) so the `progress` callback tracks the dominant bytes.
    */
   private async uploadThumbnail(
+    client: MatrixClient,
     thumbnail: GeneratedThumbnail | null,
     encrypt: boolean,
+    abortController?: AbortController,
   ): Promise<ThumbnailInfo | null> {
     if (!thumbnail) {
       return null;
     }
-    const client = this.matrix.instance;
     const { blob, w, h } = thumbnail;
     const thumbnail_info = { mimetype: blob.type, w, h, size: blob.size };
     try {
@@ -273,6 +297,7 @@ export class MediaService {
         const res = await client.uploadContent(new Blob([data]), {
           includeFilename: false,
           type: 'application/octet-stream',
+          ...(abortController ? { abortController } : {}),
         });
         info.url = res.content_uri;
         return { thumbnail_file: info, thumbnail_info };
@@ -280,9 +305,11 @@ export class MediaService {
       const res = await client.uploadContent(blob, {
         name: 'thumbnail',
         type: blob.type,
+        ...(abortController ? { abortController } : {}),
       });
       return { thumbnail_url: res.content_uri, thumbnail_info };
-    } catch {
+    } catch (error: unknown) {
+      if (abortController?.signal.aborted) throw error;
       return null; // a thumbnail upload failure must never block the attachment
     }
   }
@@ -317,7 +344,7 @@ export class MediaService {
     // new account's homeserver may differ (e.g. legacy vs authenticated-only), and
     // a stale `false` would keep requesting the unauthenticated endpoint (401/404
     // with no fallback), breaking all media for the session.
-    this.authedMedia = null;
+    this.authedMedia = new WeakMap();
   }
 
   /** Pick the bytes to fetch for a variant, preferring an event-supplied thumbnail. */
@@ -354,22 +381,30 @@ export class MediaService {
    * no bundled thumbnail resolves the *same* ciphertext for both `thumbnail` and
    * `full` — so they must share one cache entry (and one decrypt), not two.
    */
-  private cacheKey(source: MediaSource): string {
+  private cacheKey(client: MatrixClient, source: MediaSource): string {
     const id = source.mxc ?? source.file?.url ?? '';
+    let clientId = this.clientIds.get(client);
+    if (clientId === undefined) {
+      clientId = ++this.nextClientId;
+      this.clientIds.set(client, clientId);
+    }
     return source.resize
-      ? `${id}|${source.resize.w}x${source.resize.h}`
-      : `${id}|orig`;
+      ? `${clientId}|${id}|${source.resize.w}x${source.resize.h}`
+      : `${clientId}|${id}|orig`;
   }
 
   /** Fetch (and decrypt, when encrypted) the bytes for a source into a typed Blob. */
-  private fetchBlob(source: MediaSource): Observable<Blob> {
+  private fetchBlob(
+    client: MatrixClient,
+    source: MediaSource,
+  ): Observable<Blob> {
     if (source.file) {
       // Encrypted attachment: download the ciphertext (always the full resource —
       // an encrypted original carries no server-side thumbnail) and decrypt it with
       // the event's per-file AES-CTR key. decryptAttachment verifies the SHA-256
       // hash and rejects on a mismatch, so tampered bytes never reach the DOM.
       const file = source.file;
-      return this.fetchBytes(file.url, null).pipe(
+      return this.fetchBytes(client, file.url, null).pipe(
         switchMap((ciphertext) => from(decryptAttachment(ciphertext, file))),
         map((plaintext) => new Blob([plaintext], { type: source.mimeType })),
       );
@@ -377,7 +412,7 @@ export class MediaService {
     if (!source.mxc) {
       return throwError(() => new Error('Media has no source'));
     }
-    return this.fetchBytes(source.mxc, source.resize).pipe(
+    return this.fetchBytes(client, source.mxc, source.resize).pipe(
       map((buffer) => new Blob([buffer], { type: source.mimeType })),
     );
   }
@@ -389,29 +424,28 @@ export class MediaService {
    * serve legacy media).
    */
   private fetchBytes(
+    client: MatrixClient,
     mxc: string,
     resize: { w: number; h: number } | null,
   ): Observable<ArrayBuffer> {
-    return this.supportsAuthedMedia().pipe(
-      switchMap((authed) =>
-        fetchMediaBytes(this.matrix.instance, mxc, resize, authed),
-      ),
+    return this.supportsAuthedMedia(client).pipe(
+      switchMap((authed) => fetchMediaBytes(client, mxc, resize, authed)),
     );
   }
 
-  /** Probe (once, cached) whether the homeserver supports authenticated media. */
-  private supportsAuthedMedia(): Observable<boolean> {
-    if (!this.authedMedia) {
+  /** Probe (once per exact client/account) whether its homeserver supports authenticated media. */
+  private supportsAuthedMedia(client: MatrixClient): Observable<boolean> {
+    let probe = this.authedMedia.get(client);
+    if (!probe) {
       // `shareReplay(1)` runs the version probe once and replays the result to
       // every later subscriber — the Observable equivalent of the cached promise.
-      this.authedMedia = from(
-        this.matrix.instance.isVersionSupported('v1.11'),
-      ).pipe(
+      probe = from(client.isVersionSupported('v1.11')).pipe(
         catchError(() => of(false)),
         shareReplay(1),
       );
+      this.authedMedia.set(client, probe);
     }
-    return this.authedMedia;
+    return probe;
   }
 
   /** Store a freshly-fetched blob under a cache key and return its object URL. */

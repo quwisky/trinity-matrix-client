@@ -33,7 +33,7 @@ function makeService(): MediaPickerService {
   return TestBed.inject(MediaPickerService);
 }
 
-describe('MediaPickerService', () => {
+describe('MediaPickerService host adapter', () => {
   beforeEach(() => {
     isNative.mockReturnValue(false);
     chooseFromGallery.mockReset();

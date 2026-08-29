@@ -10,7 +10,7 @@ import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { MediaService } from '@trinity/data-access/media';
+import { MediaPipeline } from '@trinity/data-access/media';
 import {
   RoomNotificationUpdateError,
   RoomNotificationsService,
@@ -169,7 +169,7 @@ describe('RoomsPage action error feedback', () => {
         }),
         MockProvider(TrnAlertService, { confirm: alertConfirm }),
         MockProvider(TimelineActionsService, { sendMedia }),
-        MockProvider(MediaService),
+        MockProvider(MediaPipeline),
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
@@ -246,7 +246,7 @@ describe('RoomsPage action error feedback', () => {
     // otherwise the teardown below would be asserted against a shell where nothing was
     // ever open, and the first thing the effect did was close everything anyway.
     TestBed.tick();
-    const media = TestBed.inject(MediaService);
+    const media = TestBed.inject(MediaPipeline);
     // That opening transition already released the *previous* room's blobs; forget it, so
     // the assertion below can only be satisfied by the release that leaving performs.
     (media.releaseAll as Mock).mockClear();

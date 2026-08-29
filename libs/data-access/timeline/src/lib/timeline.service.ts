@@ -29,6 +29,7 @@ import {
   coalesce,
   MatrixClientService,
 } from '@trinity/data-access/matrix-client';
+import { MediaPipeline } from '@trinity/data-access/media';
 import {
   PrivacySettingsService,
   SystemLineSettingsService,
@@ -160,6 +161,7 @@ export class TimelineService {
   private readonly matrix = inject(MatrixClientService);
   private readonly privacy = inject(PrivacySettingsService);
   private readonly systemLines = inject(SystemLineSettingsService);
+  private readonly mediaPipeline = inject(MediaPipeline);
 
   private readonly _messages = signal<MessageView[]>([]);
   readonly messages = this._messages.asReadonly();
@@ -860,7 +862,13 @@ export class TimelineService {
         // applies the user's category visibility. A no-op change returns null and is
         // dropped entirely.
         if (!isDisplayableMessage(e)) {
-          const view = projectMessage(client, room, e);
+          const view = projectMessage(
+            client,
+            room,
+            e,
+            null,
+            this.mediaPipeline,
+          );
           // Dropped when there is nothing to say (a no-op change) or when the user has
           // hidden this category. Returning null collapses the row entirely — no gap or
           // placeholder — and keeps `seen` clean so the view cache prunes it.
@@ -911,7 +919,13 @@ export class TimelineService {
         if (cached && cached.rev === rev) {
           return cached.view;
         }
-        const view = projectMessage(client, room, e, shield);
+        const view = projectMessage(
+          client,
+          room,
+          e,
+          shield,
+          this.mediaPipeline,
+        );
         if (!view) {
           return null;
         }

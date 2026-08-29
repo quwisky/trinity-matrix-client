@@ -87,6 +87,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Encrypted attachments now cross one Media Pipeline from composer to display.** Picked,
+  pasted, dropped and downloaded GIF files are staged as opaque references, then sent through
+  the exact Account-and-Room Conversation as cold RxJS progress streams with typed validation,
+  cancellation, retry and terminal outcomes. An unchanged retry resends the SDK's failed local
+  echo; confirmed cancellation or an edited caption keeps the upload but rotates the Matrix
+  transaction id. Message Presentation exposes only safe render metadata—never MXC URLs,
+  encrypted-file descriptors, keys, IVs or hashes—and media rows
+  resolve display/download bytes back through the bounded pipeline cache. Gallery acquisition
+  and file export now sit behind platform host-media adapters.
+
 - **Writing text now stays with the exact Conversation that owns it.** The main room composer’s
   durable draft, reply or edit target, typing ownership and send lifecycle now live on its
   immutable Account-and-Room handle, so switching rooms or accounts cannot retarget an in-flight

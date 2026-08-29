@@ -17,7 +17,7 @@ import {
 } from '@trinity/data-access/timeline';
 import { type Mention } from '@trinity/util/matrix';
 import type { ImagePackImage } from '@trinity/data-access/media';
-import { Observable, throwError } from 'rxjs';
+import { Observable, filter, mergeMap, of, take, tap, throwError } from 'rxjs';
 import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
 import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import {
@@ -293,22 +293,44 @@ export class MessageActionsService {
       }
       this.uploadProgress.set(progress);
     };
-    // Pinned for the whole batch. `sendMedia` resolves the open room on SUBSCRIBE — right for
-    // a single action, which subscribes as it is pressed — but a batch subscribes item N
-    // minutes later, so switching rooms mid-batch would deliver the rest into the new one.
-    // This service outlives a room change (it belongs to the page), so nothing else stops it.
+    // Pin the immutable Account-and-Room handle for the whole batch. The focused proxy resolves
+    // on SUBSCRIBE — right for a single press, but item N subscribes minutes later. Room id alone
+    // is insufficient because two Accounts can share the same Matrix room id.
+    const pinnedConversation = this.conversations.focused();
     const pinnedRoomId = this.timeline.openRoomId;
     let abandoned = 0;
     sendMediaBatch(
       items,
       caption,
-      (file, itemCaption, progress) => {
-        const roomId = this.timeline.openRoomId;
-        if (roomId !== pinnedRoomId) {
-          abandoned++;
-          return throwError(() => new Error('room changed mid-batch'));
+      (file, itemCaption, progress, media) => {
+        if (!media) {
+          // Transitional compatibility for pre-pipeline callers. Production composer
+          // batches always carry `media`; the File path disappears with thread migration #309.
+          if (this.timeline.openRoomId !== pinnedRoomId) {
+            abandoned++;
+            return throwError(() => new Error('room changed mid-batch'));
+          }
+          return this.timelineActions.sendMedia(file, itemCaption, progress);
         }
-        return this.timelineActions.sendMedia(file, itemCaption, progress);
+        if (
+          !pinnedConversation ||
+          this.conversations.focused() !== pinnedConversation
+        ) {
+          abandoned++;
+          return throwError(() => new Error('conversation changed mid-batch'));
+        }
+        return pinnedConversation.media.send(media, itemCaption).pipe(
+          tap((event) => {
+            if (event.kind === 'progress') progress?.(event.fraction);
+          }),
+          filter((event) => event.kind !== 'progress'),
+          take(1),
+          mergeMap((event) =>
+            event.kind === 'sent'
+              ? of(void 0)
+              : throwError(() => new Error(event.failure)),
+          ),
+        );
       },
       reportProgress,
     )

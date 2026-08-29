@@ -5,7 +5,7 @@ import { Directory, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
 /**
- * Saves a downloaded attachment blob to the device. On a native platform it
+ * Host adapter that saves a downloaded attachment blob. On a native platform it
  * writes the bytes to the cache and opens the OS share sheet (so the user can
  * save to Files/Photos or send it on); on the web it triggers a browser download
  * via an `<a download>` link. Centralizes the platform branch so the timeline's

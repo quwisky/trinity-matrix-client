@@ -8,11 +8,13 @@ import {
   of,
   toArray,
 } from 'rxjs';
+import { type StagedMediaReference } from '@trinity/data-access/media';
 
 /** One file in a batch, carrying the id the composer knows it by. */
 export interface BatchItem {
   readonly id: string;
   readonly file: File;
+  readonly media?: StagedMediaReference;
 }
 
 /** What the composer shows while a batch is going out: "2 of 5", plus that file's fraction. */
@@ -35,6 +37,7 @@ export type SendOneMedia = (
   file: File,
   caption: string,
   progress?: (fraction: number) => void,
+  media?: StagedMediaReference,
 ) => Observable<void>;
 
 /**
@@ -70,8 +73,11 @@ export function sendMediaBatch(
       onProgress({ index, total: items.length, fraction: 0 });
       // The caption rides the media event only when there is exactly one file; a batch
       // sends it as its own message afterwards, which is the caller's job.
-      return send(item.file, items.length === 1 ? caption : '', (fraction) =>
-        onProgress({ index, total: items.length, fraction }),
+      return send(
+        item.file,
+        items.length === 1 ? caption : '',
+        (fraction) => onProgress({ index, total: items.length, fraction }),
+        item.media,
       ).pipe(
         map(() => ({ id: item.id, failed: false })),
         // Per item, so one failure is recorded and the rest still go. The same shape

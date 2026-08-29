@@ -12,6 +12,7 @@ export type {
 } from './lib/conversation-compose';
 export type {
   ConversationHandle,
+  ConversationMedia,
   ConversationKey,
   ConversationResources,
   ConversationRuntimeDiagnostics,

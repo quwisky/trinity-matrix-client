@@ -853,11 +853,25 @@ so the low 64-bit counter starts at zero and cannot overflow into the nonce for 
 realistic file size. And decryption hashes the ciphertext and rejects on mismatch **before**
 importing the key, so tampered bytes never yield plaintext.
 
-`MediaService` uploads encrypted blobs with `includeFilename: false` and
+`MediaPipeline` is the public attachment boundary. It owns opaque staging, exact
+Account-and-Room transfer, validation, progress, cancellation, retry identity and safe
+presentation references. Its opaque records retain the exact Account client for uploads,
+homeserver capability probes, downloads and cache namespaces, so an Active Account switch cannot
+retarget bytes or credentials. The byte engine behind it (`MediaService`) uploads encrypted blobs
+with `includeFilename: false` and
 `type: 'application/octet-stream'`, so the plaintext filename and MIME type do not leak. It
 encrypts the client-generated thumbnail under its own independent key, IV and hash — that
 thumbnail is the only one an encrypted room can show, since the server cannot scale an
 encrypted original.
+
+Message Presentation never exposes MXC URLs, encrypted-file descriptors, AES keys, IVs or hashes.
+It replaces the normalized media payload with a `PresentedMediaReference` containing only bounded
+render metadata. Media and voice components hand that reference back to Media Pipeline for
+thumbnail, full-resolution and download bytes; decrypted object URLs remain in the existing
+64-entry pin-aware cache and are revoked on Room teardown. Gallery acquisition and file export
+live in the `platform-native` host-media adapters, so Conversations does not branch on Capacitor or
+browser identity. The broader operation-based Host Capabilities consolidation remains owned by
+#312.
 
 [`key-file-crypto.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/key-file-crypto.ts)
 implements the interoperable Matrix megolm export, the same `.txt` Element reads and

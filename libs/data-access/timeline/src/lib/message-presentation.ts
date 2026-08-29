@@ -2,9 +2,9 @@ import {
   firstUrl,
   renderNormalizedTextBody,
   stripReplyFallbackText,
-  type MediaPayload,
   type PollView,
 } from '@trinity/util/matrix';
+import { type PresentedMediaReference } from '@trinity/data-access/media';
 
 type DeepReadonly<T> = T extends (...args: never[]) => unknown
   ? T
@@ -13,9 +13,6 @@ type DeepReadonly<T> = T extends (...args: never[]) => unknown
     : T extends object
       ? { readonly [Key in keyof T]: DeepReadonly<T[Key]> }
       : T;
-
-/** Timeline-owned, deeply immutable media presentation payload. */
-export type MessageMediaPayload = DeepReadonly<MediaPayload>;
 
 /** Timeline-owned, deeply immutable poll presentation payload. */
 export type MessagePollView = DeepReadonly<PollView>;
@@ -107,7 +104,7 @@ export interface MessageView {
   readonly replyTo: ReplyPreview | null;
   readonly status: 'sending' | 'failed' | null;
   readonly kind: MessageKind;
-  readonly media: MessageMediaPayload | null;
+  readonly media: PresentedMediaReference | null;
   readonly caption: string | null;
   readonly captionHtml: string | null;
   readonly readReceipts: readonly ReceiptView[];

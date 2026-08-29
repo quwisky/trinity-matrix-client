@@ -13,7 +13,7 @@ import { Router } from '@angular/router';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { type PendingInvite } from '@trinity/data-access/invites';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { MediaService } from '@trinity/data-access/media';
+import { MediaPipeline } from '@trinity/data-access/media';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
   RoomsService,
@@ -460,7 +460,7 @@ describe('RoomsPage room / DM / invite actions', () => {
         MockProvider(RoomModerationService, { canModerate }),
         MockProvider(QuickSwitcherService),
         MockProvider(TimelineActionsService),
-        MockProvider(MediaService),
+        MockProvider(MediaPipeline),
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,

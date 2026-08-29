@@ -4,17 +4,19 @@ import { fireEvent, render, waitFor } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
 import { of } from 'rxjs';
-import { MediaService } from '@trinity/data-access/media';
+import {
+  MediaPipeline,
+  type PresentedMediaReference,
+} from '@trinity/data-access/media';
 import {
   UrlPreviewService,
   type ThreadSummary,
 } from '@trinity/data-access/timeline';
 import {
   DateTimeFormatService,
+  FileSaveService,
   PrivacySettingsService,
 } from '@trinity/platform-native';
-import { type MediaPayload } from '@trinity/util/matrix';
-import { FileSaveService } from '../media-save/file-save.service';
 import {
   MessageRowComponent,
   type MessageRow,
@@ -63,17 +65,16 @@ function row(overrides: Partial<MessageRow> = {}): MessageRow {
 
 /** A download-only file attachment — `kind:'file'` skips the async thumbnail
  * resolve, so the row renders synchronously in jsdom. */
-function fileMedia(overrides: Partial<MediaPayload> = {}): MediaPayload {
+function fileMedia(
+  overrides: Partial<PresentedMediaReference> = {},
+): PresentedMediaReference {
   return {
+    id: 'presented-media-file',
     kind: 'file',
-    mxc: 'mxc://hs/doc',
-    file: null,
     filename: 'doc.pdf',
     mimeType: 'application/pdf',
-    thumbnailMxc: null,
-    thumbnailFile: null,
     ...overrides,
-  };
+  } as PresentedMediaReference;
 }
 
 function summary(overrides: Partial<ThreadSummary> = {}): ThreadSummary {
@@ -104,7 +105,7 @@ describe('MessageRowComponent', () => {
       // The media branch renders <trn-media-attachment>, and a previewUrl renders
       // <trn-link-preview>, which inject these.
       providers: [
-        MockProvider(MediaService, {
+        MockProvider(MediaPipeline, {
           resolveMedia: () => of(''),
           downloadMedia: () => of({ blob: new Blob(), filename: 'doc.pdf' }),
         }),
@@ -488,17 +489,14 @@ describe('MessageRowComponent', () => {
       row: row({
         kind: 'audio',
         media: {
+          id: 'presented-media-voice',
           kind: 'audio',
-          mxc: 'mxc://hs/clip',
-          file: null,
           filename: 'Voice message',
           mimeType: 'audio/webm',
           durationMs: 3000,
           isVoice: true,
           waveform: [0, 512, 1024],
-          thumbnailMxc: null,
-          thumbnailFile: null,
-        },
+        } as unknown as PresentedMediaReference,
       }),
     });
 

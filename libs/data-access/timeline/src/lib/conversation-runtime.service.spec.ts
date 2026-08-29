@@ -4,6 +4,11 @@ import { NEVER, Subject, firstValueFrom, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DraftStoreService } from '@trinity/platform-native';
 import {
+  MediaPipeline,
+  type MediaTransferEvent,
+  type StagedMediaReference,
+} from '@trinity/data-access/media';
+import {
   CONVERSATION_RETENTION_LIMIT,
   CONVERSATION_TEXT_SENDER,
   CONVERSATION_TIMELINE_FACTORY,
@@ -55,6 +60,10 @@ function setup(
   const sender: ConversationTextSender = senderOverride ?? {
     send: vi.fn(() => ({ outcome: sends, cancel: () => false })),
   };
+  const mediaEvents = new Subject<MediaTransferEvent>();
+  const mediaPipeline = {
+    transfer: vi.fn(() => mediaEvents.asObservable()),
+  };
   const factory: ConversationTimelineFactory = {
     create: vi.fn((key) => {
       const visible = signal(false);
@@ -78,6 +87,7 @@ function setup(
       ConversationRuntime,
       { provide: CONVERSATION_TIMELINE_FACTORY, useValue: factory },
       { provide: CONVERSATION_TEXT_SENDER, useValue: sender },
+      { provide: MediaPipeline, useValue: mediaPipeline },
       { provide: CONVERSATION_RETENTION_LIMIT, useValue: retainedPerAccount },
     ],
   });
@@ -98,6 +108,8 @@ function setup(
     controller,
     sender,
     sends,
+    mediaEvents,
+    mediaPipeline,
   };
 }
 
@@ -364,6 +376,60 @@ describe('ConversationRuntime', () => {
     expect(handle.compose.intent()).toEqual({ kind: 'message' });
     expect(handle.compose.sending()).toBe(false);
     expect(persist).toHaveBeenCalledWith(expect.any(String), '');
+  });
+
+  it('keeps media transfer cold and binds it to the immutable Account-and-Room handle', async () => {
+    const { runtime, mediaPipeline, mediaEvents } = setup();
+    const handle = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+    const media = Object.freeze({
+      id: 'staged-media-1',
+      filename: 'secret.png',
+      mimeType: 'image/png',
+      size: 4,
+      previewUrl: null,
+    }) as StagedMediaReference;
+
+    const command = handle.media.send(media, 'classified');
+    expect(mediaPipeline.transfer).not.toHaveBeenCalled();
+    const outcome = firstValueFrom(command);
+    expect(mediaPipeline.transfer).toHaveBeenCalledWith({
+      key: handle.key,
+      media,
+      caption: 'classified',
+    });
+    mediaEvents.next({ kind: 'sent', eventId: '$media' });
+    mediaEvents.complete();
+
+    await expect(outcome).resolves.toEqual({
+      kind: 'sent',
+      eventId: '$media',
+    });
+  });
+
+  it('resolves the focused media target only when the command is subscribed', () => {
+    const { runtime, mediaPipeline } = setup();
+    const media = Object.freeze({
+      id: 'staged-media-1',
+      filename: 'secret.png',
+      mimeType: 'image/png',
+      size: 4,
+      previewUrl: null,
+    }) as StagedMediaReference;
+    runtime.focus({ accountId: ALICE, roomId: '!first:example.org' });
+    const command = runtime.media.send(media, '');
+    runtime.focus({ accountId: BOB, roomId: '!second:example.org' });
+
+    const subscription = command.subscribe();
+
+    expect(mediaPipeline.transfer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: { accountId: BOB, roomId: '!second:example.org' },
+      }),
+    );
+    subscription.unsubscribe();
   });
 
   it('returns a typed rejection and restores the durable intent', async () => {

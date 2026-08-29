@@ -8,7 +8,7 @@ import {
 import { Router } from '@angular/router';
 import { Observable, defer, from, of, tap } from 'rxjs';
 import { encodeRoomSegment } from '@trinity/util/matrix';
-import { MediaService } from '@trinity/data-access/media';
+import { MediaPipeline } from '@trinity/data-access/media';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
@@ -46,7 +46,7 @@ export class RoomShellNavigationService {
   private readonly spaces = inject(SpacesService);
   private readonly mixedRooms = inject(MixedRoomsService);
   private readonly accountScope = inject(AccountScopeService);
-  private readonly media = inject(MediaService);
+  private readonly media = inject(MediaPipeline);
   private readonly matrix = inject(MatrixClientService);
   private readonly pinned = inject(PinnedMessagesService);
   private readonly threads = inject(ThreadsService);
