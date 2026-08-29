@@ -169,10 +169,13 @@ describe('RoomLinkPreviewComponent', () => {
       '[data-testid=room-link-primary]',
     )!;
 
+    primary.focus();
     primary.click();
     await fixture.whenStable();
     expect(container.textContent).toContain('homeserver is unavailable');
     expect(primary.disabled).toBe(false);
+    expect(primary.getAttribute('aria-disabled')).toBe('false');
+    expect(document.activeElement).toBe(primary);
     expect(close).not.toHaveBeenCalled();
 
     primary.click();
@@ -191,12 +194,17 @@ describe('RoomLinkPreviewComponent', () => {
     await fixture.whenStable();
 
     expect(container.textContent).toContain('Homeserver unavailable');
-    container
-      .querySelector<HTMLButtonElement>(
-        '[data-testid=room-link-load-error] button',
-      )!
-      .click();
+    const error = container.querySelector<HTMLElement>(
+      '[data-testid=room-link-load-error]',
+    )!;
+    expect(error.getAttribute('role')).toBe('alert');
+    const retry = error.querySelector<HTMLButtonElement>('button')!;
+    retry.focus();
+    retry.click();
     expect(load).toHaveBeenCalledTimes(2);
+    expect(document.activeElement).toBe(
+      container.querySelector('[data-testid=room-link-close]'),
+    );
   });
 
   it('explains a restricted room without offering an impossible action', async () => {
@@ -208,6 +216,17 @@ describe('RoomLinkPreviewComponent', () => {
     expect(
       container.querySelector('[data-testid=room-link-primary]'),
     ).toBeNull();
+  });
+
+  it('explains when an allowed-room membership permits a restricted join', async () => {
+    const { container } = await build({
+      value: preview({ joinRule: 'knock_restricted', action: 'join' }),
+    });
+
+    expect(container.textContent).toContain('Restricted — you can join');
+    expect(
+      container.querySelector('[data-testid=room-link-primary]')?.textContent,
+    ).toContain('Join room');
   });
 
   it('opts into the native sheet styling when requested', async () => {

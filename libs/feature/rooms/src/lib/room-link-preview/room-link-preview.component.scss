@@ -129,16 +129,13 @@
   padding: var(--trinity-space-3);
   border-radius: var(--trinity-shape-control-radius);
   background: var(--trinity-status-neutral-surface);
-  color: var(--trinity-text-muted);
+  color: var(--trinity-status-neutral-foreground);
   font-size: var(--trinity-type-caption-size);
 }
 
-.room-preview__notice--success {
-  color: var(--success);
-}
-
+.room-preview__notice--success,
 .room-preview__notice--error {
-  color: var(--trinity-danger);
+  font-weight: 600;
 }
 
 .room-preview__actions {

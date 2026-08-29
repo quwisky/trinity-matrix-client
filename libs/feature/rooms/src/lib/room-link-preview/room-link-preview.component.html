@@ -6,6 +6,7 @@
   <header class="room-preview__header">
     <h2 class="room-preview__title">Room information</h2>
     <button
+      #closeButton
       trnBtn
       type="button"
       variant="ghost"
@@ -25,7 +26,11 @@
         <span>Loading room information…</span>
       </div>
     } @else if (loadFailure(); as failure) {
-      <div class="room-preview__status" data-testid="room-link-load-error">
+      <div
+        class="room-preview__status"
+        role="alert"
+        data-testid="room-link-load-error"
+      >
         <trn-icon name="cloud-off" size="2rem" />
         <h3>{{ failure.title }}</h3>
         <p>{{ failure.message }}</p>
@@ -118,7 +123,7 @@
         <button
           trnBtn
           type="button"
-          [disabled]="acting()"
+          [attr.aria-disabled]="acting()"
           data-testid="room-link-primary"
           (click)="runPrimaryAction()"
         >

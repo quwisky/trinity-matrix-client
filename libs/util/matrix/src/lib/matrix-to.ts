@@ -111,14 +111,21 @@ function isValidViaServer(value: string): boolean {
 }
 
 /** Keep the SDK's maximum of three distinct, valid routing servers. */
-function parseVia(query: string): readonly string[] | undefined {
+export function normalizeViaServers(
+  values: Iterable<string>,
+): readonly string[] {
   const via: string[] = [];
-  for (const server of new URLSearchParams(query).getAll('via')) {
+  for (const server of values) {
     if (isValidViaServer(server) && !via.includes(server)) {
       via.push(server);
       if (via.length === MAX_VIA_SERVERS) break;
     }
   }
+  return via;
+}
+
+function parseVia(query: string): readonly string[] | undefined {
+  const via = normalizeViaServers(new URLSearchParams(query).getAll('via'));
   return via.length > 0 ? via : undefined;
 }
 

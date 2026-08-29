@@ -4,21 +4,24 @@ import {
   describeMatrixRequestFailure,
   initialOf,
   liveRoomState,
+  normalizeViaServers,
   type MatrixLinkTarget,
 } from '@trinity/util/matrix';
-import {
-  EventType,
-  type MatrixClient,
-  type Room,
-  type RoomSummary as SdkRoomSummary,
-} from 'matrix-js-sdk';
+import { EventType, type MatrixClient, type Room } from 'matrix-js-sdk';
+import { ClientPrefix, Method } from 'matrix-js-sdk/lib/http-api';
 import { Observable, defer, from, map, of, throwError } from 'rxjs';
 
 export type RoomLinkMembership =
   'join' | 'invite' | 'knock' | 'ban' | 'leave' | 'unknown';
 
 export type RoomLinkJoinRule =
-  'public' | 'knock' | 'restricted' | 'invite' | 'private' | 'unknown';
+  | 'public'
+  | 'knock'
+  | 'knock_restricted'
+  | 'restricted'
+  | 'invite'
+  | 'private'
+  | 'unknown';
 
 export type RoomLinkAction = 'open' | 'accept' | 'join' | 'knock' | 'none';
 
@@ -60,6 +63,7 @@ function membershipOf(value: unknown): RoomLinkMembership {
 function joinRuleOf(value: unknown): RoomLinkJoinRule {
   return value === 'public' ||
     value === 'knock' ||
+    value === 'knock_restricted' ||
     value === 'restricted' ||
     value === 'invite' ||
     value === 'private'
@@ -71,12 +75,19 @@ function joinRuleOf(value: unknown): RoomLinkJoinRule {
 export function roomLinkAction(
   membership: RoomLinkMembership,
   joinRule: RoomLinkJoinRule,
+  restrictedEligible = false,
 ): RoomLinkAction {
   if (membership === 'join') return 'open';
   if (membership === 'invite') return 'accept';
   if (membership !== 'leave' && membership !== 'unknown') return 'none';
-  if (joinRule === 'public') return 'join';
-  if (joinRule === 'knock') return 'knock';
+  if (
+    joinRule === 'public' ||
+    ((joinRule === 'restricted' || joinRule === 'knock_restricted') &&
+      restrictedEligible)
+  ) {
+    return 'join';
+  }
+  if (joinRule === 'knock' || joinRule === 'knock_restricted') return 'knock';
   return 'none';
 }
 
@@ -153,11 +164,15 @@ export class RoomLinkService {
         return of(this.fromLocal(local, target, localMembership));
       }
 
-      return from(
-        client.getRoomSummary(target.roomIdOrAlias, [...(target.via ?? [])]),
-      ).pipe(
-        map((summary) =>
-          this.fromRemote(summary, target, local, localMembership),
+      return from(this.resolveRemote(client, target)).pipe(
+        map(({ summary, resolvedTarget }) =>
+          this.fromRemote(
+            summary,
+            resolvedTarget,
+            local,
+            localMembership,
+            client,
+          ),
         ),
       );
     });
@@ -208,6 +223,61 @@ export class RoomLinkService {
     );
   }
 
+  private async resolveRemote(
+    client: MatrixClient,
+    target: Extract<MatrixLinkTarget, { kind: 'room' }>,
+  ): Promise<{
+    summary: Record<string, unknown>;
+    resolvedTarget: Extract<MatrixLinkTarget, { kind: 'room' }>;
+  }> {
+    let roomId = target.roomIdOrAlias;
+    let via = normalizeViaServers(target.via ?? []);
+    if (target.roomIdOrAlias.startsWith('#')) {
+      const directory = await client.getRoomIdForAlias(target.roomIdOrAlias);
+      roomId = directory.room_id;
+      via = normalizeViaServers([...via, ...directory.servers]);
+    }
+
+    const resolvedTarget = {
+      ...target,
+      ...(via.length > 0 ? { via } : { via: undefined }),
+    };
+    return {
+      summary: await this.roomSummary(client, roomId, via),
+      resolvedTarget,
+    };
+  }
+
+  private async roomSummary(
+    client: MatrixClient,
+    roomId: string,
+    via: readonly string[],
+  ): Promise<Record<string, unknown>> {
+    try {
+      return await client.http.authedRequest<Record<string, unknown>>(
+        Method.Get,
+        `/room_summary/${encodeURIComponent(roomId)}`,
+        via.length > 0 ? { via: [...via] } : undefined,
+        undefined,
+        { prefix: ClientPrefix.V1 },
+      );
+    } catch (error: unknown) {
+      // matrix-js-sdk currently exposes only the pre-standard MSC3266 helper.
+      // Retain it for homeservers which have not implemented the stable endpoint.
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'errcode' in error &&
+        error.errcode === 'M_UNRECOGNIZED'
+      ) {
+        return (await client.getRoomSummary(roomId, [
+          ...via,
+        ])) as unknown as Record<string, unknown>;
+      }
+      throw error;
+    }
+  }
+
   private fromLocal(
     room: Room,
     target: Extract<MatrixLinkTarget, { kind: 'room' }>,
@@ -238,15 +308,13 @@ export class RoomLinkService {
   }
 
   private fromRemote(
-    summary: SdkRoomSummary,
+    summary: Record<string, unknown>,
     target: Extract<MatrixLinkTarget, { kind: 'room' }>,
     local: Room | null,
     localMembership: RoomLinkMembership,
+    client: MatrixClient,
   ): RoomLinkPreview {
-    // Synapse returns canonical_alias even though matrix-js-sdk's unstable summary type
-    // omits it. Read it defensively; an alias used to reach the room is not necessarily
-    // canonical and remains `requestedAddress` instead.
-    const raw = summary as SdkRoomSummary & Record<string, unknown>;
+    const raw = summary;
     const canonical =
       typeof raw['canonical_alias'] === 'string'
         ? raw['canonical_alias']
@@ -255,18 +323,40 @@ export class RoomLinkService {
       localMembership !== 'unknown'
         ? localMembership
         : membershipOf(raw['membership']);
-    const joinRule = joinRuleOf(raw['join_rule']);
-    const encryption = raw['im.nheko.summary.encryption'];
+    // Per the stable endpoint, an omitted join_rule means public.
+    const joinRule =
+      raw['join_rule'] === undefined ? 'public' : joinRuleOf(raw['join_rule']);
+    const allowedRoomIds = Array.isArray(raw['allowed_room_ids'])
+      ? raw['allowed_room_ids'].filter(
+          (value): value is string =>
+            typeof value === 'string' && value.startsWith('!'),
+        )
+      : [];
+    const restrictedEligible = allowedRoomIds.some(
+      (roomId) =>
+        membershipOf(client.getRoom(roomId)?.getMyMembership()) === 'join',
+    );
+    const encryption = raw['encryption'] ?? raw['im.nheko.summary.encryption'];
+    const roomId =
+      typeof raw['room_id'] === 'string'
+        ? raw['room_id']
+        : target.roomIdOrAlias;
+    const name = typeof raw['name'] === 'string' ? raw['name'] : null;
+    const topic = typeof raw['topic'] === 'string' ? raw['topic'] : null;
+    const avatarMxc =
+      typeof raw['avatar_url'] === 'string' ? raw['avatar_url'] : null;
+    const memberCount = raw['num_joined_members'];
     return this.build({
-      roomId: summary.room_id,
+      roomId,
       target,
       canonicalAddress: canonical,
-      name: summary.name || canonical || summary.room_id,
-      topic: summary.topic || null,
-      avatarMxc: summary.avatar_url ?? null,
-      memberCount: Number.isFinite(summary.num_joined_members)
-        ? summary.num_joined_members
-        : null,
+      name: name || canonical || roomId,
+      topic,
+      avatarMxc,
+      memberCount:
+        typeof memberCount === 'number' && Number.isFinite(memberCount)
+          ? memberCount
+          : null,
       encrypted:
         typeof encryption === 'string'
           ? true
@@ -275,7 +365,8 @@ export class RoomLinkService {
             : null,
       joinRule,
       membership,
-      isSpace: summary.room_type === 'm.space',
+      isSpace: raw['room_type'] === 'm.space',
+      restrictedEligible,
     });
   }
 
@@ -291,6 +382,7 @@ export class RoomLinkService {
     joinRule: RoomLinkJoinRule;
     membership: RoomLinkMembership;
     isSpace: boolean;
+    restrictedEligible?: boolean;
   }): RoomLinkPreview {
     return {
       roomId: values.roomId,
@@ -306,7 +398,11 @@ export class RoomLinkService {
       encrypted: values.encrypted,
       joinRule: values.joinRule,
       membership: values.membership,
-      action: roomLinkAction(values.membership, values.joinRule),
+      action: roomLinkAction(
+        values.membership,
+        values.joinRule,
+        values.restrictedEligible,
+      ),
       isSpace: values.isSpace,
       via: values.target.via ?? [],
     };

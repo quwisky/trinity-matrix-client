@@ -2,11 +2,13 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
   OnInit,
   computed,
   inject,
   input,
   signal,
+  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AvatarComponent } from '@trinity/components/avatar';
@@ -51,6 +53,8 @@ export class RoomLinkPreviewComponent implements OnInit {
   readonly target =
     input.required<Extract<MatrixLinkTarget, { kind: 'room' }>>();
   readonly sheet = input(false);
+  readonly closeButton =
+    viewChild.required<ElementRef<HTMLButtonElement>>('closeButton');
 
   private readonly dialogRef =
     inject<TrnDialogRef<RoomLinkPreviewResult | null>>(TrnDialogRef);
@@ -81,6 +85,10 @@ export class RoomLinkPreviewComponent implements OnInit {
         return 'Anyone can join';
       case 'knock':
         return 'Request to join';
+      case 'knock_restricted':
+        return this.preview()?.action === 'join'
+          ? 'Restricted — you can join'
+          : 'Request to join';
       case 'restricted':
         return 'Restricted';
       case 'invite':
@@ -114,6 +122,9 @@ export class RoomLinkPreviewComponent implements OnInit {
   }
 
   retry(): void {
+    // Retry temporarily removes its own control. Move focus to the stable Close
+    // button first so keyboard and screen-reader users never fall back to <body>.
+    this.closeButton().nativeElement.focus();
     this.load();
   }
 

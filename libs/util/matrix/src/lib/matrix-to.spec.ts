@@ -3,9 +3,25 @@ import {
   isMatrixLinkHref,
   matrixToPermalink,
   messagePermalink,
+  normalizeViaServers,
   parseMatrixLink,
   parseMatrixToLink,
 } from './matrix-to';
+
+describe('normalizeViaServers', () => {
+  it('validates, deduplicates, and caps untrusted server hints', () => {
+    expect(
+      normalizeViaServers([
+        'one.example',
+        'bad/path',
+        'one.example',
+        'two.example:8448',
+        '[::1]:8448',
+        'ignored.example',
+      ]),
+    ).toEqual(['one.example', 'two.example:8448', '[::1]:8448']);
+  });
+});
 
 describe('messagePermalink', () => {
   it('builds a permalink to an event, percent-encoding ids + a via for a room id', () => {

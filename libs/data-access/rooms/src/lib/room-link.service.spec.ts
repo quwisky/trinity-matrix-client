@@ -46,10 +46,13 @@ function localRoom(options: {
 function setup(options: {
   rooms?: ReturnType<typeof localRoom>[];
   summary?: Record<string, unknown>;
+  stableError?: unknown;
+  alias?: { room_id: string; servers: string[] };
 }) {
   const rooms = options.rooms ?? [];
-  const getRoomSummary = vi.fn().mockResolvedValue(
-    options.summary ?? {
+  const summary =
+    options.summary ??
+    ({
       room_id: '!remote:remote',
       name: 'Remote room',
       topic: 'Remote topic',
@@ -58,9 +61,18 @@ function setup(options: {
       join_rule: 'public',
       membership: 'leave',
       canonical_alias: '#remote:remote',
-      'im.nheko.summary.encryption': 'm.megolm.v1.aes-sha2',
+      encryption: 'm.megolm.v1.aes-sha2',
       world_readable: false,
       guest_can_join: false,
+    } satisfies Record<string, unknown>);
+  const authedRequest = options.stableError
+    ? vi.fn().mockRejectedValue(options.stableError)
+    : vi.fn().mockResolvedValue(summary);
+  const getRoomSummary = vi.fn().mockResolvedValue(summary);
+  const getRoomIdForAlias = vi.fn().mockResolvedValue(
+    options.alias ?? {
+      room_id: String(summary['room_id'] ?? '!remote:remote'),
+      servers: ['remote'],
     },
   );
   const joinRoom = vi.fn().mockResolvedValue({ roomId: '!remote:remote' });
@@ -68,7 +80,9 @@ function setup(options: {
   const client = {
     getRoom: (id: string) => rooms.find((room) => room.roomId === id) ?? null,
     getRooms: () => rooms,
+    getRoomIdForAlias,
     getRoomSummary,
+    http: { authedRequest },
     joinRoom,
     knockRoom,
   };
@@ -84,6 +98,8 @@ function setup(options: {
   return {
     service: TestBed.inject(RoomLinkService),
     getRoomSummary,
+    getRoomIdForAlias,
+    authedRequest,
     joinRoom,
     knockRoom,
   };
@@ -115,6 +131,7 @@ describe('roomLinkAction', () => {
     ['invite', 'invite', 'accept'],
     ['leave', 'public', 'join'],
     ['unknown', 'knock', 'knock'],
+    ['unknown', 'knock_restricted', 'knock'],
     ['knock', 'knock', 'none'],
     ['ban', 'public', 'none'],
     ['leave', 'restricted', 'none'],
@@ -123,12 +140,19 @@ describe('roomLinkAction', () => {
   ] as const)('maps %s + %s to %s', (membership, rule, action) => {
     expect(roomLinkAction(membership, rule)).toBe(action);
   });
+
+  it('offers Join for restricted rules only when an allowed-room membership qualifies', () => {
+    expect(roomLinkAction('leave', 'restricted', false)).toBe('none');
+    expect(roomLinkAction('leave', 'restricted', true)).toBe('join');
+    expect(roomLinkAction('leave', 'knock_restricted', false)).toBe('knock');
+    expect(roomLinkAction('leave', 'knock_restricted', true)).toBe('join');
+  });
 });
 
 describe('RoomLinkService', () => {
   it('projects a joined room locally without contacting the summary endpoint', async () => {
     const room = localRoom({ membership: 'join', joinRule: 'invite' });
-    const { service, getRoomSummary } = setup({ rooms: [room] });
+    const { service, getRoomSummary, authedRequest } = setup({ rooms: [room] });
 
     const preview = await firstValueFrom(
       service.preview({ kind: 'room', roomIdOrAlias: room.roomId }),
@@ -146,6 +170,7 @@ describe('RoomLinkService', () => {
       action: 'open',
     });
     expect(getRoomSummary).not.toHaveBeenCalled();
+    expect(authedRequest).not.toHaveBeenCalled();
   });
 
   it('finds a local invite by alias and maps it to Accept', async () => {
@@ -153,7 +178,7 @@ describe('RoomLinkService', () => {
       membership: 'invite',
       alias: '#invited:hs',
     });
-    const { service, getRoomSummary } = setup({ rooms: [room] });
+    const { service, getRoomSummary, authedRequest } = setup({ rooms: [room] });
 
     const preview = await firstValueFrom(
       service.preview({ kind: 'room', roomIdOrAlias: '#invited:hs' }),
@@ -166,10 +191,11 @@ describe('RoomLinkService', () => {
       action: 'accept',
     });
     expect(getRoomSummary).not.toHaveBeenCalled();
+    expect(authedRequest).not.toHaveBeenCalled();
   });
 
   it('resolves an unknown federated room with via hints and maps every field', async () => {
-    const { service, getRoomSummary } = setup({});
+    const { service, getRoomSummary, authedRequest } = setup({});
 
     const preview = await firstValueFrom(
       service.preview({
@@ -179,9 +205,14 @@ describe('RoomLinkService', () => {
       }),
     );
 
-    expect(getRoomSummary).toHaveBeenCalledWith('!remote:remote', [
-      'remote.example',
-    ]);
+    expect(authedRequest).toHaveBeenCalledWith(
+      'GET',
+      '/room_summary/!remote%3Aremote',
+      { via: ['remote.example'] },
+      undefined,
+      { prefix: '/_matrix/client/v1' },
+    );
+    expect(getRoomSummary).not.toHaveBeenCalled();
     expect(preview).toEqual({
       roomId: '!remote:remote',
       requestedAddress: null,
@@ -223,9 +254,147 @@ describe('RoomLinkService', () => {
       avatarMxc: null,
       memberCount: 0,
       encrypted: null,
-      joinRule: 'unknown',
+      joinRule: 'public',
       membership: 'unknown',
-      action: 'none',
+      action: 'join',
+    });
+  });
+
+  it('falls back to the legacy SDK summary only when stable v1 is unrecognized', async () => {
+    const { service, getRoomSummary } = setup({
+      stableError: new MatrixError({ errcode: 'M_UNRECOGNIZED' }, 404),
+    });
+
+    await firstValueFrom(
+      service.preview({
+        kind: 'room',
+        roomIdOrAlias: '!remote:remote',
+        via: ['remote.example'],
+      }),
+    );
+
+    expect(getRoomSummary).toHaveBeenCalledWith('!remote:remote', [
+      'remote.example',
+    ]);
+  });
+
+  it('resolves aliases and carries only valid directory servers into summary and join', async () => {
+    const { service, getRoomIdForAlias, authedRequest, joinRoom } = setup({
+      alias: {
+        room_id: '!resolved:remote',
+        servers: ['remote.example', 'bad/path', 'hint.example'],
+      },
+      summary: {
+        room_id: '!resolved:remote',
+        name: 'Resolved alias',
+        num_joined_members: 3,
+      },
+    });
+
+    const result = await firstValueFrom(
+      service.preview({
+        kind: 'room',
+        roomIdOrAlias: '#linked:remote',
+        via: ['link.example'],
+      }),
+    );
+    expect(getRoomIdForAlias).toHaveBeenCalledWith('#linked:remote');
+    expect(authedRequest).toHaveBeenCalledWith(
+      'GET',
+      '/room_summary/!resolved%3Aremote',
+      { via: ['link.example', 'remote.example', 'hint.example'] },
+      undefined,
+      { prefix: '/_matrix/client/v1' },
+    );
+    expect(result).toMatchObject({
+      roomId: '!resolved:remote',
+      requestedAddress: '#linked:remote',
+      via: ['link.example', 'remote.example', 'hint.example'],
+      joinRule: 'public',
+      action: 'join',
+    });
+
+    await firstValueFrom(service.join(result));
+    expect(joinRoom).toHaveBeenCalledWith('!resolved:remote', {
+      viaServers: ['link.example', 'remote.example', 'hint.example'],
+    });
+  });
+
+  it('maps stable restricted and knock-restricted summaries to eligible actions', async () => {
+    const allowed = localRoom({ id: '!space:hs', membership: 'join' });
+    const eligible = setup({
+      rooms: [allowed],
+      summary: {
+        room_id: '!restricted:hs',
+        join_rule: 'restricted',
+        allowed_room_ids: ['!space:hs'],
+      },
+    });
+    await expect(
+      firstValueFrom(
+        eligible.service.preview({
+          kind: 'room',
+          roomIdOrAlias: '!restricted:hs',
+        }),
+      ),
+    ).resolves.toMatchObject({ joinRule: 'restricted', action: 'join' });
+
+    TestBed.resetTestingModule();
+    const ineligible = setup({
+      summary: {
+        room_id: '!restricted:hs',
+        join_rule: 'restricted',
+        allowed_room_ids: ['!space:hs'],
+      },
+    });
+    await expect(
+      firstValueFrom(
+        ineligible.service.preview({
+          kind: 'room',
+          roomIdOrAlias: '!restricted:hs',
+        }),
+      ),
+    ).resolves.toMatchObject({ action: 'none' });
+
+    TestBed.resetTestingModule();
+    const eligibleKnockRestricted = setup({
+      rooms: [allowed],
+      summary: {
+        room_id: '!eligible-knock:hs',
+        join_rule: 'knock_restricted',
+        allowed_room_ids: ['!space:hs'],
+      },
+    });
+    await expect(
+      firstValueFrom(
+        eligibleKnockRestricted.service.preview({
+          kind: 'room',
+          roomIdOrAlias: '!eligible-knock:hs',
+        }),
+      ),
+    ).resolves.toMatchObject({
+      joinRule: 'knock_restricted',
+      action: 'join',
+    });
+
+    TestBed.resetTestingModule();
+    const knocking = setup({
+      summary: {
+        room_id: '!knock:hs',
+        join_rule: 'knock_restricted',
+        allowed_room_ids: ['!space:hs'],
+      },
+    });
+    await expect(
+      firstValueFrom(
+        knocking.service.preview({
+          kind: 'room',
+          roomIdOrAlias: '!knock:hs',
+        }),
+      ),
+    ).resolves.toMatchObject({
+      joinRule: 'knock_restricted',
+      action: 'knock',
     });
   });
 

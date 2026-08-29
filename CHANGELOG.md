@@ -12,9 +12,11 @@ All notable changes to this project are documented here. The format is based on
   `matrix.to` and `matrix:` form show the room name, address, topic, member count, encryption and
   access rule without navigating or changing membership. Joined rooms offer **Open**; public rooms
   offer an explicit **Join**, invitations can be accepted, and knock-enabled rooms can receive an
-  access request. Successful joins stay visible before **Open**, while private, inaccessible,
+  access request; restricted rooms offer **Join** only when the account belongs to an allowed
+  room. Successful joins stay visible before **Open**, while private, inaccessible,
   malformed, offline and rejected links explain what happened and keep retryable actions available.
-  Routing hints are preserved for rooms hosted on another server, including genuine federation.
+  Aliases are resolved through the room directory, validated routing hints are preserved, and the
+  stable Matrix room-summary API is preferred with compatibility for older homeservers.
 
 - **Install and manage sticker packs without another Matrix client.** Settings now has a
   **Stickers & emoji** section that finds MSC2545 packs by room ID or alias, lets you choose

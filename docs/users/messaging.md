@@ -293,11 +293,13 @@ edit history, and a failed send offers a retry.
 Room links in a message open an information preview inside Trinity. It shows the room's available
 name, address, topic, member count, encryption state and access rule before anything changes. A room
 you already belong to offers **Open room**. A public room offers **Join room**, an invitation offers
-**Accept invitation**, and a room that allows knock requests offers **Request to join**. Joining or
-accepting does not navigate immediately: Trinity confirms success first and then offers **Open
-room**. Private, restricted, inaccessible and malformed links explain why no action is available.
+**Accept invitation**, and a room that allows knock requests offers **Request to join**. A
+restricted room offers **Join room** only when you already belong to one of its allowed rooms.
+Joining or accepting does not navigate immediately: Trinity confirms success first and then offers
+**Open room**. Private, inaccessible and malformed links explain why no action is available.
 
 Both `https://matrix.to/#/...` permalinks and `matrix:` URIs are supported, including routing hints
-for rooms on another homeserver. Links to a particular event retain the direct jump behaviour, and
-user links still open a profile card. Any non-Matrix link opens in a new tab or window, so external
-navigation cannot discard your session.
+for rooms on another homeserver. Trinity resolves aliases through the room directory and validates
+the returned server hints before using them. Links to a particular event retain the direct jump
+behaviour, and user links still open a profile card. Any non-Matrix link opens in a new tab or
+window, so external navigation cannot discard your session.
