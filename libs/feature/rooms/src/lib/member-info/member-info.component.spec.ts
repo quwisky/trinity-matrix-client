@@ -10,6 +10,7 @@ import {
   PresenceService,
 } from '@trinity/data-access/profile';
 import {
+  RoomActionPermissionsService,
   RoomModerationService,
   RoomsService,
   type MemberSummary,
@@ -41,6 +42,7 @@ async function build(
     canBan?: boolean;
     canSetPower?: boolean;
     myPower?: number;
+    targetPower?: number;
     kick?: Mock;
     ban?: Mock;
     setPowerLevel?: Mock;
@@ -70,10 +72,6 @@ async function build(
     inputs: {
       member: m,
       roomId: '!r:hs',
-      canKick: opts.canKick ?? false,
-      canBan: opts.canBan ?? false,
-      canSetPower: opts.canSetPower ?? false,
-      myPower: opts.myPower ?? 0,
     },
     providers: [
       MockProvider(TrnDialogRef, { close }),
@@ -88,6 +86,32 @@ async function build(
         ).asReadonly(),
       }),
       MockProvider(RoomModerationService, { kick, ban, setPowerLevel }),
+      MockProvider(RoomActionPermissionsService, {
+        member: () => ({
+          kick: {
+            available: opts.canKick ?? false,
+            reason: opts.canKick ? null : 'Cannot remove this member.',
+          },
+          ban: {
+            available: opts.canBan ?? false,
+            reason: opts.canBan ? null : 'Cannot ban this member.',
+          },
+          setPower: {
+            available: opts.canSetPower ?? false,
+            reason: opts.canSetPower ? null : 'Cannot change this role.',
+          },
+          myPower: opts.myPower ?? 0,
+          targetPower: opts.targetPower ?? m.powerLevel,
+        }),
+        role: (_roomId: string, _userId: string, level: number) => ({
+          available:
+            (opts.canSetPower ?? false) && level <= (opts.myPower ?? 0),
+          reason:
+            (opts.canSetPower ?? false) && level <= (opts.myPower ?? 0)
+              ? null
+              : 'Cannot assign this role.',
+        }),
+      }),
       MockProvider(RoomsService, { createDirectMessage }),
       MockProvider(VerificationService, { startUserVerification }),
       MockProvider(IgnoredUsersService, {
@@ -392,14 +416,18 @@ describe('MemberInfoComponent', () => {
     ).not.toBeNull();
   });
 
-  it('hides kick/ban actions without permission', async () => {
+  it('keeps kick/ban actions discoverable but unavailable without permission', async () => {
     const { container } = await build(); // canKick/canBan default false
     expect(
-      container.querySelector('[data-testid="member-info-kick"]'),
-    ).toBeNull();
+      container
+        .querySelector('[data-testid="member-info-kick"]')
+        ?.getAttribute('aria-disabled'),
+    ).toBe('true');
     expect(
-      container.querySelector('[data-testid="member-info-ban"]'),
-    ).toBeNull();
+      container
+        .querySelector('[data-testid="member-info-ban"]')
+        ?.getAttribute('aria-disabled'),
+    ).toBe('true');
   });
 
   it('kicks the member with the entered reason and closes on confirm', async () => {
@@ -455,7 +483,7 @@ describe('MemberInfoComponent', () => {
     expect(close).not.toHaveBeenCalled();
   });
 
-  it('offers roles at or below your level, minus the member’s current one', async () => {
+  it('offers every preset except the member’s current one', async () => {
     const { cmp } = await build(member({ powerLevel: 0 }), {
       canSetPower: true,
       myPower: 100,
@@ -464,7 +492,7 @@ describe('MemberInfoComponent', () => {
     expect(cmp.roleOptions().map((r) => r.level)).toEqual([50, 100]);
   });
 
-  it('renders a button only for each assignable role', async () => {
+  it('renders higher roles as unavailable instead of hiding them', async () => {
     const { container } = await build(member({ powerLevel: 0 }), {
       canSetPower: true,
       myPower: 50, // can reach Moderator, not Admin
@@ -473,8 +501,10 @@ describe('MemberInfoComponent', () => {
       container.querySelector('[data-testid="member-info-role-50"]'),
     ).not.toBeNull();
     expect(
-      container.querySelector('[data-testid="member-info-role-100"]'),
-    ).toBeNull();
+      container
+        .querySelector('[data-testid="member-info-role-100"]')
+        ?.getAttribute('aria-disabled'),
+    ).toBe('true');
     expect(
       container.querySelector('[data-testid="member-info-role-0"]'),
     ).toBeNull(); // current role
@@ -492,6 +522,22 @@ describe('MemberInfoComponent', () => {
 
     expect(setPowerLevel).toHaveBeenCalledWith('!r:hs', '@bob:hs', 50);
     expect(close).toHaveBeenCalledWith(null);
+  });
+
+  it('styles a demotion from the live target role as destructive', async () => {
+    const alertConfirm = vi.fn().mockResolvedValue(false);
+    const { cmp } = await build(member({ powerLevel: 0 }), {
+      canSetPower: true,
+      myPower: 100,
+      targetPower: 100,
+      alertConfirm,
+    });
+
+    await cmp.setRole({ label: 'Moderator', level: 50 });
+
+    expect(alertConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({ destructive: true }),
+    );
   });
 
   it('does not change the role when the confirmation is cancelled', async () => {

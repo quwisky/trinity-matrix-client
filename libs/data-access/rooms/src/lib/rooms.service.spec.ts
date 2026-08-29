@@ -12,6 +12,7 @@ import {
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { RoomsService } from './rooms.service';
+import { RoomActionPermissionsService } from './room-action-permissions.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { PrivacySettingsService } from '@trinity/platform-native';
 import { describe, expect, it, type Mock, vi } from 'vitest';
@@ -156,6 +157,13 @@ function provideRooms(
   TestBed.configureTestingModule({
     providers: [
       RoomsService,
+      MockProvider(RoomActionPermissionsService, {
+        room: () => ({
+          invite: { available: true, reason: null },
+          curateSpace: { available: true, reason: null },
+        }),
+        assert: vi.fn(),
+      }),
       MockProvider(MatrixClientService, {
         activeUserId: activeUserId.asReadonly(),
       }),

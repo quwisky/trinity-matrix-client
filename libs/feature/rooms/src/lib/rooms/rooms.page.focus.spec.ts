@@ -113,6 +113,9 @@ describe('RoomsPage rendered right-panel focus', () => {
       anyRoomUnread: signal(false),
       canConfigureSpace: signal(false),
       canCurateSpace: signal(false),
+      roomInvitePermission: signal({ available: false, reason: null }),
+      spaceCuratePermission: signal({ available: false, reason: null }),
+      spaceInvitePermission: signal({ available: false, reason: null }),
       defaultSpaceSortMode: signal('recent'),
       filteredRooms: signal<RoomSummary[]>([]),
       loadHomeserverInfo: vi.fn(),
@@ -246,12 +249,6 @@ describe('RoomsPage rendered right-panel focus', () => {
                 store.rightPanel.set({
                   kind: 'member',
                   member,
-                  caps: {
-                    kick: false,
-                    ban: false,
-                    setPower: false,
-                    myPower: 0,
-                  },
                   direct: false,
                 }),
             }),

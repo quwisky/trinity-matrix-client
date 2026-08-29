@@ -7,7 +7,10 @@ import {
   output,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
-import { TrnIconButton } from '@trinity/components/button';
+import {
+  TrnActionAvailability,
+  TrnIconButton,
+} from '@trinity/components/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import {
   TrnDropdownMenu,
@@ -55,6 +58,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
   styleUrls: ['sidebar-room-list.component.scss'],
   imports: [
     TrnIconButton,
+    TrnActionAvailability,
     TrnTooltip,
     EmptyStateComponent,
     AvatarComponent,
@@ -92,6 +96,8 @@ export class SidebarRoomListComponent {
   );
   readonly activeUserId = input<string | null>(null);
   readonly spaceActive = input(false);
+  readonly canCurateSpace = input(false);
+  readonly curateSpaceReason = input<string | null>(null);
   readonly accountBadges = input<ReadonlyMap<string, AccountBadge>>(new Map());
   /**
    * Whether the parent's filter box is narrowing {@link rooms}. Only the empty state cares:

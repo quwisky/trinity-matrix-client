@@ -2,7 +2,7 @@
   <h2 class="space-settings__title">Space settings</h2>
 
   <form [formRoot]="form" class="space-settings__form" (submit)="save()">
-    @if (!canSave() && !canEditAvatar()) {
+    @if (!canSave() && !mayEditAvatar()) {
       <p class="space-settings__note">
         You don’t have permission to change this space’s settings.
       </p>
@@ -24,7 +24,7 @@
           [name]="name()"
           [avatarMxc]="avatarMxc()"
           [initial]="avatarInitial()"
-          [editable]="canEditAvatar()"
+          [editable]="mayEditAvatar()"
           noun="space"
           testid="space-settings-avatar"
         />
@@ -72,20 +72,16 @@
           </span>
         </label>
 
-        @if (canManageAliases()) {
-          <trn-room-aliases [roomId]="spaceId()" />
-        }
+        <trn-room-aliases [roomId]="spaceId()" />
       </trn-tab-panel>
 
-      @if (canManageBans()) {
-        <trn-tab-panel
-          value="bans"
-          panelClass="flex flex-col gap-3 pt-3"
-          data-testid="space-settings-panel-bans"
-        >
-          <trn-banned-members [roomId]="spaceId()" />
-        </trn-tab-panel>
-      }
+      <trn-tab-panel
+        value="bans"
+        panelClass="flex flex-col gap-3 pt-3"
+        data-testid="space-settings-panel-bans"
+      >
+        <trn-banned-members [roomId]="spaceId()" />
+      </trn-tab-panel>
     </trn-tabs>
 
     <div class="space-settings__actions">
@@ -100,8 +96,11 @@
       </button>
       <button
         trnBtn
+        [trnActionAllowed]="canSave()"
+        [trnActionDisabledReason]="saveUnavailableReason()"
+        [trnTooltip]="saveUnavailableReason()"
         type="submit"
-        [disabled]="saving() || !canSave()"
+        [disabled]="saving()"
         data-testid="space-settings-save"
       >
         {{ saving() ? 'Saving…' : 'Save' }}

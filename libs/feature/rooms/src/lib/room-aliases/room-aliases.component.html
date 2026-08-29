@@ -1,4 +1,5 @@
 <section class="room-settings__field" data-testid="room-aliases">
+  @let permission = availability();
   <span class="room-settings__label">Addresses</span>
 
   @if (isEmpty()) {
@@ -31,6 +32,9 @@
                 variant="ghost"
                 size="sm"
                 (click)="setMain(alias)"
+                [trnActionAllowed]="permission.available"
+                [trnActionDisabledReason]="permission.reason"
+                [trnTooltip]="permission.reason ?? 'Make main address'"
                 data-testid="room-alias-set-main"
               >
                 Make main
@@ -43,6 +47,9 @@
               size="sm"
               [disabled]="isRemoving(alias)"
               (click)="remove(alias)"
+              [trnActionAllowed]="permission.available"
+              [trnActionDisabledReason]="permission.reason"
+              [trnTooltip]="permission.reason ?? 'Remove address'"
               data-testid="room-alias-remove"
             >
               {{ isRemoving(alias) ? 'Removing…' : 'Remove' }}
@@ -76,6 +83,9 @@
       size="sm"
       [disabled]="adding()"
       (click)="add()"
+      [trnActionAllowed]="permission.available"
+      [trnActionDisabledReason]="permission.reason"
+      [trnTooltip]="permission.reason ?? 'Add address'"
       data-testid="room-alias-add"
     >
       {{ adding() ? 'Adding…' : 'Add' }}

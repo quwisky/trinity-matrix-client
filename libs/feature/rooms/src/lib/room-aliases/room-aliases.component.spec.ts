@@ -1,9 +1,13 @@
+import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { TrnToastService } from '@trinity/components/overlay';
-import { RoomAliasesService } from '@trinity/data-access/rooms';
+import {
+  RoomActionPermissionsService,
+  RoomAliasesService,
+} from '@trinity/data-access/rooms';
 import { RoomAliasesComponent } from './room-aliases.component';
 
 async function build(
@@ -11,6 +15,7 @@ async function build(
     aliases?: string[];
     canonical?: string | null;
     server?: string | null;
+    canManage?: boolean;
   } = {},
   over: {
     addAlias?: Mock;
@@ -23,6 +28,11 @@ async function build(
   const setCanonicalAlias =
     over.setCanonicalAlias ?? vi.fn(() => of(undefined));
   const toastShow = vi.fn();
+  const canManage = signal(opts.canManage ?? true);
+  const availability = () => ({
+    available: canManage(),
+    reason: canManage() ? null : 'Your role cannot manage room addresses.',
+  });
   const { fixture, container } = await render(RoomAliasesComponent, {
     inputs: { roomId: '!r:hs' },
     providers: [
@@ -33,6 +43,16 @@ async function build(
         addAlias,
         removeAlias,
         setCanonicalAlias,
+      }),
+      MockProvider(RoomActionPermissionsService, {
+        settings: () => ({
+          name: availability(),
+          topic: availability(),
+          avatar: availability(),
+          joinRule: availability(),
+          history: availability(),
+          aliases: availability(),
+        }),
       }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
@@ -45,6 +65,7 @@ async function build(
     removeAlias,
     setCanonicalAlias,
     toastShow,
+    canManage,
   };
 }
 
@@ -127,7 +148,7 @@ describe('RoomAliasesComponent', () => {
 
     cmp.remove('#a:hs.example');
 
-    expect(removeAlias).toHaveBeenCalledWith('#a:hs.example');
+    expect(removeAlias).toHaveBeenCalledWith('!r:hs', '#a:hs.example');
     expect(cmp.aliases()).toEqual([]);
     expect(cmp.canonical()).toBeNull(); // it was the main address
     expect(toastShow).toHaveBeenCalledWith(
@@ -145,6 +166,40 @@ describe('RoomAliasesComponent', () => {
 
     expect(setCanonicalAlias).toHaveBeenCalledWith('!r:hs', '#b:hs.example');
     expect(cmp.canonical()).toBe('#b:hs.example');
+  });
+
+  it('keeps aliases and the draft readable while disabling every mutation live', async () => {
+    const { cmp, container, fixture, canManage, addAlias, removeAlias } =
+      await build({ aliases: ['#a:hs.example', '#b:hs.example'] });
+    cmp.aliasForm.localpart().value.set('draft');
+
+    canManage.set(false);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(container.textContent).toContain('#a:hs.example');
+    expect(cmp.aliasForm.localpart().value()).toBe('draft');
+    expect(
+      container.querySelector<HTMLInputElement>(
+        '[data-testid=room-alias-input]',
+      )?.disabled,
+    ).toBe(true);
+    for (const testId of [
+      'room-alias-add',
+      'room-alias-set-main',
+      'room-alias-remove',
+    ]) {
+      expect(
+        container
+          .querySelector(`[data-testid=${testId}]`)
+          ?.getAttribute('aria-disabled'),
+      ).toBe('true');
+    }
+
+    cmp.add();
+    cmp.remove('#a:hs.example');
+    expect(addAlias).not.toHaveBeenCalled();
+    expect(removeAlias).not.toHaveBeenCalled();
   });
 
   it('keeps the alias listed and toasts when removal fails', async () => {

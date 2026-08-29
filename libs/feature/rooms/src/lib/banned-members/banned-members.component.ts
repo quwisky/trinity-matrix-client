@@ -9,10 +9,13 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnButton } from '@trinity/components/button';
+import { TrnActionAvailability, TrnButton } from '@trinity/components/button';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import { TrnToastService } from '@trinity/components/overlay';
 import {
   RoomModerationService,
+  RoomActionPermissionsService,
+  type ActionAvailability,
   type BannedMember,
 } from '@trinity/data-access/rooms';
 
@@ -26,12 +29,13 @@ import {
   selector: 'trn-banned-members',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './banned-members.component.html',
-  imports: [TrnButton],
+  imports: [TrnButton, TrnActionAvailability, TrnTooltip],
 })
 export class BannedMembersComponent implements OnInit {
   readonly roomId = input.required<string>();
 
   private readonly moderation = inject(RoomModerationService);
+  private readonly permissions = inject(RoomActionPermissionsService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -51,9 +55,16 @@ export class BannedMembersComponent implements OnInit {
     return this.pending().has(userId);
   }
 
+  unbanPermission(userId: string): ActionAvailability {
+    return this.permissions.unban(this.roomId(), userId);
+  }
+
   /** Lift the member's ban; on success remove them from the list, else toast. */
   unban(member: BannedMember): void {
-    if (this.isPending(member.userId)) {
+    if (
+      this.isPending(member.userId) ||
+      !this.unbanPermission(member.userId).available
+    ) {
       return;
     }
     this.setPending(member.userId, true);

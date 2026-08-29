@@ -18,6 +18,7 @@ import {
   MixedRoomsService,
   MixedSpacesService,
   RoomsService,
+  RoomActionPermissionsService,
   SpaceChildrenService,
   SpaceRoomOrderService,
   SpacesService,
@@ -94,6 +95,12 @@ function build(opts: { members?: Record<string, MemberSummary[]> } = {}) {
       MockProvider(RoomsService, { membersFor }),
       MockProvider(SpacesService),
       MockProvider(SpaceChildrenService),
+      MockProvider(RoomActionPermissionsService, {
+        room: () => ({
+          invite: { available: true, reason: null },
+          curateSpace: { available: true, reason: null },
+        }),
+      }),
       MockProvider(MixedRoomsService),
       MockProvider(MixedSpacesService),
       MockProvider(AccountScopeService),

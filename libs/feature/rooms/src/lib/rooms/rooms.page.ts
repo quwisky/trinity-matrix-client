@@ -20,7 +20,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
-import { TrnButton } from '@trinity/components/button';
+import { TrnActionAvailability, TrnButton } from '@trinity/components/button';
 import {
   BELOW_MD_QUERY,
   BELOW_MEMBERS_QUERY,
@@ -49,6 +49,7 @@ import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import { PresenceService } from '@trinity/data-access/profile';
 import {
   RoomsService,
+  RoomActionPermissionsService,
   SpacesService,
   SpaceChildrenService,
   AccountScopeService,
@@ -145,6 +146,7 @@ const PANEL_DRAWER_PX = 480;
     EmptyStateComponent,
     PageHeaderComponent,
     TrnButton,
+    TrnActionAvailability,
     TrnDropdownMenu,
     TrnDropdownMenuItem,
     TrnDropdownMenuTrigger,
@@ -297,6 +299,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly crypto = inject(CryptoService);
   private readonly presence = inject(PresenceService);
   private readonly spaceChildren = inject(SpaceChildrenService);
+  private readonly roomPermissions = inject(RoomActionPermissionsService);
   private readonly push = inject(PushService);
   private readonly notifications = inject(NotificationService);
   private readonly roomNotifications = inject(RoomNotificationsService);
@@ -480,6 +483,7 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.presence.connect(); // live online-status for member avatars
     this.spaceChildren.connect(); // live m.space.child links for the curation surfaces
     this.roomNotifications.connect(); // live per-room push rules from every account
+    this.roomPermissions.connect(); // live power/membership gates for room actions
     // Register for push once the authenticated shell is live (covers both fresh
     // login and a restored session). Best-effort + native-only; no-op elsewhere.
     this.push.register().subscribe({ error: () => undefined });

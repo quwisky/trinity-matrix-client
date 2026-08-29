@@ -10,7 +10,8 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, FormRoot, form } from '@angular/forms/signals';
-import { TrnButton } from '@trinity/components/button';
+import { TrnActionAvailability, TrnButton } from '@trinity/components/button';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import { TrnSelectComponent } from '@trinity/components/select';
 import {
   TrnTabPanelComponent,
@@ -19,7 +20,11 @@ import {
 } from '@trinity/components/tabs';
 import { TrnInput } from '@trinity/components/input';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
-import { JoinRule, RoomSettingsService } from '@trinity/data-access/rooms';
+import {
+  JoinRule,
+  RoomActionPermissionsService,
+  RoomSettingsService,
+} from '@trinity/data-access/rooms';
 import { initialOf } from '@trinity/util/matrix';
 import { BannedMembersComponent } from '../banned-members/banned-members.component';
 import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';
@@ -73,6 +78,8 @@ const OTHER_RULE_LABELS: Partial<Record<JoinRule, string>> = {
     FormField,
     FormRoot,
     TrnButton,
+    TrnActionAvailability,
+    TrnTooltip,
     TrnInput,
     AvatarFieldComponent,
     BannedMembersComponent,
@@ -92,13 +99,12 @@ export class SpaceSettingsComponent implements OnInit {
   readonly canEditTopic = input(false);
   readonly canEditAvatar = input(false);
   readonly canEditJoinRule = input(false);
-  /** Whether the viewer may manage (view + lift) this space's bans. */
-  readonly canManageBans = input(false);
   /** Whether the viewer may manage this space's published addresses. */
   readonly canManageAliases = input(false);
 
   private readonly dialogRef = inject<TrnDialogRef<boolean>>(TrnDialogRef);
   private readonly settings = inject(RoomSettingsService);
+  private readonly permissions = inject(RoomActionPermissionsService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -107,16 +113,33 @@ export class SpaceSettingsComponent implements OnInit {
   /** First letter of the space name, for the avatar fallback. */
   readonly avatarInitial = computed(() => initialOf(this.name()));
 
+  private readonly livePermissions = computed(() =>
+    this.permissions.settings(this.spaceId()),
+  );
+  readonly mayEditName = computed(() => this.livePermissions().name.available);
+  readonly mayEditTopic = computed(
+    () => this.livePermissions().topic.available,
+  );
+  readonly mayEditAvatar = computed(
+    () => this.livePermissions().avatar.available,
+  );
+  readonly mayEditJoinRule = computed(
+    () => this.livePermissions().joinRule.available,
+  );
+  readonly saveUnavailableReason = computed(() =>
+    this.canSave() ? null : 'Your role cannot change these space settings.',
+  );
+
   /**
    * Whether Save applies to anything the viewer can change. Note this does NOT include
    * `canEditHistory` — the room dialog's does, and copying it here would light up Save for a
    * field this dialog doesn't have.
    */
   readonly canSave = computed(
-    () => this.canEditName() || this.canEditTopic() || this.canEditJoinRule(),
+    () => this.mayEditName() || this.mayEditTopic() || this.mayEditJoinRule(),
   );
 
-  /** Mirrors {@link RoomSettingsComponent}: `Bans` only exists where there is a list behind it. */
+  /** Bans remain readable; each Unban action owns its live permission explanation. */
   readonly settingsTabs = computed<TrnTabOption[]>(() => [
     {
       value: 'general',
@@ -124,15 +147,7 @@ export class SpaceSettingsComponent implements OnInit {
       testId: 'space-settings-tab-general',
     },
     { value: 'access', label: 'Access', testId: 'space-settings-tab-access' },
-    ...(this.canManageBans()
-      ? [
-          {
-            value: 'bans',
-            label: 'Bans',
-            testId: 'space-settings-tab-bans',
-          },
-        ]
-      : []),
+    { value: 'bans', label: 'Bans', testId: 'space-settings-tab-bans' },
   ]);
 
   /**
@@ -173,9 +188,9 @@ export class SpaceSettingsComponent implements OnInit {
 
   readonly form = form(this.model, (path) =>
     applyRoomBasicsGates(path, {
-      canEditName: this.canEditName,
-      canEditTopic: this.canEditTopic,
-      canEditJoinRule: this.canEditJoinRule,
+      canEditName: this.mayEditName,
+      canEditTopic: this.mayEditTopic,
+      canEditJoinRule: this.mayEditJoinRule,
     }),
   );
 
@@ -203,16 +218,16 @@ export class SpaceSettingsComponent implements OnInit {
     const topic = rawTopic.trim();
     const writes: FieldWrite[] = [];
     // A space shouldn't be blanked from here — only write a non-empty change.
-    if (this.canEditName() && name && name !== this.name().trim()) {
+    if (this.mayEditName() && name && name !== this.name().trim()) {
       writes.push({ field: 'name', op: this.settings.setName(spaceId, name) });
     }
-    if (this.canEditTopic() && topic !== this.topic().trim()) {
+    if (this.mayEditTopic() && topic !== this.topic().trim()) {
       writes.push({
         field: 'topic',
         op: this.settings.setTopic(spaceId, topic),
       });
     }
-    if (this.canEditJoinRule() && joinRule !== this.joinRule()) {
+    if (this.mayEditJoinRule() && joinRule !== this.joinRule()) {
       writes.push({
         field: 'join rule',
         op: this.settings.setJoinRule(spaceId, joinRule),

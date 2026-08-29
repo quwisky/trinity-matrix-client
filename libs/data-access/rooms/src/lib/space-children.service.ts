@@ -24,6 +24,7 @@ import {
   orderBetween,
   spreadOrders,
 } from './space-child-order';
+import { RoomActionPermissionsService } from './room-action-permissions.service';
 
 /** The `m.space.child` content this client writes and reads back. */
 interface SpaceChildContent {
@@ -65,6 +66,7 @@ export interface SpaceChildLink {
 @Injectable({ providedIn: 'root' })
 export class SpaceChildrenService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly actionPermissions = inject(RoomActionPermissionsService);
 
   /** One signal per space whose links someone is watching, keyed by space id. */
   private readonly links = new Map<
@@ -207,6 +209,9 @@ export class SpaceChildrenService {
       if (!this.matrix.isInitialized) {
         return throwError(() => new Error('Not signed in.'));
       }
+      this.actionPermissions.assert(
+        this.actionPermissions.room(spaceId).curateSpace,
+      );
       const client = this.matrix.instance;
       if (this.currentLink(spaceId, childId)) {
         // Already a child. Re-sending would be harmless but would reset any curation the
@@ -318,14 +323,19 @@ export class SpaceChildrenService {
       ...(link.suggested ? { suggested: true } : {}),
       ...(link.order ? { order: link.order } : {}),
     };
-    return from(
-      this.matrix.instance.sendStateEvent(
-        spaceId,
-        EventType.SpaceChild,
-        content,
-        link.childId,
-      ),
-    ).pipe(map(() => void 0));
+    return defer(() => {
+      this.actionPermissions.assert(
+        this.actionPermissions.room(spaceId).curateSpace,
+      );
+      return from(
+        this.matrix.instance.sendStateEvent(
+          spaceId,
+          EventType.SpaceChild,
+          content,
+          link.childId,
+        ),
+      ).pipe(map(() => void 0));
+    });
   }
 
   /** Write links one after another, so a renumber cannot interleave with itself. */

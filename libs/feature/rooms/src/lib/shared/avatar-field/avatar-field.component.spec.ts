@@ -125,10 +125,15 @@ describe('AvatarFieldComponent', () => {
     ).not.toBeNull();
   });
 
-  it('shows the image but no button when the user cannot edit it', async () => {
+  it('keeps an unavailable photo action visible with an explanation', async () => {
     const { container } = await build({ editable: false });
 
-    expect(container.querySelector('button')).toBeNull();
+    expect(
+      container.querySelector('button')?.getAttribute('aria-disabled'),
+    ).toBe('true');
+    expect(
+      container.querySelector('button')?.getAttribute('aria-description'),
+    ).toContain('cannot change');
     expect(container.querySelector('trn-avatar')).not.toBeNull();
   });
 

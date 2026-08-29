@@ -145,6 +145,41 @@ rather than a boolean, and re-projecting onto the newly-active client when
 injection context so the account-switch `effect` is owned by the root injector and lives
 for the session.
 
+### Room-action authorization
+
+Permission-sensitive room UI reads `RoomActionPermissionsService` from
+`@trinity/data-access/rooms`. The service evaluates the active SDK room state, the actor's
+membership and power, the room's invite/kick/ban/state thresholds, and the target member's
+power. Member moderation requires the actor to strictly outrank the target; assigning a role
+also caps the new power at the actor's own level. That strict comparison deliberately covers
+room-v12 creators, whose SDK power is infinite.
+
+The service projects `m.room.power_levels` and `m.room.member` state events through
+`projectFromClient`, so computed button availability changes when a remote client changes a
+threshold, role, or membership. It also follows the active client across account switches and
+returns no authority as soon as the session is detached.
+
+Unavailable actions use `trnActionAllowed` rather than native `disabled`. Native disabled
+controls cannot receive focus or pointer events, which would make their explanation
+unreachable. The shared directive publishes `aria-disabled` and `aria-description`, preserves
+normal focus and menu arrow-key navigation, and blocks click, Enter, and Space activation.
+The tooltip uses the same reason for mouse, pen, and keyboard users. Tooltips intentionally
+do not open on touch, so a blocked tap shows the reason in a short-lived, non-interactive
+status surface near the thumb zone.
+
+Room and space settings derive every state-backed field from the same live projection:
+name, topic, avatar, join rule, history visibility, and canonical aliases. A dialog that is
+already open disables those fields and its Save action after a remote role change without
+discarding the user's draft. Alias lists remain mounted and readable; the localpart draft is
+preserved while Add, Make main, and Remove become focusable-but-unavailable. Settings and
+alias services repeat the field-specific check at subscription time; avatar uploads check
+once before upload and again before publishing the state event.
+
+The UI guard is only feedback, never the authorization boundary. Every corresponding cold
+data-access mutation re-reads the permission after any picker or confirmation and immediately
+before the SDK write. Homeserver errors remain authoritative and continue through the normal
+Matrix request error handling for races and incomplete local state.
+
 ## Session persistence
 
 [`SessionStorageService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/platform-native/src/lib/session-storage.service.ts)

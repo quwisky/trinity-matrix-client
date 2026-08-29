@@ -20,6 +20,7 @@ import {
 } from '@trinity/data-access/invites';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import { RoomNotificationsService } from '@trinity/data-access/notifications';
+import { RoomActionPermissionsService } from '@trinity/data-access/rooms';
 
 import { TrnActionSheetService } from '@trinity/components/overlay';
 import { SettingsDialogService } from '@trinity/components/settings-dialog';
@@ -138,6 +139,13 @@ export const SHARED_MOCKS: Provider[] = [
   MockProvider(RoomNotificationsService, {
     connect: vi.fn(),
     setModeForAccounts: () => of(undefined),
+  }),
+  MockProvider(RoomActionPermissionsService, {
+    connect: vi.fn(),
+    room: () => ({
+      invite: { available: true, reason: null },
+      curateSpace: { available: true, reason: null },
+    }),
   }),
   // A Router whose `navigate` actually MOVES the route, because the store now reads the room
   // from `paramMap` and every "opening a room opens it" assertion in these specs depends on

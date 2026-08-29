@@ -3,6 +3,7 @@ import { EventType } from 'matrix-js-sdk';
 import { Observable, defer, from, map, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { liveRoomState } from '@trinity/util/matrix';
+import { RoomActionPermissionsService } from './room-action-permissions.service';
 
 /**
  * Manages a room's published addresses: its local aliases in the homeserver's room
@@ -15,6 +16,7 @@ import { liveRoomState } from '@trinity/util/matrix';
 @Injectable({ providedIn: 'root' })
 export class RoomAliasesService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly permissions = inject(RoomActionPermissionsService);
 
   /** The homeserver domain (from the signed-in user ID), for building `#localpart:server`. */
   serverName(): string | null {
@@ -56,6 +58,7 @@ export class RoomAliasesService {
       if (!this.matrix.isInitialized) {
         return throwError(() => new Error('Not signed in.'));
       }
+      this.permissions.assert(this.permissions.settings(roomId).aliases);
       return from(this.matrix.instance.createAlias(alias, roomId)).pipe(
         map(() => void 0),
       );
@@ -63,11 +66,12 @@ export class RoomAliasesService {
   }
 
   /** Remove a local alias from the directory. Cold — runs on subscribe. */
-  removeAlias(alias: string): Observable<void> {
+  removeAlias(roomId: string, alias: string): Observable<void> {
     return defer(() => {
       if (!this.matrix.isInitialized) {
         return throwError(() => new Error('Not signed in.'));
       }
+      this.permissions.assert(this.permissions.settings(roomId).aliases);
       return from(this.matrix.instance.deleteAlias(alias)).pipe(
         map(() => void 0),
       );
@@ -80,6 +84,7 @@ export class RoomAliasesService {
       if (!this.matrix.isInitialized) {
         return throwError(() => new Error('Not signed in.'));
       }
+      this.permissions.assert(this.permissions.settings(roomId).aliases);
       return from(
         this.matrix.instance.sendStateEvent(
           roomId,

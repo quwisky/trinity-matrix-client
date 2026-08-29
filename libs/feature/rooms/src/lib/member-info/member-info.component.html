@@ -79,43 +79,47 @@
       </button>
     }
 
-    @if (canKick() || canBan() || (canSetPower() && roleOptions().length)) {
+    @if (!isSelf()) {
       <div class="member-info__moderation">
-        @if (canSetPower()) {
-          @for (option of roleOptions(); track option.level) {
-            <button
-              trnBtn
-              variant="outline"
-              class="w-full"
-              (click)="setRole(option)"
-              [attr.data-testid]="'member-info-role-' + option.level"
-            >
-              Make {{ option.label }}
-            </button>
-          }
-        }
-        @if (canKick()) {
+        @for (option of roleOptions(); track option.level) {
+          @let permission = rolePermission(option.level);
           <button
             trnBtn
             variant="outline"
-            class="member-info__danger w-full"
-            (click)="kick()"
-            data-testid="member-info-kick"
-          >
-            Remove from room
-          </button>
-        }
-        @if (canBan()) {
-          <button
-            trnBtn
-            variant="destructive"
             class="w-full"
-            (click)="ban()"
-            data-testid="member-info-ban"
+            (click)="setRole(option)"
+            [trnActionAllowed]="permission.available"
+            [trnActionDisabledReason]="permission.reason"
+            [trnTooltip]="permission.reason ?? 'Change role'"
+            [attr.data-testid]="'member-info-role-' + option.level"
           >
-            Ban from room
+            Make {{ option.label }}
           </button>
         }
+        <button
+          trnBtn
+          variant="outline"
+          class="member-info__danger w-full"
+          (click)="kick()"
+          [trnActionAllowed]="permissions().kick.available"
+          [trnActionDisabledReason]="permissions().kick.reason"
+          [trnTooltip]="permissions().kick.reason ?? 'Remove from room'"
+          data-testid="member-info-kick"
+        >
+          Remove from room
+        </button>
+        <button
+          trnBtn
+          variant="destructive"
+          class="w-full"
+          (click)="ban()"
+          [trnActionAllowed]="permissions().ban.available"
+          [trnActionDisabledReason]="permissions().ban.reason"
+          [trnTooltip]="permissions().ban.reason ?? 'Ban from room'"
+          data-testid="member-info-ban"
+        >
+          Ban from room
+        </button>
       </div>
     }
   </div>

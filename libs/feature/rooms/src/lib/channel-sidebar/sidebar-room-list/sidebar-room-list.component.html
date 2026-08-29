@@ -241,6 +241,9 @@
           trnDropdownMenuItem
           variant="destructive"
           (triggered)="removeRoom.emit(room.id)"
+          [trnActionAllowed]="canCurateSpace()"
+          [trnActionDisabledReason]="curateSpaceReason()"
+          [trnTooltip]="curateSpaceReason() ?? 'Remove from space'"
           data-testid="room-remove"
         >
           <trn-icon name="circle-minus" />

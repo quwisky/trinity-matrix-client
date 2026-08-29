@@ -12,6 +12,7 @@ import {
 import { ExternalBrowserService } from '@trinity/platform-native';
 import {
   RoomAliasesService,
+  RoomActionPermissionsService,
   RoomModerationService,
   RoomSettingsService,
 } from '@trinity/data-access/rooms';
@@ -32,7 +33,6 @@ async function build(
     canEditAvatar: boolean;
     canEditJoinRule: boolean;
     canEditHistory: boolean;
-    canManageBans: boolean;
     canManageAliases: boolean;
     allowedSpaceIds: string[];
     parentSpaces: { id: string; name: string }[];
@@ -44,6 +44,7 @@ async function build(
     setAvatar?: Mock;
     setJoinRule?: Mock;
     setHistoryVisibility?: Mock;
+    settingsPermissions?: Mock;
   } = {},
 ) {
   const setName = over.setName ?? vi.fn(() => of(undefined));
@@ -56,6 +57,20 @@ async function build(
   const toastShow = vi.fn();
   const widgets = signal([]);
   const canManageWidgets = signal(false);
+  const availability = (allowed: boolean) => ({
+    available: allowed,
+    reason: allowed ? null : 'Not allowed.',
+  });
+  const settingsPermissions =
+    over.settingsPermissions ??
+    vi.fn(() => ({
+      name: availability(inputs.canEditName ?? true),
+      topic: availability(inputs.canEditTopic ?? true),
+      avatar: availability(inputs.canEditAvatar ?? true),
+      joinRule: availability(inputs.canEditJoinRule ?? false),
+      history: availability(inputs.canEditHistory ?? false),
+      aliases: availability(inputs.canManageAliases ?? false),
+    }));
   const { fixture, container } = await render(RoomSettingsComponent, {
     inputs: {
       roomId: '!r:hs',
@@ -73,6 +88,9 @@ async function build(
         setAvatar,
         setJoinRule,
         setHistoryVisibility,
+      }),
+      MockProvider(RoomActionPermissionsService, {
+        settings: settingsPermissions,
       }),
       MockProvider(RoomModerationService, {
         bannedMembers: () => [],
@@ -113,6 +131,51 @@ async function build(
 
 /** A synthetic file-input change event carrying `file` (or none). */
 describe('RoomSettingsComponent', () => {
+  it('disables fields and Save when permission changes while open', async () => {
+    const allowed = signal(true);
+    const permission = () => ({
+      available: allowed(),
+      reason: allowed() ? null : 'Not allowed.',
+    });
+    const { container, fixture } = await build(
+      { name: 'N' },
+      {
+        settingsPermissions: vi.fn(() => ({
+          name: permission(),
+          topic: permission(),
+          avatar: permission(),
+          joinRule: permission(),
+          history: permission(),
+          aliases: permission(),
+        })),
+      },
+    );
+    const name = container.querySelector<HTMLInputElement>(
+      '[data-testid="room-settings-name"]',
+    )!;
+    const save = container.querySelector<HTMLElement>(
+      '[data-testid="room-settings-save"]',
+    )!;
+    expect(name.disabled).toBe(false);
+
+    allowed.set(false);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(name.disabled).toBe(true);
+    expect(save.getAttribute('aria-disabled')).toBe('true');
+    expect(
+      container.querySelector<HTMLInputElement>(
+        '[data-testid=room-alias-input]',
+      )?.disabled,
+    ).toBe(true);
+    expect(
+      container
+        .querySelector('[data-testid=room-alias-add]')
+        ?.getAttribute('aria-disabled'),
+    ).toBe('true');
+  });
+
   it('offers restricted only when the room sits in a space', async () => {
     const withSpace = await build({
       parentSpaces: [{ id: '!s:hs', name: 'Design' }],
@@ -461,33 +524,36 @@ describe('RoomSettingsComponent', () => {
     expect(close).toHaveBeenCalledWith(true);
   });
 
-  it('hides the banned-members section when the viewer cannot manage bans', async () => {
-    const { container } = await build({ canManageBans: false });
-    expect(container.querySelector('[data-testid=banned-members]')).toBeNull();
-  });
-
-  it('shows the banned-members section when the viewer can manage bans', async () => {
-    const { container } = await build({ canManageBans: true });
+  it('keeps the ban list readable when the viewer cannot unban', async () => {
+    const { container } = await build();
     expect(
       container.querySelector('[data-testid=banned-members]'),
     ).not.toBeNull();
   });
 
-  it('splits the dialog into General, Access, and Widgets', async () => {
-    const { cmp, container } = await build({ canManageBans: false });
+  it('shows the banned-members section when the viewer can manage bans', async () => {
+    const { container } = await build();
+    expect(
+      container.querySelector('[data-testid=banned-members]'),
+    ).not.toBeNull();
+  });
+
+  it('splits the dialog into General, Access, Widgets, and Bans', async () => {
+    const { cmp, container } = await build();
 
     expect(cmp.settingsTabs().map((tab) => tab.value)).toEqual([
       'general',
       'access',
       'widgets',
+      'bans',
     ]);
     expect(
       container.querySelector('[data-testid=room-settings-tab-bans]'),
-    ).toBeNull();
+    ).not.toBeNull();
   });
 
-  it('adds a Bans tab only where there is a list behind it', async () => {
-    const { cmp, container } = await build({ canManageBans: true });
+  it('keeps the Bans tab when the viewer can manage bans', async () => {
+    const { cmp, container } = await build();
 
     expect(cmp.settingsTabs().map((tab) => tab.value)).toEqual([
       'general',
@@ -505,7 +571,6 @@ describe('RoomSettingsComponent', () => {
     // dialog finds every field either way. Asserting CONTAINMENT is what tells a real split
     // from markup that merely gained some tab chrome.
     const { container } = await build({
-      canManageBans: true,
       canManageAliases: true,
     });
     const panel = (name: string) =>
@@ -527,7 +592,7 @@ describe('RoomSettingsComponent', () => {
   it('keeps Save and Cancel outside the tabs, always reachable', async () => {
     // The panels are eager precisely so one form spans them; the actions must not sit on a
     // panel, or saving would depend on which tab happened to be open.
-    const { container } = await build({ canManageBans: true });
+    const { container } = await build();
     const inAnyPanel = (testId: string) =>
       [
         ...container.querySelectorAll('[data-testid^=room-settings-panel-]'),
@@ -561,11 +626,16 @@ describe('RoomSettingsComponent', () => {
     ).not.toBeNull();
   });
 
-  it('shows the addresses section only when the viewer can manage aliases', async () => {
-    const { container } = await build({ canManageAliases: true });
+  it('keeps the addresses section readable when the viewer cannot manage aliases', async () => {
+    const { container } = await build({ canManageAliases: false });
     expect(
       container.querySelector('[data-testid=room-aliases]'),
     ).not.toBeNull();
+    expect(
+      container
+        .querySelector('[data-testid=room-alias-add]')
+        ?.getAttribute('aria-disabled'),
+    ).toBe('true');
   });
 
   it('disables the access controls and never writes them when not permitted', async () => {

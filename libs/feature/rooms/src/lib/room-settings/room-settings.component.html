@@ -2,7 +2,7 @@
   <h2 class="room-settings__title">Room settings</h2>
 
   <form [formRoot]="form" class="room-settings__form" (submit)="save()">
-    @if (!canSave() && !canEditAvatar()) {
+    @if (!canSave() && !mayEditAvatar()) {
       <p class="room-settings__note">
         You don’t have permission to change this room’s settings.
       </p>
@@ -24,7 +24,7 @@
           [name]="name()"
           [avatarMxc]="avatarMxc()"
           [initial]="avatarInitial()"
-          [editable]="canEditAvatar()"
+          [editable]="mayEditAvatar()"
           noun="room"
           testid="room-settings-avatar"
         />
@@ -100,9 +100,7 @@
           />
         </label>
 
-        @if (canManageAliases()) {
-          <trn-room-aliases [roomId]="roomId()" />
-        }
+        <trn-room-aliases [roomId]="roomId()" />
       </trn-tab-panel>
 
       <trn-tab-panel
@@ -113,15 +111,13 @@
         <trn-room-widgets [roomId]="roomId()" />
       </trn-tab-panel>
 
-      @if (canManageBans()) {
-        <trn-tab-panel
-          value="bans"
-          panelClass="flex flex-col gap-3 pt-3"
-          data-testid="room-settings-panel-bans"
-        >
-          <trn-banned-members [roomId]="roomId()" />
-        </trn-tab-panel>
-      }
+      <trn-tab-panel
+        value="bans"
+        panelClass="flex flex-col gap-3 pt-3"
+        data-testid="room-settings-panel-bans"
+      >
+        <trn-banned-members [roomId]="roomId()" />
+      </trn-tab-panel>
     </trn-tabs>
 
     @if (noSpaceChosen()) {
@@ -147,8 +143,11 @@
       </button>
       <button
         trnBtn
+        [trnActionAllowed]="canSave()"
+        [trnActionDisabledReason]="saveUnavailableReason()"
+        [trnTooltip]="saveUnavailableReason()"
         type="submit"
-        [disabled]="saving() || !canSave() || noSpaceChosen()"
+        [disabled]="saving() || noSpaceChosen()"
         data-testid="room-settings-save"
       >
         {{ saving() ? 'Saving…' : 'Save' }}

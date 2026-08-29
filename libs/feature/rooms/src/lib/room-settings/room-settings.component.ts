@@ -10,7 +10,8 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, FormRoot, disabled, form } from '@angular/forms/signals';
-import { TrnButton } from '@trinity/components/button';
+import { TrnActionAvailability, TrnButton } from '@trinity/components/button';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import { TrnSelectComponent } from '@trinity/components/select';
 import {
   TrnTabPanelComponent,
@@ -23,6 +24,7 @@ import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import {
   HistoryVisibility,
   JoinRule,
+  RoomActionPermissionsService,
   RoomSettingsService,
 } from '@trinity/data-access/rooms';
 import { initialOf } from '@trinity/util/matrix';
@@ -82,8 +84,9 @@ const HISTORY_OPTIONS = [
  * history visibility). The opener seeds the current values and which fields the viewer's
  * power level lets them change; fields they can't edit render read-only. Save writes only
  * the fields that changed and closes resolving `true` (so the host can refresh/toast);
- * errors keep the dialog open with a toast. Viewers who can ban also see the room's banned
- * members (with an Unban action) via {@link BannedMembersComponent}. Presented via
+ * errors keep the dialog open with a toast. The room's banned members remain readable;
+ * each Unban action independently reflects its live permission via
+ * {@link BannedMembersComponent}. Presented via
  * {@link TrnDialogService}.
  */
 @Component({
@@ -96,6 +99,8 @@ const HISTORY_OPTIONS = [
     FormField,
     FormRoot,
     TrnButton,
+    TrnActionAvailability,
+    TrnTooltip,
     TrnCheckboxComponent,
     TrnInput,
     AvatarFieldComponent,
@@ -130,13 +135,12 @@ export class RoomSettingsComponent implements OnInit {
   readonly parentSpaces = input<readonly ParentSpace[]>([]);
   /** Whether this room's version can enforce a `restricted` rule at all (v8+). */
   readonly supportsRestricted = input(false);
-  /** Whether the viewer may manage (view + lift) this room's bans. */
-  readonly canManageBans = input(false);
   /** Whether the viewer may manage this room's published addresses. */
   readonly canManageAliases = input(false);
 
   private readonly dialogRef = inject<TrnDialogRef<boolean>>(TrnDialogRef);
   private readonly settings = inject(RoomSettingsService);
+  private readonly permissions = inject(RoomActionPermissionsService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -145,13 +149,33 @@ export class RoomSettingsComponent implements OnInit {
   /** First letter of the room name, for the avatar fallback. */
   readonly avatarInitial = computed(() => initialOf(this.name()));
 
+  private readonly livePermissions = computed(() =>
+    this.permissions.settings(this.roomId()),
+  );
+  readonly mayEditName = computed(() => this.livePermissions().name.available);
+  readonly mayEditTopic = computed(
+    () => this.livePermissions().topic.available,
+  );
+  readonly mayEditAvatar = computed(
+    () => this.livePermissions().avatar.available,
+  );
+  readonly mayEditJoinRule = computed(
+    () => this.livePermissions().joinRule.available,
+  );
+  readonly mayEditHistory = computed(
+    () => this.livePermissions().history.available,
+  );
+  readonly saveUnavailableReason = computed(() =>
+    this.canSave() ? null : 'Your role cannot change these room settings.',
+  );
+
   /** Whether the Save button applies to anything the viewer can change. */
   readonly canSave = computed(
     () =>
-      this.canEditName() ||
-      this.canEditTopic() ||
-      this.canEditJoinRule() ||
-      this.canEditHistory(),
+      this.mayEditName() ||
+      this.mayEditTopic() ||
+      this.mayEditJoinRule() ||
+      this.mayEditHistory(),
   );
 
   /**
@@ -186,10 +210,8 @@ export class RoomSettingsComponent implements OnInit {
   /**
    * The tabs this dialog offers.
    *
-   * `Bans` is conditional for the same reason its panel was: without the permission there is
-   * nothing behind it, and a tab that opens on an empty panel is worse than no tab. `General`
-   * and `Access` are always present, which is what keeps the initial tab valid — a `tab`
-   * naming a panel that is not rendered would show nothing at all.
+   * The Bans tab remains readable without moderation power. Its individual Unban actions
+   * stay visible but explain why they are unavailable.
    */
   readonly settingsTabs = computed<TrnTabOption[]>(() => [
     { value: 'general', label: 'General', testId: 'room-settings-tab-general' },
@@ -199,15 +221,7 @@ export class RoomSettingsComponent implements OnInit {
       label: 'Widgets',
       testId: 'room-settings-tab-widgets',
     },
-    ...(this.canManageBans()
-      ? [
-          {
-            value: 'bans',
-            label: 'Bans',
-            testId: 'room-settings-tab-bans',
-          },
-        ]
-      : []),
+    { value: 'bans', label: 'Bans', testId: 'room-settings-tab-bans' },
   ]);
 
   readonly historyOptions = HISTORY_OPTIONS;
@@ -278,11 +292,11 @@ export class RoomSettingsComponent implements OnInit {
 
   readonly form = form(this.model, (path) => {
     applyRoomBasicsGates(path, {
-      canEditName: this.canEditName,
-      canEditTopic: this.canEditTopic,
-      canEditJoinRule: this.canEditJoinRule,
+      canEditName: this.mayEditName,
+      canEditTopic: this.mayEditTopic,
+      canEditJoinRule: this.mayEditJoinRule,
     });
-    disabled(path.historyVisibility, { when: () => !this.canEditHistory() });
+    disabled(path.historyVisibility, { when: () => !this.mayEditHistory() });
   });
 
   // Was a toSignal over joinRule.valueChanges. The model IS a signal, so the projection
@@ -324,10 +338,10 @@ export class RoomSettingsComponent implements OnInit {
     const topic = rawTopic.trim();
     const writes: FieldWrite[] = [];
     // A room name shouldn't be blanked from here — only write a non-empty change.
-    if (this.canEditName() && name && name !== this.name().trim()) {
+    if (this.mayEditName() && name && name !== this.name().trim()) {
       writes.push({ field: 'name', op: this.settings.setName(roomId, name) });
     }
-    if (this.canEditTopic() && topic !== this.topic().trim()) {
+    if (this.mayEditTopic() && topic !== this.topic().trim()) {
       writes.push({
         field: 'topic',
         op: this.settings.setTopic(roomId, topic),
@@ -341,14 +355,14 @@ export class RoomSettingsComponent implements OnInit {
     const accessChanged =
       joinRule !== this.joinRule() ||
       !sameMembers(allow, this.allowedSpaceIds());
-    if (this.canEditJoinRule() && accessChanged) {
+    if (this.mayEditJoinRule() && accessChanged) {
       writes.push({
         field: 'join rule',
         op: this.settings.setJoinRule(roomId, joinRule, allow),
       });
     }
     if (
-      this.canEditHistory() &&
+      this.mayEditHistory() &&
       historyVisibility !== this.historyVisibility()
     ) {
       writes.push({

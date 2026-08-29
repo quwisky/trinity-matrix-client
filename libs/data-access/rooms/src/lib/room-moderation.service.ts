@@ -1,9 +1,8 @@
 import { Injectable, inject } from '@angular/core';
-import { EventType } from 'matrix-js-sdk';
 import { Observable, defer, from, map, tap, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { liveRoomState } from '@trinity/util/matrix';
 import { RoomsService } from './rooms.service';
+import { RoomActionPermissionsService } from './room-action-permissions.service';
 
 /** Which moderation actions the current user may take against a specific member. */
 export interface ModerationCaps {
@@ -33,6 +32,7 @@ export interface BannedMember {
 export class RoomModerationService {
   private readonly matrix = inject(MatrixClientService);
   private readonly rooms = inject(RoomsService);
+  private readonly actionPermissions = inject(RoomActionPermissionsService);
 
   /** Remove a member from the room (they may rejoin if invited / it's public). Cold. */
   kick(roomId: string, userId: string, reason?: string): Observable<void> {
@@ -40,6 +40,9 @@ export class RoomModerationService {
       if (!this.matrix.isInitialized) {
         return throwError(() => new Error('Not signed in.'));
       }
+      this.actionPermissions.assert(
+        this.actionPermissions.member(roomId, userId).kick,
+      );
       const client = this.matrix.instance;
       return from(client.kick(roomId, userId, reason)).pipe(
         tap(() => {
@@ -58,6 +61,9 @@ export class RoomModerationService {
       if (!this.matrix.isInitialized) {
         return throwError(() => new Error('Not signed in.'));
       }
+      this.actionPermissions.assert(
+        this.actionPermissions.member(roomId, userId).ban,
+      );
       const client = this.matrix.instance;
       return from(client.ban(roomId, userId, reason)).pipe(
         tap(() => {
@@ -76,6 +82,9 @@ export class RoomModerationService {
       if (!this.matrix.isInitialized) {
         return throwError(() => new Error('Not signed in.'));
       }
+      this.actionPermissions.assert(
+        this.actionPermissions.unban(roomId, userId),
+      );
       return from(this.matrix.instance.unban(roomId, userId)).pipe(
         map(() => void 0),
       );
@@ -111,6 +120,9 @@ export class RoomModerationService {
       if (!this.matrix.isInitialized) {
         return throwError(() => new Error('Not signed in.'));
       }
+      this.actionPermissions.assert(
+        this.actionPermissions.role(roomId, userId, level),
+      );
       return from(
         this.matrix.instance.setPowerLevel(roomId, userId, level),
       ).pipe(map(() => void 0));
@@ -123,49 +135,13 @@ export class RoomModerationService {
    * kick or ban yourself here (leaving is a separate action).
    */
   canModerate(roomId: string, targetUserId: string): ModerationCaps {
-    const deny: ModerationCaps = {
-      kick: false,
-      ban: false,
-      setPower: false,
-      myPower: 0,
-    };
-    if (!this.matrix.isInitialized) {
-      return deny;
-    }
-    const client = this.matrix.instance;
-    const room = client.getRoom(roomId);
-    const me = client.getUserId();
-    if (!room || !me || targetUserId === me) {
-      return deny;
-    }
-    const myLevel = room.getMember(me)?.powerLevel ?? 0;
-    const targetLevel = room.getMember(targetUserId)?.powerLevel ?? 0;
-    // Must strictly out-rank the target to act on them.
-    if (myLevel <= targetLevel) {
-      return { ...deny, myPower: myLevel };
-    }
-    const state = liveRoomState(room);
+    const permissions = this.actionPermissions.member(roomId, targetUserId);
     return {
-      kick: !!state?.hasSufficientPowerLevelFor('kick', myLevel),
-      ban: !!state?.hasSufficientPowerLevelFor('ban', myLevel),
-      setPower: !!state?.maySendStateEvent(EventType.RoomPowerLevels, me),
-      myPower: myLevel,
+      kick: permissions.kick.available,
+      ban: permissions.ban.available,
+      setPower: permissions.setPower.available,
+      myPower: permissions.myPower,
     };
-  }
-
-  /** Whether the current user's power level lets them ban / unban in `roomId` at all. */
-  canManageBans(roomId: string): boolean {
-    if (!this.matrix.isInitialized) {
-      return false;
-    }
-    const client = this.matrix.instance;
-    const room = client.getRoom(roomId);
-    const me = client.getUserId();
-    if (!room || !me) {
-      return false;
-    }
-    const myLevel = room.getMember(me)?.powerLevel ?? 0;
-    return !!liveRoomState(room)?.hasSufficientPowerLevelFor('ban', myLevel);
   }
 
   /** The room's currently-banned members, sorted by name — for the ban list. */

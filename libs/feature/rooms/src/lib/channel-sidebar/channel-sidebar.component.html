@@ -22,8 +22,10 @@
           trnIconButton
           class="sidebar__action"
           (click)="createRoom.emit()"
+          [trnActionAllowed]="canCurateSpace()"
+          [trnActionDisabledReason]="curateSpaceReason()"
           aria-label="Create a channel"
-          trnTooltip="Create a channel"
+          [trnTooltip]="curateSpaceReason() ?? 'Create a channel'"
         >
           <trn-icon name="plus" motion="rotate" />
         </button>
@@ -121,6 +123,8 @@
       [activeRoomId]="activeRoomId()"
       [activeUserId]="activeUserId()"
       [spaceActive]="spaceActive()"
+      [canCurateSpace]="canCurateSpace()"
+      [curateSpaceReason]="curateSpaceReason()"
       [accountBadges]="accountBadges()"
       (selectRoom)="selectRoom.emit($event)"
       (leaveRoom)="leaveRoom.emit($event)"
@@ -250,6 +254,9 @@
       <button
         trnDropdownMenuItem
         (triggered)="inviteToSpace.emit()"
+        [trnActionAllowed]="canInviteToSpace()"
+        [trnActionDisabledReason]="inviteToSpaceReason()"
+        [trnTooltip]="inviteToSpaceReason() ?? 'Invite people'"
         data-testid="space-invite"
       >
         <trn-icon name="user-plus" />
@@ -263,32 +270,39 @@
         <trn-icon name="users" />
         Members
       </button>
-      @if (canCurateSpace()) {
-        <button
-          trnDropdownMenuItem
-          (triggered)="addToSpace.emit()"
-          data-testid="space-add-rooms"
-        >
-          <trn-icon name="folder-plus" />
-          Add existing rooms
-        </button>
-        <button
-          trnDropdownMenuItem
-          (triggered)="manageSpaceRooms.emit()"
-          data-testid="space-manage-rooms"
-        >
-          <trn-icon name="list-ordered" />
-          Organise rooms
-        </button>
-        <button
-          trnDropdownMenuItem
-          (triggered)="createSubspace.emit()"
-          data-testid="space-create-subspace"
-        >
-          <trn-icon name="layers" />
-          Create a space inside
-        </button>
-      }
+      <button
+        trnDropdownMenuItem
+        (triggered)="addToSpace.emit()"
+        [trnActionAllowed]="canCurateSpace()"
+        [trnActionDisabledReason]="curateSpaceReason()"
+        [trnTooltip]="curateSpaceReason() ?? 'Add existing rooms'"
+        data-testid="space-add-rooms"
+      >
+        <trn-icon name="folder-plus" />
+        Add existing rooms
+      </button>
+      <button
+        trnDropdownMenuItem
+        (triggered)="manageSpaceRooms.emit()"
+        [trnActionAllowed]="canCurateSpace()"
+        [trnActionDisabledReason]="curateSpaceReason()"
+        [trnTooltip]="curateSpaceReason() ?? 'Organise rooms'"
+        data-testid="space-manage-rooms"
+      >
+        <trn-icon name="list-ordered" />
+        Organise rooms
+      </button>
+      <button
+        trnDropdownMenuItem
+        (triggered)="createSubspace.emit()"
+        [trnActionAllowed]="canCurateSpace()"
+        [trnActionDisabledReason]="curateSpaceReason()"
+        [trnTooltip]="curateSpaceReason() ?? 'Create a space inside'"
+        data-testid="space-create-subspace"
+      >
+        <trn-icon name="layers" />
+        Create a space inside
+      </button>
       @if (canConfigureSpace()) {
         <button
           trnDropdownMenuItem

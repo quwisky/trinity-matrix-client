@@ -73,7 +73,16 @@ describe('RoomsPage space actions', () => {
         ...SHARED_MOCKS,
         MockProvider(RoomsService),
         MockProvider(SpacesService, {
-          spaces: signal<SpaceSummary[]>([]),
+          spaces: signal<SpaceSummary[]>([
+            {
+              id: '!s:hs',
+              accountId: '@me:hs',
+              name: 'My Space',
+              initial: 'M',
+              avatarMxc: null,
+              childRoomIds: [],
+            },
+          ]),
           createSpace,
           createRoomInSpace,
           leaveSpace,
@@ -397,7 +406,18 @@ describe('RoomsPage room / DM / invite actions', () => {
           inviteUser,
           directRoomIds: directIds,
         }),
-        MockProvider(SpacesService, { spaces: signal<SpaceSummary[]>([]) }),
+        MockProvider(SpacesService, {
+          spaces: signal<SpaceSummary[]>([
+            {
+              id: '!s:hs',
+              accountId: '@me:hs',
+              name: 'My Space',
+              initial: 'M',
+              avatarMxc: null,
+              childRoomIds: [],
+            },
+          ]),
+        }),
         invitesProvider({
           pendingInvites: pending,
           acceptInvite,
@@ -519,14 +539,12 @@ describe('RoomsPage room / DM / invite actions', () => {
     shell.members.onSelectMember(bob);
     await Promise.resolve();
 
-    expect(canModerate).toHaveBeenCalledWith('!r:hs', '@bob:hs');
     // Into the slot, not a dialog: this member belongs to the OPEN room. `direct` says
     // whether the room is a DM — the panel must not name an owner in a 1:1 chat, where
-    // both people sit at power level 100 — and the caps are resolved at click time.
+    // both people sit at power level 100. Permissions remain live inside the panel.
     expect(shell.store.rightPanel()).toEqual({
       kind: 'member',
       member: bob,
-      caps: { kick: false, ban: false, setPower: false, myPower: 0 },
       direct: false,
     });
     expect(memberInfoOpen).not.toHaveBeenCalled();
@@ -657,7 +675,7 @@ describe('RoomsPage room / DM / invite actions', () => {
   });
 
   it('does not carry a member panel into the next room', () => {
-    // The sharpest case of the slot being room-scoped. `caps` are resolved against the room
+    // The sharpest case of the slot being room-scoped. The member belongs to the room
     // whose row was clicked, but the template binds the panel to the room that is open NOW —
     // so a panel that survived a switch offered "Remove from room" for a room the viewer
     // never opened it for, and `MemberInfoComponent.kick()` would have aimed there.

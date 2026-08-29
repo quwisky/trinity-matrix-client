@@ -3,7 +3,6 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   PublicRoomsService,
   RoomAliasesService,
-  RoomModerationService,
   RoomSettingsService,
   RoomsService,
   SpacesService,
@@ -48,7 +47,6 @@ export class RoomActionsService {
   private readonly publicRooms = inject(PublicRoomsService);
   private readonly roomSettings = inject(RoomSettingsService);
   private readonly aliases = inject(RoomAliasesService);
-  private readonly moderation = inject(RoomModerationService);
   private readonly accountScope = inject(AccountScopeService);
   private readonly userPicker = inject(UserPickerService);
   private readonly alert = inject(TrnAlertService);
@@ -188,7 +186,7 @@ export class RoomActionsService {
   /** Open-room header: invite a user to the active room. */
   async onInviteToRoom(): Promise<void> {
     const roomId = this.store.activeRoomId();
-    if (roomId) {
+    if (roomId && this.vm.roomInvitePermission().available) {
       await this.invitePeople(
         roomId,
         this.vm.activeRoom()?.name ?? 'this room',
@@ -199,7 +197,7 @@ export class RoomActionsService {
   /** Space sidebar: invite a user to the active space. */
   async onInviteToSpace(): Promise<void> {
     const spaceId = this.store.activeSpaceId();
-    if (spaceId) {
+    if (spaceId && this.vm.spaceInvitePermission().available) {
       await this.invitePeople(spaceId, this.vm.activeSpaceName());
     }
   }
@@ -275,7 +273,6 @@ export class RoomActionsService {
         allowedSpaceIds: access.allowedSpaceIds,
         parentSpaces,
         supportsRestricted: this.roomSettings.supportsRestricted(room.id),
-        canManageBans: this.moderation.canManageBans(room.id),
         canManageAliases: this.aliases.canManageAliases(room.id),
       },
     });

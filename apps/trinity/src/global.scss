@@ -30,6 +30,32 @@ button:disabled,
   opacity: var(--trinity-disabled-opacity);
 }
 
+[data-trn-action-disabled] {
+  cursor: not-allowed;
+}
+
+/* Touch pointers cannot hover a tooltip. A blocked action therefore announces the same
+ * reason in a short, non-interactive surface near the thumb zone. */
+.trn-action-feedback {
+  position: fixed;
+  z-index: var(--trinity-z-feedback);
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  left: max(1rem, env(safe-area-inset-left));
+  width: fit-content;
+  max-width: min(32rem, calc(100vw - 2rem));
+  margin-inline: auto;
+  padding: 0.625rem 0.875rem;
+  color: var(--trinity-tooltip-foreground);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  text-align: center;
+  pointer-events: none;
+  background: var(--trinity-tooltip-surface);
+  border-radius: var(--radius-md);
+  box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 24%);
+}
+
 /*
  * Shared visible-scrollbar contract. The selector has deliberately zero specificity so a
  * component can opt out with `.no-scrollbar`; that utility keeps compact navigation and

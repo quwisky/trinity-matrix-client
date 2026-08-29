@@ -3,6 +3,7 @@ import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { RoomActionPermissionsService } from './room-action-permissions.service';
 import { RoomAliasesService } from './room-aliases.service';
 
 function setup(
@@ -50,6 +51,25 @@ function setup(
         isInitialized: true,
         instance: instance as never,
       }),
+      MockProvider(RoomActionPermissionsService, {
+        settings: () => {
+          const permission = {
+            available: opts.maySend ?? true,
+            reason: opts.maySend === false ? 'Not allowed.' : null,
+          };
+          return {
+            name: permission,
+            topic: permission,
+            avatar: permission,
+            joinRule: permission,
+            history: permission,
+            aliases: permission,
+          };
+        },
+        assert: (permission: { available: boolean }) => {
+          if (!permission.available) throw new Error('Not allowed.');
+        },
+      }),
     ],
   });
   return {
@@ -89,8 +109,17 @@ describe('RoomAliasesService', () => {
   it('removeAlias is cold and deletes the alias on subscribe', async () => {
     const { svc, deleteAlias } = setup();
 
-    await firstValueFrom(svc.removeAlias('#old:hs'));
+    await firstValueFrom(svc.removeAlias('!r:hs', '#old:hs'));
     expect(deleteAlias).toHaveBeenCalledWith('#old:hs');
+  });
+
+  it('rechecks live permission before mutating an alias', async () => {
+    const { svc, createAlias } = setup({ maySend: false });
+
+    await expect(
+      firstValueFrom(svc.addAlias('!r:hs', '#new:hs')),
+    ).rejects.toThrow('Not allowed');
+    expect(createAlias).not.toHaveBeenCalled();
   });
 
   it('setCanonicalAlias writes m.room.canonical_alias', async () => {
