@@ -2,11 +2,13 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
   computed,
   inject,
   input,
   linkedSignal,
   output,
+  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { switchMap, type Observable } from 'rxjs';
@@ -118,6 +120,8 @@ export class MemberInfoComponent {
   private readonly verification = inject(VerificationService);
   private readonly alert = inject(TrnAlertService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly userIdHandle =
+    viewChild<ElementRef<HTMLElement>>('userIdHandle');
 
   /** Whether this member is ignored (blocked); flips locally when toggled. */
   readonly ignored = linkedSignal(() =>
@@ -205,10 +209,40 @@ export class MemberInfoComponent {
    */
   copyId(): void {
     const value = this.member().userId;
-    void (navigator.clipboard?.writeText(value) ?? Promise.reject()).then(
+    let write: Promise<void>;
+    try {
+      const clipboard = navigator.clipboard;
+      write =
+        typeof clipboard?.writeText === 'function'
+          ? clipboard.writeText(value)
+          : Promise.reject(new Error('Clipboard API unavailable'));
+    } catch (error) {
+      write = Promise.reject(error);
+    }
+    void write.then(
       () => this.toast.show('User ID copied.', { duration: 2000 }),
-      () => this.toast.show('Could not copy the user ID.', { duration: 2000 }),
+      () => {
+        this.selectUserId();
+        this.toast.show(
+          'Could not copy the user ID. It is selected above; copy it manually.',
+          { duration: 5000, variant: 'destructive' },
+        );
+      },
     );
+  }
+
+  /** Focus and select the complete MXID for keyboard-accessible manual copying. */
+  selectUserId(): void {
+    const handle = this.userIdHandle()?.nativeElement;
+    const selection = handle?.ownerDocument.getSelection();
+    if (!handle || !selection) {
+      return;
+    }
+    handle.focus();
+    const range = handle.ownerDocument.createRange();
+    range.selectNodeContents(handle);
+    selection.removeAllRanges();
+    selection.addRange(range);
   }
 
   /** Block or unblock the member (account-wide ignore); flips the button on success. */

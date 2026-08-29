@@ -57,9 +57,10 @@ export function hardenContents(contents: Electron.WebContents): void {
 
 /**
  * Restrict renderer permission requests to the capabilities the app actually uses —
- * media (microphone for voice messages, camera for QR verification) and geolocation
- * (location sharing). Electron's default grants requests that reach `whenReady`;
- * without a handler, every other powerful permission would be auto-approved too.
+ * media (microphone for voice messages, camera for QR verification), geolocation
+ * (location sharing), and sanitized clipboard writes for explicit copy actions. Electron's
+ * default grants requests that reach `whenReady`; without a handler, every other powerful
+ * permission would be auto-approved too. Clipboard reads remain denied.
  */
 export function installPermissionPolicy(session: Electron.Session): void {
   session.setPermissionRequestHandler(
@@ -72,11 +73,11 @@ export function installPermissionPolicy(session: Electron.Session): void {
         callback(false);
         return;
       }
-      if (permission === 'media') {
-        callback(true);
-        return;
-      }
-      callback(permission === 'geolocation');
+      callback(
+        permission === 'media' ||
+          permission === 'geolocation' ||
+          permission === 'clipboard-sanitized-write',
+      );
     },
   );
   session.setPermissionCheckHandler(
@@ -86,7 +87,9 @@ export function installPermissionPolicy(session: Electron.Session): void {
         details.isMainFrame &&
         isAppUrl(contents.getURL()) &&
         isAppUrl(details.requestingUrl ?? requestingOrigin) &&
-        (permission === 'media' || permission === 'geolocation'),
+        (permission === 'media' ||
+          permission === 'geolocation' ||
+          permission === 'clipboard-sanitized-write'),
       ),
   );
 }

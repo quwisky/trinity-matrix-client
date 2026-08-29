@@ -238,7 +238,10 @@ describe('MemberInfoComponent', () => {
   it('shows the member name, id, and role', async () => {
     const { container } = await build(member({ powerLevel: 100 }));
     expect(container.textContent).toContain('Bob');
-    expect(container.textContent).toContain('@bob:hs');
+    expect(
+      container.querySelector('[data-testid="member-info-handle"]')
+        ?.textContent,
+    ).toBe('@bob:hs');
     expect(container.textContent).toContain('Admin');
   });
 
@@ -378,9 +381,69 @@ describe('MemberInfoComponent', () => {
       expect.anything(),
     );
     expect(toastShow).toHaveBeenCalledWith(
-      'Could not copy the user ID.',
-      expect.anything(),
+      'Could not copy the user ID. It is selected above; copy it manually.',
+      expect.objectContaining({ variant: 'destructive' }),
     );
+  });
+
+  it('offers the same manual fallback when the Clipboard API is unavailable', async () => {
+    vi.stubGlobal('navigator', {});
+    const { cmp, toastShow } = await build();
+
+    cmp.copyId();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(toastShow).toHaveBeenCalledWith(
+      'Could not copy the user ID. It is selected above; copy it manually.',
+      expect.objectContaining({ variant: 'destructive' }),
+    );
+  });
+
+  it('offers the fallback when clipboard exists without writeText', async () => {
+    vi.stubGlobal('navigator', { clipboard: {} });
+    const { cmp, toastShow } = await build();
+
+    expect(() => cmp.copyId()).not.toThrow();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(toastShow).toHaveBeenCalledWith(
+      'Could not copy the user ID. It is selected above; copy it manually.',
+      expect.objectContaining({ variant: 'destructive' }),
+    );
+  });
+
+  it('offers the fallback when writeText throws synchronously', async () => {
+    vi.stubGlobal('navigator', {
+      clipboard: {
+        writeText: () => {
+          throw new Error('not available');
+        },
+      },
+    });
+    const { cmp, toastShow } = await build();
+
+    expect(() => cmp.copyId()).not.toThrow();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(toastShow).toHaveBeenCalledWith(
+      'Could not copy the user ID. It is selected above; copy it manually.',
+      expect.objectContaining({ variant: 'destructive' }),
+    );
+  });
+
+  it('makes the complete user id keyboard focusable', async () => {
+    const { container } = await build();
+    const handle = container.querySelector<HTMLElement>(
+      '[data-testid="member-info-handle"]',
+    )!;
+
+    handle.focus();
+
+    expect(document.activeElement).toBe(handle);
+    expect(handle.tabIndex).toBe(0);
   });
 
   it('closes resolving null when dismissed', async () => {

@@ -281,6 +281,11 @@ All notable changes to this project are documented here. The format is based on
   room's permissions without hiding readable alias lists or discarding typed drafts, and
   are checked again immediately before Trinity writes to the homeserver.
 
+- **Copy user ID now works in the Electron app.** Trinity's desktop permission policy allows
+  sanitized clipboard writes only from the trusted main app frame while continuing to deny
+  clipboard reads and remote frames. If the platform still rejects a copy, the complete Matrix
+  user ID is focused and selected for keyboard-accessible manual copying.
+
 - **Network failures no longer leave actions spinning forever.** Matrix requests now stop
   waiting after a bounded deadline, request controls release on completion or cancellation,
   and failed room invitations, room joins, and directory requests explain whether to

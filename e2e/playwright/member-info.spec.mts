@@ -4,7 +4,12 @@ import {
   type APIRequestContext,
   type Page,
 } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import {
+  isAndroidE2E,
+  login,
+  synapseSession,
+  type SynapseSession,
+} from './support/app.mts';
 import { registerUser } from './support/account.mts';
 
 // Covers the member info panel: clicking a member row in the member list
@@ -54,6 +59,7 @@ test.describe('Member info panel', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
   test('clicking a member opens their info panel', async ({
+    context,
     page,
     request,
   }) => {
@@ -130,7 +136,9 @@ test.describe('Member info panel', () => {
     const panel = page.getByTestId('member-info');
     await expect(panel).toBeVisible({ timeout: 10_000 });
     await expect(panel.getByTestId('member-info-name')).toHaveText(memberName);
-    await expect(panel).toContainText(memberB.userId);
+    await expect(panel.getByTestId('member-info-handle')).toHaveText(
+      memberB.userId,
+    );
     await expect(panel).toContainText('Member');
     await expect(panel.getByTestId('member-info-message')).toBeVisible();
 
@@ -156,6 +164,32 @@ test.describe('Member info panel', () => {
     // As tall as the pane beside it, not a content-sized card floating in the slot.
     expect(surface.row).toBeGreaterThan(0);
     expect(Math.abs(surface.height - surface.row)).toBeLessThanOrEqual(1);
+
+    // Exercise the platform clipboard rather than stubbing writeText: the unique full MXID
+    // must paste back exactly, while the deliberately different display name must not.
+    // Desktop browsers model the user's clipboard-write choice as a context permission;
+    // Android's installed WebView uses its native foreground clipboard path instead.
+    if (!isAndroidE2E) {
+      await context.grantPermissions(['clipboard-write'], {
+        origin: new URL(page.url()).origin,
+      });
+    }
+    await page.getByTestId('member-info-copy').click();
+    await expect(
+      page.getByText('User ID copied.', { exact: true }),
+    ).toBeVisible();
+    const clipboardProbe = page.locator('[data-testid=clipboard-probe]');
+    await page.evaluate(() => {
+      const probe = document.createElement('input');
+      probe.dataset['testid'] = 'clipboard-probe';
+      probe.style.position = 'fixed';
+      probe.style.inset = '0 auto auto 0';
+      document.body.append(probe);
+    });
+    await clipboardProbe.focus();
+    await page.keyboard.press('ControlOrMeta+V');
+    await expect(clipboardProbe).toHaveValue(memberB.userId);
+    await clipboardProbe.evaluate((node) => node.remove());
 
     // And it can be closed. As a dialog the backdrop and Escape do that; in the slot at this
     // width there is neither, so without the header's button the panel is a dead end.
