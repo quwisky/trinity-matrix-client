@@ -1,4 +1,10 @@
-<aside class="members" aria-label="Members" #scrollHost (scroll)="onScroll()">
+<aside
+  class="members"
+  aria-label="Members"
+  #scrollHost
+  (scroll)="onScroll()"
+  data-testid="member-list"
+>
   <label class="members__filter">
     <span class="sr-only">Filter members</span>
     <input

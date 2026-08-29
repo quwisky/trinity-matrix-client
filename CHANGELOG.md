@@ -270,6 +270,11 @@ All notable changes to this project are documented here. The format is based on
   were found. Raw SDK wrapper text stays out of both the UI and logs; diagnostics retain only
   the operation and a bounded, allowlisted error category.
 
+- **Kicked and banned members disappear from the member list immediately.** The profile
+  panel now returns to an already-updated roster after the homeserver accepts the action,
+  instead of briefly showing the removed member until the next sync. Unrelated member
+  updates cannot bring the stale row back while that membership update is still arriving.
+
 - **Settings no longer shows two scrollbars side by side.** On a short window the list of
   sections scrolled independently of the section you were reading, so both drew a scrollbar
   next to each other — most visible under Notifications and Appearance, whose content is long

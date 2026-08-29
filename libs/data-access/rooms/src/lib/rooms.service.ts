@@ -191,6 +191,7 @@ export class RoomsService {
     // writes nothing.
     const roomId = room?.roomId;
     if (roomId) {
+      this.pendingMemberRemovals.delete(roomId);
       this.dirtyTypingRooms.delete(roomId);
       const current = this._typingByRoom();
       if (roomId in current) {
@@ -208,6 +209,13 @@ export class RoomsService {
     state: RoomState,
     member: RoomMember,
   ): void => {
+    const pending = this.pendingMemberRemovals.get(state.roomId);
+    if (pending?.has(member.userId) && member.membership !== 'join') {
+      pending.delete(member.userId);
+      if (!pending.size) {
+        this.pendingMemberRemovals.delete(state.roomId);
+      }
+    }
     // Dispatched by the room the event happened in. `RoomStateEvent.Members` fans out per
     // member — one `m.room.power_levels` change emits once for every member of the room —
     // and it is unfiltered, so it also fires for rooms nothing is watching.
@@ -230,6 +238,9 @@ export class RoomsService {
     string,
     WritableSignal<readonly MemberSummary[]>
   >();
+
+  /** Successful kick/ban writes waiting for their authoritative membership sync echo. */
+  private readonly pendingMemberRemovals = new Map<string, Set<string>>();
 
   /** Rooms whose member list needs re-reading on the next flush. */
   private readonly dirtyMemberRooms = new Set<string>();
@@ -291,6 +302,44 @@ export class RoomsService {
       this.memberSignals.set(key, members);
     }
     return members.asReadonly();
+  }
+
+  /**
+   * Remove a successfully moderated member from the live roster before the sync echo.
+   *
+   * Matrix moderation requests resolve after the homeserver accepts the write, while the
+   * SDK-owned room state changes only when `/sync` returns the membership event. The member
+   * panel closes as soon as the request succeeds, so leaving the projection untouched makes
+   * the reopened roster briefly show the removed member. This updates only Trinity's view;
+   * the normal member event remains authoritative and re-reads the SDK state afterward.
+   */
+  removeMemberFromProjection(roomId: string, userId: string): void {
+    // The authoritative membership event can beat the HTTP response back to us. Only
+    // create a tombstone while the SDK still reports the member as joined; otherwise a
+    // late response would hide a legitimate later rejoin forever because there is no
+    // second non-join event left to clear it.
+    const room = this.matrix.isInitialized
+      ? this.matrix.instance.getRoom(roomId)
+      : null;
+    const stillJoined = room
+      ?.getJoinedMembers()
+      .some((member) => member.userId === userId);
+    if (stillJoined) {
+      const pending =
+        this.pendingMemberRemovals.get(roomId) ?? new Set<string>();
+      pending.add(userId);
+      this.pendingMemberRemovals.set(roomId, pending);
+    }
+
+    const members = this.memberSignals.get(roomId);
+    if (!members) {
+      return;
+    }
+    const current = members();
+    const next = current.filter((member) => member.userId !== userId);
+    if (next.length !== current.length) {
+      members.set(next);
+    }
   }
 
   /** Re-read one watched room's members, or every one when the event names no room. */
@@ -489,6 +538,7 @@ export class RoomsService {
       // exists to prevent, reintroduced a microtask late. `projectFromClient` cancels its
       // own coalescer for exactly this reason; it cannot know about this one.
       this.memberFlusher.cancel();
+      this.pendingMemberRemovals.clear();
       // The typing map is protected one layer earlier too: its flusher reads
       // `projection.client()` and returns when there is none, so a late flush cannot
       // repopulate from the OUTGOING client the way `memberFlusher` could. Cancelling is
@@ -547,7 +597,12 @@ export class RoomsService {
     if (!room) {
       return EMPTY_MEMBERS;
     }
-    const joined = room.getJoinedMembers();
+    const pendingRemovals = this.pendingMemberRemovals.get(roomId);
+    const joined = pendingRemovals?.size
+      ? room
+          .getJoinedMembers()
+          .filter((member) => !pendingRemovals.has(member.userId))
+      : room.getJoinedMembers();
     // `powerLevel` is part of the fingerprint so a promotion/demotion (which fires
     // RoomState.members and keeps userId/name/avatar unchanged) still invalidates the
     // cache and re-partitions the member list into its role sections.
