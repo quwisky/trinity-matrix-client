@@ -27,7 +27,6 @@ import {
 import {
   ThreadsService,
   TimelineActionsService,
-  TimelineService,
 } from '@trinity/data-access/timeline';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
@@ -170,7 +169,6 @@ describe('RoomsPage mixed-account view', () => {
           invites: signal<PendingInvite[]>([]),
           setAccounts: vi.fn(),
         }),
-        MockProvider(TimelineService),
         MockProvider(TimelineActionsService),
         MockProvider(MatrixClientService, {
           isInitialized: true,

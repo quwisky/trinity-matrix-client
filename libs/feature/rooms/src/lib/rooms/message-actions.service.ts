@@ -12,8 +12,8 @@ import { RoomsService } from '@trinity/data-access/rooms';
 import { TrnDialogService } from '@trinity/components/overlay';
 import { isMobileOs } from '@trinity/platform-native';
 import {
+  ConversationRuntime,
   TimelineActionsService,
-  TimelineService,
 } from '@trinity/data-access/timeline';
 import { type Mention } from '@trinity/util/matrix';
 import type { ImagePackImage } from '@trinity/data-access/media';
@@ -51,7 +51,7 @@ export class MessageActionsService {
   private readonly status = inject(ShellStatusService);
   private readonly rooms = inject(RoomsService);
   private readonly jumpToDateSvc = inject(JumpToDateService);
-  private readonly timeline = inject(TimelineService);
+  private readonly timeline = inject(ConversationRuntime).timeline;
   private readonly timelineActions = inject(TimelineActionsService);
   private readonly pinned = inject(PinnedMessagesService);
   private readonly dialog = inject(TrnDialogService);
@@ -233,7 +233,7 @@ export class MessageActionsService {
   }
 
   onSendSticker(sticker: ImagePackImage): void {
-    if (this.timeline.openContext()?.room.hasEncryptionStateEvent()) {
+    if (this.timeline.roomEncrypted) {
       this.status.showWarning(
         'Sticker images are public homeserver media, even in encrypted rooms.',
       );
@@ -298,13 +298,13 @@ export class MessageActionsService {
     // a single action, which subscribes as it is pressed — but a batch subscribes item N
     // minutes later, so switching rooms mid-batch would deliver the rest into the new one.
     // This service outlives a room change (it belongs to the page), so nothing else stops it.
-    const pinnedRoomId = this.timeline.openContext()?.room.roomId ?? null;
+    const pinnedRoomId = this.timeline.openRoomId;
     let abandoned = 0;
     sendMediaBatch(
       items,
       caption,
       (file, itemCaption, progress) => {
-        const roomId = this.timeline.openContext()?.room.roomId ?? null;
+        const roomId = this.timeline.openRoomId;
         if (roomId !== pinnedRoomId) {
           abandoned++;
           return throwError(() => new Error('room changed mid-batch'));

@@ -1,11 +1,13 @@
+import { inject } from '@angular/core';
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { TimelineService } from '@trinity/data-access/timeline';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { type ReactionDetail } from '@trinity/util/matrix';
 import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { ReactionsDialogComponent } from './reactions-dialog.component';
+import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
 
 function reactor(name: string) {
   return {
@@ -34,7 +36,11 @@ describe('ReactionsDialogComponent', () => {
       imports: [MockComponent(AvatarComponent)],
       providers: [
         MockProvider(TrnDialogRef, { close: vi.fn() }),
-        MockProvider(TimelineService, { reactionDetails }),
+        MockProvider(ConversationTimelineStub, { reactionDetails }),
+        {
+          provide: ConversationRuntime,
+          useFactory: () => ({ timeline: inject(ConversationTimelineStub) }),
+        },
       ],
     });
     return { fixture, container, c: fixture.componentInstance };

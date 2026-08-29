@@ -1,5 +1,6 @@
 import {
   SHARED_MOCKS,
+  RoomsTimelineStub,
   clientStub,
   flushPanelJump,
   invitesProvider,
@@ -33,9 +34,9 @@ import {
   type SpaceSummary,
 } from '@trinity/data-access/rooms';
 import {
+  ConversationRuntime,
   ThreadsService,
   TimelineActionsService,
-  TimelineService,
 } from '@trinity/data-access/timeline';
 import {
   TrnAlertService,
@@ -105,7 +106,17 @@ describe('RoomsPage quick switcher', () => {
         }),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService, { pick }),
-        MockProvider(TimelineService, { open: timelineOpen }),
+        {
+          provide: RoomsTimelineStub,
+          useFactory: () => {
+            const timeline = new RoomsTimelineStub();
+            timeline.focusRoom = vi.fn((roomId: string) => {
+              timelineOpen(roomId);
+              timeline.open(roomId);
+            });
+            return timeline;
+          },
+        },
         MockProvider(TimelineActionsService),
         MockProvider(MediaService),
         MockProvider(MatrixClientService, {
@@ -321,7 +332,17 @@ describe('RoomsPage mobile navigation', () => {
         ...SHARED_MOCKS,
         MockProvider(RoomsService),
         MockProvider(SpacesService),
-        MockProvider(TimelineService, { open: timelineOpen }),
+        {
+          provide: RoomsTimelineStub,
+          useFactory: () => {
+            const timeline = new RoomsTimelineStub();
+            timeline.focusRoom = vi.fn((roomId: string) => {
+              timelineOpen(roomId);
+              timeline.open(roomId);
+            });
+            return timeline;
+          },
+        },
         MockProvider(TimelineActionsService),
         MockProvider(MediaService, { releaseAll }),
         MockProvider(MatrixClientService, {
@@ -355,14 +376,16 @@ describe('RoomsPage mobile navigation', () => {
     expect(shell.store.activeRoomId()).toBe('!r:hs');
     // Both halves, or the test passes on an effect that never opened anything and then
     // "closed" it from the same single null run.
-    expect(TestBed.inject(TimelineService).open).toHaveBeenCalledWith('!r:hs');
-    expect(TestBed.inject(TimelineService).close).not.toHaveBeenCalled();
+    expect(TestBed.inject(RoomsTimelineStub).open).toHaveBeenCalledWith(
+      '!r:hs',
+    );
+    expect(TestBed.inject(RoomsTimelineStub).close).not.toHaveBeenCalled();
 
     shell.page.backToList();
     TestBed.tick();
 
     expect(shell.store.activeRoomId()).toBeNull();
-    expect(TestBed.inject(TimelineService).close).toHaveBeenCalled();
+    expect(TestBed.inject(RoomsTimelineStub).close).toHaveBeenCalled();
     expect(TestBed.inject(ThreadsService).close).toHaveBeenCalled();
     expect(TestBed.inject(PinnedMessagesService).close).toHaveBeenCalled();
   });
@@ -801,7 +824,6 @@ describe('RoomsPage account switcher summary', () => {
         ...SHARED_MOCKS,
         MockProvider(RoomsService),
         MockProvider(SpacesService),
-        MockProvider(TimelineService),
         MockProvider(TimelineActionsService),
         MockProvider(MatrixClientService, {
           isInitialized: true,
@@ -973,7 +995,6 @@ describe('RoomsPage keyboard room switching', () => {
           spaces: signal([]),
           childRoomIds: vi.fn(() => []),
         }),
-        MockProvider(TimelineService),
         MockProvider(TimelineActionsService),
         MockProvider(MediaService, { releaseAll }),
         MockProvider(MatrixClientService, {
@@ -1231,21 +1252,21 @@ describe('RoomsPage keyboard room switching', () => {
 // producer side was already asserted against a mocked Router in the notifications lib, which
 // stayed green for the whole time nothing consumed what it sent.
 describe('RoomsPage room-in-URL deep link', () => {
-  let timelineOpen: Mock;
-  let timelineClose: Mock;
+  let conversationFocus: Mock;
+  let conversationBlur: Mock;
 
   function build() {
-    timelineOpen = vi.fn();
-    timelineClose = vi.fn();
+    conversationFocus = vi.fn();
+    conversationBlur = vi.fn();
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
         MockProvider(RoomsService),
         MockProvider(SpacesService),
-        MockProvider(TimelineService, {
-          open: timelineOpen,
-          close: timelineClose,
+        MockProvider(ConversationRuntime, {
+          focus: conversationFocus,
+          blur: conversationBlur,
         }),
         MockProvider(TimelineActionsService),
         MockProvider(MediaService),
@@ -1280,7 +1301,10 @@ describe('RoomsPage room-in-URL deep link', () => {
     TestBed.tick(); // run the projection effect
 
     expect(shell.store.activeRoomId()).toBe('!notified:hs');
-    expect(timelineOpen).toHaveBeenCalledWith('!notified:hs');
+    expect(conversationFocus).toHaveBeenCalledWith({
+      accountId: '@me:hs',
+      roomId: '!notified:hs',
+    });
   });
 
   it('opens it when the URL changes on the already-active /rooms route', () => {
@@ -1294,7 +1318,10 @@ describe('RoomsPage room-in-URL deep link', () => {
     TestBed.tick();
 
     expect(shell.store.activeRoomId()).toBe('!notified:hs');
-    expect(timelineOpen).toHaveBeenCalledWith('!notified:hs');
+    expect(conversationFocus).toHaveBeenCalledWith({
+      accountId: '@me:hs',
+      roomId: '!notified:hs',
+    });
   });
 
   it('follows the URL without writing it back', () => {
@@ -1310,7 +1337,10 @@ describe('RoomsPage room-in-URL deep link', () => {
     TestBed.tick();
 
     expect(shell.store.activeRoomId()).toBe('!notified:hs');
-    expect(timelineOpen).toHaveBeenCalledWith('!notified:hs');
+    expect(conversationFocus).toHaveBeenCalledWith({
+      accountId: '@me:hs',
+      roomId: '!notified:hs',
+    });
     expect(router.navigate).not.toHaveBeenCalled();
   });
 
@@ -1318,13 +1348,13 @@ describe('RoomsPage room-in-URL deep link', () => {
     const shell = build();
     shell.nav.onSelectRoom('!notified:hs');
     TestBed.tick();
-    timelineOpen.mockClear();
+    conversationFocus.mockClear();
 
     setRouteRoom('!notified:hs'); // the same room named again — a second tap on the same chat
     TestBed.tick();
 
     expect(shell.store.activeRoomId()).toBe('!notified:hs');
-    expect(timelineOpen).not.toHaveBeenCalled();
+    expect(conversationFocus).not.toHaveBeenCalled();
   });
 
   it('ignores a route with no room segment', () => {
@@ -1350,7 +1380,7 @@ describe('RoomsPage room-in-URL deep link', () => {
     TestBed.tick();
 
     expect(shell.store.activeRoomId()).toBeNull();
-    expect(timelineOpen).not.toHaveBeenCalled();
+    expect(conversationFocus).not.toHaveBeenCalled();
   });
 
   // The projection effect must depend on the OPEN ROOM and nothing else. `focusActiveView`
@@ -1383,26 +1413,30 @@ describe('RoomsPage room-in-URL deep link', () => {
   });
 
   // `releaseOpenRoom` is the teardown half of closing, and the ONLY thing that stops the
-  // root-scoped projections following a room nobody is looking at once the page is gone.
+  // Conversation Runtime and root-scoped projections following a room nobody is looking
+  // at once the page is gone.
   // `closeOpenRoom` cannot do it here: it navigates, and the router is already on its way
   // to wherever the user actually went.
   it('stops the projections when the page is destroyed', () => {
     setRouteRoom('!open:hs');
     const shell = build();
     TestBed.tick();
-    expect(timelineOpen).toHaveBeenCalledWith('!open:hs');
+    expect(conversationFocus).toHaveBeenCalledWith({
+      accountId: '@me:hs',
+      roomId: '!open:hs',
+    });
 
     const threads = TestBed.inject(ThreadsService);
     const pinned = TestBed.inject(PinnedMessagesService);
     const media = TestBed.inject(MediaService);
-    timelineClose.mockClear();
+    conversationBlur.mockClear();
     // The effect already called releaseAll on the way in, so without this the assertion
     // below could not fail — deleting it from `releaseOpenRoom` left the suite green.
     vi.mocked(media.releaseAll).mockClear();
 
     shell.page.ngOnDestroy();
 
-    expect(timelineClose).toHaveBeenCalled();
+    expect(conversationBlur).toHaveBeenCalled();
     expect(threads.close).toHaveBeenCalled();
     expect(threads.closeThread).toHaveBeenCalled();
     expect(pinned.close).toHaveBeenCalled();

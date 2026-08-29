@@ -2,9 +2,10 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
 import { TrnDialogService } from '@trinity/components/overlay';
-import { TimelineService } from '@trinity/data-access/timeline';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { MessageSourceService } from './message-source.service';
 import { MessageSourceComponent } from './message-source.component';
+import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
 
 function setup(raw: object | null) {
   const rawEvent = vi.fn(() => raw);
@@ -12,7 +13,13 @@ function setup(raw: object | null) {
   TestBed.configureTestingModule({
     providers: [
       MessageSourceService,
-      MockProvider(TimelineService, { rawEvent }),
+      MockProvider(ConversationTimelineStub, { rawEvent }),
+      {
+        provide: ConversationRuntime,
+        useFactory: () => ({
+          timeline: TestBed.inject(ConversationTimelineStub),
+        }),
+      },
       MockProvider(TrnDialogService, { open }),
     ],
   });

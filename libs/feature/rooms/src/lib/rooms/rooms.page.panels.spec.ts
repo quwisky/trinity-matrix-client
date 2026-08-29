@@ -1,5 +1,6 @@
 import {
   SHARED_MOCKS,
+  RoomsTimelineStub,
   clientStub,
   flushPanelJump,
   invitesProvider,
@@ -28,7 +29,6 @@ import {
 import {
   ThreadsService,
   TimelineActionsService,
-  TimelineService,
 } from '@trinity/data-access/timeline';
 import {
   TrnAlertService,
@@ -149,7 +149,6 @@ describe('RoomsPage panels, pins and media', () => {
         }),
         MockProvider(SpaceChildrenService, { canCurate, addExistingRoom }),
         MockProvider(TrnAlertService, { confirm: alertConfirm }),
-        MockProvider(TimelineService),
         MockProvider(TimelineActionsService, { edit, sendMedia }),
         MockProvider(MediaService),
         MockProvider(MatrixClientService, {
@@ -640,7 +639,7 @@ describe('RoomsPage panels, pins and media', () => {
     const shell = build();
     setRouteRoom('!a:hs'); // jumpToDate is a no-op with no room open
     const picker = TestBed.inject(JumpToDateService);
-    const timeline = TestBed.inject(TimelineService);
+    const timeline = TestBed.inject(RoomsTimelineStub);
     vi.mocked(picker.pick).mockResolvedValue(1_700_000_000_000);
     vi.mocked(timeline.jumpToDate).mockReturnValue(
       of({ kind: 'found', eventId: '$day:hs' }),
@@ -658,8 +657,9 @@ describe('RoomsPage panels, pins and media', () => {
     const shell = build();
     setRouteRoom('!a:hs');
     const picker = TestBed.inject(JumpToDateService);
-    const timeline = TestBed.inject(TimelineService);
+    const timeline = TestBed.inject(RoomsTimelineStub);
     vi.mocked(picker.pick).mockResolvedValue(null);
+    vi.mocked(timeline.jumpToDate).mockClear();
 
     await shell.messages.jumpToDate();
 
@@ -682,7 +682,7 @@ describe('RoomsPage panels, pins and media', () => {
       const shell = build();
       setRouteRoom('!a:hs');
       const picker = TestBed.inject(JumpToDateService);
-      const timeline = TestBed.inject(TimelineService);
+      const timeline = TestBed.inject(RoomsTimelineStub);
       vi.mocked(picker.pick).mockResolvedValue(1_700_000_000_000);
       vi.mocked(timeline.jumpToDate).mockReturnValue(of({ kind }));
 
@@ -862,19 +862,15 @@ describe('RoomsPage panels, pins and media', () => {
     // Both happen in the same batch, and they have different remedies: one file is still in
     // the composer to retry, the other is gone with the staging the room change cleared.
     const shell = build();
-    const timeline = TestBed.inject(TimelineService);
-    const context = (roomId: string) =>
-      ({ client: {}, room: { roomId } }) as ReturnType<
-        TimelineService['openContext']
-      >;
-    vi.mocked(timeline.openContext).mockReturnValue(context('!first:hs'));
+    const timeline = TestBed.inject(RoomsTimelineStub);
+    timeline.openRoomId = '!first:hs';
     let sent = 0;
     sendMedia.mockImplementation(() => {
       sent++;
       if (sent === 1) {
         return throwError(() => new Error('upload failed')); // a genuine failure
       }
-      vi.mocked(timeline.openContext).mockReturnValue(context('!second:hs'));
+      timeline.openRoomId = '!second:hs';
       return of(undefined);
     });
 
@@ -898,14 +894,10 @@ describe('RoomsPage panels, pins and media', () => {
 
   it('does not mention an upload failure when the batch was only abandoned', () => {
     const shell = build();
-    const timeline = TestBed.inject(TimelineService);
-    const context = (roomId: string) =>
-      ({ client: {}, room: { roomId } }) as ReturnType<
-        TimelineService['openContext']
-      >;
-    vi.mocked(timeline.openContext).mockReturnValue(context('!first:hs'));
+    const timeline = TestBed.inject(RoomsTimelineStub);
+    timeline.openRoomId = '!first:hs';
     sendMedia.mockImplementation(() => {
-      vi.mocked(timeline.openContext).mockReturnValue(context('!second:hs'));
+      timeline.openRoomId = '!second:hs';
       return of(undefined);
     });
 
@@ -928,14 +920,10 @@ describe('RoomsPage panels, pins and media', () => {
     // long after the press. This service belongs to the page and survives a room switch, so
     // without the pin the remaining files would be delivered into whatever room is open now.
     const shell = build();
-    const timeline = TestBed.inject(TimelineService);
-    const context = (roomId: string) =>
-      ({ client: {}, room: { roomId } }) as ReturnType<
-        TimelineService['openContext']
-      >;
-    vi.mocked(timeline.openContext).mockReturnValue(context('!first:hs'));
+    const timeline = TestBed.inject(RoomsTimelineStub);
+    timeline.openRoomId = '!first:hs';
     sendMedia.mockImplementation(() => {
-      vi.mocked(timeline.openContext).mockReturnValue(context('!second:hs'));
+      timeline.openRoomId = '!second:hs';
       return of(undefined); // the first file goes out, then the user navigates
     });
 

@@ -56,6 +56,11 @@ import {
 import { resolveShieldsInto, shieldKey } from './shields';
 
 const SCROLLBACK = 30;
+const RETAINED_EVENT_BYTES = 64;
+const RETAINED_SHIELD_BYTES = 16;
+const RETAINED_SENDER_BYTES = 16;
+const RETAINED_EVENT_LIMIT = 100;
+const RETAINED_SENDER_LIMIT = 200;
 
 /**
  * What a "jump to date" attempt ended up doing. A discriminated union rather than
@@ -127,24 +132,22 @@ export interface TimelineContext {
 }
 
 /**
- * Projects the *active* room's live timeline into a `messages` signal of view
- * models. Re-maps on new events and on async E2EE decryption. The shell opens one
- * room at a time; `matrix-js-sdk` remains the source of truth.
+ * Projects one immutable Conversation child's live timeline into a `messages` signal
+ * of view models. Re-maps on new events and on async E2EE decryption;
+ * `matrix-js-sdk` remains the source of truth.
  *
  * With thread support enabled on the client (see {@link MatrixClientService}), the
  * SDK routes threaded replies into per-thread timelines, so they are absent from
  * the room's live timeline here — only thread *roots* remain in the main view. The
  * thread roots and their replies are projected separately by `ThreadsService`.
  *
- * Deliberately not a `projectFromClient` projection: this service is scoped to the OPEN
- * ROOM, binding to a `Room` as well as to the client, so its lifetime is open()/close()
- * rather than the client's. That is also why it needs no account-switch re-projection —
- * a switch closes the open room. Note it closes it ASYNCHRONOUSLY: closing navigates to
- * `/rooms`, and the teardown follows the URL through `projectOpenRoom`, so `close()` runs
- * after `matrix.setActive` has already flipped the active client. Everything here that
- * touches the client on the way out therefore addresses `connectedClient`, never
- * `matrix.instance` — the listener detach and the typing-stop both. It does take the
- * shared `coalesce`, which is the half that applies.
+ * Deliberately not a `projectFromClient` projection: Conversation Runtime creates this
+ * package-internal child for one frozen Account-and-Room key, opens it once with that
+ * Account's explicit client, and owns its blur/retain/retire lifetime. A blurred child
+ * stays attached but suppresses foreground effects; retirement calls `close()` and
+ * destroys its child injector. Everything that touches the client therefore addresses
+ * `connectedClient`, never the mutable Active Account pointer. It does take the shared
+ * `coalesce`, which is the half that applies.
  */
 /**
  * Which composer a typing report came from. `m.typing` is one flag per room; this says who
@@ -152,7 +155,7 @@ export interface TimelineContext {
  */
 export type TypingOwner = 'room' | 'thread';
 
-@Injectable({ providedIn: 'root' })
+@Injectable()
 export class TimelineService {
   private readonly matrix = inject(MatrixClientService);
   private readonly privacy = inject(PrivacySettingsService);
@@ -211,6 +214,7 @@ export class TimelineService {
   private readonly typingOwners = new Set<TypingOwner>();
 
   private roomId: string | null = null;
+  private visible = true;
 
   /**
    * The client {@link open} attached its client-level listeners to. `matrix.instance`
@@ -282,6 +286,11 @@ export class TimelineService {
    * services (e.g. NotificationService) tell whether the user is viewing a room. */
   get openRoomId(): string | null {
     return this.roomId;
+  }
+
+  /** Whether the visible room declares the standard encrypted-room state event. */
+  get roomEncrypted(): boolean {
+    return this.visible && this.room?.hasEncryptionStateEvent() === true;
   }
   private room: Room | null = null;
 
@@ -392,14 +401,20 @@ export class TimelineService {
     }
   };
 
-  /** Start projecting a room's live timeline; attaches live + decryption listeners. */
-  open(roomId: string): void {
-    if (this.roomId === roomId || !this.matrix.isInitialized) {
+  /** Start projecting a room on one fixed Account client; attaches live + decryption listeners. */
+  open(roomId: string, accountClient?: MatrixClient): void {
+    const client =
+      accountClient ??
+      (this.matrix.isInitialized ? this.matrix.instance : undefined);
+    if (
+      !client ||
+      (this.roomId === roomId && this.connectedClient === client)
+    ) {
       return;
     }
     this.close();
+    this.visible = true;
 
-    const client = this.matrix.instance;
     const room = client.getRoom(roomId);
     if (!room) {
       return;
@@ -430,6 +445,36 @@ export class TimelineService {
     // Projects the timeline and sends the initial read receipt; subsequent live
     // messages re-ack through the same path (see {@link markRead}).
     this.refresh();
+  }
+
+  /** Toggle foreground-only effects without detaching the warm timeline projection. */
+  setVisible(visible: boolean): void {
+    if (this.visible === visible) return;
+    this.visible = visible;
+    if (!visible) {
+      this.stopTypingOnConnectedClient();
+    }
+    // Blur compacts the application-owned view cache while keeping SDK listeners warm;
+    // focus immediately rebuilds the complete loaded projection from the SDK store.
+    this.refresh();
+    this.refreshTyping();
+  }
+
+  /** Deterministic diagnostics for the bounded Conversation Runtime retention policy. */
+  resources(): {
+    readonly listenerCount: number;
+    readonly retainedBytes: number;
+  } {
+    if (!this.room || !this.connectedClient) {
+      return { listenerCount: 0, retainedBytes: 0 };
+    }
+    return {
+      listenerCount: 10 + (typeof window === 'undefined' ? 0 : 1),
+      retainedBytes:
+        this.viewCache.size * RETAINED_EVENT_BYTES +
+        this.shields.size * RETAINED_SHIELD_BYTES +
+        this.relevantSenders.size * RETAINED_SENDER_BYTES,
+    };
   }
 
   /** Detach listeners and clear the timeline. */
@@ -489,9 +534,7 @@ export class TimelineService {
    * deletable elsewhere; this only widens the affordance to moderators.
    */
   private updateRedactOthersPermission(room: Room): void {
-    const userId = this.matrix.isInitialized
-      ? this.matrix.instance.getUserId()
-      : null;
+    const userId = this.connectedClient?.getUserId() ?? null;
     if (!userId) {
       this._canRedactOthers.set(false);
       return;
@@ -505,20 +548,21 @@ export class TimelineService {
 
   /** Page in older history (backward pagination via `scrollback`). */
   loadOlder(): Observable<void> {
-    const room = this.room;
-    if (!room || this._loadingOlder()) {
-      return of(void 0);
-    }
     return defer(() => {
+      const room = this.room;
+      const client = this.connectedClient;
+      if (!this.visible || !room || !client || this._loadingOlder()) {
+        return of(void 0);
+      }
       this._loadingOlder.set(true);
-      return from(this.matrix.instance.scrollback(room, SCROLLBACK));
-    }).pipe(
-      tap(() => this.refresh()),
-      // Reset the flag on success *or* error — otherwise a failed scrollback
-      // would leave it stuck true and permanently disable pagination.
-      finalize(() => this._loadingOlder.set(false)),
-      map(() => void 0),
-    );
+      return from(client.scrollback(room, SCROLLBACK)).pipe(
+        tap(() => this.refresh()),
+        // Reset the flag on success *or* error — otherwise a failed scrollback
+        // would leave it stuck true and permanently disable pagination.
+        finalize(() => this._loadingOlder.set(false)),
+        map(() => void 0),
+      );
+    });
   }
 
   /**
@@ -557,7 +601,12 @@ export class TimelineService {
         client.timestampToEvent(room.roomId, dayStartMs, Direction.Forward),
       ).pipe(
         switchMap((response) =>
-          this.pageBackTo(room, response.event_id as string, dayStartMs),
+          this.pageBackTo(
+            client,
+            room,
+            response.event_id as string,
+            dayStartMs,
+          ),
         ),
         catchError((err: unknown) => of(classifyJumpFailure(err))),
       );
@@ -585,6 +634,7 @@ export class TimelineService {
    * whose start has been reached would burn every remaining page on empty requests.
    */
   private pageBackTo(
+    client: MatrixClient,
     room: Room,
     eventId: string,
     dayStartMs: number,
@@ -595,7 +645,7 @@ export class TimelineService {
     }
     return defer(() => {
       this._loadingOlder.set(true);
-      return from(this.pageBackLoop(room, loaded));
+      return from(this.pageBackLoop(client, room, loaded));
     }).pipe(
       tap(() => this.refresh()),
       // On success *or* error, exactly as loadOlder does: a stuck flag would disable
@@ -620,12 +670,13 @@ export class TimelineService {
   }
 
   private async pageBackLoop(
+    client: MatrixClient,
     room: Room,
     loaded: () => boolean,
   ): Promise<boolean> {
     for (let page = 0; page < MAX_JUMP_PAGES; page++) {
       const before = room.getLiveTimeline().getEvents().length;
-      await this.matrix.instance.scrollback(room, SCROLLBACK);
+      await client.scrollback(room, SCROLLBACK);
       // The user can leave while up to 20 sequential requests are in flight. Nothing
       // unsubscribes this — the subscription is tied to the PAGE, not the open room — so
       // without this check the loop keeps paginating a room nobody is looking at and its
@@ -645,22 +696,22 @@ export class TimelineService {
   }
 
   /**
-   * The open room plus the *currently active* account's client, or null when either
-   * is unavailable. Every cold action in `TimelineActionsService` resolves this inside
-   * its `defer()` — i.e. on subscribe, never when the Observable is merely constructed.
-   * `matrix.instance` follows the active account, and `this.room` follows navigation, so
-   * capturing either eagerly would let a held (or retried) action fire against an account
-   * the user has switched away from, or a room they have left.
+   * The open room plus the immutable Conversation handle's connected client, or null when
+   * the handle is blurred or released. Every cold action in `TimelineActionsService`
+   * resolves this inside its `defer()` — i.e. on subscribe, never when the Observable is
+   * merely constructed. Anchoring the client here prevents a retained handle from silently
+   * retargeting when Active Account changes.
    *
    * Public so the action surface never has to resolve the open room itself: it owns no
    * room state, and re-deriving one would be a second answer to the same question.
    */
   openContext(): TimelineContext | null {
     const room = this.room;
-    if (!room || !this.matrix.isInitialized) {
+    const client = this.connectedClient;
+    if (!this.visible || !room || !client) {
       return null;
     }
-    return { client: this.matrix.instance, room };
+    return { client, room };
   }
 
   /**
@@ -745,10 +796,7 @@ export class TimelineService {
 
   /** The raw (effective) JSON of an event for "view source", or null if not loaded. */
   rawEvent(roomId: string, eventId: string): object | null {
-    if (!this.matrix.isInitialized) {
-      return null;
-    }
-    const event = this.matrix.instance.getRoom(roomId)?.findEventById(eventId);
+    const event = this.connectedClient?.getRoom(roomId)?.findEventById(eventId);
     return event?.getEffectiveEvent() ?? null;
   }
 
@@ -770,12 +818,15 @@ export class TimelineService {
 
   private refresh(): void {
     const room = this.room;
-    if (!room) {
+    const client = this.connectedClient;
+    if (!room || !client) {
       return;
     }
-    const client = this.matrix.instance;
     const liveTimeline = room.getLiveTimeline();
-    const events = liveTimeline.getEvents();
+    const loadedEvents = liveTimeline.getEvents();
+    const events = this.visible
+      ? loadedEvents
+      : loadedEvents.slice(-RETAINED_EVENT_LIMIT);
     const seen = new Set<string>();
     const relevant = new Set<string>();
     // Divider anchor: the first surviving message after the read marker that someone else
@@ -861,7 +912,9 @@ export class TimelineService {
         return view;
       })
       .filter((view): view is MessageView => view !== null);
-    this.relevantSenders = relevant;
+    this.relevantSenders = this.visible
+      ? relevant
+      : new Set([...relevant].slice(0, RETAINED_SENDER_LIMIT));
     this._oldestEventId.set(events[0]?.getId() ?? null);
     // Null when there is no marker, the marker isn't loaded, or nothing followed it.
     this._firstUnreadId.set(afterMarker ? firstUnread : null);
@@ -931,9 +984,7 @@ export class TimelineService {
     events: readonly MatrixEvent[] = room.getLiveTimeline().getEvents(),
     force = false,
   ): Promise<void> {
-    const crypto = this.matrix.isInitialized
-      ? (this.matrix.instance.getCrypto?.() ?? null)
-      : null;
+    const crypto = this.connectedClient?.getCrypto?.() ?? null;
     if (!crypto) {
       return;
     }
@@ -961,7 +1012,8 @@ export class TimelineService {
    * the live timeline so the focus re-ack can run without a refresh's snapshot.
    */
   private markRead(events?: readonly MatrixEvent[]): void {
-    if (!this.matrix.isInitialized || !this.room) {
+    const client = this.connectedClient;
+    if (!this.visible || !client || !this.room) {
       return;
     }
     // The room is open, but the user isn't looking if the window is unfocused —
@@ -983,12 +1035,10 @@ export class TimelineService {
       const receiptType = this.privacy.sendReadReceipts()
         ? ReceiptType.Read
         : ReceiptType.ReadPrivate;
-      void this.matrix.instance
-        .sendReadReceipt(latest, receiptType)
-        ?.catch(() => undefined);
+      void client.sendReadReceipt(latest, receiptType)?.catch(() => undefined);
       // Also advance the persisted fully-read marker so the unread anchor survives
       // reloads and other devices (the divider reads it on the next open).
-      void this.matrix.instance
+      void client
         .setRoomReadMarkers(this.room.roomId, id)
         ?.catch(() => undefined);
     } catch {

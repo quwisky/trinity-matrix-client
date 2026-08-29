@@ -33,7 +33,6 @@ import {
 import {
   ThreadsService,
   TimelineActionsService,
-  TimelineService,
 } from '@trinity/data-access/timeline';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import {
@@ -171,15 +170,6 @@ describe('RoomsPage rendered right-panel focus', () => {
         }),
         MockProvider(MixedInvitesService, { setAccounts: vi.fn() }),
         MockProvider(InvitesService, { connect: vi.fn() }),
-        MockProvider(TimelineService, {
-          messages: signal([]),
-          canRedactOthers: signal(false),
-          loadingOlder: signal(false),
-          canLoadOlder: signal(false),
-          oldestEventId: signal<string | null>(null),
-          typingNames: signal([]),
-          firstUnreadId: signal<string | null>(null),
-        }),
         MockProvider(TimelineActionsService),
         { provide: ThreadsService, useValue: { summaries: signal({}) } },
         {

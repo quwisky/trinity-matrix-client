@@ -8,8 +8,8 @@ import {
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import { RoomsService } from '@trinity/data-access/rooms';
 import {
+  ConversationRuntime,
   TimelineActionsService,
-  TimelineService,
 } from '@trinity/data-access/timeline';
 import { TrnToastService } from '@trinity/components/overlay';
 import { encodeRoomSegment } from '@trinity/util/matrix';
@@ -21,6 +21,7 @@ import { MemberActionsService } from './member-actions.service';
 import { MessageActionsService } from './message-actions.service';
 import { RoomShellStore } from './room-shell-store';
 import { ShellStatusService } from './shell-status.service';
+import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
 
 /**
  * The composer and timeline half of MessageActionsService.
@@ -52,13 +53,27 @@ describe('MessageActionsService', () => {
   const votePoll = vi.fn(() => of(undefined));
   const endPoll = vi.fn(() => of(undefined));
   const sendSticker = vi.fn(() => of(undefined));
-  const openContext = vi.fn(() => null);
   const loadOlder = vi.fn(() => of(undefined));
   const setTyping = vi.fn();
   const toastShow = vi.fn();
+  let roomEncrypted = false;
 
   const MOCKS: Provider[] = [
-    MockProvider(TimelineService, { loadOlder, setTyping, openContext }),
+    {
+      provide: ConversationTimelineStub,
+      useValue: {
+        loadOlder,
+        setTyping,
+        openRoomId: null,
+        get roomEncrypted() {
+          return roomEncrypted;
+        },
+      },
+    },
+    {
+      provide: ConversationRuntime,
+      useFactory: () => ({ timeline: inject(ConversationTimelineStub) }),
+    },
     MockProvider(TimelineActionsService, {
       send,
       reply,
@@ -112,7 +127,10 @@ describe('MessageActionsService', () => {
     };
   }
 
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    roomEncrypted = false;
+  });
 
   describe('sending', () => {
     it('sends the body with its mentions', () => {
@@ -168,9 +186,7 @@ describe('MessageActionsService', () => {
     });
 
     it('warns that sticker media stays public in an encrypted room', () => {
-      openContext.mockReturnValueOnce({
-        room: { hasEncryptionStateEvent: () => true },
-      } as never);
+      roomEncrypted = true;
       const { actions } = build();
       const sticker = {
         shortcode: 'party',

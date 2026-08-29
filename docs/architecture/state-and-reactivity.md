@@ -124,6 +124,35 @@ new enum: at most 40 deterministic payload bytes across the two longest distinct
 value; release returns both counts to zero. Runtime/engine object overhead remains profiler
 evidence rather than a portable unit-test assertion. There is no duplicate SDK store.
 
+## Conversation Runtime
+
+`ConversationRuntime` owns the messaging lifetime of one immutable Account-and-Room pair. A
+handle freezes that key and exposes a timeline child; it never reads the route and never retargets
+when Active Account changes. `RoomShellNavigationService` is the Workspace adapter: it focuses the
+key derived from the active Account and routed Room, or blurs the current handle when the Room
+leaves the Workspace. Feature surfaces consume `ConversationRuntime.timeline`, a stable proxy for
+the focused child, rather than injecting the child implementation or a root timeline singleton.
+`TimelineService` and its raw SDK context stay package-internal; the data-access action adapter
+reaches that context through an internal bridge, while the public entrypoint exports only
+app-owned read models and cold command services.
+
+Focus enables foreground effects such as read receipts, typing and room actions. Blur disables
+those effects but leaves the Matrix listeners attached, so the projection remains warm. Each
+Account retains at most two blurred handles in least-recently-used order. A retained child keeps
+the latest 100 raw timeline events in its application projection and at most 200 sender
+dependencies; focusing it rebuilds the complete loaded projection from `matrix-js-sdk`, which
+remains authoritative. In a browser that is 11 listeners and at most 11,200 deterministic modeled
+bytes per retained handle, or 22 listeners and 22,400 bytes for the two-entry per-Account retained
+set. The one globally focused handle may add 11 listeners; its visible projection is not part of
+the retention-memory baseline.
+
+Eviction marks the exact handle `retired`, removes it from the keyed registry and destroys its
+child injector. That object can never become focused again; reopening the same key creates a new
+handle. Runtime teardown performs the same release for every remaining child. Diagnostics report
+the last synchronous attach-to-presentable duration, active/focused/retained/retired handle counts,
+total listeners and retained modeled bytes without recording Account ids, Room ids or content.
+Timeline actions remain cold RxJS Observables and resolve the focused child on subscription.
+
 ## Active-client projection adapter
 
 Every projecting service has to get the same three things right, and each one was independently
@@ -273,14 +302,14 @@ string and keeps the flat hyphenated form, so the command stays
 Six take **only** `coalesce()`, and each says why at the call site. The split is not arbitrary — it
 follows from what the service's lifetime is keyed to:
 
-| Service                   | Keyed to              | Why the client half does not apply                                                                                             |
-| ------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `TimelineService`         | The open room         | Binds to a `Room` as well as a client, so its lifetime is `open()` and `close()`. An account switch closes the open room first |
-| `PinnedMessagesService`   | The open room         | Same                                                                                                                           |
-| `MixedRoomsService`       | The mixed account set | Attaches listeners per account and reconciles them against the live set, rather than following one active client               |
-| `MixedSpacesService`      | The mixed account set | Same                                                                                                                           |
-| `MixedInvitesService`     | The mixed account set | Same                                                                                                                           |
-| `UnreadAggregatorService` | The mixed account set | Same                                                                                                                           |
+| Service                   | Keyed to               | Why the client half does not apply                                                                                                       |
+| ------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `TimelineService`         | One Conversation child | Package-internal implementation bound to an immutable Account-and-Room handle; Conversation Runtime owns its `open()`/`close()` lifetime |
+| `PinnedMessagesService`   | The routed open room   | The shell explicitly opens and closes its Room binding; it does not follow the mutable active client                                     |
+| `MixedRoomsService`       | The mixed account set  | Attaches listeners per account and reconciles them against the live set, rather than following one active client                         |
+| `MixedSpacesService`      | The mixed account set  | Same                                                                                                                                     |
+| `MixedInvitesService`     | The mixed account set  | Same                                                                                                                                     |
+| `UnreadAggregatorService` | The mixed account set  | Same                                                                                                                                     |
 
 `NotificationService` takes neither. It binds per account, with push scoring, own-message
 suppression and event dedupe all keyed by account, and an account-set effect in its constructor is

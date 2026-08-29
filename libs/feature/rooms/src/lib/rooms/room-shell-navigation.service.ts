@@ -9,6 +9,7 @@ import { Router } from '@angular/router';
 import { Observable, defer, from, of, tap } from 'rxjs';
 import { encodeRoomSegment } from '@trinity/util/matrix';
 import { MediaService } from '@trinity/data-access/media';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
   AccountScopeService,
@@ -17,7 +18,10 @@ import {
   SpacesService,
   type RoomSummary,
 } from '@trinity/data-access/rooms';
-import { ThreadsService, TimelineService } from '@trinity/data-access/timeline';
+import {
+  ConversationRuntime,
+  ThreadsService,
+} from '@trinity/data-access/timeline';
 import { BELOW_MEMBERS_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { MruRoomsService } from '../shortcuts/mru-rooms.service';
 import type { AccountSwitchDestination } from './account-switch.models';
@@ -43,9 +47,10 @@ export class RoomShellNavigationService {
   private readonly mixedRooms = inject(MixedRoomsService);
   private readonly accountScope = inject(AccountScopeService);
   private readonly media = inject(MediaService);
+  private readonly matrix = inject(MatrixClientService);
   private readonly pinned = inject(PinnedMessagesService);
   private readonly threads = inject(ThreadsService);
-  private readonly timeline = inject(TimelineService);
+  private readonly conversations = inject(ConversationRuntime);
   private readonly mru = inject(MruRoomsService);
   private readonly router = inject(Router);
 
@@ -89,7 +94,7 @@ export class RoomShellNavigationService {
     this.hasProjected = true;
     this.media.releaseAll();
     if (!roomId) {
-      this.timeline.close();
+      this.conversations.blur();
       this.threads.close();
       this.threads.closeThread();
       this.pinned.close();
@@ -105,7 +110,9 @@ export class RoomShellNavigationService {
     // the sync store deleted, so the room could only arrive over the network: the timeline
     // rendered. That ordering is load-bearing — if a guard is ever relaxed, this needs a
     // retry rather than silence.
-    this.timeline.open(roomId);
+    const accountId = this.matrix.activeUserId();
+    if (!accountId) return;
+    this.conversations.focus({ accountId, roomId });
     this.threads.open(roomId); // thread summaries, for the per-message indicators
     this.pinned.open(roomId);
     // Opening the room is the user dealing with it, so the come-back-to-it flag goes.
@@ -289,7 +296,7 @@ export class RoomShellNavigationService {
    * the router is already mid-navigation to wherever the user actually went.
    */
   releaseOpenRoom(): void {
-    this.timeline.close();
+    this.conversations.blur();
     this.threads.close();
     this.threads.closeThread();
     this.pinned.close();

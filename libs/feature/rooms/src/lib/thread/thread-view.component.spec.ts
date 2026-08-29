@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { inject, signal } from '@angular/core';
 import { type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import {
@@ -31,9 +31,9 @@ vi.mock('@trinity/platform-native', async (importOriginal) => ({
   isMobileOs: () => platform.mobile,
 }));
 import {
+  ConversationRuntime,
   ThreadsService,
   TimelineActionsService,
-  TimelineService,
 } from '@trinity/data-access/timeline';
 import { RoomsService, type MemberSummary } from '@trinity/data-access/rooms';
 import { type MessageView } from '@trinity/util/matrix';
@@ -45,6 +45,7 @@ import {
 import { Subject, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ThreadViewComponent } from './thread-view.component';
+import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
 import { MessageSourceService } from '../message-source/message-source.service';
 import type { MessageRow } from '../message-row/message-row.component';
@@ -154,13 +155,17 @@ async function build(
         sendMediaToThread,
         openThreadRootId,
       }),
-      MockProvider(TimelineService, {
+      MockProvider(ConversationTimelineStub, {
         canRedactOthers: signal(state.canRedactOthers ?? false).asReadonly(),
         // Seeded because it is an INSTANCE field, which ng-mocks does not reflect: left
         // out, `typingNames` is undefined and the typing row throws on every render here.
         typingNames: signal<string[]>(state.typingNames ?? []).asReadonly(),
         setTyping: setTypingCalls,
       }),
+      {
+        provide: ConversationRuntime,
+        useFactory: () => ({ timeline: inject(ConversationTimelineStub) }),
+      },
       MockProvider(TimelineActionsService),
       MockProvider(RoomsService, { membersFor }),
       MockProvider(MessageSourceService, { open: sourceOpen }),

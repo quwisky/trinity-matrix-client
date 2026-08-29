@@ -7,7 +7,7 @@ import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationService } from './notification.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { TimelineService } from '@trinity/data-access/timeline';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { SessionStorageService } from '@trinity/platform-native';
 import { encodeRoomSegment } from '@trinity/util/matrix';
 
@@ -67,6 +67,7 @@ function setup(
   const activeUserId = signal<string | null>(active);
   const setActive = vi.fn((id: string) => activeUserId.set(id));
   const storageSetActive = vi.fn(() => of(void 0));
+  const timeline = { openRoomId: null as string | null };
   TestBed.configureTestingModule({
     providers: [
       NotificationService,
@@ -81,7 +82,20 @@ function setup(
         setActive,
       }),
       MockProvider(Router, { navigate: vi.fn(() => Promise.resolve(true)) }),
-      MockProvider(TimelineService),
+      {
+        provide: ConversationRuntime,
+        useValue: {
+          focused: () =>
+            timeline.openRoomId
+              ? {
+                  key: {
+                    accountId: activeUserId() ?? '',
+                    roomId: timeline.openRoomId,
+                  },
+                }
+              : null,
+        },
+      },
       MockProvider(SessionStorageService, { setActive: storageSetActive }),
     ],
   });
@@ -95,7 +109,7 @@ function setup(
     setActive,
     storageSetActive,
     router: TestBed.inject(Router),
-    timeline: TestBed.inject(TimelineService),
+    timeline,
   };
 }
 

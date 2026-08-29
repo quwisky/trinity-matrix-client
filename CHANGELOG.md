@@ -87,6 +87,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Open rooms now run through immutable Conversation handles.** A handle is keyed by exactly
+  Account and Room, owns its own timeline child and remains anchored to the Matrix client that
+  created it instead of following a global active-client pointer. Workspace focus controls read,
+  typing and action effects; blurred conversations keep a compact warm projection in a
+  two-entry per-Account LRU, while eviction and application teardown permanently release their
+  listeners. Room links, notifications, search, tombstones, reactions, source inspection and
+  message actions now consume the focused child interface rather than a retargetable root
+  timeline singleton.
+
 - **Account sign-out and installation reset now run through Account Runtime.** Sign-out always
   targets one explicit account, keeps surviving accounts coherent, and reports safe recovery
   guidance when cleanup is partial. Erasing an installation still clears only Trinity's approved

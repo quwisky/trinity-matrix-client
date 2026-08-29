@@ -30,6 +30,10 @@ _Avoid_: Chat, channel
 The messaging behaviour of one Room as experienced by one Account. A Conversation is identified by the pair of Account and Room.
 _Avoid_: Room, chat session, timeline
 
+**Conversation Runtime**:
+The keyed lifecycle owner for immutable Conversation handles. Workspace focus and blur change visibility, while the runtime bounds warm retention and permanently retires evicted handles.
+_Avoid_: Current room service, route state, timeline singleton
+
 **Room Library**:
 An Account's relationship to Rooms and Spaces, including membership, invitations, ordering, favourites, hierarchy, and unread summaries.
 _Avoid_: Room store, sidebar

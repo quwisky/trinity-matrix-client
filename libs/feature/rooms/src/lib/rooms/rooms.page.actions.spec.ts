@@ -1,5 +1,6 @@
 import {
   SHARED_MOCKS,
+  RoomsTimelineStub,
   clientStub,
   invitesProvider,
   setRouteRoom,
@@ -26,7 +27,6 @@ import {
 import {
   ThreadsService,
   TimelineActionsService,
-  TimelineService,
 } from '@trinity/data-access/timeline';
 import {
   TrnActionSheetService,
@@ -88,7 +88,6 @@ describe('RoomsPage space actions', () => {
           createRoomInSpace,
           leaveSpace,
         }),
-        MockProvider(TimelineService),
         MockProvider(TimelineActionsService),
         MockProvider(MatrixClientService, {
           isInitialized: true,
@@ -311,7 +310,7 @@ describe('RoomsPage space actions', () => {
     // room open across a switch would keep projecting the old account's data (including
     // its decryption) with no way to re-bind short of a reload.
     const shell = build();
-    const timeline = TestBed.inject(TimelineService);
+    const timeline = TestBed.inject(RoomsTimelineStub);
     const threads = TestBed.inject(ThreadsService);
     const pinned = TestBed.inject(PinnedMessagesService);
     shell.nav.onSelectRoom('!r:hs');
@@ -460,7 +459,6 @@ describe('RoomsPage room / DM / invite actions', () => {
         MockProvider(MemberInfoService, { open: memberInfoOpen }),
         MockProvider(RoomModerationService, { canModerate }),
         MockProvider(QuickSwitcherService),
-        MockProvider(TimelineService),
         MockProvider(TimelineActionsService),
         MockProvider(MediaService),
         MockProvider(MatrixClientService, {
@@ -1132,7 +1130,6 @@ describe('RoomsPage space hierarchy actions', () => {
             },
           ]),
         }),
-        MockProvider(TimelineService),
         MockProvider(TimelineActionsService),
         MockProvider(MatrixClientService, {
           isInitialized: true,

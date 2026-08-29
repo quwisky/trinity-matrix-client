@@ -1,7 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { EventType } from 'matrix-js-sdk';
 import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaService, type ImagePackImage } from '@trinity/data-access/media';
 import { type VoiceRecording } from '@trinity/platform-native';
 import {
@@ -20,7 +19,7 @@ import {
   voiceMessageContent,
   type Mention,
 } from '@trinity/util/matrix';
-import { TimelineService } from './timeline.service';
+import { ConversationActionContextService } from './conversation-action-context.service';
 
 /** File extension for a recorded voice clip's MIME type (best-effort, default webm). */
 function voiceExtension(mimeType: string): string {
@@ -38,23 +37,20 @@ function voiceExtension(mimeType: string): string {
  * redactions, reactions, polls, attachments, voice clips, shared locations and
  * forwards.
  *
- * The counterpart to {@link TimelineService}, which projects the open room and owns
+ * The counterpart to the Conversation Runtime's timeline projection, which owns
  * every listener; nothing here subscribes to the SDK or holds room state. The open
- * room is asked for on subscribe via {@link TimelineService.openContext}, so there is
+ * room is asked for on subscribe through the runtime's internal action context, so there is
  * one answer to "which room, on which account" rather than two.
  *
  * Every method returns a COLD Observable: nothing is sent until someone subscribes,
- * and the room + account are resolved at that moment. An action built before an
- * account switch (or replayed by a retry operator) therefore fires against whoever is
- * active when it actually runs, never against a captured stale client.
+ * and the focused Conversation is resolved at that moment. An action built before
+ * focus changes (or replayed by a retry operator) therefore uses the then-focused
+ * immutable Account-and-Room handle, never a captured route or global client pointer.
  */
 @Injectable({ providedIn: 'root' })
 export class TimelineActionsService {
-  private readonly timeline = inject(TimelineService);
+  private readonly actionContext = inject(ConversationActionContextService);
   private readonly mediaSvc = inject(MediaService);
-  // Only forwardMessage needs this: it targets ANOTHER room, so there is no open-room
-  // context to resolve and it has to reach the client directly.
-  private readonly matrix = inject(MatrixClientService);
 
   /**
    * Send a message to the active room. Markdown is rendered to HTML, sanitized,
@@ -64,7 +60,7 @@ export class TimelineActionsService {
   send(body: string, mentions: Mention[] = []): Observable<void> {
     const text = body.trim();
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (!ctx || !text) {
         return of(void 0);
       }
@@ -82,7 +78,7 @@ export class TimelineActionsService {
   /** Send a shared location (`m.location`) to the active room. Cold — runs on subscribe. */
   sendLocation(lat: number, lng: number): Observable<void> {
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (!ctx) {
         return of(void 0);
       }
@@ -99,7 +95,7 @@ export class TimelineActionsService {
   /** Send an MSC2545 image-pack entry as a standalone `m.sticker` event. */
   sendSticker(sticker: ImagePackImage): Observable<void> {
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (
         !ctx ||
         !sticker.usage.includes('sticker') ||
@@ -124,7 +120,7 @@ export class TimelineActionsService {
    */
   sendVoiceMessage(recording: VoiceRecording): Observable<void> {
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (!ctx || recording.blob.size === 0) {
         return of(void 0);
       }
@@ -169,10 +165,11 @@ export class TimelineActionsService {
     targetRoomId: string,
   ): Observable<void> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
+      const ctx = this.actionContext.resolve();
+      if (!ctx) {
         return throwError(() => new Error('Not signed in.'));
       }
-      const client = this.matrix.instance;
+      const { client } = ctx;
       const event = client.getRoom(sourceRoomId)?.findEventById(eventId);
       if (!event) {
         return throwError(() => new Error('Message not found.'));
@@ -187,7 +184,7 @@ export class TimelineActionsService {
   /** Start a single-select poll (MSC3381) in the open room. Cold: runs on subscribe. */
   createPoll(question: string, options: string[]): Observable<void> {
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       const clean = options.map((o) => o.trim()).filter(Boolean);
       if (!ctx || !question.trim() || clean.length < 2) {
         return of(void 0);
@@ -205,7 +202,7 @@ export class TimelineActionsService {
   /** Cast (or change) the local user's vote on a poll. Cold: runs on subscribe. */
   votePoll(pollId: string, answerId: string): Observable<void> {
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (!ctx) {
         return of(void 0);
       }
@@ -222,7 +219,7 @@ export class TimelineActionsService {
   /** Close a poll so no further votes count (creator action). Cold: runs on subscribe. */
   endPoll(pollId: string): Observable<void> {
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (!ctx) {
         return of(void 0);
       }
@@ -249,7 +246,7 @@ export class TimelineActionsService {
     progress?: (fraction: number) => void,
   ): Observable<void> {
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (!ctx || !file || file.size === 0) {
         return of(void 0);
       }
@@ -280,7 +277,7 @@ export class TimelineActionsService {
   ): Observable<void> {
     const text = newBody.trim();
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (!ctx || !text) {
         return of(void 0);
       }
@@ -299,7 +296,7 @@ export class TimelineActionsService {
 
   /** Resend a message that failed to send. */
   retry(messageId: string): void {
-    const ctx = this.timeline.openContext();
+    const ctx = this.actionContext.resolve();
     if (!ctx) {
       return;
     }
@@ -320,7 +317,7 @@ export class TimelineActionsService {
   ): Observable<void> {
     const text = body.trim();
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (!ctx || !text) {
         return of(void 0);
       }
@@ -339,7 +336,7 @@ export class TimelineActionsService {
   /** Delete (redact) a message. */
   redact(messageId: string): Observable<void> {
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (!ctx) {
         return of(void 0);
       }
@@ -353,7 +350,7 @@ export class TimelineActionsService {
    */
   toggleReaction(messageId: string, key: string): Observable<void> {
     return defer(() => {
-      const ctx = this.timeline.openContext();
+      const ctx = this.actionContext.resolve();
       if (!ctx) {
         return of(void 0);
       }
