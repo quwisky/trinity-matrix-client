@@ -155,18 +155,19 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   preferences, theme/status-bar, launcher badge, external browser, desktop bridge, error handler). Branches on
   `isNativePlatform()` internally. May depend only on `util`.
 - `@trinity/data-access/accounts` `[type:data-access]` — Account Runtime: read-only lifecycle state plus
-  cold, finite restoration, authenticated-establishment, and atomic switch commands with Active
-  Account priority, bounded per-Account outcomes, cancellation before commit, uninterruptible
-  post-commit cleanup, joinable identical attempts, explicit lifecycle conflicts, and secret-safe
-  failure metadata. Authentication crosses into it through an opaque grant; its production adapter
-  composes session storage with Matrix Runtime and commits Active placement only after startup succeeds.
+  cold, finite restoration, authenticated-establishment, atomic switch, explicit Account sign-out,
+  and installation-reset commands with Active Account priority, bounded per-Account outcomes,
+  cancellation before commit, uninterruptible post-commit cleanup, joinable identical attempts,
+  explicit lifecycle conflicts, and secret-safe failure metadata. Authentication crosses into it
+  through an opaque grant; its production adapter composes session storage with Matrix Runtime.
 - `@trinity/data-access/matrix-client` `[type:data-access]` — `MatrixClientService` + the 4S key service;
   the client/session foundation every domain data-access lib depends on, and the Matrix adapter for
   the first Projection Runtime tracer (per-Account sync state and readiness acknowledgement).
 - `@trinity/data-access/*` `[type:data-access]` — one lib per Matrix domain (`media`, `rooms`,
   `timeline`, `crypto`, `profile`, `invites`, `pinned`, `search`, `notifications`, `auth`, `gif`,
   `homeserver`, `widgets`), each at `libs/data-access/<domain>`.
-  Cross-domain injects are inter-lib edges (search→rooms/invites, auth→media/notifications, notification→timeline).
+  Cross-domain injects are inter-lib edges (search→rooms/invites, auth→accounts, notification→rooms/timeline,
+  timeline→media).
 - `@trinity/feature/*` `[type:feature]` — screens/pages incl. `feature-shell` (the app shell moved out of
   `apps/trinity`). May depend on `data-access-*` + `ui` + `util` + `platform`, **never another feature**.
 - `@trinity/components/*` (`libs/components/*`) `[type:ui]`, tagged `ui:public` — the **public

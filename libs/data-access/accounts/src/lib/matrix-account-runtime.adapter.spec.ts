@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { signal } from '@angular/core';
-import { defer, firstValueFrom, of, throwError } from 'rxjs';
+import { NEVER, defer, firstValueFrom, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
@@ -300,6 +300,42 @@ describe('MatrixAccountRuntimeAdapter', () => {
         { scope: 'service-worker', recovery: 'restart-application' },
       ],
     });
+  });
+
+  it('classifies a provider-revocation timeout as provider residue', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter, matrix, storage, lifecycle } = setup();
+      vi.mocked(storage.list).mockReturnValue(
+        of([{ userId: '@oidc:hs', baseUrl: 'https://hs', deviceId: 'A' }]),
+      );
+      vi.mocked(storage.load).mockReturnValue(
+        of({
+          userId: '@oidc:hs',
+          baseUrl: 'https://hs',
+          oidc: { issuer: 'https://issuer' },
+        } as never),
+      );
+      vi.mocked(matrix.signOutAll).mockReturnValue(of(void 0));
+      vi.mocked(lifecycle.revokeProviderSession).mockReturnValue(NEVER);
+      vi.mocked(matrix.stop).mockReturnValue(of(void 0));
+      vi.mocked(storage.clearAll).mockReturnValue(of([]));
+
+      const outcome = firstValueFrom(adapter.resetInstallation());
+      await vi.advanceTimersByTimeAsync(3_001);
+
+      await expect(outcome).resolves.toEqual({
+        kind: 'partial-cleanup',
+        issues: [
+          {
+            scope: 'provider-session',
+            recovery: 'retry-installation-reset',
+          },
+        ],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it('prepares only live Accounts for an Active Account switch', async () => {
     const { adapter, matrix } = setup();

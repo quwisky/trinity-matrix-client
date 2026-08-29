@@ -92,7 +92,7 @@ are the only places `matrix-js-sdk` is imported — thirteen of the fifteen do, 
 
 Data-access libraries may depend on one another, and several do. The real edges today are
 `notifications → rooms, timeline`, `search → rooms, invites`, `timeline → media`, and
-`auth → accounts, media, notifications`. Every domain library except `data-access-gif` also depends on
+`auth → accounts`. Every domain library except `data-access-gif` also depends on
 `data-access-matrix-client`.
 
 !!! warning "data-access-matrix-client is scope:shared on purpose"

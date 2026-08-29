@@ -196,7 +196,7 @@ export class AccountLifecycleAdapter {
     issues: AccountCleanupIssue[],
   ): Observable<unknown> {
     const attempts = [
-      this.capture(
+      this.captureWithinBudget(
         this.matrix.signOutAll(),
         issues,
         'matrix-session',
@@ -211,7 +211,7 @@ export class AccountLifecycleAdapter {
           } => Boolean(session?.oidc),
         )
         .map((session) =>
-          this.capture(
+          this.captureWithinBudget(
             this.lifecycle.revokeProviderSession(session),
             issues,
             'provider-session',
@@ -219,12 +219,20 @@ export class AccountLifecycleAdapter {
           ),
         ),
     ];
-    return forkJoin(attempts).pipe(
-      timeout({ first: SIGN_OUT_BUDGET_MS }),
-      catchError(() => {
-        this.addIssue(issues, 'matrix-session', 'restart-application');
-        return of([]);
-      }),
+    return forkJoin(attempts);
+  }
+
+  private captureWithinBudget(
+    source: Observable<unknown>,
+    issues: AccountCleanupIssue[],
+    scope: AccountCleanupIssue['scope'],
+    recovery: AccountCleanupIssue['recovery'],
+  ): Observable<void> {
+    return this.capture(
+      source.pipe(timeout({ first: SIGN_OUT_BUDGET_MS })),
+      issues,
+      scope,
+      recovery,
     );
   }
 
