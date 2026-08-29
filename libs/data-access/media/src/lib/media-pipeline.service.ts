@@ -102,6 +102,7 @@ export class MediaPipeline {
         const targetKey = JSON.stringify([
           request.key.accountId,
           request.key.roomId,
+          request.threadRootId ?? null,
         ]);
         let uploadSubscription: Subscription | null = null;
         let sendSubscription: Subscription | null = null;
@@ -197,11 +198,14 @@ export class MediaPipeline {
             if (cached.pendingEvent) {
               return client.resendEvent(cached.pendingEvent, room);
             }
-            const attempt = client.sendMessage(
-              room.roomId,
-              content as never,
-              cached.txnId,
-            );
+            const attempt = request.threadRootId
+              ? client.sendMessage(
+                  room.roomId,
+                  request.threadRootId,
+                  content as never,
+                  cached.txnId,
+                )
+              : client.sendMessage(room.roomId, content as never, cached.txnId);
             // The SDK installs its pending local echo synchronously. Retain that exact
             // event if the request rejects: a retry must resend it because the Room
             // forbids adding another pending event with the same transaction id.

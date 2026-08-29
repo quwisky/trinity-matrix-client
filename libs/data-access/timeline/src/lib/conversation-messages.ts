@@ -43,6 +43,7 @@ export interface ConversationMessages {
 export interface ConversationMessageActionRequest {
   readonly key: ConversationKey;
   readonly messageId: string;
+  readonly threadRootId?: string;
 }
 
 export interface ConversationReactionRequest extends ConversationMessageActionRequest {

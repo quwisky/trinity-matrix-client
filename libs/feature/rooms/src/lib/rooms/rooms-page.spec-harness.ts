@@ -19,7 +19,6 @@ import {
   InvitesService,
   type PendingInvite,
 } from '@trinity/data-access/invites';
-import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
   ConversationRuntime,
   type ConversationHandle,
@@ -176,11 +175,37 @@ export const SHARED_MOCKS: Provider[] = [
         ),
       };
       const focused = signal<ConversationHandle | null>(null);
+      const summaries = signal({});
+      const threadList = signal([]);
+      const pinnedEventIds = signal<readonly string[]>([]);
+      const pinnedMessages = signal<readonly never[]>([]);
+      const canMutatePins = signal(false);
+      const threads = {
+        summaries: summaries.asReadonly(),
+        list: threadList.asReadonly(),
+        forRoot: vi.fn(() => null),
+      };
+      const pins = {
+        eventIds: pinnedEventIds.asReadonly(),
+        messages: pinnedMessages.asReadonly(),
+        canMutate: canMutatePins.asReadonly(),
+        isPinned: vi.fn((eventId: string) =>
+          pinnedEventIds().includes(eventId),
+        ),
+        pin: vi.fn(() =>
+          of({ kind: 'applied' as const, operation: 'pin' as const }),
+        ),
+        unpin: vi.fn(() =>
+          of({ kind: 'applied' as const, operation: 'unpin' as const }),
+        ),
+      };
       return {
         timeline,
         compose,
         messages,
         media,
+        threads,
+        pins,
         focused: focused.asReadonly(),
         focus: vi.fn((key: ConversationKey) => {
           timeline.focusRoom(key.roomId);
@@ -192,6 +217,8 @@ export const SHARED_MOCKS: Provider[] = [
             compose,
             messages,
             media,
+            threads,
+            pins,
           } satisfies ConversationHandle;
           focused.set(handle);
           return handle;
@@ -226,7 +253,6 @@ export const SHARED_MOCKS: Provider[] = [
     ),
   }),
   MockProvider(CryptoService),
-  MockProvider(PinnedMessagesService),
   MockProvider(RoomNotificationsService, {
     connect: vi.fn(),
     setModeForAccounts: () => of(undefined),

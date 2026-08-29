@@ -242,8 +242,8 @@ export class TimelineService {
    * flush without waiting for an incidental tick.
    *
    * The batching itself is `coalesce`, shared with the client projections — this service
-   * is room-scoped so it takes that primitive alone, as {@link PinnedMessagesService}
-   * does. The `room` guard below is why it stays wrapped: a queued pass must not run
+   * is room-scoped so it takes that primitive alone, as the package-internal pins
+   * projection does. The `room` guard below is why it stays wrapped: a queued pass must not run
    * against a closed room.
    */
   private readonly refreshCoalescer = coalesce(() => {

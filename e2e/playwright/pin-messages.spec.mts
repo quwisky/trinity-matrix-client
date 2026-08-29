@@ -9,8 +9,8 @@ import { registerUser } from './support/account.mts';
 
 // Covers the pin-messages feature end to end: a message's hover toolbar's ⋯
 // menu (`data-testid="msg-more"`) offers "Pin message" (`data-testid="msg-pin"`),
-// which writes `m.room.pinned_events` room state (PinnedMessagesService.pin →
-// sendStateEvent). The room toolbar's pin button (`data-testid="open-pinned"`)
+// which writes `m.room.pinned_events` through the exact Conversation pins child.
+// The room toolbar's pin button (`data-testid="open-pinned"`)
 // shows a count badge (`.header-pin__badge`) and opens the pinned-messages side
 // panel (PinnedMessagesPanelComponent), whose rows (`.pin-item`) list each pin's
 // body/sender/time, jump the timeline to that message on click
@@ -120,8 +120,8 @@ async function seedPinRoom(
  * Register a fresh reader, have them create their own plain room, post one lead-in
  * message then the pin target — both trivially inside the client's ~20-event
  * initial-sync window — and pin the target directly via the CS API's
- * `m.room.pinned_events` state event (same shape `PinnedMessagesService.write`
- * sends), skipping the hover/⋯/"Pin message" UI flow the other test in this file
+ * `m.room.pinned_events` state event (the same authoritative state the Conversation
+ * pins child writes), skipping the hover/⋯/"Pin message" UI flow the other test in this file
  * already covers. Returns the reader's own API session (token + roomId) too, so the
  * caller can flood the room with *live* filler traffic once the reader is logged in
  * and the room is open — see {@link FILLER_COUNT}'s comment for why that has to

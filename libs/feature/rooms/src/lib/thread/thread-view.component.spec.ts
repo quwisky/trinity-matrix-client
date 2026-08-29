@@ -6,6 +6,10 @@ import {
   TrnToastService,
 } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
+import type {
+  MediaTransferEvent,
+  StagedMediaReference,
+} from '@trinity/data-access/media';
 
 // `isMobileOs` is a plain exported function, so the barrel is mocked and the rest passed
 // through — the same shape `message-row.mobile.spec.ts` uses, and hoisted for the same reason.
@@ -32,8 +36,8 @@ vi.mock('@trinity/platform-native', async (importOriginal) => ({
 }));
 import {
   ConversationRuntime,
-  ThreadsService,
   TimelineActionsService,
+  type ConversationThread,
   type MessageView,
 } from '@trinity/data-access/timeline';
 import { RoomsService, type MemberSummary } from '@trinity/data-access/rooms';
@@ -87,6 +91,16 @@ function row(id: string, senderId: string, body: string): MessageRow {
   return { ...msg(id, senderId, body), showHeader: true };
 }
 
+function staged(id: string): StagedMediaReference {
+  return {
+    id,
+    filename: `${id}.png`,
+    mimeType: 'image/png',
+    size: 1,
+    previewUrl: null,
+  } as StagedMediaReference;
+}
+
 async function build(
   messages: MessageView[] = [],
   state: {
@@ -106,11 +120,13 @@ async function build(
   const editInThread = vi.fn().mockReturnValue(of(void 0));
   const replyInThread = vi.fn().mockReturnValue(of(void 0));
   const toggleReactionInThread = vi.fn().mockReturnValue(of(void 0));
-  const retryInThread = vi.fn();
-  const sendMediaToThread = vi.fn().mockReturnValue(of(void 0));
+  const retryInThread = vi.fn().mockReturnValue(of(void 0));
+  const sendMediaToThread = vi
+    .fn()
+    .mockReturnValue(of({ kind: 'sent' as const, eventId: '$media' }));
+  const sentRoots = vi.fn();
+  const releasedRoots = vi.fn();
   const toastShow = vi.fn();
-  const openThreadRootIdSignal = signal<string | null>('$root');
-  const openThreadRootId = openThreadRootIdSignal.asReadonly();
   const sourceOpen = vi.fn();
   const setTypingCalls = vi.fn();
   // The thread composer's @-mention list comes from the room's member projection. The spec
@@ -140,21 +156,6 @@ async function build(
   const { fixture, container } = await render(ThreadViewComponent, {
     inputs: { roomId: '!r:hs', rootEventId: '$root' },
     providers: [
-      MockProvider(ThreadsService, {
-        threadMessages,
-        canPaginateThread,
-        loadingOlderThread,
-        openThread,
-        closeThread,
-        paginateOpenThread,
-        sendToThread,
-        editInThread,
-        replyInThread,
-        toggleReactionInThread,
-        retryInThread,
-        sendMediaToThread,
-        openThreadRootId,
-      }),
       MockProvider(ConversationTimelineStub, {
         canRedactOthers: signal(state.canRedactOthers ?? false).asReadonly(),
         // Seeded because it is an INSTANCE field, which ng-mocks does not reflect: left
@@ -164,7 +165,74 @@ async function build(
       }),
       {
         provide: ConversationRuntime,
-        useFactory: () => ({ timeline: inject(ConversationTimelineStub) }),
+        useFactory: () => {
+          const applied = (operation: string) =>
+            of({ kind: 'applied' as const, operation });
+          return {
+            timeline: inject(ConversationTimelineStub),
+            threads: {
+              forRoot: vi.fn((rootEventId: string) => {
+                openThread('!r:hs', rootEventId);
+                let released = false;
+                return {
+                  key: {
+                    accountId: '@me:hs',
+                    roomId: '!r:hs',
+                    rootEventId,
+                  },
+                  messages: threadMessages.asReadonly(),
+                  canLoadOlder: canPaginateThread.asReadonly(),
+                  loadingOlder: loadingOlderThread.asReadonly(),
+                  media: { send: sendMediaToThread },
+                  loadOlder: vi.fn(() => {
+                    paginateOpenThread();
+                    return applied('paginate');
+                  }),
+                  send: vi.fn((body: string, mentions: readonly unknown[]) => {
+                    sentRoots(rootEventId);
+                    sendToThread(body, mentions);
+                    return applied('send');
+                  }),
+                  edit: vi.fn(
+                    (
+                      id: string,
+                      body: string,
+                      mentions: readonly unknown[],
+                    ) => {
+                      editInThread(id, body, mentions);
+                      return applied('edit');
+                    },
+                  ),
+                  reply: vi.fn(
+                    (
+                      id: string,
+                      body: string,
+                      mentions: readonly unknown[],
+                    ) => {
+                      replyInThread(id, body, mentions);
+                      return applied('reply');
+                    },
+                  ),
+                  toggleReaction: vi.fn((id: string, reaction: string) => {
+                    toggleReactionInThread(id, reaction);
+                    return applied('reaction');
+                  }),
+                  redact: vi.fn(() => applied('redaction')),
+                  retry: vi.fn((id: string) => {
+                    retryInThread(id);
+                    return applied('retry');
+                  }),
+                  release: vi.fn(() => {
+                    if (released) return;
+                    released = true;
+                    releasedRoots(rootEventId);
+                    closeThread();
+                  }),
+                } as unknown as ConversationThread;
+              }),
+            },
+          };
+        },
       },
       MockProvider(TimelineActionsService),
       MockProvider(RoomsService, { membersFor }),
@@ -201,7 +269,8 @@ async function build(
     toggleReactionInThread,
     retryInThread,
     sendMediaToThread,
-    openThreadRootIdSignal,
+    sentRoots,
+    releasedRoots,
     toastShow,
     sourceOpen,
     setTypingCalls,
@@ -223,6 +292,19 @@ describe('ThreadViewComponent', () => {
     const { openThread } = await build();
 
     expect(openThread).toHaveBeenCalledWith('!r:hs', '$root');
+  });
+
+  it('releases and replaces the exact child when the mounted panel changes roots', async () => {
+    const { fixture, openThread, releasedRoots, sentRoots } = await build();
+
+    fixture.componentRef.setInput('rootEventId', '$next');
+    fixture.detectChanges();
+
+    expect(releasedRoots).toHaveBeenCalledWith('$root');
+    expect(openThread).toHaveBeenLastCalledWith('!r:hs', '$next');
+
+    fixture.componentInstance.onSubmit({ text: 'new root', mentions: [] });
+    expect(sentRoots).toHaveBeenLastCalledWith('$next');
   });
 
   it('renders the thread messages as rows', async () => {
@@ -483,31 +565,34 @@ describe('ThreadViewComponent members', () => {
     // Same exposure as the room path: `sendMediaToThread` resolves the open thread on
     // SUBSCRIBE, and a batch subscribes its Nth item long after the press, so opening
     // another thread mid-batch would deliver the remainder into that one instead.
-    return build().then(
-      ({ fixture, sendMediaToThread, openThreadRootIdSignal }) => {
-        const png = () => new File(['x'], 'pic.png', { type: 'image/png' });
-        sendMediaToThread.mockImplementation(() => {
-          openThreadRootIdSignal.set('$other'); // the user opens another thread
-          return of(void 0);
-        });
+    return build().then(({ fixture, sendMediaToThread }) => {
+      const png = () => new File(['x'], 'pic.png', { type: 'image/png' });
+      sendMediaToThread
+        .mockReturnValueOnce(of({ kind: 'sent', eventId: '$a' }))
+        .mockReturnValueOnce(
+          of({
+            kind: 'rejected',
+            failure: 'conversation-unavailable',
+            retryable: false,
+          }),
+        );
 
-        let outcomes: readonly { id: string; failed: boolean }[] = [];
-        fixture.componentInstance.onSendMedia({
-          items: [
-            { id: 'a', file: png() },
-            { id: 'b', file: png() },
-          ],
-          caption: '',
-          onOutcomes: (result) => (outcomes = result),
-        });
+      let outcomes: readonly { id: string; failed: boolean }[] = [];
+      fixture.componentInstance.onSendMedia({
+        items: [
+          { id: 'a', file: png(), media: staged('a') },
+          { id: 'b', file: png(), media: staged('b') },
+        ],
+        caption: '',
+        onOutcomes: (result) => (outcomes = result),
+      });
 
-        expect(sendMediaToThread).toHaveBeenCalledTimes(1);
-        expect(outcomes).toEqual([
-          { id: 'a', failed: false },
-          { id: 'b', failed: true },
-        ]);
-      },
-    );
+      expect(sendMediaToThread).toHaveBeenCalledTimes(2);
+      expect(outcomes).toEqual([
+        { id: 'a', failed: false },
+        { id: 'b', failed: true },
+      ]);
+    });
   });
 
   it('posts a thread batch caption, on the channel that is not routed', async () => {
@@ -543,30 +628,24 @@ describe('ThreadViewComponent members', () => {
     // rot away and a slow batch would look like a composer that swallowed the press.
     const { fixture, sendMediaToThread } = await build();
     const cmp = fixture.componentInstance;
-    let report: ((fraction: number) => void) | undefined;
-    const stream = new Subject<void>();
-    sendMediaToThread.mockImplementation(
-      (_f: File, _c: string, cb?: (fraction: number) => void) => {
-        report = cb;
-        return stream.asObservable();
-      },
-    );
+    const stream = new Subject<MediaTransferEvent>();
+    sendMediaToThread.mockReturnValue(stream.asObservable());
     const png = () => new File(['x'], 'pic.png', { type: 'image/png' });
 
     cmp.onSendMedia({
       items: [
-        { id: 'a', file: png() },
-        { id: 'b', file: png() },
+        { id: 'a', file: png(), media: staged('a') },
+        { id: 'b', file: png(), media: staged('b') },
       ],
       caption: '',
       onOutcomes: () => undefined,
     });
 
     expect(cmp.uploadProgress()).toEqual({ index: 1, total: 2, fraction: 0 });
-    report?.(0.5);
+    stream.next({ kind: 'progress', phase: 'uploading', fraction: 0.5 });
     expect(cmp.uploadProgress()?.fraction).toBe(0.5);
 
-    stream.next();
+    stream.next({ kind: 'sent', eventId: '$a' });
     stream.complete();
     expect(cmp.uploadProgress()).toBeNull();
   });
@@ -574,44 +653,45 @@ describe('ThreadViewComponent members', () => {
   it('ignores stale progress and cleanup from an older thread batch', async () => {
     const { fixture, sendMediaToThread } = await build();
     const cmp = fixture.componentInstance;
-    const streams = [new Subject<void>(), new Subject<void>()] as const;
-    const reports: (((fraction: number) => void) | undefined)[] = [];
+    const streams = [
+      new Subject<MediaTransferEvent>(),
+      new Subject<MediaTransferEvent>(),
+    ] as const;
     let streamIndex = 0;
     sendMediaToThread.mockImplementation(
-      (_file: File, _caption: string, report?: (fraction: number) => void) => {
-        reports.push(report);
-        return streams[streamIndex++]?.asObservable() ?? of(undefined);
-      },
+      () =>
+        streams[streamIndex++]?.asObservable() ??
+        of({ kind: 'sent', eventId: '$fallback' }),
     );
     const png = () => new File(['x'], 'pic.png', { type: 'image/png' });
 
     cmp.onSendMedia({
-      items: [{ id: 'old', file: png() }],
+      items: [{ id: 'old', file: png(), media: staged('old') }],
       caption: '',
       onOutcomes: () => undefined,
     });
     cmp.onSendMedia({
-      items: [{ id: 'new', file: png() }],
+      items: [{ id: 'new', file: png(), media: staged('new') }],
       caption: '',
       onOutcomes: () => undefined,
     });
-    reports[1]?.(0.6);
+    streams[1].next({ kind: 'progress', phase: 'uploading', fraction: 0.6 });
     expect(cmp.uploadProgress()?.fraction).toBe(0.6);
 
-    reports[0]?.(0.9);
+    streams[0].next({ kind: 'progress', phase: 'uploading', fraction: 0.9 });
     expect(cmp.uploadProgress()?.fraction).toBe(0.6);
 
-    streams[0].next();
+    streams[0].next({ kind: 'sent', eventId: '$old' });
     streams[0].complete();
     expect(cmp.uploadProgress()?.fraction).toBe(0.6);
 
-    reports[1]?.(0.75);
+    streams[1].next({ kind: 'progress', phase: 'uploading', fraction: 0.75 });
     expect(cmp.uploadProgress()?.fraction).toBe(0.75);
-    streams[1].next();
+    streams[1].next({ kind: 'sent', eventId: '$new' });
     streams[1].complete();
     expect(cmp.uploadProgress()).toBeNull();
 
-    reports[1]?.(0.95);
+    streams[1].next({ kind: 'progress', phase: 'uploading', fraction: 0.95 });
     expect(cmp.uploadProgress()).toBeNull();
   });
 
@@ -621,7 +701,7 @@ describe('ThreadViewComponent members', () => {
     const png = () => new File(['x'], 'pic.png', { type: 'image/png' });
 
     fixture.componentInstance.onSendMedia({
-      items: [{ id: 'a', file: png() }],
+      items: [{ id: 'a', file: png(), media: staged('a') }],
       caption: '',
       onOutcomes: () => undefined,
     });
@@ -635,18 +715,22 @@ describe('ThreadViewComponent members', () => {
   it('says the files were abandoned when the thread changed under them', async () => {
     // A different fate with a different remedy: the panel took the staging with it, so
     // "still in the composer" would send the user looking for files that are not there.
-    const { fixture, sendMediaToThread, openThreadRootIdSignal, toastShow } =
-      await build();
-    sendMediaToThread.mockImplementation(() => {
-      openThreadRootIdSignal.set('$other');
-      return of(void 0);
-    });
+    const { fixture, sendMediaToThread, toastShow } = await build();
+    sendMediaToThread
+      .mockReturnValueOnce(of({ kind: 'sent', eventId: '$a' }))
+      .mockReturnValueOnce(
+        of({
+          kind: 'rejected',
+          failure: 'conversation-unavailable',
+          retryable: false,
+        }),
+      );
     const png = () => new File(['x'], 'pic.png', { type: 'image/png' });
 
     fixture.componentInstance.onSendMedia({
       items: [
-        { id: 'a', file: png() },
-        { id: 'b', file: png() },
+        { id: 'a', file: png(), media: staged('a') },
+        { id: 'b', file: png(), media: staged('b') },
       ],
       caption: '',
       onOutcomes: () => undefined,

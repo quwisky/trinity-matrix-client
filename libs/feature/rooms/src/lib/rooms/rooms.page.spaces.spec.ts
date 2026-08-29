@@ -19,10 +19,7 @@ import {
   type RoomSummary,
   type SpaceSummary,
 } from '@trinity/data-access/rooms';
-import {
-  ThreadsService,
-  TimelineActionsService,
-} from '@trinity/data-access/timeline';
+import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 
@@ -116,7 +113,6 @@ describe('RoomsPage space filtering', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(ThreadsService),
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
@@ -547,7 +543,6 @@ describe('RoomsPage space ordering', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(ThreadsService),
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
@@ -760,7 +755,6 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(ThreadsService),
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),

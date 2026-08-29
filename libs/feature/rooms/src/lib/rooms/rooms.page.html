@@ -235,9 +235,9 @@
               data-testid="open-pinned"
             >
               <trn-icon size="1.25rem" name="pin" motion="nudge-up" />
-              @if (pinned.pinnedMessages().length > 0) {
+              @if (pinned.messages().length > 0) {
                 <span class="header-pin__badge" aria-hidden="true">{{
-                  pinned.pinnedMessages().length
+                  pinned.messages().length
                 }}</span>
               }
             </button>
@@ -271,9 +271,9 @@
               data-testid="room-actions-overflow"
             >
               <trn-icon size="1.25rem" name="ellipsis-vertical" motion="pop" />
-              @if (pinned.pinnedMessages().length > 0) {
+              @if (pinned.messages().length > 0) {
                 <span class="header-pin__badge" aria-hidden="true">{{
-                  pinned.pinnedMessages().length
+                  pinned.messages().length
                 }}</span>
               }
             </button>
@@ -310,9 +310,9 @@
                 >
                   <trn-icon name="pin" />
                   Pinned messages
-                  @if (pinned.pinnedMessages().length > 0) {
+                  @if (pinned.messages().length > 0) {
                     <span class="ml-auto tabular-nums">{{
-                      pinned.pinnedMessages().length
+                      pinned.messages().length
                     }}</span>
                   }
                 </button>
@@ -378,9 +378,9 @@
             <trn-virtual-message-list
               [messages]="timeline.messages()"
               [threadSummaries]="threads.summaries()"
-              [canPin]="pinned.canPin()"
+              [canPin]="pinned.canMutate()"
               [canRedactOthers]="timeline.canRedactOthers()"
-              [pinnedIds]="pinned.pinnedEventIds()"
+              [pinnedIds]="pinned.eventIds()"
               [loadingOlder]="timeline.loadingOlder()"
               [swipeDirection]="messageSwipeDirection()"
               [canLoadOlder]="timeline.canLoadOlder()"
@@ -411,9 +411,9 @@
             <trn-simple-message-list
               [messages]="timeline.messages()"
               [threadSummaries]="threads.summaries()"
-              [canPin]="pinned.canPin()"
+              [canPin]="pinned.canMutate()"
               [canRedactOthers]="timeline.canRedactOthers()"
-              [pinnedIds]="pinned.pinnedEventIds()"
+              [pinnedIds]="pinned.eventIds()"
               [loadingOlder]="timeline.loadingOlder()"
               [swipeDirection]="messageSwipeDirection()"
               [canLoadOlder]="timeline.canLoadOlder()"

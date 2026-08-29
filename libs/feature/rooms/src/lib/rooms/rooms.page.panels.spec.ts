@@ -16,7 +16,6 @@ import {
   type StagedMediaReference,
 } from '@trinity/data-access/media';
 import { RoomNotificationsService } from '@trinity/data-access/notifications';
-import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
   RoomsService,
   RoomSettingsService,
@@ -31,7 +30,6 @@ import {
 } from '@trinity/data-access/rooms';
 import {
   ConversationRuntime,
-  ThreadsService,
   TimelineActionsService,
 } from '@trinity/data-access/timeline';
 import {
@@ -165,7 +163,6 @@ describe('RoomsPage panels, pins and media', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(ThreadsService),
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
@@ -571,9 +568,11 @@ describe('RoomsPage panels, pins and media', () => {
 
   it('onTogglePin pins an unpinned message', () => {
     const shell = build();
-    const pinned = TestBed.inject(PinnedMessagesService);
+    const pinned = TestBed.inject(ConversationRuntime).pins;
     vi.mocked(pinned.isPinned).mockReturnValue(false);
-    vi.mocked(pinned.pin).mockReturnValue(of(undefined));
+    vi.mocked(pinned.pin).mockReturnValue(
+      of({ kind: 'applied', operation: 'pin' }),
+    );
 
     shell.messages.onTogglePin('$1');
 
@@ -587,9 +586,11 @@ describe('RoomsPage panels, pins and media', () => {
 
   it('onTogglePin unpins an already-pinned message', () => {
     const shell = build();
-    const pinned = TestBed.inject(PinnedMessagesService);
+    const pinned = TestBed.inject(ConversationRuntime).pins;
     vi.mocked(pinned.isPinned).mockReturnValue(true);
-    vi.mocked(pinned.unpin).mockReturnValue(of(undefined));
+    vi.mocked(pinned.unpin).mockReturnValue(
+      of({ kind: 'applied', operation: 'unpin' }),
+    );
 
     shell.messages.onTogglePin('$1');
 
@@ -603,7 +604,7 @@ describe('RoomsPage panels, pins and media', () => {
 
   it('onTogglePin shows a destructive toast when the pin fails', () => {
     const shell = build();
-    const pinned = TestBed.inject(PinnedMessagesService);
+    const pinned = TestBed.inject(ConversationRuntime).pins;
     vi.mocked(pinned.isPinned).mockReturnValue(false);
     vi.mocked(pinned.pin).mockReturnValue(throwError(() => new Error('nope')));
 

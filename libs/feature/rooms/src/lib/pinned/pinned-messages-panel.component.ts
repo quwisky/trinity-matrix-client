@@ -11,14 +11,14 @@ import { TrnButton } from '@trinity/components/button';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import { TrnToastService } from '@trinity/components/overlay';
-import { PinnedMessagesService } from '@trinity/data-access/pinned';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { TrnIconComponent } from '@trinity/components/icon';
 
 /**
  * Pinned-messages panel: every `m.room.pinned_events` entry for the active room, in
  * pin order, each row showing the sender, a short preview, and the pin timestamp.
- * Reads the live {@link PinnedMessagesService.pinnedMessages} (already projected for
- * the active room by the rooms shell), so it reacts to remote pins/unpins.
+ * Reads the live pinned-message projection from Conversation Runtime, so it reacts
+ * to remote pins/unpins for the exact Account-and-Room handle.
  *
  * Presentational: it renders into the rooms shell's right-hand panel slot and owns no
  * panel state of its own — mirroring {@link ThreadsListComponent}. Tapping a row emits
@@ -38,14 +38,14 @@ export class PinnedMessagesPanelComponent {
   /** Timestamps go through the app-wide format preference, never a DatePipe. */
   readonly fmt = inject(DateTimeFormatService);
 
-  private readonly pinnedSvc = inject(PinnedMessagesService);
+  private readonly pins = inject(ConversationRuntime).pins;
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
   /** The active room's pinned messages, in pin order. */
-  readonly pinned = this.pinnedSvc.pinnedMessages;
+  readonly pinned = this.pins.messages;
   /** Whether the current user may unpin (room permission). */
-  readonly canPin = this.pinnedSvc.canPin;
+  readonly canPin = this.pins.canMutate;
 
   /** The user picked a pinned message: its event id, for the host to jump to. */
   readonly selected = output<string>();
@@ -59,16 +59,24 @@ export class PinnedMessagesPanelComponent {
 
   /** Unpin a message in place; the live projection drops the row on success. */
   unpin(eventId: string): void {
-    this.pinnedSvc
+    this.pins
       .unpin(eventId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        error: () =>
-          this.toast.show('Could not unpin the message.', {
-            duration: 4000,
-            variant: 'destructive',
-          }),
+        next: (outcome) => {
+          if (outcome.kind === 'rejected') {
+            this.showFailure();
+          }
+        },
+        error: () => this.showFailure(),
       });
+  }
+
+  private showFailure(): void {
+    this.toast.show('Could not unpin the message.', {
+      duration: 4000,
+      variant: 'destructive',
+    });
   }
 
   /** Close button: announce the close without a jump. */

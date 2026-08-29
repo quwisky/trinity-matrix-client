@@ -7,7 +7,6 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import { RoomsService } from '@trinity/data-access/rooms';
 import { TrnDialogService } from '@trinity/components/overlay';
 import { isMobileOs } from '@trinity/platform-native';
@@ -57,7 +56,6 @@ export class MessageActionsService {
   private readonly compose = this.conversations.compose;
   private readonly messageCommands = this.conversations.messages;
   private readonly timelineActions = inject(TimelineActionsService);
-  private readonly pinned = inject(PinnedMessagesService);
   private readonly dialog = inject(TrnDialogService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
@@ -198,22 +196,28 @@ export class MessageActionsService {
 
   /** Pin or unpin a message from its overflow menu, resolving which by current state. */
   onTogglePin(eventId: string): void {
-    const pinning = !this.pinned.isPinned(eventId);
+    const pinning = !this.conversations.pins.isPinned(eventId);
     const action = pinning
-      ? this.pinned.pin(eventId)
-      : this.pinned.unpin(eventId);
+      ? this.conversations.pins.pin(eventId)
+      : this.conversations.pins.unpin(eventId);
     action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: () =>
-        this.status.showSuccess(
-          pinning ? 'Message pinned.' : 'Message unpinned.',
-        ),
-      error: () =>
-        void this.status.showError(
-          pinning
-            ? 'Could not pin the message.'
-            : 'Could not unpin the message.',
-        ),
+      next: (outcome) => {
+        if (outcome.kind === 'applied') {
+          this.status.showSuccess(
+            pinning ? 'Message pinned.' : 'Message unpinned.',
+          );
+        } else {
+          void this.showPinFailure(pinning);
+        }
+      },
+      error: () => void this.showPinFailure(pinning),
     });
+  }
+
+  private showPinFailure(pinning: boolean): void {
+    void this.status.showError(
+      pinning ? 'Could not pin the message.' : 'Could not unpin the message.',
+    );
   }
 
   /** Show the pinned-messages panel in the slot; rows arrive back via {@link onPanelJump}. */

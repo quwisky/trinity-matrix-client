@@ -31,8 +31,17 @@ import {
   type ConversationMessageOutcome,
   type ConversationMessages,
 } from './conversation-messages';
+import type { ConversationThreads } from './conversation-threads';
 import { isEditableMessage } from './message-presentation';
+import type {
+  ConversationPinOperation,
+  ConversationPinOutcome,
+  ConversationPins,
+} from './conversation-pins';
 import { TimelineService } from './timeline.service';
+import { ThreadsService } from './threads.service';
+import { ConversationPinsController } from './conversation-pins.controller';
+import { createConversationThreadChildren } from './conversation-thread-children';
 
 export { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
 export type {
@@ -78,6 +87,8 @@ export interface ConversationHandle {
   readonly compose: ConversationCompose;
   readonly messages: ConversationMessages;
   readonly media: ConversationMedia;
+  readonly threads: ConversationThreads;
+  readonly pins: ConversationPins;
 }
 
 /** Exact-Conversation attachment command surface; staged bytes remain opaque. */
@@ -105,6 +116,8 @@ export interface ConversationRuntimeDiagnostics {
 
 export interface ConversationTimelineController {
   readonly timeline: ConversationTimeline;
+  readonly threads: ThreadsService;
+  readonly pins: ConversationPinsController;
   setVisible(visible: boolean): void;
   release(): void;
   resources(): ConversationResources;
@@ -126,13 +139,19 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
       throw new Error('Conversation account is not live.');
     }
     const injector = createEnvironmentInjector(
-      [TimelineService],
+      [TimelineService, ThreadsService, ConversationPinsController],
       this.parentInjector,
     );
     let timeline: TimelineService;
+    let threads: ThreadsService;
+    let pins: ConversationPinsController;
     try {
       timeline = injector.get(TimelineService);
+      threads = injector.get(ThreadsService);
+      pins = injector.get(ConversationPinsController);
       timeline.open(key.roomId, client);
+      threads.attach(key, client);
+      pins.attach(key, client);
     } catch (error: unknown) {
       injector.destroy();
       throw error;
@@ -141,20 +160,47 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
     const resolveActionContext = () => timeline.openContext();
     return {
       timeline,
+      threads,
+      pins,
       setVisible: (visible) => {
         timeline.setVisible(visible);
         if (visible) {
+          // Retained Conversations keep only the bounded main timeline warm. Thread
+          // summaries and pins re-read SDK-authoritative state when focus returns;
+          // their potentially room-sized projections never enter the retained budget.
+          threads.attach(key, client);
+          pins.attach(key, client);
           this.actionContext.bind(resolveActionContext);
         } else {
           this.actionContext.clear(resolveActionContext);
+          threads.closeThread();
+          threads.close();
+          pins.release();
         }
       },
-      resources: () => timeline.resources(),
+      resources: () => {
+        const timelineResources = timeline.resources();
+        const threadResources = threads.resources();
+        const pinResources = pins.resources();
+        return {
+          listenerCount:
+            timelineResources.listenerCount +
+            threadResources.listenerCount +
+            pinResources.listenerCount,
+          retainedBytes:
+            timelineResources.retainedBytes +
+            threadResources.retainedBytes +
+            pinResources.retainedBytes,
+        };
+      },
       release: () => {
         if (released) return;
         released = true;
         this.actionContext.clear(resolveActionContext);
         try {
+          threads.closeThread();
+          threads.close();
+          pins.release();
           timeline.close();
         } finally {
           injector.destroy();
@@ -186,6 +232,7 @@ interface ConversationEntry {
   readonly state: ReturnType<typeof signal<ConversationState>>;
   readonly controller: ConversationTimelineController;
   readonly composeController: ConversationComposeController;
+  readonly releaseThread: () => void;
   lastFocused: number;
 }
 
@@ -227,6 +274,8 @@ export class ConversationRuntime {
   readonly compose = this.focusedCompose();
   readonly messages = this.focusedMessages();
   readonly media = this.focusedMedia();
+  readonly threads = this.focusedThreads();
+  readonly pins = this.focusedPins();
   readonly diagnostics = computed<ConversationRuntimeDiagnostics>(() => {
     const entries = [...this.entries.values()].flatMap((account) => [
       ...account.values(),
@@ -281,6 +330,7 @@ export class ConversationRuntime {
     this.focusedHandle.set(null);
     if (!entry || entry.handle !== handle) return;
     entry.state.set('retained');
+    entry.releaseThread();
     entry.composeController.stopTyping();
     entry.controller.setVisible(false);
     this.evictRetained(handle.key.accountId);
@@ -400,6 +450,43 @@ export class ConversationRuntime {
         ),
     };
     Object.freeze(messages);
+    const threadChildren = createConversationThreadChildren({
+      key: immutableKey,
+      isFocused: () => state() === 'focused',
+      projection: controller.threads,
+      messages: this.messageAdapter,
+      media: this.mediaPipeline,
+    });
+    const threads = threadChildren.threads;
+    const releaseThread = threadChildren.release;
+    const pinRejected = (
+      operation: ConversationPinOperation,
+    ): ConversationPinOutcome => ({
+      kind: 'rejected',
+      operation,
+      failure: 'conversation-unavailable',
+      retryable: false,
+    });
+    const pins: ConversationPins = Object.freeze({
+      eventIds: controller.pins.eventIds,
+      messages: controller.pins.messages,
+      canMutate: computed(
+        () => state() === 'focused' && controller.pins.canMutate(),
+      ),
+      isPinned: (eventId: string) => controller.pins.isPinned(eventId),
+      pin: (eventId: string) =>
+        defer(() =>
+          state() === 'focused'
+            ? controller.pins.pin(eventId)
+            : of(pinRejected('pin')),
+        ),
+      unpin: (eventId: string) =>
+        defer(() =>
+          state() === 'focused'
+            ? controller.pins.unpin(eventId)
+            : of(pinRejected('unpin')),
+        ),
+    });
     const handle = Object.freeze({
       key: immutableKey,
       state: state.asReadonly(),
@@ -416,12 +503,15 @@ export class ConversationRuntime {
             }),
           ),
       }),
+      threads,
+      pins,
     });
     const entry: ConversationEntry = {
       handle,
       state,
       controller,
       composeController,
+      releaseThread,
       lastFocused: 0,
     };
     const account = this.entries.get(key.accountId) ?? new Map();
@@ -539,6 +629,37 @@ export class ConversationRuntime {
     };
   }
 
+  private focusedThreads(): ConversationThreads {
+    const focused = this.focusedHandle.asReadonly();
+    return {
+      summaries: computed(() => focused()?.threads.summaries() ?? {}),
+      list: computed(() => focused()?.threads.list() ?? []),
+      forRoot: (rootEventId) => focused()?.threads.forRoot(rootEventId) ?? null,
+    };
+  }
+
+  private focusedPins(): ConversationPins {
+    const focused = this.focusedHandle.asReadonly();
+    const unavailable = (
+      operation: ConversationPinOperation,
+    ): ConversationPinOutcome => ({
+      kind: 'rejected',
+      operation,
+      failure: 'conversation-unavailable',
+      retryable: false,
+    });
+    return {
+      eventIds: computed(() => focused()?.pins.eventIds() ?? []),
+      messages: computed(() => focused()?.pins.messages() ?? []),
+      canMutate: computed(() => focused()?.pins.canMutate() ?? false),
+      isPinned: (eventId) => focused()?.pins.isPinned(eventId) ?? false,
+      pin: (eventId) =>
+        defer(() => focused()?.pins.pin(eventId) ?? of(unavailable('pin'))),
+      unpin: (eventId) =>
+        defer(() => focused()?.pins.unpin(eventId) ?? of(unavailable('unpin'))),
+    };
+  }
+
   private focusedMessages(): ConversationMessages {
     const focused = this.focusedHandle.asReadonly();
     const unavailable = (
@@ -607,6 +728,7 @@ export class ConversationRuntime {
       if (account.size === 0) this.entries.delete(accountId);
     }
     entry.state.set('retired');
+    entry.releaseThread();
     entry.composeController.stopTyping();
     this.retiredHandles.update((count) => count + 1);
     entry.controller.release();

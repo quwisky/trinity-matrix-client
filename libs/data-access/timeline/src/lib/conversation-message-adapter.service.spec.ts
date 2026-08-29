@@ -218,4 +218,48 @@ describe('MatrixConversationMessageAdapter', () => {
       '$message',
     );
   });
+
+  it('uses thread-scoped SDK overloads and does not move the room read marker', async () => {
+    const { adapter, client, event } = setup();
+
+    await firstValueFrom(
+      adapter.toggleReaction({
+        key: KEY,
+        threadRootId: '$thread-root',
+        messageId: '$message',
+        reaction: '👍',
+      }),
+    );
+    await firstValueFrom(
+      adapter.redact({
+        key: KEY,
+        threadRootId: '$thread-root',
+        messageId: '$message',
+      }),
+    );
+    await firstValueFrom(
+      adapter.acknowledge({
+        key: KEY,
+        threadRootId: '$thread-root',
+        messageId: '$message',
+      }),
+    );
+
+    expect(client.sendEvent).toHaveBeenCalledWith(
+      KEY.roomId,
+      '$thread-root',
+      'm.reaction',
+      expect.any(Object),
+    );
+    expect(client.redactEvent).toHaveBeenCalledWith(
+      KEY.roomId,
+      '$thread-root',
+      '$message',
+    );
+    expect(client.sendReadReceipt).toHaveBeenCalledWith(
+      event,
+      ReceiptType.Read,
+    );
+    expect(client.setRoomReadMarkers).not.toHaveBeenCalled();
+  });
 });

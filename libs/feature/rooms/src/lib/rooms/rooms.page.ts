@@ -45,7 +45,6 @@ import {
   PushService,
   RoomNotificationsService,
 } from '@trinity/data-access/notifications';
-import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import { PresenceService } from '@trinity/data-access/profile';
 import {
   RoomsService,
@@ -56,10 +55,7 @@ import {
   MixedRoomsService,
   MixedSpacesService,
 } from '@trinity/data-access/rooms';
-import {
-  ConversationRuntime,
-  ThreadsService,
-} from '@trinity/data-access/timeline';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
 import {
   HapticsService,
   MessageGestureSettingsService,
@@ -290,9 +286,10 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly accountScope = inject(AccountScopeService);
   private readonly mixedInvites = inject(MixedInvitesService);
   readonly invites = inject(InvitesService);
-  readonly timeline = inject(ConversationRuntime).timeline;
-  readonly threads = inject(ThreadsService);
-  readonly pinned = inject(PinnedMessagesService);
+  private readonly conversations = inject(ConversationRuntime);
+  readonly timeline = this.conversations.timeline;
+  readonly threads = this.conversations.threads;
+  readonly pinned = this.conversations.pins;
   private readonly imagePackService = inject(ImagePackService);
   readonly flags = inject(FeatureFlagsService);
   private readonly matrix = inject(MatrixClientService);

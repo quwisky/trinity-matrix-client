@@ -36,7 +36,6 @@
         "./libs/data-access/notifications/src/index.ts"
       ],
       "@trinity/data-access/search": ["./libs/data-access/search/src/index.ts"],
-      "@trinity/data-access/pinned": ["./libs/data-access/pinned/src/index.ts"],
       "@trinity/data-access/invites": [
         "./libs/data-access/invites/src/index.ts"
       ],

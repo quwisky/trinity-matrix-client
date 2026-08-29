@@ -256,7 +256,7 @@ export class MessageComposerComponent {
     }
     const mentions = untracked(() => this.menus.activeMentions());
     // Slash commands only where they are actually parsed on send:
-    // `TimelineActionsService.send` and `ThreadsService.sendThreadMessage`. A reply,
+    // ordinary Conversation and exact-thread sends. A reply,
     // an edit and an attachment caption route through `replyMessageContent` /
     // `editMessageContent` / `mediaCaptionFields`, none of which look at a leading
     // slash — so previewing `/spoiler x` concealed while replying would promise a

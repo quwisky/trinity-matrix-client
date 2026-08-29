@@ -1,4 +1,4 @@
-import { globSync, readFileSync } from 'node:fs';
+import { existsSync, globSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -14,6 +14,10 @@ const timelineImplementation =
   'libs/data-access/timeline/src/lib/timeline.service.ts';
 const legacyActionsImplementation =
   'libs/data-access/timeline/src/lib/timeline-actions.service.ts';
+const threadsImplementation =
+  'libs/data-access/timeline/src/lib/threads.service.ts';
+const threadChildrenImplementation =
+  'libs/data-access/timeline/src/lib/conversation-thread-children.ts';
 
 function source(file) {
   return readFileSync(join(workspaceRoot, file), 'utf8');
@@ -136,5 +140,39 @@ describe('Conversation Runtime production boundary', () => {
     expect(main).toContain('inject(RoomMessageGovernanceService)');
     expect(governance).toContain('maySendRedactionForEvent');
     expect(governance).toContain('this.matrix.clientFor(key.accountId)');
+  });
+
+  it('owns keyed thread and pin children without legacy public facades', () => {
+    const runtime = source(runtimeImplementation);
+    const threadChildren = source(threadChildrenImplementation);
+    const entrypoint = source(timelineEntrypoint);
+    const threadAdapter = source(threadsImplementation);
+    const main = source('apps/trinity/src/main.ts');
+    const roomFeature = productionSources
+      .filter((file) => file.startsWith('libs/feature/rooms/'))
+      .map(source)
+      .join('\n');
+
+    expect(runtime).toContain('readonly threads: ConversationThreads;');
+    expect(runtime).toContain('readonly pins: ConversationPins;');
+    expect(threadChildren).toContain('forRoot: (rootEventId: string)');
+    expect(threadChildren).toContain('threadRootId: rootEventId');
+    expect(entrypoint).not.toContain("export * from './lib/threads.service'");
+    expect(entrypoint).not.toMatch(
+      /\b(?:ThreadsService|PinnedMessagesService)\b/,
+    );
+    expect(roomFeature).not.toMatch(
+      /\b(?:ThreadsService|PinnedMessagesService)\b/,
+    );
+    expect(roomFeature).not.toContain('@trinity/data-access/pinned');
+    expect(
+      existsSync(join(workspaceRoot, 'libs/data-access/pinned/project.json')),
+    ).toBe(false);
+    expect(main).toContain('provide: CONVERSATION_PIN_POLICY');
+    expect(main).toContain('inject(RoomPinGovernanceService)');
+    expect(threadAdapter).not.toMatch(
+      /^\s{2}(?:open|openThread|sendMediaToThread|toggleReactionInThread|redactInThread|retryInThread)\s*\(/m,
+    );
+    expect(threadAdapter).not.toContain('.sendReadReceipt(');
   });
 });
