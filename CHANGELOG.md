@@ -283,8 +283,8 @@ All notable changes to this project are documented here. The format is based on
 
 - **Copy user ID now works in the Electron app.** Trinity's desktop permission policy allows
   sanitized clipboard writes only from the trusted main app frame while continuing to deny
-  clipboard reads and remote frames. If the platform still rejects a copy, the full selectable
-  Matrix user ID remains visible and the error explains how to copy it manually.
+  clipboard reads and remote frames. If the platform still rejects a copy, the complete Matrix
+  user ID is focused and selected for keyboard-accessible manual copying.
 
 - **Network failures no longer leave actions spinning forever.** Matrix requests now stop
   waiting after a bounded deadline, request controls release on completion or cancellation,

@@ -120,6 +120,12 @@ describe('installPermissionPolicy', () => {
     expect(decide('clipboard-sanitized-write', { isMainFrame: false })).toBe(
       false,
     );
+    expect(
+      decide('clipboard-sanitized-write', {
+        isMainFrame: true,
+        requestingUrl: 'https://widgets.example/',
+      }),
+    ).toBe(false);
     expect(decide('geolocation', undefined, remoteContents)).toBe(false);
     expect(decide('clipboard-sanitized-write', undefined, remoteContents)).toBe(
       false,
@@ -166,6 +172,14 @@ describe('installPermissionPolicy', () => {
       check(remoteContents, 'clipboard-sanitized-write', 'trinity://app', {
         isMainFrame: true,
       }),
+    ).toBe(false);
+    expect(
+      check(
+        appContents,
+        'clipboard-sanitized-write',
+        'https://widgets.example',
+        { isMainFrame: true },
+      ),
     ).toBe(false);
     expect(
       check(appContents, 'midi', 'trinity://app', { isMainFrame: true }),

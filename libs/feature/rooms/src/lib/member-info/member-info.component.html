@@ -31,9 +31,16 @@
     <span class="member-info__name" data-testid="member-info-name">{{
       member().name
     }}</span>
-    <span class="member-info__handle" data-testid="member-info-handle">{{
-      member().userId
-    }}</span>
+    <input
+      #userIdHandle
+      class="member-info__handle"
+      data-testid="member-info-handle"
+      type="text"
+      readonly
+      [value]="member().userId"
+      [attr.aria-label]="'Matrix user ID ' + member().userId"
+      (focus)="selectUserId()"
+    />
     <span class="member-info__role" data-testid="member-info-role">{{
       role()
     }}</span>

@@ -92,7 +92,7 @@ test.describe('Electron member clipboard', () => {
         .toBe(true);
 
       const handle = page.getByTestId('member-info-handle');
-      await expect(handle).toHaveText(account.userId);
+      await expect(handle).toHaveValue(account.userId);
       await expect
         .poll(() =>
           handle.evaluate((node) => getComputedStyle(node).userSelect),
