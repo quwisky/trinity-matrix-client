@@ -23,7 +23,11 @@ import type {
   AccountSwitchOutcome,
 } from './account-runtime.models';
 
-type BlockingAccountOperation = 'restoring-accounts' | 'establishing-account';
+type BlockingAccountOperation =
+  | 'restoring-accounts'
+  | 'establishing-account'
+  | 'signing-out-account'
+  | 'resetting-installation';
 
 interface InFlightAccountSwitch {
   readonly accountId: string;

@@ -44,7 +44,7 @@ export class LocalDataWipeService {
    * clearing the registry first would leave nothing able to name what survived.
    *
    * It does NOT abort on a partial failure — the caller finishes the reset regardless, see
-   * FactoryResetService.run. Deletes are concurrent, so a `blocked` report always arrives
+   * Account Runtime's installation-reset workflow. Deletes are concurrent, so a `blocked` report always arrives
    * after the rest are already gone; stopping there would strand the user half-erased.
    */
   async wipeIndexedDb(records: readonly AccountRecord[]): Promise<WipeReport> {
@@ -77,7 +77,7 @@ export class LocalDataWipeService {
 
     // Deletes run concurrently and none of them aborts the others. A caller that treats
     // `blocked` as a reason to stop would therefore be stopping AFTER the rest are already
-    // gone — see FactoryResetService.run, which deliberately finishes instead.
+    // gone — see Account Runtime's reset workflow, which deliberately finishes instead.
     const blocked: string[] = [];
     const failed: string[] = [];
     await Promise.all(

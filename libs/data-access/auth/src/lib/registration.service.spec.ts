@@ -4,7 +4,7 @@ import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, lastValueFrom, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RegistrationService } from './registration.service';
-import { SessionEstablishmentService } from './session-establishment.service';
+import { AccountRuntimeService } from '@trinity/data-access/accounts';
 
 vi.mock('matrix-js-sdk', async (importActual) => {
   const actual = await importActual<typeof import('matrix-js-sdk')>();
@@ -51,15 +51,15 @@ function client(overrides: Record<string, unknown> = {}) {
 
 describe('RegistrationService', () => {
   let service: RegistrationService;
-  let sessions: SessionEstablishmentService;
+  let accounts: AccountRuntimeService;
 
   beforeEach(() => {
     vi.clearAllMocks();
     TestBed.configureTestingModule({
       providers: [
         RegistrationService,
-        MockProvider(SessionEstablishmentService, {
-          establishNew: vi.fn(() =>
+        MockProvider(AccountRuntimeService, {
+          establishAuthenticatedAccount: vi.fn(() =>
             of({
               kind: 'ready' as const,
               accountId: '@new:hs',
@@ -70,7 +70,7 @@ describe('RegistrationService', () => {
       ],
     });
     service = TestBed.inject(RegistrationService);
-    sessions = TestBed.inject(SessionEstablishmentService);
+    accounts = TestBed.inject(AccountRuntimeService);
   });
 
   describe('registration availability', () => {
@@ -128,16 +128,13 @@ describe('RegistrationService', () => {
         auth: { type: 'm.login.dummy', session: 'uia-session' },
       }),
     );
-    expect(sessions.establishNew).toHaveBeenCalledWith(
-      'https://hs',
-      expect.objectContaining({
-        user_id: '@new:hs',
-        device_id: 'DEVICE',
-        access_token: 'access',
-        refresh_token: 'refresh',
-        accessTokenExpiresAt: expect.any(Number),
-      }),
-      'replace',
+    expect(accounts.establishAuthenticatedAccount).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        placement: 'active',
+        liveAccounts: 'replace',
+        accountRecord: 'new',
+      },
     );
   });
 
@@ -339,7 +336,7 @@ describe('RegistrationService', () => {
       .mockRejectedValueOnce(uia(['m.login.dummy']))
       .mockResolvedValueOnce(registered);
     createClientMock.mockReturnValue(client({ registerRequest }) as never);
-    vi.mocked(sessions.establishNew)
+    vi.mocked(accounts.establishAuthenticatedAccount)
       .mockReturnValueOnce(throwError(() => new Error('storage failed')))
       .mockReturnValueOnce(
         of({
@@ -361,7 +358,7 @@ describe('RegistrationService', () => {
 
     await firstValueFrom(service.retryEstablishment());
     expect(registerRequest).toHaveBeenCalledTimes(2);
-    expect(sessions.establishNew).toHaveBeenCalledTimes(2);
+    expect(accounts.establishAuthenticatedAccount).toHaveBeenCalledTimes(2);
   });
 
   it('does not retry a registration response that omitted its login tokens', async () => {
@@ -377,7 +374,7 @@ describe('RegistrationService', () => {
       userId: '@new:hs',
       retryable: false,
     });
-    expect(sessions.establishNew).not.toHaveBeenCalled();
+    expect(accounts.establishAuthenticatedAccount).not.toHaveBeenCalled();
     expect(registerRequest).toHaveBeenCalledOnce();
   });
 
@@ -398,14 +395,14 @@ describe('RegistrationService', () => {
       retryable: false,
     });
     expect(service.error()).toMatch(/identity.*did not match/i);
-    expect(sessions.establishNew).not.toHaveBeenCalled();
+    expect(accounts.establishAuthenticatedAccount).not.toHaveBeenCalled();
     expect(registerRequest).toHaveBeenCalledOnce();
   });
 
   it('refuses to overwrite an account already stored under the returned MXID', async () => {
     const registerRequest = vi.fn().mockResolvedValue(registered);
     createClientMock.mockReturnValue(client({ registerRequest }) as never);
-    vi.mocked(sessions.establishNew).mockReturnValue(
+    vi.mocked(accounts.establishAuthenticatedAccount).mockReturnValue(
       of({
         kind: 'failed',
         failure: 'account-already-stored',

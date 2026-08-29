@@ -13,16 +13,14 @@ import {
   map,
   of,
   switchMap,
-  tap,
   throwError,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import type { AccountEstablishmentOutcome } from '@trinity/data-access/accounts';
-import { AvatarService } from '@trinity/data-access/media';
-import { MediaService } from '@trinity/data-access/media';
-import { PushService } from '@trinity/data-access/notifications';
 import {
-  DraftStoreService,
+  AccountRuntimeService,
+  type AccountEstablishmentOutcome,
+} from '@trinity/data-access/accounts';
+import {
   SessionStorageService,
   getTrinityDesktopBridge,
 } from '@trinity/platform-native';
@@ -39,11 +37,12 @@ import {
   type OidcGrantContext,
 } from './oidc-client.service';
 import {
-  SessionEstablishmentService,
+  accountEstablishment,
+  type AuthenticatedSessionResponse,
   type LoginMode,
-} from './session-establishment.service';
+} from './account-establishment';
 
-export type { LoginMode } from './session-establishment.service';
+export type { LoginMode } from './account-establishment';
 export type { AccountEstablishmentOutcome } from '@trinity/data-access/accounts';
 
 const DEVICE_DISPLAY_NAME = 'Trinity';
@@ -68,12 +67,8 @@ export interface AccountManagement {
 export class AuthService {
   private readonly matrix = inject(MatrixClientService);
   private readonly storage = inject(SessionStorageService);
-  private readonly avatars = inject(AvatarService);
-  private readonly media = inject(MediaService);
-  private readonly push = inject(PushService);
   private readonly oidc = inject(OidcClientService);
-  private readonly drafts = inject(DraftStoreService);
-  private readonly sessions = inject(SessionEstablishmentService);
+  private readonly accounts = inject(AccountRuntimeService);
 
   /**
    * Resolve a homeserver base URL from a user-entered domain (e.g. "matrix.org"
@@ -156,7 +151,7 @@ export class AuthService {
           ...(deviceId ? { device_id: deviceId } : {}),
         }),
       ),
-    ).pipe(switchMap((res) => this.sessions.establish(baseUrl, res, mode)));
+    ).pipe(switchMap((res) => this.establish(baseUrl, res, mode)));
   }
 
   /**
@@ -191,7 +186,7 @@ export class AuthService {
           ...(deviceId ? { device_id: deviceId } : {}),
         }),
       ),
-    ).pipe(switchMap((res) => this.sessions.establish(baseUrl, res, mode)));
+    ).pipe(switchMap((res) => this.establish(baseUrl, res, mode)));
   }
 
   /**
@@ -233,7 +228,7 @@ export class AuthService {
     return this.oidc.completeGrant(code, context).pipe(
       switchMap((grant) => this.rejectMismatchedGrant(grant, expectedUserId)),
       switchMap((grant) =>
-        this.sessions.establish(
+        this.establish(
           grant.homeserverUrl,
           {
             user_id: grant.userId,
@@ -283,88 +278,6 @@ export class AuthService {
           `Your provider signed you in as ${grant.userId}, not ${expectedUserId}. ` +
             'Sign in to that account instead.',
         ),
-    );
-  }
-
-  /**
-   * Sign an account out — the active one by default, or a specific `userId`.
-   * Invalidates its server-side device and wipes its local stores. When it was the
-   * last account this fully resets (releasing the shared media/avatar caches and
-   * clearing storage); otherwise the others keep running and the active pointer moves
-   * to a survivor.
-   */
-  logout(userId?: string): Observable<void> {
-    // `||` (not `??`) so an empty-string id — e.g. the user panel emitting a null
-    // active id as '' — falls back to the active account rather than being treated
-    // as a real target (which would skip client teardown and clear everything).
-    const target = userId || this.matrix.activeUserId();
-    if (!target) {
-      return this.storage.clear();
-    }
-    const client = this.matrix.clientFor(target);
-    // Even if the server call fails, clear locally so the user isn't stuck.
-    const serverLogout = client
-      ? from(client.logout(true)).pipe(catchError(() => of(void 0)))
-      : of(void 0);
-    // For an OIDC account, also revoke its tokens at the provider (best-effort, while
-    // they're still valid) — belt-and-suspenders alongside the CSAPI logout above.
-    const revoke = this.storage.load(target).pipe(
-      switchMap((session) =>
-        session?.oidc
-          ? this.oidc.revokeTokens(session.baseUrl, session.oidc, {
-              accessToken: session.accessToken,
-              refreshToken: session.refreshToken,
-            })
-          : of(void 0),
-      ),
-      catchError(() => of(void 0)),
-    );
-    // Whether this is the last account must be judged against the PERSISTED registry,
-    // not the live client map (`accountIds()`). The two diverge: an account that is
-    // soft-logged-out, or whose background warm-up failed, drops out of the map but
-    // deliberately KEEPS its registry record so re-auth can reuse its crypto store.
-    // Judging by the map would take the full-clear branch and wipe that record — and,
-    // once the startup sweep sees an unowned store, that account's E2EE keys with it.
-    // The registry is what clear() erases, so the registry decides.
-    return this.storage.list().pipe(
-      switchMap((accounts) => {
-        const isLast = accounts.every((account) => account.userId === target);
-        if (isLast) {
-          // Delete the pusher first (token still valid), revoke at the provider + log out
-          // server-side, then reset() (not stop()) so the account's keys/cache don't linger
-          // on a shared device, drop the shared blob caches, and clear storage.
-          return this.push.unregister().pipe(
-            switchMap(() => revoke),
-            switchMap(() => serverLogout),
-            switchMap(() => this.matrix.reset()),
-            tap(() => {
-              this.avatars.releaseAll();
-              this.media.releaseAll();
-              // Composer drafts are the plaintext of messages destined for encrypted
-              // rooms; they must not survive a sign-out (see DraftStoreService.clearAll).
-              this.drafts.clearAll();
-            }),
-            switchMap(() => this.storage.clear()),
-          );
-        }
-        // Sign out just this account; the others keep syncing. Delete its pusher first
-        // (token still valid), revoke at the provider + log out server-side, then
-        // matrix.remove stops + wipes it and repoints the active account to a survivor.
-        return this.push.unregister(target).pipe(
-          switchMap(() => revoke),
-          switchMap(() => serverLogout),
-          switchMap(() => this.matrix.remove(target)),
-          // Drafts are keyed by conversation, with nothing saying which account wrote
-          // them, so the outgoing account's plaintext can only be dropped by dropping
-          // them all. Losing a draft is recoverable; leaking one is not.
-          tap(() => this.drafts.clearAll()),
-          switchMap(() => this.storage.remove(target)),
-          switchMap(() => {
-            const active = this.matrix.activeUserId();
-            return active ? this.storage.setActive(active) : of(void 0);
-          }),
-        );
-      }),
     );
   }
 
@@ -441,6 +354,18 @@ export class AuthService {
         ),
       );
     });
+  }
+
+  private establish(
+    baseUrl: string,
+    response: AuthenticatedSessionResponse,
+    mode: LoginMode,
+  ): Observable<AccountEstablishmentOutcome> {
+    const command = accountEstablishment(baseUrl, response, mode, 'upsert');
+    return this.accounts.establishAuthenticatedAccount(
+      command.grant,
+      command.intent,
+    );
   }
 
   /** Accept "@user:server.org", "user:server.org", or a bare "server.org". */

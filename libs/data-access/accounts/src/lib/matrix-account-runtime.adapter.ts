@@ -17,6 +17,8 @@ import {
   tap,
   throwError,
 } from 'rxjs';
+import { AccountLifecycleAdapter } from './account-lifecycle.adapter';
+import { ACCOUNT_LIFECYCLE_PORT } from './account-lifecycle.port';
 import type {
   AccountRuntimeAdapter,
   AdapterAccountEstablishmentOutcome,
@@ -32,12 +34,16 @@ import {
 import type {
   AccountEstablishmentIntent,
   AccountRestoreRole,
+  AccountSignOutOutcome,
+  InstallationResetOutcome,
 } from './account-runtime.models';
 
 @Injectable({ providedIn: 'root' })
 export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
   private readonly matrix = inject(MatrixClientService);
   private readonly storage = inject(SessionStorageService);
+  private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
+  private readonly lifecycleAdapter = inject(AccountLifecycleAdapter);
   private readonly pendingNewAccounts = new Map<
     string,
     {
@@ -45,7 +51,6 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
       readonly stored: ReturnType<typeof authenticatedAccountGrantPayload>;
     }
   >();
-
   readonly activeAccountId = this.matrix.activeUserId;
 
   sweepOrphanedStores(): Observable<void> {
@@ -76,17 +81,14 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
         }),
       ),
       switchMap((loaded) => {
-        if (loaded.kind === 'failed') {
-          return of(loaded);
-        }
-        const { session } = loaded;
-        if (!session) {
+        if (loaded.kind === 'failed') return of(loaded);
+        if (!loaded.session) {
           this.matrix.requireReauthentication(accountId);
           return of({ kind: 'reauthentication-required' as const });
         }
         return this.matrix
           .restorePersisted(
-            session,
+            loaded.session,
             role === 'active' ? 'activate' : 'background',
           )
           .pipe(map((outcome) => this.toAdapterOutcome(outcome)));
@@ -117,16 +119,23 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
               .persistForEstablishment(session, intent.accountRecord)
               .pipe(
                 tap((stored) => {
-                  if (intent.accountRecord === 'new') {
+                  if (intent.accountRecord === 'new')
                     this.pendingNewAccounts.set(session.userId, {
                       grant,
                       stored,
                     });
-                  }
                 }),
               );
+      const prepare$ =
+        intent.liveAccounts === 'replace'
+          ? defer(() => {
+              this.lifecycle.releaseSharedCaches();
+              return this.lifecycle.unregisterNotifications();
+            })
+          : of(void 0);
 
-      return persisted$.pipe(
+      return prepare$.pipe(
+        switchMap(() => persisted$),
         map((stored) => ({ kind: 'persisted' as const, stored })),
         catchError((error: unknown) => this.storageFailure(error)),
         switchMap((persisted) =>
@@ -135,20 +144,17 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
             : this.matrix.restorePersisted(persisted.stored, 'background'),
         ),
         switchMap((started) => {
-          if (started.kind === 'failed') {
-            return of(started);
-          }
+          if (started.kind === 'failed') return of(started);
           if (intent.placement === 'inactive') {
             this.pendingNewAccounts.delete(session.userId);
             return of({ kind: 'ready' as const });
           }
           let activePointerCommitted = false;
           return defer(() => {
-            if (!this.matrix.clientFor(session.userId)) {
+            if (!this.matrix.clientFor(session.userId))
               throw new Error(
                 `Account Runtime cannot commit placement for a non-live Account: ${session.userId}`,
               );
-            }
             return this.storage.setActiveForEstablishment(session.userId).pipe(
               tap(() => {
                 activePointerCommitted = true;
@@ -170,10 +176,14 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
           });
         }),
         tap((outcome) => {
-          if (outcome.kind === 'ready') {
+          if (outcome.kind === 'ready')
             this.pendingNewAccounts.delete(session.userId);
-          }
         }),
+        switchMap((outcome) =>
+          outcome.kind === 'ready' && intent.liveAccounts === 'keep'
+            ? this.lifecycle.registerNotifications().pipe(map(() => outcome))
+            : of(outcome),
+        ),
       );
     });
   }
@@ -194,12 +204,8 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
     accountId: string,
   ): Observable<AdapterAccountSwitchOutcome> {
     return defer(() => {
-      if (!this.matrix.clientFor(accountId)) {
-        return of({
-          kind: 'failed',
-          failure: 'account-unavailable',
-        } as const);
-      }
+      if (!this.matrix.clientFor(accountId))
+        return of({ kind: 'failed', failure: 'account-unavailable' } as const);
       return this.storage.setActiveForEstablishment(accountId).pipe(
         tap(() => this.matrix.setActive(accountId)),
         map(() => ({ kind: 'ready' as const })),
@@ -215,23 +221,28 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
     });
   }
 
+  signOutAccount(accountId: string): Observable<AccountSignOutOutcome> {
+    return this.lifecycleAdapter.signOutAccount(accountId);
+  }
+  resetInstallation(): Observable<InstallationResetOutcome> {
+    return this.lifecycleAdapter.resetInstallation();
+  }
+
   private storageFailure(
     error: unknown,
   ): Observable<
     Extract<AdapterAccountEstablishmentOutcome, { readonly kind: 'failed' }>
   > {
-    if (error instanceof AccountAlreadyStoredError) {
+    if (error instanceof AccountAlreadyStoredError)
       return of({ kind: 'failed', failure: 'account-already-stored' });
-    }
-    if (this.isExpectedStorageFailure(error)) {
+    if (this.isExpectedStorageFailure(error))
       return of({ kind: 'failed', failure: 'local-state-unavailable' });
-    }
     return throwError(() => error);
   }
 
   private isExpectedStorageFailure(error: unknown): boolean {
     if (error instanceof TypeError) return false;
-    if (error instanceof DOMException) {
+    if (error instanceof DOMException)
       return [
         'AbortError',
         'InvalidStateError',
@@ -239,9 +250,10 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
         'QuotaExceededError',
         'UnknownError',
       ].includes(error.name);
-    }
-    if (!(error instanceof Error)) return false;
-    return error.message === 'secure-store: the OS keychain is unavailable';
+    return (
+      error instanceof Error &&
+      error.message === 'secure-store: the OS keychain is unavailable'
+    );
   }
 
   private rollbackPlacement(
@@ -276,9 +288,7 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
   private toAdapterOutcome(
     outcome: PersistedAccountStartOutcome,
   ): AdapterAccountRestoreOutcome {
-    if (outcome.kind === 'ready') {
-      return outcome;
-    }
+    if (outcome.kind === 'ready') return outcome;
     return outcome.failure === 'reauthentication-required'
       ? { kind: 'reauthentication-required' }
       : { kind: 'failed', failure: outcome.failure };

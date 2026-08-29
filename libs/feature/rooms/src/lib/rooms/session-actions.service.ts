@@ -1,7 +1,7 @@
 import { DestroyRef, Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { AuthService } from '@trinity/data-access/auth';
+import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { SettingsDialogService } from '@trinity/components/settings-dialog';
@@ -17,7 +17,7 @@ import { WorkspaceAccountSwitchService } from './workspace-account-switch.servic
  */
 @Injectable()
 export class SessionActionsService {
-  private readonly auth = inject(AuthService);
+  private readonly accounts = inject(AccountRuntimeService);
   private readonly accountSwitch = inject(WorkspaceAccountSwitchService);
   private readonly matrix = inject(MatrixClientService);
   private readonly router = inject(Router);
@@ -65,16 +65,17 @@ export class SessionActionsService {
     if (!confirmed) {
       return;
     }
-    // Captured before the sign-out mutates the registry: signing out the last
-    // account tears everything down → back to login; otherwise another account is
-    // now active and we stay in the shell.
-    const wasLastAccount = this.matrix.accountIds().length <= 1;
-    this.auth
-      .logout(userId)
+    this.accounts
+      .signOutAccount(userId)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => {
-        if (wasLastAccount) {
+      .subscribe((outcome) => {
+        if (
+          (outcome.kind === 'ready' || outcome.kind === 'partial-cleanup') &&
+          outcome.remainingAccountIds.length === 0
+        ) {
           void this.router.navigateByUrl('/login', { replaceUrl: true });
+        } else if (outcome.kind !== 'ready') {
+          void this.status.showError('Unable to fully sign out right now.');
         }
       });
   }

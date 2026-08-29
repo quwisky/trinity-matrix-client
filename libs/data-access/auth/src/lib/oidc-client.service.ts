@@ -99,7 +99,7 @@ export interface OidcGrant {
  * Owns the matrix-js-sdk OIDC ("next-gen auth", MSC3861) orchestration: dynamic client
  * registration (cached per issuer), building the PKCE authorization URL, and exchanging
  * the returned code for tokens + identity. {@link AuthService} composes this with its
- * shared session-establishment funnel; components never touch it or the SDK directly.
+ * Account Runtime establishment command; components never touch it or the SDK directly.
  */
 @Injectable({ providedIn: 'root' })
 export class OidcClientService {

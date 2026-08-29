@@ -234,7 +234,7 @@ describe('LocalDataWipeService', () => {
     });
 
     it('survives a Preferences backend that rejects', async () => {
-      // Two layers guard this — here, and `swallow()` in FactoryResetService — and only
+      // Two layers guard this — here, and Account Runtime's reset adapter — and only
       // the outer one was pinned, so removing this inner guard failed nothing. Both matter:
       // this method's own contract is that it does not throw, and a caller that forgets the
       // outer guard should not be able to strand the reset.

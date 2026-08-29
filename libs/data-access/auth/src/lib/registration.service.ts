@@ -42,10 +42,10 @@ import {
   type RegistrationUiaData,
 } from './registration-uia';
 import {
-  SessionEstablishmentService,
-  type LoginMode,
-} from './session-establishment.service';
-import type { AccountEstablishmentOutcome } from '@trinity/data-access/accounts';
+  AccountRuntimeService,
+  type AccountEstablishmentOutcome,
+} from '@trinity/data-access/accounts';
+import { accountEstablishment, type LoginMode } from './account-establishment';
 
 export type {
   RegistrationAvailability,
@@ -67,7 +67,7 @@ type InitialRegistrationResult =
  */
 @Injectable({ providedIn: 'root' })
 export class RegistrationService {
-  private readonly sessions = inject(SessionEstablishmentService);
+  private readonly accounts = inject(AccountRuntimeService);
 
   private readonly stageState = signal<RegistrationStage>({ kind: 'idle' });
   readonly stage = this.stageState.asReadonly();
@@ -404,10 +404,15 @@ export class RegistrationService {
     return defer(() => {
       this.ensureActive(generation);
       this.busyState.set(true);
-      return this.sessions.establishNew(
+      const command = accountEstablishment(
         this.activeBaseUrl,
         session,
         this.activeMode,
+        'new',
+      );
+      return this.accounts.establishAuthenticatedAccount(
+        command.grant,
+        command.intent,
       );
     }).pipe(
       switchMap((outcome) => {

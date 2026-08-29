@@ -3,16 +3,12 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const workspaceRoot = join(import.meta.dirname, '..');
-const serviceFile =
-  'libs/data-access/auth/src/lib/session-establishment.service.ts';
-
 /**
- * Freeze the temporary authentication compatibility facade while Account Runtime lands.
+ * Pin retirement of the temporary authentication compatibility facade.
  *
  * ADR 0007 requires every compatibility facade to have a caller allowlist, a counter,
  * parity coverage, and a named removal owner. Without this source-shape guard, new auth
- * flows could quietly couple themselves to SessionEstablishmentService and turn the
- * migration seam into permanent architecture. GitHub issue #303 owns its removal.
+ * New authentication flows must issue opaque grants directly to Account Runtime.
  */
 describe('Account Runtime authentication facade', () => {
   const productionCallers = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
@@ -21,18 +17,14 @@ describe('Account Runtime authentication facade', () => {
     .filter(
       (file) =>
         !file.endsWith('.spec.ts') &&
-        file !== serviceFile &&
         readFileSync(join(workspaceRoot, file), 'utf8').includes(
           'SessionEstablishmentService',
         ),
     )
     .sort();
 
-  it('has exactly the two frozen production callers', () => {
-    expect(productionCallers).toEqual([
-      'libs/data-access/auth/src/lib/auth.service.ts',
-      'libs/data-access/auth/src/lib/registration.service.ts',
-    ]);
+  it('has no production callers', () => {
+    expect(productionCallers).toEqual([]);
   });
 
   it('is not exposed as public API', () => {
@@ -42,6 +34,14 @@ describe('Account Runtime authentication facade', () => {
     );
     expect(publicEntrypoint).not.toContain('session-establishment.service');
     expect(publicEntrypoint).not.toContain('SessionEstablishmentService');
+    expect(
+      globSync(
+        'libs/data-access/auth/src/lib/session-establishment.service.ts',
+        {
+          cwd: workspaceRoot,
+        },
+      ),
+    ).toEqual([]);
   });
 
   it('records the parity suite and removal issue in architecture documentation', () => {
@@ -49,7 +49,7 @@ describe('Account Runtime authentication facade', () => {
       join(workspaceRoot, 'docs/architecture/matrix-and-encryption.md'),
       'utf8',
     );
-    expect(architecture).toContain('session-establishment.integration.spec.ts');
-    expect(architecture).toContain('#303');
+    expect(architecture).toContain('AccountRuntimeService');
+    expect(architecture).not.toContain('temporary compatibility facade');
   });
 });

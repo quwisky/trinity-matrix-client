@@ -51,7 +51,11 @@ export type AccountRestoreResult =
     })
   | (AccountRestoreResultBase & {
       readonly kind: 'transition-in-progress';
-      readonly operation: 'establishing-account' | 'switching-account';
+      readonly operation:
+        | 'establishing-account'
+        | 'switching-account'
+        | 'signing-out-account'
+        | 'resetting-installation';
     });
 
 export type AccountEstablishmentPlacement = 'active' | 'inactive';
@@ -117,7 +121,76 @@ export type AccountSwitchOutcome =
       readonly kind: 'transition-in-progress';
       readonly accountId: string;
       readonly operation:
-        'restoring-accounts' | 'establishing-account' | 'switching-account';
+        | 'restoring-accounts'
+        | 'establishing-account'
+        | 'switching-account'
+        | 'signing-out-account'
+        | 'resetting-installation';
+    };
+
+export type AccountCleanupScope =
+  | 'notifications'
+  | 'provider-session'
+  | 'matrix-session'
+  | 'crypto-and-cache'
+  | 'account-registry'
+  | 'drafts'
+  | 'indexed-db'
+  | 'secure-storage'
+  | 'preferences'
+  | 'service-worker';
+
+export type AccountCleanupRecovery =
+  'retry-sign-out' | 'retry-installation-reset' | 'restart-application';
+
+export interface AccountCleanupIssue {
+  readonly scope: AccountCleanupScope;
+  readonly recovery: AccountCleanupRecovery;
+}
+
+interface AccountSignOutResultBase {
+  readonly accountId: string;
+  readonly activeAccountId: string | null;
+  readonly remainingAccountIds: readonly string[];
+}
+
+export type AccountSignOutOutcome =
+  | (AccountSignOutResultBase & { readonly kind: 'ready' })
+  | (AccountSignOutResultBase & {
+      readonly kind: 'partial-cleanup';
+      readonly issues: readonly AccountCleanupIssue[];
+    })
+  | {
+      readonly kind: 'failed';
+      readonly accountId: string;
+      readonly failure: 'account-unavailable' | 'local-state-unavailable';
+      readonly recovery: 'retry-sign-out';
+    }
+  | {
+      readonly kind: 'transition-in-progress';
+      readonly accountId: string;
+      readonly operation:
+        | 'restoring-accounts'
+        | 'establishing-account'
+        | 'switching-account'
+        | 'signing-out-account'
+        | 'resetting-installation';
+    };
+
+export type InstallationResetOutcome =
+  | { readonly kind: 'ready' }
+  | {
+      readonly kind: 'partial-cleanup';
+      readonly issues: readonly AccountCleanupIssue[];
+    }
+  | {
+      readonly kind: 'transition-in-progress';
+      readonly operation:
+        | 'restoring-accounts'
+        | 'establishing-account'
+        | 'switching-account'
+        | 'signing-out-account'
+        | 'resetting-installation';
     };
 
 export type AccountRuntimeState =

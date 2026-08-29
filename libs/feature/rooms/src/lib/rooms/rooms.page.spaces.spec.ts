@@ -7,7 +7,7 @@ import {
 } from './rooms-page.spec-harness';
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { AuthService } from '@trinity/data-access/auth';
+import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   RoomsService,
@@ -122,7 +122,7 @@ describe('RoomsPage space filtering', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(AuthService),
+        MockProvider(AccountRuntimeService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
       ],
@@ -554,7 +554,7 @@ describe('RoomsPage space ordering', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(AuthService),
+        MockProvider(AccountRuntimeService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
       ],
@@ -768,7 +768,7 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(AuthService),
+        MockProvider(AccountRuntimeService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
       ],

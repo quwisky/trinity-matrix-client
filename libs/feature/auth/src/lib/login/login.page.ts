@@ -32,7 +32,6 @@ import { TrnInput } from '@trinity/components/input';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import {
   AuthService,
-  FactoryResetService,
   RegistrationService,
   type LoginMode,
   type OidcApplicationType,
@@ -40,6 +39,7 @@ import {
   type AuthMetadata,
   type RegistrationAvailability,
 } from '@trinity/data-access/auth';
+import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import {
   AppRestartService,
   SessionStorageService,
@@ -82,7 +82,7 @@ export class LoginPage {
   private readonly oidcState = inject(OidcStateStore);
   private readonly storage = inject(SessionStorageService);
   private readonly alert = inject(TrnAlertService);
-  private readonly factoryReset = inject(FactoryResetService);
+  private readonly accounts = inject(AccountRuntimeService);
   private readonly restart = inject(AppRestartService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
@@ -501,16 +501,26 @@ export class LoginPage {
 
     this.error.set(null);
     this.erasing.set(true);
-    // Deliberately NOT `takeUntilDestroyed`: the wipe is an un-cancellable promise, so
-    // unsubscribing would abandon the restart while the data is already gone — leaving the
-    // app running against erased storage with every client torn down. If this page goes
-    // away mid-wipe, the restart is more necessary, not less.
-    this.factoryReset.clearAllData().subscribe((report) => {
-      const residue = [...report.blocked, ...report.failed];
-      if (residue.length > 0) {
+    // Deliberately NOT `takeUntilDestroyed`: after cleanup begins, a page transition must
+    // not abandon the restart while storage is already being erased.
+    this.accounts.resetInstallation().subscribe((outcome) => {
+      if (outcome.kind === 'transition-in-progress') {
+        this.erasing.set(false);
+        this.error.set(
+          'Another account change is still in progress. Try again.',
+        );
+        return;
+      }
+      if (outcome.kind === 'partial-cleanup') {
         // Not surfaced to the user: the wipe finished, and what is left is an orphaned
-        // database that the next cold start sweeps, when nothing holds a connection.
-        console.warn(CLEAR_DATA_RESIDUE_WARNING, residue);
+        // scope that the typed recovery guidance handles on the next cold start.
+        console.warn(
+          CLEAR_DATA_RESIDUE_WARNING,
+          outcome.issues.map((issue) => ({
+            scope: issue.scope,
+            recovery: issue.recovery,
+          })),
+        );
       }
       // `erasing` stays true: the app is about to be replaced, and releasing the button now
       // would let a second press race the navigation.
