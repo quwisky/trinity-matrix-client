@@ -4,7 +4,13 @@
   "projectType": "library",
   "sourceRoot": "libs/components/storybook-host/src",
   "prefix": "trn",
-  "tags": ["type:ui", "scope:shared", "ui:public"],
+  "tags": [
+    "type:ui",
+    "scope:shared",
+    "ui:public",
+    "role:design-system",
+    "capability:design-system"
+  ],
   "targets": {
     "build-storybook": {
       "//": "`@nx/storybook/plugin` defaults the output to `{projectRoot}/storybook-static`, which puts a build artifact INSIDE the source tree — and Storybook 10 writes a telemetry file named `project.json` into it. Three workspace gates then break for anyone who has ever built Storybook: `lint-invariants.spec.mjs` globs `{apps,libs,e2e,scripts}/**/project.json` and finds the artifact, `pnpm stylelint` globs `{apps,libs}/**/*.{scss,css}` and lints the generated CSS, and this project's own `eslint .` descends into it. Sending the output to `dist/` fixes all three at the root: every one of those globs already stops at `apps`/`libs`, and `.gitignore` + ESLint's `globalIgnores` already cover `/dist`. The path is relative because run-commands runs `storybook build` with cwd = the project root; `outputs` is restated workspace-relative because Nx interpolates `{options.output-dir}` against the workspace root, where `../../../` would escape it.",

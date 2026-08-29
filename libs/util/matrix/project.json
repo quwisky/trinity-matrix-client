@@ -4,7 +4,7 @@
   "projectType": "library",
   "sourceRoot": "libs/util/matrix/src",
   "prefix": "trn",
-  "tags": ["type:util", "scope:shared"],
+  "tags": ["type:util", "scope:shared", "role:kernel", "capability:shared"],
   "targets": {
     "test": {},
     "typecheck": {}

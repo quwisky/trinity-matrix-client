@@ -4,7 +4,13 @@
   "sourceRoot": "libs/spartan/tabs/src",
   "prefix": "hlm",
   "projectType": "library",
-  "tags": ["type:ui", "scope:shared", "ui:vendor-wrapper"],
+  "tags": [
+    "type:ui",
+    "scope:shared",
+    "ui:vendor-wrapper",
+    "role:design-system",
+    "capability:design-system"
+  ],
   "targets": {
     "build": {
       "executor": "@nx/angular:ng-packagr-lite",

@@ -3,7 +3,13 @@
   "$schema": "../../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "libs/components/qr-scanner/src",
   "prefix": "trn",
-  "tags": ["type:ui", "scope:shared", "ui:public"],
+  "tags": [
+    "type:ui",
+    "scope:shared",
+    "ui:public",
+    "role:design-system",
+    "capability:design-system"
+  ],
   "projectType": "library",
   "targets": {
     "test": {},

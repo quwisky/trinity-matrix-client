@@ -4,7 +4,13 @@
   "projectType": "library",
   "sourceRoot": "libs/data-access/notifications/src",
   "prefix": "trn",
-  "tags": ["type:data-access", "scope:matrix"],
+  "tags": [
+    "type:data-access",
+    "scope:matrix",
+    "role:capability",
+    "capability:notifications",
+    "capability:badge"
+  ],
   "targets": {
     "test": {},
     "typecheck": {}

@@ -1,6 +1,6 @@
 # Architecture overview
 
-Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 72
+Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 75
 libraries under `libs/`, grouped by layer into `libs/data-access/`, `libs/feature/`,
 `libs/util/` and `libs/components/` (the public component tier), alongside
 `libs/platform-native`, `libs/testing` and the `libs/spartan/`
@@ -14,6 +14,11 @@ A library's directory and its import alias are two further, different strings; s
 
 `nx.json` sets `"defaultBase": "develop"`, so `nx affected` diffs against `develop` rather than
 `main`.
+
+Trinity is migrating from these technical layers to capability-centered ownership. The current
+rules remain active while `role:*` and `capability:*` metadata describe and validate the target;
+see the [target architecture](target-architecture.md), [migration baselines](migration-baselines.md),
+and [generated dependency map](generated/dependency-map.md).
 
 ## The app project is a composition root
 
@@ -40,9 +45,12 @@ the Electron shell both wrap that directory unchanged. See
 
 ## Layers and the direction dependencies point
 
-Every project carries a `type:*` and a `scope:*` tag in its `project.json`, and
+Every shipped project that participates in the application graph carries both the current
+`type:*`/`scope:*` tags and target `role:*`/`capability:*` metadata. The current tags remain the
+hard ESLint boundary while the target metadata is checked by `pnpm architecture:check` against a
+frozen exception ledger.
 [`@nx/enforce-module-boundaries`](https://github.com/quwisky/trinity-matrix-client/blob/develop/eslint.config.mjs)
-turns those tags into compile-time-adjacent rules. Dependencies point inward, and the rule set is
+turns the current tags into compile-time-adjacent rules. Dependencies point inward, and the rule set is
 declared once at `eslint.config.mjs`.
 
 | Source tag         | May depend on                                      | The point of the restriction                                                                 |

@@ -4,7 +4,15 @@
   "projectType": "library",
   "sourceRoot": "libs/feature/rooms/src",
   "prefix": "trn",
-  "tags": ["type:feature", "scope:matrix"],
+  "tags": [
+    "type:feature",
+    "scope:matrix",
+    "role:capability",
+    "capability:conversations",
+    "capability:room-library",
+    "capability:room-administration",
+    "capability:discovery"
+  ],
   "targets": {
     "test": {},
     "typecheck": {}

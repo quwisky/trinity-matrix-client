@@ -1,0 +1,198 @@
+{
+  "roles": {
+    "app": [
+      "app",
+      "application",
+      "capability",
+      "kernel",
+      "adapter",
+      "design-system"
+    ],
+    "application": [
+      "application",
+      "capability",
+      "kernel",
+      "adapter",
+      "design-system"
+    ],
+    "capability": ["capability", "kernel", "adapter", "design-system"],
+    "kernel": ["kernel"],
+    "adapter": ["adapter", "kernel"],
+    "design-system": ["design-system", "kernel", "adapter"]
+  },
+  "capabilities": [
+    "accounts",
+    "badge",
+    "composition",
+    "conversations",
+    "design-system",
+    "discovery",
+    "host",
+    "identity",
+    "matrix-runtime",
+    "media",
+    "notifications",
+    "room-administration",
+    "room-library",
+    "runtime",
+    "settings",
+    "shared",
+    "trust",
+    "workspace"
+  ],
+  "unmanagedProjects": [
+    {
+      "project": "scripts",
+      "reason": "Repository tooling is outside the shipped application dependency model."
+    },
+    {
+      "project": "testing",
+      "reason": "Test-only helpers are outside the shipped application dependency model."
+    },
+    {
+      "project": "trinity-e2e",
+      "reason": "Black-box test harnesses are outside the shipped application dependency model."
+    }
+  ],
+  "classificationExceptions": [
+    {
+      "project": "trinity-desktop",
+      "removeBy": "#325",
+      "reason": "The inferred Electron project cannot carry tags without changing its inferred target set."
+    }
+  ],
+  "entrypointExemptProjects": [
+    {
+      "project": "components-storybook-host",
+      "reason": "The Storybook host is an executable documentation surface, not a consumable library."
+    },
+    {
+      "project": "spartan-tests",
+      "reason": "The generated-kit contract project contains tests and has no production API."
+    }
+  ],
+  "secondaryEntrypoints": [
+    {
+      "alias": "@trinity/feature/shell/home-page",
+      "target": "./libs/feature/shell/src/lib/home.page.ts",
+      "removeBy": "#314",
+      "reason": "Keeps the development-only crypto spike out of the eager shell barrel."
+    },
+    {
+      "alias": "@trinity/platform-native/qr-code",
+      "target": "./libs/platform-native/src/lib/qr-code.service.ts",
+      "removeBy": "#312",
+      "reason": "Lets the QR scanner consume one host operation without the broad platform barrel."
+    },
+    {
+      "alias": "@trinity/util/matrix/code-highlight",
+      "target": "./libs/util/matrix/src/lib/code-highlight.ts",
+      "removeBy": "#305",
+      "reason": "Keeps optional syntax-highlighting grammars out of the eager message projection chunk."
+    }
+  ],
+  "multiCapabilityProjects": [
+    {
+      "project": "data-access-notifications",
+      "capabilities": ["badge", "notifications"],
+      "removeBy": "#316",
+      "reason": "Notification delivery and badge aggregation have not yet been separated."
+    },
+    {
+      "project": "data-access-rooms",
+      "capabilities": ["discovery", "room-administration", "room-library"],
+      "removeBy": "#317, #318, #321",
+      "reason": "Room relationships, governance, and discovery still share one data-access library."
+    },
+    {
+      "project": "data-access-search",
+      "capabilities": ["conversations", "discovery", "room-library"],
+      "removeBy": "#321",
+      "reason": "Remote discovery, room queries, and message search still share one library."
+    },
+    {
+      "project": "feature-rooms",
+      "capabilities": [
+        "conversations",
+        "discovery",
+        "room-administration",
+        "room-library"
+      ],
+      "removeBy": "#304-#322",
+      "reason": "The current room feature contains conversation, room-library, administration, and discovery surfaces."
+    },
+    {
+      "project": "feature-shell",
+      "capabilities": ["badge", "runtime", "workspace"],
+      "removeBy": "#314, #316",
+      "reason": "Workspace, application runtime, and badge coordination still share the shell."
+    }
+  ],
+  "dependencyExceptions": [
+    {
+      "source": "data-access-auth",
+      "target": "data-access-notifications",
+      "removeBy": "#303, #315",
+      "reason": "Legacy logout coordinates notification cleanup directly."
+    },
+    {
+      "source": "data-access-notifications",
+      "target": "data-access-rooms",
+      "removeBy": "#315-#317",
+      "reason": "Notification policy currently reads room state through the room service."
+    },
+    {
+      "source": "data-access-notifications",
+      "target": "data-access-timeline",
+      "removeBy": "#315",
+      "reason": "Notification policy currently reaches into timeline projections."
+    },
+    {
+      "source": "feature-crypto",
+      "target": "data-access-auth",
+      "removeBy": "#319",
+      "reason": "Trust screens currently consume account lifecycle services directly."
+    },
+    {
+      "source": "feature-rooms",
+      "target": "data-access-auth",
+      "removeBy": "#302, #310",
+      "reason": "The room shell currently coordinates account switching and navigation."
+    },
+    {
+      "source": "feature-rooms",
+      "target": "data-access-crypto",
+      "removeBy": "#318, #319",
+      "reason": "Conversation surfaces currently read trust state directly."
+    },
+    {
+      "source": "feature-rooms",
+      "target": "data-access-notifications",
+      "removeBy": "#315-#317",
+      "reason": "The room shell currently coordinates notification and badge behavior."
+    },
+    {
+      "source": "feature-rooms",
+      "target": "data-access-profile",
+      "removeBy": "#320",
+      "reason": "Room surfaces currently consume identity state directly."
+    }
+  ],
+  "sourceBaselines": {
+    "appInitializers": {
+      "path": "apps/trinity/src/main.ts",
+      "value": 17,
+      "removeBy": "#314"
+    },
+    "messageViewLines": {
+      "path": "libs/util/matrix/src/lib/message-view.ts",
+      "value": 1738,
+      "removeBy": "#305-#309"
+    },
+    "roomsServiceLines": {
+      "path": "libs/data-access/rooms/src/lib/rooms.service.ts",
+      "value": 1067,
+      "removeBy": "#317-#321"
+    }
+  }
+}

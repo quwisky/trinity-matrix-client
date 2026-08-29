@@ -4,6 +4,12 @@
   "projectType": "library",
   "sourceRoot": "libs/components/radio-group/src",
   "prefix": "trn",
-  "tags": ["type:ui", "scope:shared", "ui:public"],
+  "tags": [
+    "type:ui",
+    "scope:shared",
+    "ui:public",
+    "role:design-system",
+    "capability:design-system"
+  ],
   "targets": { "test": {}, "typecheck": {} }
 }

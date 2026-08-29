@@ -4,7 +4,12 @@
   "projectType": "library",
   "sourceRoot": "libs/util/ui/src",
   "prefix": "trn",
-  "tags": ["type:util", "scope:shared"],
+  "tags": [
+    "type:util",
+    "scope:shared",
+    "role:design-system",
+    "capability:design-system"
+  ],
   "targets": {
     "test": {},
     "typecheck": {}
