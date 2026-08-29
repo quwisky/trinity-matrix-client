@@ -250,6 +250,29 @@ describe('sanitizeMatrixHtml — embedded documents', () => {
   });
 });
 
+describe('sanitizeMatrixHtml — Matrix URI links', () => {
+  it('rewrites a valid matrix: URI to HTTPS before Angular sanitizes the render leaf', () => {
+    const clean = sanitizeMatrixHtml(
+      '<a href="matrix:roomid/room:remote?via=remote.example">Remote room</a>',
+    );
+
+    expect(parse(clean).querySelector('a')?.getAttribute('href')).toBe(
+      'https://matrix.to/#/!room%3Aremote?via=remote.example',
+    );
+  });
+
+  it('keeps a malformed matrix: URI interceptable without preserving its unsafe scheme', () => {
+    const clean = sanitizeMatrixHtml(
+      '<a href="matrix:unknown/something">Broken room link</a>',
+    );
+
+    expect(parse(clean).querySelector('a')?.getAttribute('href')).toBe(
+      'https://matrix.to/#/__invalid-matrix-uri__',
+    );
+    expect(clean).not.toContain('href="matrix:');
+  });
+});
+
 describe('linkifyText', () => {
   it('wraps a bare URL in an anchor, keeping the surrounding text', () => {
     expect(linkifyText('check https://example.com now')).toBe(
@@ -420,6 +443,14 @@ describe('sanitizeMatrixHtml — MSC2545 custom emotes', () => {
 // the client can never emit a formatted_body its own renderer would strip — but none of
 // the render-only normalisation, which has no business on the wire.
 describe('sanitizeOutgoingHtml', () => {
+  it('preserves a Matrix URI on the wire for other clients', () => {
+    expect(
+      sanitizeOutgoingHtml(
+        '<a href="matrix:r/general:example.org">General</a>',
+      ),
+    ).toContain('href="matrix:r/general:example.org"');
+  });
+
   it('does not add the renderer’s spoiler attributes', () => {
     // `tabindex`/`role` are in neither allowlist. They survive on the render side only
     // because they are set after DOMPurify's attribute filter — which is exactly why

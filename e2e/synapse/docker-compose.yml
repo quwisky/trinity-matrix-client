@@ -35,6 +35,23 @@ services:
     networks:
       - trinity-e2e
 
+  # A second homeserver for federation-sensitive journeys. It listens on a distinct
+  # internal port too, so the netns CI override can run both Synapses on one loopback.
+  synapse-remote:
+    image: matrixdotorg/synapse:v1.157.2
+    container_name: trinity-e2e-synapse-remote
+    restart: 'no'
+    environment:
+      SYNAPSE_SERVER_NAME: caddy:9448
+      SYNAPSE_REPORT_STATS: 'no'
+      UID: ${TRINITY_E2E_UID:-991}
+      GID: ${TRINITY_E2E_GID:-991}
+    volumes:
+      - ${TRINITY_E2E_STATE_DIR:-.}/remote-data:/data
+    # Share Caddy's namespace so this server can authenticate requests from the
+    # primary server name `localhost`: its signing key is available at localhost:443.
+    network_mode: 'service:caddy'
+
   # Throwaway OpenID Connect provider, so the suite can hold a Matrix account with no
   # password (see dex.yaml). Synapse reaches it over the compose network; the browser
   # reaches the published port. Memory storage, so there is nothing to clean up.
@@ -62,6 +79,9 @@ services:
       - caddy-config:/config
     ports:
       - '127.0.0.1:8448:8448'
+      - '127.0.0.1:9448:9448'
+      # The remote Synapse shares this namespace and owns the listener itself.
+      - '127.0.0.1:8009:8009'
     networks:
       - trinity-e2e
 

@@ -43,6 +43,7 @@ import { UserPickerService } from '../user-picker/user-picker.service';
 import { UserCardService } from '../user-card/user-card.service';
 import { MemberInfoService } from '../member-info/member-info.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
+import { RoomLinkPreviewComponent } from '../room-link-preview/room-link-preview.component';
 
 // The open room lives in the URL, and the harness's route is module state that outlives a
 // single TestBed — so a room one test opens is still in the URL when the next one builds.
@@ -351,6 +352,8 @@ describe('RoomsPage room / DM / invite actions', () => {
   let userCardOpen: Mock;
   let memberInfoOpen: Mock;
   let canModerate: Mock;
+  let dialogOpen: Mock;
+  let resolveRoomId: Mock;
   let pending: WritableSignal<PendingInvite[]>;
 
   function pendingInvite(over: Partial<PendingInvite> = {}): PendingInvite {
@@ -385,6 +388,8 @@ describe('RoomsPage room / DM / invite actions', () => {
       setPower: false,
       myPower: 0,
     }));
+    dialogOpen = vi.fn().mockResolvedValue(null);
+    resolveRoomId = vi.fn(() => of('!linked:hs'));
     pending = signal<PendingInvite[]>([]);
     TestBed.configureTestingModule({
       providers: [
@@ -396,6 +401,7 @@ describe('RoomsPage room / DM / invite actions', () => {
           createDirectMessage,
           inviteUser,
           directRoomIds: directIds,
+          resolveRoomId,
         }),
         MockProvider(SpacesService, { spaces: signal<SpaceSummary[]>([]) }),
         invitesProvider({
@@ -425,7 +431,7 @@ describe('RoomsPage room / DM / invite actions', () => {
         }),
         MockProvider(ThreadsService),
         MockProvider(AuthService),
-        MockProvider(TrnDialogService),
+        MockProvider(TrnDialogService, { openAndWait: dialogOpen }),
         MockProvider(TrnAlertService, { prompt: alertPrompt }),
         MockProvider(TrnToastService, { show: toastShow }),
       ],
@@ -503,6 +509,82 @@ describe('RoomsPage room / DM / invite actions', () => {
 
     expect(userCardOpen).toHaveBeenCalledWith('@bob:hs', undefined);
     expect(createDirectMessage).not.toHaveBeenCalled();
+  });
+
+  it('previews a room permalink without resolving or joining it first', async () => {
+    const shell = build();
+
+    shell.messages.onMatrixLink({
+      target: {
+        kind: 'room',
+        roomIdOrAlias: '#linked:remote',
+        via: ['remote'],
+      },
+    });
+    await Promise.resolve();
+
+    expect(dialogOpen).toHaveBeenCalledWith(RoomLinkPreviewComponent, {
+      ariaLabel: 'Room information',
+      autoFocus: 'first-heading',
+      side: 'center',
+      inputs: {
+        target: {
+          kind: 'room',
+          roomIdOrAlias: '#linked:remote',
+          via: ['remote'],
+        },
+        sheet: false,
+      },
+    });
+    expect(resolveRoomId).not.toHaveBeenCalled();
+  });
+
+  it('keeps event permalinks on the existing resolve-and-jump path', () => {
+    const shell = build();
+    const openLinkedRoom = vi.spyOn(shell.routing, 'openLinkedRoom');
+
+    shell.messages.onMatrixLink({
+      target: {
+        kind: 'room',
+        roomIdOrAlias: '#linked:remote',
+        eventId: '$event:remote',
+        via: ['remote'],
+      },
+    });
+
+    expect(resolveRoomId).toHaveBeenCalledWith('#linked:remote');
+    expect(openLinkedRoom).toHaveBeenCalledWith('!linked:hs', '$event:remote');
+    expect(dialogOpen).not.toHaveBeenCalled();
+  });
+
+  it('reports a malformed Matrix link instead of opening an overlay', () => {
+    const shell = build();
+
+    shell.messages.onMatrixLink({ target: { kind: 'invalid' } });
+
+    expect(toastShow).toHaveBeenCalledWith(
+      'That Matrix link is malformed or unsupported.',
+      { duration: 4000, variant: 'destructive' },
+    );
+    expect(dialogOpen).not.toHaveBeenCalled();
+  });
+
+  it('routes a newly joined room without waiting for the sidebar sync', async () => {
+    const shell = build();
+    const openConfirmed = vi.spyOn(shell.routing, 'openConfirmedLinkedRoom');
+    dialogOpen.mockResolvedValue({
+      roomId: '!joined:remote',
+      isSpace: false,
+      membershipChanged: true,
+    });
+
+    shell.messages.onMatrixLink({
+      target: { kind: 'room', roomIdOrAlias: '#linked:remote' },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(openConfirmed).toHaveBeenCalledWith('!joined:remote', false);
   });
 
   it('opens a member info panel and starts a DM only if messaged', async () => {

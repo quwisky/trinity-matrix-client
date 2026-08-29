@@ -14,7 +14,7 @@
 
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { copyFile, mkdir, readFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -40,6 +40,8 @@ export const STATE_DIR = process.env['TRINITY_E2E_STATE_DIR']
 
 /** Generated Synapse state: homeserver.yaml, the signing key, the sqlite DB, media. */
 export const DATA = join(STATE_DIR, 'data');
+/** Generated state for the genuinely federated secondary homeserver. */
+export const REMOTE_DATA = join(STATE_DIR, 'remote-data');
 
 /** True when this process is itself running inside a container. */
 function inContainer() {
@@ -131,10 +133,20 @@ export function composeFiles(networkContainer) {
  * *directory* at the mount point and the container fails to parse its config.
  */
 export async function prepareStateDir() {
-  await mkdir(DATA, { recursive: true });
+  await Promise.all([
+    mkdir(DATA, { recursive: true }),
+    mkdir(REMOTE_DATA, { recursive: true }),
+  ]);
   if (STATE_DIR !== HERE) {
     for (const file of ['Caddyfile', 'dex.yaml']) {
       await copyFile(join(HERE, file), join(STATE_DIR, file));
     }
   }
+  // Dex runs unprivileged and must be able to read the bind-mounted config even when
+  // the checkout inherited a restrictive umask (some worktree/copy setups use 0600).
+  await Promise.all(
+    ['Caddyfile', 'dex.yaml'].map((file) =>
+      chmod(join(STATE_DIR, file), 0o644),
+    ),
+  );
 }

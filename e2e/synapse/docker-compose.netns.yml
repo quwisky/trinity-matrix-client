@@ -16,11 +16,17 @@ services:
     ports: !reset []
     networks: !reset null
 
+  synapse-remote:
+    network_mode: 'container:${TRINITY_E2E_NETWORK_CONTAINER}'
+    ports: !reset []
+    networks: !reset null
+
   caddy:
     # No compose network means no `synapse` DNS name; the shared namespace puts it on
     # the same loopback instead.
     environment:
       TRINITY_E2E_SYNAPSE_UPSTREAM: localhost:8008
+      TRINITY_E2E_REMOTE_SYNAPSE_UPSTREAM: localhost:8009
     network_mode: 'container:${TRINITY_E2E_NETWORK_CONTAINER}'
     ports: !reset []
     networks: !reset null

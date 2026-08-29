@@ -9,6 +9,7 @@
 // Keep in sync with the `return` at the end of `start()` and the exported constants.
 
 export declare const SYNAPSE_HTTP: string;
+export declare const SECONDARY_HTTP: string;
 export declare const HS_TLS: string;
 export declare const SERVER_NAME: string;
 export declare const REGISTRATION_SHARED_SECRET: string;
@@ -35,6 +36,13 @@ export interface SynapseHarness {
   user: string;
   pass: string;
   serverName: string;
+  secondary: {
+    /** Host-reachable Client-Server API for setup requests. */
+    hs: string;
+    /** Matrix server name reachable by the primary Synapse over federation. */
+    serverName: string;
+    registrationSecret: string;
+  };
   sso: SynapseSsoAccount;
   /** A second SSO account, permanently seeded for the recovery-reset spec. */
   ssoReset: SynapseSsoAccount;

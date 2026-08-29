@@ -21,6 +21,7 @@ import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import {
   DATA,
+  REMOTE_DATA,
   STATE_DIR,
   composeFiles,
   prepareStateDir,
@@ -31,6 +32,7 @@ import { acquireSynapseLease, releaseSynapseLease } from './lease.mts';
 const exec = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CONFIG = join(DATA, 'homeserver.yaml');
+const REMOTE_CONFIG = join(REMOTE_DATA, 'homeserver.yaml');
 
 /**
  * The config files the stack bind-mounts, by the service that reads one at startup.
@@ -44,6 +46,7 @@ const CONFIG = join(DATA, 'homeserver.yaml');
  */
 const MOUNTED_CONFIG = {
   synapse: CONFIG,
+  'synapse-remote': REMOTE_CONFIG,
   dex: join(STATE_DIR, 'dex.yaml'),
   caddy: join(STATE_DIR, 'Caddyfile'),
 };
@@ -59,6 +62,7 @@ const MOUNTED_CONFIG = {
 const APPLIED_CONFIG = join(DATA, '.applied-config.json');
 
 export const SYNAPSE_HTTP = 'http://localhost:8008';
+export const SECONDARY_HTTP = 'http://localhost:8009';
 export const HS_TLS = 'https://localhost:8448';
 export const SERVER_NAME = 'localhost';
 export const REGISTRATION_SHARED_SECRET = 'trinity-e2e-shared-secret';
@@ -98,6 +102,10 @@ async function exists(p) {
 /** Resolved once per run by start(); '' means "publish ports", the normal case. */
 let networkContainer = '';
 let operationSignal;
+
+function secondaryServerName() {
+  return networkContainer ? 'localhost:9448' : 'caddy:9448';
+}
 
 async function compose(args, opts = {}) {
   return exec(
@@ -296,6 +304,24 @@ async function ensureConfig() {
   if (!yaml.includes('room_list_publication_rules')) {
     additions.push('room_list_publication_rules:', '  - "action": "allow"');
   }
+  if (!/^federation_verify_certificates:/m.test(yaml)) {
+    // The harness Caddy uses its own disposable CA. Federation is still real — only
+    // certificate-chain verification is relaxed inside this isolated test network.
+    additions.push('federation_verify_certificates: false');
+  }
+  if (!/^federation_ip_range_blacklist:/m.test(yaml)) {
+    // Both homeservers live on Docker-private addresses in this disposable stack.
+    additions.push('federation_ip_range_blacklist: []');
+  }
+  let trustedKeysChanged = false;
+  if (!/^\s+accept_keys_insecurely:/m.test(yaml)) {
+    const beforeTrustedKeys = yaml;
+    yaml = yaml.replace(
+      /^(\s+- server_name: ["']?matrix\.org["']?)$/m,
+      '$1\n    accept_keys_insecurely: true',
+    );
+    trustedKeysChanged = yaml !== beforeTrustedKeys;
+  }
 
   if (additions.length) {
     yaml += `\n\n# === appended by e2e/synapse/start.mjs ===\n${additions.join('\n')}\n`;
@@ -311,12 +337,81 @@ async function ensureConfig() {
   const oidcChanged = patched !== yaml;
   yaml = patched;
 
-  if (additions.length || replacedSecret || oidcChanged) {
+  if (additions.length || replacedSecret || oidcChanged || trustedKeysChanged) {
     await writeFile(CONFIG, yaml, 'utf8');
     log(
       'patched homeserver.yaml (shared secret, public_baseurl, rate limits, dex sso)',
     );
   }
+}
+
+/** Generate and patch the second Synapse used by cross-server room-link journeys. */
+async function ensureSecondaryConfig() {
+  const serverName = secondaryServerName();
+  if (!(await exists(REMOTE_CONFIG))) {
+    log(`generating secondary homeserver.yaml for ${serverName}…`);
+    await exec(
+      'docker',
+      [
+        'run',
+        '--rm',
+        '-v',
+        `${REMOTE_DATA}:/data`,
+        '-e',
+        `SYNAPSE_SERVER_NAME=${serverName}`,
+        '-e',
+        'SYNAPSE_REPORT_STATS=no',
+        ...containerUser,
+        'matrixdotorg/synapse:v1.157.2',
+        'generate',
+      ],
+      { signal: operationSignal },
+    );
+  }
+
+  let yaml = await readFile(REMOTE_CONFIG, 'utf8');
+  yaml = yaml.replace(/^server_name:.*$/m, `server_name: "${serverName}"`);
+  yaml = yaml.replace(/^registration_shared_secret:.*$/m, (line) =>
+    line.startsWith('#')
+      ? line
+      : `registration_shared_secret: "${REGISTRATION_SHARED_SECRET}"`,
+  );
+  if (!/^registration_shared_secret:/m.test(yaml)) {
+    yaml += `\nregistration_shared_secret: "${REGISTRATION_SHARED_SECRET}"\n`;
+  }
+
+  // The remote listener is deliberately distinct from the primary's even inside the
+  // container, because netns CI puts both processes on one loopback.
+  yaml = yaml.replace(/(^\s+- port:) \d+$/m, '$1 8009');
+  if (!/^\s+accept_keys_insecurely:/m.test(yaml)) {
+    yaml = yaml.replace(
+      /^(\s+- server_name: ["']?matrix\.org["']?)$/m,
+      '$1\n    accept_keys_insecurely: true',
+    );
+  }
+  const additions = [];
+  if (!/^enable_registration:/m.test(yaml)) {
+    additions.push('enable_registration: true');
+  }
+  if (!/^enable_registration_without_verification:/m.test(yaml)) {
+    additions.push('enable_registration_without_verification: true');
+  }
+  if (!/^federation_verify_certificates:/m.test(yaml)) {
+    additions.push('federation_verify_certificates: false');
+  }
+  if (!/^federation_ip_range_blacklist:/m.test(yaml)) {
+    additions.push('federation_ip_range_blacklist: []');
+  }
+  if (!/^allow_public_rooms_over_federation:/m.test(yaml)) {
+    additions.push('allow_public_rooms_over_federation: true');
+  }
+  if (!/^room_list_publication_rules:/m.test(yaml)) {
+    additions.push('room_list_publication_rules:', '  - "action": "allow"');
+  }
+  if (additions.length) {
+    yaml += `\n# === appended by Trinity federation e2e ===\n${additions.join('\n')}\n`;
+  }
+  await writeFile(REMOTE_CONFIG, yaml, 'utf8');
 }
 
 /** sha256 of every mounted config file as it now sits on disk, keyed by service. */
@@ -418,6 +513,7 @@ export async function start({ signal } = {}) {
       : 'publishing ports on the docker host',
   );
   await ensureConfig();
+  await ensureSecondaryConfig();
   const fingerprints = await configFingerprints();
   const wasRunning = await runningServices();
   log('docker compose up…');
@@ -458,6 +554,13 @@ export async function start({ signal } = {}) {
     return res.ok;
   });
 
+  await waitFor('secondary synapse /health', async () => {
+    const res = await fetch(`${SECONDARY_HTTP}/health`, {
+      signal: operationSignal,
+    });
+    return res.ok;
+  });
+
   // Discovery rather than /healthz: it also proves the issuer Dex serves is the one
   // Synapse was configured with, which is the mismatch that would otherwise only
   // surface as an opaque token-exchange failure mid-login.
@@ -492,12 +595,19 @@ export async function start({ signal } = {}) {
     return body['m.homeserver']?.base_url === HS_TLS;
   });
 
-  log(`up. homeserver=${HS_TLS} user=@${TEST_USER}:${SERVER_NAME}`);
+  log(
+    `up. homeserver=${HS_TLS} secondary=${secondaryServerName()} user=@${TEST_USER}:${SERVER_NAME}`,
+  );
   return {
     hs: HS_TLS,
     user: TEST_USER,
     pass: TEST_PASS,
     serverName: SERVER_NAME,
+    secondary: {
+      hs: SECONDARY_HTTP,
+      serverName: secondaryServerName(),
+      registrationSecret: REGISTRATION_SHARED_SECRET,
+    },
     // The SSO accounts are not registered here: Synapse creates each the first time
     // someone completes the Dex round-trip, and they have no Matrix password to register
     // with. Two of them, because the reset spec permanently seeds the one it uses — see

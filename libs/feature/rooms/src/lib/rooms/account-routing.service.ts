@@ -115,4 +115,18 @@ export class AccountRoutingService {
       this.store.jumpRequest.update((n) => n + 1);
     }
   }
+
+  /**
+   * Open a room/space after a Join or Accept request has succeeded. The normal linked-room
+   * path checks the synced sidebar projection and can briefly reject the new membership
+   * before `/sync` catches up, so confirmed membership deliberately bypasses that stale read.
+   */
+  openConfirmedLinkedRoom(roomId: string, isSpace: boolean): void {
+    if (isSpace) {
+      this.nav.onSelectSpace(roomId);
+      return;
+    }
+    this.nav.onShowRooms();
+    this.nav.onSelectRoom(roomId);
+  }
 }

@@ -1,5 +1,11 @@
 import { Directive, output } from '@angular/core';
-import { parseMatrixToLink, type MatrixLinkTarget } from '@trinity/util/matrix';
+import {
+  isMatrixLinkHref,
+  parseMatrixLink,
+  type MatrixLinkTarget,
+} from '@trinity/util/matrix';
+
+export type MatrixLinkClickTarget = MatrixLinkTarget | { kind: 'invalid' };
 
 /**
  * A `matrix.to` link that was followed, and the element it was followed from.
@@ -14,7 +20,7 @@ import { parseMatrixToLink, type MatrixLinkTarget } from '@trinity/util/matrix';
  * has no business carrying an `HTMLElement`.
  */
 export interface MatrixLinkClick {
-  readonly target: MatrixLinkTarget;
+  readonly target: MatrixLinkClickTarget;
   readonly anchor?: HTMLElement;
 }
 
@@ -47,10 +53,15 @@ export class MatrixLinkDirective {
       return;
     }
 
-    const target = parseMatrixToLink(href);
+    const target = parseMatrixLink(href);
     if (target) {
       event.preventDefault();
       this.matrixLink.emit({ target, anchor });
+      return;
+    }
+    if (isMatrixLinkHref(href)) {
+      event.preventDefault();
+      this.matrixLink.emit({ target: { kind: 'invalid' }, anchor });
       return;
     }
     if (/^https?:\/\//i.test(href)) {

@@ -129,6 +129,11 @@ export interface SynapseSession {
   hs?: string;
   user?: string;
   pass?: string;
+  secondary?: {
+    hs: string;
+    serverName: string;
+    registrationSecret: string;
+  };
   /** Absent when the harness predates the Dex provider, so specs can gate on it. */
   sso?: SsoAccount;
   /**

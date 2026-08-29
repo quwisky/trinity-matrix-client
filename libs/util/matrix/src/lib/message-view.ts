@@ -11,7 +11,11 @@ import DOMPurify from 'dompurify';
 import type { EncryptedFileInfo, MediaKind, MediaPayload } from './media.model';
 import { buildPollView, isPollStart, type PollView } from './poll';
 import { MSC1767_AUDIO, MSC3245_VOICE } from './voice';
-import { parseMatrixToLink } from './matrix-to';
+import {
+  matrixToPermalink,
+  parseMatrixLink,
+  parseMatrixToLink,
+} from './matrix-to';
 
 /**
  * Shared, framework-free projection of a `matrix-js-sdk` {@link MatrixEvent} into a
@@ -828,7 +832,7 @@ const MATRIX_PURIFY_CONFIG = {
   ALLOWED_TAGS: MATRIX_ALLOWED_TAGS,
   ALLOWED_ATTR: MATRIX_ALLOWED_ATTR,
   // Only safe URL schemes on href/src (DOMPurify also blocks javascript:).
-  ALLOWED_URI_REGEXP: /^(?:https?|ftp|mailto|magnet|mxc):/i,
+  ALLOWED_URI_REGEXP: /^(?:https?|ftp|mailto|magnet|matrix|mxc):/i,
 } as const;
 
 /**
@@ -964,6 +968,7 @@ export function sanitizeMatrixHtml(
     ...RENDER_PURIFY_CONFIG,
     RETURN_DOM: true as const,
   }) as HTMLElement;
+  normaliseMatrixUris(body);
   normaliseSpoilers(body);
   normaliseCustomEmotes(body);
   normaliseTaskItems(body);
@@ -978,6 +983,27 @@ export function sanitizeMatrixHtml(
   }
   sanitizedHtmlCache.set(cacheKey, clean);
   return clean;
+}
+
+/**
+ * Angular sanitizes `[innerHTML]` after this framework-free Matrix sanitizer and does not
+ * trust custom URI schemes. Convert valid `matrix:` links to their equivalent HTTPS
+ * matrix.to form before that second boundary. Malformed Matrix URIs become a deliberately
+ * invalid Matrix permalink so the click directive can intercept them and explain the error
+ * rather than leaving a dead or externally navigable link.
+ */
+function normaliseMatrixUris(body: HTMLElement): void {
+  for (const anchor of body.querySelectorAll('a[href]')) {
+    const href = anchor.getAttribute('href') ?? '';
+    if (!/^matrix:/i.test(href)) continue;
+    const target = parseMatrixLink(href);
+    anchor.setAttribute(
+      'href',
+      target
+        ? matrixToPermalink(target)
+        : 'https://matrix.to/#/__invalid-matrix-uri__',
+    );
+  }
 }
 
 /**
