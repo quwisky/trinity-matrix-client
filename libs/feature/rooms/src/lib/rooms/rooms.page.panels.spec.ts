@@ -181,7 +181,10 @@ describe('RoomsPage panels, pins and media', () => {
         MockProvider(AuthService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService, { show: toastShow }),
-        MockProvider(RoomNotificationsService, { setMode: setNotifyMode }),
+        MockProvider(RoomNotificationsService, {
+          connect: vi.fn(),
+          setModeForAccounts: setNotifyMode,
+        }),
       ],
     });
     return shellFrom();
@@ -410,8 +413,10 @@ describe('RoomsPage panels, pins and media', () => {
       accountIds: ['@me:hs', '@alt:hs'],
     });
 
-    expect(setNotifyMode).toHaveBeenCalledWith('!r:hs', 'mute', '@me:hs');
-    expect(setNotifyMode).toHaveBeenCalledWith('!r:hs', 'mute', '@alt:hs');
+    expect(setNotifyMode).toHaveBeenCalledWith('!r:hs', 'mute', [
+      '@me:hs',
+      '@alt:hs',
+    ]);
   });
 
   // Acked per owning account rather than through one bulk call: in the mixed view the

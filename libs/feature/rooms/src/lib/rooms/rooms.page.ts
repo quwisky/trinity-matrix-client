@@ -43,6 +43,7 @@ import { ImagePackService } from '@trinity/data-access/media';
 import {
   NotificationService,
   PushService,
+  RoomNotificationsService,
 } from '@trinity/data-access/notifications';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import { PresenceService } from '@trinity/data-access/profile';
@@ -298,6 +299,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly spaceChildren = inject(SpaceChildrenService);
   private readonly push = inject(PushService);
   private readonly notifications = inject(NotificationService);
+  private readonly roomNotifications = inject(RoomNotificationsService);
   private readonly accountPicker = inject(AccountPickerService);
   private readonly router = inject(Router);
   private readonly injector = inject(Injector);
@@ -477,6 +479,7 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.crypto.connect();
     this.presence.connect(); // live online-status for member avatars
     this.spaceChildren.connect(); // live m.space.child links for the curation surfaces
+    this.roomNotifications.connect(); // live per-room push rules from every account
     // Register for push once the authenticated shell is live (covers both fresh
     // login and a restored session). Best-effort + native-only; no-op elsewhere.
     this.push.register().subscribe({ error: () => undefined });

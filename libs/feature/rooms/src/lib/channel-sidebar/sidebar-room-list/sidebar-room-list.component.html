@@ -131,6 +131,22 @@
           <span class="channel__preview">{{ room.lastMessage }}</span>
         }
       </div>
+      @let mode = notifyMode(room);
+      @if (mode !== 'all') {
+        <trn-icon
+          class="channel__muted"
+          name="bell-off"
+          size="0.875rem"
+          [label]="
+            mode === 'mentions'
+              ? 'Room muted; mentions and keywords still notify'
+              : mode === 'mute'
+                ? 'Room fully muted'
+                : 'Notification settings differ between accounts'
+          "
+          data-testid="room-muted"
+        />
+      }
       @if (room.highlightCount > 0) {
         <span
           class="channel__badge"
@@ -247,6 +263,15 @@
     <ng-template #notifyMenu>
       <div trnDropdownMenuSub>
         @let mode = notifyMode(room);
+        @if (mode === 'mixed') {
+          <p
+            class="notify-menu__mixed"
+            role="status"
+            data-testid="room-notify-mixed"
+          >
+            Different across accounts
+          </p>
+        }
         <button
           trnDropdownMenuRadio
           [checked]="mode === 'all'"
@@ -277,7 +302,7 @@
           data-testid="room-notify-mentions"
         >
           <trn-dropdown-menu-radio-indicator />
-          Mentions &amp; keywords only
+          Mute except mentions &amp; keywords
         </button>
         <button
           trnDropdownMenuRadio
@@ -293,7 +318,7 @@
           data-testid="room-notify-mute"
         >
           <trn-dropdown-menu-radio-indicator />
-          Mute
+          Mute everything
         </button>
       </div>
     </ng-template>

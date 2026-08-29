@@ -19,6 +19,7 @@ import {
   type PendingInvite,
 } from '@trinity/data-access/invites';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
+import { RoomNotificationsService } from '@trinity/data-access/notifications';
 
 import { TrnActionSheetService } from '@trinity/components/overlay';
 import { SettingsDialogService } from '@trinity/components/settings-dialog';
@@ -134,6 +135,10 @@ export const SHARED_MOCKS: Provider[] = [
   MockProvider(SettingsDialogService),
   MockProvider(CryptoService),
   MockProvider(PinnedMessagesService),
+  MockProvider(RoomNotificationsService, {
+    connect: vi.fn(),
+    setModeForAccounts: () => of(undefined),
+  }),
   // A Router whose `navigate` actually MOVES the route, because the store now reads the room
   // from `paramMap` and every "opening a room opens it" assertion in these specs depends on
   // that round trip. A bare auto-stub swallows the call, which would leave `activeRoomId`

@@ -80,7 +80,7 @@ const expectedCompositeCounts = {
   'libs/components/toggle-group/src/lib/trn-toggle-group.component.stories.ts#template-4': 3,
   'libs/components/toggle-group/src/lib/trn-toggle-group.component.stories.ts#template-5': 2,
   'libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.html': 9,
-  'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.html': 7,
+  'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.html': 8,
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-user-panel/sidebar-user-panel.component.html': 5,
   'libs/feature/rooms/src/lib/location-share/location.component.html': 1,
   'libs/feature/rooms/src/lib/message-composer/composer-insert-menu/composer-insert-menu.component.html': 1,
