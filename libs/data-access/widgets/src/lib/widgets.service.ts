@@ -65,6 +65,7 @@ export class WidgetsService {
   };
 
   private readonly projection = projectFromClient({
+    id: 'widgets.room-state',
     matrix: this.matrix,
     bind: (client) => {
       client.on(RoomStateEvent.Events, this.onStateEvent);

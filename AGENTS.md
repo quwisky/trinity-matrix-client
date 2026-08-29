@@ -148,14 +148,17 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
 - `@trinity/runtime/projection` `[type:data-access]`, `[role:kernel]` — Projection Runtime: the
   bounded active-account, all-live-accounts, exact-account, and exact-conversation lifecycle
   primitive. It owns attachment, coalesced reconciliation, generation-safe publication, reset,
-  finite readiness barriers, and resource diagnostics without owning product state or SDK types.
+  scoped reattachment, finite readiness barriers, and resource diagnostics without owning product
+  state or SDK types. Active Account switches use `transition(active-account)` to rebind and
+  acknowledge every live account-scoped projection before the Workspace is repaired.
 - `@trinity/platform-native` `[type:platform]` — Capacitor/native capabilities (session/secure storage,
   preferences, theme/status-bar, launcher badge, external browser, desktop bridge, error handler). Branches on
   `isNativePlatform()` internally. May depend only on `util`.
 - `@trinity/data-access/accounts` `[type:data-access]` — Account Runtime: read-only lifecycle state plus
-  cold, finite restoration and authenticated-establishment commands with Active Account priority, bounded
-  per-Account outcomes, cancellation, joinable identical attempts, explicit lifecycle conflicts, and
-  secret-safe failure metadata. Authentication crosses into it through an opaque grant; its production adapter
+  cold, finite restoration, authenticated-establishment, and atomic switch commands with Active
+  Account priority, bounded per-Account outcomes, cancellation before commit, uninterruptible
+  post-commit cleanup, joinable identical attempts, explicit lifecycle conflicts, and secret-safe
+  failure metadata. Authentication crosses into it through an opaque grant; its production adapter
   composes session storage with Matrix Runtime and commits Active placement only after startup succeeds.
 - `@trinity/data-access/matrix-client` `[type:data-access]` — `MatrixClientService` + the 4S key service;
   the client/session foundation every domain data-access lib depends on, and the Matrix adapter for

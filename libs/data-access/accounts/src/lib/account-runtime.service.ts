@@ -25,6 +25,7 @@ import {
   type AdapterAccountRestoreOutcome,
   type SavedAccountsSnapshot,
 } from './account-runtime.adapter';
+import { AccountSwitchWorkflow } from './account-switch.workflow';
 import {
   AuthenticatedAccountGrant,
   authenticatedAccountGrantPayload,
@@ -38,6 +39,7 @@ import type {
   AccountRestoreRole,
   AccountRestoreResult,
   AccountRuntimeState,
+  AccountSwitchOutcome,
 } from './account-runtime.models';
 
 interface InFlightAccountEstablishment {
@@ -50,6 +52,7 @@ interface InFlightAccountEstablishment {
 export class AccountRuntimeService {
   private readonly adapter = inject(ACCOUNT_RUNTIME_ADAPTER);
   private readonly policy = inject(ACCOUNT_RESTORE_POLICY);
+  private readonly switchWorkflow = inject(AccountSwitchWorkflow);
   private readonly runtimeState = signal<AccountRuntimeState>({
     phase: 'idle',
   });
@@ -64,6 +67,14 @@ export class AccountRuntimeService {
       const startedAt = performance.now();
       if (this.establishment) {
         return of(this.transitionRestoreResult(performance.now() - startedAt));
+      }
+      if (this.switchWorkflow.inProgress) {
+        return of(
+          this.transitionRestoreResult(
+            performance.now() - startedAt,
+            'switching-account',
+          ),
+        );
       }
       let termination: 'pending' | 'settled' | 'failed' = 'pending';
       let activeAccountId: string | null = null;
@@ -125,6 +136,9 @@ export class AccountRuntimeService {
       if (this.runtimeState().phase === 'restoring') {
         return of(this.transitionOutcome(session.userId, intent));
       }
+      if (this.switchWorkflow.inProgress) {
+        return of(this.transitionOutcome(session.userId, intent));
+      }
       const inFlight = this.establishment;
       if (inFlight) {
         return sameAuthenticatedAccountGrant(inFlight.grant, grant) &&
@@ -178,6 +192,29 @@ export class AccountRuntimeService {
       this.establishment = { grant, intent, outcome };
       return outcome;
     });
+  }
+
+  switchActiveAccount(
+    accountId: string,
+    prepare: () => Observable<void> = () => of(void 0),
+  ): Observable<AccountSwitchOutcome> {
+    return defer(() =>
+      this.switchWorkflow.run(
+        accountId,
+        this.activeAccountId,
+        this.blockingSwitchOperation(),
+        prepare,
+        (state) => this.runtimeState.set(state),
+      ),
+    );
+  }
+
+  private blockingSwitchOperation():
+    'restoring-accounts' | 'establishing-account' | null {
+    const phase = this.runtimeState().phase;
+    if (phase === 'restoring') return 'restoring-accounts';
+    if (phase === 'establishing') return 'establishing-account';
+    return null;
   }
 
   private restoreSnapshot(
@@ -382,10 +419,14 @@ export class AccountRuntimeService {
     };
   }
 
-  private transitionRestoreResult(durationMs: number): AccountRestoreResult {
+  private transitionRestoreResult(
+    durationMs: number,
+    operation:
+      'establishing-account' | 'switching-account' = 'establishing-account',
+  ): AccountRestoreResult {
     return {
       kind: 'transition-in-progress',
-      operation: 'establishing-account',
+      operation,
       accounts: [],
       metrics: {
         durationMs,

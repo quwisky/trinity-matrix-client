@@ -69,6 +69,7 @@ export class DevicesService {
    * rather than fixed silently inside one; it wants its own change.
    */
   private readonly projection = projectFromClient({
+    id: 'crypto.devices',
     matrix: this.matrix,
     bind: (client) =>
       client.on(CryptoEvent.DevicesUpdated, this.onDevicesUpdated),

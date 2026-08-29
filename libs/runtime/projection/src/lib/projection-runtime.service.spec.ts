@@ -226,6 +226,42 @@ describe('ProjectionRuntime', () => {
     await expect(readiness).resolves.toMatchObject({ projectionCount: 1 });
   });
 
+  it('reattaches a scope and waits for every new generation', async () => {
+    const runtime = new ProjectionRuntime();
+    const detach = vi.fn();
+    const reset = vi.fn();
+    const reconciliations = [new Subject<void>(), new Subject<void>()];
+    let attached = 0;
+    runtime.activate(
+      definition({
+        scope: { kind: 'active-account' },
+        attach: () => {
+          attached += 1;
+          return detach;
+        },
+        reconcile: () => reconciliations[attached - 1],
+        reset,
+      }),
+    );
+    reconciliations[0].complete();
+
+    let settled = false;
+    const transition = firstValueFrom(
+      runtime.transition({ kind: 'active-account' }),
+    ).then((readiness) => {
+      settled = true;
+      return readiness;
+    });
+
+    expect(attached).toBe(2);
+    expect(detach).toHaveBeenCalledOnce();
+    expect(reset).toHaveBeenCalledOnce();
+    expect(settled).toBe(false);
+
+    reconciliations[1].complete();
+    await expect(transition).resolves.toMatchObject({ projectionCount: 1 });
+  });
+
   it('reports a reconciliation defect through the readiness error channel', async () => {
     const runtime = new ProjectionRuntime();
     const defect = new Error('broken adapter');

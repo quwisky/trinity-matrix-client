@@ -287,21 +287,6 @@ export class AuthService {
   }
 
   /**
-   * Switch the active account. Cheap when it's already live (flips the active client
-   * + persisted pointer); starts it first if it isn't running yet.
-   */
-  switchAccount(userId: string): Observable<void> {
-    if (this.matrix.accountIds().includes(userId)) {
-      this.matrix.setActive(userId);
-      return this.storage.setActive(userId);
-    }
-    return this.storage.load(userId).pipe(
-      switchMap((session) => (session ? this.matrix.add(session) : of(void 0))),
-      switchMap(() => this.storage.setActive(userId)),
-    );
-  }
-
-  /**
    * Sign an account out — the active one by default, or a specific `userId`.
    * Invalidates its server-side device and wipes its local stores. When it was the
    * last account this fully resets (releasing the shared media/avatar caches and

@@ -142,6 +142,7 @@ export class VerificationService {
    * and an incoming verification is human-initiated, so bursts are not a thing.
    */
   private readonly projection = projectFromClient({
+    id: 'crypto.verification-requests',
     matrix: this.matrix,
     bind: (client) =>
       client.on(CryptoEvent.VerificationRequestReceived, this.onIncoming),

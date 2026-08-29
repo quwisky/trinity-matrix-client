@@ -7,6 +7,7 @@ import type {
   AccountEstablishmentIntent,
   AccountRestoreFailure,
   AccountRestoreRole,
+  AccountSwitchFailure,
 } from './account-runtime.models';
 
 export type SavedAccountsSnapshot =
@@ -29,6 +30,10 @@ export type AdapterAccountEstablishmentOutcome =
       readonly failure: AccountEstablishmentFailure;
     };
 
+export type AdapterAccountSwitchOutcome =
+  | { readonly kind: 'ready' }
+  | { readonly kind: 'failed'; readonly failure: AccountSwitchFailure };
+
 export interface AccountRuntimeAdapter {
   readonly activeAccountId: Signal<string | null>;
   sweepOrphanedStores(): Observable<void>;
@@ -41,6 +46,12 @@ export interface AccountRuntimeAdapter {
     grant: AuthenticatedAccountGrant,
     intent: AccountEstablishmentIntent,
   ): Observable<AdapterAccountEstablishmentOutcome>;
+  prepareActiveAccount(
+    accountId: string,
+  ): Observable<AdapterAccountSwitchOutcome>;
+  commitActiveAccount(
+    accountId: string,
+  ): Observable<AdapterAccountSwitchOutcome>;
 }
 
 export interface AccountRestorePolicy {

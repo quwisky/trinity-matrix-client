@@ -104,6 +104,12 @@ authoritative reconciliation, reset, and resource-count callbacks. Projection Ru
 - detaching exact listener references, cancelling queued work, and resetting on release; and
 - acknowledging the current generation through a cold, finite `waitFor(scope)` Observable.
 
+`transition(scope)` is the atomic reattachment path. It cancels each matching generation,
+detaches and resets its adapter, attaches again against the now-authoritative source, reconciles,
+and completes only when every new generation has acknowledged. Active Account switching commits
+the persisted and live Account pointers first, then waits on `transition({ kind:
+'active-account' })` before the Workspace repairs its requested room or space.
+
 The barrier reports duration, projection and listener counts, and deterministic retained payload
 bytes. The local barrier baseline is one frame (16 ms) after its projections acknowledge. Runtime
 diagnostics also accumulate reconciliation count and wall time so background-Account projection
@@ -118,11 +124,11 @@ new enum: at most 40 deterministic payload bytes across the two longest distinct
 value; release returns both counts to zero. Runtime/engine object overhead remains profiler
 evidence rather than a portable unit-test assertion. There is no duplicate SDK store.
 
-## Compatibility projection primitives
+## Active-client projection adapter
 
 Every projecting service has to get the same three things right, and each one was independently
 re-derived — and sometimes mis-derived — before they were extracted into one primitive,
-[`projectFromClient()`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/matrix-client/src/lib/project-from-client.ts).
+[`projectFromClient()`](https://github.com/quwisky/trinity-matrix-client/blob/refactor/refine-architecture/libs/data-access/matrix-client/src/lib/project-from-client.ts).
 
 1. **Coalescing.** A completed `/sync` emits many events at once. Rebuilding an O(rooms) read model
    and re-sorting it once per event is waste.
@@ -144,6 +150,7 @@ re-derived — and sometimes mis-derived — before they were extracted into one
 
 ```ts
 private readonly projection = projectFromClient({
+  id: 'rooms.list',
   matrix: this.matrix,
   events: [ClientEvent.Sync, RoomEvent.Name /* … */],
   rebuild: (client) => this.refresh(client),
@@ -153,23 +160,24 @@ private readonly projection = projectFromClient({
 });
 ```
 
-| Option                           | Default  | What it does                                                                                                                           |
-| -------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `matrix`                         | required | The `MatrixClientService` to project from                                                                                              |
-| `rebuild(client)`                | none     | Rebuild the read model. Called synchronously by `connect()` so consumers see the model immediately, then again on each coalesced flush |
-| `events`                         | `[]`     | Events meaning "the model changed", each bound to a zero-argument coalesced rebuild                                                    |
-| `bind(client)`, `unbind(client)` | none     | Bespoke listeners, for handlers that need the event's arguments or must not be coalesced                                               |
-| `reset()`                        | none     | Clear the read model on disconnect, so a detached service holds no stale projection                                                    |
-| `coalesce`                       | `true`   | Set `false` only where events are genuinely rare and latency beats batching, and say why at the call site                              |
-| `reprojectOnSwitch`              | `true`   | Set `false` only for a projection whose lifetime is already torn down by the switch                                                    |
+| Option                           | Default  | What it does                                                                                         |
+| -------------------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| `id`                             | required | Stable acknowledgement identity inside the active-Account scope                                      |
+| `matrix`                         | required | The `MatrixClientService` to project from                                                            |
+| `rebuild(client)`                | none     | Rebuild the read model during Projection Runtime reconciliation                                      |
+| `events`                         | `[]`     | Events meaning "the model changed", each invalidating one coalesced runtime generation               |
+| `bind(client)`, `unbind(client)` | none     | Bespoke listeners for handlers that need the event's arguments                                       |
+| `reset()`                        | none     | Clear the read model on disconnect or scoped reattachment                                            |
+| `reprojectOnSwitch`              | `true`   | Fallback for legacy Account changes outside the coordinated switch; do not use it as a readiness API |
 
-These primitives remain while existing projections migrate incrementally. New architecture slices
-use Projection Runtime unless their ticket explicitly records a compatibility reason. The returned
+The adapter registers every connected service as an `active-account` Projection Runtime entry,
+so its event bursts, lifecycle, generation safety, and switch acknowledgements use the same
+kernel as new architecture slices. The returned
 `ClientProjection` exposes `connect()`, `disconnect()`, `isConnected()`, `client()` and
 `schedule()`. `connect()` no-ops when the client service is not initialised, no-ops again if
 already wired to the same client, and otherwise disconnects from the previous client first.
-`disconnect()` detaches, calls `unbind`, nulls the connected client, cancels any queued rebuild, and
-then calls `reset()`.
+`disconnect()` releases the runtime lease, which detaches, calls `unbind`, cancels queued work,
+nulls the connected client, and then calls `reset()`.
 
 A projecting service typically just delegates:
 
@@ -235,14 +243,13 @@ an account switch from eagerly connecting page-scoped services that nothing is d
 viewing service connects on demand and re-wires when the account changes, with no per-service
 multi-account design.
 
-!!! warning "Do not act on the new account the moment switchAccount resolves"
+!!! warning "Do not bypass coordinated switch readiness"
 
-    The re-projection runs from an effect, which flushes *after* the switch Observable completes. A
-    space hierarchy requested in the `subscribe` callback is wiped by that flush, and the symptom
-    is a sidebar whose sub-space sections stay empty until the account pill is clicked a second
-    time. `AccountRoutingService.runOnAccount` therefore wraps its follow-up in
-    `afterNextRender(() => then(), { injector })` — defer past the render that follows the switch,
-    not just past the Observable.
+    The `activeUserId()` effect is only a compatibility fallback for Account changes made outside
+    the coordinated path, and it still flushes after those legacy mutations. Product flows use
+    `WorkspaceAccountSwitchService`: its `ready` outcome follows Account commit, synchronous
+    Projection Runtime reattachment, generation acknowledgement, and Workspace selection repair.
+    Consumers can therefore act on `ready` without an `afterNextRender` timing workaround.
 
 ## Who takes the whole primitive, and who takes only the batching
 

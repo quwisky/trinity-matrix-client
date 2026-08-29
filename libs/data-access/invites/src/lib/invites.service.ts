@@ -55,6 +55,7 @@ export class InvitesService {
 
   /** The sync projection: client-keyed listeners, coalesced rebuilds, account switch. */
   private readonly projection = projectFromClient({
+    id: 'invites.active-account',
     matrix: this.matrix,
     events: [
       ClientEvent.Sync,

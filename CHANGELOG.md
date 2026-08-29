@@ -87,6 +87,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Account switches now commit as one coherent Workspace transition.** Trinity first moves to a
+  safe room-shell fallback and releases the outgoing conversation, then Account Runtime persists
+  and activates the target Account, reattaches every live active-Account projection through
+  Projection Runtime, waits for their generation acknowledgements, and finally repairs the
+  requested room or space. Identical concurrent switches join one attempt; conflicting rapid
+  switches and unavailable targets return typed outcomes instead of racing or queuing. Work may
+  be cancelled before commit, while a started commit always finishes its projection cleanup.
+
 - **Account readiness now includes a Projection Runtime barrier.** Projection lifecycle is
   bounded to active-account, all-live-accounts, exact-account, and exact-conversation scopes, with
   generation-safe publishing, coalesced cold RxJS reconciliation, deterministic acknowledgement,

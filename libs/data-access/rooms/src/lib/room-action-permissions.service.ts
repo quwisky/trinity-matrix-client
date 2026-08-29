@@ -85,6 +85,7 @@ export class RoomActionPermissionsService {
   };
 
   private readonly projection = projectFromClient({
+    id: 'rooms.action-permissions',
     matrix: this.matrix,
     bind: (client) => client.on(RoomStateEvent.Events, this.onStateEvent),
     unbind: (client) => client.off(RoomStateEvent.Events, this.onStateEvent),

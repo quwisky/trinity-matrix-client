@@ -328,6 +328,53 @@ test.describe('Multiple accounts', () => {
     await expect(page.locator('.userbar__handle')).toContainText(handleA);
   });
 
+  test('keeps the Workspace coherent through repeated and consecutive switches', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}r`;
+    const userB = `multi-b-${runId}`;
+    const passB = `multi-b-pass-${runId}`;
+    const userC = `multi-c-${runId}`;
+    const passC = `multi-c-pass-${runId}`;
+    await registerUser(request, userB, passB);
+    await registerUser(request, userC, passC);
+
+    await login(page, session);
+    await addAccountViaUi(page, hs, userB, passB);
+    await addAccountViaUi(page, hs, userC, passC);
+
+    const handleA = `@${session.user}:`;
+    const handleB = `@${userB}:`;
+    const handleC = `@${userC}:`;
+    await expect(page.locator('.userbar__handle')).toContainText(handleC);
+
+    // Switch to B, then select the already-active B row again. The second user action is
+    // a no-op and must leave the settled Workspace intact.
+    await page.getByTestId('user-menu-trigger').click();
+    await page.getByTestId('account-row').filter({ hasText: handleB }).click();
+    await expect(page.locator('.userbar__handle')).toContainText(handleB);
+    await page.getByTestId('user-menu-trigger').click();
+    await page.getByTestId('account-row').filter({ hasText: handleB }).click();
+    await expect(page.locator('.userbar__handle')).toContainText(handleB);
+    await expect(
+      page.getByText('Unable to switch accounts right now.'),
+    ).toHaveCount(0);
+
+    // Consecutive real menu actions rebound all visible projections and repair the
+    // Workspace on each target; no stale intermediate Account may remain visible.
+    await page.getByTestId('user-menu-trigger').click();
+    await page.getByTestId('account-row').filter({ hasText: handleC }).click();
+    await expect(page.locator('.userbar__handle')).toContainText(handleC);
+    await page.getByTestId('user-menu-trigger').click();
+    await page.getByTestId('account-row').filter({ hasText: handleA }).click();
+    await expect(page.locator('.userbar__handle')).toContainText(handleA);
+    await expect(
+      page.getByText('Unable to switch accounts right now.'),
+    ).toHaveCount(0);
+  });
+
   test('the app badge sums unread across accounts, invariant to which is active', async ({
     page,
     request,

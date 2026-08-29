@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
+import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { NEVER, Observable, Subject, firstValueFrom, of, tap } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -8,6 +9,7 @@ import {
   type AccountRuntimeAdapter,
   type AdapterAccountEstablishmentOutcome,
   type AdapterAccountRestoreOutcome,
+  type AdapterAccountSwitchOutcome,
   type SavedAccountsSnapshot,
 } from './account-runtime.adapter';
 import { AuthenticatedAccountGrant } from './authenticated-account-grant';
@@ -23,6 +25,8 @@ interface TestAdapter {
   readonly readSavedAccounts: ReturnType<typeof vi.fn>;
   readonly restoreAccount: ReturnType<typeof vi.fn>;
   readonly establishAccount: ReturnType<typeof vi.fn>;
+  readonly prepareActiveAccount: ReturnType<typeof vi.fn>;
+  readonly commitActiveAccount: ReturnType<typeof vi.fn>;
 }
 
 function testAdapter(
@@ -47,17 +51,29 @@ function testAdapter(
     (_grant: AuthenticatedAccountGrant, _intent: AccountEstablishmentIntent) =>
       of<AdapterAccountEstablishmentOutcome>({ kind: 'ready' }),
   );
+  const prepareActiveAccount = vi.fn(() =>
+    of<AdapterAccountSwitchOutcome>({ kind: 'ready' }),
+  );
+  const commitActiveAccount = vi.fn((accountId: string) =>
+    of<AdapterAccountSwitchOutcome>({ kind: 'ready' }).pipe(
+      tap(() => activeAccountId.set(accountId)),
+    ),
+  );
   return {
     activeAccountId,
     readSavedAccounts,
     restoreAccount,
     establishAccount,
+    prepareActiveAccount,
+    commitActiveAccount,
     adapter: {
       activeAccountId: activeAccountId.asReadonly(),
       sweepOrphanedStores: () => of(void 0),
       readSavedAccounts,
       restoreAccount,
       establishAccount,
+      prepareActiveAccount,
+      commitActiveAccount,
     },
   };
 }
@@ -416,5 +432,186 @@ describe('AccountRuntimeService', () => {
     expect(restore.kind).toBe('transition-in-progress');
     expect(test.readSavedAccounts).not.toHaveBeenCalled();
     establishment.unsubscribe();
+  });
+
+  it('prepares, commits, and acknowledges an Active Account switch', async () => {
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: '@old:hs',
+      accountIds: ['@old:hs', '@next:hs'],
+    });
+    test.activeAccountId.set('@old:hs');
+    const runtime = setup(test);
+
+    const result = await firstValueFrom(
+      runtime.switchActiveAccount('@next:hs'),
+    );
+
+    expect(test.prepareActiveAccount).toHaveBeenCalledWith('@next:hs');
+    expect(test.commitActiveAccount).toHaveBeenCalledWith('@next:hs');
+    expect(result).toMatchObject({
+      kind: 'ready',
+      accountId: '@next:hs',
+      metrics: { projectionCount: 0 },
+    });
+    expect(runtime.activeAccountId()).toBe('@next:hs');
+    expect(runtime.state()).toEqual({
+      phase: 'switch-settled',
+      outcome: result,
+    });
+  });
+
+  it('joins an identical switch and rejects a conflicting rapid switch', async () => {
+    const preparation = new Subject<AdapterAccountSwitchOutcome>();
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: '@old:hs',
+      accountIds: ['@old:hs', '@next:hs'],
+    });
+    test.activeAccountId.set('@old:hs');
+    test.prepareActiveAccount.mockReturnValue(preparation);
+    const runtime = setup(test);
+
+    const first = firstValueFrom(runtime.switchActiveAccount('@next:hs'));
+    const repeated = firstValueFrom(runtime.switchActiveAccount('@next:hs'));
+    await expect(
+      firstValueFrom(runtime.switchActiveAccount('@other:hs')),
+    ).resolves.toEqual({
+      kind: 'transition-in-progress',
+      accountId: '@other:hs',
+      operation: 'switching-account',
+    });
+    expect(test.prepareActiveAccount).toHaveBeenCalledOnce();
+
+    preparation.next({ kind: 'ready' });
+    preparation.complete();
+    await expect(first).resolves.toMatchObject({ kind: 'ready' });
+    await expect(repeated).resolves.toMatchObject({ kind: 'ready' });
+    expect(test.commitActiveAccount).toHaveBeenCalledOnce();
+  });
+
+  it('cancels preparation without committing the Active Account', () => {
+    const preparation = new Subject<AdapterAccountSwitchOutcome>();
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: '@old:hs',
+      accountIds: ['@old:hs', '@next:hs'],
+    });
+    test.activeAccountId.set('@old:hs');
+    test.prepareActiveAccount.mockReturnValue(preparation);
+    const runtime = setup(test);
+
+    const subscription = runtime.switchActiveAccount('@next:hs').subscribe();
+    subscription.unsubscribe();
+
+    expect(test.commitActiveAccount).not.toHaveBeenCalled();
+    expect(runtime.state()).toEqual({
+      phase: 'switch-cancelled',
+      accountId: '@next:hs',
+    });
+  });
+
+  it('finishes a committed switch after its caller unsubscribes', () => {
+    const commit = new Subject<AdapterAccountSwitchOutcome>();
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: '@old:hs',
+      accountIds: ['@old:hs', '@next:hs'],
+    });
+    test.activeAccountId.set('@old:hs');
+    test.commitActiveAccount.mockImplementation((accountId: string) =>
+      commit.pipe(
+        tap((outcome) => {
+          if (outcome.kind === 'ready') test.activeAccountId.set(accountId);
+        }),
+      ),
+    );
+    const runtime = setup(test);
+
+    const subscription = runtime.switchActiveAccount('@next:hs').subscribe();
+    subscription.unsubscribe();
+    commit.next({ kind: 'ready' });
+    commit.complete();
+
+    expect(runtime.activeAccountId()).toBe('@next:hs');
+    expect(runtime.state()).toMatchObject({
+      phase: 'switch-settled',
+      outcome: { kind: 'ready', accountId: '@next:hs' },
+    });
+  });
+
+  it('joins an identical switch after activation while readiness is pending', async () => {
+    const barrier = new Subject<void>();
+    let reconciliation = 0;
+    const commit = new Subject<AdapterAccountSwitchOutcome>();
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: '@old:hs',
+      accountIds: ['@old:hs', '@next:hs'],
+    });
+    test.activeAccountId.set('@old:hs');
+    test.commitActiveAccount.mockImplementation((accountId: string) =>
+      commit.pipe(
+        tap((outcome) => {
+          if (outcome.kind === 'ready') test.activeAccountId.set(accountId);
+        }),
+      ),
+    );
+    const runtime = setup(test);
+    TestBed.inject(ProjectionRuntime).activate({
+      id: 'test.visible-projection',
+      scope: { kind: 'active-account' },
+      attach: () => undefined,
+      reset: () => undefined,
+      reconcile: () => (++reconciliation === 1 ? of(void 0) : barrier),
+    });
+
+    const first = firstValueFrom(runtime.switchActiveAccount('@next:hs'));
+    commit.next({ kind: 'ready' });
+    commit.complete();
+    expect(runtime.activeAccountId()).toBe('@next:hs');
+    let repeatedSettled = false;
+    const repeated = firstValueFrom(
+      runtime.switchActiveAccount('@next:hs'),
+    ).then((outcome) => {
+      repeatedSettled = true;
+      return outcome;
+    });
+
+    await Promise.resolve();
+    expect(repeatedSettled).toBe(false);
+    expect(test.prepareActiveAccount).toHaveBeenCalledOnce();
+    barrier.complete();
+
+    await expect(first).resolves.toMatchObject({
+      kind: 'ready',
+      metrics: { projectionCount: 1 },
+    });
+    await expect(repeated).resolves.toMatchObject({
+      kind: 'ready',
+      metrics: { projectionCount: 1 },
+    });
+  });
+
+  it('settles an unavailable target as a typed failure', async () => {
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: '@old:hs',
+      accountIds: ['@old:hs'],
+    });
+    test.activeAccountId.set('@old:hs');
+    test.prepareActiveAccount.mockReturnValue(
+      of({ kind: 'failed', failure: 'account-unavailable' }),
+    );
+    const runtime = setup(test);
+
+    await expect(
+      firstValueFrom(runtime.switchActiveAccount('@missing:hs')),
+    ).resolves.toEqual({
+      kind: 'failed',
+      accountId: '@missing:hs',
+      failure: 'account-unavailable',
+    });
+    expect(test.commitActiveAccount).not.toHaveBeenCalled();
   });
 });

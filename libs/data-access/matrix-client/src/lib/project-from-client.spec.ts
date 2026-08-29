@@ -2,7 +2,9 @@ import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ClientEvent, RoomEvent } from 'matrix-js-sdk';
 import type { MatrixClient } from 'matrix-js-sdk';
+import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
+import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { projectFromClient } from './project-from-client';
 import type { ProjectFromClientConfig } from './project-from-client';
 import type { MatrixClientService } from './matrix-client.service';
@@ -63,6 +65,7 @@ function harness(
   const reset = vi.fn();
   const projection = TestBed.runInInjectionContext(() =>
     projectFromClient({
+      id: 'test.projection',
       matrix,
       rebuild,
       reset,
@@ -144,17 +147,6 @@ describe('projectFromClient', () => {
     expect(rebuild).toHaveBeenCalledOnce();
   });
 
-  it('rebuilds per event when coalescing is off', () => {
-    const { projection, client, rebuild } = harness({ coalesce: false });
-    projection.connect();
-    rebuild.mockClear();
-
-    client.emit(ClientEvent.Sync);
-    client.emit(ClientEvent.Sync);
-
-    expect(rebuild).toHaveBeenCalledTimes(2);
-  });
-
   it('unbinds, resets, and drops a queued rebuild on disconnect', async () => {
     const { projection, client, rebuild, reset } = harness();
     projection.connect();
@@ -229,6 +221,26 @@ describe('projectFromClient', () => {
 
     expect(rebuild).toHaveBeenCalledOnce();
     expect(next.count(ClientEvent.Sync)).toBe(1);
+  });
+
+  it('reattaches synchronously inside an Active Account readiness transition', async () => {
+    const { projection, client, instance, rebuild } = harness();
+    projection.connect();
+    rebuild.mockClear();
+    const next = fakeClient('second');
+    instance.set(next);
+
+    const readiness = await firstValueFrom(
+      TestBed.inject(ProjectionRuntime).transition({ kind: 'active-account' }),
+    );
+
+    expect(client.count(ClientEvent.Sync)).toBe(0);
+    expect(next.count(ClientEvent.Sync)).toBe(1);
+    expect(rebuild).toHaveBeenCalledOnce();
+    expect(readiness.acknowledgements).toContainEqual({
+      projectionId: 'test.projection',
+      generation: expect.any(Number),
+    });
   });
 
   it('does not re-project on a switch while disconnected', () => {

@@ -6,6 +6,7 @@ import {
   untracked,
 } from '@angular/core';
 import { Router } from '@angular/router';
+import { Observable, defer, from, of, tap } from 'rxjs';
 import { encodeRoomSegment } from '@trinity/util/matrix';
 import { MediaService } from '@trinity/data-access/media';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
@@ -19,6 +20,7 @@ import {
 import { ThreadsService, TimelineService } from '@trinity/data-access/timeline';
 import { BELOW_MEMBERS_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { MruRoomsService } from '../shortcuts/mru-rooms.service';
+import type { AccountSwitchDestination } from './account-switch.models';
 import { RoomShellStore } from './room-shell-store';
 
 /**
@@ -234,6 +236,47 @@ export class RoomShellNavigationService {
       this.store.rightPanel.set(null);
     }
     void this.router.navigate(['/rooms']);
+  }
+
+  /** Prepare the Workspace fallback and release the outgoing Conversation. */
+  prepareAccountSwitch(): Observable<boolean> {
+    return defer(() => {
+      if (this.membersAreDrawer()) {
+        this.store.rightPanel.set(null);
+      }
+      return from(this.router.navigate(['/rooms']));
+    }).pipe(
+      tap((prepared) => {
+        if (prepared) this.releaseOpenRoom();
+      }),
+    );
+  }
+
+  /** Repair the requested Workspace selection after Active Account readiness. */
+  repairAccountSelection(
+    destination: AccountSwitchDestination,
+  ): Observable<boolean> {
+    if (destination.kind === 'home') return of(true);
+    if (destination.kind === 'space') {
+      return defer(() => {
+        this.onSelectSpace(destination.spaceId);
+        return of(true);
+      });
+    }
+    return defer(() =>
+      from(
+        this.router.navigate(
+          ['/rooms', encodeRoomSegment(destination.roomId)],
+          { replaceUrl: true },
+        ),
+      ),
+    ).pipe(
+      tap((repaired) => {
+        if (repaired && destination.source === 'user') {
+          this.mru.record(destination.roomId);
+        }
+      }),
+    );
   }
 
   /**

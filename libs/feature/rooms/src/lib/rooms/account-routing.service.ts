@@ -1,18 +1,13 @@
-import {
-  DestroyRef,
-  Injectable,
-  Injector,
-  afterNextRender,
-  inject,
-} from '@angular/core';
+import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { AuthService } from '@trinity/data-access/auth';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AccountScopeService } from '@trinity/data-access/rooms';
+import type { AccountSwitchDestination } from './account-switch.models';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { ShellStatusService } from './shell-status.service';
+import { WorkspaceAccountSwitchService } from './workspace-account-switch.service';
 
 /**
  * Routing a selection to the account that owns it.
@@ -33,26 +28,24 @@ export class AccountRoutingService {
   private readonly vm = inject(RoomShellViewModel);
   private readonly nav = inject(RoomShellNavigationService);
   private readonly status = inject(ShellStatusService);
-  private readonly auth = inject(AuthService);
+  private readonly accountSwitch = inject(WorkspaceAccountSwitchService);
   private readonly matrix = inject(MatrixClientService);
   private readonly accountScope = inject(AccountScopeService);
-  private readonly injector = inject(Injector);
   private readonly destroyRef = inject(DestroyRef);
 
-  /** Switch to `accountId`, then run `then` once the switch has landed. */
-  private runOnAccount(accountId: string, then: () => void): void {
-    this.nav.closeOpenRoom();
-    this.nav.resetViewScope();
-    this.auth
-      .switchAccount(accountId)
+  /** Switch to `accountId`, then repair the requested Workspace destination. */
+  private runOnAccount(
+    accountId: string,
+    destination: AccountSwitchDestination,
+  ): void {
+    this.accountSwitch
+      .switchAccount(accountId, destination)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() =>
-        // Deferred past the render that follows the switch: RoomsService/SpacesService
-        // re-project onto the new client from an effect, and a space hierarchy requested
-        // before that flush is wiped by it — leaving the sidebar's "More Channels" and
-        // sub-space sections permanently empty until the pill is clicked a second time.
-        afterNextRender(() => then(), { injector: this.injector }),
-      );
+      .subscribe((outcome) => {
+        if (outcome.kind !== 'ready') {
+          void this.status.showError('Unable to open that account right now.');
+        }
+      });
   }
 
   /** An account's display name for user-facing copy, falling back to its user id. */
@@ -76,7 +69,11 @@ export class AccountRoutingService {
   onSelectRoomRow(id: string, source: 'user' | 'hop' = 'user'): void {
     const accountId = this.nav.knownRooms().find((r) => r.id === id)?.accountId;
     if (accountId && accountId !== this.matrix.activeUserId()) {
-      this.runOnAccount(accountId, () => this.nav.onSelectRoom(id, source));
+      this.runOnAccount(accountId, {
+        kind: 'room',
+        roomId: id,
+        source,
+      });
       return;
     }
     this.nav.onSelectRoom(id, source);
@@ -91,7 +88,7 @@ export class AccountRoutingService {
       ? this.vm.railSpaces().find((s) => s.id === id)?.accountId
       : undefined;
     if (accountId && accountId !== this.matrix.activeUserId()) {
-      this.runOnAccount(accountId, () => this.nav.onSelectSpace(id));
+      this.runOnAccount(accountId, { kind: 'space', spaceId: id });
       return;
     }
     this.nav.onSelectSpace(id);

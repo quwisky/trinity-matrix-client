@@ -7,6 +7,7 @@ import {
 } from './rooms-page.spec-harness';
 import { computed, signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { AuthService } from '@trinity/data-access/auth';
 import {
   MixedInvitesService,
@@ -31,7 +32,7 @@ import {
 } from '@trinity/data-access/timeline';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { Observable, of, switchMap } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
@@ -119,7 +120,22 @@ describe('RoomsPage mixed-account view', () => {
     accountIds: string[],
     avatars: Record<string, string | null> = {},
   ) {
-    switchAccount = vi.fn(() => of(undefined));
+    switchAccount = vi.fn(
+      (accountId: string, prepare: () => Observable<void>) =>
+        prepare().pipe(
+          switchMap(() =>
+            of({
+              kind: 'ready' as const,
+              accountId,
+              metrics: {
+                durationMs: 0,
+                projectionDurationMs: 0,
+                projectionCount: 0,
+              },
+            }),
+          ),
+        ),
+    );
     setMixedRoomsAccounts = vi.fn();
     shownAccounts = signal<ReadonlySet<string>>(new Set(['@me:hs']));
     toggleAccount = vi.fn();
@@ -187,7 +203,10 @@ describe('RoomsPage mixed-account view', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(AuthService, { switchAccount }),
+        MockProvider(AuthService),
+        MockProvider(AccountRuntimeService, {
+          switchActiveAccount: switchAccount,
+        }),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
       ],
@@ -266,12 +285,17 @@ describe('RoomsPage mixed-account view', () => {
     expect(shell.vm.sidebarTitle()).toBe('Rooms');
   });
 
-  it('switches to the owning account before opening a foreign room', () => {
+  it('switches to the owning account before opening a foreign room', async () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
 
     shell.routing.onSelectRoomRow('!theirs:hs'); // belongs to @alt:hs
-    expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
+    await vi.waitFor(() =>
+      expect(switchAccount).toHaveBeenCalledWith(
+        '@alt:hs',
+        expect.any(Function),
+      ),
+    );
 
     // A room on the active account opens without a switch.
     switchAccount.mockClear();
@@ -280,12 +304,17 @@ describe('RoomsPage mixed-account view', () => {
     expect(shell.store.activeRoomId()).toBe('!mine:hs');
   });
 
-  it('switches to the owning account before selecting a foreign space', () => {
+  it('switches to the owning account before selecting a foreign space', async () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
 
     shell.routing.onSelectSpaceRow('!s-alt:hs'); // belongs to @alt:hs
-    expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
+    await vi.waitFor(() =>
+      expect(switchAccount).toHaveBeenCalledWith(
+        '@alt:hs',
+        expect.any(Function),
+      ),
+    );
 
     // The active account's own space selects without a switch; Home (null) too.
     switchAccount.mockClear();
@@ -329,7 +358,7 @@ describe('RoomsPage mixed-account view', () => {
   // A shortcut/MRU target is routinely OUTSIDE the current view (Home lists DMs only, a
   // space lists its children), so resolving the owning account from visibleRooms() would
   // miss and open the room on whatever client happens to be active.
-  it('resolves a foreign room’s account even when the current view filters it out', () => {
+  it('resolves a foreign room’s account even when the current view filters it out', async () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
     shell.nav.onSelectSpace(null); // Home — DMs only, so '!theirs:hs' is not visible
@@ -339,7 +368,12 @@ describe('RoomsPage mixed-account view', () => {
 
     shell.routing.onSelectRoomRow('!theirs:hs');
 
-    expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
+    await vi.waitFor(() =>
+      expect(switchAccount).toHaveBeenCalledWith(
+        '@alt:hs',
+        expect.any(Function),
+      ),
+    );
   });
 
   // The switcher searches every mixed account, so a jump can land on a room owned by an
@@ -354,7 +388,7 @@ describe('RoomsPage mixed-account view', () => {
     await shell.shortcuts.openSwitcher();
     TestBed.tick(); // the follow-up open is deferred past the re-projection render
 
-    expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
+    expect(switchAccount).toHaveBeenCalledWith('@alt:hs', expect.any(Function));
     expect(shell.store.activeRoomId()).toBe('!theirs:hs');
   });
 
@@ -367,7 +401,7 @@ describe('RoomsPage mixed-account view', () => {
 
     await shell.shortcuts.openSwitcher();
 
-    expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
+    expect(switchAccount).toHaveBeenCalledWith('@alt:hs', expect.any(Function));
   });
 
   // A room that is top-level for the account you are ACTING AS must not vanish from the
