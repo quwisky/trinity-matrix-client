@@ -10,7 +10,15 @@ const KEY = {
   roomId: '!r:hs',
 } as const;
 
-function setup({ localEcho = true, rejected = false } = {}) {
+function setup({
+  localEcho = true,
+  rejected = false,
+  accountId = KEY.accountId,
+}: {
+  localEcho?: boolean;
+  rejected?: boolean;
+  accountId?: string;
+} = {}) {
   const original = fakeEvent({
     id: '$original',
     sender: '@alice:example.org',
@@ -31,6 +39,7 @@ function setup({ localEcho = true, rejected = false } = {}) {
     ),
   };
   const client = {
+    getUserId: vi.fn(() => accountId),
     sendMessage: vi.fn((_roomId: string, _content: unknown) =>
       rejected
         ? Promise.reject(new Error('offline'))
@@ -82,6 +91,22 @@ describe('MatrixConversationTextSender', () => {
         }),
       ),
     ).resolves.toEqual({ kind: 'rejected', retryable: true });
+  });
+
+  it('rejects an action context for a different Account even when the Room id matches', async () => {
+    const { sender, client } = setup({ accountId: '@bob:example.org' });
+
+    await expect(
+      firstValueFrom(
+        sender.send({
+          key: KEY,
+          body: 'hello',
+          mentions: [],
+          intent: { kind: 'message' },
+        }),
+      ),
+    ).resolves.toEqual({ kind: 'rejected', retryable: false });
+    expect(client.sendMessage).not.toHaveBeenCalled();
   });
 
   it('builds formatted text, mentions and slash commands inside the Conversation adapter', async () => {

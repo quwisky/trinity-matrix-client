@@ -227,6 +227,24 @@ describe('ConversationRuntime', () => {
     expect(factory.create).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps drafts independent when two Accounts share the same Room', () => {
+    const { runtime } = setup();
+    const alice = runtime.focus({
+      accountId: ALICE,
+      roomId: '!shared:example.org',
+    });
+    alice.compose.setDraft('alice draft');
+
+    const bob = runtime.focus({
+      accountId: BOB,
+      roomId: '!shared:example.org',
+    });
+
+    expect(bob.compose.draft()).toBe('');
+    bob.compose.setDraft('bob draft');
+    expect(alice.compose.draft()).toBe('alice draft');
+  });
+
   it('releases every listener-owning child when the runtime is retired', () => {
     const { runtime, controller } = setup();
     const alice = runtime.focus({

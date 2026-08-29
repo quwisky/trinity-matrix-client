@@ -8,11 +8,11 @@ const PERSIST_DEBOUNCE_MS = 400;
 const MAX_DRAFTS = 200;
 
 /**
- * Per-conversation composer drafts, persisted across launches. Keyed by a
- * conversation id — a room id for the main composer, a thread's root event id for
- * the thread composer (disjoint namespaces, so they never collide). Like the theme
- * and feature flags, these are non-secret UI state, so they live in Capacitor
- * `Preferences` (localStorage on web, native KV on device), never secure storage.
+ * Per-conversation composer drafts, persisted across launches. Callers supply an opaque
+ * conversation key: Conversation Runtime uses an Account-and-Room key for the main composer,
+ * while the legacy thread composer uses its root event id. Like the theme and feature flags,
+ * these are non-secret UI state, so they live in Capacitor `Preferences` (localStorage on web,
+ * native KV on device), never secure storage.
  *
  * Held in memory and read synchronously; {@link init} (called at startup) loads the
  * saved map before any composer mounts, and writes are debounced.
@@ -84,9 +84,9 @@ export class DraftStoreService implements OnDestroy {
    * by whoever next uses the browser profile. The pending write is cancelled first, or it
    * would re-persist the map 400ms after the wipe.
    *
-   * Not account-scoped, because drafts are keyed by conversation and nothing distinguishes
-   * whose they are — so signing one of several accounts out clears all of them. Losing a
-   * draft is recoverable; leaking one is not.
+   * Although main-room keys include the Account, all drafts share one persisted collection
+   * and legacy thread keys do not. Signing one of several accounts out therefore clears all
+   * drafts. Losing a draft is recoverable; leaking one is not.
    */
   clearAll(): void {
     this.cancelPending();

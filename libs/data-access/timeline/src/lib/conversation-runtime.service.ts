@@ -35,6 +35,10 @@ export interface ConversationKey {
   readonly roomId: string;
 }
 
+function composeDraftKey(key: ConversationKey): string {
+  return `conversation:${JSON.stringify([key.accountId, key.roomId])}`;
+}
+
 export type ConversationState = 'focused' | 'retained' | 'retired';
 
 export type ConversationTimeline = Pick<
@@ -272,6 +276,7 @@ export class ConversationRuntime {
 
   private create(key: ConversationKey): ConversationEntry {
     const immutableKey = Object.freeze({ ...key });
+    const draftKey = composeDraftKey(immutableKey);
     const startedAt = performance.now();
     const controller = this.factory.create(immutableKey);
     this.lastAttachDurationMs.set(performance.now() - startedAt);
@@ -279,8 +284,8 @@ export class ConversationRuntime {
     const composeController = new ConversationComposeController({
       key: immutableKey,
       state: state.asReadonly(),
-      initialDraft: this.drafts.get(key.roomId),
-      persistDraft: (draft) => this.drafts.set(key.roomId, draft),
+      initialDraft: this.initialDraft(immutableKey, draftKey),
+      persistDraft: (draft) => this.drafts.set(draftKey, draft),
       setTyping: (typing) => controller.timeline.setTyping(typing, 'room'),
       send: (request) => this.textSender.send(request),
     });
@@ -301,6 +306,20 @@ export class ConversationRuntime {
     account.set(key.roomId, entry);
     this.entries.set(key.accountId, account);
     return entry;
+  }
+
+  private initialDraft(key: ConversationKey, draftKey: string): string {
+    const scoped = this.drafts.get(draftKey);
+    if (scoped) return scoped;
+
+    // Before Conversation Runtime, the main composer persisted by Room only. Let the first
+    // exact Account-and-Room handle claim that legacy draft, then remove the ambiguous key so
+    // another Account in the same Room cannot inherit it.
+    const legacy = this.drafts.get(key.roomId);
+    if (!legacy) return '';
+    this.drafts.clear(key.roomId);
+    this.drafts.set(draftKey, legacy);
+    return legacy;
   }
 
   private focusedTimeline(): ConversationTimeline {

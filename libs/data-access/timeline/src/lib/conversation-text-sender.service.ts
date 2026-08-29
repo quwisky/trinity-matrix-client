@@ -29,7 +29,11 @@ class MatrixConversationTextSender implements ConversationTextSender {
   ): Observable<ConversationTextDelivery> {
     return defer(() => {
       const context = this.actionContext.resolve();
-      if (!context || context.room.roomId !== request.key.roomId) {
+      if (
+        !context ||
+        context.client.getUserId() !== request.key.accountId ||
+        context.room.roomId !== request.key.roomId
+      ) {
         return of({ kind: 'rejected' as const, retryable: false });
       }
       const { client, room } = context;
