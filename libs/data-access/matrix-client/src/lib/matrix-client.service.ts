@@ -35,6 +35,10 @@ import {
   getTrinityDesktopBridge,
 } from '@trinity/platform-native';
 import {
+  ProjectionRuntime,
+  type ProjectionLease,
+} from '@trinity/runtime/projection';
+import {
   describeMatrixRequestFailure,
   MatrixSession,
   preloadCryptoWasm,
@@ -47,6 +51,13 @@ import { TrinityOidcTokenRefresher } from './oidc-token-refresher';
 
 /** Default deadline for ordinary Matrix HTTP requests made by an account client. */
 const MATRIX_REQUEST_TIMEOUT_MS = 30_000;
+
+/** Resource ceiling for the first production Projection Runtime adapter. */
+export const MATRIX_SYNC_PROJECTION_BASELINE = {
+  listenerCountPerLiveAccount: 1,
+  maxRetainedBytesPerLiveAccount:
+    (SyncState.Reconnecting.length + SyncState.Prepared.length) * 2,
+} as const;
 
 export type PersistedAccountStartOutcome =
   | { readonly kind: 'ready' }
@@ -138,8 +149,8 @@ interface AccountClient {
   readonly syncStore: IndexedDBStore | null;
   /** This account's coarse sync state (null until its first sync transition). */
   readonly syncState: WritableSignal<SyncState | null>;
-  /** Its `ClientEvent.Sync` listener, kept so it can be detached on teardown. */
-  readonly onSync: (state: SyncState) => void;
+  /** Projection Runtime lease owning sync-state attachment and reset. */
+  readonly syncProjection: ProjectionLease;
   /** Its `HttpApiEvent.SessionLoggedOut` listener (server-side token revocation). */
   readonly onLoggedOut: (err: MatrixError) => void;
   /** Its own 4S key holder, wired into this client's crypto callbacks. */
@@ -161,6 +172,7 @@ interface AccountClient {
 @Injectable({ providedIn: 'root' })
 export class MatrixClientService {
   private readonly storage = inject(SessionStorageService);
+  private readonly projections = inject(ProjectionRuntime);
 
   private readonly clients = new Map<string, AccountClient>();
 
@@ -513,8 +525,9 @@ export class MatrixClientService {
       let created: MatrixClient | null = null;
       let store: IndexedDBStore | null = null;
       let account: AccountClient | null = null;
+      let syncProjection: ProjectionLease | null = null;
       const syncState = signal<SyncState | null>(null);
-      const onSync = (state: SyncState): void => syncState.set(state);
+      let latestSyncState: SyncState | null = null;
       const onLoggedOut = (err: MatrixError): void =>
         this.handleServerLogout(session.userId, err);
       // Per-account 4S key holder, wired only into THIS client's callbacks so a
@@ -534,7 +547,7 @@ export class MatrixClientService {
           }
           return;
         }
-        created?.off(ClientEvent.Sync, onSync);
+        syncProjection?.release();
         created?.off(HttpApiEvent.SessionLoggedOut, onLoggedOut);
         created?.stopClient();
         holder.clear();
@@ -600,7 +613,33 @@ export class MatrixClientService {
           ).pipe(catchError(classifyCryptoStartupFailure)),
         ),
         tap(() => {
-          created!.on(ClientEvent.Sync, onSync);
+          const client = created!;
+          syncProjection = this.projections.activate({
+            id: 'matrix.sync-state',
+            scope: { kind: 'exact-account', accountId: session.userId },
+            attach: (invalidate) => {
+              const onSync = (state: SyncState): void => {
+                latestSyncState = state;
+                invalidate();
+              };
+              client.on(ClientEvent.Sync, onSync);
+              return () => client.off(ClientEvent.Sync, onSync);
+            },
+            reconcile: ({ publish }) =>
+              defer(() => {
+                publish(() => syncState.set(latestSyncState));
+                return of(void 0);
+              }),
+            reset: () => syncState.set(null),
+            resources: () => ({
+              listenerCount:
+                MATRIX_SYNC_PROJECTION_BASELINE.listenerCountPerLiveAccount,
+              retainedBytes: retainedSyncProjectionBytes(
+                syncState(),
+                latestSyncState,
+              ),
+            }),
+          });
           created!.on(HttpApiEvent.SessionLoggedOut, onLoggedOut);
         }),
         switchMap(() =>
@@ -616,13 +655,18 @@ export class MatrixClientService {
           ),
         ),
         map(() => {
+          if (!syncProjection) {
+            throw new Error(
+              `Matrix Runtime started without a sync projection: ${session.userId}`,
+            );
+          }
           const started: AccountClient = {
             userId: session.userId,
             client: created!,
             cryptoPrefix: session.cryptoPrefix,
             syncStore: store,
             syncState,
-            onSync,
+            syncProjection,
             onLoggedOut,
             holder,
           };
@@ -634,6 +678,14 @@ export class MatrixClientService {
           this.clearSoftLoggedOut(session.userId);
           return started;
         }),
+        switchMap((started) =>
+          this.projections
+            .waitFor({
+              kind: 'exact-account',
+              accountId: started.userId,
+            })
+            .pipe(map(() => started)),
+        ),
         // Covers error, completion and unsubscription in one place; the error still
         // propagates untouched to the caller.
         finalize(() => {
@@ -648,7 +700,7 @@ export class MatrixClientService {
   /** Stop + drop every client (no store deletion), and forget the 4S key. */
   private teardownAll(): void {
     for (const account of this.clients.values()) {
-      account.client.off(ClientEvent.Sync, account.onSync);
+      account.syncProjection.release();
       account.client.off(HttpApiEvent.SessionLoggedOut, account.onLoggedOut);
       account.client.stopClient();
       account.holder.clear();
@@ -678,7 +730,7 @@ export class MatrixClientService {
       }
       return;
     }
-    account.client.off(ClientEvent.Sync, account.onSync);
+    account.syncProjection.release();
     account.client.off(HttpApiEvent.SessionLoggedOut, account.onLoggedOut);
     account.client.stopClient(); // clearStores must run with the client stopped
     account.holder.clear(); // forget this account's 4S key
@@ -828,4 +880,20 @@ export class MatrixClientService {
         .catch(() => undefined);
     }
   }
+}
+
+/** Counts both published and pending payloads without double-counting one shared value. */
+function retainedSyncProjectionBytes(
+  publishedState: SyncState | null,
+  latestState: SyncState | null,
+): number {
+  const publishedBytes = retainedSyncStateBytes(publishedState);
+  return latestState === publishedState
+    ? publishedBytes
+    : publishedBytes + retainedSyncStateBytes(latestState);
+}
+
+/** Deterministic payload bytes; runtime/engine object overhead remains profiler evidence. */
+function retainedSyncStateBytes(state: SyncState | null): number {
+  return state === null ? 0 : state.length * 2;
 }

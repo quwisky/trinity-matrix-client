@@ -7,10 +7,17 @@ import {
   SyncState,
   createClient,
 } from 'matrix-js-sdk';
-import { firstValueFrom, of } from 'rxjs';
+import { Subject, firstValueFrom, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MatrixClientService } from './matrix-client.service';
+import {
+  MATRIX_SYNC_PROJECTION_BASELINE,
+  MatrixClientService,
+} from './matrix-client.service';
 import { SessionStorageService } from '@trinity/platform-native';
+import {
+  ProjectionRuntime,
+  type ProjectionReadiness,
+} from '@trinity/runtime/projection';
 import { SecretStorageKeyHolder } from './secret-storage-key-holder';
 
 // A controllable fake sync store (the real IndexedDBStore needs a browser IDB).
@@ -89,12 +96,13 @@ function setup() {
   });
   const svc = TestBed.inject(MatrixClientService);
   const storage = TestBed.inject(SessionStorageService);
+  const projections = TestBed.inject(ProjectionRuntime);
   // Default: no persisted session (mirrors the original hand-rolled stub); the
   // save/clear observables aren't exercised by these paths.
   vi.mocked(storage.load).mockReturnValue(of(null));
   // A wipe of a non-live account reads its registry record for the crypto prefix.
   vi.mocked(storage.record).mockReturnValue(of(null));
-  return { svc, storage };
+  return { svc, storage, projections };
 }
 
 describe('MatrixClientService', () => {
@@ -271,6 +279,40 @@ describe('MatrixClientService', () => {
     expect(svc.isInitialized).toBe(false);
   });
 
+  it('does not report an Account ready before its projection barrier acknowledges', async () => {
+    const client = fakeClient();
+    vi.mocked(createClient).mockReturnValue(client as never);
+    const { svc, projections } = setup();
+    const barrier = new Subject<ProjectionReadiness>();
+    const waitFor = vi.spyOn(projections, 'waitFor').mockReturnValue(barrier);
+
+    let settled = false;
+    const start = firstValueFrom(
+      svc.restorePersisted(SESSION, 'background'),
+    ).then((outcome) => {
+      settled = true;
+      return outcome;
+    });
+    await vi.waitFor(() => expect(waitFor).toHaveBeenCalledOnce());
+    expect(waitFor).toHaveBeenCalledWith({
+      kind: 'exact-account',
+      accountId: '@me:hs',
+    });
+    expect(settled).toBe(false);
+
+    barrier.next({
+      scope: { kind: 'exact-account', accountId: '@me:hs' },
+      durationMs: 1,
+      projectionCount: 1,
+      listenerCount: 1,
+      retainedBytes: 0,
+      acknowledgements: [{ projectionId: 'matrix.sync-state', generation: 1 }],
+    });
+    barrier.complete();
+
+    await expect(start).resolves.toEqual({ kind: 'ready' });
+  });
+
   it('tears down a prior client when re-initialized', async () => {
     const a = fakeClient();
     const b = fakeClient();
@@ -335,6 +377,7 @@ describe('MatrixClientService', () => {
     const syncCall = client.on.mock.calls.find(([evt]) => evt === 'sync');
     expect(syncCall).toBeTruthy();
     syncCall![1]('SYNCING');
+    await Promise.resolve();
     expect(svc.syncState()).toBe('SYNCING');
   });
 
@@ -496,10 +539,13 @@ describe('MatrixClientService', () => {
     )?.[1] as (state: SyncState) => void;
 
     onSync(SyncState.Error);
+    await Promise.resolve();
     expect(svc.connectivity()).toBe('offline');
     onSync(SyncState.Reconnecting);
+    await Promise.resolve();
     expect(svc.connectivity()).toBe('offline');
     onSync(SyncState.Syncing);
+    await Promise.resolve();
     expect(svc.connectivity()).toBe('online');
   });
 
@@ -552,6 +598,48 @@ describe('MatrixClientService', () => {
     expect(svc.activeUserId()).toBe('@you:other');
     expect([...svc.accountIds()].sort()).toEqual(['@me:hs', '@you:other']);
     expect(svc.all().length).toBe(2);
+  });
+
+  it('measures projection listeners and retained payload per live Account', async () => {
+    const a = fakeClient();
+    const b = fakeClient();
+    vi.mocked(createClient)
+      .mockReturnValueOnce(a as never)
+      .mockReturnValueOnce(b as never);
+    const { svc, projections } = setup();
+
+    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(svc.add(SESSION_B));
+    expect(projections.diagnostics()).toMatchObject({
+      activeProjections: 2,
+      listenerCount:
+        2 * MATRIX_SYNC_PROJECTION_BASELINE.listenerCountPerLiveAccount,
+      retainedBytes: 0,
+    });
+
+    const publishSync = syncOf(a);
+    publishSync(SyncState.Reconnecting);
+    await Promise.resolve();
+    publishSync(SyncState.Prepared);
+    expect(projections.diagnostics().retainedBytes).toBe(
+      MATRIX_SYNC_PROJECTION_BASELINE.maxRetainedBytesPerLiveAccount,
+    );
+    await Promise.resolve();
+
+    for (const state of Object.values(SyncState)) {
+      publishSync(state);
+      await Promise.resolve();
+      expect(projections.diagnostics().retainedBytes).toBeLessThanOrEqual(
+        MATRIX_SYNC_PROJECTION_BASELINE.maxRetainedBytesPerLiveAccount,
+      );
+    }
+
+    await firstValueFrom(svc.stop());
+    expect(projections.diagnostics()).toMatchObject({
+      activeProjections: 0,
+      listenerCount: 0,
+      retainedBytes: 0,
+    });
   });
 
   it('setActive() switches which client instance returns (no-op if unknown)', async () => {
@@ -724,6 +812,7 @@ describe('MatrixClientService', () => {
 
     syncOf(a)(SyncState.Syncing);
     syncOf(b)(SyncState.Error);
+    await Promise.resolve();
     expect(svc.connectivity()).toBe('offline'); // active B is erroring
 
     svc.setActive('@me:hs');
@@ -809,6 +898,7 @@ describe('MatrixClientService', () => {
     await firstValueFrom(svc.init(SESSION));
 
     syncOf(a1)(SyncState.Syncing);
+    await Promise.resolve();
     expect(svc.syncState()).toBe('SYNCING');
 
     // Re-add the SAME active account: fresh client + fresh per-account syncState
@@ -817,6 +907,7 @@ describe('MatrixClientService', () => {
     expect(svc.syncState()).toBeNull(); // re-bound to a2's untransitioned signal
 
     syncOf(a2)(SyncState.Error); // only the NEW client's listener now feeds state
+    await Promise.resolve();
     expect(svc.connectivity()).toBe('offline');
   });
 

@@ -84,14 +84,15 @@ multi-account land without touching the roughly 110 call sites that read
 
 Each `AccountClient` carries the per-account state that teardown needs later:
 
-| Field                   | Why it is retained                                                                 |
-| ----------------------- | ---------------------------------------------------------------------------------- |
-| `client`                | The live `MatrixClient`.                                                           |
-| `cryptoPrefix`          | So a logout wipe deletes **this** account's crypto store, not the SDK default one. |
-| `syncStore`             | The `IndexedDBStore`, so its connection can be closed.                             |
-| `syncState`             | A per-account signal; `MatrixClientService.syncState` reads the active one.        |
-| `onSync`, `onLoggedOut` | The exact listener references, so they can be detached.                            |
-| `holder`                | This account's `SecretStorageKeyHolder`, cleared on teardown.                      |
+| Field            | Why it is retained                                                                 |
+| ---------------- | ---------------------------------------------------------------------------------- |
+| `client`         | The live `MatrixClient`.                                                           |
+| `cryptoPrefix`   | So a logout wipe deletes **this** account's crypto store, not the SDK default one. |
+| `syncStore`      | The `IndexedDBStore`, so its connection can be closed.                             |
+| `syncState`      | A per-account signal; `MatrixClientService.syncState` reads the active one.        |
+| `syncProjection` | The Projection Runtime lease that owns sync attachment, reset, and readiness.      |
+| `onLoggedOut`    | The exact server-logout listener reference, so it can be detached.                 |
+| `holder`         | This account's `SecretStorageKeyHolder`, cleared on teardown.                      |
 
 ### The lifecycle, in order
 
@@ -106,10 +107,11 @@ Each `AccountClient` carries the per-account state that teardown needs later:
    block login; the cache load is best-effort.
 5. `preloadCryptoWasm()`.
 6. `initRustCrypto({ cryptoDatabasePrefix: session.cryptoPrefix })`.
-7. Attach `ClientEvent.Sync` and `HttpApiEvent.SessionLoggedOut`.
+7. Activate the exact-Account sync-state projection and attach `HttpApiEvent.SessionLoggedOut`.
 8. `startClient({ initialSyncLimit: 20, threadSupport: true })`.
 9. Only now register in the map, publish `accountIds`, publish CORS origins to Electron,
    and clear any soft-logout flag.
+10. Wait for the exact-Account Projection Runtime barrier before reporting the Account ready.
 
 A failure anywhere rolls the whole thing back — listeners off, `stopClient()`,
 `holder.clear()`, store closed — and rethrows, so `isInitialized` never reports a client

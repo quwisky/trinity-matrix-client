@@ -152,7 +152,8 @@
       "@trinity/components/field": ["./libs/components/field/src/index.ts"],
       "@trinity/data-access/accounts": [
         "./libs/data-access/accounts/src/index.ts"
-      ]
+      ],
+      "@trinity/runtime/projection": ["./libs/runtime/projection/src/index.ts"]
     },
     "noUncheckedSideEffectImports": false,
     "types": ["*"]

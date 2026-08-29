@@ -13,7 +13,10 @@
       "metric": "active-account-switch",
       "scope": "The selected account, visible projections, and repaired destination become coherent together.",
       "unit": "milliseconds to projection barrier",
-      "current": "Existing switchAccount journey; barrier instrumentation is introduced by #301 and #302.",
+      "current": "Projection Runtime reports deterministic barrier duration and acknowledgements; atomic switch orchestration remains in #302.",
+      "baseline": {
+        "maxLocalBarrierDurationMs": 16
+      },
       "owner": "Accounts and Workspace",
       "issue": "#301, #302"
     },
@@ -45,7 +48,11 @@
       "metric": "retained-resources",
       "scope": "Blurred, retained, and evicted conversations release listeners and memory according to policy.",
       "unit": "handles, listeners, and retained bytes per account",
-      "current": "Existing room-switch listener and heap observations; deterministic counters are introduced by #304.",
+      "current": "Projection Runtime reports handles, listeners, and deterministic retained payload bytes. The sync-state tracer retains one listener and at most 40 bytes across distinct published and pending enum values per live Account, then returns to zero on release; conversation byte policy remains in #304.",
+      "baseline": {
+        "listenerCountPerLiveAccount": 1,
+        "maxRetainedBytesPerLiveAccount": 40
+      },
       "owner": "Conversations and Projection Runtime",
       "issue": "#301, #304"
     },
@@ -53,7 +60,7 @@
       "metric": "background-account-cpu",
       "scope": "Connected inactive accounts continue normal sync without unbounded application projection work.",
       "unit": "CPU time per minute per inactive account",
-      "current": "Account Runtime records terminal inactive-Account restoration outcomes; per-minute projection CPU sampling remains owned by #301.",
+      "current": "Projection Runtime records reconciliation count and wall time; the sync-state tracer coalesces each event burst to one reconciliation per live Account without duplicating SDK state.",
       "owner": "Accounts and Projection Runtime",
       "issue": "#299, #301"
     }

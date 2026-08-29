@@ -1,6 +1,6 @@
 # Library inventory
 
-The workspace holds one application and 77 libraries. Every shipped library carries its current
+The workspace holds one application and 78 libraries. Every shipped library carries its current
 `type:*` and `scope:*` tags plus target `role:*` and `capability:*` metadata; UI libraries also
 carry a `ui:*` tag that
 separates Trinity's own wrapper layer from the vendored kit; those tags are what
@@ -16,10 +16,10 @@ Libraries are imported through `@trinity/*` path aliases declared in
 [`tsconfig.base.json`](https://github.com/quwisky/trinity-matrix-client/blob/develop/tsconfig.base.json),
 never by relative path across a library boundary. Imports _within_ a library stay relative.
 
-`libs/` itself has seven entries. Four are layer parents holding that layer's libraries:
-`data-access/` (15), `feature/` (5), `util/` (2) and `components/` (31) — the public component
-tier feature code reaches for. `spartan/` (22) groups the generated Helm components plus the
-`tests` project that holds the specs pinning their behaviour. The remaining two are single
+`libs/` itself has eight entries. Five are layer parents holding that layer's libraries:
+`data-access/` (15), `feature/` (5), `util/` (2), `runtime/` (1) and `components/` (31) — the public
+component tier feature code reaches for. `spartan/` (22) groups the generated Helm components plus
+the `tests` project that holds the specs pinning their behaviour. The remaining two are single
 libraries sitting directly under `libs/`: `platform-native` and `testing`.
 
 A library answers to three different strings, and they are not interchangeable. The directories
@@ -50,6 +50,12 @@ libraries, which in practice means npm packages and nothing else in the workspac
 It picks up an inferred `lint` target from the `@nx/eslint` plugin, but it has no `test` target at
 all, so its own correctness is only ever exercised through the specs that import it.
 
+## Shared runtime libraries
+
+| Library                   | Alias                         | Tags                                              | Purpose                                                                                                                                                                                                                             |
+| ------------------------- | ----------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `libs/runtime/projection` | `@trinity/runtime/projection` | `type:data-access`, `scope:shared`, `role:kernel` | Projection Runtime: four closed scope variants, generation-safe publication, coalesced reconciliation, attachment/reset ownership, finite readiness barriers, and deterministic listener, retained-payload, and latency diagnostics |
+
 ## Platform library
 
 | Library                | Alias                      | Tags                            | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -69,7 +75,7 @@ are the only places `matrix-js-sdk` is imported — thirteen of the fifteen do, 
 | Library                          | Alias                                | Tags                                   | Purpose                                                                                                                                                                                                                                                                                                          |
 | -------------------------------- | ------------------------------------ | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `libs/data-access/accounts`      | `@trinity/data-access/accounts`      | `type:data-access`, `scope:matrix`     | Account Runtime: read-only lifecycle state plus cold restore and authenticated-establishment commands; it prioritises the Active Account, bounds saved-Account recovery, joins identical establishment, reports conflicts explicitly, and isolates credential storage and Matrix startup behind one adapter seam |
-| `libs/data-access/matrix-client` | `@trinity/data-access/matrix-client` | `type:data-access`, **`scope:shared`** | The client and session foundation: `MatrixClientService` (a registry of concurrently syncing accounts), `SecretStorageKeyHolder`, and the three projection primitives `projectFromClient`, `coalesce` and `reprojectOnAccountSwitch`                                                                             |
+| `libs/data-access/matrix-client` | `@trinity/data-access/matrix-client` | `type:data-access`, **`scope:shared`** | The client and session foundation: `MatrixClientService` (a registry of concurrently syncing accounts), `SecretStorageKeyHolder`, the Matrix adapter for Projection Runtime's sync-state tracer, and the compatibility primitives `projectFromClient`, `coalesce` and `reprojectOnAccountSwitch`                 |
 | `libs/data-access/auth`          | `@trinity/data-access/auth`          | `type:data-access`, `scope:matrix`     | Password, legacy SSO, OIDC-native authentication and registration produce opaque Account grants; compatibility facades retain logout, account switching, `FactoryResetService`, and `authGuard` while lifecycle ownership moves into Account Runtime                                                             |
 | `libs/data-access/crypto`        | `@trinity/data-access/crypto`        | `type:data-access`, `scope:matrix`     | `CryptoService` (4S, cross-signing and key-backup status), `VerificationService` (emoji SAS), `DevicesService`, and the dev-only `CryptoSpikeService`                                                                                                                                                            |
 | `libs/data-access/gif`           | `@trinity/data-access/gif`           | `type:data-access`, `scope:matrix`     | KLIPY and Giphy search plus the provider settings. Notably imports no other `@trinity` library                                                                                                                                                                                                                   |
