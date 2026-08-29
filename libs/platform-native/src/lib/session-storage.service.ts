@@ -30,6 +30,12 @@ interface AccountRegistry {
   accounts: AccountRecord[];
 }
 
+/** Secret-free persisted Account inventory consumed by Account Runtime. */
+export interface AccountRegistrySnapshot {
+  readonly activeAccountId: string | null;
+  readonly accounts: readonly AccountRecord[];
+}
+
 /** Registry of non-secret account records + the active pointer. */
 const ACCOUNTS_KEY = 'matrix.accounts';
 /** Per-account access-token key in secure storage: `${TOKEN_KEY_PREFIX}${userId}`. */
@@ -109,6 +115,18 @@ export class SessionStorageService {
   /** The stored (non-secret) account records, for an account switcher. */
   list(): Observable<AccountRecord[]> {
     return defer(() => from(this.readRegistry().then((r) => r.accounts)));
+  }
+
+  /** Read the Account inventory and Active Account pointer in one consistent snapshot. */
+  snapshot(): Observable<AccountRegistrySnapshot> {
+    return defer(() =>
+      from(
+        this.readRegistry().then((registry) => ({
+          activeAccountId: registry.activeUserId,
+          accounts: registry.accounts,
+        })),
+      ),
+    );
   }
 
   /**

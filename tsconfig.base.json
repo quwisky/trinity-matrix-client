@@ -149,7 +149,10 @@
       "@trinity/components/settings-dialog": [
         "./libs/components/settings-dialog/src/index.ts"
       ],
-      "@trinity/components/field": ["./libs/components/field/src/index.ts"]
+      "@trinity/components/field": ["./libs/components/field/src/index.ts"],
+      "@trinity/data-access/accounts": [
+        "./libs/data-access/accounts/src/index.ts"
+      ]
     },
     "noUncheckedSideEffectImports": false,
     "types": ["*"]

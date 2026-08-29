@@ -87,6 +87,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Saved accounts now recover through one bounded startup flow.** Trinity starts the active
+  account first while restoring the others concurrently, and one offline, expired, corrupt, or
+  encryption-broken background account no longer disappears into a silent best-effort path.
+  Every saved account reaches a terminal outcome under a deadline; an active account that needs
+  sign-in still returns to login, while healthy inactive accounts remain available.
+
 - **The public design system now has an executable ownership contract.** Foundations, controls,
   overlays, navigation and layout, and generic content each have an explicit Trinity entrypoint;
   product-specific components carry removal owners and follow-up tickets instead of silently

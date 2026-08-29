@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import {
   ClientEvent,
+  ConnectionError,
   HttpApiEvent,
   SyncState,
   createClient,
@@ -91,8 +92,6 @@ function setup() {
   // Default: no persisted session (mirrors the original hand-rolled stub); the
   // save/clear observables aren't exercised by these paths.
   vi.mocked(storage.load).mockReturnValue(of(null));
-  // restoreAll fires an orphan sweep; default it to a no-op so restore paths don't NPE.
-  vi.mocked(storage.sweepOrphanedCryptoStores).mockReturnValue(of(undefined));
   // A wipe of a non-live account reads its registry record for the crypto prefix.
   vi.mocked(storage.record).mockReturnValue(of(null));
   return { svc, storage };
@@ -443,40 +442,6 @@ describe('MatrixClientService', () => {
     expect(svc.isInitialized).toBe(true);
   });
 
-  it('restoreAll flags a token-less stored account as needing re-auth', async () => {
-    const client = fakeClient();
-    vi.mocked(createClient).mockReturnValue(client as never);
-    const { svc, storage } = setup();
-    vi.mocked(storage.list).mockReturnValue(
-      of([
-        { baseUrl: 'https://hs.example', userId: '@me:hs', deviceId: 'DEV' },
-        { baseUrl: 'https://hs.example', userId: '@ghost:hs', deviceId: 'DV2' },
-      ]) as never,
-    );
-    // The active account still has a token; the ghost's was dropped by a soft-logout.
-    vi.mocked(storage.load).mockImplementation(((userId?: string) =>
-      of(userId === '@ghost:hs' ? null : SESSION)) as never);
-
-    await firstValueFrom(svc.restoreAll());
-
-    expect(svc.isInitialized).toBe(true); // active account restored
-    expect(svc.softLoggedOut()).toContain('@ghost:hs'); // ghost surfaced for re-auth
-  });
-
-  it('restore() inits from a stored session, else resolves false', async () => {
-    const client = fakeClient();
-    vi.mocked(createClient).mockReturnValue(client as never);
-    const { svc, storage } = setup();
-
-    vi.mocked(storage.load).mockReturnValue(of(SESSION));
-    await expect(firstValueFrom(svc.restore())).resolves.toBe(true);
-    expect(svc.isInitialized).toBe(true);
-
-    await firstValueFrom(svc.stop());
-    vi.mocked(storage.load).mockReturnValue(of(null));
-    await expect(firstValueFrom(svc.restore())).resolves.toBe(false);
-  });
-
   it('maps sync state to connectivity (offline while erroring/reconnecting)', async () => {
     const client = fakeClient();
     vi.mocked(createClient).mockReturnValue(client as never);
@@ -620,21 +585,6 @@ describe('MatrixClientService', () => {
     expect(svc.isInitialized).toBe(true);
   });
 
-  it('warm() starts an account without making it active', async () => {
-    const a = fakeClient();
-    const b = fakeClient();
-    vi.mocked(createClient)
-      .mockReturnValueOnce(a as never)
-      .mockReturnValueOnce(b as never);
-    const { svc } = setup();
-    await firstValueFrom(svc.init(SESSION)); // A active
-    await firstValueFrom(svc.warm(SESSION_B)); // B added, NOT active
-
-    expect(svc.activeUserId()).toBe('@me:hs'); // still A
-    expect(svc.instance).toBe(a);
-    expect([...svc.accountIds()].sort()).toEqual(['@me:hs', '@you:other']);
-  });
-
   it('clientFor() returns the account client, or null', async () => {
     const a = fakeClient();
     vi.mocked(createClient).mockReturnValue(a as never);
@@ -645,44 +595,82 @@ describe('MatrixClientService', () => {
     expect(svc.clientFor('@nobody:hs')).toBeNull();
   });
 
-  it('restoreAll() starts the active account first and warms the others', async () => {
-    const a = fakeClient();
-    const b = fakeClient();
-    vi.mocked(createClient)
-      .mockReturnValueOnce(a as never)
-      .mockReturnValueOnce(b as never);
-    const { svc, storage } = setup();
-    vi.mocked(storage.list).mockReturnValue(
-      of([{ userId: '@me:hs' }, { userId: '@you:other' }]) as never,
+  describe('persisted Account startup outcomes', () => {
+    it('activates a restored Account only after startup commits', async () => {
+      const client = fakeClient();
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc } = setup();
+
+      const outcome = await firstValueFrom(
+        svc.restorePersisted(SESSION, 'activate'),
+      );
+
+      expect(outcome).toEqual({ kind: 'ready' });
+      expect(svc.activeUserId()).toBe('@me:hs');
+    });
+
+    it('classifies crypto bootstrap failures without exposing their details', async () => {
+      const client = fakeClient();
+      client.initRustCrypto.mockRejectedValue(
+        new Error('secret-bearing crypto detail'),
+      );
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc } = setup();
+
+      const outcome = await firstValueFrom(
+        svc.restorePersisted(SESSION, 'activate'),
+      );
+
+      expect(outcome).toEqual({
+        kind: 'failed',
+        failure: 'crypto-failure',
+      });
+      expect(JSON.stringify(outcome)).not.toContain('secret-bearing');
+      expect(svc.activeUserId()).toBeNull();
+    });
+
+    it.each([
+      [
+        { errcode: 'M_UNKNOWN_TOKEN', httpStatus: 401 },
+        'reauthentication-required',
+      ],
+      [new ConnectionError('offline'), 'transient-network'],
+      [
+        Object.assign(new Error('refresh failed'), {
+          name: 'TokenRefreshError',
+        }),
+        'transient-network',
+      ],
+      [{ httpStatus: 503 }, 'transient-network'],
+      [{ name: 'TimeoutError' }, 'transient-network'],
+    ] as const)(
+      'classifies an expected start failure',
+      async (error, failure) => {
+        const client = fakeClient();
+        client.startClient.mockRejectedValue(error);
+        vi.mocked(createClient).mockReturnValue(client as never);
+        const { svc } = setup();
+
+        await expect(
+          firstValueFrom(svc.restorePersisted(SESSION, 'activate')),
+        ).resolves.toEqual({ kind: 'failed', failure });
+        expect(svc.activeUserId()).toBeNull();
+        expect(svc.softLoggedOut().includes(SESSION.userId)).toBe(
+          failure === 'reauthentication-required',
+        );
+      },
     );
-    // load() → active (SESSION @me:hs); load(userId) → that account's session.
-    vi.mocked(storage.load).mockImplementation(
-      (userId?: string) =>
-        of(userId === '@you:other' ? SESSION_B : SESSION) as never,
-    );
 
-    expect(await firstValueFrom(svc.restoreAll())).toBe(true);
-    expect(svc.activeUserId()).toBe('@me:hs'); // active restored first
+    it('keeps unexpected adapter failures on the Observable error channel', async () => {
+      const client = fakeClient();
+      client.startClient.mockRejectedValue(new Error('adapter defect'));
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc } = setup();
 
-    // The others warm in the background (fire-and-forget) — let it settle.
-    await new Promise((r) => setTimeout(r, 0));
-    expect([...svc.accountIds()].sort()).toEqual(['@me:hs', '@you:other']);
-    expect(svc.activeUserId()).toBe('@me:hs'); // warming didn't steal active
-  });
-
-  it('restoreAll() resolves false when nothing is stored', async () => {
-    const { svc, storage } = setup();
-    vi.mocked(storage.list).mockReturnValue(of([]) as never);
-    expect(await firstValueFrom(svc.restoreAll())).toBe(false);
-    expect(svc.isInitialized).toBe(false);
-  });
-
-  it('restoreAll() sweeps orphaned crypto stores on cold start (even with none stored)', async () => {
-    const { svc, storage } = setup();
-    vi.mocked(storage.list).mockReturnValue(of([]) as never);
-    await firstValueFrom(svc.restoreAll());
-    // Best-effort disk hygiene must run at startup regardless of the restore outcome.
-    expect(storage.sweepOrphanedCryptoStores).toHaveBeenCalledOnce();
+      await expect(
+        firstValueFrom(svc.restorePersisted(SESSION, 'activate')),
+      ).rejects.toThrow('adapter defect');
+    });
   });
 
   it('syncState/connectivity follow the active account across a switch', async () => {
@@ -791,32 +779,6 @@ describe('MatrixClientService', () => {
 
     syncOf(a2)(SyncState.Error); // only the NEW client's listener now feeds state
     expect(svc.connectivity()).toBe('offline');
-  });
-
-  it('restoreAll isolates a failing warmed background account', async () => {
-    const a = fakeClient();
-    const b = fakeClient();
-    b.startClient.mockRejectedValue(new Error('sync boom'));
-    vi.mocked(createClient)
-      .mockReturnValueOnce(a as never)
-      .mockReturnValueOnce(b as never);
-    const { svc, storage } = setup();
-    vi.mocked(storage.list).mockReturnValue(
-      of([{ userId: '@me:hs' }, { userId: '@you:other' }]) as never,
-    );
-    vi.mocked(storage.load).mockImplementation(
-      (userId?: string) =>
-        of(userId === '@you:other' ? SESSION_B : SESSION) as never,
-    );
-
-    expect(await firstValueFrom(svc.restoreAll())).toBe(true); // active still up
-    expect(svc.activeUserId()).toBe('@me:hs');
-    expect(svc.isInitialized).toBe(true);
-
-    await new Promise((resolve) => setTimeout(resolve, 0)); // let the warm fail out
-
-    expect([...svc.accountIds()]).toEqual(['@me:hs']); // the failing account never joined
-    expect(b.stopClient).toHaveBeenCalled(); // its half-started client rolled back
   });
 
   it('ignores a duplicate server logout for an already-removed account', async () => {

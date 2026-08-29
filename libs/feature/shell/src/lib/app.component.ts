@@ -77,7 +77,7 @@ export class AppComponent implements OnInit {
    *
    * `index.html` paints a splash before Angular runs, and Angular clears it the moment the
    * root component renders — which happens BEFORE any route does. What follows is the long
-   * part: `authGuard` calls `restoreAll()`, which opens IndexedDB, loads the crypto WASM,
+   * part: `authGuard` starts Account Runtime, which opens IndexedDB, loads the crypto WASM,
    * runs `initRustCrypto` and starts the client. For that whole window the outlet is empty,
    * so the app went from a splash to a blank screen and stayed there, which reads as a crash
    * rather than as work in progress.

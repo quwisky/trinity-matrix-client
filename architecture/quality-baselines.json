@@ -5,7 +5,7 @@
       "metric": "account-restore",
       "scope": "All saved accounts reach a bounded terminal state, with the active account prioritised.",
       "unit": "milliseconds and terminal accounts",
-      "current": "Existing restoreAll integration behavior; runtime instrumentation is introduced by #299.",
+      "current": "Account Runtime reports total restore duration, Active Account terminal time, and one bounded terminal outcome per saved Account.",
       "owner": "Accounts",
       "issue": "#299"
     },
@@ -53,7 +53,7 @@
       "metric": "background-account-cpu",
       "scope": "Connected inactive accounts continue normal sync without unbounded application projection work.",
       "unit": "CPU time per minute per inactive account",
-      "current": "Existing concurrent-account sync is the comparison behavior; runtime telemetry is introduced by #299 and #301.",
+      "current": "Account Runtime records terminal inactive-Account restoration outcomes; per-minute projection CPU sampling remains owned by #301.",
       "owner": "Accounts and Projection Runtime",
       "issue": "#299, #301"
     }

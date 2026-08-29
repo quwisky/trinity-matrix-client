@@ -1,10 +1,14 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, UrlTree } from '@angular/router';
-import { MockProvider, ngMocks } from 'ng-mocks';
+import { MockProvider } from 'ng-mocks';
 import { Observable, firstValueFrom, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { authGuard } from './auth.guard';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  AccountRuntimeService,
+  type AccountRestoreResult,
+} from '@trinity/data-access/accounts';
 
 /** Run the guard inside an injection context (it takes no route/state). */
 function run(): Observable<boolean | UrlTree> {
@@ -14,7 +18,8 @@ function run(): Observable<boolean | UrlTree> {
 }
 
 describe('authGuard', () => {
-  let matrix: MatrixClientService;
+  const hasActiveAccount = signal(false);
+  let accounts: AccountRuntimeService;
   let router: Router;
   let loginTree: UrlTree;
 
@@ -22,36 +27,67 @@ describe('authGuard', () => {
     loginTree = new UrlTree();
     TestBed.configureTestingModule({
       providers: [
-        MockProvider(MatrixClientService, { isInitialized: false }),
+        MockProvider(AccountRuntimeService, {
+          hasActiveAccount: hasActiveAccount.asReadonly(),
+        }),
         MockProvider(Router),
       ],
     });
-    matrix = TestBed.inject(MatrixClientService);
+    accounts = TestBed.inject(AccountRuntimeService);
     router = TestBed.inject(Router);
+    hasActiveAccount.set(false);
     vi.mocked(router.createUrlTree).mockReturnValue(loginTree);
   });
 
-  it('allows navigation when the client is already initialized', async () => {
-    ngMocks.stubMember(matrix, 'isInitialized', true);
+  it('allows navigation when an Active Account is already ready', async () => {
+    hasActiveAccount.set(true);
     expect(await firstValueFrom(run())).toBe(true);
-    expect(matrix.restoreAll).not.toHaveBeenCalled(); // no restore needed
+    expect(accounts.restoreSavedAccounts).not.toHaveBeenCalled();
   });
 
   it('restores the stored accounts and allows navigation', async () => {
-    vi.mocked(matrix.restoreAll).mockReturnValue(of(true));
+    vi.mocked(accounts.restoreSavedAccounts).mockReturnValue(
+      of(result('restored')),
+    );
     expect(await firstValueFrom(run())).toBe(true);
-    expect(matrix.restoreAll).toHaveBeenCalled();
+    expect(accounts.restoreSavedAccounts).toHaveBeenCalled();
   });
 
   it('redirects to /login when nothing is stored', async () => {
-    vi.mocked(matrix.restoreAll).mockReturnValue(of(false));
+    vi.mocked(accounts.restoreSavedAccounts).mockReturnValue(
+      of(result('no-accounts')),
+    );
     expect(await firstValueFrom(run())).toBe(loginTree);
   });
 
   it('redirects to /login when restore fails', async () => {
-    vi.mocked(matrix.restoreAll).mockReturnValue(
+    vi.mocked(accounts.restoreSavedAccounts).mockReturnValue(
       throwError(() => new Error('restore boom')),
     );
     expect(await firstValueFrom(run())).toBe(loginTree);
   });
 });
+
+function result(kind: 'restored' | 'no-accounts'): AccountRestoreResult {
+  const metrics = {
+    durationMs: 1,
+    activeTerminalMs: kind === 'restored' ? 1 : null,
+    terminalAccounts: kind === 'restored' ? 1 : 0,
+    totalAccounts: kind === 'restored' ? 1 : 0,
+  };
+  return kind === 'restored'
+    ? {
+        kind,
+        activeAccountId: '@me:hs',
+        accounts: [
+          {
+            kind: 'ready',
+            accountId: '@me:hs',
+            role: 'active',
+            durationMs: 1,
+          },
+        ],
+        metrics,
+      }
+    : { kind, accounts: [], metrics };
+}

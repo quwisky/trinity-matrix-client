@@ -481,6 +481,22 @@ describe('SessionStorageService', () => {
     expect(await firstValueFrom(svc.load('@alice:hs'))).toEqual(ALICE_STORED);
   });
 
+  it('snapshots the secret-free Account inventory with its Active Account pointer', async () => {
+    const { svc } = setup();
+    await firstValueFrom(svc.save(ALICE));
+    await firstValueFrom(svc.save(BOB));
+
+    const snapshot = await firstValueFrom(svc.snapshot());
+
+    expect(snapshot.activeAccountId).toBe('@bob:other');
+    expect(snapshot.accounts.map((account) => account.userId)).toEqual([
+      '@alice:hs',
+      '@bob:other',
+    ]);
+    expect(JSON.stringify(snapshot)).not.toContain('alice-token-xyz');
+    expect(JSON.stringify(snapshot)).not.toContain('bob-token-abc');
+  });
+
   it('a same-device re-save (token rotation) reuses the crypto store', async () => {
     const { svc } = setup();
     await firstValueFrom(svc.save(ALICE));

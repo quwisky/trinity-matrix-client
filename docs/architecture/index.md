@@ -1,6 +1,6 @@
 # Architecture overview
 
-Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 76
+Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 77
 libraries under `libs/`, grouped by layer into `libs/data-access/`, `libs/feature/`,
 `libs/util/` and `libs/components/` (the public component tier), alongside
 `libs/platform-native`, `libs/testing` and the `libs/spartan/`
@@ -103,8 +103,9 @@ still fails the scope rule. That is the intended behaviour, not a misconfigurati
 
 This is not a style preference; it is checkable, and it currently holds absolutely. Across every
 non-spec file in `libs/feature/*`, `libs/components/*` and `libs/platform-native` there are zero imports from
-`matrix-js-sdk`. The SDK appears only under `libs/data-access/` — in thirteen of its fourteen
-libraries; `data-access-gif` talks to KLIPY and Giphy and needs none of it — and in
+`matrix-js-sdk`. The SDK appears only under `libs/data-access/` — in thirteen of its fifteen
+libraries; `data-access-accounts` composes the Matrix adapter, while `data-access-gif` talks to
+KLIPY and Giphy, so neither imports the SDK — and in
 `libs/util/matrix`, which models its types.
 
 Two things follow from keeping it that way:
@@ -196,9 +197,11 @@ and every one of them is lazy.
 
 Four details are not obvious from the table:
 
-- **`authGuard` restores every account, not one.** It short-circuits when the client is already
-  initialised, otherwise calls `matrix.restoreAll()`, which activates the persisted account and
-  warms the rest in the background. Any failure maps to a redirect to `/login`.
+- **`authGuard` restores every Account, not one.** It short-circuits when Account Runtime already
+  has an Active Account; otherwise its cold restore command starts the Active Account first and
+  restores the remaining saved Accounts concurrently under per-Account deadlines. Navigation
+  continues when the Active Account is ready even if an inactive Account needs reauthentication
+  or fails, while an unavailable Active Account redirects to `/login`.
 - **`/settings` has no default child redirect.** Bare `/settings` renders the settings shell with
   an empty detail outlet; the fourteen sections are children of it. In-app entry points on web and
   Electron normally open the same registry in `SettingsDialogComponent` without navigating. The
