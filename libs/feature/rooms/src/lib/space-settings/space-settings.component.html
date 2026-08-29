@@ -2,7 +2,7 @@
   <h2 class="space-settings__title">Space settings</h2>
 
   <form [formRoot]="form" class="space-settings__form" (submit)="save()">
-    @if (!canSave() && !canEditAvatar()) {
+    @if (!canSave() && !mayEditAvatar()) {
       <p class="space-settings__note">
         You don’t have permission to change this space’s settings.
       </p>
@@ -24,7 +24,7 @@
           [name]="name()"
           [avatarMxc]="avatarMxc()"
           [initial]="avatarInitial()"
-          [editable]="canEditAvatar()"
+          [editable]="mayEditAvatar()"
           noun="space"
           testid="space-settings-avatar"
         />
@@ -72,8 +72,15 @@
           </span>
         </label>
 
-        @if (canManageAliases()) {
+        @if (mayManageAliases()) {
           <trn-room-aliases [roomId]="spaceId()" />
+        } @else {
+          <p
+            class="space-settings__note"
+            data-testid="space-aliases-unavailable"
+          >
+            Your role cannot change this space’s addresses.
+          </p>
         }
       </trn-tab-panel>
 
@@ -98,8 +105,11 @@
       </button>
       <button
         trnBtn
+        [trnActionAllowed]="canSave()"
+        [trnActionDisabledReason]="saveUnavailableReason()"
+        [trnTooltip]="saveUnavailableReason()"
         type="submit"
-        [disabled]="saving() || !canSave()"
+        [disabled]="saving()"
         data-testid="space-settings-save"
       >
         {{ saving() ? 'Saving…' : 'Save' }}

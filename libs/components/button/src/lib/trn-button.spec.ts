@@ -111,12 +111,20 @@ describe('TrnButton', () => {
     );
 
     button.click();
-    button.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
-    );
-    button.dispatchEvent(
-      new KeyboardEvent('keydown', { key: ' ', bubbles: true }),
-    );
+    const enter = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      bubbles: true,
+      cancelable: true,
+    });
+    const space = new KeyboardEvent('keydown', {
+      key: ' ',
+      bubbles: true,
+      cancelable: true,
+    });
+    expect(button.dispatchEvent(enter)).toBe(false);
+    expect(enter.defaultPrevented).toBe(true);
+    expect(button.dispatchEvent(space)).toBe(false);
+    expect(space.defaultPrevented).toBe(true);
     expect(host.activations()).toBe(0);
 
     host.allowed.set(true);
@@ -124,5 +132,18 @@ describe('TrnButton', () => {
     button.click();
     expect(host.activations()).toBe(1);
     expect(button.hasAttribute('aria-disabled')).toBe(false);
+  });
+
+  it('shows the unavailable reason after a touch tap', async () => {
+    const { container } = await render(AvailabilityHostComponent);
+    const button = container.querySelector('button')!;
+    const touch = new Event('touchend', { bubbles: true, cancelable: true });
+
+    button.dispatchEvent(touch);
+
+    expect(
+      document.querySelector('[data-testid="action-unavailable-feedback"]')
+        ?.textContent,
+    ).toBe('Only room admins can do this.');
   });
 });

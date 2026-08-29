@@ -10,7 +10,8 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, FormRoot, disabled, form } from '@angular/forms/signals';
-import { TrnButton } from '@trinity/components/button';
+import { TrnActionAvailability, TrnButton } from '@trinity/components/button';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import { TrnSelectComponent } from '@trinity/components/select';
 import {
   TrnTabPanelComponent,
@@ -23,6 +24,7 @@ import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import {
   HistoryVisibility,
   JoinRule,
+  RoomActionPermissionsService,
   RoomSettingsService,
 } from '@trinity/data-access/rooms';
 import { initialOf } from '@trinity/util/matrix';
@@ -97,6 +99,8 @@ const HISTORY_OPTIONS = [
     FormField,
     FormRoot,
     TrnButton,
+    TrnActionAvailability,
+    TrnTooltip,
     TrnCheckboxComponent,
     TrnInput,
     AvatarFieldComponent,
@@ -136,6 +140,7 @@ export class RoomSettingsComponent implements OnInit {
 
   private readonly dialogRef = inject<TrnDialogRef<boolean>>(TrnDialogRef);
   private readonly settings = inject(RoomSettingsService);
+  private readonly permissions = inject(RoomActionPermissionsService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -144,13 +149,36 @@ export class RoomSettingsComponent implements OnInit {
   /** First letter of the room name, for the avatar fallback. */
   readonly avatarInitial = computed(() => initialOf(this.name()));
 
+  private readonly livePermissions = computed(() =>
+    this.permissions.settings(this.roomId()),
+  );
+  readonly mayEditName = computed(() => this.livePermissions().name.available);
+  readonly mayEditTopic = computed(
+    () => this.livePermissions().topic.available,
+  );
+  readonly mayEditAvatar = computed(
+    () => this.livePermissions().avatar.available,
+  );
+  readonly mayEditJoinRule = computed(
+    () => this.livePermissions().joinRule.available,
+  );
+  readonly mayEditHistory = computed(
+    () => this.livePermissions().history.available,
+  );
+  readonly mayManageAliases = computed(
+    () => this.livePermissions().aliases.available,
+  );
+  readonly saveUnavailableReason = computed(() =>
+    this.canSave() ? null : 'Your role cannot change these room settings.',
+  );
+
   /** Whether the Save button applies to anything the viewer can change. */
   readonly canSave = computed(
     () =>
-      this.canEditName() ||
-      this.canEditTopic() ||
-      this.canEditJoinRule() ||
-      this.canEditHistory(),
+      this.mayEditName() ||
+      this.mayEditTopic() ||
+      this.mayEditJoinRule() ||
+      this.mayEditHistory(),
   );
 
   /**
@@ -267,11 +295,11 @@ export class RoomSettingsComponent implements OnInit {
 
   readonly form = form(this.model, (path) => {
     applyRoomBasicsGates(path, {
-      canEditName: this.canEditName,
-      canEditTopic: this.canEditTopic,
-      canEditJoinRule: this.canEditJoinRule,
+      canEditName: this.mayEditName,
+      canEditTopic: this.mayEditTopic,
+      canEditJoinRule: this.mayEditJoinRule,
     });
-    disabled(path.historyVisibility, { when: () => !this.canEditHistory() });
+    disabled(path.historyVisibility, { when: () => !this.mayEditHistory() });
   });
 
   // Was a toSignal over joinRule.valueChanges. The model IS a signal, so the projection
@@ -313,10 +341,10 @@ export class RoomSettingsComponent implements OnInit {
     const topic = rawTopic.trim();
     const writes: FieldWrite[] = [];
     // A room name shouldn't be blanked from here — only write a non-empty change.
-    if (this.canEditName() && name && name !== this.name().trim()) {
+    if (this.mayEditName() && name && name !== this.name().trim()) {
       writes.push({ field: 'name', op: this.settings.setName(roomId, name) });
     }
-    if (this.canEditTopic() && topic !== this.topic().trim()) {
+    if (this.mayEditTopic() && topic !== this.topic().trim()) {
       writes.push({
         field: 'topic',
         op: this.settings.setTopic(roomId, topic),
@@ -330,14 +358,14 @@ export class RoomSettingsComponent implements OnInit {
     const accessChanged =
       joinRule !== this.joinRule() ||
       !sameMembers(allow, this.allowedSpaceIds());
-    if (this.canEditJoinRule() && accessChanged) {
+    if (this.mayEditJoinRule() && accessChanged) {
       writes.push({
         field: 'join rule',
         op: this.settings.setJoinRule(roomId, joinRule, allow),
       });
     }
     if (
-      this.canEditHistory() &&
+      this.mayEditHistory() &&
       historyVisibility !== this.historyVisibility()
     ) {
       writes.push({

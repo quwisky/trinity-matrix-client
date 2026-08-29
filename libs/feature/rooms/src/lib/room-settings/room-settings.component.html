@@ -2,7 +2,7 @@
   <h2 class="room-settings__title">Room settings</h2>
 
   <form [formRoot]="form" class="room-settings__form" (submit)="save()">
-    @if (!canSave() && !canEditAvatar()) {
+    @if (!canSave() && !mayEditAvatar()) {
       <p class="room-settings__note">
         You don’t have permission to change this room’s settings.
       </p>
@@ -24,7 +24,7 @@
           [name]="name()"
           [avatarMxc]="avatarMxc()"
           [initial]="avatarInitial()"
-          [editable]="canEditAvatar()"
+          [editable]="mayEditAvatar()"
           noun="room"
           testid="room-settings-avatar"
         />
@@ -100,8 +100,12 @@
           />
         </label>
 
-        @if (canManageAliases()) {
+        @if (mayManageAliases()) {
           <trn-room-aliases [roomId]="roomId()" />
+        } @else {
+          <p class="room-settings__note" data-testid="room-aliases-unavailable">
+            Your role cannot change this room’s addresses.
+          </p>
         }
       </trn-tab-panel>
 
@@ -145,8 +149,11 @@
       </button>
       <button
         trnBtn
+        [trnActionAllowed]="canSave()"
+        [trnActionDisabledReason]="saveUnavailableReason()"
+        [trnTooltip]="saveUnavailableReason()"
         type="submit"
-        [disabled]="saving() || !canSave() || noSpaceChosen()"
+        [disabled]="saving() || noSpaceChosen()"
         data-testid="room-settings-save"
       >
         {{ saving() ? 'Saving…' : 'Save' }}

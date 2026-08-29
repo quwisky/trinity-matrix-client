@@ -23,6 +23,16 @@ export interface RoomActionPermissions {
   readonly curateSpace: ActionAvailability;
 }
 
+/** Live authorization for every state-backed field in room and space settings. */
+export interface RoomSettingsPermissions {
+  readonly name: ActionAvailability;
+  readonly topic: ActionAvailability;
+  readonly avatar: ActionAvailability;
+  readonly joinRule: ActionAvailability;
+  readonly history: ActionAvailability;
+  readonly aliases: ActionAvailability;
+}
+
 export interface MemberActionPermissions {
   readonly kick: ActionAvailability;
   readonly ban: ActionAvailability;
@@ -107,6 +117,33 @@ export class RoomActionPermissionsService {
       )
         ? ALLOWED
         : denied('Your role cannot manage rooms in this space.'),
+    };
+  }
+
+  settings(roomId: string): RoomSettingsPermissions {
+    const context = this.context(roomId);
+    if (!context) {
+      const unavailable = denied('Join this room to change its settings.');
+      return {
+        name: unavailable,
+        topic: unavailable,
+        avatar: unavailable,
+        joinRule: unavailable,
+        history: unavailable,
+        aliases: unavailable,
+      };
+    }
+    const maySend = (type: EventType, label: string): ActionAvailability =>
+      liveRoomState(context.room)?.maySendStateEvent(type, context.userId)
+        ? ALLOWED
+        : denied(`Your role cannot change this room's ${label}.`);
+    return {
+      name: maySend(EventType.RoomName, 'name'),
+      topic: maySend(EventType.RoomTopic, 'topic'),
+      avatar: maySend(EventType.RoomAvatar, 'photo'),
+      joinRule: maySend(EventType.RoomJoinRules, 'join rule'),
+      history: maySend(EventType.RoomHistoryVisibility, 'history visibility'),
+      aliases: maySend(EventType.RoomCanonicalAlias, 'addresses'),
     };
   }
 

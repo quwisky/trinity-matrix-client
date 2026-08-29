@@ -131,7 +131,7 @@ export class RoomAliasesComponent implements OnInit {
     }
     this.setRemoving(alias, true);
     this.aliasesSvc
-      .removeAlias(alias)
+      .removeAlias(this.roomId(), alias)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {

@@ -127,7 +127,7 @@ describe('RoomAliasesComponent', () => {
 
     cmp.remove('#a:hs.example');
 
-    expect(removeAlias).toHaveBeenCalledWith('#a:hs.example');
+    expect(removeAlias).toHaveBeenCalledWith('!r:hs', '#a:hs.example');
     expect(cmp.aliases()).toEqual([]);
     expect(cmp.canonical()).toBeNull(); // it was the main address
     expect(toastShow).toHaveBeenCalledWith(

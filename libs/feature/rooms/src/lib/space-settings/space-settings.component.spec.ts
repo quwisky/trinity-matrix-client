@@ -1,7 +1,9 @@
+import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import {
   RoomAliasesService,
+  RoomActionPermissionsService,
   RoomModerationService,
   RoomSettingsService,
 } from '@trinity/data-access/rooms';
@@ -26,6 +28,7 @@ async function build(
     setName?: Mock;
     setTopic?: Mock;
     setJoinRule?: Mock;
+    settingsPermissions?: Mock;
   } = {},
 ) {
   const setName = over.setName ?? vi.fn(() => of(undefined));
@@ -33,6 +36,20 @@ async function build(
   const setJoinRule = over.setJoinRule ?? vi.fn(() => of(undefined));
   const close = vi.fn();
   const toastShow = vi.fn();
+  const availability = (allowed: boolean) => ({
+    available: allowed,
+    reason: allowed ? null : 'Not allowed.',
+  });
+  const settingsPermissions =
+    over.settingsPermissions ??
+    vi.fn(() => ({
+      name: availability(inputs.canEditName ?? true),
+      topic: availability(inputs.canEditTopic ?? true),
+      avatar: availability(inputs.canEditAvatar ?? true),
+      joinRule: availability(inputs.canEditJoinRule ?? false),
+      history: availability(false),
+      aliases: availability(inputs.canManageAliases ?? false),
+    }));
   const { fixture, container } = await render(SpaceSettingsComponent, {
     inputs: {
       spaceId: '!space:hs',
@@ -50,6 +67,9 @@ async function build(
         setJoinRule,
         setAvatar: vi.fn(() => of(undefined)),
       }),
+      MockProvider(RoomActionPermissionsService, {
+        settings: settingsPermissions,
+      }),
       MockProvider(RoomModerationService, {
         bannedMembers: () => [],
         unban: () => of(undefined),
@@ -66,6 +86,7 @@ async function build(
   return {
     cmp: fixture.componentInstance,
     container,
+    fixture,
     setName,
     setTopic,
     setJoinRule,
@@ -75,6 +96,44 @@ async function build(
 }
 
 describe('SpaceSettingsComponent', () => {
+  it('disables fields and Save when permission changes while open', async () => {
+    const allowed = signal(true);
+    const permission = () => ({
+      available: allowed(),
+      reason: allowed() ? null : 'Not allowed.',
+    });
+    const { container, fixture } = await build(
+      { name: 'N' },
+      {
+        settingsPermissions: vi.fn(() => ({
+          name: permission(),
+          topic: permission(),
+          avatar: permission(),
+          joinRule: permission(),
+          history: permission(),
+          aliases: permission(),
+        })),
+      },
+    );
+    const name = container.querySelector<HTMLInputElement>(
+      '[data-testid="space-settings-name"]',
+    )!;
+    const save = container.querySelector<HTMLElement>(
+      '[data-testid="space-settings-save"]',
+    )!;
+    expect(name.disabled).toBe(false);
+
+    allowed.set(false);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(name.disabled).toBe(true);
+    expect(save.getAttribute('aria-disabled')).toBe('true');
+    expect(
+      container.querySelector('[data-testid="space-aliases-unavailable"]'),
+    ).not.toBeNull();
+  });
+
   it('seeds the form from the current name, topic and join rule', async () => {
     const { cmp } = await build({
       name: 'Design',

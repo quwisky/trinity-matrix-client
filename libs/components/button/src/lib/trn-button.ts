@@ -6,6 +6,7 @@ import {
   inject,
   input,
 } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
 import { HlmButton } from '@trinity/helm/button';
 
 /**
@@ -67,7 +68,10 @@ export class TrnActionAvailability {
   readonly trnActionDisabledReason = input<string | null>(null);
 
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly document = inject(DOCUMENT);
   private readonly destroyRef = inject(DestroyRef);
+  private feedback: HTMLElement | null = null;
+  private feedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     const element = this.host.nativeElement;
@@ -77,11 +81,26 @@ export class TrnActionAvailability {
         this.block(event);
       }
     };
+    const explainTouch = (event: PointerEvent): void => {
+      if (event.pointerType === 'touch' && !this.trnActionAllowed()) {
+        this.showTouchReason();
+      }
+    };
+    const explainTouchFallback = (): void => {
+      if (!this.trnActionAllowed()) {
+        this.showTouchReason();
+      }
+    };
     element.addEventListener('click', blockClick, true);
     element.addEventListener('keydown', blockActivationKey, true);
+    element.addEventListener('pointerup', explainTouch, true);
+    element.addEventListener('touchend', explainTouchFallback, true);
     this.destroyRef.onDestroy(() => {
       element.removeEventListener('click', blockClick, true);
       element.removeEventListener('keydown', blockActivationKey, true);
+      element.removeEventListener('pointerup', explainTouch, true);
+      element.removeEventListener('touchend', explainTouchFallback, true);
+      this.clearTouchReason();
     });
   }
 
@@ -91,6 +110,37 @@ export class TrnActionAvailability {
     }
     event.preventDefault();
     event.stopImmediatePropagation();
+  }
+
+  /** Tooltips deliberately ignore touch, so a blocked tap gets a short visible reason. */
+  private showTouchReason(): void {
+    const reason = this.trnActionDisabledReason()?.trim();
+    if (!reason) {
+      return;
+    }
+    this.document
+      .querySelector<HTMLElement>('[data-trn-action-feedback]')
+      ?.remove();
+    this.clearTouchReason();
+    const feedback = this.document.createElement('div');
+    feedback.className = 'trn-action-feedback';
+    feedback.dataset['trnActionFeedback'] = '';
+    feedback.dataset['testid'] = 'action-unavailable-feedback';
+    feedback.setAttribute('role', 'status');
+    feedback.setAttribute('aria-live', 'polite');
+    feedback.textContent = reason;
+    this.document.body.append(feedback);
+    this.feedback = feedback;
+    this.feedbackTimer = setTimeout(() => this.clearTouchReason(), 3000);
+  }
+
+  private clearTouchReason(): void {
+    if (this.feedbackTimer) {
+      clearTimeout(this.feedbackTimer);
+      this.feedbackTimer = null;
+    }
+    this.feedback?.remove();
+    this.feedback = null;
   }
 }
 

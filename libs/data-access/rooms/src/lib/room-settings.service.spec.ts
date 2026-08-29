@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { HistoryVisibility, JoinRule } from 'matrix-js-sdk';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { RoomActionPermissionsService } from './room-action-permissions.service';
 import { RoomSettingsService } from './room-settings.service';
 
 function setup(
@@ -71,12 +72,29 @@ function setup(
     getRoom: () => room,
     getUserId: () => '@me:hs',
   };
+  const permissionFor = (type: string) => ({
+    available: opts.may ? opts.may(type) : true,
+    reason: opts.may && !opts.may(type) ? 'Not allowed.' : null,
+  });
   TestBed.configureTestingModule({
     providers: [
       RoomSettingsService,
       MockProvider(MatrixClientService, {
         isInitialized: !opts.signedOut,
         instance: instance as never,
+      }),
+      MockProvider(RoomActionPermissionsService, {
+        settings: () => ({
+          name: permissionFor('m.room.name'),
+          topic: permissionFor('m.room.topic'),
+          avatar: permissionFor('m.room.avatar'),
+          joinRule: permissionFor('m.room.join_rules'),
+          history: permissionFor('m.room.history_visibility'),
+          aliases: permissionFor('m.room.canonical_alias'),
+        }),
+        assert: (permission: { available: boolean }) => {
+          if (!permission.available) throw new Error('Not allowed.');
+        },
       }),
     ],
   });
@@ -105,6 +123,17 @@ describe('RoomSettingsService', () => {
 
     await firstValueFrom(svc.setTopic('!r:hs', '  hello  '));
     expect(setRoomTopic).toHaveBeenCalledWith('!r:hs', 'hello');
+  });
+
+  it('rechecks the live state permission before a write', async () => {
+    const { svc, setRoomName } = setup({
+      may: (type) => type !== 'm.room.name',
+    });
+
+    await expect(firstValueFrom(svc.setName('!r:hs', 'Nope'))).rejects.toThrow(
+      'Not allowed',
+    );
+    expect(setRoomName).not.toHaveBeenCalled();
   });
 
   it('setAvatar uploads the file then writes m.room.avatar', async () => {

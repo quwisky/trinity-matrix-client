@@ -6,19 +6,20 @@
     [size]="64"
     [shape]="shape()"
   />
-  @if (editable()) {
-    <button
-      trnBtn
-      type="button"
-      variant="outline"
-      size="sm"
-      (click)="pickAvatar()"
-      [disabled]="savingAvatar()"
-      [attr.data-testid]="testid()"
-    >
-      {{ savingAvatar() ? 'Uploading…' : 'Change photo' }}
-    </button>
-  }
+  <button
+    trnBtn
+    type="button"
+    variant="outline"
+    size="sm"
+    (click)="pickAvatar()"
+    [trnActionAllowed]="editable()"
+    [trnActionDisabledReason]="unavailableReason()"
+    [trnTooltip]="editable() ? 'Change photo' : unavailableReason()"
+    [disabled]="savingAvatar()"
+    [attr.data-testid]="testid()"
+  >
+    {{ savingAvatar() ? 'Uploading…' : 'Change photo' }}
+  </button>
 </div>
 
 <!-- Outside the row so a `display: flex` on it never lays out a hidden input. -->

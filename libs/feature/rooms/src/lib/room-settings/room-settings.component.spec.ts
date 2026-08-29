@@ -12,6 +12,7 @@ import {
 import { ExternalBrowserService } from '@trinity/platform-native';
 import {
   RoomAliasesService,
+  RoomActionPermissionsService,
   RoomModerationService,
   RoomSettingsService,
 } from '@trinity/data-access/rooms';
@@ -43,6 +44,7 @@ async function build(
     setAvatar?: Mock;
     setJoinRule?: Mock;
     setHistoryVisibility?: Mock;
+    settingsPermissions?: Mock;
   } = {},
 ) {
   const setName = over.setName ?? vi.fn(() => of(undefined));
@@ -55,6 +57,20 @@ async function build(
   const toastShow = vi.fn();
   const widgets = signal([]);
   const canManageWidgets = signal(false);
+  const availability = (allowed: boolean) => ({
+    available: allowed,
+    reason: allowed ? null : 'Not allowed.',
+  });
+  const settingsPermissions =
+    over.settingsPermissions ??
+    vi.fn(() => ({
+      name: availability(inputs.canEditName ?? true),
+      topic: availability(inputs.canEditTopic ?? true),
+      avatar: availability(inputs.canEditAvatar ?? true),
+      joinRule: availability(inputs.canEditJoinRule ?? false),
+      history: availability(inputs.canEditHistory ?? false),
+      aliases: availability(inputs.canManageAliases ?? false),
+    }));
   const { fixture, container } = await render(RoomSettingsComponent, {
     inputs: {
       roomId: '!r:hs',
@@ -72,6 +88,9 @@ async function build(
         setAvatar,
         setJoinRule,
         setHistoryVisibility,
+      }),
+      MockProvider(RoomActionPermissionsService, {
+        settings: settingsPermissions,
       }),
       MockProvider(RoomModerationService, {
         bannedMembers: () => [],
@@ -112,6 +131,44 @@ async function build(
 
 /** A synthetic file-input change event carrying `file` (or none). */
 describe('RoomSettingsComponent', () => {
+  it('disables fields and Save when permission changes while open', async () => {
+    const allowed = signal(true);
+    const permission = () => ({
+      available: allowed(),
+      reason: allowed() ? null : 'Not allowed.',
+    });
+    const { container, fixture } = await build(
+      { name: 'N' },
+      {
+        settingsPermissions: vi.fn(() => ({
+          name: permission(),
+          topic: permission(),
+          avatar: permission(),
+          joinRule: permission(),
+          history: permission(),
+          aliases: permission(),
+        })),
+      },
+    );
+    const name = container.querySelector<HTMLInputElement>(
+      '[data-testid="room-settings-name"]',
+    )!;
+    const save = container.querySelector<HTMLElement>(
+      '[data-testid="room-settings-save"]',
+    )!;
+    expect(name.disabled).toBe(false);
+
+    allowed.set(false);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(name.disabled).toBe(true);
+    expect(save.getAttribute('aria-disabled')).toBe('true');
+    expect(
+      container.querySelector('[data-testid="room-aliases-unavailable"]'),
+    ).not.toBeNull();
+  });
+
   it('offers restricted only when the room sits in a space', async () => {
     const withSpace = await build({
       parentSpaces: [{ id: '!s:hs', name: 'Design' }],

@@ -42,6 +42,7 @@ async function build(
     canBan?: boolean;
     canSetPower?: boolean;
     myPower?: number;
+    targetPower?: number;
     kick?: Mock;
     ban?: Mock;
     setPowerLevel?: Mock;
@@ -100,7 +101,7 @@ async function build(
             reason: opts.canSetPower ? null : 'Cannot change this role.',
           },
           myPower: opts.myPower ?? 0,
-          targetPower: m.powerLevel,
+          targetPower: opts.targetPower ?? m.powerLevel,
         }),
         role: (_roomId: string, _userId: string, level: number) => ({
           available:
@@ -521,6 +522,22 @@ describe('MemberInfoComponent', () => {
 
     expect(setPowerLevel).toHaveBeenCalledWith('!r:hs', '@bob:hs', 50);
     expect(close).toHaveBeenCalledWith(null);
+  });
+
+  it('styles a demotion from the live target role as destructive', async () => {
+    const alertConfirm = vi.fn().mockResolvedValue(false);
+    const { cmp } = await build(member({ powerLevel: 0 }), {
+      canSetPower: true,
+      myPower: 100,
+      targetPower: 100,
+      alertConfirm,
+    });
+
+    await cmp.setRole({ label: 'Moderator', level: 50 });
+
+    expect(alertConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({ destructive: true }),
+    );
   });
 
   it('does not change the role when the confirmation is cancelled', async () => {

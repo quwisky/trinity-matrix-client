@@ -145,6 +145,25 @@ describe('RoomActionPermissionsService', () => {
     expect(service.room('!room:hs').invite.reason).toContain('Join this room');
   });
 
+  it('projects every settings field from the live state-event threshold', () => {
+    const fixture = clientFixture('@me:hs', { myPower: 49 });
+    const { service } = setup(fixture);
+
+    expect(Object.values(service.settings('!room:hs'))).toHaveLength(6);
+    expect(
+      Object.values(service.settings('!room:hs')).every(
+        (permission) => !permission.available && !!permission.reason,
+      ),
+    ).toBe(true);
+
+    fixture.members.get('@me:hs')!.powerLevel = 50;
+    expect(
+      Object.values(service.settings('!room:hs')).every(
+        (permission) => permission.available && permission.reason === null,
+      ),
+    ).toBe(true);
+  });
+
   it.each([
     { myPower: 49, targetPower: 0, kick: false, ban: false, setPower: false },
     { myPower: 50, targetPower: 50, kick: false, ban: false, setPower: false },

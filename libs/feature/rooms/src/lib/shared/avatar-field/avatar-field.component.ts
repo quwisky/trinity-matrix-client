@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   DestroyRef,
   ElementRef,
   inject,
@@ -9,7 +10,8 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnButton } from '@trinity/components/button';
+import { TrnActionAvailability, TrnButton } from '@trinity/components/button';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import { TrnToastService } from '@trinity/components/overlay';
 import { RoomSettingsService } from '@trinity/data-access/rooms';
 import { AvatarComponent, type AvatarShape } from '@trinity/components/avatar';
@@ -37,7 +39,7 @@ const MAX_AVATAR_BYTES = 8 * 1024 * 1024;
 @Component({
   selector: 'trn-avatar-field',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, TrnButton],
+  imports: [AvatarComponent, TrnButton, TrnActionAvailability, TrnTooltip],
   templateUrl: './avatar-field.component.html',
   styleUrl: './avatar-field.component.scss',
 })
@@ -61,11 +63,17 @@ export class AvatarFieldComponent {
   readonly testid = input('avatar-field');
 
   protected readonly savingAvatar = signal(false);
+  protected readonly unavailableReason = computed(
+    () => `Your role cannot change this ${this.noun()}’s photo.`,
+  );
   private readonly avatarInput =
     viewChild<ElementRef<HTMLInputElement>>('avatarInput');
 
   /** Open the hidden file input to choose a new photo. */
   pickAvatar(): void {
+    if (!this.editable()) {
+      return;
+    }
     this.avatarInput()?.nativeElement.click();
   }
 

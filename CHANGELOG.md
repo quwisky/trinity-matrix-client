@@ -274,10 +274,11 @@ All notable changes to this project are documented here. The format is based on
   another device during compensation.
 
 - **Room actions now explain when your role cannot use them.** Inviting people, curating a
-  space, changing roles, removing or banning members, and unbanning now follow the room's
-  live Matrix power levels instead of a permission snapshot. Unavailable actions stay
-  visible and focusable with a short explanation, update when another client changes the
-  room's permissions, and are checked again immediately before Trinity writes to the
+  space, editing room or space settings, managing aliases, changing roles, removing or
+  banning members, and unbanning now follow the room's live Matrix power levels instead of
+  a permission snapshot. Unavailable actions stay visible and focusable with a short
+  explanation, including after a tap on mobile; they update when another client changes the
+  room's permissions and are checked again immediately before Trinity writes to the
   homeserver.
 
 - **Network failures no longer leave actions spinning forever.** Matrix requests now stop

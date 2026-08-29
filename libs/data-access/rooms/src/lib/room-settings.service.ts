@@ -15,6 +15,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RestrictedAllowType } from 'matrix-js-sdk';
 import type { RoomJoinRulesEventContent } from 'matrix-js-sdk/lib/@types/state_events';
 import { liveRoomState } from '@trinity/util/matrix';
+import { RoomActionPermissionsService } from './room-action-permissions.service';
 
 /** Which room-settings fields the current user may edit (from the room's power levels). */
 export interface EditableRoomFields {
@@ -58,6 +59,7 @@ const DEFAULT_HISTORY_VISIBILITY = HistoryVisibility.Shared;
 @Injectable({ providedIn: 'root' })
 export class RoomSettingsService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly permissions = inject(RoomActionPermissionsService);
 
   /** Rename the room (`m.room.name`). Cold — runs on subscribe. */
   setName(roomId: string, name: string): Observable<void> {
@@ -65,6 +67,7 @@ export class RoomSettingsService {
       if (!this.matrix.isInitialized) {
         return throwError(() => new Error('Not signed in.'));
       }
+      this.permissions.assert(this.permissions.settings(roomId).name);
       return from(this.matrix.instance.setRoomName(roomId, name.trim())).pipe(
         map(() => void 0),
       );
@@ -77,6 +80,7 @@ export class RoomSettingsService {
       if (!this.matrix.isInitialized) {
         return throwError(() => new Error('Not signed in.'));
       }
+      this.permissions.assert(this.permissions.settings(roomId).topic);
       return from(this.matrix.instance.setRoomTopic(roomId, topic.trim())).pipe(
         map(() => void 0),
       );
@@ -92,6 +96,7 @@ export class RoomSettingsService {
       if (!this.matrix.isInitialized) {
         return throwError(() => new Error('Not signed in.'));
       }
+      this.permissions.assert(this.permissions.settings(roomId).avatar);
       const client = this.matrix.instance;
       return from(
         client.uploadContent(file, {
@@ -99,16 +104,22 @@ export class RoomSettingsService {
           type: file.type || 'application/octet-stream',
         }),
       ).pipe(
-        switchMap((res) =>
-          from(
+        switchMap((res) => {
+          if (!this.matrix.isInitialized || this.matrix.instance !== client) {
+            throw new Error(
+              'The active account changed before the photo uploaded.',
+            );
+          }
+          this.permissions.assert(this.permissions.settings(roomId).avatar);
+          return from(
             client.sendStateEvent(
               roomId,
               EventType.RoomAvatar,
               { url: res.content_uri },
               '',
             ),
-          ),
-        ),
+          );
+        }),
         map(() => void 0),
       );
     });
@@ -127,6 +138,7 @@ export class RoomSettingsService {
       if (!this.matrix.isInitialized) {
         return throwError(() => new Error('Not signed in.'));
       }
+      this.permissions.assert(this.permissions.settings(roomId).joinRule);
       const restricted = joinRule === JoinRule.Restricted;
       // A `restricted` rule with no `allow` entries is a room that nobody — not even a
       // member of the space it was gated on — can ever join, and only an admin could undo
@@ -189,6 +201,7 @@ export class RoomSettingsService {
       if (!this.matrix.isInitialized) {
         return throwError(() => new Error('Not signed in.'));
       }
+      this.permissions.assert(this.permissions.settings(roomId).history);
       return from(
         this.matrix.instance.sendStateEvent(
           roomId,

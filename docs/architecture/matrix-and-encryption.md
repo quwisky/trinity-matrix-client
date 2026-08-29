@@ -163,7 +163,16 @@ Unavailable actions use `trnActionAllowed` rather than native `disabled`. Native
 controls cannot receive focus or pointer events, which would make their explanation
 unreachable. The shared directive publishes `aria-disabled` and `aria-description`, preserves
 normal focus and menu arrow-key navigation, and blocks click, Enter, and Space activation.
-The tooltip uses the same reason for sighted pointer and keyboard users.
+The tooltip uses the same reason for mouse, pen, and keyboard users. Tooltips intentionally
+do not open on touch, so a blocked tap shows the reason in a short-lived, non-interactive
+status surface near the thumb zone.
+
+Room and space settings derive every state-backed field from the same live projection:
+name, topic, avatar, join rule, history visibility, and canonical aliases. A dialog that is
+already open disables those fields and its Save action after a remote role change without
+discarding the user's draft. Settings and alias services repeat the field-specific check at
+subscription time; avatar uploads check once before upload and again before publishing the
+state event.
 
 The UI guard is only feedback, never the authorization boundary. Every corresponding cold
 data-access mutation re-reads the permission after any picker or confirmation and immediately

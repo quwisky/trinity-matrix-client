@@ -5,8 +5,11 @@ import {
   type Locator,
   type Page,
 } from './support/fixtures.mts';
+import { devices } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 import { registerUser } from './support/account.mts';
+
+const { defaultBrowserType: _pixelBrowser, ...pixel5 } = devices['Pixel 5'];
 
 // End-to-end for member role sections: the room member list groups joined members
 // under "Owner" / "Admin" / "Moderator" / "Member" headers — the first from the room's
@@ -139,7 +142,7 @@ async function seedRoleRoom(
       data: {
         name: roomName,
         invite: extras.map((e) => e.userId),
-        power_level_content_override: { users },
+        power_level_content_override: { users, invite: 50 },
       },
     })
     .then((r) => r.json())
@@ -174,7 +177,13 @@ async function openRoomWithMembers(
 
   const members = page.locator('.members');
   if (!(await members.isVisible().catch(() => false))) {
-    await page.getByTestId('toggle-members').click();
+    const toggle = page.getByTestId('toggle-members');
+    if (await toggle.isVisible().catch(() => false)) {
+      await toggle.click();
+    } else {
+      await page.getByTestId('room-actions-overflow').click();
+      await page.getByTestId('overflow-toggle-members').click();
+    }
   }
   await expect(members).toBeVisible({ timeout: 15_000 });
 }
@@ -506,5 +515,101 @@ test.describe('Member role sections', () => {
     await expect(page.getByRole('tooltip')).toContainText(
       'You can only manage members with a lower role.',
     );
+
+    await kick.press('Enter', { timeout: 5000 });
+    await kick.press('Space', { timeout: 5000 });
+    await expect(
+      page.getByRole('dialog', { name: /Remove from room/i }),
+    ).toHaveCount(0);
+
+    await page.getByTestId('member-info-close').click();
+    await page.getByTestId('toggle-members').click();
+    await page.setViewportSize({ width: 393, height: 851 });
+    await page.getByTestId('room-actions-overflow').click();
+    const inviteItem = page.getByTestId('overflow-invite-people');
+    await expect(inviteItem).toHaveAttribute('aria-disabled', 'true');
+    await inviteItem.focus();
+    await inviteItem.press('Enter', { timeout: 5000 });
+    if (!(await inviteItem.isVisible().catch(() => false))) {
+      await page.getByTestId('room-actions-overflow').click();
+    }
+    await inviteItem.press('Space', { timeout: 5000 });
+    await expect(page.getByRole('dialog', { name: /Invite to/i })).toHaveCount(
+      0,
+    );
+  });
+
+  test('disables an open settings dialog after remote demotion', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}settings`;
+    const { reader, roomName, roomId, admin } = await seedRoleRoom(
+      request,
+      hs,
+      runId,
+      [],
+    );
+
+    await login(page, reader);
+    await openRoomWithMembers(page, roomName);
+    await page.getByTestId('open-room-settings').click();
+    const settings = page.getByTestId('room-settings');
+    await expect(settings).toBeVisible();
+    const name = page.getByTestId('room-settings-name');
+    await expect(name).toBeEnabled();
+
+    await setPowerLevel(request, hs, admin, roomId, admin.userId, 0);
+
+    await expect(name).toBeDisabled({ timeout: 20_000 });
+    await expect(page.getByTestId('room-settings-save')).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    await page.getByTestId('room-settings-tab-access').click();
+    await expect(page.getByTestId('room-aliases-unavailable')).toBeVisible();
+  });
+});
+
+test.describe('Unavailable action touch feedback', () => {
+  test.use(pixel5);
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+
+  test('explains a blocked member action after a touch tap', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}touch`;
+    const { reader, roomName, roomId, admin, extras } = await seedRoleRoom(
+      request,
+      hs,
+      runId,
+      [0],
+    );
+    const [plain] = extras;
+
+    await login(page, reader);
+    await openRoomWithMembers(page, roomName);
+    await page
+      .getByTestId('member-row')
+      .filter({ hasText: plain.name })
+      .click();
+    const kick = page.getByTestId('member-info-kick');
+    await setPowerLevel(request, hs, admin, roomId, admin.userId, 0);
+    await expect(kick).toHaveAttribute('aria-disabled', 'true', {
+      timeout: 20_000,
+    });
+
+    await expect(kick).toBeVisible();
+    await kick.tap({ force: true, timeout: 5000 });
+
+    await expect(page.getByTestId('action-unavailable-feedback')).toHaveText(
+      'You can only manage members with a lower role.',
+    );
+    await expect(
+      page.getByRole('dialog', { name: /Remove from room/i }),
+    ).toHaveCount(0);
   });
 });

@@ -294,7 +294,7 @@ export class MemberInfoComponent {
       message: `Change ${this.member().name}'s role to ${option.label}?`,
       confirmText: 'Change',
       // A demotion is the weightier direction — style its confirm as destructive.
-      destructive: option.level < this.member().powerLevel,
+      destructive: option.level < this.permissions().targetPower,
     });
     if (!confirmed) {
       return;
