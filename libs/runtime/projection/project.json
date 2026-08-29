@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "projection-runtime",
+  "projectType": "library",
+  "sourceRoot": "libs/runtime/projection/src",
+  "prefix": "trn",
+  "tags": [
+    "type:data-access",
+    "scope:shared",
+    "role:kernel",
+    "capability:shared"
+  ],
+  "targets": {
+    "test": {},
+    "typecheck": {}
+  }
+}

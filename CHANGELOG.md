@@ -87,6 +87,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Account readiness now includes a Projection Runtime barrier.** Projection lifecycle is
+  bounded to active-account, all-live-accounts, exact-account, and exact-conversation scopes, with
+  generation-safe publishing, coalesced cold RxJS reconciliation, deterministic acknowledgement,
+  cancellation, reset, and resource diagnostics behind one runtime interface. Matrix sync state is
+  the first production projection: each live Account retains one listener and at most 40 bytes of
+  deterministic published-plus-pending payload with no duplicate SDK store, and Account startup completes only after that
+  projection acknowledges its current generation within the 16 ms local barrier baseline.
+
 - **Successful authentication now establishes Accounts through Account Runtime.** Password,
   SSO, OIDC, and registration flows hand over an opaque authenticated grant instead of writing
   credentials or starting Matrix clients themselves. Account Runtime persists and starts the

@@ -145,6 +145,10 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
 - `@trinity/util/matrix` `[type:util]` — pure, DI-free Matrix models/helpers (`MessageView` +
   `buildMessageView`/`initialOf`/`isEditableMessage`, `MediaPayload`, `MatrixSession`, markdown/sanitize,
   `crypto-wasm-loader`, attachment-crypto). No Angular DI. Everything may depend on it.
+- `@trinity/runtime/projection` `[type:data-access]`, `[role:kernel]` — Projection Runtime: the
+  bounded active-account, all-live-accounts, exact-account, and exact-conversation lifecycle
+  primitive. It owns attachment, coalesced reconciliation, generation-safe publication, reset,
+  finite readiness barriers, and resource diagnostics without owning product state or SDK types.
 - `@trinity/platform-native` `[type:platform]` — Capacitor/native capabilities (session/secure storage,
   preferences, theme/status-bar, launcher badge, external browser, desktop bridge, error handler). Branches on
   `isNativePlatform()` internally. May depend only on `util`.
@@ -154,7 +158,8 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   secret-safe failure metadata. Authentication crosses into it through an opaque grant; its production adapter
   composes session storage with Matrix Runtime and commits Active placement only after startup succeeds.
 - `@trinity/data-access/matrix-client` `[type:data-access]` — `MatrixClientService` + the 4S key service;
-  the client/session foundation every domain data-access lib depends on.
+  the client/session foundation every domain data-access lib depends on, and the Matrix adapter for
+  the first Projection Runtime tracer (per-Account sync state and readiness acknowledgement).
 - `@trinity/data-access/*` `[type:data-access]` — one lib per Matrix domain (`media`, `rooms`,
   `timeline`, `crypto`, `profile`, `invites`, `pinned`, `search`, `notifications`, `auth`, `gif`,
   `homeserver`, `widgets`), each at `libs/data-access/<domain>`.
@@ -182,7 +187,7 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   the public tier is the other direction, a `no-restricted-imports` ban stopping
   `libs/feature` and `apps` reaching past it into `@trinity/helm/*`. A new vendor import
   below the UI tier fails `pnpm lint`.
-- **Scopes:** `scope:shared` (the kernel: util/platform/matrix-client/ui/helm) may not reach into
+- **Scopes:** `scope:shared` (the kernel: util/platform/projection/matrix-client/ui/helm) may not reach into
   `scope:matrix` (domain data-access + feature libs); the thin `apps/trinity` composes both.
 
 **The core rule: components never import `matrix-js-sdk` directly.** All SDK access is wrapped in the

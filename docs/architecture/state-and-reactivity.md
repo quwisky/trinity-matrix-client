@@ -86,7 +86,39 @@ It also means unit tests need a zoneless-aware render helper. Import `render` fr
 `@trinity/testing`, never from `@testing-library/angular` directly; see
 [testing](../contributing/testing.md) for what goes wrong otherwise.
 
-## projectFromClient
+## Projection Runtime
+
+`@trinity/runtime/projection` is the shared lifecycle module for new projections. Its interface is
+deliberately closed over four scopes: `active-account`, `all-live-accounts`, `exact-account`, and
+`exact-conversation`. Product-defined strings and generic topics are not accepted, so it cannot
+grow into an event bus.
+
+A Matrix or host adapter activates one projection definition containing only its scope, attachment,
+authoritative reconciliation, reset, and resource-count callbacks. Projection Runtime then owns:
+
+- replacing the same projection and scope as one generation change;
+- coalescing an invalidation burst to one reconciliation per microtask;
+- refusing a late asynchronous generation's `publish()` callback;
+- subscribing to cold finite reconciliation Observables and cancelling them on invalidation,
+  replacement, or release;
+- detaching exact listener references, cancelling queued work, and resetting on release; and
+- acknowledging the current generation through a cold, finite `waitFor(scope)` Observable.
+
+The barrier reports duration, projection and listener counts, and deterministic retained payload
+bytes. The local barrier baseline is one frame (16 ms) after its projections acknowledge. Runtime
+diagnostics also accumulate reconciliation count and wall time so background-Account projection
+cost can be sampled without recording Account ids or projected content.
+
+The first production adapter is Matrix Runtime's per-Account sync state. It keeps the existing
+signal as the only read model, moves its one `ClientEvent.Sync` listener into Projection Runtime,
+and makes Account startup wait for the exact-Account barrier. A live Account therefore retains one
+sync listener. While a coalesced update is pending it can retain the published enum and a distinct
+new enum: at most 40 deterministic payload bytes across the two longest distinct current
+`SyncState` values (two bytes per UTF-16 code unit). Once reconciled, those references share one
+value; release returns both counts to zero. Runtime/engine object overhead remains profiler
+evidence rather than a portable unit-test assertion. There is no duplicate SDK store.
+
+## Compatibility projection primitives
 
 Every projecting service has to get the same three things right, and each one was independently
 re-derived — and sometimes mis-derived — before they were extracted into one primitive,
@@ -131,7 +163,9 @@ private readonly projection = projectFromClient({
 | `coalesce`                       | `true`   | Set `false` only where events are genuinely rare and latency beats batching, and say why at the call site                              |
 | `reprojectOnSwitch`              | `true`   | Set `false` only for a projection whose lifetime is already torn down by the switch                                                    |
 
-The returned `ClientProjection` exposes `connect()`, `disconnect()`, `isConnected()`, `client()` and
+These primitives remain while existing projections migrate incrementally. New architecture slices
+use Projection Runtime unless their ticket explicitly records a compatibility reason. The returned
+`ClientProjection` exposes `connect()`, `disconnect()`, `isConnected()`, `client()` and
 `schedule()`. `connect()` no-ops when the client service is not initialised, no-ops again if
 already wired to the same client, and otherwise disconnects from the previous client first.
 `disconnect()` detaches, calls `unbind`, nulls the connected client, cancels any queued rebuild, and

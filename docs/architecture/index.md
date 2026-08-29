@@ -1,8 +1,8 @@
 # Architecture overview
 
-Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 77
+Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 78
 libraries under `libs/`, grouped by layer into `libs/data-access/`, `libs/feature/`,
-`libs/util/` and `libs/components/` (the public component tier), alongside
+`libs/util/`, `libs/runtime/` and `libs/components/` (the public component tier), alongside
 `libs/platform-native`, `libs/testing` and the `libs/spartan/`
 Helm components. Web, iOS, Android and desktop are all the same compiled bundle wrapped
 differently, so there is no per-platform source tree — platform differences are branches inside
@@ -87,8 +87,8 @@ both.
 | `scope:matrix` | `scope:matrix`, `scope:shared` |
 | `scope:shared` | `scope:shared` only            |
 
-`scope:shared` is the kernel: `util-matrix`, `platform-native`, `ui`, the Helm libraries — and,
-deliberately, `data-access-matrix-client`. Tagging the client and session foundation as shared
+`scope:shared` is the kernel: `util-matrix`, `projection-runtime`, `platform-native`, `ui`, the Helm
+libraries — and, deliberately, `data-access-matrix-client`. Tagging the client and session foundation as shared
 rather than matrix is what structurally prevents it from importing a domain library. `RoomsService`
 depends on `MatrixClientService`; `MatrixClientService` can never depend on `RoomsService`, and
 lint says so before a reviewer has to.
