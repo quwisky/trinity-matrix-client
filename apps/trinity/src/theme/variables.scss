@@ -153,12 +153,14 @@
   // Named because the bare numbers in the tree (5, 20, 30, 40) carry no relation to
   // each other and nothing said which was meant to sit over which. These govern
   // APP-level stacking only — a component stacking its own two children is local and
-  // stays a literal. Above all of them sits the CDK overlay container (1000 by
-  // default), which is why a dialog covers everything here without being listed.
+  // stays a literal. The CDK overlay container sits at 1000 by default; transient
+  // action feedback is deliberately above it so a blocked control inside a dialog can
+  // still explain itself on touch devices.
   --trinity-z-sticky: 5; // pinned affordances inside a scroller (jump-to-unread)
   --trinity-z-overlay: 20; // a sheet over one pane (the drag-and-drop target)
   --trinity-z-scrim: 30; // the dimmer behind a panel — under it, over everything else
   --trinity-z-panel: 40; // a panel over the shell (mobile room list)
+  --trinity-z-feedback: 10000; // transient unavailable-action reason above CDK overlays
 
   // --- Motion -------------------------------------------------------------------
   // One vocabulary, and one place to collapse it — see the reduced-motion block at

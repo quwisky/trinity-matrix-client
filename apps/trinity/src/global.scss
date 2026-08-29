@@ -38,7 +38,7 @@ button:disabled,
  * reason in a short, non-interactive surface near the thumb zone. */
 .trn-action-feedback {
   position: fixed;
-  z-index: 10000;
+  z-index: var(--trinity-z-feedback);
   right: max(1rem, env(safe-area-inset-right));
   bottom: max(1rem, env(safe-area-inset-bottom));
   left: max(1rem, env(safe-area-inset-left));
