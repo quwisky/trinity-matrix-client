@@ -33,6 +33,22 @@ https://localhost:8448 {
 	reverse_proxy {$TRINITY_E2E_SYNAPSE_UPSTREAM:synapse:8008}
 }
 
+# Internal default federation port for the primary server name `localhost`. The
+# secondary Synapse uses this to retrieve the primary signing key and authenticate its
+# requests. It is intentionally not published to the host.
+https://localhost {
+	tls internal
+	reverse_proxy {$TRINITY_E2E_SYNAPSE_UPSTREAM:synapse:8008}
+}
+
+# Federation front for the secondary Synapse. In the ordinary compose network its
+# server name is caddy:9448; in netns CI it is localhost:9448. Serving both names keeps
+# signatures and discovery correct in either topology.
+https://caddy:9448, https://localhost:9448 {
+	tls internal
+	reverse_proxy {$TRINITY_E2E_REMOTE_SYNAPSE_UPSTREAM:localhost:8009}
+}
+
 # Plain-HTTP Open-Graph page for the link-preview e2e. Synapse (on this docker
 # network, with url previews enabled + an empty IP blacklist) fetches
 # http://caddy:8080/og server-side and returns the OG metadata; the browser never

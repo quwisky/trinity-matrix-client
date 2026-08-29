@@ -4,6 +4,7 @@ export * from './lib/room-moderation.service';
 export * from './lib/room-action-permissions.service';
 export * from './lib/room-aliases.service';
 export * from './lib/public-rooms.service';
+export * from './lib/room-link.service';
 export * from './lib/spaces.service';
 export * from './lib/space-children.service';
 export * from './lib/space-child-order';

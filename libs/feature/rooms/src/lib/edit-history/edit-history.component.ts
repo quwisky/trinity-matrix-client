@@ -19,13 +19,15 @@ import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { EditHistoryService } from '@trinity/data-access/timeline';
 import {
   annotateRevision,
-  type MatrixLinkTarget,
   type MessageRevisionView,
 } from '@trinity/util/matrix';
 import { switchMap, timer } from 'rxjs';
 import { runWithBusy } from '@trinity/util/ui';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
-import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
+import {
+  type MatrixLinkClick,
+  type MatrixLinkClickTarget,
+} from '../matrix-link/matrix-link.directive';
 import { MatrixLinkDirective } from '../matrix-link/matrix-link.directive';
 import { InlineMxcImagesDirective } from '../inline-mxc-images/inline-mxc-images.directive';
 
@@ -70,7 +72,7 @@ export class EditHistoryComponent {
 
   private readonly history = inject(EditHistoryService);
   private readonly dialogRef =
-    inject<TrnDialogRef<MatrixLinkTarget | undefined>>(TrnDialogRef);
+    inject<TrnDialogRef<MatrixLinkClickTarget | undefined>>(TrnDialogRef);
   private readonly destroyRef = inject(DestroyRef);
   private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);

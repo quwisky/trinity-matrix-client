@@ -437,13 +437,14 @@ Throwaway accounts are registered through Synapse's admin HMAC API in
 ## The disposable Synapse stack
 
 [`e2e/synapse/docker-compose.yml`](https://github.com/quwisky/trinity-matrix-client/blob/develop/e2e/synapse/docker-compose.yml)
-runs three containers on a `trinity-e2e` network:
+runs four services on a `trinity-e2e` network:
 
-| Container | Image                               | Published on     | Role                                                                        |
-| --------- | ----------------------------------- | ---------------- | --------------------------------------------------------------------------- |
-| Synapse   | `matrixdotorg/synapse:v1.119.0`     | `127.0.0.1:8008` | The homeserver, plain HTTP behind Caddy                                     |
-| Dex       | `ghcr.io/dexidp/dex:v2.45.1-alpine` | `127.0.0.1:5556` | An OIDC provider with in-memory storage, for the SSO specs                  |
-| Caddy     | `caddy:2.8-alpine`                  | `127.0.0.1:8448` | TLS termination, the `.well-known` document, and an Open Graph page on 8080 |
+| Service        | Image                               | Published on              | Role                                                                              |
+| -------------- | ----------------------------------- | ------------------------- | --------------------------------------------------------------------------------- |
+| Synapse        | `matrixdotorg/synapse:v1.157.2`     | `127.0.0.1:8008`          | Primary homeserver, plain HTTP behind Caddy                                       |
+| Remote Synapse | `matrixdotorg/synapse:v1.157.2`     | `127.0.0.1:8009`          | Independent signing key, database and server name for genuine federation journeys |
+| Dex            | `ghcr.io/dexidp/dex:v2.45.1-alpine` | `127.0.0.1:5556`          | An OIDC provider with in-memory storage, for the SSO specs                        |
+| Caddy          | `caddy:2.11-alpine`                 | `127.0.0.1:8448`, `:9448` | TLS, discovery, federation fronts, and an internal Open Graph page on 8080        |
 
 TLS is not decorative. The shipped `index.html` CSP allows only `https:` and `wss:`
 for `connect-src`, and matrix-js-sdk's `AutoDiscovery` fetches
@@ -454,6 +455,10 @@ is why the Playwright config sets `ignoreHTTPSErrors: true`.
 Because both the ports and the `./data` state directory are fixed, **every**
 Synapse-backed entry point owns the same one stack. They must run strictly
 sequentially — see the warning in [Commands](commands.md).
+
+The room-link Playwright journey uses both Synapses. The remote service is not a mocked `via`
+response: the primary validates signed federation requests through Caddy before it can preview or
+join the remote room. Both generated state directories are discarded at teardown.
 
 ### What start.mjs does, and the traps it exists to close
 

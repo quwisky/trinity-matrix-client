@@ -1,0 +1,151 @@
+<section
+  class="room-preview"
+  data-testid="room-link-preview"
+  [attr.aria-busy]="loading() || acting()"
+>
+  <header class="room-preview__header">
+    <h2 class="room-preview__title">Room information</h2>
+    <button
+      #closeButton
+      trnBtn
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label="Close room information"
+      data-testid="room-link-close"
+      (click)="close()"
+    >
+      <trn-icon name="x" motion="rotate" />
+    </button>
+  </header>
+
+  <div class="room-preview__content">
+    @if (loading()) {
+      <div class="room-preview__status" role="status" aria-live="polite">
+        <trn-spinner aria-label="Loading room information" />
+        <span>Loading room information…</span>
+      </div>
+    } @else if (loadFailure(); as failure) {
+      <div
+        class="room-preview__status"
+        role="alert"
+        data-testid="room-link-load-error"
+      >
+        <trn-icon name="cloud-off" size="2rem" />
+        <h3>{{ failure.title }}</h3>
+        <p>{{ failure.message }}</p>
+        @if (failure.retryable) {
+          <button trnBtn type="button" variant="outline" (click)="retry()">
+            Retry
+          </button>
+        }
+      </div>
+    } @else if (preview(); as room) {
+      <div class="room-preview__identity">
+        <trn-avatar
+          [mxc]="room.avatarMxc"
+          [name]="room.name"
+          [initial]="room.initial"
+          [size]="64"
+          shape="place"
+        />
+        <div class="room-preview__identity-copy">
+          <h3 data-testid="room-link-name">{{ room.name }}</h3>
+          @if (displayAddress(); as address) {
+            <p data-testid="room-link-address">{{ address }}</p>
+          }
+        </div>
+      </div>
+
+      @if (room.topic) {
+        <!-- Matrix room topics are plain untrusted strings. Interpolation keeps them text,
+             so markup/scripts never enter the DOM or bypass Trinity's sanitizer. -->
+        <p class="room-preview__topic" data-testid="room-link-topic">
+          {{ room.topic }}
+        </p>
+      }
+
+      <dl class="room-preview__facts">
+        <div>
+          <dt><trn-icon name="users" /> Members</dt>
+          <dd>
+            {{ room.memberCount === null ? 'Not provided' : room.memberCount }}
+          </dd>
+        </div>
+        <div>
+          <dt><trn-icon name="shield" /> Encryption</dt>
+          <dd>
+            @if (room.encrypted === null) {
+              Not provided
+            } @else {
+              {{ room.encrypted ? 'Encrypted' : 'Not encrypted' }}
+            }
+          </dd>
+        </div>
+        <div>
+          <dt><trn-icon name="door-open" /> Access</dt>
+          <dd>{{ joinRuleLabel() }}</dd>
+        </div>
+      </dl>
+
+      @if (success(); as message) {
+        <p
+          class="room-preview__notice room-preview__notice--success"
+          role="status"
+          data-testid="room-link-success"
+        >
+          {{ message }}
+        </p>
+      }
+      @if (actionError(); as message) {
+        <p
+          class="room-preview__notice room-preview__notice--error"
+          role="alert"
+          data-testid="room-link-action-error"
+        >
+          {{ message }}
+        </p>
+      }
+      @if (unavailableMessage(); as message) {
+        <p class="room-preview__notice" data-testid="room-link-unavailable">
+          {{ message }}
+        </p>
+      }
+    }
+  </div>
+
+  @if (preview(); as room) {
+    <footer class="room-preview__actions">
+      <button trnBtn type="button" variant="ghost" (click)="close()">
+        Close
+      </button>
+      @if (primaryAction() !== 'none') {
+        <button
+          trnBtn
+          type="button"
+          [attr.aria-disabled]="acting()"
+          data-testid="room-link-primary"
+          (click)="runPrimaryAction()"
+        >
+          @if (acting()) {
+            <trn-spinner class="room-preview__button-spinner" />
+          }
+          @switch (primaryAction()) {
+            @case ('open') {
+              Open room
+            }
+            @case ('accept') {
+              {{ acting() ? 'Accepting…' : 'Accept invitation' }}
+            }
+            @case ('join') {
+              {{ acting() ? 'Joining…' : 'Join room' }}
+            }
+            @case ('knock') {
+              {{ acting() ? 'Sending…' : 'Request to join' }}
+            }
+          }
+        </button>
+      }
+    </footer>
+  }
+</section>

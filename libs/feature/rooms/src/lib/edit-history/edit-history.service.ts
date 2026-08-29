@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { TrnDialogService } from '@trinity/components/overlay';
-import { type MatrixLinkTarget } from '@trinity/util/matrix';
 import { EditHistoryComponent } from './edit-history.component';
+import { type MatrixLinkClickTarget } from '../matrix-link/matrix-link.directive';
 
 /**
  * Presents {@link EditHistoryComponent} for a message and resolves a permalink the reader
@@ -22,14 +22,14 @@ export class EditHistoryDialogService {
   async openHistory(
     roomId: string,
     eventId: string,
-  ): Promise<MatrixLinkTarget | null> {
+  ): Promise<MatrixLinkClickTarget | null> {
     if (this.showing) {
       return null; // already open — ignore the repeat trigger
     }
     this.showing = true;
     try {
       return await this.dialog.openAndWait<
-        MatrixLinkTarget,
+        MatrixLinkClickTarget,
         EditHistoryComponent
       >(EditHistoryComponent, {
         ariaLabel: 'Edit history',

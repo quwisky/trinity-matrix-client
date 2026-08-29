@@ -25,10 +25,20 @@ export async function startSynapseSession({
   synapseLock = await acquireSynapseLease(signal);
 
   try {
-    const { hs, user, pass, sso, ssoReset } = await start({ signal });
+    const { hs, user, pass, secondary, sso, ssoReset } = await start({
+      signal,
+    });
     writeFileSync(
       SESSION_FILE,
-      JSON.stringify({ available: true, hs, user, pass, sso, ssoReset }),
+      JSON.stringify({
+        available: true,
+        hs,
+        user,
+        pass,
+        secondary,
+        sso,
+        ssoReset,
+      }),
     );
     console.info(`[e2e] Synapse ready at ${hs} (user ${user})`);
   } catch (error) {

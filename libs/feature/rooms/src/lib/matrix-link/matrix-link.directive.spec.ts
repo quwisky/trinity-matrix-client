@@ -46,6 +46,35 @@ describe('MatrixLinkDirective', () => {
     expect(event.preventDefault).toHaveBeenCalled();
   });
 
+  it('routes a matrix URI in-app with its federation hints', () => {
+    const { directive, emitted } = setup();
+    const anchor = nodeIn(
+      '<a href="matrix:roomid/room:hs?via=remote.example">room</a>',
+      'a',
+    );
+    const event = clickOn(anchor);
+
+    directive.onClick(event);
+
+    expect(emitted[0]?.target).toEqual({
+      kind: 'room',
+      roomIdOrAlias: '!room:hs',
+      via: ['remote.example'],
+    });
+    expect(event.preventDefault).toHaveBeenCalled();
+  });
+
+  it('swallows a malformed Matrix link and reports it as invalid', () => {
+    const { directive, emitted } = setup();
+    const anchor = nodeIn('<a href="matrix:unknown/x">bad</a>', 'a');
+    const event = clickOn(anchor);
+
+    directive.onClick(event);
+
+    expect(emitted[0]?.target).toEqual({ kind: 'invalid' });
+    expect(event.preventDefault).toHaveBeenCalled();
+  });
+
   it('opens an external link in a new tab instead of navigating away', () => {
     const { directive, emitted } = setup();
     const open = vi.spyOn(window, 'open').mockReturnValue(null);

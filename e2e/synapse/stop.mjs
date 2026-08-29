@@ -7,7 +7,12 @@ import { execFile } from 'node:child_process';
 import { rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
-import { DATA, composeFiles, resolveNetworkContainer } from './paths.mjs';
+import {
+  DATA,
+  REMOTE_DATA,
+  composeFiles,
+  resolveNetworkContainer,
+} from './paths.mjs';
 import { acquireSynapseTeardownLease, releaseSynapseLease } from './lease.mts';
 import { promisify } from 'node:util';
 
@@ -41,8 +46,11 @@ export async function stop({ keepData = false } = {}) {
     log(`compose down warning: ${err.message ?? err}`);
   }
   if (!keepData) {
-    await rm(DATA, { recursive: true, force: true });
-    log('removed ./data');
+    await Promise.all([
+      rm(DATA, { recursive: true, force: true }),
+      rm(REMOTE_DATA, { recursive: true, force: true }),
+    ]);
+    log('removed ./data and ./remote-data');
   }
   log('down.');
 }

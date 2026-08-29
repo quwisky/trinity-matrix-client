@@ -9,6 +9,8 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import { RoomsService } from '@trinity/data-access/rooms';
+import { TrnDialogService } from '@trinity/components/overlay';
+import { isMobileOs } from '@trinity/platform-native';
 import {
   TimelineActionsService,
   TimelineService,
@@ -18,6 +20,10 @@ import type { ImagePackImage } from '@trinity/data-access/media';
 import { Observable, throwError } from 'rxjs';
 import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
 import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
+import {
+  RoomLinkPreviewComponent,
+  type RoomLinkPreviewResult,
+} from '../room-link-preview/room-link-preview.component';
 import { RoomShellStore } from './room-shell-store';
 import { AccountRoutingService } from './account-routing.service';
 import { MemberActionsService } from './member-actions.service';
@@ -48,6 +54,7 @@ export class MessageActionsService {
   private readonly timeline = inject(TimelineService);
   private readonly timelineActions = inject(TimelineActionsService);
   private readonly pinned = inject(PinnedMessagesService);
+  private readonly dialog = inject(TrnDialogService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
 
@@ -70,10 +77,20 @@ export class MessageActionsService {
    * surfaces a toast rather than navigating.
    */
   onMatrixLink({ target, anchor }: MatrixLinkClick): void {
+    if (target.kind === 'invalid') {
+      void this.status.showError(
+        'That Matrix link is malformed or unsupported.',
+      );
+      return;
+    }
     if (target.kind === 'user') {
       // The anchor travels through so the card is pinned to the mention that was clicked
       // rather than centred over the conversation it is about.
       void this.memberActions.openUserCard(target.userId, anchor);
+      return;
+    }
+    if (!target.eventId) {
+      void this.openRoomLinkPreview(target);
       return;
     }
     this.rooms
@@ -83,6 +100,34 @@ export class MessageActionsService {
         next: (roomId) => this.routing.openLinkedRoom(roomId, target.eventId),
         error: () => void this.status.showError('Could not open that room.'),
       });
+  }
+
+  private async openRoomLinkPreview(
+    target: Extract<
+      Exclude<MatrixLinkClick['target'], { kind: 'invalid' }>,
+      { kind: 'room' }
+    >,
+  ): Promise<void> {
+    const mobile = isMobileOs();
+    const result = await this.dialog.openAndWait<
+      RoomLinkPreviewResult | null,
+      RoomLinkPreviewComponent
+    >(RoomLinkPreviewComponent, {
+      ariaLabel: 'Room information',
+      autoFocus: 'first-heading',
+      side: mobile ? 'bottom' : 'center',
+      inputs: { target, sheet: mobile },
+    });
+    if (!result) return;
+    if (result.membershipChanged) {
+      this.routing.openConfirmedLinkedRoom(result.roomId, result.isSpace);
+      return;
+    }
+    if (result.isSpace) {
+      this.routing.onSelectSpaceRow(result.roomId);
+      return;
+    }
+    this.routing.openLinkedRoom(result.roomId);
   }
 
   /**
