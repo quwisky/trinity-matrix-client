@@ -14,10 +14,14 @@ function setup({
   localEcho = true,
   rejected = false,
   accountId = KEY.accountId,
+  pending = false,
+  cancelable = false,
 }: {
   localEcho?: boolean;
   rejected?: boolean;
   accountId?: string;
+  pending?: boolean;
+  cancelable?: boolean;
 } = {}) {
   const original = fakeEvent({
     id: '$original',
@@ -29,21 +33,33 @@ function setup({
     sender: '@alice:example.org',
     body: 'sent text',
   });
+  const pendingEvent = fakeEvent({
+    id: '~!r:hs:txn-1',
+    sender: '@alice:example.org',
+    body: 'pending text',
+  });
   const sourceRoom = fakeRoom([original, event]);
   const room = {
     ...sourceRoom,
-    findEventById: vi.fn((eventId: string) =>
-      eventId === '$event' && !localEcho
+    findEventById: vi.fn((eventId: string) => {
+      if (eventId === pendingEvent.getId()) return pendingEvent;
+      return eventId === '$event' && !localEcho
         ? undefined
-        : sourceRoom.findEventById(eventId),
-    ),
+        : sourceRoom.findEventById(eventId);
+    }),
   };
   const client = {
     getUserId: vi.fn(() => accountId),
+    makeTxnId: vi.fn(() => 'txn-1'),
+    cancelPendingEvent: vi.fn(() => {
+      if (!cancelable) throw new Error('already sending');
+    }),
     sendMessage: vi.fn((_roomId: string, _content: unknown) =>
-      rejected
-        ? Promise.reject(new Error('offline'))
-        : Promise.resolve({ event_id: '$event' }),
+      pending
+        ? new Promise<never>(() => undefined)
+        : rejected
+          ? Promise.reject(new Error('offline'))
+          : Promise.resolve({ event_id: '$event' }),
     ),
   };
   TestBed.configureTestingModule({
@@ -71,7 +87,7 @@ describe('MatrixConversationTextSender', () => {
     });
 
     expect(client.sendMessage).not.toHaveBeenCalled();
-    await expect(firstValueFrom(command)).resolves.toEqual({
+    await expect(firstValueFrom(command.outcome)).resolves.toEqual({
       kind: 'accepted',
       eventId: '$event',
     });
@@ -88,7 +104,7 @@ describe('MatrixConversationTextSender', () => {
           body: 'hello',
           mentions: [],
           intent: { kind: 'message' },
-        }),
+        }).outcome,
       ),
     ).resolves.toEqual({ kind: 'rejected', retryable: true });
   });
@@ -103,7 +119,7 @@ describe('MatrixConversationTextSender', () => {
           body: 'hello',
           mentions: [],
           intent: { kind: 'message' },
-        }),
+        }).outcome,
       ),
     ).resolves.toEqual({ kind: 'rejected', retryable: false });
     expect(client.sendMessage).not.toHaveBeenCalled();
@@ -118,7 +134,7 @@ describe('MatrixConversationTextSender', () => {
         body: 'hi **@Bob**',
         mentions: [{ userId: '@bob:hs', display: '@Bob' }],
         intent: { kind: 'message' },
-      }),
+      }).outcome,
     );
     await firstValueFrom(
       sender.send({
@@ -126,7 +142,7 @@ describe('MatrixConversationTextSender', () => {
         body: '/me waves',
         mentions: [],
         intent: { kind: 'message' },
-      }),
+      }).outcome,
     );
 
     const formatted = client.sendMessage.mock.calls[0][1] as Record<
@@ -153,7 +169,7 @@ describe('MatrixConversationTextSender', () => {
         body: 'reply text',
         mentions: [],
         intent: { kind: 'reply', eventId: '$original' },
-      }),
+      }).outcome,
     );
     await firstValueFrom(
       sender.send({
@@ -161,7 +177,7 @@ describe('MatrixConversationTextSender', () => {
         body: 'edited **text**',
         mentions: [],
         intent: { kind: 'edit', eventId: '$original' },
-      }),
+      }).outcome,
     );
 
     const reply = client.sendMessage.mock.calls[0][1] as Record<
@@ -191,8 +207,37 @@ describe('MatrixConversationTextSender', () => {
           body: 'hello',
           mentions: [],
           intent: { kind: 'message' },
-        }),
+        }).outcome,
       ),
     ).rejects.toThrow('without exposing its local echo');
+  });
+
+  it('cancels only a local echo the SDK still proves is pending', () => {
+    const { sender, client } = setup({ pending: true, cancelable: true });
+    const operation = sender.send({
+      key: KEY,
+      body: 'hello',
+      mentions: [],
+      intent: { kind: 'message' },
+    });
+    const subscription = operation.outcome.subscribe();
+
+    expect(operation.cancel()).toBe(true);
+    expect(client.cancelPendingEvent).toHaveBeenCalledOnce();
+    subscription.unsubscribe();
+  });
+
+  it('reports cancellation as indeterminate once the SDK may be sending', () => {
+    const { sender } = setup({ pending: true });
+    const operation = sender.send({
+      key: KEY,
+      body: 'hello',
+      mentions: [],
+      intent: { kind: 'message' },
+    });
+    const subscription = operation.outcome.subscribe();
+
+    expect(operation.cancel()).toBe(false);
+    subscription.unsubscribe();
   });
 });

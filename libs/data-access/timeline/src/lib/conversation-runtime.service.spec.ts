@@ -1,7 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { Observable, Subject, firstValueFrom, of } from 'rxjs';
+import { NEVER, Subject, firstValueFrom, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DraftStoreService } from '@trinity/platform-native';
 import {
   CONVERSATION_RETENTION_LIMIT,
   CONVERSATION_TEXT_SENDER,
@@ -52,7 +53,7 @@ function setup(
     | { readonly kind: 'rejected'; readonly retryable: boolean }
   >();
   const sender: ConversationTextSender = senderOverride ?? {
-    send: vi.fn(() => sends),
+    send: vi.fn(() => ({ outcome: sends, cancel: () => false })),
   };
   const factory: ConversationTimelineFactory = {
     create: vi.fn((key) => {
@@ -92,6 +93,7 @@ function setup(
   };
   return {
     runtime: TestBed.inject(ConversationRuntime),
+    drafts: TestBed.inject(DraftStoreService),
     factory,
     controller,
     sender,
@@ -304,13 +306,40 @@ describe('ConversationRuntime', () => {
     expect(restored.compose.draft()).toBe('half written');
   });
 
+  it('restores compose intent after the timeline handle is evicted', () => {
+    const { runtime } = setup(0);
+    const original = runtime.focus({
+      accountId: ALICE,
+      roomId: '!original:example.org',
+    });
+    original.compose.setDraft('parked message');
+    original.compose.beginEdit('$edit', 'edited text');
+    runtime.focus({ accountId: ALICE, roomId: '!other:example.org' });
+
+    const restored = runtime.focus({
+      accountId: ALICE,
+      roomId: '!original:example.org',
+    });
+
+    expect(restored).not.toBe(original);
+    expect(restored.compose.intent()).toEqual({
+      kind: 'edit',
+      eventId: '$edit',
+    });
+    expect(restored.compose.draft()).toBe('edited text');
+    restored.compose.cancelIntent();
+    expect(restored.compose.draft()).toBe('parked message');
+  });
+
   it('keeps submit cold and succeeds only with an accepted authoritative local echo', async () => {
-    const { runtime, sender, sends } = setup();
+    const { runtime, drafts, sender, sends } = setup();
     const handle = runtime.focus({
       accountId: ALICE,
       roomId: '!room:example.org',
     });
     handle.compose.setDraft('hello');
+    const persist = vi.spyOn(drafts, 'set');
+    persist.mockClear();
     const request: ConversationTextSendRequest = {
       key: handle.key,
       body: 'hello',
@@ -323,6 +352,7 @@ describe('ConversationRuntime', () => {
     const outcomePromise = firstValueFrom(command);
     expect(sender.send).toHaveBeenCalledWith(request);
     expect(handle.compose.sending()).toBe(true);
+    expect(persist).not.toHaveBeenCalled();
     sends.next({ kind: 'accepted', eventId: '$local-echo' });
     sends.complete();
 
@@ -333,6 +363,7 @@ describe('ConversationRuntime', () => {
     expect(handle.compose.draft()).toBe('');
     expect(handle.compose.intent()).toEqual({ kind: 'message' });
     expect(handle.compose.sending()).toBe(false);
+    expect(persist).toHaveBeenCalledWith(expect.any(String), '');
   });
 
   it('returns a typed rejection and restores the durable intent', async () => {
@@ -358,14 +389,9 @@ describe('ConversationRuntime', () => {
   });
 
   it('cancels the finite command without losing the draft or leaving send state behind', () => {
-    const cancelled = vi.fn();
+    const cancelled = vi.fn(() => true);
     const sender: ConversationTextSender = {
-      send: vi.fn(
-        () =>
-          new Observable<never>(() => {
-            return cancelled;
-          }),
-      ),
+      send: vi.fn(() => ({ outcome: NEVER, cancel: cancelled })),
     };
     const { runtime } = setup(2, sender);
     const compose = runtime.focus({
@@ -380,6 +406,29 @@ describe('ConversationRuntime', () => {
     expect(cancelled).toHaveBeenCalledOnce();
     expect(compose.sending()).toBe(false);
     expect(compose.draft()).toBe('  keep me  ');
+  });
+
+  it('does not falsely restore a draft when SDK cancellation is indeterminate', () => {
+    const sender: ConversationTextSender = {
+      send: vi.fn(() => ({ outcome: NEVER, cancel: () => false })),
+    };
+    const { runtime } = setup(0, sender);
+    const original = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+    original.compose.setDraft('durable text');
+
+    const subscription = original.compose.submit().subscribe();
+    subscription.unsubscribe();
+
+    expect(original.compose.draft()).toBe('');
+    runtime.focus({ accountId: ALICE, roomId: '!other:example.org' });
+    const restored = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+    expect(restored.compose.draft()).toBe('durable text');
   });
 
   it('rejects a duplicate interaction without dispatching a second SDK send', async () => {

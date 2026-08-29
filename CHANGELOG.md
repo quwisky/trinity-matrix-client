@@ -92,8 +92,10 @@ All notable changes to this project are documented here. The format is based on
   immutable Account-and-Room handle, so switching rooms or accounts cannot retarget an in-flight
   send or discard parked intent. Sends are cold RxJS commands with typed rejection and duplicate
   outcomes; Trinity clears intent only after the Matrix SDK accepts the event and exposes its
-  authoritative local echo, while cancellation or rejection restores the draft for retry. The
-  component still owns the textarea caret, focus, autocomplete and formatting toolbar.
+  authoritative local echo. The persisted snapshot is not cleared while delivery is pending;
+  rejection or SDK-confirmed cancellation restores it for retry, while an event that may already
+  be on the wire is never falsely restored into the field. The component still owns the textarea
+  caret, focus, autocomplete and formatting toolbar.
 
 - **Text and room activity now cross a dedicated Message Presentation boundary.** Matrix
   events are normalized into bounded plain records before Conversations renders them, and

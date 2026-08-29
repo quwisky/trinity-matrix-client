@@ -9,9 +9,12 @@ import { MessageListBase } from './message-list-base';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
 import { ConversationComposeStub } from '../testing/conversation-timeline.stub';
 
+let compose: ConversationComposeStub;
+
 beforeEach(() => {
+  compose = new ConversationComposeStub();
   TestBed.overrideProvider(ConversationRuntime, {
-    useValue: { compose: new ConversationComposeStub() },
+    useValue: { compose },
   });
 });
 
@@ -184,5 +187,20 @@ describe('MessageListBase batch caption routing', () => {
     cmp['onBatchCaption']({ text: 'and these', mentions: [] });
 
     expect(sent).toEqual(['check these out', 'and these']);
+  });
+
+  it('does not forward another text submit while Conversation delivery is active', () => {
+    const fixture = TestBed.createComponent(TestMessageListComponent);
+    fixture.detectChanges();
+    const sent: string[] = [];
+    fixture.componentInstance.send.subscribe(({ body }) => sent.push(body));
+    compose.setSending(true);
+
+    fixture.componentInstance['onSubmit']({
+      text: 'duplicate',
+      mentions: [],
+    });
+
+    expect(sent).toEqual([]);
   });
 });

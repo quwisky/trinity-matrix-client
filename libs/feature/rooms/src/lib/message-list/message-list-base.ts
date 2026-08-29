@@ -818,7 +818,6 @@ export abstract class MessageListBase {
     }
   }
 
-  /** Composer submit — routes to an edit or reply when active, else a new send. */
   /**
    * A batch caption, posted plainly. Deliberately NOT routed through {@link onSubmit}: it was
    * written before an upload that may have taken minutes, so the edit or reply the user has
@@ -829,6 +828,7 @@ export abstract class MessageListBase {
   }
 
   onSubmit({ text, mentions }: ComposerSubmit): void {
+    if (this.compose.sending()) return;
     this.send.emit({ body: text, mentions });
   }
 }

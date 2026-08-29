@@ -15,6 +15,7 @@ import { DraftStoreService } from '@trinity/platform-native';
 import {
   ConversationComposeController,
   type ConversationCompose,
+  type ConversationComposeSnapshot,
 } from './conversation-compose';
 import { ConversationActionContextService } from './conversation-action-context.service';
 import { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
@@ -38,6 +39,8 @@ export interface ConversationKey {
 function composeDraftKey(key: ConversationKey): string {
   return `conversation:${JSON.stringify([key.accountId, key.roomId])}`;
 }
+
+const MAX_RETAINED_COMPOSE_INTENTS = 200;
 
 export type ConversationState = 'focused' | 'retained' | 'retired';
 
@@ -186,6 +189,10 @@ export class ConversationRuntime {
   );
   private readonly destroyRef = inject(DestroyRef);
   private readonly entries = new Map<string, Map<string, ConversationEntry>>();
+  private readonly composeSnapshots = new Map<
+    string,
+    ConversationComposeSnapshot
+  >();
   private readonly focusedHandle = signal<ConversationHandle | null>(null);
   private readonly retiredHandles = signal(0);
   private readonly lastAttachDurationMs = signal<number | null>(null);
@@ -268,6 +275,7 @@ export class ConversationRuntime {
         }
       }
     }
+    this.composeSnapshots.clear();
     if (failures.length === 1) throw failures[0];
     if (failures.length > 1) {
       throw new AggregateError(failures, 'Conversation retirement failed.');
@@ -285,7 +293,10 @@ export class ConversationRuntime {
       key: immutableKey,
       state: state.asReadonly(),
       initialDraft: this.initialDraft(immutableKey, draftKey),
+      initialSnapshot: this.composeSnapshots.get(draftKey),
       persistDraft: (draft) => this.drafts.set(draftKey, draft),
+      persistSnapshot: (snapshot) =>
+        this.persistComposeSnapshot(draftKey, snapshot),
       setTyping: (typing) => controller.timeline.setTyping(typing, 'room'),
       send: (request) => this.textSender.send(request),
     });
@@ -306,6 +317,21 @@ export class ConversationRuntime {
     account.set(key.roomId, entry);
     this.entries.set(key.accountId, account);
     return entry;
+  }
+
+  private persistComposeSnapshot(
+    key: string,
+    snapshot: ConversationComposeSnapshot | null,
+  ): void {
+    this.composeSnapshots.delete(key);
+    if (!snapshot) return;
+    this.composeSnapshots.set(key, snapshot);
+    while (this.composeSnapshots.size > MAX_RETAINED_COMPOSE_INTENTS) {
+      const oldest = this.composeSnapshots.keys().next().value as
+        string | undefined;
+      if (oldest === undefined) return;
+      this.composeSnapshots.delete(oldest);
+    }
   }
 
   private initialDraft(key: ConversationKey, draftKey: string): string {

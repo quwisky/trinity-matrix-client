@@ -1,5 +1,5 @@
 import { type Signal, computed, signal } from '@angular/core';
-import { Observable, defer, finalize, of } from 'rxjs';
+import { Observable, defaultIfEmpty, defer, finalize, of, take } from 'rxjs';
 import { type Mention } from '@trinity/util/matrix';
 import {
   type ConversationKey,
@@ -36,10 +36,14 @@ export type ConversationTextDelivery =
   | { readonly kind: 'accepted'; readonly eventId: string }
   | { readonly kind: 'rejected'; readonly retryable: boolean };
 
+export interface ConversationTextSendOperation {
+  readonly outcome: Observable<ConversationTextDelivery>;
+  /** Cancel only when the SDK can prove the event has not left the client. */
+  cancel(): boolean;
+}
+
 export interface ConversationTextSender {
-  send(
-    request: ConversationTextSendRequest,
-  ): Observable<ConversationTextDelivery>;
+  send(request: ConversationTextSendRequest): ConversationTextSendOperation;
 }
 
 export interface ConversationCompose {
@@ -56,15 +60,23 @@ export interface ConversationCompose {
   ): Observable<ConversationTextSendOutcome>;
 }
 
+export interface ConversationComposeSnapshot {
+  readonly intent: Exclude<
+    ConversationComposeIntent,
+    { readonly kind: 'message' }
+  >;
+  readonly editDraft: string;
+}
+
 interface ConversationComposePorts {
   readonly key: ConversationKey;
   readonly state: Signal<ConversationState>;
   readonly initialDraft: string;
+  readonly initialSnapshot?: ConversationComposeSnapshot;
   persistDraft(draft: string): void;
+  persistSnapshot(snapshot: ConversationComposeSnapshot | null): void;
   setTyping(typing: boolean): void;
-  send(
-    request: ConversationTextSendRequest,
-  ): Observable<ConversationTextDelivery>;
+  send(request: ConversationTextSendRequest): ConversationTextSendOperation;
 }
 
 const MESSAGE_INTENT: ConversationComposeIntent = Object.freeze({
@@ -80,9 +92,8 @@ const MESSAGE_INTENT: ConversationComposeIntent = Object.freeze({
  */
 export class ConversationComposeController {
   private readonly messageDraftState;
-  private readonly editDraftState = signal('');
-  private readonly intentState =
-    signal<ConversationComposeIntent>(MESSAGE_INTENT);
+  private readonly editDraftState;
+  private readonly intentState;
   private readonly sendingState = signal(false);
   private revision = 0;
 
@@ -90,6 +101,10 @@ export class ConversationComposeController {
 
   constructor(private readonly ports: ConversationComposePorts) {
     this.messageDraftState = signal(ports.initialDraft);
+    this.editDraftState = signal(ports.initialSnapshot?.editDraft ?? '');
+    this.intentState = signal<ConversationComposeIntent>(
+      ports.initialSnapshot?.intent ?? MESSAGE_INTENT,
+    );
     this.compose = Object.freeze({
       draft: this.currentDraft(),
       intent: this.intentState.asReadonly(),
@@ -113,6 +128,7 @@ export class ConversationComposeController {
     this.revision += 1;
     if (this.intentState().kind === 'edit') {
       this.editDraftState.set(draft);
+      this.persistSnapshot();
     } else {
       this.messageDraftState.set(draft);
       this.ports.persistDraft(draft);
@@ -123,6 +139,7 @@ export class ConversationComposeController {
     if (!eventId) return;
     this.revision += 1;
     this.intentState.set(Object.freeze({ kind, eventId }));
+    this.persistSnapshot();
   }
 
   private beginEdit(eventId: string, draft: string): void {
@@ -139,6 +156,16 @@ export class ConversationComposeController {
   private finishIntent(): void {
     this.editDraftState.set('');
     this.intentState.set(MESSAGE_INTENT);
+    this.ports.persistSnapshot(null);
+  }
+
+  private persistSnapshot(): void {
+    const intent = this.intentState();
+    this.ports.persistSnapshot(
+      intent.kind === 'message'
+        ? null
+        : Object.freeze({ intent, editDraft: this.editDraftState() }),
+    );
   }
 
   private currentDraft(): Signal<string> {
@@ -176,31 +203,48 @@ export class ConversationComposeController {
       this.sendingState.set(true);
       if (intent.kind !== 'edit') {
         this.messageDraftState.set('');
-        this.ports.persistDraft('');
       }
       let settled = false;
 
       return new Observable<ConversationTextSendOutcome>((subscriber) => {
-        const delivery = this.ports.send(request).subscribe({
-          next: (outcome) => {
-            settled = true;
-            if (outcome.kind === 'accepted') {
-              if (this.revision === revision) this.finishIntent();
-              subscriber.next({ kind: 'sent', eventId: outcome.eventId });
-            } else {
-              this.restore(draft, intent, revision);
-              subscriber.next(
-                this.rejected('send-rejected', outcome.retryable),
-              );
-            }
-          },
-          error: (error: unknown) => subscriber.error(error),
-          complete: () => subscriber.complete(),
-        });
-        return () => delivery.unsubscribe();
+        const operation = this.ports.send(request);
+        const delivery = operation.outcome
+          .pipe(
+            take(1),
+            defaultIfEmpty({ kind: 'rejected', retryable: true } as const),
+          )
+          .subscribe({
+            next: (outcome) => {
+              settled = true;
+              if (outcome.kind === 'accepted') {
+                if (this.revision === revision) {
+                  if (intent.kind !== 'edit') this.ports.persistDraft('');
+                  this.finishIntent();
+                }
+                subscriber.next({ kind: 'sent', eventId: outcome.eventId });
+              } else {
+                this.restore(draft, intent, revision);
+                subscriber.next(
+                  this.rejected('send-rejected', outcome.retryable),
+                );
+              }
+            },
+            error: (error: unknown) => {
+              // An adapter defect (for example an accepted event with no authoritative local
+              // echo) is indeterminate, not proof that sending failed. Do not invite a duplicate.
+              settled = true;
+              subscriber.error(error);
+            },
+            complete: () => subscriber.complete(),
+          });
+        return () => {
+          if (!settled && operation.cancel()) {
+            this.restore(draft, intent, revision);
+          }
+          delivery.unsubscribe();
+        };
       }).pipe(
         finalize(() => {
-          if (!settled) this.restore(draft, intent, revision);
           this.sendingState.set(false);
         }),
       );

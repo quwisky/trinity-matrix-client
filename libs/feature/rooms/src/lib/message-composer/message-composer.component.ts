@@ -165,6 +165,8 @@ export class MessageComposerComponent {
    * until thread state moves behind its Conversation child in the dedicated thread slice.
    */
   readonly composeDraft = input<string | null>(null);
+  /** A Conversation-owned text attempt is still resolving through the SDK. */
+  readonly textSending = input(false);
   /**
    * Id of the message being edited (null when not editing). The prefill keys on
    * this — not on {@link draft} — so re-targeting to a different message refreshes
@@ -841,6 +843,7 @@ export class MessageComposerComponent {
       this.field.regrowAfterRender();
       return;
     }
+    if (this.textSending()) return;
     const value = this.text().trim();
     if (!value) {
       return;
@@ -856,8 +859,9 @@ export class MessageComposerComponent {
     // following `keyup`; pressing Send with the mouse does not, and left the bar hanging over
     // an empty composer.
     this.selection.set(null);
-    if (!this.editing()) {
-      // Edits clear via editing → false; new messages clear here.
+    if (!this.editing() && this.composeDraft() === null) {
+      // Conversation-owned text clears from the authoritative input signal. The legacy
+      // thread composer still owns its local draft and therefore clears it here.
       this.text.set('');
       this.field.regrowAfterRender();
     }

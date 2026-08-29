@@ -65,6 +65,27 @@ describe('MessageComposerComponent — the field, edit mode and drafts', () => {
     expect(cmp.text()).toBe('new text');
   });
 
+  it('lets Conversation state clear managed text and blocks duplicate submission', async () => {
+    const { fixture } = await renderComposer({
+      composeDraft: 'first message',
+    });
+    const cmp = fixture.componentInstance;
+    const sent: string[] = [];
+    cmp.submitText.subscribe(({ text }) => sent.push(text));
+
+    cmp.submit();
+    expect(sent).toEqual(['first message']);
+    expect(cmp.text()).toBe('first message');
+
+    fixture.componentRef.setInput('textSending', true);
+    fixture.detectChanges();
+    cmp.text.set('second message');
+    cmp.submit();
+
+    expect(sent).toEqual(['first message']);
+    expect(cmp.text()).toBe('second message');
+  });
+
   it('refreshes the field when the edit target changes while still editing', async () => {
     const { fixture } = await renderComposer({
       editing: true,

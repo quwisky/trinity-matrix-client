@@ -46,6 +46,10 @@ export class ConversationComposeStub implements ConversationCompose {
     this.editDraftState.set('');
     this.intentState.set({ kind: 'message' });
   }
+
+  setSending(sending: boolean): void {
+    this.sendingState.set(sending);
+  }
 }
 
 /** Safe test double for the public Conversation timeline capability. */

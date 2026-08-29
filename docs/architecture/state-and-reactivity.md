@@ -137,8 +137,9 @@ reaches that context through an internal bridge, while the public entrypoint exp
 app-owned read models and cold command services.
 
 Each handle also owns one main-room compose child. Its persisted new-message draft is separate
-from an in-progress edit draft, so cancelling an edit restores the text that was parked before it;
-reply and edit targets follow the exact retained handle across navigation and Account switches.
+from an in-progress edit draft, so cancelling an edit restores the text that was parked before it.
+Reply and edit snapshots remain bounded separately from listener-owning timeline handles, so they
+survive navigation that evicts a warm handle as well as Account switches.
 The stable `ConversationRuntime.compose` proxy lets feature surfaces update that intent and start
 typing without gaining a writable signal or SDK reference. The component retains only transient
 textarea mechanics: caret, focus, autocomplete, attachment staging and toolbar state.
@@ -147,10 +148,13 @@ textarea mechanics: caret, focus, autocomplete, attachment staging and toolbar s
 current text and intent, suppresses a duplicate interaction while that attempt is active, and
 hands the text to the focused child’s package-internal Matrix adapter. A `sent` outcome is emitted
 only after `sendMessage` resolves and the returned event id can be found in the Room’s SDK-owned
-local timeline. Server or transport rejection is a typed, retryable outcome; a missing accepted
-local echo is an adapter defect on the Observable error channel. Rejection or cancellation keeps
-the durable draft and target available, while success clears them. No command owns a detached
-subscription.
+local timeline. The visible field clears optimistically, but its persisted snapshot is not cleared
+until that acceptance. Server or transport rejection is a typed, retryable outcome; a missing
+accepted local echo is an adapter defect on the Observable error channel. Rejection and
+SDK-confirmed cancellation restore the snapshot. If the SDK reports that an event may already be
+sending, unsubscription is deliberately indeterminate: Trinity does not reinsert text that could
+duplicate an event already on the wire, while the persisted snapshot remains recoverable if the
+handle is later recreated. No command owns a detached subscription.
 
 Focus enables foreground effects such as read receipts, typing and room actions. Blur disables
 those effects but leaves the Matrix listeners attached, so the projection remains warm. Each
