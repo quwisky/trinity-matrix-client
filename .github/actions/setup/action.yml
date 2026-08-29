@@ -21,10 +21,9 @@ runs:
 
     - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
-        # .nvmrc, not a hardcoded major. `node-version: 24` resolved to whatever 24.x the
-        # runner image happened to ship, which can sit BELOW the `^24.15.0` floor in
-        # package.json's engines and would fail only at `pnpm install`, on a version
-        # nothing in the repo names. One file is now authoritative for CI, nvm and fnm.
+        # .nvmrc tracks the supported Node 24 line, while package.json's engines enforce
+        # the ^24.15.0 floor. Using the file keeps CI, nvm and fnm on the latest available
+        # Node 24 maintenance release without duplicating the version declaration here.
         node-version-file: .nvmrc
         cache: pnpm
         # electron/ is a second pnpm project with its own lockfile. Both share one
