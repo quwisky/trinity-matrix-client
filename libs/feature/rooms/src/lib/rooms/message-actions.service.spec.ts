@@ -10,6 +10,7 @@ import { RoomsService } from '@trinity/data-access/rooms';
 import {
   ConversationRuntime,
   TimelineActionsService,
+  type ConversationMessageOutcome,
   type ConversationTextSendOutcome,
 } from '@trinity/data-access/timeline';
 import { TrnToastService } from '@trinity/components/overlay';
@@ -47,8 +48,17 @@ class HostComponent {
 }
 
 describe('MessageActionsService', () => {
-  const redact = vi.fn(() => of(undefined));
-  const toggleReaction = vi.fn(() => of(undefined));
+  const applied = (operation: 'redaction' | 'reaction' | 'retry') =>
+    of({ kind: 'applied', operation } satisfies ConversationMessageOutcome);
+  const redact = vi.fn<() => Observable<ConversationMessageOutcome>>(() =>
+    applied('redaction'),
+  );
+  const toggleReaction = vi.fn<() => Observable<ConversationMessageOutcome>>(
+    () => applied('reaction'),
+  );
+  const retry = vi.fn<() => Observable<ConversationMessageOutcome>>(() =>
+    applied('retry'),
+  );
   const votePoll = vi.fn(() => of(undefined));
   const endPoll = vi.fn(() => of(undefined));
   const sendSticker = vi.fn(() => of(undefined));
@@ -78,11 +88,10 @@ describe('MessageActionsService', () => {
       useFactory: () => ({
         timeline: inject(ConversationTimelineStub),
         compose: { setDraft, submit: submitText, setTyping },
+        messages: { redact, toggleReaction, retry },
       }),
     },
     MockProvider(TimelineActionsService, {
-      redact,
-      toggleReaction,
       votePoll,
       endPoll,
       sendSticker,
@@ -183,9 +192,9 @@ describe('MessageActionsService', () => {
   });
 
   describe('per-message actions report their own failure', () => {
-    // Each of these routes through runAction, whose only job is to turn a failed
-    // Observable into one specific danger toast. A shared helper is exactly where a
-    // wrong message survives review, so the text is asserted per action.
+    // Each action turns a failed Observable (or typed message rejection) into one
+    // specific danger toast. A shared helper is exactly where a wrong message survives
+    // review, so the text is asserted per action.
     const cases: {
       name: string;
       run: (a: MessageActionsService) => void;
@@ -203,6 +212,12 @@ describe('MessageActionsService', () => {
         run: (a) => a.onReact({ id: '$1', key: '👍' }),
         stub: toggleReaction,
         message: 'Could not update the reaction.',
+      },
+      {
+        name: 'retry',
+        run: (a) => a.onRetry('$1'),
+        stub: retry,
+        message: 'Could not retry the message.',
       },
       {
         name: 'poll vote',
@@ -239,6 +254,25 @@ describe('MessageActionsService', () => {
         expect(toastShow).not.toHaveBeenCalled();
       });
     }
+
+    it('toasts a typed command rejection even though the stream succeeds', () => {
+      const { actions } = build();
+      redact.mockReturnValueOnce(
+        of({
+          kind: 'rejected',
+          operation: 'redaction',
+          failure: 'not-allowed',
+          retryable: false,
+        } satisfies ConversationMessageOutcome),
+      );
+
+      actions.onDelete('$1');
+
+      expect(toastShow).toHaveBeenCalledWith(
+        'Could not delete the message.',
+        expect.objectContaining({ variant: 'destructive' }),
+      );
+    });
   });
 
   describe('threads and pagination', () => {

@@ -11,6 +11,7 @@ import { vi } from 'vitest';
 import { TimelineService } from './timeline.service';
 import { TimelineActionsService } from './timeline-actions.service';
 import { ConversationActionContextService } from './conversation-action-context.service';
+import { CONVERSATION_MESSAGE_POLICY } from './conversation-message-adapter.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaService, type UploadedMedia } from '@trinity/data-access/media';
 import {
@@ -86,6 +87,11 @@ export function matrixProvider(client: unknown, isInitialized = true) {
   return MockProvider(MatrixClientService, {
     isInitialized,
     instance: client,
+    clientFor: (accountId: string) =>
+      (client as { getUserId?: () => string | null }).getUserId?.() ===
+      accountId
+        ? client
+        : null,
   } as Partial<MatrixClientService>);
 }
 
@@ -318,7 +324,18 @@ export function setup(
   const client = fakeClient(room, sent);
 
   TestBed.configureTestingModule({
-    providers: [TimelineService, matrixProvider(client), mediaProvider()],
+    providers: [
+      TimelineService,
+      matrixProvider(client),
+      mediaProvider(),
+      {
+        provide: CONVERSATION_MESSAGE_POLICY,
+        useValue: {
+          canRedactOthers: () => (power.mine ?? 0) >= (power.redact ?? 50),
+          authorizeRedaction: () => ({ kind: 'allowed' }),
+        },
+      },
+    ],
   });
   const svc = TestBed.inject(TimelineService);
   svc.open('!r:hs');

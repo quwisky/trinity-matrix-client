@@ -59,7 +59,6 @@ import {
 import {
   ConversationRuntime,
   ThreadsService,
-  TimelineActionsService,
 } from '@trinity/data-access/timeline';
 import {
   HapticsService,
@@ -292,7 +291,6 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly mixedInvites = inject(MixedInvitesService);
   readonly invites = inject(InvitesService);
   readonly timeline = inject(ConversationRuntime).timeline;
-  readonly timelineActions = inject(TimelineActionsService);
   readonly threads = inject(ThreadsService);
   readonly pinned = inject(PinnedMessagesService);
   private readonly imagePackService = inject(ImagePackService);

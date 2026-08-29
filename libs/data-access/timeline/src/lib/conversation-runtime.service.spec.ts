@@ -19,6 +19,12 @@ import {
   type ConversationTimelineController,
   type ConversationTimelineFactory,
 } from './conversation-runtime.service';
+import { CONVERSATION_MESSAGE_ADAPTER } from './conversation-message-adapter.service';
+import type {
+  ConversationMessageAdapter,
+  ConversationMessageOperation,
+} from './conversation-messages';
+import type { MessageView } from './message-presentation';
 
 const ALICE = '@alice:example.org';
 const BOB = '@bob:example.org';
@@ -28,9 +34,12 @@ interface TestConversationTimelineController extends ConversationTimelineControl
   readonly released: ReturnType<typeof signal<boolean>>;
 }
 
-function timeline(roomId: string): ConversationTimeline {
+function timeline(
+  roomId: string,
+  messages: readonly MessageView[] = [],
+): ConversationTimeline {
   return {
-    messages: signal([]).asReadonly(),
+    messages: signal([...messages]).asReadonly(),
     loadingOlder: signal(false).asReadonly(),
     canLoadOlder: signal(false).asReadonly(),
     oldestEventId: signal<string | null>(null).asReadonly(),
@@ -51,6 +60,7 @@ function timeline(roomId: string): ConversationTimeline {
 function setup(
   retainedPerAccount = 2,
   senderOverride?: ConversationTextSender,
+  messages: readonly MessageView[] = [],
 ) {
   const controllers = new Map<string, TestConversationTimelineController[]>();
   const sends = new Subject<
@@ -64,12 +74,20 @@ function setup(
   const mediaPipeline = {
     transfer: vi.fn(() => mediaEvents.asObservable()),
   };
+  const applied = (operation: ConversationMessageOperation) =>
+    of({ kind: 'applied' as const, operation });
+  const messageAdapter: ConversationMessageAdapter = {
+    toggleReaction: vi.fn(() => applied('reaction')),
+    redact: vi.fn(() => applied('redaction')),
+    retry: vi.fn(() => applied('retry')),
+    acknowledge: vi.fn(() => applied('receipt')),
+  };
   const factory: ConversationTimelineFactory = {
     create: vi.fn((key) => {
       const visible = signal(false);
       const released = signal(false);
       const controller: TestConversationTimelineController = {
-        timeline: timeline(key.roomId),
+        timeline: timeline(key.roomId, messages),
         setVisible: (next) => visible.set(next),
         release: () => released.set(true),
         resources: () => ({ listenerCount: 11, retainedBytes: 64 }),
@@ -87,6 +105,7 @@ function setup(
       ConversationRuntime,
       { provide: CONVERSATION_TIMELINE_FACTORY, useValue: factory },
       { provide: CONVERSATION_TEXT_SENDER, useValue: sender },
+      { provide: CONVERSATION_MESSAGE_ADAPTER, useValue: messageAdapter },
       { provide: MediaPipeline, useValue: mediaPipeline },
       { provide: CONVERSATION_RETENTION_LIMIT, useValue: retainedPerAccount },
     ],
@@ -110,6 +129,36 @@ function setup(
     sends,
     mediaEvents,
     mediaPipeline,
+    messageAdapter,
+  };
+}
+
+function message(
+  id: string,
+  overrides: Partial<MessageView> = {},
+): MessageView {
+  return {
+    id,
+    senderId: ALICE,
+    senderName: 'Alice',
+    senderInitial: 'A',
+    senderAvatarMxc: null,
+    body: 'hello',
+    html: null,
+    timestamp: 1,
+    isOwn: true,
+    decryptionFailed: false,
+    edited: false,
+    reactions: [],
+    replyTo: null,
+    status: null,
+    kind: 'text',
+    media: null,
+    caption: null,
+    captionHtml: null,
+    readReceipts: [],
+    poll: null,
+    ...overrides,
   };
 }
 
@@ -259,6 +308,78 @@ describe('ConversationRuntime', () => {
     expect(alice.compose.draft()).toBe('alice draft');
   });
 
+  it('starts reply and edit intent only for eligible presented messages', () => {
+    const editable = message('$editable');
+    const unavailable = message('$failed', { status: 'failed' });
+    const { runtime } = setup(2, undefined, [editable, unavailable]);
+    const handle = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+
+    expect(handle.messages.beginReply('$editable')).toEqual({
+      kind: 'applied',
+      operation: 'reply',
+    });
+    expect(handle.compose.intent()).toEqual({
+      kind: 'reply',
+      eventId: '$editable',
+    });
+    expect(handle.messages.beginEdit('$editable', 'updated')).toEqual({
+      kind: 'applied',
+      operation: 'edit',
+    });
+    expect(handle.compose.draft()).toBe('updated');
+    expect(handle.messages.beginEdit('$failed', 'ignored')).toMatchObject({
+      kind: 'rejected',
+      failure: 'message-unavailable',
+      retryable: false,
+    });
+  });
+
+  it('keeps message actions cold and binds them to the immutable handle key', async () => {
+    const { runtime, messageAdapter } = setup();
+    const handle = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+    const command = handle.messages.toggleReaction('$message', '👍');
+
+    expect(messageAdapter.toggleReaction).not.toHaveBeenCalled();
+    await firstValueFrom(command);
+    expect(messageAdapter.toggleReaction).toHaveBeenCalledWith({
+      key: handle.key,
+      messageId: '$message',
+      reaction: '👍',
+    });
+  });
+
+  it('rejects a retained handle command and resolves the focused proxy on subscribe', async () => {
+    const { runtime, messageAdapter } = setup();
+    const alice = runtime.focus({
+      accountId: ALICE,
+      roomId: '!same:example.org',
+    });
+    const focusedCommand = runtime.messages.redact('$message');
+    const bob = runtime.focus({
+      accountId: BOB,
+      roomId: '!same:example.org',
+    });
+
+    await expect(
+      firstValueFrom(alice.messages.redact('$message')),
+    ).resolves.toMatchObject({
+      kind: 'rejected',
+      operation: 'redaction',
+      failure: 'conversation-unavailable',
+    });
+    await firstValueFrom(focusedCommand);
+    expect(messageAdapter.redact).toHaveBeenCalledWith({
+      key: bob.key,
+      messageId: '$message',
+    });
+  });
+
   it('releases every listener-owning child when the runtime is retired', () => {
     const { runtime, controller } = setup();
     const alice = runtime.focus({
@@ -286,13 +407,16 @@ describe('ConversationRuntime', () => {
   });
 
   it('restores draft and reply/edit intent with the exact retained conversation', () => {
-    const { runtime } = setup();
+    const { runtime } = setup(2, undefined, [
+      message('$reply'),
+      message('$edit'),
+    ]);
     const first = runtime.focus({
       accountId: ALICE,
       roomId: '!first:example.org',
     });
     first.compose.setDraft('half written');
-    first.compose.beginReply('$reply');
+    first.messages.beginReply('$reply');
 
     runtime.focus({ accountId: ALICE, roomId: '!second:example.org' });
     const restored = runtime.focus({
@@ -307,7 +431,7 @@ describe('ConversationRuntime', () => {
       eventId: '$reply',
     });
 
-    restored.compose.beginEdit('$edit', 'original message');
+    restored.messages.beginEdit('$edit', 'original message');
     expect(restored.compose.intent()).toEqual({
       kind: 'edit',
       eventId: '$edit',
@@ -319,13 +443,13 @@ describe('ConversationRuntime', () => {
   });
 
   it('restores compose intent after the timeline handle is evicted', () => {
-    const { runtime } = setup(0);
+    const { runtime } = setup(0, undefined, [message('$edit')]);
     const original = runtime.focus({
       accountId: ALICE,
       roomId: '!original:example.org',
     });
     original.compose.setDraft('parked message');
-    original.compose.beginEdit('$edit', 'edited text');
+    original.messages.beginEdit('$edit', 'edited text');
     runtime.focus({ accountId: ALICE, roomId: '!other:example.org' });
 
     const restored = runtime.focus({
@@ -433,13 +557,14 @@ describe('ConversationRuntime', () => {
   });
 
   it('returns a typed rejection and restores the durable intent', async () => {
-    const { runtime, sends } = setup();
-    const compose = runtime.focus({
+    const { runtime, sends } = setup(2, undefined, [message('$target')]);
+    const handle = runtime.focus({
       accountId: ALICE,
       roomId: '!room:example.org',
-    }).compose;
+    });
+    const compose = handle.compose;
     compose.setDraft('try again');
-    compose.beginReply('$target');
+    handle.messages.beginReply('$target');
 
     const outcomePromise = firstValueFrom(compose.submit());
     sends.next({ kind: 'rejected', retryable: true });
@@ -516,16 +641,17 @@ describe('ConversationRuntime', () => {
   });
 
   it('does not clear newer draft or target changes when an older send settles', async () => {
-    const { runtime, sends } = setup();
-    const compose = runtime.focus({
+    const { runtime, sends } = setup(2, undefined, [message('$new-target')]);
+    const handle = runtime.focus({
       accountId: ALICE,
       roomId: '!room:example.org',
-    }).compose;
+    });
+    const compose = handle.compose;
     compose.setDraft('first');
     const first = firstValueFrom(compose.submit());
 
     compose.setDraft('second');
-    compose.beginReply('$new-target');
+    handle.messages.beginReply('$new-target');
     sends.next({ kind: 'accepted', eventId: '$first' });
     sends.complete();
 

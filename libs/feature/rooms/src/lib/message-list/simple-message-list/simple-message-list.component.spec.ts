@@ -14,7 +14,10 @@ import { MessageComposerComponent } from '../../message-composer/message-compose
 import { DayBoundaryService } from '../day-boundary.service';
 import { ReactionPickerService } from '../../reaction-picker/reaction-picker.service';
 import { MessageSourceService } from '../../message-source/message-source.service';
-import { ConversationComposeStub } from '../../testing/conversation-timeline.stub';
+import {
+  ConversationComposeStub,
+  ConversationMessagesStub,
+} from '../../testing/conversation-timeline.stub';
 
 function msg(
   id: string,
@@ -98,8 +101,12 @@ const afterDivider = (el: Element | null | undefined): Element | null => {
 
 describe('SimpleMessageListComponent', () => {
   beforeEach(() => {
+    const compose = new ConversationComposeStub();
     TestBed.overrideProvider(ConversationRuntime, {
-      useValue: { compose: new ConversationComposeStub() },
+      useValue: {
+        compose,
+        messages: new ConversationMessagesStub(compose),
+      },
     });
   });
 

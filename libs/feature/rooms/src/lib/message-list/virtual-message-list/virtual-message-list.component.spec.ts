@@ -11,7 +11,10 @@ import {
 import { MessageComposerComponent } from '../../message-composer/message-composer.component';
 import { DayBoundaryService } from '../day-boundary.service';
 import { VirtualMessageListComponent } from './virtual-message-list.component';
-import { ConversationComposeStub } from '../../testing/conversation-timeline.stub';
+import {
+  ConversationComposeStub,
+  ConversationMessagesStub,
+} from '../../testing/conversation-timeline.stub';
 
 function msg(
   id: string,
@@ -55,8 +58,12 @@ const notAtBottom = (cmp: VirtualMessageListComponent): boolean =>
 
 describe('VirtualMessageListComponent', () => {
   beforeEach(() => {
+    const compose = new ConversationComposeStub();
     TestBed.overrideProvider(ConversationRuntime, {
-      useValue: { compose: new ConversationComposeStub() },
+      useValue: {
+        compose,
+        messages: new ConversationMessagesStub(compose),
+      },
     });
     // Suppress the anchoring effect's async scroll writes (they'd assign
     // el.scrollTop, fighting the geometry these tests define); windowing is driven by

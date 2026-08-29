@@ -153,10 +153,33 @@ export const SHARED_MOCKS: Provider[] = [
       const media = {
         send: vi.fn(() => of({ kind: 'sent' as const, eventId: '$media' })),
       };
+      const messages = {
+        beginReply: vi.fn(() => ({
+          kind: 'applied' as const,
+          operation: 'reply' as const,
+        })),
+        beginEdit: vi.fn(() => ({
+          kind: 'applied' as const,
+          operation: 'edit' as const,
+        })),
+        toggleReaction: vi.fn(() =>
+          of({ kind: 'applied' as const, operation: 'reaction' as const }),
+        ),
+        redact: vi.fn(() =>
+          of({ kind: 'applied' as const, operation: 'redaction' as const }),
+        ),
+        retry: vi.fn(() =>
+          of({ kind: 'applied' as const, operation: 'retry' as const }),
+        ),
+        acknowledge: vi.fn(() =>
+          of({ kind: 'applied' as const, operation: 'receipt' as const }),
+        ),
+      };
       const focused = signal<ConversationHandle | null>(null);
       return {
         timeline,
         compose,
+        messages,
         media,
         focused: focused.asReadonly(),
         focus: vi.fn((key: ConversationKey) => {
@@ -167,6 +190,7 @@ export const SHARED_MOCKS: Provider[] = [
             state: state.asReadonly(),
             timeline,
             compose,
+            messages,
             media,
           } satisfies ConversationHandle;
           focused.set(handle);

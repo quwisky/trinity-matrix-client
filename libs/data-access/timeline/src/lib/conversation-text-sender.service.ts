@@ -1,4 +1,5 @@
 import { Injectable, InjectionToken, inject } from '@angular/core';
+import { type Room } from 'matrix-js-sdk';
 import { catchError, defer, from, map, of, tap, throwError } from 'rxjs';
 import {
   editMessageContent,
@@ -7,7 +8,7 @@ import {
   slashCommandContent,
   textMessageContent,
 } from '@trinity/util/matrix';
-import { ConversationActionContextService } from './conversation-action-context.service';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   type ConversationTextSendOperation,
   type ConversationTextSendRequest,
@@ -22,18 +23,14 @@ class MissingLocalEchoError extends Error {
 
 @Injectable({ providedIn: 'root' })
 class MatrixConversationTextSender implements ConversationTextSender {
-  private readonly actionContext = inject(ConversationActionContextService);
+  private readonly matrix = inject(MatrixClientService);
 
   send(request: ConversationTextSendRequest): ConversationTextSendOperation {
-    const context = this.actionContext.resolve();
-    if (
-      !context ||
-      context.client.getUserId() !== request.key.accountId ||
-      context.room.roomId !== request.key.roomId
-    ) {
+    const client = this.matrix.clientFor(request.key.accountId);
+    const room = client?.getRoom(request.key.roomId) ?? null;
+    if (!client || !room || client.getUserId() !== request.key.accountId) {
       return this.settled(of({ kind: 'rejected', retryable: false }));
     }
-    const { client, room } = context;
     const content = this.content(request, room);
     let localEventId: string | null = null;
     let settled = false;
@@ -85,12 +82,7 @@ class MatrixConversationTextSender implements ConversationTextSender {
     return { outcome, cancel: () => false };
   }
 
-  private content(
-    request: ConversationTextSendRequest,
-    room: NonNullable<
-      ReturnType<ConversationActionContextService['resolve']>
-    >['room'],
-  ): object {
+  private content(request: ConversationTextSendRequest, room: Room): object {
     const mentions = [...request.mentions];
     switch (request.intent.kind) {
       case 'message':

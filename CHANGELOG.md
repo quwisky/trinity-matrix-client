@@ -87,6 +87,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Message actions now stay with the exact Conversation that owns them.** Replies, edits,
+  reactions, deletions, failed-send retries and main-timeline read acknowledgements no longer act
+  through a mutable focused-room singleton. They run as cold, typed RxJS commands bound to an
+  immutable Account-and-Room handle, re-read SDK-authoritative relations when subscribed, and
+  return safe retryability without leaking Matrix errors or event content. Room Administration
+  supplies redaction decisions through an application-level port, while public/private receipts
+  and the fully-read marker share the same exact-Conversation adapter.
+
 - **Encrypted attachments now cross one Media Pipeline from composer to display.** Picked,
   pasted, dropped and downloaded GIF files are staged as opaque references, then sent through
   the exact Account-and-Room Conversation as cold RxJS progress streams with typed validation,

@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ConversationActionContextService } from './conversation-action-context.service';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
 import { fakeEvent, fakeRoom } from './timeline.spec-harness';
 
@@ -50,6 +50,7 @@ function setup({
   };
   const client = {
     getUserId: vi.fn(() => accountId),
+    getRoom: vi.fn(() => room),
     makeTxnId: vi.fn(() => 'txn-1'),
     cancelPendingEvent: vi.fn(() => {
       if (!cancelable) throw new Error('already sending');
@@ -63,10 +64,13 @@ function setup({
     ),
   };
   TestBed.configureTestingModule({
-    providers: [ConversationActionContextService],
+    providers: [
+      {
+        provide: MatrixClientService,
+        useValue: { clientFor: () => client },
+      },
+    ],
   });
-  const context = TestBed.inject(ConversationActionContextService);
-  context.bind(() => ({ client, room }) as never);
   return {
     sender: TestBed.inject(CONVERSATION_TEXT_SENDER),
     client,

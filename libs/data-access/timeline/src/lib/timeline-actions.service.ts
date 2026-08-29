@@ -4,10 +4,8 @@ import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
 import { MediaService, type ImagePackImage } from '@trinity/data-access/media';
 import { type VoiceRecording } from '@trinity/platform-native';
 import {
-  annotationContent,
   locationMessageContent,
   mediaCaptionFields,
-  myReactionId,
   pollEndContent,
   pollResponseContent,
   pollStartContent,
@@ -27,9 +25,9 @@ function voiceExtension(mimeType: string): string {
 }
 
 /**
- * Non-compose writes to a room's timeline: redactions, reactions, polls, attachments,
- * voice clips, shared locations and forwards. Text, reply and edit composition belongs
- * to each immutable Conversation handle and its typed submit command.
+ * Transitional non-message writes to a room's timeline: polls, attachments, voice clips,
+ * shared locations and forwards. Message relations and actions belong to each immutable
+ * Conversation handle's typed `messages` surface.
  *
  * The counterpart to the Conversation Runtime's timeline projection, which owns
  * every listener; nothing here subscribes to the SDK or holds room state. The open
@@ -236,57 +234,6 @@ export class TimelineActionsService {
           // A valid media payload; the SDK's content union doesn't model it.
           return from(client.sendMessage(room.roomId, content as never));
         }),
-      );
-    }).pipe(map(() => void 0));
-  }
-
-  /** Resend a message that failed to send. */
-  retry(messageId: string): void {
-    const ctx = this.actionContext.resolve();
-    if (!ctx) {
-      return;
-    }
-    const event = ctx.room
-      .getLiveTimeline()
-      .getEvents()
-      .find((e) => e.getId() === messageId);
-    if (event) {
-      ctx.client.resendEvent(event, ctx.room).catch(() => undefined);
-    }
-  }
-
-  /** Delete (redact) a message. */
-  redact(messageId: string): Observable<void> {
-    return defer(() => {
-      const ctx = this.actionContext.resolve();
-      if (!ctx) {
-        return of(void 0);
-      }
-      return from(ctx.client.redactEvent(ctx.room.roomId, messageId));
-    }).pipe(map(() => void 0));
-  }
-
-  /**
-   * Toggle the current user's reaction to a message: add the `m.annotation` if it
-   * isn't there yet, otherwise redact their existing one.
-   */
-  toggleReaction(messageId: string, key: string): Observable<void> {
-    return defer(() => {
-      const ctx = this.actionContext.resolve();
-      if (!ctx) {
-        return of(void 0);
-      }
-      const { client, room } = ctx;
-      const mine = myReactionId(client, room, messageId, key);
-      if (mine) {
-        return from(client.redactEvent(room.roomId, mine));
-      }
-      return from(
-        client.sendEvent(
-          room.roomId,
-          EventType.Reaction,
-          annotationContent(messageId, key) as never,
-        ),
       );
     }).pipe(map(() => void 0));
   }
