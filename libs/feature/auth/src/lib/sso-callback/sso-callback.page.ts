@@ -15,6 +15,7 @@ import { AuthService } from '@trinity/data-access/auth';
 import { AuthCardComponent } from '../auth-card/auth-card.component';
 import { SsoStateStore } from '../sso-state.store';
 import { OidcStateStore } from '../oidc-state.store';
+import { accountEstablishmentError } from '../account-establishment-outcome';
 
 /**
  * Landing route for the auth redirect. Handles BOTH login flows, which are mutually
@@ -138,7 +139,12 @@ export class SsoCallbackPage implements OnInit {
       )
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: () => {
+        next: (outcome) => {
+          const error = accountEstablishmentError(outcome);
+          if (error) {
+            this.error.set(error);
+            return;
+          }
           void this.router.navigateByUrl('/rooms', { replaceUrl: true });
         },
         error: (err) =>
@@ -201,7 +207,12 @@ export class SsoCallbackPage implements OnInit {
       )
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: () => {
+        next: (outcome) => {
+          const error = accountEstablishmentError(outcome);
+          if (error) {
+            this.error.set(error);
+            return;
+          }
           void this.router.navigateByUrl('/rooms', { replaceUrl: true });
         },
         error: (err) => {

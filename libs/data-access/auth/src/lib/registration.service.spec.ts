@@ -3,7 +3,6 @@ import { MatrixError, createClient } from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, lastValueFrom, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AccountAlreadyStoredError } from '@trinity/platform-native';
 import { RegistrationService } from './registration.service';
 import { SessionEstablishmentService } from './session-establishment.service';
 
@@ -60,7 +59,13 @@ describe('RegistrationService', () => {
       providers: [
         RegistrationService,
         MockProvider(SessionEstablishmentService, {
-          establishNew: vi.fn(() => of(undefined)),
+          establishNew: vi.fn(() =>
+            of({
+              kind: 'ready' as const,
+              accountId: '@new:hs',
+              placement: 'active' as const,
+            }),
+          ),
         }),
       ],
     });
@@ -336,7 +341,13 @@ describe('RegistrationService', () => {
     createClientMock.mockReturnValue(client({ registerRequest }) as never);
     vi.mocked(sessions.establishNew)
       .mockReturnValueOnce(throwError(() => new Error('storage failed')))
-      .mockReturnValueOnce(of(undefined));
+      .mockReturnValueOnce(
+        of({
+          kind: 'ready',
+          accountId: '@new:hs',
+          placement: 'active',
+        }),
+      );
 
     await lastValueFrom(service.begin('https://hs', 'new', 'password', 'hs'), {
       defaultValue: undefined,
@@ -395,7 +406,12 @@ describe('RegistrationService', () => {
     const registerRequest = vi.fn().mockResolvedValue(registered);
     createClientMock.mockReturnValue(client({ registerRequest }) as never);
     vi.mocked(sessions.establishNew).mockReturnValue(
-      throwError(() => new AccountAlreadyStoredError('@new:hs')),
+      of({
+        kind: 'failed',
+        failure: 'account-already-stored',
+        accountId: '@new:hs',
+        placement: 'active',
+      }),
     );
 
     await lastValueFrom(service.begin('https://hs', 'new', 'password', 'hs'), {

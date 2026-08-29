@@ -149,9 +149,10 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   preferences, theme/status-bar, launcher badge, external browser, desktop bridge, error handler). Branches on
   `isNativePlatform()` internally. May depend only on `util`.
 - `@trinity/data-access/accounts` `[type:data-access]` — Account Runtime: read-only lifecycle state plus
-  cold, finite restoration commands with Active Account priority, bounded per-Account outcomes, cancellation,
-  repeatable attempts, and secret-safe failure metadata. Its production adapter composes session storage with
-  Matrix Runtime.
+  cold, finite restoration and authenticated-establishment commands with Active Account priority, bounded
+  per-Account outcomes, cancellation, joinable identical attempts, explicit lifecycle conflicts, and
+  secret-safe failure metadata. Authentication crosses into it through an opaque grant; its production adapter
+  composes session storage with Matrix Runtime and commits Active placement only after startup succeeds.
 - `@trinity/data-access/matrix-client` `[type:data-access]` — `MatrixClientService` + the 4S key service;
   the client/session foundation every domain data-access lib depends on.
 - `@trinity/data-access/*` `[type:data-access]` — one lib per Matrix domain (`media`, `rooms`,

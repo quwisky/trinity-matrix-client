@@ -87,6 +87,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Successful authentication now establishes Accounts through Account Runtime.** Password,
+  SSO, OIDC, and registration flows hand over an opaque authenticated grant instead of writing
+  credentials or starting Matrix clients themselves. Account Runtime persists and starts the
+  Account before committing its requested active placement, joins identical in-flight attempts,
+  and reports lifecycle conflicts and recoverable startup failures as typed outcomes. Existing
+  saved sessions retain their crypto-store prefixes and remain compatible with cold-start restore.
+
 - **Saved accounts now recover through one bounded startup flow.** Trinity starts the active
   account first while restoring the others concurrently, and one offline, expired, corrupt, or
   encryption-broken background account no longer disappears into a silent best-effort path.

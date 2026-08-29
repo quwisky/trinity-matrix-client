@@ -27,7 +27,9 @@ Tooling and black-box test projects are outside this runtime dependency model. E
 
 ## Product capabilities
 
-- **Accounts** owns saved Accounts and Account Runtime lifecycle.
+- **Accounts** owns saved Accounts and Account Runtime lifecycle. Authentication Attempts end by
+  issuing an opaque authenticated grant; Account Runtime consumes the grant with an explicit
+  active/inactive placement intent and never exposes credentials back to the caller.
 - **Room Library** owns the current user's relationship to the Room and Space graph.
 - **Conversations** owns keyed timelines, composer intent, messages, threads, pins, and read position.
 - **Room Administration** owns governance within a Room.

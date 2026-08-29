@@ -26,6 +26,11 @@ const EMPTY_OIDC: OidcStateStash = {
   codeVerifier: null,
   expectedUserId: null,
 };
+const READY_OUTCOME = {
+  kind: 'ready',
+  accountId: '@me:hs',
+  placement: 'active',
+} as const;
 
 function paramMap(params: Record<string, string | null>): ParamMap {
   return { get: (k: string) => params[k] ?? null } as ParamMap;
@@ -114,7 +119,7 @@ describe('SsoCallbackPage', () => {
 
   describe('legacy SSO (loginToken)', () => {
     it('completes login when the state matches, clearing storage + URL', async () => {
-      const completeSsoLogin = vi.fn(() => of({}));
+      const completeSsoLogin = vi.fn(() => of(READY_OUTCOME));
       const { navigateByUrl, replaceState, ssoClear } = await renderPage({
         auth: { completeSsoLogin } as unknown as Partial<AuthService>,
         params: { loginToken: 'TOKEN', sso_state: 'NONCE' },
@@ -140,7 +145,7 @@ describe('SsoCallbackPage', () => {
     });
 
     it('redeems the login token once when the same callback is delivered twice', async () => {
-      const completeSsoLogin = vi.fn(() => of({}));
+      const completeSsoLogin = vi.fn(() => of(READY_OUTCOME));
       const { ssoClear } = await renderPage({
         auth: { completeSsoLogin } as unknown as Partial<AuthService>,
         paramsSequence: [
@@ -206,7 +211,7 @@ describe('SsoCallbackPage', () => {
       // through reportUnverified; without the clear, a legacy-SSO user would watch that
       // error render, with a Back button, over a sign-in that is actually going through.
       let peeks = 0;
-      const completeSsoLogin = vi.fn(() => of({}));
+      const completeSsoLogin = vi.fn(() => of(READY_OUTCOME));
       const { cmp, navigateByUrl } = await renderPage({
         auth: { completeSsoLogin } as unknown as Partial<AuthService>,
         paramsSequence: [
@@ -248,6 +253,25 @@ describe('SsoCallbackPage', () => {
       expect(cmp.error()).toBe('token expired');
       expect(navigateByUrl).not.toHaveBeenCalled();
     });
+
+    it('surfaces an expected Account Runtime failure without navigating', async () => {
+      const { cmp, navigateByUrl } = await renderPage({
+        auth: {
+          completeSsoLogin: vi.fn(() =>
+            of({
+              kind: 'transition-in-progress' as const,
+              accountId: '@me:hs',
+              placement: 'active' as const,
+            }),
+          ),
+        } as unknown as Partial<AuthService>,
+        params: { loginToken: 'TOKEN', sso_state: 'NONCE' },
+        ssoStash: { state: 'NONCE', baseUrl: 'https://hs.example' },
+      });
+
+      expect(cmp.error()).toMatch(/account change/i);
+      expect(navigateByUrl).not.toHaveBeenCalled();
+    });
   });
 
   describe('OIDC (code + state)', () => {
@@ -272,7 +296,7 @@ describe('SsoCallbackPage', () => {
     };
 
     it('completes the grant with the stashed PKCE context, then clears the stash + URL', async () => {
-      const completeOidcLogin = vi.fn(() => of(undefined));
+      const completeOidcLogin = vi.fn(() => of(READY_OUTCOME));
       const { navigateByUrl, replaceState, oidcClear } = await renderPage({
         auth: { completeOidcLogin } as unknown as Partial<AuthService>,
         params: { code: 'CODE', state: 'STATE1' },
@@ -295,7 +319,7 @@ describe('SsoCallbackPage', () => {
     });
 
     it('exchanges the code once when the same callback is delivered twice', async () => {
-      const completeOidcLogin = vi.fn(() => of(undefined));
+      const completeOidcLogin = vi.fn(() => of(READY_OUTCOME));
       const { oidcClear } = await renderPage({
         auth: { completeOidcLogin } as unknown as Partial<AuthService>,
         // The identical genuine callback, emitted twice. A deep link can be delivered more
@@ -358,7 +382,7 @@ describe('SsoCallbackPage', () => {
     });
 
     it('still completes the genuine callback after a forged one lands first (reused component)', async () => {
-      const completeOidcLogin = vi.fn(() => of(undefined));
+      const completeOidcLogin = vi.fn(() => of(READY_OUTCOME));
       const { navigateByUrl, oidcClear } = await renderPage({
         auth: { completeOidcLogin } as unknown as Partial<AuthService>,
         // The native deep link reuses this component: a forged callback (wrong state)
@@ -407,7 +431,7 @@ describe('SsoCallbackPage', () => {
       // which is exactly the lock-out the serialization was chosen to prevent, now
       // reachable by a forged deep link that merely makes the stash read fail.
       let peeks = 0;
-      const completeOidcLogin = vi.fn(() => of(undefined));
+      const completeOidcLogin = vi.fn(() => of(READY_OUTCOME));
       const { cmp, navigateByUrl } = await renderPage({
         auth: { completeOidcLogin } as unknown as Partial<AuthService>,
         paramsSequence: [
@@ -440,7 +464,7 @@ describe('SsoCallbackPage', () => {
     it('forwards the re-auth expectation so the grant can be bound to that account', async () => {
       // Without this the callback would complete a re-auth as whoever the provider
       // happened to have a session for, under the account's device id.
-      const completeOidcLogin = vi.fn(() => of(undefined));
+      const completeOidcLogin = vi.fn(() => of(READY_OUTCOME));
       await renderPage({
         auth: { completeOidcLogin } as unknown as Partial<AuthService>,
         params: { code: 'CODE', state: 'STATE1' },

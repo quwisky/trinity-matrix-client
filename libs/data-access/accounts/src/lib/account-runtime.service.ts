@@ -9,6 +9,7 @@ import {
   map,
   mergeMap,
   of,
+  shareReplay,
   switchMap,
   take,
   tap,
@@ -20,16 +21,30 @@ import {
 import {
   ACCOUNT_RESTORE_POLICY,
   ACCOUNT_RUNTIME_ADAPTER,
+  type AdapterAccountEstablishmentOutcome,
   type AdapterAccountRestoreOutcome,
   type SavedAccountsSnapshot,
 } from './account-runtime.adapter';
+import {
+  AuthenticatedAccountGrant,
+  authenticatedAccountGrantPayload,
+  sameAuthenticatedAccountGrant,
+} from './authenticated-account-grant';
 import type {
+  AccountEstablishmentIntent,
+  AccountEstablishmentOutcome,
   AccountRestoreMetrics,
   AccountRestoreOutcome,
   AccountRestoreRole,
   AccountRestoreResult,
   AccountRuntimeState,
 } from './account-runtime.models';
+
+interface InFlightAccountEstablishment {
+  readonly grant: AuthenticatedAccountGrant;
+  readonly intent: AccountEstablishmentIntent;
+  readonly outcome: Observable<AccountEstablishmentOutcome>;
+}
 
 @Injectable({ providedIn: 'root' })
 export class AccountRuntimeService {
@@ -38,6 +53,7 @@ export class AccountRuntimeService {
   private readonly runtimeState = signal<AccountRuntimeState>({
     phase: 'idle',
   });
+  private establishment: InFlightAccountEstablishment | null = null;
 
   readonly state = this.runtimeState.asReadonly();
   readonly activeAccountId = this.adapter.activeAccountId;
@@ -46,6 +62,9 @@ export class AccountRuntimeService {
   restoreSavedAccounts(): Observable<AccountRestoreResult> {
     return defer(() => {
       const startedAt = performance.now();
+      if (this.establishment) {
+        return of(this.transitionRestoreResult(performance.now() - startedAt));
+      }
       let termination: 'pending' | 'settled' | 'failed' = 'pending';
       let activeAccountId: string | null = null;
       let totalAccounts = 0;
@@ -94,6 +113,70 @@ export class AccountRuntimeService {
           }
         }),
       );
+    });
+  }
+
+  establishAuthenticatedAccount(
+    grant: AuthenticatedAccountGrant,
+    intent: AccountEstablishmentIntent,
+  ): Observable<AccountEstablishmentOutcome> {
+    return defer(() => {
+      const session = authenticatedAccountGrantPayload(grant);
+      if (this.runtimeState().phase === 'restoring') {
+        return of(this.transitionOutcome(session.userId, intent));
+      }
+      const inFlight = this.establishment;
+      if (inFlight) {
+        return sameAuthenticatedAccountGrant(inFlight.grant, grant) &&
+          this.sameIntent(inFlight.intent, intent)
+          ? inFlight.outcome
+          : of(this.transitionOutcome(session.userId, intent));
+      }
+
+      let termination: 'pending' | 'settled' | 'failed' = 'pending';
+      this.runtimeState.set({
+        phase: 'establishing',
+        accountId: session.userId,
+        placement: intent.placement,
+      });
+      const outcome = this.adapter.establishAccount(grant, intent).pipe(
+        take(1),
+        throwIfEmpty(
+          () => new Error('Account Runtime adapter emitted no outcome.'),
+        ),
+        map((adapterOutcome) =>
+          this.toEstablishmentOutcome(session.userId, intent, adapterOutcome),
+        ),
+        tap((result) => {
+          termination = 'settled';
+          this.runtimeState.set({
+            phase: 'establishment-settled',
+            outcome: result,
+          });
+        }),
+        catchError((error: unknown) => {
+          termination = 'failed';
+          return throwError(() => error);
+        }),
+        finalize(() => {
+          if (this.establishment?.outcome === outcome) {
+            this.establishment = null;
+          }
+          if (termination !== 'settled') {
+            this.runtimeState.set({
+              phase:
+                termination === 'failed'
+                  ? 'establishment-failed'
+                  : 'establishment-cancelled',
+              accountId: session.userId,
+              placement: intent.placement,
+            });
+          }
+        }),
+        shareReplay({ bufferSize: 1, refCount: true }),
+      );
+      this.establishment = { grant, intent, outcome };
+      return outcome;
     });
   }
 
@@ -202,6 +285,43 @@ export class AccountRuntimeService {
     return { kind: outcome.kind, accountId, role, durationMs };
   }
 
+  private toEstablishmentOutcome(
+    accountId: string,
+    intent: AccountEstablishmentIntent,
+    outcome: AdapterAccountEstablishmentOutcome,
+  ): AccountEstablishmentOutcome {
+    return outcome.kind === 'ready'
+      ? { kind: 'ready', accountId, placement: intent.placement }
+      : {
+          kind: 'failed',
+          accountId,
+          placement: intent.placement,
+          failure: outcome.failure,
+        };
+  }
+
+  private transitionOutcome(
+    accountId: string,
+    intent: AccountEstablishmentIntent,
+  ): AccountEstablishmentOutcome {
+    return {
+      kind: 'transition-in-progress',
+      accountId,
+      placement: intent.placement,
+    };
+  }
+
+  private sameIntent(
+    left: AccountEstablishmentIntent,
+    right: AccountEstablishmentIntent,
+  ): boolean {
+    return (
+      left.placement === right.placement &&
+      left.liveAccounts === right.liveAccounts &&
+      left.accountRecord === right.accountRecord
+    );
+  }
+
   private resultFor(
     activeAccountId: string,
     accounts: readonly AccountRestoreOutcome[],
@@ -252,6 +372,20 @@ export class AccountRuntimeService {
   ): AccountRestoreResult {
     return {
       kind,
+      accounts: [],
+      metrics: {
+        durationMs,
+        activeTerminalMs: null,
+        terminalAccounts: 0,
+        totalAccounts: 0,
+      },
+    };
+  }
+
+  private transitionRestoreResult(durationMs: number): AccountRestoreResult {
+    return {
+      kind: 'transition-in-progress',
+      operation: 'establishing-account',
       accounts: [],
       metrics: {
         durationMs,

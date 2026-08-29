@@ -48,6 +48,47 @@ export type AccountRestoreResult =
   | (AccountRestoreResultBase & {
       readonly kind: 'active-account-unavailable';
       readonly activeAccountId: string;
+    })
+  | (AccountRestoreResultBase & {
+      readonly kind: 'transition-in-progress';
+      readonly operation: 'establishing-account';
+    });
+
+export type AccountEstablishmentPlacement = 'active' | 'inactive';
+
+export type AccountEstablishmentIntent =
+  | {
+      readonly placement: 'active';
+      readonly liveAccounts: 'keep' | 'replace';
+      readonly accountRecord: 'upsert' | 'new';
+    }
+  | {
+      readonly placement: 'inactive';
+      readonly liveAccounts: 'keep';
+      readonly accountRecord: 'upsert' | 'new';
+    };
+
+export type AccountEstablishmentFailure =
+  | 'account-already-stored'
+  | 'active-account-required'
+  | 'local-state-unavailable'
+  | 'reauthentication-required'
+  | 'transient-network'
+  | 'crypto-failure';
+
+interface AccountEstablishmentOutcomeBase {
+  readonly accountId: string;
+  readonly placement: AccountEstablishmentPlacement;
+}
+
+export type AccountEstablishmentOutcome =
+  | (AccountEstablishmentOutcomeBase & { readonly kind: 'ready' })
+  | (AccountEstablishmentOutcomeBase & {
+      readonly kind: 'failed';
+      readonly failure: AccountEstablishmentFailure;
+    })
+  | (AccountEstablishmentOutcomeBase & {
+      readonly kind: 'transition-in-progress';
     });
 
 export type AccountRuntimeState =
@@ -70,4 +111,18 @@ export type AccountRuntimeState =
       readonly totalAccounts: number;
       readonly outcomes: readonly AccountRestoreOutcome[];
     }
-  | { readonly phase: 'settled'; readonly result: AccountRestoreResult };
+  | { readonly phase: 'settled'; readonly result: AccountRestoreResult }
+  | {
+      readonly phase: 'establishing';
+      readonly accountId: string;
+      readonly placement: AccountEstablishmentPlacement;
+    }
+  | {
+      readonly phase: 'establishment-settled';
+      readonly outcome: AccountEstablishmentOutcome;
+    }
+  | {
+      readonly phase: 'establishment-cancelled' | 'establishment-failed';
+      readonly accountId: string;
+      readonly placement: AccountEstablishmentPlacement;
+    };

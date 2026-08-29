@@ -333,6 +333,34 @@ export class MatrixClientService {
     }
   }
 
+  /**
+   * Commit placement of an Account that Account Runtime already started in the background.
+   * `replace` retires other live clients only after the replacement is known-good.
+   */
+  activateAccount(userId: string, liveAccounts: 'keep' | 'replace'): void {
+    if (!this.clients.has(userId)) {
+      throw new Error(
+        `Matrix Runtime cannot activate an Account that is not live: ${userId}`,
+      );
+    }
+    if (liveAccounts === 'replace') {
+      for (const existingId of [...this.clients.keys()]) {
+        if (existingId !== userId) {
+          this.removeInternal(existingId, false);
+        }
+      }
+    }
+    this._activeUserId.set(userId);
+  }
+
+  /** Roll back a background Account start without deleting its persisted stores. */
+  rollbackAccountStart(userId: string): Observable<void> {
+    return defer(() => {
+      this.removeInternal(userId, false);
+      return of(void 0);
+    });
+  }
+
   /** Flag a user id as soft-logged-out (needs re-auth). The signal write schedules
    * change detection on its own. Deduped; cleared by a successful (re-)start. */
   private markSoftLoggedOut(userId: string): void {

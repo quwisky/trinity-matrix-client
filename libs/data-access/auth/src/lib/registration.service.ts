@@ -25,7 +25,6 @@ import {
   take,
   tap,
 } from 'rxjs';
-import { AccountAlreadyStoredError } from '@trinity/platform-native';
 import {
   EMAIL_STAGE,
   NATIVE_REGISTRATION_STAGES,
@@ -46,6 +45,7 @@ import {
   SessionEstablishmentService,
   type LoginMode,
 } from './session-establishment.service';
+import type { AccountEstablishmentOutcome } from '@trinity/data-access/accounts';
 
 export type {
   RegistrationAvailability,
@@ -410,7 +410,12 @@ export class RegistrationService {
         this.activeMode,
       );
     }).pipe(
-      tap(() => this.ensureActive(generation)),
+      switchMap((outcome) => {
+        this.ensureActive(generation);
+        if (outcome.kind === 'ready') return of(void 0);
+        this.handleEstablishmentOutcome(outcome);
+        return EMPTY;
+      }),
       finalize(() => {
         if (generation === this.generation) this.busyState.set(false);
       }),
@@ -440,9 +445,7 @@ export class RegistrationService {
     this.busyState.set(false);
     if (this.createdResponse) {
       const retryable =
-        error instanceof AccountAlreadyStoredError
-          ? false
-          : !(error instanceof RegistrationSessionError) || error.retryable;
+        !(error instanceof RegistrationSessionError) || error.retryable;
       this.stageState.set({
         kind: 'session-error',
         userId: this.createdResponse.user_id,
@@ -468,10 +471,26 @@ export class RegistrationService {
 
   private nonretryableSessionMessage(error: unknown): string {
     if (error instanceof RegistrationSessionError) return error.message;
-    if (error instanceof AccountAlreadyStoredError) {
-      return 'Trinity refused to replace an account already stored on this device.';
-    }
     return 'Trinity could not safely establish this registration session.';
+  }
+
+  private handleEstablishmentOutcome(
+    outcome: Exclude<AccountEstablishmentOutcome, { kind: 'ready' }>,
+  ): void {
+    const retryable =
+      outcome.kind !== 'failed' || outcome.failure !== 'account-already-stored';
+    this.stageState.set({
+      kind: 'session-error',
+      userId: outcome.accountId,
+      retryable,
+    });
+    this.errorState.set(
+      retryable
+        ? 'Your account was created, but Trinity could not finish signing in. ' +
+            'Retry local setup or sign in normally.'
+        : 'Trinity refused to replace an account already stored on this device. ' +
+            'No local account data was changed.',
+    );
   }
 
   private async withBusy<T>(
