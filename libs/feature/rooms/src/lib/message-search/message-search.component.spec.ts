@@ -7,15 +7,13 @@ import {
   type MessageHit,
   type ServerMessageSearch,
 } from '@trinity/data-access/search';
-import {
-  ConversationRuntime,
-  TimelineService,
-} from '@trinity/data-access/timeline';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { MessageSearchComponent } from './message-search.component';
+import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
 
 function hit(over: Partial<MessageHit> = {}): MessageHit {
   return {
@@ -70,10 +68,10 @@ describe('MessageSearchComponent', () => {
           searchServerMessages,
           loadMoreHistory,
         }),
-        MockProvider(TimelineService, { messages: signal([]) }),
+        MockProvider(ConversationTimelineStub, { messages: signal([]) }),
         {
           provide: ConversationRuntime,
-          useFactory: () => ({ timeline: inject(TimelineService) }),
+          useFactory: () => ({ timeline: inject(ConversationTimelineStub) }),
         },
       ],
     });

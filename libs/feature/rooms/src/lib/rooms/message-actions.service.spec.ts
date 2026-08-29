@@ -10,7 +10,6 @@ import { RoomsService } from '@trinity/data-access/rooms';
 import {
   ConversationRuntime,
   TimelineActionsService,
-  TimelineService,
 } from '@trinity/data-access/timeline';
 import { TrnToastService } from '@trinity/components/overlay';
 import { encodeRoomSegment } from '@trinity/util/matrix';
@@ -22,6 +21,7 @@ import { MemberActionsService } from './member-actions.service';
 import { MessageActionsService } from './message-actions.service';
 import { RoomShellStore } from './room-shell-store';
 import { ShellStatusService } from './shell-status.service';
+import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
 
 /**
  * The composer and timeline half of MessageActionsService.
@@ -60,7 +60,7 @@ describe('MessageActionsService', () => {
 
   const MOCKS: Provider[] = [
     {
-      provide: TimelineService,
+      provide: ConversationTimelineStub,
       useValue: {
         loadOlder,
         setTyping,
@@ -72,7 +72,7 @@ describe('MessageActionsService', () => {
     },
     {
       provide: ConversationRuntime,
-      useFactory: () => ({ timeline: inject(TimelineService) }),
+      useFactory: () => ({ timeline: inject(ConversationTimelineStub) }),
     },
     MockProvider(TimelineActionsService, {
       send,

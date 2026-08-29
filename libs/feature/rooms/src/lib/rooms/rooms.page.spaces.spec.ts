@@ -22,7 +22,6 @@ import {
 import {
   ThreadsService,
   TimelineActionsService,
-  TimelineService,
 } from '@trinity/data-access/timeline';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
@@ -104,7 +103,6 @@ describe('RoomsPage space filtering', () => {
           defaultMode: signal<RoomSortMode>('recent').asReadonly(),
           modes: TRINITY_ROOM_SORTS,
         }),
-        MockProvider(TimelineService),
         MockProvider(TimelineActionsService),
         MockProvider(MatrixClientService, {
           isInitialized: true,
@@ -536,7 +534,6 @@ describe('RoomsPage space ordering', () => {
           clearForSpace,
           ...order,
         }),
-        MockProvider(TimelineService),
         MockProvider(TimelineActionsService),
         MockProvider(MatrixClientService, {
           isInitialized: true,
@@ -750,7 +747,6 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
           ]),
           childRoomIds,
         }),
-        MockProvider(TimelineService),
         MockProvider(TimelineActionsService),
         MockProvider(MatrixClientService, {
           isInitialized: true,

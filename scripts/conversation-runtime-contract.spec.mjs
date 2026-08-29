@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 const workspaceRoot = join(import.meta.dirname, '..');
 const runtimeImplementation =
   'libs/data-access/timeline/src/lib/conversation-runtime.service.ts';
+const timelineEntrypoint = 'libs/data-access/timeline/src/index.ts';
 
 function source(file) {
   return readFileSync(join(workspaceRoot, file), 'utf8');
@@ -34,6 +35,10 @@ describe('Conversation Runtime production boundary', () => {
       .filter((file) => timelineImport.test(source(file)));
 
     expect(directConsumers).toEqual([]);
+
+    const entrypoint = source(timelineEntrypoint);
+    expect(entrypoint).not.toContain("export * from './lib/timeline.service'");
+    expect(entrypoint).not.toMatch(/\bTimeline(?:Service|Context)\b/);
   });
 
   it('keeps the room feature behind data-access instead of the Matrix SDK', () => {

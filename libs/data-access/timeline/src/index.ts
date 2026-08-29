@@ -1,4 +1,8 @@
-export * from './lib/timeline.service';
+export type {
+  JumpToDateResult,
+  RoomTombstone,
+  TypingOwner,
+} from './lib/timeline.service';
 export * from './lib/conversation-runtime.service';
 export * from './lib/timeline-actions.service';
 export * from './lib/threads.service';

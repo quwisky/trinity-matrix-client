@@ -157,7 +157,7 @@ export interface TimelineContext {
  */
 export type TypingOwner = 'room' | 'thread';
 
-@Injectable({ providedIn: 'root' })
+@Injectable()
 export class TimelineService {
   private readonly matrix = inject(MatrixClientService);
   private readonly privacy = inject(PrivacySettingsService);

@@ -132,6 +132,9 @@ when Active Account changes. `RoomShellNavigationService` is the Workspace adapt
 key derived from the active Account and routed Room, or blurs the current handle when the Room
 leaves the Workspace. Feature surfaces consume `ConversationRuntime.timeline`, a stable proxy for
 the focused child, rather than injecting the child implementation or a root timeline singleton.
+`TimelineService` and its raw SDK context stay package-internal; the data-access action adapter
+reaches that context through an internal bridge, while the public entrypoint exports only
+app-owned read models and cold command services.
 
 Focus enables foreground effects such as read receipts, typing and room actions. Blur disables
 those effects but leaves the Matrix listeners attached, so the projection remains warm. Each
@@ -299,14 +302,14 @@ string and keeps the flat hyphenated form, so the command stays
 Six take **only** `coalesce()`, and each says why at the call site. The split is not arbitrary — it
 follows from what the service's lifetime is keyed to:
 
-| Service                   | Keyed to              | Why the client half does not apply                                                                                             |
-| ------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `TimelineService`         | The open room         | Binds to a `Room` as well as a client, so its lifetime is `open()` and `close()`. An account switch closes the open room first |
-| `PinnedMessagesService`   | The open room         | Same                                                                                                                           |
-| `MixedRoomsService`       | The mixed account set | Attaches listeners per account and reconciles them against the live set, rather than following one active client               |
-| `MixedSpacesService`      | The mixed account set | Same                                                                                                                           |
-| `MixedInvitesService`     | The mixed account set | Same                                                                                                                           |
-| `UnreadAggregatorService` | The mixed account set | Same                                                                                                                           |
+| Service                   | Keyed to               | Why the client half does not apply                                                                                                       |
+| ------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `TimelineService`         | One Conversation child | Package-internal implementation bound to an immutable Account-and-Room handle; Conversation Runtime owns its `open()`/`close()` lifetime |
+| `PinnedMessagesService`   | The open room          | Same                                                                                                                                     |
+| `MixedRoomsService`       | The mixed account set  | Attaches listeners per account and reconciles them against the live set, rather than following one active client                         |
+| `MixedSpacesService`      | The mixed account set  | Same                                                                                                                                     |
+| `MixedInvitesService`     | The mixed account set  | Same                                                                                                                                     |
+| `UnreadAggregatorService` | The mixed account set  | Same                                                                                                                                     |
 
 `NotificationService` takes neither. It binds per account, with push scoring, own-message
 suppression and event dedupe all keyed by account, and an account-set effect in its constructor is

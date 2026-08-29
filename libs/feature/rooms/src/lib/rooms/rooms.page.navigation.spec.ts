@@ -1,5 +1,6 @@
 import {
   SHARED_MOCKS,
+  RoomsTimelineStub,
   clientStub,
   flushPanelJump,
   invitesProvider,
@@ -36,7 +37,6 @@ import {
   ConversationRuntime,
   ThreadsService,
   TimelineActionsService,
-  TimelineService,
 } from '@trinity/data-access/timeline';
 import {
   TrnAlertService,
@@ -106,7 +106,17 @@ describe('RoomsPage quick switcher', () => {
         }),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService, { pick }),
-        MockProvider(TimelineService, { open: timelineOpen }),
+        {
+          provide: RoomsTimelineStub,
+          useFactory: () => {
+            const timeline = new RoomsTimelineStub();
+            timeline.focusRoom = vi.fn((roomId: string) => {
+              timelineOpen(roomId);
+              timeline.open(roomId);
+            });
+            return timeline;
+          },
+        },
         MockProvider(TimelineActionsService),
         MockProvider(MediaService),
         MockProvider(MatrixClientService, {
@@ -322,7 +332,17 @@ describe('RoomsPage mobile navigation', () => {
         ...SHARED_MOCKS,
         MockProvider(RoomsService),
         MockProvider(SpacesService),
-        MockProvider(TimelineService, { open: timelineOpen }),
+        {
+          provide: RoomsTimelineStub,
+          useFactory: () => {
+            const timeline = new RoomsTimelineStub();
+            timeline.focusRoom = vi.fn((roomId: string) => {
+              timelineOpen(roomId);
+              timeline.open(roomId);
+            });
+            return timeline;
+          },
+        },
         MockProvider(TimelineActionsService),
         MockProvider(MediaService, { releaseAll }),
         MockProvider(MatrixClientService, {
@@ -356,14 +376,16 @@ describe('RoomsPage mobile navigation', () => {
     expect(shell.store.activeRoomId()).toBe('!r:hs');
     // Both halves, or the test passes on an effect that never opened anything and then
     // "closed" it from the same single null run.
-    expect(TestBed.inject(TimelineService).open).toHaveBeenCalledWith('!r:hs');
-    expect(TestBed.inject(TimelineService).close).not.toHaveBeenCalled();
+    expect(TestBed.inject(RoomsTimelineStub).open).toHaveBeenCalledWith(
+      '!r:hs',
+    );
+    expect(TestBed.inject(RoomsTimelineStub).close).not.toHaveBeenCalled();
 
     shell.page.backToList();
     TestBed.tick();
 
     expect(shell.store.activeRoomId()).toBeNull();
-    expect(TestBed.inject(TimelineService).close).toHaveBeenCalled();
+    expect(TestBed.inject(RoomsTimelineStub).close).toHaveBeenCalled();
     expect(TestBed.inject(ThreadsService).close).toHaveBeenCalled();
     expect(TestBed.inject(PinnedMessagesService).close).toHaveBeenCalled();
   });
@@ -802,7 +824,6 @@ describe('RoomsPage account switcher summary', () => {
         ...SHARED_MOCKS,
         MockProvider(RoomsService),
         MockProvider(SpacesService),
-        MockProvider(TimelineService),
         MockProvider(TimelineActionsService),
         MockProvider(MatrixClientService, {
           isInitialized: true,
@@ -974,7 +995,6 @@ describe('RoomsPage keyboard room switching', () => {
           spaces: signal([]),
           childRoomIds: vi.fn(() => []),
         }),
-        MockProvider(TimelineService),
         MockProvider(TimelineActionsService),
         MockProvider(MediaService, { releaseAll }),
         MockProvider(MatrixClientService, {
@@ -1244,7 +1264,6 @@ describe('RoomsPage room-in-URL deep link', () => {
         ...SHARED_MOCKS,
         MockProvider(RoomsService),
         MockProvider(SpacesService),
-        MockProvider(TimelineService),
         MockProvider(ConversationRuntime, {
           focus: conversationFocus,
           blur: conversationBlur,

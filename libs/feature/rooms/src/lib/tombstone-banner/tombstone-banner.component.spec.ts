@@ -4,20 +4,20 @@ import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
 import {
   ConversationRuntime,
-  TimelineService,
   type RoomTombstone,
 } from '@trinity/data-access/timeline';
 import { TombstoneBannerComponent } from './tombstone-banner.component';
+import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
 
 async function build(tombstone: RoomTombstone | null) {
   const { fixture, container } = await render(TombstoneBannerComponent, {
     providers: [
-      MockProvider(TimelineService, {
+      MockProvider(ConversationTimelineStub, {
         tombstone: signal<RoomTombstone | null>(tombstone).asReadonly(),
       }),
       {
         provide: ConversationRuntime,
-        useFactory: () => ({ timeline: inject(TimelineService) }),
+        useFactory: () => ({ timeline: inject(ConversationTimelineStub) }),
       },
     ],
   });

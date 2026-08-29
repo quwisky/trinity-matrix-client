@@ -1,5 +1,6 @@
 import {
   SHARED_MOCKS,
+  RoomsTimelineStub,
   clientStub,
   invitesProvider,
   setRouteRoom,
@@ -31,7 +32,6 @@ import {
 import {
   ThreadsService,
   TimelineActionsService,
-  TimelineService,
 } from '@trinity/data-access/timeline';
 import {
   TrnAlertService,
@@ -170,7 +170,6 @@ describe('RoomsPage action error feedback', () => {
           },
         }),
         MockProvider(TrnAlertService, { confirm: alertConfirm }),
-        MockProvider(TimelineService),
         MockProvider(TimelineActionsService, { edit, sendMedia }),
         MockProvider(MediaService),
         MockProvider(MatrixClientService, {
@@ -282,7 +281,7 @@ describe('RoomsPage action error feedback', () => {
     expect(shell.store.activeRoomId()).toBeNull();
     TestBed.tick(); // run the teardown the now-roomless URL triggers
     // Tear every open-room projection down so none keeps listening on it.
-    expect(TestBed.inject(TimelineService).close).toHaveBeenCalled();
+    expect(TestBed.inject(RoomsTimelineStub).close).toHaveBeenCalled();
     expect(TestBed.inject(ThreadsService).close).toHaveBeenCalled();
     expect(TestBed.inject(ThreadsService).closeThread).toHaveBeenCalled();
     expect(TestBed.inject(PinnedMessagesService).close).toHaveBeenCalled();
@@ -303,7 +302,7 @@ describe('RoomsPage action error feedback', () => {
     const shell = build();
     setRouteRoom('!other:hs');
     TestBed.tick(); // open !other:hs for real, so "stays put" has something to stay
-    expect(TestBed.inject(TimelineService).open).toHaveBeenCalledWith(
+    expect(TestBed.inject(RoomsTimelineStub).open).toHaveBeenCalledWith(
       '!other:hs',
     );
 
@@ -313,7 +312,7 @@ describe('RoomsPage action error feedback', () => {
     expect(shell.store.activeRoomId()).toBe('!other:hs');
     TestBed.tick(); // flush before the negative assertion, or it passes vacuously
     // The open room wasn't the one left, so its projections stay put.
-    expect(TestBed.inject(TimelineService).close).not.toHaveBeenCalled();
+    expect(TestBed.inject(RoomsTimelineStub).close).not.toHaveBeenCalled();
   });
 
   it('does not leave a room when the confirmation is cancelled', async () => {

@@ -22,7 +22,6 @@ import {
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
   ConversationRuntime,
-  TimelineService,
   type ConversationHandle,
   type ConversationKey,
 } from '@trinity/data-access/timeline';
@@ -50,6 +49,9 @@ import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
 import { WorkspaceAccountSwitchService } from './workspace-account-switch.service';
+import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
+
+export { ConversationTimelineStub as RoomsTimelineStub };
 
 /**
  * `ActivatedRoute.queryParamMap`, kept only because the stub has to answer it: nothing in
@@ -139,16 +141,17 @@ export const SHARED_MOCKS: Provider[] = [
   ShellShortcutsService,
   SessionActionsService,
   WorkspaceAccountSwitchService,
+  ConversationTimelineStub,
   {
     provide: ConversationRuntime,
     useFactory: () => {
-      const timeline = inject(TimelineService);
+      const timeline = inject(ConversationTimelineStub);
       const focused = signal<ConversationHandle | null>(null);
       return {
         timeline,
         focused: focused.asReadonly(),
         focus: vi.fn((key: ConversationKey) => {
-          timeline.open(key.roomId);
+          timeline.focusRoom(key.roomId);
           const state = signal<'focused'>('focused');
           const handle = {
             key: Object.freeze({ ...key }),
@@ -159,7 +162,7 @@ export const SHARED_MOCKS: Provider[] = [
           return handle;
         }),
         blur: vi.fn(() => {
-          timeline.close();
+          timeline.blurRoom();
           focused.set(null);
         }),
       };
