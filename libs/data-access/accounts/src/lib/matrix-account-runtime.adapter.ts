@@ -17,6 +17,8 @@ import {
   tap,
   throwError,
 } from 'rxjs';
+import { AccountLifecycleAdapter } from './account-lifecycle.adapter';
+import { ACCOUNT_LIFECYCLE_PORT } from './account-lifecycle.port';
 import type {
   AccountRuntimeAdapter,
   AdapterAccountEstablishmentOutcome,
@@ -32,12 +34,16 @@ import {
 import type {
   AccountEstablishmentIntent,
   AccountRestoreRole,
+  AccountSignOutOutcome,
+  InstallationResetOutcome,
 } from './account-runtime.models';
 
 @Injectable({ providedIn: 'root' })
 export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
   private readonly matrix = inject(MatrixClientService);
   private readonly storage = inject(SessionStorageService);
+  private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
+  private readonly lifecycleAdapter = inject(AccountLifecycleAdapter);
   private readonly pendingNewAccounts = new Map<
     string,
     {
@@ -125,8 +131,16 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
                   }
                 }),
               );
+      const prepare$ =
+        intent.liveAccounts === 'replace'
+          ? defer(() => {
+              this.lifecycle.releaseSharedCaches();
+              return this.lifecycle.unregisterNotifications();
+            })
+          : of(void 0);
 
-      return persisted$.pipe(
+      return prepare$.pipe(
+        switchMap(() => persisted$),
         map((stored) => ({ kind: 'persisted' as const, stored })),
         catchError((error: unknown) => this.storageFailure(error)),
         switchMap((persisted) =>
@@ -174,6 +188,13 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
             this.pendingNewAccounts.delete(session.userId);
           }
         }),
+        switchMap((outcome) =>
+          outcome.kind === 'ready' &&
+          intent.placement === 'active' &&
+          intent.liveAccounts === 'keep'
+            ? this.lifecycle.registerNotifications().pipe(map(() => outcome))
+            : of(outcome),
+        ),
       );
     });
   }
@@ -213,6 +234,14 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
         ),
       );
     });
+  }
+
+  signOutAccount(accountId: string): Observable<AccountSignOutOutcome> {
+    return this.lifecycleAdapter.signOutAccount(accountId);
+  }
+
+  resetInstallation(): Observable<InstallationResetOutcome> {
+    return this.lifecycleAdapter.resetInstallation();
   }
 
   private storageFailure(

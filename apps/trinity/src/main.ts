@@ -14,7 +14,12 @@ import {
 } from '@angular/router';
 import { provideServiceWorker } from '@angular/service-worker';
 import { Capacitor } from '@capacitor/core';
-import { AvatarService } from '@trinity/data-access/media';
+import { AvatarService, MediaService } from '@trinity/data-access/media';
+import { OidcClientService } from '@trinity/data-access/auth';
+import {
+  ACCOUNT_LIFECYCLE_PORT,
+  type AccountLifecyclePort,
+} from '@trinity/data-access/accounts';
 import {
   GifSettingsService,
   provideGifConfigEntries,
@@ -27,6 +32,7 @@ import {
   AppBadgeService,
   PUSH_CONFIG,
   PushGatewayService,
+  PushService,
   providePushConfigEntries,
 } from '@trinity/data-access/notifications';
 import {
@@ -60,6 +66,7 @@ import { AppComponent, NavigationFocusService } from '@trinity/feature/shell';
 import { environment } from './environments/environment';
 import { BUILD_INFO_VALUE } from './app/build-info';
 import { SETTINGS_DIALOG_APP_CONFIG } from './app/settings-dialog.config';
+import { of } from 'rxjs';
 
 // Desktop (hand-rolled Electron) detection. Capacitor.isNativePlatform() is FALSE in
 // this shell, so the service worker must be gated on this flag too. The predicate lives
@@ -73,6 +80,32 @@ bootstrapApplication(AppComponent, {
     // event handlers write signals, which schedule change detection directly. See
     // docs/architecture/state-and-reactivity.md.
     provideZonelessChangeDetection(),
+    {
+      provide: ACCOUNT_LIFECYCLE_PORT,
+      useFactory: (): AccountLifecyclePort => {
+        const avatars = inject(AvatarService);
+        const media = inject(MediaService);
+        const push = inject(PushService);
+        const drafts = inject(DraftStoreService);
+        const oidc = inject(OidcClientService);
+        return {
+          registerNotifications: () => push.register(),
+          unregisterNotifications: (accountId) => push.unregister(accountId),
+          revokeProviderSession: (session) =>
+            session.oidc
+              ? oidc.revokeTokens(session.baseUrl, session.oidc, {
+                  accessToken: session.accessToken,
+                  refreshToken: session.refreshToken,
+                })
+              : of(void 0),
+          releaseSharedCaches: () => {
+            avatars.releaseAll();
+            media.releaseAll();
+          },
+          clearDrafts: () => drafts.clearAll(),
+        };
+      },
+    },
     // Every icon, registered once. Replaces 32 per-component provideIcons() calls, each
     // of which declared only the subset its own component used — so an icon rendered in
     // one place and silently nowhere in another.

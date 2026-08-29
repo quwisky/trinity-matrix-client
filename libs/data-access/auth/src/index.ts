@@ -1,7 +1,8 @@
 export * from './lib/auth.service';
 export * from './lib/registration.service';
 export * from './lib/auth.guard';
-export * from './lib/factory-reset.service';
+export type { LoginMode } from './lib/account-establishment';
+export { OidcClientService } from './lib/oidc-client.service';
 export type {
   OidcApplicationType,
   OidcAuthorizationParams,

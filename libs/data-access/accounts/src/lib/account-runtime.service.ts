@@ -26,6 +26,7 @@ import {
   type SavedAccountsSnapshot,
 } from './account-runtime.adapter';
 import { AccountSwitchWorkflow } from './account-switch.workflow';
+import { AccountLifecycleWorkflow } from './account-lifecycle.workflow';
 import {
   AuthenticatedAccountGrant,
   authenticatedAccountGrantPayload,
@@ -38,8 +39,11 @@ import type {
   AccountRestoreOutcome,
   AccountRestoreRole,
   AccountRestoreResult,
+  AccountRuntimeOperation,
   AccountRuntimeState,
+  AccountSignOutOutcome,
   AccountSwitchOutcome,
+  InstallationResetOutcome,
 } from './account-runtime.models';
 
 interface InFlightAccountEstablishment {
@@ -53,6 +57,7 @@ export class AccountRuntimeService {
   private readonly adapter = inject(ACCOUNT_RUNTIME_ADAPTER);
   private readonly policy = inject(ACCOUNT_RESTORE_POLICY);
   private readonly switchWorkflow = inject(AccountSwitchWorkflow);
+  private readonly lifecycleWorkflow = inject(AccountLifecycleWorkflow);
   private readonly runtimeState = signal<AccountRuntimeState>({
     phase: 'idle',
   });
@@ -73,6 +78,14 @@ export class AccountRuntimeService {
           this.transitionRestoreResult(
             performance.now() - startedAt,
             'switching-account',
+          ),
+        );
+      }
+      if (this.lifecycleWorkflow.operation) {
+        return of(
+          this.transitionRestoreResult(
+            performance.now() - startedAt,
+            this.lifecycleWorkflow.operation,
           ),
         );
       }
@@ -137,6 +150,9 @@ export class AccountRuntimeService {
         return of(this.transitionOutcome(session.userId, intent));
       }
       if (this.switchWorkflow.inProgress) {
+        return of(this.transitionOutcome(session.userId, intent));
+      }
+      if (this.lifecycleWorkflow.operation) {
         return of(this.transitionOutcome(session.userId, intent));
       }
       const inFlight = this.establishment;
@@ -209,11 +225,39 @@ export class AccountRuntimeService {
     );
   }
 
-  private blockingSwitchOperation():
-    'restoring-accounts' | 'establishing-account' | null {
+  signOutAccount(accountId: string): Observable<AccountSignOutOutcome> {
+    return defer(() =>
+      this.lifecycleWorkflow.signOut(
+        accountId,
+        this.blockingLifecycleOperation(),
+      ),
+    );
+  }
+
+  resetInstallation(): Observable<InstallationResetOutcome> {
+    return defer(() =>
+      this.lifecycleWorkflow.reset(this.blockingLifecycleOperation()),
+    );
+  }
+
+  private blockingSwitchOperation(): Exclude<
+    AccountRuntimeOperation,
+    'switching-account'
+  > | null {
     const phase = this.runtimeState().phase;
     if (phase === 'restoring') return 'restoring-accounts';
     if (phase === 'establishing') return 'establishing-account';
+    return this.lifecycleWorkflow.operation;
+  }
+
+  private blockingLifecycleOperation(): Exclude<
+    AccountRuntimeOperation,
+    'signing-out-account' | 'resetting-installation'
+  > | null {
+    const phase = this.runtimeState().phase;
+    if (phase === 'restoring') return 'restoring-accounts';
+    if (phase === 'establishing') return 'establishing-account';
+    if (this.switchWorkflow.inProgress) return 'switching-account';
     return null;
   }
 
@@ -421,8 +465,10 @@ export class AccountRuntimeService {
 
   private transitionRestoreResult(
     durationMs: number,
-    operation:
-      'establishing-account' | 'switching-account' = 'establishing-account',
+    operation: Exclude<
+      AccountRuntimeOperation,
+      'restoring-accounts'
+    > = 'establishing-account',
   ): AccountRestoreResult {
     return {
       kind: 'transition-in-progress',

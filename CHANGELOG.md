@@ -87,6 +87,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Account sign-out and installation reset now run through Account Runtime.** Sign-out always
+  targets one explicit account, keeps surviving accounts coherent, and reports safe recovery
+  guidance when cleanup is partial. Erasing an installation still clears only Trinity's approved
+  account, crypto, preference, secure-storage, IndexedDB, and service-worker scopes, now as a cold
+  RxJS command that never exposes raw database names or secret-bearing failures to the UI. The
+  temporary authentication lifecycle facades and their dependency exceptions have been removed.
+
 - **Account switches now commit as one coherent Workspace transition.** Trinity first moves to a
   safe room-shell fallback and releases the outgoing conversation, then Account Runtime persists
   and activates the target Account, reattaches every live active-Account projection through

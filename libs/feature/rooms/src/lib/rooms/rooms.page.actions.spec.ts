@@ -10,7 +10,6 @@ import { ApplicationRef, signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
-import { AuthService } from '@trinity/data-access/auth';
 import { type PendingInvite } from '@trinity/data-access/invites';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaService } from '@trinity/data-access/media';
@@ -36,7 +35,7 @@ import {
   TrnToastService,
 } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
-import { of, throwError } from 'rxjs';
+import { defer, map, of, throwError, type Observable } from 'rxjs';
 import { MatrixError } from '@trinity/util/matrix';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
@@ -107,7 +106,31 @@ describe('RoomsPage space actions', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(AuthService, { logout: vi.fn(() => of(undefined)) }),
+        MockProvider(AccountRuntimeService, {
+          signOutAccount: vi.fn((accountId: string) =>
+            of({
+              kind: 'ready' as const,
+              accountId,
+              activeAccountId:
+                accountIds.length > 1 ? (accountIds[1] ?? null) : null,
+              remainingAccountIds: accountIds.filter((id) => id !== accountId),
+            }),
+          ),
+          switchActiveAccount: vi.fn(
+            (accountId: string, prepare: () => Observable<void>) =>
+              defer(prepare).pipe(
+                map(() => ({
+                  kind: 'ready' as const,
+                  accountId,
+                  metrics: {
+                    durationMs: 0,
+                    projectionDurationMs: 0,
+                    projectionCount: 0,
+                  },
+                })),
+              ),
+          ),
+        }),
         MockProvider(TrnDialogService),
         MockProvider(TrnAlertService, {
           confirm: alertConfirm,
@@ -214,13 +237,13 @@ describe('RoomsPage space actions', () => {
   it('signs out the last account and navigates to /login after confirming', async () => {
     const shell = build();
     alertConfirm.mockResolvedValue(true);
-    const auth = TestBed.inject(AuthService);
+    const accounts = TestBed.inject(AccountRuntimeService);
     const router = TestBed.inject(Router);
 
     await shell.session.logout('@me:hs');
 
     expect(alertConfirm).toHaveBeenCalled();
-    expect(auth.logout).toHaveBeenCalledWith('@me:hs');
+    expect(accounts.signOutAccount).toHaveBeenCalledWith('@me:hs');
     // The harness has a single account, so signing it out returns to /login.
     expect(router.navigateByUrl).toHaveBeenCalledWith('/login', {
       replaceUrl: true,
@@ -230,12 +253,12 @@ describe('RoomsPage space actions', () => {
   it('signs out one of several accounts without leaving the shell', async () => {
     const shell = build('@me:hs', ['@me:hs', '@alt:hs']);
     alertConfirm.mockResolvedValue(true);
-    const auth = TestBed.inject(AuthService);
+    const accounts = TestBed.inject(AccountRuntimeService);
     const router = TestBed.inject(Router);
 
     await shell.session.logout('@me:hs');
 
-    expect(auth.logout).toHaveBeenCalledWith('@me:hs');
+    expect(accounts.signOutAccount).toHaveBeenCalledWith('@me:hs');
     // A second account is still signed in (activeUserId stays non-null), so the
     // wasLastAccount=false branch skips the /login redirect and the shell stays.
     expect(router.navigateByUrl).not.toHaveBeenCalledWith('/login', {
@@ -246,11 +269,11 @@ describe('RoomsPage space actions', () => {
   it('does not sign out when the confirm is cancelled', async () => {
     const shell = build();
     alertConfirm.mockResolvedValue(false);
-    const auth = TestBed.inject(AuthService);
+    const accounts = TestBed.inject(AccountRuntimeService);
 
     await shell.session.logout('@me:hs');
 
-    expect(auth.logout).not.toHaveBeenCalled();
+    expect(accounts.signOutAccount).not.toHaveBeenCalled();
   });
 
   it('switches to another account (and no-ops on the active one)', async () => {
@@ -453,7 +476,6 @@ describe('RoomsPage room / DM / invite actions', () => {
           ).asReadonly(),
         }),
         MockProvider(ThreadsService),
-        MockProvider(AuthService),
         MockProvider(TrnDialogService, { openAndWait: dialogOpen }),
         MockProvider(TrnAlertService, { prompt: alertPrompt }),
         MockProvider(TrnToastService, { show: toastShow }),
@@ -1128,7 +1150,6 @@ describe('RoomsPage space hierarchy actions', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(AuthService),
         MockProvider(TrnDialogService),
         MockProvider(TrnAlertService, { confirm: alertConfirm }),
         MockProvider(TrnToastService),

@@ -7,7 +7,9 @@ import type {
   AccountEstablishmentIntent,
   AccountRestoreFailure,
   AccountRestoreRole,
+  AccountSignOutOutcome,
   AccountSwitchFailure,
+  InstallationResetOutcome,
 } from './account-runtime.models';
 
 export type SavedAccountsSnapshot =
@@ -52,6 +54,8 @@ export interface AccountRuntimeAdapter {
   commitActiveAccount(
     accountId: string,
   ): Observable<AdapterAccountSwitchOutcome>;
+  signOutAccount(accountId: string): Observable<AccountSignOutOutcome>;
+  resetInstallation(): Observable<InstallationResetOutcome>;
 }
 
 export interface AccountRestorePolicy {

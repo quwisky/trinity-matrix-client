@@ -216,6 +216,21 @@ describe('LocalDataWipeService', () => {
       expect(secure.clearAll).toHaveBeenCalled();
     });
 
+    it('reports secure-storage residue without skipping Preferences', async () => {
+      const svc = setup(true);
+      const secure = TestBed.inject(SecureStorageService);
+      vi.mocked(secure.clearAll).mockRejectedValueOnce(
+        new Error('keychain unavailable'),
+      );
+
+      await expect(svc.wipeKeyValueStores()).resolves.toEqual({
+        secureStorage: false,
+        preferences: true,
+        webStorage: true,
+      });
+      expect(calls).toContain('preferences.clear');
+    });
+
     it('clears raw web storage unconditionally, with no platform branch', async () => {
       // There is deliberately no `isNativePlatform()` check left to flip: the OIDC callback
       // re-seeds the sign-in state into sessionStorage ON NATIVE, so a branch that skipped
@@ -233,20 +248,20 @@ describe('LocalDataWipeService', () => {
       expect(local.clear).toHaveBeenCalled();
     });
 
-    it('survives a Preferences backend that rejects', async () => {
-      // Two layers guard this — here, and `swallow()` in FactoryResetService — and only
-      // the outer one was pinned, so removing this inner guard failed nothing. Both matter:
-      // this method's own contract is that it does not throw, and a caller that forgets the
-      // outer guard should not be able to strand the reset.
+    it('reports a Preferences backend that rejects without aborting later scopes', async () => {
       const { Preferences } = await import('@capacitor/preferences');
       vi.spyOn(Preferences, 'clear').mockRejectedValueOnce(
         new Error('storage disabled'),
       );
 
-      await expect(setup().wipeKeyValueStores()).resolves.toBeUndefined();
+      await expect(setup().wipeKeyValueStores()).resolves.toEqual({
+        secureStorage: true,
+        preferences: false,
+        webStorage: true,
+      });
     });
 
-    it('survives a context where touching web storage throws', async () => {
+    it('reports a context where touching web storage throws', async () => {
       // Safari with storage blocked throws on property access alone.
       vi.stubGlobal('localStorage', {
         get clear(): never {
@@ -254,7 +269,11 @@ describe('LocalDataWipeService', () => {
         },
       });
 
-      await expect(setup().wipeKeyValueStores()).resolves.toBeUndefined();
+      await expect(setup().wipeKeyValueStores()).resolves.toEqual({
+        secureStorage: true,
+        preferences: true,
+        webStorage: false,
+      });
     });
   });
 
@@ -281,10 +300,13 @@ describe('LocalDataWipeService', () => {
       vi.stubGlobal('caches', undefined);
       vi.stubGlobal('navigator', {});
 
-      await expect(setup().wipeServiceWorker()).resolves.toBeUndefined();
+      await expect(setup().wipeServiceWorker()).resolves.toEqual({
+        cacheStorage: true,
+        registrations: true,
+      });
     });
 
-    it('survives a caches API that rejects', async () => {
+    it('reports a caches API that rejects', async () => {
       vi.stubGlobal('caches', {
         keys: async () => {
           throw new Error('denied');
@@ -292,7 +314,10 @@ describe('LocalDataWipeService', () => {
       });
       vi.stubGlobal('navigator', {});
 
-      await expect(setup().wipeServiceWorker()).resolves.toBeUndefined();
+      await expect(setup().wipeServiceWorker()).resolves.toEqual({
+        cacheStorage: false,
+        registrations: true,
+      });
     });
   });
 });

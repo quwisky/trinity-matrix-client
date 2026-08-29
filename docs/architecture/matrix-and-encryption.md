@@ -175,13 +175,12 @@ before it mutates the Workspace. Restoration or establishment conflicts likewise
 persisted-pointer failures are typed failures; adapter invariant defects remain on the Observable
 error channel.
 
-`SessionEstablishmentService` is a temporary compatibility facade around this command. Its
-production caller counter is frozen at **2**: `AuthService` and `RegistrationService`. The
-source-shape guard in `scripts/account-runtime-facade.spec.mjs` prevents new callers and keeps the
-facade private; `session-establishment.integration.spec.ts` pins password, SSO, OIDC,
-registration-retry, and persisted-session parity through the production Account Runtime adapter.
-[Issue #303](https://github.com/quwisky/trinity-matrix-client/issues/303) owns removal after those
-auth orchestrators move behind the final Account Runtime ports.
+Authentication and registration issue opaque grants directly to `AccountRuntimeService`; the
+temporary session-establishment facade has no callers and no public export. Ancillary notification,
+provider-session, cache, and draft cleanup enter through an app-composed Account lifecycle port,
+so the Accounts capability does not depend on another capability to establish or remove an Account.
+The source-shape guard in `scripts/account-runtime-facade.spec.mjs` keeps that retired facade at zero
+callers.
 
 ### Projecting SDK events into signals
 
@@ -390,27 +389,30 @@ without that step a restart could restore a different account than the UI was sh
 
 !!! warning "Do not decide the last account from the live client map"
 
-    `AuthService.logout` computes `isLast` from `storage.list()`, never from
+    `AccountRuntimeService.signOutAccount(accountId)` requires an explicit target and its adapter
+    computes the last Account from `storage.list()`, never from
     `matrix.accountIds()`. The two legitimately diverge: a soft-logged-out account, or one
     whose background warm-up failed, is absent from the map but deliberately keeps its
     registry record. Judging by the map takes the full-clear branch, `storage.clear()`
     erases every record, and the next cold-start sweep then deletes those accounts' crypto
     stores — destroying their E2EE keys.
 
-`logout` also unregisters the push pusher first, while the token is still valid, and
+The sign-out command also unregisters the push pusher first, while the token is still valid, and
 best-effort revokes OIDC tokens at the provider (RFC 7009 POST to `revocation_endpoint`
-for both the refresh token and the access token) before the CSAPI `client.logout(true)`.
+for both the refresh token and the access token) before the CSAPI `client.logout(true)`. Its finite,
+cold Observable reports the surviving Account IDs and Active Account. Recoverable residue is a
+typed `partial-cleanup` outcome containing only a storage scope and recovery action; raw database
+names, Account IDs from internal scans, tokens, and exception messages never cross the boundary.
 
 ## The factory reset
 
-`logout` clears an account. **Erase all data on this device** clears the _install_ — the
+Account sign-out clears one account. **Erase all data on this device** clears the _install_ — the
 escape hatch on the login page for a wedged state that signing out cannot fix, orchestrated by
-[`FactoryResetService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/auth/src/lib/factory-reset.service.ts)
-over
+`AccountRuntimeService.resetInstallation()` through its Matrix Account adapter and
 [`LocalDataWipeService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/platform-native/src/lib/local-data-wipe.service.ts).
 
-It is written as a sequential async body rather than a pipeline because **the phase order is
-the design**, and three adjacencies are load-bearing:
+It is a cold RxJS command whose sequential phases make **the phase order the design**, and three
+adjacencies are load-bearing:
 
 | Order                                                               | Why it cannot move                                                                                                                                                                                                                              |
 | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -445,9 +447,9 @@ longer exist. Finishing leaves a coherent signed-out app, and the residue is an 
 the [orphan sweep](#logout-wipe-and-the-orphan-sweep) reclaims on the next cold start — which
 is why that sweep was widened to cover sync stores as well as crypto stores.
 
-**The service never rejects**, and that is a contract rather than tidiness: the caller
-subscribes with a `next` handler only, so a rejection would skip the restart and leave the
-login page disabled on top of storage that is already erased.
+**Expected cleanup failures are values**, not thrown errors. The command completes with typed,
+secret-safe scope and recovery guidance so the login page always reaches the restart. Programming
+defects remain on the Observable error channel.
 
 The server sign-out is a courtesy behind a 3-second budget, not a precondition — an
 unreachable homeserver is one of the reasons to reach for this. Consequently the copy never

@@ -15,7 +15,7 @@ import { TestBed } from '@angular/core/testing';
 import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { Router } from '@angular/router';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
-import { AuthService } from '@trinity/data-access/auth';
+import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { type PendingInvite } from '@trinity/data-access/invites';
 import {
   HomeserverInfoService,
@@ -121,7 +121,7 @@ describe('RoomsPage quick switcher', () => {
           ).asReadonly(),
         }),
         MockProvider(ThreadsService),
-        MockProvider(AuthService),
+        MockProvider(AccountRuntimeService),
         MockProvider(TrnDialogService, { hasOpen: dialogHasOpen }),
         MockProvider(TrnAlertService),
         MockProvider(TrnToastService),
@@ -340,7 +340,7 @@ describe('RoomsPage mobile navigation', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(AuthService),
+        MockProvider(AccountRuntimeService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
       ],
@@ -843,7 +843,7 @@ describe('RoomsPage account switcher summary', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(AuthService),
+        MockProvider(AccountRuntimeService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
       ],
@@ -992,7 +992,7 @@ describe('RoomsPage keyboard room switching', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(AuthService),
+        MockProvider(AccountRuntimeService),
         MockProvider(TrnDialogService, { hasOpen: () => dialogOpen }),
         MockProvider(TrnToastService),
       ],
@@ -1265,7 +1265,7 @@ describe('RoomsPage room-in-URL deep link', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(AuthService),
+        MockProvider(AccountRuntimeService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
       ],

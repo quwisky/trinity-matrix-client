@@ -2,10 +2,10 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
   AuthService,
-  FactoryResetService,
   RegistrationService,
   type OidcAuthorizationParams,
 } from '@trinity/data-access/auth';
+import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import {
   AppRestartService,
   SessionStorageService,
@@ -48,7 +48,7 @@ async function renderLogin(
   ssoStore: SsoStateStore;
   oidcStore: OidcStateStore;
   alert: TrnAlertService;
-  reset: FactoryResetService;
+  reset: AccountRuntimeService;
   restart: AppRestartService;
 }> {
   const queryParamMap = {
@@ -80,13 +80,23 @@ async function renderLogin(
       MockProvider(TrnAlertService, {
         prompt: vi.fn().mockResolvedValue(opts.typed ?? null),
       }),
-      MockProvider(FactoryResetService, {
-        clearAllData: vi.fn(() =>
-          of({
-            blocked: opts.report?.blocked ?? [],
-            failed: opts.report?.failed ?? [],
-            enumerated: true,
-          }),
+      MockProvider(AccountRuntimeService, {
+        resetInstallation: vi.fn(() =>
+          of(
+            (opts.report?.blocked.length ?? 0) +
+              (opts.report?.failed.length ?? 0) >
+              0
+              ? ({
+                  kind: 'partial-cleanup' as const,
+                  issues: [
+                    {
+                      scope: 'indexed-db' as const,
+                      recovery: 'restart-application' as const,
+                    },
+                  ],
+                } as const)
+              : ({ kind: 'ready' as const } as const),
+          ),
         ),
       }),
       MockProvider(AppRestartService, { restart: vi.fn() }),
@@ -100,7 +110,7 @@ async function renderLogin(
     ssoStore: TestBed.inject(SsoStateStore),
     oidcStore: TestBed.inject(OidcStateStore),
     alert: TestBed.inject(TrnAlertService),
-    reset: TestBed.inject(FactoryResetService),
+    reset: TestBed.inject(AccountRuntimeService),
     restart: TestBed.inject(AppRestartService),
   };
 }
@@ -455,7 +465,7 @@ describe('LoginPage', () => {
 
       await cmp.clearAllData();
 
-      expect(reset.clearAllData).toHaveBeenCalled();
+      expect(reset.resetInstallation).toHaveBeenCalled();
       expect(restart.restart).toHaveBeenCalled();
     });
 
@@ -508,7 +518,7 @@ describe('LoginPage', () => {
 
       await cmp.clearAllData();
 
-      expect(reset.clearAllData).not.toHaveBeenCalled();
+      expect(reset.resetInstallation).not.toHaveBeenCalled();
       expect(restart.restart).not.toHaveBeenCalled();
       expect(cmp.error()).toMatch(/Type ERASE exactly/);
     });
@@ -521,7 +531,7 @@ describe('LoginPage', () => {
 
       await cmp.clearAllData();
 
-      expect(reset.clearAllData).not.toHaveBeenCalled();
+      expect(reset.resetInstallation).not.toHaveBeenCalled();
       expect(cmp.error()).toBeNull(); // they changed their mind; nagging would be rude
     });
 
@@ -547,12 +557,31 @@ describe('LoginPage', () => {
 
         expect(restart.restart).toHaveBeenCalled();
         expect(warn).toHaveBeenCalledWith(expect.any(String), [
-          'matrix-js-sdk:trinity-sync:@a:hs',
-          'other-db',
+          { scope: 'indexed-db', recovery: 'restart-application' },
         ]);
+        expect(JSON.stringify(warn.mock.calls)).not.toContain('@a:hs');
       } finally {
         warn.mockRestore();
       }
+    });
+
+    it('does not restart when another Account transition blocks the reset', async () => {
+      const { cmp, reset, restart } = await renderLogin(
+        {} as unknown as Partial<AuthService>,
+        { typed: 'ERASE' },
+      );
+      vi.mocked(reset.resetInstallation).mockReturnValue(
+        of({
+          kind: 'transition-in-progress',
+          operation: 'signing-out-account',
+        }),
+      );
+
+      await cmp.clearAllData();
+
+      expect(restart.restart).not.toHaveBeenCalled();
+      expect(cmp.erasing()).toBe(false);
+      expect(cmp.error()).toMatch(/in progress/i);
     });
 
     it('stays clickable while the page is busy discovering a dead homeserver', async () => {

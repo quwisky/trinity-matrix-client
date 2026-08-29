@@ -130,12 +130,6 @@
   ],
   "dependencyExceptions": [
     {
-      "source": "data-access-auth",
-      "target": "data-access-notifications",
-      "removeBy": "#303, #315",
-      "reason": "Legacy logout coordinates notification cleanup directly."
-    },
-    {
       "source": "data-access-notifications",
       "target": "data-access-rooms",
       "removeBy": "#315-#317",
@@ -158,12 +152,6 @@
       "target": "data-access-accounts",
       "removeBy": "#310",
       "reason": "The current room shell is the Workspace adapter for atomic Account switching."
-    },
-    {
-      "source": "feature-rooms",
-      "target": "data-access-auth",
-      "removeBy": "#303, #310",
-      "reason": "The current room shell still coordinates Account logout and navigation."
     },
     {
       "source": "feature-rooms",

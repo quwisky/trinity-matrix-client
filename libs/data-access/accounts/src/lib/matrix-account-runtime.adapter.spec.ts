@@ -1,13 +1,18 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { signal } from '@angular/core';
-import { defer, firstValueFrom, of, throwError } from 'rxjs';
+import { NEVER, defer, firstValueFrom, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   AccountAlreadyStoredError,
+  LocalDataWipeService,
   SessionStorageService,
 } from '@trinity/platform-native';
+import {
+  ACCOUNT_LIFECYCLE_PORT,
+  type AccountLifecyclePort,
+} from './account-lifecycle.port';
 import { AuthenticatedAccountGrant } from './authenticated-account-grant';
 import type { AccountEstablishmentIntent } from './account-runtime.models';
 import { MatrixAccountRuntimeAdapter } from './matrix-account-runtime.adapter';
@@ -26,25 +31,312 @@ const activeIntent = {
 } satisfies AccountEstablishmentIntent;
 
 function setup(activeAccountId: string | null = '@old:hs') {
+  const active = signal(activeAccountId);
+  const lifecycle: AccountLifecyclePort = {
+    registerNotifications: vi.fn(() => of(void 0)),
+    unregisterNotifications: vi.fn(() => of(void 0)),
+    revokeProviderSession: vi.fn(() => of(void 0)),
+    releaseSharedCaches: vi.fn(),
+    clearDrafts: vi.fn(),
+  };
   TestBed.configureTestingModule({
     providers: [
       MatrixAccountRuntimeAdapter,
       MockProvider(MatrixClientService, {
-        activeUserId: signal(activeAccountId).asReadonly(),
+        activeUserId: active.asReadonly(),
         clientFor: vi.fn(() => ({}) as never),
         rollbackAccountStart: vi.fn(() => of(void 0)),
       }),
       MockProvider(SessionStorageService),
+      MockProvider(LocalDataWipeService, {
+        wipeIndexedDb: vi.fn(() =>
+          Promise.resolve({ blocked: [], failed: [], enumerated: true }),
+        ),
+        wipeKeyValueStores: vi.fn(() =>
+          Promise.resolve({
+            secureStorage: true,
+            preferences: true,
+            webStorage: true,
+          }),
+        ),
+        wipeServiceWorker: vi.fn(() =>
+          Promise.resolve({ cacheStorage: true, registrations: true }),
+        ),
+      }),
+      { provide: ACCOUNT_LIFECYCLE_PORT, useValue: lifecycle },
     ],
   });
   return {
     adapter: TestBed.inject(MatrixAccountRuntimeAdapter),
     matrix: TestBed.inject(MatrixClientService),
     storage: TestBed.inject(SessionStorageService),
+    wipe: TestBed.inject(LocalDataWipeService),
+    lifecycle,
+    active,
   };
 }
 
 describe('MatrixAccountRuntimeAdapter', () => {
+  it('signs out one explicit Account while keeping the surviving Account active', async () => {
+    const { adapter, matrix, storage, lifecycle, active } =
+      setup('@outgoing:hs');
+    const client = { logout: vi.fn(() => Promise.resolve()) };
+    vi.mocked(matrix.clientFor).mockReturnValue(client as never);
+    vi.mocked(storage.list).mockReturnValue(
+      of([
+        { userId: '@outgoing:hs', baseUrl: 'https://hs', deviceId: 'A' },
+        { userId: '@survivor:hs', baseUrl: 'https://hs', deviceId: 'B' },
+      ]),
+    );
+    vi.mocked(storage.load).mockReturnValue(
+      of({ userId: '@outgoing:hs', baseUrl: 'https://hs' } as never),
+    );
+    vi.mocked(matrix.remove).mockImplementation(() => {
+      active.set('@survivor:hs');
+      return of(void 0);
+    });
+    vi.mocked(storage.remove).mockReturnValue(of(void 0));
+    vi.mocked(storage.setActive).mockReturnValue(of(void 0));
+
+    await expect(
+      firstValueFrom(adapter.signOutAccount('@outgoing:hs')),
+    ).resolves.toEqual({
+      kind: 'ready',
+      accountId: '@outgoing:hs',
+      activeAccountId: '@survivor:hs',
+      remainingAccountIds: ['@survivor:hs'],
+    });
+    expect(lifecycle.unregisterNotifications).toHaveBeenCalledWith(
+      '@outgoing:hs',
+    );
+    expect(matrix.remove).toHaveBeenCalledWith('@outgoing:hs');
+    expect(storage.remove).toHaveBeenCalledWith('@outgoing:hs');
+    expect(storage.setActive).toHaveBeenCalledWith('@survivor:hs');
+    expect(lifecycle.clearDrafts).toHaveBeenCalledOnce();
+  });
+
+  it('fully clears local Account state when signing out the last Account', async () => {
+    const { adapter, matrix, storage, lifecycle, active } = setup('@last:hs');
+    vi.mocked(matrix.clientFor).mockReturnValue({
+      logout: vi.fn(() => Promise.resolve()),
+    } as never);
+    vi.mocked(storage.list).mockReturnValue(
+      of([{ userId: '@last:hs', baseUrl: 'https://hs', deviceId: 'A' }]),
+    );
+    vi.mocked(storage.load).mockReturnValue(
+      of({ userId: '@last:hs', baseUrl: 'https://hs' } as never),
+    );
+    vi.mocked(matrix.remove).mockImplementation(() => {
+      active.set(null);
+      return of(void 0);
+    });
+    vi.mocked(storage.clear).mockReturnValue(of(void 0));
+
+    await expect(
+      firstValueFrom(adapter.signOutAccount('@last:hs')),
+    ).resolves.toEqual({
+      kind: 'ready',
+      accountId: '@last:hs',
+      activeAccountId: null,
+      remainingAccountIds: [],
+    });
+    expect(lifecycle.unregisterNotifications).toHaveBeenCalledWith();
+    expect(matrix.remove).toHaveBeenCalledWith('@last:hs');
+    expect(lifecycle.releaseSharedCaches).toHaveBeenCalledOnce();
+    expect(storage.clear).toHaveBeenCalledOnce();
+  });
+
+  it('wipes the explicit last Account even when it has no live client', async () => {
+    const { adapter, matrix, storage } = setup(null);
+    vi.mocked(matrix.clientFor).mockReturnValue(null);
+    vi.mocked(storage.list).mockReturnValue(
+      of([{ userId: '@stale:hs', baseUrl: 'https://hs', deviceId: 'A' }]),
+    );
+    vi.mocked(storage.load).mockReturnValue(of(null));
+    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
+    vi.mocked(storage.clear).mockReturnValue(of(void 0));
+
+    await expect(
+      firstValueFrom(adapter.signOutAccount('@stale:hs')),
+    ).resolves.toEqual({
+      kind: 'ready',
+      accountId: '@stale:hs',
+      activeAccountId: null,
+      remainingAccountIds: [],
+    });
+    expect(matrix.remove).toHaveBeenCalledWith('@stale:hs');
+    expect(matrix.reset).not.toHaveBeenCalled();
+  });
+
+  it('keeps a surviving Account active when outgoing crypto cleanup fails', async () => {
+    const { adapter, matrix, storage } = setup('@outgoing:hs');
+    vi.mocked(matrix.clientFor).mockImplementation(
+      (accountId) =>
+        ({ logout: vi.fn(() => Promise.resolve()), accountId }) as never,
+    );
+    vi.mocked(storage.list).mockReturnValue(
+      of([
+        { userId: '@outgoing:hs', baseUrl: 'https://hs', deviceId: 'A' },
+        { userId: '@survivor:hs', baseUrl: 'https://hs', deviceId: 'B' },
+      ]),
+    );
+    vi.mocked(storage.load).mockReturnValue(of(null));
+    vi.mocked(matrix.remove).mockReturnValue(
+      throwError(() => new Error('crypto store remained open')),
+    );
+    vi.mocked(storage.remove).mockReturnValue(of(void 0));
+    vi.mocked(storage.setActive).mockReturnValue(of(void 0));
+
+    await expect(
+      firstValueFrom(adapter.signOutAccount('@outgoing:hs')),
+    ).resolves.toEqual({
+      kind: 'partial-cleanup',
+      accountId: '@outgoing:hs',
+      activeAccountId: '@survivor:hs',
+      remainingAccountIds: ['@survivor:hs'],
+      issues: [{ scope: 'crypto-and-cache', recovery: 'restart-application' }],
+    });
+    expect(matrix.setActive).toHaveBeenCalledWith('@survivor:hs');
+    expect(storage.setActive).toHaveBeenCalledWith('@survivor:hs');
+  });
+
+  it('resets only the approved installation storage scopes in order', async () => {
+    const { adapter, matrix, storage, wipe } = setup();
+    const order: string[] = [];
+    vi.mocked(storage.list).mockReturnValue(of([]));
+    vi.mocked(matrix.signOutAll).mockReturnValue(
+      defer(() => {
+        order.push('sign-out');
+        return of(void 0);
+      }),
+    );
+    vi.mocked(matrix.stop).mockReturnValue(
+      defer(() => {
+        order.push('stop');
+        return of(void 0);
+      }),
+    );
+    vi.mocked(wipe.wipeIndexedDb).mockImplementation(() => {
+      order.push('indexed-db');
+      return Promise.resolve({ blocked: [], failed: [], enumerated: true });
+    });
+    vi.mocked(storage.clearAll).mockReturnValue(
+      defer(() => {
+        order.push('secure-and-registry');
+        return of([]);
+      }),
+    );
+    vi.mocked(wipe.wipeKeyValueStores).mockImplementation(() => {
+      order.push('preferences');
+      return Promise.resolve({
+        secureStorage: true,
+        preferences: true,
+        webStorage: true,
+      });
+    });
+    vi.mocked(wipe.wipeServiceWorker).mockImplementation(() => {
+      order.push('service-worker');
+      return Promise.resolve({ cacheStorage: true, registrations: true });
+    });
+
+    await expect(firstValueFrom(adapter.resetInstallation())).resolves.toEqual({
+      kind: 'ready',
+    });
+    expect(order).toEqual([
+      'sign-out',
+      'stop',
+      'indexed-db',
+      'secure-and-registry',
+      'preferences',
+      'service-worker',
+    ]);
+  });
+
+  it('reports cleanup failures by safe scope without leaking database names', async () => {
+    const { adapter, matrix, storage, wipe } = setup();
+    vi.mocked(storage.list).mockReturnValue(of([]));
+    vi.mocked(matrix.signOutAll).mockReturnValue(of(void 0));
+    vi.mocked(matrix.stop).mockReturnValue(of(void 0));
+    vi.mocked(wipe.wipeIndexedDb).mockResolvedValue({
+      blocked: ['secret-account-db'],
+      failed: [],
+      enumerated: true,
+    });
+    vi.mocked(storage.clearAll).mockReturnValue(of([]));
+
+    const outcome = await firstValueFrom(adapter.resetInstallation());
+
+    expect(outcome).toEqual({
+      kind: 'partial-cleanup',
+      issues: [{ scope: 'indexed-db', recovery: 'restart-application' }],
+    });
+    expect(JSON.stringify(outcome)).not.toContain('secret-account-db');
+  });
+
+  it('reports key-value and service-worker residue by typed safe scope', async () => {
+    const { adapter, matrix, storage, wipe } = setup();
+    vi.mocked(storage.list).mockReturnValue(of([]));
+    vi.mocked(matrix.signOutAll).mockReturnValue(of(void 0));
+    vi.mocked(matrix.stop).mockReturnValue(of(void 0));
+    vi.mocked(storage.clearAll).mockReturnValue(of([]));
+    vi.mocked(wipe.wipeKeyValueStores).mockResolvedValue({
+      secureStorage: false,
+      preferences: false,
+      webStorage: true,
+    });
+    vi.mocked(wipe.wipeServiceWorker).mockResolvedValue({
+      cacheStorage: false,
+      registrations: true,
+    });
+
+    await expect(firstValueFrom(adapter.resetInstallation())).resolves.toEqual({
+      kind: 'partial-cleanup',
+      issues: [
+        {
+          scope: 'secure-storage',
+          recovery: 'retry-installation-reset',
+        },
+        { scope: 'preferences', recovery: 'retry-installation-reset' },
+        { scope: 'service-worker', recovery: 'restart-application' },
+      ],
+    });
+  });
+
+  it('classifies a provider-revocation timeout as provider residue', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter, matrix, storage, lifecycle } = setup();
+      vi.mocked(storage.list).mockReturnValue(
+        of([{ userId: '@oidc:hs', baseUrl: 'https://hs', deviceId: 'A' }]),
+      );
+      vi.mocked(storage.load).mockReturnValue(
+        of({
+          userId: '@oidc:hs',
+          baseUrl: 'https://hs',
+          oidc: { issuer: 'https://issuer' },
+        } as never),
+      );
+      vi.mocked(matrix.signOutAll).mockReturnValue(of(void 0));
+      vi.mocked(lifecycle.revokeProviderSession).mockReturnValue(NEVER);
+      vi.mocked(matrix.stop).mockReturnValue(of(void 0));
+      vi.mocked(storage.clearAll).mockReturnValue(of([]));
+
+      const outcome = firstValueFrom(adapter.resetInstallation());
+      await vi.advanceTimersByTimeAsync(3_001);
+
+      await expect(outcome).resolves.toEqual({
+        kind: 'partial-cleanup',
+        issues: [
+          {
+            scope: 'provider-session',
+            recovery: 'retry-installation-reset',
+          },
+        ],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it('prepares only live Accounts for an Active Account switch', async () => {
     const { adapter, matrix } = setup();
 

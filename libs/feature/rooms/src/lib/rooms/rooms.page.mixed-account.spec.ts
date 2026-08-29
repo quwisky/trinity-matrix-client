@@ -8,7 +8,6 @@ import {
 import { computed, signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
-import { AuthService } from '@trinity/data-access/auth';
 import {
   MixedInvitesService,
   type PendingInvite,
@@ -203,7 +202,6 @@ describe('RoomsPage mixed-account view', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(AuthService),
         MockProvider(AccountRuntimeService, {
           switchActiveAccount: switchAccount,
         }),

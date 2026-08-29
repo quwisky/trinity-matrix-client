@@ -59,6 +59,15 @@ function testAdapter(
       tap(() => activeAccountId.set(accountId)),
     ),
   );
+  const signOutAccount = vi.fn((accountId: string) =>
+    of({
+      kind: 'ready' as const,
+      accountId,
+      activeAccountId: '@survivor:hs',
+      remainingAccountIds: ['@survivor:hs'],
+    }),
+  );
+  const resetInstallation = vi.fn(() => of({ kind: 'ready' as const }));
   return {
     activeAccountId,
     readSavedAccounts,
@@ -74,6 +83,8 @@ function testAdapter(
       establishAccount,
       prepareActiveAccount,
       commitActiveAccount,
+      signOutAccount,
+      resetInstallation,
     },
   };
 }
@@ -110,6 +121,61 @@ function setup(test: TestAdapter, timeoutMs = 50): AccountRuntimeService {
 describe('AccountRuntimeService', () => {
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('signs out an explicit Account and reports the coherent surviving Account set', async () => {
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: '@outgoing:hs',
+      accountIds: ['@outgoing:hs', '@survivor:hs'],
+    });
+    const runtime = setup(test);
+
+    const outcome = await firstValueFrom(
+      runtime.signOutAccount('@outgoing:hs'),
+    );
+
+    expect(test.adapter.signOutAccount).toHaveBeenCalledWith('@outgoing:hs');
+    expect(outcome).toEqual({
+      kind: 'ready',
+      accountId: '@outgoing:hs',
+      activeAccountId: '@survivor:hs',
+      remainingAccountIds: ['@survivor:hs'],
+    });
+  });
+
+  it('joins identical sign-out attempts and rejects a conflicting installation reset', async () => {
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: '@outgoing:hs',
+      accountIds: ['@outgoing:hs'],
+    });
+    const pending = new Subject<
+      ReturnType<AccountRuntimeAdapter['signOutAccount']> extends Observable<
+        infer T
+      >
+        ? T
+        : never
+    >();
+    vi.mocked(test.adapter.signOutAccount).mockReturnValue(pending);
+    const runtime = setup(test);
+
+    const first = firstValueFrom(runtime.signOutAccount('@outgoing:hs'));
+    const second = firstValueFrom(runtime.signOutAccount('@outgoing:hs'));
+    await expect(firstValueFrom(runtime.resetInstallation())).resolves.toEqual({
+      kind: 'transition-in-progress',
+      operation: 'signing-out-account',
+    });
+    expect(test.adapter.signOutAccount).toHaveBeenCalledOnce();
+
+    pending.next({
+      kind: 'ready',
+      accountId: '@outgoing:hs',
+      activeAccountId: null,
+      remainingAccountIds: [],
+    });
+    pending.complete();
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2);
   });
 
   it('starts the Active Account first while restoring saved Accounts concurrently', async () => {
