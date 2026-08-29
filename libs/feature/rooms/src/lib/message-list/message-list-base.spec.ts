@@ -1,9 +1,22 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { type MessageView } from '@trinity/data-access/timeline';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  ConversationRuntime,
+  type MessageView,
+} from '@trinity/data-access/timeline';
 import { MessageListBase } from './message-list-base';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
+import { ConversationComposeStub } from '../testing/conversation-timeline.stub';
+
+let compose: ConversationComposeStub;
+
+beforeEach(() => {
+  compose = new ConversationComposeStub();
+  TestBed.overrideProvider(ConversationRuntime, {
+    useValue: { compose },
+  });
+});
 
 /**
  * A concrete list with no scroll strategy of its own, so what is exercised here is the
@@ -160,25 +173,34 @@ describe('MessageListBase batch caption routing', () => {
     fixture.detectChanges();
     const cmp = fixture.componentInstance;
     const sent: string[] = [];
-    const edited: string[] = [];
-    const replied: string[] = [];
     cmp.send.subscribe((e) => sent.push(e.body));
-    cmp.editMessage.subscribe((e) => edited.push(e.body));
-    cmp.reply.subscribe((e) => replied.push(e.body));
 
-    cmp.editingId.set('$a');
+    cmp.startEdit({ ...msg('$a'), showHeader: true });
     cmp['onBatchCaption']({ text: 'check these out', mentions: [] });
 
     expect(sent).toEqual(['check these out']);
-    expect(edited).toEqual([]);
     expect(cmp.editingId()).toBe('$a'); // and the edit the user is writing is untouched
 
     // Same for a reply started while the files were going out.
-    cmp.editingId.set(null);
-    cmp.replyingToId.set('$a');
+    cmp.cancelEdit();
+    cmp.startReply({ ...msg('$a'), showHeader: true });
     cmp['onBatchCaption']({ text: 'and these', mentions: [] });
 
     expect(sent).toEqual(['check these out', 'and these']);
-    expect(replied).toEqual([]);
+  });
+
+  it('does not forward another text submit while Conversation delivery is active', () => {
+    const fixture = TestBed.createComponent(TestMessageListComponent);
+    fixture.detectChanges();
+    const sent: string[] = [];
+    fixture.componentInstance.send.subscribe(({ body }) => sent.push(body));
+    compose.setSending(true);
+
+    fixture.componentInstance['onSubmit']({
+      text: 'duplicate',
+      mentions: [],
+    });
+
+    expect(sent).toEqual([]);
   });
 });

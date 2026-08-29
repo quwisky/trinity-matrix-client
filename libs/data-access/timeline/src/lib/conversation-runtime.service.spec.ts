@@ -1,11 +1,15 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { of } from 'rxjs';
+import { NEVER, Subject, firstValueFrom, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DraftStoreService } from '@trinity/platform-native';
 import {
   CONVERSATION_RETENTION_LIMIT,
+  CONVERSATION_TEXT_SENDER,
   CONVERSATION_TIMELINE_FACTORY,
   ConversationRuntime,
+  type ConversationTextSendRequest,
+  type ConversationTextSender,
   type ConversationTimeline,
   type ConversationTimelineController,
   type ConversationTimelineFactory,
@@ -33,14 +37,24 @@ function timeline(roomId: string): ConversationTimeline {
     roomEncrypted: false,
     loadOlder: () => of(void 0),
     jumpToDate: () => of({ kind: 'no-event' }),
-    setTyping: () => undefined,
+    setTyping: vi.fn(),
     rawEvent: () => null,
     reactionDetails: () => [],
   };
 }
 
-function setup(retainedPerAccount = 2) {
+function setup(
+  retainedPerAccount = 2,
+  senderOverride?: ConversationTextSender,
+) {
   const controllers = new Map<string, TestConversationTimelineController[]>();
+  const sends = new Subject<
+    | { readonly kind: 'accepted'; readonly eventId: string }
+    | { readonly kind: 'rejected'; readonly retryable: boolean }
+  >();
+  const sender: ConversationTextSender = senderOverride ?? {
+    send: vi.fn(() => ({ outcome: sends, cancel: () => false })),
+  };
   const factory: ConversationTimelineFactory = {
     create: vi.fn((key) => {
       const visible = signal(false);
@@ -63,6 +77,7 @@ function setup(retainedPerAccount = 2) {
     providers: [
       ConversationRuntime,
       { provide: CONVERSATION_TIMELINE_FACTORY, useValue: factory },
+      { provide: CONVERSATION_TEXT_SENDER, useValue: sender },
       { provide: CONVERSATION_RETENTION_LIMIT, useValue: retainedPerAccount },
     ],
   });
@@ -78,8 +93,11 @@ function setup(retainedPerAccount = 2) {
   };
   return {
     runtime: TestBed.inject(ConversationRuntime),
+    drafts: TestBed.inject(DraftStoreService),
     factory,
     controller,
+    sender,
+    sends,
   };
 }
 
@@ -211,6 +229,24 @@ describe('ConversationRuntime', () => {
     expect(factory.create).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps drafts independent when two Accounts share the same Room', () => {
+    const { runtime } = setup();
+    const alice = runtime.focus({
+      accountId: ALICE,
+      roomId: '!shared:example.org',
+    });
+    alice.compose.setDraft('alice draft');
+
+    const bob = runtime.focus({
+      accountId: BOB,
+      roomId: '!shared:example.org',
+    });
+
+    expect(bob.compose.draft()).toBe('');
+    bob.compose.setDraft('bob draft');
+    expect(alice.compose.draft()).toBe('alice draft');
+  });
+
   it('releases every listener-owning child when the runtime is retired', () => {
     const { runtime, controller } = setup();
     const alice = runtime.focus({
@@ -235,5 +271,216 @@ describe('ConversationRuntime', () => {
       listenerCount: 0,
       retainedBytes: 0,
     });
+  });
+
+  it('restores draft and reply/edit intent with the exact retained conversation', () => {
+    const { runtime } = setup();
+    const first = runtime.focus({
+      accountId: ALICE,
+      roomId: '!first:example.org',
+    });
+    first.compose.setDraft('half written');
+    first.compose.beginReply('$reply');
+
+    runtime.focus({ accountId: ALICE, roomId: '!second:example.org' });
+    const restored = runtime.focus({
+      accountId: ALICE,
+      roomId: '!first:example.org',
+    });
+
+    expect(restored).toBe(first);
+    expect(restored.compose.draft()).toBe('half written');
+    expect(restored.compose.intent()).toEqual({
+      kind: 'reply',
+      eventId: '$reply',
+    });
+
+    restored.compose.beginEdit('$edit', 'original message');
+    expect(restored.compose.intent()).toEqual({
+      kind: 'edit',
+      eventId: '$edit',
+    });
+    expect(restored.compose.draft()).toBe('original message');
+    restored.compose.setDraft('edited message');
+    restored.compose.cancelIntent();
+    expect(restored.compose.draft()).toBe('half written');
+  });
+
+  it('restores compose intent after the timeline handle is evicted', () => {
+    const { runtime } = setup(0);
+    const original = runtime.focus({
+      accountId: ALICE,
+      roomId: '!original:example.org',
+    });
+    original.compose.setDraft('parked message');
+    original.compose.beginEdit('$edit', 'edited text');
+    runtime.focus({ accountId: ALICE, roomId: '!other:example.org' });
+
+    const restored = runtime.focus({
+      accountId: ALICE,
+      roomId: '!original:example.org',
+    });
+
+    expect(restored).not.toBe(original);
+    expect(restored.compose.intent()).toEqual({
+      kind: 'edit',
+      eventId: '$edit',
+    });
+    expect(restored.compose.draft()).toBe('edited text');
+    restored.compose.cancelIntent();
+    expect(restored.compose.draft()).toBe('parked message');
+  });
+
+  it('keeps submit cold and succeeds only with an accepted authoritative local echo', async () => {
+    const { runtime, drafts, sender, sends } = setup();
+    const handle = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+    handle.compose.setDraft('hello');
+    const persist = vi.spyOn(drafts, 'set');
+    persist.mockClear();
+    const request: ConversationTextSendRequest = {
+      key: handle.key,
+      body: 'hello',
+      mentions: [],
+      intent: { kind: 'message' },
+    };
+
+    const command = handle.compose.submit();
+    expect(sender.send).not.toHaveBeenCalled();
+    const outcomePromise = firstValueFrom(command);
+    expect(sender.send).toHaveBeenCalledWith(request);
+    expect(handle.compose.sending()).toBe(true);
+    expect(persist).not.toHaveBeenCalled();
+    sends.next({ kind: 'accepted', eventId: '$local-echo' });
+    sends.complete();
+
+    await expect(outcomePromise).resolves.toEqual({
+      kind: 'sent',
+      eventId: '$local-echo',
+    });
+    expect(handle.compose.draft()).toBe('');
+    expect(handle.compose.intent()).toEqual({ kind: 'message' });
+    expect(handle.compose.sending()).toBe(false);
+    expect(persist).toHaveBeenCalledWith(expect.any(String), '');
+  });
+
+  it('returns a typed rejection and restores the durable intent', async () => {
+    const { runtime, sends } = setup();
+    const compose = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    }).compose;
+    compose.setDraft('try again');
+    compose.beginReply('$target');
+
+    const outcomePromise = firstValueFrom(compose.submit());
+    sends.next({ kind: 'rejected', retryable: true });
+    sends.complete();
+
+    await expect(outcomePromise).resolves.toEqual({
+      kind: 'rejected',
+      failure: 'send-rejected',
+      retryable: true,
+    });
+    expect(compose.draft()).toBe('try again');
+    expect(compose.intent()).toEqual({ kind: 'reply', eventId: '$target' });
+  });
+
+  it('cancels the finite command without losing the draft or leaving send state behind', () => {
+    const cancelled = vi.fn(() => true);
+    const sender: ConversationTextSender = {
+      send: vi.fn(() => ({ outcome: NEVER, cancel: cancelled })),
+    };
+    const { runtime } = setup(2, sender);
+    const compose = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    }).compose;
+    compose.setDraft('  keep me  ');
+
+    const subscription = compose.submit().subscribe();
+    subscription.unsubscribe();
+
+    expect(cancelled).toHaveBeenCalledOnce();
+    expect(compose.sending()).toBe(false);
+    expect(compose.draft()).toBe('  keep me  ');
+  });
+
+  it('does not falsely restore a draft when SDK cancellation is indeterminate', () => {
+    const sender: ConversationTextSender = {
+      send: vi.fn(() => ({ outcome: NEVER, cancel: () => false })),
+    };
+    const { runtime } = setup(0, sender);
+    const original = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+    original.compose.setDraft('durable text');
+
+    const subscription = original.compose.submit().subscribe();
+    subscription.unsubscribe();
+
+    expect(original.compose.draft()).toBe('');
+    runtime.focus({ accountId: ALICE, roomId: '!other:example.org' });
+    const restored = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+    expect(restored.compose.draft()).toBe('durable text');
+  });
+
+  it('rejects a duplicate interaction without dispatching a second SDK send', async () => {
+    const { runtime, sender } = setup();
+    const compose = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    }).compose;
+    compose.setDraft('once');
+    const first = compose.submit().subscribe();
+
+    await expect(firstValueFrom(compose.submit())).resolves.toEqual({
+      kind: 'rejected',
+      failure: 'send-in-progress',
+      retryable: false,
+    });
+    expect(sender.send).toHaveBeenCalledOnce();
+    first.unsubscribe();
+  });
+
+  it('does not clear newer draft or target changes when an older send settles', async () => {
+    const { runtime, sends } = setup();
+    const compose = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    }).compose;
+    compose.setDraft('first');
+    const first = firstValueFrom(compose.submit());
+
+    compose.setDraft('second');
+    compose.beginReply('$new-target');
+    sends.next({ kind: 'accepted', eventId: '$first' });
+    sends.complete();
+
+    await expect(first).resolves.toEqual({ kind: 'sent', eventId: '$first' });
+    expect(compose.draft()).toBe('second');
+    expect(compose.intent()).toEqual({
+      kind: 'reply',
+      eventId: '$new-target',
+    });
+  });
+
+  it('cleans up typing ownership when the conversation loses focus', () => {
+    const { runtime } = setup();
+    const first = runtime.focus({
+      accountId: ALICE,
+      roomId: '!first:example.org',
+    });
+    first.compose.setTyping(true);
+
+    runtime.focus({ accountId: ALICE, roomId: '!second:example.org' });
+
+    expect(first.timeline.setTyping).toHaveBeenLastCalledWith(false, 'room');
   });
 });

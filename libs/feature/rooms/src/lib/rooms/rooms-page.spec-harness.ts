@@ -49,7 +49,10 @@ import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
 import { WorkspaceAccountSwitchService } from './workspace-account-switch.service';
-import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
+import {
+  ConversationComposeStub,
+  ConversationTimelineStub,
+} from '../testing/conversation-timeline.stub';
 
 export { ConversationTimelineStub as RoomsTimelineStub };
 
@@ -146,9 +149,11 @@ export const SHARED_MOCKS: Provider[] = [
     provide: ConversationRuntime,
     useFactory: () => {
       const timeline = inject(ConversationTimelineStub);
+      const compose = new ConversationComposeStub();
       const focused = signal<ConversationHandle | null>(null);
       return {
         timeline,
+        compose,
         focused: focused.asReadonly(),
         focus: vi.fn((key: ConversationKey) => {
           timeline.focusRoom(key.roomId);
@@ -157,6 +162,7 @@ export const SHARED_MOCKS: Provider[] = [
             key: Object.freeze({ ...key }),
             state: state.asReadonly(),
             timeline,
+            compose,
           } satisfies ConversationHandle;
           focused.set(handle);
           return handle;

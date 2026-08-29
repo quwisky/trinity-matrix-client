@@ -263,6 +263,7 @@
         aria-label="Send message"
         data-testid="composer-send"
         [disabled]="
+          textSending() ||
           (!text().trim() && !hasStaged()) ||
           (!editing() && hasStaged() && !canSendMedia())
         "

@@ -58,7 +58,6 @@ import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
 beforeEach(() => setRouteRoom(null));
 
 describe('RoomsPage action error feedback', () => {
-  let edit: Mock;
   let toastShow: Mock;
   let sendMedia: Mock;
   let setNotifyMode: Mock;
@@ -83,7 +82,6 @@ describe('RoomsPage action error feedback', () => {
 
   function build() {
     toastShow = vi.fn();
-    edit = vi.fn();
     sendMedia = vi.fn(() => of(undefined));
     setNotifyMode = vi.fn(() => of(undefined));
     leaveRoom = vi.fn(() => of(undefined));
@@ -170,7 +168,7 @@ describe('RoomsPage action error feedback', () => {
           },
         }),
         MockProvider(TrnAlertService, { confirm: alertConfirm }),
-        MockProvider(TimelineActionsService, { edit, sendMedia }),
+        MockProvider(TimelineActionsService, { sendMedia }),
         MockProvider(MediaService),
         MockProvider(MatrixClientService, {
           isInitialized: true,
@@ -200,27 +198,6 @@ describe('RoomsPage action error feedback', () => {
     });
     return shellFrom();
   }
-
-  it('shows a danger toast when an edit fails', () => {
-    const shell = build();
-    edit.mockReturnValue(throwError(() => new Error('nope')));
-
-    shell.messages.onEdit({ id: '$1', body: 'x', mentions: [] });
-
-    expect(toastShow).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ variant: 'destructive' }),
-    );
-  });
-
-  it('does not toast when the action succeeds', () => {
-    const shell = build();
-    edit.mockReturnValue(of(undefined));
-
-    shell.messages.onEdit({ id: '$1', body: 'x', mentions: [] });
-
-    expect(toastShow).not.toHaveBeenCalled();
-  });
 
   // Favouriting moved into ChannelSidebarComponent (it now calls RoomsService
   // directly), so that behaviour is covered by channel-sidebar.component.spec.ts.

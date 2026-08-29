@@ -1,7 +1,56 @@
-import { Injectable, signal } from '@angular/core';
-import type { ConversationTimeline } from '@trinity/data-access/timeline';
+import { Injectable, computed, signal } from '@angular/core';
+import type {
+  ConversationCompose,
+  ConversationComposeIntent,
+  ConversationTimeline,
+} from '@trinity/data-access/timeline';
 import { of } from 'rxjs';
 import { vi } from 'vitest';
+
+/** Controllable test double for the focused Conversation's durable compose intent. */
+export class ConversationComposeStub implements ConversationCompose {
+  private readonly messageDraftState = signal('');
+  private readonly editDraftState = signal('');
+  private readonly intentState = signal<ConversationComposeIntent>({
+    kind: 'message',
+  });
+  private readonly sendingState = signal(false);
+
+  readonly draft = computed(() =>
+    this.intentState().kind === 'edit'
+      ? this.editDraftState()
+      : this.messageDraftState(),
+  );
+  readonly intent = this.intentState.asReadonly();
+  readonly sending = this.sendingState.asReadonly();
+  readonly setTyping = vi.fn();
+  readonly submit: ConversationCompose['submit'] = vi.fn(() =>
+    of({ kind: 'sent' as const, eventId: '$test' }),
+  );
+
+  setDraft(draft: string): void {
+    if (this.intentState().kind === 'edit') this.editDraftState.set(draft);
+    else this.messageDraftState.set(draft);
+  }
+
+  beginReply(eventId: string): void {
+    this.intentState.set({ kind: 'reply', eventId });
+  }
+
+  beginEdit(eventId: string, draft = ''): void {
+    this.editDraftState.set(draft);
+    this.intentState.set({ kind: 'edit', eventId });
+  }
+
+  cancelIntent(): void {
+    this.editDraftState.set('');
+    this.intentState.set({ kind: 'message' });
+  }
+
+  setSending(sending: boolean): void {
+    this.sendingState.set(sending);
+  }
+}
 
 /** Safe test double for the public Conversation timeline capability. */
 @Injectable()

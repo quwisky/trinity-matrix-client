@@ -16,29 +16,6 @@ import {
 } from './timeline.spec-harness';
 
 describe('TimelineActionsService', () => {
-  it('sends plain text as-is and markdown as formatted HTML', async () => {
-    const sent: unknown[][] = [];
-    const svc = setupActions([], sent);
-
-    await firstValueFrom(svc.send('hello there'));
-    await firstValueFrom(svc.send('**bold**'));
-
-    // Both go through sendMessage(content) now so mentions can add m.mentions.
-    expect(sent[0][0]).toBe('message');
-    // `m.mentions` rides along on EVERY message, empty when there is nothing to say — its
-    // presence is what makes the server skip the legacy body-matching push rules.
-    expect(sent[0][1]).toEqual({
-      msgtype: 'm.text',
-      body: 'hello there',
-      'm.mentions': {},
-    });
-    expect(sent[1][0]).toBe('message');
-    const rich = sent[1][1] as Record<string, unknown>;
-    expect(rich['body']).toBe('**bold**');
-    expect(rich['format']).toBe('org.matrix.custom.html');
-    expect(rich['formatted_body']).toContain('<strong>bold</strong>');
-  });
-
   it('sends a shared location as m.location', async () => {
     const sent: unknown[][] = [];
     const svc = setupActions([], sent);
@@ -118,29 +95,6 @@ describe('TimelineActionsService', () => {
     expect(sent).toEqual([]);
   });
 
-  it('interprets a /me slash command as an emote', async () => {
-    const sent: unknown[][] = [];
-    const svc = setupActions([], sent);
-
-    await firstValueFrom(svc.send('/me waves'));
-
-    expect(sent[0][0]).toBe('message');
-    expect(sent[0][1]).toMatchObject({ msgtype: 'm.emote', body: 'waves' });
-  });
-
-  it('appends the shrug for a /shrug slash command', async () => {
-    const sent: unknown[][] = [];
-    const svc = setupActions([], sent);
-
-    await firstValueFrom(svc.send('/shrug'));
-
-    expect(sent[0][1]).toEqual({
-      msgtype: 'm.text',
-      body: '¯\\_(ツ)_/¯',
-      'm.mentions': {},
-    });
-  });
-
   it('forwards a message content to another room, dropping any relation', async () => {
     const sent: unknown[][] = [];
     const svc = setupActions(
@@ -204,39 +158,6 @@ describe('TimelineActionsService', () => {
     expect(sent.find((c) => c[0] === 'event')?.[1]).toBe('m.poll.end');
   });
 
-  it('adds m.mentions and a matrix.to pill when a message mentions someone', async () => {
-    const sent: unknown[][] = [];
-    const svc = setupActions([], sent);
-
-    await firstValueFrom(
-      svc.send('hi @Bob', [{ userId: '@bob:hs', display: '@Bob' }]),
-    );
-
-    const content = sent[0][1] as Record<string, unknown>;
-    expect(content['m.mentions']).toEqual({ user_ids: ['@bob:hs'] });
-    expect(content['formatted_body']).toContain(
-      '<a href="https://matrix.to/#/@bob:hs">@Bob</a>',
-    );
-  });
-
-  it('edits a message as an m.replace with new content', async () => {
-    const sent: unknown[][] = [];
-    const svc = setupActions([], sent);
-
-    await firstValueFrom(svc.edit('$orig', 'fixed **text**'));
-
-    expect(sent[0][0]).toBe('message');
-    const content = sent[0][1] as Record<string, unknown>;
-    expect(content['m.relates_to']).toEqual({
-      rel_type: 'm.replace',
-      event_id: '$orig',
-    });
-    expect(content['body']).toBe('* fixed **text**');
-    const newContent = content['m.new_content'] as Record<string, unknown>;
-    expect(newContent['body']).toBe('fixed **text**');
-    expect(newContent['formatted_body']).toContain('<strong>text</strong>');
-  });
-
   it('redacts a message', async () => {
     const sent: unknown[][] = [];
     const svc = setupActions([], sent);
@@ -270,27 +191,6 @@ describe('TimelineActionsService', () => {
     await firstValueFrom(svc.toggleReaction('$m', '👍'));
 
     expect(sent[0]).toEqual(['redact', '$mine']);
-  });
-
-  it('sends a reply with an in_reply_to relation and a quote fallback', async () => {
-    const sent: unknown[][] = [];
-    const svc = setupActions(
-      [fakeEvent({ id: '$orig', sender: '@a:hs', body: 'hello world' })],
-      sent,
-    );
-
-    await firstValueFrom(svc.reply('$orig', 'hi back'));
-
-    expect(sent[0][0]).toBe('message');
-    const content = sent[0][1] as Record<string, unknown>;
-    expect(content['m.relates_to']).toEqual({
-      'm.in_reply_to': { event_id: '$orig' },
-    });
-    expect(content['body']).toBe('> <@a:hs> hello world\n\nhi back');
-    // Rich-reply HTML fallback so other clients render (and strip) it correctly.
-    expect(content['format']).toBe('org.matrix.custom.html');
-    expect(content['formatted_body']).toContain('<mx-reply>');
-    expect(content['formatted_body']).toContain('</mx-reply>hi back');
   });
 
   describe('sendMedia', () => {

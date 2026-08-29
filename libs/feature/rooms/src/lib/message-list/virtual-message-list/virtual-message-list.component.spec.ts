@@ -4,10 +4,14 @@ import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { MockComponent } from 'ng-mocks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type MessageView } from '@trinity/data-access/timeline';
+import {
+  ConversationRuntime,
+  type MessageView,
+} from '@trinity/data-access/timeline';
 import { MessageComposerComponent } from '../../message-composer/message-composer.component';
 import { DayBoundaryService } from '../day-boundary.service';
 import { VirtualMessageListComponent } from './virtual-message-list.component';
+import { ConversationComposeStub } from '../../testing/conversation-timeline.stub';
 
 function msg(
   id: string,
@@ -51,6 +55,9 @@ const notAtBottom = (cmp: VirtualMessageListComponent): boolean =>
 
 describe('VirtualMessageListComponent', () => {
   beforeEach(() => {
+    TestBed.overrideProvider(ConversationRuntime, {
+      useValue: { compose: new ConversationComposeStub() },
+    });
     // Suppress the anchoring effect's async scroll writes (they'd assign
     // el.scrollTop, fighting the geometry these tests define); windowing is driven by
     // the scrollTop signal set via onScroll, not the real rAF. The rAF-deferred paths
@@ -412,15 +419,12 @@ describe('VirtualMessageListComponent', () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
   });
 
-  it('resets the edit/reply target on room change (shared base reset)', async () => {
+  it('resets presentation state on room change while runtime swaps compose intent', async () => {
     const { fixture } = await renderList({
       roomId: '!a:hs',
       messages: [msg('$1', '@a:hs', 'Alice', 1000)],
     });
     const cmp = fixture.componentInstance;
-
-    cmp.replyingToId.set('$1');
-    expect(cmp.replyingToId()).toBe('$1');
 
     fixture.componentRef.setInput('roomId', '!b:hs');
     fixture.componentRef.setInput('messages', [
@@ -428,7 +432,6 @@ describe('VirtualMessageListComponent', () => {
     ]);
     fixture.detectChanges();
 
-    expect(cmp.replyingToId()).toBeNull();
     expect(cmp.announcement()).toBe('');
   });
 
@@ -854,10 +857,11 @@ describe('VirtualMessageListComponent', () => {
     });
     const cmp = fixture.componentInstance;
     const sent: string[] = [];
-    const edited: string[] = [];
     cmp.send.subscribe((e) => sent.push(e.body));
-    cmp.editMessage.subscribe((e) => edited.push(e.body));
-    cmp.editingId.set('$1'); // an edit started while the files were uploading
+    cmp.startEdit({
+      ...msg('$1', '@a:hs', 'Alice', 1000),
+      showHeader: true,
+    }); // an edit started while the files were uploading
 
     fixture.debugElement
       .query(By.directive(MessageComposerComponent))
@@ -867,7 +871,6 @@ describe('VirtualMessageListComponent', () => {
       });
 
     expect(sent).toEqual(['both of these']);
-    expect(edited).toEqual([]);
   });
   // What this list owes is the wiring — the detail lives in the indicator's own spec.
   // Before the extraction the markup was copy-pasted here and asserted only in the simple

@@ -161,6 +161,13 @@ export class MessageComposerComponent {
   readonly editing = input(false);
   readonly draft = input('');
   /**
+   * Conversation-owned compose draft. Null keeps the legacy thread-local persistence path
+   * until thread state moves behind its Conversation child in the dedicated thread slice.
+   */
+  readonly composeDraft = input<string | null>(null);
+  /** A Conversation-owned text attempt is still resolving through the SDK. */
+  readonly textSending = input(false);
+  /**
    * Id of the message being edited (null when not editing). The prefill keys on
    * this — not on {@link draft} — so re-targeting to a different message refreshes
    * the field, while a mid-edit body change of the *same* target (redaction, a
@@ -185,6 +192,7 @@ export class MessageComposerComponent {
   /** Upload fraction in [0, 1] while an attachment uploads, else null (idle). */
   readonly uploadProgress = input<BatchProgress | null>(null);
   readonly submitText = output<ComposerSubmit>();
+  readonly composeDraftChange = output<string>();
   /**
    * A batch caption, to be posted as its own message.
    *
@@ -503,10 +511,13 @@ export class MessageComposerComponent {
           this.previewing.set(false); // the new room opens ready to write, not to read
           // Drafts only apply to compose mode; in edit mode `text` is the edit body.
           if (!this.editing()) {
-            if (prev != null) {
+            const managedDraft = this.composeDraft();
+            if (managedDraft === null && prev != null) {
               this.drafts.set(prev, this.text());
             }
-            this.text.set(id != null ? this.drafts.get(id) : '');
+            this.text.set(
+              managedDraft ?? (id != null ? this.drafts.get(id) : ''),
+            );
             queueMicrotask(() => this.field.autoGrow());
           }
         });
@@ -567,7 +578,8 @@ export class MessageComposerComponent {
         // Leaving edit mode restores the conversation's compose draft (empty when
         // none), so an edit interlude doesn't discard a half-typed message.
         const id = untracked(() => this.roomId());
-        this.text.set(id != null ? this.drafts.get(id) : '');
+        const managedDraft = untracked(() => this.composeDraft());
+        this.text.set(managedDraft ?? (id != null ? this.drafts.get(id) : ''));
         this.previewing.set(false);
         queueMicrotask(() => this.field.autoGrow());
       }
@@ -582,8 +594,27 @@ export class MessageComposerComponent {
       const value = this.text();
       const id = this.roomId();
       untracked(() => {
-        if (id != null && id === this.wasRoomId && !this.editing()) {
-          this.drafts.set(id, value);
+        if (id != null && id === this.wasRoomId) {
+          if (this.composeDraft() === null && !this.editing()) {
+            this.drafts.set(id, value);
+          } else if (this.composeDraft() !== null) {
+            this.composeDraftChange.emit(value);
+          }
+        }
+      });
+    });
+
+    // A failed or cancelled runtime send restores its durable draft after this component
+    // optimistically clears the textarea. Mirror only external changes; caret-local typing
+    // does not trigger this effect because `text` is read untracked.
+    effect(() => {
+      const managedDraft = this.composeDraft();
+      const editing = this.editing();
+      if (managedDraft === null || editing) return;
+      untracked(() => {
+        if (this.text() !== managedDraft) {
+          this.text.set(managedDraft);
+          queueMicrotask(() => this.field.autoGrow());
         }
       });
     });
@@ -812,6 +843,7 @@ export class MessageComposerComponent {
       this.field.regrowAfterRender();
       return;
     }
+    if (this.textSending()) return;
     const value = this.text().trim();
     if (!value) {
       return;
@@ -827,8 +859,9 @@ export class MessageComposerComponent {
     // following `keyup`; pressing Send with the mouse does not, and left the bar hanging over
     // an empty composer.
     this.selection.set(null);
-    if (!this.editing()) {
-      // Edits clear via editing → false; new messages clear here.
+    if (!this.editing() && this.composeDraft() === null) {
+      // Conversation-owned text clears from the authoritative input signal. The legacy
+      // thread composer still owns its local draft and therefore clears it here.
       this.text.set('');
       this.field.regrowAfterRender();
     }

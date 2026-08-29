@@ -51,7 +51,9 @@ export class MessageActionsService {
   private readonly status = inject(ShellStatusService);
   private readonly rooms = inject(RoomsService);
   private readonly jumpToDateSvc = inject(JumpToDateService);
-  private readonly timeline = inject(ConversationRuntime).timeline;
+  private readonly conversations = inject(ConversationRuntime);
+  private readonly timeline = this.conversations.timeline;
+  private readonly compose = this.conversations.compose;
   private readonly timelineActions = inject(TimelineActionsService);
   private readonly pinned = inject(PinnedMessagesService);
   private readonly dialog = inject(TrnDialogService);
@@ -225,9 +227,11 @@ export class MessageActionsService {
   }
 
   onSend({ body, mentions }: { body: string; mentions: Mention[] }): void {
-    // The local echo (and its failed/retry state) surfaces the result.
-    this.timelineActions
-      .send(body, mentions)
+    // The runtime clears durable intent only after the SDK accepts the event and exposes
+    // its authoritative local echo. Rejections and cancellation restore it for retry.
+    this.compose.setDraft(body);
+    this.compose
+      .submit(mentions)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
   }
@@ -242,11 +246,6 @@ export class MessageActionsService {
       this.timelineActions.sendSticker(sticker),
       'Could not send the sticker.',
     );
-  }
-
-  /** Composer typing state → a (throttled) Matrix typing notification for the room. */
-  onTyping(typing: boolean): void {
-    this.timeline.setTyping(typing);
   }
 
   /** Cast a vote on a poll (m.poll.response). */
@@ -342,15 +341,8 @@ export class MessageActionsService {
       });
   }
 
-  // Edit/delete/react have no visible local echo, so a failure would otherwise be
-  // silent — surface it as a toast. (Send/reply produce an echo with a retry.)
-  onEdit(edit: { id: string; body: string; mentions: Mention[] }): void {
-    this.runAction(
-      this.timelineActions.edit(edit.id, edit.body, edit.mentions),
-      'Could not edit the message.',
-    );
-  }
-
+  // Delete/react have no visible local echo, so a failure would otherwise be
+  // silent — surface it as a toast.
   onDelete(messageId: string): void {
     this.runAction(
       this.timelineActions.redact(messageId),
@@ -363,13 +355,6 @@ export class MessageActionsService {
       this.timelineActions.toggleReaction(reaction.id, reaction.key),
       'Could not update the reaction.',
     );
-  }
-
-  onReply(reply: { id: string; body: string; mentions: Mention[] }): void {
-    this.timelineActions
-      .reply(reply.id, reply.body, reply.mentions)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
   }
 
   /** Run a fire-and-forget timeline action, surfacing a failure as a toast. */

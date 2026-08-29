@@ -65,6 +65,27 @@ describe('MessageComposerComponent — the field, edit mode and drafts', () => {
     expect(cmp.text()).toBe('new text');
   });
 
+  it('lets Conversation state clear managed text and blocks duplicate submission', async () => {
+    const { fixture } = await renderComposer({
+      composeDraft: 'first message',
+    });
+    const cmp = fixture.componentInstance;
+    const sent: string[] = [];
+    cmp.submitText.subscribe(({ text }) => sent.push(text));
+
+    cmp.submit();
+    expect(sent).toEqual(['first message']);
+    expect(cmp.text()).toBe('first message');
+
+    fixture.componentRef.setInput('textSending', true);
+    fixture.detectChanges();
+    cmp.text.set('second message');
+    cmp.submit();
+
+    expect(sent).toEqual(['first message']);
+    expect(cmp.text()).toBe('second message');
+  });
+
   it('refreshes the field when the edit target changes while still editing', async () => {
     const { fixture } = await renderComposer({
       editing: true,
@@ -177,6 +198,31 @@ describe('MessageComposerComponent — the field, edit mode and drafts', () => {
   });
 
   describe('draft persistence', () => {
+    it('mirrors a Conversation-owned draft and restores it after a rejected send', async () => {
+      const { fixture, container } = await renderComposer({
+        roomId: '!a:hs',
+        composeDraft: 'runtime draft',
+      });
+      const cmp = fixture.componentInstance;
+      const changes: string[] = [];
+      cmp.composeDraftChange.subscribe((draft) => changes.push(draft));
+      expect(cmp.text()).toBe('runtime draft');
+
+      const textarea = container.querySelector(
+        'textarea',
+      ) as HTMLTextAreaElement;
+      textarea.value = 'updated locally';
+      cmp.onInput({ target: textarea } as unknown as Event);
+      fixture.detectChanges();
+      expect(changes.at(-1)).toBe('updated locally');
+
+      // The runtime restores the durable snapshot when its cold send rejects or is
+      // cancelled; the component mirrors it without owning another persistent copy.
+      fixture.componentRef.setInput('composeDraft', 'restored after rejection');
+      fixture.detectChanges();
+      expect(cmp.text()).toBe('restored after rejection');
+    });
+
     it('restores the saved draft for the conversation on mount', async () => {
       const store = new DraftStoreService();
       store.set('!a:hs', 'half a message');
