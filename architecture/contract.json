@@ -155,9 +155,15 @@
     },
     {
       "source": "feature-rooms",
+      "target": "data-access-accounts",
+      "removeBy": "#310",
+      "reason": "The current room shell is the Workspace adapter for atomic Account switching."
+    },
+    {
+      "source": "feature-rooms",
       "target": "data-access-auth",
-      "removeBy": "#302, #310",
-      "reason": "The room shell currently coordinates account switching and navigation."
+      "removeBy": "#303, #310",
+      "reason": "The current room shell still coordinates Account logout and navigation."
     },
     {
       "source": "feature-rooms",

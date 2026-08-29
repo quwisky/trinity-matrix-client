@@ -102,6 +102,7 @@ import { ReadStateService } from './read-state.service';
 import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
+import { WorkspaceAccountSwitchService } from './workspace-account-switch.service';
 import { TrnIconComponent } from '@trinity/components/icon';
 
 /**
@@ -139,6 +140,7 @@ const PANEL_DRAWER_PX = 480;
     MessageActionsService,
     ShellShortcutsService,
     SessionActionsService,
+    WorkspaceAccountSwitchService,
   ],
   templateUrl: 'rooms.page.html',
   styleUrls: ['rooms.page.scss'],

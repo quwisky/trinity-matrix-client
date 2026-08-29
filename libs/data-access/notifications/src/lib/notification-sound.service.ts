@@ -62,6 +62,7 @@ export class NotificationSoundService {
   private readonly onAccountData = (): void => this._enabled.set(this.isOn());
 
   private readonly projection = projectFromClient({
+    id: 'notifications.sound',
     matrix: this.matrix,
     rebuild: () => this._enabled.set(this.isOn()),
     bind: (client) => client.on(ClientEvent.AccountData, this.onAccountData),

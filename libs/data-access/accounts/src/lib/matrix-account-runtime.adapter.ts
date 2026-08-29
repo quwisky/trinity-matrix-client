@@ -21,6 +21,7 @@ import type {
   AccountRuntimeAdapter,
   AdapterAccountEstablishmentOutcome,
   AdapterAccountRestoreOutcome,
+  AdapterAccountSwitchOutcome,
   SavedAccountsSnapshot,
 } from './account-runtime.adapter';
 import {
@@ -173,6 +174,43 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
             this.pendingNewAccounts.delete(session.userId);
           }
         }),
+      );
+    });
+  }
+
+  prepareActiveAccount(
+    accountId: string,
+  ): Observable<AdapterAccountSwitchOutcome> {
+    return defer(() =>
+      of(
+        this.matrix.clientFor(accountId)
+          ? ({ kind: 'ready' } as const)
+          : ({ kind: 'failed', failure: 'account-unavailable' } as const),
+      ),
+    );
+  }
+
+  commitActiveAccount(
+    accountId: string,
+  ): Observable<AdapterAccountSwitchOutcome> {
+    return defer(() => {
+      if (!this.matrix.clientFor(accountId)) {
+        return of({
+          kind: 'failed',
+          failure: 'account-unavailable',
+        } as const);
+      }
+      return this.storage.setActiveForEstablishment(accountId).pipe(
+        tap(() => this.matrix.setActive(accountId)),
+        map(() => ({ kind: 'ready' as const })),
+        catchError((error: unknown) =>
+          this.isExpectedStorageFailure(error)
+            ? of({
+                kind: 'failed' as const,
+                failure: 'local-state-unavailable' as const,
+              })
+            : throwError(() => error),
+        ),
       );
     });
   }

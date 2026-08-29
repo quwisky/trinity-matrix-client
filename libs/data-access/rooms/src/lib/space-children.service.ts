@@ -96,6 +96,7 @@ export class SpaceChildrenService {
   };
 
   private readonly projection = projectFromClient({
+    id: 'rooms.space-children',
     matrix: this.matrix,
     bind: (client) => client.on(RoomStateEvent.Events, this.onStateEvent),
     unbind: (client) => client.off(RoomStateEvent.Events, this.onStateEvent),

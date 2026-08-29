@@ -83,6 +83,7 @@ export class ImagePackManagementService {
   };
 
   private readonly projection = projectFromClient({
+    id: 'media.image-pack-management',
     matrix: this.matrix,
     bind: (client) => {
       client.on?.(RoomStateEvent.Events, this.onStateEvent);

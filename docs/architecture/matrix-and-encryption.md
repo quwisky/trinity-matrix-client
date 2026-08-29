@@ -155,6 +155,26 @@ typed outcomes with safe Account metadata, while invalid grants and adapter inva
 Observable error channel. A newly registered Account whose startup fails can retry the identical
 grant without attempting the atomic new-record write twice.
 
+Active Account changes use `AccountRuntimeService.switchActiveAccount(accountId)`. The current
+Workspace adapter reserves the requested Account and destination, then supplies its preparation
+as part of the Account Runtime command. Once the runtime accepts the attempt, that preparation
+navigates to the safe `/rooms` fallback, releases the outgoing timeline, threads, pinned, and media
+projections, and clears Account-bound space selection. Account Runtime prepares the already-live
+target, persists the Active pointer, publishes the target client, and asks Projection Runtime to
+reattach every `active-account` projection. The command reports ready only after those new
+generations acknowledge; its metrics contain total duration, projection duration, and projection
+count. The Workspace then repairs the requested room or space with replacement navigation so the
+URL remains a canonical projection of the selection. A failed safe or repair navigation is a typed
+`workspace-transition-failed` outcome.
+
+Switch preparation is cancellable. Once the persisted/live commit begins, its shared cleanup and
+projection barrier run to completion even if the initiating page is destroyed. Identical target
+and destination switches join the same Observable; a different target or destination is rejected
+before it mutates the Workspace. Restoration or establishment conflicts likewise return a typed
+`transition-in-progress` outcome and are never silently queued. Expected missing live targets and
+persisted-pointer failures are typed failures; adapter invariant defects remain on the Observable
+error channel.
+
 `SessionEstablishmentService` is a temporary compatibility facade around this command. Its
 production caller counter is frozen at **2**: `AuthService` and `RegistrationService`. The
 source-shape guard in `scripts/account-runtime-facade.spec.mjs` prevents new callers and keeps the
@@ -165,12 +185,13 @@ auth orchestrators move behind the final Account Runtime ports.
 
 ### Projecting SDK events into signals
 
-Every service that bridges SDK events into signals goes through
-[`projectFromClient`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/matrix-client/src/lib/project-from-client.ts),
-which decides three things once so no service re-derives them: coalescing a sync burst
-into a single microtask-deferred rebuild, keying the connection to the **client instance**
-rather than a boolean, and re-projecting onto the newly-active client when
-`activeUserId()` changes.
+Every active-client service that bridges SDK events into signals goes through
+[`projectFromClient`](https://github.com/quwisky/trinity-matrix-client/blob/refactor/refine-architecture/libs/data-access/matrix-client/src/lib/project-from-client.ts),
+which registers a stable projection id in Projection Runtime, keys the connection to the
+**client instance** rather than a boolean, and binds its SDK invalidations to a coalesced runtime
+generation. Coordinated Account switches reattach these entries synchronously and wait for their
+acknowledgements; the `activeUserId()` effect remains only as a fallback for legacy changes outside
+that workflow.
 
 !!! warning "Never gate a projection on a boolean"
 
@@ -183,9 +204,9 @@ rather than a boolean, and re-projecting onto the newly-active client when
     that something did *not* rebuild passes trivially unless the turn is flushed first
     (`await Promise.resolve()`).
 
-`projectFromClient` must be called from a field initializer or constructor. It needs an
-injection context so the account-switch `effect` is owned by the root injector and lives
-for the session.
+`projectFromClient` must be called from a field initializer or constructor. It injects Projection
+Runtime and creates a compatibility account-change `effect`, so both need an injection context
+owned by the service's injector.
 
 ### Room-action authorization
 

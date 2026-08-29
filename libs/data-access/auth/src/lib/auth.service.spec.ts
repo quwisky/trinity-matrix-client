@@ -518,37 +518,6 @@ describe('AuthService', () => {
     });
   });
 
-  describe('switchAccount', () => {
-    it('flips the active client + persisted pointer for a live account', async () => {
-      const matrix = TestBed.inject(MatrixClientService);
-      const storage = TestBed.inject(SessionStorageService);
-      accountIds.set(['@me:hs', '@you:hs']);
-      vi.mocked(storage.setActive).mockReturnValue(of(undefined));
-
-      await firstValueFrom(auth.switchAccount('@you:hs'));
-
-      expect(matrix.setActive).toHaveBeenCalledWith('@you:hs');
-      expect(storage.setActive).toHaveBeenCalledWith('@you:hs');
-      expect(matrix.add).not.toHaveBeenCalled(); // already live → no start
-    });
-
-    it('starts an account that is not yet live, then switches', async () => {
-      const matrix = TestBed.inject(MatrixClientService);
-      const storage = TestBed.inject(SessionStorageService);
-      accountIds.set([]);
-      vi.mocked(storage.load).mockReturnValue(
-        of({ userId: '@you:hs' }) as never,
-      );
-      vi.mocked(matrix.add).mockReturnValue(of(undefined));
-      vi.mocked(storage.setActive).mockReturnValue(of(undefined));
-
-      await firstValueFrom(auth.switchAccount('@you:hs'));
-
-      expect(matrix.add).toHaveBeenCalled();
-      expect(storage.setActive).toHaveBeenCalledWith('@you:hs');
-    });
-  });
-
   describe('logout', () => {
     it('signs out one account of several without a full reset', async () => {
       const matrix = TestBed.inject(MatrixClientService);

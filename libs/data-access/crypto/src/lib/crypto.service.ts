@@ -78,6 +78,7 @@ export class CryptoService {
    * onto the newly-active account on a switch.
    */
   private readonly projection = projectFromClient({
+    id: 'crypto.status',
     matrix: this.matrix,
     events: [
       CryptoEvent.KeysChanged,

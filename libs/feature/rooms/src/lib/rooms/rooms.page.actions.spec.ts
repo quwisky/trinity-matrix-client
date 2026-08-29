@@ -9,6 +9,7 @@ import {
 import { ApplicationRef, signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
+import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { AuthService } from '@trinity/data-access/auth';
 import { type PendingInvite } from '@trinity/data-access/invites';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
@@ -106,10 +107,7 @@ describe('RoomsPage space actions', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(AuthService, {
-          logout: vi.fn(() => of(undefined)),
-          switchAccount: vi.fn(() => of(undefined)),
-        }),
+        MockProvider(AuthService, { logout: vi.fn(() => of(undefined)) }),
         MockProvider(TrnDialogService),
         MockProvider(TrnAlertService, {
           confirm: alertConfirm,
@@ -255,15 +253,20 @@ describe('RoomsPage space actions', () => {
     expect(auth.logout).not.toHaveBeenCalled();
   });
 
-  it('switches to another account (and no-ops on the active one)', () => {
+  it('switches to another account (and no-ops on the active one)', async () => {
     const shell = build();
-    const auth = TestBed.inject(AuthService);
+    const accounts = TestBed.inject(AccountRuntimeService);
 
     shell.session.switchAccount('@me:hs'); // already active → ignored
-    expect(auth.switchAccount).not.toHaveBeenCalled();
+    expect(accounts.switchActiveAccount).not.toHaveBeenCalled();
 
     shell.session.switchAccount('@other:hs');
-    expect(auth.switchAccount).toHaveBeenCalledWith('@other:hs');
+    await vi.waitFor(() =>
+      expect(accounts.switchActiveAccount).toHaveBeenCalledWith(
+        '@other:hs',
+        expect.any(Function),
+      ),
+    );
   });
 
   it('drops the sidebar filter when switching accounts', () => {

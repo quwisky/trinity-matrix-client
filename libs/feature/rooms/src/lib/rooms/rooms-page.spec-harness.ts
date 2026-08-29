@@ -14,6 +14,7 @@ import {
   type ParamMap,
 } from '@angular/router';
 import { CryptoService } from '@trinity/data-access/crypto';
+import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import {
   InvitesService,
   type PendingInvite,
@@ -25,7 +26,7 @@ import { RoomActionPermissionsService } from '@trinity/data-access/rooms';
 import { TrnActionSheetService } from '@trinity/components/overlay';
 import { SettingsDialogService } from '@trinity/components/settings-dialog';
 import { MockProvider } from 'ng-mocks';
-import { BehaviorSubject, of } from 'rxjs';
+import { BehaviorSubject, Observable, of, switchMap } from 'rxjs';
 import { vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { RoomShellStore } from './room-shell-store';
@@ -42,6 +43,7 @@ import { encodeRoomSegment } from '@trinity/util/matrix';
 import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
+import { WorkspaceAccountSwitchService } from './workspace-account-switch.service';
 
 /**
  * `ActivatedRoute.queryParamMap`, kept only because the stub has to answer it: nothing in
@@ -130,10 +132,29 @@ export const SHARED_MOCKS: Provider[] = [
   MessageActionsService,
   ShellShortcutsService,
   SessionActionsService,
+  WorkspaceAccountSwitchService,
   // Settings presentation has its own focused component-library suite. Room-shell tests only
   // need the session coordinator's boundary and must not construct a real dialog service from
   // their deliberately minimal Router stub.
   MockProvider(SettingsDialogService),
+  MockProvider(AccountRuntimeService, {
+    switchActiveAccount: vi.fn(
+      (accountId: string, prepare: () => Observable<void>) =>
+        prepare().pipe(
+          switchMap(() =>
+            of({
+              kind: 'ready' as const,
+              accountId,
+              metrics: {
+                durationMs: 0,
+                projectionDurationMs: 0,
+                projectionCount: 0,
+              },
+            }),
+          ),
+        ),
+    ),
+  }),
   MockProvider(CryptoService),
   MockProvider(PinnedMessagesService),
   MockProvider(RoomNotificationsService, {

@@ -51,7 +51,7 @@ export type AccountRestoreResult =
     })
   | (AccountRestoreResultBase & {
       readonly kind: 'transition-in-progress';
-      readonly operation: 'establishing-account';
+      readonly operation: 'establishing-account' | 'switching-account';
     });
 
 export type AccountEstablishmentPlacement = 'active' | 'inactive';
@@ -91,6 +91,35 @@ export type AccountEstablishmentOutcome =
       readonly kind: 'transition-in-progress';
     });
 
+export type AccountSwitchFailure =
+  | 'account-unavailable'
+  | 'local-state-unavailable'
+  | 'workspace-transition-failed';
+
+export interface AccountSwitchMetrics {
+  readonly durationMs: number;
+  readonly projectionDurationMs: number;
+  readonly projectionCount: number;
+}
+
+export type AccountSwitchOutcome =
+  | {
+      readonly kind: 'ready';
+      readonly accountId: string;
+      readonly metrics: AccountSwitchMetrics;
+    }
+  | {
+      readonly kind: 'failed';
+      readonly accountId: string;
+      readonly failure: AccountSwitchFailure;
+    }
+  | {
+      readonly kind: 'transition-in-progress';
+      readonly accountId: string;
+      readonly operation:
+        'restoring-accounts' | 'establishing-account' | 'switching-account';
+    };
+
 export type AccountRuntimeState =
   | { readonly phase: 'idle' }
   | {
@@ -125,4 +154,13 @@ export type AccountRuntimeState =
       readonly phase: 'establishment-cancelled' | 'establishment-failed';
       readonly accountId: string;
       readonly placement: AccountEstablishmentPlacement;
+    }
+  | { readonly phase: 'switching'; readonly accountId: string }
+  | {
+      readonly phase: 'switch-settled';
+      readonly outcome: AccountSwitchOutcome;
+    }
+  | {
+      readonly phase: 'switch-cancelled' | 'switch-failed';
+      readonly accountId: string;
     };

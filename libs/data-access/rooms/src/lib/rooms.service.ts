@@ -476,11 +476,11 @@ export class RoomsService {
   readonly directRoomIds = this._directRoomIds.asReadonly();
 
   /**
-   * The sync projection: listeners keyed to the client instance, rebuilds coalesced into
-   * one per turn, and re-projection onto the newly-active account on a switch. All three
-   * are {@link projectFromClient}'s; what stays here is the event list and the rebuild.
+   * One active-Account Projection Runtime entry: {@link projectFromClient} owns listener
+   * identity, coalescing, switching, and acknowledgement; only event list and rebuild stay here.
    */
   private readonly projection = projectFromClient({
+    id: 'rooms.list',
     matrix: this.matrix,
     events: [
       ClientEvent.Sync,

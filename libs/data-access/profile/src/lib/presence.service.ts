@@ -73,6 +73,7 @@ export class PresenceService {
    * one user's signal, not a rebuild of a read model.
    */
   private readonly projection = projectFromClient({
+    id: 'profile.presence',
     matrix: this.matrix,
     bind: (client) => client.on(UserEvent.Presence, this.onPresence),
     unbind: (client) => client.off(UserEvent.Presence, this.onPresence),

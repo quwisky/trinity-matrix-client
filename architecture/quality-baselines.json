@@ -13,7 +13,7 @@
       "metric": "active-account-switch",
       "scope": "The selected account, visible projections, and repaired destination become coherent together.",
       "unit": "milliseconds to projection barrier",
-      "current": "Projection Runtime reports deterministic barrier duration and acknowledgements; atomic switch orchestration remains in #302.",
+      "current": "Account Runtime reports total switch duration, projection-barrier duration, and acknowledged projection count. The current Workspace adapter releases the outgoing conversation before commit and repairs the requested room or space only after all live active-account projections acknowledge their new generation.",
       "baseline": {
         "maxLocalBarrierDurationMs": 16
       },

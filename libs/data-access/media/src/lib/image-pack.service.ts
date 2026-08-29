@@ -101,6 +101,7 @@ export class ImagePackService {
   };
 
   private readonly projection = projectFromClient({
+    id: 'media.image-packs',
     matrix: this.matrix,
     bind: (client) => {
       client.on?.(RoomStateEvent.Events, this.onStateEvent);

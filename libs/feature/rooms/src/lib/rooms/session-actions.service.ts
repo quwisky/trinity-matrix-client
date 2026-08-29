@@ -5,7 +5,8 @@ import { AuthService } from '@trinity/data-access/auth';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { SettingsDialogService } from '@trinity/components/settings-dialog';
-import { RoomShellNavigationService } from './room-shell-navigation.service';
+import { ShellStatusService } from './shell-status.service';
+import { WorkspaceAccountSwitchService } from './workspace-account-switch.service';
 
 /**
  * Session-level actions reachable from the account menu: switching account, adding one,
@@ -16,12 +17,13 @@ import { RoomShellNavigationService } from './room-shell-navigation.service';
  */
 @Injectable()
 export class SessionActionsService {
-  private readonly nav = inject(RoomShellNavigationService);
   private readonly auth = inject(AuthService);
+  private readonly accountSwitch = inject(WorkspaceAccountSwitchService);
   private readonly matrix = inject(MatrixClientService);
   private readonly router = inject(Router);
   private readonly settings = inject(SettingsDialogService);
   private readonly alert = inject(TrnAlertService);
+  private readonly status = inject(ShellStatusService);
   private readonly destroyRef = inject(DestroyRef);
 
   goToSettings(): void {
@@ -33,22 +35,14 @@ export class SessionActionsService {
     if (userId === this.matrix.activeUserId()) {
       return;
     }
-    // Close the open room. Its panes are bound to this account's client and Room objects,
-    // and timeline/threads/pinned all early-return on `open(sameRoomId)` — so leaving it
-    // open would keep projecting the outgoing account's data (including its decryption)
-    // with no way to re-bind short of a reload. The user re-picks a room on the new
-    // account, which opens it cleanly.
-    //
-    // "First" only in statement order: closing NAVIGATES, so the teardown lands after the
-    // switch below has already flipped the active client. That is safe because each
-    // service's close() detaches from the client it opened on, not from `matrix.instance`
-    // — but it does mean nothing here may assume the panes are down by the next line.
-    this.nav.closeOpenRoom();
-    this.nav.resetViewScope();
-    this.auth
-      .switchAccount(userId)
+    this.accountSwitch
+      .switchAccount(userId, { kind: 'home' })
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
+      .subscribe((outcome) => {
+        if (outcome.kind !== 'ready') {
+          void this.status.showError('Unable to switch accounts right now.');
+        }
+      });
   }
 
   /** Start adding another account: route to the login screen in add mode. */

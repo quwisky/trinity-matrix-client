@@ -45,6 +45,56 @@ function setup(activeAccountId: string | null = '@old:hs') {
 }
 
 describe('MatrixAccountRuntimeAdapter', () => {
+  it('prepares only live Accounts for an Active Account switch', async () => {
+    const { adapter, matrix } = setup();
+
+    await expect(
+      firstValueFrom(adapter.prepareActiveAccount('@next:hs')),
+    ).resolves.toEqual({ kind: 'ready' });
+    vi.mocked(matrix.clientFor).mockReturnValue(null);
+    await expect(
+      firstValueFrom(adapter.prepareActiveAccount('@missing:hs')),
+    ).resolves.toEqual({
+      kind: 'failed',
+      failure: 'account-unavailable',
+    });
+  });
+
+  it('persists the Active pointer before publishing the switched client', async () => {
+    const { adapter, matrix, storage } = setup();
+    const order: string[] = [];
+    vi.mocked(storage.setActiveForEstablishment).mockReturnValue(
+      defer(() => {
+        order.push('persist-active');
+        return of(void 0);
+      }),
+    );
+    vi.mocked(matrix.setActive).mockImplementation(() => {
+      order.push('activate');
+    });
+
+    await expect(
+      firstValueFrom(adapter.commitActiveAccount('@next:hs')),
+    ).resolves.toEqual({ kind: 'ready' });
+
+    expect(order).toEqual(['persist-active', 'activate']);
+  });
+
+  it('types Active pointer failures without publishing the target client', async () => {
+    const { adapter, matrix, storage } = setup();
+    vi.mocked(storage.setActiveForEstablishment).mockReturnValue(
+      throwError(() => new DOMException('quota', 'QuotaExceededError')),
+    );
+
+    await expect(
+      firstValueFrom(adapter.commitActiveAccount('@next:hs')),
+    ).resolves.toEqual({
+      kind: 'failed',
+      failure: 'local-state-unavailable',
+    });
+    expect(matrix.setActive).not.toHaveBeenCalled();
+  });
+
   it('keeps a tokenless saved Account visible to reauthentication surfaces', async () => {
     const { adapter, matrix, storage } = setup(null);
     vi.mocked(storage.load).mockReturnValue(of(null));

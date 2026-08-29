@@ -1,5 +1,10 @@
+import { inject } from '@angular/core';
 import type { EmittedEvents, MatrixClient } from 'matrix-js-sdk';
-import { coalesce } from './coalesce';
+import { defer, of } from 'rxjs';
+import {
+  ProjectionRuntime,
+  type ProjectionLease,
+} from '@trinity/runtime/projection';
 import { MatrixClientService } from './matrix-client.service';
 import { reprojectOnAccountSwitch } from './reproject-on-switch';
 
@@ -27,6 +32,8 @@ export interface ClientProjection {
 }
 
 export interface ProjectFromClientConfig {
+  /** Stable acknowledgement identity inside the Active Account projection scope. */
+  id: string;
   matrix: MatrixClientService;
 
   /**
@@ -70,13 +77,6 @@ export interface ProjectFromClientConfig {
   reset?: () => void;
 
   /**
-   * Coalesce {@link events} into one rebuild per turn. Default true. Set false only where
-   * the events are genuinely rare and the latency matters more than the batching — and say
-   * why at the call site, because the next reader will assume it was an oversight.
-   */
-  coalesce?: boolean;
-
-  /**
    * Re-project onto the newly-active account's client when the account changes, if already
    * connected. Default true. False only for a projection whose lifetime is scoped to
    * something the switch already tears down.
@@ -104,29 +104,22 @@ export function projectFromClient(
   config: ProjectFromClientConfig,
 ): ClientProjection {
   const {
+    id,
     matrix,
     rebuild,
     events = [],
     bind,
     unbind,
     reset,
-    coalesce: shouldCoalesce = true,
     reprojectOnSwitch = true,
   } = config;
+  const runtime = inject(ProjectionRuntime);
 
   // The client we currently have listeners on — the instance, not a boolean (see 2 above).
   let connectedClient: MatrixClient | null = null;
-
-  const runRebuild = (): void => {
-    if (connectedClient) {
-      rebuild?.(connectedClient);
-    }
-  };
-  const coalescer = coalesce(runRebuild);
-  const scheduleRebuild = shouldCoalesce
-    ? () => coalescer.schedule()
-    : runRebuild;
-  const onEvent = (): void => scheduleRebuild();
+  let lease: ProjectionLease | null = null;
+  let invalidate = (): void => undefined;
+  const onEvent = (): void => invalidate();
 
   const projection: ClientProjection = {
     connect(): void {
@@ -138,33 +131,52 @@ export function projectFromClient(
         return; // already wired to this client
       }
       projection.disconnect(); // drop listeners from any previous client
-      connectedClient = client;
-      for (const event of events) {
-        client.on(event, onEvent);
-      }
-      bind?.(client);
-      rebuild?.(client);
+      lease = runtime.activate({
+        id,
+        scope: { kind: 'active-account' },
+        attach: (nextInvalidate) => {
+          invalidate = nextInvalidate;
+          connectedClient = matrix.instance;
+          for (const event of events) {
+            connectedClient.on(event, onEvent);
+          }
+          bind?.(connectedClient);
+          return () => {
+            const attachedClient = connectedClient;
+            if (!attachedClient) return;
+            for (const event of events) {
+              attachedClient.off(event, onEvent);
+            }
+            unbind?.(attachedClient);
+            connectedClient = null;
+            invalidate = () => undefined;
+          };
+        },
+        reconcile: ({ publish }) =>
+          defer(() => {
+            const attachedClient = connectedClient;
+            if (attachedClient) {
+              publish(() => rebuild?.(attachedClient));
+            }
+            return of(void 0);
+          }),
+        reset: () => reset?.(),
+      });
     },
 
     disconnect(): void {
-      const client = connectedClient;
-      if (!client) {
+      if (!lease) {
         return;
       }
-      for (const event of events) {
-        client.off(event, onEvent);
-      }
-      unbind?.(client);
-      connectedClient = null;
-      coalescer.cancel();
-      reset?.();
+      lease.release();
+      lease = null;
     },
 
     isConnected: () => connectedClient !== null,
 
     client: () => connectedClient,
 
-    schedule: () => scheduleRebuild(),
+    schedule: () => lease?.invalidate(),
   };
 
   if (reprojectOnSwitch) {

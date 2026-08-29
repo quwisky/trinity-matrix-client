@@ -222,6 +222,7 @@ export class SpacesService {
    * point of sharing {@link projectFromClient} rather than mirroring it by hand.
    */
   private readonly projection = projectFromClient({
+    id: 'rooms.spaces',
     matrix: this.matrix,
     events: [
       ClientEvent.Sync,

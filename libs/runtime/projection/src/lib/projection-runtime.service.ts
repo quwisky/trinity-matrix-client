@@ -111,6 +111,25 @@ export class ProjectionRuntime {
     };
   }
 
+  /**
+   * Reattach every live projection in `scope`, then acknowledge their new generations.
+   *
+   * Account switching uses this after committing the new Active Account. Attachment
+   * callbacks resolve their authoritative source at reattach time, so no caller has to
+   * know which listeners or read models participate in the transition.
+   */
+  transition(scope: ProjectionScope): Observable<ProjectionReadiness> {
+    return defer(() => {
+      for (const entry of this.entries.values()) {
+        if (sameScope(entry.definition.scope, scope)) {
+          this.reattach(entry);
+        }
+      }
+      this.announceRuntimeChange();
+      return this.waitFor(scope);
+    });
+  }
+
   waitFor(scope: ProjectionScope): Observable<ProjectionReadiness> {
     return defer(
       () =>
@@ -177,6 +196,26 @@ export class ProjectionRuntime {
     this.cancelReconciliation(entry);
     this.announceRuntimeChange();
     this.schedule(entry);
+  }
+
+  private reattach(entry: ProjectionEntry): void {
+    entry.scheduled = false;
+    this.cancelReconciliation(entry);
+    entry.generation = ++this.nextGeneration;
+    entry.acknowledgedGeneration = 0;
+    entry.failure = null;
+
+    try {
+      entry.detach();
+      entry.definition.reset();
+      entry.detach =
+        entry.definition.attach(() => this.invalidate(entry)) ??
+        (() => undefined);
+      this.reconcile(entry);
+    } catch (error: unknown) {
+      entry.detach = () => undefined;
+      entry.failure = { generation: entry.generation, error };
+    }
   }
 
   private schedule(entry: ProjectionEntry): void {
