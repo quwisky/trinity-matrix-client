@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { HistoryVisibility, JoinRule } from 'matrix-js-sdk';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { RoomActionPermissionsService } from '@trinity/data-access/room-library';
+import { RoomActionPermissionsService } from './room-action-permissions.service';
 import { RoomSettingsService } from './room-settings.service';
 
 function setup(
@@ -73,8 +73,12 @@ function setup(
     getUserId: () => '@me:hs',
   };
   const permissionFor = (type: string) => ({
-    available: opts.may ? opts.may(type) : true,
-    reason: opts.may && !opts.may(type) ? 'Not allowed.' : null,
+    available:
+      !opts.signedOut && !opts.noRoom && (opts.may ? opts.may(type) : true),
+    reason:
+      opts.signedOut || opts.noRoom || (opts.may && !opts.may(type))
+        ? 'Not allowed.'
+        : null,
   });
   TestBed.configureTestingModule({
     providers: [

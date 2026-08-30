@@ -1,4 +1,8 @@
-import { RoomModerationService } from '@trinity/data-access/rooms';
+import {
+  type MemberSummary,
+  RoomActionPermissionsService,
+  RoomModerationService,
+} from '@trinity/data-access/room-administration';
 import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import {
@@ -10,11 +14,7 @@ import {
   IgnoredUsersService,
   PresenceService,
 } from '@trinity/data-access/profile';
-import {
-  RoomActionPermissionsService,
-  RoomLibraryService,
-  type MemberSummary,
-} from '@trinity/data-access/room-library';
+import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { VerificationService } from '@trinity/data-access/crypto';
 import { MockProvider } from 'ng-mocks';

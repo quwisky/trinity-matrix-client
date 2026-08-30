@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { TrnDialogService } from '@trinity/components/overlay';
-import { type MemberSummary } from '@trinity/data-access/room-library';
+import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { MemberInfoComponent } from './member-info.component';
 
 /**

@@ -6,7 +6,7 @@ import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { SpacesService } from './spaces.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { RoomActionPermissionsService } from './room-action-permissions.service';
+import { ROOM_LIBRARY_GOVERNANCE_POLICY } from './room-library-governance-policy';
 
 /**
  * Wire a fake matrix-js-sdk client into a mocked {@link MatrixClientService}.
@@ -21,13 +21,10 @@ function provideMatrix(client: unknown): MatrixClientService {
   TestBed.configureTestingModule({
     providers: [
       SpacesService,
-      MockProvider(RoomActionPermissionsService, {
-        room: () => ({
-          invite: { available: true, reason: null },
-          curateSpace: { available: true, reason: null },
-        }),
-        assert: vi.fn(),
-      }),
+      {
+        provide: ROOM_LIBRARY_GOVERNANCE_POLICY,
+        useValue: { authorize: vi.fn(() => ({ kind: 'allowed' as const })) },
+      },
       MockProvider(MatrixClientService, {
         activeUserId: activeUserId.asReadonly(),
       }),

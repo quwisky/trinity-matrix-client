@@ -1,17 +1,14 @@
 {
   "$schema": "../../../node_modules/nx/schemas/project-schema.json",
-  "name": "data-access-rooms",
+  "name": "data-access-room-administration",
   "projectType": "library",
-  "sourceRoot": "libs/data-access/rooms/src",
+  "sourceRoot": "libs/data-access/room-administration/src",
   "prefix": "trn",
   "tags": [
     "type:data-access",
     "scope:matrix",
     "role:capability",
-    "capability:discovery"
+    "capability:room-administration"
   ],
-  "targets": {
-    "test": {},
-    "typecheck": {}
-  }
+  "targets": { "test": {}, "typecheck": {} }
 }

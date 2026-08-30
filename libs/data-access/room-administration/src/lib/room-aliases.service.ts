@@ -3,7 +3,11 @@ import { EventType } from 'matrix-js-sdk';
 import { Observable, defer, from, map, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { liveRoomState } from '@trinity/util/matrix';
-import { RoomActionPermissionsService } from '@trinity/data-access/room-library';
+import { RoomActionPermissionsService } from './room-action-permissions.service';
+import {
+  recoverRoomAdministrationRequest,
+  roomAdministrationNotSignedIn,
+} from './room-administration-error';
 
 /**
  * Manages a room's published addresses: its local aliases in the homeserver's room
@@ -32,10 +36,11 @@ export class RoomAliasesService {
   localAliases(roomId: string): Observable<string[]> {
     return defer(() => {
       if (!this.matrix.isInitialized) {
-        return throwError(() => new Error('Not signed in.'));
+        return throwError(() => roomAdministrationNotSignedIn('load-aliases'));
       }
       return from(this.matrix.instance.getLocalAliases(roomId)).pipe(
         map((res) => res.aliases ?? []),
+        recoverRoomAdministrationRequest('load-aliases'),
       );
     });
   }
@@ -56,11 +61,12 @@ export class RoomAliasesService {
   addAlias(roomId: string, alias: string): Observable<void> {
     return defer(() => {
       if (!this.matrix.isInitialized) {
-        return throwError(() => new Error('Not signed in.'));
+        return throwError(() => roomAdministrationNotSignedIn('add-alias'));
       }
       this.permissions.assert(this.permissions.settings(roomId).aliases);
       return from(this.matrix.instance.createAlias(alias, roomId)).pipe(
         map(() => void 0),
+        recoverRoomAdministrationRequest('add-alias'),
       );
     });
   }
@@ -69,11 +75,12 @@ export class RoomAliasesService {
   removeAlias(roomId: string, alias: string): Observable<void> {
     return defer(() => {
       if (!this.matrix.isInitialized) {
-        return throwError(() => new Error('Not signed in.'));
+        return throwError(() => roomAdministrationNotSignedIn('remove-alias'));
       }
       this.permissions.assert(this.permissions.settings(roomId).aliases);
       return from(this.matrix.instance.deleteAlias(alias)).pipe(
         map(() => void 0),
+        recoverRoomAdministrationRequest('remove-alias'),
       );
     });
   }
@@ -82,7 +89,9 @@ export class RoomAliasesService {
   setCanonicalAlias(roomId: string, alias: string): Observable<void> {
     return defer(() => {
       if (!this.matrix.isInitialized) {
-        return throwError(() => new Error('Not signed in.'));
+        return throwError(() =>
+          roomAdministrationNotSignedIn('set-canonical-alias'),
+        );
       }
       this.permissions.assert(this.permissions.settings(roomId).aliases);
       return from(
@@ -92,24 +101,15 @@ export class RoomAliasesService {
           { alias },
           '',
         ),
-      ).pipe(map(() => void 0));
+      ).pipe(
+        map(() => void 0),
+        recoverRoomAdministrationRequest('set-canonical-alias'),
+      );
     });
   }
 
   /** Whether the viewer's power level lets them manage the room's addresses. */
   canManageAliases(roomId: string): boolean {
-    if (!this.matrix.isInitialized) {
-      return false;
-    }
-    const client = this.matrix.instance;
-    const room = client.getRoom(roomId);
-    const me = client.getUserId();
-    if (!room || !me) {
-      return false;
-    }
-    return !!liveRoomState(room)?.maySendStateEvent(
-      EventType.RoomCanonicalAlias,
-      me,
-    );
+    return this.permissions.settings(roomId).aliases.available;
   }
 }

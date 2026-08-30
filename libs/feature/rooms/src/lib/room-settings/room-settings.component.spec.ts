@@ -1,7 +1,8 @@
 import {
+  RoomMembersService,
   RoomModerationService,
   RoomSettingsService,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-administration';
 import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import {
@@ -14,9 +15,12 @@ import {
   WidgetsService,
 } from '@trinity/data-access/widgets';
 import { ExternalBrowserService } from '@trinity/platform-native';
-import { RoomAliasesService } from '@trinity/data-access/rooms';
-import { RoomActionPermissionsService } from '@trinity/data-access/room-library';
-import { HistoryVisibility, JoinRule } from '@trinity/data-access/rooms';
+import { RoomAliasesService } from '@trinity/data-access/room-administration';
+import { RoomActionPermissionsService } from '@trinity/data-access/room-administration';
+import {
+  HistoryVisibility,
+  JoinRule,
+} from '@trinity/data-access/room-administration';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
@@ -57,6 +61,7 @@ async function build(
   const toastShow = vi.fn();
   const widgets = signal([]);
   const canManageWidgets = signal(false);
+  const noBans = signal<readonly never[]>([]);
   const availability = (allowed: boolean) => ({
     available: allowed,
     reason: allowed ? null : 'Not allowed.',
@@ -93,8 +98,10 @@ async function build(
         settings: settingsPermissions,
       }),
       MockProvider(RoomModerationService, {
-        bannedMembers: () => [],
         unban: () => of(undefined),
+      }),
+      MockProvider(RoomMembersService, {
+        bannedFor: () => noBans.asReadonly(),
       }),
       MockProvider(RoomAliasesService, {
         serverName: () => 'hs',

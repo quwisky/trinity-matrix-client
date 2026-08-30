@@ -13,7 +13,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnActionAvailability, TrnButton } from '@trinity/components/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import { TrnToastService } from '@trinity/components/overlay';
-import { RoomSettingsService } from '@trinity/data-access/rooms';
+import { RoomSettingsService } from '@trinity/data-access/room-administration';
 import { AvatarComponent, type AvatarShape } from '@trinity/components/avatar';
 
 /**

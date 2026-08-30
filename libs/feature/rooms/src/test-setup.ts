@@ -1,12 +1,41 @@
 import '../../../../test-setup.base';
+import { inject } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { RoomActionPermissionsService } from '@trinity/data-access/room-administration';
+import {
+  ROOM_LIBRARY_GOVERNANCE_POLICY,
+  type RoomLibraryGovernancePolicy,
+} from '@trinity/data-access/room-library';
 import { CONVERSATION_PRIVACY_PREFERENCES } from '@trinity/data-access/timeline';
 import { providePrivacyPreferenceSet } from '@trinity/platform-native';
 import { beforeEach } from 'vitest';
 
 beforeEach(() => {
   TestBed.configureTestingModule({
-    providers: [providePrivacyPreferenceSet(CONVERSATION_PRIVACY_PREFERENCES)],
+    providers: [
+      providePrivacyPreferenceSet(CONVERSATION_PRIVACY_PREFERENCES),
+      {
+        provide: ROOM_LIBRARY_GOVERNANCE_POLICY,
+        useFactory: (): RoomLibraryGovernancePolicy => {
+          const permissions = inject(RoomActionPermissionsService);
+          return {
+            authorize: (roomId, action) => {
+              const availability =
+                action === 'invite'
+                  ? permissions.room(roomId).invite
+                  : permissions.room(roomId).curateSpace;
+              return availability.available
+                ? { kind: 'allowed' }
+                : {
+                    kind: 'rejected',
+                    reason:
+                      availability.reason ?? 'This room action is unavailable.',
+                  };
+            },
+          };
+        },
+      },
+    ],
   });
 });
 

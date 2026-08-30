@@ -255,7 +255,7 @@ the eager bundle.
 ### Room-action authorization
 
 Permission-sensitive room UI reads `RoomActionPermissionsService` from
-`@trinity/data-access/rooms`. The service evaluates the active SDK room state, the actor's
+`@trinity/data-access/room-administration`. The service evaluates the active SDK room state, the actor's
 membership and power, the room's invite/kick/ban/state thresholds, and the target member's
 power. Member moderation requires the actor to strictly outrank the target; assigning a role
 also caps the new power at the actor's own level. That strict comparison deliberately covers

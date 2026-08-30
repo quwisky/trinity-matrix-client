@@ -6,6 +6,7 @@ import { signal } from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { SpaceChildrenService } from './space-children.service';
 import { compareOrder } from './space-child-order';
+import { ROOM_LIBRARY_GOVERNANCE_POLICY } from './room-library-governance-policy';
 
 interface ChildFixture {
   childId: string;
@@ -82,6 +83,10 @@ function setup(
   TestBed.configureTestingModule({
     providers: [
       SpaceChildrenService,
+      {
+        provide: ROOM_LIBRARY_GOVERNANCE_POLICY,
+        useValue: { authorize: vi.fn(() => ({ kind: 'allowed' as const })) },
+      },
       MockProvider(MatrixClientService, {
         get isInitialized() {
           return signedIn;

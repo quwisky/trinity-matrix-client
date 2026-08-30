@@ -1,13 +1,15 @@
 import {
+  RoomActionPermissionsService,
+  RoomMembersService,
   RoomModerationService,
   type BannedMember,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-administration';
+import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { NEVER, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { TrnToastService } from '@trinity/components/overlay';
-import { RoomActionPermissionsService } from '@trinity/data-access/room-library';
 import { BannedMembersComponent } from './banned-members.component';
 
 async function build(
@@ -15,12 +17,15 @@ async function build(
   over: { unban?: Mock; canUnban?: boolean } = {},
 ) {
   const unban = over.unban ?? vi.fn(() => of(undefined));
-  const bannedMembers = vi.fn(() => bans);
+  const banned = signal<readonly BannedMember[]>(bans);
   const toastShow = vi.fn();
   const { fixture, container } = await render(BannedMembersComponent, {
     inputs: { roomId: '!r:hs' },
     providers: [
-      MockProvider(RoomModerationService, { bannedMembers, unban }),
+      MockProvider(RoomModerationService, { unban }),
+      MockProvider(RoomMembersService, {
+        bannedFor: () => banned.asReadonly(),
+      }),
       MockProvider(RoomActionPermissionsService, {
         unban: () => ({
           available: over.canUnban ?? true,
@@ -38,6 +43,7 @@ async function build(
     fixture,
     container,
     unban,
+    banned,
     toastShow,
   };
 }
@@ -61,8 +67,8 @@ describe('BannedMembersComponent', () => {
     ).toHaveLength(1);
   });
 
-  it('unbans a member, drops them from the list, and toasts', async () => {
-    const { cmp, fixture, container, unban, toastShow } = await build([
+  it('waits for the authoritative sync echo after unban succeeds', async () => {
+    const { cmp, fixture, container, unban, banned, toastShow } = await build([
       { userId: '@bob:hs', name: 'Bob', reason: null },
     ]);
 
@@ -70,14 +76,35 @@ describe('BannedMembersComponent', () => {
     fixture.detectChanges();
 
     expect(unban).toHaveBeenCalledWith('!r:hs', '@bob:hs');
-    expect(cmp.banned()).toHaveLength(0);
+    expect(cmp.banned()).toHaveLength(1);
+    expect(cmp.isPending('@bob:hs')).toBe(true);
     expect(
       container.querySelector('[data-testid=banned-members-empty]'),
-    ).not.toBeNull();
+    ).toBeNull();
     expect(toastShow).toHaveBeenCalledWith(
       'Unbanned Bob.',
       expect.objectContaining({ variant: 'success' }),
     );
+
+    banned.set([]);
+    fixture.detectChanges();
+
+    expect(cmp.banned()).toHaveLength(0);
+    expect(cmp.isPending('@bob:hs')).toBe(false);
+    expect(
+      container.querySelector('[data-testid=banned-members-empty]'),
+    ).not.toBeNull();
+  });
+
+  it('reconciles remote ban changes while the panel is open', async () => {
+    const { cmp, fixture, banned } = await build([]);
+
+    banned.set([{ userId: '@bob:hs', name: 'Bob', reason: 'spam' }]);
+    fixture.detectChanges();
+
+    expect(cmp.banned()).toEqual([
+      { userId: '@bob:hs', name: 'Bob', reason: 'spam' },
+    ]);
   });
 
   it('keeps the member and toasts an error when the unban fails', async () => {

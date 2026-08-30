@@ -3,7 +3,7 @@ import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { RoomActionPermissionsService } from '@trinity/data-access/room-library';
+import { RoomActionPermissionsService } from './room-action-permissions.service';
 import { RoomAliasesService } from './room-aliases.service';
 
 function setup(

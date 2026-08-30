@@ -1,8 +1,12 @@
-import { RoomModerationService } from '@trinity/data-access/rooms';
+import { RoomModerationService } from '@trinity/data-access/room-administration';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { WorkspaceBackService } from '@trinity/application/workspace';
+import {
+  type MemberSummary,
+  RoomMembersService,
+} from '@trinity/data-access/room-administration';
 import {
   VerificationService,
   CryptoService,
@@ -24,7 +28,6 @@ import {
   RoomLibraryService,
   SpaceChildrenService,
   SpacesService,
-  type MemberSummary,
   type RoomSummary,
 } from '@trinity/data-access/room-library';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
@@ -181,6 +184,7 @@ describe('RoomsPage rendered right-panel focus', () => {
           presenceFor: () => signal('offline'),
         }),
         MockProvider(SpaceChildrenService, { connect: vi.fn() }),
+        MockProvider(RoomMembersService, { connect: vi.fn() }),
         MockProvider(PushService, { register: () => of(undefined) }),
         MockProvider(RoomModerationService),
         MockProvider(VerificationService),

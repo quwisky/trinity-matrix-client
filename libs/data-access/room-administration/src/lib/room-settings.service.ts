@@ -15,7 +15,12 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RestrictedAllowType } from 'matrix-js-sdk';
 import type { RoomJoinRulesEventContent } from 'matrix-js-sdk/lib/@types/state_events';
 import { liveRoomState } from '@trinity/util/matrix';
-import { RoomActionPermissionsService } from '@trinity/data-access/room-library';
+import { RoomActionPermissionsService } from './room-action-permissions.service';
+import {
+  recoverRoomAdministrationRequest,
+  roomAdministrationInvalidInput,
+  roomAdministrationNotSignedIn,
+} from './room-administration-error';
 
 /** Which room-settings fields the current user may edit (from the room's power levels). */
 export interface EditableRoomFields {
@@ -65,11 +70,12 @@ export class RoomSettingsService {
   setName(roomId: string, name: string): Observable<void> {
     return defer(() => {
       if (!this.matrix.isInitialized) {
-        return throwError(() => new Error('Not signed in.'));
+        return throwError(() => roomAdministrationNotSignedIn('set-name'));
       }
       this.permissions.assert(this.permissions.settings(roomId).name);
       return from(this.matrix.instance.setRoomName(roomId, name.trim())).pipe(
         map(() => void 0),
+        recoverRoomAdministrationRequest('set-name'),
       );
     });
   }
@@ -78,11 +84,12 @@ export class RoomSettingsService {
   setTopic(roomId: string, topic: string): Observable<void> {
     return defer(() => {
       if (!this.matrix.isInitialized) {
-        return throwError(() => new Error('Not signed in.'));
+        return throwError(() => roomAdministrationNotSignedIn('set-topic'));
       }
       this.permissions.assert(this.permissions.settings(roomId).topic);
       return from(this.matrix.instance.setRoomTopic(roomId, topic.trim())).pipe(
         map(() => void 0),
+        recoverRoomAdministrationRequest('set-topic'),
       );
     });
   }
@@ -94,7 +101,7 @@ export class RoomSettingsService {
   setAvatar(roomId: string, file: File): Observable<void> {
     return defer(() => {
       if (!this.matrix.isInitialized) {
-        return throwError(() => new Error('Not signed in.'));
+        return throwError(() => roomAdministrationNotSignedIn('set-avatar'));
       }
       this.permissions.assert(this.permissions.settings(roomId).avatar);
       const client = this.matrix.instance;
@@ -104,23 +111,30 @@ export class RoomSettingsService {
           type: file.type || 'application/octet-stream',
         }),
       ).pipe(
-        switchMap((res) => {
-          if (!this.matrix.isInitialized || this.matrix.instance !== client) {
-            throw new Error(
-              'The active account changed before the photo uploaded.',
+        switchMap((res) =>
+          defer(() => {
+            if (!this.matrix.isInitialized || this.matrix.instance !== client) {
+              throw new Error(
+                'The active account changed before the photo uploaded.',
+              );
+            }
+            this.permissions.assert(this.permissions.settings(roomId).avatar);
+            return from(
+              client.sendStateEvent(
+                roomId,
+                EventType.RoomAvatar,
+                { url: res.content_uri },
+                '',
+              ),
             );
-          }
-          this.permissions.assert(this.permissions.settings(roomId).avatar);
-          return from(
-            client.sendStateEvent(
-              roomId,
-              EventType.RoomAvatar,
-              { url: res.content_uri },
-              '',
-            ),
-          );
-        }),
+          }).pipe(
+            recoverRoomAdministrationRequest('set-avatar', {
+              completedStep: 'media-upload',
+            }),
+          ),
+        ),
         map(() => void 0),
+        recoverRoomAdministrationRequest('upload-avatar'),
       );
     });
   }
@@ -136,7 +150,7 @@ export class RoomSettingsService {
   ): Observable<void> {
     return defer(() => {
       if (!this.matrix.isInitialized) {
-        return throwError(() => new Error('Not signed in.'));
+        return throwError(() => roomAdministrationNotSignedIn('set-join-rule'));
       }
       this.permissions.assert(this.permissions.settings(roomId).joinRule);
       const restricted = joinRule === JoinRule.Restricted;
@@ -145,11 +159,11 @@ export class RoomSettingsService {
       // it. Refused here rather than in the caller: this is the one place every join-rule
       // write passes through, and the failure is unrecoverable from the UI.
       if (restricted && allowedSpaceIds.length === 0) {
-        return throwError(
-          () =>
-            new Error(
-              'A restricted join rule needs at least one space to allow in.',
-            ),
+        return throwError(() =>
+          roomAdministrationInvalidInput(
+            'set-join-rule',
+            'A restricted join rule needs at least one space to allow in.',
+          ),
         );
       }
       const content: RoomJoinRulesEventContent = { join_rule: joinRule };
@@ -166,7 +180,10 @@ export class RoomSettingsService {
           content,
           '',
         ),
-      ).pipe(map(() => void 0));
+      ).pipe(
+        map(() => void 0),
+        recoverRoomAdministrationRequest('set-join-rule'),
+      );
     });
   }
 
@@ -199,7 +216,9 @@ export class RoomSettingsService {
   ): Observable<void> {
     return defer(() => {
       if (!this.matrix.isInitialized) {
-        return throwError(() => new Error('Not signed in.'));
+        return throwError(() =>
+          roomAdministrationNotSignedIn('set-history-visibility'),
+        );
       }
       this.permissions.assert(this.permissions.settings(roomId).history);
       return from(
@@ -209,7 +228,10 @@ export class RoomSettingsService {
           { history_visibility: historyVisibility },
           '',
         ),
-      ).pipe(map(() => void 0));
+      ).pipe(
+        map(() => void 0),
+        recoverRoomAdministrationRequest('set-history-visibility'),
+      );
     });
   }
 
@@ -286,31 +308,13 @@ export class RoomSettingsService {
 
   /** Which fields the current user's power level lets them edit in `roomId`. */
   editableFields(roomId: string): EditableRoomFields {
-    const none: EditableRoomFields = {
-      name: false,
-      topic: false,
-      avatar: false,
-      joinRule: false,
-      history: false,
-    };
-    if (!this.matrix.isInitialized) {
-      return none;
-    }
-    const client = this.matrix.instance;
-    const room = client.getRoom(roomId);
-    const userId = client.getUserId();
-    if (!room || !userId) {
-      return none;
-    }
-    const state = liveRoomState(room);
-    const mayEdit = (type: EventType): boolean =>
-      !!state?.maySendStateEvent(type, userId);
+    const permissions = this.permissions.settings(roomId);
     return {
-      name: mayEdit(EventType.RoomName),
-      topic: mayEdit(EventType.RoomTopic),
-      avatar: mayEdit(EventType.RoomAvatar),
-      joinRule: mayEdit(EventType.RoomJoinRules),
-      history: mayEdit(EventType.RoomHistoryVisibility),
+      name: permissions.name.available,
+      topic: permissions.topic.available,
+      avatar: permissions.avatar.available,
+      joinRule: permissions.joinRule.available,
+      history: permissions.history.available,
     };
   }
 }

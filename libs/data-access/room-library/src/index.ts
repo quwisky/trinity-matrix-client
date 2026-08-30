@@ -10,5 +10,5 @@ export * from './lib/mixed-spaces.service';
 export * from './lib/unread-aggregator.service';
 export * from './lib/invites.service';
 export * from './lib/mixed-invites.service';
-export * from './lib/room-action-permissions.service';
+export * from './lib/room-library-governance-policy';
 export * from './lib/room-filter';

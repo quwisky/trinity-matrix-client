@@ -12,10 +12,10 @@ import {
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { RoomLibraryService } from './room-library.service';
-import { RoomActionPermissionsService } from './room-action-permissions.service';
+import { ROOM_LIBRARY_GOVERNANCE_POLICY } from './room-library-governance-policy';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { PrivacySettingsService } from '@trinity/platform-native';
-import { describe, expect, it, type Mock, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 // A live-timeline event shaped like the bits messagePreview() reads.
 function timelineEvent(over: {
@@ -29,25 +29,6 @@ function timelineEvent(over: {
     getContent: () => ({ body: over.body ?? '' }),
     isRedacted: () => over.redacted ?? false,
     isDecryptionFailure: () => over.decryptionFailure ?? false,
-  };
-}
-
-// A joined member shaped like the bits of matrix-js-sdk's RoomMember that
-// RoomLibraryService.toMember reads. `powerLevel` is mutable so a test can promote it.
-function fakeMember(over: {
-  userId: string;
-  name?: string;
-  avatarMxc?: string | null;
-  powerLevel?: number;
-  membership?: string;
-}) {
-  return {
-    userId: over.userId,
-    name: over.name ?? over.userId,
-    // matrix-js-sdk's RoomMember.getMxcAvatarUrl() returns `string | undefined`.
-    getMxcAvatarUrl: () => over.avatarMxc ?? undefined,
-    powerLevel: over.powerLevel ?? 0,
-    membership: over.membership ?? 'join',
   };
 }
 
@@ -69,8 +50,6 @@ function fakeRoom(opts: {
     getId?: () => string;
     status?: string | null;
   })[];
-  members?: ReturnType<typeof fakeMember>[];
-  creator?: string | null;
   /** Avatar of the member the SDK offers as a stand-in for a room with ≤2 members. */
   peerAvatarMxc?: string;
   /** The room's `m.marked_unread` content, if it has any. */
@@ -107,9 +86,7 @@ function fakeRoom(opts: {
       opts.peerAvatarMxc
         ? { getMxcAvatarUrl: () => opts.peerAvatarMxc }
         : undefined,
-    getJoinedMemberCount: () => opts.members?.length ?? 0,
-    getJoinedMembers: () => opts.members ?? [],
-    getCreator: () => opts.creator ?? null,
+    getJoinedMemberCount: () => 0,
     hasEncryptionStateEvent: () => opts.encrypted ?? false,
     getUnreadNotificationCount: (type?: string) =>
       type === 'highlight' ? (opts.highlight ?? 0) : (opts.unread ?? 0),
@@ -157,13 +134,10 @@ function provideRooms(
   TestBed.configureTestingModule({
     providers: [
       RoomLibraryService,
-      MockProvider(RoomActionPermissionsService, {
-        room: () => ({
-          invite: { available: true, reason: null },
-          curateSpace: { available: true, reason: null },
-        }),
-        assert: vi.fn(),
-      }),
+      {
+        provide: ROOM_LIBRARY_GOVERNANCE_POLICY,
+        useValue: { authorize: vi.fn(() => ({ kind: 'allowed' as const })) },
+      },
       MockProvider(MatrixClientService, {
         activeUserId: activeUserId.asReadonly(),
       }),
@@ -1452,120 +1426,7 @@ describe('RoomLibraryService setFavourite', () => {
   });
 });
 
-// membersOf projects a room's joined members (with power level) into the member-list
-// view model, memoized against a per-room fingerprint that includes each power level.
-describe('RoomLibraryService membersOf', () => {
-  function setup(room: ReturnType<typeof fakeRoom>): RoomLibraryService {
-    const client = {
-      getRooms: () => [room],
-      getRoom: (id: string) => (id === room.roomId ? room : null),
-      on: vi.fn(),
-      off: vi.fn(),
-    };
-    const { svc } = provideRooms(client);
-    svc.connect();
-    return svc;
-  }
-
-  it('flags the room creator, and only them', () => {
-    // The one thing a power level cannot express: every admin the creator promoted also
-    // sits at 100, so "whose room is this?" is unanswerable without this.
-    const svc = setup(
-      fakeRoom({
-        roomId: '!a:hs',
-        name: 'general',
-        creator: '@founder:hs',
-        members: [
-          fakeMember({
-            userId: '@founder:hs',
-            name: 'Founder',
-            powerLevel: 100,
-          }),
-          fakeMember({
-            userId: '@promoted:hs',
-            name: 'Promoted',
-            powerLevel: 100,
-          }),
-        ],
-      }),
-    );
-
-    const list = svc.membersOf('!a:hs');
-    expect(list.filter((m) => m.isCreator).map((m) => m.userId)).toEqual([
-      '@founder:hs',
-    ]);
-  });
-
-  it('flags nobody when the room reports no creator', () => {
-    // getCreator() is nullable, and a null must not make every member look like one.
-    const svc = setup(
-      fakeRoom({
-        roomId: '!a:hs',
-        name: 'general',
-        creator: null,
-        members: [
-          fakeMember({ userId: '@a:hs', name: 'Ada', powerLevel: 100 }),
-        ],
-      }),
-    );
-
-    expect(svc.membersOf('!a:hs').every((m) => !m.isCreator)).toBe(true);
-  });
-
-  it('still flags a creator who has since been demoted', () => {
-    // m.room.create is immutable, so the fact survives any power change. Whether a
-    // demoted creator should be PRESENTED as an owner is a separate, presentational
-    // decision — the data layer reports what is true.
-    const svc = setup(
-      fakeRoom({
-        roomId: '!a:hs',
-        name: 'general',
-        creator: '@founder:hs',
-        members: [
-          fakeMember({ userId: '@founder:hs', name: 'Founder', powerLevel: 0 }),
-        ],
-      }),
-    );
-
-    expect(svc.membersOf('!a:hs')[0].isCreator).toBe(true);
-  });
-
-  it('returns joined members name-sorted, each carrying its power level and avatar', () => {
-    const svc = setup(
-      fakeRoom({
-        roomId: '!a:hs',
-        name: 'general',
-        members: [
-          fakeMember({ userId: '@z:hs', name: 'Zoe', powerLevel: 50 }),
-          fakeMember({
-            userId: '@a:hs',
-            name: 'Ada',
-            powerLevel: 100,
-            avatarMxc: 'mxc://hs/ada',
-          }),
-        ],
-      }),
-    );
-
-    const list = svc.membersOf('!a:hs');
-    expect(list.map((m) => m.name)).toEqual(['Ada', 'Zoe']);
-    expect(list.map((m) => m.powerLevel)).toEqual([100, 50]);
-    // An absent avatar normalises to null; a present one is carried through.
-    expect(list.map((m) => m.avatarMxc)).toEqual(['mxc://hs/ada', null]);
-    expect(list[0].initial).toBe('A');
-  });
-
-  it('re-projects when a member power level changes (fingerprint invalidates the cache)', () => {
-    const member = fakeMember({ userId: '@a:hs', name: 'Ada', powerLevel: 0 });
-    const svc = setup(
-      fakeRoom({ roomId: '!a:hs', name: 'general', members: [member] }),
-    );
-    expect(svc.membersOf('!a:hs')[0].powerLevel).toBe(0);
-
-    member.powerLevel = 100; // promoted to admin
-    expect(svc.membersOf('!a:hs')[0].powerLevel).toBe(100);
-  });
-});
+// Member projection coverage moved to RoomMembersService with Room Administration.
 
 // In the mixed-account view a sidebar row can belong to a signed-in account that ISN'T
 // active. Every mutating action therefore takes an optional owning-account id and must act
@@ -1694,601 +1555,178 @@ describe('RoomLibraryService per-account actions', () => {
   });
 });
 
-// membersFor is the live half of membersOf: one signal per watched room, written only
-// when a member event names that room.
-describe('RoomLibraryService membersFor', () => {
-  function setup(rooms: ReturnType<typeof fakeRoom>[]) {
-    const byId = new Map(rooms.map((r) => [r.roomId, r]));
+describe('RoomLibraryService typing, per room', () => {
+  /** A room whose members report a typing state, plus the client that owns it. */
+  function setupTyping() {
+    const handlers = new Map<string, (...args: unknown[]) => void>();
+    const members: Record<
+      string,
+      { userId: string; name: string; typing: boolean }[]
+    > = {
+      '!a:hs': [
+        { userId: '@alice:hs', name: 'Alice', typing: false },
+        { userId: '@me:hs', name: 'Me', typing: false },
+      ],
+      '!b:hs': [{ userId: '@bob:hs', name: 'Bob', typing: false }],
+    };
+    const rooms = [
+      fakeRoom({ roomId: '!a:hs', name: 'A' }),
+      fakeRoom({ roomId: '!b:hs', name: 'B' }),
+    ];
     const client = {
+      baseUrl: 'https://hs.example',
       getRooms: () => rooms,
-      getRoom: (id: string) => byId.get(id) ?? null,
-      on: vi.fn(),
-      off: vi.fn(),
+      getUserId: () => '@me:hs',
+      getRoom: (roomId: string) =>
+        members[roomId]
+          ? {
+              getMembers: () => members[roomId],
+              getMember: (userId: string) =>
+                members[roomId].find((m) => m.userId === userId) ?? null,
+            }
+          : null,
+      on: (event: string, handler: (...args: unknown[]) => void) => {
+        handlers.set(event, handler);
+      },
+      off: (event: string) => {
+        handlers.delete(event);
+      },
     };
-    const { svc } = provideRooms(client);
-    svc.connect();
-    return { svc, client };
-  }
-
-  /** Fire RoomState.members as the SDK does, naming the room it happened in. */
-  function fireMemberChange(
-    client: { on: Mock },
-    roomId: string,
-    userId = '@someone:hs',
-    membership = 'join',
-  ): void {
-    const handler = client.on.mock.calls.find(
-      ([e]) => e === 'RoomState.members',
-    )?.[1] as ((e: unknown, s: unknown, m: unknown) => void) | undefined;
-    handler?.({}, { roomId }, { userId, membership });
-  }
-
-  it('shares one signal per room', () => {
-    const { svc } = setup([fakeRoom({ roomId: '!a:hs', name: 'general' })]);
-
-    expect(svc.membersFor('!a:hs')).toBe(svc.membersFor('!a:hs'));
-  });
-
-  it('seeds synchronously, before any member event', () => {
-    const { svc } = setup([
-      fakeRoom({
-        roomId: '!a:hs',
-        name: 'general',
-        members: [fakeMember({ userId: '@ada:hs', name: 'Ada' })],
-      }),
-    ]);
-
-    expect(
-      svc
-        .membersFor('!a:hs')()
-        .map((m) => m.userId),
-    ).toEqual(['@ada:hs']);
-  });
-
-  it('removes a moderated member immediately while the SDK waits for sync', () => {
-    const room = fakeRoom({
-      roomId: '!a:hs',
-      name: 'general',
-      members: [
-        fakeMember({ userId: '@ada:hs', name: 'Ada' }),
-        fakeMember({ userId: '@bo:hs', name: 'Bo' }),
-      ],
-    });
-    const { svc } = setup([room]);
-    const members = svc.membersFor('!a:hs');
-
-    svc.removeMemberFromProjection('!a:hs', '@bo:hs');
-
-    expect(members().map((member) => member.userId)).toEqual(['@ada:hs']);
-    // The projection must not mutate matrix-js-sdk's source of truth.
-    expect(room.getJoinedMembers().map((member) => member.userId)).toEqual([
-      '@ada:hs',
-      '@bo:hs',
-    ]);
-  });
-
-  it('does not resurrect a moderated member on an unrelated member event', async () => {
-    const room = fakeRoom({
-      roomId: '!a:hs',
-      name: 'general',
-      members: [
-        fakeMember({ userId: '@ada:hs', name: 'Ada' }),
-        fakeMember({ userId: '@bo:hs', name: 'Bo' }),
-      ],
-    });
-    const { svc, client } = setup([room]);
-    const members = svc.membersFor('!a:hs');
-
-    svc.removeMemberFromProjection('!a:hs', '@bo:hs');
-    fireMemberChange(client, '!a:hs', '@ada:hs');
-    await Promise.resolve();
-
-    expect(members().map((member) => member.userId)).toEqual(['@ada:hs']);
-  });
-
-  it('hands the roster back to sync after the moderated membership arrives', async () => {
-    const roster = [
-      fakeMember({ userId: '@ada:hs', name: 'Ada' }),
-      fakeMember({ userId: '@bo:hs', name: 'Bo' }),
-    ];
-    const room = fakeRoom({
-      roomId: '!a:hs',
-      name: 'general',
-      members: roster,
-    });
-    const { svc, client } = setup([room]);
-    const members = svc.membersFor('!a:hs');
-
-    svc.removeMemberFromProjection('!a:hs', '@bo:hs');
-    roster.splice(1, 1);
-    fireMemberChange(client, '!a:hs', '@bo:hs', 'leave');
-    await Promise.resolve();
-    expect(members().map((member) => member.userId)).toEqual(['@ada:hs']);
-
-    roster.push(fakeMember({ userId: '@bo:hs', name: 'Bo' }));
-    fireMemberChange(client, '!a:hs', '@bo:hs');
-    await Promise.resolve();
-    expect(members().map((member) => member.userId)).toEqual([
-      '@ada:hs',
-      '@bo:hs',
-    ]);
-  });
-
-  it('does not tombstone a rejoin when sync beats the moderation response', async () => {
-    const roster = [
-      fakeMember({ userId: '@ada:hs', name: 'Ada' }),
-      fakeMember({ userId: '@bo:hs', name: 'Bo' }),
-    ];
-    const room = fakeRoom({
-      roomId: '!a:hs',
-      name: 'general',
-      members: roster,
-    });
-    const { svc, client } = setup([room]);
-    const members = svc.membersFor('!a:hs');
-
-    roster.splice(1, 1);
-    fireMemberChange(client, '!a:hs', '@bo:hs', 'leave');
-    await Promise.resolve();
-
-    // The successful HTTP response arrives after its authoritative sync echo.
-    svc.removeMemberFromProjection('!a:hs', '@bo:hs');
-    roster.push(fakeMember({ userId: '@bo:hs', name: 'Bo' }));
-    fireMemberChange(client, '!a:hs', '@bo:hs');
-    await Promise.resolve();
-
-    expect(members().map((member) => member.userId)).toEqual([
-      '@ada:hs',
-      '@bo:hs',
-    ]);
-  });
-
-  it('re-reads the room a member event names', async () => {
-    // Held here and mutated: fakeRoom reads `members` live on every getJoinedMembers().
-    const roster = [fakeMember({ userId: '@ada:hs', name: 'Ada' })];
-    const room = fakeRoom({
-      roomId: '!a:hs',
-      name: 'general',
-      members: roster,
-    });
-    const { svc, client } = setup([room]);
-    const members = svc.membersFor('!a:hs');
-
-    roster.push(fakeMember({ userId: '@bo:hs', name: 'Bo' }));
-    fireMemberChange(client, '!a:hs');
-    // The re-read is batched onto a microtask: RoomState.members fans out per member, so
-    // one bulk change emits N times and each read is O(members).
-    await Promise.resolve();
-
-    expect(members().map((m) => m.userId)).toEqual(['@ada:hs', '@bo:hs']);
-  });
-
-  it('leaves other rooms alone when a member changes elsewhere', async () => {
-    // The point of dispatching on `state.roomId`. The counter this replaced was
-    // unfiltered, so a busy room woke every member list in the app.
-    const quietRoster = [fakeMember({ userId: '@ada:hs', name: 'Ada' })];
-    const quiet = fakeRoom({
-      roomId: '!quiet:hs',
-      name: 'quiet',
-      members: quietRoster,
-    });
-    const busy = fakeRoom({ roomId: '!busy:hs', name: 'busy' });
-    const { svc, client } = setup([quiet, busy]);
-    const quietMembers = svc.membersFor('!quiet:hs');
-    const before = quietMembers();
-
-    // Mutating the quiet room too, so a re-read would be VISIBLE rather than merely
-    // equal — otherwise the memo would make this pass either way.
-    quietRoster.push(fakeMember({ userId: '@late:hs', name: 'Late' }));
-    fireMemberChange(client, '!busy:hs');
-    // Flushed BEFORE asserting, or "did not re-read" passes against an unflushed turn.
-    await Promise.resolve();
-
-    expect(quietMembers()).toBe(before);
-  });
-
-  it('holds the same array when the room re-reads unchanged', async () => {
-    const { svc, client } = setup([
-      fakeRoom({
-        roomId: '!a:hs',
-        name: 'general',
-        members: [fakeMember({ userId: '@ada:hs', name: 'Ada' })],
-      }),
-    ]);
-    const members = svc.membersFor('!a:hs');
-    const before = members();
-
-    fireMemberChange(client, '!a:hs');
-    await Promise.resolve();
-
-    // membersOf's fingerprint memo returns the identical array, so Object.is stops the
-    // write propagating. This is what makes writing on every member event cheap.
-    expect(members()).toBe(before);
-  });
-
-  it('re-reads every watched room when our own membership changes', async () => {
-    // MyMembership names no room, so there is nothing to dispatch on.
-    const roster: ReturnType<typeof fakeMember>[] = [];
-    const room = fakeRoom({
-      roomId: '!a:hs',
-      name: 'general',
-      members: roster,
-    });
-    const { svc, client } = setup([room]);
-    const members = svc.membersFor('!a:hs');
-
-    roster.push(fakeMember({ userId: '@ada:hs', name: 'Ada' }));
-    // Registered TWICE: once in the projection's coalesced event list (which rebuilds the
-    // room list) and once by `bind` (which re-reads members). The second is the one under
-    // test, so take the last rather than the first.
-    const handlers = client.on.mock.calls
-      .filter(([e]) => e === 'Room.myMembership')
-      .map((call) => call[1] as () => void);
-    expect(handlers.length).toBe(2);
-    handlers[handlers.length - 1]();
-    await Promise.resolve();
-
-    expect(members().map((m) => m.userId)).toEqual(['@ada:hs']);
-  });
-
-  it('re-reads against the new client when the projection rewires', () => {
-    // The signals hold VALUES, so a re-login or account switch has to re-read them —
-    // nothing else does. Their writers are bound to the active client only, so without
-    // this a member list survives a switch showing the previous account's members, and a
-    // MyMembership from the new client wipes it to [] instead.
-    const roster = [fakeMember({ userId: '@ada:hs', name: 'Ada' })];
-    const room = fakeRoom({
-      roomId: '!a:hs',
-      name: 'general',
-      members: roster,
-    });
-    const first = {
-      getRooms: () => [room],
-      getRoom: (id: string) => (id === '!a:hs' ? room : null),
-      on: vi.fn(),
-      off: vi.fn(),
-    };
-    const { svc, matrix } = provideRooms(first);
-    svc.connect();
-    const members = svc.membersFor('!a:hs');
-    expect(members().map((m) => m.userId)).toEqual(['@ada:hs']);
-
-    // A different client, whose copy of the room has a different membership.
-    const rosterB = [fakeMember({ userId: '@bo:hs', name: 'Bo' })];
-    const roomB = fakeRoom({
-      roomId: '!a:hs',
-      name: 'general',
-      members: rosterB,
-    });
-    const second = {
-      getRooms: () => [roomB],
-      getRoom: (id: string) => (id === '!a:hs' ? roomB : null),
-      on: vi.fn(),
-      off: vi.fn(),
-    };
-    ngMocks.stubMember(matrix, 'instance', second as never);
+    const { svc, matrix } = provideRooms(client);
+    // Self-exclusion spans EVERY signed-in account, not just the active one, so the stub
+    // has to name them — a bare provideRooms leaves accountIds empty and the local user
+    // announces themselves.
+    ngMocks.stubMember(matrix, 'accountIds', signal(['@me:hs']).asReadonly());
     svc.connect();
 
-    expect(members().map((m) => m.userId)).toEqual(['@bo:hs']);
-  });
-
-  it('is empty, not thrown, for a null room id', () => {
-    const { svc } = setup([fakeRoom({ roomId: '!a:hs', name: 'general' })]);
-
-    expect(svc.membersFor(null)()).toEqual([]);
-  });
-
-  it('clears the member signals on disconnect, keeping the empty identity', () => {
-    const roster = [fakeMember({ userId: '@ada:hs', name: 'Ada' })];
-    const room = fakeRoom({
-      roomId: '!a:hs',
-      name: 'general',
-      members: roster,
-    });
-    const { svc } = setup([room]);
-    const members = svc.membersFor('!a:hs');
-    const none = svc.membersFor(null);
-    const emptyBefore = none();
-    expect(members().map((m) => m.userId)).toEqual(['@ada:hs']);
-
-    svc.disconnect();
-
-    // Cleared, so a detached service holds none of the outgoing client's members...
-    expect(members()).toEqual([]);
-    // ...but through the SHARED empty list, or every disconnect re-notifies every consumer
-    // of the null-room signal — the landing state.
-    expect(none()).toBe(emptyBefore);
-  });
-
-  it('drops a member re-read queued before the disconnect', async () => {
-    // `projectFromClient` cancels its own coalescer on disconnect and cannot know about
-    // this one. Left queued, the flush runs after `reset` and repopulates the list from the
-    // client being let go of — the stale list, arriving a microtask late.
-    const roster = [fakeMember({ userId: '@ada:hs', name: 'Ada' })];
-    const room = fakeRoom({
-      roomId: '!a:hs',
-      name: 'general',
-      members: roster,
-    });
-    const { svc, client } = setup([room]);
-    const members = svc.membersFor('!a:hs');
-
-    roster.push(fakeMember({ userId: '@bo:hs', name: 'Bo' }));
-    fireMemberChange(client, '!a:hs');
-    svc.disconnect();
-    await Promise.resolve();
-
-    expect(members()).toEqual([]);
-  });
-
-  it('does not re-read every watched room on an ordinary sync', async () => {
-    // The re-read on rebuild is gated on the CLIENT having changed. Ungated, every sync
-    // would re-read every watched room and undo the point of dispatching on state.roomId.
-    const roster = [fakeMember({ userId: '@ada:hs', name: 'Ada' })];
-    const room = fakeRoom({
-      roomId: '!a:hs',
-      name: 'general',
-      members: roster,
-    });
-    const { svc, client } = setup([room]);
-    const members = svc.membersFor('!a:hs');
-    const before = members();
-    // Pushed so a re-read would be VISIBLE rather than merely equal.
-    roster.push(fakeMember({ userId: '@bo:hs', name: 'Bo' }));
-
-    const onSync = client.on.mock.calls.find(([e]) => e === 'sync')?.[1] as
-      (() => void) | undefined;
-    onSync?.();
-    await Promise.resolve();
-
-    expect(members()).toBe(before);
-  });
-
-  it('forgets a room once its flush has run', async () => {
-    // The dirty set has to be emptied by the flush, or every later flush re-reads every
-    // room ever dirtied — unbounded per-turn cost that grows with the session.
-    const rosterA = [fakeMember({ userId: '@ada:hs', name: 'Ada' })];
-    const roomA = fakeRoom({ roomId: '!a:hs', name: 'a', members: rosterA });
-    const roomB = fakeRoom({ roomId: '!b:hs', name: 'b' });
-    const { svc, client } = setup([roomA, roomB]);
-    svc.membersFor('!a:hs');
-    svc.membersFor('!b:hs');
-
-    fireMemberChange(client, '!a:hs');
-    await Promise.resolve();
-
-    // Counted only from here, so this measures the SECOND flush.
-    let readsA = 0;
-    const originalA = roomA.getJoinedMembers;
-    roomA.getJoinedMembers = () => {
-      readsA += 1;
-      return originalA();
-    };
-    fireMemberChange(client, '!b:hs');
-    await Promise.resolve();
-
-    expect(readsA).toBe(0);
-  });
-
-  it('holds the same empty list for a room it cannot read', async () => {
-    // The identity invariant has to hold on the EMPTY paths too, or the null-room signal —
-    // the landing state, and the state after every closeOpenRoom() — re-notifies its
-    // consumers on every write. `membersOf` returns a shared frozen list for these.
-    const { svc, client } = setup([
-      fakeRoom({ roomId: '!a:hs', name: 'general' }),
-    ]);
-    const none = svc.membersFor(null);
-    const before = none();
-
-    const handlers = client.on.mock.calls
-      .filter(([e]) => e === 'Room.myMembership')
-      .map((call) => call[1] as () => void);
-    handlers[handlers.length - 1]();
-    await Promise.resolve();
-
-    expect(none()).toBe(before);
-  });
-
-  it('collapses a per-member fan-out into one re-read', async () => {
-    // RoomState.members is emitted once PER MEMBER inside a loop, and each read is
-    // O(members) — the fingerprint runs before the memo can hit — so un-batched a bulk
-    // membership set is quadratic on the main thread.
-    const roster = [fakeMember({ userId: '@ada:hs', name: 'Ada' })];
-    const room = fakeRoom({
-      roomId: '!a:hs',
-      name: 'general',
-      members: roster,
-    });
-    const { svc, client } = setup([room]);
-    svc.membersFor('!a:hs');
-    let reads = 0;
-    const original = room.getJoinedMembers;
-    room.getJoinedMembers = () => {
-      reads += 1;
-      return original();
-    };
-
-    fireMemberChange(client, '!a:hs');
-    fireMemberChange(client, '!a:hs');
-    fireMemberChange(client, '!a:hs');
-    await Promise.resolve();
-
-    expect(reads).toBe(1);
-  });
-
-  describe('typing, per room', () => {
-    /** A room whose members report a typing state, plus the client that owns it. */
-    function setupTyping() {
-      const handlers = new Map<string, (...args: unknown[]) => void>();
-      const members: Record<
-        string,
-        { userId: string; name: string; typing: boolean }[]
-      > = {
-        '!a:hs': [
-          { userId: '@alice:hs', name: 'Alice', typing: false },
-          { userId: '@me:hs', name: 'Me', typing: false },
-        ],
-        '!b:hs': [{ userId: '@bob:hs', name: 'Bob', typing: false }],
-      };
-      const rooms = [
-        fakeRoom({ roomId: '!a:hs', name: 'A' }),
-        fakeRoom({ roomId: '!b:hs', name: 'B' }),
-      ];
-      const client = {
-        baseUrl: 'https://hs.example',
-        getRooms: () => rooms,
-        getUserId: () => '@me:hs',
-        getRoom: (roomId: string) =>
-          members[roomId]
-            ? {
-                getMembers: () => members[roomId],
-                getMember: (userId: string) =>
-                  members[roomId].find((m) => m.userId === userId) ?? null,
-              }
-            : null,
-        on: (event: string, handler: (...args: unknown[]) => void) => {
-          handlers.set(event, handler);
-        },
-        off: (event: string) => {
-          handlers.delete(event);
-        },
-      };
-      const { svc, matrix } = provideRooms(client);
-      // Self-exclusion spans EVERY signed-in account, not just the active one, so the stub
-      // has to name them — a bare provideRooms leaves accountIds empty and the local user
-      // announces themselves.
-      ngMocks.stubMember(matrix, 'accountIds', signal(['@me:hs']).asReadonly());
-      svc.connect();
-
-      /**
-       * Flip a member's typing flag and fire the event the SDK would.
-       *
-       * The event carries `user_ids` — the room's WHOLE typing set — because that is what
-       * `m.typing` is and what the service reads. A fake that omitted it would make the
-       * service look broken while the real one worked, and vice versa.
-       */
-      const fire = (roomId: string, userId: string, typing: boolean) => {
-        const member = members[roomId].find((m) => m.userId === userId);
-        if (member) {
-          member.typing = typing;
-        }
-        const user_ids = members[roomId]
-          .filter((m) => m.typing)
-          .map((m) => m.userId);
-        handlers.get(RoomMemberEvent.Typing)?.(
-          { getContent: () => ({ user_ids }) },
-          { roomId, userId },
-        );
-      };
-
-      return { svc, matrix, handlers, fire, members };
-    }
-
-    it('projects a room typing set, excluding the local user', async () => {
-      const { svc, fire } = setupTyping();
-
-      fire('!a:hs', '@alice:hs', true);
-      await Promise.resolve();
-      expect(svc.typingByRoom()['!a:hs']).toEqual(['Alice']);
-
-      // Self must never appear: "You are typing" on your own room is the failure.
-      fire('!a:hs', '@me:hs', true);
-      await Promise.resolve();
-      expect(svc.typingByRoom()['!a:hs']).toEqual(['Alice']);
-    });
-
-    it('excludes every signed-in account, not just the active one', async () => {
-      // A room both accounts are joined to renders as ONE row, so filtering only the active
-      // mxid let the user's own other account announce itself on their own room.
-      const { svc, matrix, fire, members } = setupTyping();
-      ngMocks.stubMember(
-        matrix,
-        'accountIds',
-        signal(['@me:hs', '@other:hs']).asReadonly(),
+    /**
+     * Flip a member's typing flag and fire the event the SDK would.
+     *
+     * The event carries `user_ids` — the room's WHOLE typing set — because that is what
+     * `m.typing` is and what the service reads. A fake that omitted it would make the
+     * service look broken while the real one worked, and vice versa.
+     */
+    const fire = (roomId: string, userId: string, typing: boolean) => {
+      const member = members[roomId].find((m) => m.userId === userId);
+      if (member) {
+        member.typing = typing;
+      }
+      const user_ids = members[roomId]
+        .filter((m) => m.typing)
+        .map((m) => m.userId);
+      handlers.get(RoomMemberEvent.Typing)?.(
+        { getContent: () => ({ user_ids }) },
+        { roomId, userId },
       );
-      members['!a:hs'].push({
-        userId: '@other:hs',
-        name: 'Other Me',
-        typing: false,
-      });
+    };
 
-      fire('!a:hs', '@other:hs', true);
-      await Promise.resolve();
-      expect(svc.typingByRoom()['!a:hs']).toBeUndefined();
+    return { svc, matrix, handlers, fire, members };
+  }
 
-      // …and a genuine stranger still comes through, so the filter is not just off.
-      fire('!a:hs', '@alice:hs', true);
-      await Promise.resolve();
-      expect(svc.typingByRoom()['!a:hs']).toEqual(['Alice']);
+  it('projects a room typing set, excluding the local user', async () => {
+    const { svc, fire } = setupTyping();
+
+    fire('!a:hs', '@alice:hs', true);
+    await Promise.resolve();
+    expect(svc.typingByRoom()['!a:hs']).toEqual(['Alice']);
+
+    // Self must never appear: "You are typing" on your own room is the failure.
+    fire('!a:hs', '@me:hs', true);
+    await Promise.resolve();
+    expect(svc.typingByRoom()['!a:hs']).toEqual(['Alice']);
+  });
+
+  it('excludes every signed-in account, not just the active one', async () => {
+    // A room both accounts are joined to renders as ONE row, so filtering only the active
+    // mxid let the user's own other account announce itself on their own room.
+    const { svc, matrix, fire, members } = setupTyping();
+    ngMocks.stubMember(
+      matrix,
+      'accountIds',
+      signal(['@me:hs', '@other:hs']).asReadonly(),
+    );
+    members['!a:hs'].push({
+      userId: '@other:hs',
+      name: 'Other Me',
+      typing: false,
     });
 
-    it('drops a room typing set when we leave the room', async () => {
-      // A left room stops syncing, so its members never emit the "stopped" transition. The
-      // key would survive the session and reappear on rejoin — frozen, because an unchanged
-      // set writes nothing.
-      const { svc, handlers, fire } = setupTyping();
-      fire('!a:hs', '@alice:hs', true);
-      await Promise.resolve();
-      expect(svc.typingByRoom()['!a:hs']).toEqual(['Alice']);
+    fire('!a:hs', '@other:hs', true);
+    await Promise.resolve();
+    expect(svc.typingByRoom()['!a:hs']).toBeUndefined();
 
-      handlers.get(RoomEvent.MyMembership)?.({ roomId: '!a:hs' }, 'leave');
-      await Promise.resolve();
+    // …and a genuine stranger still comes through, so the filter is not just off.
+    fire('!a:hs', '@alice:hs', true);
+    await Promise.resolve();
+    expect(svc.typingByRoom()['!a:hs']).toEqual(['Alice']);
+  });
 
-      expect(svc.typingByRoom()['!a:hs']).toBeUndefined();
+  it('drops a room typing set when we leave the room', async () => {
+    // A left room stops syncing, so its members never emit the "stopped" transition. The
+    // key would survive the session and reappear on rejoin — frozen, because an unchanged
+    // set writes nothing.
+    const { svc, handlers, fire } = setupTyping();
+    fire('!a:hs', '@alice:hs', true);
+    await Promise.resolve();
+    expect(svc.typingByRoom()['!a:hs']).toEqual(['Alice']);
+
+    handlers.get(RoomEvent.MyMembership)?.({ roomId: '!a:hs' }, 'leave');
+    await Promise.resolve();
+
+    expect(svc.typingByRoom()['!a:hs']).toBeUndefined();
+  });
+
+  it('keys each room separately and drops a room that goes quiet', async () => {
+    const { svc, fire } = setupTyping();
+
+    fire('!a:hs', '@alice:hs', true);
+    fire('!b:hs', '@bob:hs', true);
+    await Promise.resolve();
+    expect(svc.typingByRoom()).toEqual({
+      '!a:hs': ['Alice'],
+      '!b:hs': ['Bob'],
     });
 
-    it('keys each room separately and drops a room that goes quiet', async () => {
-      const { svc, fire } = setupTyping();
+    fire('!a:hs', '@alice:hs', false);
+    await Promise.resolve();
+    expect(svc.typingByRoom()).toEqual({ '!b:hs': ['Bob'] });
+  });
 
-      fire('!a:hs', '@alice:hs', true);
-      fire('!b:hs', '@bob:hs', true);
-      await Promise.resolve();
-      expect(svc.typingByRoom()).toEqual({
-        '!a:hs': ['Alice'],
-        '!b:hs': ['Bob'],
-      });
+  it('writes nothing when a room typing set is unchanged', async () => {
+    const { svc, fire } = setupTyping();
 
-      fire('!a:hs', '@alice:hs', false);
-      await Promise.resolve();
-      expect(svc.typingByRoom()).toEqual({ '!b:hs': ['Bob'] });
-    });
+    // Positive control FIRST: without it the identity check below passes when the
+    // listener was never registered at all, comparing undefined to undefined.
+    fire('!a:hs', '@alice:hs', true);
+    await Promise.resolve();
+    const first = svc.typingByRoom();
+    expect(first['!a:hs']).toEqual(['Alice']);
 
-    it('writes nothing when a room typing set is unchanged', async () => {
-      const { svc, fire } = setupTyping();
+    // A repeat EDU with the same set. Coalesced, so the flush is what makes this a
+    // real negative rather than a vacuous one.
+    fire('!a:hs', '@alice:hs', true);
+    await Promise.resolve();
+    expect(svc.typingByRoom()).toBe(first);
 
-      // Positive control FIRST: without it the identity check below passes when the
-      // listener was never registered at all, comparing undefined to undefined.
-      fire('!a:hs', '@alice:hs', true);
-      await Promise.resolve();
-      const first = svc.typingByRoom();
-      expect(first['!a:hs']).toEqual(['Alice']);
+    // …and it still CAN change, or the assertion above is satisfied by a dead writer.
+    fire('!b:hs', '@bob:hs', true);
+    await Promise.resolve();
+    expect(svc.typingByRoom()).not.toBe(first);
+  });
 
-      // A repeat EDU with the same set. Coalesced, so the flush is what makes this a
-      // real negative rather than a vacuous one.
-      fire('!a:hs', '@alice:hs', true);
-      await Promise.resolve();
-      expect(svc.typingByRoom()).toBe(first);
+  it('detaches the listener and clears the map on disconnect', async () => {
+    const { svc, handlers, fire } = setupTyping();
 
-      // …and it still CAN change, or the assertion above is satisfied by a dead writer.
-      fire('!b:hs', '@bob:hs', true);
-      await Promise.resolve();
-      expect(svc.typingByRoom()).not.toBe(first);
-    });
+    fire('!a:hs', '@alice:hs', true);
+    await Promise.resolve();
+    expect(svc.typingByRoom()['!a:hs']).toEqual(['Alice']);
 
-    it('detaches the listener and clears the map on disconnect', async () => {
-      const { svc, handlers, fire } = setupTyping();
+    svc.disconnect();
+    await Promise.resolve();
 
-      fire('!a:hs', '@alice:hs', true);
-      await Promise.resolve();
-      expect(svc.typingByRoom()['!a:hs']).toEqual(['Alice']);
-
-      svc.disconnect();
-      await Promise.resolve();
-
-      // Both halves matter. A stale line naming the OUTGOING account's typists is the
-      // bug the surrounding `reset` comments exist to prevent.
-      expect(handlers.has(RoomMemberEvent.Typing)).toBe(false);
-      expect(svc.typingByRoom()).toEqual({});
-    });
+    // Both halves matter. A stale line naming the OUTGOING account's typists is the
+    // bug the surrounding `reset` comments exist to prevent.
+    expect(handlers.has(RoomMemberEvent.Typing)).toBe(false);
+    expect(svc.typingByRoom()).toEqual({});
   });
 });

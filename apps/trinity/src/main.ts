@@ -1,4 +1,8 @@
-import { RoomPinGovernanceService } from '@trinity/data-access/rooms';
+import {
+  RoomActionPermissionsService,
+  RoomMessageGovernanceService,
+  RoomPinGovernanceService,
+} from '@trinity/data-access/room-administration';
 import { bootstrapApplication } from '@angular/platform-browser';
 import {
   ErrorHandler,
@@ -24,7 +28,10 @@ import {
   type AccountLifecyclePort,
 } from '@trinity/data-access/accounts';
 import { provideGifConfigEntries } from '@trinity/data-access/gif';
-import { RoomMessageGovernanceService } from '@trinity/data-access/rooms';
+import {
+  ROOM_LIBRARY_GOVERNANCE_POLICY,
+  type RoomLibraryGovernancePolicy,
+} from '@trinity/data-access/room-library';
 import {
   CONVERSATION_MESSAGE_POLICY,
   CONVERSATION_PIN_POLICY,
@@ -88,6 +95,27 @@ void bootstrapApplication(ApplicationRootComponent, {
     provideCapacitorPreferenceStorage(),
     provideConversationPrivacyPreferences(),
     providePrivacyPreferenceSet(CONVERSATION_PRIVACY_PREFERENCES),
+    {
+      provide: ROOM_LIBRARY_GOVERNANCE_POLICY,
+      useFactory: (): RoomLibraryGovernancePolicy => {
+        const permissions = inject(RoomActionPermissionsService);
+        return {
+          authorize: (roomId, action) => {
+            const availability =
+              action === 'invite'
+                ? permissions.room(roomId).invite
+                : permissions.room(roomId).curateSpace;
+            return availability.available
+              ? { kind: 'allowed' }
+              : {
+                  kind: 'rejected',
+                  reason:
+                    availability.reason ?? 'This room action is unavailable.',
+                };
+          },
+        };
+      },
+    },
     {
       provide: BADGE_SINK,
       useFactory: (): BadgeSink => {

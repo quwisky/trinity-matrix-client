@@ -180,14 +180,16 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   the client/session foundation every domain data-access lib depends on, and the Matrix adapter for
   the first Projection Runtime tracer (per-Account sync state and readiness acknowledgement).
 - `@trinity/data-access/*` `[type:data-access]` — capability and adapter libraries (`media`,
-  `room-library`, `rooms`, `timeline`, `crypto`, `profile`, `search`, `notifications`, `auth`, `gif`,
+  `room-administration`, `room-library`, `rooms`, `timeline`, `crypto`, `profile`, `search`, `notifications`, `auth`, `gif`,
   `homeserver`, `widgets`), each at `libs/data-access/<domain>`.
   Room Library owns room/space summaries, invitations, hierarchy, ordering, filtering and
   aggregate unread; its one-shot mutations, including account-scope and ordering persistence,
-  favourite/priority writes, hierarchy changes and unread cleanup, are cold finite Observables;
-  the remaining `rooms` library is the temporary Room Administration/Discovery adapter until
-  #318 and #321. Cross-domain injects are inter-lib edges (search→room-library/rooms,
-  rooms→room-library, auth→accounts, notification→room-library/timeline,
+  favourite/priority writes, hierarchy changes and unread cleanup, are cold finite Observables.
+  Room Administration owns authoritative joined-member and ban summaries, role classification and
+  assignable presets, moderation, aliases,
+  power-level policy, room configuration, and Conversation governance; `rooms` retains only
+  Discovery adapters until #321. Cross-domain injects are inter-lib edges (search→room-library/rooms,
+  auth→accounts, notification→room-library/timeline,
   timeline→media).
 - `@trinity/data-access/timeline` owns `ConversationRuntime` and Message Presentation: immutable
   Account-and-Room handles with one timeline child each, a two-entry per-Account retained LRU,

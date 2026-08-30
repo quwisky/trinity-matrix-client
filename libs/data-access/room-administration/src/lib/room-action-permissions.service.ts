@@ -12,6 +12,7 @@ import {
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
 import { liveRoomState } from '@trinity/util/matrix';
+import { RoomAdministrationError } from './room-administration-error';
 
 export interface ActionAvailability {
   readonly available: boolean;
@@ -41,9 +42,17 @@ export interface MemberActionPermissions {
   readonly targetPower: number;
 }
 
-export class RoomActionPermissionError extends Error {
+export class RoomActionPermissionError extends RoomAdministrationError {
   constructor(readonly availability: ActionAvailability) {
-    super(availability.reason ?? 'This room action is unavailable.');
+    super(
+      {
+        kind: 'rejected',
+        failure: 'permission-denied',
+        recovery: 'refresh-authority',
+        operation: 'authorize-room-action',
+      },
+      availability.reason ?? 'This room action is unavailable.',
+    );
     this.name = 'RoomActionPermissionError';
   }
 }
@@ -85,7 +94,7 @@ export class RoomActionPermissionsService {
   };
 
   private readonly projection = projectFromClient({
-    id: 'rooms.action-permissions',
+    id: 'room-administration.action-permissions',
     matrix: this.matrix,
     bind: (client) => client.on(RoomStateEvent.Events, this.onStateEvent),
     unbind: (client) => client.off(RoomStateEvent.Events, this.onStateEvent),
@@ -238,7 +247,7 @@ export class RoomActionPermissionsService {
 
   private context(roomId: string): PermissionContext | null {
     this.revision();
-    this.matrix.activeUserId?.();
+    this.matrix.activeUserId();
     const client = this.readClient();
     const room = client?.getRoom(roomId) ?? null;
     const userId = client?.getUserId() ?? null;

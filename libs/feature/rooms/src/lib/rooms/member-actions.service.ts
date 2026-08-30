@@ -1,8 +1,6 @@
 import { Injectable, inject } from '@angular/core';
-import {
-  RoomLibraryService,
-  type MemberSummary,
-} from '@trinity/data-access/room-library';
+import { type MemberSummary } from '@trinity/data-access/room-administration';
+import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { runWithBusy } from '@trinity/util/ui';
 import { MemberInfoService } from '../member-info/member-info.service';
 import { UserCardService } from '../user-card/user-card.service';

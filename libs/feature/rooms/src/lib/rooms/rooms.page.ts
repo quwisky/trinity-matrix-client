@@ -51,8 +51,11 @@ import {
 } from '@trinity/data-access/notifications';
 import { PresenceService } from '@trinity/data-access/profile';
 import {
-  RoomLibraryService,
   RoomActionPermissionsService,
+  RoomMembersService,
+} from '@trinity/data-access/room-administration';
+import {
+  RoomLibraryService,
   SpacesService,
   SpaceChildrenService,
   AccountScopeService,
@@ -296,6 +299,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly presence = inject(PresenceService);
   private readonly spaceChildren = inject(SpaceChildrenService);
   private readonly roomPermissions = inject(RoomActionPermissionsService);
+  private readonly roomMembers = inject(RoomMembersService);
   private readonly push = inject(PushService);
   private readonly roomNotifications = inject(RoomNotificationsService);
   private readonly accountPicker = inject(AccountPickerService);
@@ -486,6 +490,7 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.spaceChildren.connect(); // live m.space.child links for the curation surfaces
     this.roomNotifications.connect(); // live per-room push rules from every account
     this.roomPermissions.connect(); // live power/membership gates for room actions
+    this.roomMembers.connect(); // authoritative Room Administration member summaries
     // Register for push once the authenticated shell is live (covers both fresh
     // login and a restored session). Best-effort + native-only; no-op elsewhere.
     this.push.register().subscribe({ error: () => undefined });
@@ -503,7 +508,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   /**
    * Only the open room's panes are torn down here.
    *
-   * The eight Room-shell projections `ngOnInit` connects are root-scoped and outlive this page —
+   * The nine Room-shell projections `ngOnInit` connects are root-scoped and outlive this page —
    * leaving `/rooms` for settings must not blank them, and they are re-`connect()`ed
    * on the way back in. Their real teardown is the one that matters (the last account
    * signing out), and that belongs to the projections themselves rather than to

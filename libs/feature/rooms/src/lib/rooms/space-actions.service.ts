@@ -1,12 +1,14 @@
-import { RoomSettingsService } from '@trinity/data-access/rooms';
+import {
+  type MemberSummary,
+  RoomSettingsService,
+} from '@trinity/data-access/room-administration';
 import { Injectable, inject } from '@angular/core';
-import { RoomAliasesService } from '@trinity/data-access/rooms';
+import { RoomAliasesService } from '@trinity/data-access/room-administration';
 import {
   RoomLibraryService,
   SpaceChildrenService,
   SpaceRoomOrderService,
   SpacesService,
-  type MemberSummary,
   type RoomSortMode,
   type SpaceChildRoom,
 } from '@trinity/data-access/room-library';
