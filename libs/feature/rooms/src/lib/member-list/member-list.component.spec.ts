@@ -2,15 +2,15 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
-import { AvatarComponent } from '@trinity/components/avatar';
-import { TrnTooltip } from '@trinity/components/tooltip';
+import { AvatarComponent } from '@trinity/components/generic-content';
+import { TrnTooltip } from '@trinity/components/generic-content';
 import { IdentityPresenceService } from '@trinity/data-access/identity';
 import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { type PresenceState } from '@trinity/util/matrix';
 import { MockComponent } from 'ng-mocks';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { MemberListComponent } from './member-list.component';
-import { provideTrnIcons } from '@trinity/components/icon';
+import { provideTrnIcons } from '@trinity/components/foundations';
 
 // Stub presence per user id (defaults to offline).
 const presenceMap: Record<string, PresenceState> = {

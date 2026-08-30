@@ -11,7 +11,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subscription, finalize, switchMap } from 'rxjs';
 import { runWithBusy } from '@trinity/util/ui';
-import { MediaBubbleComponent } from '@trinity/components/media-bubble';
+import { MediaBubbleComponent } from '../media-bubble/media-bubble.component';
 import {
   TrnDialogService,
   type TrnDialogRef,

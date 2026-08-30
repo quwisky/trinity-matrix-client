@@ -20,13 +20,13 @@ The libraries under `libs/spartan/` are generated Helm primitives and a Trinity-
 `tests` project that pins their behaviour inside the vendor tier. All are tagged `type:ui`,
 `scope:shared` and `ui:vendor-wrapper`.
 
-The Trinity-authored wrappers that used to sit among them — the overlay adapters,
-`<trn-icon>` and `<trn-emoji-picker>` — now live in `libs/components/` with the rest of the
-public tier (tagged `ui:public`). Trinity's own presentational components
-— `<trn-avatar>` (with its `AVATAR_RESOLVER` seam), banner, media bubble, message toolbar
-and page header — live there too. Button is exposed as `trnBtn`; dropdown directives and the
-root toaster are exposed from `@trinity/components/overlay`. These public APIs compose or host
-kit primitives, which is the tier's job, without leaking Helm selectors or types to features.
+The public tier is five category-owned projects: foundations, controls, generic content,
+navigation/layout and overlays. It contains only domain-neutral APIs such as `<trn-icon>`,
+`<trn-emoji-picker>`, `<trn-avatar>`, `trnBtn`, page headers, dropdown directives and the root
+toaster. Product-specific presentation is not shared: the media bubble and message toolbar live
+with Conversations under `feature/rooms`, while application-surface loaders live in Application
+Runtime. Public APIs compose or host kit primitives without leaking Helm selectors or types to
+features.
 
 ### The public design-system contract
 
@@ -44,16 +44,14 @@ the wider architecture contract.
 | `navigation-layout` | Structural surfaces, navigation, tabs and page hierarchy.          |
 | `generic-content`   | Domain-neutral presentation such as avatars, banners and progress. |
 
-The ledger also records two deliberately different kinds of non-category entry. A
-`nonConsumable` project supports the tier itself but is not application API. A
-`migrationException` is product-owned presentation that still crosses a capability seam; it
-must name its target owner, explain why it remains public and carry the tickets that remove the
-exception. That makes the transitional state visible without pretending it is the desired
-design system.
+The ledger records the Storybook host as `nonConsumable`: it supports the tier but is not
+application API. Every category owns exactly one public entrypoint, migration exceptions are
+forbidden, and the contract rejects broad `export *` barrels. Adding a shallow public project or
+silently expanding an entrypoint therefore fails `pnpm architecture:check`.
 
 The login page is the first production proof screen. It composes labels, inputs, buttons,
 cards, icons, overlays and progress only through Trinity entrypoints, including
-`@trinity/components/field` for the native label/control association. The executable ledger
+`@trinity/components/controls` for the native label/control association. The executable ledger
 pins those imports and selectors; unit and browser tests pin the interaction and accessible
 name. Subsequent feature migrations should add or replace proof screens only when they exercise
 a genuinely new public contract, rather than turning the ledger into a list of every consumer.
@@ -76,13 +74,11 @@ and motion but replaces its inverted colours with the semantic `--trinity-toolti
 `--trinity-tooltip-foreground` pair. Light mode preserves the dark tooltip treatment; dark mode
 resolves the surface through the active palette's elevated popover tokens, including the arrow.
 
-`libs/ui` is gone entirely. What was left after the components moved out was not UI: the
-`runWithBusy` / `mediaQuerySignal` / internal-URL helpers went to `@trinity/util/ui`
-(`type:util`, reachable from every layer rather than only from above), and the
-`EncryptionDialogService` and `SettingsDialogService` seams became
-`@trinity/components/encryption-dialog` and `@trinity/components/settings-dialog` — their own
-libraries rather than part of `@trinity/components/overlay`, which stays the generic swappable
-dialog wrapper and is not taught domain routes or loader tokens.
+`libs/ui` is gone entirely. View helpers live in `@trinity/util/ui` (`type:util`, reachable
+from every layer), while Workspace application-surface presentation owns settings and Trust
+placement. Its Trust loader token is declared by Application Runtime and supplied by `main.ts`;
+settings composition stays app-local. `@trinity/components/overlay` remains a generic,
+swappable dialog/menu/toast wrapper and knows no product routes or feature loaders.
 
 That tier is closed from both sides. The vendor bans stop everything below the UI layer
 naming `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` or `@ctrl/ngx-emoji-mart`; and a
@@ -167,11 +163,10 @@ icon lacking a **static** `aria-hidden`, which silently suppressed a bound `aria
 label the quick switcher was announcing to nobody. `<trn-icon>` is decorative by default and
 puts a `label` on its own host, where nothing can suppress it.
 
-`@trinity/components/*` holds `AvatarComponent` (`<trn-avatar>`), `BannerComponent`,
-`PageHeaderComponent`, `MediaBubbleComponent`, `MessageToolbarComponent` and
-`EncryptionDialogService`, one library each. The boundary rule is that
-`type:ui` may depend only on ui, util and platform libraries — never on data-access, never
-on the SDK.
+The grouped public entrypoints hold domain-neutral foundations, controls, generic content,
+navigation/layout and overlays. The boundary rule is that `type:ui` may depend only on ui,
+util and platform libraries — never on data-access, never on the SDK. Conversations owns
+`MediaBubbleComponent` and `MessageToolbarComponent` because they render Matrix product concepts.
 
 That rule is what forces the injection-token pattern. `<trn-avatar>` needs to turn an
 `mxc://` URI into a displayable blob URL, which is a data-access concern, so it injects an
@@ -179,9 +174,9 @@ optional `AVATAR_RESOLVER` token that `main.ts` wires to `AvatarService.resolve`
 token is absent — `ui` in isolation, or a unit test — the component falls back to its `url`
 input. Its typed `shape="person|place"` contract keeps users and DMs circular while rooms and
 spaces use stable squircles; the radius is applied to Helm's host, image, fallback and outline
-through one inherited custom property. The same injection-token shape appears in
-`ENCRYPTION_DIALOG_COMPONENTS`, which lets a `type:ui` service present a `type:feature` page as a modal without importing it. See
-[libraries](libraries.md) for the boundary rules in full.
+through one inherited custom property. Application Runtime uses the same inward-facing shape for
+`ENCRYPTION_DIALOG_COMPONENTS`: the app supplies cold lazy Trust-page Observables without the
+runtime importing `feature-crypto`. See [libraries](libraries.md) for the boundary rules in full.
 
 ## The Helm libraries are generated
 
@@ -852,27 +847,16 @@ if "Message" was chosen.
 Several carry an explicit re-entrancy guard, so a repeated trigger — pressing Ctrl+K while
 the quick switcher is already open — is a no-op rather than stacking a second dialog.
 
-Capability callers no longer inject either presenter directly. They issue a typed, cold
+Capability callers issue a typed, cold
 `WorkspaceApplicationSurfaceService.open()` command; the app-level Workspace adapter owns lazy
-loading and maps semantic return destinations to routes only at that boundary. The older services
-below remain isolated compatibility adapters rather than capability dependencies.
+loading and maps semantic return destinations to routes only at that boundary. Web and Electron
+present Settings as a lazy dialog while installed Capacitor hosts use `/settings`; Trust unlock
+and verification use dialogs on wide/nested placements and their canonical routes otherwise.
+Both loaders are cold Observables. A failed load leaves the current route intact and reports an
+error; navigation invalidates pending presentation, identical opens coalesce, and a second
+unrelated surface cannot stack over an active one. Security and Devices can force nested Trust
+flows to remain modal in a narrow web drill-in.
 
-`EncryptionDialogService` presents `/encryption/unlock` and `/encryption/verify` as CDK
-modals at 768px and above, and as routed pages below. The routes stay the canonical
-deep-link and mobile target, and the service falls back to routing whenever the lazy
-component loaders are absent. See
-[matrix and encryption](matrix-and-encryption.md) for what those flows do.
-
-`SettingsDialogService` uses platform capability rather than viewport size: web and Electron
-open `SettingsDialogComponent`, while `Capacitor.isNativePlatform()` routes Android and iOS to
-`/settings`. The app supplies the feature component through `SETTINGS_DIALOG_CONFIG`, so the
-public UI library never imports a feature. Direct settings URLs remain the canonical deep-link
-surface. A failed modal load leaves the current route intact and reports an error; a navigation
-that starts while the chunk is pending cancels its presentation. The presenter coalesces repeated
-opens while the lazy chunk loads and ignores a second trigger while one dialog is active. Security
-and Devices force their nested verification/recovery overlays to stay modal even in the narrow web
-drill-in, rather than returning the user through a routed Settings page.
-
-Toasts render through a single `<hlm-toaster/>` mounted in `ApplicationRootComponent`. While CDK marks the app
+Toasts render through a single `<trn-toaster/>` mounted in `ApplicationRootComponent`. While CDK marks the app
 root `aria-hidden` for a modal, `TrnToastService` mirrors new messages through CDK's body-level
 `LiveAnnouncer`; outside a modal Sonner owns the announcement, avoiding duplicate speech.

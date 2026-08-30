@@ -59,14 +59,12 @@ const componentStylesheets = stylesheets.filter(
  */
 const LEDGER = [
   'libs/application/runtime/src/lib/application-root/application-root.component.scss',
-  'libs/components/banner/src/lib/banner.component.scss',
-  'libs/components/emoji-picker/src/lib/trn-emoji-picker/trn-emoji-picker.component.scss',
-  'libs/components/field/src/lib/field-label/trn-field-label.component.scss',
-  'libs/components/field/src/lib/field/trn-field.component.scss',
-  'libs/components/icon/src/lib/trn-icon/trn-icon.component.scss',
-  'libs/components/media-bubble/src/lib/media-bubble.component.scss',
-  'libs/components/message-toolbar/src/lib/message-toolbar.component.scss',
-  'libs/components/qr-scanner/src/lib/qr-scanner/qr-scanner.component.scss',
+  'libs/components/controls/src/lib/emoji-picker/trn-emoji-picker/trn-emoji-picker.component.scss',
+  'libs/components/controls/src/lib/field/field-label/trn-field-label.component.scss',
+  'libs/components/controls/src/lib/field/field/trn-field.component.scss',
+  'libs/components/controls/src/lib/qr-scanner/qr-scanner/qr-scanner.component.scss',
+  'libs/components/foundations/src/lib/icon/trn-icon/trn-icon.component.scss',
+  'libs/components/generic-content/src/lib/banner/banner.component.scss',
   'libs/feature/auth/src/lib/auth-card/auth-card.component.scss',
   'libs/feature/auth/src/lib/login/login.page.scss',
   'libs/feature/auth/src/lib/registration/registration.page.scss',
@@ -90,6 +88,7 @@ const LEDGER = [
   'libs/feature/rooms/src/lib/location-share/location.component.scss',
   'libs/feature/rooms/src/lib/manage-space-rooms/manage-space-rooms.component.scss',
   'libs/feature/rooms/src/lib/media-attachment/lightbox/lightbox.component.scss',
+  'libs/feature/rooms/src/lib/media-bubble/media-bubble.component.scss',
   'libs/feature/rooms/src/lib/member-info/member-info.component.scss',
   'libs/feature/rooms/src/lib/member-list/member-list.component.scss',
   'libs/feature/rooms/src/lib/message-composer/composer-attachment-strip/composer-attachment-strip.component.scss',
@@ -105,6 +104,7 @@ const LEDGER = [
   'libs/feature/rooms/src/lib/message-reactions/message-reactions.component.scss',
   'libs/feature/rooms/src/lib/message-row/message-row.component.scss',
   'libs/feature/rooms/src/lib/message-search/message-search.component.scss',
+  'libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.scss',
   'libs/feature/rooms/src/lib/pinned/pinned-messages-panel.component.scss',
   'libs/feature/rooms/src/lib/poll/poll.component.scss',
   'libs/feature/rooms/src/lib/quick-switcher/quick-switcher.component.scss',
@@ -142,16 +142,16 @@ const LEDGER = [
  * feature component appearing here would be the thing worth a conversation.
  */
 const INLINE_LEDGER = [
-  'libs/components/avatar/src/lib/avatar.component.ts',
-  'libs/components/checkbox/src/lib/trn-checkbox.component.ts',
-  'libs/components/icon/src/lib/trn-icon/trn-icon.component.ts',
+  'libs/components/controls/src/lib/checkbox/trn-checkbox.component.ts',
+  'libs/components/controls/src/lib/radio-group/trn-radio-group.component.ts',
+  'libs/components/controls/src/lib/select/trn-select.component.ts',
+  'libs/components/controls/src/lib/switch/trn-switch.component.ts',
+  'libs/components/foundations/src/lib/icon/trn-icon/trn-icon.component.ts',
+  'libs/components/generic-content/src/lib/avatar/avatar.component.ts',
+  'libs/components/generic-content/src/lib/progress/trn-progress.component.ts',
+  'libs/components/generic-content/src/lib/spinner/trn-spinner.component.ts',
+  'libs/components/navigation-layout/src/lib/tabs/trn-tab-panel.component.ts',
   'libs/components/overlay/src/lib/action-sheet/trn-action-sheet.component.ts',
-  'libs/components/progress/src/lib/trn-progress.component.ts',
-  'libs/components/radio-group/src/lib/trn-radio-group.component.ts',
-  'libs/components/select/src/lib/trn-select.component.ts',
-  'libs/components/spinner/src/lib/trn-spinner.component.ts',
-  'libs/components/switch/src/lib/trn-switch.component.ts',
-  'libs/components/tabs/src/lib/trn-tab-panel.component.ts',
 ];
 
 const inlineStyled = inlineStyleSheets();

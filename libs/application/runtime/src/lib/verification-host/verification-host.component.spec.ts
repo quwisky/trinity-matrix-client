@@ -1,6 +1,5 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ENCRYPTION_DIALOG_COMPONENTS } from '@trinity/components/encryption-dialog';
 import { TrnDialogService } from '@trinity/components/overlay';
 import {
   TrustVerificationService,
@@ -12,8 +11,9 @@ import {
 } from '@trinity/data-access/matrix-client';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { Subject } from 'rxjs';
+import { Observable, of, Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
+import { ENCRYPTION_DIALOG_COMPONENTS } from '../application-dialog-loaders';
 import { VerificationHostComponent } from './verification-host.component';
 
 function incoming(): VerificationView {
@@ -33,7 +33,7 @@ function incoming(): VerificationView {
 }
 
 async function setup(
-  verify: () => Promise<unknown> = () => Promise.resolve(class StubVerify {}),
+  verify: () => Observable<unknown> = () => of(class StubVerify {}),
 ) {
   const syncState = signal<SyncState | null>(null);
   const active = signal<VerificationView | null>(null);
@@ -48,7 +48,7 @@ async function setup(
       {
         provide: ENCRYPTION_DIALOG_COMPONENTS,
         useValue: {
-          unlock: () => Promise.resolve(class StubUnlock {}),
+          unlock: () => of(class StubUnlock {}),
           verify,
         },
       },
@@ -97,17 +97,13 @@ describe('VerificationHostComponent', () => {
   });
 
   it('does not open after destruction while the lazy page is loading', async () => {
-    let resolvePage: ((page: unknown) => void) | undefined;
-    const page = new Promise<unknown>((resolve) => {
-      resolvePage = resolve;
-    });
+    const page = new Subject<unknown>();
     const { fixture, active, open } = await setup(() => page);
     active.set(incoming());
     fixture.detectChanges();
 
     fixture.destroy();
-    resolvePage?.(class StubVerify {});
-    await page;
+    page.next(class StubVerify {});
 
     expect(open).not.toHaveBeenCalled();
   });

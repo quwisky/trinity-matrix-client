@@ -6,7 +6,7 @@ import {
   output,
 } from '@angular/core';
 import { type PollView } from '@trinity/util/matrix';
-import { TrnButton } from '@trinity/components/button';
+import { TrnButton } from '@trinity/components/controls';
 
 /**
  * Renders a poll (MSC3381): the question, each answer with its live tally and share

@@ -6,7 +6,7 @@ import {
   input,
 } from '@angular/core';
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { TrnButton } from '@trinity/components/button';
+import { TrnButton } from '@trinity/components/controls';
 
 /** What the confirmation needs to describe the gateway the user is about to trust. */
 export interface PushGatewayTrustData {

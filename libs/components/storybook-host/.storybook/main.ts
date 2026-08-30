@@ -8,13 +8,16 @@ import { type StorybookConfig } from '@storybook/angular-vite';
  * no source of its own; it exists only so the `@nx/storybook/plugin` has somewhere to infer
  * the `storybook` / `build-storybook` targets from.
  *
- * Deliberately scoped to `libs/components/*`: that is the tier feature code actually reaches
- * for. The vendored Helm kit is generated and re-synced from upstream, so stories there would
- * be overwritten; feature pages are too stateful to render in isolation without mocking half
- * the SDK.
+ * The grouped public tier is the default scope. Two capability-owned presentational components
+ * keep their existing isolated visual contracts, so their exact Conversations directories are
+ * included without sweeping stateful feature pages. The vendored Helm kit remains excluded.
  */
 const config: StorybookConfig = {
-  stories: ['../../*/src/**/*.stories.@(ts|tsx|mdx)'],
+  stories: [
+    '../../*/src/**/*.stories.@(ts|tsx|mdx)',
+    '../../../feature/rooms/src/lib/media-bubble/*.stories.@(ts|tsx|mdx)',
+    '../../../feature/rooms/src/lib/message-toolbar/*.stories.@(ts|tsx|mdx)',
+  ],
   addons: ['@storybook/addon-a11y'],
   framework: {
     name: '@storybook/angular-vite',

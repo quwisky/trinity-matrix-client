@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import type { ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { TrnSwitchComponent } from '@trinity/components/switch';
+import { TrnSwitchComponent } from '@trinity/components/controls';
 import {
   PREFERENCE_STORAGE_ADAPTER,
   type PreferenceStorageWriteOutcome,

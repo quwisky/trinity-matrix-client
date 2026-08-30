@@ -9,7 +9,7 @@ import { EMPTY, of, throwError, Subject } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import { PublicRoomsService } from '@trinity/data-access/discovery';
-import { AvatarComponent } from '@trinity/components/avatar';
+import { AvatarComponent } from '@trinity/components/generic-content';
 import { ConnectionError, MatrixError } from '@trinity/util/matrix';
 import { RoomDirectoryComponent } from './room-directory.component';
 

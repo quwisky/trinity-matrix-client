@@ -5,7 +5,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { TrnButton } from '@trinity/components/button';
+import { TrnButton } from '@trinity/components/controls';
 import { HomeserverInfoService } from '@trinity/data-access/homeserver';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { BUILD_INFO } from '@trinity/platform-native';

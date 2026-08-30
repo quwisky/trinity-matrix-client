@@ -1,5 +1,5 @@
 import { By } from '@angular/platform-browser';
-import { TrnTooltip } from '@trinity/components/tooltip';
+import { TrnTooltip } from '@trinity/components/generic-content';
 import { render } from '@trinity/testing';
 import { SidebarUserPanelComponent } from './sidebar-user-panel.component';
 

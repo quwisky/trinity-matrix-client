@@ -5,11 +5,11 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { TrnButton } from '@trinity/components/button';
-import { TrnInput } from '@trinity/components/input';
-import { TrnLabel } from '@trinity/components/label';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnInput } from '@trinity/components/controls';
+import { TrnLabel } from '@trinity/components/controls';
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnIconComponent } from '@trinity/components/foundations';
 
 /** The poll a {@link CreatePollDialogComponent} resolves with. */
 export interface NewPoll {

@@ -9,9 +9,9 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, form } from '@angular/forms/signals';
-import { TrnButton } from '@trinity/components/button';
-import { TrnSwitchComponent } from '@trinity/components/switch';
-import { TrnInput } from '@trinity/components/input';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnSwitchComponent } from '@trinity/components/controls';
+import { TrnInput } from '@trinity/components/controls';
 import { TrnToastService } from '@trinity/components/overlay';
 import {
   KeywordRulesService,

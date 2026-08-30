@@ -8,7 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnSwitchComponent } from '@trinity/components/switch';
+import { TrnSwitchComponent } from '@trinity/components/controls';
 import { TrnToastService } from '@trinity/components/overlay';
 import {
   NotificationSoundService,

@@ -6,13 +6,13 @@ import {
   signal,
 } from '@angular/core';
 import { TitleCasePipe } from '@angular/common';
-import { TrnButton } from '@trinity/components/button';
-import { TrnInput } from '@trinity/components/input';
-import { TrnLabel } from '@trinity/components/label';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnInput } from '@trinity/components/controls';
+import { TrnLabel } from '@trinity/components/controls';
 import {
   TrnRadioGroupComponent,
   type TrnRadioOption,
-} from '@trinity/components/radio-group';
+} from '@trinity/components/controls';
 import {
   GIF_PROVIDERS,
   GifSettingsService,

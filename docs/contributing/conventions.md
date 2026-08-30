@@ -130,7 +130,7 @@ project", and because the rule is an error it fails the pre-commit hook, not jus
 
 An alias is `@trinity/` followed by the library's path under `libs/`:
 `libs/data-access/discovery` is `@trinity/data-access/discovery`, `libs/util/matrix` is
-`@trinity/util/matrix`, `libs/components/icon` is `@trinity/components/icon`. The generated Helm packages are the
+`@trinity/util/matrix`, `libs/components/foundations` is `@trinity/components/foundations`. The generated Helm packages are the
 single exception — `libs/spartan/tooltip` is `@trinity/helm/tooltip`.
 
 A new library goes inside the directory for its layer, `libs/application/`, `libs/data-access/`,

@@ -22,12 +22,12 @@ import {
   RouterOutlet,
 } from '@angular/router';
 import { filter, map } from 'rxjs';
-import { TrnButton } from '@trinity/components/button';
-import { TrnTooltip } from '@trinity/components/tooltip';
-import { PageHeaderComponent } from '@trinity/components/page-header';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnTooltip } from '@trinity/components/generic-content';
+import { PageHeaderComponent } from '@trinity/components/navigation-layout';
 import { BUILD_INFO } from '@trinity/platform-native';
 import { MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnIconComponent } from '@trinity/components/foundations';
 import { SETTINGS_SECTIONS } from '../settings-sections';
 
 /**

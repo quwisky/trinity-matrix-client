@@ -11,13 +11,13 @@ import {
   viewChild,
 } from '@angular/core';
 import { DateTimeFormatService, isMobileOs } from '@trinity/platform-native';
-import { AvatarComponent } from '@trinity/components/avatar';
+import { AvatarComponent } from '@trinity/components/generic-content';
 import {
   MessageToolbarComponent,
   type MessageAction,
   type MessageToolbarCaps,
-} from '@trinity/components/message-toolbar';
-import { TrnTooltip } from '@trinity/components/tooltip';
+} from '../message-toolbar/message-toolbar.component';
+import { TrnTooltip } from '@trinity/components/generic-content';
 import {
   type MessageView,
   type ReceiptView,
@@ -34,7 +34,10 @@ import { PollComponent } from '../poll/poll.component';
 import { LinkPreviewComponent } from '../link-preview/link-preview.component';
 import { LocationComponent } from '../location-share/location.component';
 import { VoiceMessageComponent } from '../voice-message/voice-message.component';
-import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
+import {
+  TrnIconComponent,
+  type TrnIconName,
+} from '@trinity/components/foundations';
 import { InlineMxcImagesDirective } from '../inline-mxc-images/inline-mxc-images.directive';
 
 /** A {@link MessageView} plus the presentation state the list derives for it. */

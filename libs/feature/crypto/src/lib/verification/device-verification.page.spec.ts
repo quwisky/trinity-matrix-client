@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { ActivatedRoute, Router } from '@angular/router';
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { QrScannerComponent } from '@trinity/components/qr-scanner';
+import { QrScannerComponent } from '@trinity/components/controls';
 import { QrCodeService } from '@trinity/platform-native/qr-code';
 import { fireEvent, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';

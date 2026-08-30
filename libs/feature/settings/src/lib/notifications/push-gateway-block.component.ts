@@ -7,9 +7,9 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnButton } from '@trinity/components/button';
-import { TrnInput } from '@trinity/components/input';
-import { TrnLabel } from '@trinity/components/label';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnInput } from '@trinity/components/controls';
+import { TrnLabel } from '@trinity/components/controls';
 import { TrnDialogService } from '@trinity/components/overlay';
 import {
   PushGatewayService,

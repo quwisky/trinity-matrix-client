@@ -89,9 +89,14 @@ export function validateDesignSystemCatalog(
     );
   }
   for (const category of requiredCategories) {
-    if ((catalog.categories[category] ?? []).length === 0) {
-      errors.push(`Design-system category must own an entrypoint: ${category}`);
+    if ((catalog.categories[category] ?? []).length !== 1) {
+      errors.push(
+        `Design-system category must own exactly one entrypoint: ${category}`,
+      );
     }
+  }
+  if (catalog.migrationExceptions.length > 0) {
+    errors.push('Design-system migration exceptions must be empty');
   }
 
   const entries = catalogEntries(catalog);
@@ -134,6 +139,12 @@ export function validateDesignSystemCatalog(
       errors.push(
         `${entry.project} entrypoint ${entry.entrypoint} must resolve to ${expectedTarget}`,
       );
+    }
+    const entrypointSource = readSource(`${node.data.root}/src/index.ts`);
+    if (
+      /\bexport(?:\s+type)?\s*\*/u.test(codeWithoutComments(entrypointSource))
+    ) {
+      errors.push(`${entry.project} public entrypoint must use named exports`);
     }
     if (entry.category === 'migration-exception') {
       for (const field of ['targetOwner', 'removeBy', 'reason']) {

@@ -8,9 +8,9 @@ import {
   viewChild,
 } from '@angular/core';
 import { FormField, form, submit, validate } from '@angular/forms/signals';
-import { TrnButton } from '@trinity/components/button';
-import { TrnInput } from '@trinity/components/input';
-import { TrnLabel } from '@trinity/components/label';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnInput } from '@trinity/components/controls';
+import { TrnLabel } from '@trinity/components/controls';
 import { TrnToastService } from '@trinity/components/overlay';
 import {
   WidgetManagementError,

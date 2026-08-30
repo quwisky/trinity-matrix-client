@@ -18,9 +18,9 @@ import {
   validate,
 } from '@angular/forms/signals';
 import { ActivatedRoute } from '@angular/router';
-import { TrnInput } from '@trinity/components/input';
-import { TrnCheckboxComponent } from '@trinity/components/checkbox';
-import { TrnLabel } from '@trinity/components/label';
+import { TrnInput } from '@trinity/components/controls';
+import { TrnCheckboxComponent } from '@trinity/components/controls';
+import { TrnLabel } from '@trinity/components/controls';
 import { TrnAlertService } from '@trinity/components/overlay';
 import {
   ImagePackManagementError,
@@ -30,7 +30,7 @@ import {
   type ImagePackUsage,
   validateImagePackSource,
 } from '@trinity/data-access/media';
-import { TrnButton } from '@trinity/components/button';
+import { TrnButton } from '@trinity/components/controls';
 import { firstValueFrom } from 'rxjs';
 import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 

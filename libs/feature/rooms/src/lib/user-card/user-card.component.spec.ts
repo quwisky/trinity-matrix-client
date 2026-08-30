@@ -9,7 +9,7 @@ import {
   IdentityService,
   type IdentitySummary,
 } from '@trinity/data-access/identity';
-import { AvatarComponent } from '@trinity/components/avatar';
+import { AvatarComponent } from '@trinity/components/generic-content';
 import { UserCardComponent } from './user-card.component';
 
 async function setup(

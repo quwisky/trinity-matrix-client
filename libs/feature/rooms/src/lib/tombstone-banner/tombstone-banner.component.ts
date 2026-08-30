@@ -4,10 +4,10 @@ import {
   inject,
   output,
 } from '@angular/core';
-import { TrnButton } from '@trinity/components/button';
+import { TrnButton } from '@trinity/components/controls';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
-import { BannerComponent } from '@trinity/components/banner';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { BannerComponent } from '@trinity/components/generic-content';
+import { TrnIconComponent } from '@trinity/components/foundations';
 
 /**
  * Banner shown at the top of a room that has been **upgraded** (`m.room.tombstone`):

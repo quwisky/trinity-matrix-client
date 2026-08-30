@@ -16,9 +16,9 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnIconButton } from '@trinity/components/button';
-import { TrnTextarea } from '@trinity/components/textarea';
-import { TrnTooltip } from '@trinity/components/tooltip';
+import { TrnIconButton } from '@trinity/components/controls';
+import { TrnTextarea } from '@trinity/components/controls';
+import { TrnTooltip } from '@trinity/components/generic-content';
 import {
   ComposerSettingsService,
   DraftStoreService,
@@ -56,13 +56,13 @@ import {
 import { ComposerTextField } from './composer-text-field';
 import { ComposerBatchSender } from './composer-batch-sender';
 import { ComposerAutocompletes } from './composer-autocompletes';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnIconComponent } from '@trinity/components/foundations';
 import { TrnAnchoredOverlayDirective } from '@trinity/components/overlay';
 import {
   TrnEmojiIndex,
   TrnEmojiPickerComponent,
   type TrnEmojiPick,
-} from '@trinity/components/emoji-picker';
+} from '@trinity/components/controls';
 import { type MentionMember } from './mention-autocomplete';
 import { StickerPickerComponent } from '../sticker-picker/sticker-picker.component';
 import { InlineMxcImagesDirective } from '../inline-mxc-images/inline-mxc-images.directive';

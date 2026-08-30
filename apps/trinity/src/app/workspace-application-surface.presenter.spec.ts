@@ -2,19 +2,19 @@ import { Component, Type } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { NavigationStart, Router } from '@angular/router';
 import {
+  ENCRYPTION_DIALOG_COMPONENTS,
+  type EncryptionDialogLoaders,
+} from '@trinity/application/runtime';
+import {
   WorkspaceBackService,
   type WorkspaceApplicationSurfaceRequest,
 } from '@trinity/application/workspace';
-import {
-  ENCRYPTION_DIALOG_COMPONENTS,
-  type EncryptionDialogLoaders,
-} from '@trinity/components/encryption-dialog';
 import {
   TrnDialogRef,
   TrnDialogService,
   TrnToastService,
 } from '@trinity/components/overlay';
-import { firstValueFrom, Subject, type Subscription } from 'rxjs';
+import { firstValueFrom, of, Subject, type Subscription } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 import { SETTINGS_DIALOG_APP_CONFIG } from './settings-dialog.config';
@@ -54,8 +54,8 @@ describe('Workspace application-surface composition adapter', () => {
         {
           provide: ENCRYPTION_DIALOG_COMPONENTS,
           useValue: {
-            unlock: () => Promise.resolve(StubUnlockComponent as Type<unknown>),
-            verify: () => Promise.resolve(StubVerifyComponent as Type<unknown>),
+            unlock: () => of(StubUnlockComponent as Type<unknown>),
+            verify: () => of(StubVerifyComponent as Type<unknown>),
           } satisfies EncryptionDialogLoaders,
         },
       ],
@@ -106,7 +106,7 @@ describe('Workspace application-surface composition adapter', () => {
     const originalLoad = SETTINGS_DIALOG_APP_CONFIG.load;
     const originalPlacement = SETTINGS_DIALOG_APP_CONFIG.shouldPresentAsDialog;
     Object.assign(SETTINGS_DIALOG_APP_CONFIG, {
-      load: () => Promise.resolve(StubSettingsComponent as Type<unknown>),
+      load: () => of(StubSettingsComponent as Type<unknown>),
       shouldPresentAsDialog: () => true,
     });
     try {
@@ -163,7 +163,7 @@ describe('Workspace application-surface composition adapter', () => {
     });
     dialogOpen.mockReturnValueOnce(settingsRef).mockReturnValueOnce(trustRef);
     Object.assign(SETTINGS_DIALOG_APP_CONFIG, {
-      load: () => Promise.resolve(StubSettingsComponent as Type<unknown>),
+      load: () => of(StubSettingsComponent as Type<unknown>),
       shouldPresentAsDialog: () => true,
     });
     try {

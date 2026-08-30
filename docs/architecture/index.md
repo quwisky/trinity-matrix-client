@@ -140,11 +140,9 @@ reviewable phases.
 
 ## Crossing a forbidden edge on purpose
 
-Some legitimate needs run against the grain of the layering. The encryption unlock dialog has to be
-openable from `@trinity/components/encryption-dialog`, which sits below every feature. An
-incoming device-verification request
-has to raise `feature-crypto`'s page from `feature-shell`, and feature-to-feature imports are
-banned.
+Some legitimate needs run against the grain of the layering. An incoming or user-initiated
+verification request has to raise a `feature-crypto` page from Application Runtime or Workspace,
+while feature-to-feature imports are banned.
 
 Both are solved through an inward-facing application port, provided at the app with lazy feature
 adapters. For user-initiated Settings and trust flows the port is
@@ -153,12 +151,12 @@ consumed through cold `WorkspaceApplicationSurfaceService.open()` commands. Call
 semantic surface and optional semantic return destination; only the app adapter names Router,
 platform policy, dialogs, or dynamic feature imports.
 
-The older UI loader tokens remain the app adapter's implementation seams while their public
-presenters are retired from capability call sites:
+Application Runtime owns the inward-facing Trust loader seam. It exposes cold Observables, so
+requesting a page has no effect until the presenter subscribes:
 
 ```ts
-// libs/components/encryption-dialog/src/lib/encryption-dialog.tokens.ts
-export type EncryptionDialogLoaders = Record<'unlock' | 'verify', () => Promise<Type<unknown>>>;
+// libs/application/runtime/src/lib/application-dialog-loaders.ts
+export type EncryptionDialogLoaders = Record<'unlock' | 'verify', () => Observable<Type<unknown>>>;
 export const ENCRYPTION_DIALOG_COMPONENTS = new InjectionToken<EncryptionDialogLoaders>('ENCRYPTION_DIALOG_COMPONENTS');
 ```
 
@@ -167,8 +165,12 @@ export const ENCRYPTION_DIALOG_COMPONENTS = new InjectionToken<EncryptionDialogL
 {
   provide: ENCRYPTION_DIALOG_COMPONENTS,
   useValue: {
-    unlock: () => import('@trinity/feature/crypto').then((m) => m.EncryptionUnlockPage),
-    verify: () => import('@trinity/feature/crypto').then((m) => m.DeviceVerificationPage),
+    unlock: () => defer(() => import('@trinity/feature/crypto')).pipe(
+      map((module) => module.EncryptionUnlockPage),
+    ),
+    verify: () => defer(() => import('@trinity/feature/crypto')).pipe(
+      map((module) => module.DeviceVerificationPage),
+    ),
   } satisfies EncryptionDialogLoaders,
 }
 ```
@@ -176,13 +178,13 @@ export const ENCRYPTION_DIALOG_COMPONENTS = new InjectionToken<EncryptionDialogL
 The optional Workspace presenter is what makes this a port rather than a hidden upward edge: an
 unwired host returns a typed `unavailable` outcome. The app adapter consumes the encryption
 loaders optionally and falls back to the canonical `/encryption/*` routes when they are absent.
-`AVATAR_RESOLVER` in `@trinity/components/avatar` follows the identical contract:
+`AVATAR_RESOLVER` in `@trinity/components/generic-content` follows the identical contract:
 the app wires it to `AvatarService.resolve`, and unwired, `<trn-avatar>` just uses its `url` input.
 
-`VerificationHostComponent` reuses the encryption loader seam rather than adding a second one. It renders
+`VerificationHostComponent` reuses the Application Runtime loader seam rather than adding a second one. It renders
 nothing, is mounted app-wide in `app.component.html` so an incoming verification is caught on any
-route, and calls `dialogComponents?.verify()` to lazy-load a page from a library it does not
-import.
+route, and subscribes to `dialogComponents?.verify()` to lazy-load a page from a library it does
+not import.
 
 !!! warning "Do not reach for a token first"
 

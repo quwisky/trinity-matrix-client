@@ -25,7 +25,7 @@ import {
   type WorkspaceDismissResult,
   type WorkspaceSurface,
 } from '@trinity/application/workspace';
-import { TrnActionAvailability, TrnButton } from '@trinity/components/button';
+import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
 import {
   BELOW_MD_QUERY,
   BELOW_MEMBERS_QUERY,
@@ -36,8 +36,8 @@ import {
   TrnDropdownMenuItem,
   TrnDropdownMenuTrigger,
 } from '@trinity/components/overlay';
-import { EmptyStateComponent } from '@trinity/components/empty-state';
-import { TrnTooltip } from '@trinity/components/tooltip';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
+import { TrnTooltip } from '@trinity/components/generic-content';
 import { TrustService } from '@trinity/data-access/trust';
 import {
   InvitesService,
@@ -71,8 +71,8 @@ import {
   ShellLayoutService,
 } from '@trinity/platform-native';
 import { Observable, defer, map, of } from 'rxjs';
-import { AvatarComponent } from '@trinity/components/avatar';
-import { PageHeaderComponent } from '@trinity/components/page-header';
+import { AvatarComponent } from '@trinity/components/generic-content';
+import { PageHeaderComponent } from '@trinity/components/navigation-layout';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { SidebarUserPanelComponent } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
@@ -106,7 +106,7 @@ import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
 import { WorkspaceService } from './workspace.service';
 import { WorkspaceTransitionWorkflow } from './workspace-transition.workflow';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnIconComponent } from '@trinity/components/foundations';
 
 /**
  * Discord-style authenticated shell: server rail + channel sidebar (in a

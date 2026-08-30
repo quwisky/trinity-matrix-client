@@ -10,11 +10,14 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnActionAvailability, TrnButton } from '@trinity/components/button';
-import { TrnTooltip } from '@trinity/components/tooltip';
+import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
+import { TrnTooltip } from '@trinity/components/generic-content';
 import { TrnToastService } from '@trinity/components/overlay';
 import { RoomSettingsService } from '@trinity/data-access/room-administration';
-import { AvatarComponent, type AvatarShape } from '@trinity/components/avatar';
+import {
+  AvatarComponent,
+  type AvatarShape,
+} from '@trinity/components/generic-content';
 
 /**
  * Matrix caps an avatar at the homeserver's upload limit; 8 MB is the common Synapse default and

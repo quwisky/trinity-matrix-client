@@ -8,9 +8,9 @@ import {
   IdentityService,
   type IdentityProfile,
 } from '@trinity/data-access/identity';
-import { AvatarComponent } from '@trinity/components/avatar';
+import { AvatarComponent } from '@trinity/components/generic-content';
 import { ProfileSettingsComponent } from './profile-settings.component';
-import { provideTrnIcons } from '@trinity/components/icon';
+import { provideTrnIcons } from '@trinity/components/foundations';
 
 describe('ProfileSettingsComponent', () => {
   let profile: ReturnType<typeof signal<IdentityProfile | null>>;

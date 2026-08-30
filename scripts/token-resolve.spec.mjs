@@ -132,7 +132,7 @@ describe('trinity design tokens', () => {
     expect(wrong).toEqual([]);
   });
 
-  it('keeps shared density roles shared by multiple component stylesheets', () => {
+  it('keeps shared density roles shared by multiple shipped component stylesheets', () => {
     const sharedDensityRoles = [
       '--trinity-density-item-gap',
       '--trinity-density-row-gap',
@@ -144,7 +144,8 @@ describe('trinity design tokens', () => {
         token,
         sites: [...(used.get(token) ?? [])].filter(
           (file) =>
-            file.startsWith('libs/components/') && file.endsWith('.scss'),
+            file.startsWith('libs/') &&
+            (file.endsWith('.component.scss') || file.endsWith('.page.scss')),
         ),
       }))
       .filter(({ sites }) => sites.length < 2)

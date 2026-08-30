@@ -12,7 +12,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
-import { TrnButton } from '@trinity/components/button';
+import { TrnButton } from '@trinity/components/controls';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { TrustService } from '@trinity/data-access/trust';
 import { downloadTextFile } from '../download-text-file';

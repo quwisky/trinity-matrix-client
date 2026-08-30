@@ -14,7 +14,7 @@ import { MessageSheetViewportSession } from './message-sheet-viewport-session';
 /**
  * The one-tap reactions the sheet offers, mirroring the hover toolbar's quick set.
  *
- * Restated rather than imported from `@trinity/components/message-toolbar`: that constant is
+ * Restated rather than imported from the message toolbar: that constant is
  * private to the component, and the two surfaces are free to diverge — a phone strip has room
  * for six, a hover row could grow.
  */

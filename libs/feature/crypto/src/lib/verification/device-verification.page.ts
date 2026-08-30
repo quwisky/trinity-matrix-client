@@ -16,10 +16,10 @@ import { TrnDialogRef } from '@trinity/components/overlay';
 import { Observable } from 'rxjs';
 import { TrustVerificationService } from '@trinity/data-access/trust';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
-import { PageHeaderComponent } from '@trinity/components/page-header';
-import { TrnButton } from '@trinity/components/button';
-import { TrnSpinnerComponent } from '@trinity/components/spinner';
-import { QrScannerComponent } from '@trinity/components/qr-scanner';
+import { PageHeaderComponent } from '@trinity/components/navigation-layout';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnSpinnerComponent } from '@trinity/components/generic-content';
+import { QrScannerComponent } from '@trinity/components/controls';
 import { QrCodeService } from '@trinity/platform-native/qr-code';
 import { SasCompareComponent } from './sas-compare.component';
 

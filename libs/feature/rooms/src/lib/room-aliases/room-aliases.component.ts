@@ -11,10 +11,10 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, disabled, form } from '@angular/forms/signals';
-import { TrnActionAvailability, TrnButton } from '@trinity/components/button';
-import { TrnInput } from '@trinity/components/input';
+import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
+import { TrnInput } from '@trinity/components/controls';
 import { TrnToastService } from '@trinity/components/overlay';
-import { TrnTooltip } from '@trinity/components/tooltip';
+import { TrnTooltip } from '@trinity/components/generic-content';
 import { RoomActionPermissionsService } from '@trinity/data-access/room-administration';
 
 /** Reject alias localparts containing characters an `#alias:server` can't hold. */

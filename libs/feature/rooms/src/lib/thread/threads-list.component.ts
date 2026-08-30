@@ -6,11 +6,11 @@ import {
   output,
 } from '@angular/core';
 import { DateTimeFormatService } from '@trinity/platform-native';
-import { EmptyStateComponent } from '@trinity/components/empty-state';
-import { AvatarComponent } from '@trinity/components/avatar';
-import { TrnButton } from '@trinity/components/button';
-import { TrnTooltip } from '@trinity/components/tooltip';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
+import { AvatarComponent } from '@trinity/components/generic-content';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnTooltip } from '@trinity/components/generic-content';
+import { TrnIconComponent } from '@trinity/components/foundations';
 import {
   ConversationRuntime,
   type ThreadSummary,

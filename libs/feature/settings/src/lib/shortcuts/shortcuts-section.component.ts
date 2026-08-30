@@ -5,7 +5,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { TrnButton } from '@trinity/components/button';
+import { TrnButton } from '@trinity/components/controls';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import {
   KeyboardShortcutsService,

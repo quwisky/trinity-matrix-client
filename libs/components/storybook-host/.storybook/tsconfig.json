@@ -5,5 +5,10 @@
     "types": ["node"]
   },
   "exclude": ["../../**/*.spec.ts"],
-  "include": ["../../*/src/**/*.stories.ts", "*.ts"]
+  "include": [
+    "../../*/src/**/*.stories.ts",
+    "../../../feature/rooms/src/lib/media-bubble/*.stories.ts",
+    "../../../feature/rooms/src/lib/message-toolbar/*.stories.ts",
+    "*.ts"
+  ]
 }

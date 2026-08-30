@@ -11,10 +11,10 @@ import {
   type Type,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnButton } from '@trinity/components/button';
-import { TrnLabel } from '@trinity/components/label';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnLabel } from '@trinity/components/controls';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
-import { TrnTextarea } from '@trinity/components/textarea';
+import { TrnTextarea } from '@trinity/components/controls';
 import {
   AppConfigService,
   CONFIG_EXCLUSION_NOTES,

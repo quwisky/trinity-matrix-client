@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, viewChild } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { describe, expect, it } from 'vitest';
@@ -22,6 +22,7 @@ import {
   `,
 })
 class HostComponent {
+  readonly trigger = viewChild.required(TrnDropdownMenuTrigger);
   chosen = 0;
 }
 
@@ -39,5 +40,14 @@ describe('Trinity dropdown menu', () => {
     TestBed.tick();
 
     expect(fixture.componentInstance.chosen).toBe(1);
+  });
+
+  it('opens programmatically through the Trinity trigger API', async () => {
+    const { fixture } = await render(HostComponent);
+
+    fixture.componentInstance.trigger().open();
+    TestBed.tick();
+
+    expect(document.querySelector('[trnDropdownMenuItem]')).not.toBeNull();
   });
 });

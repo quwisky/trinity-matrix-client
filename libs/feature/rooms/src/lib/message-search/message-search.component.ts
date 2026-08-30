@@ -18,12 +18,12 @@ import {
   ConversationRuntime,
 } from '@trinity/data-access/timeline';
 import { runWithBusy } from '@trinity/util/ui';
-import { EmptyStateComponent } from '@trinity/components/empty-state';
-import { AvatarComponent } from '@trinity/components/avatar';
-import { TrnButton } from '@trinity/components/button';
-import { TrnInput } from '@trinity/components/input';
-import { TrnSpinnerComponent } from '@trinity/components/spinner';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
+import { AvatarComponent } from '@trinity/components/generic-content';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnInput } from '@trinity/components/controls';
+import { TrnSpinnerComponent } from '@trinity/components/generic-content';
+import { TrnIconComponent } from '@trinity/components/foundations';
 
 /** One run of highlighting: a snippet slice and whether it is the matched term. */
 interface HighlightPart {

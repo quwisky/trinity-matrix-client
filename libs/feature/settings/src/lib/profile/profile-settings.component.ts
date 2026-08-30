@@ -8,14 +8,14 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { TrnButton, TrnIconButton } from '@trinity/components/button';
-import { TrnTooltip } from '@trinity/components/tooltip';
-import { TrnInput } from '@trinity/components/input';
-import { TrnLabel } from '@trinity/components/label';
+import { TrnButton, TrnIconButton } from '@trinity/components/controls';
+import { TrnTooltip } from '@trinity/components/generic-content';
+import { TrnInput } from '@trinity/components/controls';
+import { TrnLabel } from '@trinity/components/controls';
 import { runWithBusy } from '@trinity/util/ui';
-import { AvatarComponent } from '@trinity/components/avatar';
+import { AvatarComponent } from '@trinity/components/generic-content';
 import { IdentityService } from '@trinity/data-access/identity';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnIconComponent } from '@trinity/components/foundations';
 import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
 /** Profile settings sub-page: avatar (with a corner change badge) + display name. */

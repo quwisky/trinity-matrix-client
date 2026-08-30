@@ -66,7 +66,7 @@ describe('lint invariants', () => {
     // exemption, which is the signal this test exists for; a consumer tier would also carry
     // the kit ban and drown it.
     const app = await resolve(
-      'libs/components/select/src/lib/trn-select.component.ts',
+      'libs/components/controls/src/lib/select/trn-select.component.ts',
     );
     const spartan = await resolve(
       'libs/spartan/tooltip/src/lib/hlm-tooltip.ts',
@@ -116,8 +116,8 @@ describe('lint invariants', () => {
     // while asserting nothing about any file in the repo. A guard that cannot fail is worse
     // than no guard, because it reads as coverage.
     for (const authored of [
-      'libs/components/icon/src/lib/trn-icon/trn-icon.component.ts',
-      'libs/components/select/src/lib/trn-select.component.ts',
+      'libs/components/foundations/src/lib/icon/trn-icon/trn-icon.component.ts',
+      'libs/components/controls/src/lib/select/trn-select.component.ts',
       'libs/components/overlay/src/lib/alert/trn-alert-dialog.component.ts',
     ]) {
       const config = await resolve(authored);
@@ -202,9 +202,9 @@ const UI_BOUNDARY = [
   // to be argued for.
   { tier: 'ui:public', banned: [], allowed: ALL_UI_VENDORS },
   // There is no `ui:wrapper` row any more. It described `libs/ui`, which is gone: the
-  // presentational components moved to the public tier, the `util/` folder to
-  // `@trinity/util/ui`, and the encryption-dialog seam to
-  // `@trinity/components/encryption-dialog`. Every `type:ui` project is now a wrapper tier,
+  // domain-neutral presentation moved to the grouped public tier, view helpers to
+  // `@trinity/util/ui`, and application-surface loading to Application Runtime. Every
+  // `type:ui` project is now a wrapper tier,
   // so no `ui:*` tag carries a vendor ban — and the row had to go with the library rather
   // than linger, since a ban asserted against a tag nothing carries passes for free.
   // `every tier in this table is carried by a project` below is what keeps that honest.
@@ -360,8 +360,8 @@ describe('UI vendor boundary', () => {
     // that inspects only the CONFIG keeps passing.
     //
     // `ui:wrapper` is exactly how that arises. It was a real ban while `libs/ui` existed;
-    // dissolving that library into the public tier, `@trinity/util/ui` and
-    // `@trinity/components/encryption-dialog` left the tag with no project, and deleting the
+    // dissolving that library into the grouped public tier and `@trinity/util/ui` left the
+    // tag with no project, and deleting the
     // library without deleting the row would have left a ban behind that could never fire.
     const config = await resolve('libs/components/overlay/src/index.ts');
     const constraints =
@@ -502,7 +502,7 @@ describe('UI vendor boundary', () => {
 
     // The tier and the kit must stay free to name it, or the wrapper layer cannot exist.
     for (const wrapper of [
-      'libs/components/select/src/lib/trn-select.component.ts',
+      'libs/components/controls/src/lib/select/trn-select.component.ts',
       'libs/spartan/button/src/lib/hlm-button.ts',
     ]) {
       expect(kitGroup(await resolve(wrapper)), wrapper).toBeUndefined();
@@ -521,7 +521,7 @@ describe('UI vendor boundary', () => {
     // Asserted from both halves, because losing it there would be silent.
     for (const anywhere of [
       'libs/feature/settings/src/lib/settings.routes.ts',
-      'libs/components/select/src/lib/trn-select.component.ts',
+      'libs/components/controls/src/lib/select/trn-select.component.ts',
     ]) {
       expect(
         groupsFor(await resolve(anywhere)).some(
@@ -577,13 +577,13 @@ describe('UI vendor boundary', () => {
     // line put CDK's class in the type signature of 24 feature components, which is the cost
     // a swap would have had to pay. Only the source text can catch it coming back.
     //
-    // Swept over every barrel, not just the one library that owns a spec: the other fourteen
-    // publish an API too, and none of them had any guard at all.
+    // Swept over every grouped entrypoint, not just overlay. The Storybook host's barrel is
+    // intentionally empty, but keeping it in the sweep proves it cannot become an escape hatch.
     const barrels = globSync('libs/components/*/src/index.ts', {
       cwd: workspaceRoot,
     });
     // An empty sweep must not read as a clean one.
-    expect(barrels.length).toBeGreaterThan(10);
+    expect(barrels).toHaveLength(6);
 
     const offenders = barrels.flatMap((barrel) => {
       // Comments name the vendors freely and should — the overlay barrel spends twenty

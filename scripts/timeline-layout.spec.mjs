@@ -30,7 +30,7 @@ const composerHtml = read(
   'libs/feature/rooms/src/lib/message-composer/message-composer.component.html',
 );
 const toolbarCss = read(
-  'libs/components/message-toolbar/src/lib/message-toolbar.component.scss',
+  'libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.scss',
 );
 
 describe('modern timeline layout contracts', () => {

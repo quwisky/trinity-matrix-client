@@ -8,7 +8,7 @@ import {
   type UrlPreview,
 } from '@trinity/data-access/timeline';
 import { PrivacySettingsService } from '@trinity/platform-native';
-import { AVATAR_RESOLVER } from '@trinity/components/avatar';
+import { AVATAR_RESOLVER } from '@trinity/components/generic-content';
 import { LinkPreviewComponent } from './link-preview.component';
 
 function preview(over: Partial<UrlPreview> = {}): UrlPreview {

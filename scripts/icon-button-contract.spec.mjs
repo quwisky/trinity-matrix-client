@@ -57,7 +57,7 @@ const bespokeIconButtons = controlBlocks.filter(({ openingTag }) =>
 );
 
 const expectedBespokeCounts = {
-  'libs/components/message-toolbar/src/lib/message-toolbar.component.html': 5,
+  'libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.html': 5,
   'libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.html': 6,
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.html': 3,
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-user-panel/sidebar-user-panel.component.html': 1,
@@ -70,15 +70,15 @@ const expectedBespokeCounts = {
   'libs/feature/rooms/src/lib/voice-message/voice-message.component.html': 1,
   'libs/feature/settings/src/lib/account/account-section.component.html': 3,
   'libs/feature/settings/src/lib/profile/profile-settings.component.html': 1,
-  'libs/components/icon/src/lib/trn-icon/trn-icon.component.stories.ts#template-3': 1,
+  'libs/components/controls/src/lib/button/trn-icon-motion.stories.ts#template-3': 1,
 };
 
 const expectedCompositeCounts = {
-  'libs/components/message-toolbar/src/lib/message-toolbar.component.html': 9,
+  'libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.html': 9,
   'libs/components/overlay/src/lib/action-sheet/trn-action-sheet.component.ts#template-1': 1,
-  'libs/components/toggle-group/src/lib/trn-toggle-group.component.stories.ts#template-1': 7,
-  'libs/components/toggle-group/src/lib/trn-toggle-group.component.stories.ts#template-4': 3,
-  'libs/components/toggle-group/src/lib/trn-toggle-group.component.stories.ts#template-5': 2,
+  'libs/components/controls/src/lib/toggle-group/trn-toggle-group.component.stories.ts#template-1': 7,
+  'libs/components/controls/src/lib/toggle-group/trn-toggle-group.component.stories.ts#template-4': 3,
+  'libs/components/controls/src/lib/toggle-group/trn-toggle-group.component.stories.ts#template-5': 2,
   'libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.html': 9,
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.html': 8,
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-user-panel/sidebar-user-panel.component.html': 5,

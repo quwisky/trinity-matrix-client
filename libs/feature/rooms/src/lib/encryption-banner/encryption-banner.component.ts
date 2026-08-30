@@ -7,10 +7,10 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
-import { TrnButton } from '@trinity/components/button';
+import { TrnButton } from '@trinity/components/controls';
 import { TrustService } from '@trinity/data-access/trust';
-import { BannerComponent } from '@trinity/components/banner';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { BannerComponent } from '@trinity/components/generic-content';
+import { TrnIconComponent } from '@trinity/components/foundations';
 
 /** Which encryption flow a banner action triggers. */
 type BannerActionKind = 'setup' | 'unlock' | 'verify';

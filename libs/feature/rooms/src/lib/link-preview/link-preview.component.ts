@@ -13,7 +13,7 @@ import {
   type UrlPreview,
 } from '@trinity/data-access/timeline';
 import { PrivacySettingsService } from '@trinity/platform-native';
-import { AVATAR_RESOLVER } from '@trinity/components/avatar';
+import { AVATAR_RESOLVER } from '@trinity/components/generic-content';
 
 /** Thumbnail edge (px) requested from the avatar/media resolver for the preview image. */
 const IMAGE_SIZE = 320;

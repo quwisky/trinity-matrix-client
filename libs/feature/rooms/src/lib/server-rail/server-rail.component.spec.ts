@@ -1,6 +1,6 @@
 import { render, screen } from '@trinity/testing';
 import { type SpaceSummary } from '@trinity/data-access/room-library';
-import { AvatarComponent } from '@trinity/components/avatar';
+import { AvatarComponent } from '@trinity/components/generic-content';
 import { MockComponent } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
 import { ServerRailComponent, type RailUnread } from './server-rail.component';

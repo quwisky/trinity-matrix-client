@@ -10,8 +10,8 @@ import {
   untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnActionAvailability, TrnButton } from '@trinity/components/button';
-import { TrnTooltip } from '@trinity/components/tooltip';
+import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
+import { TrnTooltip } from '@trinity/components/generic-content';
 import { TrnToastService } from '@trinity/components/overlay';
 import {
   RoomActionPermissionsService,

@@ -4,8 +4,8 @@ import {
   inject,
   input,
 } from '@angular/core';
-import { TrnButton } from '@trinity/components/button';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnIconComponent } from '@trinity/components/foundations';
 import { TrnDialogRef } from '@trinity/components/overlay';
 
 /**

@@ -68,14 +68,12 @@ import {
   APPLICATION_RUNTIME_ADAPTER,
   ApplicationRootComponent,
   ApplicationRuntimeService,
-} from '@trinity/application/runtime';
-import { HostBadgeService } from '@trinity/runtime/host';
-import {
   ENCRYPTION_DIALOG_COMPONENTS,
   type EncryptionDialogLoaders,
-} from '@trinity/components/encryption-dialog';
-import { AVATAR_RESOLVER } from '@trinity/components/avatar';
-import { provideTrnIcons } from '@trinity/components/icon';
+} from '@trinity/application/runtime';
+import { HostBadgeService } from '@trinity/runtime/host';
+import { AVATAR_RESOLVER } from '@trinity/components/generic-content';
+import { provideTrnIcons } from '@trinity/components/foundations';
 import { provideTrnOverlayDefaults } from '@trinity/components/overlay';
 import {
   TRUST_PROVIDER_RECOVERY,
@@ -87,7 +85,7 @@ import { environment } from './environments/environment';
 import { BUILD_INFO_VALUE } from './app/build-info';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './app/workspace-application-surface.presenter';
 import { TrinityApplicationRuntimeAdapter } from './app/trinity-application-runtime.adapter';
-import { of, take } from 'rxjs';
+import { defer, map, of, take } from 'rxjs';
 
 // Desktop (hand-rolled Electron) detection. Capacitor.isNativePlatform() is FALSE in
 // this shell, so the service worker must be gated on this flag too. The predicate lives
@@ -266,18 +264,18 @@ void bootstrapApplication(ApplicationRootComponent, {
     { provide: PUSH_CONFIG, useValue: environment.push },
     // Running build's version/commit (regenerated at build), shown in Settings.
     { provide: BUILD_INFO, useValue: BUILD_INFO_VALUE },
-    // Lazy loaders so EncryptionDialogService (ui) can present the unlock/verify
-    // pages as desktop modals without ui/core importing feature-crypto. Dynamic
-    // imports (as in app.routes / verification-host) keep the feature in its own
-    // lazy chunk; only the wide split-pane layout actually opens a modal.
+    // Cold lazy loaders let Application Runtime present Trust pages as dialogs
+    // without importing feature-crypto into the shared kernel.
     {
       provide: ENCRYPTION_DIALOG_COMPONENTS,
       useValue: {
         unlock: () =>
-          import('@trinity/feature/crypto').then((m) => m.EncryptionUnlockPage),
+          defer(() => import('@trinity/feature/crypto')).pipe(
+            map((module) => module.EncryptionUnlockPage),
+          ),
         verify: () =>
-          import('@trinity/feature/crypto').then(
-            (m) => m.DeviceVerificationPage,
+          defer(() => import('@trinity/feature/crypto')).pipe(
+            map((module) => module.DeviceVerificationPage),
           ),
       } satisfies EncryptionDialogLoaders,
     },

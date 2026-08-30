@@ -1,5 +1,5 @@
 import type { Type } from '@angular/core';
-import type { TrnIconName } from '@trinity/components/icon';
+import type { TrnIconName } from '@trinity/components/foundations';
 import { AccountSectionComponent } from './account/account-section.component';
 import { AdvancedSettingsComponent } from './advanced/advanced-settings.component';
 import { AppearanceSettingsComponent } from './appearance/appearance-settings.component';
