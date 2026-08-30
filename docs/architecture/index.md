@@ -266,8 +266,10 @@ A required failure publishes a value-free diagnostic and typed recovery while th
 lifetime waits for `recover()` to execute that recovery before starting a new attempt. Partial
 inactive-Account restoration and optional push, badge or update failures accumulate as visible,
 non-blocking warnings. Once ready, the same runtime
-subscription owns badge projection, deep links, host Back, native gesture policy, route focus,
+subscription owns notification delivery and activation, badge projection, deep links, host Back, native gesture policy, route focus,
 Workspace surface registrations, per-Account space-order hydration and service-worker updates.
+Presenter and badge failures are emitted as session warnings; they do not end the runtime or bypass
+Workspace's normal destination validation and repair.
 `stop()` tears every source down;
 subscribing to `run()` again performs a clean restart.
 

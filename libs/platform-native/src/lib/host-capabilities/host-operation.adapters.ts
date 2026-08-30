@@ -1,5 +1,4 @@
 import { Injectable, Provider, inject } from '@angular/core';
-import { SwPush } from '@angular/service-worker';
 import { App } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
@@ -7,33 +6,20 @@ import {
   HOST_AUTHENTICATION_HANDOFF_OPERATION,
   HOST_BACK_OPERATION,
   HOST_DEEP_LINKS_OPERATION,
-  HOST_NOTIFICATION_PRESENTATION_OPERATION,
   HostCapabilitiesService,
   type HostAuthenticationHandoffOperation,
   type HostBackOperation,
   type HostCapabilitySupport,
   type HostDeepLinksOperation,
-  type HostNotificationPresentationOperation,
   type HostOperationOutcome,
 } from '@trinity/runtime/host';
-import {
-  EMPTY,
-  Observable,
-  Subject,
-  catchError,
-  defer,
-  from,
-  map,
-  merge,
-  of,
-  switchMap,
-} from 'rxjs';
+import { EMPTY, Observable, catchError, defer, from, map, of } from 'rxjs';
 import { getTrinityDesktopBridge } from '../trinity-desktop-bridge';
+import { notificationPresentationProvider } from './host-notification-presentation.adapters';
 
 type HostOperationsAdapter = HostAuthenticationHandoffOperation &
   HostDeepLinksOperation &
-  HostBackOperation &
-  HostNotificationPresentationOperation;
+  HostBackOperation;
 
 const supported = (): HostCapabilitySupport => ({ kind: 'supported' });
 const notSupported = (): Extract<
@@ -48,13 +34,6 @@ const rejected = (code: string): HostOperationOutcome => ({
 
 @Injectable({ providedIn: 'root' })
 export class WebHostOperationAdapter implements HostOperationsAdapter {
-  private readonly swPush = inject(SwPush, { optional: true });
-  private readonly notificationActivations = new Subject<{
-    readonly accountId: string;
-    readonly roomId: string;
-    readonly eventId: string;
-  }>();
-
   callback(request: { readonly webUrl: string; readonly appUrl: string }) {
     return { url: request.webUrl, applicationType: 'web' as const };
   }
@@ -68,15 +47,6 @@ export class WebHostOperationAdapter implements HostOperationsAdapter {
 
   readonly received = EMPTY;
   readonly intents = EMPTY;
-  readonly activated = merge(
-    this.notificationActivations,
-    this.swPush?.notificationClicks.pipe(
-      switchMap(({ notification }) => {
-        const destination = notification.data;
-        return isNotificationDestination(destination) ? of(destination) : EMPTY;
-      }),
-    ) ?? EMPTY,
-  );
 
   deepLinkSupport(): Observable<HostCapabilitySupport> {
     return defer(() => of(notSupported()));
@@ -86,85 +56,12 @@ export class WebHostOperationAdapter implements HostOperationsAdapter {
     return defer(() => of(notSupported()));
   }
 
-  presentationSupport(): Observable<HostCapabilitySupport> {
-    return defer(() =>
-      of(typeof Notification === 'undefined' ? notSupported() : supported()),
-    );
-  }
-
   closeAuthentication(): Observable<HostOperationOutcome> {
     return defer(() => of(notSupported()));
   }
 
   background(): Observable<HostOperationOutcome> {
     return defer(() => of(notSupported()));
-  }
-
-  requestPermission(): Observable<HostOperationOutcome> {
-    return defer(() => {
-      if (typeof Notification === 'undefined') return of(notSupported());
-      if (Notification.permission === 'granted') return of(completed());
-      if (Notification.permission === 'denied') {
-        return of(rejected('notification-permission-denied'));
-      }
-      return from(Notification.requestPermission()).pipe(
-        map((permission) =>
-          permission === 'granted'
-            ? completed()
-            : rejected('notification-permission-denied'),
-        ),
-        catchError(() => of(rejected('notification-permission-failed'))),
-      );
-    });
-  }
-
-  present(
-    request: Parameters<HostNotificationPresentationOperation['present']>[0],
-  ): Observable<HostOperationOutcome> {
-    return defer(() => {
-      if (
-        typeof Notification === 'undefined' ||
-        Notification.permission !== 'granted'
-      ) {
-        return of(notSupported());
-      }
-      const options: NotificationOptions = {
-        body: request.body,
-        tag: request.tag,
-        silent: request.silent,
-        data: request.destination,
-      };
-      if (navigator.serviceWorker?.controller) {
-        return from(navigator.serviceWorker.ready).pipe(
-          switchMap((registration) =>
-            from(
-              Promise.resolve(
-                registration.showNotification(request.title, options),
-              ),
-            ),
-          ),
-          map(() => completed()),
-          catchError(() => this.presentViaConstructor(request, options)),
-        );
-      }
-      return this.presentViaConstructor(request, options);
-    });
-  }
-
-  private presentViaConstructor(
-    request: Parameters<HostNotificationPresentationOperation['present']>[0],
-    options: NotificationOptions,
-  ): Observable<HostOperationOutcome> {
-    try {
-      const notification = new Notification(request.title, options);
-      notification.onclick = () => {
-        this.notificationActivations.next(request.destination);
-        notification.close();
-      };
-      return of(completed());
-    } catch {
-      return of(rejected('notification-presentation-failed'));
-    }
   }
 }
 
@@ -227,16 +124,11 @@ export class CapacitorHostOperationAdapter implements HostOperationsAdapter {
       };
     },
   );
-  readonly activated = EMPTY;
-
   deepLinkSupport(): Observable<HostCapabilitySupport> {
     return defer(() => of(supported()));
   }
   backSupport(): Observable<HostCapabilitySupport> {
     return defer(() => of(supported()));
-  }
-  presentationSupport(): Observable<HostCapabilitySupport> {
-    return defer(() => of(notSupported()));
   }
   closeAuthentication(): Observable<HostOperationOutcome> {
     return defer(() => from(Browser.close())).pipe(
@@ -249,12 +141,6 @@ export class CapacitorHostOperationAdapter implements HostOperationsAdapter {
       map(() => completed()),
       catchError(() => of(rejected('background-failed'))),
     );
-  }
-  requestPermission(): Observable<HostOperationOutcome> {
-    return defer(() => of(notSupported()));
-  }
-  present(): Observable<HostOperationOutcome> {
-    return defer(() => of(notSupported()));
   }
 }
 
@@ -277,15 +163,6 @@ export class ElectronHostOperationAdapter implements HostOperationsAdapter {
     ),
   );
   readonly intents = EMPTY;
-  readonly activated = new Observable<{
-    readonly accountId: string;
-    readonly roomId: string;
-    readonly eventId: string;
-  }>((subscriber) =>
-    getTrinityDesktopBridge()?.capabilities.notificationPresentation.subscribeClicks(
-      (destination) => subscriber.next(destination),
-    ),
-  );
 
   deepLinkSupport(): Observable<HostCapabilitySupport> {
     return this.capabilities
@@ -297,46 +174,12 @@ export class ElectronHostOperationAdapter implements HostOperationsAdapter {
       .manifest()
       .pipe(map((manifest) => manifest.operations.back));
   }
-  presentationSupport(): Observable<HostCapabilitySupport> {
-    return this.capabilities
-      .manifest()
-      .pipe(
-        map((manifest) => manifest.operations['notification-presentation']),
-      );
-  }
   closeAuthentication(): Observable<HostOperationOutcome> {
     return defer(() => of(notSupported()));
   }
   background(): Observable<HostOperationOutcome> {
     return defer(() => of(notSupported()));
   }
-  requestPermission(): Observable<HostOperationOutcome> {
-    return defer(() => of(completed()));
-  }
-  present(
-    request: Parameters<HostNotificationPresentationOperation['present']>[0],
-  ): Observable<HostOperationOutcome> {
-    return defer(() => {
-      const bridge = getTrinityDesktopBridge();
-      if (!bridge) return of(notSupported());
-      bridge.capabilities.notificationPresentation.present(request);
-      return of(completed());
-    });
-  }
-}
-
-function isNotificationDestination(value: unknown): value is {
-  readonly accountId: string;
-  readonly roomId: string;
-  readonly eventId: string;
-} {
-  if (!value || typeof value !== 'object') return false;
-  const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate['accountId'] === 'string' &&
-    typeof candidate['roomId'] === 'string' &&
-    typeof candidate['eventId'] === 'string'
-  );
 }
 
 function selectedHostOperationAdapter(): HostOperationsAdapter {
@@ -348,9 +191,11 @@ function selectedHostOperationAdapter(): HostOperationsAdapter {
 
 export function hostOperationProviders(): Provider[] {
   return [
-    HOST_AUTHENTICATION_HANDOFF_OPERATION,
-    HOST_DEEP_LINKS_OPERATION,
-    HOST_BACK_OPERATION,
-    HOST_NOTIFICATION_PRESENTATION_OPERATION,
-  ].map((provide) => ({ provide, useFactory: selectedHostOperationAdapter }));
+    ...[
+      HOST_AUTHENTICATION_HANDOFF_OPERATION,
+      HOST_DEEP_LINKS_OPERATION,
+      HOST_BACK_OPERATION,
+    ].map((provide) => ({ provide, useFactory: selectedHostOperationAdapter })),
+    notificationPresentationProvider(),
+  ];
 }

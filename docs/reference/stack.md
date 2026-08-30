@@ -74,6 +74,7 @@ major rather than editing numbers by hand.
 | `@capacitor/status-bar`               | 8.0.3   | Matches the native status bar to the light or dark theme                                                                              |
 | `@capacitor/preferences`              | 8.0.1   | Device-local settings, including the push gateway override                                                                            |
 | `@capacitor/push-notifications`       | 8.1.2   | FCM and APNs device token for the Matrix pusher, see [push notifications](push-notifications.md)                                      |
+| `@capacitor/local-notifications`      | 8.3.1   | Native presentation and typed activation for live-sync notification intents on iOS and Android                                        |
 | `@capawesome/capacitor-badge`         | 8.0.2   | Native launcher badge on iOS and Android                                                                                              |
 | `@aparajita/capacitor-secure-storage` | 8.0.0   | Keychain and Keystore for the access token on native                                                                                  |
 

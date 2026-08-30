@@ -11,7 +11,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { NotificationSoundService } from './notification-sound.service';
 import { Observable, Subscriber, Subscription, take } from 'rxjs';
 import { normalizeNotificationEvent } from './matrix-notification-event.adapter';
-import type { NotificationDestination } from './notification-intent';
+import type { NotificationRuntimeEvent } from './notification-intent';
 import { NotificationPolicy } from './notification-policy';
 import { NotificationPresenterService } from './notification-presenter.service';
 import { NOTIFICATION_VISIBILITY } from './notification-visibility.port';
@@ -33,8 +33,8 @@ interface AccountNotifier {
 /**
  * Surfaces incoming messages as native OS notifications, driven by the live sync
  * stream of **every signed-in account** at once (not just the active one). This is
- * the host notification-presentation capability. Mobile's selected adapter reports
- * that capability unavailable because push notifications own delivery there.
+ * the host notification-presentation capability; Web, Capacitor and Electron adapters
+ * implement the same typed intent and activation contract.
  *
  * The capability layer selects one of two delivery backends at composition time:
  *  - **Desktop (hand-rolled Electron):** the preload `trinityDesktop` bridge is
@@ -42,6 +42,7 @@ interface AccountNotifier {
  *    (`showNotification`). Renderer Web `Notification`s from Electron are
  *    unreliably surfaced/attributed by the OS (notably macOS), so the main
  *    process owns them; clicks come back over `onNotificationClick`.
+ *  - **Capacitor:** Local Notifications, with explicit plugin/permission availability.
  *  - **Web / PWA:** the renderer Web `Notification` API (with permission prompt).
  *
  * Either way it only fires for **live** events (not backfill), from someone other
@@ -84,8 +85,7 @@ export class NotificationService {
   private readonly notifiers = new Map<string, AccountNotifier>();
 
   private connection: Subscription | null = null;
-  private activationSubscriber: Subscriber<NotificationDestination> | null =
-    null;
+  private runtimeSubscriber: Subscriber<NotificationRuntimeEvent> | null = null;
 
   /**
    * Live, still-encrypted events seen on the timeline that we deferred until
@@ -118,10 +118,11 @@ export class NotificationService {
    * Own notification delivery for one Application Runtime session.
    *
    * Cold and long-lived: subscribing negotiates presentation and attaches every live
-   * Account; teardown releases host activation and SDK listeners. Emissions are semantic
-   * destinations only—the application Workspace decides how to open or repair them.
+   * Account; teardown releases host activation and SDK listeners. Emissions are typed
+   * activations or warning diagnostics; the application Workspace alone decides how to
+   * open or repair a destination.
    */
-  run(): Observable<NotificationDestination> {
+  run(): Observable<NotificationRuntimeEvent> {
     return new Observable((subscriber) => {
       if (this.enabled || (this.connection && !this.connection.closed)) {
         subscriber.complete();
@@ -129,7 +130,7 @@ export class NotificationService {
       }
       const connection = new Subscription();
       this.connection = connection;
-      this.activationSubscriber = subscriber;
+      this.runtimeSubscriber = subscriber;
       this.enabled = true;
       this.reconcile(this.matrix.accountIds());
       return () => this.stop(connection);
@@ -140,7 +141,7 @@ export class NotificationService {
     if (owner !== this.connection) return;
     this.connection?.unsubscribe();
     this.connection = null;
-    this.activationSubscriber = null;
+    this.runtimeSubscriber = null;
     this.enabled = false;
     this.presentationReady = false;
     this.presentationPreparing = false;
@@ -211,28 +212,59 @@ export class NotificationService {
         .pipe(take(1))
         .subscribe({
           next: (support) => {
-            this.presentationPreparing = false;
             if (connection.closed) return;
             if (support.kind === 'unavailable') {
-              this.activationSubscriber?.complete();
+              this.presentationPreparing = false;
+              if (
+                support.reason !== 'not-supported' &&
+                support.reason !== 'not-implemented'
+              ) {
+                this.warn('notification-presentation-unavailable');
+              }
               return;
             }
-            this.presentationReady = true;
-            if (this.activationSubscriber) {
-              connection.add(
-                this.presenter.activated.subscribe(this.activationSubscriber),
-              );
-            }
+            connection.add(
+              this.presenter.activated.subscribe({
+                next: (destination) =>
+                  this.runtimeSubscriber?.next({
+                    kind: 'activated',
+                    destination,
+                  }),
+                error: () =>
+                  this.warn('notification-activation-listener-failed'),
+              }),
+            );
             connection.add(
               this.presenter
                 .requestPermission()
                 .pipe(take(1))
-                .subscribe({ error: () => undefined }),
+                .subscribe({
+                  next: (outcome) => {
+                    this.presentationPreparing = false;
+                    if (connection.closed) return;
+                    if (outcome.kind !== 'completed') {
+                      if (
+                        outcome.kind === 'rejected' ||
+                        (outcome.reason !== 'not-supported' &&
+                          outcome.reason !== 'not-implemented')
+                      ) {
+                        this.warn('notification-permission-failed');
+                      }
+                      return;
+                    }
+                    this.presentationReady = true;
+                    this.reconcile(this.matrix.accountIds());
+                  },
+                  error: () => {
+                    this.presentationPreparing = false;
+                    this.warn('notification-permission-failed');
+                  },
+                }),
             );
-            this.reconcile(this.matrix.accountIds());
           },
           error: () => {
             this.presentationPreparing = false;
+            this.warn('notification-presentation-negotiation-failed');
           },
         }),
     );
@@ -354,8 +386,19 @@ export class NotificationService {
     const subscription = this.presenter
       .present(decision.intent)
       .pipe(take(1))
-      .subscribe({ error: () => undefined });
+      .subscribe({
+        next: (outcome) => {
+          if (outcome.kind !== 'completed') {
+            this.warn('notification-presentation-failed');
+          }
+        },
+        error: () => this.warn('notification-presentation-failed'),
+      });
     this.connection?.add(subscription);
+  }
+
+  private warn(code: string): void {
+    this.runtimeSubscriber?.next({ kind: 'warning', diagnostic: { code } });
   }
 
   /** Namespace a dedupe key by account so two accounts don't share event ids. */

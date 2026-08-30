@@ -9,6 +9,7 @@ import {
 } from '@angular/router';
 import { SwUpdate } from '@angular/service-worker';
 import { NavigationFocusService } from '@trinity/application/runtime';
+import { BadgeCoordinator } from '@trinity/application/badge';
 import { WorkspaceBackService } from '@trinity/application/workspace';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import {
@@ -17,7 +18,6 @@ import {
 } from '@trinity/data-access/accounts';
 import { GifSettingsService } from '@trinity/data-access/gif';
 import {
-  AppBadgeService,
   NotificationService,
   PushGatewayService,
   PushService,
@@ -152,7 +152,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
           resetInstallation,
         }),
         MockProvider(PushService, { register: pushRegister }),
-        MockProvider(AppBadgeService, { run: () => badgeSession }),
+        MockProvider(BadgeCoordinator, { run: () => badgeSession }),
         MockProvider(NotificationService, { run: () => notificationSession }),
         MockProvider(SwUpdate, {
           isEnabled: true,

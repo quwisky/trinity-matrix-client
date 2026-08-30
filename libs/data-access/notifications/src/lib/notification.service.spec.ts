@@ -5,7 +5,10 @@ import { MockProvider, ngMocks } from 'ng-mocks';
 import { EMPTY, Subject, Subscription, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationService } from './notification.service';
-import type { NotificationDestination } from './notification-intent';
+import type {
+  NotificationDestination,
+  NotificationRuntimeEvent,
+} from './notification-intent';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { NOTIFICATION_VISIBILITY } from './notification-visibility.port';
 import { provideHostCapabilities } from '@trinity/platform-native';
@@ -116,12 +119,17 @@ function setup(
   });
   const service = TestBed.inject(NotificationService);
   const activations: NotificationDestination[] = [];
+  const warnings: string[] = [];
   let lifetime: Subscription | null = null;
   const svc = Object.assign(service, {
     connect: (): void => {
-      lifetime = service
-        .run()
-        .subscribe((destination) => activations.push(destination));
+      lifetime = service.run().subscribe((event: NotificationRuntimeEvent) => {
+        if (event.kind === 'activated') {
+          activations.push(event.destination);
+        } else {
+          warnings.push(event.diagnostic.code);
+        }
+      });
     },
     disconnect: (): void => {
       lifetime?.unsubscribe();
@@ -137,6 +145,7 @@ function setup(
     accountIds,
     timeline,
     activations,
+    warnings,
   };
 }
 
@@ -154,7 +163,7 @@ function desktopBridge() {
       }) => void)
     | undefined;
   const unsubscribe = vi.fn();
-  const present = vi.fn();
+  const present = vi.fn(async () => ({ kind: 'completed' as const }));
   const subscribeClicks = vi.fn(
     (
       cb: (destination: {
@@ -250,17 +259,19 @@ describe('NotificationService', () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it('attaches a timeline listener and requests permission when undecided', () => {
+  it('attaches a timeline listener after permission is granted', async () => {
     MockNotification.permission = 'default';
     const { svc, client } = setup();
 
     svc.connect();
 
-    expect(client.on).toHaveBeenCalledWith(
-      RoomEvent.Timeline,
-      expect.any(Function),
-    );
     expect(MockNotification.requestPermission).toHaveBeenCalled();
+    await vi.waitFor(() =>
+      expect(client.on).toHaveBeenCalledWith(
+        RoomEvent.Timeline,
+        expect.any(Function),
+      ),
+    );
   });
 
   it('notifies on a live message from someone else while unfocused', () => {
@@ -395,23 +406,40 @@ describe('NotificationService', () => {
     expect(MockNotification.instances).toHaveLength(0);
   });
 
-  it('does not notify without granted permission', () => {
+  it('does not attach delivery listeners without granted permission', () => {
     MockNotification.permission = 'denied';
-    const { svc, client } = setup();
-    svc.connect();
-
-    timelineHandler(client)(event(), room, false, false, live);
-
-    expect(MockNotification.instances).toHaveLength(0);
-  });
-
-  it('is a no-op on native mobile (push owns delivery there)', () => {
-    cap.native = true;
-    const { svc, client } = setup();
-
+    const { svc, client, warnings } = setup();
     svc.connect();
 
     expect(client.on).not.toHaveBeenCalled();
+    expect(MockNotification.instances).toHaveLength(0);
+    expect(warnings).toEqual(['notification-permission-failed']);
+  });
+
+  it('delivers through the same presenter contract on native mobile', () => {
+    cap.native = true;
+    const present = vi.fn(() => of({ kind: 'completed' as const }));
+    const { svc, client } = setup({
+      hostNotifications: {
+        support: () => of({ kind: 'supported' as const }),
+        activated: EMPTY,
+        requestPermission: () => of({ kind: 'completed' as const }),
+        present,
+      },
+    });
+
+    svc.connect();
+    timelineHandler(client)(event(), room, false, false, live);
+
+    expect(present).toHaveBeenCalledWith(
+      expect.objectContaining({
+        destination: {
+          accountId: '@me:hs',
+          roomId: '!r:hs',
+          eventId: '$event',
+        },
+      }),
+    );
   });
 
   it('emits the exact typed destination when a notification is clicked', () => {
@@ -478,6 +506,58 @@ describe('NotificationService', () => {
     expect(support.observed).toBe(false);
     expect(client.on).not.toHaveBeenCalled();
     expect(requestPermission).not.toHaveBeenCalled();
+  });
+
+  it('warns on a permission failure without attaching or ending the session', () => {
+    const { svc, client, warnings } = setup({
+      hostNotifications: {
+        support: () => of({ kind: 'supported' as const }),
+        activated: EMPTY,
+        requestPermission: () =>
+          of({
+            kind: 'rejected' as const,
+            diagnostic: { code: 'notification-permission-denied' },
+          }),
+        present: () => of({ kind: 'completed' as const }),
+      },
+    });
+
+    svc.connect();
+
+    expect(warnings).toEqual(['notification-permission-failed']);
+    expect(client.on).not.toHaveBeenCalled();
+  });
+
+  it('warns on a presenter rejection while keeping activation delivery alive', () => {
+    const activated = new Subject<NotificationDestination>();
+    const { svc, client, warnings, activations } = setup({
+      hostNotifications: {
+        support: () => of({ kind: 'supported' as const }),
+        activated,
+        requestPermission: () => of({ kind: 'completed' as const }),
+        present: () =>
+          of({
+            kind: 'rejected' as const,
+            diagnostic: { code: 'native-failure' },
+          }),
+      },
+    });
+    svc.connect();
+    timelineHandler(client)(event(), room, false, false, live);
+    activated.next({
+      accountId: '@me:hs',
+      roomId: '!r:hs',
+      eventId: '$event',
+    });
+
+    expect(warnings).toEqual(['notification-presentation-failed']);
+    expect(activations).toEqual([
+      {
+        accountId: '@me:hs',
+        roomId: '!r:hs',
+        eventId: '$event',
+      },
+    ]);
   });
 
   describe('E2EE (decryption-aware)', () => {

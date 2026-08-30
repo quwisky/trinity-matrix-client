@@ -6,12 +6,13 @@ import {
   NavigationFocusService,
   type ApplicationRuntimeWarning,
 } from '@trinity/application/runtime';
+import { BadgeCoordinator } from '@trinity/application/badge';
 import { WorkspaceBackService } from '@trinity/application/workspace';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import {
-  AppBadgeService,
   NotificationService,
   type NotificationDestination,
+  type NotificationRuntimeEvent,
 } from '@trinity/data-access/notifications';
 import { SpaceRoomOrderService } from '@trinity/data-access/rooms';
 import { NativeNavigationService } from '@trinity/platform-native';
@@ -47,7 +48,7 @@ export class TrinityApplicationSessionAdapter {
   private readonly injector = inject(Injector);
   private readonly router = inject(Router);
   private readonly location = inject(Location);
-  private readonly badge = inject(AppBadgeService);
+  private readonly badge = inject(BadgeCoordinator);
   private readonly notifications = inject(NotificationService);
   private readonly swUpdate = inject(SwUpdate);
   private readonly toast = inject(TrnToastService);
@@ -81,7 +82,15 @@ export class TrinityApplicationSessionAdapter {
   private runNotificationActivations(): Observable<ApplicationRuntimeWarning> {
     return this.notifications
       .run()
-      .pipe(concatMap((destination) => this.openNotification(destination)));
+      .pipe(concatMap((event) => this.handleNotificationEvent(event)));
+  }
+
+  private handleNotificationEvent(
+    event: NotificationRuntimeEvent,
+  ): Observable<ApplicationRuntimeWarning> {
+    return event.kind === 'activated'
+      ? this.openNotification(event.destination)
+      : of(warning('host', event.diagnostic.code));
   }
 
   private openNotification(

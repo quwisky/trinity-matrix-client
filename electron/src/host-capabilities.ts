@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { ipcMain, Notification } from 'electron';
 import { getMainWindow } from './window';
 
 export const HOST_PROTOCOL_VERSION = 1;
@@ -20,7 +20,10 @@ export const HOST_OPERATIONS = [
 type HostOperation = (typeof HOST_OPERATIONS)[number];
 type Support =
   | { readonly kind: 'supported' }
-  | { readonly kind: 'unavailable'; readonly reason: 'not-implemented' };
+  | {
+      readonly kind: 'unavailable';
+      readonly reason: 'not-implemented' | 'not-supported';
+    };
 
 const SUPPORTED = new Set<HostOperation>([
   'authentication-handoff',
@@ -40,7 +43,10 @@ function isOperation(value: unknown): value is HostOperation {
   );
 }
 
-export function negotiateHostCapabilities(raw: unknown):
+export function negotiateHostCapabilities(
+  raw: unknown,
+  notificationPresentationSupported = true,
+):
   | {
       readonly kind: 'accepted';
       readonly protocolVersion: 1;
@@ -69,10 +75,17 @@ export function negotiateHostCapabilities(raw: unknown):
     return { kind: 'rejected', reason: 'malformed-request' };
   }
   const requested = new Set(request.operations);
-  const support = (operation: HostOperation): Support =>
-    requested.has(operation) && SUPPORTED.has(operation)
+  const support = (operation: HostOperation): Support => {
+    if (
+      operation === 'notification-presentation' &&
+      !notificationPresentationSupported
+    ) {
+      return { kind: 'unavailable', reason: 'not-supported' };
+    }
+    return requested.has(operation) && SUPPORTED.has(operation)
       ? { kind: 'supported' }
       : { kind: 'unavailable', reason: 'not-implemented' };
+  };
   const operations: Record<HostOperation, Support> = {
     'authentication-handoff': support('authentication-handoff'),
     'deep-links': support('deep-links'),
@@ -95,6 +108,6 @@ export function registerHostCapabilityHandshake(): void {
     if (!win || event.sender !== win.webContents) {
       return { kind: 'rejected', reason: 'malformed-request' } as const;
     }
-    return negotiateHostCapabilities(raw);
+    return negotiateHostCapabilities(raw, Notification.isSupported());
   });
 }

@@ -20,6 +20,7 @@ import {
 import {
   Observable,
   catchError,
+  combineLatest,
   defer,
   from,
   map,
@@ -30,6 +31,7 @@ import {
 import { MobileBadgeService } from '../mobile-badge.service';
 import { getTrinityDesktopBridge } from '../trinity-desktop-bridge';
 import { hostOperationProviders } from './host-operation.adapters';
+import { CapacitorNotificationPresentationAdapter } from './host-notification-presentation.adapters';
 
 type HostAdapter = HostBadgeOperation & HostCapabilityNegotiator;
 
@@ -253,6 +255,9 @@ export class WebHostCapabilityAdapter implements HostAdapter {
 @Injectable({ providedIn: 'root' })
 export class CapacitorHostCapabilityAdapter implements HostAdapter {
   private readonly badge = inject(MobileBadgeService);
+  private readonly notifications = inject(
+    CapacitorNotificationPresentationAdapter,
+  );
   support(): Observable<HostCapabilitySupport> {
     return defer(() => this.badge.support());
   }
@@ -262,8 +267,11 @@ export class CapacitorHostCapabilityAdapter implements HostAdapter {
   }
 
   manifest(): Observable<HostCapabilityManifest> {
-    return this.support().pipe(
-      map((badge) =>
+    return combineLatest([
+      this.support(),
+      this.notifications.presentationSupport(),
+    ]).pipe(
+      map(([badge, notificationPresentation]) =>
         manifest(
           badge,
           [
@@ -274,6 +282,9 @@ export class CapacitorHostCapabilityAdapter implements HostAdapter {
             'location',
             'secure-store',
             'lifecycle',
+            ...(notificationPresentation.kind === 'supported'
+              ? (['notification-presentation'] as const)
+              : []),
           ],
           'not-supported',
         ),

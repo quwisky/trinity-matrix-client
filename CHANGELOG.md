@@ -87,6 +87,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Native notifications and unread badges now share capability contracts.** Live notification
+  intents are presented through Web Notifications, Capacitor Local Notifications, or Electron's
+  validated protocol-v1 main-process operation, with the same typed activation destination on
+  every host. Android and iOS now register the local-notification plugin; Electron waits for an OS
+  shown/failed result instead of reporting success after a one-way send. `BadgeCoordinator` is a
+  separate application workflow that reads Room Library's aggregate unread signal and writes only
+  through `BadgeSink`, so Notifications no longer owns or imports badge state. Permission,
+  presentation, and badge failures become non-blocking Application Runtime warnings without ending
+  notification activation or Workspace navigation.
+
 - **Web notifications now travel as typed intents.** Matrix events, push-rule results, foreground
   visibility and bounded deduplication are normalized before a platform-free Notifications policy
   decides delivery. A host presenter owns permission, service-worker or constructor delivery, and

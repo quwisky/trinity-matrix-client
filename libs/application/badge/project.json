@@ -1,14 +1,14 @@
 {
   "$schema": "../../../node_modules/nx/schemas/project-schema.json",
-  "name": "data-access-notifications",
+  "name": "application-badge",
   "projectType": "library",
-  "sourceRoot": "libs/data-access/notifications/src",
+  "sourceRoot": "libs/application/badge/src",
   "prefix": "trn",
   "tags": [
-    "type:data-access",
+    "type:feature",
     "scope:matrix",
-    "role:capability",
-    "capability:notifications"
+    "role:application",
+    "capability:badge"
   ],
   "targets": {
     "test": {},

@@ -42,7 +42,7 @@ Tooling and black-box test projects are outside this runtime dependency model. E
   focus, and canonical URL projection.
 - **Discovery** owns remote homeserver, public-Room, and user-directory discovery.
 
-Workspace, Settings, Global Search, Badge coordination, and Application Runtime are application workflows. Matrix Runtime, Projection Runtime, Media Pipeline, Preferences Store, Host Capabilities, pure utilities, and the design system form the deliberately small shared kernel and supporting seams.
+Workspace, Settings, Global Search, Badge coordination, and Application Runtime are application workflows. `BadgeCoordinator` reads Room Library's aggregate unread state without taking ownership of it and writes only through a host-neutral `BadgeSink`; Conversation continues to own read position. Matrix Runtime, Projection Runtime, Media Pipeline, Preferences Store, Host Capabilities, pure utilities, and the design system form the deliberately small shared kernel and supporting seams.
 
 Application Runtime is the sole startup and session owner. Its ordered attempt negotiates the
 host, hydrates preferences, restores Accounts, establishes optional session capabilities,

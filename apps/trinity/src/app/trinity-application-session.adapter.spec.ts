@@ -8,12 +8,12 @@ import {
   type VersionEvent,
 } from '@angular/service-worker';
 import { NavigationFocusService } from '@trinity/application/runtime';
+import { BadgeCoordinator } from '@trinity/application/badge';
 import { WorkspaceBackService } from '@trinity/application/workspace';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import {
-  AppBadgeService,
   NotificationService,
-  type NotificationDestination,
+  type NotificationRuntimeEvent,
 } from '@trinity/data-access/notifications';
 import { SpaceRoomOrderService } from '@trinity/data-access/rooms';
 import { NativeNavigationService } from '@trinity/platform-native';
@@ -29,7 +29,7 @@ interface SessionHarness {
   readonly adapter: TrinityApplicationSessionAdapter;
   readonly deepLinks: Subject<{ readonly url: string }>;
   readonly backIntents: Subject<{ readonly canGoBack: boolean }>;
-  readonly notificationActivations: Subject<NotificationDestination>;
+  readonly notificationEvents: Subject<NotificationRuntimeEvent>;
   readonly navigate: ReturnType<typeof vi.fn>;
   readonly closeAuthentication: ReturnType<typeof vi.fn>;
   readonly locationBack: ReturnType<typeof vi.fn>;
@@ -51,7 +51,7 @@ interface SessionHarness {
 function setup(): SessionHarness {
   const deepLinks = new Subject<{ readonly url: string }>();
   const backIntents = new Subject<{ readonly canGoBack: boolean }>();
-  const notificationActivations = new Subject<NotificationDestination>();
+  const notificationEvents = new Subject<NotificationRuntimeEvent>();
   const navigate = vi.fn().mockResolvedValue(true);
   const closeAuthentication = vi.fn(() => of({ kind: 'completed' as const }));
   const locationBack = vi.fn();
@@ -74,8 +74,8 @@ function setup(): SessionHarness {
       TrinityApplicationSessionAdapter,
       MockProvider(Router, { navigate }),
       MockProvider(Location, { back: locationBack }),
-      MockProvider(AppBadgeService, { run: () => EMPTY }),
-      MockProvider(NotificationService, { run: () => notificationActivations }),
+      MockProvider(BadgeCoordinator, { run: () => EMPTY }),
+      MockProvider(NotificationService, { run: () => notificationEvents }),
       MockProvider(NavigationFocusService, { run: () => EMPTY }),
       MockProvider(WorkspaceRoutedSurfaceAdapter, { run: () => EMPTY }),
       MockProvider(WorkspaceApplicationSurfacePresenterAdapter, {
@@ -115,7 +115,7 @@ function setup(): SessionHarness {
     adapter: TestBed.inject(TrinityApplicationSessionAdapter),
     deepLinks,
     backIntents,
-    notificationActivations,
+    notificationEvents,
     navigate,
     closeAuthentication,
     locationBack,
@@ -174,10 +174,13 @@ describe('TrinityApplicationSessionAdapter', () => {
     const focus = vi.spyOn(window, 'focus').mockImplementation(() => undefined);
     const lifetime = test.adapter.run().subscribe();
 
-    test.notificationActivations.next({
-      accountId: '@background:example.org',
-      roomId: '!room:example.org',
-      eventId: '$event',
+    test.notificationEvents.next({
+      kind: 'activated',
+      destination: {
+        accountId: '@background:example.org',
+        roomId: '!room:example.org',
+        eventId: '$event',
+      },
     });
 
     await vi.waitFor(() =>
@@ -203,10 +206,13 @@ describe('TrinityApplicationSessionAdapter', () => {
       .run()
       .subscribe((value) => warnings.push(value));
 
-    test.notificationActivations.next({
-      accountId: '@me:example.org',
-      roomId: '!missing:example.org',
-      eventId: '$event',
+    test.notificationEvents.next({
+      kind: 'activated',
+      destination: {
+        accountId: '@me:example.org',
+        roomId: '!missing:example.org',
+        eventId: '$event',
+      },
     });
 
     await vi.waitFor(() =>
@@ -217,6 +223,29 @@ describe('TrinityApplicationSessionAdapter', () => {
         }),
       ),
     );
+    expect(lifetime.closed).toBe(false);
+    lifetime.unsubscribe();
+  });
+
+  it('reports presentation failures without navigating or ending the session', () => {
+    const test = setup();
+    const warnings: unknown[] = [];
+    const lifetime = test.adapter
+      .run()
+      .subscribe((value) => warnings.push(value));
+
+    test.notificationEvents.next({
+      kind: 'warning',
+      diagnostic: { code: 'notification-presentation-failed' },
+    });
+
+    expect(warnings).toContainEqual(
+      expect.objectContaining({
+        scope: 'host',
+        diagnostic: { code: 'notification-presentation-failed' },
+      }),
+    );
+    expect(test.navigate).not.toHaveBeenCalled();
     expect(lifetime.closed).toBe(false);
     lifetime.unsubscribe();
   });

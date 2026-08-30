@@ -8,14 +8,15 @@ import { iconCandidatePaths } from './icons';
 import { focusMainWindow, getMainWindow } from './window';
 
 // Native notifications.
-//   renderer -> main (`ipcMain.on`, one-way): SHOW_NOTIFICATION_CHANNEL asks us
+//   renderer -> main (`ipcMain.handle`, request/response): SHOW_NOTIFICATION_CHANNEL asks us
 //     to display an OS notification. The payload is UNTRUSTED — it is fully
 //     validated/clamped in coerceNotificationPayload before any Notification is
 //     constructed, and only accepted from our own main window's renderer.
 //   main -> renderer: NOTIFICATION_CLICK_CHANNEL forwards the clicked
 //     notification's typed account/room/event destination so the Angular app can
 //     switch accounts if needed and focus the exact event.
-export const SHOW_NOTIFICATION_CHANNEL = 'show-notification';
+export const SHOW_NOTIFICATION_CHANNEL =
+  'trinity:host:v1:notification-presentation:present';
 export const NOTIFICATION_CLICK_CHANNEL = 'notification-click';
 
 // Per-room collapse for desktop notifications: a fresh notification for a room
@@ -59,9 +60,19 @@ function resolveNotificationIcon(): Electron.NativeImage | undefined {
  * window and forwards the typed destination to the renderer over
  * `notification-click`.
  */
-function showOsNotification(payload: NotificationRequest): void {
+type NotificationHostOutcome =
+  | { readonly kind: 'completed' }
+  | { readonly kind: 'unavailable'; readonly reason: 'not-supported' }
+  | {
+      readonly kind: 'rejected';
+      readonly diagnostic: { readonly code: string };
+    };
+
+export function showOsNotification(
+  payload: NotificationRequest,
+): Promise<NotificationHostOutcome> {
   if (!Notification.isSupported()) {
-    return;
+    return Promise.resolve({ kind: 'unavailable', reason: 'not-supported' });
   }
   // Collapse key: the renderer sends `accountId|roomId` as the tag so a room collapses
   // per account (and the same room on two accounts stays two toasts); fall back to
@@ -69,13 +80,21 @@ function showOsNotification(payload: NotificationRequest): void {
   const collapseKey = payload.tag || payload.destination.roomId;
   activeNotifications.get(collapseKey)?.close();
 
-  const icon = resolveNotificationIcon();
-  const notification = new Notification({
-    title: payload.title || 'Trinity',
-    body: payload.body,
-    silent: payload.silent,
-    ...(icon ? { icon } : {}),
-  });
+  let notification: Electron.Notification;
+  try {
+    const icon = resolveNotificationIcon();
+    notification = new Notification({
+      title: payload.title || 'Trinity',
+      body: payload.body,
+      silent: payload.silent,
+      ...(icon ? { icon } : {}),
+    });
+  } catch {
+    return Promise.resolve({
+      kind: 'rejected',
+      diagnostic: { code: 'notification-host-failed' },
+    });
+  }
   activeNotifications.set(collapseKey, notification);
 
   notification.on('click', () => {
@@ -93,15 +112,47 @@ function showOsNotification(payload: NotificationRequest): void {
   // Electron 42 posts via macOS UNUserNotification, which requires a STABLE code
   // signature — unsigned/ad-hoc builds fail silently here with "UNErrorDomain error 1"
   // rather than displaying. Surface it so it's diagnosable instead of mysterious.
-  notification.on('failed', (_event, error) => {
-    console.error(
-      `[notification] display failed (room ${payload.destination.roomId}): ${error}. On macOS this ` +
-        'usually means the app is unsigned or ad-hoc-signed — Electron 42 needs a stable ' +
-        'code signature to post notifications. See docs/platforms/desktop.md (macOS signing).',
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (outcome: NotificationHostOutcome): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      notification.removeListener('show', onShow);
+      notification.removeListener('failed', onFailed);
+      resolve(outcome);
+    };
+    const onShow = (): void => finish({ kind: 'completed' });
+    const onFailed = (_event: Electron.Event, error: string): void => {
+      console.error(
+        `[notification] display failed (room ${payload.destination.roomId}): ${error}. On macOS this ` +
+          'usually means the app is unsigned or ad-hoc-signed — Electron 42 needs a stable ' +
+          'code signature to post notifications. See docs/platforms/desktop.md (macOS signing).',
+      );
+      finish({
+        kind: 'rejected',
+        diagnostic: { code: 'notification-host-failed' },
+      });
+    };
+    const timeout = setTimeout(
+      () =>
+        finish({
+          kind: 'rejected',
+          diagnostic: { code: 'notification-host-timeout' },
+        }),
+      5_000,
     );
+    notification.once('show', onShow);
+    notification.once('failed', onFailed);
+    try {
+      notification.show();
+    } catch {
+      finish({
+        kind: 'rejected',
+        diagnostic: { code: 'notification-host-failed' },
+      });
+    }
   });
-
-  notification.show();
 }
 
 /**
@@ -142,19 +193,26 @@ export function maybeSendStartupTestNotification(): void {
 }
 
 /**
- * Wire the one-way `show-notification` IPC. Treats the channel as an untrusted
+ * Wire the versioned notification-presentation operation. Treats the channel as an untrusted
  * boundary: only accepts messages from our own main window's renderer, and
  * validates the payload before constructing any notification.
  */
 export function registerNotificationIpc(): void {
-  ipcMain.on(SHOW_NOTIFICATION_CHANNEL, (event, raw: unknown) => {
+  ipcMain.handle(SHOW_NOTIFICATION_CHANNEL, (event, raw: unknown) => {
     const win = getMainWindow();
     if (!win || event.sender !== win.webContents) {
-      return;
+      return {
+        kind: 'rejected',
+        diagnostic: { code: 'sender-rejected' },
+      } as const;
     }
     const payload = coerceNotificationPayload(raw);
-    if (payload) {
-      showOsNotification(payload);
+    if (!payload) {
+      return {
+        kind: 'rejected',
+        diagnostic: { code: 'invalid-notification-payload' },
+      } as const;
     }
+    return showOsNotification(payload);
   });
 }

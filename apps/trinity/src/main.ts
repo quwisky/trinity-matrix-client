@@ -16,6 +16,7 @@ import { provideServiceWorker } from '@angular/service-worker';
 import { Capacitor } from '@capacitor/core';
 import { AvatarService, MediaService } from '@trinity/data-access/media';
 import { WORKSPACE_APPLICATION_SURFACE_PRESENTER } from '@trinity/application/workspace';
+import { BADGE_SINK, type BadgeSink } from '@trinity/application/badge';
 import { OidcClientService } from '@trinity/data-access/auth';
 import {
   ACCOUNT_LIFECYCLE_PORT,
@@ -57,6 +58,7 @@ import {
   ApplicationRootComponent,
   ApplicationRuntimeService,
 } from '@trinity/application/runtime';
+import { HostBadgeService } from '@trinity/runtime/host';
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
   type EncryptionDialogLoaders,
@@ -88,6 +90,13 @@ void bootstrapApplication(ApplicationRootComponent, {
     provideCapacitorPreferenceStorage(),
     provideConversationPrivacyPreferences(),
     providePrivacyPreferenceSet(CONVERSATION_PRIVACY_PREFERENCES),
+    {
+      provide: BADGE_SINK,
+      useFactory: (): BadgeSink => {
+        const host = inject(HostBadgeService);
+        return { write: (count) => host.set(count) };
+      },
+    },
     {
       provide: CONVERSATION_MESSAGE_POLICY,
       useFactory: (): ConversationMessagePolicy => {
