@@ -12,7 +12,7 @@ import { PageHeaderComponent } from '@trinity/components/page-header';
 import {
   CryptoSpikeResult,
   CryptoSpikeService,
-} from '@trinity/data-access/crypto';
+} from '@trinity/data-access/matrix-client';
 
 @Component({
   selector: 'trn-home',

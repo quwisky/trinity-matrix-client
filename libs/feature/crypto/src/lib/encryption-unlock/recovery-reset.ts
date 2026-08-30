@@ -1,18 +1,6 @@
-import {
-  UiaCancelledError,
-  UiaUnsupportedError,
-  type PasswordPrompt,
-} from '@trinity/util/matrix';
+import type { PasswordPrompt } from '@trinity/util/matrix';
 import type { TrnAlertService } from '@trinity/components/overlay';
-
-/**
- * The MSC2965 account-management action for resetting cross-signing.
- *
- * Hand-rolled: matrix-js-sdk types `account_management_actions_supported` as a bare
- * `string[]` and ships no enum for its members — `cross_signing_reset` appears nowhere in
- * the SDK. If one is added later, this constant is the single place to swap.
- */
-export const CROSS_SIGNING_RESET_ACTION = 'org.matrix.cross_signing_reset';
+import { TrustOperationError } from '@trinity/data-access/trust';
 
 /** The word the user has to type before an irreversible reset will run. */
 export const RESET_CONFIRMATION_WORD = 'RESET';
@@ -30,37 +18,6 @@ export const RESET_CONSEQUENCES = [
   'Your other devices lose their verified status and must be verified again. They stay signed in.',
   'You get a new recovery key. Save it.',
 ].join('\n\n');
-
-/** The provider metadata this module needs — AuthService's `AccountManagement`. */
-interface ProviderManagement {
-  url: string;
-  actionsSupported: string[];
-}
-
-/**
- * The provider's account-management page, deep-linked to the cross-signing reset when the
- * provider says it supports that action.
- *
- * Returns null when it does not: sending someone to a generic account page that cannot do
- * the thing they came for is worse than telling them plainly that their provider has to.
- */
-export function crossSigningResetUrl(
-  management: ProviderManagement,
-): string | null {
-  if (!management.actionsSupported.includes(CROSS_SIGNING_RESET_ACTION)) {
-    return null;
-  }
-  try {
-    const url = new URL(management.url);
-    url.searchParams.set('action', CROSS_SIGNING_RESET_ACTION);
-    return url.toString();
-  } catch {
-    // The value comes from homeserver-controlled metadata and is only checked for an
-    // `https:` prefix upstream — which `https://` alone satisfies while still throwing
-    // here. An unusable URL is the same answer as an unadvertised action: no deep link.
-    return null;
-  }
-}
 
 /** What the type-to-confirm gate decided. Cancelling and mistyping are both "no". */
 export type ResetIntent = 'confirmed' | 'cancelled' | 'mistyped';
@@ -120,9 +77,8 @@ export interface ResetFailure {
 /**
  * Triage a failed reset into something to show, or null when there is nothing to say.
  *
- * An OIDC-native account cannot answer a password challenge in-app, so the reset has to
- * happen at the identity provider. Only {@link UiaUnsupportedError} means that — a wrong
- * password or a dropped connection must keep the message it already produced.
+ * Trust classifies provider-owned recovery at its boundary; this presentation helper
+ * consumes only that stable recovery meaning and an already-resolved provider link.
  *
  * `readManagement` is swallowed rather than awaited bare: the whole job of this branch is
  * to say something, and a rejected metadata read (a locked keychain, say) must not leave
@@ -130,19 +86,21 @@ export interface ResetFailure {
  */
 export async function describeResetFailure(
   err: unknown,
-  readManagement: () => Promise<ProviderManagement | null>,
+  readProviderUrl: () => Promise<string | null>,
 ): Promise<ResetFailure | null> {
-  if (err instanceof UiaCancelledError) {
+  if (err instanceof TrustOperationError && err.kind === 'cancelled') {
     return null; // they stopped it themselves, before anything was touched
   }
-  if (!(err instanceof UiaUnsupportedError)) {
+  if (
+    !(err instanceof TrustOperationError) ||
+    err.recovery !== 'open-provider'
+  ) {
     return {
       message: err instanceof Error ? err.message : String(err),
       providerUrl: null,
     };
   }
-  const management = await readManagement().catch(() => null);
-  const url = management ? crossSigningResetUrl(management) : null;
+  const url = await readProviderUrl().catch(() => null);
   if (!url) {
     return {
       message:

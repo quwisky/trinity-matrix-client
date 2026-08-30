@@ -8,9 +8,9 @@ import { QrCodeService } from '@trinity/platform-native/qr-code';
 import { fireEvent, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import {
-  VerificationService,
+  TrustVerificationService,
   type VerificationView,
-} from '@trinity/data-access/crypto';
+} from '@trinity/data-access/trust';
 import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { DeviceVerificationPage } from './device-verification.page';
@@ -25,7 +25,6 @@ function view(partial: Partial<VerificationView>): VerificationView {
     incoming: false,
     emoji: null,
     sasConfirmed: false,
-    qrCodeData: null,
     qrShowAvailable: false,
     qrScanAvailable: false,
     cancelReason: null,
@@ -42,7 +41,7 @@ async function renderPage(
   const result = await render(DeviceVerificationPage, {
     inputs: { asModal },
     providers: [
-      MockProvider(VerificationService, { active }),
+      MockProvider(TrustVerificationService, { active }),
       MockProvider(QrCodeService, {
         cameraSupported: true,
         createDataUrl: vi.fn(() => 'data:image/gif;base64,AA=='),
@@ -61,11 +60,11 @@ async function renderPage(
   });
 
   // Every action method returns a cold Observable the page feeds to runWithBusy.
-  const svc = TestBed.inject(VerificationService);
+  const svc = TestBed.inject(TrustVerificationService);
   vi.mocked(svc.startSelfVerification).mockReturnValue(of(undefined));
   vi.mocked(svc.accept).mockReturnValue(of(undefined));
   vi.mocked(svc.startSas).mockReturnValue(of(undefined));
-  vi.mocked(svc.showQr).mockReturnValue(of(undefined));
+  vi.mocked(svc.showQr).mockReturnValue(of(new Uint8ClampedArray([0, 255, 7])));
   vi.mocked(svc.scanQr).mockReturnValue(of(undefined));
   vi.mocked(svc.confirmQr).mockReturnValue(of(undefined));
   vi.mocked(svc.confirmSas).mockReturnValue(of(undefined));
@@ -203,10 +202,12 @@ describe('DeviceVerificationPage', () => {
   });
 
   it('renders the generated code with a privacy warning', async () => {
-    const payload = new Uint8ClampedArray([0, 255, 7]);
-    const { container } = await renderPage(
-      signal(view({ stage: 'qr-shown', qrCodeData: payload })),
-    );
+    const active = signal(view({ stage: 'ready', qrShowAvailable: true }));
+    const { container, fixture } = await renderPage(active);
+
+    fixture.componentInstance.showQr();
+    active.set(view({ stage: 'qr-shown' }));
+    fixture.detectChanges();
 
     expect(
       container.querySelector<HTMLImageElement>('[data-testid="verify-qr"]')
@@ -215,14 +216,13 @@ describe('DeviceVerificationPage', () => {
     expect(container.textContent).toContain('Do not share, screenshot');
   });
 
-  it('overwrites the rendered QR data URL when the sensitive payload clears', async () => {
-    const active = signal(
-      view({
-        stage: 'qr-shown',
-        qrCodeData: new Uint8ClampedArray([0, 255, 7]),
-      }),
-    );
+  it('overwrites the rendered QR data URL when the sensitive presentation closes', async () => {
+    const active = signal(view({ stage: 'ready', qrShowAvailable: true }));
     const { fixture } = await renderPage(active);
+
+    fixture.componentInstance.showQr();
+    active.set(view({ stage: 'qr-shown' }));
+    fixture.detectChanges();
     expect(fixture.componentInstance.qrCodeUrl()).not.toBeNull();
 
     active.set(view({ requestId: 1, stage: 'waiting' }));

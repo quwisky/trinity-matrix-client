@@ -4,7 +4,7 @@ import { registerUser } from './support/account.mts';
 import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers the Security settings section (Settings → Security): it surfaces this account's
-// encryption posture from CryptoService and launches the existing setup/verify flows. A
+// encryption posture from TrustService and launches the existing setup/verify flows. A
 // freshly-registered first device has no secret storage (status `needs-setup`) and an
 // unverified session, so the section offers "Set up recovery" (routes to /encryption/setup)
 // and "Verify with another device". A fresh user keeps the crypto state deterministic.

@@ -1,8 +1,8 @@
 {
   "$schema": "../../../node_modules/nx/schemas/project-schema.json",
-  "name": "data-access-crypto",
+  "name": "data-access-trust",
   "projectType": "library",
-  "sourceRoot": "libs/data-access/crypto/src",
+  "sourceRoot": "libs/data-access/trust/src",
   "prefix": "trn",
   "tags": [
     "type:data-access",

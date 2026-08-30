@@ -7,13 +7,13 @@ import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
-import { CryptoService, type CryptoStatus } from '@trinity/data-access/crypto';
+import { TrustService, type TrustStatus } from '@trinity/data-access/trust';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { SecuritySectionComponent } from './security-section.component';
 
 async function build(
   opts: {
-    status?: CryptoStatus;
+    status?: TrustStatus;
     verified?: boolean;
     backup?: boolean;
   } = {},
@@ -33,8 +33,8 @@ async function build(
   const toastShow = vi.fn();
   const { fixture, container } = await render(SecuritySectionComponent, {
     providers: [
-      MockProvider(CryptoService, {
-        status: signal<CryptoStatus>(opts.status ?? 'ready').asReadonly(),
+      MockProvider(TrustService, {
+        status: signal<TrustStatus>(opts.status ?? 'ready').asReadonly(),
         keyBackupActive: signal(opts.backup ?? false).asReadonly(),
         thisDeviceVerified: signal(opts.verified ?? false).asReadonly(),
         refresh,

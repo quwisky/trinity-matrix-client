@@ -42,9 +42,8 @@ Capability-to-capability dependencies are valid only inside the same named capab
 
 The validator compares this table to the live Nx graph exactly. A new edge or a stale exception fails the check.
 
-| Source           | Target             | Removal issue | Reason                                                               |
-| ---------------- | ------------------ | ------------- | -------------------------------------------------------------------- |
-| `feature-crypto` | `data-access-auth` | #319          | Trust screens currently consume account lifecycle services directly. |
+| Source | Target | Removal issue | Reason |
+| ------ | ------ | ------------- | ------ |
 
 ## Multi-capability migration projects
 
@@ -96,7 +95,6 @@ Every classified library has exactly one explicit primary entrypoint. Additional
 | `components-utils`                | `@trinity/components/utils`                | `./libs/components/utils/src/index.ts`                |
 | `data-access-accounts`            | `@trinity/data-access/accounts`            | `./libs/data-access/accounts/src/index.ts`            |
 | `data-access-auth`                | `@trinity/data-access/auth`                | `./libs/data-access/auth/src/index.ts`                |
-| `data-access-crypto`              | `@trinity/data-access/crypto`              | `./libs/data-access/crypto/src/index.ts`              |
 | `data-access-gif`                 | `@trinity/data-access/gif`                 | `./libs/data-access/gif/src/index.ts`                 |
 | `data-access-homeserver`          | `@trinity/data-access/homeserver`          | `./libs/data-access/homeserver/src/index.ts`          |
 | `data-access-matrix-client`       | `@trinity/data-access/matrix-client`       | `./libs/data-access/matrix-client/src/index.ts`       |
@@ -108,6 +106,7 @@ Every classified library has exactly one explicit primary entrypoint. Additional
 | `data-access-rooms`               | `@trinity/data-access/rooms`               | `./libs/data-access/rooms/src/index.ts`               |
 | `data-access-search`              | `@trinity/data-access/search`              | `./libs/data-access/search/src/index.ts`              |
 | `data-access-timeline`            | `@trinity/data-access/timeline`            | `./libs/data-access/timeline/src/index.ts`            |
+| `data-access-trust`               | `@trinity/data-access/trust`               | `./libs/data-access/trust/src/index.ts`               |
 | `data-access-widgets`             | `@trinity/data-access/widgets`             | `./libs/data-access/widgets/src/index.ts`             |
 | `feature-auth`                    | `@trinity/feature/auth`                    | `./libs/feature/auth/src/index.ts`                    |
 | `feature-crypto`                  | `@trinity/feature/crypto`                  | `./libs/feature/crypto/src/index.ts`                  |
@@ -202,7 +201,6 @@ These are ratcheted snapshots. Any change fails until the measured value and led
 | `components-utils`                | `libs/components/utils`                | role:design-system; capability:design-system                                                                                                    |                   1 |
 | `data-access-accounts`            | `libs/data-access/accounts`            | role:capability; capability:accounts                                                                                                            |                   4 |
 | `data-access-auth`                | `libs/data-access/auth`                | role:capability; capability:accounts                                                                                                            |                   5 |
-| `data-access-crypto`              | `libs/data-access/crypto`              | role:capability; capability:trust                                                                                                               |                   2 |
 | `data-access-gif`                 | `libs/data-access/gif`                 | role:capability; capability:conversations                                                                                                       |                   1 |
 | `data-access-homeserver`          | `libs/data-access/homeserver`          | role:capability; capability:discovery                                                                                                           |                   1 |
 | `data-access-matrix-client`       | `libs/data-access/matrix-client`       | role:adapter; capability:matrix-runtime                                                                                                         |                   4 |
@@ -214,10 +212,11 @@ These are ratcheted snapshots. Any change fails until the measured value and led
 | `data-access-rooms`               | `libs/data-access/rooms`               | role:capability; capability:discovery                                                                                                           |                   2 |
 | `data-access-search`              | `libs/data-access/search`              | role:capability; capability:discovery, capability:conversations, capability:room-library                                                        |                   3 |
 | `data-access-timeline`            | `libs/data-access/timeline`            | role:capability; capability:conversations                                                                                                       |                   5 |
+| `data-access-trust`               | `libs/data-access/trust`               | role:capability; capability:trust                                                                                                               |                   2 |
 | `data-access-widgets`             | `libs/data-access/widgets`             | role:capability; capability:conversations                                                                                                       |                   3 |
 | `dropdown-menu`                   | `libs/spartan/dropdown-menu`           | role:design-system; capability:design-system                                                                                                    |                   1 |
 | `feature-auth`                    | `libs/feature/auth`                    | role:capability; capability:accounts                                                                                                            |                  15 |
-| `feature-crypto`                  | `libs/feature/crypto`                  | role:capability; capability:trust                                                                                                               |                  15 |
+| `feature-crypto`                  | `libs/feature/crypto`                  | role:capability; capability:trust                                                                                                               |                  14 |
 | `feature-rooms`                   | `libs/feature/rooms`                   | role:application; capability:workspace, capability:conversations, capability:room-library, capability:room-administration, capability:discovery |                  40 |
 | `feature-settings`                | `libs/feature/settings`                | role:application; capability:settings                                                                                                           |                  30 |
 | `feature-shell`                   | `libs/feature/shell`                   | role:application; capability:trust                                                                                                              |                   4 |
@@ -242,7 +241,7 @@ These are ratcheted snapshots. Any change fails until the measured value and led
 | `toggle`                          | `libs/spartan/toggle`                  | role:design-system; capability:design-system                                                                                                    |                   1 |
 | `toggle-group`                    | `libs/spartan/toggle-group`            | role:design-system; capability:design-system                                                                                                    |                   2 |
 | `tooltip`                         | `libs/spartan/tooltip`                 | role:design-system; capability:design-system                                                                                                    |                   1 |
-| `trinity`                         | `apps/trinity`                         | role:app; capability:composition                                                                                                                |                  26 |
+| `trinity`                         | `apps/trinity`                         | role:app; capability:composition                                                                                                                |                  27 |
 | `trinity-desktop`                 | `electron`                             | migration exception                                                                                                                             |                   0 |
 | `trinity-e2e`                     | `e2e`                                  | unmanaged tooling/test                                                                                                                          |                   1 |
 | `util-matrix`                     | `libs/util/matrix`                     | role:kernel; capability:shared                                                                                                                  |                   0 |

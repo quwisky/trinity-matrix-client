@@ -3,9 +3,9 @@ import { TestBed } from '@angular/core/testing';
 import { ENCRYPTION_DIALOG_COMPONENTS } from '@trinity/components/encryption-dialog';
 import { TrnDialogService } from '@trinity/components/overlay';
 import {
-  VerificationService,
+  TrustVerificationService,
   type VerificationView,
-} from '@trinity/data-access/crypto';
+} from '@trinity/data-access/trust';
 import {
   MatrixClientService,
   type SyncState,
@@ -26,7 +26,6 @@ function incoming(): VerificationView {
     incoming: true,
     emoji: null,
     sasConfirmed: false,
-    qrCodeData: null,
     qrShowAvailable: false,
     qrScanAvailable: false,
     cancelReason: null,
@@ -44,7 +43,7 @@ async function setup(
   const { fixture } = await render(VerificationHostComponent, {
     providers: [
       MockProvider(MatrixClientService, { syncState }),
-      MockProvider(VerificationService, { active }),
+      MockProvider(TrustVerificationService, { active }),
       MockProvider(TrnDialogService, { open }),
       {
         provide: ENCRYPTION_DIALOG_COMPONENTS,
@@ -61,7 +60,7 @@ async function setup(
     active,
     open,
     close,
-    connect: TestBed.inject(VerificationService).connect,
+    connect: TestBed.inject(TrustVerificationService).connect,
   };
 }
 

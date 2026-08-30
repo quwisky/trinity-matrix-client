@@ -12,7 +12,7 @@ import type { CryptoCallbacks } from 'matrix-js-sdk/lib/crypto-api';
  *
  * One holder per account: each {@link MatrixClientService} `AccountClient` owns its
  * own so a background account's key operation can never read, overwrite, or zero
- * another account's key. CryptoService populates the active account's holder during
+ * another account's key. TrustService populates the active account's holder during
  * the setup/recovery flows; client teardown clears it.
  */
 export class SecretStorageKeyHolder {

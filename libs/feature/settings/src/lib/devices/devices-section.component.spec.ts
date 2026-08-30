@@ -8,7 +8,10 @@ import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
-import { DevicesService, type DeviceInfo } from '@trinity/data-access/crypto';
+import {
+  TrustDevicesService,
+  type DeviceInfo,
+} from '@trinity/data-access/trust';
 import { DevicesSectionComponent } from './devices-section.component';
 
 const CURRENT: DeviceInfo = {
@@ -54,7 +57,7 @@ describe('DevicesSectionComponent', () => {
   function renderSection() {
     return render(DevicesSectionComponent, {
       providers: [
-        MockProvider(DevicesService, {
+        MockProvider(TrustDevicesService, {
           devices,
           list: () => of(devices()),
           rename,

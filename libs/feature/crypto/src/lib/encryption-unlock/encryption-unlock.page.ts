@@ -16,8 +16,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Browser } from '@capacitor/browser';
 import { Observable, finalize, firstValueFrom } from 'rxjs';
-import { CryptoService } from '@trinity/data-access/crypto';
-import { AuthService } from '@trinity/data-access/auth';
+import { TrustService } from '@trinity/data-access/trust';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
 import { PageHeaderComponent } from '@trinity/components/page-header';
 import { TrnButton } from '@trinity/components/button';
@@ -39,7 +38,7 @@ import {
 
 /**
  * New-device unlock (flow B). The account already has secret storage; the user
- * enters their recovery key to trust this device — {@link CryptoService.recoverWithKey}
+ * enters their recovery key to trust this device — {@link TrustService.recoverWithKey}
  * imports the cross-signing secrets and enables key backup. Key-only by design:
  * Trinity provisions a random recovery key (no passphrase) during setup.
  */
@@ -60,8 +59,7 @@ import {
   ],
 })
 export class EncryptionUnlockPage {
-  private readonly crypto = inject(CryptoService);
-  private readonly auth = inject(AuthService);
+  private readonly crypto = inject(TrustService);
   private readonly alert = inject(TrnAlertService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
@@ -209,7 +207,7 @@ export class EncryptionUnlockPage {
   /** Say what went wrong, and open the provider's page when that is the answer. */
   private async onResetFailed(err: unknown): Promise<void> {
     const failure = await describeResetFailure(err, () =>
-      firstValueFrom(this.auth.getAccountManagement()),
+      firstValueFrom(this.crypto.providerResetLink()),
     );
     if (!failure) {
       return;

@@ -87,6 +87,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Verification and recovery now live behind the Trust boundary.** Encryption health, device
+  management, QR/SAS verification, cross-signing, secret storage, recovery reset, and room-key
+  transfer now use `@trinity/data-access/trust` through a lifecycle-free Matrix crypto port.
+  Account connection and crypto-machine startup remain in the Matrix adapter; Trust screens no
+  longer consume authentication lifecycle services directly. All Trust commands are cold RxJS
+  Observables with typed, secret-safe recovery guidance, and QR payload bytes are emitted once to
+  transient page-local presentation state instead of being retained in the application signal graph.
+
 - **Room governance now lives behind Room Administration.** Joined-member summaries, roles,
   moderation, aliases, power-level policy, room configuration, and Conversation pin/redaction
   decisions now share the explicit `@trinity/data-access/room-administration` boundary. Member

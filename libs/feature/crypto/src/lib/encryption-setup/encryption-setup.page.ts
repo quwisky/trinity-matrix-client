@@ -10,7 +10,7 @@ import { Observable } from 'rxjs';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/button';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
-import { CryptoService } from '@trinity/data-access/crypto';
+import { TrustService } from '@trinity/data-access/trust';
 import { type PasswordPrompt } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
 import { PageHeaderComponent } from '@trinity/components/page-header';
@@ -22,7 +22,7 @@ import {
 
 /**
  * First-device encryption setup (flow A). Triggers
- * {@link CryptoService.setUp}, answering its UIA password challenge via an Ionic
+ * {@link TrustService.setUp}, answering its UIA password challenge via an Ionic
  * alert, then displays the generated recovery key once behind an explicit
  * "I've saved it" gate before continuing to the app. The key is held only in a
  * signal for this view and is never persisted.
@@ -40,7 +40,7 @@ import {
   ],
 })
 export class EncryptionSetupPage {
-  private readonly crypto = inject(CryptoService);
+  private readonly crypto = inject(TrustService);
   private readonly router = inject(Router);
   private readonly alert = inject(TrnAlertService);
   private readonly destroyRef = inject(DestroyRef);
@@ -69,7 +69,7 @@ export class EncryptionSetupPage {
    * Whether leaving right now would throw something away.
    *
    * A setup already running is the worse of the two: unsubscribing does not abort it
-   * ({@link CryptoService.setUp} is a promise behind `defer`), so it goes on to provision
+   * ({@link TrustService.setUp} is a promise behind `defer`), so it goes on to provision
    * 4S and a key backup whose only recovery key was emitted to a subscriber that no
    * longer exists — after which Settings → Security reports the account as secured and
    * nothing ever prompts the user to fix it. A key already on screen is the more urgent

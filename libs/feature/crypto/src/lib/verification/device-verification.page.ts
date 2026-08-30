@@ -14,7 +14,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { Observable } from 'rxjs';
-import { VerificationService } from '@trinity/data-access/crypto';
+import { TrustVerificationService } from '@trinity/data-access/trust';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
 import { PageHeaderComponent } from '@trinity/components/page-header';
 import { TrnButton } from '@trinity/components/button';
@@ -25,7 +25,7 @@ import { SasCompareComponent } from './sas-compare.component';
 
 /**
  * Drives an interactive device verification (emoji SAS) against
- * {@link VerificationService}. Renders all stages — request/accept, the SAS emoji
+ * {@link TrustVerificationService}. Renders all stages — request/accept, the SAS emoji
  * comparison, and the done/cancelled outcomes. Used in two chromes: a routed page
  * (`/encryption/verify`, self-initiated) and the content of a modal (an incoming
  * request); `asModal` flips the close/finish behaviour.
@@ -45,7 +45,7 @@ import { SasCompareComponent } from './sas-compare.component';
   ],
 })
 export class DeviceVerificationPage {
-  private readonly verification = inject(VerificationService);
+  private readonly verification = inject(TrustVerificationService);
   private readonly qrCode = inject(QrCodeService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
@@ -75,9 +75,9 @@ export class DeviceVerificationPage {
   private readonly synchronizeQrUi = effect(() => {
     const active = this.active();
     const scanning = this.scanning();
-    this.qrCodeUrl.set(
-      active?.qrCodeData ? this.qrCode.createDataUrl(active.qrCodeData) : null,
-    );
+    if (active?.stage !== 'qr-shown') {
+      this.qrCodeUrl.set(null);
+    }
 
     const heading = this.stageHeading();
     const view = `${active?.requestId ?? 'idle'}:${active?.stage ?? 'idle'}:${scanning}`;
@@ -107,12 +107,18 @@ export class DeviceVerificationPage {
   }
   startSas(): void {
     this.scannerRequestId.set(null);
+    this.qrCodeUrl.set(null);
     this.run(this.verification.startSas());
   }
   showQr(): void {
-    this.run(this.verification.showQr());
+    runWithBusy(this.verification.showQr(), {
+      busy: this.busy,
+      error: this.error,
+      destroyRef: this.destroyRef,
+    }).subscribe((data) => this.qrCodeUrl.set(this.qrCode.createDataUrl(data)));
   }
   hideQr(): void {
+    this.qrCodeUrl.set(null);
     this.verification.hideQr();
   }
   startQrScan(): void {
@@ -124,6 +130,7 @@ export class DeviceVerificationPage {
   }
   scanQr(data: Uint8ClampedArray): void {
     this.scannerRequestId.set(null);
+    this.qrCodeUrl.set(null);
     this.run(this.verification.scanQr(data));
   }
   confirmQr(): void {

@@ -14,7 +14,10 @@ import { TrnBadge } from '@trinity/components/badge';
 import { TrnButton } from '@trinity/components/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import { runWithBusy } from '@trinity/util/ui';
-import { DevicesService, type DeviceInfo } from '@trinity/data-access/crypto';
+import {
+  TrustDevicesService,
+  type DeviceInfo,
+} from '@trinity/data-access/trust';
 import { TrnIconComponent } from '@trinity/components/icon';
 import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
@@ -37,7 +40,7 @@ import { SettingsSectionHeadingComponent } from '../shared/settings-section-head
   ],
 })
 export class DevicesSectionComponent {
-  private readonly devicesSvc = inject(DevicesService);
+  private readonly devicesSvc = inject(TrustDevicesService);
   private readonly alert = inject(TrnAlertService);
   private readonly applicationSurfaces = inject(
     WorkspaceApplicationSurfaceService,

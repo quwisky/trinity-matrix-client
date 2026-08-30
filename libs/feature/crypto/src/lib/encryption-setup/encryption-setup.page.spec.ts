@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { render, screen } from '@trinity/testing';
-import { CryptoService } from '@trinity/data-access/crypto';
+import { TrustService } from '@trinity/data-access/trust';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { Observable, Subject, of, throwError } from 'rxjs';
@@ -17,19 +17,19 @@ interface SetupOptions {
 
 async function setup(options: SetupOptions = {}): Promise<{
   fixture: Awaited<ReturnType<typeof render<EncryptionSetupPage>>>['fixture'];
-  crypto: CryptoService;
+  crypto: TrustService;
   router: Router;
   confirm: Mock;
 }> {
   const confirm = vi.fn().mockResolvedValue(options.confirmLeave ?? true);
   const { fixture } = await render(EncryptionSetupPage, {
     providers: [
-      MockProvider(CryptoService),
+      MockProvider(TrustService),
       MockProvider(Router),
       MockProvider(TrnAlertService, { confirm }),
     ],
   });
-  const crypto = TestBed.inject(CryptoService);
+  const crypto = TestBed.inject(TrustService);
   const router = TestBed.inject(Router);
   return { fixture, crypto, router, confirm };
 }
@@ -37,7 +37,7 @@ async function setup(options: SetupOptions = {}): Promise<{
 /** Get to step 2 — the key is on screen and has not been confirmed saved. */
 function showKey(
   fixture: Awaited<ReturnType<typeof setup>>['fixture'],
-  crypto: CryptoService,
+  crypto: TrustService,
 ): void {
   vi.mocked(crypto.setUp).mockReturnValue(of(KEY));
   fixture.componentInstance.setUp();
@@ -47,13 +47,13 @@ function showKey(
 /**
  * Get to step 1.5 — setup is running and cannot be aborted.
  *
- * `CryptoService.setUp` is `defer(() => from(promise))`, so unsubscribing only detaches
+ * `TrustService.setUp` is `defer(() => from(promise))`, so unsubscribing only detaches
  * the subscriber; the SDK work carries on. A never-settling Observable is the honest
  * model of that: nothing the page does can make it emit.
  */
 function startSetUp(
   fixture: Awaited<ReturnType<typeof setup>>['fixture'],
-  crypto: CryptoService,
+  crypto: TrustService,
 ): void {
   vi.mocked(crypto.setUp).mockReturnValue(
     new Observable<string>(() => undefined),

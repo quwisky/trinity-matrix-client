@@ -2,7 +2,7 @@ import { webcrypto } from 'node:crypto';
 import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider, ngMocks } from 'ng-mocks';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, of, throwError } from 'rxjs';
 import {
   afterAll,
   beforeAll,
@@ -19,7 +19,11 @@ import {
   encodeRecoveryKey,
   type BootstrapCrossSigningOpts,
 } from 'matrix-js-sdk/lib/crypto-api';
-import { CryptoService } from './crypto.service';
+import { TrustService } from './trust.service';
+import {
+  TRUST_PROVIDER_RECOVERY,
+  type TrustProviderManagement,
+} from './trust-provider-recovery.port';
 import {
   MatrixClientService,
   SecretStorageKeyHolder,
@@ -76,6 +80,8 @@ interface CryptoOpts {
    * rotated set it never published, which is the state the repair exists for.
    */
   privatesCachedLocally?: boolean;
+  providerManagement?: TrustProviderManagement | null;
+  providerLookupFails?: boolean;
 }
 
 /** The three seed names `getCrossSigningStatus` reports on. */
@@ -209,10 +215,19 @@ function setup(opts: CryptoOpts = {}) {
   const activeUserId = signal<string | null>(null);
   TestBed.configureTestingModule({
     providers: [
-      CryptoService,
+      TrustService,
       MockProvider(MatrixClientService, {
         activeUserId: activeUserId.asReadonly(),
       }),
+      {
+        provide: TRUST_PROVIDER_RECOVERY,
+        useValue: {
+          accountManagement: () =>
+            opts.providerLookupFails
+              ? throwError(() => new Error('provider unavailable'))
+              : of(opts.providerManagement ?? null),
+        },
+      },
     ],
   });
 
@@ -223,11 +238,11 @@ function setup(opts: CryptoOpts = {}) {
     'instance',
     client as unknown as MatrixClientService['instance'],
   );
-  // CryptoService caches the unlocked 4S key on the ACTIVE account's holder.
+  // TrustService caches the unlocked 4S key on the ACTIVE account's holder.
   ngMocks.stubMember(matrix, 'activeHolder', () => holder);
 
   return {
-    svc: TestBed.inject(CryptoService),
+    svc: TestBed.inject(TrustService),
     keys: holder,
     crypto,
     secretStorage,
@@ -237,8 +252,41 @@ function setup(opts: CryptoOpts = {}) {
   };
 }
 
-describe('CryptoService', () => {
+describe('TrustService', () => {
   beforeEach(() => TestBed.resetTestingModule());
+
+  describe('provider recovery', () => {
+    it('returns a deep link only when the provider advertises cross-signing reset', async () => {
+      const { svc } = setup({
+        providerManagement: {
+          url: 'https://auth.example/account?tenant=acme',
+          actionsSupported: ['org.matrix.cross_signing_reset'],
+        },
+      });
+
+      const url = await firstValueFrom(svc.providerResetLink());
+
+      expect(url).toContain('tenant=acme');
+      expect(url).toContain('action=org.matrix.cross_signing_reset');
+    });
+
+    it('returns null for malformed provider metadata', async () => {
+      const { svc } = setup({
+        providerManagement: {
+          url: 'https://',
+          actionsSupported: ['org.matrix.cross_signing_reset'],
+        },
+      });
+
+      await expect(firstValueFrom(svc.providerResetLink())).resolves.toBeNull();
+    });
+
+    it('keeps provider lookup failures out of the Trust error channel', async () => {
+      const { svc } = setup({ providerLookupFails: true });
+
+      await expect(firstValueFrom(svc.providerResetLink())).resolves.toBeNull();
+    });
+  });
 
   describe('status', () => {
     it('is "ready" when cross-signing and secret storage are both ready', async () => {
@@ -527,10 +575,25 @@ describe('CryptoService', () => {
 
     // Each of these is a route to the measured data loss: the account's backup used to be
     // gone by the time any of them could happen.
-    for (const [label, error] of [
-      ['the user cancels the password prompt', new UiaCancelledError()],
-      ['the server will not take a password', new UiaUnsupportedError()],
-      ['the password is wrong too many times', new Error('Too many attempts.')],
+    for (const [label, error, kind, recovery] of [
+      [
+        'the user cancels the password prompt',
+        new UiaCancelledError(),
+        'cancelled',
+        'none',
+      ],
+      [
+        'the server will not take a password',
+        new UiaUnsupportedError(),
+        'provider-action-required',
+        'open-provider',
+      ],
+      [
+        'the password is wrong too many times',
+        new Error('Too many attempts.'),
+        'server-failure',
+        'retry',
+      ],
     ] as const) {
       it(`destroys nothing when ${label}`, async () => {
         const { svc, crypto, client } = setup({
@@ -540,7 +603,11 @@ describe('CryptoService', () => {
 
         await expect(
           firstValueFrom(svc.resetRecovery(async () => 'pw')),
-        ).rejects.toThrow(error.message);
+        ).rejects.toMatchObject({
+          operation: 'reset-recovery',
+          kind,
+          recovery,
+        });
 
         expect(crypto.bootstrapSecretStorage).not.toHaveBeenCalled();
         expect(crypto.createRecoveryKeyFromPassphrase).not.toHaveBeenCalled();
@@ -562,7 +629,10 @@ describe('CryptoService', () => {
 
       await expect(
         firstValueFrom(svc.resetRecovery(async () => 'pw')),
-      ).rejects.toThrow(UiaCancelledError);
+      ).rejects.toMatchObject({
+        operation: 'reset-recovery',
+        kind: 'cancelled',
+      });
 
       expect(crypto.userHasCrossSigningKeys).toHaveBeenCalledWith(
         '@me:hs',
@@ -583,7 +653,10 @@ describe('CryptoService', () => {
 
       await expect(
         firstValueFrom(svc.resetRecovery(async () => 'pw')),
-      ).rejects.toThrow(UiaCancelledError);
+      ).rejects.toMatchObject({
+        operation: 'reset-recovery',
+        kind: 'cancelled',
+      });
     });
 
     it('still recomputes status when the destructive tail fails', async () => {
@@ -598,7 +671,12 @@ describe('CryptoService', () => {
 
       await expect(
         firstValueFrom(svc.resetRecovery(async () => 'pw')),
-      ).rejects.toThrow('network down');
+      ).rejects.toMatchObject({
+        operation: 'reset-recovery',
+        kind: 'partial-update',
+        recovery: 'review-security-settings',
+        partial: true,
+      });
 
       expect(svc.status()).toBe('ready'); // recomputed, not left stale at 'unknown'
     });
@@ -619,7 +697,10 @@ describe('CryptoService', () => {
 
       await expect(
         firstValueFrom(svc.resetRecovery(async () => 'pw')),
-      ).rejects.toThrow(UiaCancelledError);
+      ).rejects.toMatchObject({
+        operation: 'reset-recovery',
+        kind: 'cancelled',
+      });
 
       expect(crypto.userHasCrossSigningKeys).toHaveBeenCalledWith(
         '@me:hs',
@@ -645,7 +726,10 @@ describe('CryptoService', () => {
           .mockReturnValue(new Promise(() => undefined)); // never settles
 
         const failure = firstValueFrom(svc.resetRecovery(async () => 'pw'));
-        const assertion = expect(failure).rejects.toThrow(UiaCancelledError);
+        const assertion = expect(failure).rejects.toMatchObject({
+          operation: 'reset-recovery',
+          kind: 'cancelled',
+        });
         await vi.advanceTimersByTimeAsync(15_000);
         await assertion;
       } finally {
@@ -661,7 +745,11 @@ describe('CryptoService', () => {
 
       await expect(
         firstValueFrom(svc.resetRecovery(async () => 'pw')),
-      ).rejects.toBeInstanceOf(UiaUnsupportedError);
+      ).rejects.toMatchObject({
+        operation: 'reset-recovery',
+        kind: 'provider-action-required',
+        recovery: 'open-provider',
+      });
       expect(secretStorage.setDefaultKeyId).not.toHaveBeenCalled();
       expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
       expect(crypto.bootstrapSecretStorage).not.toHaveBeenCalled();
@@ -687,7 +775,10 @@ describe('CryptoService', () => {
 
       await expect(
         firstValueFrom(svc.resetRecovery(async () => null)),
-      ).rejects.toBeInstanceOf(UiaCancelledError);
+      ).rejects.toMatchObject({
+        operation: 'reset-recovery',
+        kind: 'cancelled',
+      });
 
       expect(secretStorage.setDefaultKeyId).not.toHaveBeenCalled();
       expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
@@ -701,9 +792,13 @@ describe('CryptoService', () => {
       client.deleteMultipleDevices.mockRejectedValue(uiaError('probe'));
       const prompt = vi.fn().mockResolvedValue('wrong');
 
-      await expect(firstValueFrom(svc.resetRecovery(prompt))).rejects.toThrow(
-        /too many/i,
-      );
+      await expect(
+        firstValueFrom(svc.resetRecovery(prompt)),
+      ).rejects.toMatchObject({
+        operation: 'reset-recovery',
+        kind: 'permission-denied',
+        recovery: 'retry',
+      });
 
       expect(prompt).toHaveBeenCalledTimes(3);
       expect(secretStorage.setDefaultKeyId).not.toHaveBeenCalled();
@@ -824,7 +919,10 @@ describe('CryptoService', () => {
 
       await expect(
         firstValueFrom(svc.resetRecovery(prompt)),
-      ).rejects.toBeInstanceOf(UiaCancelledError);
+      ).rejects.toMatchObject({
+        operation: 'reset-recovery',
+        kind: 'cancelled',
+      });
 
       expect(order).toEqual([
         'pointer:null',
@@ -935,7 +1033,10 @@ describe('CryptoService', () => {
           });
 
         const failure = firstValueFrom(svc.resetRecovery(async () => 'pw'));
-        const assertion = expect(failure).rejects.toThrow(UiaCancelledError);
+        const assertion = expect(failure).rejects.toMatchObject({
+          operation: 'reset-recovery',
+          kind: 'cancelled',
+        });
         await vi.advanceTimersByTimeAsync(30_000);
         await assertion;
 
@@ -973,7 +1074,11 @@ describe('CryptoService', () => {
         secretStorage.getDefaultKeyId.mockResolvedValue('old-key');
 
         const failure = firstValueFrom(svc.resetRecovery(async () => 'pw'));
-        const assertion = expect(failure).rejects.toThrow(/timed out/i);
+        const assertion = expect(failure).rejects.toMatchObject({
+          operation: 'reset-recovery',
+          kind: 'server-failure',
+          recovery: 'retry',
+        });
         await vi.advanceTimersByTimeAsync(30_000);
         await assertion;
 
@@ -1011,7 +1116,11 @@ describe('CryptoService', () => {
           .mockResolvedValue({});
 
         const failure = firstValueFrom(svc.resetRecovery(async () => 'pw'));
-        const assertion = expect(failure).rejects.toThrow(/timed out/i);
+        const assertion = expect(failure).rejects.toMatchObject({
+          operation: 'reset-recovery',
+          kind: 'server-failure',
+          recovery: 'retry',
+        });
         await vi.advanceTimersByTimeAsync(60_000);
         await assertion;
 
@@ -1041,7 +1150,11 @@ describe('CryptoService', () => {
         );
 
         const failure = firstValueFrom(svc.resetRecovery(async () => 'pw'));
-        const assertion = expect(failure).rejects.toThrow(/timed out/i);
+        const assertion = expect(failure).rejects.toMatchObject({
+          operation: 'reset-recovery',
+          kind: 'server-failure',
+          recovery: 'retry',
+        });
         await vi.advanceTimersByTimeAsync(30_000);
         await assertion;
 
@@ -1117,7 +1230,10 @@ describe('CryptoService', () => {
           .mockReturnValue(new Promise(() => undefined)); // never settles
 
         const failure = firstValueFrom(svc.resetRecovery(async () => 'pw'));
-        const assertion = expect(failure).rejects.toThrow(UiaCancelledError);
+        const assertion = expect(failure).rejects.toMatchObject({
+          operation: 'reset-recovery',
+          kind: 'cancelled',
+        });
         await vi.advanceTimersByTimeAsync(15_000);
         await assertion;
 
@@ -1147,9 +1263,12 @@ describe('CryptoService', () => {
         const failure = firstValueFrom(svc.resetRecovery(async () => 'pw'));
         // Not "timed out": a timeout here cannot undo anything the tail already did, so
         // the user has to be told where to look rather than just that it failed.
-        const assertion = expect(failure).rejects.toThrow(
-          /may have completed only partly.*Settings/s,
-        );
+        const assertion = expect(failure).rejects.toMatchObject({
+          operation: 'reset-recovery',
+          kind: 'partial-update',
+          recovery: 'review-security-settings',
+          partial: true,
+        });
         await vi.advanceTimersByTimeAsync(200_000);
         await assertion;
 
@@ -1392,7 +1511,11 @@ describe('CryptoService', () => {
 
         await expect(
           firstValueFrom(svc.recoverWithKey(VALID_KEY)),
-        ).rejects.toThrow(/unrecognised shape/i);
+        ).rejects.toMatchObject({
+          operation: 'recover',
+          kind: 'server-failure',
+          recovery: 'retry',
+        });
         expect(crypto.importSecretsBundle).not.toHaveBeenCalled();
       });
 
@@ -1409,7 +1532,11 @@ describe('CryptoService', () => {
 
         await expect(
           firstValueFrom(svc.recoverWithKey(VALID_KEY)),
-        ).rejects.toThrow(/SecretsBundle import\/export is missing/i);
+        ).rejects.toMatchObject({
+          operation: 'recover',
+          kind: 'server-failure',
+          recovery: 'retry',
+        });
       });
     });
 
@@ -1482,24 +1609,35 @@ describe('CryptoService', () => {
     it('propagates a bootstrap failure to the caller', async () => {
       const { svc, crypto } = setup({});
       crypto.bootstrapSecretStorage.mockRejectedValue(new Error('boom'));
-      await expect(firstValueFrom(svc.setUp(async () => 'pw'))).rejects.toThrow(
-        /boom/,
-      );
+      await expect(
+        firstValueFrom(svc.setUp(async () => 'pw')),
+      ).rejects.toMatchObject({
+        operation: 'setup',
+        kind: 'server-failure',
+        recovery: 'retry',
+      });
     });
   });
 
   describe('lifecycle and resilience', () => {
-    it('does not reject when a crypto call fails during refresh', async () => {
+    it('emits a typed failure when an explicit refresh cannot read crypto', async () => {
       const { svc, crypto } = setup({ defaultKeyId: 'k' });
+      await firstValueFrom(svc.refresh());
+      expect(svc.status()).toBe('needs-recovery');
+
       // Model a real async SDK failure: a pending promise that rejects on the next
       // tick. `mockRejectedValue` returns a *synchronously* pre-rejected promise,
       // which trips zone.js's unhandled-rejection tracker in the window before
-      // `Promise.all` attaches its handler — logging noise for an error the service
-      // provably swallows (the assertion below).
+      // `Promise.all` attaches its handler.
       crypto.isCrossSigningReady.mockImplementation(async () => {
         throw new Error('transient');
       });
-      await expect(firstValueFrom(svc.refresh())).resolves.toBeUndefined();
+      await expect(firstValueFrom(svc.refresh())).rejects.toMatchObject({
+        operation: 'refresh-health',
+        kind: 'server-failure',
+        recovery: 'retry',
+      });
+      expect(svc.status()).toBe('needs-recovery');
     });
 
     it('wires crypto listeners once and is idempotent', () => {
@@ -1736,7 +1874,11 @@ describe('CryptoService', () => {
 
       await expect(
         firstValueFrom(svc.importRoomKeys(armored, 'wrong')),
-      ).rejects.toThrow(/incorrect passphrase/i);
+      ).rejects.toMatchObject({
+        operation: 'import-keys',
+        kind: 'invalid-secret',
+        recovery: 'reenter-secret',
+      });
       expect(crypto.importRoomKeysAsJson).not.toHaveBeenCalled();
     });
 

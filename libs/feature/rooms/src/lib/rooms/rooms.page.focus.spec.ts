@@ -8,9 +8,9 @@ import {
   RoomMembersService,
 } from '@trinity/data-access/room-administration';
 import {
-  VerificationService,
-  CryptoService,
-} from '@trinity/data-access/crypto';
+  TrustVerificationService,
+  TrustService,
+} from '@trinity/data-access/trust';
 import {
   InvitesService,
   MixedInvitesService,
@@ -178,7 +178,7 @@ describe('RoomsPage rendered right-panel focus', () => {
         MockProvider(MatrixClientService, {
           activeUserId: signal<string | null>('@me:hs'),
         }),
-        MockProvider(CryptoService, { connect: vi.fn() }),
+        MockProvider(TrustService, { connect: vi.fn() }),
         MockProvider(PresenceService, {
           connect: vi.fn(),
           presenceFor: () => signal('offline'),
@@ -187,7 +187,7 @@ describe('RoomsPage rendered right-panel focus', () => {
         MockProvider(RoomMembersService, { connect: vi.fn() }),
         MockProvider(PushService, { register: () => of(undefined) }),
         MockProvider(RoomModerationService),
-        MockProvider(VerificationService),
+        MockProvider(TrustVerificationService),
         MockProvider(IgnoredUsersService, { isIgnored: () => false }),
         MockProvider(TrnAlertService),
         MockProvider(TrnToastService),

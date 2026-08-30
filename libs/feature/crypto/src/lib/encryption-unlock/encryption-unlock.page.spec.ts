@@ -1,10 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
 import { render, screen } from '@trinity/testing';
-import { CryptoService } from '@trinity/data-access/crypto';
-import { AuthService } from '@trinity/data-access/auth';
+import { TrustOperationError, TrustService } from '@trinity/data-access/trust';
 import { TrnDialogRef, TrnAlertService } from '@trinity/components/overlay';
-import { UiaCancelledError, UiaUnsupportedError } from '@trinity/util/matrix';
 import { Browser } from '@capacitor/browser';
 import { MockProvider } from 'ng-mocks';
 import { Observable, of, throwError } from 'rxjs';
@@ -14,19 +12,19 @@ import { EncryptionUnlockPage } from './encryption-unlock.page';
 vi.mock('@capacitor/browser', () => ({ Browser: { open: vi.fn() } }));
 
 interface RenderOptions {
-  /** Value `CryptoService.recoverWithKey` returns when invoked. */
+  /** Value `TrustService.recoverWithKey` returns when invoked. */
   recover?: Observable<void>;
   /** `returnTo` query param on the routed page. */
   returnTo?: string | null;
   asModal?: boolean;
   /** Arrive with the reset already offered (Settings' lost-key door). */
   offerReset?: boolean;
-  /** What `CryptoService.resetRecovery` returns. */
+  /** What `TrustService.resetRecovery` returns. */
   reset?: Observable<string>;
   /** What the user types into the type-to-confirm prompt (null = cancelled). */
   typed?: string | null;
-  /** What `AuthService.getAccountManagement` resolves to. */
-  management?: { url: string; actionsSupported: string[] } | null;
+  /** What `TrustService.providerResetLink` resolves to. */
+  providerUrl?: string | null;
   /** Make the provider lookup reject, as a locked keychain would. */
   managementFails?: boolean;
   /** What the "are you sure you want to close" guard resolves to. */
@@ -42,7 +40,7 @@ async function renderPage(options: RenderOptions = {}) {
     offerReset,
     reset,
     typed,
-    management = null,
+    providerUrl = null,
     managementFails = false,
     confirmClose = true,
   } = options;
@@ -57,7 +55,7 @@ async function renderPage(options: RenderOptions = {}) {
       ...(offerReset === undefined ? {} : { offerReset }),
     },
     providers: [
-      MockProvider(CryptoService),
+      MockProvider(TrustService),
       MockProvider(Router),
       MockProvider(ActivatedRoute, {
         snapshot: {
@@ -68,28 +66,43 @@ async function renderPage(options: RenderOptions = {}) {
       } as never),
       MockProvider(TrnDialogRef),
       MockProvider(TrnAlertService, { prompt, confirm }),
-      MockProvider(AuthService, {
-        getAccountManagement: () =>
-          managementFails
-            ? throwError(() => new Error('keychain locked'))
-            : of(management),
-      }),
     ],
   });
 
-  const crypto = TestBed.inject(CryptoService);
+  const crypto = TestBed.inject(TrustService);
   const router = TestBed.inject(Router);
   const dialogRef = TestBed.inject(TrnDialogRef);
   if (recover) {
     vi.mocked(crypto.recoverWithKey).mockReturnValue(recover);
   }
   vi.mocked(crypto.resetRecovery).mockReturnValue(reset ?? of('EsTNew'));
+  vi.mocked(crypto.providerResetLink).mockReturnValue(
+    managementFails
+      ? throwError(() => new Error('keychain locked'))
+      : of(providerUrl),
+  );
 
   return { ...result, crypto, router, dialogRef, prompt, confirm };
 }
 
 /** Let the reset's async provider lookup settle (firstValueFrom + its own awaits). */
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+const providerActionRequired = () =>
+  new TrustOperationError(
+    'reset-recovery',
+    'provider-action-required',
+    'open-provider',
+    'Your identity provider must complete this Trust change.',
+  );
+
+const resetCancelled = () =>
+  new TrustOperationError(
+    'reset-recovery',
+    'cancelled',
+    'none',
+    'The Trust change was cancelled.',
+  );
 
 /** Queries for the modal-only Close control. */
 function closeButton(): HTMLElement | null {
@@ -251,11 +264,9 @@ describe('EncryptionUnlockPage', () => {
       // An OIDC-native account cannot answer a password challenge in-app.
       const { fixture } = await renderPage({
         typed: 'RESET',
-        reset: throwError(() => new UiaUnsupportedError()),
-        management: {
-          url: 'https://op.example/account',
-          actionsSupported: ['org.matrix.cross_signing_reset'],
-        },
+        reset: throwError(providerActionRequired),
+        providerUrl:
+          'https://op.example/account?action=org.matrix.cross_signing_reset',
       });
 
       await fixture.componentInstance.resetRecovery();
@@ -271,8 +282,8 @@ describe('EncryptionUnlockPage', () => {
       // than telling them their provider has to.
       const { fixture } = await renderPage({
         typed: 'RESET',
-        reset: throwError(() => new UiaUnsupportedError()),
-        management: { url: 'https://op.example/account', actionsSupported: [] },
+        reset: throwError(providerActionRequired),
+        providerUrl: null,
       });
 
       await fixture.componentInstance.resetRecovery();
@@ -307,11 +318,9 @@ describe('EncryptionUnlockPage', () => {
       // so on web it is blocked — the message alone would be a dead end.
       const { fixture } = await renderPage({
         typed: 'RESET',
-        reset: throwError(() => new UiaUnsupportedError()),
-        management: {
-          url: 'https://auth.example/account',
-          actionsSupported: ['org.matrix.cross_signing_reset'],
-        },
+        reset: throwError(providerActionRequired),
+        providerUrl:
+          'https://auth.example/account?action=org.matrix.cross_signing_reset',
       });
 
       await fixture.componentInstance.resetRecovery();
@@ -330,11 +339,9 @@ describe('EncryptionUnlockPage', () => {
       // things: "your provider has to do this" and "that recovery key is incorrect".
       const { fixture } = await renderPage({
         typed: 'RESET',
-        reset: throwError(() => new UiaUnsupportedError()),
-        management: {
-          url: 'https://auth.example/account',
-          actionsSupported: ['org.matrix.cross_signing_reset'],
-        },
+        reset: throwError(providerActionRequired),
+        providerUrl:
+          'https://auth.example/account?action=org.matrix.cross_signing_reset',
         recover: throwError(() => new Error('That recovery key is incorrect.')),
       });
       await fixture.componentInstance.resetRecovery();
@@ -358,11 +365,8 @@ describe('EncryptionUnlockPage', () => {
     it('offers no link when the provider advertises no reset action', async () => {
       const { fixture } = await renderPage({
         typed: 'RESET',
-        reset: throwError(() => new UiaUnsupportedError()),
-        management: {
-          url: 'https://auth.example/account',
-          actionsSupported: [],
-        },
+        reset: throwError(providerActionRequired),
+        providerUrl: null,
       });
 
       await fixture.componentInstance.resetRecovery();
@@ -566,7 +570,7 @@ describe('EncryptionUnlockPage', () => {
       // failure worth reporting back at the user.
       const { fixture } = await renderPage({
         typed: 'RESET',
-        reset: throwError(() => new UiaCancelledError()),
+        reset: throwError(resetCancelled),
       });
 
       await fixture.componentInstance.resetRecovery();
@@ -581,7 +585,7 @@ describe('EncryptionUnlockPage', () => {
       // leave the user staring at a screen that appears to have done nothing.
       const { fixture } = await renderPage({
         typed: 'RESET',
-        reset: throwError(() => new UiaUnsupportedError()),
+        reset: throwError(providerActionRequired),
         managementFails: true,
       });
 

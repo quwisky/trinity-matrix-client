@@ -8,7 +8,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/button';
-import { CryptoService } from '@trinity/data-access/crypto';
+import { TrustService } from '@trinity/data-access/trust';
 import { BannerComponent } from '@trinity/components/banner';
 import { TrnIconComponent } from '@trinity/components/icon';
 
@@ -23,13 +23,13 @@ interface BannerAction {
 
 /**
  * Non-blocking prompt shown in the rooms shell when this device's encryption
- * isn't ready. Reads {@link CryptoService.status}: `needs-setup` offers first-time
+ * isn't ready. Reads {@link TrustService.status}: `needs-setup` offers first-time
  * setup; `needs-recovery` offers both ways to trust this device — the recovery key
  * or verifying with another signed-in session. Renders nothing when crypto is
  * `ready` or still `unknown`. Its status is the ACTIVE account's, re-projected on an
  * account switch, so the prompt always reflects the account in view. Lives in
  * feature-rooms (not feature-crypto) because the module boundary forbids
- * feature→feature dependencies; it depends only on `@trinity/data-access/crypto`.
+ * feature→feature dependencies; it depends only on `@trinity/data-access/trust`.
  */
 @Component({
   selector: 'trn-encryption-banner',
@@ -39,7 +39,7 @@ interface BannerAction {
   templateUrl: './encryption-banner.component.html',
 })
 export class EncryptionBannerComponent {
-  private readonly crypto = inject(CryptoService);
+  private readonly crypto = inject(TrustService);
   private readonly applicationSurfaces = inject(
     WorkspaceApplicationSurfaceService,
   );
