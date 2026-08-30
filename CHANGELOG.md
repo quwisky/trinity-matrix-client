@@ -87,6 +87,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Startup now runs through one explicit Application Runtime.** Host negotiation, preference
+  hydration, Account restoration, optional session capabilities, Workspace restoration and final
+  readiness run in one ordered cold RxJS workflow. Required failures expose executable typed
+  recovery, while push, badge and update failures remain visible, non-blocking warnings. The
+  runtime owns deep links, Back handling, route focus, badge projection, space-order hydration,
+  update watching and Workspace surface registrations until explicit shutdown, and can restart without
+  retaining subscriptions. The app entrypoint now supplies the production adapter, starts the
+  runtime, and holds initial Router navigation until startup reaches the Workspace stage.
+
 - **Privacy settings now come from capability-owned typed preferences.** Conversations declares
   the ownership, installation scope, defaults, validation, versioned migration, sensitivity,
   storage/export policy, and toggle editors for read receipts and link previews. A shared

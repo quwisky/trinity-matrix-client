@@ -1,0 +1,57 @@
+<div class="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
+  @if (booting()) {
+    <div
+      class="flex flex-1 flex-col items-center justify-center gap-4"
+      role="status"
+      aria-live="polite"
+      data-testid="app-booting"
+    >
+      <trn-spinner />
+      <span class="text-sm text-[var(--trinity-text-muted)]">
+        Restoring your session…
+      </span>
+    </div>
+  } @else if (blocked(); as blockedState) {
+    <main
+      class="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center"
+      role="alert"
+      data-testid="app-startup-blocked"
+    >
+      <h1 class="text-xl font-semibold">Trinity could not finish starting</h1>
+      <p class="max-w-md text-sm text-[var(--trinity-text-muted)]">
+        {{ recoveryAction().detail }}
+      </p>
+      <button
+        class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+        type="button"
+        data-testid="app-startup-recovery"
+        [attr.data-recovery]="blockedState.failure.recovery"
+        (click)="recover()"
+      >
+        {{ recoveryAction().label }}
+      </button>
+      <span class="sr-only">
+        Startup stage: {{ blockedState.failure.stage }}. Recovery:
+        {{ blockedState.failure.recovery }}.
+      </span>
+    </main>
+  } @else {
+    @if (warnings().length > 0) {
+      <aside
+        class="border-b border-border bg-muted px-4 py-3 text-sm text-foreground"
+        role="status"
+        data-testid="app-runtime-warnings"
+      >
+        <p class="font-medium">Trinity started with limited capabilities.</p>
+        <ul class="mt-1 list-disc pl-5 text-[var(--trinity-text-muted)]">
+          @for (message of warnings(); track message) {
+            <li>{{ message }}</li>
+          }
+        </ul>
+      </aside>
+    }
+    <router-outlet></router-outlet>
+    <trn-verification-host />
+  }
+</div>
+<trn-toaster />

@@ -109,6 +109,11 @@ libs/
   platform-native/    @trinity/platform-native — Capacitor/native capabilities
                       (session/secure storage, preferences, theme/status-bar, launcher
                       badge, desktop bridge, error handler)  [type:platform]
+  application/
+    runtime/          @trinity/application/runtime — ordered startup, typed recovery,
+                      root presentation and session ownership  [type:feature]
+    workspace/        @trinity/application/workspace — semantic destinations, surfaces
+                      and Back ordering  [type:data-access]
   data-access/
     matrix-client/    @trinity/data-access/matrix-client — MatrixClient lifecycle +
                       4S key service; the client/session foundation  [type:data-access]
@@ -116,8 +121,7 @@ libs/
                       pinned,search,notifications,auth,gif} — one lib per Matrix domain
                       (read models + write actions + guards)  [type:data-access]
   feature/
-    shell/            @trinity/feature/shell — app shell (AppComponent, verification
-                      host, nav-focus) + the dev-only /spike page  [type:feature]
+    shell/            @trinity/feature/shell — lazy dev-only /spike page  [type:feature]
     auth/             @trinity/feature/auth — login + SSO callback  [type:feature]
     rooms/            @trinity/feature/rooms — Discord-style shell (server rail =
                       Spaces, channel list, members) + message timeline (list,

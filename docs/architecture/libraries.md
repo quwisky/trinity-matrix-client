@@ -63,6 +63,7 @@ all, so its own correctness is only ever exercised through the specs that import
 | Library                      | Alias                            | Tags                                                                           | Purpose                                                                                                                                                                                                                              |
 | ---------------------------- | -------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `libs/application/workspace` | `@trinity/application/workspace` | `type:data-access`, `scope:matrix`, `role:application`, `capability:workspace` | Typed application, Room, and compact-Conversation surface identities; the fixed semantic Back registry; and the cold application-surface presentation port whose Router/platform/UI adapter is supplied only by the composition root |
+| `libs/application/runtime`   | `@trinity/application/runtime`   | `type:feature`, `scope:matrix`, `role:application`, `capability:runtime`       | Ordered six-stage startup, executable typed recovery and visible optional warnings, explicit recover/stop/restart, the presentation-only application root, and ownership of one session-long adapter stream                          |
 
 ## Platform library
 
@@ -116,7 +117,7 @@ Screens and pages. `type:feature` may not depend on another `type:feature`; see
 
 | Library                 | Alias                       | Tags                           | Purpose                                                                                                                                                                                                                                           |
 | ----------------------- | --------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `libs/feature/shell`    | `@trinity/feature/shell`    | `type:feature`, `scope:matrix` | The application shell: `AppComponent`, `VerificationHostComponent`, `NavigationFocusService`                                                                                                                                                      |
+| `libs/feature/shell`    | `@trinity/feature/shell`    | `type:feature`, `scope:matrix` | The lazy development-only crypto spike page                                                                                                                                                                                                       |
 | `libs/feature/auth`     | `@trinity/feature/auth`     | `type:feature`, `scope:matrix` | `LoginPage` and `SsoCallbackPage`                                                                                                                                                                                                                 |
 | `libs/feature/crypto`   | `@trinity/feature/crypto`   | `type:feature`, `scope:matrix` | `EncryptionSetupPage`, `EncryptionUnlockPage`, `DeviceVerificationPage`                                                                                                                                                                           |
 | `libs/feature/rooms`    | `@trinity/feature/rooms`    | `type:feature`, `scope:matrix` | The entire chat surface, across 44 component directories: the rooms shell, sidebar and server rail, message list, composer, threads, reactions, polls, media, search, member and space management                                                 |
@@ -178,17 +179,16 @@ among it — the overlay adapters, the icon and the emoji picker — now lives i
 Regenerating or adding Helm components goes through the CLI; see
 [UI and theming](ui-and-theming.md).
 
-## The two secondary entry points
+## The secondary entry point
 
-Almost every alias points at a library's barrel, its `src/index.ts`. Two point at a single file
-instead, and both exist for a bundling reason rather than a stylistic one.
+Almost every alias points at a library's barrel, its `src/index.ts`. One points at a single file
+instead, for host-capability containment rather than stylistic preference.
 
 | Alias                              | Target                                            | Why it bypasses the barrel                                                                                                                        |
 | ---------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@trinity/feature/shell/home-page` | `libs/feature/shell/src/lib/home.page.ts`         | `main.ts` imports the shell barrel eagerly, so re-exporting the development-only E2EE spike would ship its crypto harness in production.          |
 | `@trinity/platform-native/qr-code` | `libs/platform-native/src/lib/qr-code.service.ts` | The QR scanner consumes one host operation without importing the broad platform barrel; #312 replaces it with an operation-based host capability. |
 
-The architecture contract records both exceptions. Shiki is no longer one: its highlighter lives
+The architecture contract records this exception. Shiki is no longer one: its highlighter lives
 inside the lazy Conversations feature and `rooms.page.ts` imports it relatively, so no public alias
 can pull the grammars into the eager bundle.
 

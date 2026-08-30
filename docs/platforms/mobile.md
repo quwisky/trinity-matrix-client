@@ -113,8 +113,8 @@ carries five things worth knowing about.
 `android:scheme="eu.qwky.trinity"` with no `android:host`. Two callback shapes have to
 match: legacy SSO redirects to `eu.qwky.trinity://sso-callback`, while OIDC uses the RFC
 8252 section 7.1 private-use form `eu.qwky.trinity:/sso-callback`, which has no authority
-for a host to match against. `AppComponent.handleDeepLink()` checks the path and the
-parameters before acting on anything that arrives.
+for a host to match against. The Application Runtime adapter checks the path and parameters before
+acting on anything that arrives, and owns the host subscription until shutdown.
 
 **An FCM default notification channel.** The `default_notification_channel_id` meta-data
 names `messages`, a channel created at runtime by `PushService`. Android O and later drop

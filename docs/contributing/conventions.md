@@ -133,7 +133,7 @@ An alias is `@trinity/` followed by the library's path under `libs/`:
 `@trinity/util/matrix`, `libs/components/icon` is `@trinity/components/icon`. The generated Helm packages are the
 single exception — `libs/spartan/tooltip` is `@trinity/helm/tooltip`.
 
-A new library goes inside the directory for its layer, `libs/data-access/`,
+A new library goes inside the directory for its layer, `libs/application/`, `libs/data-access/`,
 `libs/feature/` or `libs/util/`, and gets the matching alias in `tsconfig.base.json`. Its
 Nx **project name** stays flat and hyphenated — `data-access-rooms`, not
 `data-access/rooms` — so the string you pass to `nx test` is a third one; see
@@ -144,16 +144,12 @@ project's `project.json`. The ladder and the reasoning behind it are in
 [Libraries](../architecture/libraries.md); the rule contributors hit most often is
 that a `type:feature` library may never import another `type:feature` library.
 
-One barrel is deliberately incomplete:
-
-- `libs/feature/shell/src/index.ts` does not re-export `home.page`. That barrel is
-  eagerly imported by `main.ts` for `AppComponent`, so anything in it ships in the
-  eager chunk. The page is reached through the `@trinity/feature/shell/home-page`
-  alias instead.
-  The Shiki highlighter needs no public entrypoint: it lives in
-  `libs/feature/rooms/src/lib/message-presentation/` and the lazy rooms page imports it
-  relatively. Keep it there; moving it behind an eagerly imported barrel ships the grammar
-  payload in the initial bundle.
+The development-only `/spike` page is exported from `@trinity/feature/shell`, which production
+startup never imports; its route remains a dynamic import. The Shiki highlighter needs no public
+entrypoint: it lives in
+`libs/feature/rooms/src/lib/message-presentation/` and the lazy rooms page imports it
+relatively. Keep it there; moving it behind an eagerly imported barrel ships the grammar
+payload in the initial bundle.
 
 ## Styles
 

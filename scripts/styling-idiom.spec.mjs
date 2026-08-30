@@ -58,6 +58,7 @@ const componentStylesheets = stylesheets.filter(
  * a sixty-second stylesheet is a visible line in a shared file rather than an invisible default.
  */
 const LEDGER = [
+  'libs/application/runtime/src/lib/application-root/application-root.component.scss',
   'libs/components/banner/src/lib/banner.component.scss',
   'libs/components/emoji-picker/src/lib/trn-emoji-picker/trn-emoji-picker.component.scss',
   'libs/components/field/src/lib/field-label/trn-field-label.component.scss',

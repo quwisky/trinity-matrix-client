@@ -132,10 +132,10 @@ files from local storage and must not layer a second cache over them, which is w
 condition in `main.ts` checks Capacitor _and_ the Electron marker. See
 [Platforms](index.md#detecting-the-platform).
 
-`AppComponent` subscribes to `SwUpdate.unrecoverable` and reloads the page when it fires,
-recovering from a cache that storage eviction has left unusable.
+The production Application Runtime adapter owns `SwUpdate.unrecoverable` and reloads the page
+when it fires, recovering from a cache that storage eviction has left unusable.
 
-It also watches `versionUpdates` for `VERSION_READY` and offers a Reload toast that calls
+The same session-owned stream watches `versionUpdates` for `VERSION_READY` and offers a Reload toast that calls
 `activateUpdate()` before reloading, and re-checks for a deploy whenever the tab returns to
 the foreground. The Angular service worker is version-locked per client: a tab keeps being
 served the version it booted with, and a new one only becomes active for a client that

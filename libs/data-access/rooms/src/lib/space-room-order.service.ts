@@ -1,6 +1,14 @@
-import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import {
+  Injectable,
+  Injector,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { Observable, defer, from, map } from 'rxjs';
 import {
   DEFAULT_ROOM_SORT,
   TRINITY_ROOM_SORTS,
@@ -53,6 +61,7 @@ const EMPTY: AccountOrder = { fallback: DEFAULT_ROOM_SORT, bySpace: {} };
 @Injectable({ providedIn: 'root' })
 export class SpaceRoomOrderService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly injector = inject(Injector);
 
   /** Hydrated preferences per account id; an account absent here reads as all-defaults. */
   private readonly byAccount = signal<ReadonlyMap<string, AccountOrder>>(
@@ -85,25 +94,35 @@ export class SpaceRoomOrderService {
     () => this.activeOrder().fallback,
   );
 
-  constructor() {
-    // Hydrate each signed-in account as it appears. The read is async, so it cannot happen
-    // inside effectiveFor()'s caller. Keyed on accountIds rather than activeUserId so an
-    // account is warm *before* you switch to it — otherwise a space pinned to "Space order"
-    // would paint in recency order and then visibly jump.
-    effect(() => {
-      for (const userId of this.matrix.accountIds()) {
-        void this.hydrate(userId);
-      }
-    });
+  /**
+   * Hydrate whatever accounts are already known during the session-capabilities stage.
+   * Cold and finite: Application Runtime decides when startup may advance.
+   */
+  hydrateKnownAccounts(): Observable<void> {
+    return defer(() =>
+      from(
+        Promise.all(this.matrix.accountIds().map((id) => this.hydrate(id))),
+      ).pipe(map(() => undefined)),
+    );
   }
 
   /**
-   * Hydrate whatever accounts are already known. Wired as an app initializer, whose real job
-   * is to *construct* this service so the effect above is live for the whole session — at that
-   * point the persisted session usually has not been restored yet, so there is nothing to read.
+   * Keep later sign-ins hydrated for one Application Runtime session. The subscriber owns
+   * the signal effect, so stop/restart cannot retain an observer from an earlier session.
    */
-  async init(): Promise<void> {
-    await Promise.all(this.matrix.accountIds().map((id) => this.hydrate(id)));
+  run(): Observable<void> {
+    return new Observable(() => {
+      const hydration = effect(
+        () => {
+          // Keyed on accountIds rather than activeUserId so an account is warm before a switch.
+          for (const userId of this.matrix.accountIds()) {
+            void this.hydrate(userId);
+          }
+        },
+        { injector: this.injector },
+      );
+      return () => hydration.destroy();
+    });
   }
 
   /**

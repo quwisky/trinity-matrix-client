@@ -1,14 +1,14 @@
 {
   "$schema": "../../../node_modules/nx/schemas/project-schema.json",
-  "name": "feature-shell",
+  "name": "application-runtime",
   "projectType": "library",
-  "sourceRoot": "libs/feature/shell/src",
+  "sourceRoot": "libs/application/runtime/src",
   "prefix": "trn",
   "tags": [
     "type:feature",
     "scope:matrix",
     "role:application",
-    "capability:trust"
+    "capability:runtime"
   ],
   "targets": {
     "test": {},

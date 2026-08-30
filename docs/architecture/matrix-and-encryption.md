@@ -842,11 +842,11 @@ The `sasConfirmed` flag on the view model is **local**, because the SDK's phase 
 instead of waiting for the other side; a rejected `confirm()` flips it back so nobody is
 stuck waiting on a MAC that never sent.
 
-Presentation is split. `VerificationHostComponent` in `@trinity/feature/shell` renders
+Presentation is split. `VerificationHostComponent` in `@trinity/application/runtime` renders
 nothing and owns `connect()`, presenting a modal for any verification the route does not
 own — `active.incoming || !active.isSelfVerification`. An outgoing _self_-verification
 belongs to `/encryption/verify`. The modal component is resolved through the
-`ENCRYPTION_DIALOG_COMPONENTS` token so `@trinity/feature/shell` never imports
+`ENCRYPTION_DIALOG_COMPONENTS` token so Application Runtime never imports
 `@trinity/feature/crypto`.
 
 [`shields.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/timeline/src/lib/shields.ts)

@@ -873,6 +873,6 @@ opens while the lazy chunk loads and ignores a second trigger while one dialog i
 and Devices force their nested verification/recovery overlays to stay modal even in the narrow web
 drill-in, rather than returning the user through a routed Settings page.
 
-Toasts render through a single `<hlm-toaster/>` mounted in `AppComponent`. While CDK marks the app
+Toasts render through a single `<hlm-toaster/>` mounted in `ApplicationRootComponent`. While CDK marks the app
 root `aria-hidden` for a modal, `TrnToastService` mirrors new messages through CDK's body-level
 `LiveAnnouncer`; outside a modal Sonner owns the announcement, avoiding duplicate speech.

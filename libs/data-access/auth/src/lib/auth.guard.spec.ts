@@ -8,6 +8,7 @@ import { authGuard } from './auth.guard';
 import {
   AccountRuntimeService,
   type AccountRestoreResult,
+  type AccountRuntimeState,
 } from '@trinity/data-access/accounts';
 
 /** Run the guard inside an injection context (it takes no route/state). */
@@ -19,6 +20,7 @@ function run(): Observable<boolean | UrlTree> {
 
 describe('authGuard', () => {
   const hasActiveAccount = signal(false);
+  const runtimeState = signal<AccountRuntimeState>({ phase: 'idle' });
   let accounts: AccountRuntimeService;
   let router: Router;
   let loginTree: UrlTree;
@@ -29,6 +31,7 @@ describe('authGuard', () => {
       providers: [
         MockProvider(AccountRuntimeService, {
           hasActiveAccount: hasActiveAccount.asReadonly(),
+          state: runtimeState.asReadonly(),
         }),
         MockProvider(Router),
       ],
@@ -36,6 +39,7 @@ describe('authGuard', () => {
     accounts = TestBed.inject(AccountRuntimeService);
     router = TestBed.inject(Router);
     hasActiveAccount.set(false);
+    runtimeState.set({ phase: 'idle' });
     vi.mocked(router.createUrlTree).mockReturnValue(loginTree);
   });
 
@@ -58,6 +62,16 @@ describe('authGuard', () => {
       of(result('no-accounts')),
     );
     expect(await firstValueFrom(run())).toBe(loginTree);
+  });
+
+  it('does not repeat a settled Application Runtime restoration', async () => {
+    runtimeState.set({
+      phase: 'settled',
+      result: result('no-accounts'),
+    });
+
+    expect(await firstValueFrom(run())).toBe(loginTree);
+    expect(accounts.restoreSavedAccounts).not.toHaveBeenCalled();
   });
 
   it('redirects to /login when restore fails', async () => {
