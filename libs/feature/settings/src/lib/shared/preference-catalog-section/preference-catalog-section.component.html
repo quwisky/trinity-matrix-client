@@ -1,0 +1,40 @@
+@for (entry of entries(); track entry.id) {
+  @if (entry.visible()) {
+    @switch (entry.editor.kind) {
+      @case ('toggle') {
+        <label
+          trnSettingsToggleRow
+          [nested]="entry.editor.nested ?? false"
+          [attr.data-testid]="entry.editor.testId"
+        >
+          <trn-switch
+            [checked]="checked(entry)"
+            [disabled]="busy(entry.id)"
+            (checkedChange)="update(entry, $event)"
+          />
+          {{ entry.editor.label }}
+        </label>
+        <p
+          class="block px-4 py-2 text-13 text-muted-foreground"
+          [class.ps-8]="entry.editor.nested"
+        >
+          {{ entry.editor.description }}
+        </p>
+        @if (entry.editor.warning) {
+          <p class="block px-4 py-2 text-13 text-muted-foreground">
+            ⚠ {{ entry.editor.warning }}
+          </p>
+        }
+        @if (failure(entry.id); as message) {
+          <p
+            role="alert"
+            class="block px-4 py-2 text-13 text-danger"
+            [attr.data-testid]="entry.editor.testId + '-failure'"
+          >
+            {{ message }}
+          </p>
+        }
+      }
+    }
+  }
+}

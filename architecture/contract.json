@@ -32,6 +32,7 @@
     "matrix-runtime",
     "media",
     "notifications",
+    "preferences",
     "room-administration",
     "room-library",
     "runtime",

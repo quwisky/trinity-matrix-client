@@ -3,29 +3,7 @@
   description="Control receipts and link previews stored on this device."
   [primary]="true"
 />
-<label trnSettingsToggleRow data-testid="privacy-send-read-receipts">
-  <trn-switch
-    [checked]="privacy.sendReadReceipts()"
-    (checkedChange)="privacy.setSendReadReceipts($event)"
-  />
-  Send read receipts
-</label>
-<p class="block px-4 py-2 text-13 text-muted-foreground">
-  Let others see when you've read their messages. When off, your unread badges
-  still clear, but your reading stays private to you on this device.
-</p>
-
-<label trnSettingsToggleRow data-testid="privacy-link-previews">
-  <trn-switch
-    [checked]="privacy.linkPreviews()"
-    (checkedChange)="privacy.setLinkPreviews($event)"
-  />
-  Show link previews
-</label>
-<p class="block px-4 py-2 text-13 text-muted-foreground">
-  Show a preview for links in messages. Previews are fetched through your
-  homeserver — in an unencrypted room, that's a link it can already see.
-</p>
+<trn-preference-catalog-section section="privacy" />
 
 @if (privacy.linkPreviews() && previewsSupported() === false) {
   <p
@@ -33,24 +11,5 @@
     data-testid="privacy-link-previews-unsupported"
   >
     ⚠ Your homeserver doesn't provide link previews, so none will appear.
-  </p>
-}
-
-@if (privacy.linkPreviews()) {
-  <label
-    trnSettingsToggleRow
-    [nested]="true"
-    data-testid="privacy-link-previews-encrypted"
-  >
-    <trn-switch
-      [checked]="privacy.linkPreviewsInEncrypted()"
-      (checkedChange)="privacy.setLinkPreviewsInEncrypted($event)"
-    />
-    Show link previews in encrypted rooms
-  </label>
-  <p class="block py-2 ps-8 pe-4 text-13 text-muted-foreground">
-    ⚠ Off by default. Turning this on sends links from your encrypted messages
-    to your homeserver to fetch a preview — disclosing a link it otherwise
-    couldn't see.
   </p>
 }

@@ -1,5 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { Preferences } from '@capacitor/preferences';
+import {
+  definePreference,
+  type PreferenceDescriptor,
+} from '@trinity/runtime/preferences';
+import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppConfigService } from './app-config.service';
 import {
@@ -12,7 +17,12 @@ import {
 } from './config-schema';
 import { DraftStoreService } from './draft-store.service';
 import { providePlatformConfigEntries } from './platform-config-entries';
-import { PrivacySettingsService } from './privacy-settings.service';
+import {
+  PrivacySettingsService,
+  providePrivacyPreferenceSet,
+  type PrivacyPreferenceSet,
+} from './privacy-settings.service';
+import { provideCapacitorPreferenceStorage } from './preferences/capacitor-preference-storage.adapter';
 import { KeyboardShortcutsService } from './shortcuts/keyboard-shortcuts.service';
 import { ThemeService } from './theme.service';
 
@@ -22,10 +32,71 @@ vi.mock('@capacitor/preferences', () => ({
 
 const set = vi.mocked(Preferences.set);
 
+function testPrivacyPreference(
+  id: string,
+  key: string,
+  defaultValue: boolean,
+): PreferenceDescriptor<boolean> {
+  return definePreference({
+    id,
+    owner: 'conversations',
+    section: 'privacy',
+    order: 0,
+    scope: 'installation',
+    defaultValue,
+    sensitivity: 'private',
+    storage: 'device-preferences',
+    export: 'portable',
+    editor: { kind: 'none' },
+    persistence: {
+      key,
+      migration: {
+        currentVersion: 1,
+        migrate: (stored) =>
+          typeof stored.value === 'boolean'
+            ? { kind: 'accepted', value: stored.value }
+            : {
+                kind: 'rejected',
+                diagnostic: { code: 'invalid-test-boolean' },
+              },
+      },
+    },
+    validate: (value) =>
+      typeof value === 'boolean'
+        ? { kind: 'accepted', value }
+        : {
+            kind: 'rejected',
+            diagnostic: { code: 'invalid-test-boolean' },
+          },
+  });
+}
+
+const TEST_PRIVACY_PREFERENCES: PrivacyPreferenceSet = {
+  sendReadReceipts: testPrivacyPreference(
+    'conversations.test.send-read-receipts',
+    'trinity.privacy.send-read-receipts',
+    true,
+  ),
+  linkPreviews: testPrivacyPreference(
+    'conversations.test.link-previews',
+    'trinity.privacy.link-previews',
+    true,
+  ),
+  linkPreviewsInEncrypted: testPrivacyPreference(
+    'conversations.test.link-previews-encrypted',
+    'trinity.privacy.link-previews-encrypted',
+    false,
+  ),
+};
+
 /** The app's wiring: the platform entries registered, as `main.ts` does it. */
 function setup(): AppConfigService {
   TestBed.configureTestingModule({
-    providers: [providePlatformConfigEntries()],
+    providers: [
+      providePlatformConfigEntries(),
+      provideCapacitorPreferenceStorage(),
+      providePrivacyPreferenceSet(TEST_PRIVACY_PREFERENCES),
+    ],
   });
   return TestBed.inject(AppConfigService);
 }
@@ -219,12 +290,12 @@ describe('AppConfigService', () => {
       expect(parsed.settings).toEqual(config.settings());
     });
 
-    it('tracks the live services rather than a snapshot taken at startup', () => {
+    it('tracks the live services rather than a snapshot taken at startup', async () => {
       const config = setup();
       const privacy = TestBed.inject(PrivacySettingsService);
       expect(at(config.settings(), 'privacy.linkPreviews')).toBe(true);
 
-      privacy.setLinkPreviews(false);
+      await firstValueFrom(privacy.setLinkPreviews(false));
 
       expect(at(config.settings(), 'privacy.linkPreviews')).toBe(false);
     });
@@ -504,7 +575,7 @@ describe('AppConfigService', () => {
       const privacy = TestBed.inject(PrivacySettingsService);
       theme.setPalette('amethyst');
       theme.setTextScale('larger');
-      privacy.setSendReadReceipts(false);
+      await firstValueFrom(privacy.setSendReadReceipts(false));
 
       await run(config.resetToDefaults());
 

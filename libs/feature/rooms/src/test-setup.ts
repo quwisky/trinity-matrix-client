@@ -1,4 +1,14 @@
 import '../../../../test-setup.base';
+import { TestBed } from '@angular/core/testing';
+import { CONVERSATION_PRIVACY_PREFERENCES } from '@trinity/data-access/timeline';
+import { providePrivacyPreferenceSet } from '@trinity/platform-native';
+import { beforeEach } from 'vitest';
+
+beforeEach(() => {
+  TestBed.configureTestingModule({
+    providers: [providePrivacyPreferenceSet(CONVERSATION_PRIVACY_PREFERENCES)],
+  });
+});
 
 // jsdom has no ResizeObserver. This controllable stub lets the message-list tests
 // drive the measurement path: it records the observed elements and its callback, and

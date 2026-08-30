@@ -25,6 +25,9 @@
       "@trinity/util/ui": ["./libs/util/ui/src/index.ts"],
       "@trinity/testing": ["./libs/testing/src/index.ts"],
       "@trinity/platform-native": ["./libs/platform-native/src/index.ts"],
+      "@trinity/runtime/preferences": [
+        "./libs/runtime/preferences/src/index.ts"
+      ],
       "@trinity/platform-native/qr-code": [
         "./libs/platform-native/src/lib/qr-code.service.ts"
       ],

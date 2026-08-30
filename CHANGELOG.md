@@ -87,6 +87,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Privacy settings now come from capability-owned typed preferences.** Conversations declares
+  the ownership, installation scope, defaults, validation, versioned migration, sensitivity,
+  storage/export policy, and toggle editors for read receipts and link previews. A shared
+  Preferences Store hydrates context-keyed signals and runs writes as cold RxJS commands with
+  typed, secret-safe recovery, while Settings renders the catalog without owning raw keys or
+  product policy. Existing stored values migrate into versioned envelopes without changing the
+  user-visible Privacy journey.
+
 - **Host integrations now have explicit operation contracts.** Authentication handoff, deep links,
   Back, file export, notification presentation, location, app badges, secure storage, lifecycle,
   and updates publish supported or unavailable capability outcomes instead of relying on optional
