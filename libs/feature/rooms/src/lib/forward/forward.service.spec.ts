@@ -4,7 +4,7 @@ import { type Observable, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { TrnToastService } from '@trinity/components/overlay';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
-import { type SwitcherSelection } from '@trinity/data-access/search';
+import { type SwitcherSelection } from '@trinity/application/search';
 import { ForwardService } from './forward.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 
@@ -31,9 +31,10 @@ describe('ForwardService', () => {
   // account's room would just 403 with an unexplainable toast.
   it('asks the picker for the active account’s rooms only', async () => {
     const { svc, pick } = setup({
-      kind: 'room',
-      id: '!t:hs',
-    } as SwitcherSelection);
+      kind: 'conversation',
+      accountId: '@me:hs',
+      roomId: '!t:hs',
+    });
 
     await svc.forward('!s:hs', '$e');
 
@@ -42,9 +43,10 @@ describe('ForwardService', () => {
 
   it('forwards to the picked room and toasts success', async () => {
     const { svc, forwardMessage, show } = setup({
-      kind: 'room',
-      id: '!t:hs',
-    } as SwitcherSelection);
+      kind: 'conversation',
+      accountId: '@me:hs',
+      roomId: '!t:hs',
+    });
     await svc.forward('!s:hs', '$e');
     expect(forwardMessage).toHaveBeenCalledWith('!s:hs', '$e', '!t:hs');
     expect(show).toHaveBeenCalledWith(
@@ -55,9 +57,10 @@ describe('ForwardService', () => {
 
   it('forwards to a picked direct message', async () => {
     const { svc, forwardMessage } = setup({
-      kind: 'dm',
-      id: '!dm:hs',
-    } as SwitcherSelection);
+      kind: 'conversation',
+      accountId: '@me:hs',
+      roomId: '!dm:hs',
+    });
     await svc.forward('!s:hs', '$e');
     expect(forwardMessage).toHaveBeenCalledWith('!s:hs', '$e', '!dm:hs');
   });
@@ -70,16 +73,21 @@ describe('ForwardService', () => {
 
   it('ignores a non-room selection (a space or person)', async () => {
     const { svc, forwardMessage } = setup({
-      kind: 'user',
-      id: '@x:hs',
-    } as SwitcherSelection);
+      kind: 'person',
+      accountId: '@me:hs',
+      userId: '@x:hs',
+    });
     await svc.forward('!s:hs', '$e');
     expect(forwardMessage).not.toHaveBeenCalled();
   });
 
   it('toasts an error when the forward fails', async () => {
     const { svc, show } = setup(
-      { kind: 'room', id: '!t:hs' } as SwitcherSelection,
+      {
+        kind: 'conversation',
+        accountId: '@me:hs',
+        roomId: '!t:hs',
+      },
       throwError(() => new Error('boom')),
     );
     await svc.forward('!s:hs', '$e');

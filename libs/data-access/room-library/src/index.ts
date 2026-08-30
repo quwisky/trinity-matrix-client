@@ -12,3 +12,5 @@ export * from './lib/invites.service';
 export * from './lib/mixed-invites.service';
 export * from './lib/room-library-governance-policy';
 export * from './lib/room-filter';
+export * from './lib/room-library-search.service';
+export * from './lib/room-readiness.service';

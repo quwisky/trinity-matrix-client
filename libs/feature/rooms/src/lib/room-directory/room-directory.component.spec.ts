@@ -1,14 +1,14 @@
 import {
   type PublicRoomsPage,
   type PublicRoomSummary,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/discovery';
 import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { EMPTY, of, throwError, Subject } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
-import { PublicRoomsService } from '@trinity/data-access/rooms';
+import { PublicRoomsService } from '@trinity/data-access/discovery';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { ConnectionError, MatrixError } from '@trinity/util/matrix';
 import { RoomDirectoryComponent } from './room-directory.component';

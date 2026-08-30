@@ -34,7 +34,6 @@ export type IdentityMatrixClient = Pick<
   | 'isUserIgnored'
   | 'off'
   | 'on'
-  | 'searchUserDirectory'
   | 'setAvatarUrl'
   | 'setDisplayName'
   | 'setIgnoredUsers'

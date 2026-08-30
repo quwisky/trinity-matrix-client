@@ -100,32 +100,6 @@ export class IdentityService {
     }).pipe(recoverIdentityOperation('lookup-user'));
   }
 
-  /** Search the homeserver user directory independently of Room membership. */
-  search(term: string): Observable<readonly IdentitySummary[]> {
-    const trimmed = term.trim();
-    if (!trimmed) {
-      return of([]);
-    }
-    return defer(() =>
-      from(
-        this.active('search-users').client.searchUserDirectory({
-          term: trimmed,
-        }),
-      ),
-    ).pipe(
-      map((response) =>
-        response.results.map((user) =>
-          this.buildSummary(
-            user.user_id,
-            user.display_name,
-            user.avatar_url ?? null,
-          ),
-        ),
-      ),
-      recoverIdentityOperation('search-users'),
-    );
-  }
-
   /** Set the display name (an empty name renders as the user id). */
   setDisplayName(name: string): Observable<void> {
     const trimmed = name.trim();

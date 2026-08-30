@@ -1,20 +1,18 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  Injector,
   computed,
   inject,
   input,
   signal,
 } from '@angular/core';
-import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import {
-  SearchService,
+  GlobalSearchService,
   type SwitcherKind,
   type SwitcherResult,
   type SwitcherSelection,
-} from '@trinity/data-access/search';
-import { IdentityService } from '@trinity/data-access/identity';
-import { initialOf } from '@trinity/util/matrix';
+} from '@trinity/application/search';
 import { AccountBadgesService } from '../shared/account-badges.service';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import {
@@ -27,18 +25,6 @@ import { TrnButton } from '@trinity/components/button';
 import { TrnInput } from '@trinity/components/input';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
-import {
-  catchError,
-  debounceTime,
-  distinctUntilChanged,
-  finalize,
-  map,
-  of,
-  switchMap,
-} from 'rxjs';
-
-/** Debounce window for the networked directory lookup (the local list is instant). */
-const PEOPLE_DEBOUNCE_MS = 250;
 
 /** Human-readable kind hint shown at the trailing edge of a result row. */
 const KIND_LABEL: Record<SwitcherKind, string> = {
@@ -62,12 +48,12 @@ const KIND_ICON: Record<SwitcherKind, TrnIconName> = {
  * Quick-switcher overlay (Ctrl/Cmd+K): a single search field over joined rooms,
  * spaces, DMs, and pending invites, with debounced directory-people results appended.
  * Presented by {@link QuickSwitcherService} as a {@link TrnDialogService} dialog;
- * composes local {@link SearchService} results with stable Identity directory summaries.
+ * renders a {@link GlobalSearchService} session over Room Library and Discovery.
  *
  * Local matches are an instant `computed` over the query signal; people are a
  * debounced RxJS stream. Keyboard nav (Up/Down move, Enter select, Esc close) lives on
  * the native input. On a pick it closes with the chosen {@link SwitcherSelection},
- * leaving the actual navigation to `RoomsPage`. The card self-sizes so it works in a
+ * leaving the actual navigation and repair to Workspace. The card self-sizes so it works in a
  * bare CDK dialog (no `ion-modal` host). The search field takes focus on open through
  * the dialog's `autoFocus` selector (see {@link QuickSwitcherService}) — CDK focuses
  * after attach, so anything the component focuses itself is immediately overridden.
@@ -89,8 +75,8 @@ const KIND_ICON: Record<SwitcherKind, TrnIconName> = {
 export class QuickSwitcherComponent {
   private readonly dialogRef =
     inject<TrnDialogRef<SwitcherSelection | null>>(TrnDialogRef);
-  private readonly search = inject(SearchService);
-  private readonly identity = inject(IdentityService);
+  private readonly search = inject(GlobalSearchService);
+  private readonly injector = inject(Injector);
   private readonly accountBadges = inject(AccountBadgesService);
 
   /**
@@ -104,60 +90,13 @@ export class QuickSwitcherComponent {
   readonly query = signal('');
   /** Index of the keyboard-highlighted row in {@link results}. */
   readonly highlight = signal(0);
-  /** A directory lookup is in flight (drives the empty-state spinner). */
-  readonly searching = signal(false);
-
-  /** Instant, ranked local matches — reactive because the service reads live signals. */
-  private readonly localResults = computed(() =>
-    this.search.localResults(
-      this.query(),
-      undefined,
-      // Scoping inside the query keeps the result cap meaningful — post-filtering would let
-      // another account's rooms fill it and starve this one's out entirely.
-      this.activeAccountOnly()
-        ? (this.identity.activeUserId() ?? undefined)
-        : undefined,
-    ),
+  private readonly session = this.search.createSession(
+    this.query,
+    this.activeAccountOnly,
+    this.injector,
   );
-
-  /** Debounced directory people, appended after the local matches. */
-  private readonly people = toSignal(
-    toObservable(this.query).pipe(
-      map((q) => q.trim()),
-      debounceTime(PEOPLE_DEBOUNCE_MS),
-      distinctUntilChanged(),
-      switchMap((q) => {
-        if (q.length < 2) {
-          this.searching.set(false);
-          return of<SwitcherResult[]>([]);
-        }
-        this.searching.set(true);
-        // finalize resets on complete, error, or switchMap cancellation.
-        return this.identity.search(q).pipe(
-          map((users) =>
-            users.map<SwitcherResult>((user) => ({
-              kind: 'user',
-              id: user.userId,
-              title: user.displayName,
-              subtitle: user.userId,
-              avatarMxc: user.avatarMxc,
-              initial: initialOf(user.displayName),
-              score: 0,
-            })),
-          ),
-          catchError(() => of<SwitcherResult[]>([])),
-          finalize(() => this.searching.set(false)),
-        );
-      }),
-    ),
-    { initialValue: [] as SwitcherResult[] },
-  );
-
-  /** Local matches first, then directory people. */
-  readonly results = computed<SwitcherResult[]>(() => [
-    ...this.localResults(),
-    ...this.people(),
-  ]);
+  readonly searching = this.session.searching;
+  readonly results = this.session.results;
 
   /** Contextual empty-state copy. */
   readonly emptyHint = computed(() =>
@@ -193,16 +132,12 @@ export class QuickSwitcherComponent {
 
   /** Click/Enter on a row: close with its selection. */
   select(result: SwitcherResult): void {
-    this.dismiss({
-      kind: result.kind,
-      id: result.id,
-      ...(result.accountId ? { accountId: result.accountId } : {}),
-    });
+    this.dismiss(this.search.destinationFor(result));
   }
 
   /** The owning-account badge for a result (mixed view only), or null. */
   badgeFor(result: SwitcherResult): AccountBadge | null {
-    return this.accountBadges.forAccount(result.accountId);
+    return this.accountBadges.forAccount(result.accountBadgeId);
   }
 
   dismiss(selection: SwitcherSelection | null): void {

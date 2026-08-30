@@ -8,7 +8,7 @@ Helm components. Web, iOS, Android and desktop are all the same compiled bundle 
 differently, so there is no per-platform source tree — platform differences are branches inside
 `libs/platform-native`, not forks of the app.
 
-Names like `data-access-rooms` on this page are Nx project names, which is what `nx` commands take.
+Names like `data-access-discovery` on this page are Nx project names, which is what `nx` commands take.
 A library's directory and its import alias are two further, different strings; see
 [the library inventory](libraries.md) for the mapping.
 
@@ -102,7 +102,7 @@ depends on `MatrixClientService`; `MatrixClientService` can never depend on `Roo
 lint says so before a reviewer has to.
 
 This is the axis that surprises people. A new import into `data-access-matrix-client` from, say,
-`data-access-rooms` passes the type rule (`type:data-access` may depend on `type:data-access`) and
+`data-access-discovery` passes the type rule (`type:data-access` may depend on `type:data-access`) and
 still fails the scope rule. That is the intended behaviour, not a misconfiguration.
 
 ## The rule that matters most
@@ -111,9 +111,10 @@ still fails the scope rule. That is the intended behaviour, not a misconfigurati
 
 This is not a style preference; it is checkable, and it currently holds absolutely. Across every
 non-spec file in `libs/feature/*`, `libs/components/*` and `libs/platform-native` there are zero imports from
-`matrix-js-sdk`. The SDK appears only under `libs/data-access/` — in thirteen of its fifteen
-libraries; `data-access-accounts` composes the Matrix adapter, while `data-access-gif` talks to
-KLIPY and Giphy, so neither imports the SDK — and in
+`matrix-js-sdk`. The SDK appears only under `libs/data-access/` — in eleven of its fourteen
+libraries; `data-access-accounts` composes the Matrix adapter, `data-access-gif` talks to
+KLIPY and Giphy, and Identity consumes its lifecycle-free Matrix port, so those three do not
+import the SDK — and in
 `libs/util/matrix`, which models its types.
 
 Two things follow from keeping it that way:

@@ -15,9 +15,12 @@ import {
 } from '@angular/router';
 import { MediaPipeline } from '@trinity/data-access/media';
 import {
+  InvitesService,
   RoomLibraryService,
+  RoomReadinessService,
   SpacesService,
 } from '@trinity/data-access/room-library';
+import type { WorkspaceSearchIntent } from '@trinity/application/workspace';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import {
@@ -30,6 +33,7 @@ import {
   map,
   of,
   startWith,
+  switchMap,
 } from 'rxjs';
 import { MruRoomsService } from '../shortcuts/mru-rooms.service';
 import {
@@ -63,6 +67,8 @@ export class WorkspaceService {
   private readonly conversations = inject(ConversationRuntime);
   private readonly media = inject(MediaPipeline);
   private readonly rooms = inject(RoomLibraryService);
+  private readonly roomReadiness = inject(RoomReadinessService);
+  private readonly invites = inject(InvitesService);
   private readonly spaces = inject(SpacesService);
   private readonly mru = inject(MruRoomsService);
   private readonly destroyRef = inject(DestroyRef);
@@ -167,6 +173,94 @@ export class WorkspaceService {
     );
   }
 
+  /**
+   * Resolve one fully qualified Global Search intent through the authoritative
+   * Workspace workflow. Account context is never re-derived from a mutable row list:
+   * exact Rooms/Spaces open directly, while people and invitations first perform the
+   * named Account action and then open the resulting semantic destination.
+   */
+  openSearchIntent(
+    intent: WorkspaceSearchIntent,
+  ): Observable<WorkspaceOpenOutcome> {
+    return defer(() => {
+      switch (intent.kind) {
+        case 'conversation':
+          return this.open(
+            this.roomDestination(intent.accountId, intent.roomId),
+            { source: 'user', history: 'push' },
+          );
+        case 'space':
+          return this.open(
+            this.scopeDestination(intent.accountId, {
+              kind: 'space',
+              spaceId: intent.spaceId,
+            }),
+            { source: 'user', history: 'push' },
+          );
+        case 'person':
+          return this.ensureSearchAccount(intent.accountId).pipe(
+            switchMap((activation) =>
+              activation
+                ? of(activation)
+                : this.rooms
+                    .createDirectMessage(intent.userId)
+                    .pipe(
+                      switchMap((roomId) =>
+                        this.roomReadiness
+                          .waitForRoom(intent.accountId, roomId)
+                          .pipe(
+                            switchMap(() =>
+                              this.open(
+                                this.roomInScopeDestination(
+                                  intent.accountId,
+                                  roomId,
+                                  { kind: 'home' },
+                                ),
+                                { source: 'user', history: 'push' },
+                              ),
+                            ),
+                          ),
+                      ),
+                    ),
+            ),
+          );
+        case 'invitation':
+          return this.invites
+            .acceptInvite(intent.roomId, intent.accountId)
+            .pipe(
+              switchMap(() =>
+                this.roomReadiness
+                  .waitForRoom(intent.accountId, intent.roomId)
+                  .pipe(
+                    switchMap(() =>
+                      intent.target === 'space'
+                        ? this.open(
+                            this.scopeDestination(intent.accountId, {
+                              kind: 'space',
+                              spaceId: intent.roomId,
+                            }),
+                            { source: 'user', history: 'push' },
+                          )
+                        : this.open(
+                            this.roomInScopeDestination(
+                              intent.accountId,
+                              intent.roomId,
+                              intent.target === 'direct'
+                                ? { kind: 'home' }
+                                : RECENT_WORKSPACE_SCOPE,
+                            ),
+                            { source: 'user', history: 'push' },
+                          ),
+                    ),
+                  ),
+              ),
+            );
+        default:
+          return this.unreachableSearchIntent(intent);
+      }
+    });
+  }
+
   /** Preserve a non-space scope when a room on another Account is selected. */
   roomDestination(accountId: string, roomId: string): WorkspaceDestination {
     const current = this.view();
@@ -232,6 +326,21 @@ export class WorkspaceService {
       roomId: null,
       pane: 'list',
     };
+  }
+
+  /** Null means the requested Account is ready; a non-ready outcome stops resolution. */
+  private ensureSearchAccount(
+    accountId: string,
+  ): Observable<WorkspaceOpenOutcome | null> {
+    if (this.activeAccountId() === accountId) return of(null);
+    return this.open(this.accountDestination(accountId), {
+      source: 'repair',
+      history: 'replace',
+    }).pipe(map((outcome) => (outcome.kind === 'ready' ? null : outcome)));
+  }
+
+  private unreachableSearchIntent(intent: never): never {
+    throw new Error(`Unsupported Workspace search intent: ${String(intent)}`);
   }
 
   /** Release page-scoped projection ownership without changing semantic history. */

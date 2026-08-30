@@ -14,6 +14,7 @@ import {
 import { MediaPipeline } from '@trinity/data-access/media';
 import {
   RoomLibraryService,
+  RoomReadinessService,
   SpacesService,
 } from '@trinity/data-access/room-library';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
@@ -157,6 +158,10 @@ function harness(options: HarnessOptions = {}) {
       { provide: ConversationRuntime, useValue: conversations },
       { provide: MediaPipeline, useValue: media },
       { provide: RoomLibraryService, useValue: rooms },
+      {
+        provide: RoomReadinessService,
+        useValue: { waitForRoom: () => of(void 0) },
+      },
       { provide: SpacesService, useValue: spaces },
     ],
   });

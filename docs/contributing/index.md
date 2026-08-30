@@ -28,8 +28,8 @@ which library may import which.
 `libs/` is not a flat list of libraries. It holds seven entries, four of which are
 parent directories with one folder per library inside — `data-access/`, `feature/`,
 `util/`, `components/` and `spartan/` — while `platform-native` and `testing` are libraries
-themselves. The alias follows the path in either case, so `libs/data-access/rooms` is
-`@trinity/data-access/rooms` and `libs/components/icon` is `@trinity/components/icon`.
+themselves. The alias follows the path in either case, so `libs/data-access/discovery` is
+`@trinity/data-access/discovery` and `libs/components/icon` is `@trinity/components/icon`.
 
 ## The shape of the work
 

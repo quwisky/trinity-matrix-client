@@ -17,9 +17,9 @@ import {
   switchMap,
 } from 'rxjs';
 import {
-  IdentityService,
-  type IdentitySummary,
-} from '@trinity/data-access/identity';
+  UserDirectoryDiscoveryService,
+  type DiscoveredUser,
+} from '@trinity/data-access/discovery';
 import { isValidUserId } from '@trinity/util/matrix';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { AvatarComponent } from '@trinity/components/avatar';
@@ -42,7 +42,7 @@ const MIN_SEARCH_LENGTH = 2;
  *
  * Config (heading / confirm label / placeholder) arrives as signal inputs (set by
  * TrnDialogService). matrix-js-sdk is reached only through
- * {@link IdentityService.search}. The card self-sizes so it works in a bare CDK
+ * {@link UserDirectoryDiscoveryService.search}. The card self-sizes so it works in a bare CDK
  * dialog (no `ion-modal` host).
  */
 @Component({
@@ -61,7 +61,7 @@ const MIN_SEARCH_LENGTH = 2;
 export class UserPickerComponent {
   private readonly dialogRef =
     inject<TrnDialogRef<string | null>>(TrnDialogRef);
-  private readonly identity = inject(IdentityService);
+  private readonly directory = inject(UserDirectoryDiscoveryService);
 
   /** Dialog heading (e.g. "Start a direct message"). */
   readonly title = input('Find people');
@@ -100,17 +100,18 @@ export class UserPickerComponent {
       distinctUntilChanged(),
       switchMap((term) => {
         if (term.length < MIN_SEARCH_LENGTH) {
-          return of<readonly IdentitySummary[]>([]);
+          return of<readonly DiscoveredUser[]>([]);
         }
         this.searching.set(true);
-        return this.identity.search(term).pipe(
+        return this.directory.search(term).pipe(
+          map((page) => page.users),
           // Search is best-effort; a failure shows the empty state, not an error.
-          catchError(() => of<readonly IdentitySummary[]>([])),
+          catchError(() => of<readonly DiscoveredUser[]>([])),
           finalize(() => this.searching.set(false)),
         );
       }),
     ),
-    { initialValue: [] as readonly IdentitySummary[] },
+    { initialValue: [] as readonly DiscoveredUser[] },
   );
 
   onInput(event: Event): void {

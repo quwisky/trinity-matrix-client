@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { type SwitcherSelection } from '@trinity/data-access/search';
+import { type SwitcherSelection } from '@trinity/application/search';
 import { TrnDialogService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -19,7 +19,11 @@ describe('QuickSwitcherService', () => {
   });
 
   it('opens the switcher dialog and resolves the chosen selection', async () => {
-    const selection: SwitcherSelection = { kind: 'space', id: '!s:hs' };
+    const selection: SwitcherSelection = {
+      kind: 'space',
+      accountId: '@me:hs',
+      spaceId: '!s:hs',
+    };
     vi.mocked(dialog.openAndWait).mockResolvedValue(selection);
 
     const result = await svc.pick();
@@ -65,7 +69,15 @@ describe('QuickSwitcherService', () => {
     expect(second).toBeNull();
     expect(dialog.openAndWait).toHaveBeenCalledTimes(1);
 
-    release({ kind: 'room', id: '!r:hs' });
-    await expect(first).resolves.toEqual({ kind: 'room', id: '!r:hs' });
+    release({
+      kind: 'conversation',
+      accountId: '@me:hs',
+      roomId: '!r:hs',
+    });
+    await expect(first).resolves.toEqual({
+      kind: 'conversation',
+      accountId: '@me:hs',
+      roomId: '!r:hs',
+    });
   });
 });

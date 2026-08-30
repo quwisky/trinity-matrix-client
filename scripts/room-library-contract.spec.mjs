@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const workspaceRoot = join(import.meta.dirname, '..');
 const roomLibraryEntrypoint = 'libs/data-access/room-library/src/index.ts';
-const legacyRoomsEntrypoint = 'libs/data-access/rooms/src/index.ts';
+const discoveryEntrypoint = 'libs/data-access/discovery/src/index.ts';
 
 function source(file) {
   return readFileSync(join(workspaceRoot, file), 'utf8');
@@ -42,7 +42,7 @@ describe('Room Library production boundary', () => {
     const movedSymbols =
       /\b(?:RoomLibraryService|SpacesService|SpaceChildrenService|SpaceRoomOrderService|AccountScopeService|MixedRoomsService|MixedSpacesService|InvitesService|MixedInvitesService|UnreadAggregatorService)\b/;
     const legacyImport =
-      /import\s*(?:type\s*)?{([^}]*)}\s*from\s*['"]@trinity\/data-access\/rooms['"]/gs;
+      /import\s*(?:type\s*)?{([^}]*)}\s*from\s*['"]@trinity\/data-access\/discovery['"]/gs;
     const offenders = productionSources.filter((file) => {
       const contents = source(file);
       return [...contents.matchAll(legacyImport)].some((match) =>
@@ -51,7 +51,7 @@ describe('Room Library production boundary', () => {
     });
 
     expect(offenders).toEqual([]);
-    expect(source(legacyRoomsEntrypoint)).not.toMatch(movedSymbols);
+    expect(source(discoveryEntrypoint)).not.toMatch(movedSymbols);
     expect(source('tsconfig.base.json')).not.toContain(
       '"@trinity/data-access/invites"',
     );
@@ -69,7 +69,7 @@ describe('Room Library production boundary', () => {
     );
 
     expect(workspace).toContain("from '@trinity/data-access/room-library'");
-    expect(workspace).not.toContain("from '@trinity/data-access/rooms'");
+    expect(workspace).not.toContain("from '@trinity/data-access/discovery'");
     expect(workspace).not.toContain("from 'matrix-js-sdk");
     expect(workspace).not.toContain('MatrixClientService');
     expect(transition).not.toContain('MatrixClientService');

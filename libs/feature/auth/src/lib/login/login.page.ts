@@ -31,6 +31,7 @@ import { TrnInput } from '@trinity/components/input';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import {
   AuthService,
+  AUTHENTICATION_HOMESERVER_DISCOVERY,
   RegistrationService,
   type LoginMode,
   type OidcAuthorizationRequest,
@@ -74,6 +75,7 @@ import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 })
 export class LoginPage {
   private readonly auth = inject(AuthService);
+  private readonly discovery = inject(AUTHENTICATION_HOMESERVER_DISCOVERY);
   private readonly registration = inject(RegistrationService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
@@ -221,10 +223,10 @@ export class LoginPage {
   /** Step 1: resolve the homeserver and discover its login flows (+ OIDC, in parallel). */
   discover(): void {
     this.withBusy(
-      this.auth
-        .discoverHomeserver(this.homeserverModel().homeserver)
+      this.discovery
+        .discover(this.homeserverModel().homeserver)
         .pipe(
-          switchMap((baseUrl) =>
+          switchMap(({ baseUrl }) =>
             this.discoverCapabilities(baseUrl).pipe(
               map((res) => ({ baseUrl, ...res })),
             ),

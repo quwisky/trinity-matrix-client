@@ -74,11 +74,15 @@ describe('Identity production boundary', () => {
     const roomMembers = source(
       'libs/data-access/room-administration/src/lib/room-members.service.ts',
     );
+    const userDirectory = source(
+      'libs/data-access/discovery/src/lib/user-directory-discovery.service.ts',
+    );
 
     expect(identity).toContain('export interface IdentitySummary');
     expect(identity).toContain('lookup(userId: string)');
-    expect(identity).toContain('search(term: string)');
+    expect(identity).not.toMatch(/\bsearch\s*\(/);
     expect(identity).not.toContain('RoomMember');
+    expect(userDirectory).toMatch(/search\(term: string(?:,|\))/);
     expect(roomLibrary).not.toContain('searchUserDirectory');
     expect(roomLibrary).not.toMatch(/\bsearchUsers\s*\(/);
     expect(roomMembers).toContain('roomDisplayName');

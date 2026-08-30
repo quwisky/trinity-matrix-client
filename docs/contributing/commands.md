@@ -43,17 +43,17 @@ they are appended to the end of `vitest run`.
 
 The argument to `nx test` is the **project name**, which is neither the directory nor
 the import alias. All three are different strings for every library under
-`libs/data-access`, `libs/feature` and `libs/util`: the rooms data-access library is the
-Nx project `data-access-rooms`, it lives at `libs/data-access/rooms`, and it is imported
-as `@trinity/data-access/rooms`. Only the first form works on a command line, and the
+`libs/data-access`, `libs/feature` and `libs/util`: the Discovery data-access library is the
+Nx project `data-access-discovery`, it lives at `libs/data-access/discovery`, and it is imported
+as `@trinity/data-access/discovery`. Only the first form works on a command line, and the
 same goes for a `--projects=` filter.
 
 ```bash
 pnpm exec nx test util-matrix                          # one project
 pnpm exec nx test feature-rooms --configuration=watch  # watch mode
 pnpm exec nx test feature-rooms -- message-list        # files matching a path substring
-pnpm exec nx test data-access-rooms -- -t "acks the read receipt"  # one test by name
-pnpm exec nx test data-access-rooms -- --coverage      # coverage is opt-in, no threshold
+pnpm exec nx test data-access-room-library -- -t "marks a room read" # one test by name
+pnpm exec nx test data-access-discovery -- --coverage  # coverage is opt-in, no threshold
 pnpm exec nx test scripts                              # the repository-invariant guards
 pnpm exec nx affected -t lint test                     # only what changed versus develop
 pnpm exec nx show projects                             # the real project names
@@ -66,7 +66,7 @@ pnpm exec nx graph                                     # dependency graph in a b
     `pnpm exec nx test core`. `@trinity/core` was dissolved into per-domain
     libraries and no project by that name exists, so the command fails with
     `Cannot find configuration for task core:test`. Use a real project name —
-    `util-matrix`, `data-access-rooms`, `feature-rooms`, and so on. Run
+    `util-matrix`, `data-access-discovery`, `feature-rooms`, and so on. Run
     `pnpm exec nx show projects` when in doubt.
 
 `nx affected` diffs against `develop`, which is `defaultBase` in `nx.json`.

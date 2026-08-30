@@ -29,6 +29,7 @@ import { TrnLabel } from '@trinity/components/label';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import {
   AuthService,
+  AUTHENTICATION_HOMESERVER_DISCOVERY,
   RegistrationService,
   type LoginMode,
   type RegistrationPolicy,
@@ -54,6 +55,7 @@ import { ExternalBrowserService } from '@trinity/platform-native';
 })
 export class RegistrationPage implements OnDestroy {
   private readonly auth = inject(AuthService);
+  private readonly discovery = inject(AUTHENTICATION_HOMESERVER_DISCOVERY);
   private readonly registration = inject(RegistrationService);
   private readonly browser = inject(ExternalBrowserService);
   private readonly router = inject(Router);
@@ -225,10 +227,10 @@ export class RegistrationPage implements OnDestroy {
       return;
     }
     this.discovering.set(true);
-    this.auth
-      .discoverHomeserver(this.homeserverInput)
+    this.discovery
+      .discover(this.homeserverInput)
       .pipe(
-        switchMap((baseUrl) =>
+        switchMap(({ baseUrl }) =>
           forkJoin({
             flows: this.auth.getSupportedFlows(baseUrl),
             oidc: this.auth.getDelegatedAuthConfig(baseUrl),

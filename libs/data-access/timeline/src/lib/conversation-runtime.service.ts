@@ -42,6 +42,7 @@ import { TimelineService } from './timeline.service';
 import { ThreadsService } from './threads.service';
 import { ConversationPinsController } from './conversation-pins.controller';
 import { createConversationThreadChildren } from './conversation-thread-children';
+import { ConversationSearchController } from './conversation-search.service';
 
 export { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
 export type {
@@ -80,10 +81,16 @@ export type ConversationTimeline = Pick<
   | 'reactionDetails'
 >;
 
+export type ConversationSearch = Pick<
+  ConversationSearchController,
+  'searchLoaded' | 'searchServer' | 'loadOlder'
+>;
+
 export interface ConversationHandle {
   readonly key: ConversationKey;
   readonly state: Signal<ConversationState>;
   readonly timeline: ConversationTimeline;
+  readonly search: ConversationSearch;
   readonly compose: ConversationCompose;
   readonly messages: ConversationMessages;
   readonly media: ConversationMedia;
@@ -118,6 +125,7 @@ export interface ConversationTimelineController {
   readonly timeline: ConversationTimeline;
   readonly threads: ThreadsService;
   readonly pins: ConversationPinsController;
+  readonly search: ConversationSearch;
   setVisible(visible: boolean): void;
   release(): void;
   resources(): ConversationResources;
@@ -139,19 +147,27 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
       throw new Error('Conversation account is not live.');
     }
     const injector = createEnvironmentInjector(
-      [TimelineService, ThreadsService, ConversationPinsController],
+      [
+        TimelineService,
+        ThreadsService,
+        ConversationPinsController,
+        ConversationSearchController,
+      ],
       this.parentInjector,
     );
     let timeline: TimelineService;
     let threads: ThreadsService;
     let pins: ConversationPinsController;
+    let search: ConversationSearchController;
     try {
       timeline = injector.get(TimelineService);
       threads = injector.get(ThreadsService);
       pins = injector.get(ConversationPinsController);
+      search = injector.get(ConversationSearchController);
       timeline.open(key.roomId, client);
       threads.attach(key, client);
       pins.attach(key, client);
+      search.attach(key, client);
     } catch (error: unknown) {
       injector.destroy();
       throw error;
@@ -162,6 +178,7 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
       timeline,
       threads,
       pins,
+      search,
       setVisible: (visible) => {
         timeline.setVisible(visible);
         if (visible) {
@@ -170,12 +187,14 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
           // their potentially room-sized projections never enter the retained budget.
           threads.attach(key, client);
           pins.attach(key, client);
+          search.attach(key, client);
           this.actionContext.bind(resolveActionContext);
         } else {
           this.actionContext.clear(resolveActionContext);
           threads.closeThread();
           threads.close();
           pins.release();
+          search.release();
         }
       },
       resources: () => {
@@ -201,6 +220,7 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
           threads.closeThread();
           threads.close();
           pins.release();
+          search.release();
           timeline.close();
         } finally {
           injector.destroy();
@@ -271,6 +291,7 @@ export class ConversationRuntime {
 
   readonly focused = this.focusedHandle.asReadonly();
   readonly timeline = this.focusedTimeline();
+  readonly search = this.focusedSearch();
   readonly compose = this.focusedCompose();
   readonly messages = this.focusedMessages();
   readonly media = this.focusedMedia();
@@ -491,6 +512,7 @@ export class ConversationRuntime {
       key: immutableKey,
       state: state.asReadonly(),
       timeline: controller.timeline,
+      search: controller.search,
       compose: composeController.compose,
       messages,
       media: Object.freeze({
@@ -586,6 +608,28 @@ export class ConversationRuntime {
         focused()?.timeline.rawEvent(roomId, eventId) ?? null,
       reactionDetails: (eventId) =>
         focused()?.timeline.reactionDetails(eventId) ?? [],
+    };
+  }
+
+  private focusedSearch(): ConversationSearch {
+    const focused = this.focusedHandle.asReadonly();
+    const emptyLoaded = {
+      hits: [],
+      scanned: 0,
+      encrypted: false,
+      serverAvailable: false,
+    } as const;
+    const emptyServer = { hits: [], count: 0, nextBatch: null } as const;
+    return {
+      searchLoaded: (query) =>
+        focused()?.search.searchLoaded(query) ?? emptyLoaded,
+      searchServer: (term, nextBatch) =>
+        defer(
+          () =>
+            focused()?.search.searchServer(term, nextBatch) ?? of(emptyServer),
+        ),
+      loadOlder: (count) =>
+        defer(() => focused()?.search.loadOlder(count) ?? of(0)),
     };
   }
 

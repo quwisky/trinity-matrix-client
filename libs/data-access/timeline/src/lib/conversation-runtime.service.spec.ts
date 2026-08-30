@@ -112,6 +112,16 @@ function setup(
       } as unknown as ConversationPinsController;
       const controller: TestConversationTimelineController = {
         timeline: timeline(key.roomId, messages),
+        search: {
+          searchLoaded: () => ({
+            hits: [],
+            scanned: 0,
+            encrypted: false,
+            serverAvailable: true,
+          }),
+          searchServer: () => of({ hits: [], count: 0, nextBatch: null }),
+          loadOlder: () => of(0),
+        },
         threads,
         pins,
         setVisible: (next) => {

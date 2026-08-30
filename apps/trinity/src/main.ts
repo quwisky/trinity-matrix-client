@@ -22,7 +22,13 @@ import { Capacitor } from '@capacitor/core';
 import { AvatarService, MediaService } from '@trinity/data-access/media';
 import { WORKSPACE_APPLICATION_SURFACE_PRESENTER } from '@trinity/application/workspace';
 import { BADGE_SINK, type BadgeSink } from '@trinity/application/badge';
-import { AuthService, OidcClientService } from '@trinity/data-access/auth';
+import {
+  AUTHENTICATION_HOMESERVER_DISCOVERY,
+  AuthService,
+  OidcClientService,
+  type AuthenticationHomeserverDiscovery,
+} from '@trinity/data-access/auth';
+import { HomeserverDiscoveryService } from '@trinity/data-access/discovery';
 import {
   ACCOUNT_LIFECYCLE_PORT,
   type AccountLifecyclePort,
@@ -99,6 +105,13 @@ void bootstrapApplication(ApplicationRootComponent, {
     provideCapacitorPreferenceStorage(),
     provideConversationPrivacyPreferences(),
     providePrivacyPreferenceSet(CONVERSATION_PRIVACY_PREFERENCES),
+    {
+      provide: AUTHENTICATION_HOMESERVER_DISCOVERY,
+      useFactory: (): AuthenticationHomeserverDiscovery => {
+        const discovery = inject(HomeserverDiscoveryService);
+        return { discover: (input) => discovery.discover(input) };
+      },
+    },
     {
       provide: ROOM_LIBRARY_GOVERNANCE_POLICY,
       useFactory: (): RoomLibraryGovernancePolicy => {

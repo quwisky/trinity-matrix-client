@@ -136,6 +136,10 @@ or blurs the current handle when the Room leaves Workspace. `RoomShellNavigation
 small shell-event adapter into that authority; it does not own semantic state or routing. Feature
 surfaces consume `ConversationRuntime.timeline`, a stable proxy for the focused child, rather than
 injecting the child implementation or a root timeline singleton.
+When a create or invite request succeeds before `/sync` has published the Room, Workspace crosses
+Room Library's bounded exact-Account readiness barrier before opening it. The barrier listens for
+the SDK Room, fails with typed metadata when sync stops or the deadline expires, and always removes
+its listeners; Workspace therefore never focuses an empty Conversation or waits indefinitely.
 `TimelineService` and its raw SDK context stay package-internal; the data-access action adapter
 reaches that context through an internal bridge, while the public entrypoint exports only
 app-owned read models and cold command services.

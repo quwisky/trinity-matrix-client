@@ -1,14 +1,14 @@
 {
   "$schema": "../../../node_modules/nx/schemas/project-schema.json",
-  "name": "data-access-rooms",
-  "projectType": "library",
-  "sourceRoot": "libs/data-access/rooms/src",
+  "name": "application-search",
+  "sourceRoot": "libs/application/search/src",
   "prefix": "trn",
+  "projectType": "library",
   "tags": [
     "type:data-access",
     "scope:matrix",
-    "role:capability",
-    "capability:discovery"
+    "role:application",
+    "capability:search"
   ],
   "targets": {
     "test": {},

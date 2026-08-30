@@ -3,7 +3,7 @@ import {
   type RoomLinkAction,
   type RoomLinkPreview,
   type RoomLinkPreviewFailure,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/discovery';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -23,7 +23,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { InvitesService } from '@trinity/data-access/room-library';
-import { describeRoomLinkPreviewFailure } from '@trinity/data-access/rooms';
+import { describeRoomLinkPreviewFailure } from '@trinity/data-access/discovery';
 import {
   describeMatrixRequestFailure,
   reportMatrixRequestFailure,

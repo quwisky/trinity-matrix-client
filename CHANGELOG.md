@@ -87,11 +87,28 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Discovery and search now have capability-owned boundaries.** The new
+  `@trinity/data-access/discovery` boundary owns `.well-known` homeserver resolution, paginated
+  public-room and Space lookup, room-link preview and bounded remote user-directory search.
+  Room Library owns the Quick Switcher's ranked local room, Space, DM and invite index, while
+  Conversations owns E2EE-honest loaded-message matching and paginated server search. The
+  Quick Switcher remains available with the same destinations and navigation behavior, but now
+  consumes an `@trinity/application/search` session that owns RxJS debounce, cancellation,
+  loading, truncation and safe per-group failure state and emits fully qualified Workspace
+  search intents. Workspace resolves every selected Room, Space, person or invitation on its
+  exact Account. Message search is attached to the immutable Account-and-Room Conversation child,
+  so an Active Account transition cannot retarget an in-flight search or scrollback.
+  Post-create and post-invite navigation waits for the exact Account's SDK graph through a cold,
+  bounded Room readiness barrier; stopped sync and deadline failures tear down listeners and
+  reach the existing safe search error state instead of repairing away the new Room or hanging.
+  Authentication reaches pre-login Discovery through a narrow composition-root port, so the
+  capability graph stays free of cross-capability exceptions.
+
 - **Profiles and presence now live behind Identity.** Stable safe user summaries, own-profile
-  changes, presence, ignore state and homeserver user lookup now use the explicit
-  `@trinity/data-access/identity` boundary through a lifecycle-free Matrix port. Directory lookup
-  no longer belongs to Room Library, and feature callers no longer reach the Matrix client for
-  Identity state. Avatar bytes upload through Media before Identity publishes the resulting
+  changes, arbitrary public-profile lookup, presence and ignore state now use the explicit
+  `@trinity/data-access/identity` boundary through a lifecycle-free Matrix port. Remote directory
+  search belongs to Discovery, and feature callers no longer reach the Matrix client for Identity
+  state. Avatar bytes upload through Media before Identity publishes the resulting
   `mxc://` reference. Room Administration retains membership and power, with its contextual
   display name and avatar explicitly marked as Room-scoped rather than duplicated as global
   profile ownership. Identity commands remain cold RxJS Observables with typed offline,
