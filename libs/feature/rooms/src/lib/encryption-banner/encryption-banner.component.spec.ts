@@ -3,14 +3,14 @@ import {
   WorkspaceApplicationSurfaceService,
   type WorkspaceApplicationSurfaceRequest,
 } from '@trinity/application/workspace';
-import { CryptoService, type CryptoStatus } from '@trinity/data-access/crypto';
+import { TrustService, type TrustStatus } from '@trinity/data-access/trust';
 import { fireEvent, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EncryptionBannerComponent } from './encryption-banner.component';
 
-const status = signal<CryptoStatus>('unknown');
+const status = signal<TrustStatus>('unknown');
 const open = vi.fn((request: WorkspaceApplicationSurfaceRequest) =>
   of({ kind: 'presented' as const, surface: request.surface }),
 );
@@ -19,7 +19,7 @@ const open = vi.fn((request: WorkspaceApplicationSurfaceRequest) =>
 function renderBanner() {
   return render(EncryptionBannerComponent, {
     providers: [
-      MockProvider(CryptoService, { status: status.asReadonly() }),
+      MockProvider(TrustService, { status: status.asReadonly() }),
       MockProvider(WorkspaceApplicationSurfaceService, { open }),
     ],
   });

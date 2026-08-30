@@ -1,19 +1,18 @@
-import { Injectable, inject, signal } from '@angular/core';
-import { Method, type MatrixClient, type UIAuthCallback } from 'matrix-js-sdk';
+import { Injectable, inject } from '@angular/core';
+import { Method, type UIAuthCallback } from 'matrix-js-sdk';
 import {
-  CryptoEvent,
   decodeRecoveryKey,
   deriveRecoveryKeyFromPassphrase,
-  type CryptoApi,
 } from 'matrix-js-sdk/lib/crypto-api';
 import type {
   SecretStorageKeyDescriptionAesV1,
   ServerSideSecretStorage,
 } from 'matrix-js-sdk/lib/secret-storage';
-import { Observable, defer, from } from 'rxjs';
+import { Observable, catchError, defer, from, map, of, throwError } from 'rxjs';
 import {
-  MatrixClientService,
-  projectFromClient,
+  TrustCryptoPort,
+  type TrustCryptoApi,
+  type TrustMatrixClient,
 } from '@trinity/data-access/matrix-client';
 import {
   decryptMegolmKeyFile,
@@ -27,24 +26,30 @@ import {
 } from './cross-signing-repair';
 import {
   DEFAULT_KEY_EVENT,
+  PartialRecoveryResetError,
   encodedRecoveryKey,
   runRecoveryReset,
   withTimeout,
 } from './recovery-reset';
+import {
+  TrustOperationError,
+  recoverTrustOperation,
+  trustOperationFailure,
+  type TrustOperation,
+} from './trust-operation-error';
+import {
+  TRUST_PROVIDER_RECOVERY,
+  type TrustProviderManagement,
+} from './trust-provider-recovery.port';
+import { TrustHealthService } from './trust-health.service';
+
+export type { TrustHealth, TrustStatus } from './trust-health.service';
+
+const CROSS_SIGNING_RESET_ACTION = 'org.matrix.cross_signing_reset';
 
 /**
- * Where this device stands relative to the account's encryption setup:
- * - `unknown`       — not yet computed (crypto not ready).
- * - `ready`         — cross-signing + secret storage are set up and trusted here.
- * - `needs-setup`   — no secret storage exists on the account yet (first device).
- * - `needs-recovery`— secret storage exists, but this device isn't trusted; the
- *                     user must unlock it with their recovery key / passphrase.
- */
-export type CryptoStatus =
-  'unknown' | 'ready' | 'needs-setup' | 'needs-recovery';
-
-/**
- * The account-level secret layer on top of {@link MatrixClientService}: bootstraps
+ * The account-level Trust module on top of the lifecycle-free {@link TrustCryptoPort}:
+ * bootstraps
  * cross-signing + secret storage (4S) + key backup, exposes readiness as signals,
  * and recovers a fresh device from the recovery key. Wraps `client.getCrypto()`
  * (the CryptoApi) so components never touch matrix-js-sdk directly.
@@ -58,59 +63,31 @@ export type CryptoStatus =
  *   trusted. No UIA: the keys already exist server-side.
  */
 @Injectable({ providedIn: 'root' })
-export class CryptoService {
-  private readonly matrix = inject(MatrixClientService);
+export class TrustService {
+  private readonly cryptoPort = inject(TrustCryptoPort);
+  private readonly providerRecovery = inject(TRUST_PROVIDER_RECOVERY);
+  private readonly healthRuntime = inject(TrustHealthService);
 
-  private readonly _status = signal<CryptoStatus>('unknown');
-  /** Primary signal that drives the encryption banner / setup vs unlock UI. */
-  readonly status = this._status.asReadonly();
-
-  private readonly _keyBackupActive = signal(false);
-  /** Whether a server-side key backup is active for this session. */
-  readonly keyBackupActive = this._keyBackupActive.asReadonly();
-
-  private readonly _thisDeviceVerified = signal(false);
-  /** Whether this device is cross-signing verified. */
-  readonly thisDeviceVerified = this._thisDeviceVerified.asReadonly();
-
-  /**
-   * The sync projection: client-keyed listeners, coalesced recomputes, and re-projection
-   * onto the newly-active account on a switch.
-   */
-  private readonly projection = projectFromClient({
-    id: 'crypto.status',
-    matrix: this.matrix,
-    events: [
-      CryptoEvent.KeysChanged,
-      CryptoEvent.UserTrustStatusChanged,
-      CryptoEvent.KeyBackupStatus,
-      CryptoEvent.DevicesUpdated,
-    ],
-    // These four arrive together during initial sync and after a key query, and each one
-    // previously ran a full computeStatus() — several async crypto reads — on its own.
-    // Coalescing them is the behaviour change in this migration; the status signals it
-    // writes are unchanged.
-    rebuild: () => void this.computeStatus(),
-    reset: () => {
-      this._status.set('unknown');
-      this._keyBackupActive.set(false);
-      this._thisDeviceVerified.set(false);
-    },
-  });
+  /** Atomic Trust state; no caller can observe a status assembled across generations. */
+  readonly health = this.healthRuntime.health;
+  /** Compatibility projections for the existing Trust surfaces. */
+  readonly status = this.healthRuntime.status;
+  readonly keyBackupActive = this.healthRuntime.keyBackupActive;
+  readonly thisDeviceVerified = this.healthRuntime.thisDeviceVerified;
 
   /** Subscribe to crypto events and compute the initial status; pair with disconnect. */
   connect(): void {
-    this.projection.connect();
+    this.healthRuntime.connect();
   }
 
   /** Detach crypto listeners from the current client and reset status signals. */
   disconnect(): void {
-    this.projection.disconnect();
+    this.healthRuntime.disconnect();
   }
 
   /** Re-evaluate the status signals against the current crypto state. */
   refresh(): Observable<void> {
-    return defer(() => from(this.computeStatus()));
+    return this.healthRuntime.refresh();
   }
 
   /**
@@ -132,8 +109,9 @@ export class CryptoService {
           // Captured once: the server read and the key generation below are both awaits,
           // and an account switch mid-flight must not retarget the UIA user id onto a
           // different account (or find no client at all, once the old one signed out).
-          const client = this.matrix.instance;
-          const crypto = this.requireCrypto();
+          const context = this.cryptoPort.active();
+          const client = context.client;
+          const crypto = this.requireCrypto('setup', context.crypto);
           const userId = client.getUserId() ?? '';
           await assertNoRecoveryOnAccount(client);
           const recoveryKey = await crypto.createRecoveryKeyFromPassphrase();
@@ -147,11 +125,11 @@ export class CryptoService {
             setupNewKeyBackup: true,
             createSecretStorageKey: async () => recoveryKey,
           });
-          await this.computeStatus();
+          await this.healthRuntime.reconcile();
           return encodedRecoveryKey(recoveryKey);
         })(),
       ),
-    );
+    ).pipe(recoverTrustOperation('setup'));
   }
 
   /**
@@ -166,20 +144,41 @@ export class CryptoService {
     return defer(() => {
       // Captured once: the reset spans several awaits, and an account switch mid-flight
       // must not retarget the rollback (or the UIA user id) onto a different account.
-      const client = this.matrix.instance;
+      const context = this.cryptoPort.active();
+      const client = context.client;
       return from(
         runRecoveryReset(
           {
-            crypto: this.requireCrypto(),
+            crypto: this.requireCrypto('reset-recovery', context.crypto),
             client,
             storage: client.secretStorage,
             userId: client.getUserId() ?? '',
-            refreshStatus: () => this.computeStatus(),
+            refreshStatus: () => this.healthRuntime.reconcile(),
           },
           promptPassword,
         ),
       );
-    });
+    }).pipe(
+      catchError((cause: unknown) =>
+        throwError(() =>
+          trustOperationFailure(
+            'reset-recovery',
+            cause,
+            cause instanceof PartialRecoveryResetError,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /** Provider-hosted cross-signing reset link, resolved only after a typed refusal. */
+  providerResetLink(): Observable<string | null> {
+    return defer(() => this.providerRecovery.accountManagement()).pipe(
+      map((management) =>
+        management ? crossSigningResetUrl(management) : null,
+      ),
+      catchError(() => of(null)),
+    );
   }
 
   /** Unlock this device from the account's recovery key (flow B). */
@@ -196,7 +195,10 @@ export class CryptoService {
     return this.recover(async (keyInfo) => {
       const info = keyInfo.passphrase;
       if (!info) {
-        throw new Error(
+        throw new TrustOperationError(
+          'recover',
+          'unsupported',
+          'reenter-secret',
           'This account has no recovery passphrase — enter the recovery key instead.',
         );
       }
@@ -219,11 +221,12 @@ export class CryptoService {
     return defer(() =>
       from(
         (async (): Promise<string> => {
-          const json = await this.requireCrypto().exportRoomKeysAsJson();
+          const json =
+            await this.requireCrypto('export-keys').exportRoomKeysAsJson();
           return encryptMegolmKeyFile(json, passphrase);
         })(),
       ),
-    );
+    ).pipe(recoverTrustOperation('export-keys'));
   }
 
   /**
@@ -237,12 +240,22 @@ export class CryptoService {
         (async (): Promise<void> => {
           // Resolved before the decrypt, which is long enough to span an account
           // switch: these keys belong to the account the import was started on.
-          const crypto = this.requireCrypto();
-          const json = await decryptMegolmKeyFile(armored, passphrase);
+          const crypto = this.requireCrypto('import-keys');
+          let json: string;
+          try {
+            json = await decryptMegolmKeyFile(armored, passphrase);
+          } catch {
+            throw new TrustOperationError(
+              'import-keys',
+              'invalid-secret',
+              'reenter-secret',
+              'The key export or its passphrase could not be verified.',
+            );
+          }
           await crypto.importRoomKeysAsJson(json);
         })(),
       ),
-    );
+    ).pipe(recoverTrustOperation('import-keys'));
   }
 
   /**
@@ -260,22 +273,33 @@ export class CryptoService {
     return defer(() =>
       from(
         (async (): Promise<void> => {
-          const crypto = this.requireCrypto();
+          const context = this.cryptoPort.active();
+          const crypto = this.requireCrypto('recover', context.crypto);
           // Capture the account's 4S holder up front so a mid-recovery account switch
           // can't retarget the cached key onto a different account's holder.
-          const holder = this.matrix.activeHolder();
-          const client = this.matrix.instance;
+          const holder = this.cryptoPort.secretStorageKey();
+          const client = context.client;
           const secretStorage = client.secretStorage;
           const keyId = await secretStorage.getDefaultKeyId();
           const tuple = keyId ? await secretStorage.getKey(keyId) : null;
           if (!keyId || !tuple) {
-            throw new Error('No recovery key is set up on this account.');
+            throw new TrustOperationError(
+              'recover',
+              'recovery-not-configured',
+              'verify-another-device',
+              'No recovery key is set up on this account.',
+            );
           }
           const keyInfo = tuple[1];
           const { privateKey } = await resolveKey(keyInfo);
           if (!(await secretStorage.checkKey(privateKey, keyInfo))) {
             privateKey.fill(0);
-            throw new Error('That recovery key is incorrect.');
+            throw new TrustOperationError(
+              'recover',
+              'invalid-secret',
+              'reenter-secret',
+              'That recovery key is incorrect.',
+            );
           }
 
           holder?.set(keyId, privateKey);
@@ -305,10 +329,10 @@ export class CryptoService {
           } catch {
             // best effort; status still reflects the (successful) device trust below
           }
-          await this.computeStatus();
+          await this.healthRuntime.reconcile();
         })(),
       ),
-    );
+    ).pipe(recoverTrustOperation('recover'));
   }
 
   /**
@@ -327,7 +351,7 @@ export class CryptoService {
    * recovery worked anyway.
    */
   private async repairStrandedIdentity(
-    crypto: CryptoApi,
+    crypto: TrustCryptoApi,
     storage: ServerSideSecretStorage,
     deviceId: string | null,
   ): Promise<void> {
@@ -337,69 +361,10 @@ export class CryptoService {
     try {
       await repairStaleCrossSigning(crypto, storage, deviceId);
     } catch (err) {
-      await this.computeStatus();
-      if (!this._thisDeviceVerified()) {
+      await this.healthRuntime.reconcile();
+      if (!this.health().thisDeviceVerified) {
         throw err;
       }
-    }
-  }
-
-  /** Monotonic token so a slow status run can't overwrite a newer one. */
-  private statusGeneration = 0;
-
-  /**
-   * Recompute the status signals; safe to call when crypto is unavailable and
-   * resilient to concurrent invocations (events fire it). Best-effort: it never
-   * rejects (callers fire it from listeners), and a superseded run drops its write.
-   */
-  private async computeStatus(): Promise<void> {
-    const generation = ++this.statusGeneration;
-    const isCurrent = (): boolean => generation === this.statusGeneration;
-    try {
-      const client = this.matrix.isInitialized ? this.matrix.instance : null;
-      const crypto = client?.getCrypto();
-      if (!client || !crypto) {
-        if (isCurrent()) {
-          this._status.set('unknown');
-          this._keyBackupActive.set(false);
-          this._thisDeviceVerified.set(false);
-        }
-        return;
-      }
-
-      const [
-        crossSigningReady,
-        secretStorageReady,
-        backupVersion,
-        defaultKeyId,
-      ] = await Promise.all([
-        crypto.isCrossSigningReady(),
-        crypto.isSecretStorageReady(),
-        crypto.getActiveSessionBackupVersion(),
-        client.secretStorage.getDefaultKeyId(),
-      ]);
-
-      const deviceId = client.getDeviceId();
-      const userId = client.getUserId();
-      const deviceStatus =
-        userId && deviceId
-          ? await crypto.getDeviceVerificationStatus(userId, deviceId)
-          : null;
-
-      if (!isCurrent()) {
-        return;
-      }
-      this._keyBackupActive.set(backupVersion !== null);
-      this._thisDeviceVerified.set(deviceStatus?.crossSigningVerified ?? false);
-      this._status.set(
-        crossSigningReady && secretStorageReady
-          ? 'ready'
-          : defaultKeyId
-            ? 'needs-recovery'
-            : 'needs-setup',
-      );
-    } catch {
-      // Transient crypto error: keep the last known signals rather than flapping.
     }
   }
 
@@ -417,10 +382,17 @@ export class CryptoService {
     return (makeRequest) => runPasswordUia(makeRequest, promptPassword, userId);
   }
 
-  private requireCrypto(): CryptoApi {
-    const crypto = this.matrix.instance.getCrypto();
+  private requireCrypto(
+    operation: TrustOperation,
+    crypto = this.cryptoPort.active().crypto,
+  ): TrustCryptoApi {
     if (!crypto) {
-      throw new Error('Crypto is not initialized on the client.');
+      throw new TrustOperationError(
+        operation,
+        'not-ready',
+        'retry',
+        'Trust is not ready for this account yet.',
+      );
     }
     return crypto;
   }
@@ -429,7 +401,12 @@ export class CryptoService {
     try {
       return decodeRecoveryKey(recoveryKey.trim());
     } catch {
-      throw new Error('That does not look like a valid recovery key.');
+      throw new TrustOperationError(
+        'recover',
+        'invalid-secret',
+        'reenter-secret',
+        'That does not look like a valid recovery key.',
+      );
     }
   }
 }
@@ -437,7 +414,7 @@ export class CryptoService {
 /**
  * Refuse first-device setup on an account that already has a 4S key.
  *
- * {@link CryptoService.setUp} is one click away from every `needs-setup` surface, and on
+ * {@link TrustService.setUp} is one click away from every `needs-setup` surface, and on
  * an account that is already set up it is destructive rather than idempotent:
  * `bootstrapSecretStorage({ setupNewKeyBackup: true })` mints a fresh 4S key — orphaning
  * the still-valid one the user holds — and `resetKeyBackup` opens by deleting every
@@ -453,13 +430,34 @@ export class CryptoService {
  * an unreachable or unhappy server does not. This exists to block a known-destructive
  * action, not to become a new way for genuine first-run setup to fail.
  */
-async function assertNoRecoveryOnAccount(client: MatrixClient): Promise<void> {
+async function assertNoRecoveryOnAccount(
+  client: TrustMatrixClient,
+): Promise<void> {
   if (!(await readServerDefaultKeyId(client))) {
     return;
   }
-  throw new Error(
+  throw new TrustOperationError(
+    'setup',
+    'stale-state',
+    'review-security-settings',
     'This account already has a recovery key. Unlock this device with that key instead — setting up a new one here would replace it and delete the account’s key backup.',
   );
+}
+
+/** A validated provider deep link for MSC2965 cross-signing reset. */
+function crossSigningResetUrl(
+  management: TrustProviderManagement,
+): string | null {
+  if (!management.actionsSupported.includes(CROSS_SIGNING_RESET_ACTION)) {
+    return null;
+  }
+  try {
+    const url = new URL(management.url);
+    url.searchParams.set('action', CROSS_SIGNING_RESET_ACTION);
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -467,7 +465,7 @@ async function assertNoRecoveryOnAccount(client: MatrixClient): Promise<void> {
  * also what a failed read yields, since the caller fails open.
  */
 async function readServerDefaultKeyId(
-  client: MatrixClient,
+  client: TrustMatrixClient,
 ): Promise<string | null> {
   const userId = client.getUserId();
   if (!userId) {

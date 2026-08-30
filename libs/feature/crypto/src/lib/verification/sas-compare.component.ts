@@ -6,7 +6,7 @@ import {
 } from '@angular/core';
 import { TrnButton } from '@trinity/components/button';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
-import { type SasEmoji } from '@trinity/data-access/crypto';
+import { type SasEmoji } from '@trinity/data-access/trust';
 
 /**
  * The Short-Authentication-String emoji comparison: shows the seven emoji (glyph

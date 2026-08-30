@@ -11,8 +11,8 @@ Everything described here sits in three libraries:
 (saved Account restoration and outcomes),
 [`libs/data-access/matrix-client`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/data-access/matrix-client)
 (client lifecycle, registry, 4S key holder, token refresher) and
-[`libs/data-access/crypto`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/data-access/crypto)
-(the crypto flows), with the DI-free primitives in
+[`libs/data-access/trust`](https://github.com/quwisky/trinity-matrix-client/tree/refactor/refine-architecture/libs/data-access/trust)
+(verification, recovery and encryption-health flows), with the DI-free primitives in
 [`libs/util/matrix`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/util/matrix)
 and the storage backends in
 [`libs/platform-native`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/platform-native).
@@ -588,10 +588,15 @@ unnecessary.
     firing right after a manual `set` with the *same* buffer. Zeroing unconditionally
     would wipe the incoming key, and every subsequent 4S read would fail.
 
-## CryptoStatus
+Trust reaches the already-started crypto machine through `TrustCryptoPort` in
+`data-access-matrix-client`. That port exposes an active crypto snapshot and Projection Runtime
+attachment, but no Account connection, switching, startup or shutdown operations. The development
+crypto startup probe remains in the Matrix adapter for the same reason.
+
+## TrustStatus
 
 ```ts
-type CryptoStatus = 'unknown' | 'ready' | 'needs-setup' | 'needs-recovery';
+type TrustStatus = 'unknown' | 'ready' | 'needs-setup' | 'needs-recovery';
 ```
 
 `computeStatus()` runs four crypto reads in parallel — `isCrossSigningReady()`,
@@ -601,23 +606,28 @@ then resolves: both ready gives `ready`; otherwise a `defaultKeyId` exists gives
 `needs-recovery`; otherwise `needs-setup`.
 
 Two properties are load-bearing. A monotonic `statusGeneration` token means a slow run
-cannot overwrite a newer one. And it never rejects — a transient crypto error keeps the
-last known signals rather than flapping the whole UI.
+cannot overwrite a newer one. Event-driven reconciliation is best-effort: a transient
+crypto error keeps the last known signals rather than flapping the whole UI. An explicit
+`refresh()` is a cold command and surfaces the same read failure as a sanitized
+`TrustOperationError` with operation `refresh-health`, so its caller gets typed recovery
+meaning without raw SDK or homeserver details.
 
 It is driven by a coalesced `projectFromClient` bound to `CryptoEvent.KeysChanged`,
 `UserTrustStatusChanged`, `KeyBackupStatus` and `DevicesUpdated`. All four arrive together
 during initial sync and after a key query, and each previously ran a full status recompute
 — several async crypto reads — on its own.
 
-`CryptoStatus` is what the encryption banner reads. That banner lives in
+`TrustStatus` is one projection of the atomic `TrustHealth` view the encryption banner reads.
+`TrustHealth` publishes status, key-backup activity and this-device verification together, so an
+Account switch cannot expose values assembled across generations. That banner lives in
 `@trinity/feature/rooms`, not `@trinity/feature/crypto`, because the module boundary
 forbids a feature-to-feature dependency; it reads the signal from
-`@trinity/data-access/crypto` directly.
+`@trinity/data-access/trust` directly.
 
 ## Setup and recovery
 
 Three flows, all in
-[`CryptoService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/crypto/src/lib/crypto.service.ts).
+[`TrustService`](https://github.com/quwisky/trinity-matrix-client/blob/refactor/refine-architecture/libs/data-access/trust/src/lib/trust.service.ts).
 
 ### First device
 
@@ -680,7 +690,7 @@ the backup once it is enabled, and the bulk download can take hours.
     later never replaces them and the device stays untrusted forever. The user types the
     correct recovery key, the flow reports success, and the status stays `needs-recovery`.
 
-    [`cross-signing-repair.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/crypto/src/lib/cross-signing-repair.ts)
+    [`cross-signing-repair.ts`](https://github.com/quwisky/trinity-matrix-client/blob/refactor/refine-architecture/libs/data-access/trust/src/lib/cross-signing-repair.ts)
     detects it narrowly — all three privates cached locally **and** present in secret
     storage **and** `!isCrossSigningReady()`. The `!isCrossSigningReady()` test alone is
     far too wide; it matches every ordinary unverified device. The repair reads the three
@@ -694,7 +704,7 @@ the backup once it is enabled, and the bulk download can take hours.
 
 The last resort, for someone who has lost their recovery key and has no other verified
 device.
-[`runRecoveryReset`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/crypto/src/lib/recovery-reset.ts)
+[`runRecoveryReset`](https://github.com/quwisky/trinity-matrix-client/blob/refactor/refine-architecture/libs/data-access/trust/src/lib/recovery-reset.ts)
 is a hand-written replacement for `CryptoApi.resetEncryption`.
 
 !!! danger "Why CryptoApi.resetEncryption is not used"
@@ -736,7 +746,7 @@ so it heads the destructive tail instead.
 
 Because Trinity owns a copy, **a step added to `resetEncryption` upstream will not be
 inherited.** Diff the SDK's `resetEncryption` on every version bump. Ordering unit tests in
-`crypto.service.spec.ts` assert the sequences `['park','upload','destroy']` and
+`trust.service.spec.ts` assert the sequences `['park','upload','destroy']` and
 `['park','upload','dehydrated','destroy']`; they are the guard, not a substitute for
 looking.
 
@@ -784,13 +794,14 @@ but stay signed in, a new key must be saved — and demands the literal word `RE
 
 `resetRecovery()` deliberately does **not** use the shared `runWithBusy` helper. That
 helper maps a failure to `EMPTY`, so no error handler ever runs, and this is the one path
-that must inspect _why_ it failed:
+that must inspect the secret-safe `TrustOperationError` recovery meaning:
 
-| Failure               | Response                                                                                                                                                                                                  |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `UiaCancelledError`   | Say nothing                                                                                                                                                                                               |
-| `UiaUnsupportedError` | The account cannot answer a password challenge in-app (OIDC-native or SSO-only), so read the provider's `account_management_uri` and deep-link it with `?action=org.matrix.cross_signing_reset` (MSC2965) |
-| Anything else         | Keep its own message                                                                                                                                                                                      |
+| Trust failure meaning                  | Response                                                                                                                                         |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `kind: 'cancelled'`                    | Say nothing                                                                                                                                      |
+| `recovery: 'open-provider'`            | Resolve the provider account-management link through the Trust recovery port and open only an advertised cross-signing reset action (MSC2965)    |
+| `recovery: 'review-security-settings'` | Explain that the reset may be partial and direct the user to Settings → Security before another attempt                                          |
+| Any other typed operational failure    | Show only its sanitized message and recovery action; raw UIA, homeserver, SDK, key, account, and device details remain inside the Trust boundary |
 
 The provider URL is rendered as a **link** as well as passed to `Browser.open`: by the time
 the failure is triaged, several awaits and a network round-trip have passed since the
@@ -823,7 +834,7 @@ device sign-out, and change-password.
 
 ## Verification and shields
 
-[`VerificationService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/crypto/src/lib/verification.service.ts)
+[`TrustVerificationService`](https://github.com/quwisky/trinity-matrix-client/blob/refactor/refine-architecture/libs/data-access/trust/src/lib/trust-verification.service.ts)
 wraps the SDK's `VerificationRequest` and `Verifier` behind a single `active` signal.
 Self-verification offers Matrix QR show/scan when the other session advertises the matching
 method, with `m.sas.v1` emoji as fallback. Cross-user verification
@@ -831,7 +842,9 @@ method, with `m.sas.v1` emoji as fallback. Cross-user verification
 verification runs at a time.
 
 QR payloads remain raw bytes end to end. `generateQRCode()` is called only after the user
-chooses to show a code, and those bytes are discarded as soon as a method starts. The
+chooses to show a code; the command emits one defensive copy and Trust never retains it in
+`VerificationView`. The verification page converts that emission to a transient local data URL,
+which is cleared whenever the QR presentation closes or the request advances. The
 public `QrScannerComponent` decodes live-camera frames through the injectable platform QR
 service, so another flow can reuse the camera and tests can substitute the decoder. A scan
 does not mean success: the showing device must confirm the `ShowReciprocateQr` prompt, and
@@ -841,6 +854,13 @@ The `sasConfirmed` flag on the view model is **local**, because the SDK's phase 
 `Started` after your MAC goes out. Without it the UI would keep asking the user to confirm
 instead of waiting for the other side; a rejected `confirm()` flips it back so nobody is
 stuck waiting on a MAC that never sent.
+
+Every public Trust action is a cold, finite RxJS Observable. Expected failures cross the boundary
+as `TrustOperationError`: an operation, a stable failure kind, recovery guidance and a partial-update
+flag. Raw SDK errors, homeserver responses, identifiers and key material are not retained. Provider-
+hosted recovery metadata enters through `TRUST_PROVIDER_RECOVERY`, composed in `main.ts`; Trust
+validates the advertised cross-signing-reset action and returns only the resolved link, so Trust
+screens no longer depend on Account authentication lifecycle services.
 
 Presentation is split. `VerificationHostComponent` in `@trinity/application/runtime` renders
 nothing and owns `connect()`, presenting a modal for any verification the route does not

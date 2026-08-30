@@ -187,7 +187,7 @@ import.
 
     A presentation port is the second-choice resolution. The first is to read the relevant
     `@trinity/data-access/*` signal from the feature that owns the surface: the encryption banner
-    lives in `feature-rooms` and injects `CryptoService` directly, then asks Workspace to present a
+    lives in `feature-rooms` and injects `TrustService` directly, then asks Workspace to present a
     typed trust surface rather than importing anything from `feature-crypto`. Reach for a port only
     when one feature must *present* another's page.
 

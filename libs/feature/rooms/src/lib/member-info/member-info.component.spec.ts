@@ -16,7 +16,7 @@ import {
 } from '@trinity/data-access/profile';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { VerificationService } from '@trinity/data-access/crypto';
+import { TrustVerificationService } from '@trinity/data-access/trust';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
@@ -113,7 +113,7 @@ async function build(
         }),
       }),
       MockProvider(RoomLibraryService, { createDirectMessage }),
-      MockProvider(VerificationService, { startUserVerification }),
+      MockProvider(TrustVerificationService, { startUserVerification }),
       MockProvider(IgnoredUsersService, {
         isIgnored: () => opts.isIgnored ?? false,
         ignore,
@@ -171,7 +171,7 @@ async function buildPanel(m: MemberSummary = member()) {
       MockProvider(RoomLibraryService, {
         createDirectMessage: vi.fn(() => of('!dm:hs')),
       }),
-      MockProvider(VerificationService),
+      MockProvider(TrustVerificationService),
       MockProvider(IgnoredUsersService, { isIgnored: () => false }),
       MockProvider(TrnAlertService),
     ],

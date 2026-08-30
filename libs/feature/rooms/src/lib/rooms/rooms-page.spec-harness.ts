@@ -13,7 +13,7 @@ import {
   convertToParamMap,
   type ParamMap,
 } from '@angular/router';
-import { CryptoService } from '@trinity/data-access/crypto';
+import { TrustService } from '@trinity/data-access/trust';
 import {
   AccountRuntimeService,
   type AccountSwitchCoordination,
@@ -281,7 +281,7 @@ export const SHARED_MOCKS: Provider[] = [
       };
     },
   },
-  MockProvider(CryptoService),
+  MockProvider(TrustService),
   MockProvider(RoomNotificationsService, {
     connect: vi.fn(),
     setModeForAccounts: () => of(undefined),

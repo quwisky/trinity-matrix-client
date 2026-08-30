@@ -100,14 +100,7 @@
       "reason": "The Workspace application workflow currently contains conversation, room-library, administration, and discovery surfaces."
     }
   ],
-  "dependencyExceptions": [
-    {
-      "source": "feature-crypto",
-      "target": "data-access-auth",
-      "removeBy": "#319",
-      "reason": "Trust screens currently consume account lifecycle services directly."
-    }
-  ],
+  "dependencyExceptions": [],
   "sourceBaselines": {
     "appInitializers": {
       "path": "apps/trinity/src/main.ts",

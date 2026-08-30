@@ -8,9 +8,9 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
-  VerificationService,
+  TrustVerificationService,
   type VerificationView,
-} from '@trinity/data-access/crypto';
+} from '@trinity/data-access/trust';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ENCRYPTION_DIALOG_COMPONENTS } from '@trinity/components/encryption-dialog';
 import {
@@ -27,7 +27,7 @@ import { finalize, from, take } from 'rxjs';
 })
 export class VerificationHostComponent {
   private readonly matrix = inject(MatrixClientService);
-  private readonly verification = inject(VerificationService);
+  private readonly verification = inject(TrustVerificationService);
   private readonly dialog = inject(TrnDialogService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly errors = inject(ErrorHandler);

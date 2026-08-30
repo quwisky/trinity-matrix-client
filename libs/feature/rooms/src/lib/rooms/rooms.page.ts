@@ -38,7 +38,7 @@ import {
 } from '@trinity/components/overlay';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnTooltip } from '@trinity/components/tooltip';
-import { CryptoService } from '@trinity/data-access/crypto';
+import { TrustService } from '@trinity/data-access/trust';
 import {
   InvitesService,
   MixedInvitesService,
@@ -295,7 +295,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly imagePackService = inject(ImagePackService);
   readonly flags = inject(FeatureFlagsService);
   private readonly matrix = inject(MatrixClientService);
-  private readonly crypto = inject(CryptoService);
+  private readonly crypto = inject(TrustService);
   private readonly presence = inject(PresenceService);
   private readonly spaceChildren = inject(SpaceChildrenService);
   private readonly roomPermissions = inject(RoomActionPermissionsService);

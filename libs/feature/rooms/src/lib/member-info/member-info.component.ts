@@ -35,7 +35,7 @@ import {
   PresenceService,
 } from '@trinity/data-access/profile';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { VerificationService } from '@trinity/data-access/crypto';
+import { TrustVerificationService } from '@trinity/data-access/trust';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { TrnIconComponent } from '@trinity/components/icon';
 
@@ -106,7 +106,7 @@ export class MemberInfoComponent {
   private readonly permissionsService = inject(RoomActionPermissionsService);
   private readonly ignoredUsers = inject(IgnoredUsersService);
   private readonly rooms = inject(RoomLibraryService);
-  private readonly verification = inject(VerificationService);
+  private readonly verification = inject(TrustVerificationService);
   private readonly alert = inject(TrnAlertService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly userIdHandle =

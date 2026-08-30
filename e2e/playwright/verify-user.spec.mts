@@ -9,7 +9,7 @@ import { registerUser } from './support/account.mts';
 
 // Covers starting cross-user verification from a member's info panel: "Verify"
 // (data-testid="member-info-verify") ensures a DM with them and requests emoji-SAS
-// verification (VerificationService.startUserVerification → requestVerificationDM), after
+// verification (TrustVerificationService.startUserVerification → requestVerificationDM), after
 // which the app's verification host presents the SAS page (data-testid="verify-page").
 // The other side never responds here (no second client), so this asserts the flow
 // *starts* — the SAS round-trip is covered by the crypto unit + e2e:verify suites.

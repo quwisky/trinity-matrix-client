@@ -45,7 +45,7 @@
       "@trinity/data-access/profile": [
         "./libs/data-access/profile/src/index.ts"
       ],
-      "@trinity/data-access/crypto": ["./libs/data-access/crypto/src/index.ts"],
+      "@trinity/data-access/trust": ["./libs/data-access/trust/src/index.ts"],
       "@trinity/data-access/timeline": [
         "./libs/data-access/timeline/src/index.ts"
       ],

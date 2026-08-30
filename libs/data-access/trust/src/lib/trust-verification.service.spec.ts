@@ -10,7 +10,7 @@ import {
   VerificationRequestEvent,
   VerifierEvent,
 } from 'matrix-js-sdk/lib/crypto-api';
-import { VerificationService } from './verification.service';
+import { TrustVerificationService } from './trust-verification.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 // Minimal event emitter shaped like matrix-js-sdk's TypedEventEmitter.
@@ -139,7 +139,7 @@ function setup(opts: { inProgress?: ReturnType<typeof fakeRequest> } = {}) {
   // mock of MatrixClientService (its `isInitialized`/`instance` getters overridden).
   TestBed.configureTestingModule({
     providers: [
-      VerificationService,
+      TrustVerificationService,
       MockProvider(MatrixClientService, {
         isInitialized: true,
         instance: client as unknown as MatrixClient,
@@ -149,10 +149,15 @@ function setup(opts: { inProgress?: ReturnType<typeof fakeRequest> } = {}) {
     ],
   });
   const matrix = TestBed.inject(MatrixClientService);
-  return { svc: TestBed.inject(VerificationService), crypto, client, matrix };
+  return {
+    svc: TestBed.inject(TrustVerificationService),
+    crypto,
+    client,
+    matrix,
+  };
 }
 
-describe('VerificationService', () => {
+describe('TrustVerificationService', () => {
   beforeEach(() => TestBed.resetTestingModule());
 
   it('adopts an in-progress request on connect', () => {
@@ -307,11 +312,12 @@ describe('VerificationService', () => {
     req.generateQRCode.mockResolvedValue(payload);
     client.emit(CryptoEvent.VerificationRequestReceived, req);
 
-    expect(svc.active()?.qrCodeData).toBeNull();
-    await firstValueFrom(svc.showQr());
+    const emitted = await firstValueFrom(svc.showQr());
 
     expect(svc.active()?.stage).toBe('qr-shown');
-    expect(svc.active()?.qrCodeData).toEqual(payload);
+    expect(emitted).toEqual(payload);
+    expect(emitted).not.toBe(payload);
+    expect(svc.active()).not.toHaveProperty('qrCodeData');
   });
 
   it('drops the sensitive QR payload once a verification method starts', async () => {
@@ -329,7 +335,7 @@ describe('VerificationService', () => {
     req.attachVerifier(verifier);
     req.setPhase(VerificationPhase.Started);
 
-    expect(svc.active()?.qrCodeData).toBeNull();
+    expect(svc.active()).not.toHaveProperty('qrCodeData');
   });
 
   it('does not retain a QR payload generated after the request has started', async () => {
@@ -351,9 +357,12 @@ describe('VerificationService', () => {
     req.attachVerifier(fakeVerifier());
     req.setPhase(VerificationPhase.Started);
     resolveQr(new Uint8ClampedArray([1, 2, 3]));
-    await showQr;
+    await expect(showQr).rejects.toMatchObject({
+      kind: 'stale-state',
+      operation: 'show-qr',
+    });
 
-    expect(svc.active()?.qrCodeData).toBeNull();
+    expect(svc.active()).not.toHaveProperty('qrCodeData');
     expect(svc.active()?.stage).toBe('waiting');
   });
 
@@ -370,7 +379,7 @@ describe('VerificationService', () => {
 
     req.setPhase(VerificationPhase.Cancelled);
 
-    expect(svc.active()?.qrCodeData).toBeNull();
+    expect(svc.active()).not.toHaveProperty('qrCodeData');
     expect(svc.active()?.stage).toBe('cancelled');
   });
 
@@ -561,7 +570,11 @@ describe('VerificationService', () => {
     sas.confirm.mockRejectedValue(new Error('offline'));
     verifier.showSas(sas);
 
-    await expect(firstValueFrom(svc.confirmSas())).rejects.toThrow(/offline/);
+    await expect(firstValueFrom(svc.confirmSas())).rejects.toMatchObject({
+      operation: 'confirm-verification',
+      kind: 'server-failure',
+      recovery: 'retry',
+    });
     expect(svc.active()?.sasConfirmed).toBe(false);
   });
 

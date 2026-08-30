@@ -5,7 +5,7 @@ import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DevicesService } from './devices.service';
+import { TrustDevicesService } from './trust-devices.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 /** A UIA 401 carrying a password flow + session, like a homeserver returns. */
@@ -57,7 +57,7 @@ function setup(clientOverrides: Record<string, unknown> = {}) {
   const client = fakeClient(clientOverrides);
   TestBed.configureTestingModule({
     providers: [
-      DevicesService,
+      TrustDevicesService,
       MockProvider(MatrixClientService, {
         isInitialized: true,
         instance: client as unknown as MatrixClient,
@@ -66,10 +66,10 @@ function setup(clientOverrides: Record<string, unknown> = {}) {
     ],
   });
   const matrix = TestBed.inject(MatrixClientService);
-  return { svc: TestBed.inject(DevicesService), client, matrix };
+  return { svc: TestBed.inject(TrustDevicesService), client, matrix };
 }
 
-describe('DevicesService', () => {
+describe('TrustDevicesService', () => {
   beforeEach(() => TestBed.resetTestingModule());
 
   it('lists devices with verification + current flags, current first', async () => {
@@ -143,8 +143,12 @@ describe('DevicesService', () => {
     client.deleteDevice.mockRejectedValue(uia('sess')); // always challenges
     const prompt = vi.fn().mockResolvedValue('wrong');
 
-    await expect(firstValueFrom(svc.delete('B', prompt))).rejects.toThrow(
-      /too many/i,
+    await expect(firstValueFrom(svc.delete('B', prompt))).rejects.toMatchObject(
+      {
+        operation: 'delete-device',
+        kind: 'permission-denied',
+        recovery: 'retry',
+      },
     );
     expect(prompt).toHaveBeenCalledTimes(3);
     // The device stays in the list since deletion never succeeded.
@@ -202,8 +206,12 @@ describe('DevicesService', () => {
     client.deleteDevice.mockRejectedValueOnce(new Error('network down'));
     const prompt = vi.fn();
 
-    await expect(firstValueFrom(svc.delete('B', prompt))).rejects.toThrow(
-      /network down/,
+    await expect(firstValueFrom(svc.delete('B', prompt))).rejects.toMatchObject(
+      {
+        operation: 'delete-device',
+        kind: 'server-failure',
+        recovery: 'retry',
+      },
     );
     expect(prompt).not.toHaveBeenCalled();
   });
@@ -219,8 +227,12 @@ describe('DevicesService', () => {
     );
     const prompt = vi.fn();
 
-    await expect(firstValueFrom(svc.delete('B', prompt))).rejects.toThrow(
-      /additional verification/i,
+    await expect(firstValueFrom(svc.delete('B', prompt))).rejects.toMatchObject(
+      {
+        operation: 'delete-device',
+        kind: 'provider-action-required',
+        recovery: 'open-provider',
+      },
     );
     expect(prompt).not.toHaveBeenCalled();
   });
@@ -284,7 +296,7 @@ describe('DevicesService', () => {
   });
 
   it('rebinds the device listener onto the newly-active account on a switch', () => {
-    // DevicesService takes no rebuild from the projection — it has no read model to
+    // TrustDevicesService takes no rebuild from the projection — it has no read model to
     // re-seed — so the switch behaviour worth pinning is that the listener follows the
     // active client rather than staying on the previous account's.
     const { svc, client, matrix } = setup();

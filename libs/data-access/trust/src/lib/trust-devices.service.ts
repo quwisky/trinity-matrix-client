@@ -2,9 +2,13 @@ import { Injectable, inject, signal } from '@angular/core';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import { Observable, defer, from, map, tap } from 'rxjs';
 import {
-  MatrixClientService,
-  projectFromClient,
+  TrustCryptoPort,
+  type TrustMatrixClient,
 } from '@trinity/data-access/matrix-client';
+import {
+  TrustOperationError,
+  recoverTrustOperation,
+} from './trust-operation-error';
 import {
   UiaCancelledError,
   runPasswordUia,
@@ -32,8 +36,8 @@ export interface DeviceInfo {
  * live as the device list changes elsewhere.
  */
 @Injectable({ providedIn: 'root' })
-export class DevicesService {
-  private readonly matrix = inject(MatrixClientService);
+export class TrustDevicesService {
+  private readonly cryptoPort = inject(TrustCryptoPort);
 
   private readonly _devices = signal<DeviceInfo[]>([]);
   readonly devices = this._devices.asReadonly();
@@ -47,10 +51,10 @@ export class DevicesService {
     users: string[],
     initialFetch?: boolean,
   ): void => {
-    if (initialFetch || !this.matrix.isInitialized) {
+    if (initialFetch || !this.cryptoPort.isAvailable()) {
       return;
     }
-    const me = this.matrix.instance.getUserId();
+    const me = this.cryptoPort.active().client.getUserId();
     if (me && users.includes(me)) {
       void this.loadDevices().catch(() => undefined);
     }
@@ -60,21 +64,21 @@ export class DevicesService {
    * The projection. `onDevicesUpdated` is bound by hand because it reads the event's
    * arguments to decide whether OUR session list changed, so there is nothing to coalesce.
    *
-   * No `rebuild` or `reset`, which is a deliberate carry-over of existing behaviour and
-   * NOT a claim that this service has no read model — {@link devices} is one. It is
-   * populated only by {@link list}, on demand, and neither `connect()` nor `disconnect()`
-   * ever touched it. The consequence is that an account switch rebinds the listener to the
-   * new client while `devices()` still holds the previous account's sessions until
-   * something calls `list()` again. That predates this refactor and is left alone here
-   * rather than fixed silently inside one; it wants its own change.
+   * Rebuild and reset are part of the Trust contract: an Account switch must never expose
+   * the previous Account's sessions, and a detached projection must hold no stale device
+   * identities or network metadata.
    */
-  private readonly projection = projectFromClient({
+  private readonly projection = this.cryptoPort.project({
     id: 'crypto.devices',
-    matrix: this.matrix,
     bind: (client) =>
       client.on(CryptoEvent.DevicesUpdated, this.onDevicesUpdated),
     unbind: (client) =>
       client.off(CryptoEvent.DevicesUpdated, this.onDevicesUpdated),
+    rebuild: (client) => void this.loadDevices(client).catch(() => undefined),
+    reset: () => {
+      this.loadGen++;
+      this._devices.set([]);
+    },
   });
 
   /** Subscribe to live device-list changes; pair with {@link disconnect}. */
@@ -88,12 +92,16 @@ export class DevicesService {
 
   /** Fetch all devices with their verification status (current device first). */
   list(): Observable<DeviceInfo[]> {
-    return defer(() => from(this.loadDevices()));
+    return defer(() => from(this.loadDevices())).pipe(
+      recoverTrustOperation('list-devices'),
+    );
   }
 
-  private async loadDevices(): Promise<DeviceInfo[]> {
+  private async loadDevices(
+    projectedClient?: TrustMatrixClient,
+  ): Promise<DeviceInfo[]> {
     const gen = ++this.loadGen;
-    const client = this.matrix.instance;
+    const client = projectedClient ?? this.cryptoPort.active().client;
     const userId = client.getUserId() ?? '';
     const currentId = client.getDeviceId();
     const crypto = client.getCrypto();
@@ -138,13 +146,14 @@ export class DevicesService {
     const trimmed = name.trim();
     return defer(() =>
       from(
-        this.matrix.instance.setDeviceDetails(deviceId, {
+        this.cryptoPort.active().client.setDeviceDetails(deviceId, {
           display_name: trimmed,
         }),
       ),
     ).pipe(
       tap(() => this.patch(deviceId, { displayName: trimmed || deviceId })),
       map(() => void 0),
+      recoverTrustOperation('rename-device'),
     );
   }
 
@@ -154,18 +163,25 @@ export class DevicesService {
    * re-asked on a wrong password. A cancelled prompt aborts.
    */
   delete(deviceId: string, promptPassword: PasswordPrompt): Observable<void> {
-    return defer(() => from(this.deleteWithUia(deviceId, promptPassword)));
+    return defer(() => from(this.deleteWithUia(deviceId, promptPassword))).pipe(
+      recoverTrustOperation('delete-device'),
+    );
   }
 
   private async deleteWithUia(
     deviceId: string,
     promptPassword: PasswordPrompt,
   ): Promise<void> {
-    const client = this.matrix.instance;
+    const client = this.cryptoPort.active().client;
     // Deleting the active session is logout (it revokes this token), not device
     // management — refuse here so an exported caller can't self-revoke.
     if (deviceId === client.getDeviceId()) {
-      throw new Error('Use “Log out” to sign out the device you are using.');
+      throw new TrustOperationError(
+        'delete-device',
+        'stale-state',
+        'none',
+        'Use “Log out” to sign out the device you are using.',
+      );
     }
     try {
       await runPasswordUia(

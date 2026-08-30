@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { TrnDialogService } from '@trinity/components/overlay';
-import { VerificationService } from '@trinity/data-access/crypto';
+import { TrustVerificationService } from '@trinity/data-access/trust';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
@@ -20,7 +20,7 @@ describe('ApplicationRootComponent', () => {
         provideRouter([]),
         { provide: ApplicationRuntimeService, useValue: { state, recover } },
         MockProvider(MatrixClientService, { syncState: signal(null) }),
-        MockProvider(VerificationService, { active: signal(null) }),
+        MockProvider(TrustVerificationService, { active: signal(null) }),
         MockProvider(TrnDialogService),
       ],
     });

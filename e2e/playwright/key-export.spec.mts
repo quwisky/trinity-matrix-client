@@ -10,7 +10,7 @@ import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers encrypted room-key export / import (Settings → Security → Encrypted key export):
 // exporting prompts for a passphrase and downloads a megolm `.txt`; importing that file back
-// with the same passphrase round-trips through CryptoService.export/importRoomKeys. A fresh
+// with the same passphrase round-trips through TrustService.export/importRoomKeys. A fresh
 // account exports an empty key set, which still exercises the file format + UI plumbing
 // end-to-end. Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = synapseSession();

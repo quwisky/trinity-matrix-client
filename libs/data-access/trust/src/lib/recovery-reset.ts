@@ -1,13 +1,10 @@
-import {
-  Method,
-  retryNetworkOperation,
-  type MatrixClient,
-} from 'matrix-js-sdk';
-import type {
-  CryptoApi,
-  GeneratedSecretStorageKey,
-} from 'matrix-js-sdk/lib/crypto-api';
+import { Method, retryNetworkOperation } from 'matrix-js-sdk';
+import type { GeneratedSecretStorageKey } from 'matrix-js-sdk/lib/crypto-api';
 import type { ServerSideSecretStorage } from 'matrix-js-sdk/lib/secret-storage';
+import type {
+  TrustCryptoApi,
+  TrustMatrixClient,
+} from '@trinity/data-access/matrix-client';
 import {
   completePasswordUia,
   isUiaRefusal,
@@ -52,6 +49,15 @@ const RESTORE_TIMEOUT_MS = 20_000;
 const PARTIAL_RESET_MESSAGE =
   'The homeserver stopped responding while the reset was being finished, so it may have completed only partly. Check Settings → Security to see whether recovery is set up before starting another reset.';
 
+/** The irreversible tail started, so callers must offer inspection rather than blind retry. */
+export class PartialRecoveryResetError extends Error {
+  override readonly name = 'PartialRecoveryResetError';
+
+  constructor() {
+    super(PARTIAL_RESET_MESSAGE);
+  }
+}
+
 /** The account-data key every device reads to find the current 4S key. */
 export const DEFAULT_KEY_EVENT = 'm.secret_storage.default_key';
 
@@ -61,8 +67,8 @@ const DEHYDRATED_DEVICE_PREFIX =
 
 /** Everything the reset touches, captured once by the caller. */
 export interface RecoveryResetContext {
-  readonly crypto: CryptoApi;
-  readonly client: MatrixClient;
+  readonly crypto: TrustCryptoApi;
+  readonly client: TrustMatrixClient;
   readonly storage: ServerSideSecretStorage;
   readonly userId: string;
   /** Recompute the caller's status signals; must not reject. */
@@ -197,10 +203,16 @@ export async function runRecoveryReset(
         createSecretStorageKey: async () => recoveryKey,
       }),
       DESTRUCTIVE_TAIL_TIMEOUT_MS,
-      PARTIAL_RESET_MESSAGE,
+      new PartialRecoveryResetError(),
     );
     await dropStaleKeyDescription(storage, previousKeyId);
     return encodedRecoveryKey(recoveryKey);
+  } catch (cause) {
+    // The identity is already published. Every failure from here is necessarily partial,
+    // whether it is a timeout, key generation/encoding failure, or an ordinary SDK error.
+    throw cause instanceof PartialRecoveryResetError
+      ? cause
+      : new PartialRecoveryResetError();
   } finally {
     await ctx.refreshStatus();
   }
@@ -226,7 +238,7 @@ export function encodedRecoveryKey(key: GeneratedSecretStorageKey): string {
  * asks.
  */
 async function preAuthenticate(
-  client: MatrixClient,
+  client: TrustMatrixClient,
   promptPassword: PasswordPrompt,
   userId: string,
 ): Promise<string | null> {
@@ -272,7 +284,9 @@ function replayAccepted(
  * Bounded as well as swallowed. It heads the destructive tail and uses the crypto flow's
  * tighter limit rather than waiting for the account client's default request deadline.
  */
-async function deleteDehydratedDevice(client: MatrixClient): Promise<void> {
+async function deleteDehydratedDevice(
+  client: TrustMatrixClient,
+): Promise<void> {
   try {
     await withTimeout(
       client.http.authedRequest(
@@ -341,7 +355,7 @@ async function abandonReset(
  * `status` is computed from that local store and a stale `needs-setup` puts a "set up
  * recovery" button — which mints a new 4S key and deletes the key backup — in front of the
  * user. Bounded, and never allowed to fail the repair. When it cannot run, the server is
- * still right for every other device, and `CryptoService.setUp` refuses on a server read of
+ * still right for every other device, and `TrustService.setUp` refuses on a server read of
  * its own rather than trusting the local one.
  */
 async function restoreDefaultKeyId(
@@ -451,7 +465,7 @@ async function bestEffort(work: () => Promise<unknown>): Promise<void> {
 export async function withTimeout<T>(
   work: Promise<T>,
   ms = ACCOUNT_DATA_TIMEOUT_MS,
-  message = 'Timed out waiting for the homeserver.',
+  failure: string | Error = 'Timed out waiting for the homeserver.',
 ): Promise<T> {
   // The loser of the race stays pending; without this its later rejection would surface
   // as an unhandled one.
@@ -461,7 +475,11 @@ export async function withTimeout<T>(
     return await Promise.race([
       work,
       new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(message)), ms);
+        timer = setTimeout(
+          () =>
+            reject(typeof failure === 'string' ? new Error(failure) : failure),
+          ms,
+        );
       }),
     ]);
   } finally {

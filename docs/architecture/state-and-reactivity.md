@@ -383,9 +383,9 @@ Fourteen services take the full `projectFromClient`:
 | `SpaceChildrenService`         | `@trinity/data-access/room-library`        |
 | `RoomActionPermissionsService` | `@trinity/data-access/room-administration` |
 | `RoomMembersService`           | `@trinity/data-access/room-administration` |
-| `CryptoService`                | `@trinity/data-access/crypto`              |
-| `VerificationService`          | `@trinity/data-access/crypto`              |
-| `DevicesService`               | `@trinity/data-access/crypto`              |
+| `TrustService`                 | `@trinity/data-access/trust`               |
+| `TrustVerificationService`     | `@trinity/data-access/trust`               |
+| `TrustDevicesService`          | `@trinity/data-access/trust`               |
 | `PresenceService`              | `@trinity/data-access/profile`             |
 | `ImagePackService`             | `@trinity/data-access/media`               |
 | `ImagePackManagementService`   | `@trinity/data-access/media`               |

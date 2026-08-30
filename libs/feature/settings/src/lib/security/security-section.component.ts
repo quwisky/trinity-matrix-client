@@ -14,7 +14,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/button';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
-import { CryptoService } from '@trinity/data-access/crypto';
+import { TrustService } from '@trinity/data-access/trust';
 import { downloadTextFile } from '../download-text-file';
 import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
@@ -22,7 +22,7 @@ import { SettingsSectionHeadingComponent } from '../shared/settings-section-head
  * Security settings sub-page: surfaces this account's end-to-end-encryption posture —
  * whether encryption/secure-backup is set up, whether this session is cross-signing
  * verified, and whether key backup is on — and launches the existing recovery/verify
- * flows to fix each. It owns no crypto logic; it reads {@link CryptoService} status
+ * flows to fix each. It owns no crypto logic; it reads {@link TrustService} status
  * signals and delegates presentation to the semantic Workspace application surface.
  */
 @Component({
@@ -32,7 +32,7 @@ import { SettingsSectionHeadingComponent } from '../shared/settings-section-head
   imports: [TrnButton, SettingsSectionHeadingComponent],
 })
 export class SecuritySectionComponent implements OnInit {
-  private readonly crypto = inject(CryptoService);
+  private readonly crypto = inject(TrustService);
   private readonly applicationSurfaces = inject(
     WorkspaceApplicationSurfaceService,
   );

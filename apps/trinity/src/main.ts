@@ -22,7 +22,7 @@ import { Capacitor } from '@capacitor/core';
 import { AvatarService, MediaService } from '@trinity/data-access/media';
 import { WORKSPACE_APPLICATION_SURFACE_PRESENTER } from '@trinity/application/workspace';
 import { BADGE_SINK, type BadgeSink } from '@trinity/application/badge';
-import { OidcClientService } from '@trinity/data-access/auth';
+import { AuthService, OidcClientService } from '@trinity/data-access/auth';
 import {
   ACCOUNT_LIFECYCLE_PORT,
   type AccountLifecyclePort,
@@ -71,6 +71,10 @@ import {
 import { AVATAR_RESOLVER } from '@trinity/components/avatar';
 import { provideTrnIcons } from '@trinity/components/icon';
 import { provideTrnOverlayDefaults } from '@trinity/components/overlay';
+import {
+  TRUST_PROVIDER_RECOVERY,
+  type TrustProviderRecoveryPort,
+} from '@trinity/data-access/trust';
 
 import { routes } from './app/app.routes';
 import { environment } from './environments/environment';
@@ -180,6 +184,15 @@ void bootstrapApplication(ApplicationRootComponent, {
             media.releaseAll();
           },
           clearDrafts: () => drafts.clearAll(),
+        };
+      },
+    },
+    {
+      provide: TRUST_PROVIDER_RECOVERY,
+      useFactory: (): TrustProviderRecoveryPort => {
+        const auth = inject(AuthService);
+        return {
+          accountManagement: () => auth.getAccountManagement(),
         };
       },
     },
