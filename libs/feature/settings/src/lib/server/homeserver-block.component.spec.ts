@@ -7,7 +7,7 @@ import {
   HomeserverInfoService,
   type HomeserverInfo,
 } from '@trinity/data-access/homeserver';
-import { AccountProfilesService } from '@trinity/data-access/profile';
+import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { HomeserverBlockComponent } from './homeserver-block.component';
 
 const USER_ID = '@me:example.org';
@@ -46,8 +46,8 @@ function renderBlock(
         infos: infos.asReadonly(),
         load: () => load,
       }),
-      MockProvider(AccountProfilesService, {
-        profileOf: (userId: string) => ({
+      MockProvider(AccountIdentitiesService, {
+        identityOf: (userId: string) => ({
           userId,
           displayName: 'Me',
           avatarMxc: null,
@@ -64,7 +64,7 @@ describe('HomeserverBlockComponent', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('heads the block with the account it describes', async () => {
-    // Nothing else asserted the heading, so the whole `AccountProfilesService` dependency —
+    // Nothing else asserted the heading, so the whole `AccountIdentitiesService` dependency —
     // which exists only for this line — could be dropped for the bare mxid unnoticed.
     const { container } = await renderBlock(info());
 
@@ -267,8 +267,8 @@ describe('HomeserverBlockComponent', () => {
           infos: infos.asReadonly(),
           load,
         }),
-        MockProvider(AccountProfilesService, {
-          profileOf: (userId: string) => ({
+        MockProvider(AccountIdentitiesService, {
+          identityOf: (userId: string) => ({
             userId,
             displayName: 'Me',
             avatarMxc: null,

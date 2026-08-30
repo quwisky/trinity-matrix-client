@@ -32,9 +32,9 @@ import {
 import { RoomLibraryService } from '@trinity/data-access/room-library';
 import {
   IgnoredUsersService,
-  PresenceService,
-} from '@trinity/data-access/profile';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+  IdentityPresenceService,
+  IdentityService,
+} from '@trinity/data-access/identity';
 import { TrustVerificationService } from '@trinity/data-access/trust';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { TrnIconComponent } from '@trinity/components/icon';
@@ -99,9 +99,9 @@ export class MemberInfoComponent {
    */
   readonly isPanel = !this.dialogRef;
 
-  private readonly presence = inject(PresenceService);
+  private readonly presence = inject(IdentityPresenceService);
   private readonly toast = inject(TrnToastService);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly identity = inject(IdentityService);
   private readonly moderation = inject(RoomModerationService);
   private readonly permissionsService = inject(RoomActionPermissionsService);
   private readonly ignoredUsers = inject(IgnoredUsersService);
@@ -124,7 +124,7 @@ export class MemberInfoComponent {
 
   /** Whether this row is the signed-in user — no point messaging yourself. */
   readonly isSelf = computed(
-    () => this.member().userId === this.matrix.activeUserId(),
+    () => this.member().userId === this.identity.activeUserId(),
   );
 
   /** The member's role in the room, by the standard power-level convention. */
@@ -264,7 +264,7 @@ export class MemberInfoComponent {
     }
     const reason = await this.alert.prompt({
       header: 'Remove from room',
-      message: `Remove ${this.member().name} from this room? They can rejoin if invited (or if the room is public).`,
+      message: `Remove ${this.member().roomDisplayName} from this room? They can rejoin if invited (or if the room is public).`,
       confirmText: 'Remove',
       destructive: true,
       placeholder: 'Reason (optional)',
@@ -289,7 +289,7 @@ export class MemberInfoComponent {
     }
     const reason = await this.alert.prompt({
       header: 'Ban from room',
-      message: `Ban ${this.member().name}? They won't be able to rejoin until they're unbanned.`,
+      message: `Ban ${this.member().roomDisplayName}? They won't be able to rejoin until they're unbanned.`,
       confirmText: 'Ban',
       destructive: true,
       placeholder: 'Reason (optional)',
@@ -316,7 +316,7 @@ export class MemberInfoComponent {
     }
     const confirmed = await this.alert.confirm({
       header: 'Change role',
-      message: `Change ${this.member().name}'s role to ${option.label}?`,
+      message: `Change ${this.member().roomDisplayName}'s role to ${option.label}?`,
       confirmText: 'Change',
       // A demotion is the weightier direction — style its confirm as destructive.
       destructive: option.level < this.permissions().targetPower,

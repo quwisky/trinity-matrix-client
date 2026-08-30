@@ -3,15 +3,15 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
 import {
-  AccountProfilesService,
-  type AccountProfile,
-} from '@trinity/data-access/profile';
+  AccountIdentitiesService,
+  type AccountIdentity,
+} from '@trinity/data-access/identity';
 import { AccountScopeService } from '@trinity/data-access/room-library';
 import { AccountBadgesService } from './account-badges.service';
 
 function profileMap(
   entries: Record<string, { displayName?: string; avatarMxc?: string | null }>,
-): ReadonlyMap<string, AccountProfile> {
+): ReadonlyMap<string, AccountIdentity> {
   return new Map(
     Object.entries(entries).map(([userId, p]) => [
       userId,
@@ -46,8 +46,8 @@ function harness(opts: {
         mixing: mixing.asReadonly(),
         selected: selected.asReadonly(),
       }),
-      MockProvider(AccountProfilesService, {
-        profiles: profiles.asReadonly(),
+      MockProvider(AccountIdentitiesService, {
+        identities: profiles.asReadonly(),
       }),
     ],
   });

@@ -20,7 +20,7 @@ import {
   type MemberSummary,
   memberRole,
 } from '@trinity/data-access/room-administration';
-import { PresenceService } from '@trinity/data-access/profile';
+import { IdentityPresenceService } from '@trinity/data-access/identity';
 import { type PresenceState } from '@trinity/util/matrix';
 import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
@@ -124,7 +124,7 @@ const ROLE_ICON: Record<MemberRole, TrnIconName> = {
   styleUrl: './member-list.component.scss',
 })
 export class MemberListComponent {
-  private readonly presence = inject(PresenceService);
+  private readonly presence = inject(IdentityPresenceService);
 
   readonly members = input<readonly MemberSummary[]>([]);
   /**
@@ -171,7 +171,7 @@ export class MemberListComponent {
     }
     return rows.filter(
       (row) =>
-        row.member.name.toLowerCase().includes(needle) ||
+        row.member.roomDisplayName.toLowerCase().includes(needle) ||
         row.member.userId.toLowerCase().includes(needle),
     );
   });

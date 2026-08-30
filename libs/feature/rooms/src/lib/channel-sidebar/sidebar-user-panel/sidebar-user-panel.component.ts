@@ -8,7 +8,7 @@ import {
 import { AvatarComponent } from '@trinity/components/avatar';
 import { TrnIconButton } from '@trinity/components/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
-import { type UserProfile } from '@trinity/data-access/profile';
+import { type IdentityProfile } from '@trinity/data-access/identity';
 import {
   TrnDropdownMenu,
   TrnDropdownMenuCheckbox,
@@ -29,7 +29,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
 const STACK_MAX = 3;
 
 /** One signed-in account in the user-panel switcher: the profile plus its unread total. */
-export interface AccountSummary extends UserProfile {
+export interface AccountSummary extends IdentityProfile {
   /** Unread notification total for this account (drives the switcher badge). */
   unread: number;
   /**
@@ -67,7 +67,7 @@ export interface AccountSummary extends UserProfile {
 })
 export class SidebarUserPanelComponent {
   /** The signed-in user (name + handle + avatar) for the panel trigger. */
-  readonly user = input<UserProfile>({
+  readonly user = input<IdentityProfile>({
     userId: '',
     displayName: '',
     avatarMxc: null,

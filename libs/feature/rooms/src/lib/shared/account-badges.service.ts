@@ -1,5 +1,5 @@
 import { Injectable, computed, inject } from '@angular/core';
-import { AccountProfilesService } from '@trinity/data-access/profile';
+import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { AccountScopeService } from '@trinity/data-access/room-library';
 import { type AccountBadge } from '@trinity/components/avatar';
 
@@ -16,7 +16,7 @@ import { type AccountBadge } from '@trinity/components/avatar';
 @Injectable({ providedIn: 'root' })
 export class AccountBadgesService {
   private readonly scope = inject(AccountScopeService);
-  private readonly profiles = inject(AccountProfilesService);
+  private readonly identities = inject(AccountIdentitiesService);
 
   readonly badges = computed<ReadonlyMap<string, AccountBadge>>(() => {
     const badges = new Map<string, AccountBadge>();
@@ -29,7 +29,7 @@ export class AccountBadgesService {
     // which otherwise kept its mxid and a hashed letter instead of its name and picture.
     // That workaround is gone: the projection listens per account, so a badge is driven by
     // the thing it displays rather than by whichever unrelated signal happened to tick.
-    const profiles = this.profiles.profiles();
+    const profiles = this.identities.identities();
     for (const userId of this.scope.selected()) {
       const profile = profiles.get(userId);
       const name = profile?.displayName || userId;

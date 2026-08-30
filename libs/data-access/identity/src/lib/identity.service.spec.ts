@@ -1,9 +1,10 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { MatrixClient } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ProfileService } from './profile.service';
+import { IdentityService } from './identity.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 /**
@@ -22,24 +23,41 @@ function fakeClient(overrides: Record<string, unknown> = {}) {
     setDisplayName: vi.fn().mockResolvedValue({}),
     setAvatarUrl: vi.fn().mockResolvedValue({}),
     uploadContent: vi.fn().mockResolvedValue({ content_uri: 'mxc://hs/new' }),
+    searchUserDirectory: vi.fn().mockResolvedValue({
+      results: [
+        {
+          user_id: '@bob:hs',
+          display_name: 'Bob',
+          avatar_url: 'mxc://hs/b',
+        },
+        { user_id: '@eve:hs' },
+      ],
+    }),
     ...overrides,
   };
 }
 
 function setup(clientOverrides: Record<string, unknown> = {}) {
   const client = fakeClient(clientOverrides);
+  const activeUserId = signal<string | null>('@me:hs');
   TestBed.configureTestingModule({
-    providers: [ProfileService, MockProvider(MatrixClientService)],
+    providers: [
+      IdentityService,
+      MockProvider(MatrixClientService, {
+        activeUserId: activeUserId.asReadonly(),
+      }),
+    ],
   });
   const matrix = TestBed.inject(MatrixClientService);
   // The service reads `matrix.instance` (a getter) for the SDK client; stub both
   // getters on the mock so it hands back our fake client.
   ngMocks.stubMember(matrix, 'instance', asClient(client));
   ngMocks.stubMember(matrix, 'isInitialized', true);
-  return { svc: TestBed.inject(ProfileService), client };
+  ngMocks.stubMember(matrix, 'clientFor', () => asClient(client));
+  return { svc: TestBed.inject(IdentityService), client, activeUserId };
 }
 
-describe('ProfileService', () => {
+describe('IdentityService', () => {
   beforeEach(() => TestBed.resetTestingModule());
 
   it('loads the profile and exposes the raw mxc avatar', async () => {
@@ -82,12 +100,16 @@ describe('ProfileService', () => {
     expect(svc.profile()).toEqual(profile); // editor can still render + set one
   });
 
-  it('propagates a non-404 load failure', async () => {
+  it('maps a non-404 load failure to a typed safe failure', async () => {
     const { svc } = setup({
       getProfileInfo: vi.fn().mockRejectedValue({ httpStatus: 500 }),
     });
 
-    await expect(firstValueFrom(svc.load())).rejects.toBeTruthy();
+    await expect(firstValueFrom(svc.load())).rejects.toMatchObject({
+      operation: 'load-own-profile',
+      kind: 'server-failure',
+      recovery: 'retry',
+    });
   });
 
   it('sets the display name and patches the signal', async () => {
@@ -131,7 +153,7 @@ describe('ProfileService', () => {
         .mockResolvedValue({ displayname: 'Bob', avatar_url: 'mxc://hs/b' }),
     });
 
-    const profile = await firstValueFrom(svc.fetch('@bob:hs'));
+    const profile = await firstValueFrom(svc.lookup('@bob:hs'));
 
     expect(client.getProfileInfo).toHaveBeenCalledWith('@bob:hs');
     expect(profile).toEqual({
@@ -149,10 +171,56 @@ describe('ProfileService', () => {
         .mockRejectedValue({ httpStatus: 404, errcode: 'M_NOT_FOUND' }),
     });
 
-    expect(await firstValueFrom(svc.fetch('@ghost:hs'))).toEqual({
+    expect(await firstValueFrom(svc.lookup('@ghost:hs'))).toEqual({
       userId: '@ghost:hs',
-      displayName: '',
+      displayName: '@ghost:hs',
       avatarMxc: null,
     });
+  });
+
+  it('searches users independently of Room Library with safe fallbacks', async () => {
+    const { svc, client } = setup();
+
+    const results = await firstValueFrom(svc.search('  b  '));
+
+    expect(client.searchUserDirectory).toHaveBeenCalledWith({ term: 'b' });
+    expect(results).toEqual([
+      { userId: '@bob:hs', displayName: 'Bob', avatarMxc: 'mxc://hs/b' },
+      { userId: '@eve:hs', displayName: '@eve:hs', avatarMxc: null },
+    ]);
+  });
+
+  it('short-circuits an empty search without touching the homeserver', async () => {
+    const { svc, client } = setup();
+
+    await expect(firstValueFrom(svc.search('   '))).resolves.toEqual([]);
+    expect(client.searchUserDirectory).not.toHaveBeenCalled();
+  });
+
+  it('does not publish a stale own profile after the active Account changes', async () => {
+    let resolveProfile!: (value: { displayname: string }) => void;
+    const pending = new Promise<{ displayname: string }>((resolve) => {
+      resolveProfile = resolve;
+    });
+    const { svc, activeUserId } = setup({
+      getProfileInfo: vi.fn(() => pending),
+    });
+
+    const load = firstValueFrom(svc.load());
+    activeUserId.set('@other:hs');
+    resolveProfile({ displayname: 'Old Account' });
+    await load;
+
+    expect(svc.profile()).toBeNull();
+  });
+
+  it('hides an already-loaded profile immediately when the active Account changes', async () => {
+    const { svc, activeUserId } = setup();
+    await firstValueFrom(svc.load());
+    expect(svc.profile()?.userId).toBe('@me:hs');
+
+    activeUserId.set('@other:hs');
+
+    expect(svc.profile()).toBeNull();
   });
 });

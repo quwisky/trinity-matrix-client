@@ -135,9 +135,6 @@ const SCORE_SUBSTRING = 10;
 /** Every entry matches the empty query equally so it falls back to recents. */
 const SCORE_EMPTY = 1;
 
-/** Don't hit the directory until the term is at least this long. */
-const MIN_PEOPLE_LENGTH = 2;
-
 /** Default cap on local results so a large account stays responsive per keystroke. */
 const DEFAULT_LIMIT = 30;
 
@@ -148,8 +145,8 @@ const DEFAULT_LIMIT = 30;
  * by name — no network, no message-body access, so it is inherently E2EE-safe.
  *
  * {@link localResults} is synchronous (wrap it in a component `computed` to stay
- * reactive); {@link searchPeople} is the only networked path, a directory lookup the
- * caller debounces and appends below the local list.
+ * reactive). Directory people come from Identity and are composed by the feature
+ * surface rather than creating a capability-to-capability dependency here.
  */
 @Injectable({ providedIn: 'root' })
 export class SearchService {
@@ -279,32 +276,6 @@ export class SearchService {
           ? { ...common, kind: 'invite', isDirect: entry.isDirect }
           : { ...common, kind: entry.kind };
       });
-  }
-
-  /**
-   * Homeserver user-directory search, mapped to `kind: 'user'` rows the switcher
-   * appends below the local list. Terms shorter than two characters resolve to `[]`
-   * without a request; a failed lookup degrades to `[]` rather than erroring. The
-   * caller owns debouncing.
-   */
-  searchPeople(term: string): Observable<SwitcherResult[]> {
-    if (term.trim().length < MIN_PEOPLE_LENGTH) {
-      return of<SwitcherResult[]>([]);
-    }
-    return this.rooms.searchUsers(term).pipe(
-      map((users) =>
-        users.map<SwitcherResult>((user) => ({
-          kind: 'user',
-          id: user.userId,
-          title: user.displayName,
-          subtitle: user.userId,
-          avatarMxc: user.avatarMxc,
-          initial: initialOf(user.displayName),
-          score: 0,
-        })),
-      ),
-      catchError(() => of<SwitcherResult[]>([])),
-    );
   }
 
   /**
@@ -460,11 +431,6 @@ function escapeRegExp(value: string): string {
 }
 
 /** First visible character (sans sigil), uppercased, for the avatar fallback. */
-function initialOf(name: string): string {
-  const stripped = name.replace(/^[#@!]+/, '').trim();
-  return (stripped[0] ?? '?').toUpperCase();
-}
-
 /** Plain-text body of a message event, or '' when absent. */
 function readBody(event: MatrixEvent): string {
   const body = event.getContent()['body'];

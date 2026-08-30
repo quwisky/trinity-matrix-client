@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { AccountProfilesService } from './account-profiles.service';
+import { AccountIdentitiesService } from './account-identities.service';
 
 interface FakeProfile {
   displayName?: string;
@@ -39,7 +39,7 @@ function setup(
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     providers: [
-      AccountProfilesService,
+      AccountIdentitiesService,
       MockProvider(MatrixClientService, {
         accountIds: ids.asReadonly(),
         activeUserId: active.asReadonly(),
@@ -47,7 +47,7 @@ function setup(
       }),
     ],
   });
-  const svc = TestBed.inject(AccountProfilesService);
+  const svc = TestBed.inject(AccountIdentitiesService);
   // The projection wires itself from a constructor effect, which has not run yet.
   TestBed.tick();
   return { svc, ids, active, clients };
@@ -62,7 +62,7 @@ function handlerFor(
   return call?.[1];
 }
 
-describe('AccountProfilesService', () => {
+describe('AccountIdentitiesService', () => {
   it('reads every signed-in account through its own client', () => {
     const { svc } = setup({
       '@me:hs': fakeClient('@me:hs', {
@@ -72,18 +72,18 @@ describe('AccountProfilesService', () => {
       '@alt:hs': fakeClient('@alt:hs', { displayName: 'Alt', avatarUrl: null }),
     });
 
-    expect(svc.profileOf('@me:hs')).toEqual({
+    expect(svc.identityOf('@me:hs')).toEqual({
       userId: '@me:hs',
       displayName: 'Me',
       avatarMxc: 'mxc://hs/me',
     });
-    expect(svc.profileOf('@alt:hs').displayName).toBe('Alt');
+    expect(svc.identityOf('@alt:hs').displayName).toBe('Alt');
   });
 
   it('falls back to the user id before a profile has hydrated', () => {
     const { svc } = setup({ '@alt:hs': fakeClient('@alt:hs', null) });
 
-    expect(svc.profileOf('@alt:hs')).toEqual({
+    expect(svc.identityOf('@alt:hs')).toEqual({
       userId: '@alt:hs',
       displayName: '@alt:hs',
       avatarMxc: null,
@@ -93,7 +93,7 @@ describe('AccountProfilesService', () => {
   it('follows a display-name change on the account it belongs to', async () => {
     const client = fakeClient('@alt:hs', null);
     const { svc } = setup({ '@alt:hs': client });
-    expect(svc.profileOf('@alt:hs').displayName).toBe('@alt:hs');
+    expect(svc.identityOf('@alt:hs').displayName).toBe('@alt:hs');
 
     // The profile hydrates on THAT account's sync, which is what the counter this
     // replaced could not see — it was bumped only by the active client.
@@ -102,8 +102,8 @@ describe('AccountProfilesService', () => {
     handlerFor(client, 'User.displayName')?.({}, { userId: '@alt:hs' });
     await Promise.resolve();
 
-    expect(svc.profileOf('@alt:hs').displayName).toBe('Alice');
-    expect(svc.profileOf('@alt:hs').avatarMxc).toBe('mxc://a');
+    expect(svc.identityOf('@alt:hs').displayName).toBe('Alice');
+    expect(svc.identityOf('@alt:hs').avatarMxc).toBe('mxc://a');
   });
 
   it('follows an avatar change that leaves the name alone', async () => {
@@ -121,7 +121,7 @@ describe('AccountProfilesService', () => {
     handlerFor(client, 'User.avatarUrl')?.({}, { userId: '@me:hs' });
     await Promise.resolve();
 
-    expect(svc.profileOf('@me:hs').avatarMxc).toBe('mxc://new');
+    expect(svc.identityOf('@me:hs').avatarMxc).toBe('mxc://new');
   });
 
   it('falls back to the mxid for an EMPTY display name', () => {
@@ -132,7 +132,7 @@ describe('AccountProfilesService', () => {
       '@me:hs': fakeClient('@me:hs', { displayName: '', avatarUrl: null }),
     });
 
-    expect(svc.profileOf('@me:hs').displayName).toBe('@me:hs');
+    expect(svc.identityOf('@me:hs').displayName).toBe('@me:hs');
   });
 
   it('ignores an event about somebody else on the same client', async () => {
@@ -140,7 +140,7 @@ describe('AccountProfilesService', () => {
     // unfiltered handler would rebuild on other people's profile changes.
     const client = fakeClient('@me:hs', { displayName: 'Me', avatarUrl: null });
     const { svc } = setup({ '@me:hs': client });
-    const before = svc.profiles();
+    const before = svc.identities();
 
     client.getUser = (id) =>
       id === '@me:hs' ? { displayName: 'Changed', avatarUrl: null } : null;
@@ -149,18 +149,18 @@ describe('AccountProfilesService', () => {
     // pass against an unflushed turn whether or not the filter works.
     await Promise.resolve();
 
-    expect(svc.profiles()).toBe(before);
+    expect(svc.identities()).toBe(before);
   });
 
   it('holds the same map when a rebuild changes nothing', async () => {
     const client = fakeClient('@me:hs', { displayName: 'Me', avatarUrl: null });
     const { svc } = setup({ '@me:hs': client });
-    const before = svc.profiles();
+    const before = svc.identities();
 
     handlerFor(client, 'User.avatarUrl')?.({}, { userId: '@me:hs' });
     await Promise.resolve();
 
-    expect(svc.profiles()).toBe(before);
+    expect(svc.identities()).toBe(before);
   });
 
   it('collapses a burst into one rebuild', async () => {
@@ -179,7 +179,7 @@ describe('AccountProfilesService', () => {
     await Promise.resolve();
 
     expect(reads).toBe(1);
-    expect(svc.profileOf('@me:hs').displayName).toBe('Me');
+    expect(svc.identityOf('@me:hs').displayName).toBe('Me');
   });
 
   it('detaches from an account that signs out', () => {
@@ -199,7 +199,7 @@ describe('AccountProfilesService', () => {
     expect(client.off).toHaveBeenCalledWith('User.displayName', onName);
     expect(client.off).toHaveBeenCalledWith('User.avatarUrl', onAvatar);
     expect(client.off).toHaveBeenCalledWith('sync', onSync);
-    expect(svc.profiles().size).toBe(0);
+    expect(svc.identities().size).toBe(0);
   });
 
   it('rebinds when the same account gets a new client object', async () => {
@@ -232,7 +232,7 @@ describe('AccountProfilesService', () => {
     handlerFor(second, 'User.displayName')?.({}, { userId: '@me:hs' });
     await Promise.resolve();
 
-    expect(svc.profileOf('@me:hs').displayName).toBe('Newer');
+    expect(svc.identityOf('@me:hs').displayName).toBe('Newer');
   });
 
   it('follows the account\u2019s own profile hydrating on sync', async () => {
@@ -246,15 +246,15 @@ describe('AccountProfilesService', () => {
       avatarUrl: null,
     });
     const { svc } = setup({ '@me:hs': client });
-    expect(svc.profileOf('@me:hs').displayName).toBe('@me:hs');
+    expect(svc.identityOf('@me:hs').displayName).toBe('@me:hs');
 
     client.getUser = (id) =>
       id === '@me:hs' ? { displayName: 'Me', avatarUrl: 'mxc://me' } : null;
     handlerFor(client, 'sync')?.({}, { userId: '' } as never);
     await Promise.resolve();
 
-    expect(svc.profileOf('@me:hs').displayName).toBe('Me');
-    expect(svc.profileOf('@me:hs').avatarMxc).toBe('mxc://me');
+    expect(svc.identityOf('@me:hs').displayName).toBe('Me');
+    expect(svc.identityOf('@me:hs').avatarMxc).toBe('mxc://me');
   });
 
   it('hears a BACKGROUND account sync without the active one syncing', async () => {
@@ -269,7 +269,7 @@ describe('AccountProfilesService', () => {
     handlerFor(alt, 'sync')?.({}, { userId: '' } as never);
     await Promise.resolve();
 
-    expect(svc.profileOf('@alt:hs').displayName).toBe('Alt');
+    expect(svc.identityOf('@alt:hs').displayName).toBe('Alt');
   });
 
   it('detaches the sync listener too', () => {
@@ -290,7 +290,7 @@ describe('AccountProfilesService', () => {
     // exists. The earlier version of this test passed no such id at all, so neither loop
     // body ran and the guard it named was never reached.
     const { svc, ids, clients } = setup({}, ['@pending:hs']);
-    expect(svc.profileOf('@pending:hs').displayName).toBe('@pending:hs');
+    expect(svc.identityOf('@pending:hs').displayName).toBe('@pending:hs');
 
     const late = fakeClient('@pending:hs', {
       displayName: 'Pending',
@@ -307,6 +307,6 @@ describe('AccountProfilesService', () => {
       'User.displayName',
       'sync',
     ]);
-    expect(svc.profileOf('@pending:hs').displayName).toBe('Pending');
+    expect(svc.identityOf('@pending:hs').displayName).toBe('Pending');
   });
 });

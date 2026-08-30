@@ -5,7 +5,7 @@ import { type CaretReplacement } from './caret-replacement';
 /** A room member offered by the @-mention autocomplete. */
 export interface MentionMember {
   userId: string;
-  name: string;
+  roomDisplayName: string;
 }
 
 /**
@@ -41,13 +41,13 @@ export class MentionAutocomplete {
     return this.members()
       .filter(
         (m) =>
-          m.name.toLowerCase().includes(query) ||
+          m.roomDisplayName.toLowerCase().includes(query) ||
           m.userId.toLowerCase().includes(query),
       )
       .sort(
         (a, b) =>
-          Number(b.name.toLowerCase().startsWith(query)) -
-          Number(a.name.toLowerCase().startsWith(query)),
+          Number(b.roomDisplayName.toLowerCase().startsWith(query)) -
+          Number(a.roomDisplayName.toLowerCase().startsWith(query)),
       )
       .slice(0, MENTION_SUGGESTION_LIMIT);
   });
@@ -79,7 +79,7 @@ export class MentionAutocomplete {
       return null;
     }
     const trigger = MENTION_TRIGGER.exec(text.slice(0, caret));
-    const display = `@${member.name}`;
+    const display = `@${member.roomDisplayName}`;
     const start = trigger ? caret - trigger[1].length - 1 : caret; // drop "@query"
     this.chosen.update((list) => [...list, { userId: member.userId, display }]);
     return { start, end: caret, insert: `${display} ` };

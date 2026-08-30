@@ -10,7 +10,7 @@ import {
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { BUILD_INFO } from '@trinity/platform-native';
 import { BELOW_MD_QUERY } from '@trinity/util/ui';
-import { AccountProfilesService } from '@trinity/data-access/profile';
+import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { ServerSectionComponent } from './server-section.component';
 
 function setup(
@@ -31,8 +31,8 @@ function setup(
         load: () => of(undefined),
         refreshAll,
       }),
-      MockProvider(AccountProfilesService, {
-        profileOf: (userId: string) => ({
+      MockProvider(AccountIdentitiesService, {
+        identityOf: (userId: string) => ({
           userId,
           displayName: userId,
           avatarMxc: null,

@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -8,6 +9,7 @@ import { IgnoredUsersService } from './ignored-users.service';
 function setup(ignored: string[] = []) {
   const setIgnoredUsers = vi.fn().mockResolvedValue({});
   const instance = {
+    getUserId: () => '@me:hs',
     getIgnoredUsers: () => ignored,
     setIgnoredUsers,
     isUserIgnored: (id: string) => ignored.includes(id),
@@ -17,6 +19,7 @@ function setup(ignored: string[] = []) {
       IgnoredUsersService,
       MockProvider(MatrixClientService, {
         isInitialized: true,
+        activeUserId: signal<string | null>('@me:hs').asReadonly(),
         instance: instance as never,
       }),
     ],
@@ -55,5 +58,16 @@ describe('IgnoredUsersService', () => {
     await firstValueFrom(svc.unignore('@bob:hs'));
 
     expect(setIgnoredUsers).toHaveBeenCalledWith(['@eve:hs']);
+  });
+
+  it('maps a network failure to a typed retryable offline failure', async () => {
+    const { svc, setIgnoredUsers } = setup();
+    setIgnoredUsers.mockRejectedValue(new TypeError('offline'));
+
+    await expect(firstValueFrom(svc.ignore('@bob:hs'))).rejects.toMatchObject({
+      operation: 'ignore-user',
+      kind: 'offline',
+      recovery: 'retry',
+    });
   });
 });

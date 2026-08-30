@@ -87,6 +87,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Profiles and presence now live behind Identity.** Stable safe user summaries, own-profile
+  changes, presence, ignore state and homeserver user lookup now use the explicit
+  `@trinity/data-access/identity` boundary through a lifecycle-free Matrix port. Directory lookup
+  no longer belongs to Room Library, and feature callers no longer reach the Matrix client for
+  Identity state. Avatar bytes upload through Media before Identity publishes the resulting
+  `mxc://` reference. Room Administration retains membership and power, with its contextual
+  display name and avatar explicitly marked as Room-scoped rather than duplicated as global
+  profile ownership. Identity commands remain cold RxJS Observables with typed offline,
+  unavailable, not-ready and server-failure behavior.
+
 - **Verification and recovery now live behind the Trust boundary.** Encryption health, device
   management, QR/SAS verification, cross-signing, secret storage, recovery reset, and room-key
   transfer now use `@trinity/data-access/trust` through a lifecycle-free Matrix crypto port.

@@ -4,7 +4,7 @@ import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { TrnTooltip } from '@trinity/components/tooltip';
-import { PresenceService } from '@trinity/data-access/profile';
+import { IdentityPresenceService } from '@trinity/data-access/identity';
 import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { type PresenceState } from '@trinity/util/matrix';
 import { MockComponent } from 'ng-mocks';
@@ -22,7 +22,7 @@ const presenceStub = {
     signal<PresenceState>(presenceMap[userId] ?? 'offline'),
 };
 const providers = [
-  { provide: PresenceService, useValue: presenceStub },
+  { provide: IdentityPresenceService, useValue: presenceStub },
   // Icons register once at the app root now (provideTrnIcons in main.ts) instead of per
   // component, so a spec asserting a real <svg> renders has to mirror that root here.
   provideTrnIcons(),
@@ -33,9 +33,9 @@ function member(
   over: Partial<MemberSummary> & { userId: string },
 ): MemberSummary {
   return {
-    name: over.userId,
-    initial: over.userId[1]?.toUpperCase() ?? '?',
-    avatarMxc: null,
+    roomDisplayName: over.userId,
+    roomInitial: over.userId[1]?.toUpperCase() ?? '?',
+    roomAvatarMxc: null,
     powerLevel: 0,
     isCreator: false,
     ...over,
@@ -67,8 +67,8 @@ function sectionMap(container: HTMLElement): Record<string, string[]> {
 // Input arrives name-sorted (Anna, Zoe) — but Anna is offline and Zoe is online.
 // Both are regular members (power level 0), so they share one "Member" section.
 const MEMBERS = [
-  member({ userId: '@a:hs', name: 'Anna' }),
-  member({ userId: '@z:hs', name: 'Zoe' }),
+  member({ userId: '@a:hs', roomDisplayName: 'Anna' }),
+  member({ userId: '@z:hs', roomDisplayName: 'Zoe' }),
 ];
 
 describe('MemberListComponent', () => {
@@ -132,10 +132,10 @@ describe('MemberListComponent', () => {
     // Realistic input: membersOf returns members name-sorted, so roles interleave —
     // Bo (moderator) sits alphabetically between the two regular members.
     const members = [
-      member({ userId: '@ada:hs', name: 'Ada', powerLevel: 100 }),
-      member({ userId: '@alice:hs', name: 'Alice', powerLevel: 0 }),
-      member({ userId: '@bo:hs', name: 'Bo', powerLevel: 50 }),
-      member({ userId: '@cy:hs', name: 'Cy', powerLevel: 0 }),
+      member({ userId: '@ada:hs', roomDisplayName: 'Ada', powerLevel: 100 }),
+      member({ userId: '@alice:hs', roomDisplayName: 'Alice', powerLevel: 0 }),
+      member({ userId: '@bo:hs', roomDisplayName: 'Bo', powerLevel: 50 }),
+      member({ userId: '@cy:hs', roomDisplayName: 'Cy', powerLevel: 0 }),
     ];
     const { container } = await render(MemberListComponent, {
       inputs: { members },
@@ -162,12 +162,16 @@ describe('MemberListComponent', () => {
     const members = [
       member({
         userId: '@founder:hs',
-        name: 'Founder',
+        roomDisplayName: 'Founder',
         powerLevel: 100,
         isCreator: true,
       }),
-      member({ userId: '@promoted:hs', name: 'Promoted', powerLevel: 100 }),
-      member({ userId: '@reg:hs', name: 'Reg', powerLevel: 0 }),
+      member({
+        userId: '@promoted:hs',
+        roomDisplayName: 'Promoted',
+        powerLevel: 100,
+      }),
+      member({ userId: '@reg:hs', roomDisplayName: 'Reg', powerLevel: 0 }),
     ];
     const { container } = await render(MemberListComponent, {
       inputs: { members },
@@ -193,11 +197,11 @@ describe('MemberListComponent', () => {
     const members = [
       member({
         userId: '@me:hs',
-        name: 'Me',
+        roomDisplayName: 'Me',
         powerLevel: 100,
         isCreator: true,
       }),
-      member({ userId: '@them:hs', name: 'Them', powerLevel: 100 }),
+      member({ userId: '@them:hs', roomDisplayName: 'Them', powerLevel: 100 }),
     ];
     const { container } = await render(MemberListComponent, {
       inputs: { members, direct: true },
@@ -211,7 +215,9 @@ describe('MemberListComponent', () => {
   it('shows no Owner section when the creator has left the room', async () => {
     // getJoinedMembers() drops them, so nothing carries the flag — the list must not
     // render an empty section for an absent founder.
-    const members = [member({ userId: '@a:hs', name: 'Ada', powerLevel: 100 })];
+    const members = [
+      member({ userId: '@a:hs', roomDisplayName: 'Ada', powerLevel: 100 }),
+    ];
     const { container } = await render(MemberListComponent, {
       inputs: { members },
       ...opts,
@@ -224,10 +230,14 @@ describe('MemberListComponent', () => {
     // The sections are a ranking. A founder who dropped themselves to 0 rendered above
     // the admins who actually run the room would misrepresent it.
     const members = [
-      member({ userId: '@admin:hs', name: 'Admin', powerLevel: 100 }),
+      member({
+        userId: '@admin:hs',
+        roomDisplayName: 'Admin',
+        powerLevel: 100,
+      }),
       member({
         userId: '@founder:hs',
-        name: 'Founder',
+        roomDisplayName: 'Founder',
         powerLevel: 0,
         isCreator: true,
       }),
@@ -244,8 +254,8 @@ describe('MemberListComponent', () => {
   it('keeps online-first ordering within a role section', async () => {
     // Two moderators: online sorts above offline inside the Moderator section.
     const members = [
-      member({ userId: '@a:hs', name: 'Anna', powerLevel: 50 }),
-      member({ userId: '@z:hs', name: 'Zoe', powerLevel: 50 }),
+      member({ userId: '@a:hs', roomDisplayName: 'Anna', powerLevel: 50 }),
+      member({ userId: '@z:hs', roomDisplayName: 'Zoe', powerLevel: 50 }),
     ];
     const { container } = await render(MemberListComponent, {
       inputs: { members },
@@ -257,7 +267,9 @@ describe('MemberListComponent', () => {
 
   it('omits role sections that have no members', async () => {
     const { container } = await render(MemberListComponent, {
-      inputs: { members: [member({ userId: '@cy:hs', name: 'Cy' })] },
+      inputs: {
+        members: [member({ userId: '@cy:hs', roomDisplayName: 'Cy' })],
+      },
       ...opts,
     });
 
@@ -275,7 +287,9 @@ describe('MemberListComponent', () => {
     async (powerLevel, label) => {
       const { container } = await render(MemberListComponent, {
         inputs: {
-          members: [member({ userId: '@a:hs', name: 'Anna', powerLevel })],
+          members: [
+            member({ userId: '@a:hs', roomDisplayName: 'Anna', powerLevel }),
+          ],
         },
         ...opts,
       });
@@ -286,7 +300,7 @@ describe('MemberListComponent', () => {
 
   it('re-partitions live when a member is promoted then demoted', async () => {
     const at = (powerLevel: number) => [
-      member({ userId: '@a:hs', name: 'Anna', powerLevel }),
+      member({ userId: '@a:hs', roomDisplayName: 'Anna', powerLevel }),
     ];
     const { container, fixture } = await render(MemberListComponent, {
       inputs: { members: at(0) },
@@ -305,9 +319,9 @@ describe('MemberListComponent', () => {
 
   it('exposes each role section as a named group for assistive tech', async () => {
     const members = [
-      member({ userId: '@ada:hs', name: 'Ada', powerLevel: 100 }),
-      member({ userId: '@cy:hs', name: 'Cy', powerLevel: 0 }),
-      member({ userId: '@di:hs', name: 'Di', powerLevel: 0 }),
+      member({ userId: '@ada:hs', roomDisplayName: 'Ada', powerLevel: 100 }),
+      member({ userId: '@cy:hs', roomDisplayName: 'Cy', powerLevel: 0 }),
+      member({ userId: '@di:hs', roomDisplayName: 'Di', powerLevel: 0 }),
     ];
     const { container } = await render(MemberListComponent, {
       inputs: { members },
@@ -328,9 +342,9 @@ describe('MemberListComponent', () => {
 
   it('renders a role icon in every section header', async () => {
     const members = [
-      member({ userId: '@ada:hs', name: 'Ada', powerLevel: 100 }),
-      member({ userId: '@bo:hs', name: 'Bo', powerLevel: 50 }),
-      member({ userId: '@cy:hs', name: 'Cy', powerLevel: 0 }),
+      member({ userId: '@ada:hs', roomDisplayName: 'Ada', powerLevel: 100 }),
+      member({ userId: '@bo:hs', roomDisplayName: 'Bo', powerLevel: 50 }),
+      member({ userId: '@cy:hs', roomDisplayName: 'Cy', powerLevel: 0 }),
     ];
     const { container, fixture } = await render(MemberListComponent, {
       inputs: { members },
@@ -358,9 +372,9 @@ describe('MemberListComponent', () => {
 
 describe('MemberListComponent — filtering', () => {
   const people = [
-    member({ userId: '@amelia:hs', name: 'Amelia' }),
-    member({ userId: '@bo:hs', name: 'Bo' }),
-    member({ userId: '@carla:hs', name: 'Carla' }),
+    member({ userId: '@amelia:hs', roomDisplayName: 'Amelia' }),
+    member({ userId: '@bo:hs', roomDisplayName: 'Bo' }),
+    member({ userId: '@carla:hs', roomDisplayName: 'Carla' }),
   ];
 
   /** Type into the filter and let the signal settle. */
@@ -397,8 +411,8 @@ describe('MemberListComponent — filtering', () => {
     const { fixture, container } = await render(MemberListComponent, {
       inputs: {
         members: [
-          member({ userId: '@bo:hs', name: 'Bo' }),
-          member({ userId: '@robert:hs', name: 'Bo' }),
+          member({ userId: '@bo:hs', roomDisplayName: 'Bo' }),
+          member({ userId: '@robert:hs', roomDisplayName: 'Bo' }),
         ],
       },
       ...opts,
@@ -417,7 +431,9 @@ describe('MemberListComponent — filtering', () => {
 
   it('is case-insensitive on both sides', async () => {
     const { container } = await render(MemberListComponent, {
-      inputs: { members: [member({ userId: '@a:hs', name: 'AMELIA' })] },
+      inputs: {
+        members: [member({ userId: '@a:hs', roomDisplayName: 'AMELIA' })],
+      },
       ...opts,
     });
 
@@ -490,7 +506,7 @@ describe('MemberListComponent — windowing', () => {
     return Array.from({ length: n }, (_, i) =>
       member({
         userId: `@u${String(i).padStart(4, '0')}:hs`,
-        name: `User ${i}`,
+        roomDisplayName: `User ${i}`,
       }),
     );
   }
@@ -649,12 +665,16 @@ describe('MemberListComponent — windowing', () => {
       ...Array.from({ length: 3 }, (_, i) =>
         member({
           userId: `@admin${i}:hs`,
-          name: `Admin ${i}`,
+          roomDisplayName: `Admin ${i}`,
           powerLevel: 100,
         }),
       ),
       ...Array.from({ length: 2 }, (_, i) =>
-        member({ userId: `@mod${i}:hs`, name: `Mod ${i}`, powerLevel: 50 }),
+        member({
+          userId: `@mod${i}:hs`,
+          roomDisplayName: `Mod ${i}`,
+          powerLevel: 50,
+        }),
       ),
       ...crowd(200),
     ];
@@ -693,12 +713,16 @@ describe('MemberListComponent — windowing', () => {
       ...Array.from({ length: 3 }, (_, i) =>
         member({
           userId: `@admin${i}:hs`,
-          name: `Admin ${i}`,
+          roomDisplayName: `Admin ${i}`,
           powerLevel: 100,
         }),
       ),
       ...Array.from({ length: 2 }, (_, i) =>
-        member({ userId: `@mod${i}:hs`, name: `Mod ${i}`, powerLevel: 50 }),
+        member({
+          userId: `@mod${i}:hs`,
+          roomDisplayName: `Mod ${i}`,
+          powerLevel: 50,
+        }),
       ),
       ...crowd(200),
     ];

@@ -49,7 +49,7 @@ import {
   PushService,
   RoomNotificationsService,
 } from '@trinity/data-access/notifications';
-import { PresenceService } from '@trinity/data-access/profile';
+import { IdentityPresenceService } from '@trinity/data-access/identity';
 import {
   RoomActionPermissionsService,
   RoomMembersService,
@@ -296,7 +296,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   readonly flags = inject(FeatureFlagsService);
   private readonly matrix = inject(MatrixClientService);
   private readonly crypto = inject(TrustService);
-  private readonly presence = inject(PresenceService);
+  private readonly presence = inject(IdentityPresenceService);
   private readonly spaceChildren = inject(SpaceChildrenService);
   private readonly roomPermissions = inject(RoomActionPermissionsService);
   private readonly roomMembers = inject(RoomMembersService);

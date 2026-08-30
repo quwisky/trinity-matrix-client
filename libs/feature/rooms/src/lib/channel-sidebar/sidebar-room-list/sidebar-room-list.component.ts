@@ -37,7 +37,7 @@ import {
   type RoomNotifyDisplayMode,
   type RoomNotifyMode,
 } from '@trinity/data-access/notifications';
-import { PresenceService } from '@trinity/data-access/profile';
+import { IdentityPresenceService } from '@trinity/data-access/identity';
 import { formatTypingNotice, type PresenceState } from '@trinity/util/matrix';
 import { type PendingInvite } from '@trinity/data-access/room-library';
 import { TrnIconComponent } from '@trinity/components/icon';
@@ -83,7 +83,7 @@ import { forkJoin } from 'rxjs';
 })
 export class SidebarRoomListComponent {
   private readonly roomsSvc = inject(RoomLibraryService);
-  private readonly presence = inject(PresenceService);
+  private readonly presence = inject(IdentityPresenceService);
   private readonly roomNotifications = inject(RoomNotificationsService);
   private readonly destroyRef = inject(DestroyRef);
 

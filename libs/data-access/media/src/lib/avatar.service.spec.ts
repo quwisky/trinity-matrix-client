@@ -34,6 +34,7 @@ function setup(clientOverrides: Record<string, unknown> = {}) {
   // matrix-js-sdk client the service reaches through (never a real SDK object).
   ngMocks.stubMember(matrix, 'instance', client as never);
   ngMocks.stubMember(matrix, 'isInitialized', true);
+  ngMocks.stubMember(matrix, 'clientFor', () => client as never);
   return { svc: TestBed.inject(AvatarService), client };
 }
 
@@ -76,6 +77,35 @@ describe('AvatarService', () => {
     const { svc } = setup();
     await expect(firstValueFrom(svc.resolve(null))).resolves.toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('uploads avatar bytes through the owning Account media client', async () => {
+    const uploadContent = vi
+      .fn()
+      .mockResolvedValue({ content_uri: 'mxc://hs/new' });
+    const { svc } = setup({ uploadContent });
+    const file = new File([new Uint8Array([1])], 'me.png', {
+      type: 'image/png',
+    });
+
+    await expect(firstValueFrom(svc.upload(file, '@me:hs'))).resolves.toBe(
+      'mxc://hs/new',
+    );
+    expect(uploadContent).toHaveBeenCalledWith(file, {
+      name: 'me.png',
+      type: 'image/png',
+    });
+  });
+
+  it('keeps avatar upload cold until subscribed', () => {
+    const uploadContent = vi.fn().mockResolvedValue({
+      content_uri: 'mxc://hs/new',
+    });
+    const { svc } = setup({ uploadContent });
+
+    svc.upload(new File([], 'me.png'), '@me:hs');
+
+    expect(uploadContent).not.toHaveBeenCalled();
   });
 
   it('fetches with the access token and resolves a blob URL', async () => {

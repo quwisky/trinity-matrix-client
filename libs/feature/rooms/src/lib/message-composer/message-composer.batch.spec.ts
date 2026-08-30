@@ -220,7 +220,7 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     // The caption becomes a message in its own right, so its @-mentions have to travel with
     // it — dropped, the people named in it are never pinged.
     const { fixture, container } = await renderComposer({
-      members: [{ userId: '@alice:hs', name: 'Alice' }],
+      members: [{ userId: '@alice:hs', roomDisplayName: 'Alice' }],
     });
     const cmp = fixture.componentInstance;
     cmp.submitMedia.subscribe(({ items, onOutcomes }) =>

@@ -17,9 +17,9 @@ import {
   switchMap,
 } from 'rxjs';
 import {
-  RoomLibraryService,
-  type UserSearchResult,
-} from '@trinity/data-access/room-library';
+  IdentityService,
+  type IdentitySummary,
+} from '@trinity/data-access/identity';
 import { isValidUserId } from '@trinity/util/matrix';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { AvatarComponent } from '@trinity/components/avatar';
@@ -42,7 +42,7 @@ const MIN_SEARCH_LENGTH = 2;
  *
  * Config (heading / confirm label / placeholder) arrives as signal inputs (set by
  * TrnDialogService). matrix-js-sdk is reached only through
- * {@link RoomLibraryService.searchUsers}. The card self-sizes so it works in a bare CDK
+ * {@link IdentityService.search}. The card self-sizes so it works in a bare CDK
  * dialog (no `ion-modal` host).
  */
 @Component({
@@ -61,7 +61,7 @@ const MIN_SEARCH_LENGTH = 2;
 export class UserPickerComponent {
   private readonly dialogRef =
     inject<TrnDialogRef<string | null>>(TrnDialogRef);
-  private readonly rooms = inject(RoomLibraryService);
+  private readonly identity = inject(IdentityService);
 
   /** Dialog heading (e.g. "Start a direct message"). */
   readonly title = input('Find people');
@@ -100,17 +100,17 @@ export class UserPickerComponent {
       distinctUntilChanged(),
       switchMap((term) => {
         if (term.length < MIN_SEARCH_LENGTH) {
-          return of<UserSearchResult[]>([]);
+          return of<readonly IdentitySummary[]>([]);
         }
         this.searching.set(true);
-        return this.rooms.searchUsers(term).pipe(
+        return this.identity.search(term).pipe(
           // Search is best-effort; a failure shows the empty state, not an error.
-          catchError(() => of<UserSearchResult[]>([])),
+          catchError(() => of<readonly IdentitySummary[]>([])),
           finalize(() => this.searching.set(false)),
         );
       }),
     ),
-    { initialValue: [] as UserSearchResult[] },
+    { initialValue: [] as readonly IdentitySummary[] },
   );
 
   onInput(event: Event): void {

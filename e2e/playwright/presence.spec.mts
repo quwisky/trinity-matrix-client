@@ -9,7 +9,7 @@ import { registerUser } from './support/account.mts';
 
 // End-to-end for member online-status (presence): the room member list renders a
 // presence dot (`.presence-dot`) on every member's avatar, driven by the SDK's
-// `User.presence` via PresenceService. Presence delivery depends on the homeserver,
+// `User.presence` via IdentityPresenceService. Presence delivery depends on the homeserver,
 // so this asserts the dots RENDER for the room's members (the state itself — green/
 // amber/grey — is environment-dependent), which is what proves the wiring end to end.
 // Needs a Synapse homeserver (Docker); self-skips otherwise like the other web specs.

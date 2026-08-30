@@ -8,17 +8,17 @@
           class="space-members__pick"
           type="button"
           (click)="pick(member)"
-          [attr.aria-label]="'Show ' + member.name"
+          [attr.aria-label]="'Show ' + member.roomDisplayName"
           [attr.data-testid]="'space-member-' + member.userId"
         >
           <trn-avatar
-            [mxc]="member.avatarMxc"
-            [initial]="member.initial"
-            [name]="member.name"
+            [mxc]="member.roomAvatarMxc"
+            [initial]="member.roomInitial"
+            [name]="member.roomDisplayName"
             [size]="28"
           />
           <span class="space-members__name" [title]="member.userId">{{
-            member.name
+            member.roomDisplayName
           }}</span>
           @if (roleOf(member)) {
             <span class="space-members__role">{{ roleOf(member) }}</span>

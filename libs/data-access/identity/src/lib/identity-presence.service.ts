@@ -1,11 +1,16 @@
 import { Injectable, Signal, inject, signal } from '@angular/core';
-import { UserEvent, type User } from 'matrix-js-sdk';
-import { Observable, defer, from, tap, throwError } from 'rxjs';
+import { Observable, defer, from, tap } from 'rxjs';
 import { type PresenceState, toPresenceState } from '@trinity/util/matrix';
 import {
-  MatrixClientService,
-  projectFromClient,
+  IDENTITY_MATRIX_EVENTS,
+  IdentityMatrixPort,
+  type IdentityMatrixClient,
+  type IdentitySdkUser,
 } from '@trinity/data-access/matrix-client';
+import {
+  identityNotReady,
+  recoverIdentityOperation,
+} from './identity-operation-error';
 
 /**
  * Projects other users' Matrix presence (`m.presence`) into read-only Angular signals.
@@ -18,8 +23,8 @@ import {
  * after a re-login. Components never touch matrix-js-sdk directly.
  */
 @Injectable({ providedIn: 'root' })
-export class PresenceService {
-  private readonly matrix = inject(MatrixClientService);
+export class IdentityPresenceService {
+  private readonly matrix = inject(IdentityMatrixPort);
 
   /** One writable signal per tracked user id, updated in place as presence changes. */
   private readonly states = new Map<
@@ -35,7 +40,10 @@ export class PresenceService {
   readonly myStatusMessage = this._myStatusMessage.asReadonly();
 
   /** Handles a client `User.presence` event by writing the per-user signal, which schedules change detection. */
-  private readonly onPresence = (_event: unknown, user: User): void => {
+  private readonly onPresence = (
+    _event: unknown,
+    user: IdentitySdkUser,
+  ): void => {
     const state = this.states.get(user.userId);
     if (!state) {
       return;
@@ -72,17 +80,25 @@ export class PresenceService {
    * argument, and there is nothing to coalesce: the handler is a targeted O(1) write to
    * one user's signal, not a rebuild of a read model.
    */
-  private readonly projection = projectFromClient({
-    id: 'profile.presence',
-    matrix: this.matrix,
-    bind: (client) => client.on(UserEvent.Presence, this.onPresence),
-    unbind: (client) => client.off(UserEvent.Presence, this.onPresence),
+  private readonly projection = this.matrix.project({
+    id: 'identity.presence',
+    bind: (client) =>
+      client.on(IDENTITY_MATRIX_EVENTS.presence, this.onPresence),
+    unbind: (client) =>
+      client.off(IDENTITY_MATRIX_EVENTS.presence, this.onPresence),
     // Re-seed any already-tracked users from this client (a re-login brings a fresh
     // client whose users may differ), so stale signals don't linger at the old value.
-    rebuild: () => {
+    rebuild: (client) => {
       for (const [userId, state] of this.states) {
-        state.set(this.currentPresence(userId));
+        state.set(this.currentPresence(userId, client));
       }
+    },
+    reset: () => {
+      for (const state of this.states.values()) {
+        state.set('offline');
+      }
+      this._myPresence.set('online');
+      this._myStatusMessage.set('');
     },
   });
 
@@ -105,11 +121,11 @@ export class PresenceService {
    * not echo your own presence, so an unknown state defaults to `online`.
    */
   loadOwnPresence(): void {
-    if (!this.matrix.isInitialized) {
+    if (!this.matrix.isAvailable()) {
       return;
     }
-    const client = this.matrix.instance;
-    const user = client.getUser(client.getUserId() ?? '');
+    const { accountId, client } = this.matrix.active();
+    const user = client.getUser(accountId);
     this._myPresence.set(
       user?.presence ? toPresenceState(user.presence) : 'online',
     );
@@ -125,21 +141,27 @@ export class PresenceService {
   setOwnPresence(presence: PresenceState, statusMsg: string): Observable<void> {
     const trimmed = statusMsg.trim();
     return defer(() => {
-      if (!this.matrix.isInitialized) {
-        return throwError(() => new Error('Not signed in.'));
+      if (!this.matrix.isAvailable()) {
+        throw identityNotReady('set-presence');
       }
+      const { accountId, client } = this.matrix.active();
       return from(
-        this.matrix.instance.setPresence({
+        client.setPresence({
           presence,
           status_msg: trimmed || undefined,
         }),
       ).pipe(
         tap(() => {
-          this._myPresence.set(presence);
-          this._myStatusMessage.set(trimmed);
+          // A command may finish after the user has switched Accounts. Its remote write
+          // still belongs to the captured Account, but it must not publish into the new
+          // Active Account's presentation state.
+          if (this.matrix.activeAccountId() === accountId) {
+            this._myPresence.set(presence);
+            this._myStatusMessage.set(trimmed);
+          }
         }),
       );
-    });
+    }).pipe(recoverIdentityOperation('set-presence'));
   }
 
   /**
@@ -147,11 +169,14 @@ export class PresenceService {
    * user always reads `online`: a homeserver typically doesn't send you your own presence,
    * so `getUser(self)` would report `offline` even though our client is live and syncing.
    */
-  private currentPresence(userId: string): PresenceState {
-    if (!this.matrix.isInitialized) {
+  private currentPresence(
+    userId: string,
+    projectedClient?: IdentityMatrixClient,
+  ): PresenceState {
+    if (!projectedClient && !this.matrix.isAvailable()) {
       return 'offline';
     }
-    const client = this.matrix.instance;
+    const client = projectedClient ?? this.matrix.active().client;
     if (userId === client.getUserId()) {
       return 'online';
     }

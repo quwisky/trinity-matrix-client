@@ -19,8 +19,8 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { PushService } from '@trinity/data-access/notifications';
 import {
   IgnoredUsersService,
-  PresenceService,
-} from '@trinity/data-access/profile';
+  IdentityPresenceService,
+} from '@trinity/data-access/identity';
 import {
   AccountScopeService,
   MixedRoomsService,
@@ -70,9 +70,9 @@ import { WorkspaceTransitionWorkflow } from './workspace-transition.workflow';
 
 const BOB: MemberSummary = {
   userId: '@bob:hs',
-  name: 'Bob',
-  initial: 'B',
-  avatarMxc: null,
+  roomDisplayName: 'Bob',
+  roomInitial: 'B',
+  roomAvatarMxc: null,
   powerLevel: 0,
   isCreator: false,
 };
@@ -179,7 +179,7 @@ describe('RoomsPage rendered right-panel focus', () => {
           activeUserId: signal<string | null>('@me:hs'),
         }),
         MockProvider(TrustService, { connect: vi.fn() }),
-        MockProvider(PresenceService, {
+        MockProvider(IdentityPresenceService, {
           connect: vi.fn(),
           presenceFor: () => signal('offline'),
         }),

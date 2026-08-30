@@ -4,22 +4,25 @@ import { of } from 'rxjs';
 import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ProfileService, type UserProfile } from '@trinity/data-access/profile';
+import {
+  IdentityService,
+  type IdentityProfile,
+} from '@trinity/data-access/identity';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { ProfileSettingsComponent } from './profile-settings.component';
 import { provideTrnIcons } from '@trinity/components/icon';
 
 describe('ProfileSettingsComponent', () => {
-  let profile: ReturnType<typeof signal<UserProfile | null>>;
+  let profile: ReturnType<typeof signal<IdentityProfile | null>>;
 
-  const PROFILE: UserProfile = {
+  const PROFILE: IdentityProfile = {
     userId: '@me:hs',
     displayName: 'Alice',
     avatarMxc: null,
   };
 
   beforeEach(() => {
-    profile = signal<UserProfile | null>(PROFILE);
+    profile = signal<IdentityProfile | null>(PROFILE);
   });
 
   async function renderPage() {
@@ -30,14 +33,14 @@ describe('ProfileSettingsComponent', () => {
         // not by each component, so a spec that asserts a real <svg> has to mirror that
         // root registration the way the running app provides it.
         provideTrnIcons(),
-        MockProvider(ProfileService, {
+        MockProvider(IdentityService, {
           profile,
           // load() reflects the current signal so a test can preset an empty profile.
           load: () => of(profile()!),
         }),
       ],
     });
-    const profileSvc = TestBed.inject(ProfileService);
+    const profileSvc = TestBed.inject(IdentityService);
     // The save actions return cold Observables the page feeds to runWithBusy.
     vi.mocked(profileSvc.setDisplayName).mockReturnValue(of(undefined));
     vi.mocked(profileSvc.setAvatar).mockReturnValue(of(undefined));

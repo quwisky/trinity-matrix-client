@@ -56,15 +56,6 @@ export interface CreateRoomOptions {
   isPublic?: boolean;
 }
 
-/** A user-directory hit shown in the invite / DM picker. */
-export interface UserSearchResult {
-  userId: string;
-  /** Display name, falling back to the user id when the server has none. */
-  displayName: string;
-  /** Raw `mxc://` avatar, or null when unset; the UI resolves it (authed). */
-  avatarMxc: string | null;
-}
-
 /** Room Library's authoritative answer for one Account-and-Room selection. */
 export type RoomLibrarySelectionAvailability = 'available' | 'unavailable';
 
@@ -684,28 +675,6 @@ export class RoomLibraryService {
         map(() => void 0),
       );
     });
-  }
-
-  /**
-   * Search the homeserver user directory for an invite / DM picker. An empty term
-   * resolves to `[]` without a request. Cold: runs on subscribe.
-   */
-  searchUsers(term: string): Observable<UserSearchResult[]> {
-    const trimmed = term.trim();
-    if (!trimmed) {
-      return of([]);
-    }
-    return defer(() =>
-      from(this.matrix.instance.searchUserDirectory({ term: trimmed })),
-    ).pipe(
-      map((res) =>
-        res.results.map((u) => ({
-          userId: u.user_id,
-          displayName: u.display_name || u.user_id,
-          avatarMxc: u.avatar_url ?? null,
-        })),
-      ),
-    );
   }
 
   /**

@@ -9,7 +9,7 @@ import {
   signal,
 } from '@angular/core';
 import { HomeserverInfoService } from '@trinity/data-access/homeserver';
-import { AccountProfilesService } from '@trinity/data-access/profile';
+import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { runWithBusy } from '@trinity/util/ui';
 
 /**
@@ -32,7 +32,7 @@ import { runWithBusy } from '@trinity/util/ui';
 })
 export class HomeserverBlockComponent implements OnInit {
   private readonly homeservers = inject(HomeserverInfoService);
-  private readonly profiles = inject(AccountProfilesService);
+  private readonly identities = inject(AccountIdentitiesService);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly userId = input.required<string>();
@@ -42,7 +42,7 @@ export class HomeserverBlockComponent implements OnInit {
 
   /** This account's name for the block heading, falling back to its mxid. */
   protected readonly displayName = computed(
-    () => this.profiles.profileOf(this.userId()).displayName,
+    () => this.identities.identityOf(this.userId()).displayName,
   );
 
   /** Null until the first probe finishes — which is what the loading line reads. */

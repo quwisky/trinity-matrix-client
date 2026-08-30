@@ -23,9 +23,9 @@ import {
 import { AccountBadgesService } from '../shared/account-badges.service';
 import { RoomShellStore } from './room-shell-store';
 import {
-  AccountProfilesService,
-  type UserProfile,
-} from '@trinity/data-access/profile';
+  AccountIdentitiesService,
+  type IdentityProfile,
+} from '@trinity/data-access/identity';
 import { type RailUnread } from '../server-rail/server-rail.component';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 
@@ -54,7 +54,7 @@ export class RoomShellViewModel {
   private readonly accountBadgesSvc = inject(AccountBadgesService);
   private readonly unreadAgg = inject(UnreadAggregatorService);
   private readonly matrix = inject(MatrixClientService);
-  private readonly profiles = inject(AccountProfilesService);
+  private readonly identities = inject(AccountIdentitiesService);
   private readonly homeservers = inject(HomeserverInfoService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -308,11 +308,11 @@ export class RoomShellViewModel {
   // Both read the projection rather than the client: it is a declared dependency, so these
   // update when the profile hydrates instead of when something else happened to sync.
   readonly userName = computed(
-    () => this.profiles.profileOf(this.userId()).displayName,
+    () => this.identities.identityOf(this.userId()).displayName,
   );
 
   readonly userAvatarMxc = computed(
-    () => this.profiles.profileOf(this.userId()).avatarMxc,
+    () => this.identities.identityOf(this.userId()).avatarMxc,
   );
 
   /** First letter of the active account's display name, for the header chip's avatar. */
@@ -325,7 +325,7 @@ export class RoomShellViewModel {
   );
 
   /** The signed-in user's profile, bundled for the channel sidebar's user panel. */
-  readonly userProfile = computed<UserProfile>(() => ({
+  readonly userProfile = computed<IdentityProfile>(() => ({
     userId: this.userId(),
     displayName: this.userName(),
     avatarMxc: this.userAvatarMxc(),
@@ -334,7 +334,7 @@ export class RoomShellViewModel {
   /** Every signed-in account, for the user-panel switcher (profile + unread total). */
   readonly accounts = computed<AccountSummary[]>(() => {
     const unread = this.unreadAgg.unreadByAccount();
-    const profiles = this.profiles.profiles();
+    const profiles = this.identities.identities();
     const servers = this.homeservers.infos();
     return this.matrix.accountIds().map((userId) => {
       const profile = profiles.get(userId);

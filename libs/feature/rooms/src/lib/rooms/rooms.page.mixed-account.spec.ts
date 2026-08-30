@@ -17,7 +17,7 @@ import {
   type PendingInvite,
 } from '@trinity/data-access/room-library';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { AccountProfilesService } from '@trinity/data-access/profile';
+import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import {
   RoomLibraryService,
   SpacesService,
@@ -193,8 +193,8 @@ describe('RoomsPage mixed-account view', () => {
           ).asReadonly(),
         }),
         // Profiles come from the projection now, not from reading each client here.
-        MockProvider(AccountProfilesService, {
-          profiles: signal(
+        MockProvider(AccountIdentitiesService, {
+          identities: signal(
             new Map(
               accountIds.map((id) => [
                 id,
