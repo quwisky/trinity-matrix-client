@@ -1,10 +1,12 @@
 import { Component, Type } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { NavigationStart, Router } from '@angular/router';
+import { Capacitor } from '@capacitor/core';
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
+  SETTINGS_DIALOG_COMPONENT,
   type EncryptionDialogLoaders,
-} from '@trinity/application/runtime';
+} from '../application-dialog-loaders';
 import {
   WorkspaceBackService,
   type WorkspaceApplicationSurfaceRequest,
@@ -17,7 +19,6 @@ import {
 import { firstValueFrom, of, Subject, type Subscription } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
-import { SETTINGS_DIALOG_APP_CONFIG } from './settings-dialog.config';
 
 @Component({ template: '' })
 class StubSettingsComponent {}
@@ -58,6 +59,10 @@ describe('Workspace application-surface composition adapter', () => {
             verify: () => of(StubVerifyComponent as Type<unknown>),
           } satisfies EncryptionDialogLoaders,
         },
+        {
+          provide: SETTINGS_DIALOG_COMPONENT,
+          useValue: () => of(StubSettingsComponent as Type<unknown>),
+        },
       ],
     });
     lifetime = TestBed.inject(WorkspaceApplicationSurfacePresenterAdapter)
@@ -67,6 +72,7 @@ describe('Workspace application-surface composition adapter', () => {
 
   afterEach(() => {
     lifetime.unsubscribe();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -103,46 +109,44 @@ describe('Workspace application-surface composition adapter', () => {
   });
 
   it('registers a modal Settings identity with Workspace Back', async () => {
-    const originalLoad = SETTINGS_DIALOG_APP_CONFIG.load;
-    const originalPlacement = SETTINGS_DIALOG_APP_CONFIG.shouldPresentAsDialog;
-    Object.assign(SETTINGS_DIALOG_APP_CONFIG, {
-      load: () => of(StubSettingsComponent as Type<unknown>),
-      shouldPresentAsDialog: () => true,
+    const request = {
+      surface: { kind: 'settings', section: 'stickers' },
+      context: { sourceRoomId: '!room:example.org' },
+    } as const satisfies WorkspaceApplicationSurfaceRequest;
+
+    await firstValueFrom(presenter().present(request));
+
+    expect(dialogOpen).toHaveBeenCalledWith(StubSettingsComponent, {
+      inputs: {
+        initialSection: 'stickers',
+        initialSource: '!room:example.org',
+      },
+      ariaLabel: 'Settings',
+      autoFocus: '[data-settings-autofocus]',
     });
-    try {
-      const request = {
-        surface: { kind: 'settings', section: 'stickers' },
-        context: { sourceRoomId: '!room:example.org' },
-      } as const satisfies WorkspaceApplicationSurfaceRequest;
+    await expect(
+      firstValueFrom(TestBed.inject(WorkspaceBackService).back()),
+    ).resolves.toMatchObject({
+      kind: 'dismissed',
+      surface: { layer: 'application', surface: request.surface },
+    });
+    expect(close).toHaveBeenCalled();
+  });
 
-      await firstValueFrom(presenter().present(request));
+  it('keeps Settings routed in installed Capacitor hosts', async () => {
+    vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
 
-      expect(dialogOpen).toHaveBeenCalledWith(StubSettingsComponent, {
-        inputs: {
-          initialSection: 'stickers',
-          initialSource: '!room:example.org',
-        },
-        ariaLabel: 'Settings',
-        autoFocus: '[data-settings-autofocus]',
-      });
-      await expect(
-        firstValueFrom(TestBed.inject(WorkspaceBackService).back()),
-      ).resolves.toMatchObject({
-        kind: 'dismissed',
-        surface: { layer: 'application', surface: request.surface },
-      });
-      expect(close).toHaveBeenCalled();
-    } finally {
-      Object.assign(SETTINGS_DIALOG_APP_CONFIG, {
-        load: originalLoad,
-        shouldPresentAsDialog: originalPlacement,
-      });
-    }
+    await firstValueFrom(
+      presenter().present({
+        surface: { kind: 'settings', section: 'security' },
+      }),
+    );
+
+    expect(navigate).toHaveBeenCalledWith(['/settings/security'], {});
+    expect(dialogOpen).not.toHaveBeenCalled();
   });
 
   it('opens a nested trust flow over modal Settings and makes it the active surface', async () => {
-    const originalLoad = SETTINGS_DIALOG_APP_CONFIG.load;
-    const originalPlacement = SETTINGS_DIALOG_APP_CONFIG.shouldPresentAsDialog;
     const settingsClosed = new Subject<void>();
     const trustClosed = new Subject<void>();
     const settingsClose = vi.fn(() => {
@@ -162,54 +166,43 @@ describe('Workspace application-surface composition adapter', () => {
       close: trustClose,
     });
     dialogOpen.mockReturnValueOnce(settingsRef).mockReturnValueOnce(trustRef);
-    Object.assign(SETTINGS_DIALOG_APP_CONFIG, {
-      load: () => of(StubSettingsComponent as Type<unknown>),
-      shouldPresentAsDialog: () => true,
-    });
-    try {
-      await firstValueFrom(
-        presenter().present({
-          surface: { kind: 'settings', section: 'security' },
-        }),
-      );
-      await firstValueFrom(
-        presenter().present({
-          surface: { kind: 'trust', flow: 'verify' },
-          context: { placement: 'nested' },
-        }),
-      );
+    await firstValueFrom(
+      presenter().present({
+        surface: { kind: 'settings', section: 'security' },
+      }),
+    );
+    await firstValueFrom(
+      presenter().present({
+        surface: { kind: 'trust', flow: 'verify' },
+        context: { placement: 'nested' },
+      }),
+    );
 
-      expect(dialogOpen).toHaveBeenNthCalledWith(2, StubVerifyComponent, {
-        inputs: { asModal: true },
-        disableClose: true,
-        ariaLabel: 'Encryption',
-      });
-      await expect(
-        firstValueFrom(TestBed.inject(WorkspaceBackService).back()),
-      ).resolves.toMatchObject({
-        kind: 'blocked',
-        surface: {
-          layer: 'application',
-          surface: { kind: 'trust', flow: 'verify' },
-        },
-      });
-      trustRef.close();
-      await expect(
-        firstValueFrom(TestBed.inject(WorkspaceBackService).back()),
-      ).resolves.toMatchObject({
-        kind: 'dismissed',
-        surface: {
-          layer: 'application',
-          surface: { kind: 'settings', section: 'security' },
-        },
-      });
-      expect(settingsClose).toHaveBeenCalledOnce();
-    } finally {
-      Object.assign(SETTINGS_DIALOG_APP_CONFIG, {
-        load: originalLoad,
-        shouldPresentAsDialog: originalPlacement,
-      });
-    }
+    expect(dialogOpen).toHaveBeenNthCalledWith(2, StubVerifyComponent, {
+      inputs: { asModal: true },
+      disableClose: true,
+      ariaLabel: 'Encryption',
+    });
+    await expect(
+      firstValueFrom(TestBed.inject(WorkspaceBackService).back()),
+    ).resolves.toMatchObject({
+      kind: 'blocked',
+      surface: {
+        layer: 'application',
+        surface: { kind: 'trust', flow: 'verify' },
+      },
+    });
+    trustRef.close();
+    await expect(
+      firstValueFrom(TestBed.inject(WorkspaceBackService).back()),
+    ).resolves.toMatchObject({
+      kind: 'dismissed',
+      surface: {
+        layer: 'application',
+        surface: { kind: 'settings', section: 'security' },
+      },
+    });
+    expect(settingsClose).toHaveBeenCalledOnce();
   });
 
   it('keeps a flow-critical trust dialog blocked while local overlays can sit above it', async () => {

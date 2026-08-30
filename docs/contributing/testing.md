@@ -76,7 +76,7 @@ only writes `poolOptions.threads` and `poolOptions.vmThreads`.
 
 ## The app is zoneless, and so are the specs
 
-`apps/trinity/src/main.ts` provides `provideZonelessChangeDetection()`, the
+`provideTrinityApplication()` provides `provideZonelessChangeDetection()`, the
 polyfills import no `zone.js`, and the dependency is gone from `package.json`
 entirely.
 [`test-setup.base.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/test-setup.base.ts)
@@ -396,7 +396,17 @@ Note also which build this is. The web suite runs the **development** bundle, wi
 optimization off, no service worker and no file replacements. A production-only
 regression — the service worker, `inlineCritical`, `environment.prod.ts`, output
 hashing, a budget overage — passes all 79 spec files and is caught only by
-`pnpm build` or by the desktop suite.
+`pnpm build`, `pnpm e2e:web` or by the desktop suite.
+
+### The production Web/PWA host contract
+
+`pnpm e2e:web` runs the `trinity-e2e:web-e2e` Nx target without Docker. Its dedicated
+Playwright server builds the production configuration and serves the exact shared `www/`
+artifact on port 4402 with server reuse disabled. The check enters on an unknown deep link,
+waits for Application Runtime to reach the login surface, verifies the manifest and crypto WASM,
+then switches Chromium offline and reloads another deep link under service-worker control. This
+is the executable boundary for Web startup, routing and offline shell behavior; authenticated
+Matrix journeys remain in the sequential Synapse-backed suite.
 
 ### Global setup turns its own graceful degradation off in CI
 

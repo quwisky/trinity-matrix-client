@@ -18,6 +18,21 @@ function poll(over: Partial<PollView> = {}): PollView {
 }
 
 describe('PollComponent', () => {
+  it('accepts the immutable poll projection exposed by Conversations', async () => {
+    const immutable = Object.freeze({
+      ...poll(),
+      options: Object.freeze(
+        poll().options.map((option) => Object.freeze({ ...option })),
+      ),
+    });
+
+    const { container } = await render(PollComponent, {
+      inputs: { poll: immutable },
+    });
+
+    expect(container.textContent).toContain('Best fruit?');
+  });
+
   it('renders the question, options, counts, and total', async () => {
     const { container } = await render(PollComponent, {
       inputs: { poll: poll() },

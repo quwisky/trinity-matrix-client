@@ -52,13 +52,13 @@ describe('global error listeners', () => {
     expect(handleError).toHaveBeenCalledWith(error);
   });
 
-  // `bootstrapApplication` cannot run in a spec, so the composition root is pinned by
-  // source: dropping this provider would silently un-wire everything asserted above.
-  it('is provided by the application bootstrap', () => {
+  // `bootstrapApplication` cannot run in a spec, so pin the app to the deep provider
+  // interface whose own tests and source-shape contract cover the concrete listener.
+  it('is provided through the application composition module', () => {
     // Vitest runs with the project directory as its cwd (vite `root`), and
     // `import.meta.url` here is a dev-server URL rather than a file: one.
     const main = readFileSync(join(process.cwd(), 'src/main.ts'), 'utf8');
 
-    expect(main).toContain('provideBrowserGlobalErrorListeners()');
+    expect(main).toContain('provideTrinityApplication({');
   });
 });

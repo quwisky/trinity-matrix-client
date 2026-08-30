@@ -64,7 +64,9 @@ describe('Room Administration production boundary', () => {
   });
 
   it('keeps Conversation and Room Library on narrow composition-root policies', () => {
-    const main = source('apps/trinity/src/main.ts');
+    const composition = source(
+      'libs/application/runtime/src/lib/composition/application-capability.providers.ts',
+    );
     const roomLibrary = productionSources
       .filter((file) => file.startsWith('libs/data-access/room-library/'))
       .map(source)
@@ -81,10 +83,10 @@ describe('Room Administration production boundary', () => {
     expect(conversations).not.toContain(
       "from '@trinity/data-access/room-administration'",
     );
-    expect(main).toContain('provide: ROOM_LIBRARY_GOVERNANCE_POLICY');
-    expect(main).toContain('inject(RoomActionPermissionsService)');
-    expect(main).toContain('provide: CONVERSATION_MESSAGE_POLICY');
-    expect(main).toContain('provide: CONVERSATION_PIN_POLICY');
+    expect(composition).toContain('provide: ROOM_LIBRARY_GOVERNANCE_POLICY');
+    expect(composition).toContain('inject(RoomActionPermissionsService)');
+    expect(composition).toContain('provide: CONVERSATION_MESSAGE_POLICY');
+    expect(composition).toContain('provide: CONVERSATION_PIN_POLICY');
   });
 
   it('reconciles membership from Matrix state without optimistic edits', () => {

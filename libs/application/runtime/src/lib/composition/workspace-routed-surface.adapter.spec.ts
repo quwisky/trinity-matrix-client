@@ -6,7 +6,7 @@ import { firstValueFrom, Subject, type Subscription } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
 
-describe('WorkspaceRoutedSurfaceAdapter', () => {
+describe('Workspace routed-surface composition adapter', () => {
   const events = new Subject<never>();
   const serializer = new DefaultUrlSerializer();
   const navigateByUrl = vi.fn().mockResolvedValue(true);

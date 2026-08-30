@@ -18,19 +18,19 @@ const MAX_POLL_ANSWERS = 20;
 
 /** One answer of a poll, with its live tally and whether the local user chose it. */
 export interface PollOption {
-  id: string;
-  text: string;
-  votes: number;
-  chosen: boolean;
+  readonly id: string;
+  readonly text: string;
+  readonly votes: number;
+  readonly chosen: boolean;
 }
 
 /** A projected poll (MSC3381): question, options with tallies, and whether it's closed. */
 export interface PollView {
-  id: string;
-  question: string;
-  options: PollOption[];
-  totalVotes: number;
-  ended: boolean;
+  readonly id: string;
+  readonly question: string;
+  readonly options: readonly PollOption[];
+  readonly totalVotes: number;
+  readonly ended: boolean;
 }
 
 /** Both namespaces (unstable `.name`, stable `.altName`) of an extensible type. */

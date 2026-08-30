@@ -29,6 +29,15 @@
         "cwd": "{projectRoot}"
       }
     },
+    "web-e2e": {
+      "//": "Production Web/PWA startup, routing and offline checks against the exact shared www artifact. No Synapse or Docker is required.",
+      "cache": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "playwright test -c playwright.web.config.mts",
+        "cwd": "{projectRoot}"
+      }
+    },
     "phase7-e2e": {
       "//": "Shipped real-app semantic, responsive, contrast and geometry coverage. Serialized because it owns the fixed Synapse stack and deterministic accounts.",
       "cache": false,

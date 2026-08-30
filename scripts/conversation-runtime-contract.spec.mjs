@@ -155,13 +155,15 @@ describe('Conversation Runtime production boundary', () => {
   });
 
   it('binds Room Administration governance at the application composition root', () => {
-    const main = source('apps/trinity/src/main.ts');
+    const composition = source(
+      'libs/application/runtime/src/lib/composition/application-capability.providers.ts',
+    );
     const governance = source(
       'libs/data-access/room-administration/src/lib/room-message-governance.service.ts',
     );
 
-    expect(main).toContain('provide: CONVERSATION_MESSAGE_POLICY');
-    expect(main).toContain('inject(RoomMessageGovernanceService)');
+    expect(composition).toContain('provide: CONVERSATION_MESSAGE_POLICY');
+    expect(composition).toContain('inject(RoomMessageGovernanceService)');
     expect(governance).toContain('maySendRedactionForEvent');
     expect(governance).toContain('this.matrix.clientFor(key.accountId)');
   });
@@ -171,7 +173,9 @@ describe('Conversation Runtime production boundary', () => {
     const threadChildren = source(threadChildrenImplementation);
     const entrypoint = source(timelineEntrypoint);
     const threadAdapter = source(threadsImplementation);
-    const main = source('apps/trinity/src/main.ts');
+    const composition = source(
+      'libs/application/runtime/src/lib/composition/application-capability.providers.ts',
+    );
     const roomFeature = productionSources
       .filter((file) => file.startsWith('libs/feature/rooms/'))
       .map(source)
@@ -192,8 +196,8 @@ describe('Conversation Runtime production boundary', () => {
     expect(
       existsSync(join(workspaceRoot, 'libs/data-access/pinned/project.json')),
     ).toBe(false);
-    expect(main).toContain('provide: CONVERSATION_PIN_POLICY');
-    expect(main).toContain('inject(RoomPinGovernanceService)');
+    expect(composition).toContain('provide: CONVERSATION_PIN_POLICY');
+    expect(composition).toContain('inject(RoomPinGovernanceService)');
     expect(threadAdapter).not.toMatch(
       /^\s{2}(?:open|openThread|sendMediaToThread|toggleReactionInThread|redactInThread|retryInThread)\s*\(/m,
     );

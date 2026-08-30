@@ -113,14 +113,16 @@ describe('Trust production boundary', () => {
   });
 
   it('composes provider recovery at the app root, outside Trust screens', () => {
-    const main = source('apps/trinity/src/main.ts');
+    const composition = source(
+      'libs/application/runtime/src/lib/composition/application-capability.providers.ts',
+    );
     const feature = productionSources
       .filter((file) => file.startsWith('libs/feature/crypto/'))
       .map(source)
       .join('\n');
 
-    expect(main).toContain('provide: TRUST_PROVIDER_RECOVERY');
-    expect(main).toContain('inject(AuthService)');
+    expect(composition).toContain('provide: TRUST_PROVIDER_RECOVERY');
+    expect(composition).toContain('inject(AuthService)');
     expect(feature).not.toContain("from '@trinity/data-access/auth'");
   });
 });
