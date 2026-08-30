@@ -34,7 +34,7 @@ export interface TrinityDesktopBridge {
     };
     notificationPresentation: {
       /** Present a validated native notification through the main process. */
-      present: (payload: DesktopNotification) => void;
+      present: (payload: DesktopNotification) => Promise<HostOperationOutcome>;
       /** Subscribe to validated notification activation targets. */
       subscribeClicks: (
         callback: (destination: HostNotificationDestination) => void,

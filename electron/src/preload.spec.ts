@@ -23,7 +23,7 @@ type ExposedBridge = {
   readonly capabilities: {
     readonly deepLinks: unknown;
     readonly notificationPresentation: {
-      readonly present: (payload: unknown) => void;
+      readonly present: (payload: unknown) => Promise<unknown>;
       readonly subscribeClicks: (
         callback: (destination: unknown) => void,
       ) => () => void;
@@ -106,24 +106,27 @@ describe('preload host capabilities', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
-  it('round-trips only complete typed notification destinations', () => {
+  it('round-trips only complete typed notification destinations', async () => {
     const destination = {
       accountId: '@me:example.org',
       roomId: '!room:example.org',
       eventId: '$event',
     };
-    bridge.capabilities.notificationPresentation.present({
+    await bridge.capabilities.notificationPresentation.present({
       title: 'Alice',
       body: 'Hello',
       destination,
     });
-    expect(send).toHaveBeenCalledWith('show-notification', {
-      title: 'Alice',
-      body: 'Hello',
-      tag: undefined,
-      destination,
-      silent: false,
-    });
+    expect(invoke).toHaveBeenCalledWith(
+      'trinity:host:v1:notification-presentation:present',
+      {
+        title: 'Alice',
+        body: 'Hello',
+        tag: undefined,
+        destination,
+        silent: false,
+      },
+    );
 
     const activated = vi.fn();
     const unsubscribe =
@@ -137,5 +140,19 @@ describe('preload host capabilities', () => {
     expect(activated).toHaveBeenCalledExactlyOnceWith(destination);
     unsubscribe();
     expect(removeListener).toHaveBeenCalledWith('notification-click', listener);
+  });
+
+  it('rejects malformed notification destinations before IPC', async () => {
+    await expect(
+      bridge.capabilities.notificationPresentation.present({
+        title: 'Alice',
+        body: 'Hello',
+        destination: { roomId: 42 },
+      }),
+    ).resolves.toEqual({
+      kind: 'rejected',
+      diagnostic: { code: 'invalid-notification-payload' },
+    });
+    expect(invoke).not.toHaveBeenCalled();
   });
 });

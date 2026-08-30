@@ -150,24 +150,26 @@ runs sandboxed and context-isolated, and exposes exactly one object,
 `window.trinityDesktop`. It never exposes `ipcRenderer` or Node. This is the complete
 surface:
 
-| Member                       | Direction        | Channel                            | Purpose                                                             |
-| ---------------------------- | ---------------- | ---------------------------------- | ------------------------------------------------------------------- |
-| `isElectron`                 | value            | —                                  | The desktop-detection marker                                        |
-| `platform`                   | value            | —                                  | Host `process.platform`                                             |
-| `onDeepLink(cb)`             | main to renderer | `deep-link`                        | OS deep links, with replay of anything buffered before subscription |
-| `showNotification(payload)`  | send             | `show-notification`                | Ask main to display a native notification                           |
-| `onNotificationClick(cb)`    | main to renderer | `notification-click`               | Delivers only `roomId` and `userId`, never the raw event            |
-| `setBadgeCount(n)`           | send             | `set-badge-count`                  | Unread total for the dock or launcher badge                         |
-| `cors.setAllowedOrigins(o)`  | send             | `trinity:cors:set-allowed-origins` | Replace the CORS allowlist                                          |
-| `cors.allowOrigin(o)`        | send             | `trinity:cors:allow-origin`        | Additively allow one origin                                         |
-| `secureStore.isAvailable()`  | invoke           | `trinity:secure-store:available`   | Whether the OS keychain is usable                                   |
-| `secureStore.get/set/delete` | invoke           | `trinity:secure-store:*`           | Read, write and remove a secret                                     |
-| `resolveApproxLocation()`    | invoke           | `trinity:geolocation:approximate`  | City-level location from the public IP, opt-in only                 |
+| Member                                                   | Direction        | Channel                                             | Purpose                                                                            |
+| -------------------------------------------------------- | ---------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `isElectron`                                             | value            | —                                                   | The desktop-detection marker                                                       |
+| `platform`                                               | value            | —                                                   | Host `process.platform`                                                            |
+| `negotiate(operations)`                                  | invoke           | `trinity:host:v1:negotiate`                         | Return explicit protocol-v1 support for every requested host operation             |
+| `capabilities.deepLinks.subscribe(cb)`                   | main to renderer | `deep-link`                                         | OS deep links, with replay of anything buffered before subscription                |
+| `capabilities.notificationPresentation.present(payload)` | invoke           | `trinity:host:v1:notification-presentation:present` | Resolve only after the OS reports shown, failed, unavailable, or a bounded timeout |
+| `capabilities.notificationPresentation.subscribeClicks`  | main to renderer | `notification-click`                                | Deliver a validated `{accountId, roomId, eventId}` destination                     |
+| `capabilities.badge.set(n)`                              | invoke           | `trinity:host:v1:badge:set`                         | Write the aggregate unread count and return a typed, secret-safe outcome           |
+| `capabilities.networkCors.setAllowedOrigins(o)`          | send             | `trinity:cors:set-allowed-origins`                  | Replace the CORS allowlist                                                         |
+| `capabilities.networkCors.allowOrigin(o)`                | send             | `trinity:cors:allow-origin`                         | Additively allow one origin                                                        |
+| `capabilities.secureStore.isAvailable()`                 | invoke           | `trinity:secure-store:available`                    | Whether the OS keychain is usable                                                  |
+| `capabilities.secureStore.get/set/delete`                | invoke           | `trinity:secure-store:*`                            | Read, write and remove a secret                                                    |
+| `capabilities.location.approximate()`                    | invoke           | `trinity:geolocation:approximate`                   | City-level location from the public IP, opt-in only                                |
 
-Both sides validate. The preload drops payloads of the wrong shape, and every main-process
+Both sides validate. The preload rejects payloads of the wrong shape, and every main-process
 handler independently re-validates and checks `event.sender === getMainWindow().webContents`
 before acting, so a compromised or unexpected `WebContents` cannot drive the privileged
-side.
+side. Notification presentation returns only typed, secret-safe outcomes; `failed` events and
+synchronous host errors therefore become Application Runtime warnings instead of false success.
 
 The typed mirror of this interface, and the authoritative documentation of each member, is
 [libs/platform-native/src/lib/trinity-desktop-bridge.ts](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/platform-native/src/lib/trinity-desktop-bridge.ts).

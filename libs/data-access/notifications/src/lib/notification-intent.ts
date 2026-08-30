@@ -27,6 +27,17 @@ export interface NotificationIntent {
   readonly destination: NotificationDestination;
 }
 
+/** Long-lived application-facing events emitted by one notification session. */
+export type NotificationRuntimeEvent =
+  | {
+      readonly kind: 'activated';
+      readonly destination: NotificationDestination;
+    }
+  | {
+      readonly kind: 'warning';
+      readonly diagnostic: { readonly code: string };
+    };
+
 export interface NotificationPolicyInput {
   readonly event: NotificationEvent;
   readonly viewerId: string;

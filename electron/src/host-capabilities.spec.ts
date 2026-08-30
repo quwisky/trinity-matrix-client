@@ -1,14 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { handlers, mainWindowRef } = vi.hoisted(() => ({
+const { handlers, mainWindowRef, notificationSupport } = vi.hoisted(() => ({
   handlers: new Map<
     string,
     (event: { sender: unknown }, request: unknown) => unknown
   >(),
   mainWindowRef: { current: null as { webContents: unknown } | null },
+  notificationSupport: { current: true },
 }));
 
 vi.mock('electron', () => ({
+  Notification: {
+    isSupported: () => notificationSupport.current,
+  },
   ipcMain: {
     handle: (
       channel: string,
@@ -59,11 +63,26 @@ describe('host capability negotiation', () => {
       }),
     ).toEqual({ kind: 'rejected', reason: 'malformed-request' });
   });
+
+  it('reports notification presentation unavailable when the OS API is unsupported', () => {
+    const result = negotiateHostCapabilities(
+      { protocolVersion: 1, operations: HOST_OPERATIONS },
+      false,
+    );
+
+    expect(result.kind).toBe('accepted');
+    if (result.kind !== 'accepted') return;
+    expect(result.operations['notification-presentation']).toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
+  });
 });
 
 describe('host capability IPC', () => {
   beforeEach(() => {
     handlers.clear();
+    notificationSupport.current = true;
     mainWindowRef.current = { webContents: { id: 1 } };
     registerHostCapabilityHandshake();
   });
@@ -76,5 +95,25 @@ describe('host capability IPC', () => {
         { protocolVersion: 1, operations: ['badge'], secret: 'never-return' },
       ),
     ).toEqual({ kind: 'rejected', reason: 'malformed-request' });
+  });
+
+  it('uses live OS notification support in the accepted manifest', () => {
+    notificationSupport.current = false;
+    const handler = handlers.get(HOST_NEGOTIATE_CHANNEL);
+    const sender = mainWindowRef.current?.webContents;
+    const result = handler?.(
+      { sender },
+      { protocolVersion: 1, operations: HOST_OPERATIONS },
+    );
+
+    expect(result).toMatchObject({
+      kind: 'accepted',
+      operations: {
+        'notification-presentation': {
+          kind: 'unavailable',
+          reason: 'not-supported',
+        },
+      },
+    });
   });
 });

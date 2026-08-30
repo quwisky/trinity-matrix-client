@@ -8,11 +8,11 @@ needs an operator to deploy anything.
 
 ## The three layers
 
-| Layer               | Owns                                                            | Runs on                       |
-| ------------------- | --------------------------------------------------------------- | ----------------------------- |
-| Push rules          | Whether an event should notify at all, per account and per room | Every platform, server-side   |
-| Local notifications | Turning a live sync event into an OS toast                      | Desktop and web, never mobile |
-| Mobile push         | Waking the app when it is not running                           | iOS and Android only          |
+| Layer               | Owns                                                            | Runs on                        |
+| ------------------- | --------------------------------------------------------------- | ------------------------------ |
+| Push rules          | Whether an event should notify at all, per account and per room | Every platform, server-side    |
+| Local notifications | Turning a live sync event into an OS toast                      | Web, Electron, iOS and Android |
+| Mobile push         | Waking the app when it is not running                           | iOS and Android only           |
 
 Push rules are Matrix account data, so they are shared by every client the user signs in
 with. The other two layers are delivery mechanisms and are per-install.
@@ -65,15 +65,16 @@ knowing about:
   therefore active on every device and in every other client, with nothing to say where
   it came from.
 
-## Local notifications on desktop and web
+## Local notifications on every host
 
 The Notifications capability splits local delivery into three seams. Its Matrix adapter narrows a
 live SDK event into a bounded value record. `NotificationPolicy` combines that normalized event with
 normalized user rules, foreground Conversation visibility and bounded deduplication state to produce
 an immutable `NotificationIntent`. `NotificationPresenterService` alone asks the selected Host
 Capability for permission and delivery. The policy therefore imports no Router, DOM, platform or SDK
-API. Local delivery runs on desktop and web only; native mobile reports presentation unavailable
-because push owns delivery there.
+API. Local delivery uses the same cold intent contract on Web, Electron, iOS and Android. Mobile
+push remains a separate transport for waking or notifying a device when the live client is
+suspended or not running.
 
 It listens per account, not just for the active one, and reconciles those listeners
 against the live account set, so an account that finishes its background warm start later
@@ -104,11 +105,16 @@ Application Runtime owns the long-lived notification stream. It stays dormant ra
 when there are no Accounts, attaches Accounts that appear later, and tears down both host activation
 and Matrix listeners on runtime stop.
 
-There are two delivery backends. On the Electron desktop shell the preload
-`trinityDesktop` bridge is present, and notifications are handed to the **main process**;
+There are three delivery backends. On the Electron desktop shell the preload
+`trinityDesktop` bridge is present, and notifications are handed to the **main process** through a
+versioned request/response operation;
 renderer Web notifications from Electron are unreliably surfaced and attributed by the OS,
-notably on macOS. Clicks come back through the typed host activation stream carrying the
-account, room and event destination. On web, the Web `Notification` API is used — through the service worker
+notably on macOS. The operation completes only after Electron reports `show`, or returns a typed
+unavailable/failure outcome. Clicks come back through the typed host activation stream carrying the
+account, room and event destination. On Capacitor, `@capacitor/local-notifications` checks or
+requests display permission, schedules the typed intent, and validates `extra` before admitting a
+tap destination. Silent Android intents use a dedicated no-sound/no-vibration channel; on iOS the
+notification stays foreground-visible while omitting `sound`. On web, the Web `Notification` API is used — through the service worker
 registration when a service worker controls the page, because mobile browsers throw on
 `new Notification()`, and through the constructor otherwise. Angular's service-worker click stream
 is validated before its typed destination is admitted back into the application.
@@ -146,12 +152,14 @@ stop when it is closed.
 
 ## The app badge
 
-`AppBadgeService` mirrors the app-wide unread total, summed across every signed-in
-account, onto exactly one badge sink chosen by feature detection:
+`BadgeCoordinator` is an application workflow. It observes Room Library's aggregate Room and Space
+unread signal, summed across every signed-in Account, and writes only through the injected
+`BadgeSink`. Conversation still owns read position; Notifications owns delivery policy and never
+imports unread state. Composition selects exactly one host sink:
 
 | Platform              | Sink                                                             |
 | --------------------- | ---------------------------------------------------------------- |
-| Electron desktop      | `trinityDesktop.setBadgeCount` over the preload bridge           |
+| Electron desktop      | `trinityDesktop.capabilities.badge.set` over protocol-v1 IPC     |
 | iOS and Android       | `@capawesome/capacitor-badge` through `MobileBadgeService`       |
 | Web and installed PWA | The W3C Badging API, `navigator.setAppBadge` and `clearAppBadge` |
 
@@ -165,8 +173,9 @@ in the overlay's accessibility description, collapsing anything past 99 to `99+`
 count arriving over IPC is untrusted and is validated and clamped before it reaches any
 native call.
 
-Every badge call is fire-and-forget. The badge is decorative, so a missing plugin, an
-unsupported OS or a denied permission is swallowed rather than surfaced.
+Every write is a cold, finite command, and a newer aggregate cancels a stale write. Unsupported
+hosts remain a no-op; rejected or failed sinks emit a non-blocking Application Runtime warning.
+They do not change readiness, unread ownership, or notification navigation.
 
 ## Mobile push
 

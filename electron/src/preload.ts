@@ -30,7 +30,8 @@ import type { IpcRendererEvent } from 'electron';
  *   ipcRenderer/Node.
  */
 const DEEP_LINK_CHANNEL = 'deep-link';
-const SHOW_NOTIFICATION_CHANNEL = 'show-notification';
+const SHOW_NOTIFICATION_CHANNEL =
+  'trinity:host:v1:notification-presentation:present';
 const NOTIFICATION_CLICK_CHANNEL = 'notification-click';
 // Mirrors dock-badge.ts's SET_BADGE_COUNT_CHANNEL (kept in sync by string value,
 // as with SHOW_NOTIFICATION_CHANNEL / NOTIFICATION_CLICK_CHANNEL above).
@@ -94,18 +95,28 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
       },
     },
     notificationPresentation: {
-      present(payload: ShowNotificationPayload): void {
-        if (typeof payload !== 'object' || payload === null) return;
+      present(payload: ShowNotificationPayload): Promise<unknown> {
+        if (typeof payload !== 'object' || payload === null) {
+          return Promise.resolve({
+            kind: 'rejected',
+            diagnostic: { code: 'invalid-notification-payload' },
+          });
+        }
         const { title, body, tag, destination, silent } =
           payload as Partial<ShowNotificationPayload>;
-        if (!isNotificationDestination(destination)) return;
-        ipcRenderer.send(SHOW_NOTIFICATION_CHANNEL, {
+        if (!isNotificationDestination(destination)) {
+          return Promise.resolve({
+            kind: 'rejected',
+            diagnostic: { code: 'invalid-notification-payload' },
+          });
+        }
+        return ipcRenderer.invoke(SHOW_NOTIFICATION_CHANNEL, {
           title: typeof title === 'string' ? title : '',
           body: typeof body === 'string' ? body : '',
           tag: typeof tag === 'string' ? tag : undefined,
           destination,
           silent: silent === true,
-        });
+        }) as Promise<unknown>;
       },
       subscribeClicks(
         callback: (destination: ShowNotificationPayload['destination']) => void,

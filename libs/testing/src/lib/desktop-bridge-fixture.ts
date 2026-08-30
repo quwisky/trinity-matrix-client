@@ -9,7 +9,18 @@ export interface DesktopBridgeFixture {
       readonly subscribe: (callback: (url: string) => void) => () => void;
     };
     readonly notificationPresentation: {
-      readonly present: (payload: unknown) => void;
+      readonly present: (payload: unknown) => Promise<
+        | { readonly kind: 'completed' }
+        | {
+            readonly kind: 'unavailable';
+            readonly reason:
+              | 'not-implemented'
+              | 'not-supported'
+              | 'protocol-mismatch'
+              | 'host-rejected';
+          }
+        | { readonly kind: 'rejected'; readonly diagnostic: { code: string } }
+      >;
       readonly subscribeClicks: (
         callback: (destination: {
           readonly accountId: string;
@@ -80,7 +91,7 @@ export function desktopBridgeFixture(
     capabilities: {
       deepLinks: { subscribe: () => () => undefined },
       notificationPresentation: {
-        present: () => undefined,
+        present: async () => ({ kind: 'completed' }),
         subscribeClicks: () => () => undefined,
       },
       badge: {

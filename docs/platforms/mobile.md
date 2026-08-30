@@ -88,6 +88,7 @@ only the previous `tcp:8448` reverse mapping is restored.
 | `@capacitor/camera`                            | Media picker for attachments                                                              |
 | `@capacitor/filesystem` and `@capacitor/share` | Save or share a downloaded attachment                                                     |
 | `@capacitor/push-notifications`                | FCM and APNs token registration                                                           |
+| `@capacitor/local-notifications`               | Present typed live-sync notification intents and return typed tap destinations            |
 | `@capacitor/status-bar`                        | Theme-matched status bar                                                                  |
 | `@capawesome/capacitor-badge`                  | App-icon unread badge                                                                     |
 | `@aparajita/capacitor-secure-storage`          | Keychain on iOS, Keystore on Android                                                      |
@@ -199,20 +200,20 @@ separate acts, and only the first one is automated.
 
 ## What behaves differently on mobile
 
-| Capability           | Mobile behaviour                                                                                                                                                   |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Notifications        | In-app notification delivery is a no-op. Push owns delivery on iOS and Android                                                                                     |
-| Push registration    | Gated on `getPlatform()` being exactly `'ios'` or `'android'`, and on the plugin being available                                                                   |
-| Secret storage       | Keychain and Keystore through `@aparajita/capacitor-secure-storage`, with syncing switched off so a per-device Matrix session cannot leak across a user's devices  |
-| App-icon badge       | `@capawesome/capacitor-badge`. iOS prompts once for badge authorization on first use; Android grants without a prompt                                              |
-| Status bar           | `ThemeService` sets the native status-bar style to match the resolved light or dark theme                                                                          |
-| Deep links           | `appUrlOpen` for a warm open, `getLaunchUrl` for a cold start                                                                                                      |
-| Android back button  | The app owns the whole chain: an open overlay always consumes the press (dismissed unless it set `disableClose`), else step back through history, else minimize    |
-| iOS history swipe    | Native Back/Forward stays enabled while no dialog or registered panel can intercept; both edges yield while one is active, and the drawer opens from an inset band |
-| Composer insert      | The `+` opens the shared bottom sheet on the iOS/Android interaction model, including mobile web/PWAs. Desktop web and Electron retain an anchored menu            |
-| Media capture        | `MediaPickerService` opens the Capacitor gallery picker on native; elsewhere the composer falls back to a hidden file input                                        |
-| Saving an attachment | Bytes are written to the cache and handed to the OS share sheet, rather than triggering a browser download                                                         |
-| Service worker       | Not registered. The shell and the crypto module are already local files                                                                                            |
+| Capability           | Mobile behaviour                                                                                                                                                                                                                                |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Notifications        | Live synced events use `@capacitor/local-notifications`; permission and plugin availability are explicit, and taps return the exact Account, Room and event destination. Remote push still covers delivery when the app is suspended or absent. |
+| Push registration    | Gated on `getPlatform()` being exactly `'ios'` or `'android'`, and on the plugin being available                                                                                                                                                |
+| Secret storage       | Keychain and Keystore through `@aparajita/capacitor-secure-storage`, with syncing switched off so a per-device Matrix session cannot leak across a user's devices                                                                               |
+| App-icon badge       | `@capawesome/capacitor-badge`. iOS prompts once for badge authorization on first use; Android grants without a prompt                                                                                                                           |
+| Status bar           | `ThemeService` sets the native status-bar style to match the resolved light or dark theme                                                                                                                                                       |
+| Deep links           | `appUrlOpen` for a warm open, `getLaunchUrl` for a cold start                                                                                                                                                                                   |
+| Android back button  | The app owns the whole chain: an open overlay always consumes the press (dismissed unless it set `disableClose`), else step back through history, else minimize                                                                                 |
+| iOS history swipe    | Native Back/Forward stays enabled while no dialog or registered panel can intercept; both edges yield while one is active, and the drawer opens from an inset band                                                                              |
+| Composer insert      | The `+` opens the shared bottom sheet on the iOS/Android interaction model, including mobile web/PWAs. Desktop web and Electron retain an anchored menu                                                                                         |
+| Media capture        | `MediaPickerService` opens the Capacitor gallery picker on native; elsewhere the composer falls back to a hidden file input                                                                                                                     |
+| Saving an attachment | Bytes are written to the cache and handed to the OS share sheet, rather than triggering a browser download                                                                                                                                      |
+| Service worker       | Not registered. The shell and the crypto module are already local files                                                                                                                                                                         |
 
 Everything else — the timeline, rooms and spaces, encryption, search — is the same code
 running in a WebView.

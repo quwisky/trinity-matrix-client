@@ -15,6 +15,7 @@ import {
   ElectronHostCapabilityAdapter,
   WebHostCapabilityAdapter,
 } from './host-capability.adapters';
+import { CapacitorNotificationPresentationAdapter } from './host-notification-presentation.adapters';
 
 type Adapter = HostBadgeOperation & HostCapabilityNegotiator;
 type AdapterFixture = {
@@ -41,7 +42,7 @@ function webFixture(): AdapterFixture {
   return { adapter: new WebHostCapabilityAdapter(), badgeWrite };
 }
 
-function capacitorFixture(): AdapterFixture {
+function capacitorFixture(presentationSupported = false): AdapterFixture {
   const badgeWrite = vi.fn((_count: number): Observable<HostOperationOutcome> =>
     defer(() => of({ kind: 'completed' } as const)),
   );
@@ -53,6 +54,22 @@ function capacitorFixture(): AdapterFixture {
         useValue: {
           support: () => defer(() => of({ kind: 'supported' } as const)),
           set: badgeWrite,
+        },
+      },
+      {
+        provide: CapacitorNotificationPresentationAdapter,
+        useValue: {
+          presentationSupport: () =>
+            defer(() =>
+              of(
+                presentationSupported
+                  ? ({ kind: 'supported' } as const)
+                  : ({
+                      kind: 'unavailable',
+                      reason: 'not-supported',
+                    } as const),
+              ),
+            ),
         },
       },
     ],
@@ -169,6 +186,15 @@ describe('host adapter rejection semantics', () => {
     expect(manifest.operations['notification-presentation']).toEqual({
       kind: 'unavailable',
       reason: 'not-supported',
+    });
+  });
+
+  it('advertises Capacitor presentation only when the operation is available', async () => {
+    const { adapter } = capacitorFixture(true);
+    const manifest = await firstValueFrom(adapter.manifest());
+
+    expect(manifest.operations['notification-presentation']).toEqual({
+      kind: 'supported',
     });
   });
 
