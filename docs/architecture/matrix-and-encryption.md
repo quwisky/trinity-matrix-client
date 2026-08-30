@@ -183,6 +183,21 @@ Restoration or establishment conflicts likewise return a typed `transition-in-pr
 and are never silently queued. Expected missing live targets and persisted-pointer failures are
 typed failures; adapter invariant defects remain on the Observable error channel.
 
+Workspace also owns the semantic Back policy independently of URL history. Application surfaces
+(`settings` and the three trust flows), Room surfaces (members, threads, a thread, pins, search,
+and member detail), and a compact Conversation carry typed identities. Back offers them in that
+fixed order: application surface, Room surface, compact Conversation, browser history, then host
+root. Newest registration matters only between adapters at the same layer. Popovers, action sheets,
+alerts, and other ephemeral overlays remain UI-local and are offered first.
+
+Application capabilities call `WorkspaceApplicationSurfaceService.open()` with a cold, finite
+Observable and a semantic return destination; they never name Router paths, Capacitor flags, or a
+dialog vendor. The app-composed presenter is the only adapter that maps those requests to lazy
+Settings/encryption presentation or canonical deep-link routes. `WorkspaceRoutedSurfaceAdapter`
+attaches direct `/settings/*` and `/encryption/*` entry to the same Back registry, including a
+deterministic `/rooms` fallback when a cold native deep link has no browser history. Responsive
+placement changes presentation only: they do not add a second semantic surface or history entry.
+
 Authentication and registration issue opaque grants directly to `AccountRuntimeService`; the
 temporary session-establishment facade has no callers and no public export. Ancillary notification,
 provider-session, cache, and draft cleanup enter through an app-composed Account lifecycle port,

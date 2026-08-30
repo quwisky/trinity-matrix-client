@@ -87,6 +87,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Back now follows semantic Workspace surfaces instead of registration timing.** Application
+  surfaces such as Settings and encryption, nested Room panels, and the compact Conversation have
+  typed identities and a fixed dismissal order before browser history or native host fallback.
+  Settings and trust actions use cold RxJS commands with semantic return destinations; the app
+  alone maps those intents to lazy dialogs or canonical routes. Cold deep links now return to a
+  valid Workspace root rather than minimizing a native app with no history.
+
 - **Room destinations now stay coherent in links, reloads, Back, and Account switches.** Workspace
   owns one atomic Account, sidebar, Room, and pane view and projects it into a canonical URL, so a
   deep link can select an inactive Account and exact Room without briefly exposing mixed state.

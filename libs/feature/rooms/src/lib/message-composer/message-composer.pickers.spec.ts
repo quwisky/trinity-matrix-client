@@ -27,7 +27,10 @@ import { LocationShareService } from '../location-share/location-share.service';
 import { MediaService, type ImagePack } from '@trinity/data-access/media';
 import { CreatePollService } from '../poll/create-poll.service';
 import { CreatePollDialogComponent } from '../poll/create-poll-dialog.component';
-import { SettingsDialogService } from '@trinity/components/settings-dialog';
+import {
+  WorkspaceApplicationSurfaceService,
+  type WorkspaceApplicationSurfaceRequest,
+} from '@trinity/application/workspace';
 
 const stickerPack: ImagePack = {
   id: '!pack:hs:fun',
@@ -259,9 +262,11 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
   });
 
   it('opens image-pack settings with the active room as context', async () => {
-    const open = vi.fn().mockResolvedValue(undefined);
+    const open = vi.fn((request: WorkspaceApplicationSurfaceRequest) =>
+      of({ kind: 'presented' as const, surface: request.surface }),
+    );
     const { fixture } = await renderComposer({ roomId: '!room:hs' }, [
-      MockProvider(SettingsDialogService, { open }),
+      MockProvider(WorkspaceApplicationSurfaceService, { open }),
     ]);
     fixture.componentInstance.stickerPickerOpen.set(true);
 
@@ -270,9 +275,11 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     expect(fixture.componentInstance.stickerPickerOpen()).toBe(false);
     expect(open).toHaveBeenCalledWith(
       expect.objectContaining({
-        section: 'stickers',
-        roomId: '!room:hs',
-        restoreFocus: expect.any(Function),
+        surface: { kind: 'settings', section: 'stickers' },
+        context: {
+          sourceRoomId: '!room:hs',
+          restoreFocus: expect.any(Function),
+        },
       }),
     );
   });

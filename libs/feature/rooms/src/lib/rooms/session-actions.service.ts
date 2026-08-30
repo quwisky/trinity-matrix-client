@@ -1,10 +1,10 @@
 import { DestroyRef, Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { TrnAlertService } from '@trinity/components/overlay';
-import { SettingsDialogService } from '@trinity/components/settings-dialog';
 import { ShellStatusService } from './shell-status.service';
 import { WorkspaceService } from './workspace.service';
 
@@ -21,13 +21,18 @@ export class SessionActionsService {
   private readonly workspace = inject(WorkspaceService);
   private readonly matrix = inject(MatrixClientService);
   private readonly router = inject(Router);
-  private readonly settings = inject(SettingsDialogService);
+  private readonly applicationSurfaces = inject(
+    WorkspaceApplicationSurfaceService,
+  );
   private readonly alert = inject(TrnAlertService);
   private readonly status = inject(ShellStatusService);
   private readonly destroyRef = inject(DestroyRef);
 
   goToSettings(): void {
-    void this.settings.open();
+    this.applicationSurfaces
+      .open({ surface: { kind: 'settings', section: null } })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
   }
 
   /** Switch the active account (no-op when it is already active). */

@@ -21,7 +21,10 @@ import {
   type GifResult,
 } from '@trinity/data-access/gif';
 import { TrnToastService } from '@trinity/components/overlay';
-import { SettingsDialogService } from '@trinity/components/settings-dialog';
+import {
+  WorkspaceApplicationSurfaceService,
+  type WorkspaceApplicationSurfaceRequest,
+} from '@trinity/application/workspace';
 import { MessageComposerComponent } from './message-composer.component';
 import { Router } from '@angular/router';
 
@@ -105,7 +108,10 @@ export function renderComposer(
       MockProvider(TrnToastService),
       // Settings presentation is verified in its own library. Composer tests exercise only
       // the boundary and may override this default when they assert a manage-packs call.
-      MockProvider(SettingsDialogService),
+      MockProvider(WorkspaceApplicationSurfaceService, {
+        open: (request: WorkspaceApplicationSurfaceRequest) =>
+          of({ kind: 'presented' as const, surface: request.surface }),
+      }),
       MockProvider(Router, { navigate: vi.fn().mockResolvedValue(true) }),
       ...providers,
     ],

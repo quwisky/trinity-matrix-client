@@ -14,6 +14,7 @@ import {
 } from './rooms-page.spec-harness';
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { WorkspaceBackService } from '@trinity/application/workspace';
 import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { Router } from '@angular/router';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
@@ -43,7 +44,7 @@ import {
   TrnToastService,
 } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { firstValueFrom, of } from 'rxjs';
 import {
   afterEach,
   beforeEach,
@@ -391,6 +392,40 @@ describe('RoomsPage mobile navigation', () => {
     ]);
     shell.routing.openLinkedRoom('!r:hs');
     await vi.waitFor(() => expect(shell.store.pane()).toBe('conversation'));
+  });
+
+  it('offers nested Room surfaces before the compact Conversation to Workspace Back', async () => {
+    const restore = stubNarrowLayout();
+    try {
+      setRouteRoom('!r:hs');
+      const shell = build();
+      await settleWorkspace();
+      shell.store.rightPanel.set({ kind: 'threads' });
+      const workspaceBack = TestBed.inject(WorkspaceBackService);
+
+      await expect(firstValueFrom(workspaceBack.back())).resolves.toMatchObject(
+        {
+          kind: 'dismissed',
+          surface: { layer: 'room', surface: { kind: 'threads' } },
+        },
+      );
+      expect(shell.store.rightPanel()).toBeNull();
+      expect(shell.store.pane()).toBe('conversation');
+
+      await expect(firstValueFrom(workspaceBack.back())).resolves.toMatchObject(
+        {
+          kind: 'dismissed',
+          surface: {
+            layer: 'conversation',
+            surface: { accountId: '@me:hs', roomId: '!r:hs' },
+          },
+        },
+      );
+      await settleWorkspace();
+      expect(shell.store.pane()).toBe('list');
+    } finally {
+      restore();
+    }
   });
 
   it('closing a room resets an open members drawer so it does not carry to the next room', () => {

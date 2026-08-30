@@ -263,6 +263,21 @@ describe('TrnDialogService', () => {
     expect(svc.openState()).toBe(false);
   });
 
+  it('reports whether a returned dialog ref is the top shared overlay', () => {
+    const svc = TestBed.inject(TrnDialogService);
+    const beneath = svc.open(TestDialogComponent);
+
+    expect(svc.isTopmost(beneath)).toBe(true);
+    const local = svc.open(TestDialogComponent);
+    expect(svc.isTopmost(beneath)).toBe(false);
+    expect(svc.isTopmost(local)).toBe(true);
+
+    local.close();
+    expect(svc.isTopmost(beneath)).toBe(true);
+    beneath.close();
+    expect(svc.isTopmost(beneath)).toBe(false);
+  });
+
   it('closes every open overlay at once (teardown)', async () => {
     const svc = TestBed.inject(TrnDialogService);
     svc.open<string, TestDialogComponent>(TestDialogComponent);

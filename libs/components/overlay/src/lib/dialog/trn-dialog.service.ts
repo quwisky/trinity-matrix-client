@@ -107,6 +107,10 @@ function prefersCentred(): boolean {
 export class TrnDialogService {
   private readonly dialog = inject(Dialog);
   private readonly overlay = inject(Overlay);
+  private readonly refs = new WeakMap<
+    TrnDialogRef<unknown>,
+    DialogRef<unknown, unknown>
+  >();
 
   /**
    * Reactive view of the shared CDK overlay stack.
@@ -190,9 +194,9 @@ export class TrnDialogService {
       //
       // CDK also accepts `providers: (dialogRef, config, container) => StaticProvider[]`.
       // That form would hand the ref in directly and let `open()` return the SAME instance
-      // it provides, rather than the two equivalent ones `TrnDialogRef` documents — worth
-      // knowing if the two-instance shape ever starts to matter. It does not today: the
-      // handle is a stateless delegate over one CDK ref and identity is never compared.
+      // it provides. Today the two wrappers close identically, while `isTopmost()` deliberately
+      // tracks only the specific handle returned to the opener; injected components use their
+      // sibling wrapper only to close themselves.
       providers: [
         {
           provide: TrnDialogRef,
@@ -207,7 +211,17 @@ export class TrnDialogService {
         ref.componentRef.setInput(key, value);
       }
     }
-    return new TrnDialogRef<R>(ref);
+    const trinityRef = new TrnDialogRef<R>(ref);
+    this.refs.set(
+      trinityRef as TrnDialogRef<unknown>,
+      ref as DialogRef<unknown, unknown>,
+    );
+    return trinityRef;
+  }
+
+  /** Whether a ref returned by this wrapper is currently the top shared overlay. */
+  isTopmost(ref: TrnDialogRef<unknown>): boolean {
+    return this.refs.get(ref) === this.dialog.openDialogs.at(-1);
   }
 
   /** Open and resolve the component's close value (null if dismissed without one). */

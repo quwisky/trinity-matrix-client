@@ -20,6 +20,11 @@ import {
   viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
+import {
+  WorkspaceBackService,
+  type WorkspaceDismissResult,
+  type WorkspaceSurface,
+} from '@trinity/application/workspace';
 import { TrnActionAvailability, TrnButton } from '@trinity/components/button';
 import {
   BELOW_MD_QUERY,
@@ -60,10 +65,10 @@ import {
   HapticsService,
   MessageGestureSettingsService,
   isMobileOs,
-  BackInterceptorService,
   FeatureFlagsService,
   ShellLayoutService,
 } from '@trinity/platform-native';
+import { Observable, defer, map, of } from 'rxjs';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { PageHeaderComponent } from '@trinity/components/page-header';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
@@ -268,17 +273,10 @@ export class RoomsPage implements OnInit, OnDestroy {
     return Math.min(PANEL_DRAWER_PX, window.innerWidth);
   }
 
-  /**
-   * Native Back closes the right-hand panel before it leaves the room.
-   *
-   * Registered rather than reached for: `AppComponent` owns the Back chain and cannot import
-   * this feature, and the panel is an inline block rather than a CDK dialog, so the chain's
-   * `dialog.hasOpen()` check has never seen it. Only claims the press when something is
-   * actually open, so Back still leaves the room when the slot is empty.
-   */
-  private readonly backRegistration = inject(BackInterceptorService).register({
-    active: () => this.store.rightPanel() !== null,
-    dismiss: () => this.closeRightPanel(),
+  /** Offer Room and compact-Conversation surfaces to Workspace's fixed Back order. */
+  private readonly backRegistration = inject(WorkspaceBackService).register({
+    surface: () => this.activeWorkspaceSurface(),
+    dismiss: (surface) => this.dismissWorkspaceSurface(surface),
   });
 
   readonly rooms = inject(RoomsService);
@@ -306,6 +304,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly injector = inject(Injector);
   readonly store = inject(RoomShellStore);
+  private readonly workspace = inject(WorkspaceService);
   readonly status = inject(ShellStatusService);
   readonly vm = inject(RoomShellViewModel);
   readonly nav = inject(RoomShellNavigationService);
@@ -604,6 +603,55 @@ export class RoomsPage implements OnInit, OnDestroy {
       return;
     }
     this.closeRightPanel();
+  }
+
+  /** Current semantic Room surface, then the compact Conversation beneath it. */
+  private activeWorkspaceSurface(): WorkspaceSurface | null {
+    const panel = this.store.rightPanel();
+    if (panel) {
+      return {
+        layer: 'room',
+        surface:
+          panel.kind === 'member'
+            ? { kind: 'member', userId: panel.member.userId }
+            : panel,
+      };
+    }
+    const accountId = this.store.activeAccountId();
+    const roomId = this.store.activeRoomId();
+    return this.mobileMasterDetail() &&
+      this.store.pane() === 'conversation' &&
+      accountId &&
+      roomId
+      ? {
+          layer: 'conversation',
+          surface: { kind: 'conversation', accountId, roomId },
+        }
+      : null;
+  }
+
+  /** Cold adapter from Workspace's semantic claim to this page's presentation. */
+  private dismissWorkspaceSurface(
+    surface: WorkspaceSurface,
+  ): Observable<WorkspaceDismissResult> {
+    return defer(() => {
+      if (surface.layer === 'room') {
+        this.dismissRightPanel();
+        return of('dismissed' as const);
+      }
+      if (surface.layer !== 'conversation') return of('blocked' as const);
+      const destination = this.workspace.listDestination();
+      if (!destination) return of('blocked' as const);
+      return this.workspace
+        .open(destination, { source: 'user', history: 'replace' })
+        .pipe(
+          map((outcome) =>
+            outcome.kind === 'ready'
+              ? ('dismissed' as const)
+              : ('blocked' as const),
+          ),
+        );
+    });
   }
 
   /**

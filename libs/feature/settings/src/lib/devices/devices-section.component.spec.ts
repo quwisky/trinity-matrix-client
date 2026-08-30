@@ -1,33 +1,15 @@
-import { Component, signal } from '@angular/core';
-import { Router } from '@angular/router';
+import { signal } from '@angular/core';
 import {
-  ENCRYPTION_DIALOG_COMPONENTS,
-  EncryptionDialogService,
-  type EncryptionDialogLoaders,
-} from '@trinity/components/encryption-dialog';
-import { TrnAlertService, TrnDialogService } from '@trinity/components/overlay';
+  WorkspaceApplicationSurfaceService,
+  type WorkspaceApplicationSurfaceRequest,
+} from '@trinity/application/workspace';
+import { TrnAlertService } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  type Mock,
-  vi,
-} from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { DevicesService, type DeviceInfo } from '@trinity/data-access/crypto';
 import { DevicesSectionComponent } from './devices-section.component';
-
-@Component({ selector: 'trn-stub-verify', template: '' })
-class StubVerifyPage {}
-
-/** Pretend the viewport is (or isn't) the desktop split-pane layout. */
-function stubViewport(matches: boolean): void {
-  vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches }));
-}
 
 const CURRENT: DeviceInfo = {
   id: 'A',
@@ -51,31 +33,27 @@ describe('DevicesSectionComponent', () => {
   const del = vi.fn(() => of(undefined));
   const connect = vi.fn();
   const disconnect = vi.fn();
-  const navigate = vi.fn().mockResolvedValue(true);
   let devices: ReturnType<typeof signal<DeviceInfo[]>>;
   let alertConfirm: Mock;
   let alertPrompt: Mock;
-  let dialogOpen: Mock;
+  let open: Mock;
 
   beforeEach(() => {
     rename.mockClear();
     del.mockClear();
     connect.mockClear();
     disconnect.mockClear();
-    navigate.mockClear();
     devices = signal<DeviceInfo[]>([CURRENT, OTHER]);
     alertConfirm = vi.fn().mockResolvedValue(true);
     alertPrompt = vi.fn().mockResolvedValue('Tablet');
-    dialogOpen = vi.fn();
+    open = vi.fn((request: WorkspaceApplicationSurfaceRequest) =>
+      of({ kind: 'presented' as const, surface: request.surface }),
+    );
   });
-
-  afterEach(() => vi.unstubAllGlobals());
 
   function renderSection() {
     return render(DevicesSectionComponent, {
       providers: [
-        // The real dialog service so we exercise its desktop-vs-mobile branching.
-        EncryptionDialogService,
         MockProvider(DevicesService, {
           devices,
           list: () => of(devices()),
@@ -88,18 +66,7 @@ describe('DevicesSectionComponent', () => {
           confirm: alertConfirm,
           prompt: alertPrompt,
         }),
-        MockProvider(TrnDialogService, { open: dialogOpen }),
-        MockProvider(Router, {
-          navigate,
-          url: '/rooms/!current:example.org',
-        }),
-        {
-          provide: ENCRYPTION_DIALOG_COMPONENTS,
-          useValue: {
-            unlock: () => Promise.resolve(StubVerifyPage),
-            verify: () => Promise.resolve(StubVerifyPage),
-          } satisfies EncryptionDialogLoaders,
-        },
+        MockProvider(WorkspaceApplicationSurfaceService, { open }),
       ],
     });
   }
@@ -166,51 +133,34 @@ describe('DevicesSectionComponent', () => {
     expect(del).not.toHaveBeenCalled();
   });
 
-  it('navigates to the verification flow on mobile, returning to the Devices section', async () => {
-    stubViewport(false);
+  it('opens verification with a semantic return to the Devices section', async () => {
     const { fixture } = await renderSection();
 
     fixture.componentInstance.verifyDevices();
 
-    expect(navigate).toHaveBeenCalledWith(['/encryption/verify'], {
-      queryParams: { returnTo: '/settings/devices' },
+    expect(open).toHaveBeenCalledWith({
+      surface: { kind: 'trust', flow: 'verify' },
+      context: {
+        returnTo: { kind: 'settings', section: 'devices' },
+      },
     });
-    expect(dialogOpen).not.toHaveBeenCalled();
-  });
-
-  it('opens the verification flow as a dialog on the desktop layout', async () => {
-    stubViewport(true);
-    const { fixture } = await renderSection();
-
-    fixture.componentInstance.verifyDevices();
-
-    await vi.waitFor(() =>
-      expect(dialogOpen).toHaveBeenCalledWith(
-        StubVerifyPage,
-        expect.objectContaining({
-          inputs: { asModal: true },
-          disableClose: true,
-        }),
-      ),
-    );
-    expect(navigate).not.toHaveBeenCalled();
   });
 
   it('keeps verification modal when Settings uses a narrow web dialog', async () => {
-    stubViewport(false);
     const { fixture } = await renderSection();
     fixture.componentRef.setInput('inSettingsDialog', true);
     fixture.detectChanges();
 
     fixture.componentInstance.verifyDevices();
 
-    await vi.waitFor(() =>
-      expect(dialogOpen).toHaveBeenCalledWith(
-        StubVerifyPage,
-        expect.objectContaining({ inputs: { asModal: true } }),
-      ),
-    );
-    expect(navigate).not.toHaveBeenCalled();
+    expect(open).toHaveBeenCalledWith({
+      surface: { kind: 'trust', flow: 'verify' },
+      context: expect.objectContaining({
+        returnTo: { kind: 'settings', section: 'devices' },
+        placement: 'nested',
+        ownerActive: expect.any(Function),
+      }),
+    });
   });
 
   it('subscribes to live device updates while mounted', async () => {

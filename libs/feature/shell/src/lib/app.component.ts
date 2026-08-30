@@ -20,8 +20,8 @@ import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 import { SwUpdate, type VersionReadyEvent } from '@angular/service-worker';
 import { filter, fromEvent, map, take } from 'rxjs';
+import { WorkspaceBackService } from '@trinity/application/workspace';
 import {
-  BackInterceptorService,
   NativeNavigationService,
   getTrinityDesktopBridge,
 } from '@trinity/platform-native';
@@ -51,12 +51,12 @@ export class AppComponent implements OnInit {
   private readonly toast = inject(TrnToastService);
   private readonly location = inject(Location);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly backInterceptors = inject(BackInterceptorService);
+  private readonly workspaceBack = inject(WorkspaceBackService);
   private readonly nativeNavigation = inject(NativeNavigationService);
 
   /** Dialogs outrank panels, but either one must keep native history underneath it. */
   private readonly navigationInterceptionActive = computed(
-    () => this.dialog.openState() || this.backInterceptors.hasActive(),
+    () => this.dialog.openState() || this.workspaceBack.hasActive(),
   );
 
   /**
@@ -141,15 +141,27 @@ export class AppComponent implements OnInit {
     // does for a modal, and it is why the flow-critical encryption dialogs can set
     // `disableClose` and have it mean something.
     void App.addListener('backButton', ({ canGoBack }) => {
-      if (this.dialog.hasOpen()) {
+      if (
+        this.dialog.hasOpen() &&
+        !this.workspaceBack.activeOwnsTopmostOverlay()
+      ) {
         this.dialog.closeTopmost();
         return;
       }
-      // Then whatever a feature has registered — the rooms shell's right-hand panel, which
-      // is an inline block rather than a CDK dialog and so is invisible to `hasOpen()`
-      // above. Without this Back walks past an open panel and out of the room, which it has
-      // always done for the members drawer.
-      if (this.backInterceptors.handle()) {
+      // Workspace owns semantic ordering after UI-local overlays: application surface,
+      // Room surface, then compact Conversation. The host owns this subscription so the
+      // cold dismissal command cannot outlive the application shell.
+      if (this.workspaceBack.hasActive()) {
+        this.workspaceBack
+          .back()
+          .pipe(take(1), takeUntilDestroyed(this.destroyRef))
+          .subscribe();
+        return;
+      }
+      // A semantic dialog can be between opening and Workspace registration for one
+      // synchronous turn. It still consumes Back rather than navigating underneath it.
+      if (this.dialog.hasOpen()) {
+        this.dialog.closeTopmost();
         return;
       }
       if (canGoBack) {
