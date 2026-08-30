@@ -40,7 +40,7 @@
       "metric": "workspace-transition",
       "scope": "A semantic destination reaches a coherent Workspace view and canonical URL.",
       "unit": "milliseconds to view and route commit",
-      "current": "Existing router-driven room navigation; instrumentation is introduced by #310 and #311.",
+      "current": "Workspace reports total transition duration plus Account-readiness and canonical-route phases. One immutable semantic view commits only after the typed Account-and-URL workflow settles; unavailable rooms and malformed projections repair through replacement history.",
       "owner": "Workspace",
       "issue": "#310, #311"
     },

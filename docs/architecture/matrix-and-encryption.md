@@ -155,25 +155,33 @@ typed outcomes with safe Account metadata, while invalid grants and adapter inva
 Observable error channel. A newly registered Account whose startup fails can retry the identical
 grant without attempting the atomic new-record write twice.
 
-Active Account changes use `AccountRuntimeService.switchActiveAccount(accountId)`. The current
-Workspace adapter reserves the requested Account and destination, then supplies its preparation
-as part of the Account Runtime command. Once the runtime accepts the attempt, that preparation
-navigates to the safe `/rooms` fallback, releases the outgoing timeline, threads, pinned, and media
-projections, and clears Account-bound space selection. Account Runtime prepares the already-live
-target, persists the Active pointer, publishes the target client, and asks Projection Runtime to
-reattach every `active-account` projection. The command reports ready only after those new
-generations acknowledge; its metrics contain total duration, projection duration, and projection
-count. The Workspace then repairs the requested room or space with replacement navigation so the
-URL remains a canonical projection of the selection. A failed safe or repair navigation is a typed
-`workspace-transition-failed` outcome.
+Active Account changes use `AccountRuntimeService.switchActiveAccount(accountId)`. Workspace
+reserves the requested Account-and-destination coordinate while retaining its prior immutable
+view. Once Account Runtime accepts the attempt, Workspace resolves the requested Room or Space
+against the exact target Account and writes its canonical URL as preparation. A rejected URL
+cancels before Account commit; a successful preparation releases the outgoing Conversation and
+Media projections. Account Runtime then prepares the already-live target, persists the Active
+pointer, publishes the target client, and asks Projection Runtime to reattach every
+`active-account` projection. The command reports ready only after those new generations
+acknowledge; its metrics contain total duration, projection duration, and projection count.
+Workspace atomically publishes the new view and focused Conversation. A failed Account or route
+transition is a typed Workspace outcome; a pre-commit failure restores the prior URL and
+projection. RxJS teardown cannot cancel an already-started Router promise, so Workspace
+immediately supersedes it with an owned replacement navigation and keeps the attempt reserved
+until URL repair settles.
 
 Switch preparation is cancellable. Once the persisted/live commit begins, its shared cleanup and
-projection barrier run to completion even if the initiating page is destroyed. Identical target
-and destination switches join the same Observable; a different target or destination is rejected
-before it mutates the Workspace. Restoration or establishment conflicts likewise return a typed
-`transition-in-progress` outcome and are never silently queued. Expected missing live targets and
-persisted-pointer failures are typed failures; adapter invariant defects remain on the Observable
-error channel.
+projection barrier and the owning Workspace coordination run to completion even if the initiating
+page is destroyed or another inbound route arrives. Account Runtime reports that exact handoff
+through the switch coordination callback only after adapter preparation succeeds; Workspace uses
+it to retain completion ownership without accidentally making adapter preparation uninterruptible.
+Identical target and destination switches join
+the same Observable; a different target or destination is rejected before it mutates the
+Workspace. User destinations push browser history. Deep-link restoration, legacy URL
+canonicalization, and unavailable-Room or unavailable-Space repair replace it.
+Restoration or establishment conflicts likewise return a typed `transition-in-progress` outcome
+and are never silently queued. Expected missing live targets and persisted-pointer failures are
+typed failures; adapter invariant defects remain on the Observable error channel.
 
 Authentication and registration issue opaque grants directly to `AccountRuntimeService`; the
 temporary session-establishment facade has no callers and no public export. Ancillary notification,

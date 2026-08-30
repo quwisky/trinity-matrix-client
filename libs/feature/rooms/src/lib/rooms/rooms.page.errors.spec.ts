@@ -4,6 +4,7 @@ import {
   clientStub,
   invitesProvider,
   setRouteRoom,
+  settleWorkspace,
   shellFrom,
 } from './rooms-page.spec-harness';
 import { signal, type WritableSignal } from '@angular/core';
@@ -237,6 +238,7 @@ describe('RoomsPage action error feedback', () => {
   it('leaves a room after confirmation and clears it if it was the open one', async () => {
     const shell = build();
     setRouteRoom('!r:hs');
+    await settleWorkspace();
     // The projections follow the URL from an effect, so flush to actually open them —
     // otherwise the teardown below would be asserted against a shell where nothing was
     // ever open, and the first thing the effect did was close everything anyway.
@@ -261,16 +263,19 @@ describe('RoomsPage action error feedback', () => {
   // account rather than falling through to whichever one happens to be active.
   it('leaves a foreign-account room on its own account', async () => {
     const shell = build();
+    setRouteRoom('!r:hs');
+    await settleWorkspace();
 
     await shell.rooms.onLeaveRoom({ roomId: '!r:hs', accountId: '@alt:hs' });
 
     expect(leaveRoom).toHaveBeenCalledWith('!r:hs', '@alt:hs');
+    expect(shell.store.activeRoomId()).toBe('!r:hs');
   });
 
   it('leaves a room but keeps a different open room selected', async () => {
     const shell = build();
     setRouteRoom('!other:hs');
-    TestBed.tick(); // open !other:hs for real, so "stays put" has something to stay
+    await settleWorkspace(); // open !other:hs for real, so "stays put" has something to stay
     expect(TestBed.inject(RoomsTimelineStub).open).toHaveBeenCalledWith(
       '!other:hs',
     );
@@ -319,7 +324,8 @@ describe('RoomsPage action error feedback', () => {
 
   it('opens the space members dialog and routes a pick to member info', async () => {
     const shell = build();
-    shell.store.activeSpaceId.set('!s:hs');
+    shell.nav.onSelectSpace('!s:hs');
+    await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
     const picked = {
       userId: '@a:hs',
@@ -348,7 +354,8 @@ describe('RoomsPage action error feedback', () => {
 
   it('does not open member info when the members dialog is dismissed', async () => {
     const shell = build();
-    shell.store.activeSpaceId.set('!s:hs');
+    shell.nav.onSelectSpace('!s:hs');
+    await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
     (TestBed.inject(TrnDialogService).openAndWait as Mock).mockResolvedValue(
       null,
@@ -361,7 +368,8 @@ describe('RoomsPage action error feedback', () => {
 
   it('creates a subspace and links it into the active space', async () => {
     const shell = build();
-    shell.store.activeSpaceId.set('!parent:hs');
+    shell.nav.onSelectSpace('!parent:hs');
+    await settleWorkspace();
     railSpacesSignal.set([railSpace('!parent:hs')]);
     alertConfirm.mockResolvedValue(true);
     const prompt = TestBed.inject(TrnAlertService).prompt as ReturnType<
@@ -378,7 +386,8 @@ describe('RoomsPage action error feedback', () => {
 
   it('does not create a subspace without power to curate', async () => {
     const shell = build();
-    shell.store.activeSpaceId.set('!parent:hs');
+    shell.nav.onSelectSpace('!parent:hs');
+    await settleWorkspace();
     railSpacesSignal.set([railSpace('!parent:hs')]);
     canCurate.mockReturnValue(false);
 
@@ -387,9 +396,10 @@ describe('RoomsPage action error feedback', () => {
     expect(createSpace).not.toHaveBeenCalled();
   });
 
-  it('opens the add-rooms picker for the active space', () => {
+  it('opens the add-rooms picker for the active space', async () => {
     const shell = build();
-    shell.store.activeSpaceId.set('!s:hs');
+    shell.nav.onSelectSpace('!s:hs');
+    await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
 
     shell.spaces.onAddToSpace();
@@ -402,9 +412,10 @@ describe('RoomsPage action error feedback', () => {
     );
   });
 
-  it('opens the curation dialog for the active space', () => {
+  it('opens the curation dialog for the active space', async () => {
     const shell = build();
-    shell.store.activeSpaceId.set('!s:hs');
+    shell.nav.onSelectSpace('!s:hs');
+    await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
 
     shell.spaces.onManageSpaceRooms();
@@ -417,9 +428,10 @@ describe('RoomsPage action error feedback', () => {
     );
   });
 
-  it('refuses both curation dialogs without power to curate', () => {
+  it('refuses both curation dialogs without power to curate', async () => {
     const shell = build();
-    shell.store.activeSpaceId.set('!s:hs');
+    shell.nav.onSelectSpace('!s:hs');
+    await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
     canCurate.mockReturnValue(false);
 
@@ -430,21 +442,23 @@ describe('RoomsPage action error feedback', () => {
     expect(TestBed.inject(TrnDialogService).openAndWait).not.toHaveBeenCalled();
   });
 
-  it('refuses to curate another account’s space', () => {
+  it('refuses to curate another account’s space', async () => {
     // Same reasoning as Space settings: the write goes through the ACTIVE client, so it
     // would land on the wrong account or nowhere.
     const shell = build();
-    shell.store.activeSpaceId.set('!theirs:hs');
+    shell.nav.onSelectSpace('!theirs:hs');
+    await settleWorkspace();
     railSpacesSignal.set([railSpace('!theirs:hs', '@other:hs')]);
     canCurate.mockReturnValue(true);
 
     expect(shell.vm.canCurateSpace()).toBe(false);
   });
 
-  it('separates curating from configuring, which are different power levels', () => {
+  it('separates curating from configuring, which are different power levels', async () => {
     // A moderator can curate the child list without being able to rename the space.
     const shell = build();
-    shell.store.activeSpaceId.set('!s:hs');
+    shell.nav.onSelectSpace('!s:hs');
+    await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
     canCurate.mockReturnValue(false);
 
@@ -452,9 +466,10 @@ describe('RoomsPage action error feedback', () => {
     expect(shell.vm.canCurateSpace()).toBe(false);
   });
 
-  it('opens space settings seeded from raw state and the viewer’s permissions', () => {
+  it('opens space settings seeded from raw state and the viewer’s permissions', async () => {
     const shell = build();
-    shell.store.activeSpaceId.set('!s:hs');
+    shell.nav.onSelectSpace('!s:hs');
+    await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
     currentIdentity.mockReturnValue({
       name: 'Design',
@@ -502,11 +517,12 @@ describe('RoomsPage action error feedback', () => {
     );
   });
 
-  it('offers no history visibility to the space dialog', () => {
+  it('offers no history visibility to the space dialog', async () => {
     // A space has no timeline to hide, and the dialog has no control for it — passing one
     // would be a seed for a field that cannot be saved.
     const shell = build();
-    shell.store.activeSpaceId.set('!s:hs');
+    shell.nav.onSelectSpace('!s:hs');
+    await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
 
     shell.spaces.onOpenSpaceSettings();
@@ -517,20 +533,22 @@ describe('RoomsPage action error feedback', () => {
     expect(options.inputs).not.toHaveProperty('canEditHistory');
   });
 
-  it('does not open space settings when no space is active', () => {
+  it('does not open space settings when no space is active', async () => {
     const shell = build();
-    shell.store.activeSpaceId.set(null);
+    shell.nav.onSelectSpace(null);
+    await settleWorkspace();
 
     shell.spaces.onOpenSpaceSettings();
 
     expect(TestBed.inject(TrnDialogService).openAndWait).not.toHaveBeenCalled();
   });
 
-  it('refuses to configure another account’s space', () => {
+  it('refuses to configure another account’s space', async () => {
     // RoomSettingsService resolves the ACTIVE client, so this dialog would seed blank and
     // every write would land on the wrong account — or nowhere.
     const shell = build();
-    shell.store.activeSpaceId.set('!theirs:hs');
+    shell.nav.onSelectSpace('!theirs:hs');
+    await settleWorkspace();
     railSpacesSignal.set([railSpace('!theirs:hs', '@other:hs')]);
 
     expect(shell.vm.canConfigureSpace()).toBe(false);
@@ -541,26 +559,29 @@ describe('RoomsPage action error feedback', () => {
     expect(currentIdentity).not.toHaveBeenCalled();
   });
 
-  it('allows configuring a space on the signed-in account', () => {
+  it('allows configuring a space on the signed-in account', async () => {
     const shell = build();
-    shell.store.activeSpaceId.set('!mine:hs');
+    shell.nav.onSelectSpace('!mine:hs');
+    await settleWorkspace();
     railSpacesSignal.set([railSpace('!mine:hs', '@me:hs')]);
 
     expect(shell.vm.canConfigureSpace()).toBe(true);
   });
 
-  it('reports no configurable space for Home or an unknown id', () => {
+  it('reports no configurable space for Home or an unknown id', async () => {
     const shell = build();
     railSpacesSignal.set([railSpace('!s:hs')]);
 
-    shell.store.activeSpaceId.set(null);
+    shell.nav.onSelectSpace(null);
+    await settleWorkspace();
     expect(shell.vm.canConfigureSpace()).toBe(false);
 
-    shell.store.activeSpaceId.set('!gone:hs');
+    shell.nav.onSelectSpace('!gone:hs');
+    await settleWorkspace();
     expect(shell.vm.canConfigureSpace()).toBe(false);
   });
 
-  it('seeds the restricted option from the spaces the room sits in', () => {
+  it('seeds the restricted option from the spaces the room sits in', async () => {
     const shell = build();
     roomsSignal.set([
       {
@@ -584,6 +605,7 @@ describe('RoomsPage action error feedback', () => {
       },
     ]);
     setRouteRoom('!r:hs');
+    await settleWorkspace();
     railSpacesSignal.set([
       {
         id: '!s:hs',

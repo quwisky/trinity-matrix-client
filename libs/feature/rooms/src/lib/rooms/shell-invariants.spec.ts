@@ -26,6 +26,8 @@ import { ReadStateService } from './read-state.service';
 import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
+import { WorkspaceService } from './workspace.service';
+import { WorkspaceTransitionWorkflow } from './workspace-transition.workflow';
 import { ROUTE_PROVIDER } from './rooms-page.spec-harness';
 
 /**
@@ -182,7 +184,7 @@ describe('one error channel produces one toast per turn', () => {
 });
 
 /**
- * The thirteen classes that must be page-scoped rather than root-provided. Typed as
+ * The fifteen classes that must be page-scoped rather than root-provided. Typed as
  * `Type<unknown>` so the array is a list of tokens rather than a union TestBed.inject
  * cannot resolve to one instance type.
  */
@@ -200,10 +202,12 @@ const COORDINATORS: Type<unknown>[] = [
   MessageActionsService,
   ShellShortcutsService,
   SessionActionsService,
+  WorkspaceTransitionWorkflow,
+  WorkspaceService,
 ];
 
 describe('the shell coordinators are page-scoped, not root-provided', () => {
-  // rooms.page.spec.ts registers all thirteen at the TestBed root so its 170 tests can
+  // The split rooms-page specs register all fifteen at the TestBed root so they can
   // reach them, which means that suite would stay green if any of them became
   // `providedIn: 'root'` or if RoomsPage lost its `providers:` array — and every
   // runWithBusy subscription in the shell would then outlive the page. These two
@@ -227,7 +231,7 @@ describe('the shell coordinators are page-scoped, not root-provided', () => {
     // asked what its own node injector holds. Root-registering the same token as well
     // proves the page is answering, not the environment.
     TestBed.configureTestingModule({
-      providers: [RoomShellStore, ROUTE_PROVIDER],
+      providers: [{ provide: RoomShellStore, useValue: {} }, ROUTE_PROVIDER],
     });
     TestBed.overrideComponent(RoomsPage, {
       set: { template: '', imports: [], host: {} },

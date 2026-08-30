@@ -97,7 +97,8 @@ import { ReadStateService } from './read-state.service';
 import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
-import { WorkspaceAccountSwitchService } from './workspace-account-switch.service';
+import { WorkspaceService } from './workspace.service';
+import { WorkspaceTransitionWorkflow } from './workspace-transition.workflow';
 import { TrnIconComponent } from '@trinity/components/icon';
 
 /**
@@ -122,6 +123,8 @@ const PANEL_DRAWER_PX = 480;
   // Page-scoped, not root: these share the page's lifetime and its DestroyRef, which is
   // what every runWithBusy subscription is tied to. See shell-invariants.spec.ts.
   providers: [
+    WorkspaceTransitionWorkflow,
+    WorkspaceService,
     RoomShellStore,
     ShellStatusService,
     RoomShellViewModel,
@@ -135,7 +138,6 @@ const PANEL_DRAWER_PX = 480;
     MessageActionsService,
     ShellShortcutsService,
     SessionActionsService,
-    WorkspaceAccountSwitchService,
   ],
   templateUrl: 'rooms.page.html',
   styleUrls: ['rooms.page.scss'],
@@ -521,7 +523,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   /**
    * Mobile: leave the open conversation and return to the room-list page. Below the
    * md breakpoint the rail + sidebar and the chat are separate full-screen pages
-   * (keyed off `activeRoomId`); at md+ both columns are static and this is unused.
+   * (keyed off Workspace pane); at md+ both columns are static and this is unused.
    */
   backToList(): void {
     // Focus is not handed off here: closing navigates, and `projectOpenRoom` focuses the
@@ -532,7 +534,7 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   /**
    * On the mobile master-detail layout, move focus to the page that just became
-   * visible (the chat when a room is open, else the room list) once it renders — the
+   * visible (the chat for the Conversation pane, else the room list) once it renders — the
    * other page is display:none'd, so otherwise focus falls to `<body>`. At md+ both
    * pages are always visible, so focus is left where it is.
    */
@@ -542,9 +544,10 @@ export class RoomsPage implements OnInit, OnDestroy {
     }
     afterNextRender(
       () => {
-        const view = this.store.activeRoomId()
-          ? this.mainView()
-          : this.listView();
+        const view =
+          this.store.pane() === 'conversation'
+            ? this.mainView()
+            : this.listView();
         view?.nativeElement.focus();
       },
       { injector: this.injector },

@@ -14,7 +14,11 @@ import {
   type ParamMap,
 } from '@angular/router';
 import { CryptoService } from '@trinity/data-access/crypto';
-import { AccountRuntimeService } from '@trinity/data-access/accounts';
+import {
+  AccountRuntimeService,
+  type AccountSwitchCoordination,
+} from '@trinity/data-access/accounts';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   InvitesService,
   type PendingInvite,
@@ -30,7 +34,7 @@ import { RoomActionPermissionsService } from '@trinity/data-access/rooms';
 import { TrnActionSheetService } from '@trinity/components/overlay';
 import { SettingsDialogService } from '@trinity/components/settings-dialog';
 import { MockProvider } from 'ng-mocks';
-import { BehaviorSubject, Observable, of, switchMap } from 'rxjs';
+import { BehaviorSubject, of, switchMap } from 'rxjs';
 import { vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { RoomShellStore } from './room-shell-store';
@@ -47,7 +51,8 @@ import { encodeRoomSegment } from '@trinity/util/matrix';
 import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
-import { WorkspaceAccountSwitchService } from './workspace-account-switch.service';
+import { WorkspaceService } from './workspace.service';
+import { WorkspaceTransitionWorkflow } from './workspace-transition.workflow';
 import {
   ConversationComposeStub,
   ConversationTimelineStub,
@@ -89,6 +94,10 @@ export function flushPanelJump(): void {
 }
 
 export function setRouteRoom(roomId: string | null): void {
+  // Page-level specs start from the canonical Active Account coordinate. Legacy URLs
+  // without `account` are covered by Workspace's adapter suite; leaving it absent here
+  // starts an asynchronous canonicalization before each test can issue its own command.
+  queryParamMap.next(convertToParamMap({ account: '@me:hs' }));
   paramMap.next(
     convertToParamMap(roomId ? { roomId: encodeRoomSegment(roomId) } : {}),
   );
@@ -142,7 +151,8 @@ export const SHARED_MOCKS: Provider[] = [
   MessageActionsService,
   ShellShortcutsService,
   SessionActionsService,
-  WorkspaceAccountSwitchService,
+  WorkspaceTransitionWorkflow,
+  WorkspaceService,
   ConversationTimelineStub,
   {
     provide: ConversationRuntime,
@@ -234,24 +244,34 @@ export const SHARED_MOCKS: Provider[] = [
   // need the session coordinator's boundary and must not construct a real dialog service from
   // their deliberately minimal Router stub.
   MockProvider(SettingsDialogService),
-  MockProvider(AccountRuntimeService, {
-    switchActiveAccount: vi.fn(
-      (accountId: string, prepare: () => Observable<void>) =>
-        prepare().pipe(
-          switchMap(() =>
-            of({
-              kind: 'ready' as const,
-              accountId,
-              metrics: {
-                durationMs: 0,
-                projectionDurationMs: 0,
-                projectionCount: 0,
-              },
-            }),
-          ),
+  {
+    provide: AccountRuntimeService,
+    useFactory: () => {
+      const matrix = inject(MatrixClientService);
+      const activeAccountId = signal(matrix.activeUserId());
+      return {
+        activeAccountId: activeAccountId.asReadonly(),
+        switchActiveAccount: vi.fn(
+          (accountId: string, coordination: AccountSwitchCoordination) =>
+            coordination.prepare().pipe(
+              switchMap(() => {
+                coordination.onCommitStarted?.();
+                activeAccountId.set(accountId);
+                return of({
+                  kind: 'ready' as const,
+                  accountId,
+                  metrics: {
+                    durationMs: 0,
+                    projectionDurationMs: 0,
+                    projectionCount: 0,
+                  },
+                });
+              }),
+            ),
         ),
-    ),
-  }),
+      };
+    },
+  },
   MockProvider(CryptoService),
   MockProvider(RoomNotificationsService, {
     connect: vi.fn(),
@@ -276,13 +296,16 @@ export const SHARED_MOCKS: Provider[] = [
     // `vi.fn` wrapping the behaviour, not a bare function: several specs assert on the
     // navigation itself (`expect(router.navigate).toHaveBeenCalledWith(...)`), and a plain
     // function fails those with "is not a spy" rather than with anything informative.
-    navigate: vi.fn((commands: unknown[]) => {
-      const [head, segment] = commands as [string, string | undefined];
-      if (head === '/rooms') {
-        paramMap.next(convertToParamMap(segment ? { roomId: segment } : {}));
-      }
-      return Promise.resolve(true);
-    }) as unknown as Router['navigate'],
+    navigate: vi.fn(
+      (commands: unknown[], extras?: { queryParams?: object }) => {
+        const [head, segment] = commands as [string, string | undefined];
+        if (head === '/rooms') {
+          paramMap.next(convertToParamMap(segment ? { roomId: segment } : {}));
+          queryParamMap.next(convertToParamMap(extras?.queryParams ?? {}));
+        }
+        return Promise.resolve(true);
+      },
+    ) as unknown as Router['navigate'],
   }),
   ROUTE_PROVIDER,
   MockProvider(TrnActionSheetService),
@@ -431,4 +454,10 @@ export function clientStub(over: Record<string, unknown> = {}): never {
     getRooms: () => [],
     ...over,
   } as never;
+}
+
+/** Settle a real Router navigation Promise, then flush the resulting signal projections. */
+export async function settleWorkspace(): Promise<void> {
+  await Promise.resolve();
+  TestBed.tick();
 }

@@ -87,6 +87,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Room destinations now stay coherent in links, reloads, Back, and Account switches.** Workspace
+  owns one atomic Account, sidebar, Room, and pane view and projects it into a canonical URL, so a
+  deep link can select an inactive Account and exact Room without briefly exposing mixed state.
+  User navigation adds history while malformed, legacy, or unavailable destinations repair the
+  current entry. Moving between compact and wide layouts changes placement without changing the
+  destination or adding a history entry.
+
 - **Threads and pinned messages now belong to the exact Conversation.** Thread lists and pins
   no longer follow mutable root services: Conversation Runtime exposes keyed Account-and-Room
   children, with an additional immutable root key for an opened thread. Navigation, Account

@@ -14,10 +14,10 @@
     data-shell-root
     [style.--shell-sidebar-w.px]="layout.sidebarWidth()"
     [style.--shell-right-panel-w.px]="layout.rightPanelWidth()"
-    [attr.data-mobile-view]="store.activeRoomId() ? 'chat' : 'list'"
+    [attr.data-mobile-view]="store.pane() === 'conversation' ? 'chat' : 'list'"
   >
     <!-- Below md the rail + sidebar (room list) and the chat are separate full-screen
-         pages, shown one at a time based on whether a room is open (rooms.page.scss).
+         pages, shown one at a time from the Workspace pane coordinate (rooms.page.scss).
          At md+ both are static columns side by side. -->
     <!-- 352px, NOT `md:w-88` (22rem). The rail (72px) and the sidebar (280px) inside are
          hand-authored px, so a rem slot scales with the root font size while its contents do

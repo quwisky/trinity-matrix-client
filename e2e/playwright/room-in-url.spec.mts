@@ -57,14 +57,20 @@ test.describe('The open room lives in the URL', () => {
 
     await login(page, { available: true, hs, user, pass } as SynapseSession);
 
-    // The list, before a room is open: no room segment.
-    await expect(page).toHaveURL(/\/rooms$/);
+    // Workspace canonicalizes the login redirect to an exact Account coordinate.
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('account'))
+      .toContain(`@${user}:`);
+    await expect(page).toHaveURL(/\/rooms\?/);
 
     await openRoom(page, roomName);
 
-    // Opening a room put it in the address bar.
-    await expect(page).toHaveURL(/\/rooms\/[A-Za-z0-9_-]+$/);
+    // Opening a room put it and its sidebar scope in the address bar.
+    await expect(page).toHaveURL(/\/rooms\/[A-Za-z0-9_-]+\?/);
     const roomUrl = page.url();
+    const roomLocation = new URL(roomUrl);
+    expect(roomLocation.searchParams.get('account')).toContain(`@${user}:`);
+    expect(roomLocation.searchParams.get('view')).toBe('rooms');
 
     // THE constraint the encoding exists for. A raw room id ends in a dotted server name,
     // which Angular's service worker excludes from the navigations it answers with index.html
@@ -82,12 +88,53 @@ test.describe('The open room lives in the URL', () => {
     });
     await expect(page).toHaveURL(roomUrl);
 
+    // Compact/wide layout is placement, not a semantic destination or history entry.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page).toHaveURL(roomUrl);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(page).toHaveURL(roomUrl);
+
     // And the room is a history entry, so Back closes it instead of leaving the shell —
     // which is what makes Android's hardware Back behave once it falls through to history.
     await page.goBack();
-    await expect(page).toHaveURL(/\/rooms$/);
+    await expect(page).toHaveURL((url) => {
+      return (
+        url.pathname === '/rooms' &&
+        url.searchParams.get('account')?.includes(`@${user}:`) === true &&
+        url.searchParams.get('view') === 'rooms'
+      );
+    });
     await expect(page.getByTestId('composer-input')).toBeHidden({
       timeout: 15_000,
+    });
+
+    // An unavailable Room keeps the requested Account and scope but replaces the bad
+    // history entry with their safe list destination.
+    const listUrl = new URL(page.url());
+    const missingRoom = Buffer.from('!missing:example.org').toString(
+      'base64url',
+    );
+    const missingUrl = new URL(listUrl);
+    missingUrl.pathname = `/rooms/${missingRoom}`;
+    await page.goto(missingUrl.toString());
+    await expect(page).toHaveURL(listUrl.toString());
+    await expect(page.getByTestId('composer-input')).toBeHidden();
+
+    // Mixed scope coordinates are malformed and canonicalize to Recent rather than
+    // allowing two independent selections to leak into the Workspace.
+    const malformedUrl = new URL(listUrl);
+    malformedUrl.searchParams.set(
+      'space',
+      Buffer.from('!space:example.org').toString('base64url'),
+    );
+    await page.goto(malformedUrl.toString());
+    await expect(page).toHaveURL((url) => {
+      return (
+        url.pathname === '/rooms' &&
+        url.searchParams.get('account')?.includes(`@${user}:`) === true &&
+        !url.searchParams.has('view') &&
+        !url.searchParams.has('space')
+      );
     });
   });
 });

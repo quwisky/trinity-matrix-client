@@ -577,6 +577,39 @@ describe('AccountRuntimeService', () => {
     });
   });
 
+  it('announces the exact boundary where adapter preparation hands off to commit', async () => {
+    const preparation = new Subject<AdapterAccountSwitchOutcome>();
+    const onCommitStarted = vi.fn();
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: '@old:hs',
+      accountIds: ['@old:hs', '@next:hs'],
+    });
+    test.activeAccountId.set('@old:hs');
+    test.prepareActiveAccount.mockReturnValue(preparation);
+    test.commitActiveAccount.mockImplementation((accountId: string) => {
+      expect(onCommitStarted).toHaveBeenCalledOnce();
+      return of<AdapterAccountSwitchOutcome>({ kind: 'ready' }).pipe(
+        tap(() => test.activeAccountId.set(accountId)),
+      );
+    });
+    const runtime = setup(test);
+
+    const outcome = firstValueFrom(
+      runtime.switchActiveAccount('@next:hs', {
+        prepare: () => of(void 0),
+        onCommitStarted,
+      }),
+    );
+    expect(onCommitStarted).not.toHaveBeenCalled();
+
+    preparation.next({ kind: 'ready' });
+    preparation.complete();
+
+    await expect(outcome).resolves.toMatchObject({ kind: 'ready' });
+    expect(onCommitStarted).toHaveBeenCalledOnce();
+  });
+
   it('finishes a committed switch after its caller unsubscribes', () => {
     const commit = new Subject<AdapterAccountSwitchOutcome>();
     const test = testAdapter({

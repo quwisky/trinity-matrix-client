@@ -89,8 +89,12 @@ export class RoomActionsService {
         // room panes down (mirroring ngOnDestroy / onSelectRoom) so the timeline,
         // threads, and pinned projections stop listening on a room we just left.
         next: () => {
-          if (this.store.activeRoomId() === roomId) {
-            this.nav.closeOpenRoom();
+          const leftAccountId = accountId ?? this.store.activeAccountId();
+          if (
+            this.store.activeAccountId() === leftAccountId &&
+            this.store.activeRoomId() === roomId
+          ) {
+            this.nav.clearOpenRoom();
           }
         },
         error: () => void this.status.showError('Could not leave the room.'),
@@ -129,9 +133,8 @@ export class RoomActionsService {
       this.nav.onSelectSpace(joined.roomId);
     } else {
       // A joined public room is a spaceless non-DM, so it lives in the Rooms view
-      // (Home shows DMs only) — switch there so it's listed, then open it.
-      this.nav.onShowRooms();
-      this.nav.onSelectRoom(joined.roomId);
+      // (Home shows DMs only) — select both coordinates in one Workspace command.
+      this.nav.onSelectRoomInScope(joined.roomId, { kind: 'rooms' });
     }
   }
 
@@ -148,8 +151,7 @@ export class RoomActionsService {
     ).subscribe((joinedId) => {
       // Surface the successor in the sidebar (Home shows DMs only) so it isn't
       // opened-but-invisible, mirroring onExploreRooms.
-      this.nav.onShowRooms();
-      this.nav.onSelectRoom(joinedId);
+      this.nav.onSelectRoomInScope(joinedId, { kind: 'rooms' });
     });
   }
 

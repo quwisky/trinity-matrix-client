@@ -24,6 +24,15 @@ import {
 // trick as unread-badges / notifications specs; needs Synapse (Docker), self-skips otherwise.
 const session = synapseSession();
 
+async function expectWorkspaceAccount(
+  page: Page,
+  localpart: string,
+): Promise<void> {
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get('account'))
+    .toContain(`@${localpart}:`);
+}
+
 interface ApiUser {
   userId: string;
   headers: { Authorization: string };
@@ -300,12 +309,14 @@ test.describe('Multiple accounts', () => {
     await login(page, session);
     const handleA = `@${session.user}:`;
     await expect(page.locator('.userbar__handle')).toContainText(handleA);
+    await expectWorkspaceAccount(page, session.user as string);
 
     // 2. Add account B from the user panel.
     await addAccountViaUi(page, hs, userB, passB);
 
     // 3. Account B is now the active account.
     await expect(page.locator('.userbar__handle')).toContainText(`@${userB}:`);
+    await expectWorkspaceAccount(page, userB);
 
     // 3b. Per-account encryption status reaches the UI: account B is brand new with
     // no encryption set up, so its setup banner shows — proof the crypto status
@@ -326,6 +337,7 @@ test.describe('Multiple accounts', () => {
     // 5. Switch back to account A from the menu.
     await rows.filter({ hasText: handleA }).click();
     await expect(page.locator('.userbar__handle')).toContainText(handleA);
+    await expectWorkspaceAccount(page, session.user as string);
   });
 
   test('keeps the Workspace coherent through repeated and consecutive switches', async ({

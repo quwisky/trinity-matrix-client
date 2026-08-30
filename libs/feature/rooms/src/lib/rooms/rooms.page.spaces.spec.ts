@@ -3,6 +3,7 @@ import {
   clientStub,
   invitesProvider,
   setRouteRoom,
+  settleWorkspace,
   shellFrom,
 } from './rooms-page.spec-harness';
 import { signal, type WritableSignal } from '@angular/core';
@@ -138,9 +139,10 @@ describe('RoomsPage space filtering', () => {
     expect(shell.vm.sidebarTitle()).toBe('Recent activity');
   });
 
-  it('Home (no space) shows only direct messages', () => {
+  it('Home (no space) shows only direct messages', async () => {
     const shell = build();
     shell.nav.onSelectSpace(null); // click Home — leaves the default Recent view
+    await settleWorkspace();
 
     // Only '!a:hs' is a DM (see directRoomIds in build()).
     expect(shell.store.recentView()).toBe(false);
@@ -148,9 +150,10 @@ describe('RoomsPage space filtering', () => {
     expect(shell.vm.sidebarTitle()).toBe('Direct Messages');
   });
 
-  it('a selected space shows only its joined children, in space order', () => {
+  it('a selected space shows only its joined children, in space order', async () => {
     const shell = build();
     shell.nav.onSelectSpace('!s:hs');
+    await settleWorkspace();
 
     // '!c:hs' is excluded (not a child); b/a appear in the space's curated order, which is
     // neither alphabetical nor the recency order the other views use.
@@ -161,9 +164,10 @@ describe('RoomsPage space filtering', () => {
     expect(shell.vm.activeSpaceName()).toBe('!s:hs');
   });
 
-  it('the Rooms view shows non-DM rooms that do not belong to a space', () => {
+  it('the Rooms view shows non-DM rooms that do not belong to a space', async () => {
     const shell = build();
     shell.nav.onShowRooms();
+    await settleWorkspace();
 
     expect(shell.store.roomsView()).toBe(true);
     expect(shell.store.recentView()).toBe(false); // Rooms clears the default Recent view
@@ -173,21 +177,25 @@ describe('RoomsPage space filtering', () => {
     expect(shell.vm.sidebarTitle()).toBe('Rooms');
   });
 
-  it('showing Rooms clears the active space', () => {
+  it('showing Rooms clears the active space', async () => {
     const shell = build();
-    shell.store.activeSpaceId.set('!s:hs'); // a space is selected…
+    shell.nav.onSelectSpace('!s:hs'); // a space is selected…
+    await settleWorkspace();
     shell.nav.onShowRooms(); // …switching to Rooms leaves it
+    await settleWorkspace();
 
     expect(shell.store.activeSpaceId()).toBeNull();
     expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']);
   });
 
-  it('selecting a space leaves the Rooms view', () => {
+  it('selecting a space leaves the Rooms view', async () => {
     const shell = build();
     shell.nav.onShowRooms();
+    await settleWorkspace();
     expect(shell.store.roomsView()).toBe(true);
 
     shell.nav.onSelectSpace('!s:hs');
+    await settleWorkspace();
     expect(shell.store.roomsView()).toBe(false);
     expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
       '!b:hs',
@@ -196,23 +204,27 @@ describe('RoomsPage space filtering', () => {
     expect(shell.vm.sidebarTitle()).toBe('!s:hs');
   });
 
-  it('Home returns to direct messages from the Rooms view', () => {
+  it('Home returns to direct messages from the Rooms view', async () => {
     const shell = build();
     shell.nav.onShowRooms();
+    await settleWorkspace();
     expect(shell.store.roomsView()).toBe(true);
 
     shell.nav.onSelectSpace(null); // clicking Home
+    await settleWorkspace();
     expect(shell.store.roomsView()).toBe(false);
     expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!a:hs']); // DMs
     expect(shell.vm.sidebarTitle()).toBe('Direct Messages');
   });
 
-  it('returns to Recent activity from another view', () => {
+  it('returns to Recent activity from another view', async () => {
     const shell = build();
     shell.nav.onShowRooms();
+    await settleWorkspace();
     expect(shell.store.recentView()).toBe(false);
 
     shell.nav.onShowRecent();
+    await settleWorkspace();
     expect(shell.store.recentView()).toBe(true);
     expect(shell.store.roomsView()).toBe(false);
     expect(shell.store.activeSpaceId()).toBeNull();
@@ -281,9 +293,10 @@ describe('RoomsPage space filtering', () => {
     expect(shell.vm.roomsUnread()).toBe(2); // still just c(2) — b was already excluded
   });
 
-  it('a spaceless room disappears from the Rooms view once a space claims it', () => {
+  it('a spaceless room disappears from the Rooms view once a space claims it', async () => {
     const shell = build();
     shell.nav.onShowRooms();
+    await settleWorkspace();
     // Before: only '!c:hs' is spaceless non-DM.
     expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']);
     expect(shell.vm.roomsUnread()).toBe(2);
@@ -303,9 +316,10 @@ describe('RoomsPage space filtering', () => {
     expect(shell.vm.roomsUnread()).toBe(0); // its unread leaves the Rooms badge too
   });
 
-  it('a space child reappears in the Rooms view once its space no longer lists it', () => {
+  it('a space child reappears in the Rooms view once its space no longer lists it', async () => {
     const shell = build();
     shell.nav.onShowRooms();
+    await settleWorkspace();
     // '!b:hs' is owned by '!s:hs' — hidden from the Rooms view.
     expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']);
     expect(shell.vm.roomsUnread()).toBe(2);
@@ -322,13 +336,14 @@ describe('RoomsPage space filtering', () => {
     expect(shell.vm.roomsUnread()).toBe(5); // c(2) + b(3), now both spaceless
   });
 
-  it('a room owned by two spaces is still excluded once it is dropped from only one', () => {
+  it('a room owned by two spaces is still excluded once it is dropped from only one', async () => {
     const shell = build();
     const spaces = TestBed.inject(SpacesService)
       .spaces as unknown as WritableSignal<SpaceSummary[]>;
     // '!b:hs' is now a child of both '!s:hs' and a second space '!t:hs'.
     spaces.update((list) => [...list, spaceSummary('!t:hs', ['!b:hs'])]);
     shell.nav.onShowRooms();
+    await settleWorkspace();
     expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']); // b still hidden
 
     // Dropping '!b:hs' from '!s:hs' alone must not surface it — '!t:hs' still owns it.
@@ -376,9 +391,10 @@ describe('RoomsPage space filtering', () => {
     expect(shell.vm.filteredRooms()).toBe(shell.vm.visibleRooms());
   });
 
-  it('walks the FILTERED list with Alt+Arrow, so the keyboard cannot land off-screen', () => {
+  it('walks the FILTERED list with Alt+Arrow, so the keyboard cannot land off-screen', async () => {
     const shell = build();
     shell.nav.onSelectRoom('!c:hs');
+    await settleWorkspace();
     // "charlie" and "bravo" match; "alpha" does not. The hidden room has to sit BETWEEN
     // the active one and the next visible one (list order is c, a, b) or the filtered and
     // unfiltered walks would step to the same room and prove nothing.
@@ -397,14 +413,16 @@ describe('RoomsPage space filtering', () => {
       shiftKey: false,
       preventDefault: vi.fn(),
     } as unknown as KeyboardEvent);
+    await settleWorkspace();
 
     // Unfiltered, c → a. Filtered, a is off screen, so the walk steps c → b.
     expect(shell.store.activeRoomId()).toBe('!b:hs');
   });
 
-  it('jumps to the next unread room within the filter, not past it', () => {
+  it('jumps to the next unread room within the filter, not past it', async () => {
     const shell = build();
     shell.nav.onSelectRoom('!c:hs');
+    await settleWorkspace();
     // All three are unread, so the only thing that can move the target is the filter.
     shell.store.roomFilter.set('r'); // c, b on screen; a hidden between them
 
@@ -417,6 +435,7 @@ describe('RoomsPage space filtering', () => {
       shiftKey: true,
       preventDefault: vi.fn(),
     } as unknown as KeyboardEvent);
+    await settleWorkspace();
 
     // Unfiltered the next unread after c is a; filtered it is b.
     expect(shell.store.activeRoomId()).toBe('!b:hs');
@@ -434,11 +453,12 @@ describe('RoomsPage space filtering', () => {
     expect(shell.vm.anyRoomUnread()).toBe(true);
   });
 
-  it('drops the filter when the shell switches to another list', () => {
+  it('drops the filter when the shell switches to another list', async () => {
     const shell = build();
     shell.store.roomFilter.set('alpha');
 
     shell.nav.onSelectSpace('!s:hs');
+    await settleWorkspace();
 
     // A filter typed in one view must not silently narrow the next one.
     expect(shell.store.roomFilter()).toBe('');
@@ -500,7 +520,7 @@ describe('RoomsPage space ordering', () => {
     };
   }
 
-  function build(order: Partial<SpaceRoomOrderService> = {}) {
+  async function build(order: Partial<SpaceRoomOrderService> = {}) {
     const rooms = signal([
       orderedRoom('!z:hs', 'zulu', 200),
       orderedRoom('!a:hs', 'alpha', 100),
@@ -553,32 +573,33 @@ describe('RoomsPage space ordering', () => {
     });
     const shell = shellFrom();
     shell.nav.onSelectSpace('!s:hs');
+    await settleWorkspace();
     return { shell, rooms, setForSpace, clearForSpace };
   }
 
   const names = (shell: ReturnType<typeof shellFrom>) =>
     shell.vm.visibleRooms().map((r) => r.name);
 
-  it('orders by recent activity, ignoring the curated child order', () => {
-    const { shell } = build({ effectiveFor: () => 'recent' });
+  it('orders by recent activity, ignoring the curated child order', async () => {
+    const { shell } = await build({ effectiveFor: () => 'recent' });
 
     expect(names(shell)).toEqual(['mike', 'zulu', 'alpha']);
   });
 
-  it('orders alphabetically, ignoring both activity and the curated order', () => {
-    const { shell } = build({ effectiveFor: () => 'alphabetical' });
+  it('orders alphabetically, ignoring both activity and the curated order', async () => {
+    const { shell } = await build({ effectiveFor: () => 'alphabetical' });
 
     expect(names(shell)).toEqual(['alpha', 'mike', 'zulu']);
   });
 
-  it('preserves the curated order under space mode', () => {
-    const { shell } = build({ effectiveFor: () => 'space' });
+  it('preserves the curated order under space mode', async () => {
+    const { shell } = await build({ effectiveFor: () => 'space' });
 
     expect(names(shell)).toEqual(['zulu', 'alpha', 'mike']);
   });
 
-  it("uses a space's own override rather than the account default", () => {
-    const { shell } = build({
+  it("uses a space's own override rather than the account default", async () => {
+    const { shell } = await build({
       effectiveFor: (spaceId: string | null) =>
         spaceId === '!s:hs' ? 'alphabetical' : 'recent',
     });
@@ -586,11 +607,11 @@ describe('RoomsPage space ordering', () => {
     expect(names(shell)).toEqual(['alpha', 'mike', 'zulu']);
   });
 
-  it('re-sorts when a room becomes active, with nothing else called', () => {
+  it('re-sorts when a room becomes active, with nothing else called', async () => {
     // The acceptance criterion: a new message reorders the space without reopening it.
     // No new listener is involved — `visibleRooms` already reads `rooms()`, which the
     // service re-snapshots on every sync.
-    const { shell, rooms } = build({ effectiveFor: () => 'recent' });
+    const { shell, rooms } = await build({ effectiveFor: () => 'recent' });
     expect(names(shell)).toEqual(['mike', 'zulu', 'alpha']);
 
     rooms.update((list) =>
@@ -602,8 +623,8 @@ describe('RoomsPage space ordering', () => {
     expect(names(shell)).toEqual(['alpha', 'mike', 'zulu']);
   });
 
-  it('keeps favourites first in every mode', () => {
-    const { shell, rooms } = build({ effectiveFor: () => 'space' });
+  it('keeps favourites first in every mode', async () => {
+    const { shell, rooms } = await build({ effectiveFor: () => 'space' });
     rooms.update((list) =>
       list.map((room) =>
         room.id === '!a:hs' ? { ...room, favourite: true } : room,
@@ -615,8 +636,10 @@ describe('RoomsPage space ordering', () => {
     expect(names(shell)).toEqual(['alpha', 'zulu', 'mike']);
   });
 
-  it('sorts a copy, never the array the rooms service handed out', () => {
-    const { shell, rooms } = build({ effectiveFor: () => 'alphabetical' });
+  it('sorts a copy, never the array the rooms service handed out', async () => {
+    const { shell, rooms } = await build({
+      effectiveFor: () => 'alphabetical',
+    });
     const seeded = rooms();
 
     expect(names(shell)).toEqual(['alpha', 'mike', 'zulu']);
@@ -628,24 +651,25 @@ describe('RoomsPage space ordering', () => {
     expect(shell.vm.visibleRooms()).not.toBe(seeded);
   });
 
-  it('leaves the Recent view returning the service array by identity', () => {
-    const { shell, rooms } = build();
+  it('leaves the Recent view returning the service array by identity', async () => {
+    const { shell, rooms } = await build();
     shell.nav.onShowRecent();
+    await settleWorkspace();
 
     expect(shell.vm.visibleRooms()).toBe(rooms());
   });
 
   describe('changing the order from the sidebar', () => {
-    it('pins the open space to a mode', () => {
-      const { shell, setForSpace } = build();
+    it('pins the open space to a mode', async () => {
+      const { shell, setForSpace } = await build();
 
       shell.spaces.onSetSpaceSort('alphabetical');
 
       expect(setForSpace).toHaveBeenCalledWith('!s:hs', 'alphabetical');
     });
 
-    it('clears the override when asked to follow the default', () => {
-      const { shell, clearForSpace, setForSpace } = build();
+    it('clears the override when asked to follow the default', async () => {
+      const { shell, clearForSpace, setForSpace } = await build();
 
       shell.spaces.onSetSpaceSort(null);
 
@@ -653,9 +677,10 @@ describe('RoomsPage space ordering', () => {
       expect(setForSpace).not.toHaveBeenCalled();
     });
 
-    it('does nothing when no space is open', () => {
-      const { shell, setForSpace, clearForSpace } = build();
+    it('does nothing when no space is open', async () => {
+      const { shell, setForSpace, clearForSpace } = await build();
       shell.nav.onSelectSpace(null);
+      await settleWorkspace();
 
       shell.spaces.onSetSpaceSort('space');
       shell.spaces.onSetSpaceSort(null);

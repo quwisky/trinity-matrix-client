@@ -3,11 +3,15 @@ import {
   clientStub,
   invitesProvider,
   setRouteRoom,
+  settleWorkspace,
   shellFrom,
 } from './rooms-page.spec-harness';
 import { computed, signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { AccountRuntimeService } from '@trinity/data-access/accounts';
+import {
+  AccountRuntimeService,
+  type AccountSwitchCoordination,
+} from '@trinity/data-access/accounts';
 import {
   MixedInvitesService,
   type PendingInvite,
@@ -27,7 +31,7 @@ import {
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
-import { Observable, of, switchMap } from 'rxjs';
+import { of, switchMap } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
@@ -115,11 +119,14 @@ describe('RoomsPage mixed-account view', () => {
     accountIds: string[],
     avatars: Record<string, string | null> = {},
   ) {
+    const activeUserId = signal<string | null>('@me:hs');
     switchAccount = vi.fn(
-      (accountId: string, prepare: () => Observable<void>) =>
-        prepare().pipe(
-          switchMap(() =>
-            of({
+      (accountId: string, coordination: AccountSwitchCoordination) =>
+        coordination.prepare().pipe(
+          switchMap(() => {
+            coordination.onCommitStarted?.();
+            activeUserId.set(accountId);
+            return of({
               kind: 'ready' as const,
               accountId,
               metrics: {
@@ -127,8 +134,8 @@ describe('RoomsPage mixed-account view', () => {
                 projectionDurationMs: 0,
                 projectionCount: 0,
               },
-            }),
-          ),
+            });
+          }),
         ),
     );
     setMixedRoomsAccounts = vi.fn();
@@ -170,7 +177,7 @@ describe('RoomsPage mixed-account view', () => {
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
-          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+          activeUserId: activeUserId.asReadonly(),
           accountIds: signal<readonly string[]>(accountIds).asReadonly(),
           clientFor: (id: string) =>
             clientStub({
@@ -251,10 +258,11 @@ describe('RoomsPage mixed-account view', () => {
     expect(shell.vm.accountBadges().get('@me:hs')?.avatarMxc).toBeNull();
   });
 
-  it('Home shows every account’s DMs in mixed mode', () => {
+  it('Home shows every account’s DMs in mixed mode', async () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
     shell.nav.onSelectSpace(null); // Home — leaves Recent
+    await settleWorkspace();
 
     // Both accounts' DMs (classified by each row's own-account m.direct), nothing else.
     expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
@@ -264,10 +272,11 @@ describe('RoomsPage mixed-account view', () => {
     expect(shell.vm.sidebarTitle()).toBe('Direct Messages');
   });
 
-  it('Rooms shows every account’s non-DM, non-space rooms in mixed mode', () => {
+  it('Rooms shows every account’s non-DM, non-space rooms in mixed mode', async () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
     shell.nav.onShowRooms();
+    await settleWorkspace();
 
     // Non-DM rooms from both accounts, excluding DMs and @alt's space child.
     expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
@@ -285,14 +294,19 @@ describe('RoomsPage mixed-account view', () => {
     await vi.waitFor(() =>
       expect(switchAccount).toHaveBeenCalledWith(
         '@alt:hs',
-        expect.any(Function),
+        expect.objectContaining({ prepare: expect.any(Function) }),
       ),
     );
+    await settleWorkspace();
 
-    // A room on the active account opens without a switch.
+    // Returning to the first Account is another atomic Workspace switch.
     switchAccount.mockClear();
     shell.routing.onSelectRoomRow('!mine:hs');
-    expect(switchAccount).not.toHaveBeenCalled();
+    await settleWorkspace();
+    expect(switchAccount).toHaveBeenCalledWith(
+      '@me:hs',
+      expect.objectContaining({ prepare: expect.any(Function) }),
+    );
     expect(shell.store.activeRoomId()).toBe('!mine:hs');
   });
 
@@ -304,15 +318,22 @@ describe('RoomsPage mixed-account view', () => {
     await vi.waitFor(() =>
       expect(switchAccount).toHaveBeenCalledWith(
         '@alt:hs',
-        expect.any(Function),
+        expect.objectContaining({ prepare: expect.any(Function) }),
       ),
     );
+    await settleWorkspace();
 
-    // The active account's own space selects without a switch; Home (null) too.
+    // Returning to the first Account switches once; Home then stays on it.
     switchAccount.mockClear();
     shell.routing.onSelectSpaceRow('!s-mine:hs');
+    await settleWorkspace();
     shell.routing.onSelectSpaceRow(null);
-    expect(switchAccount).not.toHaveBeenCalled();
+    await settleWorkspace();
+    expect(switchAccount).toHaveBeenCalledOnce();
+    expect(switchAccount).toHaveBeenCalledWith(
+      '@me:hs',
+      expect.objectContaining({ prepare: expect.any(Function) }),
+    );
   });
 
   it('narrows the projections back down when an account is unticked', () => {
@@ -354,6 +375,7 @@ describe('RoomsPage mixed-account view', () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
     shell.nav.onSelectSpace(null); // Home — DMs only, so '!theirs:hs' is not visible
+    await settleWorkspace();
     expect(shell.vm.visibleRooms().map((r) => r.id)).not.toContain(
       '!theirs:hs',
     );
@@ -363,7 +385,7 @@ describe('RoomsPage mixed-account view', () => {
     await vi.waitFor(() =>
       expect(switchAccount).toHaveBeenCalledWith(
         '@alt:hs',
-        expect.any(Function),
+        expect.objectContaining({ prepare: expect.any(Function) }),
       ),
     );
   });
@@ -379,8 +401,12 @@ describe('RoomsPage mixed-account view', () => {
 
     await shell.shortcuts.openSwitcher();
     TestBed.tick(); // the follow-up open is deferred past the re-projection render
+    await settleWorkspace();
 
-    expect(switchAccount).toHaveBeenCalledWith('@alt:hs', expect.any(Function));
+    expect(switchAccount).toHaveBeenCalledWith(
+      '@alt:hs',
+      expect.objectContaining({ prepare: expect.any(Function) }),
+    );
     expect(shell.store.activeRoomId()).toBe('!theirs:hs');
   });
 
@@ -393,15 +419,19 @@ describe('RoomsPage mixed-account view', () => {
 
     await shell.shortcuts.openSwitcher();
 
-    expect(switchAccount).toHaveBeenCalledWith('@alt:hs', expect.any(Function));
+    expect(switchAccount).toHaveBeenCalledWith(
+      '@alt:hs',
+      expect.objectContaining({ prepare: expect.any(Function) }),
+    );
   });
 
   // A room that is top-level for the account you are ACTING AS must not vanish from the
   // Rooms view just because a different mixed account files it inside one of its spaces.
-  it('keeps a room that only another account files under a space', () => {
+  it('keeps a room that only another account files under a space', async () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
     shell.nav.onShowRooms();
+    await settleWorkspace();
 
     // '!child-theirs:hs' is a child of @alt's space, so it is excluded for @alt…
     expect(shell.vm.visibleRooms().map((r) => r.id)).not.toContain(
@@ -413,10 +443,11 @@ describe('RoomsPage mixed-account view', () => {
 
   // The pill's unread badge is summed over the mixed union, so the space it opens must
   // list that same union — otherwise the badge counts rooms the view never renders.
-  it('lists a mixed space’s children from the same union its badge counts', () => {
+  it('lists a mixed space’s children from the same union its badge counts', async () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
     shell.nav.onSelectSpace('!s-alt:hs');
+    await settleWorkspace();
 
     expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
       '!child-theirs:hs',
@@ -424,23 +455,27 @@ describe('RoomsPage mixed-account view', () => {
   });
 
   // The space scope belongs to the outgoing account; the Recent/DMs/Rooms filter does not.
-  it('keeps the Rooms filter across an account switch but drops the space', () => {
+  it('keeps the Rooms filter across an account switch but drops the space', async () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
     shell.nav.onShowRooms();
+    await settleWorkspace();
 
     shell.routing.onSelectRoomRow('!theirs:hs'); // switches to @alt
+    await settleWorkspace();
 
     expect(shell.store.roomsView()).toBe(true); // the user's filter survives
     expect(shell.store.activeSpaceId()).toBeNull();
   });
 
-  it('returns to Recent when the switch happened from inside a space', () => {
+  it('returns to Recent when the switch happened from inside a space', async () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
     shell.nav.onSelectSpace('!s-mine:hs');
+    await settleWorkspace();
 
     shell.routing.onSelectRoomRow('!theirs:hs');
+    await settleWorkspace();
 
     expect(shell.store.activeSpaceId()).toBeNull();
     expect(shell.store.recentView()).toBe(true);

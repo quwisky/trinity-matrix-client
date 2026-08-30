@@ -50,6 +50,7 @@ export class AccountSwitchWorkflow {
     activeAccountId: Signal<string | null>,
     blockingOperation: BlockingAccountOperation | null,
     prepare: () => Observable<void>,
+    onCommitStarted: () => void,
     publish: (state: AccountRuntimeState) => void,
   ): Observable<AccountSwitchOutcome> {
     return defer(() => {
@@ -96,6 +97,7 @@ export class AccountSwitchWorkflow {
           if (preparation.kind === 'failed') {
             return of(this.failed(accountId, preparation));
           }
+          onCommitStarted();
           commitStarted = true;
           const committed = this.commit(accountId, startedAt).pipe(
             tap((outcome) => {
