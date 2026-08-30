@@ -40,6 +40,11 @@ function normalizeLocationError(error: unknown): Error {
  */
 @Injectable({ providedIn: 'root' })
 export class GeolocationService {
+  /** Whether this host can fulfill the precise-location operation directly. */
+  supportsPrecise(): boolean {
+    return !getTrinityDesktopBridge();
+  }
+
   /** The device's current position as {@link GeoPoint}. Cold — prompts on subscribe. */
   current(): Observable<GeoPoint> {
     return defer(() => {
@@ -84,7 +89,8 @@ export class GeolocationService {
    */
   supportsApproximate(): boolean {
     return (
-      typeof getTrinityDesktopBridge()?.resolveApproxLocation === 'function'
+      typeof getTrinityDesktopBridge()?.capabilities.location.approximate ===
+      'function'
     );
   }
 
@@ -96,7 +102,8 @@ export class GeolocationService {
    */
   approximateFromDesktop(): Observable<GeoPoint> {
     return defer(() => {
-      const resolve = getTrinityDesktopBridge()?.resolveApproxLocation;
+      const resolve =
+        getTrinityDesktopBridge()?.capabilities.location.approximate;
       if (!resolve) {
         return throwError(
           () => new Error('Approximate location isn’t available here.'),

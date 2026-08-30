@@ -1,6 +1,5 @@
-import { Injectable, effect, inject } from '@angular/core';
+import { DestroyRef, Injectable, effect, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { Capacitor } from '@capacitor/core';
 import {
   MatrixEventEvent,
   RoomEvent,
@@ -13,8 +12,9 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { SessionStorageService } from '@trinity/platform-native';
 import { NotificationSoundService } from './notification-sound.service';
-import { getTrinityDesktopBridge } from '@trinity/platform-native';
 import { encodeRoomSegment } from '@trinity/util/matrix';
+import { HostNotificationPresentationService } from '@trinity/runtime/host';
+import { Subscription, take } from 'rxjs';
 
 /** Max characters of message body shown in a notification. */
 const PREVIEW_LIMIT = 140;
@@ -36,10 +36,10 @@ interface AccountNotifier {
 /**
  * Surfaces incoming messages as native OS notifications, driven by the live sync
  * stream of **every signed-in account** at once (not just the active one). This is
- * the **desktop + web/PWA** path — on mobile (iOS/Android) push notifications handle
- * delivery, so this is a no-op there (`isNativePlatform()`).
+ * the host notification-presentation capability. Mobile's selected adapter reports
+ * that capability unavailable because push notifications own delivery there.
  *
- * Two delivery backends, selected at runtime:
+ * The capability layer selects one of two delivery backends at composition time:
  *  - **Desktop (hand-rolled Electron):** the preload `trinityDesktop` bridge is
  *    present, so notifications are routed through the MAIN process
  *    (`showNotification`). Renderer Web `Notification`s from Electron are
@@ -76,6 +76,10 @@ export class NotificationService {
   private readonly router = inject(Router);
   private readonly conversations = inject(ConversationRuntime);
   private readonly storage = inject(SessionStorageService);
+  private readonly hostNotifications = inject(
+    HostNotificationPresentationService,
+  );
+  private readonly destroyRef = inject(DestroyRef);
 
   /** Whether {@link connect} has enabled us (and thus reconcile may attach). */
   private enabled = false;
@@ -83,8 +87,7 @@ export class NotificationService {
   /** Per-account listeners, keyed by user id, so switches/sign-outs re-bind cleanly. */
   private readonly notifiers = new Map<string, AccountNotifier>();
 
-  /** Unsubscribe for the desktop notification-click bridge, when on Electron. */
-  private notificationClickUnsubscribe: (() => void) | null = null;
+  private connection: Subscription | null = null;
 
   /**
    * Live, still-encrypted events seen on the timeline that we deferred until
@@ -110,44 +113,58 @@ export class NotificationService {
     // connect() (e.g. a background account finishing its warm start) and drops ones
     // signed out. No-ops until connect() enables us.
     effect(() => this.reconcile(this.matrix.accountIds()));
+    this.destroyRef.onDestroy(() => this.disconnect());
   }
 
   /** Attach to every account's live timeline + request permission. Idempotent; pair
    * with {@link disconnect}. Call once the clients are live (from the rooms shell). */
   connect(): void {
-    if (this.enabled) {
+    if (this.enabled || (this.connection && !this.connection.closed)) {
       return;
     }
-    if (!this.canNotify() || !this.matrix.isInitialized) {
+    if (!this.matrix.isInitialized) {
       return;
     }
-    this.enabled = true;
-
-    const desktop = getTrinityDesktopBridge();
-    if (typeof desktop?.showNotification === 'function') {
-      // Desktop (Electron): the main process surfaces the toast and forwards the
-      // clicked room id + account back over this bridge. No Web permission concept
-      // applies (Electron auto-grants), so we don't prompt here.
-      if (typeof desktop.onNotificationClick === 'function') {
-        this.notificationClickUnsubscribe = desktop.onNotificationClick(
-          (roomId, userId) => this.openFromNotification(roomId, userId),
-        );
-      }
-    } else if (
-      typeof Notification !== 'undefined' &&
-      Notification.permission === 'default'
-    ) {
-      // Web / PWA: ask once for permission (never reached inside Electron).
-      void Notification.requestPermission();
-    }
-
-    this.reconcile(this.matrix.accountIds());
+    const connection = new Subscription();
+    this.connection = connection;
+    const start = (): void => {
+      if (connection.closed) return;
+      if (this.enabled) return;
+      this.enabled = true;
+      const activation = this.hostNotifications.activated.subscribe(
+        ({ roomId, userId }) => this.openFromNotification(roomId, userId),
+      );
+      connection.add(activation);
+      this.reconcile(this.matrix.accountIds());
+    };
+    connection.add(
+      this.hostNotifications
+        .support()
+        .pipe(take(1))
+        .subscribe({
+          next: (support) => {
+            if (connection.closed) return;
+            if (support.kind === 'unavailable') {
+              this.disconnect();
+              return;
+            }
+            start();
+            connection.add(
+              this.hostNotifications
+                .requestPermission()
+                .pipe(take(1))
+                .subscribe({ error: () => undefined }),
+            );
+          },
+          error: () => this.disconnect(),
+        }),
+    );
   }
 
   disconnect(): void {
+    this.connection?.unsubscribe();
+    this.connection = null;
     this.enabled = false;
-    this.notificationClickUnsubscribe?.();
-    this.notificationClickUnsubscribe = null;
     for (const notifier of this.notifiers.values()) {
       this.detach(notifier);
     }
@@ -282,19 +299,6 @@ export class NotificationService {
     return event.isEncrypted?.() === true && event.getClearContent?.() == null;
   }
 
-  /** Skip on native mobile (push owns delivery there). Otherwise we can notify
-   * when the Electron desktop bridge is present, or when the Web Notification API
-   * is available. */
-  private canNotify(): boolean {
-    if (Capacitor.isNativePlatform()) {
-      return false;
-    }
-    if (typeof getTrinityDesktopBridge()?.showNotification === 'function') {
-      return true;
-    }
-    return typeof Notification !== 'undefined';
-  }
-
   private maybeNotify(
     userId: string,
     client: MatrixClient,
@@ -318,13 +322,6 @@ export class NotificationService {
       isActiveAccount &&
       room.roomId === this.conversations.focused()?.key.roomId
     ) {
-      return;
-    }
-    // The Web permission gate only applies to the Web backend; the desktop
-    // bridge has no permission concept (the main process owns delivery).
-    const onDesktop =
-      typeof getTrinityDesktopBridge()?.showNotification === 'function';
-    if (!onDesktop && Notification.permission !== 'granted') {
       return;
     }
     // Respect the account's push rules (mute / mentions-only / etc.).
@@ -364,73 +361,18 @@ export class NotificationService {
     // account replaces the previous still-open toast, while the same room on another
     // account stays a separate toast.
     const tag = `${userId} ${roomId}`;
-    const desktop = getTrinityDesktopBridge();
-    if (typeof desktop?.showNotification === 'function') {
-      // Desktop (Electron): hand off to the main process. The click is delivered
-      // back via onNotificationClick (subscribed in connect()) with the userId so a
-      // tap can switch accounts before opening the room.
-      desktop.showNotification({
-        title,
-        body,
-        tag,
-        roomId,
-        userId,
-        // The desktop shell builds a native notification in the main process, so it never
-        // sees the Web NotificationOptions below — it needs telling separately. Keyed on the
-        // OWNING account: this notification may belong to a background account whose
-        // preference differs from the active one's.
-        silent: !this.sound.isOn(userId),
-      });
-      return;
-    }
-
-    const options: NotificationOptions = {
+    const command = this.hostNotifications.present({
+      title,
       body,
       tag,
-      data: { roomId, userId },
-      // Keyed on the OWNING account, not the active one — this notification may belong to a
-      // background account whose preference differs.
+      roomId,
+      userId,
       silent: !this.sound.isOn(userId),
-    };
-
-    // Mobile browsers (Android Chrome, etc.) only allow notifications through
-    // the service worker's registration — `new Notification()` throws there.
-    // When a SW controls the page, show via the registration; otherwise use the
-    // renderer constructor (desktop browsers), falling back if the SW path fails.
-    if (
-      typeof navigator !== 'undefined' &&
-      navigator.serviceWorker?.controller
-    ) {
-      void navigator.serviceWorker.ready
-        .then((registration) => registration.showNotification(title, options))
-        .catch(() => this.showViaConstructor(title, options, roomId, userId));
-      return;
-    }
-
-    this.showViaConstructor(title, options, roomId, userId);
-  }
-
-  /**
-   * Renderer Web `Notification` constructor path (desktop browsers). A throw
-   * here means the browser doesn't support constructor notifications (mobile),
-   * so it's swallowed as "unsupported" rather than bubbling to the sync loop.
-   */
-  private showViaConstructor(
-    title: string,
-    options: NotificationOptions,
-    roomId: string,
-    userId: string,
-  ): void {
-    let notification: Notification;
-    try {
-      notification = new Notification(title, options);
-    } catch {
-      return; // unsupported (e.g. mobile browser) — nothing more to do
-    }
-    notification.onclick = (): void => {
-      this.openFromNotification(roomId, userId);
-      notification.close();
-    };
+    });
+    const subscription = command
+      .pipe(take(1))
+      .subscribe({ error: () => undefined });
+    this.connection?.add(subscription);
   }
 
   /**

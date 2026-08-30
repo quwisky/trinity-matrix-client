@@ -55,11 +55,11 @@ function createWebBackend(): SecureStorageBackend {
 
 /**
  * Electron desktop: OS-keychain-backed `safeStorage`, reached through the main process
- * via the `trinityDesktop.secureStore` bridge (the renderer never touches the keyring
+ * via the grouped desktop secure-store capability (the renderer never touches the keyring
  * or the on-disk ciphertext directly).
  */
 function createElectronBackend(
-  store: NonNullable<TrinityDesktopBridge['secureStore']>,
+  store: TrinityDesktopBridge['capabilities']['secureStore'],
 ): SecureStorageBackend {
   return {
     kind: 'electron',
@@ -178,8 +178,9 @@ export class SecureStorageService {
   private async select(): Promise<SecureStorageBackend> {
     // 1) Electron desktop — safeStorage via the trinityDesktop IPC bridge.
     const bridge = getTrinityDesktopBridge();
-    if (bridge?.secureStore && (await bridge.secureStore.isAvailable())) {
-      return createElectronBackend(bridge.secureStore);
+    const electronStore = bridge?.capabilities.secureStore;
+    if (electronStore && (await electronStore.isAvailable())) {
+      return createElectronBackend(electronStore);
     }
     // 2) Native iOS/Android — OS Keychain / Android Keystore.
     if (

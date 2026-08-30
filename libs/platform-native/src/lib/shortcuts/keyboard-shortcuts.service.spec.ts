@@ -11,6 +11,7 @@ import {
 } from 'vitest';
 import { KeyboardShortcutsService } from './keyboard-shortcuts.service';
 import { type Chord } from './chord';
+import { desktopBridgeFixture } from '@trinity/testing';
 
 vi.mock('@capacitor/preferences', () => ({
   Preferences: { get: vi.fn(), set: vi.fn() },
@@ -74,9 +75,8 @@ describe('KeyboardShortcutsService', () => {
     ).toBeNull();
     expect(web.resolve(keydown({ key: 'Tab', ctrlKey: true }))).toBeNull();
 
-    (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
-      isElectron: true,
-    };
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+      desktopBridgeFixture();
     const desktop = build();
     expect(
       desktop.resolve(keydown({ key: '3', code: 'Digit3', ctrlKey: true })),

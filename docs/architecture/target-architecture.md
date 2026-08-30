@@ -54,6 +54,12 @@ The Matrix SDK remains authoritative for protocol state. Adapters normalize SDK 
 
 Commands are cold, finite RxJS Observables. Expected operational failures are typed outcomes with recovery meaning and safe metadata; defects and broken adapters use the Observable error channel. A command never hides a detached subscription. Application Runtime is the explicit owner of session-long streams.
 
+Host Capabilities applies this rule to authentication handoff, deep links, Back, file export,
+notification presentation, location, badges, secure storage, lifecycle, and updates. Product code
+depends on narrow operation services from `@trinity/runtime/host`; the application root selects a
+Web, Capacitor, or Electron adapter. Support is negotiated explicitly. Electron protocol v1 uses
+validated senders and capability-scoped IPC, and returns only secret-safe diagnostic codes.
+
 ## Public interfaces
 
 Cross-project imports use one explicit `@trinity/*` entrypoint per library. Secondary entrypoints are enumerated in the architecture contract with a rationale and removal issue; wildcard entrypoints are rejected. Raw SDK clients, writable signals, Router objects, platform flags, and generic connect/disconnect methods do not belong in capability interfaces.

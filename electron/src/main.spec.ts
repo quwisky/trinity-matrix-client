@@ -51,6 +51,9 @@ vi.mock('./notifications', () => ({
 vi.mock('./secure-store-ipc', () => ({ registerSecureStoreIpc: vi.fn() }));
 vi.mock('./geolocation-ipc', () => ({ registerGeolocationIpc: vi.fn() }));
 vi.mock('./dock-badge', () => ({ registerDockBadge: vi.fn() }));
+vi.mock('./host-capabilities', () => ({
+  registerHostCapabilityHandshake: vi.fn(),
+}));
 vi.mock('./deep-link', () => ({
   deepLinkFromArgv: vi.fn(),
   deliverDeepLink: vi.fn(),
@@ -63,6 +66,7 @@ import { registerAppProtocol, registerPrivilegedScheme } from './scheme';
 import { installMatrixCors } from './cors';
 import { createWindow } from './window';
 import { registerDockBadge } from './dock-badge';
+import { registerHostCapabilityHandshake } from './host-capabilities';
 
 /** First invocation-order tick of a mock (a global monotonic counter in vitest,
  * so it's comparable ACROSS different mocks). */
@@ -95,6 +99,13 @@ describe('main bootstrap', () => {
 
   it('registers the dock-badge IPC handler at startup', () => {
     expect(registerDockBadge).toHaveBeenCalledTimes(1);
+  });
+
+  it('registers host negotiation before creating the renderer window', () => {
+    expect(registerHostCapabilityHandshake).toHaveBeenCalledTimes(1);
+    expect(firstOrder(vi.mocked(registerHostCapabilityHandshake))).toBeLessThan(
+      firstOrder(vi.mocked(createWindow)),
+    );
   });
 
   it('installs CORS AFTER registerAppProtocol and BEFORE createWindow', () => {

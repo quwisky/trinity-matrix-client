@@ -19,6 +19,7 @@ import {
   type ProjectionReadiness,
 } from '@trinity/runtime/projection';
 import { SecretStorageKeyHolder } from './secret-storage-key-holder';
+import { desktopBridgeFixture } from '@trinity/testing';
 
 // A controllable fake sync store (the real IndexedDBStore needs a browser IDB).
 const storeMock = vi.hoisted(() => ({ startup: vi.fn(), destroy: vi.fn() }));
@@ -1078,9 +1079,12 @@ describe('MatrixClientService', () => {
     // change; the whole set is REPLACED each time so a signed-out account is revoked.
     it('publishes the live homeserver origins whenever the account set changes', async () => {
       const setAllowedOrigins = vi.fn();
-      (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
-        cors: { setAllowedOrigins, allowOrigin: vi.fn() },
-      };
+      (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+        desktopBridgeFixture({
+          capabilities: {
+            networkCors: { setAllowedOrigins, allowOrigin: vi.fn() },
+          },
+        });
       try {
         vi.mocked(createClient).mockReturnValueOnce(
           fakeClient('https://hs.example') as never,
@@ -1117,9 +1121,10 @@ describe('MatrixClientService', () => {
       const order: string[] = [];
       const allowOrigin = vi.fn(() => order.push('allowOrigin'));
       const setAllowedOrigins = vi.fn(() => order.push('setAllowedOrigins'));
-      (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
-        cors: { setAllowedOrigins, allowOrigin },
-      };
+      (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+        desktopBridgeFixture({
+          capabilities: { networkCors: { setAllowedOrigins, allowOrigin } },
+        });
       try {
         const client = fakeClient();
         client.startClient.mockImplementation(() => {

@@ -15,8 +15,9 @@ import {
   WorkspaceBackService,
   type WorkspaceSurface,
 } from '@trinity/application/workspace';
-import { render } from '@trinity/testing';
+import { desktopBridgeFixture, render } from '@trinity/testing';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import { provideHostCapabilities } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of } from 'rxjs';
 import {
@@ -76,6 +77,7 @@ vi.mock('@capacitor/core', () => ({
 // (The host also injects TrnDialogService, but that's providedIn root and never
 // opens a dialog here — active() stays null — so the real one is fine unprovided.)
 const hostProviders = [
+  provideHostCapabilities(),
   MockProvider(MatrixClientService, { syncState: signal(null) }),
   MockProvider(VerificationService, { active: signal(null) }),
 ];
@@ -191,13 +193,17 @@ describe('AppComponent', () => {
 
     it('registers the Electron deep-link bridge and routes its URLs', async () => {
       let captured: ((url: string) => void) | undefined;
-      (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
-        isElectron: true,
-        onDeepLink: (cb: (url: string) => void) => {
-          captured = cb;
-          return () => undefined;
-        },
-      };
+      (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+        desktopBridgeFixture({
+          capabilities: {
+            deepLinks: {
+              subscribe: (cb: (url: string) => void) => {
+                captured = cb;
+                return () => undefined;
+              },
+            },
+          },
+        });
       try {
         const { cmp, navigate } = await create();
         cmp.ngOnInit();

@@ -13,6 +13,9 @@ import { Share } from '@capacitor/share';
  */
 @Injectable({ providedIn: 'root' })
 export class FileSaveService {
+  /** Whether the host supports a direct browser-style download affordance. */
+  readonly directDownloadAvailable = !Capacitor.isNativePlatform();
+
   /** True when native save/share (Filesystem + Share) should be used. */
   readonly nativeAvailable =
     Capacitor.isNativePlatform() &&

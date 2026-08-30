@@ -59,6 +59,7 @@ import {
   ThemeService,
   TrinityErrorHandler,
   isElectronRenderer,
+  provideHostCapabilities,
   providePlatformConfigEntries,
 } from '@trinity/platform-native';
 import {
@@ -89,6 +90,7 @@ bootstrapApplication(AppComponent, {
     // event handlers write signals, which schedule change detection directly. See
     // docs/architecture/state-and-reactivity.md.
     provideZonelessChangeDetection(),
+    provideHostCapabilities(),
     {
       provide: CONVERSATION_MESSAGE_POLICY,
       useFactory: (): ConversationMessagePolicy => {

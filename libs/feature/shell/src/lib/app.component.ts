@@ -15,16 +15,11 @@ import {
   Router,
   RouterOutlet,
 } from '@angular/router';
-import { App, type URLOpenListenerEvent } from '@capacitor/app';
-import { Browser } from '@capacitor/browser';
-import { Capacitor } from '@capacitor/core';
 import { SwUpdate, type VersionReadyEvent } from '@angular/service-worker';
 import { filter, fromEvent, map, take } from 'rxjs';
 import { WorkspaceBackService } from '@trinity/application/workspace';
-import {
-  NativeNavigationService,
-  getTrinityDesktopBridge,
-} from '@trinity/platform-native';
+import { NativeNavigationService } from '@trinity/platform-native';
+import { HostBackService, HostDeepLinksService } from '@trinity/runtime/host';
 import {
   TrnDialogService,
   TrnToasterComponent,
@@ -53,6 +48,8 @@ export class AppComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
   private readonly workspaceBack = inject(WorkspaceBackService);
   private readonly nativeNavigation = inject(NativeNavigationService);
+  private readonly hostDeepLinks = inject(HostDeepLinksService);
+  private readonly hostBack = inject(HostBackService);
 
   /** Dialogs outrank panels, but either one must keep native history underneath it. */
   private readonly navigationInterceptionActive = computed(
@@ -111,19 +108,9 @@ export class AppComponent implements OnInit {
       this.watchForUpdates();
     }
 
-    // Electron desktop: the main process forwards `eu.qwky.trinity://` deep links
-    // (e.g. the SSO callback) over the preload bridge — there's no Capacitor App
-    // plugin in the hand-rolled shell.
-    const desktop = getTrinityDesktopBridge();
-    if (desktop?.onDeepLink) {
-      desktop.onDeepLink((url) => this.handleDeepLink(url));
-    }
-
-    // Native deep links arrive via Capacitor App; the web SSO flow uses the
-    // /sso-callback route directly. Listen for warm opens + a cold-start URL.
-    if (!Capacitor.isNativePlatform()) {
-      return;
-    }
+    this.hostDeepLinks.received
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(({ url }) => this.handleDeepLink(url));
     // Android hardware back button. IonRouterOutlet used to intercept this at a
     // higher priority to pop overlays/routes, leaving the lowest-priority handler to
     // only background the app at the root. With a plain Angular router-outlet we own
@@ -140,44 +127,41 @@ export class AppComponent implements OnInit {
     // always consumes the press, whether or not it was dismissible; that is what Android
     // does for a modal, and it is why the flow-critical encryption dialogs can set
     // `disableClose` and have it mean something.
-    void App.addListener('backButton', ({ canGoBack }) => {
-      if (
-        this.dialog.hasOpen() &&
-        !this.workspaceBack.activeOwnsTopmostOverlay()
-      ) {
-        this.dialog.closeTopmost();
-        return;
-      }
-      // Workspace owns semantic ordering after UI-local overlays: application surface,
-      // Room surface, then compact Conversation. The host owns this subscription so the
-      // cold dismissal command cannot outlive the application shell.
-      if (this.workspaceBack.hasActive()) {
-        this.workspaceBack
-          .back()
+    this.hostBack.intents
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(({ canGoBack }) => {
+        if (
+          this.dialog.hasOpen() &&
+          !this.workspaceBack.activeOwnsTopmostOverlay()
+        ) {
+          this.dialog.closeTopmost();
+          return;
+        }
+        // Workspace owns semantic ordering after UI-local overlays: application surface,
+        // Room surface, then compact Conversation. The host owns this subscription so the
+        // cold dismissal command cannot outlive the application shell.
+        if (this.workspaceBack.hasActive()) {
+          this.workspaceBack
+            .back()
+            .pipe(take(1), takeUntilDestroyed(this.destroyRef))
+            .subscribe();
+          return;
+        }
+        // A semantic dialog can be between opening and Workspace registration for one
+        // synchronous turn. It still consumes Back rather than navigating underneath it.
+        if (this.dialog.hasOpen()) {
+          this.dialog.closeTopmost();
+          return;
+        }
+        if (canGoBack) {
+          this.location.back();
+          return;
+        }
+        this.hostBack
+          .background()
           .pipe(take(1), takeUntilDestroyed(this.destroyRef))
           .subscribe();
-        return;
-      }
-      // A semantic dialog can be between opening and Workspace registration for one
-      // synchronous turn. It still consumes Back rather than navigating underneath it.
-      if (this.dialog.hasOpen()) {
-        this.dialog.closeTopmost();
-        return;
-      }
-      if (canGoBack) {
-        this.location.back();
-        return;
-      }
-      void App.minimizeApp();
-    });
-    void App.addListener('appUrlOpen', (event: URLOpenListenerEvent) =>
-      this.handleDeepLink(event.url),
-    );
-    void App.getLaunchUrl().then((launch) => {
-      if (launch?.url) {
-        this.handleDeepLink(launch.url);
-      }
-    });
+      });
   }
 
   /**
@@ -250,7 +234,10 @@ export class AppComponent implements OnInit {
       return;
     }
     // Dismiss the system browser opened for auth, then hand off to the callback.
-    void Browser.close().catch(() => undefined);
+    this.hostDeepLinks
+      .closeAuthentication()
+      .pipe(take(1), takeUntilDestroyed(this.destroyRef))
+      .subscribe();
     const queryParams: Record<string, string> = {};
     for (const key of CALLBACK_PARAMS) {
       const value = params.get(key);

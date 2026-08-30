@@ -21,8 +21,8 @@ import {
   type AccountEstablishmentOutcome,
 } from '@trinity/data-access/accounts';
 import {
+  HostNetworkPolicyService,
   SessionStorageService,
-  getTrinityDesktopBridge,
 } from '@trinity/platform-native';
 import {
   UiaCancelledError,
@@ -68,6 +68,7 @@ export class AuthService {
   private readonly storage = inject(SessionStorageService);
   private readonly oidc = inject(OidcClientService);
   private readonly accounts = inject(AccountRuntimeService);
+  private readonly hostNetworkPolicy = inject(HostNetworkPolicyService);
 
   /**
    * Resolve a homeserver base URL from a user-entered domain (e.g. "matrix.org"
@@ -158,7 +159,7 @@ export class AuthService {
    * electron/src/cors.ts). A no-op off desktop, where the bridge is absent.
    */
   private allowCorsOrigin(origin: string): void {
-    getTrinityDesktopBridge()?.cors?.allowOrigin(origin);
+    this.hostNetworkPolicy.allowOrigin(origin);
   }
 
   /** Build the SSO redirect URL the browser/WebView should navigate to. */

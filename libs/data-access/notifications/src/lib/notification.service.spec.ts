@@ -3,13 +3,22 @@ import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { MatrixEventEvent, RoomEvent, type MatrixClient } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
-import { of } from 'rxjs';
+import { EMPTY, Subject, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationService } from './notification.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
-import { SessionStorageService } from '@trinity/platform-native';
+import {
+  SessionStorageService,
+  provideHostCapabilities,
+} from '@trinity/platform-native';
 import { encodeRoomSegment } from '@trinity/util/matrix';
+import {
+  HOST_OPERATIONS,
+  HostNotificationPresentationService,
+  type HostCapabilitySupport,
+} from '@trinity/runtime/host';
+import { desktopBridgeFixture } from '@trinity/testing';
 
 const cap = vi.hoisted(() => ({ native: false }));
 vi.mock('@capacitor/core', () => ({
@@ -56,6 +65,10 @@ function setup(
     soundEnabled?: boolean;
     /** Pre-built per-account clients, for cases where two accounts must differ. */
     clients?: Map<string, ReturnType<typeof fakeClient>>;
+    hostNotifications?: Pick<
+      HostNotificationPresentationService,
+      'support' | 'activated' | 'requestPermission' | 'present'
+    >;
   } = {},
 ) {
   const accounts = opts.accounts ?? ['@me:hs'];
@@ -70,6 +83,7 @@ function setup(
   const timeline = { openRoomId: null as string | null };
   TestBed.configureTestingModule({
     providers: [
+      provideHostCapabilities(),
       NotificationService,
       MockProvider(MatrixClientService, {
         isInitialized: true,
@@ -97,6 +111,14 @@ function setup(
         },
       },
       MockProvider(SessionStorageService, { setActive: storageSetActive }),
+      ...(opts.hostNotifications
+        ? [
+            {
+              provide: HostNotificationPresentationService,
+              useValue: opts.hostNotifications,
+            },
+          ]
+        : []),
     ],
   });
   return {
@@ -121,23 +143,38 @@ function setup(
 function desktopBridge() {
   let clickHandler: ((roomId: string, userId?: string) => void) | undefined;
   const unsubscribe = vi.fn();
-  const bridge = {
-    isElectron: true,
+  const present = vi.fn();
+  const subscribeClicks = vi.fn(
+    (cb: (roomId: string, userId?: string) => void) => {
+      clickHandler = cb;
+      return unsubscribe;
+    },
+  );
+  const bridge = desktopBridgeFixture({
     platform: 'darwin',
-    showNotification: vi.fn(),
-    onNotificationClick: vi.fn(
-      (cb: (roomId: string, userId?: string) => void) => {
-        clickHandler = cb;
-        return unsubscribe;
-      },
-    ),
-  };
+    negotiate: vi.fn(async () => ({
+      kind: 'accepted',
+      protocolVersion: 1,
+      operations: Object.fromEntries(
+        HOST_OPERATIONS.map((operation) => [operation, { kind: 'supported' }]),
+      ),
+    })),
+    capabilities: {
+      notificationPresentation: { present, subscribeClicks },
+    },
+  });
   return {
     bridge,
     unsubscribe,
     emitClick: (roomId: string, userId?: string): void =>
       clickHandler?.(roomId, userId),
   };
+}
+
+async function settleDesktopNegotiation(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
 }
 
 function event(
@@ -401,6 +438,28 @@ describe('NotificationService', () => {
       MatrixEventEvent.Decrypted,
       expect.any(Function),
     );
+  });
+
+  it('cancels pending support negotiation so a late result cannot reconnect', () => {
+    const support = new Subject<HostCapabilitySupport>();
+    const requestPermission = vi.fn(() => of({ kind: 'completed' } as const));
+    const { svc, client } = setup({
+      hostNotifications: {
+        support: () => support,
+        activated: EMPTY,
+        requestPermission,
+        present: () => of({ kind: 'completed' } as const),
+      },
+    });
+
+    svc.connect();
+    expect(client.on).not.toHaveBeenCalled();
+    svc.disconnect();
+    support.next({ kind: 'supported' });
+
+    expect(support.observed).toBe(false);
+    expect(client.on).not.toHaveBeenCalled();
+    expect(requestPermission).not.toHaveBeenCalled();
   });
 
   describe('E2EE (decryption-aware)', () => {
@@ -697,6 +756,7 @@ describe('NotificationService', () => {
 
       timelineHandler(client)(event(), room, false, false, live);
       await Promise.resolve(); // let navigator.serviceWorker.ready resolve
+      await Promise.resolve(); // let the adapter's finite presentation command emit
 
       expect(showNotification).toHaveBeenCalledWith('Alice · General', {
         body: 'hello there',
@@ -745,20 +805,27 @@ describe('NotificationService', () => {
       vi.stubGlobal('trinityDesktop', harness.bridge);
     });
 
-    it('routes notifications through the main process, not the Web API', () => {
+    it('routes notifications through the main process, not the Web API', async () => {
       // Electron auto-grants Web permission and never prompts; the bridge path
       // must work regardless of the renderer Web permission state.
       MockNotification.permission = 'default';
       const { svc, client } = setup();
       svc.connect();
+      await settleDesktopNegotiation();
 
       expect(MockNotification.requestPermission).not.toHaveBeenCalled();
-      expect(harness.bridge.onNotificationClick).toHaveBeenCalledTimes(1);
+      expect(
+        harness.bridge.capabilities.notificationPresentation.subscribeClicks,
+      ).toHaveBeenCalledTimes(1);
 
       timelineHandler(client)(event(), room, false, false, live);
 
-      expect(harness.bridge.showNotification).toHaveBeenCalledTimes(1);
-      expect(harness.bridge.showNotification).toHaveBeenCalledWith({
+      expect(
+        harness.bridge.capabilities.notificationPresentation.present,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        harness.bridge.capabilities.notificationPresentation.present,
+      ).toHaveBeenCalledWith({
         title: 'Alice · General',
         body: 'hello there',
         tag: '@me:hs !r:hs',
@@ -771,20 +838,24 @@ describe('NotificationService', () => {
       expect(MockNotification.instances).toHaveLength(0);
     });
 
-    it('notifies even when the Web Notification permission is not granted', () => {
+    it('notifies even when the Web Notification permission is not granted', async () => {
       MockNotification.permission = 'denied';
       const { svc, client } = setup();
       svc.connect();
+      await settleDesktopNegotiation();
 
       timelineHandler(client)(event(), room, false, false, live);
 
-      expect(harness.bridge.showNotification).toHaveBeenCalledTimes(1);
+      expect(
+        harness.bridge.capabilities.notificationPresentation.present,
+      ).toHaveBeenCalledTimes(1);
       expect(MockNotification.instances).toHaveLength(0);
     });
 
-    it('still honors gating (own messages / focus / push rules)', () => {
+    it('still honors gating (own messages / focus / push rules)', async () => {
       const { svc, client } = setup();
       svc.connect();
+      await settleDesktopNegotiation();
 
       timelineHandler(client)(
         event({ sender: '@me:hs' }),
@@ -794,15 +865,18 @@ describe('NotificationService', () => {
         live,
       );
 
-      expect(harness.bridge.showNotification).not.toHaveBeenCalled();
+      expect(
+        harness.bridge.capabilities.notificationPresentation.present,
+      ).not.toHaveBeenCalled();
     });
 
-    it('routes to the room when a forwarded click arrives', () => {
+    it('routes to the room when a forwarded click arrives', async () => {
       const { svc, router } = setup();
       const focus = vi
         .spyOn(window, 'focus')
         .mockImplementation(() => undefined);
       svc.connect();
+      await settleDesktopNegotiation();
 
       harness.emitClick('!r:hs');
 
@@ -813,13 +887,14 @@ describe('NotificationService', () => {
       ]);
     });
 
-    it('switches accounts when a forwarded click carries a userId', () => {
+    it('switches accounts when a forwarded click carries a userId', async () => {
       const { svc, setActive, storageSetActive } = setup({
         accounts: ['@me:hs', '@bg:hs'],
         active: '@me:hs',
       });
       vi.spyOn(window, 'focus').mockImplementation(() => undefined);
       svc.connect();
+      await settleDesktopNegotiation();
 
       harness.emitClick('!r:hs', '@bg:hs');
 
@@ -827,9 +902,10 @@ describe('NotificationService', () => {
       expect(storageSetActive).toHaveBeenCalledWith('@bg:hs');
     });
 
-    it('unsubscribes from main-process clicks on disconnect', () => {
+    it('unsubscribes from main-process clicks on disconnect', async () => {
       const { svc } = setup();
       svc.connect();
+      await settleDesktopNegotiation();
 
       svc.disconnect();
 

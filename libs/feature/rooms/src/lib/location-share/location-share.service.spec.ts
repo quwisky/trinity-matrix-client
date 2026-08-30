@@ -7,17 +7,10 @@ import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { GeolocationService } from '@trinity/platform-native';
 import { LocationShareService } from './location-share.service';
 
-interface Bridge {
-  isElectron?: boolean;
-}
-
-function setBridge(bridge: Bridge | undefined): void {
-  (globalThis as { trinityDesktop?: Bridge }).trinityDesktop = bridge;
-}
-
 function setup(
   over: {
     current?: Mock;
+    supportsPrecise?: boolean;
     sendLocation?: Mock;
     openAndWait?: Mock;
   } = {},
@@ -30,7 +23,10 @@ function setup(
   TestBed.configureTestingModule({
     providers: [
       LocationShareService,
-      MockProvider(GeolocationService, { current }),
+      MockProvider(GeolocationService, {
+        current,
+        supportsPrecise: () => over.supportsPrecise ?? true,
+      }),
       MockProvider(TimelineActionsService, { sendLocation }),
       MockProvider(TrnDialogService, { openAndWait }),
       MockProvider(TrnToastService, { show: toastShow }),
@@ -47,7 +43,7 @@ function setup(
 
 describe('LocationShareService', () => {
   afterEach(() => {
-    delete (globalThis as { trinityDesktop?: Bridge }).trinityDesktop;
+    delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
     TestBed.resetTestingModule();
   });
 
@@ -94,8 +90,9 @@ describe('LocationShareService', () => {
 
   describe('desktop (manual dialog)', () => {
     it('opens the manual dialog instead of device geolocation', async () => {
-      setBridge({ isElectron: true });
-      const { svc, current, openAndWait, sendLocation } = setup();
+      const { svc, current, openAndWait, sendLocation } = setup({
+        supportsPrecise: false,
+      });
 
       svc.share();
       await Promise.resolve();
@@ -106,9 +103,11 @@ describe('LocationShareService', () => {
     });
 
     it('sends nothing when the dialog is dismissed', async () => {
-      setBridge({ isElectron: true });
       const openAndWait = vi.fn(() => Promise.resolve(null));
-      const { svc, sendLocation } = setup({ openAndWait });
+      const { svc, sendLocation } = setup({
+        openAndWait,
+        supportsPrecise: false,
+      });
 
       svc.share();
       await Promise.resolve();

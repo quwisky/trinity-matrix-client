@@ -1,0 +1,9 @@
+{
+  "name": "runtime-host",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/runtime/host/src",
+  "prefix": "trn",
+  "projectType": "library",
+  "tags": ["type:platform", "scope:shared", "role:kernel", "capability:host"],
+  "targets": { "test": {}, "typecheck": {} }
+}

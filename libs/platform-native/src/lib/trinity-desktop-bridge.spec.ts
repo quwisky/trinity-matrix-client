@@ -1,18 +1,23 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { desktopBridgeFixture } from '@trinity/testing';
 import {
   getTrinityDesktopBridge,
   isElectronRenderer,
   type TrinityDesktopBridge,
 } from './trinity-desktop-bridge';
 
-type BridgeHost = { trinityDesktop?: TrinityDesktopBridge };
+type BridgeHost = { trinityDesktop?: unknown };
 
-function setBridge(bridge: TrinityDesktopBridge | undefined): void {
+function setBridge(bridge: unknown): void {
   if (bridge === undefined) {
     delete (globalThis as BridgeHost).trinityDesktop;
     return;
   }
   (globalThis as BridgeHost).trinityDesktop = bridge;
+}
+
+function bridgeFixture(): TrinityDesktopBridge {
+  return desktopBridgeFixture();
 }
 
 /** jsdom's navigator.userAgent is read-only, so swap the whole descriptor. */
@@ -40,13 +45,20 @@ describe('getTrinityDesktopBridge', () => {
   });
 
   it('hands back the preload-installed bridge', () => {
-    const bridge: TrinityDesktopBridge = {
-      isElectron: true,
-      platform: 'linux',
-    };
+    const bridge = bridgeFixture();
     setBridge(bridge);
 
     expect(getTrinityDesktopBridge()).toBe(bridge);
+  });
+
+  it('rejects a protocol marker with any required capability missing', () => {
+    const bridge = bridgeFixture();
+    setBridge({
+      ...bridge,
+      capabilities: { ...bridge.capabilities, notificationPresentation: {} },
+    });
+
+    expect(getTrinityDesktopBridge()).toBeUndefined();
   });
 });
 
@@ -67,7 +79,7 @@ describe('isElectronRenderer', () => {
 
   it('is true from the preload marker', () => {
     restoreUserAgent = setUserAgent('Mozilla/5.0 (X11; Linux x86_64) Chrome/1');
-    setBridge({ isElectron: true });
+    setBridge(bridgeFixture());
 
     expect(isElectronRenderer()).toBe(true);
   });
@@ -84,10 +96,18 @@ describe('isElectronRenderer', () => {
   });
 
   it('is false when a bridge exists but does not claim Electron', () => {
-    // Every member of the bridge is optional, so presence alone must not be the signal.
+    // Presence alone is not the signal: the entire protocol-v1 bridge is validated.
     restoreUserAgent = setUserAgent('Mozilla/5.0 (X11; Linux x86_64) Chrome/1');
     setBridge({ platform: 'darwin' });
 
+    expect(isElectronRenderer()).toBe(false);
+  });
+
+  it('rejects a partial protocol-v1 bridge', () => {
+    restoreUserAgent = setUserAgent('Mozilla/5.0 Chrome/1');
+    setBridge({ protocolVersion: 1, isElectron: true, platform: 'linux' });
+
+    expect(getTrinityDesktopBridge()).toBeUndefined();
     expect(isElectronRenderer()).toBe(false);
   });
 });

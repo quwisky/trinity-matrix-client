@@ -11,7 +11,6 @@ import {
   type Type,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Capacitor } from '@capacitor/core';
 import { TrnButton } from '@trinity/components/button';
 import { TrnLabel } from '@trinity/components/label';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
@@ -19,6 +18,7 @@ import { TrnTextarea } from '@trinity/components/textarea';
 import {
   AppConfigService,
   CONFIG_EXCLUSION_NOTES,
+  FileSaveService,
   describeConfigChange,
   type ConfigApplyPlan,
 } from '@trinity/platform-native';
@@ -116,6 +116,7 @@ export class AdvancedSettingsComponent {
   private readonly toast = inject(TrnToastService);
   private readonly document = inject(DOCUMENT);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly files = inject(FileSaveService);
 
   /**
    * The rich editor, where this platform offers one and the app wired it up. Optional in the
@@ -150,7 +151,7 @@ export class AdvancedSettingsComponent {
    * Electron shell as non-native, which is correct here: it downloads like a browser.
    * Importing is offered everywhere: picking a file works in a WebView, saving one does not.
    */
-  readonly canExportFile = !Capacitor.isNativePlatform();
+  readonly canExportFile = this.files.directDownloadAvailable;
 
   /**
    * Whether this platform offers editing at all — web and desktop, not the mobile app. See

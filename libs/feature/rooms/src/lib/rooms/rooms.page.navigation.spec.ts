@@ -58,6 +58,7 @@ import { RoomsPage } from './rooms.page';
 import { type RightPanel } from './room-shell-store';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
+import { desktopBridgeFixture } from '@trinity/testing';
 
 // The open room is the URL now, and the route the store reads outlives any one TestBed —
 // it is one stream in the harness, shared by every block in this file. Without this reset a
@@ -1187,9 +1188,8 @@ describe('RoomsPage keyboard room switching', () => {
 
   it('jumps to the Nth most-recent room with Ctrl/Cmd+1…9 on the desktop shell', async () => {
     // The marker must be present before the page reads it at construction.
-    (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
-      isElectron: true,
-    };
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+      desktopBridgeFixture();
     const shell = build();
     await visitABC(shell); // MRU [c, b, a], in c
 
@@ -1201,9 +1201,8 @@ describe('RoomsPage keyboard room switching', () => {
   });
 
   it('hops with Ctrl+Tab on the desktop shell', async () => {
-    (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
-      isElectron: true,
-    };
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+      desktopBridgeFixture();
     const shell = build();
     await visitABC(shell); // in c
 
@@ -1216,9 +1215,8 @@ describe('RoomsPage keyboard room switching', () => {
   // account in scope still holds — unlike hop, nth() filters against nothing. Opening it
   // would tear the timeline down and leave a blank chat pane, so it must decline.
   it('ignores a numbered jump to a room the list no longer knows', async () => {
-    (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
-      isElectron: true,
-    };
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+      desktopBridgeFixture();
     const shell = build();
     await visitABC(shell); // MRU [c, b, a], in c
     // '!b:hs' leaves the scope (its account was unticked, or signed out).
@@ -1232,9 +1230,8 @@ describe('RoomsPage keyboard room switching', () => {
   });
 
   it('still jumps to a room that is in scope', async () => {
-    (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
-      isElectron: true,
-    };
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+      desktopBridgeFixture();
     const shell = build();
     await visitABC(shell);
 
