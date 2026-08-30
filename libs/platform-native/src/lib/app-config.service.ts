@@ -1,14 +1,23 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, defer, from, map } from 'rxjs';
+import {
+  Observable,
+  concatMap,
+  defer,
+  from,
+  isObservable,
+  map,
+  of,
+  toArray,
+} from 'rxjs';
 import {
   planConfigApply,
   type AcceptedConfigPlan,
   type ConfigApplyPlan,
-  type ConfigChange,
 } from './config-plan';
 import {
   APP_CONFIG_ENTRIES,
   CONFIG_EXPORT_VERSION,
+  type ConfigAction,
   type ConfigDocument,
   type ConfigEntry,
   type ConfigSettings,
@@ -144,19 +153,17 @@ export class AppConfigService {
    * Cold, like every other one-shot action here: nothing happens until it is subscribed.
    */
   apply(plan: AcceptedConfigPlan): Observable<void> {
-    return defer(() => from(this.writeAll(plan.changes))).pipe(
-      map(() => undefined),
-    );
-  }
-
-  private async writeAll(changes: readonly ConfigChange[]): Promise<void> {
-    const byPath = new Map(this.entries.map((entry) => [entry.path, entry]));
-    for (const change of changes) {
-      const entry = byPath.get(change.path);
-      if (entry) {
-        await entry.write(change.to);
-      }
-    }
+    return defer(() => {
+      const byPath = new Map(this.entries.map((entry) => [entry.path, entry]));
+      return from(plan.changes).pipe(
+        concatMap((change) => {
+          const entry = byPath.get(change.path);
+          return entry ? runConfigAction(() => entry.write(change.to)) : of();
+        }),
+        toArray(),
+        map(() => undefined),
+      );
+    });
   }
 
   /**
@@ -168,11 +175,57 @@ export class AppConfigService {
    */
   resetToDefaults(): Observable<void> {
     return defer(() =>
-      from(
-        Promise.all(this.entries.map(async (entry) => await entry.reset())),
-      ).pipe(map(() => undefined)),
+      from(this.entries).pipe(
+        concatMap((entry) => runConfigAction(() => entry.reset())),
+        toArray(),
+        map(() => undefined),
+      ),
     );
   }
+}
+
+function runConfigAction(action: () => ConfigAction): Observable<void> {
+  const result = action();
+  const completion = isObservable(result)
+    ? result
+    : isPromiseResult(result)
+      ? from(result)
+      : of(result);
+  return completion.pipe(
+    map((outcome) => {
+      assertConfigActionCompleted(outcome);
+      return undefined;
+    }),
+  );
+}
+
+function isPromiseResult(result: ConfigAction): result is Promise<void> {
+  return (
+    typeof result === 'object' &&
+    result !== null &&
+    'then' in result &&
+    typeof result.then === 'function'
+  );
+}
+
+function assertConfigActionCompleted(outcome: unknown): void {
+  if (
+    typeof outcome !== 'object' ||
+    outcome === null ||
+    !('kind' in outcome) ||
+    outcome.kind === 'completed'
+  ) {
+    return;
+  }
+  const diagnostic =
+    'diagnostic' in outcome &&
+    typeof outcome.diagnostic === 'object' &&
+    outcome.diagnostic !== null &&
+    'code' in outcome.diagnostic &&
+    typeof outcome.diagnostic.code === 'string'
+      ? outcome.diagnostic.code
+      : 'config-action-failed';
+  throw new Error(`Config action failed (${diagnostic}).`);
 }
 
 /** One flat list from the per-library contributions, sorted by path. */

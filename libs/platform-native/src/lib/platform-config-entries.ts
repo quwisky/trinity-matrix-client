@@ -36,12 +36,7 @@ import {
   DEFAULT_VIRTUAL_TIMELINE,
   FeatureFlagsService,
 } from './feature-flags.service';
-import {
-  DEFAULT_LINK_PREVIEWS,
-  DEFAULT_LINK_PREVIEWS_IN_ENCRYPTED,
-  DEFAULT_SEND_READ_RECEIPTS,
-  PrivacySettingsService,
-} from './privacy-settings.service';
+import { PrivacySettingsService } from './privacy-settings.service';
 import { KeyboardShortcutsService } from './shortcuts/keyboard-shortcuts.service';
 import { shortcutOverridesEntry } from './shortcuts/shortcut-overrides-config';
 import {
@@ -225,7 +220,7 @@ function privacyEntries(
       key: 'trinity.privacy.send-read-receipts',
       description: 'Whether reading a message tells the room that you read it.',
       read: () => privacy.sendReadReceipts(),
-      reset: () => privacy.setSendReadReceipts(DEFAULT_SEND_READ_RECEIPTS),
+      reset: () => privacy.resetSendReadReceipts(),
       ...flagSetting((on) => privacy.setSendReadReceipts(on)),
     },
     {
@@ -234,7 +229,7 @@ function privacyEntries(
       description:
         'Whether links in messages are expanded into previews fetched by your homeserver.',
       read: () => privacy.linkPreviews(),
-      reset: () => privacy.setLinkPreviews(DEFAULT_LINK_PREVIEWS),
+      reset: () => privacy.resetLinkPreviews(),
       ...flagSetting((on) => privacy.setLinkPreviews(on)),
     },
     {
@@ -243,8 +238,7 @@ function privacyEntries(
       description:
         'Whether link previews are fetched in encrypted rooms too, where asking for one tells your homeserver a link was sent.',
       read: () => privacy.linkPreviewsInEncrypted(),
-      reset: () =>
-        privacy.setLinkPreviewsInEncrypted(DEFAULT_LINK_PREVIEWS_IN_ENCRYPTED),
+      reset: () => privacy.resetLinkPreviewsInEncrypted(),
       ...flagSetting((on) => privacy.setLinkPreviewsInEncrypted(on)),
     },
   ];

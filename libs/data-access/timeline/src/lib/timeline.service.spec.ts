@@ -36,6 +36,10 @@ import {
   systemLinesProvider,
 } from './timeline.spec-harness';
 
+beforeEach(() => {
+  TestBed.configureTestingModule({ providers: [privacyProvider(true)] });
+});
+
 describe('TimelineService', () => {
   beforeEach(() => {
     // Viewing a room = the window is focused (the normal case). markRead only acks

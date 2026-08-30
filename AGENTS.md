@@ -156,8 +156,13 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   Back, file export, notification presentation, location, badges, secure storage, lifecycle, and
   updates. Product commands are cold finite Observables; Web, Capacitor, and Electron selection
   stays in the composition adapter.
+- `@trinity/runtime/preferences` `[type:platform]`, `[role:kernel]` — Preferences Store: a
+  policy-free typed descriptor catalog and context-keyed signal store. Capabilities own defaults,
+  validation, migration, sensitivity, editor metadata, and explicit installation, Account,
+  Conversation, or server-authoritative scope. Hydration and updates are cold finite Observables;
+  adapters enforce storage/export policy and diagnostics never expose values.
 - `@trinity/platform-native` `[type:platform]` — Capacitor/native capabilities (session/secure storage,
-  preferences, theme/status-bar, launcher badge, external browser, desktop bridge, error handler). Branches on
+  the device-preference adapter, theme/status-bar, launcher badge, external browser, desktop bridge, error handler). Branches on
   `isNativePlatform()` internally. May depend only on `util`.
 - `@trinity/data-access/accounts` `[type:data-access]` — Account Runtime: read-only lifecycle state plus
   cold, finite restoration, authenticated-establishment, atomic switch, explicit Account sign-out,
@@ -175,8 +180,9 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   timeline→media).
 - `@trinity/data-access/timeline` owns `ConversationRuntime` and Message Presentation: immutable
   Account-and-Room handles with one timeline child each, a two-entry per-Account retained LRU,
-  permanent retirement, and a stable focused-timeline interface. Normalize SDK events first, then
-  expose immutable `MessageView` models from this public entrypoint.
+  permanent retirement, a stable focused-timeline interface, and the Conversations privacy
+  preference descriptors. Normalize SDK events first, then expose immutable `MessageView` models
+  from this public entrypoint.
 - `@trinity/feature/*` `[type:feature]` — screens/pages incl. `feature-shell` (the app shell moved out of
   `apps/trinity`). May depend on `data-access-*` + `ui` + `util` + `platform`, **never another feature**.
 - `@trinity/components/*` (`libs/components/*`) `[type:ui]`, tagged `ui:public` — the **public

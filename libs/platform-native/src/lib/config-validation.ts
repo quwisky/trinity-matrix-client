@@ -1,4 +1,4 @@
-import type { ConfigEntry } from './config-schema';
+import type { ConfigAction, ConfigEntry } from './config-schema';
 
 /**
  * The building blocks every {@link ConfigEntry} validator is made of.
@@ -72,7 +72,7 @@ export function choiceSetting<T extends string>(spec: {
   readonly isValid: (value: string) => value is T;
   readonly options: readonly string[];
   readonly noun: string;
-  readonly set: (value: T) => void;
+  readonly set: (value: T) => ConfigAction;
 }): Pick<ConfigEntry, 'validate' | 'write' | 'type' | 'choices'> {
   const accepts = (value: unknown): value is T =>
     typeof value === 'string' && spec.isValid(value);
@@ -91,15 +91,16 @@ export function choiceSetting<T extends string>(spec: {
     // path that actually moves the app.
     write: (value) => {
       if (accepts(value)) {
-        spec.set(value);
+        return spec.set(value);
       }
+      return undefined;
     },
   };
 }
 
 /** A setting that is on or off. Strict about the type: `'true'` is not `true`. */
 export function flagSetting(
-  set: (on: boolean) => void,
+  set: (on: boolean) => ConfigAction,
 ): Pick<ConfigEntry, 'validate' | 'write' | 'type'> {
   return {
     type: 'boolean',
@@ -112,8 +113,9 @@ export function flagSetting(
           },
     write: (value) => {
       if (typeof value === 'boolean') {
-        set(value);
+        return set(value);
       }
+      return undefined;
     },
   };
 }
@@ -135,7 +137,7 @@ export function boundedNumberSetting(spec: {
   min: number;
   max: number;
   noun: string;
-  set: (value: number) => void;
+  set: (value: number) => ConfigAction;
 }): Pick<ConfigEntry, 'validate' | 'write' | 'type'> {
   const clamp = (value: number): number =>
     Math.min(spec.max, Math.max(spec.min, Math.round(value)));
@@ -150,8 +152,9 @@ export function boundedNumberSetting(spec: {
           },
     write: (value) => {
       if (typeof value === 'number' && Number.isFinite(value)) {
-        spec.set(clamp(value));
+        return spec.set(clamp(value));
       }
+      return undefined;
     },
   };
 }
@@ -162,7 +165,7 @@ export function boundedNumberSetting(spec: {
  */
 export function textSetting(spec: {
   readonly maxLength: number;
-  readonly set: (value: string) => void;
+  readonly set: (value: string) => ConfigAction;
 }): Pick<ConfigEntry, 'validate' | 'write' | 'type'> {
   return {
     type: 'string',
@@ -184,8 +187,9 @@ export function textSetting(spec: {
     },
     write: (value) => {
       if (typeof value === 'string') {
-        spec.set(value.trim());
+        return spec.set(value.trim());
       }
+      return undefined;
     },
   };
 }

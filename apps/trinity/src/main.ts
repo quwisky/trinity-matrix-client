@@ -34,8 +34,10 @@ import {
 import {
   CONVERSATION_MESSAGE_POLICY,
   CONVERSATION_PIN_POLICY,
+  CONVERSATION_PRIVACY_PREFERENCES,
   type ConversationMessagePolicy,
   type ConversationPinPolicy,
+  provideConversationPrivacyPreferences,
 } from '@trinity/data-access/timeline';
 import {
   AppBadgeService,
@@ -60,6 +62,8 @@ import {
   TrinityErrorHandler,
   isElectronRenderer,
   provideHostCapabilities,
+  provideCapacitorPreferenceStorage,
+  providePrivacyPreferenceSet,
   providePlatformConfigEntries,
 } from '@trinity/platform-native';
 import {
@@ -91,6 +95,9 @@ bootstrapApplication(AppComponent, {
     // docs/architecture/state-and-reactivity.md.
     provideZonelessChangeDetection(),
     provideHostCapabilities(),
+    provideCapacitorPreferenceStorage(),
+    provideConversationPrivacyPreferences(),
+    providePrivacyPreferenceSet(CONVERSATION_PRIVACY_PREFERENCES),
     {
       provide: CONVERSATION_MESSAGE_POLICY,
       useFactory: (): ConversationMessagePolicy => {

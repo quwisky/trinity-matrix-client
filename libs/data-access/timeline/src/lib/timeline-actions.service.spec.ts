@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { ConversationActionContextService } from './conversation-action-context.service';
 import { TimelineActionsService } from './timeline-actions.service';
 import { TimelineService } from './timeline.service';
@@ -9,11 +9,16 @@ import {
   fakeEvent,
   fakeRoom,
   mediaProvider,
+  privacyProvider,
   setupActions,
   switchableMatrixProvider,
 } from './timeline.spec-harness';
 
 describe('TimelineActionsService', () => {
+  beforeEach(() => {
+    TestBed.configureTestingModule({ providers: [privacyProvider(true)] });
+  });
+
   it('sends a shared location as m.location', async () => {
     const sent: unknown[][] = [];
     const svc = setupActions([], sent);

@@ -1,6 +1,6 @@
 # Architecture overview
 
-Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 79
+Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 80
 libraries under `libs/`, grouped by layer into `libs/application/`, `libs/data-access/`,
 `libs/feature/`, `libs/util/`, `libs/runtime/` and `libs/components/` (the public component tier),
 alongside `libs/platform-native`, `libs/testing` and the `libs/spartan/`
@@ -258,8 +258,10 @@ because the ordering constraints are real:
 
 - `ThemeService.init()` runs before the first paint, so a dark-mode user does not get a white
   flash.
-- `PrivacySettingsService.init()` runs before the timeline can send its first read receipt — a
-  user who turned receipts off must not emit one during startup.
+- `PrivacySettingsService.init()` hydrates the Conversations-owned Privacy descriptors through
+  Preferences Store before the timeline can send its first read receipt — a user who turned
+  receipts off must not emit one during startup. The facade is temporary; Settings already renders
+  those descriptors without owning defaults, migration policy, or raw storage keys.
 - `DateTimeFormatService.init()` runs before the first timeline paints, because every message
   header carries a timestamp and hydrating late would render the whole room in the default format
   and then reflow it.

@@ -1,102 +1,108 @@
-import { Injectable, signal } from '@angular/core';
-import { Preferences } from '@capacitor/preferences';
+import {
+  Injectable,
+  InjectionToken,
+  computed,
+  inject,
+  makeEnvironmentProviders,
+} from '@angular/core';
+import {
+  INSTALLATION_PREFERENCE_CONTEXT,
+  PreferenceStoreService,
+  type PreferenceCommandOutcome,
+  type PreferenceDescriptor,
+  type PreferenceHydrationOutcome,
+  type PreferenceValue,
+} from '@trinity/runtime/preferences';
+import type { Observable } from 'rxjs';
 
-const SEND_READ_RECEIPTS_KEY = 'trinity.privacy.send-read-receipts';
-const LINK_PREVIEWS_KEY = 'trinity.privacy.link-previews';
-const LINK_PREVIEWS_ENCRYPTED_KEY = 'trinity.privacy.link-previews-encrypted';
+/** Temporary bridge while privacy consumers migrate to the Conversations preference API. */
+export interface PrivacyPreferenceSet {
+  readonly sendReadReceipts: PreferenceDescriptor<boolean>;
+  readonly linkPreviews: PreferenceDescriptor<boolean>;
+  readonly linkPreviewsInEncrypted: PreferenceDescriptor<boolean>;
+}
 
-/** Public read receipts are on unless the user turns them off. */
-export const DEFAULT_SEND_READ_RECEIPTS = true;
-/** Link previews are on unless the user turns them off. */
-export const DEFAULT_LINK_PREVIEWS = true;
-/** Previews in encrypted rooms are off unless the user opts in. */
-export const DEFAULT_LINK_PREVIEWS_IN_ENCRYPTED = false;
+const PRIVACY_PREFERENCE_SET = new InjectionToken<PrivacyPreferenceSet>(
+  'PRIVACY_PREFERENCE_SET',
+);
 
-/**
- * Device-scoped privacy preferences, persisted across launches.
- *
- * Like the {@link FeatureFlagsService} feature flags and the theme, these are
- * non-secret UI preferences, so they live in Capacitor `Preferences` (the
- * non-secure key/value store, backed by localStorage on web and native KV on
- * device), never in secure storage. They're per-device on purpose: whether this
- * device broadcasts your reading activity is a local choice, matching how other
- * Matrix clients treat it. Exposed as signals so the settings UI can bind them
- * and the timeline/thread receipt code can react.
- */
+export function providePrivacyPreferenceSet(set: PrivacyPreferenceSet) {
+  return makeEnvironmentProviders([
+    { provide: PRIVACY_PREFERENCE_SET, useValue: set },
+  ]);
+}
+
 @Injectable({ providedIn: 'root' })
 export class PrivacySettingsService {
-  private readonly _sendReadReceipts = signal(DEFAULT_SEND_READ_RECEIPTS);
-  private readonly _linkPreviews = signal(DEFAULT_LINK_PREVIEWS);
-  private readonly _linkPreviewsInEncrypted = signal(
-    DEFAULT_LINK_PREVIEWS_IN_ENCRYPTED,
+  private readonly preferences = inject(PreferenceStoreService);
+  private readonly descriptors = inject(PRIVACY_PREFERENCE_SET);
+
+  readonly sendReadReceipts = this.booleanValue(
+    this.descriptors.sendReadReceipts,
+  );
+  readonly linkPreviews = this.booleanValue(this.descriptors.linkPreviews);
+  readonly linkPreviewsInEncrypted = this.booleanValue(
+    this.descriptors.linkPreviewsInEncrypted,
   );
 
-  /**
-   * Whether this device sends *public* read receipts (`m.read`) others can see.
-   * On by default. When off, the app still acks messages so your own unread
-   * badges clear — but privately (`m.read.private`), invisible to other users.
-   */
-  readonly sendReadReceipts = this._sendReadReceipts.asReadonly();
-
-  /**
-   * Whether to show link previews for URLs in messages. On by default. Previews are
-   * fetched via the homeserver; in unencrypted rooms that's a link the server already
-   * sees, so it's safe by default. This switch turns them off entirely.
-   */
-  readonly linkPreviews = this._linkPreviews.asReadonly();
-
-  /**
-   * Whether to ALSO show link previews in end-to-end-encrypted rooms. Off by default:
-   * fetching a preview sends the URL from an otherwise-encrypted message to the
-   * homeserver's preview service, disclosing a link the server couldn't otherwise see.
-   * Only consulted when {@link linkPreviews} is on.
-   */
-  readonly linkPreviewsInEncrypted = this._linkPreviewsInEncrypted.asReadonly();
-
-  /** Read the saved preferences and apply them. Call once at app startup. */
-  async init(): Promise<void> {
-    this._sendReadReceipts.set(
-      await this.read(SEND_READ_RECEIPTS_KEY, DEFAULT_SEND_READ_RECEIPTS),
-    );
-    this._linkPreviews.set(
-      await this.read(LINK_PREVIEWS_KEY, DEFAULT_LINK_PREVIEWS),
-    );
-    this._linkPreviewsInEncrypted.set(
-      await this.read(
-        LINK_PREVIEWS_ENCRYPTED_KEY,
-        DEFAULT_LINK_PREVIEWS_IN_ENCRYPTED,
-      ),
+  init(): Observable<PreferenceHydrationOutcome> {
+    return this.preferences.hydrateDescriptors(
+      INSTALLATION_PREFERENCE_CONTEXT,
+      Object.values(this.descriptors),
     );
   }
 
-  /** Toggle + persist whether this device sends public read receipts. */
-  setSendReadReceipts(on: boolean): void {
-    this._sendReadReceipts.set(on);
-    this.persist(SEND_READ_RECEIPTS_KEY, on);
+  setSendReadReceipts(on: boolean): Observable<PreferenceCommandOutcome> {
+    return this.preferences.setPreference(
+      this.descriptors.sendReadReceipts,
+      INSTALLATION_PREFERENCE_CONTEXT,
+      on,
+    );
   }
 
-  /** Toggle + persist whether link previews are shown. */
-  setLinkPreviews(on: boolean): void {
-    this._linkPreviews.set(on);
-    this.persist(LINK_PREVIEWS_KEY, on);
+  setLinkPreviews(on: boolean): Observable<PreferenceCommandOutcome> {
+    return this.preferences.setPreference(
+      this.descriptors.linkPreviews,
+      INSTALLATION_PREFERENCE_CONTEXT,
+      on,
+    );
   }
 
-  /** Toggle + persist whether link previews are also shown in encrypted rooms. */
-  setLinkPreviewsInEncrypted(on: boolean): void {
-    this._linkPreviewsInEncrypted.set(on);
-    this.persist(LINK_PREVIEWS_ENCRYPTED_KEY, on);
+  setLinkPreviewsInEncrypted(
+    on: boolean,
+  ): Observable<PreferenceCommandOutcome> {
+    return this.preferences.setPreference(
+      this.descriptors.linkPreviewsInEncrypted,
+      INSTALLATION_PREFERENCE_CONTEXT,
+      on,
+    );
   }
 
-  private async read(key: string, fallback: boolean): Promise<boolean> {
-    try {
-      const { value } = await Preferences.get({ key });
-      return value === null ? fallback : value === 'true';
-    } catch {
-      return fallback; // storage unavailable → keep the default
-    }
+  resetSendReadReceipts(): Observable<PreferenceCommandOutcome> {
+    return this.setSendReadReceipts(
+      this.descriptors.sendReadReceipts.defaultValue,
+    );
   }
 
-  private persist(key: string, on: boolean): void {
-    void Preferences.set({ key, value: String(on) }).catch(() => undefined);
+  resetLinkPreviews(): Observable<PreferenceCommandOutcome> {
+    return this.setLinkPreviews(this.descriptors.linkPreviews.defaultValue);
   }
+
+  resetLinkPreviewsInEncrypted(): Observable<PreferenceCommandOutcome> {
+    return this.setLinkPreviewsInEncrypted(
+      this.descriptors.linkPreviewsInEncrypted.defaultValue,
+    );
+  }
+
+  private booleanValue(descriptor: PreferenceDescriptor<boolean>) {
+    const value = this.preferences.valueFor(
+      descriptor,
+      INSTALLATION_PREFERENCE_CONTEXT,
+    );
+    return computed(() => toBoolean(value(), descriptor.defaultValue));
+  }
+}
+
+function toBoolean(value: PreferenceValue, fallback: boolean): boolean {
+  return typeof value === 'boolean' ? value : fallback;
 }

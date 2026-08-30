@@ -60,6 +60,14 @@ depends on narrow operation services from `@trinity/runtime/host`; the applicati
 Web, Capacitor, or Electron adapter. Support is negotiated explicitly. Electron protocol v1 uses
 validated senders and capability-scoped IPC, and returns only secret-safe diagnostic codes.
 
+Preferences Store applies the same rule to capability-owned configuration. Capabilities contribute
+typed descriptors with explicit installation, Account, Conversation, or server-authoritative
+scope plus defaults, validation, versioned migration, sensitivity, storage/export policy, and
+editor metadata. `@trinity/runtime/preferences` owns only the catalog and context-keyed signal
+runtime; Settings renders it without importing raw keys or product policy. Device and future
+Matrix adapters enforce the declared policy, and recovery diagnostics never contain preference
+values.
+
 ## Public interfaces
 
 Cross-project imports use one explicit `@trinity/*` entrypoint per library. Secondary entrypoints are enumerated in the architecture contract with a rationale and removal issue; wildcard entrypoints are rejected. Raw SDK clients, writable signals, Router objects, platform flags, and generic connect/disconnect methods do not belong in capability interfaces.
@@ -85,3 +93,4 @@ Run `pnpm architecture:check` to validate the live Nx graph, entrypoints, except
 - [Operation-based host capabilities](../adr/0005-operation-based-host-capabilities.md)
 - [Signals for state and RxJS for commands](../adr/0006-signals-for-state-and-rxjs-for-commands.md)
 - [Incremental facade migration](../adr/0007-incremental-facade-migration.md)
+- [Capability-owned typed preferences](../adr/0008-capability-owned-typed-preferences.md)

@@ -3,6 +3,7 @@ import {
   makeEnvironmentProviders,
   type EnvironmentProviders,
 } from '@angular/core';
+import type { Observable } from 'rxjs';
 
 /**
  * A value as it appears in the exported document — plain JSON, nothing else. Keeping this
@@ -19,6 +20,7 @@ export type ConfigValue =
 
 /** The `settings` half of the envelope: the entries' values nested by their dotted paths. */
 export type ConfigSettings = { readonly [key: string]: ConfigValue };
+export type ConfigAction = void | Promise<void> | Observable<unknown>;
 
 /**
  * A JSON type name, spelled exactly as JSON Schema spells it.
@@ -127,7 +129,7 @@ export interface ConfigEntry {
    * async where the owning setter is. Resets are order-independent: two entries sharing a
    * stored blob must converge on the same result whichever runs first.
    */
-  readonly reset: () => void | Promise<void>;
+  readonly reset: () => ConfigAction;
 
   /**
    * Apply a validated value through the owning service's public setter — same rule as
@@ -138,7 +140,7 @@ export interface ConfigEntry {
    * exported but not imported would make the document silently asymmetric, and the whole
    * point of the format is that what comes out goes back in.
    */
-  readonly write: (value: ConfigValue) => void | Promise<void>;
+  readonly write: (value: ConfigValue) => ConfigAction;
 
   /**
    * Check a pasted value before anything anywhere is written. This is the boundary — the
