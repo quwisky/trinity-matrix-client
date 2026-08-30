@@ -1,13 +1,17 @@
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Preferences } from '@capacitor/preferences';
 import { GifService } from './gif.service';
 import { GifSettingsService } from './gif-settings.service';
 import type { GifResult } from './gif.model';
 
+const prefs = vi.hoisted(() => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  remove: vi.fn(),
+}));
 vi.mock('@capacitor/preferences', () => ({
-  Preferences: { get: vi.fn(), set: vi.fn(), remove: vi.fn() },
+  Preferences: prefs,
 }));
 
 const gif: GifResult = {
@@ -28,7 +32,7 @@ describe('GifService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(Preferences).set.mockResolvedValue(undefined);
+    prefs.set.mockResolvedValue(undefined);
     vi.stubGlobal('fetch', fetchMock);
     // jsdom has no object-URL API; the preview path binds bytes as a blob URL.
     URL.createObjectURL = vi.fn(() => 'blob:preview');

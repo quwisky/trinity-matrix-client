@@ -16,7 +16,6 @@ import {
   MixedInvitesService,
 } from '@trinity/data-access/room-library';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { PushService } from '@trinity/data-access/notifications';
 import {
   IgnoredUsersService,
   IdentityPresenceService,
@@ -185,7 +184,6 @@ describe('RoomsPage rendered right-panel focus', () => {
         }),
         MockProvider(SpaceChildrenService, { connect: vi.fn() }),
         MockProvider(RoomMembersService, { connect: vi.fn() }),
-        MockProvider(PushService, { register: () => of(undefined) }),
         MockProvider(RoomModerationService),
         MockProvider(TrustVerificationService),
         MockProvider(IgnoredUsersService, { isIgnored: () => false }),

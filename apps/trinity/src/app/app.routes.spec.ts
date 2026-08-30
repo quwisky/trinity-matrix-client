@@ -7,7 +7,7 @@ import {
   type Routes,
 } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { authGuard } from '@trinity/data-access/auth';
+import { authGuard } from '@trinity/application/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { routes } from './app.routes';

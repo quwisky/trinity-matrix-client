@@ -10,7 +10,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { QrCodeService } from '@trinity/platform-native/qr-code';
+import { QrCodeService } from '@trinity/platform-native';
 import { HlmButton } from '@trinity/helm/button';
 
 type ScannerStatus = 'starting' | 'scanning' | 'error';

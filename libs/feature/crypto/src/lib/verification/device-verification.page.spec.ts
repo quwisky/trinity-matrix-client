@@ -4,7 +4,7 @@ import { By } from '@angular/platform-browser';
 import { ActivatedRoute, Router } from '@angular/router';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { QrScannerComponent } from '@trinity/components/controls';
-import { QrCodeService } from '@trinity/platform-native/qr-code';
+import { QrCodeService } from '@trinity/platform-native';
 import { fireEvent, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import {

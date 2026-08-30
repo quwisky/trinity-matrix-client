@@ -87,6 +87,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **The capability-centered architecture is now contracted and enforced.** All migration
+  exception ledgers and secondary entrypoints are empty, rich message kinds use one normalized
+  presentation path, and native preferences, push registration, external browsing, and platform
+  detection stay behind Trinity adapters. Native push taps now emit semantic destinations for
+  Application Runtime and Workspace to navigate instead of routing from data-access; the runtime
+  session owns the native listeners and their exact teardown, and settings checks plugin
+  capability rather than the device OS. Structural
+  guards hard-fail SDK, Router, platform-vendor, UI-vendor, host-composition, and retired legacy
+  import escapes, while the generated Nx dependency map records the final graph.
+
 - **Electron is now a first-class Nx host application.** `trinity-desktop` exposes the
   standalone dependency install, compile, typecheck, unit test, shared-renderer build, launch,
   verification, serialized Playwright and host/platform packaging lifecycles without duplicate

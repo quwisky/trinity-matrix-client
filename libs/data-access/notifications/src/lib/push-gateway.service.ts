@@ -1,6 +1,9 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { Capacitor } from '@capacitor/core';
-import { Preferences } from '@capacitor/preferences';
+import { firstValueFrom } from 'rxjs';
+import {
+  DevicePreferenceStorageService,
+  NativePushRegistrationService,
+} from '@trinity/platform-native';
 import { normalizeGatewayUrl } from './push-gateway-url';
 import { PUSH_CONFIG, type PushConfig } from './push-config';
 
@@ -52,6 +55,8 @@ interface StoredGateway {
 export class PushGatewayService {
   /** Build-time default (`environment.push`); null in a stock build. */
   private readonly fallback = inject(PUSH_CONFIG, { optional: true });
+  private readonly storage = inject(DevicePreferenceStorageService);
+  private readonly nativePush = inject(NativePushRegistrationService);
 
   private readonly _override = signal<StoredGateway | null>(null);
   /** The user's stored override, or null when the build-time default applies. */
@@ -89,10 +94,7 @@ export class PushGatewayService {
    * have no push plugin, so the settings UI shows the block disabled there rather than
    * letting someone type a URL that can never take effect.
    */
-  readonly supported = computed(() => {
-    const platform = Capacitor.getPlatform();
-    return platform === 'ios' || platform === 'android';
-  });
+  readonly supported = computed(() => this.nativePush.supported());
 
   /** Read the saved override + the applied-id ledger. Wired as an app initializer. */
   async init(): Promise<void> {
@@ -107,7 +109,7 @@ export class PushGatewayService {
    */
   private async loadOverride(): Promise<string | undefined> {
     try {
-      const { value } = await Preferences.get({ key: STORAGE_KEY });
+      const value = await firstValueFrom(this.storage.get(STORAGE_KEY));
       const stored = value
         ? (JSON.parse(value) as Partial<StoredGateway> & {
             appliedAppId?: unknown;
@@ -138,16 +140,16 @@ export class PushGatewayService {
   }
 
   private async loadAppliedAppId(legacy: string | undefined): Promise<void> {
-    const { value } = await Preferences.get({ key: APPLIED_KEY }).catch(() => ({
-      value: null,
-    }));
+    const value = await firstValueFrom(this.storage.get(APPLIED_KEY)).catch(
+      () => null,
+    );
     if (typeof value === 'string' && value) {
       this._appliedAppId.set(value);
       return;
     }
     if (legacy) {
       this._appliedAppId.set(legacy);
-      await Preferences.set({ key: APPLIED_KEY, value: legacy }).catch(
+      await firstValueFrom(this.storage.set(APPLIED_KEY, legacy)).catch(
         () => undefined,
       );
     }
@@ -186,7 +188,7 @@ export class PushGatewayService {
       return;
     }
     this._appliedAppId.set(appId);
-    await Preferences.set({ key: APPLIED_KEY, value: appId }).catch(
+    await firstValueFrom(this.storage.set(APPLIED_KEY, appId)).catch(
       () => undefined,
     );
   }
@@ -204,13 +206,14 @@ export class PushGatewayService {
    */
   async clear(): Promise<void> {
     this._override.set(null);
-    await Preferences.remove({ key: STORAGE_KEY }).catch(() => undefined);
+    await firstValueFrom(this.storage.remove(STORAGE_KEY)).catch(
+      () => undefined,
+    );
   }
 
   private async persist(value: StoredGateway): Promise<void> {
-    await Preferences.set({
-      key: STORAGE_KEY,
-      value: JSON.stringify(value),
-    }).catch(() => undefined);
+    await firstValueFrom(
+      this.storage.set(STORAGE_KEY, JSON.stringify(value)),
+    ).catch(() => undefined);
   }
 }

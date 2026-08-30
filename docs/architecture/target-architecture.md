@@ -1,6 +1,6 @@
 # Target architecture
 
-Trinity is migrating incrementally to capability-centered ownership. The current `type:*`, `scope:*`, and `ui:*` rules remain enforced while the new `role:*` and `capability:*` metadata describe the destination and make every exception visible.
+Trinity uses capability-centered ownership. The existing `type:*`, `scope:*`, and `ui:*` rules remain enforced alongside `role:*` and `capability:*` metadata; the architecture contract is in its `contracted` phase and permits no migration exceptions.
 
 ## Dependency direction
 
@@ -80,11 +80,11 @@ values.
 
 ## Public interfaces
 
-Cross-project imports use one explicit `@trinity/*` entrypoint per library. Secondary entrypoints are enumerated in the architecture contract with a rationale and removal issue; wildcard entrypoints are rejected. Raw SDK clients, writable signals, Router objects, platform flags, and generic connect/disconnect methods do not belong in capability interfaces.
+Cross-project imports use one explicit `@trinity/*` entrypoint per library. Secondary and wildcard entrypoints are rejected. Raw SDK clients, writable signals, Router objects, platform flags, and generic connect/disconnect methods do not belong in capability interfaces.
 
-## Incremental enforcement
+## Contracted enforcement
 
-The migration follows expand-migrate-contract slices:
+Future architecture changes still follow expand-migrate-contract slices:
 
 1. Add the target interface and adapter beside the current path.
 2. Freeze the current callers and dependency exceptions.
@@ -92,7 +92,7 @@ The migration follows expand-migrate-contract slices:
 4. Remove the old path when its counters reach zero.
 5. Tighten the static boundary so the exception cannot return.
 
-Run `pnpm architecture:check` to validate the live Nx graph, entrypoints, exception ledgers, ratcheted source snapshots, cycles, and committed map. Run `pnpm architecture:map` after an intentional architecture change, then review the generated diff rather than editing it directly.
+Run `pnpm architecture:check` to validate the live Nx graph, role and capability direction, explicit entrypoints, empty migration ledgers, cycles, quality-baseline registry, and committed map. Repository structural tests additionally enforce SDK, Router, platform-vendor, design-system, and host containment. Run `pnpm architecture:map` after an intentional architecture change, then review the generated diff rather than editing it directly.
 
 ## Decisions
 

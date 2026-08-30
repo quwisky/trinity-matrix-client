@@ -1,13 +1,15 @@
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { Preferences } from '@capacitor/preferences';
 import { GifSettingsService } from './gif-settings.service';
 
-vi.mock('@capacitor/preferences', () => ({
-  Preferences: { get: vi.fn(), set: vi.fn(), remove: vi.fn() },
+const prefs = vi.hoisted(() => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  remove: vi.fn(),
 }));
-
-const prefs = vi.mocked(Preferences);
+vi.mock('@capacitor/preferences', () => ({
+  Preferences: prefs,
+}));
 
 describe('GifSettingsService', () => {
   let svc: GifSettingsService;

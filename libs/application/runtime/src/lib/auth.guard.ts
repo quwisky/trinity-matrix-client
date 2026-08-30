@@ -4,14 +4,8 @@ import { Observable, catchError, map, of } from 'rxjs';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 
 /**
- * Allows navigation only when an Active Account is live, restoring every persisted
- * Account through Account Runtime first.
- * Redirects to /login when nothing is stored.
- *
- * The Router unsubscribes a guard whose navigation is superseded (a deep link arriving
- * during the initial restore), which cancels this cold observable mid-restore. That is safe
- * because Account Runtime records the cancelled terminal state while Matrix Runtime rolls
- * back any client that had not committed.
+ * Allows navigation only when an Active Account is live, restoring persisted Accounts
+ * when initial navigation reaches the guard before Application Runtime has settled.
  */
 export const authGuard: CanActivateFn = (): Observable<boolean | UrlTree> => {
   const accounts = inject(AccountRuntimeService);
@@ -20,10 +14,6 @@ export const authGuard: CanActivateFn = (): Observable<boolean | UrlTree> => {
   if (accounts.hasActiveAccount()) {
     return of(true);
   }
-
-  // Application Runtime owns cold-start restoration before it releases initial Router
-  // navigation. A settled no-account/failed result must not start a second restore from
-  // the guard; it is already the authoritative startup outcome.
   if (accounts.state().phase === 'settled') {
     return of(router.createUrlTree(['/login']));
   }

@@ -1,6 +1,5 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { Capacitor } from '@capacitor/core';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import {
   APP_CONFIG_ENTRIES,
@@ -28,6 +27,12 @@ import {
   RESET_CONFIG_CONSEQUENCES,
   RESET_CONFIG_MISTYPED_MESSAGE,
 } from './reset-config';
+
+const platform = vi.hoisted(() => ({ native: false }));
+vi.mock('@trinity/platform-native', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@trinity/platform-native')>()),
+  supportsRichConfigEditing: () => !platform.native,
+}));
 
 /**
  * The fixture's stored state. Signals rather than plain values because that is what the
@@ -269,7 +274,7 @@ describe('AdvancedSettingsComponent', () => {
   // in the export was that the page says so BEFORE offering a way to send the document
   // anywhere. A disclosure below the buttons is read after the damage.
   it('discloses the GIF API key above Copy and Export, not below them', async () => {
-    vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(false);
+    platform.native = false;
     const { container } = await render(AdvancedSettingsComponent, {
       providers: realConfig(),
     });
@@ -348,7 +353,7 @@ describe('AdvancedSettingsComponent', () => {
   });
 
   it('offers the file export on web/desktop', async () => {
-    vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(false);
+    platform.native = false;
     const { container } = await render(AdvancedSettingsComponent, {
       providers: realConfig(),
     });
@@ -360,7 +365,7 @@ describe('AdvancedSettingsComponent', () => {
   });
 
   it('downloads the document as a dated JSON file', async () => {
-    vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(false);
+    platform.native = false;
     const { container } = await render(AdvancedSettingsComponent, {
       providers: mockedConfig('{"version":1}'),
     });
@@ -380,7 +385,7 @@ describe('AdvancedSettingsComponent', () => {
   // 12:00 UTC is already the 2nd in Kiritimati: a UTC-dated filename is a day out either
   // side of midnight for most of the world, on the one string people scan a folder for.
   it('dates the file by the user’s calendar, not UTC', async () => {
-    vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(false);
+    platform.native = false;
     const timeZone = process.env['TZ'];
     process.env['TZ'] = 'Pacific/Kiritimati';
     vi.useFakeTimers({ toFake: ['Date'] });
@@ -402,7 +407,7 @@ describe('AdvancedSettingsComponent', () => {
   });
 
   it('stamps the exported file when it leaves the app, not when the view rendered', async () => {
-    vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(false);
+    platform.native = false;
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-01-01T09:00:00.000Z'));
     const { container } = await render(AdvancedSettingsComponent, {

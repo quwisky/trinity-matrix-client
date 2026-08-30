@@ -1,13 +1,28 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { Router } from '@angular/router';
-import { Capacitor } from '@capacitor/core';
-import { PushNotifications } from '@capacitor/push-notifications';
-import { Observable, defer } from 'rxjs';
+import {
+  EMPTY,
+  Observable,
+  catchError,
+  defer,
+  finalize,
+  firstValueFrom,
+  ignoreElements,
+  mergeMap,
+  of,
+} from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { SessionStorageService } from '@trinity/platform-native';
+import {
+  NativePushRegistrationService,
+  type NativePushRegistrationEvent,
+} from '@trinity/platform-native';
 import { DEFAULT_APP_ID } from './push-config';
 import { PushGatewayService } from './push-gateway.service';
-import { encodeRoomSegment } from '@trinity/util/matrix';
+
+/** Semantic destination emitted by a native notification tap. */
+export interface NativePushActivation {
+  readonly accountId?: string;
+  readonly roomId?: string;
+}
 
 /** Pusher `data` key carrying the owning account's user id (see docs/reference/push-notifications.md). The
  * gateway must forward this from `devices[].data` into the delivered push payload so
@@ -86,8 +101,7 @@ function deviceErrorMessage(err: unknown): string {
 @Injectable({ providedIn: 'root' })
 export class PushService {
   private readonly matrix = inject(MatrixClientService);
-  private readonly router = inject(Router);
-  private readonly storage = inject(SessionStorageService);
+  private readonly nativePush = inject(NativePushRegistrationService);
   /**
    * Resolves the gateway to use — the user's setting, else the build-time
    * `PUSH_CONFIG`. Injected rather than reading the token directly so a change
@@ -97,7 +111,6 @@ export class PushService {
 
   /** The device push token (FCM/APNs), shared by every account's pusher. */
   private currentPushkey: string | null = null;
-  private listenersAttached = false;
   /** Guards the one-time OS-registration flow (permission + token request). */
   private registered = false;
 
@@ -110,6 +123,26 @@ export class PushService {
    * reset to idle when all pushers are torn down.
    */
   readonly registration = this._registration.asReadonly();
+
+  /**
+   * Own native callbacks for one Application Runtime session and expose only semantic
+   * activation destinations. Listener setup precedes OS registration, and teardown is
+   * tied to the returned cold Observable rather than hidden behind a finite command.
+   */
+  run(): Observable<NativePushActivation> {
+    return defer(() => {
+      if (!this.nativePush.supported()) return EMPTY;
+      return this.nativePush.listen().pipe(
+        mergeMap((event) => this.handleNativeEvent(event)),
+        finalize(() => {
+          // A token callback that arrives after teardown is intentionally ignored. Let a
+          // later session issue a fresh registration request instead of retaining a stale
+          // in-progress guard forever.
+          this.registered = false;
+        }),
+      );
+    });
+  }
 
   /**
    * Request OS push permission, register for a device token, and register a Matrix
@@ -132,8 +165,18 @@ export class PushService {
       if (this.registered) {
         return; // the OS-registration flow is already in progress
       }
-      const permission = await PushNotifications.requestPermissions();
-      if (permission.receive !== 'granted') {
+      // Claim the flow before the asynchronous permission request so simultaneous
+      // startup/settings calls cannot both reach the native register command.
+      this.registered = true;
+      let permission: boolean;
+      try {
+        permission = await firstValueFrom(this.nativePush.requestPermission());
+      } catch (error) {
+        this.registered = false;
+        throw error;
+      }
+      if (!permission) {
+        this.registered = false;
         // Say so instead of returning silently: mobile push is the only delivery path
         // there is, so "denied" and "never attempted" must not look the same in settings.
         this._registration.set({
@@ -143,21 +186,14 @@ export class PushService {
         });
         return;
       }
-      this.registered = true;
       // Android O+ silently drops notifications without a channel.
-      if (Capacitor.getPlatform() === 'android') {
-        await PushNotifications.createChannel({
-          id: 'messages',
-          name: 'Messages',
-          importance: 5,
-          visibility: 1,
-        }).catch(() => undefined);
-      }
-      await this.attachListeners();
+      await firstValueFrom(this.nativePush.prepareChannel()).catch(
+        () => undefined,
+      );
       // Fires the `registration` listener with the FCM/APNs token — or `registrationError`.
       // A rejection here means the OS flow never started, so release the one-time guard:
       // holding it would make every later register() early-exit for the process lifetime.
-      await PushNotifications.register().catch((e: unknown) => {
+      await firstValueFrom(this.nativePush.register()).catch((e: unknown) => {
         this.registered = false;
         this._registration.set({
           status: 'error',
@@ -191,11 +227,6 @@ export class PushService {
       // Every pusher is going away — a lingering "applied to N accounts" would be a lie
       // the settings page shows after a clear or logout.
       this._registration.set({ status: 'idle' });
-      if (this.listenersAttached) {
-        // Never let teardown reject — logout chains on this and must complete.
-        await PushNotifications.removeAllListeners().catch(() => undefined);
-        this.listenersAttached = false;
-      }
       if (pushkey) {
         for (const account of this.matrix.all()) {
           for (const appId of appIds) {
@@ -232,12 +263,10 @@ export class PushService {
     // Gate on the concrete mobile platforms. On web — and inside the hand-rolled
     // Electron desktop shell, where `getPlatform()` is also `'web'` — there is no
     // push plugin, so this keeps push a no-op everywhere except real iOS/Android.
-    const platform = Capacitor.getPlatform();
     return (
       this.gateway.configured() &&
       this.matrix.isInitialized &&
-      (platform === 'ios' || platform === 'android') &&
-      Capacitor.isPluginAvailable('PushNotifications')
+      this.nativePush.supported()
     );
   }
 
@@ -249,34 +278,37 @@ export class PushService {
    * sent to the homeserver as a real app id, producing a pusher no gateway can match.
    */
   private platformAppId(baseId: string | undefined): string {
-    return `${baseId ?? DEFAULT_APP_ID}.${Capacitor.getPlatform()}`;
+    return `${baseId ?? DEFAULT_APP_ID}.${this.nativePush.platform ?? 'web'}`;
   }
 
-  private async attachListeners(): Promise<void> {
-    if (this.listenersAttached) {
-      return;
+  private handleNativeEvent(
+    event: NativePushRegistrationEvent,
+  ): Observable<NativePushActivation> {
+    switch (event.kind) {
+      case 'ready':
+        return this.register().pipe(
+          ignoreElements(),
+          catchError((error: unknown) => {
+            this.registered = false;
+            this._registration.set({
+              status: 'error',
+              message: deviceErrorMessage(error),
+            });
+            return EMPTY;
+          }),
+        );
+      case 'registered':
+        return defer(() => this.setPushers(event.token)).pipe(ignoreElements());
+      case 'registration-failed':
+        this.registered = false;
+        this._registration.set({
+          status: 'error',
+          message: event.message || DEVICE_REGISTRATION_FAILED,
+        });
+        return EMPTY;
+      case 'activated':
+        return of(this.activation(event.data));
     }
-    this.listenersAttached = true;
-    await PushNotifications.addListener('registration', (token) => {
-      void this.setPushers(token.value).catch(() => undefined);
-    });
-    // FCM/APNs refused the token. Without this the refusal is silent AND permanent: the
-    // `registered` guard is already set, so no later register() would re-attempt it.
-    await PushNotifications.addListener('registrationError', (error) => {
-      this.registered = false;
-      this._registration.set({
-        status: 'error',
-        message: error.error || DEVICE_REGISTRATION_FAILED,
-      });
-    });
-    await PushNotifications.addListener(
-      'pushNotificationActionPerformed',
-      (action) => {
-        const data = action?.notification?.data as
-          Record<string, unknown> | undefined;
-        this.openFromPush(data);
-      },
-    );
   }
 
   /**
@@ -399,8 +431,10 @@ export class PushService {
     }
   }
 
-  /** Tap on a delivered push: switch to the owning account (if tagged) and open. */
-  private openFromPush(data: Record<string, unknown> | undefined): void {
+  /** Normalize an OS payload into a Workspace-owned semantic destination. */
+  private activation(
+    data: Readonly<Record<string, unknown>>,
+  ): NativePushActivation {
     const userId =
       typeof data?.[ACCOUNT_DATA_KEY] === 'string'
         ? (data[ACCOUNT_DATA_KEY] as string)
@@ -410,17 +444,11 @@ export class PushService {
         ? (data['room_id'] as string)
         : null;
 
-    if (
-      userId &&
-      userId !== this.matrix.activeUserId() &&
-      this.matrix.accountIds().includes(userId)
-    ) {
-      this.matrix.setActive(userId);
-      this.storage.setActive(userId).subscribe({ error: () => undefined });
-    }
-    const navigate = roomId
-      ? this.router.navigate(['/rooms', encodeRoomSegment(roomId)])
-      : this.router.navigate(['/rooms']);
-    void navigate.catch(() => undefined);
+    return {
+      ...(userId && this.matrix.accountIds().includes(userId)
+        ? { accountId: userId }
+        : {}),
+      ...(roomId ? { roomId } : {}),
+    };
   }
 }

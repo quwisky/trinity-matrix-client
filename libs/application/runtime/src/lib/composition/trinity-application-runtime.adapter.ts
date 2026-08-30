@@ -15,10 +15,7 @@ import type {
 } from '../application-runtime.models';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { GifSettingsService } from '@trinity/data-access/gif';
-import {
-  PushGatewayService,
-  PushService,
-} from '@trinity/data-access/notifications';
+import { PushGatewayService } from '@trinity/data-access/notifications';
 import {
   AccountScopeService,
   SpaceRoomOrderService,
@@ -80,7 +77,6 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   private readonly location = inject(Location);
   private readonly host = inject(HostCapabilitiesService);
   private readonly accounts = inject(AccountRuntimeService);
-  private readonly push = inject(PushService);
   private readonly updates = inject(HostUpdatesService);
   private readonly session = inject(TrinityApplicationSessionAdapter);
   private readonly theme = inject(ThemeService);
@@ -230,30 +226,14 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
           ? [warning('session-capabilities', 'badge', 'badge-unavailable')]
           : [];
       return forkJoin({
-        push: this.push.register().pipe(
-          map(() => null),
-          catchError(() =>
-            of(
-              warning(
-                'session-capabilities',
-                'push',
-                'push-registration-failed',
-              ),
-            ),
-          ),
-        ),
         ordering: this.spaceOrder.hydrateKnownAccounts().pipe(map(() => null)),
         persistence: from(this.storagePersistence.requestPersistence()).pipe(
           map(() => null),
         ),
         updates: this.initialUpdateCheck(),
       }).pipe(
-        map(({ push, updates }) =>
-          ready([
-            ...badgeWarning,
-            ...(push ? [push] : []),
-            ...(updates ? [updates] : []),
-          ]),
+        map(({ updates }) =>
+          ready([...badgeWarning, ...(updates ? [updates] : [])]),
         ),
         catchError(() =>
           of({

@@ -20,7 +20,7 @@ import { PageHeaderComponent } from '@trinity/components/navigation-layout';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { QrScannerComponent } from '@trinity/components/controls';
-import { QrCodeService } from '@trinity/platform-native/qr-code';
+import { QrCodeService } from '@trinity/platform-native';
 import { SasCompareComponent } from './sas-compare.component';
 
 /**

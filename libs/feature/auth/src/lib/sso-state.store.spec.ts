@@ -1,15 +1,19 @@
 import { TestBed } from '@angular/core/testing';
-import { Preferences } from '@capacitor/preferences';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { SsoStateStore } from './sso-state.store';
 
+const preferences = vi.hoisted(() => ({
+  set: vi.fn(),
+  get: vi.fn(),
+  remove: vi.fn(),
+}));
 vi.mock('@capacitor/preferences', () => ({
-  Preferences: { set: vi.fn(), get: vi.fn(), remove: vi.fn() },
+  Preferences: preferences,
 }));
 
-const set = Preferences.set as unknown as Mock;
-const get = Preferences.get as unknown as Mock;
-const remove = Preferences.remove as unknown as Mock;
+const set = preferences.set as Mock;
+const get = preferences.get as Mock;
+const remove = preferences.remove as Mock;
 
 function store(): SsoStateStore {
   TestBed.configureTestingModule({ providers: [SsoStateStore] });

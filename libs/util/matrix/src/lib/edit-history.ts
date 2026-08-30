@@ -1,9 +1,5 @@
 import { EventType, type MatrixEvent } from 'matrix-js-sdk';
-import {
-  UNDECRYPTABLE_BODY,
-  renderTextBody,
-  type MessageKind,
-} from './message-view';
+import { UNDECRYPTABLE_BODY, renderTextBody } from './message-view';
 
 /**
  * The versions of an edited message, for the edit-history view. Kept out of
@@ -22,7 +18,7 @@ export interface MessageRevisionView {
   /** Sanitized HTML for the body, or null to render `body` as plain text. */
   html: string | null;
   /** `undecryptable` when we hold no key for this version — `body` is the standing notice. */
-  kind: Extract<MessageKind, 'text'> | 'undecryptable';
+  kind: 'text' | 'undecryptable';
   /** Whether the current user sent this version — only they may remove it. */
   isOwn: boolean;
 }

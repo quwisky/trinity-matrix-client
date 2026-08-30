@@ -80,7 +80,6 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   let resetInstallation: Mock<AccountRuntimeService['resetInstallation']>;
   let resetPreferences: Mock<AppConfigService['resetToDefaults']>;
   let activeAccountId: ReturnType<typeof signal<string | null>>;
-  let pushRegister: Mock<PushService['register']>;
   let updateCheck: Mock<HostUpdatesService['check']>;
   let adapter: TrinityApplicationRuntimeAdapter;
 
@@ -130,7 +129,6 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       of(void 0),
     );
     activeAccountId = signal<string | null>('@active:example.org');
-    pushRegister = vi.fn<PushService['register']>(() => of(void 0));
     updateCheck = vi.fn<HostUpdatesService['check']>(() =>
       of({ kind: 'completed' as const }),
     );
@@ -156,7 +154,9 @@ describe('TrinityApplicationRuntimeAdapter', () => {
           signOutAccount,
           resetInstallation,
         }),
-        MockProvider(PushService, { register: pushRegister }),
+        MockProvider(PushService, {
+          run: () => EMPTY,
+        }),
         MockProvider(BadgeCoordinator, { run: () => badgeSession }),
         MockProvider(NotificationService, { run: () => notificationSession }),
         MockProvider(SwUpdate, {
@@ -222,7 +222,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     expect(themeInit).toHaveBeenCalledOnce();
   });
 
-  it('maps required preference failure and optional push failure differently', async () => {
+  it('maps required preference failure and keeps optional session capabilities non-blocking', async () => {
     themeInit.mockRejectedValueOnce(new Error('preferences unavailable'));
     await expect(firstValueFrom(adapter.hydratePreferences())).resolves.toEqual(
       {
@@ -232,22 +232,9 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       },
     );
 
-    pushRegister.mockReturnValueOnce(
-      new Observable((subscriber) =>
-        subscriber.error(new Error('push unavailable')),
-      ),
-    );
     await expect(
       firstValueFrom(adapter.establishSessionCapabilities()),
-    ).resolves.toEqual({
-      kind: 'ready',
-      warnings: [
-        expect.objectContaining({
-          scope: 'push',
-          diagnostic: { code: 'push-registration-failed' },
-        }),
-      ],
-    });
+    ).resolves.toEqual({ kind: 'ready' });
     expect(updateCheck).toHaveBeenCalledOnce();
   });
 

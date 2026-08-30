@@ -1,6 +1,7 @@
-import { Injectable } from '@angular/core';
-import { Preferences } from '@capacitor/preferences';
+import { Injectable, inject } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
 import { type LoginMode } from '@trinity/data-access/auth';
+import { DevicePreferenceStorageService } from '@trinity/platform-native';
 
 const STATE_KEY = 'sso.state';
 const BASE_URL_KEY = 'sso.baseUrl';
@@ -42,6 +43,8 @@ export interface SsoStateStash {
  */
 @Injectable({ providedIn: 'root' })
 export class SsoStateStore {
+  private readonly storage = inject(DevicePreferenceStorageService);
+
   /** Stash the state + homeserver + mode (timestamped) before redirecting to SSO. */
   async save(
     state: string,
@@ -49,20 +52,19 @@ export class SsoStateStore {
     mode: LoginMode = 'replace',
     deviceId?: string,
   ): Promise<void> {
-    await Promise.all([
-      Preferences.set({ key: STATE_KEY, value: state }),
-      Preferences.set({ key: BASE_URL_KEY, value: baseUrl }),
-      Preferences.set({ key: STARTED_KEY, value: String(Date.now()) }),
-      Preferences.set({ key: MODE_KEY, value: mode }),
-      // Set the device id, or REMOVE any residue from a prior un-consumed attempt.
-      // Every other key here is overwritten unconditionally; leaving this one behind
-      // let an abandoned re-auth (which stashes a device id) hand its DEVICE_ID to the
-      // next, ordinary login within the TTL — silently re-authenticating a stale device
-      // instead of minting a fresh one. Mirrors OidcStateStore's blob handling.
-      deviceId
-        ? Preferences.set({ key: DEVICE_ID_KEY, value: deviceId })
-        : Preferences.remove({ key: DEVICE_ID_KEY }),
-    ]);
+    await firstValueFrom(
+      this.storage.setMany([
+        { key: STATE_KEY, value: state },
+        { key: BASE_URL_KEY, value: baseUrl },
+        { key: STARTED_KEY, value: String(Date.now()) },
+        { key: MODE_KEY, value: mode },
+        ...(deviceId ? [{ key: DEVICE_ID_KEY, value: deviceId }] : []),
+      ]),
+    );
+    // Remove residue from a prior un-consumed re-auth attempt for ordinary login.
+    if (!deviceId) {
+      await firstValueFrom(this.storage.remove(DEVICE_ID_KEY));
+    }
   }
 
   /**
@@ -72,15 +74,17 @@ export class SsoStateStore {
    * in-flight login's stash.
    */
   async peek(): Promise<SsoStateStash> {
-    const [state, baseUrl, startedAt, mode, deviceId] = await Promise.all([
-      Preferences.get({ key: STATE_KEY }),
-      Preferences.get({ key: BASE_URL_KEY }),
-      Preferences.get({ key: STARTED_KEY }),
-      Preferences.get({ key: MODE_KEY }),
-      Preferences.get({ key: DEVICE_ID_KEY }),
-    ]);
+    const [state, baseUrl, startedAt, mode, deviceId] = await firstValueFrom(
+      this.storage.getMany([
+        STATE_KEY,
+        BASE_URL_KEY,
+        STARTED_KEY,
+        MODE_KEY,
+        DEVICE_ID_KEY,
+      ]),
+    );
 
-    const started = Number(startedAt.value);
+    const started = Number(startedAt);
     const age = Date.now() - started;
     // Two-sided, matching {@link OidcStateStore.peek}. `age <= TTL_MS` alone treats a
     // FUTURE timestamp as fresh, so a stash written before the clock was corrected
@@ -92,21 +96,23 @@ export class SsoStateStore {
       return { state: null, baseUrl: null, mode: 'replace', deviceId: null };
     }
     return {
-      state: state.value ?? null,
-      baseUrl: baseUrl.value ?? null,
-      mode: mode.value === 'add' ? 'add' : 'replace',
-      deviceId: deviceId.value ?? null,
+      state,
+      baseUrl,
+      mode: mode === 'add' ? 'add' : 'replace',
+      deviceId,
     };
   }
 
   /** Remove every SSO-state key. */
   async clear(): Promise<void> {
-    await Promise.all([
-      Preferences.remove({ key: STATE_KEY }),
-      Preferences.remove({ key: BASE_URL_KEY }),
-      Preferences.remove({ key: STARTED_KEY }),
-      Preferences.remove({ key: MODE_KEY }),
-      Preferences.remove({ key: DEVICE_ID_KEY }),
-    ]);
+    await firstValueFrom(
+      this.storage.removeMany([
+        STATE_KEY,
+        BASE_URL_KEY,
+        STARTED_KEY,
+        MODE_KEY,
+        DEVICE_ID_KEY,
+      ]),
+    );
   }
 }

@@ -1,7 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { Preferences } from '@capacitor/preferences';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { Observable, catchError, defer, from, map, of, tap } from 'rxjs';
+import { DevicePreferenceStorageService } from '@trinity/platform-native';
+import { Observable, catchError, defer, map, of, tap } from 'rxjs';
 
 /** Persisted set of account ids the user has opted into mixing. */
 const SCOPE_KEY = 'trinity.accounts.mixed';
@@ -42,6 +42,7 @@ export function sameAccountSet(
 @Injectable({ providedIn: 'root' })
 export class AccountScopeService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly storage = inject(DevicePreferenceStorageService);
 
   /** Raw persisted selection; may name accounts that aren't signed in right now. */
   private readonly stored = signal<ReadonlySet<string>>(new Set());
@@ -75,8 +76,8 @@ export class AccountScopeService {
 
   /** Restore the saved selection. Wired as an app initializer at startup. */
   init(): Observable<void> {
-    return defer(() => from(Preferences.get({ key: SCOPE_KEY }))).pipe(
-      tap(({ value }) => {
+    return this.storage.get(SCOPE_KEY).pipe(
+      tap((value) => {
         const parsed: unknown = value ? JSON.parse(value) : null;
         if (Array.isArray(parsed)) {
           this.stored.set(
@@ -150,11 +151,8 @@ export class AccountScopeService {
    * bounded by the number of accounts the user has ever mixed.
    */
   private persist(selection: ReadonlySet<string>): Observable<void> {
-    return from(
-      Preferences.set({
-        key: SCOPE_KEY,
-        value: JSON.stringify([...selection]),
-      }),
-    ).pipe(map(() => void 0));
+    return this.storage
+      .set(SCOPE_KEY, JSON.stringify([...selection]))
+      .pipe(map(() => void 0));
   }
 }

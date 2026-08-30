@@ -1,5 +1,4 @@
 import { TestBed } from '@angular/core/testing';
-import { Preferences } from '@capacitor/preferences';
 import {
   AppConfigService,
   configSchemaDrift,
@@ -9,11 +8,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { provideGifConfigEntries } from './gif-config-entries';
 import { GifSettingsService } from './gif-settings.service';
 
-vi.mock('@capacitor/preferences', () => ({
-  Preferences: { get: vi.fn(), set: vi.fn(), remove: vi.fn() },
+const prefs = vi.hoisted(() => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  remove: vi.fn(),
 }));
-
-const prefs = vi.mocked(Preferences);
+vi.mock('@capacitor/preferences', () => ({
+  Preferences: prefs,
+}));
 
 function setup(): { config: AppConfigService; gif: GifSettingsService } {
   TestBed.configureTestingModule({

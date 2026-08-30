@@ -17,9 +17,10 @@ A library's directory and its import alias are two further, different strings; s
 `nx.json` sets `"defaultBase": "develop"`, so `nx affected` diffs against `develop` rather than
 `main`.
 
-Trinity is migrating from these technical layers to capability-centered ownership. The current
-rules remain active while `role:*` and `capability:*` metadata describe and validate the target;
+Trinity has contracted its capability-centered ownership model. The technical-layer rules remain
+active alongside `role:*` and `capability:*` metadata, with empty migration-exception ledgers;
 see the [target architecture](target-architecture.md), [migration baselines](migration-baselines.md),
+[final validation record](final-validation.md),
 and [generated dependency map](generated/dependency-map.md).
 
 ## Host projects are composition roots

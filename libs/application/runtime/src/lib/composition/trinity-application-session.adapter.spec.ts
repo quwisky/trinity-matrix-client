@@ -13,6 +13,8 @@ import { WorkspaceBackService } from '@trinity/application/workspace';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import {
   NotificationService,
+  PushService,
+  type NativePushActivation,
   type NotificationRuntimeEvent,
 } from '@trinity/data-access/notifications';
 import { SpaceRoomOrderService } from '@trinity/data-access/room-library';
@@ -24,7 +26,7 @@ import {
   HostUpdatesService,
 } from '@trinity/runtime/host';
 import { MockProvider } from 'ng-mocks';
-import { EMPTY, Subject, of } from 'rxjs';
+import { EMPTY, Observable, Subject, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
@@ -35,6 +37,7 @@ interface SessionHarness {
   readonly deepLinks: Subject<{ readonly url: string }>;
   readonly backIntents: Subject<{ readonly canGoBack: boolean }>;
   readonly notificationEvents: Subject<NotificationRuntimeEvent>;
+  readonly pushActivations: Subject<NativePushActivation>;
   readonly lifecycleEvents: Subject<
     { readonly kind: 'active' } | { readonly kind: 'background' }
   >;
@@ -57,10 +60,11 @@ interface SessionHarness {
   readonly showToast: ReturnType<typeof vi.fn>;
 }
 
-function setup(): SessionHarness {
+function setup(pushSession?: Observable<NativePushActivation>): SessionHarness {
   const deepLinks = new Subject<{ readonly url: string }>();
   const backIntents = new Subject<{ readonly canGoBack: boolean }>();
   const notificationEvents = new Subject<NotificationRuntimeEvent>();
+  const pushActivations = new Subject<NativePushActivation>();
   const lifecycleEvents = new Subject<
     { readonly kind: 'active' } | { readonly kind: 'background' }
   >();
@@ -89,6 +93,7 @@ function setup(): SessionHarness {
       MockProvider(Location, { back: locationBack }),
       MockProvider(BadgeCoordinator, { run: () => EMPTY }),
       MockProvider(NotificationService, { run: () => notificationEvents }),
+      MockProvider(PushService, { run: () => pushSession ?? pushActivations }),
       MockProvider(NavigationFocusService, { run: () => EMPTY }),
       MockProvider(WorkspaceRoutedSurfaceAdapter, { run: () => EMPTY }),
       MockProvider(WorkspaceApplicationSurfacePresenterAdapter, {
@@ -131,6 +136,7 @@ function setup(): SessionHarness {
     deepLinks,
     backIntents,
     notificationEvents,
+    pushActivations,
     lifecycleEvents,
     navigate,
     closeAuthentication,
@@ -213,6 +219,37 @@ describe('TrinityApplicationSessionAdapter', () => {
     );
     expect(focus).toHaveBeenCalledOnce();
     lifetime.unsubscribe();
+  });
+
+  it('owns native push from synchronous startup activation through teardown and restart', async () => {
+    let subscriptions = 0;
+    let teardowns = 0;
+    const pushSession = new Observable<NativePushActivation>((subscriber) => {
+      subscriptions++;
+      subscriber.next({
+        accountId: '@background:example.org',
+        roomId: '!room:example.org',
+      });
+      return () => teardowns++;
+    });
+    const test = setup(pushSession);
+    const firstLifetime = test.adapter.run().subscribe();
+
+    await vi.waitFor(() =>
+      expect(test.navigate).toHaveBeenCalledWith(
+        ['/rooms', 'IXJvb206ZXhhbXBsZS5vcmc'],
+        { queryParams: { account: '@background:example.org' } },
+      ),
+    );
+    firstLifetime.unsubscribe();
+    expect(teardowns).toBe(1);
+
+    test.navigate.mockClear();
+    const secondLifetime = test.adapter.run().subscribe();
+    await vi.waitFor(() => expect(test.navigate).toHaveBeenCalledOnce());
+    expect(subscriptions).toBe(2);
+    secondLifetime.unsubscribe();
+    expect(teardowns).toBe(2);
   });
 
   it('reports rejected notification navigation without ending the session', async () => {

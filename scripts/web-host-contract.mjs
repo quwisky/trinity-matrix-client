@@ -99,7 +99,7 @@ export function validateWebHostContract(input, errors) {
     'provideTrinityApplication({',
     'provideServiceWorker(',
     '.then(startApplicationRuntime)',
-    '!Capacitor.isNativePlatform()',
+    '!isInstalledNativePlatform()',
     '!isElectronRenderer()',
   ]) {
     if (!executableMain.includes(required)) {

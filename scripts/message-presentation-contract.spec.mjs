@@ -22,10 +22,9 @@ const productionSources = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
 /**
  * Freeze the Message Presentation boundary introduced by #305.
  *
- * Text and system events must cross the defensive Matrix normalizer and immutable
- * presenter. The old util projection remains only as a temporary fallback for location,
- * sticker, and poll migrations owned by later architecture tickets; media must be replaced
- * by the Media Pipeline's opaque presentation reference before leaving data access.
+ * Every displayable event crosses the defensive Matrix normalizer and immutable presenter.
+ * Media source material is replaced by the Media Pipeline's opaque presentation reference
+ * before leaving data access; no util-layer compatibility projection remains.
  */
 describe('Message Presentation production boundary', () => {
   it('keeps the public presentation model in timeline data-access', () => {
@@ -71,13 +70,13 @@ describe('Message Presentation production boundary', () => {
     expect(projection).toContain(
       'normalizeTimelineEvent(client, room, event, shield)',
     );
-    expect(projection).toContain('presentNormalizedTimelineEvent(normalized)');
-    expect(projection).toContain('presentMedia.present(legacy.media, client)');
+    expect(projection).toContain('presentNormalizedTimelineEvent(normalized');
+    expect(projection).toContain('presentMedia.present(media, client)');
   });
 
   it('does not restore the retired util text or system-event API', () => {
     const entrypoint = source(utilEntrypoint);
-    const legacy = source(utilMessageView);
+    const utilProjection = source(utilMessageView);
 
     expect(entrypoint).not.toContain("export * from './lib/timeline-event';");
     expect(
@@ -95,10 +94,15 @@ describe('Message Presentation production boundary', () => {
         join(workspaceRoot, 'libs/util/matrix/src/lib/timeline-event.ts'),
       ),
     ).toBe(false);
-    expect(legacy).not.toMatch(
+    expect(utilProjection).not.toMatch(
       /export (?:function|interface) (?:buildMessageView|safeBuildMessageView|MessageView)\b/,
     );
-    expect(legacy).not.toMatch(/case ['"]m\.(?:text|emote|notice)['"]:/);
+    expect(utilProjection).not.toMatch(
+      /case ['"]m\.(?:text|emote|notice)['"]:/,
+    );
+    expect(utilProjection).not.toMatch(
+      /\b(?:buildLegacyMessageView|LegacyMessageView)\b/,
+    );
   });
 
   it('keeps syntax highlighting lazy and feature-local', () => {

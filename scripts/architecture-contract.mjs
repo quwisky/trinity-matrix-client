@@ -41,7 +41,7 @@ function dependencyKey(source, target) {
   return `${source} -> ${target}`;
 }
 
-function validateLedger(contract, errors) {
+export function validateLedger(contract, errors) {
   const removalLedgers = [
     ['classification exception', contract.classificationExceptions],
     ['secondary entrypoint', contract.secondaryEntrypoints],
@@ -53,6 +53,21 @@ function validateLedger(contract, errors) {
       if (!entry.reason || !entry.removeBy) {
         errors.push(`${kind} must declare a reason and removal issue`);
       }
+    }
+  }
+  if (contract.phase === 'contracted') {
+    for (const [kind, entries] of removalLedgers) {
+      if (entries.length > 0) {
+        errors.push(
+          `Contracted architecture cannot retain ${kind} entries; found ${entries.length}`,
+        );
+      }
+    }
+    const sourceBaselines = Object.keys(contract.sourceBaselines ?? {});
+    if (sourceBaselines.length > 0) {
+      errors.push(
+        `Contracted architecture cannot retain source baselines: ${sourceBaselines.join(', ')}`,
+      );
     }
   }
   validateRoleDirection(contract.roles, errors);
@@ -162,20 +177,6 @@ export function findCycles(dependencies) {
     visit(project, []);
   }
   return cycles;
-}
-
-function lineCount(relativePath) {
-  const contents = readFileSync(join(workspaceRoot, relativePath), 'utf8');
-  return contents.endsWith('\n')
-    ? contents.split('\n').length - 1
-    : contents.split('\n').length;
-}
-
-function initializerCount(relativePath) {
-  const contents = readFileSync(join(workspaceRoot, relativePath), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//gu, '')
-    .replace(/\/\/.*$/gmu, '');
-  return (contents.match(/\bprovideAppInitializer\(/gu) ?? []).length;
 }
 
 export function classify(graph, contract, errors) {
@@ -375,34 +376,6 @@ export function validateEntrypoints(graph, contract, paths, errors) {
   };
 }
 
-export function validateFrozenMeasurements(measurements, contract, errors) {
-  for (const [name, value] of Object.entries(measurements)) {
-    const frozen = contract.sourceBaselines[name].value;
-    if (value === 0 && frozen !== 0) {
-      errors.push(`${name} source sweep found no matches`);
-    }
-    if (value !== frozen) {
-      errors.push(
-        `${name} changed from its frozen value ${frozen} to ${value}`,
-      );
-    }
-  }
-}
-
-function validateSourceBaselines(contract, errors) {
-  const measurements = {
-    appInitializers: initializerCount(
-      contract.sourceBaselines.appInitializers.path,
-    ),
-    messageViewLines: lineCount(contract.sourceBaselines.messageViewLines.path),
-    roomLibraryServiceLines: lineCount(
-      contract.sourceBaselines.roomLibraryServiceLines.path,
-    ),
-  };
-  validateFrozenMeasurements(measurements, contract, errors);
-  return measurements;
-}
-
 function projectSummary(graph, classification) {
   return Object.keys(graph.nodes)
     .sort()
@@ -423,13 +396,7 @@ function projectSummary(graph, classification) {
     .join('\n');
 }
 
-function renderDependencyMap(
-  graph,
-  contract,
-  classification,
-  measurements,
-  entrypoints,
-) {
+function renderDependencyMap(graph, contract, classification, entrypoints) {
   const projectCount = Object.keys(graph.nodes).length;
   const dependencyCount = Object.values(graph.dependencies).reduce(
     (total, edges) => total + edges.length,
@@ -534,15 +501,9 @@ ${primaryEntrypointRows}
 | --- | --- | --- | --- |
 ${secondaryEntrypointRows}
 
-## Source baselines
+## Final contraction
 
-These are ratcheted snapshots. Any change fails until the measured value and ledger are reviewed and updated together; migration tickets are expected to reduce them toward zero.
-
-| Baseline | Current | Frozen value | Removal issue |
-| --- | ---: | ---: | --- |
-| Application initializers | ${measurements.appInitializers} | ${contract.sourceBaselines.appInitializers.value} | ${contract.sourceBaselines.appInitializers.removeBy} |
-| Message projection lines | ${measurements.messageViewLines} | ${contract.sourceBaselines.messageViewLines.value} | ${contract.sourceBaselines.messageViewLines.removeBy} |
-| Room Library service lines | ${measurements.roomLibraryServiceLines} | ${contract.sourceBaselines.roomLibraryServiceLines.value} | ${contract.sourceBaselines.roomLibraryServiceLines.removeBy} |
+The contract is in the \`${contract.phase}\` phase. Classification exceptions, secondary entrypoints, multi-capability projects, dependency exceptions, and migration source baselines must remain empty; the validator rejects any reintroduction.
 
 ## Project classifications
 
@@ -564,7 +525,6 @@ async function validateWorkspace({ checkMap }) {
   const paths = readJson(join(workspaceRoot, 'tsconfig.base.json'))
     .compilerOptions.paths;
   const entrypoints = validateEntrypoints(graph, contract, paths, errors);
-  const measurements = validateSourceBaselines(contract, errors);
   const cycles = findCycles(graph.dependencies);
   if (cycles.length > 0) {
     errors.push(
@@ -572,13 +532,7 @@ async function validateWorkspace({ checkMap }) {
     );
   }
   const dependencyMap = await format(
-    renderDependencyMap(
-      graph,
-      contract,
-      classification,
-      measurements,
-      entrypoints,
-    ),
+    renderDependencyMap(graph, contract, classification, entrypoints),
     {
       filepath: dependencyMapPath,
     },

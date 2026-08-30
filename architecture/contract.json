@@ -1,4 +1,5 @@
 {
+  "phase": "contracted",
   "roles": {
     "app": [
       "app",
@@ -67,44 +68,8 @@
       "reason": "The generated-kit contract project contains tests and has no production API."
     }
   ],
-  "secondaryEntrypoints": [
-    {
-      "alias": "@trinity/platform-native/qr-code",
-      "target": "./libs/platform-native/src/lib/qr-code.service.ts",
-      "removeBy": "#312",
-      "reason": "Lets the QR scanner consume one host operation without the broad platform barrel."
-    }
-  ],
-  "multiCapabilityProjects": [
-    {
-      "project": "feature-rooms",
-      "capabilities": [
-        "conversations",
-        "discovery",
-        "room-administration",
-        "room-library",
-        "workspace"
-      ],
-      "removeBy": "#318, #321, #322",
-      "reason": "The Workspace application workflow currently contains conversation, room-library, administration, and discovery surfaces."
-    }
-  ],
+  "secondaryEntrypoints": [],
+  "multiCapabilityProjects": [],
   "dependencyExceptions": [],
-  "sourceBaselines": {
-    "appInitializers": {
-      "path": "apps/trinity/src/main.ts",
-      "value": 0,
-      "removeBy": "complete"
-    },
-    "messageViewLines": {
-      "path": "libs/util/matrix/src/lib/message-view.ts",
-      "value": 1737,
-      "removeBy": "#305-#309"
-    },
-    "roomLibraryServiceLines": {
-      "path": "libs/data-access/room-library/src/lib/room-library.service.ts",
-      "value": 782,
-      "removeBy": "#321"
-    }
-  }
+  "sourceBaselines": {}
 }

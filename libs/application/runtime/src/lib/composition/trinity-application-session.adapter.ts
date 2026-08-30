@@ -9,6 +9,8 @@ import { WorkspaceBackService } from '@trinity/application/workspace';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import {
   NotificationService,
+  PushService,
+  type NativePushActivation,
   type NotificationDestination,
   type NotificationRuntimeEvent,
 } from '@trinity/data-access/notifications';
@@ -49,6 +51,7 @@ export class TrinityApplicationSessionAdapter {
   private readonly location = inject(Location);
   private readonly badge = inject(BadgeCoordinator);
   private readonly notifications = inject(NotificationService);
+  private readonly push = inject(PushService);
   private readonly swUpdate = inject(SwUpdate);
   private readonly toast = inject(TrnToastService);
   private readonly dialog = inject(TrnDialogService);
@@ -81,9 +84,15 @@ export class TrinityApplicationSessionAdapter {
   }
 
   private runNotificationActivations(): Observable<ApplicationRuntimeWarning> {
-    return this.notifications
-      .run()
-      .pipe(concatMap((event) => this.handleNotificationEvent(event)));
+    return merge(
+      this.notifications
+        .run()
+        .pipe(concatMap((event) => this.handleNotificationEvent(event))),
+      this.push.run().pipe(
+        concatMap((activation) => this.openNativePush(activation)),
+        catchError(() => of(warning('host', 'push-session-failed'))),
+      ),
+    );
   }
 
   private handleNotificationEvent(
@@ -97,6 +106,30 @@ export class TrinityApplicationSessionAdapter {
   private openNotification(
     destination: NotificationDestination,
   ): Observable<ApplicationRuntimeWarning> {
+    return this.openWorkspaceDestination(
+      ['/rooms', encodeRoomSegment(destination.roomId)],
+      {
+        account: destination.accountId,
+        event: destination.eventId,
+      },
+    );
+  }
+
+  private openNativePush(
+    activation: NativePushActivation,
+  ): Observable<ApplicationRuntimeWarning> {
+    return this.openWorkspaceDestination(
+      activation.roomId
+        ? ['/rooms', encodeRoomSegment(activation.roomId)]
+        : ['/rooms'],
+      activation.accountId ? { account: activation.accountId } : undefined,
+    );
+  }
+
+  private openWorkspaceDestination(
+    commands: readonly string[],
+    queryParams?: Readonly<Record<string, string | undefined>>,
+  ): Observable<ApplicationRuntimeWarning> {
     return defer(() => {
       try {
         window.focus();
@@ -104,15 +137,9 @@ export class TrinityApplicationSessionAdapter {
         // Browser focus may be denied; Workspace navigation is still valid.
       }
       return from(
-        this.router.navigate(
-          ['/rooms', encodeRoomSegment(destination.roomId)],
-          {
-            queryParams: {
-              account: destination.accountId,
-              event: destination.eventId,
-            },
-          },
-        ),
+        this.router.navigate([...commands], {
+          ...(queryParams ? { queryParams } : {}),
+        }),
       ).pipe(
         switchMap((navigated) =>
           navigated

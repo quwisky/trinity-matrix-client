@@ -77,9 +77,9 @@ The deployable host projects are composition roots rather than reusable librarie
 | `trinity-ios`     | `ios`          | `type:app`, `scope:matrix`, `role:app`, `capability:composition` | Sync the shared renderer into the checked-in Capacitor iOS shell and expose Xcode/Capacitor launch and native-toolchain verification targets  |
 | `trinity-desktop` | `electron`     | `type:app`, `scope:matrix`, `role:app`, `capability:composition` | Package the shared renderer in the versioned, hardened Electron shell and expose compile, test, launch, platform-package and real-shell proof |
 
-| Library                | Alias                      | Tags                                                               | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| ---------------------- | -------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `libs/platform-native` | `@trinity/platform-native` | `type:platform`, `scope:shared`, `role:adapter`, `capability:host` | Web, Capacitor, and Electron adapters selected at composition, including the device-preference adapter and temporary privacy compatibility facade for the typed Preferences Store, plus legacy platform services still migrating behind operation contracts: secure/session storage, geolocation, voice, host media, theme, external-browser dispatch, the Electron preload bridge, keyboard shortcuts, error handling, build information, and reset primitives |
+| Library                | Alias                      | Tags                                                               | Purpose                                                                                                                                                                                                                                                                                                            |
+| ---------------------- | -------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `libs/platform-native` | `@trinity/platform-native` | `type:platform`, `scope:shared`, `role:adapter`, `capability:host` | Web, Capacitor, and Electron adapters selected at composition, including device preferences, secure/session storage, geolocation, voice, host media, push registration, theme, external-browser dispatch, the Electron preload bridge, keyboard shortcuts, error handling, build information, and reset primitives |
 
 The adapter library may branch on host identity internally; product callers do not. It depends on
 the host runtime contract and pure utilities, and holds no Matrix knowledge.
@@ -198,18 +198,11 @@ among it — the overlay adapters, the icon and the emoji picker — now lives i
 Regenerating or adding Helm components goes through the CLI; see
 [UI and theming](ui-and-theming.md).
 
-## The secondary entry point
+## Public entry points
 
-Almost every alias points at a library's barrel, its `src/index.ts`. One points at a single file
-instead, for host-capability containment rather than stylistic preference.
-
-| Alias                              | Target                                            | Why it bypasses the barrel                                                                                                                        |
-| ---------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@trinity/platform-native/qr-code` | `libs/platform-native/src/lib/qr-code.service.ts` | The QR scanner consumes one host operation without importing the broad platform barrel; #312 replaces it with an operation-based host capability. |
-
-The architecture contract records this exception. Shiki is no longer one: its highlighter lives
-inside the lazy Conversations feature and `rooms.page.ts` imports it relatively, so no public alias
-can pull the grammars into the eager bundle.
+Every library exposes exactly one explicit barrel at `src/index.ts`. The contracted architecture
+rejects secondary aliases. Shiki remains feature-local and relatively imported so its grammars do
+not enter the eager bundle; QR scanning consumes the primary platform adapter entrypoint.
 
 ## Libraries are not buildable
 

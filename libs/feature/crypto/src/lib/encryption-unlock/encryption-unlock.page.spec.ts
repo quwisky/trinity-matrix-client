@@ -3,13 +3,11 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { render, screen } from '@trinity/testing';
 import { TrustOperationError, TrustService } from '@trinity/data-access/trust';
 import { TrnDialogRef, TrnAlertService } from '@trinity/components/overlay';
-import { Browser } from '@capacitor/browser';
+import { ExternalBrowserService } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
 import { Observable, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EncryptionUnlockPage } from './encryption-unlock.page';
-
-vi.mock('@capacitor/browser', () => ({ Browser: { open: vi.fn() } }));
 
 interface RenderOptions {
   /** Value `TrustService.recoverWithKey` returns when invoked. */
@@ -66,6 +64,7 @@ async function renderPage(options: RenderOptions = {}) {
       } as never),
       MockProvider(TrnDialogRef),
       MockProvider(TrnAlertService, { prompt, confirm }),
+      MockProvider(ExternalBrowserService, { open: vi.fn(() => of(true)) }),
     ],
   });
 
@@ -82,7 +81,16 @@ async function renderPage(options: RenderOptions = {}) {
       : of(providerUrl),
   );
 
-  return { ...result, crypto, router, dialogRef, prompt, confirm };
+  const externalBrowser = TestBed.inject(ExternalBrowserService);
+  return {
+    ...result,
+    crypto,
+    router,
+    dialogRef,
+    prompt,
+    confirm,
+    externalBrowser,
+  };
 }
 
 /** Let the reset's async provider lookup settle (firstValueFrom + its own awaits). */
@@ -110,9 +118,7 @@ function closeButton(): HTMLElement | null {
 }
 
 describe('EncryptionUnlockPage', () => {
-  // The Browser module mock is shared by the whole file; without this a later test
-  // inherits an earlier one's call and "was not opened" assertions pass or fail by order.
-  beforeEach(() => vi.mocked(Browser.open).mockClear());
+  beforeEach(() => vi.clearAllMocks());
 
   it('recovers with the trimmed key and navigates to rooms', async () => {
     const { fixture, crypto, router } = await renderPage({
@@ -262,7 +268,7 @@ describe('EncryptionUnlockPage', () => {
 
     it('sends an OIDC account to its provider, deep-linked to the reset', async () => {
       // An OIDC-native account cannot answer a password challenge in-app.
-      const { fixture } = await renderPage({
+      const { fixture, externalBrowser } = await renderPage({
         typed: 'RESET',
         reset: throwError(providerActionRequired),
         providerUrl:
@@ -272,15 +278,15 @@ describe('EncryptionUnlockPage', () => {
       await fixture.componentInstance.resetRecovery();
       await flush();
 
-      expect(Browser.open).toHaveBeenCalledWith({
-        url: 'https://op.example/account?action=org.matrix.cross_signing_reset',
-      });
+      expect(externalBrowser.open).toHaveBeenCalledWith(
+        'https://op.example/account?action=org.matrix.cross_signing_reset',
+      );
     });
 
     it('explains rather than deep-linking when the provider does not offer it', async () => {
       // Sending someone to a page that cannot do the thing they came for is worse
       // than telling them their provider has to.
-      const { fixture } = await renderPage({
+      const { fixture, externalBrowser } = await renderPage({
         typed: 'RESET',
         reset: throwError(providerActionRequired),
         providerUrl: null,
@@ -293,13 +299,13 @@ describe('EncryptionUnlockPage', () => {
       expect(fixture.componentInstance.error()).toContain(
         'identity provider has to reset encryption',
       );
-      expect(Browser.open).not.toHaveBeenCalled();
+      expect(externalBrowser.open).not.toHaveBeenCalled();
     });
 
     it('leaves an ordinary failure’s message alone', async () => {
       // Only the no-password-stage case means "go to your provider". A wrong password
       // or a dropped connection must keep the message it already produced.
-      const { fixture } = await renderPage({
+      const { fixture, externalBrowser } = await renderPage({
         typed: 'RESET',
         reset: throwError(() => new Error('server exploded')),
       });
@@ -307,7 +313,7 @@ describe('EncryptionUnlockPage', () => {
       await fixture.componentInstance.resetRecovery();
       await flush();
 
-      expect(Browser.open).not.toHaveBeenCalled();
+      expect(externalBrowser.open).not.toHaveBeenCalled();
       expect(fixture.componentInstance.error()).toContain('server exploded');
     });
   });

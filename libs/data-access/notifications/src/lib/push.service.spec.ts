@@ -1,19 +1,17 @@
 import { signal } from '@angular/core';
-import { Router } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
-import { firstValueFrom, of } from 'rxjs';
+import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_APP_ID, PUSH_CONFIG, type PushConfig } from './push-config';
 import { PushGatewayService } from './push-gateway.service';
 import { PushService } from './push.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { SessionStorageService } from '@trinity/platform-native';
-import { encodeRoomSegment } from '@trinity/util/matrix';
 
 // Shared, mutable mock state — hoisted so the vi.mock factories can close over it.
 const h = vi.hoisted(() => {
   const listeners: Record<string, (arg: unknown) => void> = {};
+  const handles: { remove: ReturnType<typeof vi.fn> }[] = [];
   const state = { platform: 'ios', permission: 'granted' as string };
   const prefs = new Map<string, string>();
   const push = {
@@ -22,11 +20,13 @@ const h = vi.hoisted(() => {
     createChannel: vi.fn(async () => undefined),
     addListener: vi.fn(async (event: string, cb: (arg: unknown) => void) => {
       listeners[event] = cb;
-      return { remove: vi.fn() };
+      const handle = { remove: vi.fn(async () => undefined) };
+      handles.push(handle);
+      return handle;
     }),
     removeAllListeners: vi.fn(async () => undefined),
   };
-  return { listeners, state, push, prefs };
+  return { listeners, handles, state, push, prefs };
 });
 
 vi.mock('@capacitor/core', () => ({
@@ -107,8 +107,6 @@ function setup(
   const clients = new Map(ids.map((id) => [id, makeClient()]));
   const accountIds = signal<readonly string[]>(ids);
   const activeUserId = signal<string | null>(active);
-  const setActive = vi.fn();
-  const storageSetActive = vi.fn(() => of(undefined));
   TestBed.configureTestingModule({
     providers: [
       PushService,
@@ -125,27 +123,24 @@ function setup(
             ([userId, client]) => ({ userId, client }) as never,
           ),
         clientFor: (id: string) => (clients.get(id) as never) ?? null,
-        setActive,
       }),
-      MockProvider(Router),
-      MockProvider(SessionStorageService, { setActive: storageSetActive }),
       {
         provide: PUSH_CONFIG,
         useValue: 'config' in opts ? opts.config : CONFIG,
       },
     ],
   });
-  const router = TestBed.inject(Router);
-  // `router.navigate` is an auto-spy (returns undefined); the service chains
-  // `.catch()` on it, so give it a resolved promise to await.
-  vi.mocked(router.navigate).mockResolvedValue(true);
+  const svc = TestBed.inject(PushService);
+  const activations: unknown[] = [];
+  const lifetime = svc
+    .run()
+    .subscribe((activation) => activations.push(activation));
   return {
-    svc: TestBed.inject(PushService),
+    svc,
     clients,
     client: clients.get(active)!,
-    setActive,
-    storageSetActive,
-    router,
+    activations,
+    lifetime,
   };
 }
 
@@ -158,6 +153,7 @@ describe('PushService', () => {
     h.state.platform = 'ios';
     h.state.permission = 'granted';
     for (const k of Object.keys(h.listeners)) delete h.listeners[k];
+    h.handles.length = 0;
     h.prefs.clear();
     vi.clearAllMocks();
   });
@@ -616,16 +612,16 @@ describe('PushService', () => {
   });
 
   it('opens the app when a notification is tapped', async () => {
-    const { svc, router } = setup();
+    const { svc, activations } = setup();
     await firstValueFrom(svc.register());
 
     h.listeners['pushNotificationActionPerformed']({});
 
-    expect(router.navigate).toHaveBeenCalledWith(['/rooms']);
+    expect(activations).toEqual([{}]);
   });
 
   it('switches to the tagged account and opens the room on tap', async () => {
-    const { svc, router, setActive, storageSetActive } = setup({
+    const { svc, activations } = setup({
       accounts: ['@me:hs', '@alt:hs'],
       active: '@me:hs',
     });
@@ -637,16 +633,11 @@ describe('PushService', () => {
       },
     });
 
-    expect(setActive).toHaveBeenCalledWith('@alt:hs');
-    expect(storageSetActive).toHaveBeenCalledWith('@alt:hs');
-    expect(router.navigate).toHaveBeenCalledWith([
-      '/rooms',
-      encodeRoomSegment('!r:hs'),
-    ]);
+    expect(activations).toEqual([{ accountId: '@alt:hs', roomId: '!r:hs' }]);
   });
 
   it('opens the room but does not switch when the tagged account is gone or already active', async () => {
-    const { svc, router, setActive, storageSetActive } = setup({
+    const { svc, activations } = setup({
       accounts: ['@me:hs', '@alt:hs'],
       active: '@me:hs',
     });
@@ -661,21 +652,16 @@ describe('PushService', () => {
       notification: { data: { trinity_user_id: '@me:hs', room_id: '!b:hs' } },
     });
 
-    expect(setActive).not.toHaveBeenCalled();
-    expect(storageSetActive).not.toHaveBeenCalled();
-    // The room still opens in both cases (the switch guard is independent of nav).
-    expect(router.navigate).toHaveBeenCalledWith([
-      '/rooms',
-      encodeRoomSegment('!a:hs'),
-    ]);
-    expect(router.navigate).toHaveBeenCalledWith([
-      '/rooms',
-      encodeRoomSegment('!b:hs'),
+    expect(activations).toEqual([
+      { roomId: '!a:hs' },
+      { accountId: '@me:hs', roomId: '!b:hs' },
     ]);
   });
 
-  it('deletes every account pusher and detaches listeners on full unregister', async () => {
-    const { svc, clients } = setup({ accounts: ['@me:hs', '@alt:hs'] });
+  it('deletes every account pusher while session teardown owns the listeners', async () => {
+    const { svc, clients, lifetime } = setup({
+      accounts: ['@me:hs', '@alt:hs'],
+    });
     await firstValueFrom(svc.register());
     h.listeners['registration']({ value: 'TOKEN123' });
     await flush();
@@ -688,7 +674,15 @@ describe('PushService', () => {
         'eu.qwky.trinity.ios',
       );
     }
-    expect(h.push.removeAllListeners).toHaveBeenCalled();
+    expect(h.push.removeAllListeners).not.toHaveBeenCalled();
+    expect(
+      h.handles.every(({ remove }) => remove.mock.calls.length === 0),
+    ).toBe(true);
+
+    lifetime.unsubscribe();
+    expect(
+      h.handles.every(({ remove }) => remove.mock.calls.length === 1),
+    ).toBe(true);
   });
 
   it('deletes only one account pusher on a per-account unregister', async () => {

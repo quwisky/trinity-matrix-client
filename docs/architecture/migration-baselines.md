@@ -1,20 +1,19 @@
 # Architecture migration baselines
 
-The architecture program preserves observable behavior while changing ownership. Baselines therefore combine ratcheted structural snapshots with measurement contracts that migration tickets must instrument before replacing each current path.
+The completed architecture program preserves observable behavior through a generated structural contract and retained measurement contracts. New migrations must instrument a path before replacing it and must finish by returning every temporary ledger to zero.
 
 ## Structural snapshot
 
-The committed [generated dependency map](generated/dependency-map.md) is built from the live Nx graph and records project classifications, dependency counts, multi-capability projects, cross-capability edges, and source snapshots. The architecture check fails if:
+The committed [generated dependency map](generated/dependency-map.md) is built from the live Nx graph and records project classifications, dependency counts, role/capability direction, entrypoints, cycles, and the final contraction state. The architecture check fails if:
 
 - a shipped project lacks known `role:*` and `capability:*` metadata;
-- a new role or cross-capability dependency appears;
-- a frozen exception becomes stale without being removed from its ledger;
+- a prohibited role or cross-capability dependency appears;
+- any classification, secondary-entrypoint, multi-capability, dependency-exception, or source-baseline ledger becomes non-empty;
 - a public entrypoint becomes implicit or wildcarded;
-- the application initializer, message projection, or Rooms service measurement differs from its reviewed snapshot (a reduction updates the ledger in the same change);
 - the committed generated map differs from the live graph; or
 - an Nx project cycle appears.
 
-The machine-readable contracts live in `architecture/contract.json` and `architecture/quality-baselines.json`.
+The machine-readable contracts live in `architecture/contract.json` and `architecture/quality-baselines.json`. `scripts/final-boundaries.spec.mjs` hard-fails package-level SDK, Router, native-platform, and retired-compatibility escapes that the project graph alone cannot express.
 
 ## Performance contracts
 

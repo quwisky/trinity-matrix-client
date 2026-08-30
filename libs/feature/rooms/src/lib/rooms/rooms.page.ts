@@ -45,10 +45,7 @@ import {
 } from '@trinity/data-access/room-library';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ImagePackService } from '@trinity/data-access/media';
-import {
-  PushService,
-  RoomNotificationsService,
-} from '@trinity/data-access/notifications';
+import { RoomNotificationsService } from '@trinity/data-access/notifications';
 import { IdentityPresenceService } from '@trinity/data-access/identity';
 import {
   RoomActionPermissionsService,
@@ -300,7 +297,6 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly spaceChildren = inject(SpaceChildrenService);
   private readonly roomPermissions = inject(RoomActionPermissionsService);
   private readonly roomMembers = inject(RoomMembersService);
-  private readonly push = inject(PushService);
   private readonly roomNotifications = inject(RoomNotificationsService);
   private readonly accountPicker = inject(AccountPickerService);
   private readonly router = inject(Router);
@@ -491,9 +487,6 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.roomNotifications.connect(); // live per-room push rules from every account
     this.roomPermissions.connect(); // live power/membership gates for room actions
     this.roomMembers.connect(); // authoritative Room Administration member summaries
-    // Register for push once the authenticated shell is live (covers both fresh
-    // login and a restored session). Best-effort + native-only; no-op elsewhere.
-    this.push.register().subscribe({ error: () => undefined });
   }
 
   /**

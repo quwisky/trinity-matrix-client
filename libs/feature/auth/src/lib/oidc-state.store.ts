@@ -1,6 +1,7 @@
-import { Injectable } from '@angular/core';
-import { Preferences } from '@capacitor/preferences';
+import { Injectable, inject } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
 import { type LoginMode } from '@trinity/data-access/auth';
+import { DevicePreferenceStorageService } from '@trinity/platform-native';
 
 const STATE_KEY = 'oidc.state';
 const BASE_URL_KEY = 'oidc.baseUrl';
@@ -109,27 +110,31 @@ const EMPTY_STASH: OidcStateStash = {
  */
 @Injectable({ providedIn: 'root' })
 export class OidcStateStore {
+  private readonly storage = inject(DevicePreferenceStorageService);
+
   /** Stash the round-trip state before redirecting to the OIDC provider. */
   async save(params: OidcStateSave): Promise<void> {
-    await Promise.all([
-      Preferences.set({ key: STATE_KEY, value: params.state }),
-      Preferences.set({ key: BASE_URL_KEY, value: params.baseUrl }),
-      Preferences.set({ key: STARTED_KEY, value: String(Date.now()) }),
-      Preferences.set({ key: MODE_KEY, value: params.mode }),
-      Preferences.set({ key: REDIRECT_URI_KEY, value: params.redirectUri }),
-      Preferences.set({ key: ISSUER_KEY, value: params.issuer }),
-      Preferences.set({ key: CLIENT_ID_KEY, value: params.clientId }),
-      Preferences.set({ key: DEVICE_ID_KEY, value: params.deviceId }),
-      Preferences.set({ key: CODE_VERIFIER_KEY, value: params.codeVerifier }),
-      // Absent rather than empty for an ordinary login, so a stale value can never be
-      // read back as an expectation.
-      params.expectedUserId
-        ? Preferences.set({
-            key: EXPECTED_USER_ID_KEY,
-            value: params.expectedUserId,
-          })
-        : Preferences.remove({ key: EXPECTED_USER_ID_KEY }),
-    ]);
+    await firstValueFrom(
+      this.storage.setMany([
+        { key: STATE_KEY, value: params.state },
+        { key: BASE_URL_KEY, value: params.baseUrl },
+        { key: STARTED_KEY, value: String(Date.now()) },
+        { key: MODE_KEY, value: params.mode },
+        { key: REDIRECT_URI_KEY, value: params.redirectUri },
+        { key: ISSUER_KEY, value: params.issuer },
+        { key: CLIENT_ID_KEY, value: params.clientId },
+        { key: DEVICE_ID_KEY, value: params.deviceId },
+        { key: CODE_VERIFIER_KEY, value: params.codeVerifier },
+        ...(params.expectedUserId
+          ? [{ key: EXPECTED_USER_ID_KEY, value: params.expectedUserId }]
+          : []),
+      ]),
+    );
+    // Absent rather than empty for an ordinary login, so a stale value can never be
+    // read back as an expectation.
+    if (!params.expectedUserId) {
+      await firstValueFrom(this.storage.remove(EXPECTED_USER_ID_KEY));
+    }
   }
 
   /**
@@ -150,20 +155,22 @@ export class OidcStateStore {
       deviceId,
       codeVerifier,
       expectedUserId,
-    ] = await Promise.all([
-      Preferences.get({ key: STATE_KEY }),
-      Preferences.get({ key: BASE_URL_KEY }),
-      Preferences.get({ key: STARTED_KEY }),
-      Preferences.get({ key: MODE_KEY }),
-      Preferences.get({ key: REDIRECT_URI_KEY }),
-      Preferences.get({ key: ISSUER_KEY }),
-      Preferences.get({ key: CLIENT_ID_KEY }),
-      Preferences.get({ key: DEVICE_ID_KEY }),
-      Preferences.get({ key: CODE_VERIFIER_KEY }),
-      Preferences.get({ key: EXPECTED_USER_ID_KEY }),
-    ]);
+    ] = await firstValueFrom(
+      this.storage.getMany([
+        STATE_KEY,
+        BASE_URL_KEY,
+        STARTED_KEY,
+        MODE_KEY,
+        REDIRECT_URI_KEY,
+        ISSUER_KEY,
+        CLIENT_ID_KEY,
+        DEVICE_ID_KEY,
+        CODE_VERIFIER_KEY,
+        EXPECTED_USER_ID_KEY,
+      ]),
+    );
 
-    const started = Number(startedAt.value);
+    const started = Number(startedAt);
     const age = Date.now() - started;
     // Two-sided on purpose. `age <= TTL_MS` alone treats a FUTURE timestamp as fresh, so a
     // stash written while the device clock was ahead — or nudged forward by any means —
@@ -184,32 +191,34 @@ export class OidcStateStore {
       return EMPTY_STASH;
     }
     return {
-      state: state.value ?? null,
-      baseUrl: baseUrl.value ?? null,
-      mode: mode.value === 'add' ? 'add' : 'replace',
-      redirectUri: redirectUri.value ?? null,
-      issuer: issuer.value ?? null,
-      clientId: clientId.value ?? null,
-      deviceId: deviceId.value ?? null,
-      codeVerifier: codeVerifier.value ?? null,
-      expectedUserId: expectedUserId.value ?? null,
+      state,
+      baseUrl,
+      mode: mode === 'add' ? 'add' : 'replace',
+      redirectUri,
+      issuer,
+      clientId,
+      deviceId,
+      codeVerifier,
+      expectedUserId,
     };
   }
 
   /** Remove every OIDC-state key. */
   async clear(): Promise<void> {
-    await Promise.all([
-      Preferences.remove({ key: STATE_KEY }),
-      Preferences.remove({ key: BASE_URL_KEY }),
-      Preferences.remove({ key: STARTED_KEY }),
-      Preferences.remove({ key: MODE_KEY }),
-      Preferences.remove({ key: REDIRECT_URI_KEY }),
-      Preferences.remove({ key: ISSUER_KEY }),
-      Preferences.remove({ key: CLIENT_ID_KEY }),
-      Preferences.remove({ key: DEVICE_ID_KEY }),
-      Preferences.remove({ key: CODE_VERIFIER_KEY }),
-      Preferences.remove({ key: EXPECTED_USER_ID_KEY }),
-      ...LEGACY_KEYS.map((key) => Preferences.remove({ key })),
-    ]);
+    await firstValueFrom(
+      this.storage.removeMany([
+        STATE_KEY,
+        BASE_URL_KEY,
+        STARTED_KEY,
+        MODE_KEY,
+        REDIRECT_URI_KEY,
+        ISSUER_KEY,
+        CLIENT_ID_KEY,
+        DEVICE_ID_KEY,
+        CODE_VERIFIER_KEY,
+        EXPECTED_USER_ID_KEY,
+        ...LEGACY_KEYS,
+      ]),
+    );
   }
 }

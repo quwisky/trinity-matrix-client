@@ -6,6 +6,7 @@ import { PUSH_CONFIG, type PushConfig } from './push-config';
 const h = vi.hoisted(() => ({
   store: new Map<string, string>(),
   platform: 'ios' as string,
+  available: true,
 }));
 
 vi.mock('@capacitor/preferences', () => ({
@@ -23,7 +24,11 @@ vi.mock('@capacitor/preferences', () => ({
 }));
 
 vi.mock('@capacitor/core', () => ({
-  Capacitor: { getPlatform: () => h.platform },
+  registerPlugin: vi.fn(() => ({})),
+  Capacitor: {
+    getPlatform: () => h.platform,
+    isPluginAvailable: () => h.available,
+  },
 }));
 
 const KEY = 'trinity.push.gateway';
@@ -53,6 +58,7 @@ describe('PushGatewayService', () => {
   beforeEach(() => {
     h.store.clear();
     h.platform = 'ios';
+    h.available = true;
     TestBed.resetTestingModule();
   });
 
@@ -237,5 +243,11 @@ describe('PushGatewayService', () => {
         expect(setup().supported()).toBe(false);
       },
     );
+
+    it('is unsupported when a mobile browser has no native push plugin', () => {
+      h.platform = 'ios';
+      h.available = false;
+      expect(setup().supported()).toBe(false);
+    });
   });
 });
