@@ -8,13 +8,14 @@ const app = vi.hoisted(() => ({
   minimizeApp: vi.fn(),
 }));
 
-const cap = vi.hoisted(() => ({ native: true }));
+const cap = vi.hoisted(() => ({ native: true, platform: 'android' }));
 
 vi.mock('@capacitor/app', () => ({ App: app }));
 vi.mock('@capacitor/core', () => ({
   registerPlugin: vi.fn(() => ({})),
   Capacitor: {
     isNativePlatform: () => cap.native,
+    getPlatform: () => cap.platform,
   },
 }));
 
@@ -25,6 +26,7 @@ describe('CapacitorHostOperationAdapter event streams', () => {
     app.minimizeApp.mockReset();
     app.getLaunchUrl.mockResolvedValue(null);
     cap.native = true;
+    cap.platform = 'android';
   });
 
   it('routes rejected deep-link listener setup through the Observable error channel', async () => {
@@ -64,5 +66,25 @@ describe('CapacitorHostOperationAdapter event streams', () => {
     await Promise.resolve();
 
     expect(remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports Back and backgrounding unavailable on iOS', async () => {
+    cap.platform = 'ios';
+    const adapter = new CapacitorHostOperationAdapter();
+    const completed = vi.fn();
+
+    adapter.intents.subscribe({ complete: completed });
+
+    await expect(firstValueFrom(adapter.backSupport())).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
+    await expect(firstValueFrom(adapter.background())).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
+    expect(completed).toHaveBeenCalledTimes(1);
+    expect(app.addListener).not.toHaveBeenCalled();
+    expect(app.minimizeApp).not.toHaveBeenCalled();
   });
 });

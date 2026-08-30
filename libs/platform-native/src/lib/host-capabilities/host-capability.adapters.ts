@@ -198,6 +198,24 @@ function manifest(
   };
 }
 
+function capacitorSupportedOperations(
+  platform: string,
+  notificationPresentation: HostCapabilitySupport,
+): readonly (keyof HostCapabilityManifest['operations'])[] {
+  return [
+    'authentication-handoff',
+    'deep-links',
+    ...(platform === 'android' ? (['back'] as const) : []),
+    'file-export',
+    'location',
+    'secure-store',
+    'lifecycle',
+    ...(notificationPresentation.kind === 'supported'
+      ? (['notification-presentation'] as const)
+      : []),
+  ];
+}
+
 @Injectable({ providedIn: 'root' })
 export class WebHostCapabilityAdapter implements HostAdapter {
   support(): Observable<HostCapabilitySupport> {
@@ -274,18 +292,10 @@ export class CapacitorHostCapabilityAdapter implements HostAdapter {
       map(([badge, notificationPresentation]) =>
         manifest(
           badge,
-          [
-            'authentication-handoff',
-            'deep-links',
-            'back',
-            'file-export',
-            'location',
-            'secure-store',
-            'lifecycle',
-            ...(notificationPresentation.kind === 'supported'
-              ? (['notification-presentation'] as const)
-              : []),
-          ],
+          capacitorSupportedOperations(
+            Capacitor.getPlatform(),
+            notificationPresentation,
+          ),
           'not-supported',
         ),
       ),

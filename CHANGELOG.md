@@ -87,6 +87,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Android and iOS are now first-class Nx host applications.** `trinity-android` and
+  `trinity-ios` expose discoverable build, sync, run, static verification and native-toolchain
+  verification targets while continuing to consume the one production `www/` renderer through
+  Capacitor. Existing `pnpm android:*`, `pnpm ios:*` and Android WebView journey commands now
+  delegate to those targets. An executable native-host contract pins project ownership, shared
+  artifact flow, plugin/deep-link wiring and host scripts. Capacitor capability negotiation now
+  advertises hardware Back/backgrounding only on Android; iOS keeps those operations and update
+  checks explicitly unavailable while retaining native history gestures.
+
 - **The Web/PWA host is now a thin composition root.** `apps/trinity` selects routes,
   environment/build values, cold application-surface loaders and the Web-only service worker;
   `@trinity/application/runtime` owns the concrete startup/session adapters, Workspace presenters,

@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { Capacitor } from '@capacitor/core';
 import {
   HOST_OPERATIONS,
   type HostBadgeOperation,
@@ -42,7 +43,11 @@ function webFixture(): AdapterFixture {
   return { adapter: new WebHostCapabilityAdapter(), badgeWrite };
 }
 
-function capacitorFixture(presentationSupported = false): AdapterFixture {
+function capacitorFixture(
+  presentationSupported = false,
+  platform: 'android' | 'ios' = 'android',
+): AdapterFixture {
+  vi.spyOn(Capacitor, 'getPlatform').mockReturnValue(platform);
   const badgeWrite = vi.fn((_count: number): Observable<HostOperationOutcome> =>
     defer(() => of({ kind: 'completed' } as const)),
   );
@@ -113,6 +118,7 @@ describe.each([
     delete (navigator as { setAppBadge?: unknown }).setAppBadge;
     delete (navigator as { clearAppBadge?: unknown }).clearAppBadge;
     TestBed.resetTestingModule();
+    vi.restoreAllMocks();
   });
 
   it('exposes explicit support and a cold, finite badge command', async () => {
@@ -195,6 +201,31 @@ describe('host adapter rejection semantics', () => {
 
     expect(manifest.operations['notification-presentation']).toEqual({
       kind: 'supported',
+    });
+  });
+
+  it('advertises Android Back while keeping updates explicitly unavailable', async () => {
+    const { adapter } = capacitorFixture(true, 'android');
+    const value = await firstValueFrom(adapter.manifest());
+
+    expect(value.operations.back).toEqual({ kind: 'supported' });
+    expect(value.operations.updates).toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
+  });
+
+  it('keeps iOS Back and updates explicitly unavailable', async () => {
+    const { adapter } = capacitorFixture(true, 'ios');
+    const value = await firstValueFrom(adapter.manifest());
+
+    expect(value.operations.back).toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
+    expect(value.operations.updates).toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
     });
   });
 

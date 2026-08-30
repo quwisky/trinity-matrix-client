@@ -1,0 +1,102 @@
+{
+  "name": "trinity-android",
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "android/app/src",
+  "tags": ["type:app", "scope:matrix", "role:app", "capability:composition"],
+  "implicitDependencies": ["trinity"],
+  "targets": {
+    "sync": {
+      "//": "Build the shared production renderer first, then let Capacitor copy that exact www artifact and refresh native plugin wiring. Sync mutates checked-in generated native files, so it is deliberately uncached.",
+      "cache": false,
+      "dependsOn": [{ "projects": ["trinity"], "target": "build" }],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec cap sync android",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "sync-prebuilt": {
+      "//": "Copy an already-verified www artifact for cross-host parity evidence without rebuilding it.",
+      "cache": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec cap sync android",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "build": {
+      "cache": false,
+      "dependsOn": ["sync"],
+      "outputs": ["{projectRoot}/app/build/outputs/apk/debug"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "./gradlew assembleDebug",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "build-prebuilt": {
+      "cache": false,
+      "dependsOn": ["sync-prebuilt"],
+      "outputs": ["{projectRoot}/app/build/outputs/apk/debug"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "./gradlew assembleDebug",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "build-release": {
+      "cache": false,
+      "dependsOn": ["sync"],
+      "outputs": ["{projectRoot}/app/build/outputs/bundle/release"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "./gradlew bundleRelease",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "run": {
+      "cache": false,
+      "dependsOn": ["sync"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec cap run android",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "open": {
+      "cache": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec cap open android",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "verify": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/native-host-contract.mjs android",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "verify-native": {
+      "cache": false,
+      "dependsOn": ["sync"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "./gradlew testDebugUnitTest",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "e2e": {
+      "//": "The installed WebView journey owns emulator, fixed-port Synapse, APK and adb state, so it remains serialized and uncached.",
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec nx run trinity-e2e:android-e2e",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  }
+}

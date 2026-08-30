@@ -93,17 +93,22 @@ under ignored test output and attach it directly to the pull request. Applicatio
 icons, splash screens and bundled artwork remain tracked in their platform/app asset directories.
 `scripts/repository-media-policy.spec.mjs` enforces the distinction.
 
-**Native (Capacitor)** — each `*:run`/`*:build` rebuilds `www/` and `cap sync`s first; re-run a
-`*:sync` after any web change. Android needs `ANDROID_HOME`; iOS needs macOS + Xcode.
+**Native (Capacitor)** — `trinity-android` and `trinity-ios` are explicit Nx applications.
+Each `*:run`/`*:build` rebuilds `www/` and `cap sync`s first; re-run a `*:sync` after any web
+change. Android needs `ANDROID_HOME`; iOS needs macOS + Xcode.
 
-| Command                          | Purpose                                               |
-| -------------------------------- | ----------------------------------------------------- |
-| `pnpm android:run` / `ios:run`   | Build → sync → launch on emulator/simulator           |
-| `pnpm android:open` / `ios:open` | Open Android Studio / Xcode                           |
-| `pnpm android:sync` / `ios:sync` | Build → `cap sync` only                               |
-| `pnpm android:build`             | Debug APK → `android/app/build/outputs/apk/debug/`    |
-| `pnpm android:build:release`     | Release AAB (needs a signing keystore)                |
-| `pnpm ios:build`                 | `cap build ios --scheme App` (needs signing identity) |
+| Command                              | Purpose                                               |
+| ------------------------------------ | ----------------------------------------------------- |
+| `pnpm android:run` / `ios:run`       | Build → sync → launch on emulator/simulator           |
+| `pnpm android:open` / `ios:open`     | Open Android Studio / Xcode                           |
+| `pnpm android:sync` / `ios:sync`     | Build → `cap sync` only                               |
+| `pnpm android:build`                 | Debug APK → `android/app/build/outputs/apk/debug/`    |
+| `pnpm android:build:release`         | Release AAB (needs a signing keystore)                |
+| `pnpm ios:build`                     | `cap build ios --scheme App` (needs signing identity) |
+| `pnpm android:verify` / `ios:verify` | Static Nx/artifact/capability host contract           |
+
+The direct toolchain gates are `pnpm exec nx run trinity-android:verify-native` and
+`pnpm exec nx run trinity-ios:verify-native`; the latter requires macOS and Xcode.
 
 **Electron desktop** (hand-rolled shell in `electron/`, its own `package.json`):
 

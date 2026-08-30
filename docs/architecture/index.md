@@ -1,6 +1,7 @@
 # Architecture overview
 
-Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 58
+Trinity is an Nx **integrated** monorepo: three first-class host applications — Web/PWA at
+`apps/trinity`, Android at `android/` and iOS at `ios/` — and 58
 libraries under `libs/`, grouped by layer into `libs/application/`, `libs/data-access/`,
 `libs/feature/`, `libs/util/`, `libs/runtime/` and `libs/components/` (the public component tier),
 alongside `libs/platform-native`, `libs/testing` and the `libs/spartan/`
@@ -21,7 +22,7 @@ rules remain active while `role:*` and `capability:*` metadata describe and vali
 see the [target architecture](target-architecture.md), [migration baselines](migration-baselines.md),
 and [generated dependency map](generated/dependency-map.md).
 
-## The app project is a composition root
+## Host projects are composition roots
 
 `apps/trinity/src` contains no product component, directive, service or product policy. It selects
 routes, environment values, lazy application-surface loaders and the Web-only service worker,
@@ -45,6 +46,12 @@ source, concrete runtime/session adapters and Workspace presenters live in
 cross-capability ports behind one provider interface; `startApplicationRuntime()` owns the sole
 runtime subscription until Angular destroys the application. The remaining
 `@trinity/feature/shell` entrypoint is only the lazy, development-only crypto spike page.
+
+`trinity-android` and `trinity-ios` are thin Nx applications over the checked-in Capacitor
+projects. Their `sync`, `build` and `run` targets depend on the `trinity` production build and
+copy its exact flat `www/` artifact; they contain no product code or alternate composition.
+Each also exposes a Docker-free static `verify` contract and a platform-toolchain
+`verify-native` target. Android additionally owns the serialized installed-WebView journey.
 
 The build emits to the workspace-root `www/` directory rather than `dist/`, because Capacitor and
 the Electron shell both wrap that directory unchanged. See

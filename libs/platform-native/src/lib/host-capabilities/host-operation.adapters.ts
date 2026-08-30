@@ -104,31 +104,35 @@ export class CapacitorHostOperationAdapter implements HostOperationsAdapter {
     };
   });
 
-  readonly intents = new Observable<{ readonly canGoBack: boolean }>(
-    (subscriber) => {
-      let handle: PluginListenerHandle | undefined;
-      let cancelled = false;
-      void App.addListener('backButton', (event) =>
-        subscriber.next({ canGoBack: event.canGoBack }),
-      )
-        .then((value) => {
-          handle = value;
-          if (cancelled) void value.remove().catch(() => undefined);
+  readonly intents = defer(() =>
+    Capacitor.getPlatform() === 'android'
+      ? new Observable<{ readonly canGoBack: boolean }>((subscriber) => {
+          let handle: PluginListenerHandle | undefined;
+          let cancelled = false;
+          void App.addListener('backButton', (event) =>
+            subscriber.next({ canGoBack: event.canGoBack }),
+          )
+            .then((value) => {
+              handle = value;
+              if (cancelled) void value.remove().catch(() => undefined);
+            })
+            .catch((error: unknown) => {
+              if (!cancelled) subscriber.error(error);
+            });
+          return () => {
+            cancelled = true;
+            if (handle) void handle.remove().catch(() => undefined);
+          };
         })
-        .catch((error: unknown) => {
-          if (!cancelled) subscriber.error(error);
-        });
-      return () => {
-        cancelled = true;
-        if (handle) void handle.remove().catch(() => undefined);
-      };
-    },
+      : EMPTY,
   );
   deepLinkSupport(): Observable<HostCapabilitySupport> {
     return defer(() => of(supported()));
   }
   backSupport(): Observable<HostCapabilitySupport> {
-    return defer(() => of(supported()));
+    return defer(() =>
+      of(Capacitor.getPlatform() === 'android' ? supported() : notSupported()),
+    );
   }
   closeAuthentication(): Observable<HostOperationOutcome> {
     return defer(() => from(Browser.close())).pipe(
@@ -137,9 +141,13 @@ export class CapacitorHostOperationAdapter implements HostOperationsAdapter {
     );
   }
   background(): Observable<HostOperationOutcome> {
-    return defer(() => from(App.minimizeApp())).pipe(
-      map(() => completed()),
-      catchError(() => of(rejected('background-failed'))),
+    return defer(() =>
+      Capacitor.getPlatform() === 'android'
+        ? from(App.minimizeApp()).pipe(
+            map(() => completed()),
+            catchError(() => of(rejected('background-failed'))),
+          )
+        : of(notSupported()),
     );
   }
 }

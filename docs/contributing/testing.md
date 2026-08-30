@@ -355,7 +355,8 @@ reported as _flaky_ rather than failed, which is easy to skim past locally. Pass
 
 ### Android runs shared journeys in the installed WebView
 
-`pnpm e2e:android` is deliberately separate from the Chromium suite. It builds the
+`pnpm e2e:android` delegates to the serialized `trinity-android:e2e` Nx host target and is
+deliberately separate from the Chromium suite. It builds the
 production Capacitor app, installs it on a validated API 36 x86_64 emulator, and attaches
 Playwright to the app's own WebView. That boundary makes native hardware Back, touch input,
 Android TLS handling, and session restoration after force-stop/relaunch observable.
@@ -384,6 +385,12 @@ that already contains Playwright drivers, so their later removal is unambiguousl
 this run. It restores only state it changed and
 records screenshots, traces, logcat/crash buffers, activity state, and package diagnostics
 under `dist/.playwright/android/` on failure.
+
+The matching iOS host exposes `trinity-ios:verify` on every OS and
+`trinity-ios:verify-native` on macOS. The first pins its Nx lifecycle, shared artifact,
+plugins, deep-link scheme and negotiated capabilities; the second performs an unsigned
+iPhone Simulator build. There is not yet a Playwright iOS WebView driver equivalent to the
+Android harness, so no browser journey is claimed on Linux or CI outside a macOS/Xcode runner.
 
 The `webServer` runs `nx run trinity:build:development` and then serves `www/`
 statically on port 4200, with `reuseExistingServer` on whenever `CI` is unset. That

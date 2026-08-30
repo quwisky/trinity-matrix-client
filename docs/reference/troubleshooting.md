@@ -86,7 +86,8 @@ maps. Or `pnpm electron:e2e` taking far longer than expected.
 
 **Cause.** `apps/trinity/project.json` sets `defaultConfiguration: "production"`, so a bare
 `nx build trinity` is a production build — and `electron:build`, `electron:e2e`,
-`android:sync`, `ios:sync` and everything downstream all call `pnpm run build`.
+`trinity-android:sync`, `trinity-ios:sync` and everything downstream depend on the
+`trinity:build` Nx target.
 
 **Fix.** Pass `--configuration=development` when you want a dev build. The spike and
 Synapse e2e scripts already do. This is also why production-only regressions are only

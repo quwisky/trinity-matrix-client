@@ -1,0 +1,72 @@
+{
+  "name": "trinity-ios",
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "ios/App/App",
+  "tags": ["type:app", "scope:matrix", "role:app", "capability:composition"],
+  "implicitDependencies": ["trinity"],
+  "targets": {
+    "sync": {
+      "//": "Build the shared production renderer first, then let Capacitor copy that exact www artifact and refresh Swift Package Manager plugin wiring. Sync mutates checked-in generated native files, so it is deliberately uncached.",
+      "cache": false,
+      "dependsOn": [{ "projects": ["trinity"], "target": "build" }],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec cap sync ios",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "sync-prebuilt": {
+      "//": "Copy an already-verified www artifact for cross-host parity evidence without rebuilding it.",
+      "cache": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec cap sync ios",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "build": {
+      "cache": false,
+      "dependsOn": ["sync"],
+      "outputs": ["{projectRoot}/App/build"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec cap build ios --scheme App",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "run": {
+      "cache": false,
+      "dependsOn": ["sync"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec cap run ios",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "open": {
+      "cache": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec cap open ios",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "verify": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/native-host-contract.mjs ios",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "verify-native": {
+      "cache": false,
+      "dependsOn": ["sync"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "xcodebuild -project App/App.xcodeproj -scheme App -sdk iphonesimulator -configuration Debug build CODE_SIGNING_ALLOWED=NO",
+        "cwd": "{projectRoot}"
+      }
+    }
+  }
+}
