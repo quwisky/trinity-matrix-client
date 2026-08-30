@@ -32,6 +32,7 @@ import {
   RECENT_WORKSPACE_SCOPE,
   sameWorkspaceDestination,
   type WorkspaceDestination,
+  type WorkspaceEventTarget,
   type WorkspaceOpenOptions,
   type WorkspaceOpenOutcome,
   type WorkspaceScope,
@@ -69,9 +70,11 @@ export class WorkspaceService {
   private readonly workspaceView = signal<WorkspaceView>(this.seedView());
   private readonly transitionMetrics =
     signal<WorkspaceTransitionMetrics | null>(null);
+  private readonly eventTargetState = signal<WorkspaceEventTarget | null>(null);
 
   readonly view = this.workspaceView.asReadonly();
   readonly lastTransition = this.transitionMetrics.asReadonly();
+  readonly eventTarget = this.eventTargetState.asReadonly();
   readonly activeAccountId = computed(() => this.view().accountId);
   readonly activeSpaceId = computed(() => {
     const scope = this.view().scope;
@@ -96,21 +99,40 @@ export class WorkspaceService {
           parseWorkspaceUrl(params, query, this.matrix.activeUserId()),
         ),
         concatMap((parsed) => {
-          if (!parsed.destination) return of(null);
+          if (!parsed.destination) {
+            this.eventTargetState.set(null);
+            return of(null);
+          }
           if (
             parsed.canonical &&
             sameWorkspaceDestination(this.view(), parsed.destination)
           ) {
+            this.publishEventTarget(parsed.eventId ?? null);
             return of(null);
           }
           return this.open(parsed.destination, {
             source: 'restore',
             history: 'replace',
-          });
+          }).pipe(
+            map((outcome) => {
+              if (outcome.kind === 'ready') {
+                this.publishEventTarget(
+                  outcome.view.roomId === parsed.destination?.roomId
+                    ? (parsed.eventId ?? null)
+                    : null,
+                );
+              }
+              return outcome;
+            }),
+          );
         }),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe();
+  }
+
+  private publishEventTarget(eventId: string | null): void {
+    this.eventTargetState.set(eventId ? { eventId } : null);
   }
 
   /**

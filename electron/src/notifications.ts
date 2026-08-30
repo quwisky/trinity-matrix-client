@@ -13,8 +13,8 @@ import { focusMainWindow, getMainWindow } from './window';
 //     validated/clamped in coerceNotificationPayload before any Notification is
 //     constructed, and only accepted from our own main window's renderer.
 //   main -> renderer: NOTIFICATION_CLICK_CHANNEL forwards the clicked
-//     notification's roomId (and the account userId it belongs to) so the Angular
-//     app can switch accounts if needed and route to the room.
+//     notification's typed account/room/event destination so the Angular app can
+//     switch accounts if needed and focus the exact event.
 export const SHOW_NOTIFICATION_CHANNEL = 'show-notification';
 export const NOTIFICATION_CLICK_CHANNEL = 'notification-click';
 
@@ -56,16 +56,17 @@ function resolveNotificationIcon(): Electron.NativeImage | undefined {
 /**
  * Show a validated OS notification. Collapses per room (a newer notification for
  * the same room replaces the previous open one). On click, reveals/focuses the
- * window and forwards the roomId to the renderer over `notification-click`.
+ * window and forwards the typed destination to the renderer over
+ * `notification-click`.
  */
 function showOsNotification(payload: NotificationRequest): void {
   if (!Notification.isSupported()) {
     return;
   }
-  // Collapse key: the renderer sends `userId|roomId` as the tag so a room collapses
+  // Collapse key: the renderer sends `accountId|roomId` as the tag so a room collapses
   // per account (and the same room on two accounts stays two toasts); fall back to
   // the room id for legacy single-account payloads.
-  const collapseKey = payload.tag || payload.roomId;
+  const collapseKey = payload.tag || payload.destination.roomId;
   activeNotifications.get(collapseKey)?.close();
 
   const icon = resolveNotificationIcon();
@@ -81,8 +82,7 @@ function showOsNotification(payload: NotificationRequest): void {
     focusMainWindow();
     getMainWindow()?.webContents.send(
       NOTIFICATION_CLICK_CHANNEL,
-      payload.roomId,
-      payload.userId,
+      payload.destination,
     );
   });
   notification.on('close', () => {
@@ -95,7 +95,7 @@ function showOsNotification(payload: NotificationRequest): void {
   // rather than displaying. Surface it so it's diagnosable instead of mysterious.
   notification.on('failed', (_event, error) => {
     console.error(
-      `[notification] display failed (room ${payload.roomId}): ${error}. On macOS this ` +
+      `[notification] display failed (room ${payload.destination.roomId}): ${error}. On macOS this ` +
         'usually means the app is unsigned or ad-hoc-signed — Electron 42 needs a stable ' +
         'code signature to post notifications. See docs/platforms/desktop.md (macOS signing).',
     );

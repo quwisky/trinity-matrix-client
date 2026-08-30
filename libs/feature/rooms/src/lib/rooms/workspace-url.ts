@@ -12,6 +12,7 @@ import {
 
 export interface ParsedWorkspaceUrl {
   readonly destination: WorkspaceDestination | null;
+  readonly eventId?: string;
   readonly canonical: boolean;
 }
 
@@ -45,6 +46,10 @@ export function parseWorkspaceUrl(
   canonical &&= pane.canonical;
   if (!pane.valid) roomId = null;
 
+  const requestedEvent = query.get('event');
+  const eventId = parseEventId(requestedEvent, roomId);
+  if (requestedEvent && !eventId) canonical = false;
+
   return {
     destination: {
       accountId,
@@ -52,6 +57,7 @@ export function parseWorkspaceUrl(
       roomId,
       pane: roomId ? pane.pane : 'list',
     },
+    ...(eventId ? { eventId } : {}),
     canonical,
   };
 }
@@ -82,6 +88,13 @@ export function workspaceUrlOf(
       break;
   }
   return { commands, queryParams };
+}
+
+function parseEventId(
+  value: string | null,
+  roomId: string | null,
+): string | null {
+  return roomId && value?.startsWith('$') && value.length > 1 ? value : null;
 }
 
 function parseScope(query: ParamMap): {

@@ -10,7 +10,11 @@ import {
 import { NavigationFocusService } from '@trinity/application/runtime';
 import { WorkspaceBackService } from '@trinity/application/workspace';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
-import { AppBadgeService } from '@trinity/data-access/notifications';
+import {
+  AppBadgeService,
+  NotificationService,
+  type NotificationDestination,
+} from '@trinity/data-access/notifications';
 import { SpaceRoomOrderService } from '@trinity/data-access/rooms';
 import { NativeNavigationService } from '@trinity/platform-native';
 import { HostBackService, HostDeepLinksService } from '@trinity/runtime/host';
@@ -25,6 +29,7 @@ interface SessionHarness {
   readonly adapter: TrinityApplicationSessionAdapter;
   readonly deepLinks: Subject<{ readonly url: string }>;
   readonly backIntents: Subject<{ readonly canGoBack: boolean }>;
+  readonly notificationActivations: Subject<NotificationDestination>;
   readonly navigate: ReturnType<typeof vi.fn>;
   readonly closeAuthentication: ReturnType<typeof vi.fn>;
   readonly locationBack: ReturnType<typeof vi.fn>;
@@ -46,6 +51,7 @@ interface SessionHarness {
 function setup(): SessionHarness {
   const deepLinks = new Subject<{ readonly url: string }>();
   const backIntents = new Subject<{ readonly canGoBack: boolean }>();
+  const notificationActivations = new Subject<NotificationDestination>();
   const navigate = vi.fn().mockResolvedValue(true);
   const closeAuthentication = vi.fn(() => of({ kind: 'completed' as const }));
   const locationBack = vi.fn();
@@ -69,6 +75,7 @@ function setup(): SessionHarness {
       MockProvider(Router, { navigate }),
       MockProvider(Location, { back: locationBack }),
       MockProvider(AppBadgeService, { run: () => EMPTY }),
+      MockProvider(NotificationService, { run: () => notificationActivations }),
       MockProvider(NavigationFocusService, { run: () => EMPTY }),
       MockProvider(WorkspaceRoutedSurfaceAdapter, { run: () => EMPTY }),
       MockProvider(WorkspaceApplicationSurfacePresenterAdapter, {
@@ -108,6 +115,7 @@ function setup(): SessionHarness {
     adapter: TestBed.inject(TrinityApplicationSessionAdapter),
     deepLinks,
     backIntents,
+    notificationActivations,
     navigate,
     closeAuthentication,
     locationBack,
@@ -158,6 +166,58 @@ describe('TrinityApplicationSessionAdapter', () => {
       queryParams: { code: 'CODE', state: 'STATE' },
     });
     expect(test.closeAuthentication).toHaveBeenCalledTimes(2);
+    lifetime.unsubscribe();
+  });
+
+  it('projects typed notification activation into a Workspace-owned destination URL', async () => {
+    const test = setup();
+    const focus = vi.spyOn(window, 'focus').mockImplementation(() => undefined);
+    const lifetime = test.adapter.run().subscribe();
+
+    test.notificationActivations.next({
+      accountId: '@background:example.org',
+      roomId: '!room:example.org',
+      eventId: '$event',
+    });
+
+    await vi.waitFor(() =>
+      expect(test.navigate).toHaveBeenCalledWith(
+        ['/rooms', 'IXJvb206ZXhhbXBsZS5vcmc'],
+        {
+          queryParams: {
+            account: '@background:example.org',
+            event: '$event',
+          },
+        },
+      ),
+    );
+    expect(focus).toHaveBeenCalledOnce();
+    lifetime.unsubscribe();
+  });
+
+  it('reports rejected notification navigation without ending the session', async () => {
+    const test = setup();
+    test.navigate.mockResolvedValueOnce(false);
+    const warnings: unknown[] = [];
+    const lifetime = test.adapter
+      .run()
+      .subscribe((value) => warnings.push(value));
+
+    test.notificationActivations.next({
+      accountId: '@me:example.org',
+      roomId: '!missing:example.org',
+      eventId: '$event',
+    });
+
+    await vi.waitFor(() =>
+      expect(warnings).toContainEqual(
+        expect.objectContaining({
+          scope: 'workspace',
+          diagnostic: { code: 'notification-navigation-rejected' },
+        }),
+      ),
+    );
+    expect(lifetime.closed).toBe(false);
     lifetime.unsubscribe();
   });
 

@@ -1,4 +1,5 @@
 import { Injectable, Provider, inject } from '@angular/core';
+import { SwPush } from '@angular/service-worker';
 import { App } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
@@ -23,6 +24,7 @@ import {
   defer,
   from,
   map,
+  merge,
   of,
   switchMap,
 } from 'rxjs';
@@ -46,9 +48,11 @@ const rejected = (code: string): HostOperationOutcome => ({
 
 @Injectable({ providedIn: 'root' })
 export class WebHostOperationAdapter implements HostOperationsAdapter {
+  private readonly swPush = inject(SwPush, { optional: true });
   private readonly notificationActivations = new Subject<{
+    readonly accountId: string;
     readonly roomId: string;
-    readonly userId?: string;
+    readonly eventId: string;
   }>();
 
   callback(request: { readonly webUrl: string; readonly appUrl: string }) {
@@ -64,7 +68,15 @@ export class WebHostOperationAdapter implements HostOperationsAdapter {
 
   readonly received = EMPTY;
   readonly intents = EMPTY;
-  readonly activated = this.notificationActivations.asObservable();
+  readonly activated = merge(
+    this.notificationActivations,
+    this.swPush?.notificationClicks.pipe(
+      switchMap(({ notification }) => {
+        const destination = notification.data;
+        return isNotificationDestination(destination) ? of(destination) : EMPTY;
+      }),
+    ) ?? EMPTY,
+  );
 
   deepLinkSupport(): Observable<HostCapabilitySupport> {
     return defer(() => of(notSupported()));
@@ -91,9 +103,16 @@ export class WebHostOperationAdapter implements HostOperationsAdapter {
   requestPermission(): Observable<HostOperationOutcome> {
     return defer(() => {
       if (typeof Notification === 'undefined') return of(notSupported());
-      if (Notification.permission !== 'default') return of(completed());
+      if (Notification.permission === 'granted') return of(completed());
+      if (Notification.permission === 'denied') {
+        return of(rejected('notification-permission-denied'));
+      }
       return from(Notification.requestPermission()).pipe(
-        map(() => completed()),
+        map((permission) =>
+          permission === 'granted'
+            ? completed()
+            : rejected('notification-permission-denied'),
+        ),
         catchError(() => of(rejected('notification-permission-failed'))),
       );
     });
@@ -113,7 +132,7 @@ export class WebHostOperationAdapter implements HostOperationsAdapter {
         body: request.body,
         tag: request.tag,
         silent: request.silent,
-        data: { roomId: request.roomId, userId: request.userId },
+        data: request.destination,
       };
       if (navigator.serviceWorker?.controller) {
         return from(navigator.serviceWorker.ready).pipe(
@@ -139,10 +158,7 @@ export class WebHostOperationAdapter implements HostOperationsAdapter {
     try {
       const notification = new Notification(request.title, options);
       notification.onclick = () => {
-        this.notificationActivations.next({
-          roomId: request.roomId,
-          ...(request.userId ? { userId: request.userId } : {}),
-        });
+        this.notificationActivations.next(request.destination);
         notification.close();
       };
       return of(completed());
@@ -262,12 +278,12 @@ export class ElectronHostOperationAdapter implements HostOperationsAdapter {
   );
   readonly intents = EMPTY;
   readonly activated = new Observable<{
+    readonly accountId: string;
     readonly roomId: string;
-    readonly userId?: string;
+    readonly eventId: string;
   }>((subscriber) =>
     getTrinityDesktopBridge()?.capabilities.notificationPresentation.subscribeClicks(
-      (roomId, userId) =>
-        subscriber.next({ roomId, ...(userId ? { userId } : {}) }),
+      (destination) => subscriber.next(destination),
     ),
   );
 
@@ -307,6 +323,20 @@ export class ElectronHostOperationAdapter implements HostOperationsAdapter {
       return of(completed());
     });
   }
+}
+
+function isNotificationDestination(value: unknown): value is {
+  readonly accountId: string;
+  readonly roomId: string;
+  readonly eventId: string;
+} {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate['accountId'] === 'string' &&
+    typeof candidate['roomId'] === 'string' &&
+    typeof candidate['eventId'] === 'string'
+  );
 }
 
 function selectedHostOperationAdapter(): HostOperationsAdapter {

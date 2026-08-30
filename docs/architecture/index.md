@@ -26,19 +26,20 @@ and [generated dependency map](generated/dependency-map.md).
 composition adapters that bind capability ports to Router, lazy feature loaders and presentation
 policy. Its production TypeScript source surface is:
 
-| File                                                                       | What it is                                                            |
-| -------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `main.ts`                                                                  | `bootstrapApplication`, adapter providers and runtime ownership       |
-| `app/app.routes.ts`                                                        | The eight top-level routes, plus a development-only ninth             |
-| `app/trinity-application-runtime.adapter.ts`                               | Production startup stages and session-long host ownership             |
-| `app/settings-dialog.config.ts`                                            | App-owned Settings lazy-loader and placement policy                   |
-| `app/workspace-application-surface.presenter.ts`                           | Workspace application-surface composition adapter                     |
-| `app/workspace-routed-surface.adapter.ts`                                  | Canonical deep-link and routed-Back composition adapter               |
-| `app/build-info.ts`                                                        | Generated at build time by the `build-info` target, and git-ignored   |
-| `environments/environment.ts`, `environment.prod.ts`                       | Build-time configuration                                              |
-| `polyfills.ts`                                                             | Comment-only; it exists to record that zone.js is deliberately absent |
-| `test-setup.ts`                                                            | One line; it imports the workspace-root `test-setup.base.ts`          |
-| `index.html`, `global.scss`, `theme/`, `rendered-markdown.scss`, `assets/` | Shell markup, styles and static assets                                |
+| File                                                                       | What it is                                                             |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `main.ts`                                                                  | `bootstrapApplication`, adapter providers and runtime ownership        |
+| `app/app.routes.ts`                                                        | The eight top-level routes, plus a development-only ninth              |
+| `app/trinity-application-runtime.adapter.ts`                               | Production startup stages and session-long host ownership              |
+| `app/trinity-application-session.adapter.ts`                               | Session streams, notification activation, Back and update coordination |
+| `app/settings-dialog.config.ts`                                            | App-owned Settings lazy-loader and placement policy                    |
+| `app/workspace-application-surface.presenter.ts`                           | Workspace application-surface composition adapter                      |
+| `app/workspace-routed-surface.adapter.ts`                                  | Canonical deep-link and routed-Back composition adapter                |
+| `app/build-info.ts`                                                        | Generated at build time by the `build-info` target, and git-ignored    |
+| `environments/environment.ts`, `environment.prod.ts`                       | Build-time configuration                                               |
+| `polyfills.ts`                                                             | Comment-only; it exists to record that zone.js is deliberately absent  |
+| `test-setup.ts`                                                            | One line; it imports the workspace-root `test-setup.base.ts`           |
+| `index.html`, `global.scss`, `theme/`, `rendered-markdown.scss`, `assets/` | Shell markup, styles and static assets                                 |
 
 The application root, `VerificationHostComponent`, startup state, retry surface and route-focus
 source live in `@trinity/application/runtime`. The app project remains a composition root: it

@@ -9,18 +9,21 @@
 export const NOTIFICATION_TITLE_LIMIT = 120;
 export const NOTIFICATION_BODY_LIMIT = 300;
 export const NOTIFICATION_ROOM_ID_LIMIT = 256;
-export const NOTIFICATION_USER_ID_LIMIT = 256;
+export const NOTIFICATION_ACCOUNT_ID_LIMIT = 256;
+export const NOTIFICATION_EVENT_ID_LIMIT = 256;
 
 /** Validated, clamped notification request derived from an untrusted IPC payload. */
 export interface NotificationRequest {
   title: string;
   body: string;
-  roomId: string;
+  destination: {
+    accountId: string;
+    roomId: string;
+    eventId: string;
+  };
   silent: boolean;
   /** Web-Notification-style collapse tag; forwarded by the preload bridge. */
   tag?: string;
-  /** Account the notification belongs to; echoed back on click for switch-then-open. */
-  userId?: string;
 }
 
 /**
@@ -50,13 +53,22 @@ export function coerceNotificationPayload(
     return null;
   }
   const rec = raw as Record<string, unknown>;
+  const destination = rec['destination'];
+  if (typeof destination !== 'object' || destination === null) return null;
+  const target = destination as Record<string, unknown>;
+  const accountId = sanitizeNotificationText(
+    target['accountId'],
+    NOTIFICATION_ACCOUNT_ID_LIMIT,
+  );
   const roomId = sanitizeNotificationText(
-    rec['roomId'],
+    target['roomId'],
     NOTIFICATION_ROOM_ID_LIMIT,
   );
-  if (!roomId) {
-    return null; // no target room => nothing to collapse on or open
-  }
+  const eventId = sanitizeNotificationText(
+    target['eventId'],
+    NOTIFICATION_EVENT_ID_LIMIT,
+  );
+  if (!accountId || !roomId || !eventId) return null;
   const title = sanitizeNotificationText(
     rec['title'],
     NOTIFICATION_TITLE_LIMIT,
@@ -68,18 +80,11 @@ export function coerceNotificationPayload(
   const request: NotificationRequest = {
     title,
     body,
-    roomId,
+    destination: { accountId, roomId, eventId },
     silent: rec['silent'] === true,
   };
   if (typeof rec['tag'] === 'string') {
     request.tag = rec['tag'];
-  }
-  const userId = sanitizeNotificationText(
-    rec['userId'],
-    NOTIFICATION_USER_ID_LIMIT,
-  );
-  if (userId) {
-    request.userId = userId;
   }
   return request;
 }

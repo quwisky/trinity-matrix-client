@@ -561,6 +561,7 @@ lifecycle hooks and that left the callback unset for every unit test. And a `hos
 only name a member of the component class, so the global keydown listener keeps a one-line
 delegate.
 
-The page is also still the single place the client projections are started: `ngOnInit` calls
-`connect()` on rooms, spaces, invites, crypto, presence and notifications, so read it before
-adding another projection to the shell.
+The page still starts its Room-shell projections: `ngOnInit` calls `connect()` on rooms, spaces,
+invites, crypto, presence, space children, room notification rules, and Room permissions. Local
+notification delivery is not page-owned: Application Runtime subscribes to its cold session stream,
+which stays dormant with no Accounts and releases every Matrix and host listener on runtime stop.

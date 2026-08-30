@@ -1,18 +1,14 @@
 import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { Router } from '@angular/router';
 import { MatrixEventEvent, RoomEvent, type MatrixClient } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
-import { EMPTY, Subject, of } from 'rxjs';
+import { EMPTY, Subject, Subscription, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationService } from './notification.service';
+import type { NotificationDestination } from './notification-intent';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { ConversationRuntime } from '@trinity/data-access/timeline';
-import {
-  SessionStorageService,
-  provideHostCapabilities,
-} from '@trinity/platform-native';
-import { encodeRoomSegment } from '@trinity/util/matrix';
+import { NOTIFICATION_VISIBILITY } from './notification-visibility.port';
+import { provideHostCapabilities } from '@trinity/platform-native';
 import {
   HOST_OPERATIONS,
   HostNotificationPresentationService,
@@ -78,39 +74,36 @@ function setup(
     new Map(accounts.map((id) => [id, fakeClient(id, opts.soundEnabled)]));
   const accountIds = signal<readonly string[]>(accounts);
   const activeUserId = signal<string | null>(active);
-  const setActive = vi.fn((id: string) => activeUserId.set(id));
-  const storageSetActive = vi.fn(() => of(void 0));
   const timeline = { openRoomId: null as string | null };
   TestBed.configureTestingModule({
     providers: [
       provideHostCapabilities(),
       NotificationService,
       MockProvider(MatrixClientService, {
-        isInitialized: true,
+        // A session can start signed out. Notification Runtime must remain dormant
+        // instead of completing, then attach when the first Account appears.
+        isInitialized: active !== '',
         // Read by NotificationSoundService when no owning account is supplied.
         instance: { getAccountData: () => undefined } as never,
         accountIds: accountIds.asReadonly(),
         activeUserId: activeUserId.asReadonly(),
         clientFor: (id: string) =>
           (clients.get(id) as unknown as MatrixClient) ?? null,
-        setActive,
       }),
-      MockProvider(Router, { navigate: vi.fn(() => Promise.resolve(true)) }),
       {
-        provide: ConversationRuntime,
+        provide: NOTIFICATION_VISIBILITY,
         useValue: {
-          focused: () =>
-            timeline.openRoomId
+          snapshot: () => ({
+            foreground: typeof document !== 'undefined' && document.hasFocus(),
+            conversation: timeline.openRoomId
               ? {
-                  key: {
-                    accountId: activeUserId() ?? '',
-                    roomId: timeline.openRoomId,
-                  },
+                  accountId: activeUserId() ?? '',
+                  roomId: timeline.openRoomId,
                 }
               : null,
+          }),
         },
       },
-      MockProvider(SessionStorageService, { setActive: storageSetActive }),
       ...(opts.hostNotifications
         ? [
             {
@@ -121,17 +114,29 @@ function setup(
         : []),
     ],
   });
+  const service = TestBed.inject(NotificationService);
+  const activations: NotificationDestination[] = [];
+  let lifetime: Subscription | null = null;
+  const svc = Object.assign(service, {
+    connect: (): void => {
+      lifetime = service
+        .run()
+        .subscribe((destination) => activations.push(destination));
+    },
+    disconnect: (): void => {
+      lifetime?.unsubscribe();
+      lifetime = null;
+    },
+  });
   return {
-    svc: TestBed.inject(NotificationService),
+    svc,
     client: clients.get(active)!,
     clients,
     // The writable account-id signal, so tests can add/remove accounts after
     // connect() and flush the reconcile effect via ApplicationRef.tick().
     accountIds,
-    setActive,
-    storageSetActive,
-    router: TestBed.inject(Router),
     timeline,
+    activations,
   };
 }
 
@@ -141,11 +146,23 @@ function setup(
  * forwarded by the main process.
  */
 function desktopBridge() {
-  let clickHandler: ((roomId: string, userId?: string) => void) | undefined;
+  let clickHandler:
+    | ((destination: {
+        accountId: string;
+        roomId: string;
+        eventId: string;
+      }) => void)
+    | undefined;
   const unsubscribe = vi.fn();
   const present = vi.fn();
   const subscribeClicks = vi.fn(
-    (cb: (roomId: string, userId?: string) => void) => {
+    (
+      cb: (destination: {
+        accountId: string;
+        roomId: string;
+        eventId: string;
+      }) => void,
+    ) => {
       clickHandler = cb;
       return unsubscribe;
     },
@@ -166,8 +183,8 @@ function desktopBridge() {
   return {
     bridge,
     unsubscribe,
-    emitClick: (roomId: string, userId?: string): void =>
-      clickHandler?.(roomId, userId),
+    emitClick: (roomId: string, accountId = '@me:hs'): void =>
+      clickHandler?.({ accountId, roomId, eventId: '$event' }),
   };
 }
 
@@ -193,7 +210,7 @@ function event(
   const isEncrypted = !!(opts.encrypted || opts.decrypted || opts.failure);
   const hasClear = !!opts.decrypted;
   return {
-    getId: () => opts.id,
+    getId: () => opts.id ?? '$event',
     getRoomId: () => '!r:hs',
     getSender: () => opts.sender ?? '@alice:hs',
     sender: { name: 'Alice' },
@@ -397,18 +414,19 @@ describe('NotificationService', () => {
     expect(client.on).not.toHaveBeenCalled();
   });
 
-  it('focuses + routes to /rooms when a notification is clicked', () => {
-    const { svc, client, router } = setup();
-    const focus = vi.spyOn(window, 'focus').mockImplementation(() => undefined);
+  it('emits the exact typed destination when a notification is clicked', () => {
+    const { svc, client, activations } = setup();
     svc.connect();
     timelineHandler(client)(event(), room, false, false, live);
 
     MockNotification.instances[0].onclick?.();
 
-    expect(focus).toHaveBeenCalled();
-    expect(router.navigate).toHaveBeenCalledWith([
-      '/rooms',
-      encodeRoomSegment('!r:hs'),
+    expect(activations).toEqual([
+      {
+        accountId: '@me:hs',
+        roomId: '!r:hs',
+        eventId: '$event',
+      },
     ]);
   });
 
@@ -564,12 +582,11 @@ describe('NotificationService', () => {
       expect(bg.getPushActionsForEvent).toHaveBeenCalled();
     });
 
-    it('switches to the owning account when its notification is clicked', () => {
-      const { svc, clients, setActive, storageSetActive, router } = setup({
+    it('keeps the owning account in the emitted activation', () => {
+      const { svc, clients, activations } = setup({
         accounts: ['@me:hs', '@bg:hs'],
         active: '@me:hs',
       });
-      vi.spyOn(window, 'focus').mockImplementation(() => undefined);
       svc.connect();
       timelineHandler(clients.get('@bg:hs')!)(
         event(),
@@ -581,11 +598,12 @@ describe('NotificationService', () => {
 
       MockNotification.instances[0].onclick?.();
 
-      expect(setActive).toHaveBeenCalledWith('@bg:hs');
-      expect(storageSetActive).toHaveBeenCalledWith('@bg:hs');
-      expect(router.navigate).toHaveBeenCalledWith([
-        '/rooms',
-        encodeRoomSegment('!r:hs'),
+      expect(activations).toEqual([
+        {
+          accountId: '@bg:hs',
+          roomId: '!r:hs',
+          eventId: '$event',
+        },
       ]);
     });
 
@@ -677,7 +695,7 @@ describe('NotificationService', () => {
       expect(MockNotification.instances).toHaveLength(1);
     });
 
-    it('disconnects itself — enabled included — when the last account signs out', () => {
+    it('stays dormant across sign-out and attaches a later login in the same app session', () => {
       const { svc, clients, accountIds } = setup({ accounts: ['@me:hs'] });
       svc.connect();
       const me = clients.get('@me:hs')!;
@@ -690,14 +708,26 @@ describe('NotificationService', () => {
         expect.any(Function),
       );
 
-      // The next account to warm up must NOT be bound behind the user's back: the
-      // shell calling connect() is what turns OS notifications back on.
       const next = fakeClient('@next:hs');
       clients.set('@next:hs', next);
       accountIds.set(['@next:hs']);
       TestBed.inject(ApplicationRef).tick();
 
-      expect(next.on).not.toHaveBeenCalled();
+      expect(next.on).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not negotiate Web permission until the session has an account', () => {
+      MockNotification.permission = 'default';
+      const { svc, clients, accountIds } = setup({ accounts: [], active: '' });
+
+      svc.connect();
+      expect(MockNotification.requestPermission).not.toHaveBeenCalled();
+
+      clients.set('@next:hs', fakeClient('@next:hs'));
+      accountIds.set(['@next:hs']);
+      TestBed.inject(ApplicationRef).tick();
+
+      expect(MockNotification.requestPermission).toHaveBeenCalledOnce();
     });
 
     it('skips a warm-starting account with no client yet, attaching once it appears', () => {
@@ -761,7 +791,11 @@ describe('NotificationService', () => {
       expect(showNotification).toHaveBeenCalledWith('Alice · General', {
         body: 'hello there',
         tag: '@me:hs !r:hs',
-        data: { roomId: '!r:hs', userId: '@me:hs' },
+        data: {
+          accountId: '@me:hs',
+          roomId: '!r:hs',
+          eventId: '$event',
+        },
         // Sound is on unless the account says otherwise, so the default is audible.
         silent: false,
       });
@@ -829,8 +863,11 @@ describe('NotificationService', () => {
         title: 'Alice · General',
         body: 'hello there',
         tag: '@me:hs !r:hs',
-        roomId: '!r:hs',
-        userId: '@me:hs',
+        destination: {
+          accountId: '@me:hs',
+          roomId: '!r:hs',
+          eventId: '$event',
+        },
         // The desktop shell never sees NotificationOptions, so it is told separately.
         silent: false,
       });
@@ -870,36 +907,33 @@ describe('NotificationService', () => {
       ).not.toHaveBeenCalled();
     });
 
-    it('routes to the room when a forwarded click arrives', async () => {
-      const { svc, router } = setup();
-      const focus = vi
-        .spyOn(window, 'focus')
-        .mockImplementation(() => undefined);
+    it('emits the destination when a forwarded click arrives', async () => {
+      const { svc, activations } = setup();
       svc.connect();
       await settleDesktopNegotiation();
 
       harness.emitClick('!r:hs');
 
-      expect(focus).toHaveBeenCalled();
-      expect(router.navigate).toHaveBeenCalledWith([
-        '/rooms',
-        encodeRoomSegment('!r:hs'),
+      expect(activations).toEqual([
+        {
+          accountId: '@me:hs',
+          roomId: '!r:hs',
+          eventId: '$event',
+        },
       ]);
     });
 
-    it('switches accounts when a forwarded click carries a userId', async () => {
-      const { svc, setActive, storageSetActive } = setup({
+    it('preserves the account when a forwarded click carries it', async () => {
+      const { svc, activations } = setup({
         accounts: ['@me:hs', '@bg:hs'],
         active: '@me:hs',
       });
-      vi.spyOn(window, 'focus').mockImplementation(() => undefined);
       svc.connect();
       await settleDesktopNegotiation();
 
       harness.emitClick('!r:hs', '@bg:hs');
 
-      expect(setActive).toHaveBeenCalledWith('@bg:hs');
-      expect(storageSetActive).toHaveBeenCalledWith('@bg:hs');
+      expect(activations[0]?.accountId).toBe('@bg:hs');
     });
 
     it('unsubscribes from main-process clicks on disconnect', async () => {

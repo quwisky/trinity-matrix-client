@@ -39,6 +39,7 @@ interface HarnessOptions {
   readonly routeAccountId?: string;
   readonly routeRoomId?: string;
   readonly routeView?: string;
+  readonly routeEventId?: string;
   readonly rooms?: Readonly<Record<string, readonly string[]>>;
   readonly compact?: boolean;
 }
@@ -56,6 +57,7 @@ function harness(options: HarnessOptions = {}) {
     convertToParamMap({
       ...(options.routeAccountId ? { account: options.routeAccountId } : {}),
       ...(options.routeView ? { view: options.routeView } : {}),
+      ...(options.routeEventId ? { event: options.routeEventId } : {}),
     }),
   );
   const clients = new Map(
@@ -174,6 +176,41 @@ function harness(options: HarnessOptions = {}) {
 afterEach(() => TestBed.resetTestingModule());
 
 describe('WorkspaceService', () => {
+  it('opens an inactive notification destination and publishes its event anchor after repair', async () => {
+    const h = harness({
+      routeAccountId: BOB,
+      routeRoomId: ROOM,
+      routeEventId: '$notification',
+    });
+
+    await vi.waitFor(() =>
+      expect(h.service.eventTarget()).toMatchObject({
+        eventId: '$notification',
+      }),
+    );
+    expect(h.service.view()).toMatchObject({
+      accountId: BOB,
+      roomId: ROOM,
+      pane: 'conversation',
+    });
+    expect(h.conversations.focus).toHaveBeenLastCalledWith({
+      accountId: BOB,
+      roomId: ROOM,
+    });
+  });
+
+  it('repairs a notification for a missing room and does not publish its event anchor', async () => {
+    const h = harness({
+      routeAccountId: BOB,
+      routeRoomId: '!missing:example.org',
+      routeEventId: '$notification',
+    });
+
+    await vi.waitFor(() => expect(h.service.view().accountId).toBe(BOB));
+    expect(h.service.view()).toMatchObject({ roomId: null, pane: 'list' });
+    expect(h.service.eventTarget()).toBeNull();
+  });
+
   it('restores an inactive Account deep link before atomically focusing its Conversation', async () => {
     const h = harness({
       routeAccountId: BOB,

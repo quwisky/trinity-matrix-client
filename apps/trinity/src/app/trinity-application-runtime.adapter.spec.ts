@@ -18,6 +18,7 @@ import {
 import { GifSettingsService } from '@trinity/data-access/gif';
 import {
   AppBadgeService,
+  NotificationService,
   PushGatewayService,
   PushService,
 } from '@trinity/data-access/notifications';
@@ -60,6 +61,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   let restoreAccounts: Mock<() => Observable<AccountRestoreResult>>;
   let themeInit: Mock<() => Promise<void>>;
   let badgeSession: Subject<HostOperationOutcome>;
+  let notificationSession: Subject<never>;
   let focusSession: Subject<void>;
   let routedSession: Subject<void>;
   let surfaceSession: Subject<void>;
@@ -98,6 +100,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     );
     themeInit = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
     badgeSession = new Subject<HostOperationOutcome>();
+    notificationSession = new Subject<never>();
     focusSession = new Subject<void>();
     routedSession = new Subject<void>();
     surfaceSession = new Subject<void>();
@@ -150,6 +153,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         }),
         MockProvider(PushService, { register: pushRegister }),
         MockProvider(AppBadgeService, { run: () => badgeSession }),
+        MockProvider(NotificationService, { run: () => notificationSession }),
         MockProvider(SwUpdate, {
           isEnabled: true,
           unrecoverable,
@@ -346,6 +350,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
 
     expect([
       badgeSession.observed,
+      notificationSession.observed,
       focusSession.observed,
       routedSession.observed,
       surfaceSession.observed,
@@ -354,7 +359,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       backIntents.observed,
       versionUpdates.observed,
       unrecoverable.observed,
-    ]).toEqual(Array(9).fill(true));
+    ]).toEqual(Array(10).fill(true));
     expect(setHistoryGesturesEnabled).toHaveBeenCalled();
 
     badgeSession.next({
@@ -372,6 +377,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     first.unsubscribe();
     expect([
       badgeSession.observed,
+      notificationSession.observed,
       focusSession.observed,
       routedSession.observed,
       surfaceSession.observed,
@@ -380,7 +386,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       backIntents.observed,
       versionUpdates.observed,
       unrecoverable.observed,
-    ]).toEqual(Array(9).fill(false));
+    ]).toEqual(Array(10).fill(false));
     const gestureCalls = setHistoryGesturesEnabled.mock.calls.length;
     dialogOpen.set(true);
     TestBed.tick();
@@ -389,9 +395,11 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     const second = adapter.runSession().subscribe();
     TestBed.tick();
     expect(badgeSession.observed).toBe(true);
+    expect(notificationSession.observed).toBe(true);
     expect(orderSession.observed).toBe(true);
     second.unsubscribe();
     expect(badgeSession.observed).toBe(false);
+    expect(notificationSession.observed).toBe(false);
     expect(orderSession.observed).toBe(false);
   });
 });

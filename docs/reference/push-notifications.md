@@ -67,9 +67,13 @@ knowing about:
 
 ## Local notifications on desktop and web
 
-`NotificationService` turns the live sync stream into OS notifications. It runs on
-desktop and web only; on native mobile it returns early, because push owns delivery
-there.
+The Notifications capability splits local delivery into three seams. Its Matrix adapter narrows a
+live SDK event into a bounded value record. `NotificationPolicy` combines that normalized event with
+normalized user rules, foreground Conversation visibility and bounded deduplication state to produce
+an immutable `NotificationIntent`. `NotificationPresenterService` alone asks the selected Host
+Capability for permission and delivery. The policy therefore imports no Router, DOM, platform or SDK
+API. Local delivery runs on desktop and web only; native mobile reports presentation unavailable
+because push owns delivery there.
 
 It listens per account, not just for the active one, and reconciles those listeners
 against the live account set, so an account that finishes its background warm start later
@@ -92,22 +96,30 @@ still gets bound. A notification fires only when all of the following hold:
     the pending set and the already-notified set are capped at 500 entries so a long
     session cannot grow them without bound.
 
-The collapse `tag` is `` `${userId} ${roomId}` ``, so a newer message replaces the previous
+The collapse `tag` is `` `${accountId} ${roomId}` ``, so a newer message replaces the previous
 toast from the same room on the same account, while the same room on a second account
 stays a separate toast.
+
+Application Runtime owns the long-lived notification stream. It stays dormant rather than prompting
+when there are no Accounts, attaches Accounts that appear later, and tears down both host activation
+and Matrix listeners on runtime stop.
 
 There are two delivery backends. On the Electron desktop shell the preload
 `trinityDesktop` bridge is present, and notifications are handed to the **main process**;
 renderer Web notifications from Electron are unreliably surfaced and attributed by the OS,
-notably on macOS. Clicks come back over `onNotificationClick` carrying the room id and the
-account id. On web, the Web `Notification` API is used — through the service worker
+notably on macOS. Clicks come back through the typed host activation stream carrying the
+account, room and event destination. On web, the Web `Notification` API is used — through the service worker
 registration when a service worker controls the page, because mobile browsers throw on
-`new Notification()`, and through the constructor otherwise.
+`new Notification()`, and through the constructor otherwise. Angular's service-worker click stream
+is validated before its typed destination is admitted back into the application.
 
-A click focuses the window, switches to the owning account if it is not already active,
-and navigates to `/rooms/<segment>`, where the segment is the room id encoded with
-`encodeRoomSegment` (base64url — the raw id ends in a dotted server name, which both SPA
-fallbacks refuse to answer with `index.html`).
+A click emits an immutable `{accountId, roomId, eventId}` destination. The app composition adapter
+focuses the window and projects that value into `/rooms/<segment>?account=…&event=…`, where the
+segment is the room id encoded with `encodeRoomSegment` (base64url — the raw id ends in a dotted
+server name, which both SPA fallbacks refuse to answer with `index.html`). Workspace consumes that
+URL through its normal cold transition, so inactive Accounts switch atomically, unavailable Rooms
+repair to the safe list, and a valid event becomes the Conversation jump target only after the Room
+is ready.
 
 Nothing consumes and strips a parameter any more: the open room IS the URL.
 `RoomShellStore.activeRoomId` derives from `ActivatedRoute.paramMap`, so a tap arriving

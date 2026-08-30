@@ -8,7 +8,11 @@ import {
 } from '@trinity/application/runtime';
 import { WorkspaceBackService } from '@trinity/application/workspace';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
-import { AppBadgeService } from '@trinity/data-access/notifications';
+import {
+  AppBadgeService,
+  NotificationService,
+  type NotificationDestination,
+} from '@trinity/data-access/notifications';
 import { SpaceRoomOrderService } from '@trinity/data-access/rooms';
 import { NativeNavigationService } from '@trinity/platform-native';
 import {
@@ -35,6 +39,7 @@ import {
 } from 'rxjs';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
+import { encodeRoomSegment } from '@trinity/util/matrix';
 
 /** Owns every live host and Workspace subscription for one Application Runtime session. */
 @Injectable({ providedIn: 'root' })
@@ -43,6 +48,7 @@ export class TrinityApplicationSessionAdapter {
   private readonly router = inject(Router);
   private readonly location = inject(Location);
   private readonly badge = inject(AppBadgeService);
+  private readonly notifications = inject(NotificationService);
   private readonly swUpdate = inject(SwUpdate);
   private readonly toast = inject(TrnToastService);
   private readonly dialog = inject(TrnDialogService);
@@ -60,6 +66,7 @@ export class TrinityApplicationSessionAdapter {
   run(): Observable<ApplicationRuntimeWarning> {
     return merge(
       this.badge.run().pipe(concatMap((outcome) => this.badgeWarning(outcome))),
+      this.runNotificationActivations(),
       this.navigationFocus.run().pipe(ignoreElements()),
       this.routedSurfaces.run().pipe(ignoreElements()),
       this.applicationSurfaces.run().pipe(ignoreElements()),
@@ -69,6 +76,44 @@ export class TrinityApplicationSessionAdapter {
       this.runNavigationGesturePolicy().pipe(ignoreElements()),
       this.runUpdates(),
     );
+  }
+
+  private runNotificationActivations(): Observable<ApplicationRuntimeWarning> {
+    return this.notifications
+      .run()
+      .pipe(concatMap((destination) => this.openNotification(destination)));
+  }
+
+  private openNotification(
+    destination: NotificationDestination,
+  ): Observable<ApplicationRuntimeWarning> {
+    return defer(() => {
+      try {
+        window.focus();
+      } catch {
+        // Browser focus may be denied; Workspace navigation is still valid.
+      }
+      return from(
+        this.router.navigate(
+          ['/rooms', encodeRoomSegment(destination.roomId)],
+          {
+            queryParams: {
+              account: destination.accountId,
+              event: destination.eventId,
+            },
+          },
+        ),
+      ).pipe(
+        switchMap((navigated) =>
+          navigated
+            ? EMPTY
+            : of(warning('workspace', 'notification-navigation-rejected')),
+        ),
+        catchError(() =>
+          of(warning('workspace', 'notification-navigation-failed')),
+        ),
+      );
+    });
   }
 
   private badgeWarning(
