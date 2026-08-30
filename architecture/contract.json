@@ -56,13 +56,7 @@
       "reason": "Black-box test harnesses are outside the shipped application dependency model."
     }
   ],
-  "classificationExceptions": [
-    {
-      "project": "trinity-desktop",
-      "removeBy": "#325",
-      "reason": "The inferred Electron project cannot carry tags without changing its inferred target set."
-    }
-  ],
+  "classificationExceptions": [],
   "entrypointExemptProjects": [
     {
       "project": "components-storybook-host",

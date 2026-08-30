@@ -262,41 +262,50 @@ function notificationId(
 export class ElectronNotificationPresentationAdapter implements HostNotificationPresentationOperation {
   private readonly capabilities = inject(HostCapabilitiesService);
 
-  readonly activated = new Observable<{
-    readonly accountId: string;
-    readonly roomId: string;
-    readonly eventId: string;
-  }>((subscriber) =>
-    getTrinityDesktopBridge()?.capabilities.notificationPresentation.subscribeClicks(
-      (destination) => subscriber.next(destination),
+  readonly activated = defer(() => this.presentationSupport()).pipe(
+    switchMap((support) =>
+      support.kind === 'supported'
+        ? new Observable<{
+            readonly accountId: string;
+            readonly roomId: string;
+            readonly eventId: string;
+          }>((subscriber) =>
+            getTrinityDesktopBridge()?.capabilities.notificationPresentation.subscribeClicks(
+              (destination) => subscriber.next(destination),
+            ),
+          )
+        : EMPTY,
     ),
   );
 
   presentationSupport(): Observable<HostCapabilitySupport> {
-    return this.capabilities
-      .manifest()
-      .pipe(
-        map((manifest) => manifest.operations['notification-presentation']),
-      );
+    return defer(() => this.capabilities.manifest()).pipe(
+      map((manifest) => manifest.operations['notification-presentation']),
+    );
   }
 
   requestPermission(): Observable<HostOperationOutcome> {
-    return defer(() => of(completed()));
+    return this.presentationSupport().pipe(
+      map((support) => (support.kind === 'supported' ? completed() : support)),
+    );
   }
 
   present(
     request: Parameters<HostNotificationPresentationOperation['present']>[0],
   ): Observable<HostOperationOutcome> {
-    return defer(() => {
-      const bridge = getTrinityDesktopBridge();
-      if (!bridge) return of(notSupported());
-      return from(
-        bridge.capabilities.notificationPresentation.present(request),
-      ).pipe(
-        map(normalizeElectronNotificationOutcome),
-        catchError(() => of(rejected('notification-presentation-failed'))),
-      );
-    });
+    return this.presentationSupport().pipe(
+      switchMap((support) => {
+        if (support.kind === 'unavailable') return of(support);
+        const bridge = getTrinityDesktopBridge();
+        if (!bridge) return of(notSupported());
+        return from(
+          bridge.capabilities.notificationPresentation.present(request),
+        ).pipe(
+          map(normalizeElectronNotificationOutcome),
+          catchError(() => of(rejected('notification-presentation-failed'))),
+        );
+      }),
+    );
   }
 }
 

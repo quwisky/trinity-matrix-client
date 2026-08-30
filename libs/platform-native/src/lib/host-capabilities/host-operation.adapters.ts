@@ -1,4 +1,6 @@
+import { DOCUMENT } from '@angular/common';
 import { Injectable, Provider, inject } from '@angular/core';
+import { SwUpdate } from '@angular/service-worker';
 import { App } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
@@ -6,15 +8,33 @@ import {
   HOST_AUTHENTICATION_HANDOFF_OPERATION,
   HOST_BACK_OPERATION,
   HOST_DEEP_LINKS_OPERATION,
+  HOST_FILE_EXPORT_OPERATION,
+  HOST_LIFECYCLE_OPERATION,
+  HOST_UPDATES_OPERATION,
   HostCapabilitiesService,
   type HostAuthenticationHandoffOperation,
   type HostBackOperation,
   type HostCapabilitySupport,
   type HostDeepLinksOperation,
+  type HostFileExportOperation,
+  type HostLifecycleOperation,
   type HostOperationOutcome,
+  type HostUpdatesOperation,
 } from '@trinity/runtime/host';
-import { EMPTY, Observable, catchError, defer, from, map, of } from 'rxjs';
+import {
+  EMPTY,
+  Observable,
+  catchError,
+  defer,
+  distinctUntilChanged,
+  from,
+  fromEvent,
+  map,
+  of,
+  switchMap,
+} from 'rxjs';
 import { getTrinityDesktopBridge } from '../trinity-desktop-bridge';
+import { FileSaveService } from '../host-media/file-save.service';
 import { notificationPresentationProvider } from './host-notification-presentation.adapters';
 
 type HostOperationsAdapter = HostAuthenticationHandoffOperation &
@@ -165,9 +185,15 @@ export class ElectronHostOperationAdapter implements HostOperationsAdapter {
       return of(completed());
     });
   }
-  readonly received = new Observable<{ readonly url: string }>((subscriber) =>
-    getTrinityDesktopBridge()?.capabilities.deepLinks.subscribe((url) =>
-      subscriber.next({ url }),
+  readonly received = defer(() => this.deepLinkSupport()).pipe(
+    switchMap((support) =>
+      support.kind === 'supported'
+        ? new Observable<{ readonly url: string }>((subscriber) =>
+            getTrinityDesktopBridge()?.capabilities.deepLinks.subscribe((url) =>
+              subscriber.next({ url }),
+            ),
+          )
+        : EMPTY,
     ),
   );
   readonly intents = EMPTY;
@@ -190,6 +216,75 @@ export class ElectronHostOperationAdapter implements HostOperationsAdapter {
   }
 }
 
+@Injectable({ providedIn: 'root' })
+export class HostFileExportAdapter implements HostFileExportOperation {
+  private readonly capabilities = inject(HostCapabilitiesService);
+  private readonly files = inject(FileSaveService);
+
+  support(): Observable<HostCapabilitySupport> {
+    return defer(() => this.capabilities.manifest()).pipe(
+      map((manifest) => manifest.operations['file-export']),
+    );
+  }
+
+  save(
+    request: Parameters<HostFileExportOperation['save']>[0],
+  ): Observable<HostOperationOutcome> {
+    return this.support().pipe(
+      switchMap((support) =>
+        support.kind === 'unavailable'
+          ? of(support)
+          : this.files.save(request.bytes, request.filename).pipe(
+              map(() => completed()),
+              catchError(() => of(rejected('file-export-failed'))),
+            ),
+      ),
+    );
+  }
+}
+
+@Injectable({ providedIn: 'root' })
+export class DocumentHostLifecycleAdapter implements HostLifecycleOperation {
+  private readonly document = inject(DOCUMENT);
+
+  readonly events = defer(() =>
+    fromEvent(this.document, 'visibilitychange').pipe(
+      map(() =>
+        this.document.visibilityState === 'visible'
+          ? ({ kind: 'active' } as const)
+          : ({ kind: 'background' } as const),
+      ),
+      distinctUntilChanged(
+        (previous, current) => previous.kind === current.kind,
+      ),
+    ),
+  );
+}
+
+@Injectable({ providedIn: 'root' })
+export class ServiceWorkerHostUpdatesAdapter implements HostUpdatesOperation {
+  private readonly updates = inject(SwUpdate, { optional: true });
+
+  support(): Observable<HostCapabilitySupport> {
+    return defer(() =>
+      of(this.updates?.isEnabled ? supported() : notSupported()),
+    );
+  }
+
+  check(): Observable<HostOperationOutcome> {
+    return this.support().pipe(
+      switchMap((support) =>
+        support.kind === 'unavailable'
+          ? of(support)
+          : from(this.updates!.checkForUpdate()).pipe(
+              map(() => completed()),
+              catchError(() => of(rejected('update-check-failed'))),
+            ),
+      ),
+    );
+  }
+}
+
 function selectedHostOperationAdapter(): HostOperationsAdapter {
   if (getTrinityDesktopBridge()) return inject(ElectronHostOperationAdapter);
   return Capacitor.isNativePlatform()
@@ -204,6 +299,15 @@ export function hostOperationProviders(): Provider[] {
       HOST_DEEP_LINKS_OPERATION,
       HOST_BACK_OPERATION,
     ].map((provide) => ({ provide, useFactory: selectedHostOperationAdapter })),
+    { provide: HOST_FILE_EXPORT_OPERATION, useExisting: HostFileExportAdapter },
+    {
+      provide: HOST_LIFECYCLE_OPERATION,
+      useExisting: DocumentHostLifecycleAdapter,
+    },
+    {
+      provide: HOST_UPDATES_OPERATION,
+      useExisting: ServiceWorkerHostUpdatesAdapter,
+    },
     notificationPresentationProvider(),
   ];
 }

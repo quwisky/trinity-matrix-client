@@ -4,6 +4,9 @@
   "private": true,
   "description": "Hand-rolled, hardened Electron desktop shell for Trinity. Serves the Angular www/ build over a custom privileged scheme (no Capacitor desktop bridge).",
   "author": "Trinity",
+  "nx": {
+    "includedScripts": []
+  },
   "//homepage": "Required metadata, not decoration: the Linux `deb` target fails the whole build without it (fpm needs a package URL). It also becomes the NuGet projectUrl on Windows.",
   "homepage": "https://github.com/quwisky/trinity-matrix-client",
   "main": "dist/main.js",

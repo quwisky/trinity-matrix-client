@@ -9,7 +9,7 @@
     <trn-icon [name]="copied() ? 'check' : 'copy'" />
     {{ copied() ? 'Copied' : 'Copy' }}
   </button>
-  @if (canDownload) {
+  @if (canDownload()) {
     <button trnBtn variant="outline" size="sm" (click)="download()">
       <trn-icon name="download" />
       Download

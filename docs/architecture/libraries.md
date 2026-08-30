@@ -1,6 +1,6 @@
 # Library inventory
 
-The workspace holds one application and 83 libraries. Every shipped library carries its current
+The workspace holds four host applications and 58 libraries. Every shipped project carries its current
 `type:*` and `scope:*` tags plus target `role:*` and `capability:*` metadata; UI libraries also
 carry a `ui:*` tag that
 separates Trinity's own wrapper layer from the vendored kit; those tags are what
@@ -70,11 +70,12 @@ all, so its own correctness is only ever exercised through the specs that import
 
 The deployable host projects are composition roots rather than reusable libraries:
 
-| Nx project        | Root           | Tags                                                             | Purpose                                                                                                                                      |
-| ----------------- | -------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `trinity`         | `apps/trinity` | `type:app`, `scope:matrix`, `role:app`, `capability:composition` | Build and compose the shared Web/PWA renderer into the flat `www/` artifact                                                                  |
-| `trinity-android` | `android`      | `type:app`, `scope:matrix`, `role:app`, `capability:composition` | Sync the shared renderer into the checked-in Capacitor Android shell and expose Gradle, launch and installed-WebView verification targets    |
-| `trinity-ios`     | `ios`          | `type:app`, `scope:matrix`, `role:app`, `capability:composition` | Sync the shared renderer into the checked-in Capacitor iOS shell and expose Xcode/Capacitor launch and native-toolchain verification targets |
+| Nx project        | Root           | Tags                                                             | Purpose                                                                                                                                       |
+| ----------------- | -------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `trinity`         | `apps/trinity` | `type:app`, `scope:matrix`, `role:app`, `capability:composition` | Build and compose the shared Web/PWA renderer into the flat `www/` artifact                                                                   |
+| `trinity-android` | `android`      | `type:app`, `scope:matrix`, `role:app`, `capability:composition` | Sync the shared renderer into the checked-in Capacitor Android shell and expose Gradle, launch and installed-WebView verification targets     |
+| `trinity-ios`     | `ios`          | `type:app`, `scope:matrix`, `role:app`, `capability:composition` | Sync the shared renderer into the checked-in Capacitor iOS shell and expose Xcode/Capacitor launch and native-toolchain verification targets  |
+| `trinity-desktop` | `electron`     | `type:app`, `scope:matrix`, `role:app`, `capability:composition` | Package the shared renderer in the versioned, hardened Electron shell and expose compile, test, launch, platform-package and real-shell proof |
 
 | Library                | Alias                      | Tags                                                               | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | ---------------------- | -------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

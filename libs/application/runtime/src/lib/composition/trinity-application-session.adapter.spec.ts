@@ -17,7 +17,12 @@ import {
 } from '@trinity/data-access/notifications';
 import { SpaceRoomOrderService } from '@trinity/data-access/room-library';
 import { NativeNavigationService } from '@trinity/platform-native';
-import { HostBackService, HostDeepLinksService } from '@trinity/runtime/host';
+import {
+  HostBackService,
+  HostDeepLinksService,
+  HostLifecycleService,
+  HostUpdatesService,
+} from '@trinity/runtime/host';
 import { MockProvider } from 'ng-mocks';
 import { EMPTY, Subject, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -30,6 +35,9 @@ interface SessionHarness {
   readonly deepLinks: Subject<{ readonly url: string }>;
   readonly backIntents: Subject<{ readonly canGoBack: boolean }>;
   readonly notificationEvents: Subject<NotificationRuntimeEvent>;
+  readonly lifecycleEvents: Subject<
+    { readonly kind: 'active' } | { readonly kind: 'background' }
+  >;
   readonly navigate: ReturnType<typeof vi.fn>;
   readonly closeAuthentication: ReturnType<typeof vi.fn>;
   readonly locationBack: ReturnType<typeof vi.fn>;
@@ -44,6 +52,7 @@ interface SessionHarness {
   readonly versionUpdates: Subject<VersionEvent>;
   readonly unrecoverable: Subject<UnrecoverableStateEvent>;
   readonly checkForUpdate: ReturnType<typeof vi.fn>;
+  readonly hostUpdateCheck: ReturnType<typeof vi.fn>;
   readonly activateUpdate: ReturnType<typeof vi.fn>;
   readonly showToast: ReturnType<typeof vi.fn>;
 }
@@ -52,6 +61,9 @@ function setup(): SessionHarness {
   const deepLinks = new Subject<{ readonly url: string }>();
   const backIntents = new Subject<{ readonly canGoBack: boolean }>();
   const notificationEvents = new Subject<NotificationRuntimeEvent>();
+  const lifecycleEvents = new Subject<
+    { readonly kind: 'active' } | { readonly kind: 'background' }
+  >();
   const navigate = vi.fn().mockResolvedValue(true);
   const closeAuthentication = vi.fn(() => of({ kind: 'completed' as const }));
   const locationBack = vi.fn();
@@ -66,6 +78,7 @@ function setup(): SessionHarness {
   const versionUpdates = new Subject<VersionEvent>();
   const unrecoverable = new Subject<UnrecoverableStateEvent>();
   const checkForUpdate = vi.fn().mockResolvedValue(true);
+  const hostUpdateCheck = vi.fn(() => of({ kind: 'completed' as const }));
   const activateUpdate = vi.fn().mockResolvedValue(true);
   const showToast = vi.fn();
 
@@ -87,6 +100,8 @@ function setup(): SessionHarness {
         closeAuthentication,
       }),
       MockProvider(HostBackService, { intents: backIntents, background }),
+      MockProvider(HostLifecycleService, { events: lifecycleEvents }),
+      MockProvider(HostUpdatesService, { check: hostUpdateCheck }),
       MockProvider(TrnDialogService, {
         openState: dialogOpen,
         hasOpen: hasDialog,
@@ -116,6 +131,7 @@ function setup(): SessionHarness {
     deepLinks,
     backIntents,
     notificationEvents,
+    lifecycleEvents,
     navigate,
     closeAuthentication,
     locationBack,
@@ -130,6 +146,7 @@ function setup(): SessionHarness {
     versionUpdates,
     unrecoverable,
     checkForUpdate,
+    hostUpdateCheck,
     activateUpdate,
     showToast,
   };
@@ -336,8 +353,8 @@ describe('TrinityApplicationSessionAdapter', () => {
     const test = setup();
     const lifetime = test.adapter.run().subscribe();
 
-    document.dispatchEvent(new Event('visibilitychange'));
-    expect(test.checkForUpdate).toHaveBeenCalledOnce();
+    test.lifecycleEvents.next({ kind: 'active' });
+    expect(test.hostUpdateCheck).toHaveBeenCalledOnce();
 
     lifetime.unsubscribe();
     test.versionUpdates.next({
@@ -349,11 +366,35 @@ describe('TrinityApplicationSessionAdapter', () => {
       type: 'UNRECOVERABLE_STATE',
       reason: 'cache gone',
     });
-    document.dispatchEvent(new Event('visibilitychange'));
+    test.lifecycleEvents.next({ kind: 'active' });
 
     expect(test.showToast).not.toHaveBeenCalled();
-    expect(test.checkForUpdate).toHaveBeenCalledOnce();
+    expect(test.hostUpdateCheck).toHaveBeenCalledOnce();
     expect(locationStub.calls).not.toContain('reload');
+  });
+
+  it('projects a rejected foreground host update check as a runtime warning', () => {
+    const test = setup();
+    test.hostUpdateCheck.mockReturnValueOnce(
+      of({
+        kind: 'rejected',
+        diagnostic: { code: 'host-update-failed' },
+      }),
+    );
+    const warnings: unknown[] = [];
+    const lifetime = test.adapter
+      .run()
+      .subscribe((warning) => warnings.push(warning));
+
+    test.lifecycleEvents.next({ kind: 'active' });
+
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        scope: 'updates',
+        diagnostic: { code: 'update-check-failed' },
+      }),
+    ]);
+    lifetime.unsubscribe();
   });
 });
 

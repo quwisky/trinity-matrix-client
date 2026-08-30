@@ -16,7 +16,10 @@ import {
   type PresentedMediaReference,
 } from '@trinity/data-access/media';
 import { MediaAttachmentComponent } from './media-attachment.component';
-import { FileSaveService } from '@trinity/platform-native';
+import {
+  HostFileExportService,
+  type HostOperationOutcome,
+} from '@trinity/runtime/host';
 
 function imageMedia(): PresentedMediaReference {
   return {
@@ -61,9 +64,11 @@ describe('MediaAttachmentComponent', () => {
       unpin: vi.fn(),
       releaseAll: vi.fn(),
     };
-    // FileSaveService owns the platform branch; stub it so the component test
+    // HostFileExportService owns the host contract; stub it so the component test
     // doesn't touch the object-URL API / native plugins.
-    fileSave = { save: vi.fn().mockReturnValue(of(undefined)) };
+    fileSave = {
+      save: vi.fn().mockReturnValue(of({ kind: 'completed' as const })),
+    };
   });
 
   /**
@@ -78,7 +83,7 @@ describe('MediaAttachmentComponent', () => {
       // as the method implementations so assertions read the same references.
       providers: [
         MockProvider(MediaPipeline, mediaService),
-        MockProvider(FileSaveService, fileSave),
+        MockProvider(HostFileExportService, fileSave),
       ],
     });
   }
@@ -238,14 +243,17 @@ describe('MediaAttachmentComponent', () => {
     expect(mediaService.unpin).toHaveBeenCalledWith('blob:full');
   });
 
-  it('download() resolves the full bytes then hands them to FileSaveService', async () => {
+  it('download() resolves the full bytes then hands them to the host file contract', async () => {
     const media = imageMedia();
     const { fixture } = await renderMedia(media);
 
     fixture.componentInstance.download();
 
     expect(mediaService.downloadMedia).toHaveBeenCalledWith(media);
-    expect(fileSave.save).toHaveBeenCalledWith(expect.any(Blob), 'pic.png');
+    expect(fileSave.save).toHaveBeenCalledWith({
+      bytes: expect.any(Blob),
+      filename: 'pic.png',
+    });
     expect(fixture.componentInstance.hasError()).toBe(false);
   });
 
@@ -258,8 +266,19 @@ describe('MediaAttachmentComponent', () => {
     expect(fixture.componentInstance.hasError()).toBe(true);
   });
 
+  it('download() surfaces an explicit unavailable host outcome', async () => {
+    fileSave.save.mockReturnValue(
+      of({ kind: 'unavailable', reason: 'not-supported' }),
+    );
+    const { fixture } = await renderMedia(imageMedia());
+
+    fixture.componentInstance.download();
+
+    expect(fixture.componentInstance.hasError()).toBe(true);
+  });
+
   it('ignores a second download() while a save is in flight', async () => {
-    const saveStream = new Subject<void>();
+    const saveStream = new Subject<HostOperationOutcome>();
     fileSave.save.mockReturnValue(saveStream.asObservable());
     const { fixture } = await renderMedia(imageMedia());
 

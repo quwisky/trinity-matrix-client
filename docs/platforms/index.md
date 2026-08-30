@@ -19,15 +19,15 @@ WebView. There is no per-platform fork of the timeline, the room list, or the cr
 
 ## What each target is built with
 
-| Target  | Wrapper                                   | Build command                                             | Artifact                                                 |
-| ------- | ----------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------- |
-| Web     | none                                      | `pnpm build`                                              | static bundle in `www/`                                  |
-| Desktop | hand-rolled Electron shell in `electron/` | `pnpm electron:package` or a named `:mac`/`:linux`/`:win` | dmg, zip, AppImage, deb, nsis exe in `electron/release/` |
-| Android | Capacitor, Nx project `trinity-android`   | `pnpm android:build`                                      | debug APK from Gradle                                    |
-| iOS     | Capacitor, Nx project `trinity-ios`       | `pnpm ios:build`                                          | Xcode build of the `App` scheme                          |
+| Target  | Wrapper                                                                  | Build command                                             | Artifact                                                 |
+| ------- | ------------------------------------------------------------------------ | --------------------------------------------------------- | -------------------------------------------------------- |
+| Web     | none                                                                     | `pnpm build`                                              | static bundle in `www/`                                  |
+| Desktop | first-class `trinity-desktop` Nx app over the hand-rolled Electron shell | `pnpm electron:package` or a named `:mac`/`:linux`/`:win` | dmg, zip, AppImage, deb, nsis exe in `electron/release/` |
+| Android | Capacitor, Nx project `trinity-android`                                  | `pnpm android:build`                                      | debug APK from Gradle                                    |
+| iOS     | Capacitor, Nx project `trinity-ios`                                      | `pnpm ios:build`                                          | Xcode build of the `App` scheme                          |
 
-Each mobile Nx sync target depends on `trinity:build`; desktop scripts run `pnpm build`
-first. They therefore always package a freshly produced `www/`. `pnpm build` has no configuration argument and
+Each mobile Nx sync target and the desktop Nx build targets depend on `trinity:build`.
+They therefore always package a freshly produced `www/`. `pnpm build` has no configuration argument and
 `defaultConfiguration` is `production`, which means every desktop and native script builds
 production — including during development.
 

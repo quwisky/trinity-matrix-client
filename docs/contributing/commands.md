@@ -88,21 +88,18 @@ workspace data goes too.
 
 ### What `pnpm test` does not cover
 
-`pnpm test` runs 37 projects: the fourteen `data-access-*` libraries, four
+`pnpm test` runs 38 projects: the fourteen `data-access-*` libraries, four
 `application-*` libraries, three runtime libraries, `feature-auth`, `feature-crypto`,
 `feature-rooms`, `feature-settings`, `feature-shell`, `platform-native`, `util-matrix`,
 `util-ui`, the five tested `libs/components/*` libraries, `spartan-tests`, the `trinity`
-app itself, and `scripts` — which holds the build scripts and the repository's guard
+app itself, `trinity-desktop`, and `scripts` — which holds the build scripts and the repository's guard
 suite, described in [Testing](testing.md#the-guard-suite).
 
-It does **not** run the Electron main-process specs. The `trinity-desktop` project
-is inferred from `electron/` and exposes only a `lint` target — its `test` script
-is not surfaced as an Nx target, so `nx run-many -t test` skips it entirely. A
-change under `electron/src/` can pass locally and fail CI's `desktop` job. Run them
-explicitly:
+The explicit `trinity-desktop:test` target runs the Electron main-process specs after installing
+the shell's standalone pinned dependencies. To focus that suite explicitly:
 
 ```bash
-pnpm -C electron test
+pnpm electron:test
 ```
 
 Also outside `pnpm test`: `trinity-e2e` (Playwright, run separately), `libs/testing`
@@ -116,12 +113,15 @@ from `libs/spartan/tests` instead.
 | Command                            | What it does                                                      |
 | ---------------------------------- | ----------------------------------------------------------------- |
 | `pnpm electron:install`            | Install `electron/` dependencies and download the Electron binary |
+| `pnpm electron:test`               | Electron main/preload unit tests through Nx                       |
+| `pnpm electron:typecheck`          | Type-check shell production and spec sources                      |
+| `pnpm electron:verify`             | Static host, artifact, bridge, security and package contract      |
 | `pnpm electron:build`              | Web build, then copy `www/` into the shell and compile it         |
 | `pnpm electron:build:prebuilt`     | Copy an existing `www/` into the shell and compile it             |
+| `pnpm electron:build:release`      | Web build and shell compile without development signing           |
 | `pnpm electron:start`              | Build, then launch the desktop app                                |
-| `pnpm -C electron test`            | Electron main-process unit tests, Node environment                |
-| `pnpm -C electron run compile`     | Type-check the shell only                                         |
 | `pnpm electron:e2e`                | Playwright specs against the real built binary                    |
+| `pnpm electron:e2e:smoke`          | Docker-independent launched-shell protocol/security proof         |
 | `pnpm electron:package`            | Package for the host OS                                           |
 | `pnpm electron:package:mac`        | macOS, ad-hoc dev-signed                                          |
 | `pnpm electron:package:mac:signed` | macOS, Developer ID signed and notarized — needs credentials      |
@@ -129,19 +129,20 @@ from `libs/spartan/tests` instead.
 | `pnpm electron:package:win`        | Windows NSIS installer                                            |
 | `pnpm electron:package:all`        | All three targets                                                 |
 
-`electron:build` chains four steps: `pnpm build` (a production Angular build),
-`electron:install`, the shell's own copy-plus-compile, and a macOS-only ad-hoc
+`electron:build` is the `trinity-desktop:build` target. It depends on `trinity:build` and
+`trinity-desktop:install`, then runs the shell's copy-plus-compile and a macOS-only ad-hoc
 codesign of the development Electron binary. Everything above it in the table
 chains off it, which is why the desktop path is slower than it looks and why a
 desktop run always exercises production output.
 
+Platform release-package targets depend on `electron:build:release`, which consumes the same
+production `www/` but deliberately omits the local development-signing step.
+
 Two constraints on packaging:
 
-- **Do not use `electron:build` or any `electron:package:*` in CI.** They end in
-  the dev-signing step, which ad-hoc-codesigns the development Electron binary
-  against a local self-signed `trinity-dev` identity that no runner has. It
-  self-skips off macOS now, but the step is still useless in CI, so the release
-  workflow runs the three useful steps directly instead.
+- **Development signing is not release signing.** `electron:build` self-skips its ad-hoc
+  development signature away from macOS. A distributable macOS build still needs the dedicated
+  signed/notarized target and credentials; CI release packaging must not treat `sign-dev` as proof.
 - **`electron:package:mac` hardcodes an arm64 output path.** On an Intel Mac it
   builds the app into `release/mac/` and then dies trying to codesign
   `release/mac-arm64/Trinity.app`.
@@ -150,6 +151,7 @@ Two constraints on packaging:
 
 ```bash
 xvfb-run -a pnpm electron:e2e
+xvfb-run -a pnpm electron:e2e:smoke
 ```
 
 The suite starts and stops the disposable Synapse stack for authenticated journeys. It skips those

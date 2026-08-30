@@ -11,7 +11,9 @@ import type {
  *
  * It is present ONLY inside the desktop shell; on web/PWA and on mobile
  * (Capacitor) it is `undefined`. Protocol v1 has a required negotiation core and grouped
- * capability operations. The preload never leaks `ipcRenderer` or Node.
+ * capability operations. Every operation remains inert until the latest accepted negotiation
+ * grants it; a rejected or partial renegotiation revokes earlier grants. The preload never leaks
+ * `ipcRenderer` or Node.
  */
 export interface TrinityDesktopBridge {
   readonly protocolVersion: 1;
@@ -26,7 +28,7 @@ export interface TrinityDesktopBridge {
     operations: readonly HostOperation[],
   ) => Promise<unknown>;
 
-  /** Protocol-v1 operations are grouped by capability instead of widening the bridge. */
+  /** Protocol-v1 operations are grouped by capability and gated by negotiated grants. */
   capabilities: {
     deepLinks: {
       /** Subscribe to validated OS deep links, replaying any buffered cold-start URL. */

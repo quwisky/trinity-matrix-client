@@ -88,8 +88,8 @@ jobs:
       - uses: ./.github/actions/setup
       - run: pnpm build
 
-  # electron/ is a separate package with its own lockfile, and its specs are not part of
-  # `pnpm test` (the trinity-desktop Nx project exposes only a lint target).
+  # electron/ is a separate package with its own lockfile and an explicit trinity-desktop
+  # Nx application. The dedicated job additionally launches the real binary.
   desktop:
     name: Desktop (Electron)
     runs-on: ubuntu-latest
@@ -107,19 +107,18 @@ jobs:
           path: ~/.cache/electron
           key: electron-${{ runner.os }}-${{ hashFiles('electron/pnpm-lock.yaml') }}
           restore-keys: electron-${{ runner.os }}-
-      - run: pnpm -C electron install --frozen-lockfile
+      - run: pnpm electron:install
       # Fetch it here rather than letting `electron:e2e` trip the package's lazy download
       # mid-run: this is the step that populates the cache above, and a wedged @electron/get
       # should fail as itself, not as a Playwright launch timeout.
-      - run: pnpm -C electron run ensure:binary
-      - run: pnpm -C electron run compile
+      - run: pnpm electron:compile
       # `compile` type-checks the main-process sources only — electron/tsconfig.json
       # excludes `src/**/*.spec.ts`. This is the same gate for the specs (see
       # electron/tsconfig.spec.json for why it differs on module resolution).
-      - run: pnpm -C electron run typecheck
-      - run: pnpm -C electron test
+      - run: pnpm electron:typecheck
+      - run: pnpm electron:test
       # Launches the real binary and serves www/ over trinity://app. `electron:e2e` runs
-      # `electron:build` first (Angular www/ + the main-process tsc), which this job needs
+      # the Nx-owned `trinity-desktop:build` first (Angular www/ + main-process tsc), which this job needs
       # and no other job hands it. `xvfb-run` is required — Electron needs an X server
       # even headless. This is the only gate in the repo that exercises the custom
       # privileged scheme, WASM stream-instantiation, the sandbox posture and safeStorage.

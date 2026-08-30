@@ -52,12 +52,30 @@ interface ShowNotificationPayload {
   silent?: boolean;
 }
 
+type NegotiatedOperation =
+  | 'authentication-handoff'
+  | 'deep-links'
+  | 'back'
+  | 'file-export'
+  | 'notification-presentation'
+  | 'location'
+  | 'badge'
+  | 'secure-store'
+  | 'lifecycle'
+  | 'updates';
+
+const unavailableGrant = () =>
+  ({ kind: 'unavailable', reason: 'host-rejected' }) as const;
+
 // Listen at preload load (before any page JS), buffering URLs that arrive before
 // the renderer subscribes. The main process flushes a cold-start deep link on
 // `did-finish-load`, which can precede Angular's `onDeepLink` registration in
 // ngOnInit — without this buffer that URL would be lost.
 const buffered: string[] = [];
 let active: ((url: string) => void) | null = null;
+let negotiationAccepted = false;
+let grantedOperations = new Set<NegotiatedOperation>();
+let negotiationGeneration = 0;
 
 ipcRenderer.on(
   DEEP_LINK_CHANNEL,
@@ -65,7 +83,7 @@ ipcRenderer.on(
     if (typeof url !== 'string') {
       return;
     }
-    if (active) {
+    if (active && grantedOperations.has('deep-links')) {
       active(url);
     } else {
       buffered.push(url);
@@ -73,18 +91,71 @@ ipcRenderer.on(
   },
 );
 
+function acceptNegotiation(requested: readonly string[], value: unknown): void {
+  negotiationAccepted = false;
+  grantedOperations = new Set();
+  if (!value || typeof value !== 'object') return;
+  const result = value as {
+    readonly kind?: unknown;
+    readonly protocolVersion?: unknown;
+    readonly operations?: unknown;
+  };
+  if (
+    result.kind !== 'accepted' ||
+    result.protocolVersion !== 1 ||
+    !result.operations ||
+    typeof result.operations !== 'object'
+  ) {
+    return;
+  }
+  negotiationAccepted = true;
+  const support = result.operations as Record<string, unknown>;
+  for (const operation of requested) {
+    const entry = support[operation];
+    if (
+      entry &&
+      typeof entry === 'object' &&
+      (entry as { readonly kind?: unknown }).kind === 'supported'
+    ) {
+      grantedOperations.add(operation as NegotiatedOperation);
+    }
+  }
+  if (grantedOperations.has('deep-links') && active) {
+    while (buffered.length > 0) active(buffered.shift() as string);
+  }
+}
+
+async function negotiate(operations: readonly string[]): Promise<unknown> {
+  const generation = ++negotiationGeneration;
+  // A new request supersedes every earlier grant immediately. Its response is
+  // authoritative only while it remains the latest request in flight.
+  acceptNegotiation([], undefined);
+  try {
+    const result = await ipcRenderer.invoke(HOST_NEGOTIATE_CHANNEL, {
+      protocolVersion: 1,
+      operations,
+    });
+    if (generation === negotiationGeneration) {
+      acceptNegotiation(operations, result);
+    }
+    return result;
+  } catch (error) {
+    if (generation === negotiationGeneration) {
+      acceptNegotiation([], undefined);
+    }
+    throw error;
+  }
+}
+
 contextBridge.exposeInMainWorld('trinityDesktop', {
   protocolVersion: 1,
   isElectron: true,
   platform: process.platform,
-  negotiate: (operations: readonly string[]) =>
-    ipcRenderer.invoke(HOST_NEGOTIATE_CHANNEL, {
-      protocolVersion: 1,
-      operations,
-    }) as Promise<unknown>,
+  negotiate,
   capabilities: {
     deepLinks: {
       subscribe(callback: (url: string) => void): () => void {
+        if (!grantedOperations.has('deep-links')) return () => undefined;
         active = callback;
         while (buffered.length > 0) {
           callback(buffered.shift() as string);
@@ -96,6 +167,9 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
     },
     notificationPresentation: {
       present(payload: ShowNotificationPayload): Promise<unknown> {
+        if (!grantedOperations.has('notification-presentation')) {
+          return Promise.resolve(unavailableGrant());
+        }
         if (typeof payload !== 'object' || payload === null) {
           return Promise.resolve({
             kind: 'rejected',
@@ -121,10 +195,14 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
       subscribeClicks(
         callback: (destination: ShowNotificationPayload['destination']) => void,
       ): () => void {
+        if (!grantedOperations.has('notification-presentation')) {
+          return () => undefined;
+        }
         const listener = (
           _event: IpcRendererEvent,
           destination: unknown,
         ): void => {
+          if (!grantedOperations.has('notification-presentation')) return;
           if (isNotificationDestination(destination)) callback(destination);
         };
         ipcRenderer.on(NOTIFICATION_CLICK_CHANNEL, listener);
@@ -135,6 +213,9 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
     badge: {
       // Push the app-wide unread total through the protocol-v1 badge operation.
       set(count: number): Promise<unknown> {
+        if (!grantedOperations.has('badge')) {
+          return Promise.resolve(unavailableGrant());
+        }
         if (typeof count !== 'number') {
           return Promise.resolve({
             kind: 'rejected',
@@ -149,36 +230,51 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
     },
     secureStore: {
       isAvailable: (): Promise<boolean> =>
-        ipcRenderer.invoke(
-          'trinity:secure-store:available',
-        ) as Promise<boolean>,
+        grantedOperations.has('secure-store')
+          ? (ipcRenderer.invoke(
+              'trinity:secure-store:available',
+            ) as Promise<boolean>)
+          : Promise.resolve(false),
       get: (key: string): Promise<string | null> =>
-        ipcRenderer.invoke('trinity:secure-store:get', key) as Promise<
-          string | null
-        >,
+        grantedOperations.has('secure-store')
+          ? (ipcRenderer.invoke('trinity:secure-store:get', key) as Promise<
+              string | null
+            >)
+          : Promise.resolve(null),
       set: (key: string, value: string): Promise<boolean> =>
-        ipcRenderer.invoke(
-          'trinity:secure-store:set',
-          key,
-          value,
-        ) as Promise<boolean>,
+        grantedOperations.has('secure-store')
+          ? (ipcRenderer.invoke(
+              'trinity:secure-store:set',
+              key,
+              value,
+            ) as Promise<boolean>)
+          : Promise.resolve(false),
       delete: (key: string): Promise<void> =>
-        ipcRenderer.invoke('trinity:secure-store:delete', key) as Promise<void>,
+        grantedOperations.has('secure-store')
+          ? (ipcRenderer.invoke(
+              'trinity:secure-store:delete',
+              key,
+            ) as Promise<void>)
+          : Promise.resolve(),
     },
     networkCors: {
       setAllowedOrigins: (origins: readonly string[]): void => {
+        if (!negotiationAccepted) return;
         ipcRenderer.send('trinity:cors:set-allowed-origins', [...origins]);
       },
       allowOrigin: (origin: string): void => {
+        if (!negotiationAccepted) return;
         ipcRenderer.send('trinity:cors:allow-origin', origin);
       },
     },
     location: {
       approximate: (): Promise<{ lat: number; lng: number } | null> =>
-        ipcRenderer.invoke('trinity:geolocation:approximate') as Promise<{
-          lat: number;
-          lng: number;
-        } | null>,
+        grantedOperations.has('location')
+          ? (ipcRenderer.invoke('trinity:geolocation:approximate') as Promise<{
+              lat: number;
+              lng: number;
+            } | null>)
+          : Promise.resolve(null),
     },
   },
 });

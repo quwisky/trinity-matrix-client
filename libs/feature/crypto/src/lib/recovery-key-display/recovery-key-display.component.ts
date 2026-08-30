@@ -1,14 +1,17 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
+  computed,
   inject,
   input,
   signal,
 } from '@angular/core';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { DOCUMENT } from '@angular/common';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
-import { FileSaveService } from '@trinity/platform-native';
+import { HostFileExportService } from '@trinity/runtime/host';
 
 /** How long the "Copied" affordance stays visible after a successful copy. */
 const COPIED_FEEDBACK_MS = 2000;
@@ -17,8 +20,8 @@ const COPIED_FEEDBACK_MS = 2000;
  * Presents an encoded recovery key for the user to save: a selectable monospace
  * block with copy + download actions. Purely presentational — it takes the key as
  * an input and never touches the crypto layer, so the parent owns the "shown once,
- * confirm saved" gate. Download is web-only (no Capacitor Filesystem plugin); it is
- * hidden on native platforms, where copy is the path.
+ * confirm saved" gate. File export is host-selected and hidden only when the selected
+ * host explicitly reports it unavailable.
  */
 @Component({
   selector: 'trn-recovery-key-display',
@@ -29,7 +32,8 @@ const COPIED_FEEDBACK_MS = 2000;
 })
 export class RecoveryKeyDisplayComponent {
   private readonly document = inject(DOCUMENT);
-  private readonly files = inject(FileSaveService);
+  private readonly files = inject(HostFileExportService);
+  private readonly destroyRef = inject(DestroyRef);
 
   /** The encoded recovery key string to display. */
   readonly recoveryKey = input.required<string>();
@@ -43,8 +47,14 @@ export class RecoveryKeyDisplayComponent {
   /** Live-region message announcing copy/download outcomes to assistive tech. */
   readonly announcement = signal('');
 
-  /** Native WebViews lack a reliable file download; offer it on web only. */
-  readonly canDownload = this.files.directDownloadAvailable;
+  private readonly fileSupport = toSignal(this.files.support(), {
+    initialValue: { kind: 'unavailable', reason: 'not-implemented' } as const,
+  });
+
+  /** Every host decides support through the operation contract, never an identity branch. */
+  readonly canDownload = computed(
+    () => this.fileSupport().kind === 'supported',
+  );
 
   /** Copy the key to the clipboard, with transient + announced confirmation. */
   copy(): void {
@@ -65,24 +75,22 @@ export class RecoveryKeyDisplayComponent {
     );
   }
 
-  /** Save the key as a plain-text file (web only). */
+  /** Save the key through the selected cold host operation. */
   download(): void {
-    const view = this.document.defaultView;
-    if (!view) {
-      return;
-    }
     const blob = new Blob([this.recoveryKey()], { type: 'text/plain' });
-    const url = view.URL.createObjectURL(blob);
-    try {
-      const anchor = this.document.createElement('a');
-      anchor.href = url;
-      anchor.download = 'trinity-recovery-key.txt';
-      anchor.click();
-      this.announcement.set('Recovery key downloaded.');
-    } finally {
-      // Always tear down the object URL so the plaintext-key blob can't linger.
-      view.URL.revokeObjectURL(url);
-    }
+    this.files
+      .save({ bytes: blob, filename: 'trinity-recovery-key.txt' })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (outcome) =>
+          this.announcement.set(
+            outcome.kind === 'completed'
+              ? 'Recovery key downloaded.'
+              : 'Could not download the recovery key.',
+          ),
+        error: () =>
+          this.announcement.set('Could not download the recovery key.'),
+      });
   }
 
   private failCopy(): void {

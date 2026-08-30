@@ -67,6 +67,7 @@ export interface HostBackOperation {
 }
 
 export interface HostFileExportOperation {
+  support(): Observable<HostCapabilitySupport>;
   save(request: {
     readonly bytes: Blob;
     readonly filename: string;

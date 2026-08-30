@@ -342,15 +342,16 @@ toasts, mounting the real toaster and asserting the string reaches
 `document.body.textContent`. Note it needs a settle of `ApplicationRef.tick()`, then
 `await Promise.resolve()`, then `tick()` under zoneless.
 
-### pnpm test passes but the desktop CI job fails
+### pnpm test fails while installing the desktop test dependencies
 
-**Symptom.** A change to `electron/src/*.ts` is green locally and red in CI.
+**Symptom.** `trinity-desktop:install-dependencies` fails before the Electron unit suite starts.
 
-**Cause.** The inferred Nx project `trinity-desktop` exposes only a `lint` target — its
-package.json `test` script is not surfaced as an Nx target — so `nx run-many -t test`
-skips it.
+**Cause.** `electron/` deliberately has its own lockfile and standalone pnpm workspace. The explicit
+Nx unit/typecheck/lint targets install that pinned graph before running; a stale or manually edited
+`electron/pnpm-lock.yaml` fails the frozen install rather than silently using root dependencies.
 
-**Fix.** Run them explicitly with `pnpm -C electron test`.
+**Fix.** Repair the standalone lock with the pinned pnpm version, then run
+`pnpm electron:test`. Do not add Electron-only packages to the root manifest to bypass the target.
 
 ### The Electron e2e suite times out with no useful message
 
@@ -412,9 +413,9 @@ binary against a local self-signed identity. It self-skips off macOS now, but it
 always, and while it called `codesign` unconditionally it killed `electron:start`,
 `electron:e2e` and every `package:*` on Linux and Windows.
 
-**Fix.** Never use `electron:build` or `electron:package:*` in CI. Run the three useful
-steps directly: `pnpm build`, then `pnpm -C electron install --frozen-lockfile`, then
-`pnpm -C electron run build`.
+**Fix.** The Nx build target self-skips development signing off macOS. On a macOS runner, either
+install the local `trinity-dev` identity for a development build or use the dedicated signed and
+notarized package path with release credentials; do not treat the ad-hoc signature as distributable.
 
 ### Secure storage refuses to work on a Linux box
 

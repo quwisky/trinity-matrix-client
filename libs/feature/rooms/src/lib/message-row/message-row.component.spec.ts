@@ -14,9 +14,9 @@ import {
 } from '@trinity/data-access/timeline';
 import {
   DateTimeFormatService,
-  FileSaveService,
   PrivacySettingsService,
 } from '@trinity/platform-native';
+import { HostFileExportService } from '@trinity/runtime/host';
 import {
   MessageRowComponent,
   type MessageRow,
@@ -109,7 +109,9 @@ describe('MessageRowComponent', () => {
           resolveMedia: () => of(''),
           downloadMedia: () => of({ blob: new Blob(), filename: 'doc.pdf' }),
         }),
-        MockProvider(FileSaveService, { save: () => of(undefined) }),
+        MockProvider(HostFileExportService, {
+          save: () => of({ kind: 'completed' as const }),
+        }),
         MockProvider(UrlPreviewService, { preview: () => of(null) }),
         MockProvider(PrivacySettingsService, {
           linkPreviews: signal(true).asReadonly(),

@@ -9,6 +9,7 @@ import { of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { TrustService, type TrustStatus } from '@trinity/data-access/trust';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
+import { HostFileExportService } from '@trinity/runtime/host';
 import { SecuritySectionComponent } from './security-section.component';
 
 async function build(
@@ -21,6 +22,7 @@ async function build(
     exportRoomKeys?: Mock;
     importRoomKeys?: Mock;
     prompt?: Mock;
+    fileSave?: Mock;
   } = {},
 ) {
   const refresh = vi.fn(() => of(undefined));
@@ -31,6 +33,8 @@ async function build(
   const importRoomKeys = over.importRoomKeys ?? vi.fn(() => of(undefined));
   const prompt = over.prompt ?? vi.fn().mockResolvedValue('pw');
   const toastShow = vi.fn();
+  const fileSave =
+    over.fileSave ?? vi.fn(() => of({ kind: 'completed' as const }));
   const { fixture, container } = await render(SecuritySectionComponent, {
     providers: [
       MockProvider(TrustService, {
@@ -44,6 +48,7 @@ async function build(
       MockProvider(WorkspaceApplicationSurfaceService, { open }),
       MockProvider(TrnAlertService, { prompt }),
       MockProvider(TrnToastService, { show: toastShow }),
+      MockProvider(HostFileExportService, { save: fileSave }),
     ],
   });
   return {
@@ -56,6 +61,7 @@ async function build(
     importRoomKeys,
     prompt,
     toastShow,
+    fileSave,
   };
 }
 
@@ -191,15 +197,35 @@ describe('SecuritySectionComponent', () => {
   });
 
   it('exports room keys with the entered passphrase and toasts', async () => {
-    const { cmp, exportRoomKeys, prompt, toastShow } = await build();
+    const { cmp, exportRoomKeys, prompt, toastShow, fileSave } = await build();
 
     await cmp.exportKeys();
 
     expect(prompt).toHaveBeenCalled();
     expect(exportRoomKeys).toHaveBeenCalledWith('pw');
+    expect(fileSave).toHaveBeenCalledWith({
+      bytes: expect.any(Blob),
+      filename: 'trinity-room-keys.txt',
+    });
+    const [{ bytes }] = fileSave.mock.calls[0] as [{ bytes: Blob }];
+    await expect(bytes.text()).resolves.toBe('ARMORED');
     expect(toastShow).toHaveBeenCalledWith(
       'Room keys exported.',
       expect.objectContaining({ variant: 'success' }),
+    );
+  });
+
+  it('reports an unavailable host file operation without claiming success', async () => {
+    const fileSave = vi.fn(() =>
+      of({ kind: 'unavailable', reason: 'not-supported' } as const),
+    );
+    const { cmp, toastShow } = await build({}, { fileSave });
+
+    await cmp.exportKeys();
+
+    expect(toastShow).toHaveBeenCalledWith(
+      'Could not export your room keys.',
+      expect.objectContaining({ variant: 'destructive' }),
     );
   });
 

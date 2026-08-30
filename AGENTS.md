@@ -115,10 +115,13 @@ The direct toolchain gates are `pnpm exec nx run trinity-android:verify-native` 
 | Command                                           | Purpose                                                     |
 | ------------------------------------------------- | ----------------------------------------------------------- |
 | `pnpm electron:install`                           | Install the shell's deps and download the Electron binary   |
+| `pnpm electron:test` / `electron:typecheck`       | Run the Nx-owned shell unit and type contracts              |
+| `pnpm electron:verify`                            | Static Nx/artifact/bridge/security/package contract         |
 | `pnpm electron:start`                             | Build + run the desktop shell                               |
 | `pnpm electron:package[:mac\|:linux\|:win\|:all]` | Package for the host OS (or a named target)                 |
 | `pnpm electron:package:mac:signed`                | Signed + notarized macOS build (needs Developer ID / creds) |
 | `pnpm electron:e2e`                               | Playwright `_electron` specs against the built app          |
+| `pnpm electron:e2e:smoke`                         | Docker-free launched-shell protocol/security proof          |
 
 **E2E / protocol harnesses** — Playwright. Install browsers once with
 `pnpm exec playwright install chromium webkit`.

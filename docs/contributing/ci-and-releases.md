@@ -20,9 +20,9 @@ one failing does not stop the others.
 | Job       | Runs                                                                                              | Exists to catch                                                                                                                                                          |
 | --------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `quality` | `pnpm lint`, `pnpm stylelint`, `pnpm format:check`                                                | Lint rules, module-boundary violations, SCSS violations, and formatting drift                                                                                            |
-| `test`    | `pnpm test`                                                                                       | Unit regressions across the 37 projects with a `test` target                                                                                                             |
+| `test`    | `pnpm test`                                                                                       | Unit regressions across the 38 projects with a `test` target, including the Electron shell                                                                               |
 | `build`   | `pnpm build`                                                                                      | AOT-only failures. The production build runs the Angular compiler, which rejects template type errors Vitest never sees, because Vitest transpiles without type checking |
-| `desktop` | Electron install, `ensure:binary`, `compile`, `test`, then `xvfb-run -a pnpm electron:e2e`        | Anything in the desktop shell, up to and including launching the real binary                                                                                             |
+| `desktop` | Nx-owned Electron install, compile, typecheck, test, then `xvfb-run -a pnpm electron:e2e`         | Anything in the desktop shell, up to and including launching the real binary                                                                                             |
 | `e2e`     | Browser install, Docker pre-pull and a dev build in parallel, then `pnpm exec nx e2e trinity-e2e` | Broken user journeys against a real homeserver                                                                                                                           |
 
 `stylelint` is a separate step because it is genuinely not part of `pnpm lint` in
@@ -31,8 +31,8 @@ or in CI.
 
 ### Why the desktop job pays for a second production build
 
-`xvfb-run -a pnpm electron:e2e` expands to `electron:build` first, which begins with
-a full production `nx build trinity`. That duplicates the `build` job's work on a
+`xvfb-run -a pnpm electron:e2e` runs `trinity-desktop:e2e`, whose `build` dependency begins with
+a full production `trinity:build`. That duplicates the `build` job's work on a
 separate runner, and since there is no remote Nx cache it cannot be reused.
 
 This is an accepted cost rather than an oversight. The job comment records why the
@@ -268,8 +268,8 @@ after the manifest version, not the tag, so a mismatch silently ships
 that the version bump and the changelog entry land in one release commit.
 
 **The gates themselves.** `pnpm lint`, `pnpm stylelint`, `pnpm format:check`,
-`pnpm test`, `pnpm build`, then `pnpm -C electron install --frozen-lockfile` and
-`pnpm -C electron test`.
+`pnpm test`, `pnpm build`, then the explicit Nx-owned `pnpm electron:typecheck` and
+`pnpm electron:test` desktop checks.
 
 !!! warning "A release runs no browser or Electron end-to-end test"
 
@@ -301,10 +301,10 @@ certificate is the asset worth protecting, because electron-builder runs
 repo-controlled hooks — `afterPack.cjs` and `build/notarize.cjs` — in the same
 process that holds `CSC_KEY_PASSWORD`.
 
-It runs `pnpm build`, the desktop install, `pnpm -C electron run build`, and then
-`electron-builder <flag> --publish never` directly. It deliberately does **not** call
-`pnpm electron:build`, which ends in a dev-signing step against a local `trinity-dev`
-identity that exists on no runner.
+It runs `pnpm electron:build:release` and then the platform-specific
+`electron-builder <flag> --publish never` command. The first-class release build consumes the
+shared production renderer and compiles the shell while deliberately omitting the dev-signing
+step against a local `trinity-dev` identity that exists on no runner.
 
 Signing is wired but optional: with no secrets set the variables resolve to empty and
 the artifacts are simply unsigned.
@@ -405,8 +405,10 @@ using the App's `client-id` — the `Iv…` string, not the numeric app id. A pl
 
 ## Gaps worth knowing about
 
-- **Specs are type-checked by nothing.** See
-  [Testing](testing.md#specs-are-type-checked-by-nothing).
+- **Vitest does not type-check specs.** The Electron project has an explicit spec-aware
+  typecheck target and CI runs the repository typecheck targets before tests, but a local
+  `pnpm test` alone still proves no TypeScript types. See
+  [Testing](testing.md#vitest-does-not-type-check-specs).
 - **Root-level TypeScript is linted by nothing.** `lint` is an inferred target that
   runs `eslint .` with `cwd` set to each project root, and no Nx project is rooted at
   the repository root. The lint-staged glob is `{apps,libs,electron}/**/*.ts`, which

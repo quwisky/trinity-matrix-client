@@ -86,12 +86,11 @@ jobs:
       - run: pnpm format:check
       - run: pnpm test
       - run: pnpm build
-      # No binary download to opt out of: Electron has had no postinstall since v42, and this
-      # job never launches it (`pnpm -C electron test` is main-process unit tests only). The
-      # `ELECTRON_SKIP_BINARY_DOWNLOAD=1` that used to sit here gated that postinstall, so it
-      # had stopped doing anything at all.
-      - run: pnpm -C electron install --frozen-lockfile
-      - run: pnpm -C electron test
+      # These Nx-owned targets install the standalone shell dependency graph but do not
+      # download or launch the Electron binary. The explicit repeat after `pnpm test`
+      # keeps the release gate's desktop type-check and unit-test intent visible.
+      - run: pnpm electron:typecheck
+      - run: pnpm electron:test
 
   package:
     name: Package (${{ matrix.platform }})
@@ -136,15 +135,9 @@ jobs:
           ref: ${{ inputs.tag || github.ref }}
       - uses: ./.github/actions/setup
 
-      # The three steps `pnpm electron:build` would have run — minus its trailing
-      # `electron:sign:dev`, which shells out to `codesign` against a local "trinity-dev"
-      # identity. That exists on no runner and not at all off macOS.
-      - run: pnpm build
-      # Note: electron-builder does NOT package the npm-installed Electron binary — it
-      # downloads its own dist through @electron/get, since electron-builder.yml sets no
-      # electronDist. This install is for the devDependencies (electron-builder itself).
-      - run: pnpm -C electron install --frozen-lockfile
-      - run: pnpm -C electron run build
+      # The release-specific Nx path builds the shared renderer and shell without the
+      # local `trinity-dev` signature. electron-builder owns real signing below.
+      - run: pnpm electron:build:release
 
       - name: electron-builder ${{ matrix.flag }}
         working-directory: electron

@@ -1,7 +1,7 @@
 # Architecture overview
 
-Trinity is an Nx **integrated** monorepo: three first-class host applications — Web/PWA at
-`apps/trinity`, Android at `android/` and iOS at `ios/` — and 58
+Trinity is an Nx **integrated** monorepo: four first-class host applications — Web/PWA at
+`apps/trinity`, Android at `android/`, iOS at `ios/` and Electron at `electron/` — and 58
 libraries under `libs/`, grouped by layer into `libs/application/`, `libs/data-access/`,
 `libs/feature/`, `libs/util/`, `libs/runtime/` and `libs/components/` (the public component tier),
 alongside `libs/platform-native`, `libs/testing` and the `libs/spartan/`
@@ -52,6 +52,13 @@ projects. Their `sync`, `build` and `run` targets depend on the `trinity` produc
 copy its exact flat `www/` artifact; they contain no product code or alternate composition.
 Each also exposes a Docker-free static `verify` contract and a platform-toolchain
 `verify-native` target. Android additionally owns the serialized installed-WebView journey.
+
+`trinity-desktop` is the explicit Nx application for the standalone Electron package. Its
+targets install the shell's pinned dependency graph, build and copy the same production `www/`
+artifact, compile/test the main and preload processes, launch the custom-protocol renderer and
+package each desktop platform. Its contract pins the versioned, sender-validated capability
+bridge, hardened window and packaging posture; its serialized smoke journey launches the real
+binary without Docker.
 
 The build emits to the workspace-root `www/` directory rather than `dist/`, because Capacitor and
 the Electron shell both wrap that directory unchanged. See

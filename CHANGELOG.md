@@ -87,6 +87,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Electron is now a first-class Nx host application.** `trinity-desktop` exposes the
+  standalone dependency install, compile, typecheck, unit test, shared-renderer build, launch,
+  verification, serialized Playwright and host/platform packaging lifecycles without duplicate
+  inferred package-script targets. Existing `pnpm electron:*` commands delegate to those targets,
+  and the normal module-boundary rule now covers the shell. A Docker-independent launched-shell
+  journey verifies the `trinity://app` scheme, streamed crypto WASM, custom-protocol dark styling,
+  protocol-v1 capability negotiation, bounded grouped preload surface, renderer isolation, secure
+  storage and scoped CORS. Every privileged preload operation now stays inert until its latest
+  accepted negotiation grant, while file export, lifecycle and update checks flow through shared
+  cold Observable host contracts. The existing sender checks, ASAR/fuse hardening and explicit
+  unavailable Back/update operations remain intact.
+
 - **Android and iOS are now first-class Nx host applications.** `trinity-android` and
   `trinity-ios` expose discoverable build, sync, run, static verification and native-toolchain
   verification targets while continuing to consume the one production `www/` renderer through

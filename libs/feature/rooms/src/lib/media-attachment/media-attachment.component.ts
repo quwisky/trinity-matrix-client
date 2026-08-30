@@ -9,7 +9,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Subscription, finalize, switchMap } from 'rxjs';
+import { Subscription, finalize, switchMap, tap } from 'rxjs';
 import { runWithBusy } from '@trinity/util/ui';
 import { MediaBubbleComponent } from '../media-bubble/media-bubble.component';
 import {
@@ -20,7 +20,7 @@ import {
   MediaPipeline,
   type PresentedMediaReference,
 } from '@trinity/data-access/media';
-import { FileSaveService } from '@trinity/platform-native';
+import { HostFileExportService } from '@trinity/runtime/host';
 import { LightboxComponent } from './lightbox/lightbox.component';
 
 /**
@@ -40,7 +40,7 @@ export class MediaAttachmentComponent {
 
   private readonly mediaPipeline = inject(MediaPipeline);
   private readonly dialogs = inject(TrnDialogService);
-  private readonly fileSave = inject(FileSaveService);
+  private readonly fileSave = inject(HostFileExportService);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly src = signal<string | null>(null);
@@ -171,7 +171,13 @@ export class MediaAttachmentComponent {
     this.mediaPipeline
       .downloadMedia(this.media())
       .pipe(
-        switchMap(({ blob, filename }) => this.fileSave.save(blob, filename)),
+        switchMap(({ blob, filename }) =>
+          this.fileSave.save({ bytes: blob, filename }),
+        ),
+        tap((outcome) => {
+          if (outcome.kind !== 'completed')
+            this.errorMsg.set('Download failed');
+        }),
         finalize(() => this.saving.set(false)),
         takeUntilDestroyed(this.destroyRef),
       )

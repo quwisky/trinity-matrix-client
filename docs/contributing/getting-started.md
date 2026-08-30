@@ -110,11 +110,11 @@ the package, so a first `pnpm electron:start` after a clone would fail on a miss
 app. `electron:install` therefore drives the package's own installer directly.
 Budget roughly 300 MB unpacked under `electron/node_modules/electron/dist`.
 
-Calling it a one-time step is a simplification: `electron:start`,
-`electron:e2e` and every `electron:package:*` script re-run `electron:install`
-themselves. That is cheap, because the script self-skips when the unpacked version
-stamp already matches the installed package. Running it on its own is only useful
-to pre-warm the download before your first build.
+Calling it a one-time step is a simplification: Nx targets that build, launch, run
+desktop E2E or package the shell depend on `trinity-desktop:install`. That is cheap,
+because the binary installer self-skips when the unpacked version stamp already
+matches the installed package. Running it on its own is only useful to pre-warm the
+download before your first build.
 
 On headless Linux, wrap the Electron end-to-end run in a virtual display:
 `xvfb-run -a pnpm electron:e2e`. Electron needs an X server even when nothing is

@@ -1,4 +1,3 @@
-import { DOCUMENT } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -10,7 +9,7 @@ import {
   viewChild,
   type Type,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnLabel } from '@trinity/components/controls';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
@@ -18,11 +17,10 @@ import { TrnTextarea } from '@trinity/components/controls';
 import {
   AppConfigService,
   CONFIG_EXCLUSION_NOTES,
-  FileSaveService,
   describeConfigChange,
   type ConfigApplyPlan,
 } from '@trinity/platform-native';
-import { downloadTextFile } from '../download-text-file';
+import { HostFileExportService } from '@trinity/runtime/host';
 import {
   CONFIG_EDITOR_LOADER,
   supportsConfigEditor,
@@ -114,9 +112,8 @@ export class AdvancedSettingsComponent {
   private readonly config = inject(AppConfigService);
   private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);
-  private readonly document = inject(DOCUMENT);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly files = inject(FileSaveService);
+  private readonly files = inject(HostFileExportService);
 
   /**
    * The rich editor, where this platform offers one and the app wired it up. Optional in the
@@ -145,13 +142,14 @@ export class AdvancedSettingsComponent {
   /** What the export leaves out and why — the section's copy, not a hardcoded list. */
   readonly exclusions = CONFIG_EXCLUSION_NOTES;
 
-  /**
-   * Native WebViews lack a reliable file download, so the file path is web/desktop only —
-   * the same reason recorded at `recovery-key-display.component.ts`. Capacitor reports the
-   * Electron shell as non-native, which is correct here: it downloads like a browser.
-   * Importing is offered everywhere: picking a file works in a WebView, saving one does not.
-   */
-  readonly canExportFile = this.files.directDownloadAvailable;
+  private readonly fileSupport = toSignal(this.files.support(), {
+    initialValue: { kind: 'unavailable', reason: 'not-implemented' } as const,
+  });
+
+  /** File export is offered only when the selected host operation reports support. */
+  readonly canExportFile = computed(
+    () => this.fileSupport().kind === 'supported',
+  );
 
   /**
    * Whether this platform offers editing at all — web and desktop, not the mobile app. See
@@ -247,13 +245,31 @@ export class AdvancedSettingsComponent {
     );
   }
 
-  /** Save the document as a file (web + desktop only; see {@link canExportFile}). */
+  /** Save the document through the selected cold host operation. */
   exportFile(): void {
-    downloadTextFile(this.document, {
-      name: exportFileName(new Date()),
-      mimeType: 'application/json',
-      content: this.outgoingDocument(),
-    });
+    this.files
+      .save({
+        bytes: new Blob([this.outgoingDocument()], {
+          type: 'application/json',
+        }),
+        filename: exportFileName(new Date()),
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (outcome) => {
+          if (outcome.kind !== 'completed') {
+            this.toast.show('Could not export your settings.', {
+              duration: 3000,
+              variant: 'destructive',
+            });
+          }
+        },
+        error: () =>
+          this.toast.show('Could not export your settings.', {
+            duration: 3000,
+            variant: 'destructive',
+          }),
+      });
   }
 
   /** Take the box over from the live document, and drop any summary that described it. */

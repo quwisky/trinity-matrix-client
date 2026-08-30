@@ -7,7 +7,7 @@ failure.
 | Layer                       | Command                           | Proves                                                                                   |
 | --------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------- |
 | Vitest unit specs           | `pnpm test`                       | Component and service behaviour, in jsdom, against mocked collaborators                  |
-| Electron main-process specs | `pnpm -C electron test`           | The desktop shell's Node-side logic, with the `electron` module mocked wholesale         |
+| Electron main-process specs | `pnpm electron:test`              | The desktop shell's Node-side logic, with the `electron` module mocked wholesale         |
 | Playwright journeys         | `pnpm exec nx e2e trinity-e2e`    | Real UI flows in Chromium against a real Synapse homeserver, on a **development** build  |
 | Desktop and protocol runs   | `pnpm electron:e2e`, `pnpm e2e:*` | The real Electron binary on a **production** build, and per-feature protocol round trips |
 
@@ -186,19 +186,18 @@ stub `setPointerCapture`, `hasPointerCapture` and `releasePointerCapture` itself
 And `element.click()` fires a native `PointerEvent`, so an event from a click is not
 an instance of the stubbed class — latent today, since nothing does that check.
 
-## Specs are type-checked by nothing
+## Vitest does not type-check specs
 
-Each project has a `tsconfig.spec.json`, and **no target ever invokes `tsc` on it**.
 Vitest goes through the Analog plugin and esbuild, which transpiles without type
 checking. `pnpm build` uses the `production` named input, which excludes
 `**/*.spec.ts`. The one type-aware ESLint rule explicitly ignores `**/*.spec.ts`,
 because specs live in a tsconfig each project's own `tsconfig.json` excludes, so the
 project service finds no program for them.
 
-The same hole exists in the desktop package — `electron/tsconfig.json` excludes
-`src/**/*.spec.ts`, so `pnpm -C electron run compile` never sees them — and `e2e/**`
-is worse still: it sits in ESLint's global ignores, runs through Node's
-type-stripping loader, and is touched only by Prettier.
+The first-class desktop project closes that hole for its own package:
+`trinity-desktop:typecheck` invokes `electron/tsconfig.spec.json`, which includes the
+production and spec sources. `e2e/**` remains separate: it sits in ESLint's global
+ignores, runs through Node's type-stripping loader, and is touched only by Prettier.
 
 !!! warning "Verify e2e edits with an explicit type check"
 
@@ -547,15 +546,17 @@ outright and never reaches the branch under test.
 
 ## Desktop specs
 
-`pnpm electron:e2e` is not an Nx target. It runs `pnpm run electron:build` and then
-`playwright test -c e2e/playwright.electron.config.mts`. The build chain begins with
-`pnpm build`, the **production** Angular build. The Electron specs are the browser-driven gate on
-that output, which is exactly why the desktop dark-theme regression and image-pack manager journey
-live here.
+`pnpm electron:e2e` delegates to the serialized, uncached `trinity-desktop:e2e` Nx target. That
+target depends on `trinity-desktop:build`, whose graph begins with `trinity:build`, the
+**production** Angular build. The Electron specs are the browser-driven gate on that output, which
+is exactly why the desktop dark-theme regression and image-pack manager journey live here.
+`pnpm electron:e2e:smoke` focuses the Docker-independent launched-shell checks.
 
 The config sets `fullyParallel: false`, `workers: 1` and a 120s timeout, and has no
 `webServer` or `baseURL`: each spec launches the process itself. Global setup and teardown own the
 same disposable Synapse stack as the Web suite, with the same local skip and strict CI behavior.
+The smoke config derives from it but explicitly removes global setup and teardown, so the nine
+shell/protocol/security checks do not require Docker even under CI.
 [`launch.mts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/e2e/electron/support/launch.mts)
 resolves the Electron executable through `createRequire` against
 `electron/package.json`, since the package lives in `electron/` and not at the root,
@@ -570,9 +571,9 @@ What the specs establish:
   strict form is the point: it rejects unless the response is streamable, correctly
   typed and from a secure context, which is exactly the set of privileges the custom
   scheme registers.
-- `trinityDesktop.isElectron === true` while `require` and `process` are both
-  `undefined` in the renderer, with the deep-link, notification and secure-store
-  members present.
+- Protocol-v1 negotiation returns explicit supported/unavailable results, the bridge exposes only
+  the six grouped capability objects, and `require`, `process`, raw `ipcRenderer`, and retired flat
+  methods are all absent in the renderer.
 - The safeStorage round trip, or its clean refusal, with the secret never landing in
   `localStorage`.
 - `.dark` on `<html>` actually beats `:root` in the real renderer.
@@ -626,8 +627,9 @@ the packaging hook and startup. `main.spec.ts` captures the
 `app.whenReady().then(cb)` callback so startup can be driven deterministically
 instead of racing microtasks.
 
-These are not part of `pnpm test`. The `trinity-desktop` Nx project exposes only a
-`lint` target, which is why CI has a separate `desktop` job.
+These are part of `pnpm test` through `trinity-desktop:test`. The separate `desktop` CI job remains
+because it also compiles the shell, downloads and launches the real Electron binary, and exercises
+the custom scheme and sandbox under Xvfb.
 
 ## After a Playwright version bump, reinstall the browsers
 
