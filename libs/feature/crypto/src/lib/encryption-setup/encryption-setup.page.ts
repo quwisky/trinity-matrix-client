@@ -8,12 +8,12 @@ import {
 import { Router } from '@angular/router';
 import { Observable } from 'rxjs';
 import { TrnAlertService } from '@trinity/components/overlay';
-import { TrnButton } from '@trinity/components/button';
-import { TrnSpinnerComponent } from '@trinity/components/spinner';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { TrustService } from '@trinity/data-access/trust';
 import { type PasswordPrompt } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
-import { PageHeaderComponent } from '@trinity/components/page-header';
+import { PageHeaderComponent } from '@trinity/components/navigation-layout';
 import { RecoveryKeySaveComponent } from '../recovery-key-save/recovery-key-save.component';
 import {
   confirmLeaving,

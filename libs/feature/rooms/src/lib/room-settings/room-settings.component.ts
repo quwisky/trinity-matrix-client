@@ -14,16 +14,16 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, FormRoot, disabled, form } from '@angular/forms/signals';
-import { TrnActionAvailability, TrnButton } from '@trinity/components/button';
-import { TrnTooltip } from '@trinity/components/tooltip';
-import { TrnSelectComponent } from '@trinity/components/select';
+import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
+import { TrnTooltip } from '@trinity/components/generic-content';
+import { TrnSelectComponent } from '@trinity/components/controls';
 import {
   TrnTabPanelComponent,
   TrnTabsComponent,
   type TrnTabOption,
-} from '@trinity/components/tabs';
-import { TrnCheckboxComponent } from '@trinity/components/checkbox';
-import { TrnInput } from '@trinity/components/input';
+} from '@trinity/components/navigation-layout';
+import { TrnCheckboxComponent } from '@trinity/components/controls';
+import { TrnInput } from '@trinity/components/controls';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import { HistoryVisibility } from '@trinity/data-access/room-administration';
 import { RoomActionPermissionsService } from '@trinity/data-access/room-administration';

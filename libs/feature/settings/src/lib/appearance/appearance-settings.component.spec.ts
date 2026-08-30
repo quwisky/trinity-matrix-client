@@ -21,7 +21,7 @@ import {
   type ThemePreference,
 } from '@trinity/platform-native';
 import { By } from '@angular/platform-browser';
-import { TrnSwitchComponent } from '@trinity/components/switch';
+import { TrnSwitchComponent } from '@trinity/components/controls';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import {
   SpaceRoomOrderService,

@@ -390,7 +390,7 @@ Primary ownership:
 - `libs/feature/rooms/src/lib/server-rail/`
 - `libs/feature/rooms/src/lib/channel-sidebar/`
 - `libs/feature/rooms/src/lib/member-list/`
-- `libs/components/page-header/`
+- `libs/components/navigation-layout/src/lib/page-header/`
 
 Deliverables:
 
@@ -423,7 +423,7 @@ Primary ownership:
 - `libs/feature/rooms/src/lib/message-list/`
 - `libs/feature/rooms/src/lib/message-row/`
 - `libs/feature/rooms/src/lib/message-composer/`
-- `libs/components/message-toolbar/`
+- `libs/feature/rooms/src/lib/message-toolbar/`
 
 Deliverables:
 
@@ -469,7 +469,7 @@ product slice, as planned.
 Primary ownership:
 
 - `libs/feature/settings/`
-- `libs/components/page-header/`
+- `libs/components/navigation-layout/src/lib/page-header/`
 - shared form components under `libs/components/*`
 
 Deliverables:

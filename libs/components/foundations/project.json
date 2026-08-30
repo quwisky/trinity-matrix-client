@@ -1,0 +1,18 @@
+{
+  "name": "components-foundations",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/components/foundations/src",
+  "prefix": "trn",
+  "projectType": "library",
+  "tags": [
+    "type:ui",
+    "scope:shared",
+    "ui:public",
+    "role:design-system",
+    "capability:design-system"
+  ],
+  "targets": {
+    "test": {},
+    "typecheck": {}
+  }
+}

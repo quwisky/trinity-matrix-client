@@ -16,13 +16,13 @@ import {
   validateTree,
 } from '@angular/forms/signals';
 import { Browser } from '@capacitor/browser';
-import { TrnButton, TrnIconButton } from '@trinity/components/button';
-import { TrnInput } from '@trinity/components/input';
-import { TrnLabel } from '@trinity/components/label';
+import { TrnButton, TrnIconButton } from '@trinity/components/controls';
+import { TrnInput } from '@trinity/components/controls';
+import { TrnLabel } from '@trinity/components/controls';
 import { TrnToastService } from '@trinity/components/overlay';
 import { runWithBusy } from '@trinity/util/ui';
 import { AuthService, type AccountManagement } from '@trinity/data-access/auth';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnIconComponent } from '@trinity/components/foundations';
 import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
 /** Minimum length we require for a new password (a light client-side guard). */

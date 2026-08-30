@@ -7,8 +7,8 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize } from 'rxjs';
-import { TrnButton } from '@trinity/components/button';
-import { PageHeaderComponent } from '@trinity/components/page-header';
+import { TrnButton } from '@trinity/components/controls';
+import { PageHeaderComponent } from '@trinity/components/navigation-layout';
 import {
   CryptoSpikeResult,
   CryptoSpikeService,

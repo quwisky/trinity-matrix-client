@@ -10,15 +10,15 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 import { TrnAlertService } from '@trinity/components/overlay';
-import { TrnBadge } from '@trinity/components/badge';
-import { TrnButton } from '@trinity/components/button';
-import { TrnTooltip } from '@trinity/components/tooltip';
+import { TrnBadge } from '@trinity/components/generic-content';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnTooltip } from '@trinity/components/generic-content';
 import { runWithBusy } from '@trinity/util/ui';
 import {
   TrustDevicesService,
   type DeviceInfo,
 } from '@trinity/data-access/trust';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnIconComponent } from '@trinity/components/foundations';
 import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
 /**

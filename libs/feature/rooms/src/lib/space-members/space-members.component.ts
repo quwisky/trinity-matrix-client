@@ -5,8 +5,8 @@ import {
   inject,
   input,
 } from '@angular/core';
-import { TrnButton } from '@trinity/components/button';
-import { EmptyStateComponent } from '@trinity/components/empty-state';
+import { TrnButton } from '@trinity/components/controls';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import {
   MEMBER_ROLE_LABEL,
@@ -14,7 +14,7 @@ import {
   RoomMembersService,
   memberRole,
 } from '@trinity/data-access/room-administration';
-import { AvatarComponent } from '@trinity/components/avatar';
+import { AvatarComponent } from '@trinity/components/generic-content';
 
 /**
  * Dialog listing a space's members, so they can be inspected and moderated the way a

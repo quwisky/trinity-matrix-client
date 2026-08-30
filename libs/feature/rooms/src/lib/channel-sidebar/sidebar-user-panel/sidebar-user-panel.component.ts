@@ -5,9 +5,9 @@ import {
   input,
   output,
 } from '@angular/core';
-import { AvatarComponent } from '@trinity/components/avatar';
-import { TrnIconButton } from '@trinity/components/button';
-import { TrnTooltip } from '@trinity/components/tooltip';
+import { AvatarComponent } from '@trinity/components/generic-content';
+import { TrnIconButton } from '@trinity/components/controls';
+import { TrnTooltip } from '@trinity/components/generic-content';
 import { type IdentityProfile } from '@trinity/data-access/identity';
 import {
   TrnDropdownMenu,
@@ -23,7 +23,7 @@ import {
 } from '@trinity/components/overlay';
 import { initialOf } from '@trinity/util/matrix';
 import { unreadBadgeLabel } from '../../shared/unread-badge';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnIconComponent } from '@trinity/components/foundations';
 
 /** Most avatars drawn in the mixed-account stack before it collapses to a "+N" count. */
 const STACK_MAX = 3;

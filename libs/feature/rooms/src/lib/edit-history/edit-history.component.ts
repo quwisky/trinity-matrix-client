@@ -14,8 +14,8 @@ import {
   TrnAlertService,
   TrnToastService,
 } from '@trinity/components/overlay';
-import { TrnButton } from '@trinity/components/button';
-import { TrnSpinnerComponent } from '@trinity/components/spinner';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { EditHistoryService } from '@trinity/data-access/timeline';
 import {
   annotateRevision,

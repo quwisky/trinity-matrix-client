@@ -4,7 +4,7 @@ import {
   ConversationRuntime,
   type ThreadSummary,
 } from '@trinity/data-access/timeline';
-import { AvatarComponent } from '@trinity/components/avatar';
+import { AvatarComponent } from '@trinity/components/generic-content';
 import { MockComponent } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
 import { ThreadsListComponent } from './threads-list.component';

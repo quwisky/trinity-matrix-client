@@ -5,10 +5,10 @@ import {
   input,
   output,
 } from '@angular/core';
-import { TrnIconButton } from '@trinity/components/button';
-import { TrnTooltip } from '@trinity/components/tooltip';
+import { TrnIconButton } from '@trinity/components/controls';
+import { TrnTooltip } from '@trinity/components/generic-content';
 import { type ReactionView } from '@trinity/data-access/timeline';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnIconComponent } from '@trinity/components/foundations';
 
 /** A reaction pill plus the "reacted by …" line shown on hover/focus. */
 interface ReactionPill extends ReactionView {

@@ -6,13 +6,13 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { TrnButton } from '@trinity/components/button';
-import { TrnInput } from '@trinity/components/input';
-import { TrnLabel } from '@trinity/components/label';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnInput } from '@trinity/components/controls';
+import { TrnLabel } from '@trinity/components/controls';
 import {
   TrnRadioGroupComponent,
   type TrnRadioOption,
-} from '@trinity/components/radio-group';
+} from '@trinity/components/controls';
 import { IdentityPresenceService } from '@trinity/data-access/identity';
 import { presenceLabel, type PresenceState } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';

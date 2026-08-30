@@ -5,15 +5,18 @@ import {
   input,
   output,
 } from '@angular/core';
-import { TrnIconButton } from '@trinity/components/button';
-import { TrnSeparatorDirective } from '@trinity/components/separator';
+import { TrnIconButton } from '@trinity/components/controls';
+import { TrnSeparatorDirective } from '@trinity/components/navigation-layout';
 import {
   TrnToggleGroupComponent,
   TrnToggleGroupItemDirective,
-} from '@trinity/components/toggle-group';
-import { TrnTooltip } from '@trinity/components/tooltip';
+} from '@trinity/components/controls';
+import { TrnTooltip } from '@trinity/components/generic-content';
 import { type FormatAction } from '@trinity/util/matrix';
-import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
+import {
+  TrnIconComponent,
+  type TrnIconName,
+} from '@trinity/components/foundations';
 
 /** One toolbar button: the action it applies, its icon and its label. */
 interface ToolbarAction {

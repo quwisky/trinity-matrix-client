@@ -11,11 +11,11 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subscription, finalize } from 'rxjs';
 import { FormField, FormRoot, form } from '@angular/forms/signals';
-import { TrnButton } from '@trinity/components/button';
-import { TrnInput } from '@trinity/components/input';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnInput } from '@trinity/components/controls';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import { PublicRoomsService } from '@trinity/data-access/discovery';
-import { AvatarComponent } from '@trinity/components/avatar';
+import { AvatarComponent } from '@trinity/components/generic-content';
 import {
   describeMatrixRequestFailure,
   initialOf,

@@ -13,7 +13,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnIconButton } from '@trinity/components/button';
+import { TrnIconButton } from '@trinity/components/controls';
 import {
   TrnActionSheetService,
   TrnDropdownMenu,
@@ -22,9 +22,12 @@ import {
   type ActionSheetButton,
   type TrnActionSheetRef,
 } from '@trinity/components/overlay';
-import { TrnSpinnerComponent } from '@trinity/components/spinner';
-import { TrnTooltip } from '@trinity/components/tooltip';
-import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
+import { TrnSpinnerComponent } from '@trinity/components/generic-content';
+import { TrnTooltip } from '@trinity/components/generic-content';
+import {
+  TrnIconComponent,
+  type TrnIconName,
+} from '@trinity/components/foundations';
 import { isMobileOs } from '@trinity/platform-native';
 
 interface ComposerInsertAction {

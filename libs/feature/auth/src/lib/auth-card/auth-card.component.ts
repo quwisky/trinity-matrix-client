@@ -4,7 +4,7 @@ import {
   TrnCardContent,
   TrnCardHeader,
   TrnCardTitle,
-} from '@trinity/components/card';
+} from '@trinity/components/navigation-layout';
 
 /**
  * The signed-out surface: the Trinity wordmark, a caller-supplied line under it, and

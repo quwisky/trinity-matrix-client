@@ -7,17 +7,17 @@ import {
   inject,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ENCRYPTION_DIALOG_COMPONENTS } from '../application-dialog-loaders';
 import {
   TrustVerificationService,
   type VerificationView,
 } from '@trinity/data-access/trust';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { ENCRYPTION_DIALOG_COMPONENTS } from '@trinity/components/encryption-dialog';
 import {
   TrnDialogService,
   type TrnDialogRef,
 } from '@trinity/components/overlay';
-import { finalize, from, take } from 'rxjs';
+import { defer, finalize, take } from 'rxjs';
 
 /** Route-independent presentation host for incoming and cross-user verification. */
 @Component({
@@ -66,7 +66,7 @@ export class VerificationHostComponent {
     if (!loadPage) return;
     this.presenting = true;
     const generation = ++this.presentationGeneration;
-    from(loadPage())
+    defer(loadPage)
       .pipe(
         take(1),
         takeUntilDestroyed(this.destroyRef),

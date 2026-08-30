@@ -3,7 +3,7 @@ import { TrnDialogRef } from '@trinity/components/overlay';
 import {
   TrnEmojiPickerComponent,
   type TrnEmojiPick,
-} from '@trinity/components/emoji-picker';
+} from '@trinity/components/controls';
 
 /**
  * The full `emoji-mart` picker presented as a dialog for reacting with any emoji,

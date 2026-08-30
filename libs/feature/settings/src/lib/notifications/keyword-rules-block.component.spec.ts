@@ -4,7 +4,7 @@ import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
-import { TrnSwitchComponent } from '@trinity/components/switch';
+import { TrnSwitchComponent } from '@trinity/components/controls';
 import {
   KeywordRulesService,
   KeywordValidationError,

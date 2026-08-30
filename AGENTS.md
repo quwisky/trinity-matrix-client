@@ -199,12 +199,12 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   from this public entrypoint.
 - `@trinity/feature/*` `[type:feature]` — screens/pages incl. `feature-shell` (the app shell moved out of
   `apps/trinity`). May depend on `data-access-*` + `ui` + `util` + `platform`, **never another feature**.
-- `@trinity/components/*` (`libs/components/*`) `[type:ui]`, tagged `ui:public` — the **public
-  component tier**: every component feature code reaches for. Trinity-authored wrappers over
-  vendors (`overlay`, `icon`, `emoji-picker`, select, checkbox, tooltip, …) AND Trinity's own
-  presentational components (`trn-avatar`, banner, page header, media bubble, message
-  toolbar). The API is ours, so the library underneath can be swapped without touching a
-  call site.
+- `@trinity/components/{foundations,controls,generic-content,navigation-layout,overlay}`
+  (`libs/components/*`) `[type:ui]`, tagged `ui:public` — the **public component tier**:
+  five category-owned entrypoints plus the non-consumable Storybook host. It contains only
+  domain-neutral Trinity APIs; every entrypoint uses named exports, and vendors remain behind
+  those APIs. Product presentation such as the message toolbar and media bubble lives with
+  Conversations under `feature/rooms`; application-surface loaders live in Application Runtime.
 - `@trinity/util/ui` (`libs/util/ui`) `[type:util]` — the view-layer helpers that are not
   components: `runWithBusy`, `mediaQuerySignal` + the `MD_QUERY`/`BELOW_MD_QUERY` breakpoints,
   and `resolveInternalReturnTo`. DI-free like the rest of `type:util` — both helpers TAKE a
@@ -227,8 +227,8 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
 `@trinity/data-access/*` services. New SDK interaction belongs there, not in a component. This keeps the
 SDK swappable and the UI testable. A cross-feature dependency the boundary forbids (e.g. the encryption
 banner needing crypto status) is resolved by reading the relevant `@trinity/data-access/*` signal from the
-feature that owns the surface, or via a provided-loader token (`ENCRYPTION_DIALOG_COMPONENTS`, wired in
-`main.ts`) — never by importing the other feature.
+feature that owns the surface, or via an Application Runtime loader token
+(`ENCRYPTION_DIALOG_COMPONENTS`, wired in `main.ts`) — never by importing the other feature.
 
 **State pattern — the SDK is the single source of truth; there is no Redux store.** `matrix-js-sdk`
 already owns rooms/timelines/crypto in memory + IndexedDB and emits events. Data-access services _project_

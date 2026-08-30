@@ -10,9 +10,9 @@ import {
   untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnButton } from '@trinity/components/button';
-import { EmptyStateComponent } from '@trinity/components/empty-state';
-import { TrnCheckboxComponent } from '@trinity/components/checkbox';
+import { TrnButton } from '@trinity/components/controls';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
+import { TrnCheckboxComponent } from '@trinity/components/controls';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import {
   RoomLibraryService,
@@ -20,9 +20,9 @@ import {
   SpacesService,
   compareOrder,
 } from '@trinity/data-access/room-library';
-import { AvatarComponent } from '@trinity/components/avatar';
+import { AvatarComponent } from '@trinity/components/generic-content';
 import { initialOf } from '@trinity/util/matrix';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnIconComponent } from '@trinity/components/foundations';
 
 /**
  * How long the write lock survives without an echo. Long enough for a healthy round trip

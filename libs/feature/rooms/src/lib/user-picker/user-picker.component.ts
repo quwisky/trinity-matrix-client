@@ -21,12 +21,12 @@ import {
   type DiscoveredUser,
 } from '@trinity/data-access/discovery';
 import { isValidUserId } from '@trinity/util/matrix';
-import { EmptyStateComponent } from '@trinity/components/empty-state';
-import { AvatarComponent } from '@trinity/components/avatar';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
+import { AvatarComponent } from '@trinity/components/generic-content';
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { TrnButton } from '@trinity/components/button';
-import { TrnInput } from '@trinity/components/input';
-import { TrnSpinnerComponent } from '@trinity/components/spinner';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnInput } from '@trinity/components/controls';
+import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 
 /** Don't hit the directory until the term is at least this long. */
 const MIN_SEARCH_LENGTH = 2;

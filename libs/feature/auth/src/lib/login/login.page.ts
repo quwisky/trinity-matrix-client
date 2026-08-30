@@ -24,11 +24,13 @@ import {
   take,
   throwError,
 } from 'rxjs';
-import { TrnButton } from '@trinity/components/button';
-import { TrnCardImports } from '@trinity/components/card';
-import { TrnFieldImports } from '@trinity/components/field';
-import { TrnInput } from '@trinity/components/input';
-import { TrnSpinnerComponent } from '@trinity/components/spinner';
+import {
+  TrnButton,
+  TrnFieldImports,
+  TrnInput,
+} from '@trinity/components/controls';
+import { TrnCardImports } from '@trinity/components/navigation-layout';
+import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import {
   AuthService,
   AUTHENTICATION_HOMESERVER_DISCOVERY,
@@ -53,7 +55,7 @@ import {
 } from './clear-all-data';
 import { AuthCardComponent } from '../auth-card/auth-card.component';
 import { OidcStateStore } from '../oidc-state.store';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnIconComponent } from '@trinity/components/foundations';
 import { accountEstablishmentError } from '../account-establishment-outcome';
 import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 

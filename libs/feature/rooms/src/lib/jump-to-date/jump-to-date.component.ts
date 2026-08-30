@@ -7,8 +7,8 @@ import {
 } from '@angular/core';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { FormField, FormRoot, form } from '@angular/forms/signals';
-import { TrnButton } from '@trinity/components/button';
-import { TrnInput } from '@trinity/components/input';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnInput } from '@trinity/components/controls';
 import { isoDateOf, localDayStartFromIso } from '@trinity/util/matrix';
 
 /**

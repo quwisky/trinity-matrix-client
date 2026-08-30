@@ -6,7 +6,10 @@ import {
 } from '@angular/core';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { HlmButton } from '@trinity/helm/button';
-import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
+import {
+  TrnIconComponent,
+  type TrnIconName,
+} from '@trinity/components/foundations';
 
 export interface ActionSheetButton {
   text: string;

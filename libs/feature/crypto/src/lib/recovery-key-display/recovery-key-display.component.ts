@@ -6,8 +6,8 @@ import {
   signal,
 } from '@angular/core';
 import { DOCUMENT } from '@angular/common';
-import { TrnButton } from '@trinity/components/button';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnIconComponent } from '@trinity/components/foundations';
 import { FileSaveService } from '@trinity/platform-native';
 
 /** How long the "Copied" affordance stays visible after a successful copy. */

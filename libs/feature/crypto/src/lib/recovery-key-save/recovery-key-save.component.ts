@@ -8,8 +8,8 @@ import {
   output,
   viewChild,
 } from '@angular/core';
-import { TrnButton } from '@trinity/components/button';
-import { TrnCheckboxComponent } from '@trinity/components/checkbox';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnCheckboxComponent } from '@trinity/components/controls';
 import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-key-display.component';
 
 /**

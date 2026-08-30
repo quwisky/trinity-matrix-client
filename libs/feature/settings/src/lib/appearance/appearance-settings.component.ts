@@ -9,12 +9,12 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   TrnRadioGroupComponent,
   type TrnRadioOption,
-} from '@trinity/components/radio-group';
+} from '@trinity/components/controls';
 import {
   TrnSelectComponent,
   type TrnSelectOption,
-} from '@trinity/components/select';
-import { TrnSwitchComponent } from '@trinity/components/switch';
+} from '@trinity/components/controls';
+import { TrnSwitchComponent } from '@trinity/components/controls';
 import {
   DateTimeFormatService,
   ComposerSettingsService,

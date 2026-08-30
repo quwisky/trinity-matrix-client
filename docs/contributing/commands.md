@@ -87,11 +87,12 @@ workspace data goes too.
 
 ### What `pnpm test` does not cover
 
-`pnpm test` runs 51 projects: the fourteen `data-access-*` libraries, `feature-auth`,
-`feature-crypto`, `feature-rooms`, `feature-settings`, `feature-shell`, `platform-native`,
-`util-matrix`, `util-ui`, the twenty-six tested `libs/components/*` libraries, `spartan-tests`, the
-`trinity` app itself, and `scripts` — which holds the build scripts and the repository's
-guard suite, described in [Testing](testing.md#the-guard-suite).
+`pnpm test` runs 37 projects: the fourteen `data-access-*` libraries, four
+`application-*` libraries, three runtime libraries, `feature-auth`, `feature-crypto`,
+`feature-rooms`, `feature-settings`, `feature-shell`, `platform-native`, `util-matrix`,
+`util-ui`, the five tested `libs/components/*` libraries, `spartan-tests`, the `trinity`
+app itself, and `scripts` — which holds the build scripts and the repository's guard
+suite, described in [Testing](testing.md#the-guard-suite).
 
 It does **not** run the Electron main-process specs. The `trinity-desktop` project
 is inferred from `electron/` and exposes only a `lint` target — its `test` script

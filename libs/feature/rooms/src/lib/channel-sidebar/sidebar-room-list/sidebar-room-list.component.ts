@@ -12,8 +12,8 @@ import { NgTemplateOutlet } from '@angular/common';
 import {
   TrnActionAvailability,
   TrnIconButton,
-} from '@trinity/components/button';
-import { TrnTooltip } from '@trinity/components/tooltip';
+} from '@trinity/components/controls';
+import { TrnTooltip } from '@trinity/components/generic-content';
 import {
   TrnDropdownMenu,
   TrnDropdownMenuItem,
@@ -25,8 +25,11 @@ import {
   TrnDropdownMenuSubTrigger,
   TrnDropdownMenuTrigger,
 } from '@trinity/components/overlay';
-import { EmptyStateComponent } from '@trinity/components/empty-state';
-import { AvatarComponent, type AccountBadge } from '@trinity/components/avatar';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
+import {
+  AvatarComponent,
+  type AccountBadge,
+} from '@trinity/components/generic-content';
 import { unreadBadgeLabel } from '../../shared/unread-badge';
 import {
   RoomLibraryService,
@@ -40,7 +43,7 @@ import {
 import { IdentityPresenceService } from '@trinity/data-access/identity';
 import { formatTypingNotice, type PresenceState } from '@trinity/util/matrix';
 import { type PendingInvite } from '@trinity/data-access/room-library';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnIconComponent } from '@trinity/components/foundations';
 import { forkJoin } from 'rxjs';
 
 /**

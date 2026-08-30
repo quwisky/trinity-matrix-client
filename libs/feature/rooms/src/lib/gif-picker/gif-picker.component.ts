@@ -21,8 +21,8 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
-import { TrnButton } from '@trinity/components/button';
-import { TrnInput } from '@trinity/components/input';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnInput } from '@trinity/components/controls';
 import {
   GIF_PROVIDERS,
   GifService,

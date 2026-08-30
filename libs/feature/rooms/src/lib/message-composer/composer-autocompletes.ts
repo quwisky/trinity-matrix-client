@@ -1,5 +1,5 @@
 import { computed, type Signal } from '@angular/core';
-import { type TrnEmojiIndex } from '@trinity/components/emoji-picker';
+import { type TrnEmojiIndex } from '@trinity/components/controls';
 import { type Mention } from '@trinity/util/matrix';
 import { EmojiAutocomplete } from './emoji-autocomplete';
 import {

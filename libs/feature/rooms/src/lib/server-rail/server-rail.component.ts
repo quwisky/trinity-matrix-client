@@ -4,12 +4,15 @@ import {
   input,
   output,
 } from '@angular/core';
-import { AvatarComponent, type AccountBadge } from '@trinity/components/avatar';
-import { TrnIconButton } from '@trinity/components/button';
-import { TrnTooltip } from '@trinity/components/tooltip';
+import {
+  AvatarComponent,
+  type AccountBadge,
+} from '@trinity/components/generic-content';
+import { TrnIconButton } from '@trinity/components/controls';
+import { TrnTooltip } from '@trinity/components/generic-content';
 import { type SpaceSummary } from '@trinity/data-access/room-library';
 import { unreadBadgeLabel } from '../shared/unread-badge';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnIconComponent } from '@trinity/components/foundations';
 
 /** Unread notification counts driving the rail's badges. */
 export interface RailUnread {

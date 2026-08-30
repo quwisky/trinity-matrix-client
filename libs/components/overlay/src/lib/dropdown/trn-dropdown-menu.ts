@@ -72,6 +72,11 @@ export class TrnDropdownMenuTrigger {
       .pipe(takeUntilDestroyed())
       .subscribe(() => this.trnDropdownMenuClosed.emit());
   }
+
+  /** Opens this trigger's configured menu without exposing the CDK trigger. */
+  open(): void {
+    this.cdkTrigger.open();
+  }
 }
 
 /** Trinity-owned dropdown row. */

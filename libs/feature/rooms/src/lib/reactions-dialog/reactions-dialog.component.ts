@@ -7,14 +7,14 @@ import {
   input,
   signal,
 } from '@angular/core';
-import { EmptyStateComponent } from '@trinity/components/empty-state';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { TrnButton } from '@trinity/components/button';
+import { TrnButton } from '@trinity/components/controls';
 import {
   ConversationRuntime,
   type ReactionDetail,
 } from '@trinity/data-access/timeline';
-import { AvatarComponent } from '@trinity/components/avatar';
+import { AvatarComponent } from '@trinity/components/generic-content';
 
 /**
  * Dialog listing everyone who reacted to a message, one section per emoji.

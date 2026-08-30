@@ -7,12 +7,12 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DateTimeFormatService } from '@trinity/platform-native';
-import { TrnButton } from '@trinity/components/button';
-import { EmptyStateComponent } from '@trinity/components/empty-state';
-import { TrnTooltip } from '@trinity/components/tooltip';
+import { TrnButton } from '@trinity/components/controls';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
+import { TrnTooltip } from '@trinity/components/generic-content';
 import { TrnToastService } from '@trinity/components/overlay';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnIconComponent } from '@trinity/components/foundations';
 
 /**
  * Pinned-messages panel: every `m.room.pinned_events` entry for the active room, in

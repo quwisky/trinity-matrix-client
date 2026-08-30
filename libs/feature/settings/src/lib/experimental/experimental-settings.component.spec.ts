@@ -4,7 +4,7 @@ import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { TrnSwitchComponent } from '@trinity/components/switch';
+import { TrnSwitchComponent } from '@trinity/components/controls';
 import { FeatureFlagsService } from '@trinity/platform-native';
 import { ExperimentalSettingsComponent } from './experimental-settings.component';
 

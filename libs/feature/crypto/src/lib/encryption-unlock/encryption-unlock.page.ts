@@ -18,11 +18,11 @@ import { Browser } from '@capacitor/browser';
 import { Observable, finalize, firstValueFrom } from 'rxjs';
 import { TrustService } from '@trinity/data-access/trust';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
-import { PageHeaderComponent } from '@trinity/components/page-header';
-import { TrnButton } from '@trinity/components/button';
-import { TrnInput } from '@trinity/components/input';
-import { TrnLabel } from '@trinity/components/label';
-import { TrnSpinnerComponent } from '@trinity/components/spinner';
+import { PageHeaderComponent } from '@trinity/components/navigation-layout';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnInput } from '@trinity/components/controls';
+import { TrnLabel } from '@trinity/components/controls';
+import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { TrnDialogRef, TrnAlertService } from '@trinity/components/overlay';
 import { RecoveryKeySaveComponent } from '../recovery-key-save/recovery-key-save.component';
 import {

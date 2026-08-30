@@ -9,13 +9,13 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { TrnIconButton } from '@trinity/components/button';
+import { TrnIconButton } from '@trinity/components/controls';
 import { Subscription } from 'rxjs';
 import {
   MediaPipeline,
   type PresentedMediaReference,
 } from '@trinity/data-access/media';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnIconComponent } from '@trinity/components/foundations';
 
 /** Bars whose height is scaled from a `[0, 1024]` waveform amplitude. */
 const WAVEFORM_FULL = 1024;

@@ -1,6 +1,10 @@
 import { Injectable, inject, signal, type Type } from '@angular/core';
 import { NavigationStart, Router } from '@angular/router';
 import {
+  ENCRYPTION_DIALOG_COMPONENTS,
+  type EncryptionDialogKind,
+} from '@trinity/application/runtime';
+import {
   WorkspaceBackService,
   sameWorkspaceApplicationSurface,
   type WorkspaceApplicationSurface,
@@ -9,10 +13,6 @@ import {
   type WorkspaceApplicationSurfaceRequest,
   type WorkspaceSurface,
 } from '@trinity/application/workspace';
-import {
-  ENCRYPTION_DIALOG_COMPONENTS,
-  type EncryptionDialogKind,
-} from '@trinity/components/encryption-dialog';
 import {
   TrnDialogRef,
   TrnDialogService,
@@ -154,7 +154,7 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
 
   private presentDialog(
     request: WorkspaceApplicationSurfaceRequest,
-    load: () => Promise<Type<unknown>>,
+    load: () => Observable<Type<unknown>>,
     dismissible: boolean,
     options: Parameters<TrnDialogService['open']>[1],
   ): Observable<WorkspaceApplicationSurfaceOutcome> {
@@ -167,7 +167,7 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
         : of({ kind: 'unavailable', surface: request.surface });
     }
     const navigationGeneration = this.navigationGeneration;
-    const task = from(load()).pipe(
+    const task = defer(load).pipe(
       switchMap((component) =>
         defer(() => {
           if (
@@ -278,7 +278,7 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
 
   private encryptionLoader(
     flow: EncryptionDialogKind,
-  ): (() => Promise<Type<unknown>>) | undefined {
+  ): (() => Observable<Type<unknown>>) | undefined {
     return this.encryptionLoaders?.[flow];
   }
 

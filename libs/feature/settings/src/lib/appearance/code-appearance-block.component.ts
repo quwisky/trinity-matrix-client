@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import {
   TrnSelectComponent,
   type TrnSelectOption,
-} from '@trinity/components/select';
+} from '@trinity/components/controls';
 import {
   ThemeService,
   type CodeLineMode,

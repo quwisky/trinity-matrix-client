@@ -7,13 +7,13 @@ import {
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { catchError, of, switchMap } from 'rxjs';
-import { TrnButton } from '@trinity/components/button';
+import { TrnButton } from '@trinity/components/controls';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import {
   IdentityPresenceService,
   IdentityService,
 } from '@trinity/data-access/identity';
-import { AvatarComponent } from '@trinity/components/avatar';
+import { AvatarComponent } from '@trinity/components/generic-content';
 import { initialOf } from '@trinity/util/matrix';
 
 /**

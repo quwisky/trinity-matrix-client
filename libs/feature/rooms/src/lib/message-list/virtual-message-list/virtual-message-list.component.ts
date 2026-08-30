@@ -1,4 +1,4 @@
-import { EmptyStateComponent } from '@trinity/components/empty-state';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
 import {
   ChangeDetectionStrategy,
   Component,

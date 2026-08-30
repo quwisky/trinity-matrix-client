@@ -4,7 +4,7 @@ import {
   input,
   output,
 } from '@angular/core';
-import type { TrnEmojiSuggestion } from '@trinity/components/emoji-picker';
+import type { TrnEmojiSuggestion } from '@trinity/components/controls';
 import { TrnAnchoredOverlayDirective } from '@trinity/components/overlay';
 import { type MentionMember } from '../mention-autocomplete';
 import { type SlashCommand } from '@trinity/util/matrix';

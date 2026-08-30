@@ -6,7 +6,7 @@ import { ReactionPickerComponent } from './reaction-picker.component';
 import {
   TrnEmojiPickerComponent,
   type TrnEmojiPick,
-} from '@trinity/components/emoji-picker';
+} from '@trinity/components/controls';
 
 /** A pick as the wrapper emits it — always with a character; see TrnEmojiPick. */
 const pick = (native: string): TrnEmojiPick => ({

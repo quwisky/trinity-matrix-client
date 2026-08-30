@@ -10,8 +10,8 @@ import {
 import {
   TrnActionAvailability,
   TrnIconButton,
-} from '@trinity/components/button';
-import { TrnTooltip } from '@trinity/components/tooltip';
+} from '@trinity/components/controls';
+import { TrnTooltip } from '@trinity/components/generic-content';
 import {
   TrnDropdownMenu,
   TrnDropdownMenuItem,
@@ -24,9 +24,12 @@ import {
   TrnDropdownMenuSubTrigger,
   TrnDropdownMenuTrigger,
 } from '@trinity/components/overlay';
-import { EmptyStateComponent } from '@trinity/components/empty-state';
-import { TrnInput } from '@trinity/components/input';
-import { AvatarComponent, type AccountBadge } from '@trinity/components/avatar';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
+import { TrnInput } from '@trinity/components/controls';
+import {
+  AvatarComponent,
+  type AccountBadge,
+} from '@trinity/components/generic-content';
 import {
   InvitesService,
   MixedInvitesService,
@@ -50,7 +53,7 @@ import {
   type RoomNotifyMode,
 } from '@trinity/data-access/notifications';
 import { SidebarRoomListComponent } from './sidebar-room-list/sidebar-room-list.component';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnIconComponent } from '@trinity/components/foundations';
 
 /** Discord channel sidebar: space header, invites, and room list. */
 @Component({

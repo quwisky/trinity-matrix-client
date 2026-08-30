@@ -3,7 +3,7 @@ import {
   UserDirectoryDiscoveryService,
   type DiscoveredUser,
 } from '@trinity/data-access/discovery';
-import { AvatarComponent } from '@trinity/components/avatar';
+import { AvatarComponent } from '@trinity/components/generic-content';
 import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';

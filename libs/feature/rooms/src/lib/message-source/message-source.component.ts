@@ -4,7 +4,7 @@ import {
   inject,
   input,
 } from '@angular/core';
-import { TrnButton } from '@trinity/components/button';
+import { TrnButton } from '@trinity/components/controls';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 
 /** Dialog that shows a message event's raw JSON ("view source"), with a copy action. */

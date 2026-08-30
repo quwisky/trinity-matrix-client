@@ -5,9 +5,9 @@ import {
   input,
   output,
 } from '@angular/core';
-import { TrnIconButton } from '@trinity/components/button';
-import { TrnProgressComponent } from '@trinity/components/progress';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnIconButton } from '@trinity/components/controls';
+import { TrnProgressComponent } from '@trinity/components/generic-content';
+import { TrnIconComponent } from '@trinity/components/foundations';
 import { type BatchProgress } from '../../shared/send-media-batch';
 import { type StagedAttachment } from '../staged-attachment';
 

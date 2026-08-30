@@ -1,9 +1,9 @@
 # components-storybook-host
 
-Config only — this project owns no source. It exists so that **one** Storybook covers the whole
-`libs/components/*` tier instead of twenty-one separate ones: the `@nx/storybook/plugin` infers
-its targets from the presence of `.storybook/`, and `.storybook/main.ts` globs the stories out of
-the sibling libraries, where they live beside the components they document.
+Config only — this project owns no source. It exists so that **one** Storybook covers the five
+public design-system categories plus the retained capability presentation stories. The
+`@nx/storybook/plugin` infers its targets from the presence of `.storybook/`, and
+`.storybook/main.ts` globs each story from beside the component it documents.
 
 ```
 pnpm exec nx storybook components-storybook-host        # serve

@@ -87,6 +87,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **The shared design system now has five stable category entrypoints instead of dozens of
+  shallow component projects.** Foundations, controls, generic content, navigation/layout and
+  overlays retain the same `trn` APIs while keeping Spartan, CDK, ng-icons and the emoji vendor
+  internal. Public barrels use named exports and an executable ownership contract prevents new
+  shallow projects or migration exceptions. Message media and the message toolbar now live with
+  Conversations; Settings and Trust presentation stay in app/Application Runtime composition,
+  whose lazy feature loaders are cold RxJS Observables.
+
 - **Discovery and search now have capability-owned boundaries.** The new
   `@trinity/data-access/discovery` boundary owns `.well-known` homeserver resolution, paginated
   public-room and Space lookup, room-link preview and bounded remote user-directory search.

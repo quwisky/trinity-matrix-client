@@ -15,8 +15,8 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { TrnButton } from '@trinity/components/button';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnIconComponent } from '@trinity/components/foundations';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { BUILD_INFO } from '@trinity/platform-native';
 import { MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';

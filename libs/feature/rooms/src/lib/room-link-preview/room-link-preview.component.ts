@@ -17,11 +17,11 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { AvatarComponent } from '@trinity/components/avatar';
-import { TrnButton } from '@trinity/components/button';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { AvatarComponent } from '@trinity/components/generic-content';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnIconComponent } from '@trinity/components/foundations';
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { TrnSpinnerComponent } from '@trinity/components/spinner';
+import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { InvitesService } from '@trinity/data-access/room-library';
 import { describeRoomLinkPreviewFailure } from '@trinity/data-access/discovery';
 import {

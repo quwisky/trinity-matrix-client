@@ -17,7 +17,7 @@ import {
   type WidgetBridgeSession,
   type WidgetEmbed,
 } from '@trinity/data-access/widgets';
-import { TrnButton } from '@trinity/components/button';
+import { TrnButton } from '@trinity/components/controls';
 
 @Component({
   selector: 'trn-room-widget-frame',

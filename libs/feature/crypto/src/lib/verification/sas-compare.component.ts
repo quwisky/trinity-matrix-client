@@ -4,8 +4,8 @@ import {
   input,
   output,
 } from '@angular/core';
-import { TrnButton } from '@trinity/components/button';
-import { TrnSpinnerComponent } from '@trinity/components/spinner';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { type SasEmoji } from '@trinity/data-access/trust';
 
 /**

@@ -14,17 +14,20 @@ import {
   type SwitcherSelection,
 } from '@trinity/application/search';
 import { AccountBadgesService } from '../shared/account-badges.service';
-import { EmptyStateComponent } from '@trinity/components/empty-state';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
 import {
   AvatarComponent,
   type AccountBadge,
   type AvatarShape,
-} from '@trinity/components/avatar';
+} from '@trinity/components/generic-content';
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { TrnButton } from '@trinity/components/button';
-import { TrnInput } from '@trinity/components/input';
-import { TrnSpinnerComponent } from '@trinity/components/spinner';
-import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnInput } from '@trinity/components/controls';
+import { TrnSpinnerComponent } from '@trinity/components/generic-content';
+import {
+  TrnIconComponent,
+  type TrnIconName,
+} from '@trinity/components/foundations';
 
 /** Human-readable kind hint shown at the trailing edge of a result row. */
 const KIND_LABEL: Record<SwitcherKind, string> = {

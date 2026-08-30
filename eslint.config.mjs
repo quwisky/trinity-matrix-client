@@ -61,9 +61,9 @@ export default defineConfig([
             //
             // There is no `ui:wrapper` entry here any more, and its absence is a decision
             // rather than an oversight. That tag belonged to `libs/ui`, which held the
-            // presentational components and then, briefly, nothing but a DI seam; the
-            // components went to the public tier and the seam became
-            // `@trinity/components/encryption-dialog`, so the library — and the only project
+            // presentational components and then, briefly, nothing but a DI seam; domain-neutral
+            // components went to the grouped public tier and application-surface loading moved
+            // to Application Runtime, so the library — and the only project
             // carrying the tag — is gone. A `bannedExternalImports` entry keyed on a tag no
             // project has enforces exactly nothing while reading as a closed door, which is
             // the shape this whole boundary exists to eliminate. `lint-invariants.spec.mjs`

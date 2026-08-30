@@ -12,8 +12,8 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { switchMap, type Observable } from 'rxjs';
-import { TrnActionAvailability, TrnButton } from '@trinity/components/button';
-import { TrnTooltip } from '@trinity/components/tooltip';
+import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
+import { TrnTooltip } from '@trinity/components/generic-content';
 import {
   TrnDialogRef,
   TrnAlertService,
@@ -36,8 +36,8 @@ import {
   IdentityService,
 } from '@trinity/data-access/identity';
 import { TrustVerificationService } from '@trinity/data-access/trust';
-import { AvatarComponent } from '@trinity/components/avatar';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { AvatarComponent } from '@trinity/components/generic-content';
+import { TrnIconComponent } from '@trinity/components/foundations';
 
 /**
  * A room-scoped info panel for a member (avatar, name, id, live presence, role), shown

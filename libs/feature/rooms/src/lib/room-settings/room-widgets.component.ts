@@ -28,7 +28,7 @@ import {
   type WidgetEmbed,
   type WidgetLaunch,
 } from '@trinity/data-access/widgets';
-import { TrnButton } from '@trinity/components/button';
+import { TrnButton } from '@trinity/components/controls';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { RoomWidgetFrameComponent } from './room-widget-frame/room-widget-frame.component';
 import { RoomWidgetCreateComponent } from './room-widget-create/room-widget-create.component';

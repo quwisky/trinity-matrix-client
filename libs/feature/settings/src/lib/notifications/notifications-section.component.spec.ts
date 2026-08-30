@@ -4,7 +4,7 @@ import { MockProvider } from 'ng-mocks';
 import { signal, type DebugElement } from '@angular/core';
 import { NEVER, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
-import { TrnSwitchComponent } from '@trinity/components/switch';
+import { TrnSwitchComponent } from '@trinity/components/controls';
 import {
   KeywordRulesService,
   NotificationSoundService,

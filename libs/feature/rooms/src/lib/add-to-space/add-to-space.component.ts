@@ -9,17 +9,20 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, form } from '@angular/forms/signals';
-import { TrnButton } from '@trinity/components/button';
-import { EmptyStateComponent } from '@trinity/components/empty-state';
-import { TrnCheckboxComponent } from '@trinity/components/checkbox';
-import { TrnInput } from '@trinity/components/input';
+import { TrnButton } from '@trinity/components/controls';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
+import { TrnCheckboxComponent } from '@trinity/components/controls';
+import { TrnInput } from '@trinity/components/controls';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import {
   RoomLibraryService,
   SpaceChildrenService,
   SpacesService,
 } from '@trinity/data-access/room-library';
-import { AvatarComponent, type AvatarShape } from '@trinity/components/avatar';
+import {
+  AvatarComponent,
+  type AvatarShape,
+} from '@trinity/components/generic-content';
 import { saveFields, type FieldWrite } from '../shared/save-fields';
 
 /** A room or space offered for adding, flattened so one list can hold both. */

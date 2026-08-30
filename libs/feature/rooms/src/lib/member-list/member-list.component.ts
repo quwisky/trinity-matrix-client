@@ -12,7 +12,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { AvatarComponent } from '@trinity/components/avatar';
+import { AvatarComponent } from '@trinity/components/generic-content';
 import {
   MEMBER_ROLE_LABEL,
   MEMBER_ROLE_ORDER,
@@ -22,10 +22,13 @@ import {
 } from '@trinity/data-access/room-administration';
 import { IdentityPresenceService } from '@trinity/data-access/identity';
 import { type PresenceState } from '@trinity/util/matrix';
-import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
-import { EmptyStateComponent } from '@trinity/components/empty-state';
-import { TrnInput } from '@trinity/components/input';
-import { TrnTooltip } from '@trinity/components/tooltip';
+import {
+  TrnIconComponent,
+  type TrnIconName,
+} from '@trinity/components/foundations';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
+import { TrnInput } from '@trinity/components/controls';
+import { TrnTooltip } from '@trinity/components/generic-content';
 import {
   buildPrefixSums,
   computeWindow,

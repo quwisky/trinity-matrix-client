@@ -38,11 +38,11 @@ import {
   type MessageSwipeAction,
   type SwipeDirection,
 } from '../message-row/message-row.component';
-import { EmptyStateComponent } from '@trinity/components/empty-state';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TypingIndicatorComponent } from '../message-list/typing-indicator/typing-indicator.component';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
-import { TrnButton } from '@trinity/components/button';
-import { TrnTooltip } from '@trinity/components/tooltip';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnTooltip } from '@trinity/components/generic-content';
 import {
   TimelineActionsService,
   ConversationRuntime,
@@ -71,7 +71,7 @@ import { ReportService } from '../report/report.service';
 import { MessageSourceService } from '../message-source/message-source.service';
 import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
-import { TrnIconComponent } from '@trinity/components/icon';
+import { TrnIconComponent } from '@trinity/components/foundations';
 import {
   scrollBehavior,
   BELOW_MEMBERS_QUERY,

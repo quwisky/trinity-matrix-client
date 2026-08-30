@@ -29,7 +29,7 @@ which library may import which.
 parent directories with one folder per library inside — `data-access/`, `feature/`,
 `util/`, `components/` and `spartan/` — while `platform-native` and `testing` are libraries
 themselves. The alias follows the path in either case, so `libs/data-access/discovery` is
-`@trinity/data-access/discovery` and `libs/components/icon` is `@trinity/components/icon`.
+`@trinity/data-access/discovery` and `libs/components/foundations` is `@trinity/components/foundations`.
 
 ## The shape of the work
 

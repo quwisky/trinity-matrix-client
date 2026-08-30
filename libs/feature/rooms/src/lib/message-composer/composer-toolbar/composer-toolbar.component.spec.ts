@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { TrnTooltip } from '@trinity/components/tooltip';
+import { TrnTooltip } from '@trinity/components/generic-content';
 import { render } from '@trinity/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { type FormatAction } from '@trinity/util/matrix';

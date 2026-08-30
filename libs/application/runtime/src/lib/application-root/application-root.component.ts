@@ -8,7 +8,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterOutlet } from '@angular/router';
 import { TrnToasterComponent } from '@trinity/components/overlay';
-import { TrnSpinnerComponent } from '@trinity/components/spinner';
+import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { take } from 'rxjs';
 import { ApplicationRuntimeService } from '../application-runtime.service';
 import type {
