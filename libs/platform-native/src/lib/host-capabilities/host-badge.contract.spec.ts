@@ -40,7 +40,12 @@ function webFixture(): AdapterFixture {
     setAppBadge: { value: badgeWrite, configurable: true },
     clearAppBadge: { value: badgeWrite, configurable: true },
   });
-  return { adapter: new WebHostCapabilityAdapter(), badgeWrite };
+  return { adapter: webAdapter(), badgeWrite };
+}
+
+function webAdapter(): WebHostCapabilityAdapter {
+  TestBed.configureTestingModule({ providers: [WebHostCapabilityAdapter] });
+  return TestBed.inject(WebHostCapabilityAdapter);
 }
 
 function capacitorFixture(
@@ -143,10 +148,11 @@ describe('host adapter rejection semantics', () => {
     delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
     delete (navigator as { setAppBadge?: unknown }).setAppBadge;
     delete (navigator as { clearAppBadge?: unknown }).clearAppBadge;
+    TestBed.resetTestingModule();
   });
 
   it('reports an unavailable Web badge explicitly', async () => {
-    const adapter = new WebHostCapabilityAdapter();
+    const adapter = webAdapter();
     await expect(firstValueFrom(adapter.support())).resolves.toEqual({
       kind: 'unavailable',
       reason: 'not-supported',
@@ -158,7 +164,7 @@ describe('host adapter rejection semantics', () => {
       value: vi.fn(() => Promise.resolve()),
       configurable: true,
     });
-    const adapter = new WebHostCapabilityAdapter();
+    const adapter = webAdapter();
 
     await expect(firstValueFrom(adapter.support())).resolves.toEqual({
       kind: 'unavailable',
@@ -171,9 +177,7 @@ describe('host adapter rejection semantics', () => {
   });
 
   it('keeps the Web manifest aligned with unavailable operation adapters', async () => {
-    const manifest = await firstValueFrom(
-      new WebHostCapabilityAdapter().manifest(),
-    );
+    const manifest = await firstValueFrom(webFixture().adapter.manifest());
 
     expect(manifest.operations['deep-links']).toEqual({
       kind: 'unavailable',

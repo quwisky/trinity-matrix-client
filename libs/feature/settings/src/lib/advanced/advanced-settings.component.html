@@ -71,7 +71,7 @@
     >
       Copy
     </button>
-    @if (canExportFile) {
+    @if (canExportFile()) {
       <button
         trnBtn
         variant="outline"
@@ -224,7 +224,7 @@
     </div>
   }
 
-  @if (!canExportFile) {
+  @if (!canExportFile()) {
     <p
       class="block px-4 py-2 text-13 text-muted-foreground"
       data-testid="advanced-export-unavailable"

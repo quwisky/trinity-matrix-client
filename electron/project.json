@@ -1,0 +1,208 @@
+{
+  "name": "trinity-desktop",
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "electron/src",
+  "tags": ["type:app", "scope:matrix", "role:app", "capability:composition"],
+  "implicitDependencies": ["trinity"],
+  "targets": {
+    "install-dependencies": {
+      "//": "Install the standalone shell dependency graph without downloading or launching the Electron binary.",
+      "cache": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm -C electron install --frozen-lockfile",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "install": {
+      "cache": false,
+      "dependsOn": ["install-dependencies"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm -C electron run ensure:binary",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "lint": {
+      "dependsOn": ["install-dependencies"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec eslint electron",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "typecheck": {
+      "dependsOn": ["install-dependencies"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm -C electron run typecheck",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "test": {
+      "dependsOn": ["install-dependencies"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm -C electron run test",
+        "cwd": "{workspaceRoot}"
+      },
+      "configurations": {
+        "watch": {
+          "command": "pnpm -C electron exec vitest"
+        }
+      }
+    },
+    "compile": {
+      "dependsOn": ["install-dependencies"],
+      "outputs": ["{projectRoot}/dist"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm -C electron run compile",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "build": {
+      "//": "Build the shared production renderer, copy it unchanged, compile main/preload, and apply the optional development signature.",
+      "cache": false,
+      "dependsOn": ["install", { "projects": ["trinity"], "target": "build" }],
+      "outputs": ["{projectRoot}/dist", "{projectRoot}/www"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm -C electron run build && pnpm -C electron run sign:dev",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "build-prebuilt": {
+      "cache": false,
+      "dependsOn": ["install"],
+      "outputs": ["{projectRoot}/dist", "{projectRoot}/www"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm -C electron run build && pnpm -C electron run sign:dev",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "build-release": {
+      "//": "Build the shared renderer and shell without the local trinity-dev signature; release signing belongs to electron-builder.",
+      "cache": false,
+      "dependsOn": [
+        "install-dependencies",
+        { "projects": ["trinity"], "target": "build" }
+      ],
+      "outputs": ["{projectRoot}/dist", "{projectRoot}/www"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm -C electron run build",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "start": {
+      "cache": false,
+      "dependsOn": ["build"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm -C electron run start",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "sign-dev": {
+      "cache": false,
+      "dependsOn": ["install"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm -C electron run sign:dev",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "verify": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/electron-host-contract.mjs",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "e2e": {
+      "//": "The built-shell journey owns one Electron process at a time plus the fixed-port disposable Synapse stack.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": ["build"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec playwright test -c e2e/playwright.electron.config.mts",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "e2e-smoke": {
+      "//": "Docker-independent launch, custom-scheme, WASM, bridge, IPC security, safe-storage, CORS and styling proof.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": ["build"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec playwright test -c e2e/playwright.electron.smoke.config.mts",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "package": {
+      "cache": false,
+      "dependsOn": ["build"],
+      "outputs": ["{projectRoot}/release"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm -C electron run package",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "package-mac": {
+      "cache": false,
+      "dependsOn": ["build"],
+      "outputs": ["{projectRoot}/release"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm -C electron run package:mac",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "package-mac-signed": {
+      "cache": false,
+      "dependsOn": ["build-release"],
+      "outputs": ["{projectRoot}/release"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm -C electron run package:mac:signed",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "package-linux": {
+      "cache": false,
+      "dependsOn": ["build-release"],
+      "outputs": ["{projectRoot}/release"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm -C electron run package:linux",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "package-win": {
+      "cache": false,
+      "dependsOn": ["build-release"],
+      "outputs": ["{projectRoot}/release"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm -C electron run package:win",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "package-all": {
+      "cache": false,
+      "dependsOn": ["build-release"],
+      "outputs": ["{projectRoot}/release"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm -C electron run package:all",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  }
+}

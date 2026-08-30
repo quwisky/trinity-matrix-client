@@ -6,7 +6,6 @@ import {
   NavigationSkipped,
   Router,
 } from '@angular/router';
-import { SwUpdate } from '@angular/service-worker';
 import type { ApplicationRuntimeAdapter } from '../application-runtime.adapter';
 import type {
   ApplicationRecoveryAdapterOutcome,
@@ -40,6 +39,7 @@ import {
 } from '@trinity/platform-native';
 import {
   HostCapabilitiesService,
+  HostUpdatesService,
   type HostCapabilityManifest,
 } from '@trinity/runtime/host';
 import {
@@ -81,7 +81,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   private readonly host = inject(HostCapabilitiesService);
   private readonly accounts = inject(AccountRuntimeService);
   private readonly push = inject(PushService);
-  private readonly swUpdate = inject(SwUpdate);
+  private readonly updates = inject(HostUpdatesService);
   private readonly session = inject(TrinityApplicationSessionAdapter);
   private readonly theme = inject(ThemeService);
   private readonly shellLayout = inject(ShellLayoutService);
@@ -382,13 +382,14 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   }
 
   private initialUpdateCheck(): Observable<ApplicationRuntimeWarning | null> {
-    if (!this.swUpdate.isEnabled) return of(null);
-    return defer(() =>
-      from(this.swUpdate.checkForUpdate()).pipe(
-        map(() => null),
-        catchError(() =>
-          of(warning('session-capabilities', 'updates', 'update-check-failed')),
-        ),
+    return this.updates.check().pipe(
+      map((outcome) =>
+        outcome.kind === 'rejected'
+          ? warning('session-capabilities', 'updates', 'update-check-failed')
+          : null,
+      ),
+      catchError(() =>
+        of(warning('session-capabilities', 'updates', 'update-check-failed')),
       ),
     );
   }

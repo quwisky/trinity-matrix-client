@@ -45,6 +45,7 @@ import {
   HostBackService,
   HostCapabilitiesService,
   HostDeepLinksService,
+  HostUpdatesService,
   type HostOperationOutcome,
 } from '@trinity/runtime/host';
 import { MockProvider } from 'ng-mocks';
@@ -80,6 +81,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   let resetPreferences: Mock<AppConfigService['resetToDefaults']>;
   let activeAccountId: ReturnType<typeof signal<string | null>>;
   let pushRegister: Mock<PushService['register']>;
+  let updateCheck: Mock<HostUpdatesService['check']>;
   let adapter: TrinityApplicationRuntimeAdapter;
 
   beforeEach(() => {
@@ -129,6 +131,9 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     );
     activeAccountId = signal<string | null>('@active:example.org');
     pushRegister = vi.fn<PushService['register']>(() => of(void 0));
+    updateCheck = vi.fn<HostUpdatesService['check']>(() =>
+      of({ kind: 'completed' as const }),
+    );
     const promiseInit = () => ({ init: vi.fn().mockResolvedValue(undefined) });
     TestBed.configureTestingModule({
       providers: [
@@ -172,6 +177,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         MockProvider(NativeNavigationService, { setHistoryGesturesEnabled }),
         MockProvider(HostDeepLinksService, { received: deepLinks }),
         MockProvider(HostBackService, { intents: backIntents }),
+        MockProvider(HostUpdatesService, { check: updateCheck }),
         MockProvider(NavigationFocusService, { run: () => focusSession }),
         MockProvider(WorkspaceRoutedSurfaceAdapter, {
           run: () => routedSession,
@@ -242,6 +248,29 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         }),
       ],
     });
+    expect(updateCheck).toHaveBeenCalledOnce();
+  });
+
+  it('routes the cold initial update check through the shared host contract', async () => {
+    updateCheck.mockReturnValueOnce(
+      of({
+        kind: 'rejected',
+        diagnostic: { code: 'host-update-failed' },
+      }),
+    );
+    const establishment = adapter.establishSessionCapabilities();
+
+    expect(updateCheck).not.toHaveBeenCalled();
+    await expect(firstValueFrom(establishment)).resolves.toEqual({
+      kind: 'ready',
+      warnings: [
+        expect.objectContaining({
+          scope: 'updates',
+          diagnostic: { code: 'update-check-failed' },
+        }),
+      ],
+    });
+    expect(updateCheck).toHaveBeenCalledOnce();
   });
 
   it('maps partial and required Account outcomes without leaking account ids', async () => {

@@ -7,7 +7,7 @@ import { of } from 'rxjs';
 import { MediaService } from '@trinity/data-access/media';
 import { UrlPreviewService } from '@trinity/data-access/timeline';
 import { PrivacySettingsService } from '@trinity/platform-native';
-import { FileSaveService } from '@trinity/platform-native';
+import { HostFileExportService } from '@trinity/runtime/host';
 import {
   MessageRowComponent,
   type MessageLongPressContext,
@@ -72,7 +72,9 @@ async function renderRow(over: Partial<MessageRowCaps> = {}) {
         resolveMedia: () => of(''),
         downloadMedia: () => of({ blob: new Blob(), filename: 'doc.pdf' }),
       }),
-      MockProvider(FileSaveService, { save: () => of(undefined) }),
+      MockProvider(HostFileExportService, {
+        save: () => of({ kind: 'completed' as const }),
+      }),
       MockProvider(UrlPreviewService, { preview: () => of(null) }),
       MockProvider(PrivacySettingsService, {
         linkPreviews: signal(true).asReadonly(),

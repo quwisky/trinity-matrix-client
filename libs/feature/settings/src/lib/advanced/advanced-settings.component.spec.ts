@@ -8,6 +8,7 @@ import {
   type ConfigEntry,
   type ConfigValidation,
 } from '@trinity/platform-native';
+import { HostFileExportService } from '@trinity/runtime/host';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
@@ -156,29 +157,13 @@ function parseEnvelope(json: string): Envelope {
   return JSON.parse(json) as Envelope;
 }
 
-/**
- * Intercept the download anchor. Installed only around the click that exports: an anchor
- * returned for every `createElement` would break rendering.
- */
-function stubDownloadAnchor(): {
-  readonly element: HTMLAnchorElement;
-  readonly click: Mock;
-  readonly restore: () => void;
-} {
-  const element = document.createElement('a');
-  const click = vi.fn();
-  element.click = click;
-  const createElement = vi
-    .spyOn(document, 'createElement')
-    .mockReturnValue(element);
-  return { element, click, restore: () => createElement.mockRestore() };
-}
-
 describe('AdvancedSettingsComponent', () => {
   let alertPrompt: Mock;
   let toastShow: Mock;
   let writeText: Mock;
   let resetToDefaults: Mock;
+  let fileSave: Mock;
+  let fileExportSupported: boolean;
 
   let readText: Mock;
 
@@ -191,6 +176,8 @@ describe('AdvancedSettingsComponent', () => {
     writeText = vi.fn().mockResolvedValue(undefined);
     readText = vi.fn().mockResolvedValue('');
     resetToDefaults = vi.fn(() => of(undefined));
+    fileSave = vi.fn(() => of({ kind: 'completed' as const }));
+    fileExportSupported = true;
     Object.defineProperty(navigator, 'clipboard', {
       value: { writeText, readText },
       configurable: true,
@@ -213,6 +200,15 @@ describe('AdvancedSettingsComponent', () => {
       { provide: APP_CONFIG_ENTRIES, multi: true, useValue: ENTRIES },
       MockProvider(TrnAlertService, { prompt: alertPrompt }),
       MockProvider(TrnToastService, { show: toastShow }),
+      MockProvider(HostFileExportService, {
+        support: () =>
+          of(
+            fileExportSupported
+              ? ({ kind: 'supported' } as const)
+              : ({ kind: 'unavailable', reason: 'not-supported' } as const),
+          ),
+        save: fileSave,
+      }),
     ];
   }
 
@@ -225,6 +221,15 @@ describe('AdvancedSettingsComponent', () => {
       }),
       MockProvider(TrnAlertService, { prompt: alertPrompt }),
       MockProvider(TrnToastService, { show: toastShow }),
+      MockProvider(HostFileExportService, {
+        support: () =>
+          of(
+            fileExportSupported
+              ? ({ kind: 'supported' } as const)
+              : ({ kind: 'unavailable', reason: 'not-supported' } as const),
+          ),
+        save: fileSave,
+      }),
     ];
   }
 
@@ -360,15 +365,16 @@ describe('AdvancedSettingsComponent', () => {
       providers: mockedConfig('{"version":1}'),
     });
 
-    const anchor = stubDownloadAnchor();
     button(container, 'advanced-export')?.click();
-    anchor.restore();
 
-    expect(anchor.click).toHaveBeenCalled();
-    expect(anchor.element.download).toMatch(
+    expect(fileSave).toHaveBeenCalledOnce();
+    const [request] = fileSave.mock.calls[0] as [
+      { readonly bytes: Blob; readonly filename: string },
+    ];
+    expect(request.filename).toMatch(
       /^trinity-settings-\d{4}-\d{2}-\d{2}\.json$/,
     );
-    expect(decodeURIComponent(anchor.element.href)).toContain('{"version":1}');
+    await expect(request.bytes.text()).resolves.toContain('{"version":1}');
   });
 
   // 12:00 UTC is already the 2nd in Kiritimati: a UTC-dated filename is a day out either
@@ -385,11 +391,11 @@ describe('AdvancedSettingsComponent', () => {
         providers: mockedConfig(),
       });
 
-      const anchor = stubDownloadAnchor();
       button(container, 'advanced-export')?.click();
-      anchor.restore();
 
-      expect(anchor.element.download).toBe('trinity-settings-2026-01-02.json');
+      expect(fileSave.mock.calls[0]?.[0]).toMatchObject({
+        filename: 'trinity-settings-2026-01-02.json',
+      });
     } finally {
       process.env['TZ'] = timeZone;
     }
@@ -405,22 +411,18 @@ describe('AdvancedSettingsComponent', () => {
     const rendered = parseEnvelope(textareaValue(container)).exportedAt;
 
     vi.setSystemTime(new Date('2026-01-01T17:00:00.000Z'));
-    const anchor = stubDownloadAnchor();
     button(container, 'advanced-export')?.click();
-    anchor.restore();
 
-    const written = parseEnvelope(
-      decodeURIComponent(anchor.element.href).replace(
-        /^data:application\/json;charset=utf-8,/,
-        '',
-      ),
-    );
+    const [request] = fileSave.mock.calls[0] as [
+      { readonly bytes: Blob; readonly filename: string },
+    ];
+    const written = parseEnvelope(await request.bytes.text());
     expect(rendered).toBe('2026-01-01T09:00:00.000Z');
     expect(written.exportedAt).toBe('2026-01-01T17:00:00.000Z');
   });
 
-  it('replaces the file export with an explanation on native, never hiding it silently', async () => {
-    vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
+  it('replaces unavailable host export with an explanation, never hiding it silently', async () => {
+    fileExportSupported = false;
     const { container } = await render(AdvancedSettingsComponent, {
       providers: realConfig(),
     });

@@ -17,6 +17,8 @@ import { NativeNavigationService } from '@trinity/platform-native';
 import {
   HostBackService,
   HostDeepLinksService,
+  HostLifecycleService,
+  HostUpdatesService,
   type HostOperationOutcome,
 } from '@trinity/runtime/host';
 import {
@@ -27,7 +29,6 @@ import {
   defer,
   filter,
   from,
-  fromEvent,
   ignoreElements,
   map,
   merge,
@@ -55,6 +56,8 @@ export class TrinityApplicationSessionAdapter {
   private readonly nativeNavigation = inject(NativeNavigationService);
   private readonly hostDeepLinks = inject(HostDeepLinksService);
   private readonly hostBack = inject(HostBackService);
+  private readonly hostLifecycle = inject(HostLifecycleService);
+  private readonly hostUpdates = inject(HostUpdatesService);
   private readonly navigationFocus = inject(NavigationFocusService);
   private readonly routedSurfaces = inject(WorkspaceRoutedSurfaceAdapter);
   private readonly applicationSurfaces = inject(
@@ -220,33 +223,44 @@ export class TrinityApplicationSessionAdapter {
   }
 
   private runUpdates(): Observable<ApplicationRuntimeWarning> {
-    if (!this.swUpdate.isEnabled) return EMPTY;
-    const unrecoverable = this.swUpdate.unrecoverable.pipe(
-      tap(() => window.location.reload()),
-      ignoreElements(),
-    );
-    const readyVersions = this.swUpdate.versionUpdates.pipe(
-      filter(
-        (event): event is VersionReadyEvent => event.type === 'VERSION_READY',
-      ),
-      tap(() => {
-        this.toast.show('A new version of Trinity is available.', {
-          duration: 0,
-          action: { label: 'Reload', onClick: () => this.activateUpdate() },
-        });
-      }),
-      ignoreElements(),
-    );
-    const foregroundChecks = fromEvent(document, 'visibilitychange').pipe(
-      filter(() => document.visibilityState === 'visible'),
+    const serviceWorkerEvents = this.swUpdate.isEnabled
+      ? merge(
+          this.swUpdate.unrecoverable.pipe(
+            tap(() => window.location.reload()),
+            ignoreElements(),
+          ),
+          this.swUpdate.versionUpdates.pipe(
+            filter(
+              (event): event is VersionReadyEvent =>
+                event.type === 'VERSION_READY',
+            ),
+            tap(() => {
+              this.toast.show('A new version of Trinity is available.', {
+                duration: 0,
+                action: {
+                  label: 'Reload',
+                  onClick: () => this.activateUpdate(),
+                },
+              });
+            }),
+            ignoreElements(),
+          ),
+        )
+      : EMPTY;
+    const foregroundChecks = this.hostLifecycle.events.pipe(
+      filter((event) => event.kind === 'active'),
       switchMap(() =>
-        from(this.swUpdate.checkForUpdate()).pipe(
-          ignoreElements(),
+        this.hostUpdates.check().pipe(
+          switchMap((outcome) =>
+            outcome.kind === 'rejected'
+              ? of(warning('updates', 'update-check-failed'))
+              : EMPTY,
+          ),
           catchError(() => of(warning('updates', 'update-check-failed'))),
         ),
       ),
     );
-    return merge(unrecoverable, readyVersions, foregroundChecks);
+    return merge(serviceWorkerEvents, foregroundChecks);
   }
 
   private activateUpdate(): void {

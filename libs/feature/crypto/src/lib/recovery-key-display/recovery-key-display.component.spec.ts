@@ -1,16 +1,36 @@
 import { render, screen } from '@trinity/testing';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { HostFileExportService } from '@trinity/runtime/host';
+import { MockProvider } from 'ng-mocks';
+import { of } from 'rxjs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RecoveryKeyDisplayComponent } from './recovery-key-display.component';
 
 const KEY = 'EsTa bcde fghi jklm nopq rstu vwxy z012 3456 789a bcde fghi';
 
 describe('RecoveryKeyDisplayComponent', () => {
+  const save = vi.fn(
+    (_request: { readonly bytes: Blob; readonly filename: string }) =>
+      of({ kind: 'completed' as const }),
+  );
+
   afterEach(() => vi.restoreAllMocks());
 
-  it('renders the recovery key', async () => {
-    const { container } = await render(RecoveryKeyDisplayComponent, {
+  beforeEach(() => save.mockClear());
+
+  function renderKey() {
+    return render(RecoveryKeyDisplayComponent, {
       inputs: { recoveryKey: KEY },
+      providers: [
+        MockProvider(HostFileExportService, {
+          support: () => of({ kind: 'supported' as const }),
+          save,
+        }),
+      ],
     });
+  }
+
+  it('renders the recovery key', async () => {
+    const { container } = await renderKey();
 
     expect(container.querySelector('.key')?.textContent).toContain(KEY);
   });
@@ -22,9 +42,7 @@ describe('RecoveryKeyDisplayComponent', () => {
       configurable: true,
     });
 
-    const { fixture } = await render(RecoveryKeyDisplayComponent, {
-      inputs: { recoveryKey: KEY },
-    });
+    const { fixture } = await renderKey();
 
     fixture.componentInstance.copy();
     await fixture.whenStable();
@@ -34,23 +52,16 @@ describe('RecoveryKeyDisplayComponent', () => {
   });
 
   it('downloads the key as a text file on web', async () => {
-    const createObjectURL = vi.fn(() => 'blob:url');
-    const revokeObjectURL = vi.fn();
-    URL.createObjectURL = createObjectURL;
-    URL.revokeObjectURL = revokeObjectURL;
-    const click = vi
-      .spyOn(HTMLAnchorElement.prototype, 'click')
-      .mockImplementation(() => undefined);
-
-    const { fixture } = await render(RecoveryKeyDisplayComponent, {
-      inputs: { recoveryKey: KEY },
-    });
+    const { fixture } = await renderKey();
 
     fixture.componentInstance.download();
 
-    expect(createObjectURL).toHaveBeenCalledOnce();
-    expect(click).toHaveBeenCalledOnce();
-    expect(revokeObjectURL).toHaveBeenCalledWith('blob:url');
+    expect(save).toHaveBeenCalledWith({
+      bytes: expect.any(Blob),
+      filename: 'trinity-recovery-key.txt',
+    });
+    const [{ bytes }] = save.mock.calls[0];
+    await expect(bytes.text()).resolves.toBe(KEY);
   });
 
   it('surfaces a manual-copy hint when the clipboard write fails', async () => {
@@ -60,9 +71,7 @@ describe('RecoveryKeyDisplayComponent', () => {
       configurable: true,
     });
 
-    const { fixture } = await render(RecoveryKeyDisplayComponent, {
-      inputs: { recoveryKey: KEY },
-    });
+    const { fixture } = await renderKey();
 
     fixture.componentInstance.copy();
     await fixture.whenStable();

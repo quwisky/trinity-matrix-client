@@ -30,7 +30,10 @@ import {
 } from 'rxjs';
 import { MobileBadgeService } from '../mobile-badge.service';
 import { getTrinityDesktopBridge } from '../trinity-desktop-bridge';
-import { hostOperationProviders } from './host-operation.adapters';
+import {
+  ServiceWorkerHostUpdatesAdapter,
+  hostOperationProviders,
+} from './host-operation.adapters';
 import { CapacitorNotificationPresentationAdapter } from './host-notification-presentation.adapters';
 
 type HostAdapter = HostBadgeOperation & HostCapabilityNegotiator;
@@ -218,6 +221,8 @@ function capacitorSupportedOperations(
 
 @Injectable({ providedIn: 'root' })
 export class WebHostCapabilityAdapter implements HostAdapter {
+  private readonly updates = inject(ServiceWorkerHostUpdatesAdapter);
+
   support(): Observable<HostCapabilitySupport> {
     return defer(() =>
       of(
@@ -250,8 +255,8 @@ export class WebHostCapabilityAdapter implements HostAdapter {
   }
 
   manifest(): Observable<HostCapabilityManifest> {
-    return this.support().pipe(
-      map((badge) =>
+    return combineLatest([this.support(), this.updates.support()]).pipe(
+      map(([badge, updates]) =>
         manifest(
           badge,
           [
@@ -259,6 +264,7 @@ export class WebHostCapabilityAdapter implements HostAdapter {
             'file-export',
             'location',
             'lifecycle',
+            ...(updates.kind === 'supported' ? (['updates'] as const) : []),
             ...(typeof Notification !== 'undefined'
               ? (['notification-presentation'] as const)
               : []),

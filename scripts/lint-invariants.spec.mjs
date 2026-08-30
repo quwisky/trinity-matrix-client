@@ -231,28 +231,10 @@ const UI_BOUNDARY = [
  * filter below, since it is the layer the bans exist to protect rather than an exception to
  * them.
  *
- * `trinity-desktop` (the Electron shell) is not listed, and cannot be: it has no project.json
- * for the glob to find and carries no tags. That is a deliberate non-fix, measured twice.
- *
- * Tagging it would enforce nothing, because `@nx/enforce-module-boundaries` is switched OFF
- * for the shell outright — `eslint.config.mjs` sets that rule to `'off'` for the shell's own
- * TypeScript, with its own rationale (it legitimately imports the `electron` runtime, which
- * the rule misreads as a same-project import). Tags cannot re-enable a disabled rule.
- *
- * An earlier revision of this note claimed instead that vendor and `@trinity/*` specifiers
- * "do not resolve" from the shell, and cited a silent eslint probe as proof. That was wrong
- * twice over: the specifiers do resolve against the workspace graph regardless of the
- * shell's own tsconfig, and the probe was silent because of the off-block above, so it could
- * never have distinguished tagged from untagged. Corrected here rather than deleted, since
- * the wrong reason is the one a maintainer would otherwise re-derive.
- *
- * And giving it tags is not free. Tags only stick via a `project.json` (an `nx` key in
- * `electron/package.json` is ignored — it is not a pnpm workspace member), and adding one
- * takes the project from ONE inferred target to sixteen: `pnpm test` and CI's unit job would
- * start running the Electron suite, which needs `pnpm electron:install` first. That turns a
- * theoretical gap into a real failure on any clone that skipped an optional install step.
- *
- * So the shell stays untagged, and the boundary is honest about ending at the web app.
+ * `trinity-desktop` is now covered as a `type:app` project. Its explicit targets install the
+ * standalone shell dependencies before lint/test/typecheck, while
+ * `electron/package.json#nx.includedScripts` suppresses duplicate inferred package-script
+ * targets. The module-boundary rule stays active for its authored TypeScript.
  */
 const OUTSIDE_THE_VENDOR_BANS = ['e2e/project.json', 'scripts/project.json'];
 
@@ -301,9 +283,12 @@ describe('UI vendor boundary', () => {
     // Swept beyond {apps,libs}: `e2e` and `scripts` are Nx projects too, and the previous
     // glob simply could not see them — so "tags every project" was asserted over 41 of the
     // 43 project.json files in the tree and passed on a sweep that never looked.
-    const projects = globSync('{apps,libs,e2e,scripts}/**/project.json', {
-      cwd: workspaceRoot,
-    });
+    const projects = globSync(
+      '{apps,libs,e2e,scripts,electron}/**/project.json',
+      {
+        cwd: workspaceRoot,
+      },
+    );
     // An empty sweep must not pass as a clean one — the same trap the host-directives
     // guard was written around.
     expect(projects.length).toBeGreaterThan(30);

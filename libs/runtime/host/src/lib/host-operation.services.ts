@@ -5,8 +5,11 @@ import {
   type HostBackOperation,
   type HostCapabilitySupport,
   type HostDeepLinksOperation,
+  type HostFileExportOperation,
+  type HostLifecycleOperation,
   type HostNotificationPresentationOperation,
   type HostOperationOutcome,
+  type HostUpdatesOperation,
 } from './host-capability.models';
 
 export const HOST_AUTHENTICATION_HANDOFF_OPERATION =
@@ -18,10 +21,17 @@ export const HOST_DEEP_LINKS_OPERATION =
 export const HOST_BACK_OPERATION = new InjectionToken<HostBackOperation>(
   'HOST_BACK_OPERATION',
 );
+export const HOST_FILE_EXPORT_OPERATION =
+  new InjectionToken<HostFileExportOperation>('HOST_FILE_EXPORT_OPERATION');
 export const HOST_NOTIFICATION_PRESENTATION_OPERATION =
   new InjectionToken<HostNotificationPresentationOperation>(
     'HOST_NOTIFICATION_PRESENTATION_OPERATION',
   );
+export const HOST_LIFECYCLE_OPERATION =
+  new InjectionToken<HostLifecycleOperation>('HOST_LIFECYCLE_OPERATION');
+export const HOST_UPDATES_OPERATION = new InjectionToken<HostUpdatesOperation>(
+  'HOST_UPDATES_OPERATION',
+);
 
 const unavailableSupport = (): Extract<
   HostCapabilitySupport,
@@ -101,6 +111,23 @@ export class HostBackService implements HostBackOperation {
 }
 
 @Injectable({ providedIn: 'root' })
+export class HostFileExportService implements HostFileExportOperation {
+  private readonly adapter = inject(HOST_FILE_EXPORT_OPERATION, {
+    optional: true,
+  });
+
+  support(): Observable<HostCapabilitySupport> {
+    return defer(() => this.adapter?.support() ?? of(unavailableSupport()));
+  }
+
+  save(
+    request: Parameters<HostFileExportOperation['save']>[0],
+  ): Observable<HostOperationOutcome> {
+    return defer(() => this.adapter?.save(request) ?? of(unavailableOutcome()));
+  }
+}
+
+@Injectable({ providedIn: 'root' })
 export class HostNotificationPresentationService implements HostNotificationPresentationOperation {
   private readonly adapter = inject(HOST_NOTIFICATION_PRESENTATION_OPERATION, {
     optional: true,
@@ -131,5 +158,23 @@ export class HostNotificationPresentationService implements HostNotificationPres
     return (
       this.adapter?.present(request) ?? defer(() => of(unavailableOutcome()))
     );
+  }
+}
+
+@Injectable({ providedIn: 'root' })
+export class HostLifecycleService implements HostLifecycleOperation {
+  private readonly adapter = inject(HOST_LIFECYCLE_OPERATION, {
+    optional: true,
+  });
+
+  readonly events = defer(() => this.adapter?.events ?? EMPTY);
+}
+
+@Injectable({ providedIn: 'root' })
+export class HostUpdatesService implements HostUpdatesOperation {
+  private readonly adapter = inject(HOST_UPDATES_OPERATION, { optional: true });
+
+  check(): Observable<HostOperationOutcome> {
+    return defer(() => this.adapter?.check() ?? of(unavailableOutcome()));
   }
 }

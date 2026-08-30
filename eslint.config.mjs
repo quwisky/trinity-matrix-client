@@ -435,13 +435,11 @@ export default defineConfig([
     },
   },
   {
-    // The hand-rolled Electron package is a standalone Node/Electron app (its own
-    // tsc + vitest, run via `pnpm -C electron`), not part of the libs/apps Nx graph.
-    // It legitimately imports the `electron` runtime, so the lib/app module-boundary
-    // rule (which misreads that as a same-project import) doesn't apply.
+    // The hand-rolled Electron package is a standalone Node/Electron app with its own
+    // dependency installation, but `electron/project.json` now makes it an explicit
+    // classified Nx application. The normal module-boundary rule therefore remains active.
     files: ['electron/**/*.ts', 'electron/**/*.mts'],
     rules: {
-      '@nx/enforce-module-boundaries': 'off',
       // The Electron main process is a Node process; console is its legitimate
       // logging channel (no browser devtools), so the app's no-console ban doesn't apply.
       'no-console': 'off',

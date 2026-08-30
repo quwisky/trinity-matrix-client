@@ -1,6 +1,20 @@
-import { firstValueFrom } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { CapacitorHostOperationAdapter } from './host-operation.adapters';
+import { TestBed } from '@angular/core/testing';
+import { SwUpdate } from '@angular/service-worker';
+import {
+  HostCapabilitiesService,
+  unavailableHostManifest,
+} from '@trinity/runtime/host';
+import { MockProvider } from 'ng-mocks';
+import { firstValueFrom, of, throwError } from 'rxjs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { FileSaveService } from '../host-media/file-save.service';
+import { WebHostCapabilityAdapter } from './host-capability.adapters';
+import {
+  CapacitorHostOperationAdapter,
+  DocumentHostLifecycleAdapter,
+  HostFileExportAdapter,
+  ServiceWorkerHostUpdatesAdapter,
+} from './host-operation.adapters';
 
 const app = vi.hoisted(() => ({
   addListener: vi.fn(),
@@ -86,5 +100,148 @@ describe('CapacitorHostOperationAdapter event streams', () => {
     expect(completed).toHaveBeenCalledTimes(1);
     expect(app.addListener).not.toHaveBeenCalled();
     expect(app.minimizeApp).not.toHaveBeenCalled();
+  });
+});
+
+describe('file, lifecycle and update host operation contracts', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    TestBed.resetTestingModule();
+  });
+
+  function manifest() {
+    const value = unavailableHostManifest('not-implemented');
+    return {
+      ...value,
+      operations: {
+        ...value.operations,
+        'file-export': { kind: 'supported' as const },
+        lifecycle: { kind: 'supported' as const },
+      },
+    };
+  }
+
+  it('keeps file export cold, finite and normalized through the selected host adapter', async () => {
+    const save = vi.fn(() => of(undefined));
+    TestBed.configureTestingModule({
+      providers: [
+        HostFileExportAdapter,
+        MockProvider(HostCapabilitiesService, {
+          manifest: () => of(manifest()),
+        }),
+        MockProvider(FileSaveService, { save }),
+      ],
+    });
+    const adapter = TestBed.inject(HostFileExportAdapter);
+    const request = { bytes: new Blob(['safe']), filename: 'safe.txt' };
+    const command = adapter.save(request);
+
+    expect(save).not.toHaveBeenCalled();
+    await expect(firstValueFrom(command)).resolves.toEqual({
+      kind: 'completed',
+    });
+    expect(save).toHaveBeenCalledExactlyOnceWith(
+      request.bytes,
+      request.filename,
+    );
+  });
+
+  it('contains file-host failures behind a secret-safe rejection', async () => {
+    TestBed.configureTestingModule({
+      providers: [
+        HostFileExportAdapter,
+        MockProvider(HostCapabilitiesService, {
+          manifest: () => of(manifest()),
+        }),
+        MockProvider(FileSaveService, {
+          save: () => throwError(() => new Error('secret file payload')),
+        }),
+      ],
+    });
+
+    await expect(
+      firstValueFrom(
+        TestBed.inject(HostFileExportAdapter).save({
+          bytes: new Blob(['secret']),
+          filename: 'secret.txt',
+        }),
+      ),
+    ).resolves.toEqual({
+      kind: 'rejected',
+      diagnostic: { code: 'file-export-failed' },
+    });
+  });
+
+  it('projects document foregrounding through the lifecycle contract', async () => {
+    const visibility = vi
+      .spyOn(document, 'visibilityState', 'get')
+      .mockReturnValue('visible');
+    const adapter = TestBed.inject(DocumentHostLifecycleAdapter);
+    const active = firstValueFrom(adapter.events);
+
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    await expect(active).resolves.toEqual({ kind: 'active' });
+    visibility.mockReturnValue('hidden');
+    const background = firstValueFrom(adapter.events);
+    document.dispatchEvent(new Event('visibilitychange'));
+    await expect(background).resolves.toEqual({ kind: 'background' });
+  });
+
+  it('returns explicit update unavailability when this host has no service worker', async () => {
+    const checkForUpdate = vi.fn();
+    TestBed.configureTestingModule({
+      providers: [
+        ServiceWorkerHostUpdatesAdapter,
+        MockProvider(SwUpdate, { isEnabled: false, checkForUpdate }),
+      ],
+    });
+    const command = TestBed.inject(ServiceWorkerHostUpdatesAdapter).check();
+
+    expect(checkForUpdate).not.toHaveBeenCalled();
+    await expect(firstValueFrom(command)).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
+    expect(checkForUpdate).not.toHaveBeenCalled();
+  });
+
+  it('runs a supported update check lazily through the shared operation', async () => {
+    const checkForUpdate = vi.fn().mockResolvedValue(true);
+    TestBed.configureTestingModule({
+      providers: [
+        ServiceWorkerHostUpdatesAdapter,
+        MockProvider(SwUpdate, { isEnabled: true, checkForUpdate }),
+      ],
+    });
+    const command = TestBed.inject(ServiceWorkerHostUpdatesAdapter).check();
+
+    expect(checkForUpdate).not.toHaveBeenCalled();
+    await expect(firstValueFrom(command)).resolves.toEqual({
+      kind: 'completed',
+    });
+    expect(checkForUpdate).toHaveBeenCalledOnce();
+  });
+
+  it('keeps Web update discovery aligned with the shared operation', async () => {
+    const checkForUpdate = vi.fn().mockResolvedValue(true);
+    TestBed.configureTestingModule({
+      providers: [
+        WebHostCapabilityAdapter,
+        ServiceWorkerHostUpdatesAdapter,
+        MockProvider(SwUpdate, { isEnabled: true, checkForUpdate }),
+      ],
+    });
+    const manifest = await firstValueFrom(
+      TestBed.inject(WebHostCapabilityAdapter).manifest(),
+    );
+    const command = TestBed.inject(ServiceWorkerHostUpdatesAdapter).check();
+
+    expect(manifest.operations.updates).toEqual({ kind: 'supported' });
+    expect(checkForUpdate).not.toHaveBeenCalled();
+    await expect(firstValueFrom(command)).resolves.toEqual({
+      kind: 'completed',
+    });
+    expect(checkForUpdate).toHaveBeenCalledOnce();
   });
 });

@@ -10,9 +10,10 @@ Because the shell loads the plain web build, the renderer takes the _web_ branch
 Capacitor check. `Capacitor.isNativePlatform()` is `false` here. What the desktop adds is
 delivered through a preload bridge instead, described below.
 
-## A separate package
+## A separate package and a first-class Nx application
 
-`electron/` is its own pnpm project, not a member of the Nx graph.
+`electron/` is its own pnpm workspace for dependency installation and a first-class Nx application
+named `trinity-desktop` for lifecycle ownership.
 
 - Its own `package.json`, `pnpm-lock.yaml` and `node_modules`.
 - Its own `pnpm-workspace.yaml` with `packages: []`, which exists purely to stop
@@ -24,9 +25,12 @@ delivered through a preload bridge instead, described below.
 - Zero production dependencies, which is why `node_modules` is absent from the packaged
   bundle.
 
-In the Nx graph it appears as an inferred project named `trinity-desktop` with exactly one
-target, `lint`. It has no `test` target there, so `pnpm test` does not run the
-main-process specs; `pnpm -C electron test` does, and CI runs it explicitly.
+`electron/project.json` classifies the shell as a `role:app` composition root over the shared
+`trinity` renderer. It owns install, compile, typecheck, test, build, launch, static verification,
+serialized E2E and host/platform package targets. `electron/package.json` keeps
+`nx.includedScripts` empty so its package scripts do not create a second ambiguous target set.
+The normal Nx module-boundary rule applies to its authored TypeScript. `pnpm test` now includes the
+main-process specs and drives the standalone dependency install first.
 
 !!! warning "Repository-wide TypeScript codemods hit this file"
 
@@ -41,20 +45,23 @@ main-process specs; `pnpm -C electron test` does, and CI runs it explicitly.
 
 ```bash
 pnpm electron:install   # download the Electron binary
+pnpm electron:verify    # static Nx/artifact/bridge/security/package contract
 pnpm electron:start     # build the web app, compile the shell, launch it
+pnpm electron:build:release # shared renderer + shell compile, without development signing
 ```
 
-`electron:start` chains through `electron:build`, which is four steps:
+Every root command delegates to `trinity-desktop`. `electron:start` depends on its `build` target,
+which owns four steps:
 
 ```text
-pnpm build                     # Angular production build -> www/
-pnpm electron:install          # pnpm -C electron install + ensure:binary
+trinity:build                  # Angular production build -> www/
+trinity-desktop:install        # pinned shell install + ensure:binary
 pnpm -C electron run build     # copy-www.mjs then tsc -p tsconfig.json
-pnpm electron:sign:dev         # ad-hoc codesign, macOS only
+pnpm -C electron run sign:dev  # ad-hoc codesign, macOS only
 ```
 
-`electron:install` is described as one-time in most places, but every `electron:*` script
-re-runs it. That is cheap: `ensure-electron.mjs` self-skips when `dist/version` already
+Targets needing the binary depend on `install`; unit, typecheck and lint depend only on the
+standalone dependency install. Re-running `install` is cheap: `ensure-electron.mjs` self-skips when `dist/version` already
 matches the installed package version and the executable named by `path.txt` exists. The
 standalone command is only useful to pre-warm the download before a first build.
 
@@ -168,8 +175,11 @@ surface:
 Both sides validate. The preload rejects payloads of the wrong shape, and every main-process
 handler independently re-validates and checks `event.sender === getMainWindow().webContents`
 before acting, so a compromised or unexpected `WebContents` cannot drive the privileged
-side. Notification presentation returns only typed, secret-safe outcomes; `failed` events and
-synchronous host errors therefore become Application Runtime warnings instead of false success.
+side. The preload also grants each product operation only after an accepted protocol-v1
+negotiation reports that exact operation as supported. Partial renegotiation replaces the grant
+set, and a rejected negotiation revokes it. Notification presentation returns only typed,
+secret-safe outcomes; `failed` events and synchronous host errors therefore become Application
+Runtime warnings instead of false success.
 
 The typed mirror of this interface, and the authoritative documentation of each member, is
 [libs/platform-native/src/lib/trinity-desktop-bridge.ts](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/platform-native/src/lib/trinity-desktop-bridge.ts).
@@ -341,12 +351,12 @@ the `publish:` block is commented out.
 
 !!! danger "Two packaging traps"
 
-    **Never run `pnpm electron:build` or any `electron:package:*` script in CI.** They end
-    with `electron:sign:dev`, which ad-hoc-signs the local Electron binary against a
-    self-signed `trinity-dev` identity that exists on no runner. The release workflow runs
-    the three useful steps directly instead: `pnpm build`, then
-    `pnpm -C electron install --frozen-lockfile`, then `pnpm -C electron run build`,
-    then `electron-builder` with the platform flag.
+    **Release packaging must bypass the development signature.** The normal first-class build
+    ends with `electron:sign:dev`, which ad-hoc-signs the local Electron binary against a
+    self-signed `trinity-dev` identity. Release packaging depends on
+    `trinity-desktop:build-release` instead: it builds the shared renderer and compiles the shell
+    without touching a development identity, then lets the platform-specific `electron-builder`
+    command and release credentials control signing.
 
     **`pnpm electron:package:mac` hardcodes an arm64 output path.** Its trailing ad-hoc
     re-sign points at `release/mac-arm64/Trinity.app`, but electron-builder writes x64
@@ -366,8 +376,13 @@ gate in the repository that exercises the custom scheme, WASM stream instantiati
 posture and `safeStorage`, and it runs the image-pack manager journey against the built shell.
 
 ```bash
+pnpm electron:e2e:smoke   # Docker-independent shell/protocol/security journey
 pnpm electron:e2e
 ```
+
+The smoke command uses a derived Playwright config with global setup and teardown disabled, so its
+nine shell/protocol/security checks stay Docker-independent. The full command retains the Synapse
+harness for authenticated journeys.
 
 Each launch gets a fresh temporary `--user-data-dir`, so the app always starts
 unauthenticated. The launcher also passes `--no-sandbox`, which disables Chromium's

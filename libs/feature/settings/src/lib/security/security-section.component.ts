@@ -1,4 +1,3 @@
-import { DOCUMENT } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -15,7 +14,8 @@ import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspa
 import { TrnButton } from '@trinity/components/controls';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { TrustService } from '@trinity/data-access/trust';
-import { downloadTextFile } from '../download-text-file';
+import { HostFileExportService } from '@trinity/runtime/host';
+import { switchMap } from 'rxjs';
 import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
 /**
@@ -39,7 +39,7 @@ export class SecuritySectionComponent implements OnInit {
   private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly document = inject(DOCUMENT);
+  private readonly files = inject(HostFileExportService);
   private destroyed = false;
 
   /** True when this section is mounted inside the web/Electron settings modal. */
@@ -133,15 +133,27 @@ export class SecuritySectionComponent implements OnInit {
     this.busy.set(true);
     this.crypto
       .exportRoomKeys(passphrase)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        switchMap((armored) =>
+          this.files.save({
+            bytes: new Blob([armored], { type: 'text/plain' }),
+            filename: 'trinity-room-keys.txt',
+          }),
+        ),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
-        next: (armored) => {
+        next: (outcome) => {
           this.busy.set(false);
-          this.download(armored);
-          this.toast.show('Room keys exported.', {
-            duration: 3000,
-            variant: 'success',
-          });
+          this.toast.show(
+            outcome.kind === 'completed'
+              ? 'Room keys exported.'
+              : 'Could not export your room keys.',
+            {
+              duration: outcome.kind === 'completed' ? 3000 : 4000,
+              variant: outcome.kind === 'completed' ? 'success' : 'destructive',
+            },
+          );
         },
         error: () => {
           this.busy.set(false);
@@ -199,14 +211,5 @@ export class SecuritySectionComponent implements OnInit {
           );
         },
       });
-  }
-
-  /** Trigger a browser download of the armored key file. */
-  private download(armored: string): void {
-    downloadTextFile(this.document, {
-      name: 'trinity-room-keys.txt',
-      mimeType: 'text/plain',
-      content: armored,
-    });
   }
 }

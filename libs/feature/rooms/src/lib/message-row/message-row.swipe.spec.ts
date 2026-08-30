@@ -7,7 +7,7 @@ import { MediaService } from '@trinity/data-access/media';
 import { UrlPreviewService } from '@trinity/data-access/timeline';
 import { PrivacySettingsService } from '@trinity/platform-native';
 import { DRAWER_OUTER_EDGE_PX } from '../rooms/drawer-swipe.directive';
-import { FileSaveService } from '@trinity/platform-native';
+import { HostFileExportService } from '@trinity/runtime/host';
 import {
   MessageRowComponent,
   SWIPE_DEAD_ZONE_PX,
@@ -80,7 +80,9 @@ async function renderRow(
         resolveMedia: () => of(''),
         downloadMedia: () => of({ blob: new Blob(), filename: 'doc.pdf' }),
       }),
-      MockProvider(FileSaveService, { save: () => of(undefined) }),
+      MockProvider(HostFileExportService, {
+        save: () => of({ kind: 'completed' as const }),
+      }),
       MockProvider(UrlPreviewService, { preview: () => of(null) }),
       MockProvider(PrivacySettingsService, {
         linkPreviews: signal(true).asReadonly(),

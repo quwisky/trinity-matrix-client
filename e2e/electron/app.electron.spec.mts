@@ -84,41 +84,98 @@ test('stream-instantiates the crypto WASM over the trinity:// scheme', async () 
   expect(result.exports).toBeGreaterThan(0);
 });
 
-test('exposes the desktop bridge but no Node in the renderer', async () => {
-  const isElectron = await page.evaluate(
-    () =>
-      (globalThis as { trinityDesktop?: { isElectron?: boolean } })
-        .trinityDesktop?.isElectron,
-  );
-  expect(isElectron).toBe(true);
-
-  // contextIsolation + nodeIntegration:false + sandbox → no Node reachable.
+test('negotiates the grouped protocol-v1 bridge without exposing Node', async () => {
   const exposure = await page.evaluate(() => {
     const td = (
       globalThis as {
         trinityDesktop?: {
+          protocolVersion?: unknown;
+          isElectron?: unknown;
+          platform?: unknown;
+          negotiate?: (operations: readonly string[]) => Promise<unknown>;
+          capabilities?: Record<string, unknown>;
           onDeepLink?: unknown;
           showNotification?: unknown;
           onNotificationClick?: unknown;
           secureStore?: unknown;
+          ipcRenderer?: unknown;
         };
       }
     ).trinityDesktop;
-    return {
+    return Promise.resolve(
+      td?.negotiate?.([
+        'authentication-handoff',
+        'deep-links',
+        'back',
+        'file-export',
+        'notification-presentation',
+        'location',
+        'badge',
+        'secure-store',
+        'lifecycle',
+        'updates',
+      ]),
+    ).then((negotiation) => ({
       require: typeof (globalThis as Record<string, unknown>)['require'],
       process: typeof (globalThis as Record<string, unknown>)['process'],
-      onDeepLink: typeof td?.onDeepLink,
-      showNotification: typeof td?.showNotification,
-      onNotificationClick: typeof td?.onNotificationClick,
-      secureStore: typeof td?.secureStore,
-    };
+      topLevel: Object.keys(td ?? {}).sort(),
+      capabilityGroups: Object.keys(td?.capabilities ?? {}).sort(),
+      protocolVersion: td?.protocolVersion,
+      isElectron: td?.isElectron,
+      platform: typeof td?.platform,
+      ipcRenderer: typeof td?.ipcRenderer,
+      legacyFlatMethods: [
+        typeof td?.onDeepLink,
+        typeof td?.showNotification,
+        typeof td?.onNotificationClick,
+        typeof td?.secureStore,
+      ],
+      negotiation,
+    }));
   });
+
+  expect(exposure.protocolVersion).toBe(1);
+  expect(exposure.isElectron).toBe(true);
+  expect(exposure.platform).toBe('string');
   expect(exposure.require).toBe('undefined');
   expect(exposure.process).toBe('undefined');
-  expect(exposure.onDeepLink).toBe('function'); // the SSO deep-link bridge
-  expect(exposure.showNotification).toBe('function'); // main-process notifications
-  expect(exposure.onNotificationClick).toBe('function');
-  expect(exposure.secureStore).toBe('object'); // OS-keychain secret storage (#1)
+  expect(exposure.ipcRenderer).toBe('undefined');
+  expect(exposure.topLevel).toEqual([
+    'capabilities',
+    'isElectron',
+    'negotiate',
+    'platform',
+    'protocolVersion',
+  ]);
+  expect(exposure.capabilityGroups).toEqual([
+    'badge',
+    'deepLinks',
+    'location',
+    'networkCors',
+    'notificationPresentation',
+    'secureStore',
+  ]);
+  expect(exposure.legacyFlatMethods).toEqual([
+    'undefined',
+    'undefined',
+    'undefined',
+    'undefined',
+  ]);
+  expect(exposure.negotiation).toMatchObject({
+    kind: 'accepted',
+    protocolVersion: 1,
+    operations: {
+      'authentication-handoff': { kind: 'supported' },
+      'deep-links': { kind: 'supported' },
+      back: { kind: 'unavailable', reason: 'not-implemented' },
+      'file-export': { kind: 'supported' },
+      location: { kind: 'supported' },
+      badge: { kind: 'supported' },
+      'secure-store': { kind: 'supported' },
+      lifecycle: { kind: 'supported' },
+      updates: { kind: 'unavailable', reason: 'not-implemented' },
+    },
+  });
 });
 
 test('secureStore round-trips through the main process (or degrades cleanly)', async () => {
@@ -131,15 +188,17 @@ test('secureStore round-trips through the main process (or degrades cleanly)', a
     const store = (
       globalThis as {
         trinityDesktop?: {
-          secureStore?: {
-            isAvailable: () => Promise<boolean>;
-            get: (k: string) => Promise<string | null>;
-            set: (k: string, v: string) => Promise<boolean>;
-            delete: (k: string) => Promise<void>;
+          capabilities?: {
+            secureStore?: {
+              isAvailable: () => Promise<boolean>;
+              get: (k: string) => Promise<string | null>;
+              set: (k: string, v: string) => Promise<boolean>;
+              delete: (k: string) => Promise<void>;
+            };
           };
         };
       }
-    ).trinityDesktop?.secureStore;
+    ).trinityDesktop?.capabilities?.secureStore;
     if (!store) {
       return { present: false } as const;
     }
@@ -248,13 +307,15 @@ test('exposes the CORS-allowlist bridge (a plain send, not an invoke)', async ()
     const cors = (
       globalThis as {
         trinityDesktop?: {
-          cors?: {
-            setAllowedOrigins?: (o: readonly string[]) => unknown;
-            allowOrigin?: (o: string) => unknown;
+          capabilities?: {
+            networkCors?: {
+              setAllowedOrigins?: (o: readonly string[]) => unknown;
+              allowOrigin?: (o: string) => unknown;
+            };
           };
         };
       }
-    ).trinityDesktop?.cors;
+    ).trinityDesktop?.capabilities?.networkCors;
     return {
       present: typeof cors,
       setAllowedOrigins: typeof cors?.setAllowedOrigins,
@@ -300,9 +361,13 @@ test('fetches pack media through the scoped homeserver CORS bridge', async () =>
     await page.evaluate((allowed) => {
       (
         globalThis as {
-          trinityDesktop?: { cors?: { allowOrigin: (o: string) => void } };
+          trinityDesktop?: {
+            capabilities?: {
+              networkCors?: { allowOrigin: (o: string) => void };
+            };
+          };
         }
-      ).trinityDesktop?.cors?.allowOrigin(allowed);
+      ).trinityDesktop?.capabilities?.networkCors?.allowOrigin(allowed);
     }, origin);
 
     await expect

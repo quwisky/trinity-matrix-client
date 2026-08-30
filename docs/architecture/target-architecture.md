@@ -23,7 +23,7 @@ The design system is a domain-neutral presentation dependency available to appli
 | `role:adapter`       | Contain Matrix SDK, browser, Capacitor, Electron, storage, and transport details. |
 | `role:design-system` | Provide reusable domain-neutral UI through Trinity-owned APIs.                    |
 
-Tooling and black-box test projects are outside this runtime dependency model. Electron remains an explicit classification exception until it becomes a first-class Nx application in #325.
+Tooling and black-box test projects are outside this runtime dependency model. Web, Android, iOS and Electron are classified `role:app` composition roots; no host classification exception remains.
 
 ## Product capabilities
 
