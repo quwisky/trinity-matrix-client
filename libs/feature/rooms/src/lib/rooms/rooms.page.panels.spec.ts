@@ -5,10 +5,12 @@ import {
   flushPanelJump,
   invitesProvider,
   setRouteRoom,
+  settleWorkspace,
   shellFrom,
 } from './rooms-page.spec-harness';
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
@@ -179,7 +181,7 @@ describe('RoomsPage panels, pins and media', () => {
     return shellFrom();
   }
 
-  it('opens room settings, mapping each edit permission to a dialog input', () => {
+  it('opens room settings, mapping each edit permission to a dialog input', async () => {
     const shell = build();
     roomsSignal.set([
       {
@@ -203,6 +205,7 @@ describe('RoomsPage panels, pins and media', () => {
       },
     ]);
     setRouteRoom('!r:hs'); // the open room comes from /rooms/:roomId now
+    await settleWorkspace();
     editableFields.mockReturnValue({
       name: true,
       topic: false,
@@ -255,6 +258,7 @@ describe('RoomsPage panels, pins and media', () => {
   it('opens the room directory and selects a room joined from it', async () => {
     const shell = build();
     const dialog = TestBed.inject(TrnDialogService);
+    vi.mocked(TestBed.inject(Router).navigate).mockResolvedValueOnce(true);
     vi.mocked(dialog.openAndWait).mockResolvedValue({
       roomId: '!joined:hs',
       isSpace: false,
@@ -263,9 +267,12 @@ describe('RoomsPage panels, pins and media', () => {
     await shell.rooms.onExploreRooms();
 
     expect(dialog.openAndWait).toHaveBeenCalledWith(RoomDirectoryComponent);
+    await vi.waitFor(() =>
+      expect(shell.store.activeRoomId()).toBe('!joined:hs'),
+    );
     expect(shell.store.roomsView()).toBe(true); // listed in the Rooms view
     expect(shell.store.activeSpaceId()).toBeNull();
-    expect(shell.store.activeRoomId()).toBe('!joined:hs'); // onSelectRoom ran
+    expect(shell.store.pane()).toBe('conversation');
   });
 
   it('selects a space joined from the directory in the rail', async () => {
@@ -292,10 +299,11 @@ describe('RoomsPage panels, pins and media', () => {
     expect(shell.store.activeRoomId()).toBeNull();
   });
 
-  it('joins and opens the successor room from the tombstone banner', () => {
+  it('joins and opens the successor room from the tombstone banner', async () => {
     const shell = build();
 
     shell.rooms.onGoToUpgradedRoom('!old:hs');
+    await settleWorkspace();
 
     expect(joinPublicRoom).toHaveBeenCalledWith('!old:hs');
     expect(shell.store.roomsView()).toBe(true); // surfaced in the Rooms view, not opened invisibly
@@ -359,7 +367,7 @@ describe('RoomsPage panels, pins and media', () => {
     expect(setMarkedUnreadFn).toHaveBeenCalledWith('!r:hs', true, undefined);
   });
 
-  it('clears the flag whenever a room is opened, however it was opened', () => {
+  it('clears the flag whenever a room is opened, however it was opened', async () => {
     // The clear is wired to the room BECOMING OPEN rather than to the focus-gated ack, so
     // every opener goes through it — a permalink hop included, and equally a notification
     // tap or a pasted link, neither of which calls `onSelectRoom` at all.
@@ -370,9 +378,9 @@ describe('RoomsPage panels, pins and media', () => {
     const shell = build();
 
     shell.nav.onSelectRoom('!r:hs');
-    TestBed.tick();
+    await settleWorkspace();
     shell.nav.onSelectRoom('!h:hs', 'hop');
-    TestBed.tick();
+    await settleWorkspace();
 
     expect(clearMarkedUnreadFn).toHaveBeenCalledWith('!r:hs');
     expect(clearMarkedUnreadFn).toHaveBeenCalledWith('!h:hs');
@@ -380,11 +388,11 @@ describe('RoomsPage panels, pins and media', () => {
 
   // The half `onSelectRoom` cannot cover, and the reason the clear moved: these arrive as
   // a URL change with no call into the shell at all.
-  it('clears the flag for a room opened by URL alone', () => {
+  it('clears the flag for a room opened by URL alone', async () => {
     const shell = build();
 
     setRouteRoom('!tapped:hs');
-    TestBed.tick();
+    await settleWorkspace();
 
     expect(shell.store.activeRoomId()).toBe('!tapped:hs');
     expect(clearMarkedUnreadFn).toHaveBeenCalledWith('!tapped:hs');
@@ -507,9 +515,10 @@ describe('RoomsPage panels, pins and media', () => {
     expect(markReadFn).toHaveBeenCalledWith('!m:hs', '@alt:hs');
   });
 
-  it('opens the threads-list panel for the active room', () => {
+  it('opens the threads-list panel for the active room', async () => {
     const shell = build();
     setRouteRoom('!r:hs');
+    await settleWorkspace();
 
     shell.messages.openThreadsList();
 
@@ -532,13 +541,14 @@ describe('RoomsPage panels, pins and media', () => {
     expect(shell.store.rightPanel()).toBe(before);
   });
 
-  it('drops a room-scoped panel when the open room changes', () => {
+  it('drops a room-scoped panel when the open room changes', async () => {
     // Four of the six surfaces are ABOUT a room — a thread root, a pinned/search hit, a
     // member from their room — while the template binds each of
     // them to the room that is open NOW. Left to persist across a switch they describe one
     // room beside another room's timeline. Back to what this width shows by default.
     const shell = build();
     setRouteRoom('!a:hs');
+    await settleWorkspace();
     shell.messages.onOpenThread('$root');
     expect(shell.store.rightPanel()).toEqual({
       kind: 'thread',
@@ -546,23 +556,27 @@ describe('RoomsPage panels, pins and media', () => {
     });
 
     setRouteRoom('!b:hs');
+    await settleWorkspace();
 
     expect(shell.store.rightPanel()).toEqual({ kind: 'members' });
   });
 
-  it('carries the roster — and a closed slot — across a room change', () => {
+  it('carries the roster — and a closed slot — across a room change', async () => {
     // The other half, and why this is not just `set(null)` on every switch: whether the
     // member column is up is a preference the user owns, and the list re-projects itself
     // onto the new room. Closing it and switching rooms must not reopen it.
     const shell = build();
     setRouteRoom('!a:hs');
+    await settleWorkspace();
     shell.page.closeRightPanel();
 
     setRouteRoom('!b:hs');
+    await settleWorkspace();
     expect(shell.store.rightPanel()).toBeNull();
 
     shell.store.rightPanel.set({ kind: 'members' });
     setRouteRoom('!c:hs');
+    await settleWorkspace();
     expect(shell.store.rightPanel()).toEqual({ kind: 'members' });
   });
 
@@ -641,6 +655,7 @@ describe('RoomsPage panels, pins and media', () => {
   it('jumpToDate scrolls to the event the date resolved to', async () => {
     const shell = build();
     setRouteRoom('!a:hs'); // jumpToDate is a no-op with no room open
+    await settleWorkspace();
     const picker = TestBed.inject(JumpToDateService);
     const timeline = TestBed.inject(RoomsTimelineStub);
     vi.mocked(picker.pick).mockResolvedValue(1_700_000_000_000);
@@ -659,6 +674,7 @@ describe('RoomsPage panels, pins and media', () => {
   it('jumpToDate does nothing at all when the picker is cancelled', async () => {
     const shell = build();
     setRouteRoom('!a:hs');
+    await settleWorkspace();
     const picker = TestBed.inject(JumpToDateService);
     const timeline = TestBed.inject(RoomsTimelineStub);
     vi.mocked(picker.pick).mockResolvedValue(null);
@@ -684,6 +700,7 @@ describe('RoomsPage panels, pins and media', () => {
       TestBed.resetTestingModule();
       const shell = build();
       setRouteRoom('!a:hs');
+      await settleWorkspace();
       const picker = TestBed.inject(JumpToDateService);
       const timeline = TestBed.inject(RoomsTimelineStub);
       vi.mocked(picker.pick).mockResolvedValue(1_700_000_000_000);

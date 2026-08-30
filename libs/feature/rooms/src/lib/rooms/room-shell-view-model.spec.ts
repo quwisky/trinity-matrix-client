@@ -1,12 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import {
-  ActivatedRoute,
-  convertToParamMap,
-  type ParamMap,
-} from '@angular/router';
 import { MockProvider } from 'ng-mocks';
-import { BehaviorSubject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
@@ -25,10 +19,10 @@ import {
   UnreadAggregatorService,
   type MemberSummary,
 } from '@trinity/data-access/rooms';
-import { encodeRoomSegment } from '@trinity/util/matrix';
 import { AccountBadgesService } from '../shared/account-badges.service';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
+import { WorkspaceService } from './workspace.service';
 
 /**
  * The view model's own spec, for the two surfaces it derives from the projections this
@@ -75,17 +69,9 @@ function build(opts: { members?: Record<string, MemberSummary[]> } = {}) {
   const membersFor = vi.fn(
     (roomId: string | null) => rosters.get(roomId ?? '')?.asReadonly() ?? empty,
   );
-  /**
-   * `ActivatedRoute.paramMap` — the open room, which now lives in the URL as
-   * `/rooms/:roomId`. `RoomShellStore.activeRoomId` derives from it and nothing writes it,
-   * so the only way to open a room is to push the segment the router would.
-   *
-   * Built here rather than borrowed from the page harness: this spec provides the store
-   * directly, and one subject per `build()` keeps the two describes from inheriting each
-   * other's URL. It has to REPLAY — the store reads it through `toSignal` in a field
-   * initializer, so a stream with no current value would leave `activeRoomId` at `null`.
-   */
-  const paramMap = new BehaviorSubject<ParamMap>(convertToParamMap({}));
+  // Workspace owns the semantic destination. This focused view-model test supplies only
+  // its read model and mutates the backing signal as if a transition had committed.
+  const activeRoomId = signal<string | null>(null);
 
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
@@ -115,24 +101,31 @@ function build(opts: { members?: Record<string, MemberSummary[]> } = {}) {
         activeUserId: activeUserId.asReadonly(),
         accountIds: accountIds.asReadonly(),
       }),
+      {
+        provide: WorkspaceService,
+        useValue: {
+          activeAccountId: activeUserId.asReadonly(),
+          activeSpaceId: signal<string | null>(null).asReadonly(),
+          activeRoomId: activeRoomId.asReadonly(),
+          recentView: signal(true).asReadonly(),
+          roomsView: signal(false).asReadonly(),
+          pane: signal<'list' | 'conversation'>('list').asReadonly(),
+          placement: signal<'list' | 'conversation' | 'split'>(
+            'split',
+          ).asReadonly(),
+        },
+      },
       MockProvider(AccountProfilesService, {
         profiles: profiles.asReadonly(),
         profileOf: (userId: string) =>
           profiles().get(userId) ?? profile(userId, userId),
       }),
-      {
-        provide: ActivatedRoute,
-        useValue: { paramMap } as unknown as ActivatedRoute,
-      },
     ],
   });
 
   return {
     vm: TestBed.inject(RoomShellViewModel),
-    // Open a room by URL, taking the room id and encoding it here so the tests below read
-    // in room ids rather than in base64.
-    openRoom: (roomId: string) =>
-      paramMap.next(convertToParamMap({ roomId: encodeRoomSegment(roomId) })),
+    openRoom: (roomId: string) => activeRoomId.set(roomId),
     profiles,
     activeUserId,
     accountIds,

@@ -6,7 +6,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { SettingsDialogService } from '@trinity/components/settings-dialog';
 import { ShellStatusService } from './shell-status.service';
-import { WorkspaceAccountSwitchService } from './workspace-account-switch.service';
+import { WorkspaceService } from './workspace.service';
 
 /**
  * Session-level actions reachable from the account menu: switching account, adding one,
@@ -18,7 +18,7 @@ import { WorkspaceAccountSwitchService } from './workspace-account-switch.servic
 @Injectable()
 export class SessionActionsService {
   private readonly accounts = inject(AccountRuntimeService);
-  private readonly accountSwitch = inject(WorkspaceAccountSwitchService);
+  private readonly workspace = inject(WorkspaceService);
   private readonly matrix = inject(MatrixClientService);
   private readonly router = inject(Router);
   private readonly settings = inject(SettingsDialogService);
@@ -35,8 +35,11 @@ export class SessionActionsService {
     if (userId === this.matrix.activeUserId()) {
       return;
     }
-    this.accountSwitch
-      .switchAccount(userId, { kind: 'home' })
+    this.workspace
+      .open(this.workspace.accountDestination(userId), {
+        source: 'user',
+        history: 'push',
+      })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((outcome) => {
         if (outcome.kind !== 'ready') {

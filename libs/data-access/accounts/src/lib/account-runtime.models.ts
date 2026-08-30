@@ -1,3 +1,5 @@
+import type { Observable } from 'rxjs';
+
 export type AccountRestoreFailure =
   'transient-network' | 'corrupt-local-state' | 'crypto-failure';
 
@@ -7,6 +9,14 @@ export type AccountRuntimeOperation =
   | 'switching-account'
   | 'signing-out-account'
   | 'resetting-installation';
+
+/** Callbacks used by a caller coordinating work around an Active Account switch. */
+export interface AccountSwitchCoordination {
+  /** Cancellable work that must settle before Account adapter preparation begins. */
+  readonly prepare: () => Observable<void>;
+  /** The adapter is ready and Account Runtime is crossing into its owned commit. */
+  readonly onCommitStarted?: () => void;
+}
 
 export type AccountLifecycleOperation = Extract<
   AccountRuntimeOperation,

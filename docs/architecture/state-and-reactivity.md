@@ -106,9 +106,10 @@ authoritative reconciliation, reset, and resource-count callbacks. Projection Ru
 
 `transition(scope)` is the atomic reattachment path. It cancels each matching generation,
 detaches and resets its adapter, attaches again against the now-authoritative source, reconciles,
-and completes only when every new generation has acknowledged. Active Account switching commits
-the persisted and live Account pointers first, then waits on `transition({ kind:
-'active-account' })` before the Workspace repairs its requested room or space.
+and completes only when every new generation has acknowledged. Workspace validates and projects
+its canonical destination as Account preparation; Active Account switching then commits the
+persisted and live pointers and waits on `transition({ kind: 'active-account' })` before Workspace
+publishes the requested Room, Space, and pane view.
 
 The barrier reports duration, projection and listener counts, and deterministic retained payload
 bytes. The local barrier baseline is one frame (16 ms) after its projections acknowledge. Runtime
@@ -128,11 +129,13 @@ evidence rather than a portable unit-test assertion. There is no duplicate SDK s
 
 `ConversationRuntime` owns the messaging lifetime of one immutable Account-and-Room pair. A
 handle freezes that key and exposes named timeline, compose, message, media, thread and pin
-children; it never reads the route and never retargets
-when Active Account changes. `RoomShellNavigationService` is the Workspace adapter: it focuses the
-key derived from the active Account and routed Room, or blurs the current handle when the Room
-leaves the Workspace. Feature surfaces consume `ConversationRuntime.timeline`, a stable proxy for
-the focused child, rather than injecting the child implementation or a root timeline singleton.
+children; it never reads the route and never retargets when Active Account changes.
+`WorkspaceService` owns one immutable Account, scope, Room, and pane view. Its transition workflow
+focuses the exact Conversation only after Account readiness and canonical URL navigation settle,
+or blurs the current handle when the Room leaves Workspace. `RoomShellNavigationService` is now a
+small shell-event adapter into that authority; it does not own semantic state or routing. Feature
+surfaces consume `ConversationRuntime.timeline`, a stable proxy for the focused child, rather than
+injecting the child implementation or a root timeline singleton.
 `TimelineService` and its raw SDK context stay package-internal; the data-access action adapter
 reaches that context through an internal bridge, while the public entrypoint exports only
 app-owned read models and cold command services.
@@ -348,9 +351,10 @@ multi-account design.
 
     The `activeUserId()` effect is only a compatibility fallback for Account changes made outside
     the coordinated path, and it still flushes after those legacy mutations. Product flows use
-    `WorkspaceAccountSwitchService`: its `ready` outcome follows Account commit, synchronous
-    Projection Runtime reattachment, generation acknowledgement, and Workspace selection repair.
-    Consumers can therefore act on `ready` without an `afterNextRender` timing workaround.
+    `WorkspaceService.open()`: its `ready` outcome follows canonical URL preparation, Account
+    commit, synchronous Projection Runtime reattachment, generation acknowledgement, and atomic
+    Workspace view publication. Consumers can therefore act on `ready` without an
+    `afterNextRender` timing workaround.
 
 ## Who takes the whole primitive, and who takes only the batching
 

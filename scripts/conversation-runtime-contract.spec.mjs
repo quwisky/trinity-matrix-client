@@ -78,15 +78,19 @@ describe('Conversation Runtime production boundary', () => {
     expect(roomFeature).not.toContain('.openContext()');
   });
 
-  it('focuses the routed room through an Account-and-Room key', () => {
+  it('focuses the committed Workspace room through an Account-and-Room key', () => {
     const navigation = source(
       'libs/feature/rooms/src/lib/rooms/room-shell-navigation.service.ts',
     );
-
-    expect(navigation).toContain(
-      'this.conversations.focus({ accountId, roomId });',
+    const workspace = source(
+      'libs/feature/rooms/src/lib/rooms/workspace.service.ts',
     );
-    expect(navigation).toContain('this.conversations.blur();');
+
+    expect(workspace).toContain(
+      'this.conversations.focus({\n      accountId: view.accountId,\n      roomId: view.roomId,\n    });',
+    );
+    expect(workspace).toContain('this.conversations.blur();');
+    expect(navigation).toContain('.open(destination, { source, history })');
   });
 
   it('binds each child to the client for its immutable Account key', () => {

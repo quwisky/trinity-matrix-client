@@ -1,10 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { Component, inject, type Provider } from '@angular/core';
-import {
-  ActivatedRoute,
-  convertToParamMap,
-  type ParamMap,
-} from '@angular/router';
+import { Component, inject, signal, type Provider } from '@angular/core';
 import { RoomsService } from '@trinity/data-access/rooms';
 import {
   ConversationRuntime,
@@ -13,9 +8,8 @@ import {
   type ConversationTextSendOutcome,
 } from '@trinity/data-access/timeline';
 import { TrnToastService } from '@trinity/components/overlay';
-import { encodeRoomSegment } from '@trinity/util/matrix';
 import { MockProvider } from 'ng-mocks';
-import { BehaviorSubject, Observable, Subject, of, throwError } from 'rxjs';
+import { Observable, Subject, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { AccountRoutingService } from './account-routing.service';
 import { MemberActionsService } from './member-actions.service';
@@ -23,6 +17,7 @@ import { MessageActionsService } from './message-actions.service';
 import { RoomShellStore } from './room-shell-store';
 import { ShellStatusService } from './shell-status.service';
 import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
+import { WorkspaceService } from './workspace.service';
 
 /**
  * The composer and timeline half of MessageActionsService.
@@ -115,19 +110,25 @@ describe('MessageActionsService', () => {
     openRoom: (roomId: string) => void;
     destroy: () => void;
   } {
-    // The open room is the URL: `RoomShellStore.activeRoomId` derives from
-    // `/rooms/:roomId` and nothing writes it, so a room is opened here by pushing the
-    // segment the router would. A BehaviorSubject because the store reads this through
-    // `toSignal` in a field initializer — a stream that did not replay would leave every
-    // store built in this file stuck at `null`. One per `build()`, so a room opened in one
-    // test cannot leak into the next one's empty route.
-    const paramMap = new BehaviorSubject<ParamMap>(convertToParamMap({}));
+    // Workspace, not the route or shell store, owns the complete semantic destination.
+    // One signal per build prevents a room opened in one test leaking into the next.
+    const activeRoomId = signal<string | null>(null);
     TestBed.configureTestingModule({
       providers: [
         ...MOCKS,
         {
-          provide: ActivatedRoute,
-          useValue: { paramMap } as unknown as ActivatedRoute,
+          provide: WorkspaceService,
+          useValue: {
+            activeAccountId: signal<string | null>('@me:hs').asReadonly(),
+            activeSpaceId: signal<string | null>(null).asReadonly(),
+            activeRoomId: activeRoomId.asReadonly(),
+            recentView: signal(true).asReadonly(),
+            roomsView: signal(false).asReadonly(),
+            pane: signal<'list' | 'conversation'>('list').asReadonly(),
+            placement: signal<'list' | 'conversation' | 'split'>(
+              'split',
+            ).asReadonly(),
+          },
         },
       ],
     });
@@ -138,10 +139,7 @@ describe('MessageActionsService', () => {
       // From the HOST's injector: the store is in `HostComponent.providers`, page-scoped
       // exactly as it is in production, so the module injector does not have it.
       store: fixture.debugElement.injector.get(RoomShellStore),
-      // Takes the room id and encodes it here, so the tests below read in room ids
-      // rather than in base64.
-      openRoom: (roomId: string) =>
-        paramMap.next(convertToParamMap({ roomId: encodeRoomSegment(roomId) })),
+      openRoom: (roomId: string) => activeRoomId.set(roomId),
       destroy: () => fixture.destroy(),
     };
   }

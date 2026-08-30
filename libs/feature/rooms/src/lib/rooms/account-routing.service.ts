@@ -1,13 +1,13 @@
 import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AccountScopeService } from '@trinity/data-access/rooms';
-import type { AccountSwitchDestination } from './account-switch.models';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { ShellStatusService } from './shell-status.service';
-import { WorkspaceAccountSwitchService } from './workspace-account-switch.service';
+import type { WorkspaceDestination } from './workspace.models';
+import type { WorkspaceNavigationSource } from './workspace.models';
+import { WorkspaceService } from './workspace.service';
 
 /**
  * Routing a selection to the account that owns it.
@@ -28,18 +28,17 @@ export class AccountRoutingService {
   private readonly vm = inject(RoomShellViewModel);
   private readonly nav = inject(RoomShellNavigationService);
   private readonly status = inject(ShellStatusService);
-  private readonly accountSwitch = inject(WorkspaceAccountSwitchService);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly workspace = inject(WorkspaceService);
   private readonly accountScope = inject(AccountScopeService);
   private readonly destroyRef = inject(DestroyRef);
 
   /** Switch to `accountId`, then repair the requested Workspace destination. */
   private runOnAccount(
-    accountId: string,
-    destination: AccountSwitchDestination,
+    destination: WorkspaceDestination,
+    source: WorkspaceNavigationSource = 'user',
   ): void {
-    this.accountSwitch
-      .switchAccount(accountId, destination)
+    this.workspace
+      .open(destination, { source, history: 'push' })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((outcome) => {
         if (outcome.kind !== 'ready') {
@@ -68,12 +67,8 @@ export class AccountRoutingService {
    */
   onSelectRoomRow(id: string, source: 'user' | 'hop' = 'user'): void {
     const accountId = this.nav.knownRooms().find((r) => r.id === id)?.accountId;
-    if (accountId && accountId !== this.matrix.activeUserId()) {
-      this.runOnAccount(accountId, {
-        kind: 'room',
-        roomId: id,
-        source,
-      });
+    if (id && accountId && accountId !== this.workspace.activeAccountId()) {
+      this.runOnAccount(this.workspace.roomDestination(accountId, id), source);
       return;
     }
     this.nav.onSelectRoom(id, source);
@@ -87,8 +82,13 @@ export class AccountRoutingService {
     const accountId = id
       ? this.vm.railSpaces().find((s) => s.id === id)?.accountId
       : undefined;
-    if (accountId && accountId !== this.matrix.activeUserId()) {
-      this.runOnAccount(accountId, { kind: 'space', spaceId: id });
+    if (id && accountId && accountId !== this.workspace.activeAccountId()) {
+      this.runOnAccount(
+        this.workspace.scopeDestination(accountId, {
+          kind: 'space',
+          spaceId: id,
+        }),
+      );
       return;
     }
     this.nav.onSelectSpace(id);
@@ -103,7 +103,10 @@ export class AccountRoutingService {
       void this.status.showError("You're not in that room.");
       return;
     }
-    if (roomId !== this.store.activeRoomId()) {
+    if (
+      roomId !== this.store.activeRoomId() ||
+      this.store.pane() !== 'conversation'
+    ) {
       this.onSelectRoomRow(roomId);
     }
     if (eventId) {
@@ -123,7 +126,23 @@ export class AccountRoutingService {
       this.nav.onSelectSpace(roomId);
       return;
     }
-    this.nav.onShowRooms();
-    this.nav.onSelectRoom(roomId);
+    this.nav.onSelectRoomInScope(roomId, { kind: 'rooms' });
+  }
+
+  /** Open a newly accepted invite on its exact Account without waiting for sidebar sync. */
+  openConfirmedInviteRoom(
+    roomId: string,
+    accountId: string,
+    isDirect: boolean,
+  ): void {
+    const current = this.workspace.view();
+    const scope = isDirect
+      ? ({ kind: 'home' } as const)
+      : current.accountId === accountId && current.scope.kind !== 'space'
+        ? current.scope
+        : ({ kind: 'recent' } as const);
+    this.runOnAccount(
+      this.workspace.roomInScopeDestination(accountId, roomId, scope),
+    );
   }
 }

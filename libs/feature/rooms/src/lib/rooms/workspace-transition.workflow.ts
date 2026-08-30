@@ -1,0 +1,401 @@
+import { Injectable, inject } from '@angular/core';
+import { Router } from '@angular/router';
+import {
+  AccountRuntimeService,
+  type AccountSwitchOutcome,
+} from '@trinity/data-access/accounts';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  Observable,
+  ReplaySubject,
+  type Subscription,
+  catchError,
+  defer,
+  finalize,
+  from,
+  map,
+  of,
+  switchMap,
+  tap,
+  throwError,
+} from 'rxjs';
+import {
+  RECENT_WORKSPACE_SCOPE,
+  sameWorkspaceDestination,
+  type WorkspaceDestination,
+  type WorkspaceOpenOptions,
+  type WorkspaceOpenOutcome,
+  type WorkspaceTransitionMetrics,
+  type WorkspaceView,
+  workspaceViewOf,
+} from './workspace.models';
+import { workspaceUrlOf } from './workspace-url';
+
+interface WorkspaceAttempt {
+  readonly destination: WorkspaceDestination;
+  readonly outcome: Observable<WorkspaceOpenOutcome>;
+}
+
+interface ResolvedWorkspaceDestination {
+  readonly destination: WorkspaceDestination;
+  readonly repaired: boolean;
+}
+
+export interface WorkspaceTransitionCallbacks {
+  readonly release: () => void;
+  readonly restore: (view: WorkspaceView) => void;
+  readonly commit: (
+    view: WorkspaceView,
+    metrics: WorkspaceTransitionMetrics,
+    options: WorkspaceOpenOptions,
+  ) => void;
+}
+
+const ZERO_ACCOUNT_METRICS = {
+  durationMs: 0,
+  projectionDurationMs: 0,
+  projectionCount: 0,
+} as const;
+
+class WorkspaceNavigationRejected extends Error {}
+
+/** Package-internal, joining transition engine behind Workspace's small public API. */
+@Injectable()
+export class WorkspaceTransitionWorkflow {
+  private readonly router = inject(Router);
+  private readonly accounts = inject(AccountRuntimeService);
+  private readonly matrix = inject(MatrixClientService);
+  private attempt: WorkspaceAttempt | null = null;
+  private routeWrites = 0;
+
+  get projectingUrl(): boolean {
+    return this.routeWrites > 0;
+  }
+
+  run(
+    requested: WorkspaceDestination,
+    options: WorkspaceOpenOptions,
+    previous: WorkspaceView,
+    callbacks: WorkspaceTransitionCallbacks,
+  ): Observable<WorkspaceOpenOutcome> {
+    return defer(() => {
+      if (this.attempt) {
+        return sameWorkspaceDestination(this.attempt.destination, requested)
+          ? this.attempt.outcome
+          : of({
+              kind: 'transition-in-progress',
+              destination: requested,
+            } as const);
+      }
+      return this.begin(requested, options, previous, callbacks);
+    });
+  }
+
+  private begin(
+    requested: WorkspaceDestination,
+    options: WorkspaceOpenOptions,
+    previous: WorkspaceView,
+    callbacks: WorkspaceTransitionCallbacks,
+  ): Observable<WorkspaceOpenOutcome> {
+    const startedAt = performance.now();
+    let accountSettledAt = startedAt;
+    let routeStartedAt = startedAt;
+    let routeDurationMs = 0;
+    let accountCommitStarted = false;
+    let routeProjectionStarted = false;
+    let released = false;
+    let committed = false;
+    const resolved = this.resolveDestination(requested);
+    const accountChanges = requested.accountId !== this.matrix.activeUserId();
+
+    const projectRequestedUrl = () => {
+      routeStartedAt = performance.now();
+      return this.navigate(
+        resolved.destination,
+        options.history === 'replace' || resolved.repaired,
+        () => {
+          routeProjectionStarted = true;
+        },
+      ).pipe(
+        tap(() => {
+          routeDurationMs = performance.now() - routeStartedAt;
+        }),
+      );
+    };
+
+    const source = this.activateAccount(
+      requested.accountId,
+      accountChanges
+        ? () =>
+            projectRequestedUrl().pipe(
+              switchMap((navigated) => {
+                if (!navigated) {
+                  return throwError(() => new WorkspaceNavigationRejected());
+                }
+                released = true;
+                callbacks.release();
+                return of(void 0);
+              }),
+            )
+        : () => of(void 0),
+      () => {
+        // Account Runtime invokes this only after adapter preparation settles and
+        // immediately before its persisted/live commit becomes uninterruptible.
+        accountCommitStarted = true;
+      },
+    ).pipe(
+      tap(() => {
+        accountSettledAt = performance.now();
+      }),
+      switchMap((accountOutcome) => {
+        if (accountOutcome.kind !== 'ready') {
+          return this.restoreUrlIfNeeded(previous, routeProjectionStarted).pipe(
+            map((): WorkspaceOpenOutcome => ({
+              kind: 'failed',
+              destination: requested,
+              failure: 'account-transition-failed',
+            })),
+          );
+        }
+        const route = accountChanges ? of(true) : projectRequestedUrl();
+        return route.pipe(
+          map((navigated): WorkspaceOpenOutcome => {
+            if (!navigated) {
+              return {
+                kind: 'failed',
+                destination: requested,
+                failure: 'navigation-rejected',
+              };
+            }
+            const view = workspaceViewOf(resolved.destination);
+            const finishedAt = performance.now();
+            const metrics = {
+              durationMs: finishedAt - startedAt,
+              accountDurationMs: accountSettledAt - startedAt,
+              routeDurationMs,
+            } satisfies WorkspaceTransitionMetrics;
+            committed = true;
+            callbacks.commit(view, metrics, options);
+            return {
+              kind: 'ready',
+              view,
+              repaired: resolved.repaired,
+              metrics,
+            };
+          }),
+        );
+      }),
+      catchError((error: unknown) =>
+        error instanceof WorkspaceNavigationRejected
+          ? of({
+              kind: 'failed',
+              destination: requested,
+              failure: 'navigation-rejected',
+            } as const)
+          : throwError(() => error),
+      ),
+      finalize(() => {
+        if (released && !committed) callbacks.restore(previous);
+      }),
+    );
+    const outcome = this.shareAttempt(
+      requested,
+      source,
+      () => accountCommitStarted || committed,
+      () =>
+        this.restoreUrlIfNeeded(previous, routeProjectionStarted).pipe(
+          catchError(() => of(false)),
+        ),
+      () => {
+        if (this.attempt?.outcome === outcome) this.attempt = null;
+      },
+    );
+    this.attempt = { destination: requested, outcome };
+    return outcome;
+  }
+
+  private activateAccount(
+    accountId: string,
+    prepare: () => Observable<void>,
+    onCommitStarted: () => void,
+  ): Observable<AccountSwitchOutcome> {
+    if (accountId === this.matrix.activeUserId()) {
+      return of({
+        kind: 'ready',
+        accountId,
+        metrics: ZERO_ACCOUNT_METRICS,
+      });
+    }
+    return this.accounts.switchActiveAccount(accountId, {
+      prepare,
+      onCommitStarted,
+    });
+  }
+
+  private navigate(
+    destination: WorkspaceDestination,
+    replaceUrl: boolean,
+    onStarted?: () => void,
+  ): Observable<boolean> {
+    const projection = workspaceUrlOf(destination);
+    return defer(() => {
+      this.routeWrites += 1;
+      let navigation: Promise<boolean>;
+      try {
+        navigation = this.router.navigate([...projection.commands], {
+          queryParams: { ...projection.queryParams },
+          replaceUrl,
+        });
+        onStarted?.();
+      } catch (error) {
+        this.routeWrites -= 1;
+        throw error;
+      }
+      void navigation.then(
+        () => {
+          this.routeWrites -= 1;
+        },
+        () => {
+          this.routeWrites -= 1;
+        },
+      );
+      return from(navigation);
+    });
+  }
+
+  private restoreUrlIfNeeded(
+    previous: WorkspaceView,
+    routeProjectionStarted: boolean,
+  ): Observable<boolean> {
+    if (!routeProjectionStarted || !previous.accountId) return of(true);
+    return this.navigate(
+      {
+        accountId: previous.accountId,
+        scope: previous.scope,
+        roomId: previous.roomId,
+        pane: previous.pane,
+      },
+      true,
+    );
+  }
+
+  private resolveDestination(
+    requested: WorkspaceDestination,
+  ): ResolvedWorkspaceDestination {
+    const client = this.matrix.clientFor(requested.accountId);
+    let scope = requested.scope;
+    let roomId = requested.roomId;
+    let pane = requested.pane;
+    let repaired = false;
+    if (
+      scope.kind === 'space' &&
+      !this.destinationExists(client, scope.spaceId)
+    ) {
+      scope = RECENT_WORKSPACE_SCOPE;
+      roomId = null;
+      pane = 'list';
+      repaired = true;
+    }
+    if (roomId && !this.destinationExists(client, roomId)) {
+      roomId = null;
+      pane = 'list';
+      repaired = true;
+    }
+    if (pane === 'conversation' && !roomId) {
+      pane = 'list';
+      repaired = true;
+    }
+    return {
+      destination: {
+        accountId: requested.accountId,
+        scope,
+        roomId,
+        pane,
+      },
+      repaired,
+    };
+  }
+
+  /**
+   * Replay one attempt while preserving cancellation before Account commit.
+   *
+   * Once Account preparation returns, Account Runtime's commit is deliberately
+   * uninterruptible. At that boundary this multicast keeps the Workspace source owned to
+   * completion even when route restoration switches or page teardown remove all observers.
+   */
+  private shareAttempt(
+    destination: WorkspaceDestination,
+    source: Observable<WorkspaceOpenOutcome>,
+    ownsCompletion: () => boolean,
+    rollbackCancelledPreparation: () => Observable<boolean>,
+    releaseAttempt: () => void,
+  ): Observable<WorkspaceOpenOutcome> {
+    let replay: ReplaySubject<WorkspaceOpenOutcome> | null = null;
+    let sourceSubscription: Subscription | null = null;
+    let recoverySubscription: Subscription | null = null;
+    let sourceSettled = false;
+    let subscribers = 0;
+
+    return new Observable((subscriber) => {
+      replay ??= new ReplaySubject<WorkspaceOpenOutcome>(1);
+      subscribers += 1;
+      const replaySubscription = replay.subscribe(subscriber);
+      if (!sourceSubscription) {
+        sourceSubscription = source.subscribe({
+          next: (outcome) => {
+            // Every Workspace command produces one terminal outcome. Mark it settled
+            // before forwarding so firstValueFrom()/take(1) teardown cannot be mistaken
+            // for cancellation between next and the source's immediate complete.
+            sourceSettled = true;
+            replay?.next(outcome);
+          },
+          error: (error: unknown) => {
+            sourceSettled = true;
+            replay?.error(error);
+            releaseAttempt();
+          },
+          complete: () => {
+            sourceSettled = true;
+            replay?.complete();
+            releaseAttempt();
+          },
+        });
+      }
+      return () => {
+        replaySubscription.unsubscribe();
+        subscribers -= 1;
+        if (
+          subscribers === 0 &&
+          sourceSubscription &&
+          !sourceSubscription.closed &&
+          !sourceSettled &&
+          !ownsCompletion()
+        ) {
+          sourceSubscription.unsubscribe();
+          replay?.next({ kind: 'transition-in-progress', destination });
+          replay?.complete();
+          // Router promises cannot be cancelled by RxJS teardown. Keep this named
+          // recovery subscription owned by the attempt so its replacement navigation
+          // supersedes any pending projection and no new command can race the repair.
+          if (!recoverySubscription) {
+            recoverySubscription = rollbackCancelledPreparation().subscribe({
+              error: () => releaseAttempt(),
+              complete: () => releaseAttempt(),
+            });
+          }
+        }
+      };
+    });
+  }
+
+  private destinationExists(
+    client: ReturnType<MatrixClientService['clientFor']> | undefined,
+    roomId: string,
+  ): boolean {
+    // `undefined` exists only in deliberately narrow test doubles that do not model room
+    // lookup. The production adapter is typed `MatrixClient | null`; null is authoritative.
+    if (client === undefined) return true;
+    if (client === null) return false;
+    return typeof client.getRoom !== 'function' || !!client.getRoom(roomId);
+  }
+}

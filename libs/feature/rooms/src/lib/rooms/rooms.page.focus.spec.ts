@@ -65,6 +65,8 @@ import { SessionActionsService } from './session-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { ShellStatusService } from './shell-status.service';
 import { SpaceActionsService } from './space-actions.service';
+import { WorkspaceService } from './workspace.service';
+import { WorkspaceTransitionWorkflow } from './workspace-transition.workflow';
 
 const BOB: MemberSummary = {
   userId: '@bob:hs',
@@ -201,6 +203,8 @@ describe('RoomsPage rendered right-panel focus', () => {
           MessageActionsService,
           ShellShortcutsService,
           SessionActionsService,
+          WorkspaceService,
+          WorkspaceTransitionWorkflow,
         ],
         imports: [
           ServerRailComponent,
@@ -219,6 +223,18 @@ describe('RoomsPage rendered right-panel focus', () => {
           { provide: ShellStatusService, useValue: status },
           { provide: RoomShellViewModel, useValue: vm },
           { provide: RoomShellNavigationService, useValue: nav },
+          {
+            provide: WorkspaceService,
+            useValue: {
+              activeAccountId: signal<string | null>('@me:hs'),
+              activeSpaceId: signal<string | null>(null),
+              recentView: signal(true),
+              roomsView: signal(false),
+              activeRoomId: signal<string | null>('!r:hs'),
+              pane: signal<'list' | 'conversation'>('conversation'),
+              placement: signal<'list' | 'conversation' | 'split'>('split'),
+            },
+          },
           {
             provide: MemberActionsService,
             useFactory: (store: RoomShellStore) => ({

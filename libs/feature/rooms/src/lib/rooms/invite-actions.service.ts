@@ -7,7 +7,6 @@ import {
 import { AccountScopeService } from '@trinity/data-access/rooms';
 import { matrixRequestErrorHandling } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
-import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { AccountRoutingService } from './account-routing.service';
 import { ShellStatusService } from './shell-status.service';
 
@@ -20,7 +19,6 @@ import { ShellStatusService } from './shell-status.service';
  */
 @Injectable()
 export class InviteActionsService {
-  private readonly nav = inject(RoomShellNavigationService);
   private readonly routing = inject(AccountRoutingService);
   private readonly status = inject(ShellStatusService);
   private readonly invites = inject(InvitesService);
@@ -36,7 +34,11 @@ export class InviteActionsService {
     accountId?: string;
   }): void {
     this.status.error.set(null);
-    const invite = this.knownInvites().find((i) => i.roomId === roomId);
+    const invite = this.knownInvites().find(
+      (candidate) =>
+        candidate.roomId === roomId &&
+        (!accountId || candidate.accountId === accountId),
+    );
     // Joined on the account the invite was sent to — answering one must never need an
     // account switch, and joining as the wrong account would fail or join the wrong user.
     runWithBusy(
@@ -58,10 +60,11 @@ export class InviteActionsService {
       if (!invite || invite.isSpace) {
         return;
       }
-      if (invite.isDirect) {
-        this.nav.onSelectSpace(null);
-      }
-      this.routing.onSelectRoomRow(roomId);
+      this.routing.openConfirmedInviteRoom(
+        roomId,
+        accountId ?? invite.accountId,
+        invite.isDirect,
+      );
     });
   }
 

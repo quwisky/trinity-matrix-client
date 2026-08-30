@@ -110,10 +110,11 @@
         "conversations",
         "discovery",
         "room-administration",
-        "room-library"
+        "room-library",
+        "workspace"
       ],
-      "removeBy": "#304-#322",
-      "reason": "The current room feature contains conversation, room-library, administration, and discovery surfaces."
+      "removeBy": "#311, #317, #318, #321, #322",
+      "reason": "The Workspace application workflow currently contains conversation, room-library, administration, and discovery surfaces."
     },
     {
       "project": "feature-shell",
@@ -140,30 +141,6 @@
       "target": "data-access-auth",
       "removeBy": "#319",
       "reason": "Trust screens currently consume account lifecycle services directly."
-    },
-    {
-      "source": "feature-rooms",
-      "target": "data-access-accounts",
-      "removeBy": "#310",
-      "reason": "The current room shell is the Workspace adapter for atomic Account switching."
-    },
-    {
-      "source": "feature-rooms",
-      "target": "data-access-crypto",
-      "removeBy": "#318, #319",
-      "reason": "Conversation surfaces currently read trust state directly."
-    },
-    {
-      "source": "feature-rooms",
-      "target": "data-access-notifications",
-      "removeBy": "#315-#317",
-      "reason": "The room shell currently coordinates notification and badge behavior."
-    },
-    {
-      "source": "feature-rooms",
-      "target": "data-access-profile",
-      "removeBy": "#320",
-      "reason": "Room surfaces currently consume identity state directly."
     }
   ],
   "sourceBaselines": {

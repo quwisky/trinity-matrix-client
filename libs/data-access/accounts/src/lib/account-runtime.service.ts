@@ -42,6 +42,7 @@ import type {
   AccountRuntimeOperation,
   AccountRuntimeState,
   AccountSignOutOutcome,
+  AccountSwitchCoordination,
   AccountSwitchOutcome,
   InstallationResetOutcome,
 } from './account-runtime.models';
@@ -212,14 +213,17 @@ export class AccountRuntimeService {
 
   switchActiveAccount(
     accountId: string,
-    prepare: () => Observable<void> = () => of(void 0),
+    coordination: AccountSwitchCoordination = {
+      prepare: () => of(void 0),
+    },
   ): Observable<AccountSwitchOutcome> {
     return defer(() =>
       this.switchWorkflow.run(
         accountId,
         this.activeAccountId,
         this.blockingSwitchOperation(),
-        prepare,
+        coordination.prepare,
+        coordination.onCommitStarted ?? (() => undefined),
         (state) => this.runtimeState.set(state),
       ),
     );

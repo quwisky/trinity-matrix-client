@@ -40,6 +40,14 @@ Tooling and black-box test projects are outside this runtime dependency model. E
 
 Workspace, Settings, Global Search, Badge coordination, and Application Runtime are application workflows. Matrix Runtime, Projection Runtime, Media Pipeline, Preferences Store, Host Capabilities, pure utilities, and the design system form the deliberately small shared kernel and supporting seams.
 
+Workspace is the live cross-capability coordinator for navigation. It exposes one immutable
+Account, sidebar-scope, optional-Conversation, and pane view. Its URL is a canonical projection and
+an inbound restoration source: deep links win over persisted selection, user intent pushes
+history, canonicalization and repair replace history, and responsive placement changes neither the
+destination nor history. A cold RxJS transition validates and projects the URL before an Active
+Account commit can begin, publishes the view only after Account readiness, and retains ownership
+through post-commit completion if its initiating subscriber disappears.
+
 ## State and commands
 
 The Matrix SDK remains authoritative for protocol state. Adapters normalize SDK input before capabilities consume it. Capabilities project state to private writable signals and expose only read-only signals and computed views.

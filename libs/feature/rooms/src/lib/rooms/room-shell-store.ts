@@ -5,12 +5,9 @@ import {
   linkedSignal,
   signal,
 } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute } from '@angular/router';
-import { map } from 'rxjs';
-import { decodeRoomSegment } from '@trinity/util/matrix';
 import type { MemberSummary } from '@trinity/data-access/rooms';
 import { BELOW_MEMBERS_QUERY, matchesQuery } from '@trinity/util/ui';
+import { WorkspaceService } from './workspace.service';
 
 /**
  * The surfaces that can occupy the shell's right-hand slot.
@@ -66,29 +63,33 @@ function seedRightPanel(): RightPanel {
  */
 @Injectable()
 export class RoomShellStore {
-  readonly activeSpaceId = signal<string | null>(null);
+  private readonly workspace = inject(WorkspaceService);
+
+  readonly activeAccountId = this.workspace.activeAccountId;
+  readonly activeSpaceId = this.workspace.activeSpaceId;
 
   /**
    * Whether the Recent activity view is active — the default on launch. It lists every
    * joined DM + room (space-owned included), mixed by recency, so it overrides the
    * Home/Rooms/space scoping. Cleared by selecting Home, Rooms, or a space.
    */
-  readonly recentView = signal(true);
+  readonly recentView = this.workspace.recentView;
 
   /** Whether the Rooms view is active — filters the sidebar to non-DM rooms. Home (no
    * space) shows direct messages only; Recent, a space, or this view clears the others. */
-  readonly roomsView = signal(false);
+  readonly roomsView = this.workspace.roomsView;
 
   /**
-   * The open room — DERIVED from the URL, never assigned.
+   * The selected room — DERIVED from the Workspace URL, never assigned.
    *
    * `/rooms/:roomId` is the single source of truth, which is what makes a room linkable,
-   * bookmarkable and survivable across a reload, and what makes Android's hardware Back close
-   * the room instead of walking out of the shell. Opening a room is therefore a NAVIGATION
-   * (`RoomShellNavigationService.onSelectRoom`), and this follows; nothing writes it.
+   * bookmarkable and survivable across a reload. The pane coordinate separately decides
+   * whether compact layouts show that Conversation or the list, so returning to the list can
+   * retain selection without losing addressability. Selecting a room is therefore a NAVIGATION
+   * (`RoomShellNavigationService.onSelectRoom`), and this follows; nothing writes it directly.
    *
    * That direction matters beyond tidiness. When this was a writable signal the URL and the
-   * open room could disagree, and did: a notification tap wrote `?room=` and the page then
+   * selected room could disagree, and did: a notification tap wrote `?room=` and the page then
    * stripped the param back off, so the address bar described a room the shell was not
    * showing for as long as the strip took to land.
    *
@@ -96,15 +97,9 @@ export class RoomShellStore {
    * or truncated URL — so a bad link lands on the room list rather than asking the SDK for a
    * room id that cannot exist.
    */
-  readonly activeRoomId = toSignal(
-    inject(ActivatedRoute).paramMap.pipe(
-      map((params) => {
-        const segment = params.get('roomId');
-        return segment ? decodeRoomSegment(segment) : null;
-      }),
-    ),
-    { initialValue: null },
-  );
+  readonly activeRoomId = this.workspace.activeRoomId;
+  readonly pane = this.workspace.pane;
+  readonly placement = this.workspace.placement;
 
   /**
    * The sidebar's in-place room filter.
@@ -122,7 +117,7 @@ export class RoomShellStore {
    */
   readonly roomFilter = linkedSignal<string, string>({
     source: () =>
-      `${this.recentView()}|${this.roomsView()}|${this.activeSpaceId() ?? ''}`,
+      `${this.workspace.activeAccountId() ?? ''}|${this.recentView()}|${this.roomsView()}|${this.activeSpaceId() ?? ''}`,
     computation: () => '',
   });
 
@@ -141,15 +136,17 @@ export class RoomShellStore {
    * `'thread' | null` would have to be shadowed by a second signal holding the id, which is
    * the invalid-state-is-representable shape this exists to avoid.
    */
-  readonly rightPanel = linkedSignal<string | null, RightPanel>({
-    // Keyed on the OPEN ROOM, because four of the six surfaces are about a particular room
-    // and cannot follow the user out of it. A thread names a root event, pinned and search
-    // hand back an event id, and member info carries its subject
+  readonly rightPanel = linkedSignal<string, RightPanel>({
+    // Keyed on the exact Account-and-Room, because four of the six surfaces are about a
+    // particular Conversation and cannot follow the user out of it. A thread names a root
+    // event, pinned and search hand back an event id, and member info carries its subject
     // against the room whose row was clicked — while the template binds every panel to
     // `room.id`, the room that is open NOW. Left to persist, switching rooms with member
-    // info open pointed "Remove from room" at a room the user never opened it for.
-    source: this.activeRoomId,
-    computation: (_roomId, previous) => {
+    // info open pointed "Remove from room" at a room the user never opened it for. Account
+    // is equally load-bearing: two Accounts may share one Room id but own distinct handles.
+    source: () =>
+      `${this.workspace.activeAccountId() ?? ''}|${this.activeRoomId() ?? ''}|${this.pane()}`,
+    computation: (_conversationKey, previous) => {
       const panel = previous?.value;
       // The roster and "nothing" are the column's own open/closed state, which the user owns
       // and which has always survived a room change — the list re-projects itself onto the

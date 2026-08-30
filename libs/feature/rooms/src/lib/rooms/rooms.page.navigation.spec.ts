@@ -7,6 +7,7 @@ import {
   setMediaQuery,
   setRouteRoom,
   setRouteSegment,
+  settleWorkspace,
   shellFrom,
   stubLiveLayout,
   stubNarrowLayout,
@@ -244,12 +245,13 @@ describe('RoomsPage quick switcher', () => {
     expect(pick).not.toHaveBeenCalled();
   });
 
-  it('shows in-room search in the slot, and a hit jumps the timeline', () => {
+  it('shows in-room search in the slot, and a hit jumps the timeline', async () => {
     // Two steps now instead of one awaited dialog: the panel goes into the shell's one
     // right-hand slot, and a picked row arrives back through `onPanelJump` — which is what
     // the template binds the panel's `(selected)` output to.
     const shell = build();
     shell.nav.onSelectRoom('!r:hs');
+    await settleWorkspace();
 
     shell.messages.openMessageSearch();
     expect(shell.store.rightPanel()).toEqual({ kind: 'search' });
@@ -265,13 +267,14 @@ describe('RoomsPage quick switcher', () => {
     expect(shell.store.rightPanel()).toBeNull();
   });
 
-  it('in-room search bumps jumpRequest again when the SAME hit is re-picked', () => {
+  it('in-room search bumps jumpRequest again when the SAME hit is re-picked', async () => {
     // Same crux as the pinned panel: picking the identical hit twice must still
     // re-fire the jump, which only happens because jumpRequest keeps incrementing.
     // Easier to reach now — the panel stays open, so the second pick is just another row
     // click rather than reopening the whole dialog.
     const shell = build();
     shell.nav.onSelectRoom('!r:hs');
+    await settleWorkspace();
     shell.messages.openMessageSearch();
 
     shell.messages.onPanelJump('$evt:hs');
@@ -287,9 +290,10 @@ describe('RoomsPage quick switcher', () => {
     expect(shell.store.jumpRequest()).toBe(2);
   });
 
-  it('does not jump when in-room search is dismissed without a pick', () => {
+  it('does not jump when in-room search is dismissed without a pick', async () => {
     const shell = build();
     shell.nav.onSelectRoom('!r:hs');
+    await settleWorkspace();
 
     shell.messages.openMessageSearch();
     shell.page.closeRightPanel();
@@ -363,10 +367,10 @@ describe('RoomsPage mobile navigation', () => {
     return shellFrom();
   }
 
-  it('backToList closes the open room, returning to the list page', () => {
+  it('backToList retains selection and a link to that Room reopens chat', async () => {
     const shell = build();
     shell.nav.onSelectRoom('!r:hs');
-    TestBed.tick(); // open the projections FIRST, so the closes below can only come from backToList
+    await settleWorkspace(); // open the projections FIRST, so the closes below can only come from backToList
     expect(shell.store.activeRoomId()).toBe('!r:hs');
     // Both halves, or the test passes on an effect that never opened anything and then
     // "closed" it from the same single null run.
@@ -376,10 +380,17 @@ describe('RoomsPage mobile navigation', () => {
     expect(TestBed.inject(RoomsTimelineStub).close).not.toHaveBeenCalled();
 
     shell.page.backToList();
-    TestBed.tick();
+    await settleWorkspace();
 
-    expect(shell.store.activeRoomId()).toBeNull();
-    expect(TestBed.inject(RoomsTimelineStub).close).toHaveBeenCalled();
+    expect(shell.store.activeRoomId()).toBe('!r:hs');
+    expect(shell.store.pane()).toBe('list');
+    expect(TestBed.inject(RoomsTimelineStub).close).not.toHaveBeenCalled();
+
+    vi.spyOn(shell.nav, 'knownRooms').mockReturnValue([
+      { id: '!r:hs' } as RoomSummary,
+    ]);
+    shell.routing.openLinkedRoom('!r:hs');
+    await vi.waitFor(() => expect(shell.store.pane()).toBe('conversation'));
   });
 
   it('closing a room resets an open members drawer so it does not carry to the next room', () => {
@@ -780,11 +791,11 @@ describe('RoomsPage mobile navigation', () => {
     expect(shell.store.rightPanel()).toBe(before);
   });
 
-  it('onSelectRoom opens the room (switching to the mobile chat page)', () => {
+  it('onSelectRoom opens the room (switching to the mobile chat page)', async () => {
     const shell = build();
 
     shell.nav.onSelectRoom('!r:hs');
-    TestBed.tick(); // the projections follow the URL from an effect
+    await settleWorkspace(); // the projections follow the URL from an effect
 
     expect(shell.store.activeRoomId()).toBe('!r:hs');
     expect(timelineOpen).toHaveBeenCalledWith('!r:hs');
@@ -1029,13 +1040,16 @@ describe('RoomsPage keyboard room switching', () => {
   });
 
   /** Visit a → b → c so the MRU is [c, b, a] and we're in c. */
-  function visitABC(shell: ReturnType<typeof shellFrom>): void {
+  async function visitABC(shell: ReturnType<typeof shellFrom>): Promise<void> {
     shell.nav.onSelectRoom('!a:hs');
+    await settleWorkspace();
     shell.nav.onSelectRoom('!b:hs');
+    await settleWorkspace();
     shell.nav.onSelectRoom('!c:hs');
+    await settleWorkspace();
   }
 
-  it('ignores a shortcut that resolves to the room already open', () => {
+  it('ignores a shortcut that resolves to the room already open', async () => {
     // Not a no-op for tidiness: re-entering onSelectRoom calls media.releaseAll(), which
     // revokes the object URLs for images currently on screen. timeline.open() early-returns
     // on the same id; releaseAll does not. Reachable with a one-room list, because the list
@@ -1043,7 +1057,7 @@ describe('RoomsPage keyboard room switching', () => {
     const shell = build();
     keyboardRooms.set([roomSummary('!only:hs')]);
     shell.nav.onSelectRoom('!only:hs');
-    TestBed.tick(); // let the room actually open (this is the releaseAll we allow)
+    await settleWorkspace(); // let the room actually open (this is the releaseAll we allow)
     releaseAll.mockClear();
 
     shell.page.onGlobalKeydown(key({ key: 'ArrowDown', altKey: true }));
@@ -1052,39 +1066,43 @@ describe('RoomsPage keyboard room switching', () => {
     expect(releaseAll).not.toHaveBeenCalled();
   });
 
-  it('keeps the keyboard surface wired through the page', () => {
+  it('keeps the keyboard surface wired through the page', async () => {
     // The host binding names a member of the component class, so the page keeps a delegate
     // nothing else calls. Re-pointing this suite onto the coordinators removed the only
     // test crossing that seam — emptying the delegate body left 192 tests green, i.e. the
     // whole keyboard feature could be unplugged from the page unnoticed.
     const shell = build();
-    visitABC(shell);
+    await visitABC(shell);
 
     shell.page.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
+    await settleWorkspace();
 
     expect(shell.store.activeRoomId()).toBe('!b:hs');
   });
 
-  it('hops back through the visited stack, cycling deeper, without recording mid-cycle', () => {
+  it('hops back through the visited stack, cycling deeper, without recording mid-cycle', async () => {
     const shell = build();
-    visitABC(shell);
+    await visitABC(shell);
 
     shell.shortcuts.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
+    await settleWorkspace();
     expect(shell.store.activeRoomId()).toBe('!b:hs'); // previous room
 
     shell.shortcuts.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
+    await settleWorkspace();
     expect(shell.store.activeRoomId()).toBe('!a:hs'); // two back — cycling deeper
 
     // Shift reverses.
     shell.shortcuts.onGlobalKeydown(
       key({ key: "'", ctrlKey: true, shiftKey: true }),
     );
+    await settleWorkspace();
     expect(shell.store.activeRoomId()).toBe('!b:hs');
   });
 
-  it('consumes the chord it handles and ignores an unmodified quote', () => {
+  it('consumes the chord it handles and ignores an unmodified quote', async () => {
     const shell = build();
-    visitABC(shell);
+    await visitABC(shell);
 
     const handled = key({ key: "'", metaKey: true });
     shell.shortcuts.onGlobalKeydown(handled);
@@ -1095,30 +1113,34 @@ describe('RoomsPage keyboard room switching', () => {
     expect(typed.preventDefault).not.toHaveBeenCalled();
   });
 
-  it('walks the visible list with Alt+Arrow, wrapping', () => {
+  it('walks the visible list with Alt+Arrow, wrapping', async () => {
     const shell = build(); // list order a, b, c; in c after visiting
-    visitABC(shell);
+    await visitABC(shell);
 
     shell.shortcuts.onGlobalKeydown(key({ key: 'ArrowDown', altKey: true }));
+    await settleWorkspace();
     expect(shell.store.activeRoomId()).toBe('!a:hs'); // c → wrap to a
 
     shell.shortcuts.onGlobalKeydown(key({ key: 'ArrowUp', altKey: true }));
+    await settleWorkspace();
     expect(shell.store.activeRoomId()).toBe('!c:hs'); // a → wrap back to c
   });
 
-  it('jumps to the next unread room with Alt+Shift+Arrow', () => {
+  it('jumps to the next unread room with Alt+Shift+Arrow', async () => {
     const shell = build(); // b(3) and c(1) are unread
     shell.nav.onSelectRoom('!a:hs'); // in a read room
+    await settleWorkspace();
 
     shell.shortcuts.onGlobalKeydown(
       key({ key: 'ArrowDown', altKey: true, shiftKey: true }),
     );
+    await settleWorkspace();
     expect(shell.store.activeRoomId()).toBe('!b:hs'); // first unread
   });
 
-  it('ignores Ctrl/Cmd+1…9 and Ctrl+Tab on the web (browser-reserved)', () => {
+  it('ignores Ctrl/Cmd+1…9 and Ctrl+Tab on the web (browser-reserved)', async () => {
     const shell = build(); // no desktop marker
-    visitABC(shell);
+    await visitABC(shell);
 
     shell.shortcuts.onGlobalKeydown(
       key({ code: 'Digit1', key: '1', metaKey: true }),
@@ -1128,40 +1150,42 @@ describe('RoomsPage keyboard room switching', () => {
     expect(shell.store.activeRoomId()).toBe('!c:hs'); // unchanged
   });
 
-  it('jumps to the Nth most-recent room with Ctrl/Cmd+1…9 on the desktop shell', () => {
+  it('jumps to the Nth most-recent room with Ctrl/Cmd+1…9 on the desktop shell', async () => {
     // The marker must be present before the page reads it at construction.
     (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
       isElectron: true,
     };
     const shell = build();
-    visitABC(shell); // MRU [c, b, a], in c
+    await visitABC(shell); // MRU [c, b, a], in c
 
     shell.shortcuts.onGlobalKeydown(
       key({ code: 'Digit2', key: '2', ctrlKey: true }),
     );
+    await settleWorkspace();
     expect(shell.store.activeRoomId()).toBe('!a:hs'); // 2 = two rooms back
   });
 
-  it('hops with Ctrl+Tab on the desktop shell', () => {
+  it('hops with Ctrl+Tab on the desktop shell', async () => {
     (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
       isElectron: true,
     };
     const shell = build();
-    visitABC(shell); // in c
+    await visitABC(shell); // in c
 
     shell.shortcuts.onGlobalKeydown(key({ key: 'Tab', ctrlKey: true }));
+    await settleWorkspace();
     expect(shell.store.activeRoomId()).toBe('!b:hs'); // Tab hops like the quote
   });
 
   // The MRU outlives account switches and unticks, so a numbered jump can name a room no
   // account in scope still holds — unlike hop, nth() filters against nothing. Opening it
   // would tear the timeline down and leave a blank chat pane, so it must decline.
-  it('ignores a numbered jump to a room the list no longer knows', () => {
+  it('ignores a numbered jump to a room the list no longer knows', async () => {
     (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
       isElectron: true,
     };
     const shell = build();
-    visitABC(shell); // MRU [c, b, a], in c
+    await visitABC(shell); // MRU [c, b, a], in c
     // '!b:hs' leaves the scope (its account was unticked, or signed out).
     keyboardRooms.set([roomSummary('!a:hs'), roomSummary('!c:hs')]);
 
@@ -1172,23 +1196,24 @@ describe('RoomsPage keyboard room switching', () => {
     expect(shell.store.activeRoomId()).toBe('!c:hs'); // stayed put rather than opening a ghost
   });
 
-  it('still jumps to a room that is in scope', () => {
+  it('still jumps to a room that is in scope', async () => {
     (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
       isElectron: true,
     };
     const shell = build();
-    visitABC(shell);
+    await visitABC(shell);
 
     shell.shortcuts.onGlobalKeydown(
       key({ code: 'Digit1', key: '1', ctrlKey: true }),
     );
+    await settleWorkspace();
 
     expect(shell.store.activeRoomId()).toBe('!b:hs');
   });
 
-  it('stays quiet while an overlay owns the screen', () => {
+  it('stays quiet while an overlay owns the screen', async () => {
     const shell = build();
-    visitABC(shell);
+    await visitABC(shell);
     dialogOpen = true;
 
     const event = key({ key: "'", ctrlKey: true });
@@ -1197,9 +1222,9 @@ describe('RoomsPage keyboard room switching', () => {
     expect(event.preventDefault).not.toHaveBeenCalled();
   });
 
-  it('follows a rebound chord, not the old one', () => {
+  it('follows a rebound chord, not the old one', async () => {
     const shell = build();
-    visitABC(shell); // in c, MRU [c, b, a]
+    await visitABC(shell); // in c, MRU [c, b, a]
     // Move "hop back" from Ctrl+' to Alt+J through the registry.
     TestBed.inject(KeyboardShortcutsService).rebind('room.hop.back', {
       accel: false,
@@ -1212,18 +1237,19 @@ describe('RoomsPage keyboard room switching', () => {
     expect(shell.store.activeRoomId()).toBe('!c:hs'); // old chord no longer hops
 
     shell.shortcuts.onGlobalKeydown(key({ key: 'j', altKey: true }));
+    await settleWorkspace();
     expect(shell.store.activeRoomId()).toBe('!b:hs'); // the new chord does
 
     TestBed.inject(KeyboardShortcutsService).resetAll(); // don't leak into other specs
   });
 
-  it('ignores a chord while a panel owns the screen, but not while the roster does', () => {
+  it('ignores a chord while a panel owns the screen, but not while the roster does', async () => {
     // The guard used to be `dialog.hasOpen()` alone, and that answered the question for as
     // long as these surfaces were dialogs. Inline in the slot they are invisible to it, so a
     // chord typed into the search field walked to another room. The roster stays exempt: it
     // is a column beside the timeline, not over it.
     const shell = build();
-    visitABC(shell); // in c, MRU [c, b, a]
+    await visitABC(shell); // in c, MRU [c, b, a]
 
     shell.store.rightPanel.set({ kind: 'search' });
     shell.shortcuts.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
@@ -1231,6 +1257,7 @@ describe('RoomsPage keyboard room switching', () => {
 
     shell.store.rightPanel.set({ kind: 'members' });
     shell.shortcuts.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
+    await settleWorkspace();
     expect(shell.store.activeRoomId()).toBe('!b:hs'); // still hops
   });
 });
@@ -1295,7 +1322,7 @@ describe('RoomsPage room-in-URL deep link', () => {
     });
   });
 
-  it('opens it when the URL changes on the already-active /rooms route', () => {
+  it('opens it when the URL changes on the already-active /rooms route', async () => {
     // THE case: tapping a notification while the shell is open does not re-create the
     // component, so a route snapshot read sees nothing. Only the stream fires.
     const shell = build();
@@ -1303,7 +1330,7 @@ describe('RoomsPage room-in-URL deep link', () => {
     expect(shell.store.activeRoomId()).toBeNull();
 
     setRouteRoom('!notified:hs');
-    TestBed.tick();
+    await settleWorkspace();
 
     expect(shell.store.activeRoomId()).toBe('!notified:hs');
     expect(conversationFocus).toHaveBeenCalledWith({
@@ -1332,10 +1359,10 @@ describe('RoomsPage room-in-URL deep link', () => {
     expect(router.navigate).not.toHaveBeenCalled();
   });
 
-  it('does not re-open the room that is already open', () => {
+  it('does not re-open the room that is already open', async () => {
     const shell = build();
     shell.nav.onSelectRoom('!notified:hs');
-    TestBed.tick();
+    await settleWorkspace();
     conversationFocus.mockClear();
 
     setRouteRoom('!notified:hs'); // the same room named again — a second tap on the same chat
@@ -1381,13 +1408,13 @@ describe('RoomsPage room-in-URL deep link', () => {
   //
   // Two flushes before the assertion on purpose: the dependency only appears from the
   // effect's SECOND run, since `hasProjected` skips the focus call on the first.
-  it('does not re-project when only the layout breakpoint changes', () => {
+  it('does not re-project when only the layout breakpoint changes', async () => {
     const restore = stubLiveLayout({ [BELOW_MD_QUERY]: false });
     const shell = build();
     setRouteRoom('!a:hs');
-    TestBed.tick();
+    await settleWorkspace();
     setRouteRoom('!b:hs');
-    TestBed.tick();
+    await settleWorkspace();
     expect(shell.store.activeRoomId()).toBe('!b:hs');
 
     const media = TestBed.inject(MediaPipeline);
