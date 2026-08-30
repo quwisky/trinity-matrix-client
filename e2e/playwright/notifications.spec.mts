@@ -156,12 +156,55 @@ async function postMessage(
  * (including the /login → /rooms redirect `login()` drives).
  */
 async function installNotificationRecorder(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const w = window as unknown as {
+  function install(nativeExpected: boolean): void {
+    const w = window as typeof window & {
       __notifications: Array<{ title: string; options: unknown }>;
+      __notificationRecorderInstalled?: boolean;
+      Capacitor?: {
+        nativePromise?(
+          pluginName: string,
+          methodName: string,
+          options?: Record<string, unknown>,
+        ): Promise<unknown>;
+      };
     };
+    if (w.__notificationRecorderInstalled) return;
     w.__notifications = [];
 
+    const capacitor = w.Capacitor;
+    if (!capacitor && nativeExpected) {
+      setTimeout(() => install(nativeExpected), 0);
+      return;
+    }
+    if (nativeExpected && capacitor?.nativePromise) {
+      w.__notificationRecorderInstalled = true;
+      const nativePromise = capacitor.nativePromise.bind(capacitor);
+      capacitor.nativePromise = (
+        pluginName: string,
+        methodName: string,
+        options: Record<string, unknown> = {},
+      ): Promise<unknown> => {
+        if (pluginName !== 'LocalNotifications' || methodName !== 'schedule') {
+          return nativePromise(pluginName, methodName, options);
+        }
+        const notifications = Array.isArray(options['notifications'])
+          ? (options['notifications'] as Array<Record<string, unknown>>)
+          : [];
+        for (const notification of notifications) {
+          w.__notifications.push({
+            title: String(notification['title'] ?? ''),
+            options: {
+              body: notification['body'],
+              tag: notification['threadIdentifier'],
+            },
+          });
+        }
+        return Promise.resolve();
+      };
+      return;
+    }
+
+    w.__notificationRecorderInstalled = true;
     class RecordingNotification {
       static permission = 'granted';
       static requestPermission = async (): Promise<string> => 'granted';
@@ -212,7 +255,13 @@ async function installNotificationRecorder(page: Page): Promise<void> {
           /* no SW registration in this build — nothing to wrap */
         });
     }
-  });
+  }
+
+  const nativeExpected = isAndroidE2E;
+  await page.addInitScript(install, nativeExpected);
+  // Capacitor journeys stay in one WebView document while login navigates through
+  // Angular. Install into that live document as well as future document loads.
+  await page.evaluate(install, nativeExpected);
 }
 
 test.describe('Message notifications', () => {

@@ -1,5 +1,9 @@
 import { test, expect } from './support/fixtures.mts';
-import { fillLabeledInput, synapseSession } from './support/app.mts';
+import {
+  fillLabeledInput,
+  synapseSession,
+  waitForRooms,
+} from './support/app.mts';
 import { redeemLoginToken, ssoLoginToken } from './support/sso.mts';
 
 // End-to-end for signing in through an identity provider, against the harness's own Dex
@@ -57,12 +61,12 @@ test.describe('SSO sign-in', () => {
     await providerPage.locator('#password').fill(sso.pass);
     await providerPage.locator('#submit-login').click();
 
-    await page.waitForURL('**/rooms', { timeout: 60_000 });
+    await waitForRooms(page, 60_000);
 
     // The session is real and persisted, not just a routing side effect: a reload has to
     // land back in the app rather than at /login.
     await page.reload();
-    await page.waitForURL('**/rooms', { timeout: 60_000 });
+    await waitForRooms(page, 60_000);
     await expect(page.getByTestId('rail-rooms')).toBeVisible({
       timeout: 30_000,
     });
@@ -187,6 +191,6 @@ test.describe('SSO sign-in', () => {
     await providerPage.locator('#password').fill(sso.pass);
     await providerPage.locator('#submit-login').click();
 
-    await page.waitForURL('**/rooms', { timeout: 60_000 });
+    await waitForRooms(page, 60_000);
   });
 });

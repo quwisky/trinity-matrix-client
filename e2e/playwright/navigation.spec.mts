@@ -1,6 +1,10 @@
 import { test, expect } from './support/fixtures.mts';
-import { openSettingsFromRooms } from './journeys/navigation.mts';
-import { login, synapseSession } from './support/app.mts';
+import {
+  closeSettings,
+  focusInside,
+  openSettingsFromRooms,
+} from './journeys/navigation.mts';
+import { isAndroidE2E, login, synapseSession } from './support/app.mts';
 
 // Historical context: this file used to guard the IonRouterOutlet transition lock
 // (ionic-framework#30240) — a route transition had to relocate focus INTO the
@@ -39,8 +43,9 @@ test.describe('Route transitions', () => {
     await openSettingsFromRooms(page);
   });
 
-  // CDK owns the equivalent modal behavior: focus enters the named dialog, remains
-  // trapped there, and returns to the persistent opener after dismissal.
+  // Web Settings is a CDK modal, so focus enters its trap and returns to the persistent
+  // opener. Installed Capacitor hosts intentionally route Settings instead; there the
+  // equivalent contract is route-entry focus followed by focus entering Rooms on Back.
   test('traps focus inside settings and restores the opener', async ({
     page,
   }) => {
@@ -49,6 +54,21 @@ test.describe('Route transitions', () => {
     const opener = page.getByTestId('open-settings');
     await opener.focus();
     await opener.click();
+    if (isAndroidE2E) {
+      await page.waitForURL((url) => url.pathname.startsWith('/settings/'), {
+        timeout: 20_000,
+      });
+      await expect(
+        page.getByRole('heading', { name: 'Profile' }),
+      ).toBeFocused();
+
+      await closeSettings(page);
+      await expect
+        .poll(() => focusInside(page, 'trn-rooms'), { timeout: 20_000 })
+        .toBe(true);
+      return;
+    }
+
     const dialog = page.getByRole('dialog', { name: 'Settings' });
     await expect(dialog).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('[data-settings-autofocus]')).toBeFocused();

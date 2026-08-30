@@ -4,7 +4,12 @@ import {
   type APIRequestContext,
   type Page,
 } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import {
+  login,
+  synapseSession,
+  waitForRooms,
+  type SynapseSession,
+} from './support/app.mts';
 import { registerUser } from './support/account.mts';
 
 // Covers starting cross-user verification from a member's info panel: "Verify"
@@ -79,7 +84,7 @@ async function setUpEncryption(page: Page, password: string): Promise<void> {
     .getByRole('checkbox', { name: /I've saved my recovery key/ })
     .click();
   await page.getByRole('button', { name: 'Continue to Trinity' }).click();
-  await page.waitForURL('**/rooms', { timeout: 30_000 });
+  await waitForRooms(page);
 }
 
 test.describe('Verify another user', () => {

@@ -587,6 +587,7 @@ test.describe('Unavailable action touch feedback', () => {
   test('explains a blocked member action after a touch tap', async ({
     page,
     request,
+    touchPlatform,
   }) => {
     const hs = session.hs as string;
     const runId = `${Date.now().toString(36)}touch`;
@@ -611,7 +612,7 @@ test.describe('Unavailable action touch feedback', () => {
     });
 
     await expect(kick).toBeVisible();
-    await kick.tap({ force: true, timeout: 5000 });
+    await touchPlatform.tap(page, kick);
 
     await expect(page.getByTestId('action-unavailable-feedback')).toHaveText(
       'You can only manage members with a lower role.',

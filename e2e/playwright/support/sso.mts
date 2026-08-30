@@ -4,6 +4,7 @@ import type { AccountSession } from './account.mts';
 import type { AuthPlatform } from './auth-platform.mts';
 import {
   fillLabeledInput,
+  waitForRooms,
   type SsoAccount,
   type SynapseSession,
 } from './app.mts';
@@ -54,7 +55,7 @@ export async function ssoLogin(
   await answerDexForm(providerPage, account);
   // The Dex round-trip adds a provider page and two redirects to an already slow first
   // login (Rust-crypto init + first /sync), so this gets more room than a password one.
-  await page.waitForURL('**/rooms', { timeout: 60_000 });
+  await waitForRooms(page, 60_000);
 }
 
 /**

@@ -13,6 +13,7 @@ import {
   type SynapseSession,
 } from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import { closeSettings, openSettingsSection } from './journeys/navigation.mts';
 
 // Swiping a message row sideways to edit or reply to it (#222), on a real phone profile.
 //
@@ -301,15 +302,23 @@ test.describe('Swipe a message', () => {
     const at = async (x: number) => {
       // Feed the compositor a real path rather than one large move. Android/Chromium can
       // consume the first move to resolve the touch-action axis without forwarding it as a
-      // pointermove, which left the progress assertion at zero while the release journeys
-      // (whose shared helper already sends ten moves) remained green.
+      // pointermove. Advance on animation frames as well: under parallel browser load,
+      // sending the whole path in one renderer turn lets Chromium coalesce every move into
+      // the axis-arbitration event, leaving the application with no progress update.
       const from = currentX;
-      for (let step = 1; step <= 4; step++) {
-        currentX = from + ((x - from) * step) / 4;
+      const steps = 10;
+      for (let step = 1; step <= steps; step++) {
+        currentX = from + ((x - from) * step) / steps;
         await cdp.send('Input.dispatchTouchEvent', {
           type: 'touchMove',
           touchPoints: [{ x: currentX, y, id: 1 }],
         });
+        await page.evaluate(
+          () =>
+            new Promise<void>((resolve) =>
+              requestAnimationFrame(() => resolve()),
+            ),
+        );
       }
     };
     try {
@@ -317,6 +326,12 @@ test.describe('Swipe a message', () => {
         type: 'touchStart',
         touchPoints: [{ x: currentX, y, id: 1 }],
       });
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          ),
+      );
 
       // Polled, not read straight after the send: `Input.dispatchTouchEvent` resolves when the
       // event is dispatched, and the handler's style write lands a tick later.
@@ -402,10 +417,20 @@ test.describe('Swipe a message', () => {
         type: 'touchStart',
         touchPoints: [{ x: before.x + before.width * 0.8, y, id: 1 }],
       });
-      await cdp.send('Input.dispatchTouchEvent', {
-        type: 'touchMove',
-        touchPoints: [{ x: before.x + before.width * 0.5, y, id: 1 }],
-      });
+      const fromX = before.x + before.width * 0.8;
+      const toX = before.x + before.width * 0.5;
+      for (let step = 1; step <= 10; step++) {
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [{ x: fromX + ((toX - fromX) * step) / 10, y, id: 1 }],
+        });
+        await page.evaluate(
+          () =>
+            new Promise<void>((resolve) =>
+              requestAnimationFrame(() => resolve()),
+            ),
+        );
+      }
 
       // Mid-drag, before release. A leftward drag opens a strip at the row's right-hand end,
       // so that is where the icon has to be.
@@ -609,14 +634,14 @@ test.describe('Swipe a message', () => {
     // Below the members breakpoint the room is its own PAGE and the user panel that holds
     // the settings button lives on the room list, so the way there is Back first.
     await page.getByTestId('back-to-rooms').click();
-    await page.getByTestId('open-settings').click();
-    await page.getByTestId('settings-nav-appearance').click();
+    await openSettingsSection(page, 'appearance');
     await page.getByTestId('message-swipe-select').locator('button').click();
     await page.getByTestId('message-swipe-right').click();
 
-    // Dismiss the web modal without navigating or reloading, then return to the same room.
-    // This proves the live signal update rather than merely its persisted reload path.
-    await page.getByTestId('close-settings').click();
+    // Dismiss the web modal or unwind the native Settings routes without reloading, then
+    // return to the same room. This proves the live signal update rather than merely its
+    // persisted reload path.
+    await closeSettings(page);
     await expect(page.getByRole('dialog', { name: 'Settings' })).toBeHidden();
     expect(new URL(page.url()).pathname).not.toMatch(/\/settings/);
 

@@ -1018,8 +1018,8 @@ test.describe('Room settings', () => {
       .setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: png });
 
     // The upload + m.room.avatar write succeed, surfacing the success toast.
-    await expect(page.getByText('Room photo updated.')).toBeVisible({
-      timeout: 30_000,
-    });
+    await expect(
+      page.getByLabel('Notifications alt+T').getByText('Room photo updated.'),
+    ).toBeVisible({ timeout: 30_000 });
   });
 });

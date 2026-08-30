@@ -32,6 +32,7 @@ import {
   map,
   of,
   switchMap,
+  timeout,
 } from 'rxjs';
 import { getTrinityDesktopBridge } from '../trinity-desktop-bridge';
 import { FileSaveService } from '../host-media/file-save.service';
@@ -51,6 +52,7 @@ const rejected = (code: string): HostOperationOutcome => ({
   kind: 'rejected',
   diagnostic: { code },
 });
+const HOST_UPDATE_CHECK_TIMEOUT_MS = 5_000;
 
 @Injectable({ providedIn: 'root' })
 export class WebHostOperationAdapter implements HostOperationsAdapter {
@@ -278,6 +280,12 @@ export class ServiceWorkerHostUpdatesAdapter implements HostUpdatesOperation {
           ? of(support)
           : from(this.updates!.checkForUpdate()).pipe(
               map(() => completed()),
+              // A blocked or broken service-worker registration can leave Angular's
+              // update promise pending forever. Host commands must remain cold and finite.
+              timeout({
+                first: HOST_UPDATE_CHECK_TIMEOUT_MS,
+                with: () => of(rejected('update-check-timeout')),
+              }),
               catchError(() => of(rejected('update-check-failed'))),
             ),
       ),

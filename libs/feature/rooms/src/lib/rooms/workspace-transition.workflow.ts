@@ -111,6 +111,13 @@ export class WorkspaceTransitionWorkflow {
 
     const projectRequestedUrl = () => {
       routeStartedAt = performance.now();
+      // A canonical inbound Router destination is already in the address bar. Asking
+      // Angular to navigate to that same URL resolves `false`; that means "unchanged",
+      // not "rejected", and must not prevent Workspace from committing the restored view.
+      if (options.source === 'restore' && !resolved.repaired) {
+        routeDurationMs = 0;
+        return of(true);
+      }
       return this.navigate(
         resolved.destination,
         options.history === 'replace' || resolved.repaired,

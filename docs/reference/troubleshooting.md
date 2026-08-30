@@ -711,6 +711,49 @@ an unsupported one.
 
 ## Architecture
 
+### The authenticated renderer freezes immediately after sign-in
+
+**Symptom.** Login reaches `/rooms`, but the page stops responding and its renderer consumes a
+full CPU core. Playwright actions and even `page.evaluate()` time out.
+
+**Cause.** An Angular effect can accidentally track signals read anywhere in its synchronous call
+stack. Notification Account reconciliation may emit a permission warning synchronously; Application
+Runtime reads and writes its warning-state signal while handling that emission. If reconciliation is
+still tracked, that state becomes another dependency of the Account effect, so recording the warning
+immediately schedules the same warning again.
+
+**Fix.** Read the owned trigger (`accountIds`) in the effect, then run reconciliation with
+`untracked`. Keep a regression whose synchronous warning subscriber also reads and writes a signal;
+changing that unrelated signal must not trigger another permission negotiation.
+
+### The startup spinner never leaves in a browser
+
+**Symptom.** The application stays on "Restoring your session…" even though Account restoration
+finished. This is especially reproducible in Firefox storage-permission flows or in a production
+Playwright run that blocks service workers.
+
+**Cause.** Browser APIs do not guarantee that `navigator.storage.persist()` or Angular's
+`SwUpdate.checkForUpdate()` promise will settle. Application Runtime treats storage durability and
+update discovery as optional session capabilities, but an unbounded promise inside their startup
+commands turns either best-effort capability into a readiness deadlock.
+
+**Fix.** Keep both host commands cold and finite. Their adapters use bounded RxJS `timeout`
+fallbacks and normalize a pending request to a denied persistence result or an update warning;
+neither optional capability may block Workspace restoration. Preserve the never-settling-promise
+regressions when changing these adapters.
+
+### A second stored account fails while Rust crypto starts
+
+**Symptom.** Restoring multiple accounts can leave one unavailable with an IndexedDB crypto
+migration error such as `getMigrationState` being read from an uninitialized store.
+
+**Cause.** `matrix-js-sdk` crypto initialization has process-wide setup that is not safe to enter
+concurrently, even though each account uses its own crypto database prefix.
+
+**Fix.** Keep account restoration independent, but serialize only `initRustCrypto()` through the
+Matrix client service's crypto-initialization queue. The queue must continue after either success or
+failure so one rejected account cannot wedge later restorations.
+
 ### A read model freezes after logout then login
 
 **Symptom.** The room list, unread badges or crypto status stop updating after a logout or

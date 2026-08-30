@@ -27,6 +27,7 @@ async function openComposer(
   request: APIRequestContext,
   tag: string,
   messageCount = 0,
+  openInitially = true,
 ) {
   const hs = session.hs as string;
   const runId = `${Date.now().toString(36)}${tag}`;
@@ -57,7 +58,13 @@ async function openComposer(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${runId}-${index}`,
       {
         headers: { Authorization: `Bearer ${token}` },
-        data: { msgtype: 'm.text', body: `Anchor message ${index}` },
+        // Keep the first sync page taller than the viewport so the simple list does not
+        // immediately backfill the second page merely to fill empty space. The test below
+        // controls that pagination explicitly and asserts its exact 20 -> 40 boundary.
+        data: {
+          msgtype: 'm.text',
+          body: `Anchor message ${index}\nAnchor detail ${index}\nAnchor tail ${index}`,
+        },
       },
     );
   }
@@ -73,7 +80,12 @@ async function openComposer(
     await expect(input).toBeVisible({ timeout: 15_000 });
     return input;
   };
-  return { composer: await openRoom(), openRoom };
+  return {
+    composer: openInitially
+      ? await openRoom()
+      : page.getByTestId('composer-input'),
+    openRoom,
+  };
 }
 
 /** Select `word` inside the composer, the way a user dragging over it would. */
@@ -486,7 +498,16 @@ test.describe('Composer formatting', () => {
     page,
     request,
   }) => {
-    const { composer, openRoom } = await openComposer(page, request, 'ah', 40);
+    // Configure the simple list before first opening the seeded room. Opening it once and
+    // then reloading lets its viewport-fill backfill cache all 40 events, so the reload no
+    // longer begins at the 20-event initial-sync boundary this test is meant to paginate.
+    const { composer, openRoom } = await openComposer(
+      page,
+      request,
+      'ah',
+      40,
+      false,
+    );
     const scroller = page.locator('.scroll');
 
     await seedPreference(page, 'trinity.flags.virtual-timeline', 'false');

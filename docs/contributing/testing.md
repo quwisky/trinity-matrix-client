@@ -352,6 +352,24 @@ Because retries are unconditional, a spec that fails once and passes on the retr
 reported as _flaky_ rather than failed, which is easy to skim past locally. Pass
 `--retries=0` when you want the honest first-attempt result.
 
+After sign-in, do not use `networkidle` as a navigation readiness signal. The live
+Matrix client deliberately holds a `/sync` long-poll open, so the network may never
+be idle even though the destination is fully interactive. Use `domcontentloaded`,
+then wait for the route or the concrete control the journey needs.
+
+The stable signed-in destination is Account-qualified: wait for `/rooms` with a
+non-empty `account` query parameter (use `waitForRooms`) before capturing a route or
+opening a modal that must preserve it. Playwright specs import the typed helper from
+`playwright/support/app.mts`; standalone protocol features import the same contract
+from `support/navigation.mjs`. A bare `/rooms` is the pre-repair spelling.
+
+Composer sends are single-flight. A local echo can paint before the SDK send settles,
+so consecutive-send journeys must enter the next draft, wait for `composer-send` to
+be enabled, and only then press Enter. Likewise, message rows can be replaced by a
+remote echo or receipt update while hovered; use `clickRowToolbar` or
+`clickRowMenuItem` instead of splitting hover, menu-open and item-click into unrelated
+steps.
+
 ### Android runs shared journeys in the installed WebView
 
 `pnpm e2e:android` delegates to the serialized `trinity-android:e2e` Nx host target and is

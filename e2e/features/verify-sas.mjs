@@ -23,6 +23,7 @@
 // Run standalone against an existing HS with:
 //   TRINITY_HS=… TRINITY_USER=… TRINITY_PASS=… node e2e/features/verify-sas.mjs
 import { mkdir } from 'node:fs/promises';
+import { waitForRooms } from '../support/navigation.mjs';
 import { serve } from '../support/serve.mjs';
 import { chromium } from 'playwright';
 
@@ -92,7 +93,7 @@ async function login(page, who) {
   await fillLabeledInput(page, 'Password', PASS);
   await page.getByRole('button', { name: 'Sign in' }).click();
 
-  await page.waitForURL('**/rooms', { timeout: 30_000 });
+  await waitForRooms(page);
   log(`${who}: logged in → /rooms`);
 }
 
@@ -139,7 +140,7 @@ async function setUpEncryption(page) {
     .getByRole('checkbox', { name: /I've saved my recovery key/ })
     .click();
   await page.getByRole('button', { name: 'Continue to Trinity' }).click();
-  await page.waitForURL('**/rooms', { timeout: 30_000 });
+  await waitForRooms(page);
   log('A: encryption set up → /rooms');
 }
 

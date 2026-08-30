@@ -29,6 +29,7 @@
 // MUST run sequentially with other e2e scripts (shared docker stack + www/ build).
 import { mkdir } from 'node:fs/promises';
 import { createHmac } from 'node:crypto';
+import { waitForRooms } from '../support/navigation.mjs';
 import { serve } from '../support/serve.mjs';
 import { REGISTRATION_SHARED_SECRET, SYNAPSE_HTTP } from '../synapse/start.mjs';
 import { chromium } from 'playwright';
@@ -175,7 +176,7 @@ async function login(page) {
   await fillLabeledInput(page, 'Username', USER);
   await fillLabeledInput(page, 'Password', PASS);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.waitForURL('**/rooms', { timeout: 30_000 });
+  await waitForRooms(page);
   log('logged in → /rooms');
 }
 

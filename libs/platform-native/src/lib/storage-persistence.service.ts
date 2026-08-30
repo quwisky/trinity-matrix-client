@@ -1,4 +1,15 @@
 import { Injectable } from '@angular/core';
+import {
+  type Observable,
+  catchError,
+  defer,
+  from,
+  of,
+  switchMap,
+  timeout,
+} from 'rxjs';
+
+const PERSISTENCE_REQUEST_TIMEOUT_MS = 1_000;
 
 /** Storage usage vs quota, in bytes plus a rounded percentage. */
 export interface StorageEstimate {
@@ -19,25 +30,32 @@ export interface StorageEstimate {
 export class StoragePersistenceService {
   /**
    * Ask the browser to make our storage persistent so it isn't evicted under pressure.
-   * Idempotent — resolves the granted state, or `false` where unavailable / denied.
+   * Idempotent — emits the granted state, or `false` where unavailable / denied.
    * The browser decides whether to prompt (never re-asks once persisted).
    */
-  async requestPersistence(): Promise<boolean> {
-    const storage = this.storageManager();
-    if (typeof storage?.persist !== 'function') {
-      return false;
-    }
-    try {
-      if (
-        typeof storage.persisted === 'function' &&
-        (await storage.persisted())
-      ) {
-        return true; // already persistent — don't re-ask
-      }
-      return await storage.persist();
-    } catch {
-      return false;
-    }
+  requestPersistence(): Observable<boolean> {
+    return defer(() => {
+      const storage = this.storageManager();
+      if (typeof storage?.persist !== 'function') return of(false);
+
+      const persisted =
+        typeof storage.persisted === 'function'
+          ? from(storage.persisted())
+          : of(false);
+      return persisted.pipe(
+        switchMap((alreadyPersistent) =>
+          alreadyPersistent ? of(true) : from(storage.persist()),
+        ),
+      );
+    }).pipe(
+      // Firefox may leave its best-effort permission request pending indefinitely when
+      // it cannot present a prompt. Storage durability must never deadlock app startup.
+      timeout({
+        first: PERSISTENCE_REQUEST_TIMEOUT_MS,
+        with: () => of(false),
+      }),
+      catchError(() => of(false)),
+    );
   }
 
   /** Current storage usage vs quota, or `null` when the estimate API is unavailable. */

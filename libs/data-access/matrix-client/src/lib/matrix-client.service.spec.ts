@@ -724,6 +724,77 @@ describe('MatrixClientService', () => {
   });
 
   describe('persisted Account startup outcomes', () => {
+    it('serializes the SDK crypto migration critical section across Accounts', async () => {
+      const firstClient = fakeClient();
+      const secondClient = fakeClient();
+      let finishFirst!: () => void;
+      firstClient.initRustCrypto.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finishFirst = resolve;
+          }),
+      );
+      vi.mocked(createClient)
+        .mockReturnValueOnce(firstClient as never)
+        .mockReturnValueOnce(secondClient as never);
+      const { svc } = setup();
+
+      const first = firstValueFrom(svc.restorePersisted(SESSION, 'activate'));
+      await vi.waitFor(() =>
+        expect(firstClient.initRustCrypto).toHaveBeenCalledOnce(),
+      );
+      const second = firstValueFrom(
+        svc.restorePersisted(SESSION_B, 'background'),
+      );
+
+      await Promise.resolve();
+      expect(secondClient.initRustCrypto).not.toHaveBeenCalled();
+      finishFirst();
+      await vi.waitFor(() =>
+        expect(secondClient.initRustCrypto).toHaveBeenCalledOnce(),
+      );
+      await expect(Promise.all([first, second])).resolves.toEqual([
+        { kind: 'ready' },
+        { kind: 'ready' },
+      ]);
+    });
+
+    it('continues the crypto initialization queue after an Account fails', async () => {
+      const firstClient = fakeClient();
+      const secondClient = fakeClient();
+      let failFirst!: (error: Error) => void;
+      firstClient.initRustCrypto.mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            failFirst = reject;
+          }),
+      );
+      vi.mocked(createClient)
+        .mockReturnValueOnce(firstClient as never)
+        .mockReturnValueOnce(secondClient as never);
+      const { svc } = setup();
+
+      const first = firstValueFrom(svc.restorePersisted(SESSION, 'activate'));
+      await vi.waitFor(() =>
+        expect(firstClient.initRustCrypto).toHaveBeenCalledOnce(),
+      );
+      const second = firstValueFrom(
+        svc.restorePersisted(SESSION_B, 'background'),
+      );
+
+      expect(secondClient.initRustCrypto).not.toHaveBeenCalled();
+      failFirst(new Error('first Account failed'));
+
+      await expect(first).resolves.toEqual({
+        kind: 'failed',
+        failure: 'crypto-failure',
+      });
+      await vi.waitFor(() =>
+        expect(secondClient.initRustCrypto).toHaveBeenCalledOnce(),
+      );
+      await expect(second).resolves.toEqual({ kind: 'ready' });
+    });
+
     it('activates a restored Account only after startup commits', async () => {
       const client = fakeClient();
       vi.mocked(createClient).mockReturnValue(client as never);

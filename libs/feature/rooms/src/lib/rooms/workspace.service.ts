@@ -122,7 +122,9 @@ export class WorkspaceService {
             return of(null);
           }
           return this.open(parsed.destination, {
-            source: 'restore',
+            // A canonical Router emission already projected its URL (Back/Forward,
+            // reload, or a deep link). A legacy URL still needs one canonical repair.
+            source: parsed.canonical ? 'restore' : 'repair',
             history: 'replace',
           }).pipe(
             map((outcome) => {

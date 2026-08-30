@@ -206,7 +206,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
           run: () => orderSession,
         }),
         MockProvider(StoragePersistenceService, {
-          requestPersistence: vi.fn().mockResolvedValue(true),
+          requestPersistence: vi.fn(() => of(true)),
         }),
       ],
     });

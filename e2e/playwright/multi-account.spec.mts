@@ -9,6 +9,7 @@ import {
   isAndroidE2E,
   login,
   synapseSession,
+  waitForRooms,
 } from './support/app.mts';
 import { registerUser } from './support/account.mts';
 import {
@@ -137,7 +138,7 @@ async function addAccountViaUi(
   await fillLabeledInput(page, 'Username', user);
   await fillLabeledInput(page, 'Password', pass);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.waitForURL('**/rooms', { timeout: 30_000 });
+  await waitForRooms(page);
 }
 
 /**
@@ -570,7 +571,8 @@ test.describe('Multiple accounts', () => {
     // Go straight to the re-auth login for the account (as the switcher's re-auth row
     // does). The homeserver step is skipped and the username is prefilled + locked.
     await page.goto(`/login?reauth=${encodeURIComponent(userId)}`, {
-      waitUntil: 'networkidle',
+      // The existing account keeps /sync open while re-authentication is shown.
+      waitUntil: 'domcontentloaded',
     });
     await expect(
       page.getByText('Sign in again to reconnect this account'),
@@ -582,7 +584,7 @@ test.describe('Multiple accounts', () => {
     // Complete the re-auth → back in the app on the same account.
     await fillLabeledInput(page, 'Password', session.pass as string);
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await page.waitForURL('**/rooms', { timeout: 30_000 });
+    await waitForRooms(page);
     await expect(page.locator('.userbar__handle')).toContainText(handleA);
   });
 

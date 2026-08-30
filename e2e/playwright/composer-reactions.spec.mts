@@ -4,7 +4,13 @@ import {
   type APIRequestContext,
   type Page,
 } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import {
+  isAndroidE2E,
+  login,
+  openMessageActionSheet,
+  synapseSession,
+  type SynapseSession,
+} from './support/app.mts';
 import { registerUser } from './support/account.mts';
 
 // End-to-end for the full emoji reaction picker: hover a message, open the quick
@@ -17,7 +23,12 @@ async function seedRoom(
   request: APIRequestContext,
   hs: string,
   runId: string,
-): Promise<{ user: SynapseSession; roomName: string }> {
+): Promise<{
+  user: SynapseSession;
+  roomName: string;
+  roomId: string;
+  headers: { Authorization: string };
+}> {
   const username = `react-user-${runId}`;
   const password = `${username}-pass`;
   const roomName = `Reactions E2E ${runId}`;
@@ -32,14 +43,20 @@ async function seedRoom(
       },
     })
     .then((r) => r.json());
-  await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-    headers: { Authorization: `Bearer ${access_token}` },
-    data: { name: roomName },
-  });
+  const headers = { Authorization: `Bearer ${access_token}` };
+  const roomId = await request
+    .post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers,
+      data: { name: roomName },
+    })
+    .then((response) => response.json())
+    .then((json) => json.room_id as string);
 
   return {
     user: { available: true, hs, user: username, pass: password },
     roomName,
+    roomId,
+    headers,
   };
 }
 
@@ -94,28 +111,42 @@ test.describe('Full emoji reaction picker', () => {
     request,
   }) => {
     const runId = `${Date.now().toString(36)}r`;
-    const { user, roomName } = await seedRoom(
+    const { user, roomName, roomId, headers } = await seedRoom(
       request,
       session.hs as string,
       runId,
     );
 
+    // These events only position the reaction target away from the timeline's top edge;
+    // seed them through the CS API so the picker test does not depend on four unrelated,
+    // consecutive composer sends settling under full-suite load.
+    const body = `react to me ${runId}`;
+    for (const [index, text] of ['one', 'two', 'three', body].entries()) {
+      await request.put(
+        `${session.hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/react-${runId}-${index}`,
+        { headers, data: { msgtype: 'm.text', body: text } },
+      );
+    }
+
     await login(page, user);
     await openRoom(page, roomName);
 
-    // Send a few messages first so the target isn't at the very top — the quick
+    // Seed a few messages first so the target isn't at the very top — the quick
     // reactions popover opens *above* the row, and a top-of-timeline row would clip
-    // it against the scroll container. React to the last message sent.
-    const composer = page.getByTestId('composer-input');
-    await composer.click();
-    const body = `react to me ${runId}`;
-    for (const text of ['one', 'two', 'three', body]) {
-      await composer.fill(text);
-      await composer.press('Enter');
-    }
+    // it against the scroll container. React to the last seeded message.
 
     const row = page.locator('.scroll .msg', { hasText: body });
     await expect(row.first()).toBeVisible({ timeout: 20_000 });
+
+    // Android deliberately has no hover toolbar: a long press opens the native action
+    // sheet, whose "More reactions…" action reaches the same full picker. Desktop keeps
+    // its hover toolbar → quick reactions → "+" interaction below.
+    const dialog = page.getByRole('dialog', { name: 'Pick a reaction' });
+    if (isAndroidE2E) {
+      const sheet = await openMessageActionSheet(page, row.first());
+      await sheet.getByTestId('sheet-react-more').click();
+      await expect(dialog).toBeVisible({ timeout: 10_000 });
+    }
 
     // Reveal the hover toolbar, open the quick reactions, then escalate to "+".
     // The hover → "Add reaction" → quick-reactions popover chain is a fragile pointer
@@ -129,12 +160,20 @@ test.describe('Full emoji reaction picker', () => {
     // the click then waits out the whole 120s test timeout on an element that is never
     // coming back. Bounding it at 5s turns that hang into another attempt instead.
     const reactMore = page.getByTestId('react-more');
-    await expect(async () => {
-      await row.first().hover();
-      await row.first().getByRole('button', { name: 'Add reaction' }).click();
-      await expect(reactMore).toBeVisible({ timeout: 5_000 });
-      await reactMore.click({ timeout: 5_000 });
-    }).toPass({ timeout: 30_000 });
+    if (!isAndroidE2E) {
+      await expect(async () => {
+        if (await dialog.isVisible()) return;
+        if (!(await reactMore.isVisible())) {
+          await row.first().hover();
+          await row
+            .first()
+            .getByRole('button', { name: 'Add reaction' })
+            .click({ timeout: 2_000 });
+        }
+        await reactMore.click({ timeout: 2_000 });
+        await expect(dialog).toBeVisible({ timeout: 2_000 });
+      }).toPass({ timeout: 30_000 });
+    }
 
     // The full picker opens in a dialog; drive it through its search box (emoji-mart
     // lazy-renders, so search first) and pick the first result.
@@ -144,7 +183,6 @@ test.describe('Full emoji reaction picker', () => {
     // kit's `emoji-picker` handle, so what separates this one from the composer's is the
     // dialog around it. Naming that dialog also asserts its accessible name, which is the
     // only thing a screen reader has to go on here.
-    const dialog = page.getByRole('dialog', { name: 'Pick a reaction' });
     const picker = dialog.getByTestId('emoji-picker');
     // emoji-mart is a heavy legacy library that lazy-renders — give the dialog the
     // same 20s headroom under load.

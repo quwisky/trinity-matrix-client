@@ -7,6 +7,7 @@ import {
 import {
   isAndroidE2E,
   login,
+  openMessageActionSheet,
   synapseSession,
   waitForSent,
   type SynapseSession,
@@ -44,6 +45,12 @@ async function sendLines(page: Page, lines: readonly string[]): Promise<void> {
     // persistence all hang off per-key input events. (Locator.type is deprecated.)
     await composer.pressSequentially(line);
   }
+  // A local echo can render before the authoritative send settles. Once this draft exists,
+  // wait for the actual single-flight control before Enter so the next send cannot be
+  // discarded. An empty composer intentionally keeps this control disabled.
+  await expect(page.getByTestId('composer-send')).toBeEnabled({
+    timeout: 20_000,
+  });
   await composer.press('Enter');
 }
 
@@ -229,7 +236,23 @@ test.describe('Message markdown', () => {
     await waitForSent(
       page.locator('.scroll .msg[data-mid]', { hasText: 'x = 1' }).first(),
     );
-    if (!isAndroidE2E) await pre.hover();
+    const row = page.locator('.msg', { has: pre }).first();
+    await expect(row).toHaveClass(/msg--cont/);
+
+    if (isAndroidE2E) {
+      // Installed touch hosts do not paint the web hover toolbar at all. The
+      // caption remains rendered, and message actions move to a long-press sheet.
+      await expect(row.locator('.msg__toolbar')).toHaveCount(0);
+      expect(
+        await pre.evaluate(
+          (element) => getComputedStyle(element, '::after').content,
+        ),
+      ).toContain('python');
+      await expect(await openMessageActionSheet(page, row)).toBeVisible();
+      return;
+    }
+
+    await pre.hover();
 
     const overlap = await page.evaluate(() => {
       const row = [...document.querySelectorAll('.msg')].find((m) =>
@@ -266,7 +289,6 @@ test.describe('Message markdown', () => {
       const captionRight = captionLeft + captionWidth;
       return {
         isContinuation: row.classList.contains('msg--cont'),
-        toolbarOpacity: getComputedStyle(toolbarEl).opacity,
         // Do the two boxes overlap at all? Asserting non-intersection rather than a vertical
         // gap holds however they are separated — the caption moved to the block's left when
         // the toolbar was raised over the row boundary, and a vertical-gap assertion would
@@ -280,14 +302,7 @@ test.describe('Message markdown', () => {
     });
 
     expect(overlap?.isContinuation).toBe(true);
-    if (isAndroidE2E) {
-      // Touch cannot enter the hover state measured on web. The caption is always
-      // visible and the toolbar stays concealed until a long press reveals this row,
-      // so intersecting dormant boxes do not overlap painted controls.
-      expect(overlap?.toolbarOpacity).toBe('0');
-    } else {
-      expect(overlap?.overlaps).toBe(false);
-    }
+    expect(overlap?.overlaps).toBe(false);
   });
 
   test('syntax-highlights a fenced block, in the theme’s colours', async ({

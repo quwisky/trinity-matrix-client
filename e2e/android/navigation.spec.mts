@@ -1,9 +1,9 @@
-import type { APIRequestContext } from '@playwright/test';
-import { openSettingsFromRooms } from '../playwright/journeys/navigation.mts';
+import type { APIRequestContext, Locator, Page } from '@playwright/test';
 import {
   login,
   synapseSession,
   type SynapseSession,
+  waitForRooms,
 } from '../playwright/support/app.mts';
 import { registerUser } from '../playwright/support/account.mts';
 import { expect, test } from './fixtures.mts';
@@ -21,6 +21,26 @@ const composerSession: SynapseSession = {
   pass: composerPass,
 };
 const composerRoomName = `Android insert ${composerRunId}`;
+
+async function openNativeSettingsFromRooms(
+  page: Page,
+  activate: (control: Locator) => Promise<void>,
+): Promise<void> {
+  await expect(page).toHaveURL(
+    (url) =>
+      url.pathname.startsWith('/rooms') && url.searchParams.has('account'),
+    { timeout: 20_000 },
+  );
+
+  await activate(page.getByTestId('open-settings'));
+  await page.waitForURL((url) => url.pathname === '/settings', {
+    timeout: 20_000,
+  });
+  await expect(
+    page.getByRole('heading', { name: 'Settings', exact: true }),
+  ).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('navigation', { name: 'Settings sections' })).toBeVisible();
+}
 
 async function seedComposerRoom(request: APIRequestContext): Promise<void> {
   await registerUser(request, composerUser, composerPass);
@@ -62,10 +82,10 @@ test.describe('Android navigation', () => {
     page,
   }) => {
     await login(page, session, app.navigate);
-    await openSettingsFromRooms(page, (control) => app.touch(control));
+    await openNativeSettingsFromRooms(page, (control) => app.touch(control));
 
-    await app.device.input.press('Back');
-    await page.waitForURL(/\/rooms(\/|$)/, { timeout: 20_000 });
+    await app.pressBack();
+    await waitForRooms(page, 20_000);
     await expect(page.locator('trn-rooms')).toBeVisible({ timeout: 20_000 });
   });
 
@@ -76,7 +96,7 @@ test.describe('Android navigation', () => {
     await login(page, session, app.navigate);
 
     const relaunchedPage = await app.relaunch();
-    await relaunchedPage.waitForURL(/\/rooms(\/|$)/, { timeout: 30_000 });
+    await waitForRooms(relaunchedPage, 30_000);
     await expect(relaunchedPage.locator('trn-rooms')).toBeVisible({ timeout: 30_000 });
   });
 
@@ -92,7 +112,7 @@ test.describe('Android navigation', () => {
       page,
     }) => {
       await login(page, session, app.navigate);
-      await openSettingsFromRooms(page, (control) => app.touch(control));
+      await openNativeSettingsFromRooms(page, (control) => app.touch(control));
 
       const appearance = page.getByTestId('settings-nav-appearance');
       await expect(appearance).toBeVisible({ timeout: 20_000 });
@@ -104,7 +124,7 @@ test.describe('Android navigation', () => {
         page.getByRole('heading', { name: 'Appearance' }),
       ).toBeFocused();
 
-      await app.device.input.press('Back');
+      await app.pressBack();
       await page.waitForURL(/\/settings$/, { timeout: 20_000 });
       await expect(appearance).toBeFocused();
       const horizontalOverflow = await page.evaluate(
@@ -114,8 +134,8 @@ test.describe('Android navigation', () => {
       );
       expect(horizontalOverflow).toBeLessThanOrEqual(1);
 
-      await app.device.input.press('Back');
-      await page.waitForURL(/\/rooms(\/|$)/, { timeout: 20_000 });
+      await app.pressBack();
+      await waitForRooms(page, 20_000);
     });
   });
 
@@ -152,10 +172,6 @@ test.describe('Android navigation', () => {
         () => window.visualViewport?.height ?? window.innerHeight,
       );
       await app.touch(composer);
-      await app.device.input.type('keyboard proof');
-      // The emulator keyboard may auto-capitalize the first word; either value proves that
-      // input came through the native IME rather than CDP's synthetic fill path.
-      await expect(composer).toHaveValue(/keyboard proof/i);
       await expect
         .poll(
           () =>
@@ -165,7 +181,14 @@ test.describe('Android navigation', () => {
           { timeout: 10_000 },
         )
         .toBeLessThan(fullViewportHeight - 100);
-
+      // Android's input-text transport treats an embedded space as an argument
+      // boundary. Drive the space as a real key event so both words reach the IME.
+      await app.inputText('keyboard');
+      await app.pressKey(62);
+      await app.inputText('proof');
+      // The emulator keyboard may auto-capitalize the first word; either value proves that
+      // input came through the native IME rather than CDP's synthetic fill path.
+      await expect(composer).toHaveValue(/keyboard proof/i);
       const trigger = page.getByTestId('composer-insert');
       await app.touch(trigger);
       const sheet = page.getByTestId('action-sheet-surface');
@@ -205,7 +228,7 @@ test.describe('Android navigation', () => {
       expect(geometry.bottom).toBeLessThanOrEqual(
         geometry.viewportBottom + 1,
       );
-      await app.device.input.press('Back');
+      await app.pressBack();
       await expect(sheet).toBeHidden();
       await expect(trigger).toBeFocused();
       await expect(trigger).toHaveAttribute('aria-expanded', 'false');

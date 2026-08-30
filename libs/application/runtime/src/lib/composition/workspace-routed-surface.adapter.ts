@@ -28,15 +28,20 @@ export class WorkspaceRoutedSurfaceAdapter {
   private readonly location = inject(Location);
   private readonly back = inject(WorkspaceBackService);
   private readonly active = signal<WorkspaceSurface | null>(null);
+  private currentUrl: string | null = null;
+  private previousUrl: string | null = null;
 
   /** Application Runtime owns route projection and Back registration for one session. */
   run(): Observable<void> {
     return new Observable((subscriber) => {
+      this.currentUrl = this.router.url;
       this.update(this.router.url);
       const routes = this.router.events
         .pipe(filter((event) => event instanceof NavigationEnd))
         .subscribe({
           next: (event) => {
+            this.previousUrl = this.currentUrl;
+            this.currentUrl = event.urlAfterRedirects;
             this.update(event.urlAfterRedirects);
             subscriber.next();
           },
@@ -50,6 +55,8 @@ export class WorkspaceRoutedSurfaceAdapter {
         routes.unsubscribe();
         unregister();
         this.active.set(null);
+        this.currentUrl = null;
+        this.previousUrl = null;
       };
     });
   }
@@ -67,6 +74,10 @@ export class WorkspaceRoutedSurfaceAdapter {
         application.section !== null &&
         !matchesQuery(MD_QUERY)
       ) {
+        if (this.settingsSection(this.previousUrl) === null) {
+          this.location.back();
+          return of('dismissed' as const);
+        }
         return this.navigate('/settings');
       }
       if (application.kind === 'trust') {
@@ -102,6 +113,14 @@ export class WorkspaceRoutedSurfaceAdapter {
       return false;
     }
     return sameWorkspaceApplicationSurface(active.surface, surface.surface);
+  }
+
+  private settingsSection(url: string | null): string | null | undefined {
+    if (!url) return undefined;
+    const segments = this.router
+      .parseUrl(url)
+      .root.children['primary']?.segments.map((segment) => segment.path);
+    return segments?.[0] === 'settings' ? (segments[1] ?? null) : undefined;
   }
 
   private update(url: string): void {

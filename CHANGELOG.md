@@ -539,6 +539,32 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Signing in no longer freezes the authenticated app when browser notification permission is
+  unavailable.** Notification listener reconciliation now reacts only to Account membership;
+  a synchronous permission warning cannot become an accidental Angular signal dependency and
+  retrigger itself until the renderer is saturated.
+
+- **Restoring more than one account no longer races Rust crypto startup.** Each account still
+  restores independently, while the SDK's process-wide crypto initialization step is serialized
+  so one stored account cannot fail another account's migration state.
+
+- **Browser Back and newly joined or created destinations now reach the requested Workspace
+  reliably.** Canonical history destinations commit without redundant same-URL navigation, while
+  directory joins, directory-created direct messages, and newly created spaces wait for the Matrix
+  room to become observable before selecting it.
+
+- **Optional browser capabilities no longer hold the startup screen open forever.** Storage
+  persistence requests and service-worker update checks now settle with a non-blocking warning
+  when a browser or test host leaves their permission or registration promise pending.
+
+- **Unread dividers and compact message actions again match their visual contracts.** The unread
+  marker now uses the design-system control emphasis weight, while four precise-pointer message
+  actions fit their bounded continuation row and still retain the 24px target floor.
+
+- **Sign-in stays inside small phone screens when larger text is enabled.** The edge-to-edge
+  authentication card now scrolls its contents within the available app surface instead of
+  extending below the viewport when startup warnings reduce its height.
+
 - **Room mutes now stay in sync with other Matrix clients.** A mute set from FluffyChat or
   another device—including the modern empty-action Matrix rule—updates Trinity's room list
   live and shows a crossed-out bell without a

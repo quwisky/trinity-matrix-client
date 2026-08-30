@@ -1,5 +1,12 @@
 import { test, expect, type APIRequestContext } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import {
+  clickRowMenuItem,
+  isAndroidE2E,
+  login,
+  openMessageActionSheet,
+  synapseSession,
+  type SynapseSession,
+} from './support/app.mts';
 import { registerUser } from './support/account.mts';
 
 // Covers the notification half of quoting: carrying someone else's words must not notify
@@ -108,18 +115,12 @@ test.describe('Quoting does not notify the people it quotes', () => {
 
     const row = page.locator('.scroll .msg', { hasText: named });
     await expect(row.first()).toBeVisible({ timeout: 30_000 });
-    // Hover and click as one retried step, rather than two statements. The ⋮ is
-    // hover-revealed, and this room has a second member still syncing, so the timeline can
-    // re-render underneath: Angular replaces the row element, the pointer has not moved,
-    // and CSS :hover no longer applies to the new node. click() then waits out its whole
-    // timeout on a button that will never become visible — which is exactly how this
-    // spec flaked in CI ("215 × waiting for element to be visible, enabled and stable").
-    // Retrying re-hovers whatever row is current.
-    await expect(async () => {
-      await row.first().hover();
-      await row.first().getByTestId('msg-more').click({ timeout: 2_000 });
-    }).toPass({ timeout: 30_000 });
-    await page.getByTestId('msg-quote').click();
+    if (isAndroidE2E) {
+      const sheet = await openMessageActionSheet(page, row.first());
+      await sheet.getByTestId('sheet-quote').click();
+    } else {
+      await clickRowMenuItem(row.first(), page.getByTestId('msg-quote'));
+    }
 
     const composer = page.getByTestId('composer-input');
     await expect(composer).toHaveValue(`> ${named}\n\n`, { timeout: 10_000 });

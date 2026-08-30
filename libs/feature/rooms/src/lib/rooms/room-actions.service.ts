@@ -7,6 +7,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { PublicRoomsService } from '@trinity/data-access/discovery';
 import {
   RoomLibraryService,
+  RoomReadinessService,
   SpacesService,
   AccountScopeService,
 } from '@trinity/data-access/room-library';
@@ -45,6 +46,7 @@ export class RoomActionsService {
   private readonly routing = inject(AccountRoutingService);
   private readonly status = inject(ShellStatusService);
   private readonly rooms = inject(RoomLibraryService);
+  private readonly roomReadiness = inject(RoomReadinessService);
   private readonly spaces = inject(SpacesService);
   private readonly publicRooms = inject(PublicRoomsService);
   private readonly roomSettings = inject(RoomSettingsService);
@@ -130,14 +132,28 @@ export class RoomActionsService {
     if (!joined) {
       return;
     }
-    if (joined.isSpace) {
-      // A joined space lands in the rail — select it there.
-      this.nav.onSelectSpace(joined.roomId);
-    } else {
-      // A joined public room is a spaceless non-DM, so it lives in the Rooms view
-      // (Home shows DMs only) — select both coordinates in one Workspace command.
-      this.nav.onSelectRoomInScope(joined.roomId, { kind: 'rooms' });
-    }
+    const accountId = this.store.activeAccountId();
+    if (!accountId) return;
+    // The join endpoint can close the dialog before /sync publishes the Room. Workspace
+    // correctly rejects an unavailable destination, so cross that finite readiness barrier
+    // before asking it to select the new Room or Space.
+    this.roomReadiness
+      .waitForRoom(accountId, joined.roomId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          if (joined.isSpace) {
+            // A joined space lands in the rail — select it there.
+            this.nav.onSelectSpace(joined.roomId);
+          } else {
+            // A joined public room is a spaceless non-DM, so it lives in the Rooms view
+            // (Home shows DMs only) — select both coordinates in one Workspace command.
+            this.nav.onSelectRoomInScope(joined.roomId, { kind: 'rooms' });
+          }
+        },
+        error: () =>
+          void this.status.showError('Joined, but the room is not ready yet.'),
+      });
   }
 
   /** Move to a room's upgraded successor (from the tombstone banner): join it, then open it. */

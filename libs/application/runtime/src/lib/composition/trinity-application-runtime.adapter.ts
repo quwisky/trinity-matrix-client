@@ -227,9 +227,9 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
           : [];
       return forkJoin({
         ordering: this.spaceOrder.hydrateKnownAccounts().pipe(map(() => null)),
-        persistence: from(this.storagePersistence.requestPersistence()).pipe(
-          map(() => null),
-        ),
+        persistence: this.storagePersistence
+          .requestPersistence()
+          .pipe(map(() => null)),
         updates: this.initialUpdateCheck(),
       }).pipe(
         map(({ updates }) =>

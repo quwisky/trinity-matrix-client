@@ -1,7 +1,9 @@
 import { test, expect, type APIRequestContext } from './support/fixtures.mts';
 import {
-  clickRowToolbar,
+  clickRowMenuItem,
+  isAndroidE2E,
   login,
+  openMessageActionSheet,
   synapseSession,
   type SynapseSession,
 } from './support/app.mts';
@@ -213,16 +215,14 @@ test.describe('Pin messages', () => {
     // gated — see message-row.component.scss) before its ⋯ trigger is
     // clickable. The room has only just opened, so the timeline can still shift
     // under the cursor: re-hover per attempt rather than clicking once.
-    await clickRowToolbar(
-      targetRow.first(),
-      targetRow.first().getByTestId('msg-more'),
-    );
-
     // The ⋯ overlay menu renders at page root (CDK overlay), not nested under
     // the row — select its "Pin message" item at page scope.
-    const pinItem = page.getByTestId('msg-pin');
-    await pinItem.waitFor({ state: 'visible', timeout: 10_000 });
-    await pinItem.click();
+    if (isAndroidE2E) {
+      const sheet = await openMessageActionSheet(page, targetRow.first());
+      await sheet.getByTestId('sheet-pin').click();
+    } else {
+      await clickRowMenuItem(targetRow.first(), page.getByTestId('msg-pin'));
+    }
 
     // Assert the toolbar's pin button now carries a count badge of 1 — wait on
     // this app state (the pin round-tripping through sendStateEvent →

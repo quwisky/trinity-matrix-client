@@ -11,7 +11,10 @@ import {
   type TestInfo,
 } from '@playwright/test';
 import { _android, type AndroidDevice } from 'playwright';
-import type { Navigate } from '../playwright/support/app.mts';
+import {
+  webNavigate,
+  type Navigate,
+} from '../playwright/support/app.mts';
 import type {
   AuthCallbackKind,
   AuthPlatform,
@@ -24,9 +27,55 @@ const packageName = 'eu.qwky.trinity';
 const secondaryPackageName = 'eu.qwky.trinity.secondary';
 const appOrigin = 'https://localhost';
 const exec = promisify(execFile);
+type AndroidWebView = ReturnType<AndroidDevice['webViews']>[number];
+const attachedWebViews = new WeakSet<AndroidWebView>();
 
 async function shell(device: AndroidDevice, command: string): Promise<string> {
   return (await device.shell(command)).toString('utf8').trim();
+}
+
+async function clearPackageData(
+  device: AndroidDevice,
+  pkg: string,
+): Promise<void> {
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    await shell(device, `am force-stop ${pkg}`);
+    const result = await shell(device, `pm clear ${pkg}`);
+    if (result !== 'Success') {
+      throw new Error(`pm clear ${pkg} failed: ${result || '<empty output>'}`);
+    }
+    const [pid, residualPreferences] = await Promise.all([
+      shell(device, `pidof ${pkg}`),
+      shell(
+        device,
+        `run-as ${pkg} find shared_prefs -type f -print 2>/dev/null`,
+      ),
+    ]);
+    if (!pid && !residualPreferences) return;
+  }
+  throw new Error(`pm clear ${pkg} left a running process or preferences behind`);
+}
+
+async function waitForDurableActiveAccount(
+  device: AndroidDevice,
+  pkg: string,
+  accountId: string,
+): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  const expected = `activeUserId&quot;:&quot;${accountId}`;
+  let registry = '';
+  while (Date.now() < deadline) {
+    registry = await shell(
+      device,
+      `run-as ${pkg} cat shared_prefs/CapacitorStorage.xml 2>/dev/null`,
+    );
+    if (registry.includes(expected)) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(
+    `Active Account ${accountId} was not durable before process restart; ` +
+      `preferences=${registry || '<empty>'}`,
+  );
 }
 
 async function setEmulatorLocation(
@@ -59,19 +108,26 @@ async function enableSelfSignedTls(page: Page): Promise<void> {
 
 async function launchApp(
   device: AndroidDevice,
-  previousPid?: number,
+  excludedWebViews: ReadonlySet<AndroidWebView> = new Set(),
 ): Promise<{ page: Page; pid: number }> {
-  return launchPackage(device, packageName, `${packageName}/.MainActivity`, previousPid);
+  return launchPackage(
+    device,
+    packageName,
+    `${packageName}/.MainActivity`,
+    excludedWebViews,
+  );
 }
 
 async function launchPackage(
   device: AndroidDevice,
   pkg: string,
   component: string,
-  previousPid?: number,
+  excludedWebViews: ReadonlySet<AndroidWebView> = new Set(),
 ): Promise<{ page: Page; pid: number }> {
+  const staleWebViews = new Set(excludedWebViews);
   let startOutput = '';
   for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const launchedAfter = Date.now() - 1_000;
     startOutput = await shell(device, `am start -W -n ${component}`);
     const deadline = Date.now() + 30_000;
     while (Date.now() < deadline) {
@@ -81,22 +137,31 @@ async function launchPackage(
           .map(Number)
           .filter(Number.isFinite),
       );
-      const webView = device
-        .webViews()
-        .find(
-          (candidate) =>
-            candidate.pkg() === pkg &&
-            livePids.has(candidate.pid()) &&
-            candidate.pid() !== previousPid,
-        );
-      if (webView) {
+      const candidates = device.webViews().filter(
+        (candidate) =>
+          candidate.pkg() === pkg &&
+          livePids.has(candidate.pid()) &&
+          !attachedWebViews.has(candidate) &&
+          !staleWebViews.has(candidate),
+      );
+      for (const webView of candidates) {
         const page = await webView.page();
+        const documentCreatedAt = await page.evaluate(
+          () => performance.timeOrigin,
+        );
+        attachedWebViews.add(webView);
+        // Playwright's Android driver may retain a closed target after Android
+        // rapidly reuses its PID. The driver can materialize that target as a new
+        // wrapper, so object identity and live pid checks are not enough. A real
+        // WebView for this Activity launch necessarily owns a new document epoch.
+        if (documentCreatedAt < launchedAfter) continue;
         await enableSelfSignedTls(page);
         await page.waitForLoadState('domcontentloaded');
         return { page, pid: webView.pid() };
       }
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
+    for (const candidate of device.webViews()) staleWebViews.add(candidate);
     await shell(device, `am force-stop ${pkg}`);
   }
   const livePids = await shell(device, `pidof ${pkg}`);
@@ -115,6 +180,9 @@ interface AndroidApp {
   device: AndroidDevice;
   readonly page: Page;
   navigate: Navigate;
+  inputText(text: string): Promise<void>;
+  pressKey(keyCode: number): Promise<void>;
+  pressBack(): Promise<void>;
   touch(control: Locator): Promise<void>;
   relaunch(): Promise<Page>;
 }
@@ -273,6 +341,14 @@ async function configurePage(
   }
   if (needsReload) {
     await page.reload({ waitUntil: 'domcontentloaded' });
+    // The reload wrapper proves that Angular replaced the static boot shell,
+    // but Application Runtime can still be restoring while the emulator is
+    // under sustained load. The package was cleared before this fixture, so
+    // the login form is the finite ready surface for launch-option adapters.
+    await page.getByLabel('Homeserver', { exact: true }).waitFor({
+      state: 'visible',
+      timeout: 60_000,
+    });
   }
 
   // The emulator drops a console location sent before a native listener exists.
@@ -433,13 +509,10 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
 
   app: async ({ androidDevice }, use, testInfo) => {
     await shell(androidDevice, 'logcat -b all -c');
-    await shell(androidDevice, `am force-stop ${packageName}`);
-    const clearResult = await shell(androidDevice, `pm clear ${packageName}`);
-    if (clearResult !== 'Success') {
-      throw new Error(`pm clear ${packageName} failed: ${clearResult || '<empty output>'}`);
-    }
+    const staleWebViews = new Set(androidDevice.webViews());
+    await clearPackageData(androidDevice, packageName);
 
-    let { page, pid } = await launchApp(androidDevice);
+    let { page } = await launchApp(androidDevice, staleWebViews);
     await page.getByLabel('Homeserver', { exact: true }).waitFor({
       state: 'visible',
       timeout: 60_000,
@@ -456,11 +529,7 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
       tracePaths.push(path);
     };
 
-    const navigate: Navigate = async (targetPage, path) => {
-      await targetPage.goto(new URL(path, appOrigin).href, {
-        waitUntil: 'networkidle',
-      });
-    };
+    const navigate: Navigate = webNavigate;
 
     const app: AndroidApp = {
       device: androidDevice,
@@ -468,6 +537,47 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
         return page;
       },
       navigate,
+      async inputText(text: string): Promise<void> {
+        const sdkRoot =
+          process.env['ANDROID_HOME'] ?? process.env['ANDROID_SDK_ROOT'];
+        if (!sdkRoot) {
+          throw new Error(
+            'ANDROID_HOME or ANDROID_SDK_ROOT is required for Android input',
+          );
+        }
+        await exec(
+          join(sdkRoot, 'platform-tools/adb'),
+          ['-s', androidDevice.serial(), 'shell', 'input', 'text', text],
+          { timeout: 10_000 },
+        );
+      },
+      async pressKey(keyCode: number): Promise<void> {
+        const sdkRoot =
+          process.env['ANDROID_HOME'] ?? process.env['ANDROID_SDK_ROOT'];
+        if (!sdkRoot) {
+          throw new Error(
+            'ANDROID_HOME or ANDROID_SDK_ROOT is required for Android input',
+          );
+        }
+        await exec(
+          join(sdkRoot, 'platform-tools/adb'),
+          [
+            '-s',
+            androidDevice.serial(),
+            'shell',
+            'input',
+            'keyevent',
+            String(keyCode),
+          ],
+          { timeout: 10_000 },
+        );
+      },
+      async pressBack(): Promise<void> {
+        // Playwright's instrumentation-level Android input is accepted on API 36
+        // without reaching the foreground Activity. Host adb traverses Android's
+        // real Back dispatcher and Capacitor AppPlugin.
+        await this.pressKey(4);
+      },
       async touch(control: Locator): Promise<void> {
         const box = await control.boundingBox();
         if (!box) throw new Error('Cannot touch an element without a bounding box');
@@ -495,8 +605,24 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
       },
       async relaunch(): Promise<Page> {
         await stopTrace();
+        const accountId = new URL(page.url()).searchParams.get('account');
+        if (!accountId) {
+          throw new Error(
+            `Cannot verify authenticated restart without an Account-qualified route: ${page.url()}`,
+          );
+        }
+        // Capacitor Preferences resolves after SharedPreferences.apply(), whose
+        // disk write is asynchronous. Observe the on-disk Active Account before
+        // force-stop so this journey proves restart restoration rather than a
+        // race between Android persistence and the test's process kill.
+        await waitForDurableActiveAccount(
+          androidDevice,
+          packageName,
+          accountId,
+        );
+        const previousWebViews = new Set(androidDevice.webViews());
         await shell(androidDevice, `am force-stop ${packageName}`);
-        ({ page, pid } = await launchApp(androidDevice, pid));
+        ({ page } = await launchApp(androidDevice, previousWebViews));
         activeContext = page.context();
         await activeContext.tracing.start({
           screenshots: true,
@@ -545,6 +671,12 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
 
   touchPlatform: async ({ app }, use) => {
     await use({
+      async tap(page, target): Promise<void> {
+        if (page !== app.page) {
+          throw new Error('Android touch input must target the primary app WebView');
+        }
+        await app.touch(target);
+      },
       async swipe(page): Promise<void> {
         if (page !== app.page) {
           throw new Error('Android touch input must target the primary app WebView');
@@ -562,20 +694,22 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
       await use({
         async launch(): Promise<Page> {
           if (secondaryPage) return secondaryPage;
-          await shell(androidDevice, `am force-stop ${secondaryPackageName}`);
-          const clearResult = await shell(
+          const staleWebViews = new Set(androidDevice.webViews());
+          await clearPackageData(androidDevice, secondaryPackageName);
+          const permissionResult = await shell(
             androidDevice,
-            `pm clear ${secondaryPackageName}`,
+            `pm grant ${secondaryPackageName} android.permission.POST_NOTIFICATIONS`,
           );
-          if (clearResult !== 'Success') {
+          if (permissionResult) {
             throw new Error(
-              `pm clear ${secondaryPackageName} failed: ${clearResult || '<empty output>'}`,
+              `Could not grant notifications to ${secondaryPackageName}: ${permissionResult}`,
             );
           }
           ({ page: secondaryPage } = await launchPackage(
             androidDevice,
             secondaryPackageName,
             `${secondaryPackageName}/${packageName}.MainActivity`,
+            staleWebViews,
           ));
           await secondaryPage.getByLabel('Homeserver', { exact: true }).waitFor({
             state: 'visible',
@@ -725,7 +859,10 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
       hasTouch,
       isMobile,
       launchOptions,
-      permissions: permissions ?? [],
+      // Push registration requests the Android 13+ notification permission after
+      // login. Ordinary journeys grant it up front so an OS-owned prompt cannot
+      // consume their first hardware Back press. A spec can still override this.
+      permissions: permissions ?? ['notifications'],
       userAgent,
       viewport,
     });
