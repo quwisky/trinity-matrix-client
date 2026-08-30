@@ -1,8 +1,8 @@
 import {
   RoomSettingsService,
   RoomAliasesService,
-  PublicRoomsService,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-administration';
+import { PublicRoomsService } from '@trinity/data-access/rooms';
 import {
   SHARED_MOCKS,
   RoomsTimelineStub,

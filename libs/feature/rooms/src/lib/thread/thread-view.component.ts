@@ -52,7 +52,7 @@ import {
   type ConversationThreadOutcome,
   type MessageView,
 } from '@trinity/data-access/timeline';
-import { RoomLibraryService } from '@trinity/data-access/room-library';
+import { RoomMembersService } from '@trinity/data-access/room-administration';
 import { messagePermalink, quoteBlock } from '@trinity/util/matrix';
 import {
   MessageRowComponent,
@@ -125,7 +125,7 @@ export class ThreadViewComponent implements OnDestroy {
   private readonly conversations = inject(ConversationRuntime);
   private readonly openedThread = signal<ConversationThread | null>(null);
   private readonly messageSheet = inject(MessageActionSheetService);
-  private readonly rooms = inject(RoomLibraryService);
+  private readonly roomMembers = inject(RoomMembersService);
   private readonly reactionPicker = inject(ReactionPickerService);
   private readonly forwardSvc = inject(ForwardService);
   private readonly reportSvc = inject(ReportService);
@@ -145,7 +145,7 @@ export class ThreadViewComponent implements OnDestroy {
 
   /** The room's members, for the thread composer's @-mention autocomplete. */
   readonly members = computed(() => {
-    return this.rooms.membersFor(this.roomId())();
+    return this.roomMembers.membersFor(this.roomId())();
   });
 
   /** Id of the thread message being edited, or null. */

@@ -1,7 +1,7 @@
 import type { Signal } from '@angular/core';
 import { disabled } from '@angular/forms/signals';
 import type { SchemaPath } from '@angular/forms/signals';
-import type { JoinRule } from '@trinity/data-access/rooms';
+import type { JoinRule } from '@trinity/data-access/room-administration';
 
 /**
  * The three fields the room and space settings dialogs both have. Each dialog's own model

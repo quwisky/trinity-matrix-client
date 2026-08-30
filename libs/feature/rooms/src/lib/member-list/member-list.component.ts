@@ -13,7 +13,13 @@ import {
   viewChild,
 } from '@angular/core';
 import { AvatarComponent } from '@trinity/components/avatar';
-import { type MemberSummary } from '@trinity/data-access/room-library';
+import {
+  MEMBER_ROLE_LABEL,
+  MEMBER_ROLE_ORDER,
+  type MemberRole,
+  type MemberSummary,
+  memberRole,
+} from '@trinity/data-access/room-administration';
 import { PresenceService } from '@trinity/data-access/profile';
 import { type PresenceState } from '@trinity/util/matrix';
 import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
@@ -25,12 +31,6 @@ import {
   computeWindow,
   type WindowResult,
 } from '../message-list/virtual-window';
-import {
-  MEMBER_ROLE_LABEL,
-  MEMBER_ROLE_ORDER,
-  memberRole,
-  type MemberRole,
-} from '../shared/member-role';
 
 /** A member decorated with their live presence and role, for the section list. */
 interface MemberRow {

@@ -9,17 +9,18 @@ import { TrnButton } from '@trinity/components/button';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import {
-  RoomLibraryService,
+  MEMBER_ROLE_LABEL,
   type MemberSummary,
-} from '@trinity/data-access/room-library';
+  RoomMembersService,
+  memberRole,
+} from '@trinity/data-access/room-administration';
 import { AvatarComponent } from '@trinity/components/avatar';
-import { MEMBER_ROLE_LABEL, memberRole } from '../shared/member-role';
 
 /**
  * Dialog listing a space's members, so they can be inspected and moderated the way a
  * room's can.
  *
- * A space *is* a room, so `RoomLibraryService.membersOf` and `RoomModerationService` already
+ * A space *is* a room, so `RoomMembersService.membersOf` and `RoomModerationService` already
  * answer correctly for a space id — the gap was never the data, only that nothing asked.
  * Picking a member CLOSES this dialog resolving them, and the host then opens the same
  * member-info panel used from a room, carrying the same kick/ban/power-level capabilities.
@@ -43,10 +44,10 @@ export class SpaceMembersComponent {
 
   private readonly dialogRef =
     inject<TrnDialogRef<MemberSummary | null>>(TrnDialogRef);
-  private readonly rooms = inject(RoomLibraryService);
+  private readonly membersService = inject(RoomMembersService);
 
   readonly members = computed<readonly MemberSummary[]>(() => {
-    return this.rooms.membersFor(this.spaceId())();
+    return this.membersService.membersFor(this.spaceId())();
   });
 
   /**

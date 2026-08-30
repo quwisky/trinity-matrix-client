@@ -137,7 +137,7 @@ describe('Conversation Runtime production boundary', () => {
   it('binds Room Administration governance at the application composition root', () => {
     const main = source('apps/trinity/src/main.ts');
     const governance = source(
-      'libs/data-access/rooms/src/lib/room-message-governance.service.ts',
+      'libs/data-access/room-administration/src/lib/room-message-governance.service.ts',
     );
 
     expect(main).toContain('provide: CONVERSATION_MESSAGE_POLICY');

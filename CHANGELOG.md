@@ -87,6 +87,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Room governance now lives behind Room Administration.** Joined-member summaries, roles,
+  moderation, aliases, power-level policy, room configuration, and Conversation pin/redaction
+  decisions now share the explicit `@trinity/data-access/room-administration` boundary. Member
+  and ban rosters reconcile only from authoritative Matrix room state; moderation no longer edits
+  membership views optimistically. Commands remain cold RxJS Observables and expose typed recovery metadata
+  for live permission changes, invalid input, homeserver rejection, and partially completed avatar
+  updates. Conversation and Room Library reach governance only through application-composed policy
+  ports, and the former governance exports have been removed from the Discovery and Room Library
+  entrypoints.
+
 - **Room relationships now live behind Room Library.** Joined room and space summaries,
   invitations, account scope, favourites, ordering, filtering, hierarchy, mixed-account
   projections and aggregate unread state now share the explicit
@@ -95,8 +105,8 @@ All notable changes to this project are documented here. The format is based on
   whose persistence or SDK failures remain observable by their callers.
   Workspace, Settings, Search, badge coordination and application startup consume that boundary
   instead of the broad legacy rooms service; the standalone invites entrypoint and its migration
-  allowlist are gone. Room governance and remote discovery remain in their narrower rooms adapter
-  for the follow-up Room Administration and Discovery migrations.
+  allowlist are gone. Remote discovery remains in its narrower rooms adapter for the follow-up
+  Discovery migration.
 
 - **Native notifications and unread badges now share capability contracts.** Live notification
   intents are presented through Web Notifications, Capacitor Local Notifications, or Electron's

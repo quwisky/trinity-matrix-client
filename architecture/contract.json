@@ -82,18 +82,6 @@
   ],
   "multiCapabilityProjects": [
     {
-      "project": "data-access-room-library",
-      "capabilities": ["room-administration", "room-library"],
-      "removeBy": "#318",
-      "reason": "Room Administration still consumes the live member projection and shared action-permission adapter while its dedicated boundary is being extracted."
-    },
-    {
-      "project": "data-access-rooms",
-      "capabilities": ["discovery", "room-administration"],
-      "removeBy": "#318, #321",
-      "reason": "Room governance and remote discovery still share one data-access library."
-    },
-    {
       "project": "data-access-search",
       "capabilities": ["conversations", "discovery", "room-library"],
       "removeBy": "#321",
@@ -133,8 +121,8 @@
     },
     "roomLibraryServiceLines": {
       "path": "libs/data-access/room-library/src/lib/room-library.service.ts",
-      "value": 1095,
-      "removeBy": "#318, #321"
+      "value": 813,
+      "removeBy": "#321"
     }
   }
 }

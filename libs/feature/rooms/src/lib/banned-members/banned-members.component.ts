@@ -1,29 +1,30 @@
-import { type BannedMember } from '@trinity/data-access/rooms';
 import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  OnInit,
   computed,
+  effect,
   inject,
   input,
   signal,
+  untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnActionAvailability, TrnButton } from '@trinity/components/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import { TrnToastService } from '@trinity/components/overlay';
-import { RoomModerationService } from '@trinity/data-access/rooms';
 import {
   RoomActionPermissionsService,
   type ActionAvailability,
-} from '@trinity/data-access/room-library';
+  type BannedMember,
+  RoomMembersService,
+  RoomModerationService,
+} from '@trinity/data-access/room-administration';
 
 /**
  * The room's banned members, with an Unban action per row. Rendered inside the room
- * settings dialog for viewers whose power level lets them ban. Loads the current ban
- * list from {@link RoomModerationService} on init and drops a member from the list once
- * their unban succeeds (the synced client also reflects it through its state listeners).
+ * settings dialog for viewers whose power level lets them ban. The list is a live Room
+ * Administration projection and changes only when authoritative Matrix room state does.
  */
 @Component({
   selector: 'trn-banned-members',
@@ -31,24 +32,33 @@ import {
   templateUrl: './banned-members.component.html',
   imports: [TrnButton, TrnActionAvailability, TrnTooltip],
 })
-export class BannedMembersComponent implements OnInit {
+export class BannedMembersComponent {
   readonly roomId = input.required<string>();
 
   private readonly moderation = inject(RoomModerationService);
+  private readonly members = inject(RoomMembersService);
   private readonly permissions = inject(RoomActionPermissionsService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
-  /** The current ban list (seeded on init, trimmed as members are unbanned). */
-  readonly banned = signal<readonly BannedMember[]>([]);
+  /** The current authoritative ban list for this Room. */
+  readonly banned = computed(() => this.members.bannedFor(this.roomId())());
   /** User IDs whose unban is in flight (disables that row's button). */
   private readonly pending = signal<ReadonlySet<string>>(new Set());
 
   readonly isEmpty = computed(() => this.banned().length === 0);
 
-  ngOnInit(): void {
-    this.banned.set(this.moderation.bannedMembers(this.roomId()));
-  }
+  /** Release an accepted unban's pending marker once its sync echo removes the row. */
+  private readonly _reconcilePending = effect(() => {
+    const bannedIds = new Set(this.banned().map((member) => member.userId));
+    untracked(() => {
+      const current = this.pending();
+      const next = new Set([...current].filter((id) => bannedIds.has(id)));
+      if (next.size !== current.size) {
+        this.pending.set(next);
+      }
+    });
+  });
 
   /** Whether this member's unban is currently in flight. */
   isPending(userId: string): boolean {
@@ -59,7 +69,7 @@ export class BannedMembersComponent implements OnInit {
     return this.permissions.unban(this.roomId(), userId);
   }
 
-  /** Lift the member's ban; on success remove them from the list, else toast. */
+  /** Lift the member's ban; the authoritative sync echo removes the row. */
   unban(member: BannedMember): void {
     if (
       this.isPending(member.userId) ||
@@ -73,10 +83,6 @@ export class BannedMembersComponent implements OnInit {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {
-          this.setPending(member.userId, false);
-          this.banned.update((list) =>
-            list.filter((m) => m.userId !== member.userId),
-          );
           this.toast.show(`Unbanned ${member.name}.`, {
             duration: 3000,
             variant: 'success',

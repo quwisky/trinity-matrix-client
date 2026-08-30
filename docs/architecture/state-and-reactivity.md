@@ -183,6 +183,21 @@ through a composition-root port. Successful requests do not publish optimistic s
 authoritative room-state event does. Unpin may remove an unloaded or redacted stale id, while a
 new pin must resolve to a message in that Conversation.
 
+## Room Administration
+
+Room Administration owns authoritative joined-member and ban summaries, role classification and
+assignable presets, aliases, power-level policy, room configuration, and the redaction/pin decisions
+used by Conversations. Its membership projection listens to Matrix room-state events and publishes
+per-Room read-only signals; successful moderation waits for the SDK sync echo instead of editing a
+membership view optimistically.
+
+Configuration and moderation commands are cold finite RxJS Observables. Permission is re-read from
+the latest Room state inside subscription, and failures carry value-safe recovery metadata for
+permission refresh, invalid input, homeserver rejection, and a completed upload whose later avatar
+state write failed. The application composition root adapts Room Administration into Room Library's
+invite/space-curation policy and Conversations' redaction/pin policies, so neither capability imports
+the governance implementation.
+
 Each handle also exposes an exact-Conversation media command. Host-acquired `File` objects are
 immediately staged by Media Pipeline and replaced with an opaque `StagedMediaReference`; the
 Conversation sees that reference, a caption, and its immutable Account-and-Room key, never raw
@@ -358,17 +373,24 @@ multi-account design.
 
 ## Who takes the whole primitive, and who takes only the batching
 
-Seven services take the full `projectFromClient`:
+Fourteen services take the full `projectFromClient`:
 
-| Service               | Library                             |
-| --------------------- | ----------------------------------- |
-| `RoomLibraryService`  | `@trinity/data-access/room-library` |
-| `SpacesService`       | `@trinity/data-access/room-library` |
-| `InvitesService`      | `@trinity/data-access/room-library` |
-| `CryptoService`       | `@trinity/data-access/crypto`       |
-| `VerificationService` | `@trinity/data-access/crypto`       |
-| `DevicesService`      | `@trinity/data-access/crypto`       |
-| `PresenceService`     | `@trinity/data-access/profile`      |
+| Service                        | Library                                    |
+| ------------------------------ | ------------------------------------------ |
+| `RoomLibraryService`           | `@trinity/data-access/room-library`        |
+| `SpacesService`                | `@trinity/data-access/room-library`        |
+| `InvitesService`               | `@trinity/data-access/room-library`        |
+| `SpaceChildrenService`         | `@trinity/data-access/room-library`        |
+| `RoomActionPermissionsService` | `@trinity/data-access/room-administration` |
+| `RoomMembersService`           | `@trinity/data-access/room-administration` |
+| `CryptoService`                | `@trinity/data-access/crypto`              |
+| `VerificationService`          | `@trinity/data-access/crypto`              |
+| `DevicesService`               | `@trinity/data-access/crypto`              |
+| `PresenceService`              | `@trinity/data-access/profile`             |
+| `ImagePackService`             | `@trinity/data-access/media`               |
+| `ImagePackManagementService`   | `@trinity/data-access/media`               |
+| `NotificationSoundService`     | `@trinity/data-access/notifications`       |
+| `WidgetsService`               | `@trinity/data-access/widgets`             |
 
 The library column is the import alias, and it mirrors the directory:
 `@trinity/data-access/room-library` is `libs/data-access/room-library`. The Nx project name is
@@ -411,20 +433,17 @@ interesting ones:
   a room flagged unread on another device would not surface until some unrelated event happened to
   rebuild the list.
 
-**Two listeners are deliberately kept out of the coalesced rebuild.** `RoomStateEvent.Members` and
-`RoomEvent.MyMembership` are attached through `bind`/`unbind` rather than `events`, because they
-should not trigger an O(rooms) rebuild. They write the per-room member signals
-(`membersFor(roomId)`) instead, so a member list stays reactive without re-running on every sync
-tick and read receipt — and `RoomStateEvent.Members` carries the room it happened in, so only that
-room's signal is written. The member handler does call `projection.schedule()` in one narrow case:
-when the changed member is a DM peer, because a DM has no `m.room.avatar` and that member's picture
-_is_ the room's row avatar.
+**Three event responses use hand-bound listeners.** `RoomStateEvent.Members` and
+`RoomMemberEvent.Typing` stay out of the main event list: a member change schedules the O(rooms)
+projection only when a DM peer's profile affects the room row, while typing feeds a separate
+per-room coalescer. `RoomEvent.MyMembership` deliberately has both roles — it remains in the main
+event list to rebuild rooms after a join or leave, and its hand-bound handler also clears typing
+state for a room that was left. Joined-member and ban projections live in `RoomMembersService`, not
+Room Library.
 
-**`reset` clears everything the projection owns** — the memoised member cache, the rooms signal,
-the direct-room ids, the DM peer set and the per-room member signals — so a disconnected service
-holds nothing stale. That last one is the easiest to forget and the one a stale read is visible
-through: the member signals hold VALUES read from a particular client, so `rebuild` also re-reads
-them whenever the client itself changed.
+**`reset` clears everything the projection owns** — the rooms signal, direct-room ids, DM peer set,
+pending typing work, and per-room typing state — so a disconnected service holds nothing stale.
+Room Administration independently resets its authoritative membership caches and signals.
 
 **Optimistic writes are explicit and reversible.** `setMarkedUnread` is the one place a write
 cannot wait for the server, and the comment explains why: `setRoomAccountData` is a bare PUT with

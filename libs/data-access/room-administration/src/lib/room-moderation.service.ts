@@ -1,10 +1,11 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, defer, from, map, tap, throwError } from 'rxjs';
+import { Observable, defer, from, map, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { RoomActionPermissionsService } from './room-action-permissions.service';
 import {
-  RoomActionPermissionsService,
-  RoomLibraryService,
-} from '@trinity/data-access/room-library';
+  recoverRoomAdministrationRequest,
+  roomAdministrationNotSignedIn,
+} from './room-administration-error';
 
 /** Which moderation actions the current user may take against a specific member. */
 export interface ModerationCaps {
@@ -16,15 +17,6 @@ export interface ModerationCaps {
   myPower: number;
 }
 
-/** A currently-banned room member, for the ban list. */
-export interface BannedMember {
-  userId: string;
-  /** Display name if the member is known, else the bare user ID. */
-  name: string;
-  /** The reason recorded on the ban, if any. */
-  reason: string | null;
-}
-
 /**
  * Room moderation actions against a member — kick and ban — plus the power-level check
  * that gates them. Writes are cold Observables (fire on subscribe); the synced client
@@ -33,26 +25,20 @@ export interface BannedMember {
 @Injectable({ providedIn: 'root' })
 export class RoomModerationService {
   private readonly matrix = inject(MatrixClientService);
-  private readonly rooms = inject(RoomLibraryService);
   private readonly actionPermissions = inject(RoomActionPermissionsService);
 
   /** Remove a member from the room (they may rejoin if invited / it's public). Cold. */
   kick(roomId: string, userId: string, reason?: string): Observable<void> {
     return defer(() => {
       if (!this.matrix.isInitialized) {
-        return throwError(() => new Error('Not signed in.'));
+        return throwError(() => roomAdministrationNotSignedIn('kick-member'));
       }
       this.actionPermissions.assert(
         this.actionPermissions.member(roomId, userId).kick,
       );
-      const client = this.matrix.instance;
-      return from(client.kick(roomId, userId, reason)).pipe(
-        tap(() => {
-          if (this.matrix.isInitialized && this.matrix.instance === client) {
-            this.rooms.removeMemberFromProjection(roomId, userId);
-          }
-        }),
+      return from(this.matrix.instance.kick(roomId, userId, reason)).pipe(
         map(() => void 0),
+        recoverRoomAdministrationRequest('kick-member'),
       );
     });
   }
@@ -61,19 +47,14 @@ export class RoomModerationService {
   ban(roomId: string, userId: string, reason?: string): Observable<void> {
     return defer(() => {
       if (!this.matrix.isInitialized) {
-        return throwError(() => new Error('Not signed in.'));
+        return throwError(() => roomAdministrationNotSignedIn('ban-member'));
       }
       this.actionPermissions.assert(
         this.actionPermissions.member(roomId, userId).ban,
       );
-      const client = this.matrix.instance;
-      return from(client.ban(roomId, userId, reason)).pipe(
-        tap(() => {
-          if (this.matrix.isInitialized && this.matrix.instance === client) {
-            this.rooms.removeMemberFromProjection(roomId, userId);
-          }
-        }),
+      return from(this.matrix.instance.ban(roomId, userId, reason)).pipe(
         map(() => void 0),
+        recoverRoomAdministrationRequest('ban-member'),
       );
     });
   }
@@ -82,13 +63,14 @@ export class RoomModerationService {
   unban(roomId: string, userId: string): Observable<void> {
     return defer(() => {
       if (!this.matrix.isInitialized) {
-        return throwError(() => new Error('Not signed in.'));
+        return throwError(() => roomAdministrationNotSignedIn('unban-member'));
       }
       this.actionPermissions.assert(
         this.actionPermissions.unban(roomId, userId),
       );
       return from(this.matrix.instance.unban(roomId, userId)).pipe(
         map(() => void 0),
+        recoverRoomAdministrationRequest('unban-member'),
       );
     });
   }
@@ -104,11 +86,16 @@ export class RoomModerationService {
   ): Observable<void> {
     return defer(() => {
       if (!this.matrix.isInitialized) {
-        return throwError(() => new Error('Not signed in.'));
+        return throwError(() =>
+          roomAdministrationNotSignedIn('report-message'),
+        );
       }
       return from(
         this.matrix.instance.reportEvent(roomId, eventId, -100, reason),
-      ).pipe(map(() => void 0));
+      ).pipe(
+        map(() => void 0),
+        recoverRoomAdministrationRequest('report-message'),
+      );
     });
   }
 
@@ -120,14 +107,19 @@ export class RoomModerationService {
   ): Observable<void> {
     return defer(() => {
       if (!this.matrix.isInitialized) {
-        return throwError(() => new Error('Not signed in.'));
+        return throwError(() =>
+          roomAdministrationNotSignedIn('set-power-level'),
+        );
       }
       this.actionPermissions.assert(
         this.actionPermissions.role(roomId, userId, level),
       );
       return from(
         this.matrix.instance.setPowerLevel(roomId, userId, level),
-      ).pipe(map(() => void 0));
+      ).pipe(
+        map(() => void 0),
+        recoverRoomAdministrationRequest('set-power-level'),
+      );
     });
   }
 
@@ -144,27 +136,5 @@ export class RoomModerationService {
       setPower: permissions.setPower.available,
       myPower: permissions.myPower,
     };
-  }
-
-  /** The room's currently-banned members, sorted by name — for the ban list. */
-  bannedMembers(roomId: string): BannedMember[] {
-    if (!this.matrix.isInitialized) {
-      return [];
-    }
-    const room = this.matrix.instance.getRoom(roomId);
-    if (!room) {
-      return [];
-    }
-    return room
-      .getMembersWithMembership('ban')
-      .map((member) => {
-        const reason = member.events?.member?.getContent()?.['reason'];
-        return {
-          userId: member.userId,
-          name: member.name || member.userId,
-          reason: typeof reason === 'string' && reason ? reason : null,
-        };
-      })
-      .sort((a, b) => a.name.localeCompare(b.name));
   }
 }

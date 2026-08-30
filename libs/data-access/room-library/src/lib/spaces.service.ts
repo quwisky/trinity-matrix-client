@@ -32,7 +32,10 @@ import {
 } from '@trinity/util/matrix';
 import { spaceChildIdsOf } from './room-projection';
 import { compareOrder } from './space-child-order';
-import { RoomActionPermissionsService } from './room-action-permissions.service';
+import {
+  ROOM_LIBRARY_GOVERNANCE_POLICY,
+  assertRoomLibraryGovernance,
+} from './room-library-governance-policy';
 
 /** Children fetched per `getRoomHierarchy` page. */
 const HIERARCHY_LIMIT = 100;
@@ -142,7 +145,7 @@ type SpaceChildBase = Omit<SpaceChildRoom, 'joined'>;
 @Injectable({ providedIn: 'root' })
 export class SpacesService {
   private readonly matrix = inject(MatrixClientService);
-  private readonly actionPermissions = inject(RoomActionPermissionsService);
+  private readonly governance = inject(ROOM_LIBRARY_GOVERNANCE_POLICY);
 
   private readonly _spaces = signal<SpaceSummary[]>([]);
   /** The user's joined spaces, sorted by name; live as the client syncs. */
@@ -392,8 +395,8 @@ export class SpacesService {
     options: CreateRoomInSpaceOptions,
   ): Observable<string> {
     return defer(() => {
-      this.actionPermissions.assert(
-        this.actionPermissions.room(spaceId).curateSpace,
+      assertRoomLibraryGovernance(
+        this.governance.authorize(spaceId, 'curate-space'),
       );
       const client = this.matrix.instance;
       const via = serverNameOf(client.getUserId());
@@ -474,8 +477,8 @@ export class SpacesService {
    */
   removeRoomFromSpace(spaceId: string, childId: string): Observable<void> {
     return defer(() => {
-      this.actionPermissions.assert(
-        this.actionPermissions.room(spaceId).curateSpace,
+      assertRoomLibraryGovernance(
+        this.governance.authorize(spaceId, 'curate-space'),
       );
       return from(
         this.matrix.instance.sendStateEvent(

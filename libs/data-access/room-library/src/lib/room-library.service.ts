@@ -1,11 +1,4 @@
-import {
-  Injectable,
-  type Signal,
-  type WritableSignal,
-  computed,
-  inject,
-  signal,
-} from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import {
   ClientEvent,
   EventType,
@@ -48,10 +41,12 @@ import {
   buildRoomSummary,
   compareRoomSummaries,
   directMapOf,
-  initialOf,
   isMarkedUnread,
 } from './room-projection';
-import { RoomActionPermissionsService } from './room-action-permissions.service';
+import {
+  ROOM_LIBRARY_GOVERNANCE_POLICY,
+  assertRoomLibraryGovernance,
+} from './room-library-governance-policy';
 
 /** Fields a {@link RoomLibraryService.createRoom} call accepts. */
 export interface CreateRoomOptions {
@@ -118,15 +113,6 @@ export interface RoomSummary {
   directUserId?: string;
 }
 
-/**
- * The answer for a room with no members to report — an unknown room, or no room at all.
- *
- * Shared and frozen rather than a fresh `[]` per call, so {@link RoomLibraryService.membersFor}'s
- * identity invariant holds on these paths too: a fresh array would re-notify every consumer
- * of the null-room signal on each write, which is the landing state and the state after
- * every `closeOpenRoom()`.
- */
-const EMPTY_MEMBERS: readonly MemberSummary[] = Object.freeze([]);
 const EMPTY_TYPING: readonly string[] = Object.freeze([]);
 
 /** Whether two typing-name lists say the same thing, in order. */
@@ -134,31 +120,9 @@ function sameNames(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((name, i) => name === b[i]);
 }
 
-/** A joined member shown in the member list. */
-export interface MemberSummary {
-  userId: string;
-  name: string;
-  initial: string;
-  avatarMxc: string | null;
-  /**
-   * The member's power level in the room. By Matrix convention 100 is an admin and
-   * 50 a moderator; the member list groups members into role sections from this.
-   */
-  powerLevel: number;
-  /**
-   * Whether this member created the room (`m.room.create`'s sender).
-   *
-   * A fact about the room, not a rank: it can never be granted, transferred or revoked,
-   * which is why it is a separate flag rather than another power level. Surfaces use it
-   * to answer "whose room is this?", which a power level alone cannot — every admin the
-   * creator has since promoted sits at the same 100.
-   */
-  isCreator: boolean;
-}
-
 /**
- * Read model over the synced `MatrixClient`: exposes joined rooms and members as
- * plain view models (components never touch `matrix-js-sdk` directly). Signals are
+ * Read model over the synced `MatrixClient`: exposes joined rooms as plain view models
+ * (components never touch `matrix-js-sdk` directly). Signals are
  * recomputed as the client syncs; `connect()` wires the listeners.
  *
  * Spaces (the server rail) are a separate read model — see {@link SpacesService}.
@@ -168,7 +132,7 @@ export interface MemberSummary {
 export class RoomLibraryService {
   private readonly matrix = inject(MatrixClientService);
   private readonly privacy = inject(PrivacySettingsService);
-  private readonly actionPermissions = inject(RoomActionPermissionsService);
+  private readonly governance = inject(ROOM_LIBRARY_GOVERNANCE_POLICY);
 
   /**
    * The other party in each of our DMs, refreshed by {@link refresh}. A DM has no
@@ -187,10 +151,8 @@ export class RoomLibraryService {
 
   /**
    * Our OWN membership changed (joined/left a room). The rebuild is already covered —
-   * `RoomEvent.MyMembership` is in the projection's coalesced event list — so this only
-   * re-reads the member lists. Kept separate from {@link onMemberChanged} because the two
-   * events carry entirely different arguments: this one names no room, so every watched
-   * list has to be re-read rather than one.
+   * `RoomEvent.MyMembership` is in the projection's coalesced event list. This handler
+   * clears transient typing state for a Room we left; Room Administration owns rosters.
    */
   private readonly onMyMembership = (room?: { roomId?: string }): void => {
     // A room we have left stops syncing, so its members never emit the "stopped typing"
@@ -199,7 +161,6 @@ export class RoomLibraryService {
     // writes nothing.
     const roomId = room?.roomId;
     if (roomId) {
-      this.pendingMemberRemovals.delete(roomId);
       this.dirtyTypingRooms.delete(roomId);
       const current = this._typingByRoom();
       if (roomId in current) {
@@ -208,7 +169,6 @@ export class RoomLibraryService {
         this._typingByRoom.set(next);
       }
     }
-    this.scheduleMemberReread(null);
   };
 
   /** Someone in a room joined, left, or changed their profile. */
@@ -217,17 +177,7 @@ export class RoomLibraryService {
     state: RoomState,
     member: RoomMember,
   ): void => {
-    const pending = this.pendingMemberRemovals.get(state.roomId);
-    if (pending?.has(member.userId) && member.membership !== 'join') {
-      pending.delete(member.userId);
-      if (!pending.size) {
-        this.pendingMemberRemovals.delete(state.roomId);
-      }
-    }
-    // Dispatched by the room the event happened in. `RoomStateEvent.Members` fans out per
-    // member — one `m.room.power_levels` change emits once for every member of the room —
-    // and it is unfiltered, so it also fires for rooms nothing is watching.
-    this.scheduleMemberReread(state.roomId);
+    void state;
     // A DM peer's profile can arrive or change without a sync — `loadMembersIfNeeded`
     // from opening a member list, say — and their avatar IS the room's picture. Gated
     // on the DM map so a member event in a large room does not rebuild the whole room
@@ -236,130 +186,6 @@ export class RoomLibraryService {
       this.projection.schedule();
     }
   };
-
-  /**
-   * One signal per room whose member list someone has watched — never pruned, because
-   * consumers hold the `asReadonly()` handle it returns and dropping the entry would
-   * silently detach them. Bounded in practice by rooms opened in one session.
-   */
-  private readonly memberSignals = new Map<
-    string,
-    WritableSignal<readonly MemberSummary[]>
-  >();
-
-  /** Successful kick/ban writes waiting for their authoritative membership sync echo. */
-  private readonly pendingMemberRemovals = new Map<string, Set<string>>();
-
-  /** Rooms whose member list needs re-reading on the next flush. */
-  private readonly dirtyMemberRooms = new Set<string>();
-  /** Set when an event names no room, so every watched list is re-read. */
-  private allMembersDirty = false;
-
-  /**
-   * Member re-reads are batched, because `RoomStateEvent.Members` fans out PER MEMBER —
-   * `room-state.js` emits it inside a loop, so setting a room's state once emits N times —
-   * and each re-read is O(members): `getJoinedMembers()` plus the fingerprint runs before
-   * the memo can hit. Un-batched, a bulk membership set is O(members squared) on the main
-   * thread. One flush per turn makes it O(members).
-   */
-  private readonly memberFlusher = coalesce(() => {
-    if (this.allMembersDirty) {
-      this.allMembersDirty = false;
-      this.dirtyMemberRooms.clear();
-      this.rereadMembers(null);
-      return;
-    }
-    const rooms = [...this.dirtyMemberRooms];
-    this.dirtyMemberRooms.clear();
-    for (const roomId of rooms) {
-      this.rereadMembers(roomId);
-    }
-  });
-
-  /** Queue a member re-read; `null` means "every watched room" (the event named none). */
-  private scheduleMemberReread(roomId: string | null): void {
-    if (roomId === null) {
-      this.allMembersDirty = true;
-    } else if (this.memberSignals.has(roomId)) {
-      this.dirtyMemberRooms.add(roomId);
-    } else {
-      return; // nothing watching that room — do not wake the flusher for it
-    }
-    this.memberFlusher.schedule();
-  }
-
-  /**
-   * A room's joined members, live — the read every member surface should use.
-   *
-   * Memoized per room id, so several surfaces watching one room share a signal, and seeded
-   * synchronously so a caller may read it in a field initializer.
-   *
-   * Replaces a `memberRevision` counter that every consumer had to remember to read before
-   * calling {@link membersOf}. Forgetting it produced a list that silently never updated,
-   * and reading it subscribed you to membership changes in EVERY room rather than the one
-   * you were showing.
-   */
-  membersFor(roomId: string | null): Signal<readonly MemberSummary[]> {
-    const key = roomId ?? '';
-    let members = this.memberSignals.get(key);
-    if (!members) {
-      // No `equal` needed: `membersOf` memoizes on a fingerprint and hands back the
-      // IDENTICAL array when a room's membership is unchanged, so the default `Object.is`
-      // already stops an unchanged re-read from propagating.
-      members = signal<readonly MemberSummary[]>(this.membersOf(roomId));
-      this.memberSignals.set(key, members);
-    }
-    return members.asReadonly();
-  }
-
-  /**
-   * Remove a successfully moderated member from the live roster before the sync echo.
-   *
-   * Matrix moderation requests resolve after the homeserver accepts the write, while the
-   * SDK-owned room state changes only when `/sync` returns the membership event. The member
-   * panel closes as soon as the request succeeds, so leaving the projection untouched makes
-   * the reopened roster briefly show the removed member. This updates only Trinity's view;
-   * the normal member event remains authoritative and re-reads the SDK state afterward.
-   */
-  removeMemberFromProjection(roomId: string, userId: string): void {
-    // The authoritative membership event can beat the HTTP response back to us. Only
-    // create a tombstone while the SDK still reports the member as joined; otherwise a
-    // late response would hide a legitimate later rejoin forever because there is no
-    // second non-join event left to clear it.
-    const room = this.matrix.isInitialized
-      ? this.matrix.instance.getRoom(roomId)
-      : null;
-    const stillJoined = room
-      ?.getJoinedMembers()
-      .some((member) => member.userId === userId);
-    if (stillJoined) {
-      const pending =
-        this.pendingMemberRemovals.get(roomId) ?? new Set<string>();
-      pending.add(userId);
-      this.pendingMemberRemovals.set(roomId, pending);
-    }
-
-    const members = this.memberSignals.get(roomId);
-    if (!members) {
-      return;
-    }
-    const current = members();
-    const next = current.filter((member) => member.userId !== userId);
-    if (next.length !== current.length) {
-      members.set(next);
-    }
-  }
-
-  /** Re-read one watched room's members, or every one when the event names no room. */
-  private rereadMembers(roomId: string | null): void {
-    if (roomId !== null) {
-      this.memberSignals.get(roomId)?.set(this.membersOf(roomId));
-      return;
-    }
-    for (const [key, members] of this.memberSignals) {
-      members.set(this.membersOf(key || null));
-    }
-  }
 
   private readonly _typingByRoom = signal<Record<string, readonly string[]>>(
     {},
@@ -376,12 +202,12 @@ export class RoomLibraryService {
   private readonly dirtyTypingRooms = new Map<string, string[]>();
 
   /**
-   * Coalesced, and deliberately its own flusher rather than either existing one.
+   * Coalesced, and deliberately separate from the Room-list projection.
    *
-   * `memberFlusher` is gated on `memberSignals.has(roomId)` — it only serves rooms someone
-   * is watching — and adding `RoomMemberEvent.Typing` to the projection's `events` list
-   * would run a full room-list rebuild and re-sort on every typing EDU from every room.
-   * This writes one key.
+   * Adding `RoomMemberEvent.Typing` to the projection's `events` list would run a full
+   * room-list rebuild and re-sort on every typing EDU from every room. This writes one key.
+   * Room Administration owns membership projections separately, so there is no roster
+   * flusher here for typing work to share.
    */
   private readonly typingFlusher = coalesce(() => {
     const rooms = [...this.dirtyTypingRooms];
@@ -451,16 +277,6 @@ export class RoomLibraryService {
     this.typingFlusher.schedule();
   };
 
-  // Memoized member projection: a cached, sorted list per room keyed by a cheap
-  // fingerprint of its joined members, plus one shared collator (avoids spinning up
-  // a fresh locale comparator on every sort). `localeCompare()` with no args is
-  // equivalent to a default `Intl.Collator`, so the order is unchanged.
-  private readonly memberCollator = new Intl.Collator();
-  private readonly memberCache = new Map<
-    string,
-    { sig: string; list: MemberSummary[] }
-  >();
-
   private readonly _rooms = signal<RoomSummary[]>([]);
   readonly rooms = this._rooms.asReadonly();
 
@@ -511,21 +327,10 @@ export class RoomLibraryService {
     ],
     // refresh() writes signals, which schedule change detection, so the room list and
     // unread badges surface immediately.
-    rebuild: (client) => {
-      this.refresh();
-      // Only when the client itself changed — a re-login or an account switch. The member
-      // signals hold values read from the OUTGOING client, and nothing else re-reads them:
-      // their writers are bound to the active client only.
-      if (client !== this.lastMemberClient) {
-        this.lastMemberClient = client;
-        this.rereadMembers(null);
-      }
-    },
-    // Bound by hand rather than added to `events` because these must NOT be coalesced
-    // into the rebuild: they feed the per-room member signals alone, which is what keeps a
-    // member list reactive without re-running the room-list rebuild on every sync tick.
-    // RoomState.members and MyMembership are what change who is in a room (or their
-    // profile), and `onMemberChanged` needs the event's arguments to know WHICH room.
+    rebuild: () => this.refresh(),
+    // Bound by hand because typing has its own per-Room coalescer and member changes only
+    // rebuild the Room list when a DM peer's profile affects its summary. Room
+    // Administration owns the member-roster projection itself.
     bind: (client) => {
       client.on(RoomStateEvent.Members, this.onMemberChanged);
       client.on(RoomEvent.MyMembership, this.onMyMembership);
@@ -537,42 +342,20 @@ export class RoomLibraryService {
       client.off(RoomMemberEvent.Typing, this.onTypingChanged);
     },
     reset: () => {
-      this.memberCache.clear();
       this._rooms.set([]);
       this._directRoomIds.set(new Set());
       this.dmPeers = new Set();
-      // A flush queued before the disconnect would otherwise run after this and repopulate
-      // from the OUTGOING client — the stale-list-survives-a-switch bug the loop below
-      // exists to prevent, reintroduced a microtask late. `projectFromClient` cancels its
-      // own coalescer for exactly this reason; it cannot know about this one.
-      this.memberFlusher.cancel();
-      this.pendingMemberRemovals.clear();
       // The typing map is protected one layer earlier too: its flusher reads
       // `projection.client()` and returns when there is none, so a late flush cannot
-      // repopulate from the OUTGOING client the way `memberFlusher` could. Cancelling is
-      // kept for symmetry and to skip a pointless microtask — measured, removing it reds
-      // nothing on its own. What the suite does pin is the outcome: the map is empty and
-      // the listener detached after a disconnect.
+      // repopulate from the outgoing client. Cancelling also skips that pointless
+      // microtask. The suite pins the outcome: the map is empty and the listener detached
+      // after a disconnect. Reset also explicitly owns every scheduled task this service
+      // creates.
       this.typingFlusher.cancel();
       this.dirtyTypingRooms.clear();
       this._typingByRoom.set({});
-      // The member signals are part of the read model too. Leaving them holding the
-      // outgoing client's members is what makes a stale list survive a switch. The shared
-      // empty list, not a fresh `[]`, or every disconnect re-notifies every consumer.
-      for (const members of this.memberSignals.values()) {
-        members.set(EMPTY_MEMBERS);
-      }
     },
   });
-
-  /**
-   * The client the member signals were last read against.
-   *
-   * They are values, not lazy reads, so a new client has to re-read them — and only a NEW
-   * client, because `rebuild` also runs on every coalesced sync and re-reading every
-   * watched room there would undo the point of dispatching on `state.roomId`.
-   */
-  private lastMemberClient: MatrixClient | null = null;
 
   /**
    * Attach sync listeners and do the first read. Idempotent per client (e.g. the
@@ -599,53 +382,6 @@ export class RoomLibraryService {
   ): RoomLibrarySelectionAvailability {
     const client = this.matrix.clientFor(accountId);
     return client?.getRoom(roomId) ? 'available' : 'unavailable';
-  }
-
-  /**
-   * Joined members of a room (empty if the room is unknown), sorted by name — a one-shot
-   * read. A surface that must stay live wants {@link membersFor}.
-   *
-   * The sorted list is memoized per room against a cheap fingerprint of its joined members,
-   * so a re-read reuses the same array — and the same object identity — when this room's
-   * membership is unchanged, instead of re-sorting every call. That identity is what lets
-   * {@link membersFor} write on every member event without waking its consumers: an
-   * unchanged room re-reads to the same reference and `Object.is` stops there.
-   */
-  membersOf(roomId: string | null): readonly MemberSummary[] {
-    if (!roomId || !this.matrix.isInitialized) {
-      return EMPTY_MEMBERS;
-    }
-    const room = this.matrix.instance.getRoom(roomId);
-    if (!room) {
-      return EMPTY_MEMBERS;
-    }
-    const pendingRemovals = this.pendingMemberRemovals.get(roomId);
-    const joined = pendingRemovals?.size
-      ? room
-          .getJoinedMembers()
-          .filter((member) => !pendingRemovals.has(member.userId))
-      : room.getJoinedMembers();
-    // `powerLevel` is part of the fingerprint so a promotion/demotion (which fires
-    // RoomState.members and keeps userId/name/avatar unchanged) still invalidates the
-    // cache and re-partitions the member list into its role sections.
-    const sig = joined
-      .map(
-        (m) =>
-          `${m.userId}\x1f${m.name}\x1f${m.getMxcAvatarUrl() ?? ''}\x1f${m.powerLevel}`,
-      )
-      .join('\x1e');
-    const cached = this.memberCache.get(roomId);
-    if (cached && cached.sig === sig) {
-      return cached.list;
-    }
-    // Deliberately NOT part of the fingerprint above: `m.room.create` is immutable, so
-    // the creator cannot change while the room exists and can never invalidate the cache.
-    const creatorId = room.getCreator();
-    const list = joined
-      .map((m) => this.toMember(m, creatorId))
-      .sort((a, b) => this.memberCollator.compare(a.name, b.name));
-    this.memberCache.set(roomId, { sig, list });
-    return list;
   }
 
   /**
@@ -943,7 +679,7 @@ export class RoomLibraryService {
       if (!isValidUserId(userId)) {
         return throwError(() => new Error(`Invalid user id: ${userId}`));
       }
-      this.actionPermissions.assert(this.actionPermissions.room(roomId).invite);
+      assertRoomLibraryGovernance(this.governance.authorize(roomId, 'invite'));
       return from(this.matrix.instance.invite(roomId, userId)).pipe(
         map(() => void 0),
       );
@@ -1072,24 +808,6 @@ export class RoomLibraryService {
       ...summary,
       markedUnread: pending,
       hasUnread: summary.unreadCount > 0 || pending,
-    };
-  }
-
-  // `creatorId` is deliberately required rather than defaulted: a second caller that
-  // forgot it would compile and silently report `isCreator: false` for everyone, quietly
-  // removing the Owner section with no type error to catch it.
-  private toMember(
-    member: RoomMember,
-    creatorId: string | null,
-  ): MemberSummary {
-    const name = member.name || member.userId;
-    return {
-      userId: member.userId,
-      name,
-      initial: initialOf(name),
-      avatarMxc: member.getMxcAvatarUrl() ?? null,
-      powerLevel: member.powerLevel,
-      isCreator: !!creatorId && member.userId === creatorId,
     };
   }
 }

@@ -1,7 +1,7 @@
 import {
   RoomAliasesService,
   RoomSettingsService,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-administration';
 import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { PublicRoomsService } from '@trinity/data-access/rooms';

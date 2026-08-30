@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
-import { RoomModerationService } from '@trinity/data-access/rooms';
+import { RoomModerationService } from '@trinity/data-access/room-administration';
 
 /**
  * Reports a message to the room's server administrators: prompts for a reason, hands

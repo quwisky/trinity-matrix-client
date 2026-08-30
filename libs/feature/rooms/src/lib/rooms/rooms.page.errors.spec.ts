@@ -1,8 +1,9 @@
 import {
   RoomSettingsService,
   RoomAliasesService,
-  PublicRoomsService,
-} from '@trinity/data-access/rooms';
+  RoomActionPermissionsService,
+} from '@trinity/data-access/room-administration';
+import { PublicRoomsService } from '@trinity/data-access/rooms';
 import {
   SHARED_MOCKS,
   RoomsTimelineStub,
@@ -22,7 +23,6 @@ import {
 } from '@trinity/data-access/notifications';
 import {
   RoomLibraryService,
-  RoomActionPermissionsService,
   SpacesService,
   AccountScopeService,
   UnreadAggregatorService,

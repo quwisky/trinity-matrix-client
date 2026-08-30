@@ -19,13 +19,17 @@ import {
   TrnAlertService,
   TrnToastService,
 } from '@trinity/components/overlay';
-import { RoomModerationService } from '@trinity/data-access/rooms';
 import {
+  ASSIGNABLE_MEMBER_ROLES,
+  type AssignableMemberRole,
+  MEMBER_ROLE_LABEL,
   RoomActionPermissionsService,
-  RoomLibraryService,
   type ActionAvailability,
   type MemberSummary,
-} from '@trinity/data-access/room-library';
+  RoomModerationService,
+  memberRole,
+} from '@trinity/data-access/room-administration';
+import { RoomLibraryService } from '@trinity/data-access/room-library';
 import {
   IgnoredUsersService,
   PresenceService,
@@ -34,21 +38,6 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { VerificationService } from '@trinity/data-access/crypto';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { TrnIconComponent } from '@trinity/components/icon';
-import { MEMBER_ROLE_LABEL, memberRole } from '../shared/member-role';
-
-/**
- * Preset roles the panel can ASSIGN, by the standard power-level convention.
- *
- * Owner is deliberately absent and must stay absent: it is the room's creator, and no
- * power level makes someone that. Offering it here would be an action the server cannot
- * perform — which is why the displayed role and the assignable roles come from two
- * different places rather than one list.
- */
-const ROLE_PRESETS = [
-  { label: 'Member', level: 0 },
-  { label: 'Moderator', level: 50 },
-  { label: 'Admin', level: 100 },
-] as const;
 
 /**
  * A room-scoped info panel for a member (avatar, name, id, live presence, role), shown
@@ -161,7 +150,7 @@ export class MemberInfoComponent {
   /** Every meaningful preset except the current one; unavailable choices explain why. */
   readonly roleOptions = computed(() => {
     const current = this.permissions().targetPower;
-    return ROLE_PRESETS.filter((role) => role.level !== current);
+    return ASSIGNABLE_MEMBER_ROLES.filter((role) => role.level !== current);
   });
 
   rolePermission(level: number): ActionAvailability {
@@ -319,7 +308,9 @@ export class MemberInfoComponent {
   }
 
   /** Promote / demote the member to a preset role, on confirmation. */
-  async setRole(option: { label: string; level: number }): Promise<void> {
+  async setRole(
+    option: Pick<AssignableMemberRole, 'label' | 'level'>,
+  ): Promise<void> {
     if (!this.rolePermission(option.level).available) {
       return;
     }

@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
-import { RoomModerationService } from '@trinity/data-access/rooms';
+import { RoomModerationService } from '@trinity/data-access/room-administration';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';

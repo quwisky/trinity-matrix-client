@@ -20,7 +20,7 @@ const productionSources = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
  * Freeze #317's completed expand-contract migration.
  *
  * Room Library has one explicit entrypoint. The old broad rooms barrel now exposes only
- * governance and remote-discovery adapters, so a moved room-graph symbol appearing there
+ * remote-discovery adapters, so a moved room-graph symbol appearing there
  * again would silently reopen the migration allowlist this ticket reduced to zero.
  */
 describe('Room Library production boundary', () => {

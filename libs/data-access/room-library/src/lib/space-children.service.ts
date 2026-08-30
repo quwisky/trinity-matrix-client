@@ -24,7 +24,10 @@ import {
   orderBetween,
   spreadOrders,
 } from './space-child-order';
-import { RoomActionPermissionsService } from './room-action-permissions.service';
+import {
+  ROOM_LIBRARY_GOVERNANCE_POLICY,
+  assertRoomLibraryGovernance,
+} from './room-library-governance-policy';
 
 /** The `m.space.child` content this client writes and reads back. */
 interface SpaceChildContent {
@@ -66,7 +69,7 @@ export interface SpaceChildLink {
 @Injectable({ providedIn: 'root' })
 export class SpaceChildrenService {
   private readonly matrix = inject(MatrixClientService);
-  private readonly actionPermissions = inject(RoomActionPermissionsService);
+  private readonly governance = inject(ROOM_LIBRARY_GOVERNANCE_POLICY);
 
   /** One signal per space whose links someone is watching, keyed by space id. */
   private readonly links = new Map<
@@ -210,8 +213,8 @@ export class SpaceChildrenService {
       if (!this.matrix.isInitialized) {
         return throwError(() => new Error('Not signed in.'));
       }
-      this.actionPermissions.assert(
-        this.actionPermissions.room(spaceId).curateSpace,
+      assertRoomLibraryGovernance(
+        this.governance.authorize(spaceId, 'curate-space'),
       );
       const client = this.matrix.instance;
       if (this.currentLink(spaceId, childId)) {
@@ -325,8 +328,8 @@ export class SpaceChildrenService {
       ...(link.order ? { order: link.order } : {}),
     };
     return defer(() => {
-      this.actionPermissions.assert(
-        this.actionPermissions.room(spaceId).curateSpace,
+      assertRoomLibraryGovernance(
+        this.governance.authorize(spaceId, 'curate-space'),
       );
       return from(
         this.matrix.instance.sendStateEvent(

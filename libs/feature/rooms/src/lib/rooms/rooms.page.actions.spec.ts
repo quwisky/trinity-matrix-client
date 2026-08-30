@@ -1,4 +1,4 @@
-import { RoomModerationService } from '@trinity/data-access/rooms';
+import { RoomModerationService } from '@trinity/data-access/room-administration';
 import {
   SHARED_MOCKS,
   RoomsTimelineStub,

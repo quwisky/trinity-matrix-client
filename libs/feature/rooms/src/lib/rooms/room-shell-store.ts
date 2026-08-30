@@ -5,7 +5,7 @@ import {
   linkedSignal,
   signal,
 } from '@angular/core';
-import type { MemberSummary } from '@trinity/data-access/room-library';
+import type { MemberSummary } from '@trinity/data-access/room-administration';
 import { BELOW_MEMBERS_QUERY, matchesQuery } from '@trinity/util/ui';
 import { WorkspaceService } from './workspace.service';
 

@@ -1,11 +1,11 @@
-import { RoomAliasesService } from '@trinity/data-access/rooms';
+import { RoomAliasesService } from '@trinity/data-access/room-administration';
 import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { TrnToastService } from '@trinity/components/overlay';
-import { RoomActionPermissionsService } from '@trinity/data-access/room-library';
+import { RoomActionPermissionsService } from '@trinity/data-access/room-administration';
 import { RoomAliasesComponent } from './room-aliases.component';
 
 async function build(

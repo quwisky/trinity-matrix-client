@@ -3,10 +3,13 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HomeserverInfoService } from '@trinity/data-access/homeserver';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
+  RoomActionPermissionsService,
+  RoomMembersService,
+} from '@trinity/data-access/room-administration';
+import {
   AccountScopeService,
   MixedRoomsService,
   MixedSpacesService,
-  RoomActionPermissionsService,
   RoomLibraryService,
   SpaceRoomOrderService,
   SpacesService,
@@ -41,6 +44,7 @@ import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sideb
 export class RoomShellViewModel {
   private readonly store = inject(RoomShellStore);
   private readonly rooms = inject(RoomLibraryService);
+  private readonly membersProjection = inject(RoomMembersService);
   private readonly spaces = inject(SpacesService);
   private readonly permissions = inject(RoomActionPermissionsService);
   private readonly mixedRooms = inject(MixedRoomsService);
@@ -286,7 +290,7 @@ export class RoomShellViewModel {
   readonly members = computed(() => {
     // Scoped to the open room: the signal is written only when a member event names it,
     // so a busy unrelated room cannot wake this list.
-    return this.rooms.membersFor(this.store.activeRoomId())();
+    return this.membersProjection.membersFor(this.store.activeRoomId())();
   });
 
   /**

@@ -29,7 +29,10 @@ import {
   type ConversationKey,
 } from '@trinity/data-access/timeline';
 import { RoomNotificationsService } from '@trinity/data-access/notifications';
-import { RoomActionPermissionsService } from '@trinity/data-access/room-library';
+import {
+  RoomActionPermissionsService,
+  RoomMembersService,
+} from '@trinity/data-access/room-administration';
 import {
   WorkspaceApplicationSurfaceService,
   type WorkspaceApplicationSurfaceRequest,
@@ -290,6 +293,7 @@ export const SHARED_MOCKS: Provider[] = [
       curateSpace: { available: true, reason: null },
     }),
   }),
+  MockProvider(RoomMembersService, { connect: vi.fn() }),
   // A Router whose `navigate` actually MOVES the route, because the store now reads the room
   // from `paramMap` and every "opening a room opens it" assertion in these specs depends on
   // that round trip. A bare auto-stub swallows the call, which would leave `activeRoomId`

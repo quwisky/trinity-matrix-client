@@ -41,9 +41,9 @@ import {
   type MessageView,
 } from '@trinity/data-access/timeline';
 import {
-  RoomLibraryService,
   type MemberSummary,
-} from '@trinity/data-access/room-library';
+  RoomMembersService,
+} from '@trinity/data-access/room-administration';
 import { MockProvider } from 'ng-mocks';
 import {
   MessageGestureSettingsService,
@@ -133,7 +133,7 @@ async function build(
   const sourceOpen = vi.fn();
   const setTypingCalls = vi.fn();
   // The thread composer's @-mention list comes from the room's member projection. The spec
-  // supplied no RoomLibraryService at all, so `return []` in the component went unnoticed — only
+  // supplied no RoomMembersService at all, so `return []` in the component went unnoticed — only
   // a `throw` failed, and that was the template crashing rather than an assertion.
   const roster = signal<readonly MemberSummary[]>([
     {
@@ -238,7 +238,7 @@ async function build(
         },
       },
       MockProvider(TimelineActionsService),
-      MockProvider(RoomLibraryService, { membersFor }),
+      MockProvider(RoomMembersService, { membersFor }),
       MockProvider(MessageSourceService, { open: sourceOpen }),
       MockProvider(TrnToastService, { show: toastShow }),
       { provide: TrnActionSheetService, useValue: { open: sheetOpen } },

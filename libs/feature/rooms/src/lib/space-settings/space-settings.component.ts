@@ -1,4 +1,4 @@
-import { RoomSettingsService } from '@trinity/data-access/rooms';
+import { RoomSettingsService } from '@trinity/data-access/room-administration';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -21,8 +21,8 @@ import {
 } from '@trinity/components/tabs';
 import { TrnInput } from '@trinity/components/input';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
-import { JoinRule } from '@trinity/data-access/rooms';
-import { RoomActionPermissionsService } from '@trinity/data-access/room-library';
+import { JoinRule } from '@trinity/data-access/room-administration';
+import { RoomActionPermissionsService } from '@trinity/data-access/room-administration';
 import { initialOf } from '@trinity/util/matrix';
 import { BannedMembersComponent } from '../banned-members/banned-members.component';
 import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';
