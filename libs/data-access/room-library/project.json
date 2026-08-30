@@ -1,14 +1,15 @@
 {
   "$schema": "../../../node_modules/nx/schemas/project-schema.json",
-  "name": "data-access-invites",
+  "name": "data-access-room-library",
   "projectType": "library",
-  "sourceRoot": "libs/data-access/invites/src",
+  "sourceRoot": "libs/data-access/room-library/src",
   "prefix": "trn",
   "tags": [
     "type:data-access",
     "scope:matrix",
     "role:capability",
-    "capability:room-library"
+    "capability:room-library",
+    "capability:room-administration"
   ],
   "targets": {
     "test": {},

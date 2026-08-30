@@ -9,7 +9,7 @@ import {
   spaceChildIdsOf,
   spaceRankOf,
 } from './room-projection';
-import { type RoomSummary } from './rooms.service';
+import { type RoomSummary } from './room-library.service';
 
 function room(over: Partial<RoomSummary> & { id: string }): RoomSummary {
   return {

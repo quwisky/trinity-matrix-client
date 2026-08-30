@@ -1,6 +1,6 @@
 import { ApplicationRef, type WritableSignal, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { UnreadAggregatorService } from '@trinity/data-access/rooms';
+import { UnreadAggregatorService } from '@trinity/data-access/room-library';
 import type { HostOperationOutcome } from '@trinity/runtime/host';
 import { Observable, Subject, of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';

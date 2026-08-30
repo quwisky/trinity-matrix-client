@@ -8,7 +8,6 @@
     "type:data-access",
     "scope:matrix",
     "role:capability",
-    "capability:room-library",
     "capability:room-administration",
     "capability:discovery"
   ],

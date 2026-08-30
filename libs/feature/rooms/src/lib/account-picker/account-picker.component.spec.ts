@@ -3,9 +3,10 @@ import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { AccountScopeService } from '@trinity/data-access/rooms';
+import { AccountScopeService } from '@trinity/data-access/room-library';
 import { AccountPickerComponent } from './account-picker.component';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
+import { of } from 'rxjs';
 
 const ACCOUNTS: AccountSummary[] = [
   { userId: '@alice:hs', displayName: 'Alice', avatarMxc: null, unread: 0 },
@@ -20,7 +21,7 @@ describe('AccountPickerComponent', () => {
 
   beforeEach(() => {
     selected = signal<ReadonlySet<string>>(new Set(['@alice:hs', '@bob:hs']));
-    toggle = vi.fn();
+    toggle = vi.fn(() => of(void 0));
     close = vi.fn();
   });
 

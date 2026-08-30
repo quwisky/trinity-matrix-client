@@ -10,17 +10,17 @@ import {
   InvitesService,
   MixedInvitesService,
   type PendingInvite,
-} from '@trinity/data-access/invites';
+} from '@trinity/data-access/room-library';
 import { PresenceService } from '@trinity/data-access/profile';
 import {
   AccountScopeService,
-  RoomsService,
+  RoomLibraryService,
   SpacesService,
   TRINITY_ROOM_SORTS,
   type RoomSortMode,
   type RoomSummary,
   type SpaceChildRoom,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import {
   RoomNotificationsService,
   type RoomNotifyDisplayMode,
@@ -168,7 +168,7 @@ async function renderSidebar(
       }),
       // Seeded because `typingByRoom` is an INSTANCE field, which ng-mocks does not
       // reflect: left out it is undefined and the sidebar throws on every render here.
-      MockProvider(RoomsService, {
+      MockProvider(RoomLibraryService, {
         typingByRoom: signal<Record<string, readonly string[]>>(
           opts.typingByRoom ?? {},
         ).asReadonly(),
@@ -180,7 +180,7 @@ async function renderSidebar(
     ],
   });
 
-  return { ...rendered, signals, roomsSvc: TestBed.inject(RoomsService) };
+  return { ...rendered, signals, roomsSvc: TestBed.inject(RoomLibraryService) };
 }
 
 describe('ChannelSidebarComponent', () => {

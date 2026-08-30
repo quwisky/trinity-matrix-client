@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RoomModerationService } from './room-moderation.service';
-import { RoomsService } from './rooms.service';
+import { RoomLibraryService } from '@trinity/data-access/room-library';
 
 interface FakeBan {
   userId: string;
@@ -81,7 +81,7 @@ function setup(
         isInitialized: true,
         instance: instance as never,
       }),
-      MockProvider(RoomsService, { removeMemberFromProjection }),
+      MockProvider(RoomLibraryService, { removeMemberFromProjection }),
     ],
   });
   return {

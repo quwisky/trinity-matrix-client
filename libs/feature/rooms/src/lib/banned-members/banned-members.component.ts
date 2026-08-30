@@ -1,3 +1,4 @@
+import { type BannedMember } from '@trinity/data-access/rooms';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -12,12 +13,11 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnActionAvailability, TrnButton } from '@trinity/components/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import { TrnToastService } from '@trinity/components/overlay';
+import { RoomModerationService } from '@trinity/data-access/rooms';
 import {
-  RoomModerationService,
   RoomActionPermissionsService,
   type ActionAvailability,
-  type BannedMember,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 
 /**
  * The room's banned members, with an Unban action per row. Rendered inside the room

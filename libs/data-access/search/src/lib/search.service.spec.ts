@@ -12,18 +12,21 @@ import { describe, expect, it, type Mock, vi } from 'vitest';
 import {
   InvitesService,
   type PendingInvite,
-} from '@trinity/data-access/invites';
+} from '@trinity/data-access/room-library';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   AccountScopeService,
   MixedRoomsService,
   MixedSpacesService,
-  RoomsService,
+  RoomLibraryService,
   type RoomSummary,
   type UserSearchResult,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import { SearchService } from './search.service';
-import { SpacesService, type SpaceSummary } from '@trinity/data-access/rooms';
+import {
+  SpacesService,
+  type SpaceSummary,
+} from '@trinity/data-access/room-library';
 
 function room(over: Partial<RoomSummary> = {}): RoomSummary {
   return {
@@ -91,7 +94,7 @@ function setup(opts: {
   TestBed.configureTestingModule({
     providers: [
       SearchService,
-      MockProvider(RoomsService, {
+      MockProvider(RoomLibraryService, {
         rooms: signal(opts.rooms ?? []),
         directRoomIds: signal<ReadonlySet<string>>(
           opts.directRoomIds ?? new Set(),

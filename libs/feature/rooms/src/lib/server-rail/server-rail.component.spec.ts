@@ -1,5 +1,5 @@
 import { render, screen } from '@trinity/testing';
-import { type SpaceSummary } from '@trinity/data-access/rooms';
+import { type SpaceSummary } from '@trinity/data-access/room-library';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { MockComponent } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';

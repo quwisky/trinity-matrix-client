@@ -1,3 +1,4 @@
+import { RoomModerationService } from '@trinity/data-access/rooms';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
@@ -9,7 +10,7 @@ import {
 import {
   InvitesService,
   MixedInvitesService,
-} from '@trinity/data-access/invites';
+} from '@trinity/data-access/room-library';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { PushService } from '@trinity/data-access/notifications';
 import {
@@ -20,13 +21,12 @@ import {
   AccountScopeService,
   MixedRoomsService,
   MixedSpacesService,
-  RoomModerationService,
-  RoomsService,
+  RoomLibraryService,
   SpaceChildrenService,
   SpacesService,
   type MemberSummary,
   type RoomSummary,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import {
@@ -152,11 +152,16 @@ describe('RoomsPage rendered right-panel focus', () => {
         },
         MockProvider(HapticsService),
         MockProvider(WorkspaceBackService, { register: () => vi.fn() }),
-        MockProvider(RoomsService, {
+        MockProvider(RoomLibraryService, {
+          selectionAvailability: () => 'available',
+          clearMarkedUnread: () => of(void 0),
           connect: vi.fn(),
           createDirectMessage: vi.fn(() => of('!dm:hs')),
         }),
-        MockProvider(SpacesService, { connect: vi.fn() }),
+        MockProvider(SpacesService, {
+          connect: vi.fn(),
+          openSpace: () => of(void 0),
+        }),
         MockProvider(MixedRoomsService, { setAccounts: vi.fn() }),
         MockProvider(MixedSpacesService, { setAccounts: vi.fn() }),
         MockProvider(AccountScopeService, {

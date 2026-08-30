@@ -1,8 +1,10 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, defer, from, map, tap, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { RoomsService } from './rooms.service';
-import { RoomActionPermissionsService } from './room-action-permissions.service';
+import {
+  RoomActionPermissionsService,
+  RoomLibraryService,
+} from '@trinity/data-access/room-library';
 
 /** Which moderation actions the current user may take against a specific member. */
 export interface ModerationCaps {
@@ -31,7 +33,7 @@ export interface BannedMember {
 @Injectable({ providedIn: 'root' })
 export class RoomModerationService {
   private readonly matrix = inject(MatrixClientService);
-  private readonly rooms = inject(RoomsService);
+  private readonly rooms = inject(RoomLibraryService);
   private readonly actionPermissions = inject(RoomActionPermissionsService);
 
   /** Remove a member from the room (they may rejoin if invited / it's public). Cold. */

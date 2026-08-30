@@ -6,16 +6,16 @@ import {
   type MatrixEvent,
 } from 'matrix-js-sdk';
 import { Observable, catchError, defer, from, map, of } from 'rxjs';
-import { InvitesService } from '@trinity/data-access/invites';
+import { InvitesService } from '@trinity/data-access/room-library';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { isDisplayableMessage } from '@trinity/util/matrix';
 import {
   AccountScopeService,
   MixedRoomsService,
   MixedSpacesService,
-  RoomsService,
+  RoomLibraryService,
   SpacesService,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 
 /** What a {@link SwitcherResult} points at, driving its icon and the jump on select. */
 export type SwitcherKind = 'room' | 'space' | 'dm' | 'invite' | 'user';
@@ -143,7 +143,7 @@ const DEFAULT_LIMIT = 30;
 
 /**
  * Read-only, client-side search aggregator for the quick switcher. Reads the live
- * synced signals from {@link RoomsService}, {@link SpacesService}, and
+ * synced signals from {@link RoomLibraryService}, {@link SpacesService}, and
  * {@link InvitesService} (joined rooms/DMs, spaces, pending invites) and ranks them
  * by name — no network, no message-body access, so it is inherently E2EE-safe.
  *
@@ -153,7 +153,7 @@ const DEFAULT_LIMIT = 30;
  */
 @Injectable({ providedIn: 'root' })
 export class SearchService {
-  private readonly rooms = inject(RoomsService);
+  private readonly rooms = inject(RoomLibraryService);
   private readonly spaces = inject(SpacesService);
   private readonly mixedRooms = inject(MixedRoomsService);
   private readonly mixedSpaces = inject(MixedSpacesService);

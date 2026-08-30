@@ -1,4 +1,9 @@
 import {
+  RoomSettingsService,
+  RoomAliasesService,
+  PublicRoomsService,
+} from '@trinity/data-access/rooms';
+import {
   SHARED_MOCKS,
   RoomsTimelineStub,
   clientStub,
@@ -11,7 +16,6 @@ import {
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   MediaPipeline,
@@ -19,17 +23,14 @@ import {
 } from '@trinity/data-access/media';
 import { RoomNotificationsService } from '@trinity/data-access/notifications';
 import {
-  RoomsService,
-  RoomSettingsService,
-  RoomAliasesService,
-  PublicRoomsService,
+  RoomLibraryService,
   SpacesService,
   AccountScopeService,
   UnreadAggregatorService,
   SpaceChildrenService,
   type RoomSummary,
   type SpaceSummary,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import {
   ConversationRuntime,
   TimelineActionsService,
@@ -114,12 +115,13 @@ describe('RoomsPage panels, pins and media', () => {
     joinPublicRoom = vi.fn(() => of('!new:hs'));
     markReadFn = vi.fn(() => of(undefined));
     setMarkedUnreadFn = vi.fn(() => of(undefined));
-    clearMarkedUnreadFn = vi.fn();
+    clearMarkedUnreadFn = vi.fn(() => of(void 0));
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
-        MockProvider(RoomsService, {
+        MockProvider(RoomLibraryService, {
+          selectionAvailability: () => 'available',
           leave: leaveRoom,
           rooms: roomsSignal,
           directRoomIds: signal<ReadonlySet<string>>(new Set()).asReadonly(),
@@ -137,6 +139,7 @@ describe('RoomsPage panels, pins and media', () => {
         MockProvider(RoomAliasesService, { canManageAliases }),
         MockProvider(PublicRoomsService, { join: joinPublicRoom }),
         MockProvider(SpacesService, {
+          openSpace: () => of(void 0),
           parentSpaceIds,
           spaces: railSpacesSignal,
           createSpace,
@@ -169,7 +172,6 @@ describe('RoomsPage panels, pins and media', () => {
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(JumpToDateService),
-        MockProvider(AccountRuntimeService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService, { show: toastShow }),
         MockProvider(RoomNotificationsService, {
@@ -310,7 +312,7 @@ describe('RoomsPage panels, pins and media', () => {
     expect(shell.store.activeRoomId()).toBe('!new:hs'); // onSelectRoom ran with the joined id
   });
 
-  it('marks a room read via RoomsService', () => {
+  it('marks a room read via RoomLibraryService', () => {
     const shell = build();
     shell.readState.onMarkRead({ roomId: '!r:hs' });
     expect(markReadFn).toHaveBeenCalledWith('!r:hs', undefined);

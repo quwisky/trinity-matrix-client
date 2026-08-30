@@ -39,8 +39,8 @@
         "./libs/data-access/notifications/src/index.ts"
       ],
       "@trinity/data-access/search": ["./libs/data-access/search/src/index.ts"],
-      "@trinity/data-access/invites": [
-        "./libs/data-access/invites/src/index.ts"
+      "@trinity/data-access/room-library": [
+        "./libs/data-access/room-library/src/index.ts"
       ],
       "@trinity/data-access/profile": [
         "./libs/data-access/profile/src/index.ts"

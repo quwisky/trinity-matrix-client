@@ -33,7 +33,7 @@ export interface PendingInvite {
 
 /**
  * Read model over the synced `MatrixClient` for **incoming invites** — the rooms
- * (and spaces) where our membership is `invite`. A sibling to {@link RoomsService}
+ * (and spaces) where our membership is `invite`. A sibling to {@link RoomLibraryService}
  * (joined rooms) and {@link SpacesService} (joined spaces), all of which exclude
  * invited rooms; this surfaces them so the UI can offer Accept / Decline.
  *

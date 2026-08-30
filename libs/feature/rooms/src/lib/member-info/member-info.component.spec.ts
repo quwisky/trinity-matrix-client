@@ -1,3 +1,4 @@
+import { RoomModerationService } from '@trinity/data-access/rooms';
 import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import {
@@ -11,10 +12,9 @@ import {
 } from '@trinity/data-access/profile';
 import {
   RoomActionPermissionsService,
-  RoomModerationService,
-  RoomsService,
+  RoomLibraryService,
   type MemberSummary,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { VerificationService } from '@trinity/data-access/crypto';
 import { MockProvider } from 'ng-mocks';
@@ -112,7 +112,7 @@ async function build(
               : 'Cannot assign this role.',
         }),
       }),
-      MockProvider(RoomsService, { createDirectMessage }),
+      MockProvider(RoomLibraryService, { createDirectMessage }),
       MockProvider(VerificationService, { startUserVerification }),
       MockProvider(IgnoredUsersService, {
         isIgnored: () => opts.isIgnored ?? false,
@@ -168,7 +168,7 @@ async function buildPanel(m: MemberSummary = member()) {
         activeUserId: signal<string | null>('@me:hs').asReadonly(),
       }),
       MockProvider(RoomModerationService),
-      MockProvider(RoomsService, {
+      MockProvider(RoomLibraryService, {
         createDirectMessage: vi.fn(() => of('!dm:hs')),
       }),
       MockProvider(VerificationService),

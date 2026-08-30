@@ -1,3 +1,4 @@
+import { RoomSettingsService } from '@trinity/data-access/rooms';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -20,11 +21,8 @@ import {
 } from '@trinity/components/tabs';
 import { TrnInput } from '@trinity/components/input';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
-import {
-  JoinRule,
-  RoomActionPermissionsService,
-  RoomSettingsService,
-} from '@trinity/data-access/rooms';
+import { JoinRule } from '@trinity/data-access/rooms';
+import { RoomActionPermissionsService } from '@trinity/data-access/room-library';
 import { initialOf } from '@trinity/util/matrix';
 import { BannedMembersComponent } from '../banned-members/banned-members.component';
 import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';
@@ -60,7 +58,7 @@ const OTHER_RULE_LABELS: Partial<Record<JoinRule, string>> = {
  *
  * A sibling of {@link RoomSettingsComponent} rather than the same component behind a flag: the
  * wording differs throughout, the join-rule options mean different things, and history
- * visibility is meaningless here because no space timeline is ever rendered (`rooms.service.ts`
+ * visibility is meaningless here because no space timeline is ever rendered (`room-library.service.ts`
  * filters spaces out of the room projection). The two share what actually is shared — the
  * services, {@link AvatarFieldComponent} and {@link saveFields} — and keep their own testids so
  * each is independently drivable.

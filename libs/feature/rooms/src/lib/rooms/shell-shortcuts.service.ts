@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
-import { RoomsService } from '@trinity/data-access/rooms';
+import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { TrnDialogService } from '@trinity/components/overlay';
 import { runWithBusy } from '@trinity/util/ui';
 import { MruRoomsService } from '../shortcuts/mru-rooms.service';
@@ -31,7 +31,7 @@ export class ShellShortcutsService {
   private readonly routing = inject(AccountRoutingService);
   private readonly inviteActions = inject(InviteActionsService);
   private readonly status = inject(ShellStatusService);
-  private readonly rooms = inject(RoomsService);
+  private readonly rooms = inject(RoomLibraryService);
   private readonly mru = inject(MruRoomsService);
   private readonly switcher = inject(QuickSwitcherService);
   private readonly shortcuts = inject(KeyboardShortcutsService);

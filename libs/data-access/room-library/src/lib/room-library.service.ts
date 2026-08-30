@@ -23,11 +23,14 @@ import {
 import {
   Observable,
   catchError,
+  concatMap,
   defer,
+  forkJoin,
   from,
   map,
   of,
   switchMap,
+  tap,
   throwError,
 } from 'rxjs';
 import {
@@ -50,7 +53,7 @@ import {
 } from './room-projection';
 import { RoomActionPermissionsService } from './room-action-permissions.service';
 
-/** Fields a {@link RoomsService.createRoom} call accepts. */
+/** Fields a {@link RoomLibraryService.createRoom} call accepts. */
 export interface CreateRoomOptions {
   name: string;
   topic?: string;
@@ -66,6 +69,9 @@ export interface UserSearchResult {
   /** Raw `mxc://` avatar, or null when unset; the UI resolves it (authed). */
   avatarMxc: string | null;
 }
+
+/** Room Library's authoritative answer for one Account-and-Room selection. */
+export type RoomLibrarySelectionAvailability = 'available' | 'unavailable';
 
 /** A joinable room shown in the channel sidebar. */
 export interface RoomSummary {
@@ -115,7 +121,7 @@ export interface RoomSummary {
 /**
  * The answer for a room with no members to report — an unknown room, or no room at all.
  *
- * Shared and frozen rather than a fresh `[]` per call, so {@link RoomsService.membersFor}'s
+ * Shared and frozen rather than a fresh `[]` per call, so {@link RoomLibraryService.membersFor}'s
  * identity invariant holds on these paths too: a fresh array would re-notify every consumer
  * of the null-room signal on each write, which is the landing state and the state after
  * every `closeOpenRoom()`.
@@ -159,7 +165,7 @@ export interface MemberSummary {
  * Space rooms are excluded from {@link rooms} so they never appear as channels.
  */
 @Injectable({ providedIn: 'root' })
-export class RoomsService {
+export class RoomLibraryService {
   private readonly matrix = inject(MatrixClientService);
   private readonly privacy = inject(PrivacySettingsService);
   private readonly actionPermissions = inject(RoomActionPermissionsService);
@@ -582,6 +588,20 @@ export class RoomsService {
   }
 
   /**
+   * Whether an exact Room or Space is present in an Account's synced SDK graph.
+   *
+   * Workspace consumes this typed answer instead of reading a Matrix client. A missing
+   * Account client is authoritative unavailability, just like a missing Room on a live one.
+   */
+  selectionAvailability(
+    accountId: string,
+    roomId: string,
+  ): RoomLibrarySelectionAvailability {
+    const client = this.matrix.clientFor(accountId);
+    return client?.getRoom(roomId) ? 'available' : 'unavailable';
+  }
+
+  /**
    * Joined members of a room (empty if the room is unknown), sorted by name — a one-shot
    * read. A surface that must stay live wants {@link membersFor}.
    *
@@ -631,56 +651,53 @@ export class RoomsService {
   /**
    * Favourite (or unfavourite) a room by writing/clearing the standard Matrix `m.favourite`
    * room tag — persisted in account data and synced across devices (interops with
-   * Element). Fire-and-forget: the write is async; on resolve the post-write
-   * {@link refresh} writes signals that schedule change detection (the
-   * `RoomEvent.Tags` listener also rebuilds, but the explicit refresh makes the
-   * local change land immediately). Failures are logged, not thrown.
+   * Element). Cold: the write starts on subscribe and errors reach the subscriber.
+   * The post-write {@link refresh} makes the local change land immediately; the
+   * `RoomEvent.Tags` listener also reconciles the authoritative sync echo.
    */
-  setFavourite(roomId: string, favourite: boolean, accountId?: string): void {
-    const client = this.clientOwning(accountId);
-    if (!client) {
-      return;
-    }
-    const write = favourite
-      ? client.setRoomTag(roomId, 'm.favourite', {})
-      : client.deleteRoomTag(roomId, 'm.favourite');
-    write
-      .then(() => this.refresh())
-      .catch((err: unknown) =>
-        console.error(
-          `Failed to ${favourite ? 'favourite' : 'unfavourite'} room ${roomId}`,
-          err,
-        ),
-      );
+  setFavourite(
+    roomId: string,
+    favourite: boolean,
+    accountId?: string,
+  ): Observable<void> {
+    return this.setTag(roomId, 'm.favourite', favourite, accountId);
   }
 
   /**
    * Add or remove the room's `m.lowpriority` tag, on the account that owns the row.
    *
-   * Mirrors {@link setFavourite} exactly, including writing an empty tag body: Matrix tags
-   * carry an optional `order`, and Trinity does not use it — ordering within the group comes
-   * from the active sort mode, not from the tag.
+   * Mirrors {@link setFavourite} exactly, including its cold finite command shape and
+   * writing an empty tag body: Matrix tags carry an optional `order`, and Trinity does not
+   * use it — ordering within the group comes from the active sort mode, not from the tag.
    */
   setLowPriority(
     roomId: string,
     lowPriority: boolean,
     accountId?: string,
-  ): void {
-    const client = this.clientOwning(accountId);
-    if (!client) {
-      return;
-    }
-    const write = lowPriority
-      ? client.setRoomTag(roomId, 'm.lowpriority', {})
-      : client.deleteRoomTag(roomId, 'm.lowpriority');
-    write
-      .then(() => this.refresh())
-      .catch((err: unknown) =>
-        console.error(
-          `Failed to ${lowPriority ? 'demote' : 'restore'} room ${roomId}`,
-          err,
-        ),
+  ): Observable<void> {
+    return this.setTag(roomId, 'm.lowpriority', lowPriority, accountId);
+  }
+
+  /** Persist one standard Matrix room tag and refresh after the SDK accepts the write. */
+  private setTag(
+    roomId: string,
+    tag: 'm.favourite' | 'm.lowpriority',
+    enabled: boolean,
+    accountId?: string,
+  ): Observable<void> {
+    return defer(() => {
+      const client = this.clientOwning(accountId);
+      if (!client) {
+        return throwError(() => new Error('Not signed in.'));
+      }
+      const write = enabled
+        ? client.setRoomTag(roomId, tag, {})
+        : client.deleteRoomTag(roomId, tag);
+      return from(write).pipe(
+        tap(() => this.refresh()),
+        map(() => void 0),
       );
+    });
   }
 
   /**
@@ -736,19 +753,23 @@ export class RoomsService {
       // Clear the flag first, and unconditionally: an empty room returns early below,
       // but a room flagged unread and then marked read must stop being flagged whether
       // or not there is an event to acknowledge.
-      this.clearMarkedUnreadOn(roomId, accountId);
       const latestId = latest?.getId();
       if (!latest || !latestId) {
-        return of(void 0);
+        return this.clearMarkedUnreadOn(roomId, accountId);
       }
-      void client.setRoomReadMarkers(roomId, latestId)?.catch(() => undefined);
       // Honor the read-receipt privacy setting: when off, ack privately
       // (`m.read.private`) so the badge clears without telling other members —
       // mirroring the auto-on-view path in TimelineService.markRead.
       const receiptType = this.privacy.sendReadReceipts()
         ? ReceiptType.Read
         : ReceiptType.ReadPrivate;
-      return from(client.sendReadReceipt(latest, receiptType)).pipe(
+      return this.clearMarkedUnreadOn(roomId, accountId).pipe(
+        concatMap(() =>
+          forkJoin([
+            from(client.setRoomReadMarkers(roomId, latestId)),
+            from(client.sendReadReceipt(latest, receiptType)),
+          ]),
+        ),
         map(() => void 0),
       );
     });
@@ -762,8 +783,9 @@ export class RoomsService {
    * still want it in front of me", which a receipt cannot express. Clearing writes
    * `{unread: false}` rather than redacting, which is what other clients read back.
    *
-   * Fire-and-forget like {@link setFavourite}: the post-write {@link refresh} makes the
-   * change land at once, and the `RoomEvent.AccountData` listener covers the echo.
+   * Cold and finite like {@link setFavourite}: the optimistic {@link refresh} makes the
+   * change land at once after subscription, and the `RoomEvent.AccountData` listener
+   * covers the echo. Write failures reach the subscriber and roll the overlay back.
    */
   setMarkedUnread(
     roomId: string,
@@ -802,10 +824,15 @@ export class RoomsService {
    * row still reading as unread with no obvious way to fix it. Writes nothing for an
    * account that does not hold the flag, so this is cheap to call on every room open.
    */
-  clearMarkedUnread(roomId: string): void {
-    for (const accountId of this.matrix.accountIds()) {
-      this.clearMarkedUnreadOn(roomId, accountId);
-    }
+  clearMarkedUnread(roomId: string): Observable<void> {
+    return defer(() => {
+      const clears = this.matrix
+        .accountIds()
+        .map((accountId) => this.clearMarkedUnreadOn(roomId, accountId));
+      return clears.length
+        ? forkJoin(clears).pipe(map(() => void 0))
+        : of(void 0);
+    });
   }
 
   /**
@@ -815,17 +842,18 @@ export class RoomsService {
    * {@link markRead} — the two must not drift, and checking first is what keeps this cheap
    * enough to call on every room open.
    *
-   * Fire-and-forget: a failed clear leaves the row flagged, which the next open retries,
-   * and a toast on every room open would be noise.
+   * Cold and finite: a failed clear reaches the owning workflow, which may deliberately
+   * suppress noisy room-open failures while still owning the subscription lifecycle.
    */
-  private clearMarkedUnreadOn(roomId: string, accountId?: string): void {
-    const room = this.clientOwning(accountId)?.getRoom(roomId);
-    if (!room || !isMarkedUnread(room)) {
-      return;
-    }
-    this.setMarkedUnread(roomId, false, accountId).subscribe({
-      error: (err: unknown) =>
-        console.error('Could not clear the room’s unread flag', err),
+  private clearMarkedUnreadOn(
+    roomId: string,
+    accountId?: string,
+  ): Observable<void> {
+    return defer(() => {
+      const room = this.clientOwning(accountId)?.getRoom(roomId);
+      return room && isMarkedUnread(room)
+        ? this.setMarkedUnread(roomId, false, accountId)
+        : of(void 0);
     });
   }
 

@@ -31,23 +31,24 @@ import {
   InvitesService,
   MixedInvitesService,
   type PendingInvite,
-} from '@trinity/data-access/invites';
+} from '@trinity/data-access/room-library';
 import { PresenceService } from '@trinity/data-access/profile';
 import {
   AccountScopeService,
   DEFAULT_ROOM_SORT,
-  RoomsService,
+  matchesRoomFilter,
+  normalizeRoomFilter,
+  RoomLibraryService,
   SpacesService,
   TRINITY_ROOM_SORTS,
   type RoomSortMode,
   type RoomSummary,
   type SpaceChildRoom,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import {
   RoomNotificationsService,
   type RoomNotifyMode,
 } from '@trinity/data-access/notifications';
-import { matchesRoomFilter, normalizeRoomFilter } from './room-filter';
 import { SidebarRoomListComponent } from './sidebar-room-list/sidebar-room-list.component';
 import { TrnIconComponent } from '@trinity/components/icon';
 
@@ -83,12 +84,12 @@ export class ChannelSidebarComponent {
   private readonly invitesSvc = inject(InvitesService);
   private readonly mixedInvites = inject(MixedInvitesService);
   private readonly accountScope = inject(AccountScopeService);
-  private readonly roomsSvc = inject(RoomsService);
+  private readonly roomsSvc = inject(RoomLibraryService);
   /**
    * Who is typing, per room, read here and passed DOWN to the row list.
    *
    * The row list takes it as an input rather than injecting the service itself: one
-   * `MockProvider(RoomsService)` helper backs 85 tests in this component's spec, and
+   * `MockProvider(RoomLibraryService)` helper backs 85 tests in this component's spec, and
    * ng-mocks does not reflect instance fields, so a read from inside the row template
    * would throw in all of them.
    */

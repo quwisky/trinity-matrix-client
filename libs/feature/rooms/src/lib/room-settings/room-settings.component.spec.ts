@@ -1,3 +1,7 @@
+import {
+  RoomModerationService,
+  RoomSettingsService,
+} from '@trinity/data-access/rooms';
 import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import {
@@ -10,12 +14,8 @@ import {
   WidgetsService,
 } from '@trinity/data-access/widgets';
 import { ExternalBrowserService } from '@trinity/platform-native';
-import {
-  RoomAliasesService,
-  RoomActionPermissionsService,
-  RoomModerationService,
-  RoomSettingsService,
-} from '@trinity/data-access/rooms';
+import { RoomAliasesService } from '@trinity/data-access/rooms';
+import { RoomActionPermissionsService } from '@trinity/data-access/room-library';
 import { HistoryVisibility, JoinRule } from '@trinity/data-access/rooms';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';

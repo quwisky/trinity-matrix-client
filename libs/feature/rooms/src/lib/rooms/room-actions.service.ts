@@ -1,13 +1,15 @@
-import { DestroyRef, Injectable, inject } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
-  PublicRoomsService,
   RoomAliasesService,
   RoomSettingsService,
-  RoomsService,
+} from '@trinity/data-access/rooms';
+import { DestroyRef, Injectable, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { PublicRoomsService } from '@trinity/data-access/rooms';
+import {
+  RoomLibraryService,
   SpacesService,
   AccountScopeService,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import {
   TrnActionSheetService,
   TrnAlertService,
@@ -42,7 +44,7 @@ export class RoomActionsService {
   private readonly nav = inject(RoomShellNavigationService);
   private readonly routing = inject(AccountRoutingService);
   private readonly status = inject(ShellStatusService);
-  private readonly rooms = inject(RoomsService);
+  private readonly rooms = inject(RoomLibraryService);
   private readonly spaces = inject(SpacesService);
   private readonly publicRooms = inject(PublicRoomsService);
   private readonly roomSettings = inject(RoomSettingsService);

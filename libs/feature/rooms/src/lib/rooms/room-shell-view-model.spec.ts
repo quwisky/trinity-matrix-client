@@ -11,14 +11,14 @@ import {
   AccountScopeService,
   MixedRoomsService,
   MixedSpacesService,
-  RoomsService,
+  RoomLibraryService,
   RoomActionPermissionsService,
   SpaceChildrenService,
   SpaceRoomOrderService,
   SpacesService,
   UnreadAggregatorService,
   type MemberSummary,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import { AccountBadgesService } from '../shared/account-badges.service';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
@@ -27,7 +27,7 @@ import { WorkspaceService } from './workspace.service';
 /**
  * The view model's own spec, for the two surfaces it derives from the projections this
  * branch introduced: the account chip (`AccountProfilesService`) and the member list
- * (`RoomsService.membersFor`).
+ * (`RoomLibraryService.membersFor`).
  *
  * Its own file rather than an assertion on the page, because the page specs deliberately
  * never render (`shell-invariants.spec.ts`) and the harness says an assertion belongs to
@@ -78,7 +78,7 @@ function build(opts: { members?: Record<string, MemberSummary[]> } = {}) {
     providers: [
       RoomShellStore,
       RoomShellViewModel,
-      MockProvider(RoomsService, { membersFor }),
+      MockProvider(RoomLibraryService, { membersFor }),
       MockProvider(SpacesService),
       MockProvider(SpaceChildrenService),
       MockProvider(RoomActionPermissionsService, {

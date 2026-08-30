@@ -395,8 +395,8 @@ function validateSourceBaselines(contract, errors) {
       contract.sourceBaselines.appInitializers.path,
     ),
     messageViewLines: lineCount(contract.sourceBaselines.messageViewLines.path),
-    roomsServiceLines: lineCount(
-      contract.sourceBaselines.roomsServiceLines.path,
+    roomLibraryServiceLines: lineCount(
+      contract.sourceBaselines.roomLibraryServiceLines.path,
     ),
   };
   validateFrozenMeasurements(measurements, contract, errors);
@@ -542,7 +542,7 @@ These are ratcheted snapshots. Any change fails until the measured value and led
 | --- | ---: | ---: | --- |
 | Application initializers | ${measurements.appInitializers} | ${contract.sourceBaselines.appInitializers.value} | ${contract.sourceBaselines.appInitializers.removeBy} |
 | Message projection lines | ${measurements.messageViewLines} | ${contract.sourceBaselines.messageViewLines.value} | ${contract.sourceBaselines.messageViewLines.removeBy} |
-| Rooms service lines | ${measurements.roomsServiceLines} | ${contract.sourceBaselines.roomsServiceLines.value} | ${contract.sourceBaselines.roomsServiceLines.removeBy} |
+| Room Library service lines | ${measurements.roomLibraryServiceLines} | ${contract.sourceBaselines.roomLibraryServiceLines.value} | ${contract.sourceBaselines.roomLibraryServiceLines.removeBy} |
 
 ## Project classifications
 

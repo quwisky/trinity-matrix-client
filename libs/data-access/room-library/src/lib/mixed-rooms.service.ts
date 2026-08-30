@@ -16,7 +16,7 @@ import {
   compareRoomSummaries,
   directMapOf,
 } from './room-projection';
-import { type RoomSummary } from './rooms.service';
+import { type RoomSummary } from './room-library.service';
 
 /** A no-arg listener reused across every room-affecting event of one account. */
 type Listener = () => void;
@@ -28,7 +28,7 @@ interface AccountListener {
 }
 
 /**
- * Cross-account room projection for the mixed-account view. Where {@link RoomsService}
+ * Cross-account room projection for the mixed-account view. Where {@link RoomLibraryService}
  * projects only the ACTIVE account's rooms, this aggregates **every** signed-in account's
  * joined non-space rooms into one list, each row tagged with its `accountId` (and its own
  * account's `m.direct` DM classification), sorted favourite-first then most-recent across
@@ -51,7 +51,7 @@ export class MixedRoomsService {
 
   /**
    * Aggregate exactly these accounts (the user's mixed-account selection). Fewer than two is
-   * not a mix — the single-account {@link RoomsService} covers that — so the projection
+   * not a mix — the single-account {@link RoomLibraryService} covers that — so the projection
    * detaches and empties, and only the selected accounts ever get listeners attached.
    */
   setAccounts(ids: ReadonlySet<string>): void {

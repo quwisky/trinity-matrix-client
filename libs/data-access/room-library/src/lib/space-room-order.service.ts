@@ -8,7 +8,7 @@ import {
 } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { Observable, defer, from, map } from 'rxjs';
+import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
 import {
   DEFAULT_ROOM_SORT,
   TRINITY_ROOM_SORTS,
@@ -68,8 +68,8 @@ export class SpaceRoomOrderService {
     new Map(),
   );
 
-  /** Accounts whose read is in progress, so the hydrate effect never reads twice at once. */
-  private readonly reading = new Set<string>();
+  /** Joinable reads in progress, shared by startup, the runtime effect and early writes. */
+  private readonly hydrating = new Map<string, Promise<boolean>>();
 
   /** Accounts whose stored value has arrived — the ones a write may safely persist. */
   private readonly loaded = new Set<string>();
@@ -116,7 +116,7 @@ export class SpaceRoomOrderService {
         () => {
           // Keyed on accountIds rather than activeUserId so an account is warm before a switch.
           for (const userId of this.matrix.accountIds()) {
-            void this.hydrate(userId);
+            void this.hydrate(userId).catch(() => undefined);
           }
         },
         { injector: this.injector },
@@ -140,13 +140,13 @@ export class SpaceRoomOrderService {
   }
 
   /** Change and persist the active account's default (the Settings dropdown). */
-  setDefault(mode: RoomSortMode): void {
-    this.write('default', (order) => ({ ...order, fallback: mode }));
+  setDefault(mode: RoomSortMode): Observable<void> {
+    return this.write('default', (order) => ({ ...order, fallback: mode }));
   }
 
   /** Pin one space to an ordering of its own (the sidebar header menu). */
-  setForSpace(spaceId: string, mode: RoomSortMode): void {
-    this.write('overrides', (order) => ({
+  setForSpace(spaceId: string, mode: RoomSortMode): Observable<void> {
+    return this.write('overrides', (order) => ({
       ...order,
       bySpace: { ...order.bySpace, [spaceId]: mode },
     }));
@@ -157,8 +157,8 @@ export class SpaceRoomOrderService {
    * than storing whatever the default happens to be right now is what makes "Use my default"
    * keep tracking a *later* change to that default.
    */
-  clearForSpace(spaceId: string): void {
-    this.write('overrides', (order) => {
+  clearForSpace(spaceId: string): Observable<void> {
+    return this.write('overrides', (order) => {
       const bySpace = { ...order.bySpace };
       delete bySpace[spaceId];
       return { ...order, bySpace };
@@ -172,41 +172,66 @@ export class SpaceRoomOrderService {
   }
 
   /** Apply `change` to the active account's record, then persist or queue it. */
-  private write(key: OrderKey, change: Change): void {
-    const userId = this.matrix.activeUserId();
-    if (!userId) {
-      return; // signed out mid-interaction: nothing to key the preference to
-    }
-    const next = change(this.byAccount().get(userId) ?? EMPTY);
-    const map = new Map(this.byAccount());
-    map.set(userId, next);
-    this.byAccount.set(map);
+  private write(key: OrderKey, change: Change): Observable<void> {
+    return defer(() => {
+      const userId = this.matrix.activeUserId();
+      if (!userId) {
+        return of(void 0); // signed out mid-interaction: nothing to key the preference to
+      }
+      const next = change(this.byAccount().get(userId) ?? EMPTY);
+      const map = new Map(this.byAccount());
+      map.set(userId, next);
+      this.byAccount.set(map);
 
-    if (!this.loaded.has(userId)) {
+      if (this.loaded.has(userId)) {
+        return from(persistHalf(userId, key, next));
+      }
+
       // `next` was derived from all-defaults, so writing it now would erase whatever is on
       // disk. Hold the edit instead; {@link hydrate} replays it onto the stored value and
-      // persists the result.
+      // persists the result. Joining hydration makes completion and failure observable to
+      // the command's subscriber without giving up the optimistic in-memory choice.
       this.pending.set(userId, [...(this.pending.get(userId) ?? []), change]);
-      return;
+      return from(this.hydrate(userId)).pipe(
+        switchMap((hydrated) =>
+          hydrated
+            ? of(void 0)
+            : throwError(
+                () => new Error('Could not read room ordering preferences.'),
+              ),
+        ),
+      );
+    });
+  }
+
+  /** Read one account once, joining concurrent startup, runtime and command callers. */
+  private hydrate(userId: string): Promise<boolean> {
+    if (this.loaded.has(userId)) {
+      return Promise.resolve(true);
     }
-    persistHalf(userId, key, next);
+    const existing = this.hydrating.get(userId);
+    if (existing) {
+      return existing;
+    }
+    const hydration = this.readAndHydrate(userId).finally(() => {
+      if (this.hydrating.get(userId) === hydration) {
+        this.hydrating.delete(userId);
+      }
+    });
+    this.hydrating.set(userId, hydration);
+    return hydration;
   }
 
   /** Read one account's stored value, replay anything queued onto it, and adopt the result. */
-  private async hydrate(userId: string): Promise<void> {
-    if (this.reading.has(userId) || this.loaded.has(userId)) {
-      return;
-    }
-    this.reading.add(userId);
+  private async readAndHydrate(userId: string): Promise<boolean> {
     const stored = await readAccountOrder(userId);
-    this.reading.delete(userId);
 
     if (!stored) {
       // The read FAILED — distinct from finding nothing stored. Leave the account unloaded
       // so a later sign-in retries, and keep any queued edits queued: persisting them now
       // would write defaults over preferences we merely could not read. The cost is that a
       // choice made under unreadable storage lasts only for the session.
-      return;
+      return false;
     }
 
     const queued = this.pending.get(userId) ?? [];
@@ -222,8 +247,9 @@ export class SpaceRoomOrderService {
     for (const key of queued.length
       ? (['default', 'overrides'] as const)
       : []) {
-      persistHalf(userId, key, merged);
+      await persistHalf(userId, key, merged);
     }
+    return true;
   }
 }
 
@@ -250,8 +276,12 @@ async function readAccountOrder(userId: string): Promise<AccountOrder | null> {
 }
 
 /** Write back one half of an account's record. */
-function persistHalf(userId: string, key: OrderKey, order: AccountOrder): void {
-  persist(
+function persistHalf(
+  userId: string,
+  key: OrderKey,
+  order: AccountOrder,
+): Promise<void> {
+  return persist(
     key === 'default' ? DEFAULT_PREFIX + userId : OVERRIDES_PREFIX + userId,
     key === 'default' ? order.fallback : JSON.stringify(order.bySpace),
   );
@@ -281,6 +311,6 @@ function parseOverrides(raw: string | null): Record<string, RoomSortMode> {
   }
 }
 
-function persist(key: string, value: string): void {
-  void Preferences.set({ key, value }).catch(() => undefined);
+async function persist(key: string, value: string): Promise<void> {
+  await Preferences.set({ key, value });
 }

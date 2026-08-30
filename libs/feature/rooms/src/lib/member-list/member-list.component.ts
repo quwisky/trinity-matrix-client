@@ -13,7 +13,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { AvatarComponent } from '@trinity/components/avatar';
-import { type MemberSummary } from '@trinity/data-access/rooms';
+import { type MemberSummary } from '@trinity/data-access/room-library';
 import { PresenceService } from '@trinity/data-access/profile';
 import { type PresenceState } from '@trinity/util/matrix';
 import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';

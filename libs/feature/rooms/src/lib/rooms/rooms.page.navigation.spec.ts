@@ -18,8 +18,7 @@ import { WorkspaceBackService } from '@trinity/application/workspace';
 import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { Router } from '@angular/router';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
-import { AccountRuntimeService } from '@trinity/data-access/accounts';
-import { type PendingInvite } from '@trinity/data-access/invites';
+import { type PendingInvite } from '@trinity/data-access/room-library';
 import {
   HomeserverInfoService,
   type HomeserverInfo,
@@ -28,12 +27,12 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AccountProfilesService } from '@trinity/data-access/profile';
 import { MediaPipeline } from '@trinity/data-access/media';
 import {
-  RoomsService,
+  RoomLibraryService,
   SpacesService,
   UnreadAggregatorService,
   type RoomSummary,
   type SpaceSummary,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import {
   ConversationRuntime,
   TimelineActionsService,
@@ -82,7 +81,7 @@ describe('RoomsPage quick switcher', () => {
     pick = vi.fn();
     createDirectMessage = vi.fn(() => of('!dm:hs'));
     acceptInvite = vi.fn(() => of(undefined));
-    openSpace = vi.fn();
+    openSpace = vi.fn(() => of(void 0));
     timelineOpen = vi.fn();
     pending = signal<PendingInvite[]>([]);
     dialogHasOpen = vi.fn().mockReturnValue(false);
@@ -90,7 +89,9 @@ describe('RoomsPage quick switcher', () => {
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
-        MockProvider(RoomsService, {
+        MockProvider(RoomLibraryService, {
+          selectionAvailability: () => 'available',
+          clearMarkedUnread: () => of(void 0),
           createDirectMessage,
           // The jump resolves the row's owning account from the known room set.
           rooms: signal<RoomSummary[]>([]),
@@ -132,7 +133,6 @@ describe('RoomsPage quick switcher', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(AccountRuntimeService),
         MockProvider(TrnDialogService, { hasOpen: dialogHasOpen }),
         MockProvider(TrnAlertService),
         MockProvider(TrnToastService),
@@ -331,8 +331,11 @@ describe('RoomsPage mobile navigation', () => {
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
-        MockProvider(RoomsService),
-        MockProvider(SpacesService),
+        MockProvider(RoomLibraryService, {
+          selectionAvailability: () => 'available',
+          clearMarkedUnread: () => of(void 0),
+        }),
+        MockProvider(SpacesService, { openSpace: () => of(void 0) }),
         {
           provide: RoomsTimelineStub,
           useFactory: () => {
@@ -361,7 +364,6 @@ describe('RoomsPage mobile navigation', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(AccountRuntimeService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
       ],
@@ -860,8 +862,11 @@ describe('RoomsPage account switcher summary', () => {
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
-        MockProvider(RoomsService),
-        MockProvider(SpacesService),
+        MockProvider(RoomLibraryService, {
+          selectionAvailability: () => 'available',
+          clearMarkedUnread: () => of(void 0),
+        }),
+        MockProvider(SpacesService, { openSpace: () => of(void 0) }),
         MockProvider(TimelineActionsService),
         MockProvider(MatrixClientService, {
           isInitialized: true,
@@ -902,7 +907,6 @@ describe('RoomsPage account switcher summary', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(AccountRuntimeService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
       ],
@@ -1024,11 +1028,14 @@ describe('RoomsPage keyboard room switching', () => {
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
-        MockProvider(RoomsService, {
+        MockProvider(RoomLibraryService, {
+          selectionAvailability: () => 'available',
+          clearMarkedUnread: () => of(void 0),
           rooms: keyboardRooms,
           directRoomIds: signal<ReadonlySet<string>>(new Set()),
         }),
         MockProvider(SpacesService, {
+          openSpace: () => of(void 0),
           spaces: signal([]),
           childRoomIds: vi.fn(() => []),
         }),
@@ -1049,7 +1056,6 @@ describe('RoomsPage keyboard room switching', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(AccountRuntimeService),
         MockProvider(TrnDialogService, { hasOpen: () => dialogOpen }),
         MockProvider(TrnToastService),
       ],
@@ -1310,8 +1316,11 @@ describe('RoomsPage room-in-URL deep link', () => {
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
-        MockProvider(RoomsService),
-        MockProvider(SpacesService),
+        MockProvider(RoomLibraryService, {
+          selectionAvailability: () => 'available',
+          clearMarkedUnread: () => of(void 0),
+        }),
+        MockProvider(SpacesService, { openSpace: () => of(void 0) }),
         MockProvider(ConversationRuntime, {
           focus: conversationFocus,
           blur: conversationBlur,
@@ -1333,7 +1342,6 @@ describe('RoomsPage room-in-URL deep link', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(AccountRuntimeService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
       ],

@@ -1,12 +1,14 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   inject,
   input,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/button';
-import { AccountScopeService } from '@trinity/data-access/rooms';
+import { AccountScopeService } from '@trinity/data-access/room-library';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 
@@ -34,6 +36,7 @@ import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sideb
 export class AccountPickerComponent {
   private readonly scope = inject(AccountScopeService);
   private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef);
+  private readonly destroyRef = inject(DestroyRef);
 
   /** Every signed-in account (populated from the dialog's `inputs`). */
   readonly accounts = input<AccountSummary[]>([]);
@@ -58,7 +61,13 @@ export class AccountPickerComponent {
   /** Tick or untick an account. Deliberately does NOT close — this is a multi-select. */
   toggle(userId: string): void {
     if (!this.isLocked(userId)) {
-      this.scope.toggle(userId);
+      this.scope
+        .toggle(userId)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          error: (err: unknown) =>
+            console.error('Could not update the accounts shown', err),
+        });
     }
   }
 

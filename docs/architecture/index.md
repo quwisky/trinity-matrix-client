@@ -97,8 +97,8 @@ both.
 
 `scope:shared` is the kernel: `util-matrix`, `projection-runtime`, `platform-native`, `ui`, the Helm
 libraries — and, deliberately, `data-access-matrix-client`. Tagging the client and session foundation as shared
-rather than matrix is what structurally prevents it from importing a domain library. `RoomsService`
-depends on `MatrixClientService`; `MatrixClientService` can never depend on `RoomsService`, and
+rather than matrix is what structurally prevents it from importing a domain library. `RoomLibraryService`
+depends on `MatrixClientService`; `MatrixClientService` can never depend on `RoomLibraryService`, and
 lint says so before a reviewer has to.
 
 This is the axis that surprises people. A new import into `data-access-matrix-client` from, say,

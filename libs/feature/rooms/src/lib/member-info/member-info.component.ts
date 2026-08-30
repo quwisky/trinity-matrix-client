@@ -19,13 +19,13 @@ import {
   TrnAlertService,
   TrnToastService,
 } from '@trinity/components/overlay';
+import { RoomModerationService } from '@trinity/data-access/rooms';
 import {
-  RoomModerationService,
   RoomActionPermissionsService,
-  RoomsService,
+  RoomLibraryService,
   type ActionAvailability,
   type MemberSummary,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import {
   IgnoredUsersService,
   PresenceService,
@@ -116,7 +116,7 @@ export class MemberInfoComponent {
   private readonly moderation = inject(RoomModerationService);
   private readonly permissionsService = inject(RoomActionPermissionsService);
   private readonly ignoredUsers = inject(IgnoredUsersService);
-  private readonly rooms = inject(RoomsService);
+  private readonly rooms = inject(RoomLibraryService);
   private readonly verification = inject(VerificationService);
   private readonly alert = inject(TrnAlertService);
   private readonly destroyRef = inject(DestroyRef);

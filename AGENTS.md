@@ -56,7 +56,8 @@ Run `corepack enable` once; it picks up the pinned pnpm version.
 **Single project / single test** — Vitest runs via an `nx:run-commands` target (`vitest run`,
 `cwd` = the project dir), so forward Vitest args after `--`. Note the argument is the **Nx
 project name**, which since the libs were nested is neither the directory nor the alias:
-`data-access-rooms` is at `libs/data-access/rooms` and imports as `@trinity/data-access/rooms`.
+`data-access-room-library` is at `libs/data-access/room-library` and imports as
+`@trinity/data-access/room-library`.
 
 ```bash
 pnpm exec nx test data-access-rooms                        # one project
@@ -178,10 +179,15 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
 - `@trinity/data-access/matrix-client` `[type:data-access]` — `MatrixClientService` + the 4S key service;
   the client/session foundation every domain data-access lib depends on, and the Matrix adapter for
   the first Projection Runtime tracer (per-Account sync state and readiness acknowledgement).
-- `@trinity/data-access/*` `[type:data-access]` — one lib per Matrix domain (`media`, `rooms`,
-  `timeline`, `crypto`, `profile`, `invites`, `pinned`, `search`, `notifications`, `auth`, `gif`,
+- `@trinity/data-access/*` `[type:data-access]` — capability and adapter libraries (`media`,
+  `room-library`, `rooms`, `timeline`, `crypto`, `profile`, `search`, `notifications`, `auth`, `gif`,
   `homeserver`, `widgets`), each at `libs/data-access/<domain>`.
-  Cross-domain injects are inter-lib edges (search→rooms/invites, auth→accounts, notification→rooms/timeline,
+  Room Library owns room/space summaries, invitations, hierarchy, ordering, filtering and
+  aggregate unread; its one-shot mutations, including account-scope and ordering persistence,
+  favourite/priority writes, hierarchy changes and unread cleanup, are cold finite Observables;
+  the remaining `rooms` library is the temporary Room Administration/Discovery adapter until
+  #318 and #321. Cross-domain injects are inter-lib edges (search→room-library/rooms,
+  rooms→room-library, auth→accounts, notification→room-library/timeline,
   timeline→media).
 - `@trinity/data-access/timeline` owns `ConversationRuntime` and Message Presentation: immutable
   Account-and-Room handles with one timeline child each, a two-entry per-Account retained LRU,

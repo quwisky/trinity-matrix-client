@@ -2,10 +2,10 @@ import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import {
-  RoomsService,
+  RoomLibraryService,
   SpaceChildrenService,
   SpacesService,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
@@ -57,7 +57,7 @@ async function build(
         moveChildBefore,
         linksFor: () => links.asReadonly(),
       }),
-      MockProvider(RoomsService, {
+      MockProvider(RoomLibraryService, {
         rooms: signal(
           (opts.rooms ?? []).map((r) => ({
             id: r.id,

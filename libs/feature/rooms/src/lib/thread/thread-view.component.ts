@@ -52,7 +52,7 @@ import {
   type ConversationThreadOutcome,
   type MessageView,
 } from '@trinity/data-access/timeline';
-import { RoomsService } from '@trinity/data-access/rooms';
+import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { messagePermalink, quoteBlock } from '@trinity/util/matrix';
 import {
   MessageRowComponent,
@@ -125,7 +125,7 @@ export class ThreadViewComponent implements OnDestroy {
   private readonly conversations = inject(ConversationRuntime);
   private readonly openedThread = signal<ConversationThread | null>(null);
   private readonly messageSheet = inject(MessageActionSheetService);
-  private readonly rooms = inject(RoomsService);
+  private readonly rooms = inject(RoomLibraryService);
   private readonly reactionPicker = inject(ReactionPickerService);
   private readonly forwardSvc = inject(ForwardService);
   private readonly reportSvc = inject(ReportService);

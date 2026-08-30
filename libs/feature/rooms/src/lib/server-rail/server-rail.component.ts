@@ -7,7 +7,7 @@ import {
 import { AvatarComponent, type AccountBadge } from '@trinity/components/avatar';
 import { TrnIconButton } from '@trinity/components/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
-import { type SpaceSummary } from '@trinity/data-access/rooms';
+import { type SpaceSummary } from '@trinity/data-access/room-library';
 import { unreadBadgeLabel } from '../shared/unread-badge';
 import { TrnIconComponent } from '@trinity/components/icon';
 

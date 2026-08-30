@@ -27,8 +27,9 @@ import {
   SpaceRoomOrderService,
   TRINITY_ROOM_SORTS,
   type RoomSortMode,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import { AppearanceSettingsComponent } from './appearance-settings.component';
+import { of } from 'rxjs';
 
 describe('AppearanceSettingsComponent', () => {
   let preference: ReturnType<typeof signal<ThemePreference>>;
@@ -66,7 +67,7 @@ describe('AppearanceSettingsComponent', () => {
     setShowProfile = vi.fn();
     setShowRoomChanges = vi.fn();
     spaceOrderDefault = signal<RoomSortMode>('recent');
-    setDefault = vi.fn();
+    setDefault = vi.fn(() => of(void 0));
     showFormattingToolbar = signal(true);
     setShowFormattingToolbar = vi.fn();
     formatOnSelection = signal(true);

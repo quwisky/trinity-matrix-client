@@ -1,9 +1,11 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   computed,
   inject,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   TrnRadioGroupComponent,
   type TrnRadioOption,
@@ -27,7 +29,7 @@ import {
   SpaceRoomOrderService,
   TRINITY_ROOM_SORTS,
   isRoomSortMode,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import { isDateFormat, isTimeFormat } from '@trinity/util/matrix';
 import { CodeAppearanceBlockComponent } from './code-appearance-block.component';
 import { MessageGesturesBlockComponent } from './message-gestures-block.component';
@@ -74,6 +76,7 @@ export class AppearanceSettingsComponent {
   readonly composer = inject(ComposerSettingsService);
   readonly format = inject(DateTimeFormatService);
   readonly spaceOrder = inject(SpaceRoomOrderService);
+  private readonly destroyRef = inject(DestroyRef);
 
   /**
    * The instant every format option is previewed against.
@@ -196,7 +199,13 @@ export class AppearanceSettingsComponent {
   /** Apply + persist this account's default ordering for spaces with no override. */
   onSpaceOrderChange(value: string | null | undefined): void {
     if (isRoomSortMode(value)) {
-      this.spaceOrder.setDefault(value);
+      this.spaceOrder
+        .setDefault(value)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          error: (err: unknown) =>
+            console.error('Could not save the room ordering preference', err),
+        });
     }
   }
 }

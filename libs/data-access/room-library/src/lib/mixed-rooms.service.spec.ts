@@ -324,7 +324,7 @@ describe('MixedRoomsService', () => {
     expect(svc.rooms().length).toBe(2);
     expect(clients.get('@a:hs')!.listenerCount()).toBeGreaterThan(0);
 
-    // One account left selected is not a mix — the plain RoomsService covers that.
+    // One account left selected is not a mix — the plain RoomLibraryService covers that.
     svc.setAccounts(new Set(['@a:hs']));
     expect(svc.rooms()).toEqual([]);
     expect(clients.get('@a:hs')!.listenerCount()).toBe(0);

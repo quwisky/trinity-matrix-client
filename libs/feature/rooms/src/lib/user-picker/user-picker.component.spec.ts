@@ -1,8 +1,8 @@
 import { TrnDialogRef } from '@trinity/components/overlay';
 import {
-  RoomsService,
+  RoomLibraryService,
   type UserSearchResult,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
@@ -32,7 +32,7 @@ describe('UserPickerComponent', () => {
     return render(UserPickerComponent, {
       providers: [
         { provide: TrnDialogRef, useValue: { close: dismiss } },
-        MockProvider(RoomsService, { searchUsers }),
+        MockProvider(RoomLibraryService, { searchUsers }),
       ],
       imports: [MockComponent(AvatarComponent)],
     });
