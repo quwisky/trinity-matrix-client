@@ -11,23 +11,19 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Router } from '@angular/router';
+import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/button';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { CryptoService } from '@trinity/data-access/crypto';
-import { EncryptionDialogService } from '@trinity/components/encryption-dialog';
 import { downloadTextFile } from '../download-text-file';
 import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
-
-/** Where the encryption flows return after finishing on the routed (mobile) path. */
-const RETURN_TO = '/settings/security';
 
 /**
  * Security settings sub-page: surfaces this account's end-to-end-encryption posture —
  * whether encryption/secure-backup is set up, whether this session is cross-signing
  * verified, and whether key backup is on — and launches the existing recovery/verify
  * flows to fix each. It owns no crypto logic; it reads {@link CryptoService} status
- * signals and delegates to the setup route + {@link EncryptionDialogService}.
+ * signals and delegates presentation to the semantic Workspace application surface.
  */
 @Component({
   selector: 'trn-security-settings',
@@ -37,8 +33,9 @@ const RETURN_TO = '/settings/security';
 })
 export class SecuritySectionComponent implements OnInit {
   private readonly crypto = inject(CryptoService);
-  private readonly dialogs = inject(EncryptionDialogService);
-  private readonly router = inject(Router);
+  private readonly applicationSurfaces = inject(
+    WorkspaceApplicationSurfaceService,
+  );
   private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
@@ -75,20 +72,12 @@ export class SecuritySectionComponent implements OnInit {
 
   /** First-device setup: generate a recovery key + bootstrap cross-signing/backup. */
   setUp(): void {
-    void this.router.navigate(['/encryption/setup'], {
-      queryParams: { returnTo: this.returnTo() },
-    });
+    this.openTrustSurface('setup');
   }
 
   /** Trust this device from the account's saved recovery key. */
   unlock(): void {
-    const forceDialog = this.inSettingsDialog();
-    void this.dialogs.openUnlock({
-      returnTo: this.returnTo(),
-      ...(forceDialog
-        ? { forceDialog: true, isOwnerActive: () => !this.destroyed }
-        : {}),
-    });
+    this.openTrustSurface('unlock');
   }
 
   /**
@@ -97,29 +86,35 @@ export class SecuritySectionComponent implements OnInit {
    * rather than asking the user to find the same words a second time.
    */
   resetRecovery(): void {
-    const forceDialog = this.inSettingsDialog();
-    void this.dialogs.openUnlock({
-      returnTo: this.returnTo(),
-      ...(forceDialog
-        ? { forceDialog: true, isOwnerActive: () => !this.destroyed }
-        : {}),
-      offerReset: true,
-    });
+    this.openTrustSurface('unlock', true);
   }
 
   /** Verify this session against another signed-in one (emoji SAS). */
   verifySession(): void {
-    const forceDialog = this.inSettingsDialog();
-    void this.dialogs.openVerify({
-      returnTo: this.returnTo(),
-      ...(forceDialog
-        ? { forceDialog: true, isOwnerActive: () => !this.destroyed }
-        : {}),
-    });
+    this.openTrustSurface('verify');
   }
 
-  private returnTo(): string {
-    return this.inSettingsDialog() ? this.router.url : RETURN_TO;
+  private openTrustSurface(
+    flow: 'setup' | 'unlock' | 'verify',
+    offerReset = false,
+  ): void {
+    const nested = this.inSettingsDialog();
+    this.applicationSurfaces
+      .open({
+        surface: { kind: 'trust', flow },
+        context: {
+          returnTo: { kind: 'settings', section: 'security' },
+          ...(nested
+            ? {
+                placement: 'nested' as const,
+                ownerActive: () => !this.destroyed,
+              }
+            : {}),
+          ...(offerReset ? { offerReset: true } : {}),
+        },
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
   }
 
   /** Export this device's room keys to a passphrase-encrypted file. */

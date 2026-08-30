@@ -7,12 +7,12 @@ import {
   input,
   signal,
 } from '@angular/core';
-import { Router } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { TrnBadge } from '@trinity/components/badge';
 import { TrnButton } from '@trinity/components/button';
 import { TrnTooltip } from '@trinity/components/tooltip';
-import { EncryptionDialogService } from '@trinity/components/encryption-dialog';
 import { runWithBusy } from '@trinity/util/ui';
 import { DevicesService, type DeviceInfo } from '@trinity/data-access/crypto';
 import { TrnIconComponent } from '@trinity/components/icon';
@@ -39,8 +39,9 @@ import { SettingsSectionHeadingComponent } from '../shared/settings-section-head
 export class DevicesSectionComponent {
   private readonly devicesSvc = inject(DevicesService);
   private readonly alert = inject(TrnAlertService);
-  private readonly dialogs = inject(EncryptionDialogService);
-  private readonly router = inject(Router);
+  private readonly applicationSurfaces = inject(
+    WorkspaceApplicationSurfaceService,
+  );
   private readonly destroyRef = inject(DestroyRef);
   private destroyed = false;
 
@@ -102,17 +103,26 @@ export class DevicesSectionComponent {
 
   /**
    * Open the SAS verification flow — a modal on the desktop split-pane layout, a
-   * routed page (returning here) on mobile — via {@link EncryptionDialogService}.
+   * routed page (returning here) on mobile — through Workspace's semantic presenter.
    */
   verifyDevices(): void {
     // Return to the Devices sub-page, not the settings index (the category list).
-    const forceDialog = this.inSettingsDialog();
-    void this.dialogs.openVerify({
-      returnTo: forceDialog ? this.router.url : '/settings/devices',
-      ...(forceDialog
-        ? { forceDialog: true, isOwnerActive: () => !this.destroyed }
-        : {}),
-    });
+    const nested = this.inSettingsDialog();
+    this.applicationSurfaces
+      .open({
+        surface: { kind: 'trust', flow: 'verify' },
+        context: {
+          returnTo: { kind: 'settings', section: 'devices' },
+          ...(nested
+            ? {
+                placement: 'nested' as const,
+                ownerActive: () => !this.destroyed,
+              }
+            : {}),
+        },
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
   }
 
   private applyRename(id: string, name: string): void {

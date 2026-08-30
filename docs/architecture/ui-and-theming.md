@@ -852,6 +852,11 @@ if "Message" was chosen.
 Several carry an explicit re-entrancy guard, so a repeated trigger — pressing Ctrl+K while
 the quick switcher is already open — is a no-op rather than stacking a second dialog.
 
+Capability callers no longer inject either presenter directly. They issue a typed, cold
+`WorkspaceApplicationSurfaceService.open()` command; the app-level Workspace adapter owns lazy
+loading and maps semantic return destinations to routes only at that boundary. The older services
+below remain isolated compatibility adapters rather than capability dependencies.
+
 `EncryptionDialogService` presents `/encryption/unlock` and `/encryption/verify` as CDK
 modals at 768px and above, and as routed pages below. The routes stay the canonical
 deep-link and mobile target, and the service falls back to routing whenever the lazy

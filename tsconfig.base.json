@@ -149,7 +149,10 @@
       "@trinity/data-access/accounts": [
         "./libs/data-access/accounts/src/index.ts"
       ],
-      "@trinity/runtime/projection": ["./libs/runtime/projection/src/index.ts"]
+      "@trinity/runtime/projection": ["./libs/runtime/projection/src/index.ts"],
+      "@trinity/application/workspace": [
+        "./libs/application/workspace/src/index.ts"
+      ]
     },
     "noUncheckedSideEffectImports": false,
     "types": ["*"]

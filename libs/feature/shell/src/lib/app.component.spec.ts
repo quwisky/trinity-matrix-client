@@ -11,11 +11,14 @@ import {
 import { App } from '@capacitor/app';
 import { VerificationService } from '@trinity/data-access/crypto';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  WorkspaceBackService,
+  type WorkspaceSurface,
+} from '@trinity/application/workspace';
 import { render } from '@trinity/testing';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
-import { BackInterceptorService } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
-import { Subject } from 'rxjs';
+import { Subject, of } from 'rxjs';
 import {
   afterEach,
   beforeEach,
@@ -76,6 +79,15 @@ const hostProviders = [
   MockProvider(MatrixClientService, { syncState: signal(null) }),
   MockProvider(VerificationService, { active: signal(null) }),
 ];
+
+const roomSurface = {
+  layer: 'room',
+  surface: { kind: 'threads' },
+} as const satisfies WorkspaceSurface;
+const applicationSurface = {
+  layer: 'application',
+  surface: { kind: 'settings', section: null },
+} as const satisfies WorkspaceSurface;
 
 describe('AppComponent', () => {
   it('should create the app', async () => {
@@ -219,7 +231,7 @@ describe('AppComponent', () => {
         ],
       });
       TestBed.tick();
-      return { openState, back: TestBed.inject(BackInterceptorService) };
+      return { openState, back: TestBed.inject(WorkspaceBackService) };
     }
 
     it('enables native history swipes when no surface can intercept Back', async () => {
@@ -244,7 +256,10 @@ describe('AppComponent', () => {
     it('keeps native gestures disabled until both dialog and panel are closed', async () => {
       const { openState, back } = await create();
       const panelOpen = signal(false);
-      back.register({ active: panelOpen, dismiss: vi.fn() });
+      back.register({
+        surface: () => (panelOpen() ? roomSurface : null),
+        dismiss: () => of('dismissed'),
+      });
       nativeGestureCalls.length = 0;
 
       panelOpen.set(true);
@@ -325,9 +340,12 @@ describe('AppComponent', () => {
       // out of the room, which it has always done for the members drawer.
       const listener = await create();
       const panel = vi.fn();
-      TestBed.inject(BackInterceptorService).register({
-        active: () => true,
-        dismiss: panel,
+      TestBed.inject(WorkspaceBackService).register({
+        surface: () => roomSurface,
+        dismiss: () => {
+          panel();
+          return of('dismissed');
+        },
       });
 
       listener({ canGoBack: true });
@@ -341,9 +359,9 @@ describe('AppComponent', () => {
       // The other half, and the one that keeps Back usable: an interceptor that declines
       // must not swallow the press.
       const listener = await create();
-      TestBed.inject(BackInterceptorService).register({
-        active: () => false,
-        dismiss: vi.fn(),
+      TestBed.inject(WorkspaceBackService).register({
+        surface: () => null,
+        dismiss: () => of('dismissed'),
       });
 
       listener({ canGoBack: true });
@@ -356,9 +374,12 @@ describe('AppComponent', () => {
       // recent thing, so it goes first.
       const listener = await create();
       const panel = vi.fn();
-      TestBed.inject(BackInterceptorService).register({
-        active: () => true,
-        dismiss: panel,
+      TestBed.inject(WorkspaceBackService).register({
+        surface: () => roomSurface,
+        dismiss: () => {
+          panel();
+          return of('dismissed');
+        },
       });
       hasOpen.mockReturnValue(true);
       closeTopmost.mockReturnValue(true);
@@ -367,6 +388,34 @@ describe('AppComponent', () => {
 
       expect(closeTopmost).toHaveBeenCalled();
       expect(panel).not.toHaveBeenCalled();
+    });
+
+    it('offers a semantic application dialog to Workspace before Room surfaces', async () => {
+      const listener = await create();
+      const application = vi.fn();
+      const room = vi.fn();
+      TestBed.inject(WorkspaceBackService).register({
+        surface: () => roomSurface,
+        dismiss: () => {
+          room();
+          return of('dismissed');
+        },
+      });
+      TestBed.inject(WorkspaceBackService).register({
+        surface: () => applicationSurface,
+        dismiss: () => {
+          application();
+          return of('dismissed');
+        },
+        ownsTopmostOverlay: () => true,
+      });
+      hasOpen.mockReturnValue(true);
+
+      listener({ canGoBack: true });
+
+      expect(application).toHaveBeenCalled();
+      expect(room).not.toHaveBeenCalled();
+      expect(closeTopmost).not.toHaveBeenCalled();
     });
 
     it('swallows the press when an overlay refuses to close, rather than navigating under it', async () => {

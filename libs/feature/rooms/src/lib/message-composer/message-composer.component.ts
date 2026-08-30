@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   effect,
   ElementRef,
   inject,
@@ -14,6 +15,7 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnIconButton } from '@trinity/components/button';
 import { TrnTextarea } from '@trinity/components/textarea';
 import { TrnTooltip } from '@trinity/components/tooltip';
@@ -64,7 +66,7 @@ import {
 import { type MentionMember } from './mention-autocomplete';
 import { StickerPickerComponent } from '../sticker-picker/sticker-picker.component';
 import { InlineMxcImagesDirective } from '../inline-mxc-images/inline-mxc-images.directive';
-import { SettingsDialogService } from '@trinity/components/settings-dialog';
+import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 
 /**
  * A room member offered by the @-mention autocomplete. Re-exported here because it is the
@@ -145,7 +147,10 @@ let nextPickerId = 0;
   styleUrl: './message-composer.component.scss',
 })
 export class MessageComposerComponent {
-  private readonly settings = inject(SettingsDialogService);
+  private readonly applicationSurfaces = inject(
+    WorkspaceApplicationSurfaceService,
+  );
+  private readonly destroyRef = inject(DestroyRef);
   /**
    * Unique per instance, because two composers are routinely alive at once: the room's own
    * and the thread panel's. A shared literal put the same `id` on both open panels and left
@@ -1008,11 +1013,16 @@ export class MessageComposerComponent {
 
   manageImagePacks(): void {
     this.stickerPickerOpen.set(false);
-    void this.settings.open({
-      section: 'stickers',
-      roomId: this.roomId() ?? undefined,
-      restoreFocus: () => this.field.focus(),
-    });
+    this.applicationSurfaces
+      .open({
+        surface: { kind: 'settings', section: 'stickers' },
+        context: {
+          sourceRoomId: this.roomId() ?? undefined,
+          restoreFocus: () => this.field.focus(),
+        },
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
   }
 
   /** Begin recording a voice message; toasts and resets if the mic is unavailable. */

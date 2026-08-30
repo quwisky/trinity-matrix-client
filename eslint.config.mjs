@@ -231,6 +231,9 @@ export default defineConfig([
       // Projection Runtime is a shared orchestration kernel. It may project SDK-backed
       // state supplied by data-access adapters, but it must remain SDK-independent.
       'libs/runtime/**/*.ts',
+      // Application capabilities coordinate domain-owned abstractions and must not gain
+      // direct SDK knowledge at their composition boundary.
+      'libs/application/**/*.ts',
       'libs/testing/**/*.ts',
       // `libs/util/ui` and not `libs/util/**`: the sibling `libs/util/matrix` is the
       // sanctioned exception that models the SDK's own types, so a directory-wide glob here

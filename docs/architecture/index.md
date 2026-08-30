@@ -1,9 +1,9 @@
 # Architecture overview
 
-Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 78
-libraries under `libs/`, grouped by layer into `libs/data-access/`, `libs/feature/`,
-`libs/util/`, `libs/runtime/` and `libs/components/` (the public component tier), alongside
-`libs/platform-native`, `libs/testing` and the `libs/spartan/`
+Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 79
+libraries under `libs/`, grouped by layer into `libs/application/`, `libs/data-access/`,
+`libs/feature/`, `libs/util/`, `libs/runtime/` and `libs/components/` (the public component tier),
+alongside `libs/platform-native`, `libs/testing` and the `libs/spartan/`
 Helm components. Web, iOS, Android and desktop are all the same compiled bundle wrapped
 differently, so there is no per-platform source tree — platform differences are branches inside
 `libs/platform-native`, not forks of the app.
@@ -22,12 +22,17 @@ and [generated dependency map](generated/dependency-map.md).
 
 ## The app project is a composition root
 
-`apps/trinity/src` contains no component, no service and no directive. Its entire source surface is:
+`apps/trinity/src` contains no product component or directive. App-local services are limited to
+composition adapters that bind capability ports to Router, lazy feature loaders and presentation
+policy. Its production TypeScript source surface is:
 
 | File                                                                       | What it is                                                            |
 | -------------------------------------------------------------------------- | --------------------------------------------------------------------- |
 | `main.ts`                                                                  | `bootstrapApplication` plus the provider and initializer manifest     |
 | `app/app.routes.ts`                                                        | The eight top-level routes, plus a development-only ninth             |
+| `app/settings-dialog.config.ts`                                            | App-owned Settings lazy-loader and placement policy                   |
+| `app/workspace-application-surface.presenter.ts`                           | Workspace application-surface composition adapter                     |
+| `app/workspace-routed-surface.adapter.ts`                                  | Canonical deep-link and routed-Back composition adapter               |
 | `app/build-info.ts`                                                        | Generated at build time by the `build-info` target, and git-ignored   |
 | `environments/environment.ts`, `environment.prod.ts`                       | Build-time configuration                                              |
 | `polyfills.ts`                                                             | Comment-only; it exists to record that zone.js is deliberately absent |
@@ -36,8 +41,8 @@ and [generated dependency map](generated/dependency-map.md).
 
 The application shell itself — `AppComponent`, `VerificationHostComponent`,
 `NavigationFocusService` — lives in `libs/feature/shell`. Moving it out of the app is what makes
-the app project a composition root rather than a sixth feature library: everything that can be
-tested in isolation lives in a library, and the app only wires those libraries together.
+the app project a composition root rather than a sixth feature library: product behavior lives in
+libraries, while the tested app-local adapters contain only host wiring and presentation policy.
 
 The build emits to the workspace-root `www/` directory rather than `dist/`, because Capacitor and
 the Electron shell both wrap that directory unchanged. See
@@ -137,9 +142,15 @@ incoming device-verification request
 has to raise `feature-crypto`'s page from `feature-shell`, and feature-to-feature imports are
 banned.
 
-Both are solved the same way: a lazy-loader `InjectionToken` declared in the **lower** layer,
-provided at the app with a dynamic `import()`, and injected `{ optional: true }` with a working
-fallback.
+Both are solved through an inward-facing application port, provided at the app with lazy feature
+adapters. For user-initiated Settings and trust flows the port is
+`WORKSPACE_APPLICATION_SURFACE_PRESENTER`, declared by `@trinity/application/workspace` and
+consumed through cold `WorkspaceApplicationSurfaceService.open()` commands. Callers name a typed
+semantic surface and optional semantic return destination; only the app adapter names Router,
+platform policy, dialogs, or dynamic feature imports.
+
+The older UI loader tokens remain the app adapter's implementation seams while their public
+presenters are retired from capability call sites:
 
 ```ts
 // libs/components/encryption-dialog/src/lib/encryption-dialog.tokens.ts
@@ -158,24 +169,24 @@ export const ENCRYPTION_DIALOG_COMPONENTS = new InjectionToken<EncryptionDialogL
 }
 ```
 
-The optional injection is what makes this a pattern rather than a hack. `EncryptionDialogService`
-injects the token optionally and falls back to `router.navigate('/encryption/unlock')` when it is
-absent, so that library in isolation and every unit test still work, and the routes remain the
-canonical deep-link target. `AVATAR_RESOLVER` in `@trinity/components/avatar` follows the
-identical contract:
+The optional Workspace presenter is what makes this a port rather than a hidden upward edge: an
+unwired host returns a typed `unavailable` outcome. The app adapter consumes the encryption
+loaders optionally and falls back to the canonical `/encryption/*` routes when they are absent.
+`AVATAR_RESOLVER` in `@trinity/components/avatar` follows the identical contract:
 the app wires it to `AvatarService.resolve`, and unwired, `<trn-avatar>` just uses its `url` input.
 
-`VerificationHostComponent` reuses that same seam rather than adding a second one. It renders
+`VerificationHostComponent` reuses the encryption loader seam rather than adding a second one. It renders
 nothing, is mounted app-wide in `app.component.html` so an incoming verification is caught on any
 route, and calls `dialogComponents?.verify()` to lazy-load a page from a library it does not
 import.
 
 !!! warning "Do not reach for a token first"
 
-    The token seam is the second-choice resolution. The first is to read the relevant
+    A presentation port is the second-choice resolution. The first is to read the relevant
     `@trinity/data-access/*` signal from the feature that owns the surface: the encryption banner
-    lives in `feature-rooms` and injects `CryptoService` directly, rather than importing anything
-    from `feature-crypto`. Reach for a token only when one feature must *present* another's page.
+    lives in `feature-rooms` and injects `CryptoService` directly, then asks Workspace to present a
+    typed trust surface rather than importing anything from `feature-crypto`. Reach for a port only
+    when one feature must *present* another's page.
 
 ## Routing and lazy loading
 
@@ -213,6 +224,10 @@ Four details are not obvious from the table:
   route remains the installed-mobile target and bookmark/deep-link surface. A failed modal chunk
   leaves the current room route intact and produces a retryable error instead of attempting the
   same unavailable feature chunk through the router.
+- **Application routes attach to Workspace by semantic identity.** Direct Settings and encryption
+  deep links register through the app-owned routed-surface adapter. Host Back closes a narrow
+  Settings detail before Settings itself, honours a validated trust-flow return destination, and
+  falls back to `/rooms` for a cold link with no history. Browser Back remains browser-owned.
 - **The `canDeactivate` guards on the two encryption routes exist because those pages display a
   recovery key exactly once and never persist it.** The browser Back button would otherwise
   discard it silently. Those guards are also why `main.ts` passes

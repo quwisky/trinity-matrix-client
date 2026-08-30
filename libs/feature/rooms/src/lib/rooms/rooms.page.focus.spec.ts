@@ -1,6 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
+import { WorkspaceBackService } from '@trinity/application/workspace';
 import {
   VerificationService,
   CryptoService,
@@ -32,7 +33,6 @@ import {
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import {
-  BackInterceptorService,
   FeatureFlagsService,
   HapticsService,
   MessageGestureSettingsService,
@@ -154,7 +154,7 @@ describe('RoomsPage rendered right-panel focus', () => {
           },
         },
         MockProvider(HapticsService),
-        MockProvider(BackInterceptorService, { register: () => vi.fn() }),
+        MockProvider(WorkspaceBackService, { register: () => vi.fn() }),
         MockProvider(RoomsService, {
           connect: vi.fn(),
           createDirectMessage: vi.fn(() => of('!dm:hs')),

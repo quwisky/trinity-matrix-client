@@ -1,13 +1,14 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   computed,
   inject,
 } from '@angular/core';
-import { Router } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/button';
 import { CryptoService } from '@trinity/data-access/crypto';
-import { EncryptionDialogService } from '@trinity/components/encryption-dialog';
 import { BannerComponent } from '@trinity/components/banner';
 import { TrnIconComponent } from '@trinity/components/icon';
 
@@ -39,8 +40,10 @@ interface BannerAction {
 })
 export class EncryptionBannerComponent {
   private readonly crypto = inject(CryptoService);
-  private readonly router = inject(Router);
-  private readonly dialogs = inject(EncryptionDialogService);
+  private readonly applicationSurfaces = inject(
+    WorkspaceApplicationSurfaceService,
+  );
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly status = this.crypto.status;
 
@@ -71,21 +74,13 @@ export class EncryptionBannerComponent {
   });
 
   /**
-   * Trigger a flow. Setup stays a full-page route; unlock/verify go through
-   * {@link EncryptionDialogService}, which opens a modal on the desktop
-   * split-pane layout and navigates to the route on mobile.
+   * Trigger a semantic trust surface. The application adapter chooses a modal or
+   * canonical route without exposing Router or platform policy to this capability.
    */
   run(kind: BannerActionKind): void {
-    switch (kind) {
-      case 'setup':
-        void this.router.navigateByUrl('/encryption/setup');
-        break;
-      case 'unlock':
-        void this.dialogs.openUnlock();
-        break;
-      case 'verify':
-        void this.dialogs.openVerify();
-        break;
-    }
+    this.applicationSurfaces
+      .open({ surface: { kind: 'trust', flow: kind } })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
   }
 }

@@ -15,6 +15,7 @@ import {
 import { provideServiceWorker } from '@angular/service-worker';
 import { Capacitor } from '@capacitor/core';
 import { AvatarService, MediaService } from '@trinity/data-access/media';
+import { WORKSPACE_APPLICATION_SURFACE_PRESENTER } from '@trinity/application/workspace';
 import { OidcClientService } from '@trinity/data-access/auth';
 import {
   ACCOUNT_LIFECYCLE_PORT,
@@ -67,13 +68,13 @@ import {
 import { AVATAR_RESOLVER } from '@trinity/components/avatar';
 import { provideTrnIcons } from '@trinity/components/icon';
 import { provideTrnOverlayDefaults } from '@trinity/components/overlay';
-import { SETTINGS_DIALOG_CONFIG } from '@trinity/components/settings-dialog';
 
 import { routes } from './app/app.routes';
 import { AppComponent, NavigationFocusService } from '@trinity/feature/shell';
 import { environment } from './environments/environment';
 import { BUILD_INFO_VALUE } from './app/build-info';
-import { SETTINGS_DIALOG_APP_CONFIG } from './app/settings-dialog.config';
+import { WorkspaceApplicationSurfacePresenterAdapter } from './app/workspace-application-surface.presenter';
+import { WorkspaceRoutedSurfaceAdapter } from './app/workspace-routed-surface.adapter';
 import { of } from 'rxjs';
 
 // Desktop (hand-rolled Electron) detection. Capacitor.isNativePlatform() is FALSE in
@@ -220,7 +221,10 @@ bootstrapApplication(AppComponent, {
     }),
     // Move focus into the entering page on each route change (replaces Ionic's
     // focus manager) — a11y for screen-reader/keyboard users.
-    provideAppInitializer(() => inject(NavigationFocusService).init()),
+    provideAppInitializer(() => {
+      inject(NavigationFocusService).init();
+      inject(WorkspaceRoutedSurfaceAdapter);
+    }),
     // Let <trn-avatar> resolve mxc avatars to authenticated blob URLs (core).
     {
       provide: AVATAR_RESOLVER,
@@ -258,13 +262,13 @@ bootstrapApplication(AppComponent, {
           ),
       } satisfies EncryptionDialogLoaders,
     },
-    // All in-app Settings entry points use one lazy presenter: a named modal on web and
-    // Electron, native routing on Android/iOS. Direct /settings URLs remain canonical
-    // deep links; a failed dialog chunk leaves the working room in place and reports it.
+    // All in-app Settings and trust entry points use one typed Workspace presenter.
+    // Direct URLs remain canonical deep links; placement and lazy UI stay app-owned.
     {
-      provide: SETTINGS_DIALOG_CONFIG,
-      useValue: SETTINGS_DIALOG_APP_CONFIG,
+      provide: WORKSPACE_APPLICATION_SURFACE_PRESENTER,
+      useExisting: WorkspaceApplicationSurfacePresenterAdapter,
     },
+    WorkspaceApplicationSurfacePresenterAdapter,
     // Precache the app shell + crypto WASM for offline (web/PWA only). Native
     // (Capacitor) and desktop (Electron) already load these as bundled assets and
     // must NOT layer a second SW cache over them — gate on web + production.

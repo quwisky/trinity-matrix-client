@@ -1,12 +1,14 @@
 import { signal } from '@angular/core';
-import { Router } from '@angular/router';
+import {
+  WorkspaceApplicationSurfaceService,
+  type WorkspaceApplicationSurfaceRequest,
+} from '@trinity/application/workspace';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { CryptoService, type CryptoStatus } from '@trinity/data-access/crypto';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
-import { EncryptionDialogService } from '@trinity/components/encryption-dialog';
 import { SecuritySectionComponent } from './security-section.component';
 
 async function build(
@@ -22,9 +24,9 @@ async function build(
   } = {},
 ) {
   const refresh = vi.fn(() => of(undefined));
-  const openUnlock = vi.fn().mockResolvedValue(undefined);
-  const openVerify = vi.fn().mockResolvedValue(undefined);
-  const navigate = vi.fn().mockResolvedValue(true);
+  const open = vi.fn((request: WorkspaceApplicationSurfaceRequest) =>
+    of({ kind: 'presented' as const, surface: request.surface }),
+  );
   const exportRoomKeys = over.exportRoomKeys ?? vi.fn(() => of('ARMORED'));
   const importRoomKeys = over.importRoomKeys ?? vi.fn(() => of(undefined));
   const prompt = over.prompt ?? vi.fn().mockResolvedValue('pw');
@@ -39,13 +41,9 @@ async function build(
         exportRoomKeys,
         importRoomKeys,
       }),
-      MockProvider(EncryptionDialogService, { openUnlock, openVerify }),
+      MockProvider(WorkspaceApplicationSurfaceService, { open }),
       MockProvider(TrnAlertService, { prompt }),
       MockProvider(TrnToastService, { show: toastShow }),
-      MockProvider(Router, {
-        navigate,
-        url: '/rooms/!current:example.org',
-      }),
     ],
   });
   return {
@@ -53,9 +51,7 @@ async function build(
     cmp: fixture.componentInstance,
     container,
     refresh,
-    openUnlock,
-    openVerify,
-    navigate,
+    open,
     exportRoomKeys,
     importRoomKeys,
     prompt,
@@ -78,20 +74,23 @@ describe('SecuritySectionComponent', () => {
   });
 
   it('offers setup when encryption needs setting up', async () => {
-    const { container, cmp, navigate } = await build({ status: 'needs-setup' });
+    const { container, cmp, open } = await build({ status: 'needs-setup' });
     expect(
       container.querySelector('[data-testid=security-setup]'),
     ).not.toBeNull();
 
     cmp.setUp();
 
-    expect(navigate).toHaveBeenCalledWith(['/encryption/setup'], {
-      queryParams: { returnTo: '/settings/security' },
+    expect(open).toHaveBeenCalledWith({
+      surface: { kind: 'trust', flow: 'setup' },
+      context: {
+        returnTo: { kind: 'settings', section: 'security' },
+      },
     });
   });
 
   it('offers recovery-key unlock when this device needs recovery', async () => {
-    const { container, cmp, openUnlock } = await build({
+    const { container, cmp, open } = await build({
       status: 'needs-recovery',
     });
     expect(
@@ -100,13 +99,18 @@ describe('SecuritySectionComponent', () => {
 
     cmp.unlock();
 
-    expect(openUnlock).toHaveBeenCalledWith({ returnTo: '/settings/security' });
+    expect(open).toHaveBeenCalledWith({
+      surface: { kind: 'trust', flow: 'unlock' },
+      context: {
+        returnTo: { kind: 'settings', section: 'security' },
+      },
+    });
   });
 
   it('offers the lost-key escape hatch, arriving with the reset offered', async () => {
     // Same screen as "Enter recovery key" — one implementation of an irreversible flow —
     // but it must not dump the user there to hunt for the same words a second time.
-    const { container, openUnlock } = await build({ status: 'needs-recovery' });
+    const { container, open } = await build({ status: 'needs-recovery' });
     const lost = container.querySelector<HTMLButtonElement>(
       '[data-testid=security-reset-recovery]',
     );
@@ -114,9 +118,12 @@ describe('SecuritySectionComponent', () => {
 
     lost?.click();
 
-    expect(openUnlock).toHaveBeenCalledWith({
-      returnTo: '/settings/security',
-      offerReset: true,
+    expect(open).toHaveBeenCalledWith({
+      surface: { kind: 'trust', flow: 'unlock' },
+      context: {
+        returnTo: { kind: 'settings', section: 'security' },
+        offerReset: true,
+      },
     });
   });
 
@@ -131,28 +138,36 @@ describe('SecuritySectionComponent', () => {
   });
 
   it('offers session verification when this session is unverified', async () => {
-    const { container, cmp, openVerify } = await build({ verified: false });
+    const { container, cmp, open } = await build({ verified: false });
     expect(
       container.querySelector('[data-testid=security-verify]'),
     ).not.toBeNull();
 
     cmp.verifySession();
 
-    expect(openVerify).toHaveBeenCalledWith({ returnTo: '/settings/security' });
+    expect(open).toHaveBeenCalledWith({
+      surface: { kind: 'trust', flow: 'verify' },
+      context: {
+        returnTo: { kind: 'settings', section: 'security' },
+      },
+    });
   });
 
   it('keeps nested verification modal and returns to the current room', async () => {
-    const { fixture, cmp, openVerify } = await build({ verified: false });
+    const { fixture, cmp, open } = await build({ verified: false });
     fixture.componentRef.setInput('inSettingsDialog', true);
     fixture.detectChanges();
 
     cmp.verifySession();
 
-    expect(openVerify).toHaveBeenCalledWith(
+    expect(open).toHaveBeenCalledWith(
       expect.objectContaining({
-        returnTo: '/rooms/!current:example.org',
-        forceDialog: true,
-        isOwnerActive: expect.any(Function),
+        surface: { kind: 'trust', flow: 'verify' },
+        context: expect.objectContaining({
+          returnTo: { kind: 'settings', section: 'security' },
+          placement: 'nested',
+          ownerActive: expect.any(Function),
+        }),
       }),
     );
   });

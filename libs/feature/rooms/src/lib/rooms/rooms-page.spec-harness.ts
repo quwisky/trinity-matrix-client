@@ -30,9 +30,12 @@ import {
 } from '@trinity/data-access/timeline';
 import { RoomNotificationsService } from '@trinity/data-access/notifications';
 import { RoomActionPermissionsService } from '@trinity/data-access/rooms';
+import {
+  WorkspaceApplicationSurfaceService,
+  type WorkspaceApplicationSurfaceRequest,
+} from '@trinity/application/workspace';
 
 import { TrnActionSheetService } from '@trinity/components/overlay';
-import { SettingsDialogService } from '@trinity/components/settings-dialog';
 import { MockProvider } from 'ng-mocks';
 import { BehaviorSubject, of, switchMap } from 'rxjs';
 import { vi } from 'vitest';
@@ -243,7 +246,10 @@ export const SHARED_MOCKS: Provider[] = [
   // Settings presentation has its own focused component-library suite. Room-shell tests only
   // need the session coordinator's boundary and must not construct a real dialog service from
   // their deliberately minimal Router stub.
-  MockProvider(SettingsDialogService),
+  MockProvider(WorkspaceApplicationSurfaceService, {
+    open: (request: WorkspaceApplicationSurfaceRequest) =>
+      of({ kind: 'presented' as const, surface: request.surface }),
+  }),
   {
     provide: AccountRuntimeService,
     useFactory: () => {

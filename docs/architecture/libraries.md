@@ -1,6 +1,6 @@
 # Library inventory
 
-The workspace holds one application and 78 libraries. Every shipped library carries its current
+The workspace holds one application and 79 libraries. Every shipped library carries its current
 `type:*` and `scope:*` tags plus target `role:*` and `capability:*` metadata; UI libraries also
 carry a `ui:*` tag that
 separates Trinity's own wrapper layer from the vendored kit; those tags are what
@@ -16,8 +16,8 @@ Libraries are imported through `@trinity/*` path aliases declared in
 [`tsconfig.base.json`](https://github.com/quwisky/trinity-matrix-client/blob/develop/tsconfig.base.json),
 never by relative path across a library boundary. Imports _within_ a library stay relative.
 
-`libs/` itself has eight entries. Five are layer parents holding that layer's libraries:
-`data-access/` (15), `feature/` (5), `util/` (2), `runtime/` (1) and `components/` (31) — the public
+`libs/` itself has nine entries. Six are layer parents holding that layer's libraries:
+`application/` (1), `data-access/` (15), `feature/` (5), `util/` (2), `runtime/` (1) and `components/` (31) — the public
 component tier feature code reaches for. `spartan/` (22) groups the generated Helm components plus
 the `tests` project that holds the specs pinning their behaviour. The remaining two are single
 libraries sitting directly under `libs/`: `platform-native` and `testing`.
@@ -55,6 +55,12 @@ all, so its own correctness is only ever exercised through the specs that import
 | Library                   | Alias                         | Tags                                              | Purpose                                                                                                                                                                                                                                          |
 | ------------------------- | ----------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `libs/runtime/projection` | `@trinity/runtime/projection` | `type:data-access`, `scope:shared`, `role:kernel` | Projection Runtime: four closed scope variants, generation-safe publication, coalesced reconciliation, attachment/reset/reattachment ownership, finite readiness barriers, and deterministic listener, retained-payload, and latency diagnostics |
+
+## Application workflow libraries
+
+| Library                      | Alias                            | Tags                                                                           | Purpose                                                                                                                                                                                                                              |
+| ---------------------------- | -------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `libs/application/workspace` | `@trinity/application/workspace` | `type:data-access`, `scope:matrix`, `role:application`, `capability:workspace` | Typed application, Room, and compact-Conversation surface identities; the fixed semantic Back registry; and the cold application-surface presentation port whose Router/platform/UI adapter is supplied only by the composition root |
 
 ## Platform library
 

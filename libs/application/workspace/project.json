@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "application-workspace",
+  "projectType": "library",
+  "sourceRoot": "libs/application/workspace/src",
+  "prefix": "trn",
+  "tags": [
+    "type:data-access",
+    "scope:matrix",
+    "role:application",
+    "capability:workspace"
+  ],
+  "targets": {
+    "test": {},
+    "typecheck": {}
+  }
+}
