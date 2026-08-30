@@ -190,6 +190,16 @@ export const SHARED_MOCKS: Provider[] = [
           of({ kind: 'applied' as const, operation: 'receipt' as const }),
         ),
       };
+      const search = {
+        searchLoaded: vi.fn(() => ({
+          hits: [],
+          scanned: 0,
+          encrypted: false,
+          serverAvailable: true,
+        })),
+        searchServer: vi.fn(() => of({ hits: [], count: 0, nextBatch: null })),
+        loadOlder: vi.fn(() => of(0)),
+      };
       const focused = signal<ConversationHandle | null>(null);
       const summaries = signal({});
       const threadList = signal([]);
@@ -219,6 +229,7 @@ export const SHARED_MOCKS: Provider[] = [
         timeline,
         compose,
         messages,
+        search,
         media,
         threads,
         pins,
@@ -232,6 +243,7 @@ export const SHARED_MOCKS: Provider[] = [
             timeline,
             compose,
             messages,
+            search,
             media,
             threads,
             pins,

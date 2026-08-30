@@ -13,11 +13,10 @@ import {
 } from '@angular/core';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import {
-  SearchService,
   type LoadedMessageSearch,
   type MessageHit,
-} from '@trinity/data-access/search';
-import { ConversationRuntime } from '@trinity/data-access/timeline';
+  ConversationRuntime,
+} from '@trinity/data-access/timeline';
 import { runWithBusy } from '@trinity/util/ui';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { AvatarComponent } from '@trinity/components/avatar';
@@ -35,18 +34,18 @@ interface HighlightPart {
 /**
  * In-room message search, presented from the room header (parallel to the threads
  * list) in the rooms shell's right-hand panel slot. Scoped to the active room's
- * `roomId`, a signal input the host binds. Injects {@link SearchService} +
- * the focused Conversation timeline directly so matching stays in data access and nothing is
+ * `roomId`, a signal input the host binds. Reads the focused Conversation child's exact
+ * search and timeline surfaces so matching stays in data access and nothing is
  * threaded through props.
  *
  * E2EE-honest by construction:
- *  - The instant results come from {@link SearchService.searchLoadedMessages}, over the
+ *  - The instant results come from the Conversation child's `searchLoaded`, over the
  *    already-loaded, *decrypted* timeline — recomputed reactively by reading
  *    the Conversation timeline's `messages()`, so decryption + scrollback re-run the search.
  *  - For an **encrypted** room that's the only path: a lock banner states it covers the
  *    loaded messages only, with a "Load older messages" affordance to widen it.
  *  - For an **unencrypted** room a "Search all messages" button runs the homeserver
- *    full-text search ({@link SearchService.searchServerMessages}) over the whole
+ *    full-text search through the same exact child over the whole
  *    history, paged via `next_batch`.
  *
  * Presentational: it owns no panel state. Selecting a result emits {@link selected}
@@ -81,8 +80,9 @@ interface HighlightPart {
 export class MessageSearchComponent {
   /** Timestamps go through the app-wide format preference, never a DatePipe. */
   readonly fmt = inject(DateTimeFormatService);
-  private readonly search = inject(SearchService);
-  private readonly timeline = inject(ConversationRuntime).timeline;
+  private readonly conversations = inject(ConversationRuntime);
+  private readonly search = this.conversations.search;
+  private readonly timeline = this.conversations.timeline;
   private readonly destroyRef = inject(DestroyRef);
   private readonly queryField =
     viewChild<ElementRef<HTMLInputElement>>('queryField');
@@ -107,7 +107,7 @@ export class MessageSearchComponent {
 
   /** Whether the server (full-history) results are being shown instead of loaded. */
   readonly serverMode = signal(false);
-  private readonly serverHits = signal<MessageHit[]>([]);
+  private readonly serverHits = signal<readonly MessageHit[]>([]);
   /** Token for the next page of server results, or null when exhausted. */
   readonly serverNextBatch = signal<string | null>(null);
   /** Total server-reported match count. */
@@ -126,14 +126,14 @@ export class MessageSearchComponent {
    */
   private readonly loaded = computed<LoadedMessageSearch>(() => {
     this.timeline.messages();
-    return this.search.searchLoadedMessages(this.roomId(), this.query());
+    return this.search.searchLoaded(this.query());
   });
 
   readonly encrypted = computed(() => this.loaded().encrypted);
   readonly scanned = computed(() => this.loaded().scanned);
 
   /** The rows to show: server results when in server mode, else the loaded matches. */
-  readonly results = computed<MessageHit[]>(() =>
+  readonly results = computed<readonly MessageHit[]>(() =>
     this.serverMode() ? this.serverHits() : this.loaded().hits,
   );
 
@@ -161,7 +161,7 @@ export class MessageSearchComponent {
       return;
     }
     this.serverMode.set(true);
-    runWithBusy(this.search.searchServerMessages(this.roomId(), term), {
+    runWithBusy(this.search.searchServer(term), {
       busy: this.searching,
       error: this.error,
       destroyRef: this.destroyRef,
@@ -179,7 +179,7 @@ export class MessageSearchComponent {
     if (!term || !next) {
       return;
     }
-    runWithBusy(this.search.searchServerMessages(this.roomId(), term, next), {
+    runWithBusy(this.search.searchServer(term, next), {
       busy: this.searching,
       error: this.error,
       destroyRef: this.destroyRef,
@@ -191,7 +191,7 @@ export class MessageSearchComponent {
 
   /** Page in older history so the instant (loaded) search can see more of it. */
   loadOlderHistory(): void {
-    runWithBusy(this.search.loadMoreHistory(this.roomId()), {
+    runWithBusy(this.search.loadOlder(), {
       busy: this.loadingHistory,
       error: this.error,
       destroyRef: this.destroyRef,

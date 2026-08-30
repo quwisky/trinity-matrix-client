@@ -114,12 +114,15 @@ libs/
                       root presentation and session ownership  [type:feature]
     workspace/        @trinity/application/workspace — semantic destinations, surfaces
                       and Back ordering  [type:data-access]
+    search/           @trinity/application/search — typed Global Search groups over
+                      Room Library and Discovery  [type:data-access]
   data-access/
     matrix-client/    @trinity/data-access/matrix-client — MatrixClient lifecycle +
                       4S key service; the client/session foundation  [type:data-access]
-    */                @trinity/data-access/{media,rooms,timeline,crypto,profile,invites,
-                      pinned,search,notifications,auth,gif} — one lib per Matrix domain
-                      (read models + write actions + guards)  [type:data-access]
+    */                @trinity/data-access/{accounts,auth,discovery,gif,homeserver,
+                      identity,matrix-client,media,notifications,room-administration,
+                      room-library,timeline,trust,widgets} — capability read models,
+                      actions, and adapters  [type:data-access]
   feature/
     shell/            @trinity/feature/shell — lazy dev-only /spike page  [type:feature]
     auth/             @trinity/feature/auth — login + SSO callback  [type:feature]
@@ -155,9 +158,9 @@ inward —
 `app → feature → {data-access, ui} → {util, platform}` — and one feature may never
 import another. `ui` is presentational only and cannot reach a data-access lib at all.
 A library is named three different ways and they no longer coincide: the directory
-(`libs/data-access/rooms`), the import alias (`@trinity/data-access/rooms`) and the Nx
-project name (`data-access-rooms`). Commands take the project name — `nx test
-data-access-rooms` — while imports take the alias.
+(`libs/data-access/discovery`), the import alias (`@trinity/data-access/discovery`) and the Nx
+project name (`data-access-discovery`). Commands take the project name — `nx test
+data-access-discovery` — while imports take the alias.
 
 New shared libs are added when first needed, under the parent for their layer. Each
 component/page lives in its own directory

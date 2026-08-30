@@ -38,10 +38,10 @@ describe('config key ledger', () => {
     );
   });
 
-  it('has data-access/rooms contributing nothing at all', () => {
+  it('has data-access/room-library contributing nothing at all', () => {
     // Both of its keys are per-account and user-id-suffixed, so the lib registers no
     // entries. If that changes, the entries and this expectation move together.
-    expect(exportedKeysFor('data-access/rooms')).toEqual([]);
+    expect(exportedKeysFor('data-access/room-library')).toEqual([]);
   });
 
   it('names each owning lib for the keys it exports', () => {

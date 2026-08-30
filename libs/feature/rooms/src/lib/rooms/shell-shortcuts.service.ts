@@ -1,27 +1,24 @@
-import { Injectable, inject } from '@angular/core';
+import { DestroyRef, Injectable, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
-import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { TrnDialogService } from '@trinity/components/overlay';
-import { runWithBusy } from '@trinity/util/ui';
 import { MruRoomsService } from '../shortcuts/mru-rooms.service';
 import { stepList, stepUnread } from '../shortcuts/room-navigation';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
-import { type SwitcherSelection } from '@trinity/data-access/search';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { AccountRoutingService } from './account-routing.service';
-import { InviteActionsService } from './invite-actions.service';
 import { ShellStatusService } from './shell-status.service';
+import { WorkspaceService } from './workspace.service';
 
 /**
  * The keyboard surface: the global chord handler, room hopping and list walking, and the
  * quick switcher.
  *
- * Last of the workflow clusters on purpose. `jumpTo` can land on a room, a space or an
- * invite, so it needs navigation, account routing AND invites to already exist — it is the
- * one method that touches three other coordinators, and it is why invites had to precede
- * shortcuts rather than the other way round.
+ * Search selections are already fully qualified. This coordinator hands them to
+ * Workspace's resolver rather than interpreting result kinds or re-deriving Account
+ * ownership from shell projections.
  */
 @Injectable()
 export class ShellShortcutsService {
@@ -29,13 +26,13 @@ export class ShellShortcutsService {
   private readonly vm = inject(RoomShellViewModel);
   private readonly nav = inject(RoomShellNavigationService);
   private readonly routing = inject(AccountRoutingService);
-  private readonly inviteActions = inject(InviteActionsService);
   private readonly status = inject(ShellStatusService);
-  private readonly rooms = inject(RoomLibraryService);
+  private readonly workspace = inject(WorkspaceService);
   private readonly mru = inject(MruRoomsService);
   private readonly switcher = inject(QuickSwitcherService);
   private readonly shortcuts = inject(KeyboardShortcutsService);
   private readonly dialog = inject(TrnDialogService);
+  private readonly destroyRef = inject(DestroyRef);
 
   /**
    * Global keyboard shortcuts (issues #12/#13). One listener rather than many host
@@ -167,9 +164,8 @@ export class ShellShortcutsService {
   }
 
   /**
-   * Open the switcher and jump to the selection: room/DM open the room, space selects
-   * it in the rail, a directory person opens (or reuses) a DM, an invite runs the
-   * page's existing accept path. Also the header search button's handler.
+   * Open the switcher and offer its fully qualified selection to Workspace. Also the
+   * header search button's handler.
    *
    * Bail when an overlay already owns the screen: the Cmd/Ctrl+K shortcut fires even while
    * a verification or settings modal is open (RoomsPage isn't destroyed), so without this it
@@ -189,30 +185,20 @@ export class ShellShortcutsService {
     if (!selection) {
       return; // cancelled / already open
     }
-    this.jumpTo(selection);
-  }
-
-  private jumpTo(selection: SwitcherSelection): void {
-    switch (selection.kind) {
-      case 'room':
-      case 'dm':
-        // Via the row path, so picking a mixed-in account's room switches to that account
-        // before opening it — otherwise the jump would land on the wrong client.
-        this.routing.onSelectRoomRow(selection.id);
-        break;
-      case 'space':
-        this.routing.onSelectSpaceRow(selection.id);
-        break;
-      case 'user':
-        this.status.error.set(null);
-        runWithBusy(
-          this.rooms.createDirectMessage(selection.id),
-          this.status,
-        ).subscribe((roomId) => this.nav.onSelectRoom(roomId));
-        break;
-      case 'invite':
-        this.inviteActions.onAcceptInvite({ roomId: selection.id });
-        break;
-    }
+    this.status.error.set(null);
+    this.workspace
+      .openSearchIntent(selection)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (outcome) => {
+          if (outcome.kind !== 'ready') {
+            void this.status.showError(
+              'Unable to open that search result right now.',
+            );
+          }
+        },
+        error: () =>
+          this.status.showError('Unable to open that search result right now.'),
+      });
   }
 }

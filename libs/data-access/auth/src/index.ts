@@ -17,3 +17,4 @@ export type {
 // `oauth` — and each rename would otherwise churn every consumer across a library
 // boundary. `AuthMetadata` is the name this workspace uses; only this line tracks theirs.
 export type { ValidatedAuthMetadata as AuthMetadata } from 'matrix-js-sdk';
+export * from './lib/homeserver-discovery.port';

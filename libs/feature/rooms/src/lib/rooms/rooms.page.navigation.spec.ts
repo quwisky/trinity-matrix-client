@@ -28,6 +28,7 @@ import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { MediaPipeline } from '@trinity/data-access/media';
 import {
   RoomLibraryService,
+  RoomReadinessService,
   SpacesService,
   UnreadAggregatorService,
   type RoomSummary,
@@ -43,7 +44,7 @@ import {
   TrnToastService,
 } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
-import { firstValueFrom, of } from 'rxjs';
+import { firstValueFrom, map, of } from 'rxjs';
 import {
   afterEach,
   beforeEach,
@@ -76,6 +77,8 @@ describe('RoomsPage quick switcher', () => {
   let timelineOpen: Mock;
   let pending: WritableSignal<PendingInvite[]>;
   let dialogHasOpen: Mock;
+  let selectionAvailability: Mock;
+  let waitForRoom: Mock;
 
   function build() {
     pick = vi.fn();
@@ -85,18 +88,21 @@ describe('RoomsPage quick switcher', () => {
     timelineOpen = vi.fn();
     pending = signal<PendingInvite[]>([]);
     dialogHasOpen = vi.fn().mockReturnValue(false);
+    selectionAvailability = vi.fn(() => 'available');
+    waitForRoom = vi.fn(() => of(void 0));
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
         MockProvider(RoomLibraryService, {
-          selectionAvailability: () => 'available',
+          selectionAvailability,
           clearMarkedUnread: () => of(void 0),
           createDirectMessage,
           // The jump resolves the row's owning account from the known room set.
           rooms: signal<RoomSummary[]>([]),
           directRoomIds: signal<ReadonlySet<string>>(new Set()).asReadonly(),
         }),
+        MockProvider(RoomReadinessService, { waitForRoom }),
         MockProvider(SpacesService, {
           openSpace,
           spaces: signal<SpaceSummary[]>([]),
@@ -143,7 +149,11 @@ describe('RoomsPage quick switcher', () => {
 
   it('opens the selected room', async () => {
     const shell = build();
-    pick.mockResolvedValue({ kind: 'room', id: '!r:hs' });
+    pick.mockResolvedValue({
+      kind: 'conversation',
+      accountId: '@me:hs',
+      roomId: '!r:hs',
+    });
 
     await shell.shortcuts.openSwitcher();
     TestBed.tick(); // the projections follow the URL from an effect
@@ -154,7 +164,11 @@ describe('RoomsPage quick switcher', () => {
 
   it('opens a DM result like a room', async () => {
     const shell = build();
-    pick.mockResolvedValue({ kind: 'dm', id: '!d:hs' });
+    pick.mockResolvedValue({
+      kind: 'conversation',
+      accountId: '@me:hs',
+      roomId: '!d:hs',
+    });
 
     await shell.shortcuts.openSwitcher();
 
@@ -163,7 +177,11 @@ describe('RoomsPage quick switcher', () => {
 
   it('selects a space in the rail (loading its hierarchy)', async () => {
     const shell = build();
-    pick.mockResolvedValue({ kind: 'space', id: '!s:hs' });
+    pick.mockResolvedValue({
+      kind: 'space',
+      accountId: '@me:hs',
+      spaceId: '!s:hs',
+    });
 
     await shell.shortcuts.openSwitcher();
 
@@ -172,13 +190,33 @@ describe('RoomsPage quick switcher', () => {
     expect(shell.store.activeRoomId()).toBeNull();
   });
 
-  it('opens (or reuses) a DM for a directory person', async () => {
+  it('waits for a newly created directory DM to enter the SDK graph before opening it', async () => {
     const shell = build();
-    pick.mockResolvedValue({ kind: 'user', id: '@bob:hs' });
+    let dmAvailable = false;
+    selectionAvailability.mockImplementation(
+      (_accountId: string, roomId: string) =>
+        roomId !== '!dm:hs' || dmAvailable ? 'available' : 'unavailable',
+    );
+    waitForRoom.mockImplementation((accountId: string, roomId: string) =>
+      of(void 0).pipe(
+        map(() => {
+          expect(accountId).toBe('@me:hs');
+          expect(roomId).toBe('!dm:hs');
+          expect(selectionAvailability(accountId, roomId)).toBe('unavailable');
+          dmAvailable = true;
+        }),
+      ),
+    );
+    pick.mockResolvedValue({
+      kind: 'person',
+      accountId: '@me:hs',
+      userId: '@bob:hs',
+    });
 
     await shell.shortcuts.openSwitcher();
 
     expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
+    expect(waitForRoom).toHaveBeenCalledWith('@me:hs', '!dm:hs');
     expect(shell.store.activeRoomId()).toBe('!dm:hs');
   });
 
@@ -196,11 +234,16 @@ describe('RoomsPage quick switcher', () => {
         isDirect: false,
       },
     ]);
-    pick.mockResolvedValue({ kind: 'invite', id: '!i:hs' });
+    pick.mockResolvedValue({
+      kind: 'invitation',
+      accountId: '@me:hs',
+      roomId: '!i:hs',
+      target: 'conversation',
+    });
 
     await shell.shortcuts.openSwitcher();
 
-    expect(acceptInvite).toHaveBeenCalledWith('!i:hs', undefined);
+    expect(acceptInvite).toHaveBeenCalledWith('!i:hs', '@me:hs');
     expect(shell.store.activeRoomId()).toBe('!i:hs');
   });
 

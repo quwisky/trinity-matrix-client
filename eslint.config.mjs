@@ -205,7 +205,7 @@ export default defineConfig([
     // is the sanctioned exception because it models the SDK's own types
     // (docs/architecture/index.md). If a layer below genuinely needs an SDK symbol, the
     // fix is to re-export it from the lib that owns the domain — as
-    // data-access/rooms does for JoinRule and util/matrix does for HTTPError — not to
+    // data-access/discovery does for JoinRule and util/matrix does for HTTPError — not to
     // widen this rule.
     // libs/spartan is included even though it is generated: it is presentational UI that
     // must never reach the SDK, and leaving it out made this rule the one thing the two UI

@@ -9,7 +9,6 @@ export type IdentityFailureKind =
 export type IdentityOperation =
   | 'load-own-profile'
   | 'lookup-user'
-  | 'search-users'
   | 'set-display-name'
   | 'set-avatar'
   | 'set-presence'

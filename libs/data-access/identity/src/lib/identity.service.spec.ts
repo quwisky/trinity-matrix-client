@@ -23,16 +23,6 @@ function fakeClient(overrides: Record<string, unknown> = {}) {
     setDisplayName: vi.fn().mockResolvedValue({}),
     setAvatarUrl: vi.fn().mockResolvedValue({}),
     uploadContent: vi.fn().mockResolvedValue({ content_uri: 'mxc://hs/new' }),
-    searchUserDirectory: vi.fn().mockResolvedValue({
-      results: [
-        {
-          user_id: '@bob:hs',
-          display_name: 'Bob',
-          avatar_url: 'mxc://hs/b',
-        },
-        { user_id: '@eve:hs' },
-      ],
-    }),
     ...overrides,
   };
 }
@@ -176,25 +166,6 @@ describe('IdentityService', () => {
       displayName: '@ghost:hs',
       avatarMxc: null,
     });
-  });
-
-  it('searches users independently of Room Library with safe fallbacks', async () => {
-    const { svc, client } = setup();
-
-    const results = await firstValueFrom(svc.search('  b  '));
-
-    expect(client.searchUserDirectory).toHaveBeenCalledWith({ term: 'b' });
-    expect(results).toEqual([
-      { userId: '@bob:hs', displayName: 'Bob', avatarMxc: 'mxc://hs/b' },
-      { userId: '@eve:hs', displayName: '@eve:hs', avatarMxc: null },
-    ]);
-  });
-
-  it('short-circuits an empty search without touching the homeserver', async () => {
-    const { svc, client } = setup();
-
-    await expect(firstValueFrom(svc.search('   '))).resolves.toEqual([]);
-    expect(client.searchUserDirectory).not.toHaveBeenCalled();
   });
 
   it('does not publish a stale own profile after the active Account changes', async () => {

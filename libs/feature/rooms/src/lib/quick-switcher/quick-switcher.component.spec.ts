@@ -2,18 +2,20 @@ import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TrnDialogRef, TrnDialogService } from '@trinity/components/overlay';
 import {
-  SearchService,
+  GlobalSearchService,
   type SwitcherResult,
-} from '@trinity/data-access/search';
+} from '@trinity/application/search';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { IdentityService } from '@trinity/data-access/identity';
+import { RoomLibrarySearchService } from '@trinity/data-access/room-library';
 import {
-  IdentityService,
-  type IdentitySummary,
-} from '@trinity/data-access/identity';
+  UserDirectoryDiscoveryService,
+  type DiscoveredUser,
+} from '@trinity/data-access/discovery';
 import { signal } from '@angular/core';
 import { QuickSwitcherComponent } from './quick-switcher.component';
 import { QuickSwitcherService } from './quick-switcher.service';
@@ -27,6 +29,7 @@ function result(over: Partial<SwitcherResult> = {}): SwitcherResult {
     avatarMxc: null,
     initial: 'R',
     score: 100,
+    accountId: '@me:hs',
     ...over,
   } as SwitcherResult;
 }
@@ -57,7 +60,7 @@ describe('QuickSwitcherComponent', () => {
   beforeEach(() => {
     dismiss = vi.fn().mockResolvedValue(true);
     localResults = vi.fn(() => LOCAL);
-    searchPeople = vi.fn(() => of<IdentitySummary[]>([]));
+    searchPeople = vi.fn(() => of({ users: [], limited: false }));
   });
 
   /** Render the switcher with the dialog ref and search service stubbed. */
@@ -71,8 +74,10 @@ describe('QuickSwitcherComponent', () => {
       ...(opts.inputs ? { inputs: opts.inputs } : {}),
       providers: [
         { provide: TrnDialogRef, useValue: { close: dismiss } },
-        MockProvider(SearchService, { localResults }),
-        MockProvider(IdentityService, { search: searchPeople, activeUserId }),
+        GlobalSearchService,
+        MockProvider(RoomLibrarySearchService, { search: localResults }),
+        MockProvider(UserDirectoryDiscoveryService, { search: searchPeople }),
+        MockProvider(IdentityService, { activeUserId }),
         MockProvider(MatrixClientService, {
           activeUserId,
           // Declared even though nothing here reads it: UnreadAggregatorService sits in
@@ -111,8 +116,12 @@ describe('QuickSwitcherComponent', () => {
     // header's Cancel button. Only the search backend is stubbed.
     TestBed.configureTestingModule({
       providers: [
-        MockProvider(SearchService, { localResults }),
-        MockProvider(IdentityService, { search: searchPeople }),
+        GlobalSearchService,
+        MockProvider(RoomLibrarySearchService, { search: localResults }),
+        MockProvider(UserDirectoryDiscoveryService, { search: searchPeople }),
+        MockProvider(IdentityService, {
+          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+        }),
       ],
     });
     const picked = TestBed.inject(QuickSwitcherService).pick();
@@ -142,12 +151,16 @@ describe('QuickSwitcherComponent', () => {
     expect(component.avatarShape(result({ kind: 'user' }))).toBe('person');
     expect(component.avatarShape(result({ kind: 'dm' }))).toBe('person');
     expect(
-      component.avatarShape(result({ kind: 'invite', isDirect: true })),
+      component.avatarShape(
+        result({ kind: 'invite', isDirect: true, isSpace: false }),
+      ),
     ).toBe('person');
     expect(component.avatarShape(result({ kind: 'room' }))).toBe('place');
     expect(component.avatarShape(result({ kind: 'space' }))).toBe('place');
     expect(
-      component.avatarShape(result({ kind: 'invite', isDirect: false })),
+      component.avatarShape(
+        result({ kind: 'invite', isDirect: false, isSpace: false }),
+      ),
     ).toBe('place');
   });
 
@@ -216,7 +229,11 @@ describe('QuickSwitcherComponent', () => {
 
     c.choose(keyEvent().event);
 
-    expect(dismiss).toHaveBeenCalledWith({ kind: 'space', id: '!b:hs' });
+    expect(dismiss).toHaveBeenCalledWith({
+      kind: 'space',
+      accountId: '@me:hs',
+      spaceId: '!b:hs',
+    });
   });
 
   it('clicking a row dismisses with its selection', async () => {
@@ -225,7 +242,11 @@ describe('QuickSwitcherComponent', () => {
 
     c.select(LOCAL[2]);
 
-    expect(dismiss).toHaveBeenCalledWith({ kind: 'dm', id: '!c:hs' });
+    expect(dismiss).toHaveBeenCalledWith({
+      kind: 'conversation',
+      accountId: '@me:hs',
+      roomId: '!c:hs',
+    });
   });
 
   it('Escape / Cancel dismisses with null', async () => {
@@ -238,14 +259,14 @@ describe('QuickSwitcherComponent', () => {
   });
 
   it('appends debounced directory people after the local results', async () => {
-    const people: IdentitySummary[] = [
+    const people: DiscoveredUser[] = [
       {
         userId: '@bob:hs',
         displayName: 'Bob',
         avatarMxc: null,
       },
     ];
-    searchPeople.mockReturnValue(of(people));
+    searchPeople.mockReturnValue(of({ users: people, limited: false }));
     const { fixture } = await renderSwitcher();
     const c = fixture.componentInstance;
 
@@ -282,8 +303,18 @@ describe('QuickSwitcherComponent', () => {
   // same name can exist on two accounts, and picking one silently changes who you act as.
   it('badges a result that belongs to another account', async () => {
     localResults = vi.fn(() => [
-      result({ id: '!mine:hs', title: 'alpha', accountId: '@me:hs' }),
-      result({ id: '!theirs:hs', title: 'alpha team', accountId: '@alt:hs' }),
+      result({
+        id: '!mine:hs',
+        title: 'alpha',
+        accountId: '@me:hs',
+        accountBadgeId: '@me:hs',
+      }),
+      result({
+        id: '!theirs:hs',
+        title: 'alpha team',
+        accountId: '@alt:hs',
+        accountBadgeId: '@alt:hs',
+      }),
     ]);
     const { container } = await renderSwitcher();
 

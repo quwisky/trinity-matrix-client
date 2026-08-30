@@ -1,6 +1,5 @@
 import { Injectable, inject } from '@angular/core';
 import {
-  AutoDiscovery,
   createClient,
   type AuthDict,
   type ValidatedAuthMetadata,
@@ -20,10 +19,7 @@ import {
   AccountRuntimeService,
   type AccountEstablishmentOutcome,
 } from '@trinity/data-access/accounts';
-import {
-  HostNetworkPolicyService,
-  SessionStorageService,
-} from '@trinity/platform-native';
+import { SessionStorageService } from '@trinity/platform-native';
 import {
   UiaCancelledError,
   runPasswordUia,
@@ -68,43 +64,6 @@ export class AuthService {
   private readonly storage = inject(SessionStorageService);
   private readonly oidc = inject(OidcClientService);
   private readonly accounts = inject(AccountRuntimeService);
-  private readonly hostNetworkPolicy = inject(HostNetworkPolicyService);
-
-  /**
-   * Resolve a homeserver base URL from a user-entered domain (e.g. "matrix.org"
-   * or "@me:example.org" -> "example.org") via .well-known auto-discovery.
-   * Falls back to https://<domain> when discovery is silent.
-   */
-  discoverHomeserver(input: string): Observable<string> {
-    const domain = this.extractDomain(input);
-    return defer(() => {
-      // Desktop: let main's CORS shim serve this origin. Discovery reaches a server
-      // BEFORE any account exists to declare it — `.well-known` on the typed domain,
-      // then the SDK validates the resolved base_url. Both are allowed here; the next
-      // account change replaces the whole set, so a probe of a server the user never
-      // signs into is dropped rather than lingering.
-      this.allowCorsOrigin(`https://${domain}`);
-      return from(AutoDiscovery.findClientConfig(domain));
-    }).pipe(
-      map((config) => {
-        const hs = config['m.homeserver'];
-        if (
-          hs.state === AutoDiscovery.FAIL_PROMPT ||
-          hs.state === AutoDiscovery.FAIL_ERROR
-        ) {
-          const reason = typeof hs.error === 'string' ? hs.error : null;
-          throw new Error(
-            reason ?? `Could not discover a homeserver for "${domain}".`,
-          );
-        }
-        const baseUrl = (hs.base_url ?? `https://${domain}`).replace(/\/$/, '');
-        // The resolved homeserver may be a different origin than the typed domain, and
-        // login POSTs to it before the account exists.
-        this.allowCorsOrigin(baseUrl);
-        return baseUrl;
-      }),
-    );
-  }
 
   /** Which login flows the homeserver supports (e.g. 'm.login.password', 'm.login.sso'). */
   getSupportedFlows(baseUrl: string): Observable<string[]> {
@@ -152,14 +111,6 @@ export class AuthService {
         }),
       ),
     ).pipe(switchMap((res) => this.establish(baseUrl, res, mode)));
-  }
-
-  /**
-   * Ask the Electron main process to serve `origin` through its CORS shim (see
-   * electron/src/cors.ts). A no-op off desktop, where the bridge is absent.
-   */
-  private allowCorsOrigin(origin: string): void {
-    this.hostNetworkPolicy.allowOrigin(origin);
   }
 
   /** Build the SSO redirect URL the browser/WebView should navigate to. */
@@ -366,13 +317,6 @@ export class AuthService {
       command.grant,
       command.intent,
     );
-  }
-
-  /** Accept "@user:server.org", "user:server.org", or a bare "server.org". */
-  private extractDomain(input: string): string {
-    const trimmed = input.trim().replace(/^@/, '');
-    const colon = trimmed.indexOf(':');
-    return colon >= 0 ? trimmed.slice(colon + 1) : trimmed;
   }
 
   /** Strip a full MXID down to its localpart for the password identifier. */

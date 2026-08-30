@@ -1,13 +1,13 @@
 import { Injectable, inject } from '@angular/core';
-import { type SwitcherSelection } from '@trinity/data-access/search';
+import { type SwitcherSelection } from '@trinity/application/search';
 import { TrnDialogService } from '@trinity/components/overlay';
 import { QuickSwitcherComponent } from './quick-switcher.component';
 
 /**
  * Presents the {@link QuickSwitcherComponent} as a {@link TrnDialogService} dialog
  * and resolves the chosen {@link SwitcherSelection} (or `null` when cancelled).
- * Wraps the dialog so `RoomsPage` stays thin and performs the actual jump with the
- * returned selection — mirroring {@link UserPickerService}.
+ * Wraps the dialog so its caller can hand the fully qualified result to Workspace —
+ * mirroring {@link UserPickerService}.
  *
  * A re-entrancy guard means a repeated Ctrl/Cmd+K while the switcher is already open
  * is a no-op rather than stacking dialogs.

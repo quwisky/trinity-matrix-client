@@ -129,14 +129,14 @@ advice: `@nx/enforce-module-boundaries` errors on a same-project alias import wi
 project", and because the rule is an error it fails the pre-commit hook, not just CI.
 
 An alias is `@trinity/` followed by the library's path under `libs/`:
-`libs/data-access/rooms` is `@trinity/data-access/rooms`, `libs/util/matrix` is
+`libs/data-access/discovery` is `@trinity/data-access/discovery`, `libs/util/matrix` is
 `@trinity/util/matrix`, `libs/components/icon` is `@trinity/components/icon`. The generated Helm packages are the
 single exception — `libs/spartan/tooltip` is `@trinity/helm/tooltip`.
 
 A new library goes inside the directory for its layer, `libs/application/`, `libs/data-access/`,
 `libs/feature/` or `libs/util/`, and gets the matching alias in `tsconfig.base.json`. Its
-Nx **project name** stays flat and hyphenated — `data-access-rooms`, not
-`data-access/rooms` — so the string you pass to `nx test` is a third one; see
+Nx **project name** stays flat and hyphenated — `data-access-discovery`, not
+`data-access/discovery` — so the string you pass to `nx test` is a third one; see
 [Commands](commands.md#nx-patterns).
 
 Which library may import which is decided by `type:*` and `scope:*` tags in each

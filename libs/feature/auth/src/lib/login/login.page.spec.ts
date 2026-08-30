@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
   AuthService,
+  AUTHENTICATION_HOMESERVER_DISCOVERY,
   RegistrationService,
   type OidcAuthorizationParams,
 } from '@trinity/data-access/auth';
@@ -14,7 +15,7 @@ import {
 import { TrnAlertService } from '@trinity/components/overlay';
 import { desktopBridgeFixture, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { of, throwError } from 'rxjs';
+import { map, of, throwError, type Observable } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { LoginPage } from './login.page';
 import { SsoStateStore } from '../sso-state.store';
@@ -27,7 +28,9 @@ const READY_OUTCOME = {
 } as const;
 
 async function renderLogin(
-  auth: Partial<AuthService>,
+  auth: Partial<AuthService> & {
+    discoverHomeserver?: (input: string) => Observable<string>;
+  },
   opts: {
     add?: boolean;
     reauth?: string;
@@ -56,10 +59,20 @@ async function renderLogin(
     has: (key: string) => key === 'add' && !!opts.add,
     get: (key: string) => (key === 'reauth' ? (opts.reauth ?? null) : null),
   };
+  const discoverHomeserver = auth.discoverHomeserver;
   const { fixture } = await render(LoginPage, {
     providers: [
       provideHostCapabilities(),
       MockProvider(AuthService, auth),
+      {
+        provide: AUTHENTICATION_HOMESERVER_DISCOVERY,
+        useValue: {
+          discover: (input: string) =>
+            (discoverHomeserver?.(input) ?? of(`https://${input}`)).pipe(
+              map((baseUrl) => ({ domain: input, baseUrl })),
+            ),
+        },
+      },
       MockProvider(RegistrationService, {
         getAvailability: vi.fn(() => of('unknown' as const)),
       }),

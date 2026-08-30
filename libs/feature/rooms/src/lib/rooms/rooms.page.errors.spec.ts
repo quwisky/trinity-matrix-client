@@ -3,7 +3,7 @@ import {
   RoomAliasesService,
   RoomActionPermissionsService,
 } from '@trinity/data-access/room-administration';
-import { PublicRoomsService } from '@trinity/data-access/rooms';
+import { PublicRoomsService } from '@trinity/data-access/discovery';
 import {
   SHARED_MOCKS,
   RoomsTimelineStub,

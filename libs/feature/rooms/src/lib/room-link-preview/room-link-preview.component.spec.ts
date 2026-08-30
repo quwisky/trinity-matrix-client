@@ -1,8 +1,8 @@
-import { type RoomLinkPreview } from '@trinity/data-access/rooms';
+import { type RoomLinkPreview } from '@trinity/data-access/discovery';
 import { render } from '@trinity/testing';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { InvitesService } from '@trinity/data-access/room-library';
-import { RoomLinkService } from '@trinity/data-access/rooms';
+import { RoomLinkService } from '@trinity/data-access/discovery';
 import { MatrixError } from '@trinity/util/matrix';
 import { MockProvider } from 'ng-mocks';
 import { type Observable, of, Subject, throwError } from 'rxjs';

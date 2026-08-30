@@ -55,7 +55,7 @@ describe('Room Administration production boundary', () => {
     );
 
     expect(offenders).toEqual([]);
-    expect(source('libs/data-access/rooms/src/index.ts')).not.toMatch(
+    expect(source('libs/data-access/discovery/src/index.ts')).not.toMatch(
       governanceSymbols,
     );
     expect(source('libs/data-access/room-library/src/index.ts')).not.toMatch(

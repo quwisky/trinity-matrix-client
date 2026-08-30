@@ -24,11 +24,11 @@ export class ForwardService {
   /** Pick a destination room/DM and forward the source room's `eventId` into it. */
   async forward(sourceRoomId: string, eventId: string): Promise<void> {
     const selection = await this.switcher.pick({ activeAccountOnly: true });
-    if (!selection || (selection.kind !== 'room' && selection.kind !== 'dm')) {
+    if (!selection || selection.kind !== 'conversation') {
       return; // cancelled, or a non-room target the switcher also offers
     }
     this.timelineActions
-      .forwardMessage(sourceRoomId, eventId, selection.id)
+      .forwardMessage(sourceRoomId, eventId, selection.roomId)
       .subscribe({
         next: () =>
           this.toast.show('Message forwarded.', {

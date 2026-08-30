@@ -70,7 +70,7 @@ repo breaks at once.
     models the SDK's own types.
 
     If a layer below needs an SDK symbol, re-export it from the lib that owns the domain
-    — as `data-access/rooms` does for `JoinRule` and `util/matrix` does for `HTTPError` —
+    — as `data-access/discovery` does for `JoinRule` and `util/matrix` does for `HTTPError` —
     rather than widening the rule.
 
 ## MatrixClientService is a registry, not a wrapper

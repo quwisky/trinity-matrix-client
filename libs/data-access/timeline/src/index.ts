@@ -40,6 +40,7 @@ export type {
   ConversationHandle,
   ConversationMedia,
   ConversationResources,
+  ConversationSearch,
   ConversationRuntimeDiagnostics,
   ConversationState,
   ConversationTimeline,
@@ -47,5 +48,6 @@ export type {
 export * from './lib/timeline-actions.service';
 export * from './lib/url-preview.service';
 export * from './lib/edit-history.service';
+export * from './lib/conversation-search.service';
 export * from './lib/message-presentation';
 export * from './lib/privacy-preferences';

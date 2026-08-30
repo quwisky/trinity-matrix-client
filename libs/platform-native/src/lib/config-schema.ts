@@ -180,7 +180,7 @@ export type ConfigOwner =
   | 'platform-native'
   | 'data-access/gif'
   | 'data-access/notifications'
-  | 'data-access/rooms'
+  | 'data-access/room-library'
   | 'feature/settings';
 
 /**
@@ -360,11 +360,11 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
       'pastes into a support thread, and Reset must never destroy it.',
   },
 
-  // — data-access/rooms, excluded —
+  // — data-access/room-library, excluded —
   {
     disposition: 'excluded',
     key: 'trinity.accounts.mixed',
-    owner: 'data-access/rooms',
+    owner: 'data-access/room-library',
     reason:
       'A set of signed-in user ids. It cannot transfer — on a device signed into different ' +
       'accounts every id in it is inert — and it puts the same user-id material into a ' +
@@ -374,7 +374,7 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
   {
     disposition: 'excluded',
     key: 'trinity.spaces.order.default.',
-    owner: 'data-access/rooms',
+    owner: 'data-access/room-library',
     reason:
       'Per-account: the key is suffixed with a user id, so a portable document would carry ' +
       'an ordering addressed to an account the importing device may not have. Same user-id ' +
@@ -383,7 +383,7 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
   {
     disposition: 'excluded',
     key: 'trinity.spaces.order.overrides.',
-    owner: 'data-access/rooms',
+    owner: 'data-access/room-library',
     reason:
       'Per-account like its sibling, and keyed by space room id on top — an override names ' +
       'spaces the importing account may not have joined.',

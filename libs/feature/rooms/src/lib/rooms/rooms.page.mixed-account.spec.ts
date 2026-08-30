@@ -400,7 +400,11 @@ describe('RoomsPage mixed-account view', () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
     TestBed.inject(QuickSwitcherService).pick = vi.fn(() =>
-      Promise.resolve({ kind: 'room' as const, id: '!theirs:hs' }),
+      Promise.resolve({
+        kind: 'conversation' as const,
+        accountId: '@alt:hs',
+        roomId: '!theirs:hs',
+      }),
     );
 
     await shell.shortcuts.openSwitcher();
@@ -418,7 +422,11 @@ describe('RoomsPage mixed-account view', () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
     TestBed.inject(QuickSwitcherService).pick = vi.fn(() =>
-      Promise.resolve({ kind: 'space' as const, id: '!s-alt:hs' }),
+      Promise.resolve({
+        kind: 'space' as const,
+        accountId: '@alt:hs',
+        spaceId: '!s-alt:hs',
+      }),
     );
 
     await shell.shortcuts.openSwitcher();

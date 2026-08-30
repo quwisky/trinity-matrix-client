@@ -1,8 +1,8 @@
 import { TrnDialogRef } from '@trinity/components/overlay';
 import {
-  IdentityService,
-  type IdentitySummary,
-} from '@trinity/data-access/identity';
+  UserDirectoryDiscoveryService,
+  type DiscoveredUser,
+} from '@trinity/data-access/discovery';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
@@ -10,7 +10,7 @@ import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { UserPickerComponent } from './user-picker.component';
 
-const RESULTS: IdentitySummary[] = [
+const RESULTS: DiscoveredUser[] = [
   { userId: '@bob:hs', displayName: 'Bob', avatarMxc: null },
 ];
 
@@ -24,7 +24,7 @@ describe('UserPickerComponent', () => {
 
   beforeEach(() => {
     dismiss = vi.fn().mockResolvedValue(true);
-    searchIdentities = vi.fn(() => of(RESULTS));
+    searchIdentities = vi.fn(() => of({ users: RESULTS, limited: false }));
   });
 
   /** Render the picker with the dialog ref and rooms service stubbed. */
@@ -32,7 +32,9 @@ describe('UserPickerComponent', () => {
     return render(UserPickerComponent, {
       providers: [
         { provide: TrnDialogRef, useValue: { close: dismiss } },
-        MockProvider(IdentityService, { search: searchIdentities }),
+        MockProvider(UserDirectoryDiscoveryService, {
+          search: searchIdentities,
+        }),
       ],
       imports: [MockComponent(AvatarComponent)],
     });

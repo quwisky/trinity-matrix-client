@@ -94,13 +94,13 @@ reachable through the desktop path.
 
 ### nx test cannot find the project you named
 
-**Symptom.** `Cannot find project 'core'`, or `Cannot find project 'data-access/rooms'`.
+**Symptom.** `Cannot find project 'core'`, or `Cannot find project 'data-access/discovery'`.
 
 **Cause.** Two different mistakes produce the same message. `@trinity/core` was dissolved
 into per-domain libraries, so no project called `core` exists. And for every library nested
 under `libs/data-access/`, `libs/feature/` and `libs/util/`, the Nx project name, the
-directory and the import alias are three different strings: the project `data-access-rooms`
-lives in `libs/data-access/rooms` and is imported from `@trinity/data-access/rooms`. Only
+directory and the import alias are three different strings: the project `data-access-discovery`
+lives in `libs/data-access/discovery` and is imported from `@trinity/data-access/discovery`. Only
 the hyphenated form names a task, so a directory or an alias pasted into an `nx` command
 never resolves.
 
@@ -139,7 +139,7 @@ level deeper keeps working. The setup file it points at does not: a library dire
 re-check each one against the new depth:
 
 ```bash
-grep -rn "'\.\./\.\./" libs/data-access/rooms
+rg "'\.\./\.\./" libs/data-access/discovery
 ```
 
 That surfaces both root-relative imports the library template carries: `vite.config.ts`
@@ -166,7 +166,7 @@ pnpm exec nx lint components-icon --skip-nx-cache   # must fail
 git checkout -- libs/components/icon/src/index.ts
 ```
 
-`libs/components/icon` is tagged `type:ui` and `scope:shared`, while `data-access-rooms` is
+`libs/components/icon` is tagged `type:ui` and `scope:shared`, while `data-access-discovery` is
 `type:data-access` and `scope:matrix`, so both axes are violated. The scope one is what gets
 reported:
 

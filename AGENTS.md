@@ -60,10 +60,10 @@ project name**, which since the libs were nested is neither the directory nor th
 `@trinity/data-access/room-library`.
 
 ```bash
-pnpm exec nx test data-access-rooms                        # one project
-pnpm exec nx test data-access-rooms --configuration=watch  # watch mode
-pnpm exec nx test data-access-rooms -- message-list        # files matching a path substring
-pnpm exec nx test data-access-rooms -- -t "sends a read receipt"   # one test by name
+pnpm exec nx test data-access-room-library                        # one project
+pnpm exec nx test data-access-room-library --configuration=watch  # watch mode
+pnpm exec nx test data-access-room-library -- message-list        # path substring
+pnpm exec nx test data-access-room-library -- -t "marks a room read" # one test
 pnpm exec nx affected -t lint test            # only what changed vs. the base branch
 pnpm exec nx reset                            # clear Nx cache if results look stale
 ```
@@ -179,21 +179,22 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
 - `@trinity/data-access/matrix-client` `[type:data-access]` — `MatrixClientService` + the 4S key service;
   the client/session foundation every domain data-access lib depends on, and the Matrix adapter for
   the first Projection Runtime tracer (per-Account sync state and readiness acknowledgement).
-- `@trinity/data-access/*` `[type:data-access]` — capability and adapter libraries (`media`,
-  `room-administration`, `room-library`, `rooms`, `timeline`, `crypto`, `profile`, `search`, `notifications`, `auth`, `gif`,
-  `homeserver`, `widgets`), each at `libs/data-access/<domain>`.
+- `@trinity/data-access/*` `[type:data-access]` — capability and adapter libraries (`accounts`,
+  `auth`, `discovery`, `gif`, `homeserver`, `identity`, `matrix-client`, `media`, `notifications`,
+  `room-administration`, `room-library`, `timeline`, `trust`, `widgets`), each at
+  `libs/data-access/<domain>`.
   Room Library owns room/space summaries, invitations, hierarchy, ordering, filtering and
   aggregate unread; its one-shot mutations, including account-scope and ordering persistence,
   favourite/priority writes, hierarchy changes and unread cleanup, are cold finite Observables.
   Room Administration owns authoritative joined-member and ban summaries, role classification and
   assignable presets, moderation, aliases,
-  power-level policy, room configuration, and Conversation governance; `rooms` retains only
-  Discovery adapters until #321. Cross-domain injects are inter-lib edges (search→room-library/rooms,
-  auth→accounts, notification→room-library/timeline,
-  timeline→media).
+  power-level policy, room configuration, and Conversation governance. Discovery owns remote
+  homeserver, public-room, room-link and user-directory lookup; Global Search lives at
+  `@trinity/application/search` and combines Discovery with Room Library. Cross-domain injects are
+  explicit inter-lib edges (auth→accounts, notification→room-library/timeline, timeline→media).
 - `@trinity/data-access/timeline` owns `ConversationRuntime` and Message Presentation: immutable
   Account-and-Room handles with one timeline child each, a two-entry per-Account retained LRU,
-  permanent retirement, a stable focused-timeline interface, and the Conversations privacy
+  permanent retirement, exact child-bound message search, a stable focused-timeline interface, and the Conversations privacy
   preference descriptors. Normalize SDK events first, then expose immutable `MessageView` models
   from this public entrypoint.
 - `@trinity/feature/*` `[type:feature]` — screens/pages incl. `feature-shell` (the app shell moved out of

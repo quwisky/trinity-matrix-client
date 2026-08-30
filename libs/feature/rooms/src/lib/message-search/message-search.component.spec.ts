@@ -2,12 +2,11 @@ import { inject, signal } from '@angular/core';
 import { type ComponentFixture } from '@angular/core/testing';
 import { fireEvent, render } from '@trinity/testing';
 import {
-  SearchService,
   type LoadedMessageSearch,
   type MessageHit,
   type ServerMessageSearch,
-} from '@trinity/data-access/search';
-import { ConversationRuntime } from '@trinity/data-access/timeline';
+  ConversationRuntime,
+} from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
@@ -63,15 +62,17 @@ describe('MessageSearchComponent', () => {
       },
       imports: [MockComponent(AvatarComponent)],
       providers: [
-        MockProvider(SearchService, {
-          searchLoadedMessages,
-          searchServerMessages,
-          loadMoreHistory,
-        }),
         MockProvider(ConversationTimelineStub, { messages: signal([]) }),
         {
           provide: ConversationRuntime,
-          useFactory: () => ({ timeline: inject(ConversationTimelineStub) }),
+          useFactory: () => ({
+            timeline: inject(ConversationTimelineStub),
+            search: {
+              searchLoaded: searchLoadedMessages,
+              searchServer: searchServerMessages,
+              loadOlder: loadMoreHistory,
+            },
+          }),
         },
       ],
     });
@@ -186,7 +187,7 @@ describe('MessageSearchComponent', () => {
 
     c.loadOlderHistory();
 
-    expect(loadMoreHistory).toHaveBeenCalledWith('!r:hs');
+    expect(loadMoreHistory).toHaveBeenCalledWith();
   });
 
   it('runs the server search and shows its paged results', async () => {
@@ -203,7 +204,7 @@ describe('MessageSearchComponent', () => {
     c.searchServer();
     fixture.detectChanges();
 
-    expect(searchServerMessages).toHaveBeenCalledWith('!r:hs', 'hello');
+    expect(searchServerMessages).toHaveBeenCalledWith('hello');
     expect(c.serverMode()).toBe(true);
     expect(c.results().map((h) => h.eventId)).toEqual(['$s1']);
     expect(c.serverCount()).toBe(3);
@@ -234,11 +235,7 @@ describe('MessageSearchComponent', () => {
     );
     c.loadMoreServer();
 
-    expect(searchServerMessages).toHaveBeenLastCalledWith(
-      '!r:hs',
-      'hello',
-      'b2',
-    );
+    expect(searchServerMessages).toHaveBeenLastCalledWith('hello', 'b2');
     expect(c.results().map((h) => h.eventId)).toEqual(['$s1', '$s2']);
     expect(c.serverNextBatch()).toBeNull();
   });

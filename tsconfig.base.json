@@ -38,7 +38,6 @@
       "@trinity/data-access/notifications": [
         "./libs/data-access/notifications/src/index.ts"
       ],
-      "@trinity/data-access/search": ["./libs/data-access/search/src/index.ts"],
       "@trinity/data-access/room-library": [
         "./libs/data-access/room-library/src/index.ts"
       ],
@@ -49,7 +48,9 @@
       "@trinity/data-access/timeline": [
         "./libs/data-access/timeline/src/index.ts"
       ],
-      "@trinity/data-access/rooms": ["./libs/data-access/rooms/src/index.ts"],
+      "@trinity/data-access/discovery": [
+        "./libs/data-access/discovery/src/index.ts"
+      ],
       "@trinity/data-access/media": ["./libs/data-access/media/src/index.ts"],
       "@trinity/data-access/gif": ["./libs/data-access/gif/src/index.ts"],
       "@trinity/data-access/homeserver": [
@@ -160,7 +161,8 @@
       "@trinity/runtime/host": ["./libs/runtime/host/src/index.ts"],
       "@trinity/data-access/room-administration": [
         "./libs/data-access/room-administration/src/index.ts"
-      ]
+      ],
+      "@trinity/application/search": ["./libs/application/search/src/index.ts"]
     },
     "noUncheckedSideEffectImports": false,
     "types": ["*"]

@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
   AuthService,
+  AUTHENTICATION_HOMESERVER_DISCOVERY,
   RegistrationService,
   type RegistrationStage,
 } from '@trinity/data-access/auth';
@@ -49,10 +50,17 @@ describe('RegistrationPage', () => {
     const { fixture } = await render(RegistrationPage, {
       providers: [
         MockProvider(AuthService, {
-          discoverHomeserver: vi.fn(() => of('https://hs.example')),
           getSupportedFlows: vi.fn(() => of(['m.login.password'])),
           getDelegatedAuthConfig: vi.fn(() => of(null)),
         }),
+        {
+          provide: AUTHENTICATION_HOMESERVER_DISCOVERY,
+          useValue: {
+            discover: vi.fn(() =>
+              of({ domain: 'example.org', baseUrl: 'https://hs.example' }),
+            ),
+          },
+        },
         { provide: RegistrationService, useValue: registration },
         MockProvider(ExternalBrowserService, {
           open: vi.fn(() => of(true)),

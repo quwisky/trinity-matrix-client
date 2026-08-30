@@ -3,18 +3,16 @@ import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Stub only the two SDK entry points AuthService touches for discovery/SSO,
-// keeping every other real export so the sibling core services still load.
+// Stub the SDK client constructor while keeping every other real export.
 vi.mock('matrix-js-sdk', async (importActual) => {
   const actual = await importActual<typeof import('matrix-js-sdk')>();
   return {
     ...actual,
-    AutoDiscovery: { ...actual.AutoDiscovery, findClientConfig: vi.fn() },
     createClient: vi.fn(),
   };
 });
 
-import { AutoDiscovery, MatrixError, createClient } from 'matrix-js-sdk';
+import { MatrixError, createClient } from 'matrix-js-sdk';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { AUTH_METADATA } from './auth-metadata.fixture';
 import { AuthService } from './auth.service';
@@ -24,14 +22,7 @@ import {
 } from './oidc-client.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { SessionStorageService } from '@trinity/platform-native';
-import { desktopBridgeFixture } from '@trinity/testing';
-
-const findClientConfig = vi.mocked(AutoDiscovery.findClientConfig);
 const createClientMock = vi.mocked(createClient);
-
-function homeserver(state: string, base_url?: string) {
-  return { 'm.homeserver': { state, base_url } } as never;
-}
 
 /** A user-interactive-auth 401 offering the password stage for `session`. */
 function uia(session: string): MatrixError {
@@ -66,79 +57,6 @@ describe('AuthService', () => {
     vi.mocked(TestBed.inject(SessionStorageService).load).mockReturnValue(
       of(null),
     );
-  });
-
-  describe('discoverHomeserver', () => {
-    it('returns the discovered base_url with a trailing slash stripped', async () => {
-      findClientConfig.mockResolvedValue(
-        homeserver(AutoDiscovery.SUCCESS, 'https://hs.example/'),
-      );
-      expect(await firstValueFrom(auth.discoverHomeserver('example.org'))).toBe(
-        'https://hs.example',
-      );
-    });
-
-    it('falls back to https://<domain> when discovery yields no base_url', async () => {
-      findClientConfig.mockResolvedValue(
-        homeserver(AutoDiscovery.SUCCESS, undefined),
-      );
-      expect(await firstValueFrom(auth.discoverHomeserver('matrix.org'))).toBe(
-        'https://matrix.org',
-      );
-    });
-
-    it('extracts the domain from a full MXID before discovery', async () => {
-      findClientConfig.mockResolvedValue(
-        homeserver(AutoDiscovery.SUCCESS, 'https://hs'),
-      );
-      await firstValueFrom(auth.discoverHomeserver('@me:example.org'));
-      expect(findClientConfig).toHaveBeenCalledWith('example.org');
-    });
-
-    it('throws when discovery fails (FAIL_PROMPT)', async () => {
-      findClientConfig.mockResolvedValue(homeserver(AutoDiscovery.FAIL_PROMPT));
-      await expect(
-        firstValueFrom(auth.discoverHomeserver('nope.invalid')),
-      ).rejects.toThrow();
-    });
-
-    it('declares the probe domain AND the resolved base_url to the desktop CORS shim', async () => {
-      // Desktop only: discovery and the login that follows reach a homeserver BEFORE
-      // any account exists to declare it, so main's CORS shim would otherwise refuse to
-      // serve those origins. The resolved base_url may differ from the typed domain, and
-      // login POSTs to base_url — so both must be allowed.
-      const allowOrigin = vi.fn();
-      (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
-        desktopBridgeFixture({
-          capabilities: {
-            networkCors: { allowOrigin, setAllowedOrigins: vi.fn() },
-          },
-        });
-      try {
-        findClientConfig.mockResolvedValue(
-          homeserver(AutoDiscovery.SUCCESS, 'https://matrix.example/'),
-        );
-
-        await firstValueFrom(auth.discoverHomeserver('example.org'));
-
-        expect(allowOrigin).toHaveBeenCalledWith('https://example.org');
-        expect(allowOrigin).toHaveBeenCalledWith('https://matrix.example');
-      } finally {
-        delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
-      }
-    });
-
-    it('does not touch the bridge off desktop (no trinityDesktop global)', async () => {
-      // The bridge is absent on web/native; discovery must not assume it exists.
-      delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
-      findClientConfig.mockResolvedValue(
-        homeserver(AutoDiscovery.SUCCESS, 'https://hs.example'),
-      );
-
-      await expect(
-        firstValueFrom(auth.discoverHomeserver('example.org')),
-      ).resolves.toBe('https://hs.example');
-    });
   });
 
   it('builds the SSO login URL via the SDK', () => {

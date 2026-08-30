@@ -18,6 +18,8 @@ const threadsImplementation =
   'libs/data-access/timeline/src/lib/threads.service.ts';
 const threadChildrenImplementation =
   'libs/data-access/timeline/src/lib/conversation-thread-children.ts';
+const searchImplementation =
+  'libs/data-access/timeline/src/lib/conversation-search.service.ts';
 
 function source(file) {
   return readFileSync(join(workspaceRoot, file), 'utf8');
@@ -98,6 +100,24 @@ describe('Conversation Runtime production boundary', () => {
 
     expect(runtime).toContain('this.matrix.clientFor(key.accountId)');
     expect(runtime).toContain('timeline.open(key.roomId, client);');
+  });
+
+  it('binds message search to the same exact Conversation child', () => {
+    const runtime = source(runtimeImplementation);
+    const search = source(searchImplementation);
+    const roomFeature = productionSources
+      .filter((file) => file.startsWith('libs/feature/rooms/'))
+      .map(source)
+      .join('\n');
+
+    expect(runtime).toContain('search.attach(key, client);');
+    expect(runtime).toContain('readonly search: ConversationSearch;');
+    expect(search).toContain(
+      'attach(key: ConversationKey, client: MatrixClient)',
+    );
+    expect(search).not.toContain('MatrixClientService');
+    expect(search).not.toContain('.instance');
+    expect(roomFeature).not.toContain('ConversationSearchController');
   });
 
   it('owns message relations, actions and receipts behind the exact Conversation handle', () => {

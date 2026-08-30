@@ -36,6 +36,7 @@
     "room-administration",
     "room-library",
     "runtime",
+    "search",
     "settings",
     "shared",
     "trust",
@@ -81,12 +82,6 @@
     }
   ],
   "multiCapabilityProjects": [
-    {
-      "project": "data-access-search",
-      "capabilities": ["conversations", "discovery", "room-library"],
-      "removeBy": "#321",
-      "reason": "Remote discovery, room queries, and message search still share one library."
-    },
     {
       "project": "feature-rooms",
       "capabilities": [
