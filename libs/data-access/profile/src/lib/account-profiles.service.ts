@@ -30,7 +30,7 @@ interface AccountListener {
  * Projects **every signed-in account's own profile** — display name and avatar — into one
  * signal, each read through that account's own client.
  *
- * Replaces a `RoomsService.revision`/`profileRevision` bump counter that stood for "some
+ * Replaces a `RoomLibraryService.revision`/`profileRevision` bump counter that stood for "some
  * profile somewhere may have changed". Two things made it the wrong shape:
  *
  * - It was bumped only by the ACTIVE client's rebuild, while two of its consumers resolve

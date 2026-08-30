@@ -1,6 +1,6 @@
 import { Injectable, computed, inject } from '@angular/core';
 import { AccountProfilesService } from '@trinity/data-access/profile';
-import { AccountScopeService } from '@trinity/data-access/rooms';
+import { AccountScopeService } from '@trinity/data-access/room-library';
 import { type AccountBadge } from '@trinity/components/avatar';
 
 /**

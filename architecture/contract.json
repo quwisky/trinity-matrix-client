@@ -82,10 +82,16 @@
   ],
   "multiCapabilityProjects": [
     {
+      "project": "data-access-room-library",
+      "capabilities": ["room-administration", "room-library"],
+      "removeBy": "#318",
+      "reason": "Room Administration still consumes the live member projection and shared action-permission adapter while its dedicated boundary is being extracted."
+    },
+    {
       "project": "data-access-rooms",
-      "capabilities": ["discovery", "room-administration", "room-library"],
-      "removeBy": "#317, #318, #321",
-      "reason": "Room relationships, governance, and discovery still share one data-access library."
+      "capabilities": ["discovery", "room-administration"],
+      "removeBy": "#318, #321",
+      "reason": "Room governance and remote discovery still share one data-access library."
     },
     {
       "project": "data-access-search",
@@ -102,7 +108,7 @@
         "room-library",
         "workspace"
       ],
-      "removeBy": "#311, #317, #318, #321, #322",
+      "removeBy": "#318, #321, #322",
       "reason": "The Workspace application workflow currently contains conversation, room-library, administration, and discovery surfaces."
     }
   ],
@@ -125,10 +131,10 @@
       "value": 1737,
       "removeBy": "#305-#309"
     },
-    "roomsServiceLines": {
-      "path": "libs/data-access/rooms/src/lib/rooms.service.ts",
-      "value": 1067,
-      "removeBy": "#317-#321"
+    "roomLibraryServiceLines": {
+      "path": "libs/data-access/room-library/src/lib/room-library.service.ts",
+      "value": 1095,
+      "removeBy": "#318, #321"
     }
   }
 }

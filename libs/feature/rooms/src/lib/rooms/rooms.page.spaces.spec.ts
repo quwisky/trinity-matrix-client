@@ -8,10 +8,9 @@ import {
 } from './rooms-page.spec-harness';
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
-  RoomsService,
+  RoomLibraryService,
   SpacesService,
   UnreadAggregatorService,
   SpaceRoomOrderService,
@@ -19,10 +18,11 @@ import {
   type RoomSortMode,
   type RoomSummary,
   type SpaceSummary,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
+import { of } from 'rxjs';
 
 import { describe, expect, it, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
@@ -87,11 +87,14 @@ describe('RoomsPage space filtering', () => {
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
-        MockProvider(RoomsService, {
+        MockProvider(RoomLibraryService, {
+          selectionAvailability: () => 'available',
+          clearMarkedUnread: () => of(void 0),
           rooms: signal(rooms),
           directRoomIds: signal<ReadonlySet<string>>(new Set(['!a:hs'])), // '!a:hs' is a DM
         }),
         MockProvider(SpacesService, {
+          openSpace: () => of(void 0),
           spaces: signal([spaceSummary('!s:hs', ['!b:hs', '!a:hs'])]),
           childRoomIds,
         }),
@@ -117,7 +120,6 @@ describe('RoomsPage space filtering', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(AccountRuntimeService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
       ],
@@ -256,7 +258,7 @@ describe('RoomsPage space filtering', () => {
     expect(shell.vm.homeUnread()).toBe(5); // a(5)
     expect(shell.vm.roomsUnread()).toBe(2); // c(2); b is a space child → excluded
 
-    const rooms = TestBed.inject(RoomsService)
+    const rooms = TestBed.inject(RoomLibraryService)
       .rooms as unknown as WritableSignal<RoomSummary[]>;
     rooms.update((list) =>
       list.map((r) => (r.id === '!c:hs' ? { ...r, unreadCount: 20 } : r)),
@@ -270,7 +272,7 @@ describe('RoomsPage space filtering', () => {
     const shell = build();
     expect(shell.vm.spaceUnread()['!s:hs']).toBe(8); // a(5) + b(3)
 
-    const rooms = TestBed.inject(RoomsService)
+    const rooms = TestBed.inject(RoomLibraryService)
       .rooms as unknown as WritableSignal<RoomSummary[]>;
     // A new message pushes bravo's unread up, as would a real sync refresh.
     rooms.update((list) =>
@@ -285,7 +287,7 @@ describe('RoomsPage space filtering', () => {
     expect(shell.vm.spaceUnread()['!s:hs']).toBe(8);
     expect(shell.vm.roomsUnread()).toBe(2); // c(2); b is a space child → excluded
 
-    const rooms = TestBed.inject(RoomsService)
+    const rooms = TestBed.inject(RoomLibraryService)
       .rooms as unknown as WritableSignal<RoomSummary[]>;
     rooms.update((list) => list.filter((r) => r.id !== '!b:hs'));
 
@@ -526,17 +528,20 @@ describe('RoomsPage space ordering', () => {
       orderedRoom('!a:hs', 'alpha', 100),
       orderedRoom('!m:hs', 'mike', 300),
     ]);
-    const setForSpace = vi.fn();
-    const clearForSpace = vi.fn();
+    const setForSpace = vi.fn(() => of(void 0));
+    const clearForSpace = vi.fn(() => of(void 0));
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
-        MockProvider(RoomsService, {
+        MockProvider(RoomLibraryService, {
+          selectionAvailability: () => 'available',
+          clearMarkedUnread: () => of(void 0),
           rooms,
           directRoomIds: signal<ReadonlySet<string>>(new Set()),
         }),
         MockProvider(SpacesService, {
+          openSpace: () => of(void 0),
           spaces: signal([orderedSpace('!s:hs', CHILD_IDS)]),
           childRoomIds: (id: string | null) =>
             id === '!s:hs' ? CHILD_IDS : [],
@@ -566,7 +571,6 @@ describe('RoomsPage space ordering', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(AccountRuntimeService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
       ],
@@ -755,11 +759,14 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
-        MockProvider(RoomsService, {
+        MockProvider(RoomLibraryService, {
+          selectionAvailability: () => 'available',
+          clearMarkedUnread: () => of(void 0),
           rooms: signal(rooms),
           directRoomIds: signal<ReadonlySet<string>>(new Set(['!dm:hs'])),
         }),
         MockProvider(SpacesService, {
+          openSpace: () => of(void 0),
           spaces: signal([
             spaceSummary('!s1:hs', ['!a:hs']),
             spaceSummary('!s2:hs', ['!b:hs', '!c:hs']),
@@ -783,7 +790,6 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(AccountRuntimeService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
       ],

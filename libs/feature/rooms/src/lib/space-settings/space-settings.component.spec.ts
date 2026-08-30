@@ -1,12 +1,12 @@
-import { signal } from '@angular/core';
-import { render } from '@trinity/testing';
-import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import {
-  RoomAliasesService,
-  RoomActionPermissionsService,
   RoomModerationService,
   RoomSettingsService,
 } from '@trinity/data-access/rooms';
+import { signal } from '@angular/core';
+import { render } from '@trinity/testing';
+import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
+import { RoomAliasesService } from '@trinity/data-access/rooms';
+import { RoomActionPermissionsService } from '@trinity/data-access/room-library';
 import { JoinRule } from '@trinity/data-access/rooms';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';

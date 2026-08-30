@@ -1,11 +1,13 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   computed,
   inject,
   input,
   output,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NgTemplateOutlet } from '@angular/common';
 import {
   TrnActionAvailability,
@@ -26,7 +28,10 @@ import {
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { AvatarComponent, type AccountBadge } from '@trinity/components/avatar';
 import { unreadBadgeLabel } from '../../shared/unread-badge';
-import { RoomsService, type RoomSummary } from '@trinity/data-access/rooms';
+import {
+  RoomLibraryService,
+  type RoomSummary,
+} from '@trinity/data-access/room-library';
 import {
   RoomNotificationsService,
   type RoomNotifyDisplayMode,
@@ -34,8 +39,9 @@ import {
 } from '@trinity/data-access/notifications';
 import { PresenceService } from '@trinity/data-access/profile';
 import { formatTypingNotice, type PresenceState } from '@trinity/util/matrix';
-import { type PendingInvite } from '@trinity/data-access/invites';
+import { type PendingInvite } from '@trinity/data-access/room-library';
 import { TrnIconComponent } from '@trinity/components/icon';
+import { forkJoin } from 'rxjs';
 
 /**
  * The scrolling body of the channel sidebar: pending invites, the favourite and
@@ -76,9 +82,10 @@ import { TrnIconComponent } from '@trinity/components/icon';
   ],
 })
 export class SidebarRoomListComponent {
-  private readonly roomsSvc = inject(RoomsService);
+  private readonly roomsSvc = inject(RoomLibraryService);
   private readonly presence = inject(PresenceService);
   private readonly roomNotifications = inject(RoomNotificationsService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly rooms = input<RoomSummary[]>([]);
   readonly invites = input<readonly PendingInvite[]>([]);
@@ -86,8 +93,8 @@ export class SidebarRoomListComponent {
   /**
    * Who is typing, per room id, excluding the local user.
    *
-   * An INPUT and not a `RoomsService` read: `typingByRoom` is an instance field, which
-   * ng-mocks does not reflect, so a bare `MockProvider(RoomsService)` would leave it
+   * An INPUT and not a `RoomLibraryService` read: `typingByRoom` is an instance field, which
+   * ng-mocks does not reflect, so a bare `MockProvider(RoomLibraryService)` would leave it
    * undefined and throw here on every render — and one helper in
    * `channel-sidebar.component.spec.ts` backs 85 of them.
    */
@@ -178,21 +185,32 @@ export class SidebarRoomListComponent {
     return this.presence.presenceFor(room.directUserId)();
   }
 
-  /** Fire-and-forget: flip the room's `m.lowpriority` tag on every account joined to the
-   * row, so a merged row's group does not depend on which account is active. */
+  /** Flip the room's `m.lowpriority` tag on every account joined to the merged row. */
   toggleLowPriority(room: RoomSummary): void {
-    for (const accountId of room.accountIds) {
-      this.roomsSvc.setLowPriority(room.id, !room.lowPriority, accountId);
-    }
+    forkJoin(
+      room.accountIds.map((accountId) =>
+        this.roomsSvc.setLowPriority(room.id, !room.lowPriority, accountId),
+      ),
+    )
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: (error: unknown) =>
+          console.error('Could not update room priority', error),
+      });
   }
 
-  /** Fire-and-forget: flip the room's `m.favourite` tag via the rooms service, on the
-   * account that owns the row (not necessarily the active one). */
+  /** Flip the room's `m.favourite` tag on every account joined to the merged row. */
   toggleFavourite(room: RoomSummary): void {
-    // Across every account joined to the row, so a merged row's star doesn't flip back.
-    for (const accountId of room.accountIds) {
-      this.roomsSvc.setFavourite(room.id, !room.favourite, accountId);
-    }
+    forkJoin(
+      room.accountIds.map((accountId) =>
+        this.roomsSvc.setFavourite(room.id, !room.favourite, accountId),
+      ),
+    )
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: (error: unknown) =>
+          console.error('Could not update room favourite', error),
+      });
   }
 
   /**

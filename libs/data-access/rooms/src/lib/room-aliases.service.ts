@@ -3,7 +3,7 @@ import { EventType } from 'matrix-js-sdk';
 import { Observable, defer, from, map, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { liveRoomState } from '@trinity/util/matrix';
-import { RoomActionPermissionsService } from './room-action-permissions.service';
+import { RoomActionPermissionsService } from '@trinity/data-access/room-library';
 
 /**
  * Manages a room's published addresses: its local aliases in the homeserver's room

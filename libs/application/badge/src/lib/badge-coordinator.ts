@@ -1,5 +1,5 @@
 import { Injectable, Injector, effect, inject } from '@angular/core';
-import { UnreadAggregatorService } from '@trinity/data-access/rooms';
+import { UnreadAggregatorService } from '@trinity/data-access/room-library';
 import type { HostOperationOutcome } from '@trinity/runtime/host';
 import { Observable, Subject, catchError, of, switchMap } from 'rxjs';
 import { BADGE_SINK } from './badge-sink';

@@ -4,7 +4,7 @@ import {
   AccountRuntimeService,
   type AccountSwitchOutcome,
 } from '@trinity/data-access/accounts';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { RoomLibraryService } from '@trinity/data-access/room-library';
 import {
   Observable,
   ReplaySubject,
@@ -64,7 +64,7 @@ class WorkspaceNavigationRejected extends Error {}
 export class WorkspaceTransitionWorkflow {
   private readonly router = inject(Router);
   private readonly accounts = inject(AccountRuntimeService);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly rooms = inject(RoomLibraryService);
   private attempt: WorkspaceAttempt | null = null;
   private routeWrites = 0;
 
@@ -106,7 +106,8 @@ export class WorkspaceTransitionWorkflow {
     let released = false;
     let committed = false;
     const resolved = this.resolveDestination(requested);
-    const accountChanges = requested.accountId !== this.matrix.activeUserId();
+    const accountChanges =
+      requested.accountId !== this.accounts.activeAccountId();
 
     const projectRequestedUrl = () => {
       routeStartedAt = performance.now();
@@ -219,7 +220,7 @@ export class WorkspaceTransitionWorkflow {
     prepare: () => Observable<void>,
     onCommitStarted: () => void,
   ): Observable<AccountSwitchOutcome> {
-    if (accountId === this.matrix.activeUserId()) {
+    if (accountId === this.accounts.activeAccountId()) {
       return of({
         kind: 'ready',
         accountId,
@@ -282,21 +283,20 @@ export class WorkspaceTransitionWorkflow {
   private resolveDestination(
     requested: WorkspaceDestination,
   ): ResolvedWorkspaceDestination {
-    const client = this.matrix.clientFor(requested.accountId);
     let scope = requested.scope;
     let roomId = requested.roomId;
     let pane = requested.pane;
     let repaired = false;
     if (
       scope.kind === 'space' &&
-      !this.destinationExists(client, scope.spaceId)
+      !this.destinationAvailable(requested.accountId, scope.spaceId)
     ) {
       scope = RECENT_WORKSPACE_SCOPE;
       roomId = null;
       pane = 'list';
       repaired = true;
     }
-    if (roomId && !this.destinationExists(client, roomId)) {
+    if (roomId && !this.destinationAvailable(requested.accountId, roomId)) {
       roomId = null;
       pane = 'list';
       repaired = true;
@@ -388,14 +388,7 @@ export class WorkspaceTransitionWorkflow {
     });
   }
 
-  private destinationExists(
-    client: ReturnType<MatrixClientService['clientFor']> | undefined,
-    roomId: string,
-  ): boolean {
-    // `undefined` exists only in deliberately narrow test doubles that do not model room
-    // lookup. The production adapter is typed `MatrixClient | null`; null is authoritative.
-    if (client === undefined) return true;
-    if (client === null) return false;
-    return typeof client.getRoom !== 'function' || !!client.getRoom(roomId);
+  private destinationAvailable(accountId: string, roomId: string): boolean {
+    return this.rooms.selectionAvailability(accountId, roomId) === 'available';
   }
 }

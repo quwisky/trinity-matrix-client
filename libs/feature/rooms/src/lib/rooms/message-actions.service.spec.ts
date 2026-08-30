@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { Component, inject, signal, type Provider } from '@angular/core';
-import { RoomsService } from '@trinity/data-access/rooms';
+import { RoomLibraryService } from '@trinity/data-access/room-library';
 import {
   ConversationRuntime,
   TimelineActionsService,
@@ -98,7 +98,7 @@ describe('MessageActionsService', () => {
       endPoll,
       sendSticker,
     }),
-    MockProvider(RoomsService),
+    MockProvider(RoomLibraryService),
     MockProvider(TrnToastService, { show: toastShow }),
     MockProvider(AccountRoutingService),
     MockProvider(MemberActionsService),

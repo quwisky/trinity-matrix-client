@@ -3,8 +3,8 @@ import {
   InvitesService,
   MixedInvitesService,
   type PendingInvite,
-} from '@trinity/data-access/invites';
-import { AccountScopeService } from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
+import { AccountScopeService } from '@trinity/data-access/room-library';
 import { matrixRequestErrorHandling } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
 import { AccountRoutingService } from './account-routing.service';

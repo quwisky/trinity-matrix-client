@@ -1,3 +1,4 @@
+import { RoomAliasesService } from '@trinity/data-access/rooms';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -14,10 +15,7 @@ import { TrnActionAvailability, TrnButton } from '@trinity/components/button';
 import { TrnInput } from '@trinity/components/input';
 import { TrnToastService } from '@trinity/components/overlay';
 import { TrnTooltip } from '@trinity/components/tooltip';
-import {
-  RoomActionPermissionsService,
-  RoomAliasesService,
-} from '@trinity/data-access/rooms';
+import { RoomActionPermissionsService } from '@trinity/data-access/room-library';
 
 /** Reject alias localparts containing characters an `#alias:server` can't hold. */
 const INVALID_LOCALPART = /[\s:#]/;

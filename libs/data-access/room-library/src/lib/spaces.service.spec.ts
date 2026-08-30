@@ -622,7 +622,10 @@ describe('SpacesService hierarchy', () => {
       joined: ['!a:hs'],
     });
 
-    svc.openSpace('!s:hs');
+    const command = svc.openSpace('!s:hs');
+    expect(getRoomHierarchy).not.toHaveBeenCalled();
+
+    void command.subscribe();
     await flush();
 
     expect(getRoomHierarchy).toHaveBeenCalledWith(
@@ -676,7 +679,7 @@ describe('SpacesService hierarchy', () => {
       ],
     });
 
-    svc.openSpace('!s:hs');
+    void svc.openSpace('!s:hs').subscribe();
     await flush();
 
     expect(svc.openSpaceChildren().map((c) => c.roomId)).toEqual([
@@ -704,7 +707,7 @@ describe('SpacesService hierarchy', () => {
       ],
     });
 
-    svc.openSpace('!s:hs');
+    void svc.openSpace('!s:hs').subscribe();
     await flush();
 
     expect(svc.openSpaceChildren().map((c) => c.roomId)).toEqual([
@@ -733,7 +736,7 @@ describe('SpacesService hierarchy', () => {
       joined: ['!joined:hs'],
     });
 
-    svc.openSpace('!s:hs');
+    void svc.openSpace('!s:hs').subscribe();
     await flush();
 
     // notJoinedRooms: not joined AND not a space → only the open room.
@@ -760,7 +763,7 @@ describe('SpacesService hierarchy', () => {
       joined: [],
     });
 
-    svc.openSpace('!s:hs');
+    void svc.openSpace('!s:hs').subscribe();
     await flush();
     expect(svc.notJoinedRooms().map((c) => c.roomId)).toEqual(['!room:hs']);
     const fetches = getRoomHierarchy.mock.calls.length;
@@ -790,7 +793,7 @@ describe('SpacesService hierarchy', () => {
       ],
       joined: ['!room:hs'],
     });
-    svc.openSpace('!s:hs');
+    void svc.openSpace('!s:hs').subscribe();
     await flush();
     const before = svc.openSpaceChildren();
 
@@ -818,7 +821,7 @@ describe('SpacesService hierarchy', () => {
       joinedSpaces: ['!sub:hs'],
     });
 
-    svc.openSpace('!s:hs');
+    void svc.openSpace('!s:hs').subscribe();
     await flush();
 
     expect(svc.childSpaces().map((c) => c.roomId)).toEqual(['!sub:hs']);
@@ -845,7 +848,7 @@ describe('SpacesService hierarchy', () => {
       skipConnect: true,
     });
 
-    svc.openSpace('!s:hs');
+    void svc.openSpace('!s:hs').subscribe();
     await flush();
     expect(svc.openSpaceChildren()[0].joined).toBe(false);
 
@@ -857,7 +860,7 @@ describe('SpacesService hierarchy', () => {
   it('clears the open-space children for Home (null) without fetching', () => {
     const { svc, getRoomHierarchy } = setupHierarchy({ rooms: [] });
 
-    svc.openSpace(null);
+    void svc.openSpace(null).subscribe();
 
     expect(getRoomHierarchy).not.toHaveBeenCalled();
     expect(svc.openSpaceChildren()).toEqual([]);
@@ -894,7 +897,7 @@ describe('SpacesService hierarchy', () => {
     provideMatrix(client);
     const svc = TestBed.inject(SpacesService);
 
-    svc.openSpace('!s:hs');
+    void svc.openSpace('!s:hs').subscribe();
     await flush();
 
     // Both pages fetched; the second passes the next_batch token through.
@@ -920,7 +923,7 @@ describe('SpacesService hierarchy', () => {
       reject: new Error('unsupported'),
     });
 
-    svc.openSpace('!s:hs');
+    void svc.openSpace('!s:hs').subscribe({ error: () => undefined });
     await flush();
 
     expect(svc.childrenError()).toBe('unsupported');

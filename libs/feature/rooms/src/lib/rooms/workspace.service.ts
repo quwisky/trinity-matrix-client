@@ -6,19 +6,23 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
+import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import {
   ActivatedRoute,
   NavigationEnd,
   Router,
   type ParamMap,
 } from '@angular/router';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaPipeline } from '@trinity/data-access/media';
-import { RoomsService, SpacesService } from '@trinity/data-access/rooms';
+import {
+  RoomLibraryService,
+  SpacesService,
+} from '@trinity/data-access/room-library';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import {
   Observable,
+  type Subscription,
   combineLatest,
   concatMap,
   defer,
@@ -54,11 +58,11 @@ import { parseWorkspaceUrl } from './workspace-url';
 export class WorkspaceService {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
-  private readonly matrix = inject(MatrixClientService);
+  private readonly accounts = inject(AccountRuntimeService);
   private readonly workflow = inject(WorkspaceTransitionWorkflow);
   private readonly conversations = inject(ConversationRuntime);
   private readonly media = inject(MediaPipeline);
-  private readonly rooms = inject(RoomsService);
+  private readonly rooms = inject(RoomLibraryService);
   private readonly spaces = inject(SpacesService);
   private readonly mru = inject(MruRoomsService);
   private readonly destroyRef = inject(DestroyRef);
@@ -71,6 +75,7 @@ export class WorkspaceService {
   private readonly transitionMetrics =
     signal<WorkspaceTransitionMetrics | null>(null);
   private readonly eventTargetState = signal<WorkspaceEventTarget | null>(null);
+  private hierarchySubscription: Subscription | null = null;
 
   readonly view = this.workspaceView.asReadonly();
   readonly lastTransition = this.transitionMetrics.asReadonly();
@@ -96,7 +101,7 @@ export class WorkspaceService {
       .pipe(
         filter(() => !this.workflow.projectingUrl),
         map(([params, query]) =>
-          parseWorkspaceUrl(params, query, this.matrix.activeUserId()),
+          parseWorkspaceUrl(params, query, this.accounts.activeAccountId()),
         ),
         concatMap((parsed) => {
           if (!parsed.destination) {
@@ -237,9 +242,11 @@ export class WorkspaceService {
 
   private project(view: WorkspaceView, initial = false): void {
     if (!initial) this.media.releaseAll();
-    this.spaces.openSpace(
-      view.scope.kind === 'space' ? view.scope.spaceId : null,
-    );
+    this.hierarchySubscription?.unsubscribe();
+    this.hierarchySubscription = this.spaces
+      .openSpace(view.scope.kind === 'space' ? view.scope.spaceId : null)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({ error: () => undefined });
     if (!view.accountId || !view.roomId) {
       if (!initial) this.conversations.blur();
       return;
@@ -248,12 +255,20 @@ export class WorkspaceService {
       accountId: view.accountId,
       roomId: view.roomId,
     });
-    this.rooms.clearMarkedUnread(view.roomId);
+    this.rooms
+      .clearMarkedUnread(view.roomId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        // Opening a room should not toast if this best-effort cleanup fails; the flag
+        // remains visible and the next open retries, but the workflow still owns the
+        // command subscription and cancellation.
+        error: () => undefined,
+      });
   }
 
   private seedView(): WorkspaceView {
     const [params, query] = this.routeMaps();
-    const activeAccountId = this.matrix.activeUserId();
+    const activeAccountId = this.accounts.activeAccountId();
     const parsed = parseWorkspaceUrl(params, query, activeAccountId);
     const destination = parsed.destination;
     if (
@@ -272,21 +287,20 @@ export class WorkspaceService {
   }
 
   private seedDestinationExists(destination: WorkspaceDestination): boolean {
-    const client = this.matrix.clientFor(destination.accountId);
-    if (client === undefined) return true;
-    if (client === null) return false;
     if (
       destination.scope.kind === 'space' &&
-      typeof client.getRoom === 'function' &&
-      !client.getRoom(destination.scope.spaceId)
+      !this.selectionAvailable(destination.accountId, destination.scope.spaceId)
     ) {
       return false;
     }
     return (
       !destination.roomId ||
-      typeof client.getRoom !== 'function' ||
-      !!client.getRoom(destination.roomId)
+      this.selectionAvailable(destination.accountId, destination.roomId)
     );
+  }
+
+  private selectionAvailable(accountId: string, roomId: string): boolean {
+    return this.rooms.selectionAvailability(accountId, roomId) === 'available';
   }
 
   private routeLocations(): Observable<readonly [ParamMap, ParamMap]> {

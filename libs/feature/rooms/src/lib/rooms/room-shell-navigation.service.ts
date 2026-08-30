@@ -9,9 +9,9 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   AccountScopeService,
   MixedRoomsService,
-  RoomsService,
+  RoomLibraryService,
   type RoomSummary,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import { BELOW_MEMBERS_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import type {
   WorkspaceDestination,
@@ -32,7 +32,7 @@ import { WorkspaceService } from './workspace.service';
 export class RoomShellNavigationService {
   private readonly store = inject(RoomShellStore);
   private readonly workspace = inject(WorkspaceService);
-  private readonly rooms = inject(RoomsService);
+  private readonly rooms = inject(RoomLibraryService);
   private readonly mixedRooms = inject(MixedRoomsService);
   private readonly accountScope = inject(AccountScopeService);
   private readonly status = inject(ShellStatusService);

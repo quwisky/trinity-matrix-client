@@ -6,7 +6,7 @@ import {
   AccountProfilesService,
   type AccountProfile,
 } from '@trinity/data-access/profile';
-import { AccountScopeService } from '@trinity/data-access/rooms';
+import { AccountScopeService } from '@trinity/data-access/room-library';
 import { AccountBadgesService } from './account-badges.service';
 
 function profileMap(

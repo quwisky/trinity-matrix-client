@@ -11,7 +11,7 @@ import {
 } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
-import { RoomsService } from './rooms.service';
+import { RoomLibraryService } from './room-library.service';
 import { RoomActionPermissionsService } from './room-action-permissions.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { PrivacySettingsService } from '@trinity/platform-native';
@@ -33,7 +33,7 @@ function timelineEvent(over: {
 }
 
 // A joined member shaped like the bits of matrix-js-sdk's RoomMember that
-// RoomsService.toMember reads. `powerLevel` is mutable so a test can promote it.
+// RoomLibraryService.toMember reads. `powerLevel` is mutable so a test can promote it.
 function fakeMember(over: {
   userId: string;
   name?: string;
@@ -51,7 +51,7 @@ function fakeMember(over: {
   };
 }
 
-// Minimal fakes shaped like the bits of matrix-js-sdk that RoomsService reads.
+// Minimal fakes shaped like the bits of matrix-js-sdk that RoomLibraryService reads.
 function fakeRoom(opts: {
   roomId: string;
   name: string;
@@ -141,7 +141,7 @@ const asClient = (fake: object): MatrixClient =>
   fake as unknown as MatrixClient;
 
 /**
- * Provide RoomsService with a MockProvider-backed MatrixClientService whose
+ * Provide RoomLibraryService with a MockProvider-backed MatrixClientService whose
  * `instance` getter yields `client` and whose `isInitialized` is true, matching the
  * data-holder shape the service reads. Returns both so tests can re-point `instance`.
  */
@@ -149,14 +149,14 @@ function provideRooms(
   client: object,
   sendReadReceipts = true,
 ): {
-  svc: RoomsService;
+  svc: RoomLibraryService;
   matrix: MatrixClientService;
   activeUserId: WritableSignal<string | null>;
 } {
   const activeUserId = signal<string | null>(null);
   TestBed.configureTestingModule({
     providers: [
-      RoomsService,
+      RoomLibraryService,
       MockProvider(RoomActionPermissionsService, {
         room: () => ({
           invite: { available: true, reason: null },
@@ -175,11 +175,11 @@ function provideRooms(
   const matrix = TestBed.inject(MatrixClientService);
   ngMocks.stubMember(matrix, 'isInitialized', true);
   ngMocks.stubMember(matrix, 'instance', asClient(client));
-  const svc = TestBed.inject(RoomsService);
+  const svc = TestBed.inject(RoomLibraryService);
   return { svc, matrix, activeUserId };
 }
 
-describe('RoomsService', () => {
+describe('RoomLibraryService', () => {
   function setup(rooms: ReturnType<typeof fakeRoom>[]) {
     const client = {
       baseUrl: 'https://hs.example',
@@ -505,7 +505,7 @@ describe('RoomsService', () => {
       );
       svc.connect();
 
-      svc.clearMarkedUnread('!r:hs');
+      await firstValueFrom(svc.clearMarkedUnread('!r:hs'));
 
       expect(write.theirs).toHaveBeenCalledWith('!r:hs', 'm.marked_unread', {
         unread: false,
@@ -565,7 +565,7 @@ describe('RoomsService', () => {
       ).rejects.toThrow('Not signed in.');
     });
 
-    it('clears by writing false rather than redacting', () => {
+    it('clears cold by writing false rather than redacting', async () => {
       const { svc, setRoomAccountData } = setupWritable([
         fakeRoom({
           roomId: '!r:hs',
@@ -574,7 +574,10 @@ describe('RoomsService', () => {
         }),
       ]);
 
-      svc.clearMarkedUnread('!r:hs');
+      const command = svc.clearMarkedUnread('!r:hs');
+
+      expect(setRoomAccountData).not.toHaveBeenCalled();
+      await firstValueFrom(command);
 
       expect(setRoomAccountData).toHaveBeenCalledWith(
         '!r:hs',
@@ -585,16 +588,31 @@ describe('RoomsService', () => {
       );
     });
 
-    it('spends no write clearing a room that is not flagged', () => {
+    it('spends no write clearing a room that is not flagged', async () => {
       // clearMarkedUnread runs on every room open, so an unconditional write would put
       // an account-data round trip behind every click in the room list.
       const { svc, setRoomAccountData } = setupWritable([
         fakeRoom({ roomId: '!r:hs', name: 'R' }),
       ]);
 
-      svc.clearMarkedUnread('!r:hs');
+      await firstValueFrom(svc.clearMarkedUnread('!r:hs'));
 
       expect(setRoomAccountData).not.toHaveBeenCalled();
+    });
+
+    it('surfaces clear failures to the subscriber', async () => {
+      const { svc, setRoomAccountData } = setupWritable([
+        fakeRoom({
+          roomId: '!r:hs',
+          name: 'R',
+          markedUnread: { unread: true },
+        }),
+      ]);
+      setRoomAccountData.mockRejectedValueOnce(new Error('write failed'));
+
+      await expect(
+        firstValueFrom(svc.clearMarkedUnread('!r:hs')),
+      ).rejects.toThrow('write failed');
     });
 
     it('drops the flag when the room is marked read from its menu', async () => {
@@ -1045,7 +1063,7 @@ describe('RoomsService', () => {
 // Write paths: createRoom / createDirectMessage / inviteUser / searchUsers. The
 // read model is driven by sync listeners (covered above), so these assert the SDK
 // calls + the `m.direct` merge only.
-describe('RoomsService writes', () => {
+describe('RoomLibraryService writes', () => {
   // `direct` seeds the `m.direct` account-data map; `joinedRooms` are the rooms a
   // DM-reuse lookup can resolve (with their membership).
   function setupWrites(opts?: {
@@ -1287,8 +1305,10 @@ describe('RoomsService writes', () => {
 
 // directRoomIds flattens the `m.direct` account-data map on each sync refresh so the
 // read model can tag joined DMs without re-reading account data.
-describe('RoomsService directRoomIds', () => {
-  function setup(direct: Record<string, string[]> | undefined): RoomsService {
+describe('RoomLibraryService directRoomIds', () => {
+  function setup(
+    direct: Record<string, string[]> | undefined,
+  ): RoomLibraryService {
     const client = {
       getRooms: () => [],
       getAccountData: (type: string) =>
@@ -1322,7 +1342,7 @@ describe('RoomsService directRoomIds', () => {
 // setFavourite writes/clears the `m.favourite` room tag; the read model refreshes
 // once the write resolves. A remote favourite change (another device) arrives as a
 // RoomEvent.Tags on the client and is coalesced into a refresh like any other listener.
-describe('RoomsService setFavourite', () => {
+describe('RoomLibraryService setFavourite', () => {
   function setup(initialFavourite: boolean) {
     let currentRooms = [
       fakeRoom({
@@ -1360,9 +1380,10 @@ describe('RoomsService setFavourite', () => {
     // so the post-write refresh picks up the change.
     setRooms([fakeRoom({ roomId: '!a:hs', name: 'general', favourite: true })]);
 
-    svc.setFavourite('!a:hs', true);
-    await Promise.resolve();
-    await Promise.resolve();
+    const command = svc.setFavourite('!a:hs', true);
+    expect(setRoomTag).not.toHaveBeenCalled();
+
+    await firstValueFrom(command);
 
     expect(setRoomTag).toHaveBeenCalledWith('!a:hs', 'm.favourite', {});
     expect(deleteRoomTag).not.toHaveBeenCalled();
@@ -1375,9 +1396,7 @@ describe('RoomsService setFavourite', () => {
       fakeRoom({ roomId: '!a:hs', name: 'general', favourite: false }),
     ]);
 
-    svc.setFavourite('!a:hs', false);
-    await Promise.resolve();
-    await Promise.resolve();
+    await firstValueFrom(svc.setFavourite('!a:hs', false));
 
     expect(deleteRoomTag).toHaveBeenCalledWith('!a:hs', 'm.favourite');
     expect(setRoomTag).not.toHaveBeenCalled();
@@ -1390,9 +1409,7 @@ describe('RoomsService setFavourite', () => {
       fakeRoom({ roomId: '!a:hs', name: 'general', lowPriority: true }),
     ]);
 
-    svc.setLowPriority('!a:hs', true);
-    await Promise.resolve();
-    await Promise.resolve();
+    await firstValueFrom(svc.setLowPriority('!a:hs', true));
 
     expect(setRoomTag).toHaveBeenCalledWith('!a:hs', 'm.lowpriority', {});
     expect(deleteRoomTag).not.toHaveBeenCalled();
@@ -1416,9 +1433,7 @@ describe('RoomsService setFavourite', () => {
     setRooms([
       fakeRoom({ roomId: '!a:hs', name: 'general', lowPriority: false }),
     ]);
-    svc.setLowPriority('!a:hs', false);
-    await Promise.resolve();
-    await Promise.resolve();
+    await firstValueFrom(svc.setLowPriority('!a:hs', false));
 
     expect(deleteRoomTag).toHaveBeenCalledWith('!a:hs', 'm.lowpriority');
     expect(setRoomTag).not.toHaveBeenCalled();
@@ -1439,8 +1454,8 @@ describe('RoomsService setFavourite', () => {
 
 // membersOf projects a room's joined members (with power level) into the member-list
 // view model, memoized against a per-room fingerprint that includes each power level.
-describe('RoomsService membersOf', () => {
-  function setup(room: ReturnType<typeof fakeRoom>): RoomsService {
+describe('RoomLibraryService membersOf', () => {
+  function setup(room: ReturnType<typeof fakeRoom>): RoomLibraryService {
     const client = {
       getRooms: () => [room],
       getRoom: (id: string) => (id === room.roomId ? room : null),
@@ -1556,7 +1571,7 @@ describe('RoomsService membersOf', () => {
 // active. Every mutating action therefore takes an optional owning-account id and must act
 // on THAT account's client — running them on the active one silently no-ops at best and, for
 // leave(), makes the wrong account leave a room.
-describe('RoomsService per-account actions', () => {
+describe('RoomLibraryService per-account actions', () => {
   function setup() {
     const activeClient = {
       getRoom: vi.fn(() => null),
@@ -1578,7 +1593,9 @@ describe('RoomsService per-account actions', () => {
       }),
     };
     const ownerClient = {
-      getRoom: vi.fn(() => ownerRoom),
+      getRoom: vi.fn((roomId: string) =>
+        roomId === '!r:hs' ? ownerRoom : null,
+      ),
       leave: vi.fn().mockResolvedValue({}),
       setRoomTag: vi.fn().mockResolvedValue({}),
       deleteRoomTag: vi.fn().mockResolvedValue({}),
@@ -1620,8 +1637,7 @@ describe('RoomsService per-account actions', () => {
   it('favourites on the owning account', async () => {
     const { svc, activeClient, ownerClient } = setup();
 
-    svc.setFavourite('!r:hs', true, '@owner:hs');
-    await Promise.resolve();
+    await firstValueFrom(svc.setFavourite('!r:hs', true, '@owner:hs'));
 
     expect(ownerClient.setRoomTag).toHaveBeenCalledWith(
       '!r:hs',
@@ -1658,17 +1674,29 @@ describe('RoomsService per-account actions', () => {
     expect(activeClient.leave).not.toHaveBeenCalled();
   });
 
-  it('quietly does nothing when favouriting on an account with no client', () => {
+  it('errors when favouriting on an account with no client', async () => {
     const { svc, activeClient } = setup();
 
-    expect(() => svc.setFavourite('!r:hs', true, '@gone:hs')).not.toThrow();
+    await expect(
+      firstValueFrom(svc.setFavourite('!r:hs', true, '@gone:hs')),
+    ).rejects.toThrow('Not signed in.');
     expect(activeClient.setRoomTag).not.toHaveBeenCalled();
+  });
+
+  it('answers exact selection availability without exposing an account client', () => {
+    const { svc } = setup();
+
+    expect(svc.selectionAvailability('@owner:hs', '!r:hs')).toBe('available');
+    expect(svc.selectionAvailability('@owner:hs', '!missing:hs')).toBe(
+      'unavailable',
+    );
+    expect(svc.selectionAvailability('@gone:hs', '!r:hs')).toBe('unavailable');
   });
 });
 
 // membersFor is the live half of membersOf: one signal per watched room, written only
 // when a member event names that room.
-describe('RoomsService membersFor', () => {
+describe('RoomLibraryService membersFor', () => {
   function setup(rooms: ReturnType<typeof fakeRoom>[]) {
     const byId = new Map(rooms.map((r) => [r.roomId, r]));
     const client = {

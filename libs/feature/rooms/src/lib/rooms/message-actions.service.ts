@@ -7,7 +7,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { RoomsService } from '@trinity/data-access/rooms';
+import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { TrnDialogService } from '@trinity/components/overlay';
 import { isMobileOs } from '@trinity/platform-native';
 import {
@@ -49,7 +49,7 @@ export class MessageActionsService {
   private readonly routing = inject(AccountRoutingService);
   private readonly memberActions = inject(MemberActionsService);
   private readonly status = inject(ShellStatusService);
-  private readonly rooms = inject(RoomsService);
+  private readonly rooms = inject(RoomLibraryService);
   private readonly jumpToDateSvc = inject(JumpToDateService);
   private readonly conversations = inject(ConversationRuntime);
   private readonly timeline = this.conversations.timeline;

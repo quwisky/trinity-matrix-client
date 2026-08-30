@@ -1,13 +1,13 @@
+import {
+  RoomModerationService,
+  type BannedMember,
+} from '@trinity/data-access/rooms';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { NEVER, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { TrnToastService } from '@trinity/components/overlay';
-import {
-  RoomActionPermissionsService,
-  RoomModerationService,
-  type BannedMember,
-} from '@trinity/data-access/rooms';
+import { RoomActionPermissionsService } from '@trinity/data-access/room-library';
 import { BannedMembersComponent } from './banned-members.component';
 
 async function build(

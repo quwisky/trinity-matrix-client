@@ -5,7 +5,7 @@ import {
   RoomNotificationsService,
   type RoomNotifyMode,
 } from '@trinity/data-access/notifications';
-import { RoomsService } from '@trinity/data-access/rooms';
+import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { Observable, forkJoin } from 'rxjs';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { ShellStatusService } from './shell-status.service';
@@ -21,7 +21,7 @@ import { ShellStatusService } from './shell-status.service';
 export class ReadStateService {
   private readonly vm = inject(RoomShellViewModel);
   private readonly status = inject(ShellStatusService);
-  private readonly rooms = inject(RoomsService);
+  private readonly rooms = inject(RoomLibraryService);
   private readonly roomNotifications = inject(RoomNotificationsService);
   private readonly destroyRef = inject(DestroyRef);
 

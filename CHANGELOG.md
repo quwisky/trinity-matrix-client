@@ -87,6 +87,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Room relationships now live behind Room Library.** Joined room and space summaries,
+  invitations, account scope, favourites, ordering, filtering, hierarchy, mixed-account
+  projections and aggregate unread state now share the explicit
+  `@trinity/data-access/room-library` boundary. Account-scope and ordering preferences,
+  favourite/priority writes, hierarchy changes, and unread cleanup are cold RxJS operations
+  whose persistence or SDK failures remain observable by their callers.
+  Workspace, Settings, Search, badge coordination and application startup consume that boundary
+  instead of the broad legacy rooms service; the standalone invites entrypoint and its migration
+  allowlist are gone. Room governance and remote discovery remain in their narrower rooms adapter
+  for the follow-up Room Administration and Discovery migrations.
+
 - **Native notifications and unread badges now share capability contracts.** Live notification
   intents are presented through Web Notifications, Capacitor Local Notifications, or Electron's
   validated protocol-v1 main-process operation, with the same typed activation destination on

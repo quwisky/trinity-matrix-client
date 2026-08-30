@@ -15,11 +15,11 @@ import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { TrnCheckboxComponent } from '@trinity/components/checkbox';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import {
-  RoomsService,
+  RoomLibraryService,
   SpaceChildrenService,
   SpacesService,
   compareOrder,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { initialOf } from '@trinity/util/matrix';
 import { TrnIconComponent } from '@trinity/components/icon';
@@ -76,7 +76,7 @@ export class ManageSpaceRoomsComponent {
 
   private readonly dialogRef = inject<TrnDialogRef<boolean>>(TrnDialogRef);
   private readonly children = inject(SpaceChildrenService);
-  private readonly rooms = inject(RoomsService);
+  private readonly rooms = inject(RoomLibraryService);
   private readonly spaces = inject(SpacesService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);

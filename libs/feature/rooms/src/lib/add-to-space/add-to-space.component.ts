@@ -15,10 +15,10 @@ import { TrnCheckboxComponent } from '@trinity/components/checkbox';
 import { TrnInput } from '@trinity/components/input';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import {
-  RoomsService,
+  RoomLibraryService,
   SpaceChildrenService,
   SpacesService,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import { AvatarComponent, type AvatarShape } from '@trinity/components/avatar';
 import { saveFields, type FieldWrite } from '../shared/save-fields';
 
@@ -69,7 +69,7 @@ export class AddToSpaceComponent {
   readonly spaceName = input('this space');
 
   private readonly dialogRef = inject<TrnDialogRef<boolean>>(TrnDialogRef);
-  private readonly rooms = inject(RoomsService);
+  private readonly rooms = inject(RoomLibraryService);
   private readonly spaces = inject(SpacesService);
   private readonly children = inject(SpaceChildrenService);
   private readonly toast = inject(TrnToastService);

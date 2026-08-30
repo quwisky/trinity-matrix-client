@@ -10,7 +10,18 @@ import {
   type MatrixEvent,
   type Room,
 } from 'matrix-js-sdk';
-import { Observable, Subscription, defer, from, map, switchMap } from 'rxjs';
+import {
+  Observable,
+  Subject,
+  defer,
+  finalize,
+  from,
+  map,
+  of,
+  switchMap,
+  takeUntil,
+  tap,
+} from 'rxjs';
 import {
   MatrixClientService,
   projectFromClient,
@@ -112,7 +123,7 @@ type SpaceChildBase = Omit<SpaceChildRoom, 'joined'>;
  * Discord-style server rail. Exposes the user's joined spaces and, per space, the
  * ordered ids of its joined child rooms (so the room list can filter to a space).
  *
- * Mirrors {@link RoomsService}'s patterns: components never touch `matrix-js-sdk`
+ * Mirrors {@link RoomLibraryService}'s patterns: components never touch `matrix-js-sdk`
  * directly, signals recompute as the client syncs, and connection is keyed to the
  * client *instance* (a logout→login swaps in a fresh client) rather than a boolean.
  *
@@ -166,8 +177,8 @@ export class SpacesService {
    */
   readonly childrenError = this._childrenError.asReadonly();
 
-  /** In-flight hierarchy subscription, cancelled when the open space changes. */
-  private hierarchySub: Subscription | null = null;
+  /** Cancels the previous cold hierarchy command when selection or Account changes. */
+  private readonly hierarchyCancelled = new Subject<void>();
 
   /**
    * The open space's full child set, with each child's `joined` flag derived live
@@ -218,7 +229,7 @@ export class SpacesService {
 
   /**
    * The sync projection: client-keyed listeners, coalesced rebuilds, re-projection on an
-   * account switch. Listens to the same events as {@link RoomsService} — which is the
+   * account switch. Listens to the same events as {@link RoomLibraryService} — which is the
    * point of sharing {@link projectFromClient} rather than mirroring it by hand.
    */
   private readonly projection = projectFromClient({
@@ -261,8 +272,7 @@ export class SpacesService {
 
   /** Cancel any in-flight hierarchy fetch and clear the open-space child model. */
   private resetHierarchy(): void {
-    this.hierarchySub?.unsubscribe();
-    this.hierarchySub = null;
+    this.hierarchyCancelled.next();
     this._openSpaceId.set(null);
     this._childrenBase.set([]);
     this._childrenLoading.set(false);
@@ -307,35 +317,43 @@ export class SpacesService {
    * {@link openSpaceChildren} via `getRoomHierarchy`, replacing any previously open
    * space. Pass `null` (Home) to clear it. Idempotent enough to call on every space
    * selection: a prior in-flight fetch is cancelled. Errors land in
-   * {@link childrenError}; progress in {@link childrenLoading}.
+   * {@link childrenError}; progress in {@link childrenLoading}. Cold and finite: selection
+   * changes only when subscribed, errors update the signal and also reach the subscriber.
    */
-  openSpace(spaceId: string | null): void {
-    this.hierarchySub?.unsubscribe();
-    this.hierarchySub = null;
-    this._openSpaceId.set(spaceId);
-    this._childrenBase.set([]);
-    this._childrenError.set(null);
-    if (!spaceId || !this.matrix.isInitialized) {
-      this._childrenLoading.set(false);
-      return;
-    }
-    this._childrenLoading.set(true);
-    this.hierarchySub = this.fetchHierarchy(spaceId).subscribe({
-      next: (children) => {
-        // Guard against a late response for a space we have since switched away from.
-        if (this._openSpaceId() === spaceId) {
-          this._childrenBase.set(children);
-          this._childrenLoading.set(false);
-        }
-      },
-      error: (err: unknown) => {
-        if (this._openSpaceId() === spaceId) {
-          this._childrenLoading.set(false);
-          this._childrenError.set(
-            err instanceof Error ? err.message : String(err),
-          );
-        }
-      },
+  openSpace(spaceId: string | null): Observable<void> {
+    return defer(() => {
+      this.hierarchyCancelled.next();
+      this._openSpaceId.set(spaceId);
+      this._childrenBase.set([]);
+      this._childrenError.set(null);
+      if (!spaceId || !this.matrix.isInitialized) {
+        this._childrenLoading.set(false);
+        return of(void 0);
+      }
+      this._childrenLoading.set(true);
+      return this.fetchHierarchy(spaceId).pipe(
+        takeUntil(this.hierarchyCancelled),
+        tap({
+          next: (children) => {
+            if (this._openSpaceId() === spaceId) {
+              this._childrenBase.set(children);
+            }
+          },
+          error: (error: unknown) => {
+            if (this._openSpaceId() === spaceId) {
+              this._childrenError.set(
+                error instanceof Error ? error.message : String(error),
+              );
+            }
+          },
+        }),
+        map(() => void 0),
+        finalize(() => {
+          if (this._openSpaceId() === spaceId) {
+            this._childrenLoading.set(false);
+          }
+        }),
+      );
     });
   }
 

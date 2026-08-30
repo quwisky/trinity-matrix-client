@@ -1,4 +1,9 @@
 import {
+  RoomSettingsService,
+  RoomAliasesService,
+  PublicRoomsService,
+} from '@trinity/data-access/rooms';
+import {
   SHARED_MOCKS,
   RoomsTimelineStub,
   clientStub,
@@ -9,7 +14,6 @@ import {
 } from './rooms-page.spec-harness';
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaPipeline } from '@trinity/data-access/media';
 import {
@@ -17,18 +21,15 @@ import {
   RoomNotificationsService,
 } from '@trinity/data-access/notifications';
 import {
-  RoomsService,
-  RoomSettingsService,
+  RoomLibraryService,
   RoomActionPermissionsService,
-  RoomAliasesService,
-  PublicRoomsService,
   SpacesService,
   AccountScopeService,
   UnreadAggregatorService,
   SpaceChildrenService,
   type RoomSummary,
   type SpaceSummary,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import {
   TrnAlertService,
@@ -112,12 +113,13 @@ describe('RoomsPage action error feedback', () => {
     joinPublicRoom = vi.fn(() => of('!new:hs'));
     markReadFn = vi.fn(() => of(undefined));
     setMarkedUnreadFn = vi.fn(() => of(undefined));
-    clearMarkedUnreadFn = vi.fn();
+    clearMarkedUnreadFn = vi.fn(() => of(void 0));
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
-        MockProvider(RoomsService, {
+        MockProvider(RoomLibraryService, {
+          selectionAvailability: () => 'available',
           leave: leaveRoom,
           rooms: roomsSignal,
           directRoomIds: signal<ReadonlySet<string>>(new Set()).asReadonly(),
@@ -135,6 +137,7 @@ describe('RoomsPage action error feedback', () => {
         MockProvider(RoomAliasesService, { canManageAliases }),
         MockProvider(PublicRoomsService, { join: joinPublicRoom }),
         MockProvider(SpacesService, {
+          openSpace: () => of(void 0),
           parentSpaceIds,
           spaces: railSpacesSignal,
           createSpace,
@@ -183,7 +186,6 @@ describe('RoomsPage action error feedback', () => {
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(JumpToDateService),
-        MockProvider(AccountRuntimeService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService, { show: toastShow }),
         MockProvider(RoomNotificationsService, {
@@ -195,7 +197,7 @@ describe('RoomsPage action error feedback', () => {
     return shellFrom();
   }
 
-  // Favouriting moved into ChannelSidebarComponent (it now calls RoomsService
+  // Favouriting moved into ChannelSidebarComponent (it now calls RoomLibraryService
   // directly), so that behaviour is covered by channel-sidebar.component.spec.ts.
 
   it('applies a notification level chosen from the sidebar room menu', () => {

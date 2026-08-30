@@ -1,3 +1,4 @@
+import { RoomModerationService } from '@trinity/data-access/rooms';
 import {
   SHARED_MOCKS,
   RoomsTimelineStub,
@@ -15,18 +16,17 @@ import {
   AccountRuntimeService,
   type AccountSwitchCoordination,
 } from '@trinity/data-access/accounts';
-import { type PendingInvite } from '@trinity/data-access/invites';
+import { type PendingInvite } from '@trinity/data-access/room-library';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaPipeline } from '@trinity/data-access/media';
 import {
-  RoomsService,
-  RoomModerationService,
+  RoomLibraryService,
   SpacesService,
   UnreadAggregatorService,
   type RoomSummary,
   type SpaceChildRoom,
   type SpaceSummary,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import {
   TrnActionSheetService,
@@ -63,6 +63,7 @@ describe('RoomsPage space actions', () => {
     activeUserId: string | null = '@me:hs',
     accountIds: readonly string[] = ['@me:hs'],
   ) {
+    const activeAccountId = signal<string | null>(activeUserId);
     alertPrompt = vi.fn().mockResolvedValue(null);
     alertConfirm = vi.fn().mockResolvedValue(false);
     createSpace = vi.fn(() => of('!new:hs'));
@@ -72,8 +73,12 @@ describe('RoomsPage space actions', () => {
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
-        MockProvider(RoomsService),
+        MockProvider(RoomLibraryService, {
+          selectionAvailability: () => 'available',
+          clearMarkedUnread: () => of(void 0),
+        }),
         MockProvider(SpacesService, {
+          openSpace: () => of(void 0),
           spaces: signal<SpaceSummary[]>([
             {
               id: '!s:hs',
@@ -92,7 +97,7 @@ describe('RoomsPage space actions', () => {
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
-          activeUserId: signal<string | null>(activeUserId).asReadonly(),
+          activeUserId: activeAccountId.asReadonly(),
           accountIds: signal<readonly string[]>(accountIds).asReadonly(),
           clientFor: () => clientStub(),
         }),
@@ -105,6 +110,7 @@ describe('RoomsPage space actions', () => {
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(AccountRuntimeService, {
+          activeAccountId: activeAccountId.asReadonly(),
           signOutAccount: vi.fn((accountId: string) =>
             of({
               kind: 'ready' as const,
@@ -117,7 +123,10 @@ describe('RoomsPage space actions', () => {
           switchActiveAccount: vi.fn(
             (accountId: string, coordination: AccountSwitchCoordination) =>
               defer(coordination.prepare).pipe(
-                tap(() => coordination.onCommitStarted?.()),
+                tap(() => {
+                  coordination.onCommitStarted?.();
+                  activeAccountId.set(accountId);
+                }),
                 map(() => ({
                   kind: 'ready' as const,
                   accountId,
@@ -432,7 +441,9 @@ describe('RoomsPage room / DM / invite actions', () => {
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
-        MockProvider(RoomsService, {
+        MockProvider(RoomLibraryService, {
+          selectionAvailability: () => 'available',
+          clearMarkedUnread: () => of(void 0),
           rooms: signal<RoomSummary[]>([]),
           createRoom,
           createDirectMessage,
@@ -441,6 +452,7 @@ describe('RoomsPage room / DM / invite actions', () => {
           resolveRoomId,
         }),
         MockProvider(SpacesService, {
+          openSpace: () => of(void 0),
           spaces: signal<SpaceSummary[]>([
             {
               id: '!s:hs',
@@ -1128,14 +1140,16 @@ describe('RoomsPage space hierarchy actions', () => {
 
   function build() {
     alertConfirm = vi.fn().mockResolvedValue(false);
-    openSpace = vi.fn();
+    openSpace = vi.fn(() => of(void 0));
     joinRoom = vi.fn(() => of(undefined));
     removeRoomFromSpace = vi.fn(() => of(undefined));
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
-        MockProvider(RoomsService, {
+        MockProvider(RoomLibraryService, {
+          selectionAvailability: () => 'available',
+          clearMarkedUnread: () => of(void 0),
           rooms: signal<RoomSummary[]>([
             {
               id: '!c:hs',

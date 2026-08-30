@@ -10,7 +10,7 @@ import {
   roomAvatarMxc,
 } from '@trinity/util/matrix';
 import { compareOrder } from './space-child-order';
-import { type RoomSummary } from './rooms.service';
+import { type RoomSummary } from './room-library.service';
 
 /** State event type linking a space to a child room. */
 const SPACE_CHILD_EVENT = 'm.space.child';
@@ -105,7 +105,7 @@ export function directMapOf(client: MatrixClient): {
 
 /**
  * Project one {@link Room} into a {@link RoomSummary}, tagged with the account it belongs
- * to. Pure read of the room — shared by {@link RoomsService} (single active account) and
+ * to. Pure read of the room — shared by {@link RoomLibraryService} (single active account) and
  * the cross-account {@link MixedRoomsService} so both build identical rows.
  */
 export function buildRoomSummary(
@@ -308,7 +308,7 @@ export function spaceRankOf(
  * runs on every sync, and the shipped default is `'recent'`). An id the list does not hold
  * sorts last rather than yielding `NaN`, which would make `sort` implementation-defined.
  *
- * NOTE: `Array.prototype.sort` mutates, and `RoomsService.rooms()` / `MixedRoomsService.rooms()`
+ * NOTE: `Array.prototype.sort` mutates, and `RoomLibraryService.rooms()` / `MixedRoomsService.rooms()`
  * hand out their array by identity — sort a copy you own, never the signal's value.
  */
 export function comparatorFor(

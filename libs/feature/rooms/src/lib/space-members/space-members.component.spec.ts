@@ -1,7 +1,10 @@
 import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { RoomsService, type MemberSummary } from '@trinity/data-access/rooms';
+import {
+  RoomLibraryService,
+  type MemberSummary,
+} from '@trinity/data-access/room-library';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
 import { SpaceMembersComponent } from './space-members.component';
@@ -35,7 +38,7 @@ async function build(members: MemberSummary[] = []) {
   const { fixture, container } = await render(SpaceMembersComponent, {
     inputs: { spaceId: '!s:hs', spaceName: 'Design' },
     providers: [
-      MockProvider(RoomsService, { membersFor }),
+      MockProvider(RoomLibraryService, { membersFor }),
       MockProvider(TrnDialogRef, { close }),
     ],
   });

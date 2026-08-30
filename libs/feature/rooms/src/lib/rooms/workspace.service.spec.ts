@@ -11,9 +11,11 @@ import {
   type AccountSwitchCoordination,
   type AccountSwitchOutcome,
 } from '@trinity/data-access/accounts';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaPipeline } from '@trinity/data-access/media';
-import { RoomsService, SpacesService } from '@trinity/data-access/rooms';
+import {
+  RoomLibraryService,
+  SpacesService,
+} from '@trinity/data-access/room-library';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
 import {
   BehaviorSubject,
@@ -115,8 +117,17 @@ function harness(options: HarnessOptions = {}) {
     blur: vi.fn(),
   };
   const media = { releaseAll: vi.fn() };
-  const rooms = { clearMarkedUnread: vi.fn() };
-  const spaces = { openSpace: vi.fn() };
+  const rooms = {
+    clearMarkedUnread: vi.fn(() => of(void 0)),
+    selectionAvailability: (accountId: string, roomId: string) => {
+      const client = clients.get(accountId);
+      if (!client) return 'unavailable' as const;
+      return client.getRoom(roomId)
+        ? ('available' as const)
+        : ('unavailable' as const);
+    },
+  };
+  const spaces = { openSpace: vi.fn(() => of(void 0)) };
 
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,
@@ -143,17 +154,9 @@ function harness(options: HarnessOptions = {}) {
           switchActiveAccount,
         },
       },
-      {
-        provide: MatrixClientService,
-        useValue: {
-          activeUserId: activeAccountId.asReadonly(),
-          accountIds: signal([...clients.keys()]).asReadonly(),
-          clientFor: (accountId: string) => clients.get(accountId) ?? null,
-        },
-      },
       { provide: ConversationRuntime, useValue: conversations },
       { provide: MediaPipeline, useValue: media },
-      { provide: RoomsService, useValue: rooms },
+      { provide: RoomLibraryService, useValue: rooms },
       { provide: SpacesService, useValue: spaces },
     ],
   });

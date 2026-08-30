@@ -785,7 +785,7 @@ export class TimelineService {
     }
     // Caught, unlike the composer's `setTyping`: this fires during teardown, where the room
     // may already be one the account has left, and there is no longer any surface to report
-    // it on. Same shape as `setRoomReadMarkers` in RoomsService.
+    // it on. Same shape as `setRoomReadMarkers` in RoomLibraryService.
     void client.sendTyping(room.roomId, false, 0).catch(() => undefined);
   }
 

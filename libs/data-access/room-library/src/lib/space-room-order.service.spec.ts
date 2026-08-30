@@ -7,6 +7,7 @@ import { SpaceRoomOrderService } from './space-room-order.service';
 
 const store = new Map<string, string>();
 let failStorage = false;
+let setCalls = 0;
 
 // The service talks to @capacitor/preferences directly (the repo's preference pattern), so
 // stub the plugin with an in-memory map rather than the whole native layer.
@@ -19,6 +20,7 @@ vi.mock('@capacitor/preferences', () => ({
       return { value: store.get(key) ?? null };
     },
     set: async ({ key, value }: { key: string; value: string }) => {
+      setCalls += 1;
       if (failStorage) {
         throw new Error('storage unavailable');
       }
@@ -60,6 +62,7 @@ describe('SpaceRoomOrderService', () => {
   beforeEach(() => {
     store.clear();
     failStorage = false;
+    setCalls = 0;
   });
 
   it('orders by recent activity until something is chosen', async () => {
@@ -83,7 +86,7 @@ describe('SpaceRoomOrderService', () => {
       const { svc } = harness();
       await firstValueFrom(svc.hydrateKnownAccounts());
 
-      svc.setDefault('alphabetical');
+      svc.setDefault('alphabetical').subscribe();
 
       expect(svc.defaultMode()).toBe('alphabetical');
       expect(svc.effectiveFor(SPACE)).toBe('alphabetical');
@@ -93,7 +96,7 @@ describe('SpaceRoomOrderService', () => {
     it('survives a relaunch', async () => {
       const first = harness();
       await firstValueFrom(first.svc.hydrateKnownAccounts());
-      first.svc.setDefault('space');
+      first.svc.setDefault('space').subscribe();
       expect(store.get(defaultKey(ME))).toBe('space');
 
       // A fresh service reads nothing until it hydrates — that is what init() is for.
@@ -107,9 +110,32 @@ describe('SpaceRoomOrderService', () => {
       const { svc } = harness([], null);
       await firstValueFrom(svc.hydrateKnownAccounts());
 
-      svc.setDefault('space');
+      svc.setDefault('space').subscribe();
 
       expect(store.size).toBe(0);
+    });
+
+    it('keeps preference updates cold until subscription', async () => {
+      const { svc } = harness();
+      await firstValueFrom(svc.hydrateKnownAccounts());
+
+      const command = svc.setDefault('alphabetical');
+      expect(svc.defaultMode()).toBe('recent');
+      expect(setCalls).toBe(0);
+
+      await firstValueFrom(command);
+      expect(svc.defaultMode()).toBe('alphabetical');
+      expect(setCalls).toBe(1);
+    });
+
+    it('surfaces persistence failures to the subscriber', async () => {
+      const { svc } = harness();
+      await firstValueFrom(svc.hydrateKnownAccounts());
+      failStorage = true;
+
+      await expect(
+        firstValueFrom(svc.setDefault('alphabetical')),
+      ).rejects.toThrow('storage unavailable');
     });
   });
 
@@ -117,9 +143,9 @@ describe('SpaceRoomOrderService', () => {
     it('beats the account default for that space alone', async () => {
       const { svc } = harness();
       await firstValueFrom(svc.hydrateKnownAccounts());
-      svc.setDefault('alphabetical');
+      svc.setDefault('alphabetical').subscribe();
 
-      svc.setForSpace(SPACE, 'space');
+      svc.setForSpace(SPACE, 'space').subscribe();
 
       expect(svc.effectiveFor(SPACE)).toBe('space');
       expect(svc.overrideFor(SPACE)).toBe('space');
@@ -132,7 +158,7 @@ describe('SpaceRoomOrderService', () => {
     it('survives a relaunch', async () => {
       const first = harness();
       await firstValueFrom(first.svc.hydrateKnownAccounts());
-      first.svc.setForSpace(SPACE, 'space');
+      first.svc.setForSpace(SPACE, 'space').subscribe();
 
       const { svc } = harness();
       await firstValueFrom(svc.hydrateKnownAccounts());
@@ -143,14 +169,14 @@ describe('SpaceRoomOrderService', () => {
     it('keeps tracking the default once cleared, rather than freezing it', async () => {
       const { svc } = harness();
       await firstValueFrom(svc.hydrateKnownAccounts());
-      svc.setForSpace(SPACE, 'space');
+      svc.setForSpace(SPACE, 'space').subscribe();
 
-      svc.clearForSpace(SPACE);
+      svc.clearForSpace(SPACE).subscribe();
       expect(svc.overrideFor(SPACE)).toBeNull();
       expect(JSON.parse(store.get(overridesKey(ME)) ?? '{}')).toEqual({});
 
       // The whole point of deleting the entry instead of storing today's default.
-      svc.setDefault('alphabetical');
+      svc.setDefault('alphabetical').subscribe();
       expect(svc.effectiveFor(SPACE)).toBe('alphabetical');
     });
   });
@@ -160,8 +186,8 @@ describe('SpaceRoomOrderService', () => {
       const { svc } = harness([ME, ALT]);
       await firstValueFrom(svc.hydrateKnownAccounts());
 
-      svc.setDefault('alphabetical');
-      svc.setForSpace(SPACE, 'space');
+      svc.setDefault('alphabetical').subscribe();
+      svc.setForSpace(SPACE, 'space').subscribe();
 
       expect(store.get(defaultKey(ME))).toBe('alphabetical');
       expect(store.get(defaultKey(ALT))).toBeUndefined();
@@ -238,7 +264,7 @@ describe('SpaceRoomOrderService', () => {
       );
       const { svc, settled } = startLoading();
 
-      svc.setForSpace('!c:hs', 'recent');
+      svc.setForSpace('!c:hs', 'recent').subscribe();
       await settled;
 
       expect(svc.overrideFor('!a:hs')).toBe('space');
@@ -256,7 +282,7 @@ describe('SpaceRoomOrderService', () => {
       store.set(defaultKey(ME), 'alphabetical');
       const { svc, settled } = startLoading();
 
-      svc.setForSpace('!c:hs', 'space');
+      svc.setForSpace('!c:hs', 'space').subscribe();
       await settled;
 
       expect(svc.defaultMode()).toBe('alphabetical');
@@ -268,7 +294,7 @@ describe('SpaceRoomOrderService', () => {
       store.set(overridesKey(ME), JSON.stringify({ '!a:hs': 'space' }));
       const { svc, settled } = startLoading();
 
-      svc.clearForSpace('!a:hs');
+      svc.clearForSpace('!a:hs').subscribe();
       await settled;
 
       expect(svc.overrideFor('!a:hs')).toBeNull();
@@ -279,7 +305,7 @@ describe('SpaceRoomOrderService', () => {
       store.set(defaultKey(ME), 'space');
       const { svc, settled } = startLoading();
 
-      svc.setDefault('alphabetical');
+      svc.setDefault('alphabetical').subscribe();
       await settled;
 
       expect(svc.defaultMode()).toBe('alphabetical');
@@ -298,7 +324,7 @@ describe('SpaceRoomOrderService', () => {
       expect(svc.defaultMode()).toBe('recent');
     });
 
-    it('does not write defaults over preferences it could not read', async () => {
+    it('re-reads before writing after preferences were temporarily unavailable', async () => {
       // A failed read is not "nothing stored" — the account's real preferences are unknown,
       // so persisting anything derived from defaults would destroy them. Storage recovers
       // before the write, which is what makes this bite: a service that treated the failed
@@ -310,13 +336,13 @@ describe('SpaceRoomOrderService', () => {
       await firstValueFrom(svc.hydrateKnownAccounts());
       failStorage = false;
 
-      svc.setForSpace('!c:hs', 'recent');
+      await firstValueFrom(svc.setForSpace('!c:hs', 'recent'));
 
       expect(store.get(defaultKey(ME))).toBe('alphabetical');
       expect(JSON.parse(store.get(overridesKey(ME)) ?? '{}')).toEqual({
         '!a:hs': 'space',
+        '!c:hs': 'recent',
       });
-      // The choice still applies in memory — it is only unsaved.
       expect(svc.effectiveFor('!c:hs')).toBe('recent');
     });
 

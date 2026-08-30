@@ -1,4 +1,10 @@
 import {
+  RoomLinkService,
+  type RoomLinkAction,
+  type RoomLinkPreview,
+  type RoomLinkPreviewFailure,
+} from '@trinity/data-access/rooms';
+import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
@@ -16,14 +22,8 @@ import { TrnButton } from '@trinity/components/button';
 import { TrnIconComponent } from '@trinity/components/icon';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
-import { InvitesService } from '@trinity/data-access/invites';
-import {
-  describeRoomLinkPreviewFailure,
-  RoomLinkService,
-  type RoomLinkAction,
-  type RoomLinkPreview,
-  type RoomLinkPreviewFailure,
-} from '@trinity/data-access/rooms';
+import { InvitesService } from '@trinity/data-access/room-library';
+import { describeRoomLinkPreviewFailure } from '@trinity/data-access/rooms';
 import {
   describeMatrixRequestFailure,
   reportMatrixRequestFailure,

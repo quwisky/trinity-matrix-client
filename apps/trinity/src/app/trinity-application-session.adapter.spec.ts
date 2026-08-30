@@ -15,7 +15,7 @@ import {
   NotificationService,
   type NotificationRuntimeEvent,
 } from '@trinity/data-access/notifications';
-import { SpaceRoomOrderService } from '@trinity/data-access/rooms';
+import { SpaceRoomOrderService } from '@trinity/data-access/room-library';
 import { NativeNavigationService } from '@trinity/platform-native';
 import { HostBackService, HostDeepLinksService } from '@trinity/runtime/host';
 import { MockProvider } from 'ng-mocks';

@@ -17,9 +17,9 @@ import {
   switchMap,
 } from 'rxjs';
 import {
-  RoomsService,
+  RoomLibraryService,
   type UserSearchResult,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import { isValidUserId } from '@trinity/util/matrix';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import { AvatarComponent } from '@trinity/components/avatar';
@@ -42,7 +42,7 @@ const MIN_SEARCH_LENGTH = 2;
  *
  * Config (heading / confirm label / placeholder) arrives as signal inputs (set by
  * TrnDialogService). matrix-js-sdk is reached only through
- * {@link RoomsService.searchUsers}. The card self-sizes so it works in a bare CDK
+ * {@link RoomLibraryService.searchUsers}. The card self-sizes so it works in a bare CDK
  * dialog (no `ion-modal` host).
  */
 @Component({
@@ -61,7 +61,7 @@ const MIN_SEARCH_LENGTH = 2;
 export class UserPickerComponent {
   private readonly dialogRef =
     inject<TrnDialogRef<string | null>>(TrnDialogRef);
-  private readonly rooms = inject(RoomsService);
+  private readonly rooms = inject(RoomLibraryService);
 
   /** Dialog heading (e.g. "Start a direct message"). */
   readonly title = input('Find people');

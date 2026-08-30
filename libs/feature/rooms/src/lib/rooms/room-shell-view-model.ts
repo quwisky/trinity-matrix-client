@@ -7,20 +7,17 @@ import {
   MixedRoomsService,
   MixedSpacesService,
   RoomActionPermissionsService,
-  RoomsService,
+  RoomLibraryService,
   SpaceRoomOrderService,
   SpacesService,
   UnreadAggregatorService,
   comparatorFor,
+  filterRoomLibraryItems,
   type RoomSortMode,
   type RoomSummary,
   type SpaceSummary,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import { AccountBadgesService } from '../shared/account-badges.service';
-import {
-  matchesRoomFilter,
-  normalizeRoomFilter,
-} from '../channel-sidebar/room-filter';
 import { RoomShellStore } from './room-shell-store';
 import {
   AccountProfilesService,
@@ -43,7 +40,7 @@ import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sideb
 @Injectable()
 export class RoomShellViewModel {
   private readonly store = inject(RoomShellStore);
-  private readonly rooms = inject(RoomsService);
+  private readonly rooms = inject(RoomLibraryService);
   private readonly spaces = inject(SpacesService);
   private readonly permissions = inject(RoomActionPermissionsService);
   private readonly mixedRooms = inject(MixedRoomsService);
@@ -148,15 +145,7 @@ export class RoomShellViewModel {
    * unfiltered {@link visibleRooms}.
    */
   readonly filteredRooms = computed<RoomSummary[]>(() => {
-    const query = normalizeRoomFilter(this.store.roomFilter());
-    if (!query) {
-      // Same array by identity when nothing is typed, so the common case allocates nothing
-      // and downstream `computed`s do not invalidate on every unrelated sync.
-      return this.visibleRooms();
-    }
-    return this.visibleRooms().filter((room) =>
-      matchesRoomFilter(room.name, query),
-    );
+    return filterRoomLibraryItems(this.visibleRooms(), this.store.roomFilter());
   });
 
   /**

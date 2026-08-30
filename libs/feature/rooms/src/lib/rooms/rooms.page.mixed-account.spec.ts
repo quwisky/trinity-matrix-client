@@ -15,11 +15,11 @@ import {
 import {
   MixedInvitesService,
   type PendingInvite,
-} from '@trinity/data-access/invites';
+} from '@trinity/data-access/room-library';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AccountProfilesService } from '@trinity/data-access/profile';
 import {
-  RoomsService,
+  RoomLibraryService,
   SpacesService,
   AccountScopeService,
   MixedRoomsService,
@@ -27,7 +27,7 @@ import {
   UnreadAggregatorService,
   type RoomSummary,
   type SpaceSummary,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
@@ -140,16 +140,19 @@ describe('RoomsPage mixed-account view', () => {
     );
     setMixedRoomsAccounts = vi.fn();
     shownAccounts = signal<ReadonlySet<string>>(new Set(['@me:hs']));
-    toggleAccount = vi.fn();
+    toggleAccount = vi.fn(() => of(void 0));
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
-        MockProvider(RoomsService, {
+        MockProvider(RoomLibraryService, {
+          selectionAvailability: () => 'available',
+          clearMarkedUnread: () => of(void 0),
           rooms: signal([room('!mine:hs', '@me:hs')]),
           directRoomIds: signal<ReadonlySet<string>>(new Set()),
         }),
         MockProvider(SpacesService, {
+          openSpace: () => of(void 0),
           spaces: signal([space('!s-mine:hs', '@me:hs')]),
           childRoomIds: vi.fn(() => []),
         }),
@@ -204,6 +207,7 @@ describe('RoomsPage mixed-account view', () => {
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(AccountRuntimeService, {
+          activeAccountId: activeUserId.asReadonly(),
           switchActiveAccount: switchAccount,
         }),
         MockProvider(TrnDialogService),

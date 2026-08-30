@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { matchesRoomFilter, normalizeRoomFilter } from './room-filter';
+import {
+  filterRoomLibraryItems,
+  matchesRoomFilter,
+  normalizeRoomFilter,
+} from './room-filter';
 
 describe('normalizeRoomFilter', () => {
   it('treats a blank query as no filter', () => {
@@ -18,31 +22,15 @@ describe('matchesRoomFilter', () => {
   });
 
   it('matches a substring, not just a prefix', () => {
-    // Typing "dev" to find "core-dev" is the common case; a prefix match would miss it.
     expect(matchesRoomFilter('core-dev', normalizeRoomFilter('dev'))).toBe(
       true,
     );
   });
 
-  it('ignores case in both directions', () => {
+  it('ignores case and accents in both directions', () => {
     expect(
-      matchesRoomFilter('Design Review', normalizeRoomFilter('DESIGN')),
+      matchesRoomFilter('Café Münster', normalizeRoomFilter('CAFE MÜN')),
     ).toBe(true);
-    expect(
-      matchesRoomFilter('DESIGN REVIEW', normalizeRoomFilter('design')),
-    ).toBe(true);
-  });
-
-  it('ignores accents, so an unaccented query finds an accented room', () => {
-    expect(matchesRoomFilter('Café Münster', normalizeRoomFilter('cafe'))).toBe(
-      true,
-    );
-    expect(
-      matchesRoomFilter('Café Münster', normalizeRoomFilter('munster')),
-    ).toBe(true);
-  });
-
-  it('still matches when the query itself carries the accents', () => {
     expect(matchesRoomFilter('Cafe Munster', normalizeRoomFilter('café'))).toBe(
       true,
     );
@@ -52,5 +40,19 @@ describe('matchesRoomFilter', () => {
     expect(matchesRoomFilter('Design Review', normalizeRoomFilter('ops'))).toBe(
       false,
     );
+  });
+});
+
+describe('filterRoomLibraryItems', () => {
+  const rooms = [{ name: 'Core Dev' }, { name: 'Design Review' }] as const;
+
+  it('preserves the source identity when no filter is active', () => {
+    expect(filterRoomLibraryItems(rooms, '  ')).toBe(rooms);
+  });
+
+  it('owns the named-row filtering projection', () => {
+    expect(filterRoomLibraryItems(rooms, 'dev')).toEqual([
+      { name: 'Core Dev' },
+    ]);
   });
 });

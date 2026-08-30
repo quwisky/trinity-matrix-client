@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type RoomSummary } from '@trinity/data-access/rooms';
+import { type RoomSummary } from '@trinity/data-access/room-library';
 import { stepList, stepUnread } from './room-navigation';
 
 const IDS = ['!a', '!b', '!c'];

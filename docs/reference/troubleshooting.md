@@ -161,7 +161,7 @@ configured at severity 2, which is a weaker claim than the rule still matching a
 fails, then revert:
 
 ```bash
-echo "import type { RoomsService } from '@trinity/data-access/rooms';" >> libs/components/icon/src/index.ts
+echo "import type { RoomLibraryService } from '@trinity/data-access/room-library';" >> libs/components/icon/src/index.ts
 pnpm exec nx lint components-icon --skip-nx-cache   # must fail
 git checkout -- libs/components/icon/src/index.ts
 ```

@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { HistoryVisibility, JoinRule } from 'matrix-js-sdk';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { RoomActionPermissionsService } from './room-action-permissions.service';
+import { RoomActionPermissionsService } from '@trinity/data-access/room-library';
 import { RoomSettingsService } from './room-settings.service';
 
 function setup(

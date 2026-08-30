@@ -5,7 +5,7 @@ import { render } from '@trinity/testing';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { TrnTooltip } from '@trinity/components/tooltip';
 import { PresenceService } from '@trinity/data-access/profile';
-import { type MemberSummary } from '@trinity/data-access/rooms';
+import { type MemberSummary } from '@trinity/data-access/room-library';
 import { type PresenceState } from '@trinity/util/matrix';
 import { MockComponent } from 'ng-mocks';
 import { beforeEach, describe, expect, it } from 'vitest';

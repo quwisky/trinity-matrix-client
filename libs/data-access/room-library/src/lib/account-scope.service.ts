@@ -1,6 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { Observable, catchError, defer, from, map, of, tap } from 'rxjs';
 
 /** Persisted set of account ids the user has opted into mixing. */
 const SCOPE_KEY = 'trinity.accounts.mixed';
@@ -73,18 +74,22 @@ export class AccountScopeService {
   readonly mixing = computed(() => this.selected().size > 1);
 
   /** Restore the saved selection. Wired as an app initializer at startup. */
-  async init(): Promise<void> {
-    try {
-      const { value } = await Preferences.get({ key: SCOPE_KEY });
-      const parsed: unknown = value ? JSON.parse(value) : null;
-      if (Array.isArray(parsed)) {
-        this.stored.set(
-          new Set(parsed.filter((id): id is string => typeof id === 'string')),
-        );
-      }
-    } catch {
-      // Absent or corrupt → start with just the active account.
-    }
+  init(): Observable<void> {
+    return defer(() => from(Preferences.get({ key: SCOPE_KEY }))).pipe(
+      tap(({ value }) => {
+        const parsed: unknown = value ? JSON.parse(value) : null;
+        if (Array.isArray(parsed)) {
+          this.stored.set(
+            new Set(
+              parsed.filter((id): id is string => typeof id === 'string'),
+            ),
+          );
+        }
+      }),
+      map(() => void 0),
+      // Absent, unavailable or corrupt → start with just the active account.
+      catchError(() => of(void 0)),
+    );
   }
 
   /** Whether an account is currently included in the view. */
@@ -102,36 +107,38 @@ export class AccountScopeService {
    * account, and the account you were mixing *from* — never stored, only implied — would
    * drop straight back out.
    */
-  setSelected(userId: string, included: boolean): void {
-    const active = this.matrix.activeUserId();
-    if (!included && userId === active) {
-      return;
-    }
-    const next = new Set(this.stored());
-    if (included) {
-      next.add(userId);
-      if (active) {
-        next.add(active);
+  setSelected(userId: string, included: boolean): Observable<void> {
+    return defer(() => {
+      const active = this.matrix.activeUserId();
+      if (!included && userId === active) {
+        return of(void 0);
       }
-    } else {
-      next.delete(userId);
-      // Turning the mix off must clear the stored active account too. Leaving it behind
-      // means the set is still "one explicit member", so the next time the user switches
-      // accounts that member plus the new active account would silently re-enable mixing.
-      if (active && next.size === 1 && next.has(active)) {
-        next.clear();
+      const next = new Set(this.stored());
+      if (included) {
+        next.add(userId);
+        if (active) {
+          next.add(active);
+        }
+      } else {
+        next.delete(userId);
+        // Turning the mix off must clear the stored active account too. Leaving it behind
+        // means the set is still "one explicit member", so the next time the user switches
+        // accounts that member plus the new active account would silently re-enable mixing.
+        if (active && next.size === 1 && next.has(active)) {
+          next.clear();
+        }
       }
-    }
-    if (sameAccountSet(next, this.stored())) {
-      return;
-    }
-    this.stored.set(next);
-    this.persist(next);
+      if (sameAccountSet(next, this.stored())) {
+        return of(void 0);
+      }
+      this.stored.set(next);
+      return this.persist(next);
+    });
   }
 
   /** Flip an account's inclusion (the picker's checkbox). */
-  toggle(userId: string): void {
-    this.setSelected(userId, !this.isSelected(userId));
+  toggle(userId: string): Observable<void> {
+    return defer(() => this.setSelected(userId, !this.isSelected(userId)));
   }
 
   /**
@@ -142,10 +149,12 @@ export class AccountScopeService {
    * anyway, since {@link selected} intersects with the live accounts on read, and the set is
    * bounded by the number of accounts the user has ever mixed.
    */
-  private persist(selection: ReadonlySet<string>): void {
-    void Preferences.set({
-      key: SCOPE_KEY,
-      value: JSON.stringify([...selection]),
-    }).catch(() => undefined);
+  private persist(selection: ReadonlySet<string>): Observable<void> {
+    return from(
+      Preferences.set({
+        key: SCOPE_KEY,
+        value: JSON.stringify([...selection]),
+      }),
+    ).pipe(map(() => void 0));
   }
 }

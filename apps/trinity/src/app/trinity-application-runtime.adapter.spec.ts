@@ -25,7 +25,7 @@ import {
 import {
   AccountScopeService,
   SpaceRoomOrderService,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import {
   ComposerSettingsService,
   AppConfigService,
@@ -192,7 +192,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         MockProvider(DateTimeFormatService, promiseInit()),
         MockProvider(KeyboardShortcutsService, promiseInit()),
         MockProvider(GifSettingsService, promiseInit()),
-        MockProvider(AccountScopeService, promiseInit()),
+        MockProvider(AccountScopeService, { init: () => of(void 0) }),
         MockProvider(AppConfigService, { resetToDefaults: resetPreferences }),
         MockProvider(PushGatewayService, promiseInit()),
         MockProvider(SpaceRoomOrderService, {

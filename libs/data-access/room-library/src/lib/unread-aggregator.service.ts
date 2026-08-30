@@ -21,7 +21,7 @@ interface AccountListener {
 }
 
 /**
- * Cross-account unread aggregator. Where {@link RoomsService.totalUnread} sums only the
+ * Cross-account unread aggregator. Where {@link RoomLibraryService.totalUnread} sums only the
  * ACTIVE account's rooms, this sums every signed-in account so the app-icon badge — and,
  * later, the account switcher — reflects all of them at once.
  *

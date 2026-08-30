@@ -1,3 +1,4 @@
+import { JoinRule, RoomSettingsService } from '@trinity/data-access/rooms';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -21,12 +22,8 @@ import {
 import { TrnCheckboxComponent } from '@trinity/components/checkbox';
 import { TrnInput } from '@trinity/components/input';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
-import {
-  HistoryVisibility,
-  JoinRule,
-  RoomActionPermissionsService,
-  RoomSettingsService,
-} from '@trinity/data-access/rooms';
+import { HistoryVisibility } from '@trinity/data-access/rooms';
+import { RoomActionPermissionsService } from '@trinity/data-access/room-library';
 import { initialOf } from '@trinity/util/matrix';
 import { BannedMembersComponent } from '../banned-members/banned-members.component';
 import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';

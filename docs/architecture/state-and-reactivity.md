@@ -360,20 +360,20 @@ multi-account design.
 
 Seven services take the full `projectFromClient`:
 
-| Service               | Library                        |
-| --------------------- | ------------------------------ |
-| `RoomsService`        | `@trinity/data-access/rooms`   |
-| `SpacesService`       | `@trinity/data-access/rooms`   |
-| `InvitesService`      | `@trinity/data-access/invites` |
-| `CryptoService`       | `@trinity/data-access/crypto`  |
-| `VerificationService` | `@trinity/data-access/crypto`  |
-| `DevicesService`      | `@trinity/data-access/crypto`  |
-| `PresenceService`     | `@trinity/data-access/profile` |
+| Service               | Library                             |
+| --------------------- | ----------------------------------- |
+| `RoomLibraryService`  | `@trinity/data-access/room-library` |
+| `SpacesService`       | `@trinity/data-access/room-library` |
+| `InvitesService`      | `@trinity/data-access/room-library` |
+| `CryptoService`       | `@trinity/data-access/crypto`       |
+| `VerificationService` | `@trinity/data-access/crypto`       |
+| `DevicesService`      | `@trinity/data-access/crypto`       |
+| `PresenceService`     | `@trinity/data-access/profile`      |
 
 The library column is the import alias, and it mirrors the directory:
-`@trinity/data-access/rooms` is `libs/data-access/rooms`. The Nx project name is the third
-string and keeps the flat hyphenated form, so the command stays
-`pnpm exec nx test data-access-rooms`.
+`@trinity/data-access/room-library` is `libs/data-access/room-library`. The Nx project name is
+the third string and keeps the flat hyphenated form, so the command is
+`pnpm exec nx test data-access-room-library`.
 
 Six take **only** `coalesce()`, and each says why at the call site. The split is not arbitrary — it
 follows from what the service's lifetime is keyed to:
@@ -394,9 +394,9 @@ its equivalent of the projection.
 The rule to apply when writing a new service: if your listeners follow _the active client_, take
 `projectFromClient`. If they follow a room or a set of accounts, take `coalesce` and own the rest.
 
-## A worked example: RoomsService
+## A worked example: RoomLibraryService
 
-[`RoomsService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/rooms/src/lib/rooms.service.ts)
+[`RoomLibraryService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/room-library/src/lib/room-library.service.ts)
 is the reference implementation, and the annotations in it are the actual documentation for the
 awkward cases.
 

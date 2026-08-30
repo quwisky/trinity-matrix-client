@@ -1,3 +1,4 @@
+import { RoomPinGovernanceService } from '@trinity/data-access/rooms';
 import { bootstrapApplication } from '@angular/platform-browser';
 import {
   ErrorHandler,
@@ -23,10 +24,7 @@ import {
   type AccountLifecyclePort,
 } from '@trinity/data-access/accounts';
 import { provideGifConfigEntries } from '@trinity/data-access/gif';
-import {
-  RoomMessageGovernanceService,
-  RoomPinGovernanceService,
-} from '@trinity/data-access/rooms';
+import { RoomMessageGovernanceService } from '@trinity/data-access/rooms';
 import {
   CONVERSATION_MESSAGE_POLICY,
   CONVERSATION_PIN_POLICY,

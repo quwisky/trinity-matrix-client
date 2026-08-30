@@ -1,6 +1,6 @@
 import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { AccountScopeService } from '@trinity/data-access/rooms';
+import { AccountScopeService } from '@trinity/data-access/room-library';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
@@ -57,7 +57,15 @@ export class AccountRoutingService {
    * active account is always shown, and the service ignores an attempt to drop it.
    */
   onToggleAccountShown(userId: string): void {
-    this.accountScope.toggle(userId);
+    this.accountScope
+      .toggle(userId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: () =>
+          this.status.showError(
+            'Unable to update the accounts shown right now.',
+          ),
+      });
   }
 
   /**

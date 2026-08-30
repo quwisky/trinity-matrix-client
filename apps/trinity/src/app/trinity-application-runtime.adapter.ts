@@ -23,7 +23,7 @@ import {
 import {
   AccountScopeService,
   SpaceRoomOrderService,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import {
   AppConfigService,
   ComposerSettingsService,
@@ -143,7 +143,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
         dateTime: from(this.dateTime.init()),
         shortcuts: from(this.shortcuts.init()),
         gifs: from(this.gifs.init()),
-        accountScope: from(this.accountScope.init()),
+        accountScope: this.accountScope.init(),
         pushGateway: from(this.pushGateway.init()),
       }),
     ).pipe(

@@ -1,15 +1,15 @@
+import { RoomSettingsService } from '@trinity/data-access/rooms';
 import { Injectable, inject } from '@angular/core';
+import { RoomAliasesService } from '@trinity/data-access/rooms';
 import {
-  RoomAliasesService,
-  RoomSettingsService,
-  RoomsService,
+  RoomLibraryService,
   SpaceChildrenService,
   SpaceRoomOrderService,
   SpacesService,
   type MemberSummary,
   type RoomSortMode,
   type SpaceChildRoom,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import { TrnAlertService, TrnDialogService } from '@trinity/components/overlay';
 import { map, switchMap } from 'rxjs';
 import { AddToSpaceComponent } from '../add-to-space/add-to-space.component';
@@ -41,7 +41,7 @@ export class SpaceActionsService {
   private readonly nav = inject(RoomShellNavigationService);
   private readonly memberActions = inject(MemberActionsService);
   private readonly status = inject(ShellStatusService);
-  private readonly rooms = inject(RoomsService);
+  private readonly rooms = inject(RoomLibraryService);
   private readonly spaces = inject(SpacesService);
   private readonly spaceChildren = inject(SpaceChildrenService);
   private readonly spaceOrder = inject(SpaceRoomOrderService);
@@ -229,9 +229,15 @@ export class SpaceActionsService {
       return; // the control is space-only, but the handler shouldn't assume it
     }
     if (mode) {
-      this.spaceOrder.setForSpace(spaceId, mode);
+      runWithBusy(
+        this.spaceOrder.setForSpace(spaceId, mode),
+        this.status,
+      ).subscribe();
     } else {
-      this.spaceOrder.clearForSpace(spaceId);
+      runWithBusy(
+        this.spaceOrder.clearForSpace(spaceId),
+        this.status,
+      ).subscribe();
     }
   }
 

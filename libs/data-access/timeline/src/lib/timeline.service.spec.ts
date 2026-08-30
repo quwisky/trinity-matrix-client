@@ -1005,7 +1005,7 @@ describe('TimelineService', () => {
     // matrix-js-sdk emits RoomEvent.Timeline once PER event, so paginating 30 messages
     // fires the handler 30 times. refresh() walks every loaded event (fingerprinting
     // each), so refreshing per event makes a burst quadratic. A burst must therefore
-    // cost the same as one event — mirroring RoomsService.scheduleRefresh.
+    // cost the same as one event — mirroring RoomLibraryService.scheduleRefresh.
     let timelineHandler: (() => void) | undefined;
     let scans = 0;
     const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];

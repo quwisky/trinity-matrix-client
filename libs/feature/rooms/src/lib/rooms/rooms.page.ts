@@ -42,7 +42,7 @@ import { CryptoService } from '@trinity/data-access/crypto';
 import {
   InvitesService,
   MixedInvitesService,
-} from '@trinity/data-access/invites';
+} from '@trinity/data-access/room-library';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ImagePackService } from '@trinity/data-access/media';
 import {
@@ -51,14 +51,14 @@ import {
 } from '@trinity/data-access/notifications';
 import { PresenceService } from '@trinity/data-access/profile';
 import {
-  RoomsService,
+  RoomLibraryService,
   RoomActionPermissionsService,
   SpacesService,
   SpaceChildrenService,
   AccountScopeService,
   MixedRoomsService,
   MixedSpacesService,
-} from '@trinity/data-access/rooms';
+} from '@trinity/data-access/room-library';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
 import {
   HapticsService,
@@ -109,7 +109,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
  * Discord-style authenticated shell: server rail + channel sidebar (in a
  * responsive Tailwind drawer — static column at md+, slide-in below), the read
  * timeline, and a member list.
- * Wired to live synced rooms via `RoomsService` + `ConversationRuntime`.
+ * Wired to live synced rooms via `RoomLibraryService` + `ConversationRuntime`.
  */
 /**
  * The drawer widths at the `members` breakpoint, mirroring `rooms.page.scss`.
@@ -278,7 +278,7 @@ export class RoomsPage implements OnInit, OnDestroy {
     dismiss: (surface) => this.dismissWorkspaceSurface(surface),
   });
 
-  readonly rooms = inject(RoomsService);
+  readonly rooms = inject(RoomLibraryService);
   readonly spaces = inject(SpacesService);
   private readonly mixedRooms = inject(MixedRoomsService);
   private readonly mixedSpaces = inject(MixedSpacesService);

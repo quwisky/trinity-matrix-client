@@ -1,5 +1,8 @@
 import { Injectable, inject } from '@angular/core';
-import { RoomsService, type MemberSummary } from '@trinity/data-access/rooms';
+import {
+  RoomLibraryService,
+  type MemberSummary,
+} from '@trinity/data-access/room-library';
 import { runWithBusy } from '@trinity/util/ui';
 import { MemberInfoService } from '../member-info/member-info.service';
 import { UserCardService } from '../user-card/user-card.service';
@@ -22,7 +25,7 @@ export class MemberActionsService {
   private readonly store = inject(RoomShellStore);
   private readonly nav = inject(RoomShellNavigationService);
   private readonly status = inject(ShellStatusService);
-  private readonly rooms = inject(RoomsService);
+  private readonly rooms = inject(RoomLibraryService);
   private readonly memberInfo = inject(MemberInfoService);
   private readonly userCard = inject(UserCardService);
 

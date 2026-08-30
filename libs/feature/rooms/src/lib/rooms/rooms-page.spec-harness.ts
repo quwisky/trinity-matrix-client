@@ -22,14 +22,14 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   InvitesService,
   type PendingInvite,
-} from '@trinity/data-access/invites';
+} from '@trinity/data-access/room-library';
 import {
   ConversationRuntime,
   type ConversationHandle,
   type ConversationKey,
 } from '@trinity/data-access/timeline';
 import { RoomNotificationsService } from '@trinity/data-access/notifications';
-import { RoomActionPermissionsService } from '@trinity/data-access/rooms';
+import { RoomActionPermissionsService } from '@trinity/data-access/room-library';
 import {
   WorkspaceApplicationSurfaceService,
   type WorkspaceApplicationSurfaceRequest,
@@ -130,7 +130,7 @@ export const ROUTE_PROVIDER: Provider = {
  *
  * Only tokens that are bare in EVERY block live here — deliberately not stated as a count,
  * which was already wrong before the specs were split again. The blocks are deliberately
- * divergent elsewhere — RoomsService is richly stubbed in some and bare in others, for
+ * divergent elsewhere — RoomLibraryService is richly stubbed in some and bare in others, for
  * instance — so folding a stubbed token in here would silently change what a describe
  * asserts against, and every test would still pass against different data.
  *

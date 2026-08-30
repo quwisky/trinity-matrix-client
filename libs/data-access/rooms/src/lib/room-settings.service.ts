@@ -15,7 +15,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RestrictedAllowType } from 'matrix-js-sdk';
 import type { RoomJoinRulesEventContent } from 'matrix-js-sdk/lib/@types/state_events';
 import { liveRoomState } from '@trinity/util/matrix';
-import { RoomActionPermissionsService } from './room-action-permissions.service';
+import { RoomActionPermissionsService } from '@trinity/data-access/room-library';
 
 /** Which room-settings fields the current user may edit (from the room's power levels). */
 export interface EditableRoomFields {
