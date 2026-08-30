@@ -1034,7 +1034,8 @@ describe('RoomLibraryService', () => {
   });
 });
 
-// Write paths: createRoom / createDirectMessage / inviteUser / searchUsers. The
+// Write paths: createRoom / createDirectMessage / inviteUser. User lookup belongs to
+// Identity rather than Room Library. The
 // read model is driven by sync listeners (covered above), so these assert the SDK
 // calls + the `m.direct` merge only.
 describe('RoomLibraryService writes', () => {
@@ -1254,26 +1255,6 @@ describe('RoomLibraryService writes', () => {
       firstValueFrom(svc.inviteUser('!r:hs', '@bob')),
     ).rejects.toThrow();
     expect(invite).not.toHaveBeenCalled();
-  });
-
-  it('searchUsers maps directory results, falling back to the user id', async () => {
-    const { svc } = setupWrites();
-
-    const results = await firstValueFrom(svc.searchUsers('b'));
-
-    expect(results).toEqual([
-      { userId: '@bob:hs', displayName: 'Bob', avatarMxc: 'mxc://a/b' },
-      { userId: '@eve:hs', displayName: '@eve:hs', avatarMxc: null },
-    ]);
-  });
-
-  it('searchUsers short-circuits an empty term without a request', async () => {
-    const { svc, searchUserDirectory } = setupWrites();
-
-    const results = await firstValueFrom(svc.searchUsers('   '));
-
-    expect(results).toEqual([]);
-    expect(searchUserDirectory).not.toHaveBeenCalled();
   });
 });
 

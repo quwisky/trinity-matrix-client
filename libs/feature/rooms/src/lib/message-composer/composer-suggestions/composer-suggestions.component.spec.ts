@@ -93,8 +93,8 @@ const commands = SLASH_COMMANDS.filter((command) =>
 );
 
 const members: MentionMember[] = [
-  { userId: '@ada:x', name: 'Ada' },
-  { userId: '@bob:x', name: 'Bob' },
+  { userId: '@ada:x', roomDisplayName: 'Ada' },
+  { userId: '@bob:x', roomDisplayName: 'Bob' },
 ];
 
 describe('ComposerSuggestionsComponent', () => {

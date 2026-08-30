@@ -12,7 +12,7 @@ import { HomeserverInfoService } from './homeserver-info.service';
  * `baseUrl` and `getDomain()` differ per account on purpose: every probe here is addressed
  * from one of them, so a service that read the wrong account's client would produce a
  * cross-account leak that a stub answering identically for everyone could not see. Same
- * reasoning as `AccountProfilesService`'s argument-respecting `getUser`.
+ * reasoning as `AccountIdentitiesService`'s argument-respecting `getUser`.
  */
 function fakeClient(
   userId: string,

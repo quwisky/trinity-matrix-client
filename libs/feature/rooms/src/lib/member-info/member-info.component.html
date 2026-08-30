@@ -21,15 +21,15 @@
 <div class="member-info safe-bottom" data-testid="member-info">
   <trn-avatar
     class="member-info__avatar"
-    [mxc]="member().avatarMxc"
-    [initial]="member().initial"
-    [name]="member().name"
+    [mxc]="member().roomAvatarMxc"
+    [initial]="member().roomInitial"
+    [name]="member().roomDisplayName"
     [size]="64"
     [presence]="presenceState()"
   />
   <div class="member-info__id">
     <span class="member-info__name" data-testid="member-info-name">{{
-      member().name
+      member().roomDisplayName
     }}</span>
     <span
       #userIdHandle

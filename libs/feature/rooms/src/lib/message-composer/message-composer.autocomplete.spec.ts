@@ -17,8 +17,8 @@ describe('MessageComposerComponent — the @mention and /command autocompletes',
 
   describe('mention autocomplete', () => {
     const MEMBERS = [
-      { userId: '@alice:hs', name: 'Alice' },
-      { userId: '@bob:hs', name: 'Bob' },
+      { userId: '@alice:hs', roomDisplayName: 'Alice' },
+      { userId: '@bob:hs', roomDisplayName: 'Bob' },
     ];
 
     it('opens the member menu for an @query and inserts the pick', async () => {
@@ -105,7 +105,7 @@ describe('MessageComposerComponent — the @mention and /command autocompletes',
       ta.value = '@';
       ta.selectionStart = ta.selectionEnd = 1;
       cmp.onInput({ target: ta } as unknown as Event);
-      expect(cmp.menus.mentionMatches().map((m) => m.name)).toEqual([
+      expect(cmp.menus.mentionMatches().map((m) => m.roomDisplayName)).toEqual([
         'Alice',
         'Bob',
       ]);

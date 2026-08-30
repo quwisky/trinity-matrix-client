@@ -30,7 +30,7 @@ interface CachedInfo {
  * **Per account, not per active account.** Every signed-in account has its own live client
  * and they all sync concurrently, and the point of the surface is checking *a* server, which
  * may well not be the one currently in view. So this keys on `accountIds()` and reads each
- * answer through that account's own client, like `AccountProfilesService` and
+ * answer through that account's own client, like `AccountIdentitiesService` and
  * `UnreadAggregatorService` — not through `projectFromClient`, which follows the active one.
  *
  * **Cached for the session, in memory only.** Nothing here is written to Capacitor
@@ -192,7 +192,7 @@ export class HomeserverInfoService {
    * The second case is the one that is easy to miss — re-adding an already signed-in account
    * stops and re-creates its client, against a base URL the user may have just changed. The
    * user id is identical, so a cache keyed on it alone would keep showing the old server's
-   * version. Same identity re-check `AccountProfilesService` and `UnreadAggregatorService`
+   * version. Same identity re-check `AccountIdentitiesService` and `UnreadAggregatorService`
    * both make.
    */
   private evictStale(): void {

@@ -42,8 +42,8 @@
       "@trinity/data-access/room-library": [
         "./libs/data-access/room-library/src/index.ts"
       ],
-      "@trinity/data-access/profile": [
-        "./libs/data-access/profile/src/index.ts"
+      "@trinity/data-access/identity": [
+        "./libs/data-access/identity/src/index.ts"
       ],
       "@trinity/data-access/trust": ["./libs/data-access/trust/src/index.ts"],
       "@trinity/data-access/timeline": [

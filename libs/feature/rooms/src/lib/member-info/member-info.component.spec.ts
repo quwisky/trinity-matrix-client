@@ -12,10 +12,10 @@ import {
 } from '@trinity/components/overlay';
 import {
   IgnoredUsersService,
-  PresenceService,
-} from '@trinity/data-access/profile';
+  IdentityPresenceService,
+  IdentityService,
+} from '@trinity/data-access/identity';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { TrustVerificationService } from '@trinity/data-access/trust';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
@@ -25,9 +25,9 @@ import { MemberInfoComponent } from './member-info.component';
 function member(over: Partial<MemberSummary> = {}): MemberSummary {
   return {
     userId: '@bob:hs',
-    name: 'Bob',
-    initial: 'B',
-    avatarMxc: null,
+    roomDisplayName: 'Bob',
+    roomInitial: 'B',
+    roomAvatarMxc: null,
     powerLevel: 0,
     isCreator: false,
     ...over,
@@ -77,10 +77,10 @@ async function build(
       MockProvider(TrnDialogRef, { close }),
       MockProvider(TrnToastService, { show: toastShow }),
       {
-        provide: PresenceService,
+        provide: IdentityPresenceService,
         useValue: { presenceFor: () => signal('online') },
       },
-      MockProvider(MatrixClientService, {
+      MockProvider(IdentityService, {
         activeUserId: signal<string | null>(
           opts.activeUserId ?? '@me:hs',
         ).asReadonly(),
@@ -161,10 +161,10 @@ async function buildPanel(m: MemberSummary = member()) {
     providers: [
       MockProvider(TrnToastService),
       {
-        provide: PresenceService,
+        provide: IdentityPresenceService,
         useValue: { presenceFor: () => signal('online') },
       },
-      MockProvider(MatrixClientService, {
+      MockProvider(IdentityService, {
         activeUserId: signal<string | null>('@me:hs').asReadonly(),
       }),
       MockProvider(RoomModerationService),

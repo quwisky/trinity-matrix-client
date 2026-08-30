@@ -70,7 +70,9 @@
           (mouseenter)="mentionHighlight.emit(i)"
           (click)="mentionAccept.emit(i)"
         >
-          <span class="composer__emoji-suggestion-code">{{ member.name }}</span>
+          <span class="composer__emoji-suggestion-code">{{
+            member.roomDisplayName
+          }}</span>
         </button>
       </li>
     }

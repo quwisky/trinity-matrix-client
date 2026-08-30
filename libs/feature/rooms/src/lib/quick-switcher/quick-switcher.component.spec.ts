@@ -10,6 +10,10 @@ import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  IdentityService,
+  type IdentitySummary,
+} from '@trinity/data-access/identity';
 import { signal } from '@angular/core';
 import { QuickSwitcherComponent } from './quick-switcher.component';
 import { QuickSwitcherService } from './quick-switcher.service';
@@ -53,22 +57,24 @@ describe('QuickSwitcherComponent', () => {
   beforeEach(() => {
     dismiss = vi.fn().mockResolvedValue(true);
     localResults = vi.fn(() => LOCAL);
-    searchPeople = vi.fn(() => of<SwitcherResult[]>([]));
+    searchPeople = vi.fn(() => of<IdentitySummary[]>([]));
   });
 
   /** Render the switcher with the dialog ref and search service stubbed. */
   function renderSwitcher(
     opts: { inputs?: Record<string, unknown>; activeUserId?: string } = {},
   ) {
+    const activeUserId = signal<string | null>(
+      opts.activeUserId ?? '@me:hs',
+    ).asReadonly();
     return render(QuickSwitcherComponent, {
       ...(opts.inputs ? { inputs: opts.inputs } : {}),
       providers: [
         { provide: TrnDialogRef, useValue: { close: dismiss } },
-        MockProvider(SearchService, { localResults, searchPeople }),
+        MockProvider(SearchService, { localResults }),
+        MockProvider(IdentityService, { search: searchPeople, activeUserId }),
         MockProvider(MatrixClientService, {
-          activeUserId: signal<string | null>(
-            opts.activeUserId ?? '@me:hs',
-          ).asReadonly(),
+          activeUserId,
           // Declared even though nothing here reads it: UnreadAggregatorService sits in
           // this tree and its constructor effect iterates accountIds(). ng-mocks 14.16
           // stopped auto-stubbing it into something callable, so leaving it out makes
@@ -104,7 +110,10 @@ describe('QuickSwitcherComponent', () => {
     // component's own focus() ran first and CDK's focus pass then overrode it with the
     // header's Cancel button. Only the search backend is stubbed.
     TestBed.configureTestingModule({
-      providers: [MockProvider(SearchService, { localResults, searchPeople })],
+      providers: [
+        MockProvider(SearchService, { localResults }),
+        MockProvider(IdentityService, { search: searchPeople }),
+      ],
     });
     const picked = TestBed.inject(QuickSwitcherService).pick();
     const appRef = TestBed.inject(ApplicationRef);
@@ -229,14 +238,12 @@ describe('QuickSwitcherComponent', () => {
   });
 
   it('appends debounced directory people after the local results', async () => {
-    const people: SwitcherResult[] = [
-      result({
-        kind: 'user',
-        id: '@bob:hs',
-        title: 'Bob',
-        subtitle: '@bob:hs',
-        score: 0,
-      }),
+    const people: IdentitySummary[] = [
+      {
+        userId: '@bob:hs',
+        displayName: 'Bob',
+        avatarMxc: null,
+      },
     ];
     searchPeople.mockReturnValue(of(people));
     const { fixture } = await renderSwitcher();
@@ -248,7 +255,17 @@ describe('QuickSwitcherComponent', () => {
     fixture.detectChanges();
 
     expect(searchPeople).toHaveBeenCalledWith('bob');
-    expect(c.results()).toEqual([...LOCAL, ...people]);
+    expect(c.results()).toEqual([
+      ...LOCAL,
+      result({
+        kind: 'user',
+        id: '@bob:hs',
+        title: 'Bob',
+        subtitle: '@bob:hs',
+        initial: 'B',
+        score: 0,
+      }),
+    ]);
   });
 
   it('does not query the directory for a term shorter than two characters', async () => {

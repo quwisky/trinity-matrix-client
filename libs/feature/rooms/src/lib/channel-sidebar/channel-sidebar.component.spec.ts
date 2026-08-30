@@ -11,7 +11,7 @@ import {
   MixedInvitesService,
   type PendingInvite,
 } from '@trinity/data-access/room-library';
-import { PresenceService } from '@trinity/data-access/profile';
+import { IdentityPresenceService } from '@trinity/data-access/identity';
 import {
   AccountScopeService,
   RoomLibraryService,
@@ -176,7 +176,7 @@ async function renderSidebar(
       MockProvider(RoomNotificationsService, {
         modeForAccounts: modeForSpy,
       }),
-      { provide: PresenceService, useValue: presenceStub },
+      { provide: IdentityPresenceService, useValue: presenceStub },
     ],
   });
 

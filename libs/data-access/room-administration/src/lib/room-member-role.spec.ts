@@ -10,9 +10,9 @@ import {
 function member(powerLevel: number, isCreator = false): MemberSummary {
   return {
     userId: '@a:hs',
-    name: 'Ada',
-    initial: 'A',
-    avatarMxc: null,
+    roomDisplayName: 'Ada',
+    roomInitial: 'A',
+    roomAvatarMxc: null,
     powerLevel,
     isCreator,
   };

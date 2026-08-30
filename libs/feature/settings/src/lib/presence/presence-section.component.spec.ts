@@ -3,7 +3,7 @@ import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
-import { PresenceService } from '@trinity/data-access/profile';
+import { IdentityPresenceService } from '@trinity/data-access/identity';
 import { type PresenceState } from '@trinity/util/matrix';
 import { PresenceSectionComponent } from './presence-section.component';
 
@@ -17,7 +17,7 @@ function providers(
   const setOwnPresence = over.setOwnPresence ?? vi.fn(() => of(undefined));
   return {
     list: [
-      MockProvider(PresenceService, {
+      MockProvider(IdentityPresenceService, {
         myPresence: signal<PresenceState>(
           over.presence ?? 'online',
         ).asReadonly(),

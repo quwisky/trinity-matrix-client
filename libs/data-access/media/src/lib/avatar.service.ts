@@ -1,5 +1,13 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, catchError, map, of, shareReplay } from 'rxjs';
+import {
+  Observable,
+  catchError,
+  defer,
+  from,
+  map,
+  of,
+  shareReplay,
+} from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { fetchMediaBytes } from '@trinity/util/matrix';
 
@@ -92,6 +100,22 @@ export class AvatarService {
     );
     this.cache.set(key, resolved);
     return resolved;
+  }
+
+  /** Upload avatar bytes through the owning Account's media repository. */
+  upload(file: File, accountId: string): Observable<string> {
+    return defer(() => {
+      const client = this.matrix.clientFor(accountId);
+      if (!client) {
+        throw new Error('The owning Account is no longer available.');
+      }
+      return from(
+        client.uploadContent(file, {
+          name: file.name,
+          type: file.type || 'application/octet-stream',
+        }),
+      ).pipe(map((response) => response.content_uri));
+    });
   }
 
   /** Revoke every cached avatar object URL and clear the cache (logout/login). */

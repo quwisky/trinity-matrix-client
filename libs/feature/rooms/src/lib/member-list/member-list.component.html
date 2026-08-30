@@ -63,18 +63,18 @@
               [class.member--offline]="row.presence === 'offline'"
               [trnTooltip]="row.member.userId"
               position="left"
-              [attr.aria-label]="'View ' + row.member.name"
+              [attr.aria-label]="'View ' + row.member.roomDisplayName"
               (click)="selectMember.emit(row.member)"
               data-testid="member-row"
             >
               <trn-avatar
-                [mxc]="row.member.avatarMxc"
-                [initial]="row.member.initial"
-                [name]="row.member.name"
+                [mxc]="row.member.roomAvatarMxc"
+                [initial]="row.member.roomInitial"
+                [name]="row.member.roomDisplayName"
                 [size]="32"
                 [presence]="row.presence"
               />
-              <span class="member__name">{{ row.member.name }}</span>
+              <span class="member__name">{{ row.member.roomDisplayName }}</span>
             </button>
           </li>
         }

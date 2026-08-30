@@ -4,7 +4,7 @@ import { MockProvider, ngMocks } from 'ng-mocks';
 import { UserEvent, type MatrixClient } from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PresenceService } from './presence.service';
+import { IdentityPresenceService } from './identity-presence.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 /**
@@ -40,10 +40,10 @@ function setup(
   statuses: Record<string, string> = {},
 ) {
   const client = fakeClient(users, statuses);
-  const activeUserId = signal<string | null>(null);
+  const activeUserId = signal<string | null>(SELF);
   TestBed.configureTestingModule({
     providers: [
-      PresenceService,
+      IdentityPresenceService,
       MockProvider(MatrixClientService, {
         activeUserId: activeUserId.asReadonly(),
       }),
@@ -52,7 +52,12 @@ function setup(
   const matrix = TestBed.inject(MatrixClientService);
   ngMocks.stubMember(matrix, 'instance', asClient(client));
   ngMocks.stubMember(matrix, 'isInitialized', true);
-  return { svc: TestBed.inject(PresenceService), client, matrix, activeUserId };
+  return {
+    svc: TestBed.inject(IdentityPresenceService),
+    client,
+    matrix,
+    activeUserId,
+  };
 }
 
 /** The `User.presence` handler the service registered on the client. */
@@ -63,7 +68,7 @@ function presenceHandler(client: ReturnType<typeof fakeClient>) {
   ) => void;
 }
 
-describe('PresenceService', () => {
+describe('IdentityPresenceService', () => {
   beforeEach(() => TestBed.resetTestingModule());
 
   it('reports the signed-in user as online even when the server never echoes our own presence', () => {
@@ -216,10 +221,57 @@ describe('PresenceService', () => {
       expect(svc.myStatusMessage()).toBe('');
     });
 
+    it('clears own presence presentation when the projection disconnects', () => {
+      const { svc } = setup(
+        { [SELF]: 'unavailable' },
+        { [SELF]: 'heads down' },
+      );
+      svc.connect();
+      svc.loadOwnPresence();
+
+      svc.disconnect();
+
+      expect(svc.myPresence()).toBe('online');
+      expect(svc.myStatusMessage()).toBe('');
+    });
+
+    it('does not publish a completed write into a newly active account', async () => {
+      const { svc, client, activeUserId } = setup();
+      let complete!: () => void;
+      client.setPresence.mockReturnValue(
+        new Promise<void>((resolve) => {
+          complete = resolve;
+        }),
+      );
+      const pending = firstValueFrom(
+        svc.setOwnPresence('unavailable', 'old account'),
+      );
+
+      activeUserId.set('@next:hs');
+      complete();
+      await pending;
+
+      expect(svc.myPresence()).toBe('online');
+      expect(svc.myStatusMessage()).toBe('');
+    });
+
     it('is cold — nothing is sent until subscribed', () => {
       const { svc, client } = setup();
       svc.setOwnPresence('online', 'hi'); // not subscribed
       expect(client.setPresence).not.toHaveBeenCalled();
+    });
+
+    it('maps a disabled presence endpoint to an unavailable failure', async () => {
+      const { svc, client } = setup();
+      client.setPresence.mockRejectedValue({ errcode: 'M_UNRECOGNIZED' });
+
+      await expect(
+        firstValueFrom(svc.setOwnPresence('online', 'hi')),
+      ).rejects.toMatchObject({
+        operation: 'set-presence',
+        kind: 'unavailable',
+        recovery: 'none',
+      });
     });
   });
 });

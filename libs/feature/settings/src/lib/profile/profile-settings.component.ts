@@ -14,7 +14,7 @@ import { TrnInput } from '@trinity/components/input';
 import { TrnLabel } from '@trinity/components/label';
 import { runWithBusy } from '@trinity/util/ui';
 import { AvatarComponent } from '@trinity/components/avatar';
-import { ProfileService } from '@trinity/data-access/profile';
+import { IdentityService } from '@trinity/data-access/identity';
 import { TrnIconComponent } from '@trinity/components/icon';
 import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
@@ -35,7 +35,7 @@ import { SettingsSectionHeadingComponent } from '../shared/settings-section-head
   ],
 })
 export class ProfileSettingsComponent {
-  private readonly profileSvc = inject(ProfileService);
+  private readonly profileSvc = inject(IdentityService);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly profile = this.profileSvc.profile;

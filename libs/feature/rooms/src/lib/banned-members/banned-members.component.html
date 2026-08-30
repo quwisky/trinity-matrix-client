@@ -14,7 +14,9 @@
           data-testid="banned-member"
         >
           <span class="flex min-w-0 flex-col">
-            <span class="truncate text-sm font-medium">{{ member.name }}</span>
+            <span class="truncate text-sm font-medium">{{
+              member.roomDisplayName
+            }}</span>
             @if (member.reason) {
               <span class="truncate text-xs text-muted-foreground">
                 {{ member.reason }}

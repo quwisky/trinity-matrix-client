@@ -24,7 +24,7 @@ import {
   type HomeserverInfo,
 } from '@trinity/data-access/homeserver';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { AccountProfilesService } from '@trinity/data-access/profile';
+import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { MediaPipeline } from '@trinity/data-access/media';
 import {
   RoomLibraryService,
@@ -517,9 +517,9 @@ describe('RoomsPage mobile navigation', () => {
       kind: 'member',
       member: {
         userId: '@bob:hs',
-        name: 'Bob',
-        initial: 'B',
-        avatarMxc: null,
+        roomDisplayName: 'Bob',
+        roomInitial: 'B',
+        roomAvatarMxc: null,
         powerLevel: 0,
         isCreator: false,
       },
@@ -586,9 +586,9 @@ describe('RoomsPage mobile navigation', () => {
     kind: 'member',
     member: {
       userId: '@bob:hs',
-      name: 'Bob',
-      initial: 'B',
-      avatarMxc: null,
+      roomDisplayName: 'Bob',
+      roomInitial: 'B',
+      roomAvatarMxc: null,
       powerLevel: 0,
       isCreator: false,
     },
@@ -842,7 +842,7 @@ describe('RoomsPage mobile navigation', () => {
 });
 
 // The user-panel switcher summarises every signed-in account: each row is that account's
-// profile (display name + avatar) from AccountProfilesService with a fallback to the raw
+// profile (display name + avatar) from AccountIdentitiesService with a fallback to the raw
 // MXID, plus its unread total — and it tolerates an account the projection has no entry
 // for yet, which still shows as a row with a zero badge.
 describe('RoomsPage account switcher summary', () => {
@@ -886,8 +886,8 @@ describe('RoomsPage account switcher summary', () => {
         }),
         // '@me:hs' has a hydrated profile; '@alt:hs' is signed in but has no entry yet,
         // so its row falls back to the mxid.
-        MockProvider(AccountProfilesService, {
-          profiles: signal(
+        MockProvider(AccountIdentitiesService, {
+          identities: signal(
             new Map([
               [
                 '@me:hs',

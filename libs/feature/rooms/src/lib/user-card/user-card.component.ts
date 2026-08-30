@@ -9,7 +9,10 @@ import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { catchError, of, switchMap } from 'rxjs';
 import { TrnButton } from '@trinity/components/button';
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { ProfileService, PresenceService } from '@trinity/data-access/profile';
+import {
+  IdentityPresenceService,
+  IdentityService,
+} from '@trinity/data-access/identity';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { initialOf } from '@trinity/util/matrix';
 
@@ -30,14 +33,14 @@ export class UserCardComponent {
 
   private readonly dialogRef =
     inject<TrnDialogRef<string | null>>(TrnDialogRef);
-  private readonly profileSvc = inject(ProfileService);
-  private readonly presence = inject(PresenceService);
+  private readonly profileSvc = inject(IdentityService);
+  private readonly presence = inject(IdentityPresenceService);
 
   /** The user's fetched profile (null while loading, or on an unresolved fetch). */
   readonly profile = toSignal(
     toObservable(this.userId).pipe(
       switchMap((id) =>
-        this.profileSvc.fetch(id).pipe(catchError(() => of(null))),
+        this.profileSvc.lookup(id).pipe(catchError(() => of(null))),
       ),
     ),
     { initialValue: null },

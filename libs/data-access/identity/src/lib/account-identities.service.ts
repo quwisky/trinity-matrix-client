@@ -1,28 +1,25 @@
 import { Injectable, effect, inject, signal } from '@angular/core';
 import {
-  ClientEvent,
-  UserEvent,
-  type MatrixClient,
-  type User,
-} from 'matrix-js-sdk';
-import {
   coalesce,
-  MatrixClientService,
+  IDENTITY_MATRIX_EVENTS,
+  IdentityMatrixPort,
+  type IdentityMatrixClient,
+  type IdentitySdkUser,
 } from '@trinity/data-access/matrix-client';
 
 /** One signed-in account's own profile, as that account's client currently knows it. */
-export interface AccountProfile {
-  userId: string;
+export interface AccountIdentity {
+  readonly userId: string;
   /** Display name, falling back to the user id when the server has none yet. */
-  displayName: string;
+  readonly displayName: string;
   /** Raw `mxc://` avatar, or null when unset; the UI resolves it (authed). */
-  avatarMxc: string | null;
+  readonly avatarMxc: string | null;
 }
 
 /** The listener attached to one account's client, kept so it can be detached. */
 interface AccountListener {
-  readonly client: MatrixClient;
-  readonly onUser: (event: unknown, user: User) => void;
+  readonly client: IdentityMatrixClient;
+  readonly onUser: (event: unknown, user: IdentitySdkUser) => void;
   readonly onSync: () => void;
 }
 
@@ -53,7 +50,7 @@ interface AccountListener {
  * no re-emitter — precisely so it exists before the first sync
  * (`matrix-js-sdk/src/client.ts`, "Create our own user object artificially"). Nothing
  * later replaces it, and `client.setDisplayName` emits on that same object, so a listener
- * for the account's own profile would never fire once. `PresenceService` is not a
+ * for the account's own profile would never fire once. `IdentityPresenceService` is not a
  * counter-example: it consumes the re-emission for OTHER users and hardcodes self to
  * `online`.
  *
@@ -61,15 +58,15 @@ interface AccountListener {
  * the case they do cover. `equal: sameProfiles` makes the ticks that changed nothing free.
  */
 @Injectable({ providedIn: 'root' })
-export class AccountProfilesService {
-  private readonly matrix = inject(MatrixClientService);
+export class AccountIdentitiesService {
+  private readonly matrix = inject(IdentityMatrixPort);
 
-  private readonly _profiles = signal<ReadonlyMap<string, AccountProfile>>(
+  private readonly _identities = signal<ReadonlyMap<string, AccountIdentity>>(
     new Map(),
-    { equal: sameProfiles },
+    { equal: sameIdentities },
   );
   /** Every signed-in account's profile, keyed by user id. */
-  readonly profiles = this._profiles.asReadonly();
+  readonly identities = this._identities.asReadonly();
 
   private readonly listeners = new Map<string, AccountListener>();
 
@@ -78,15 +75,15 @@ export class AccountProfilesService {
     // Both are read here so the effect re-runs on either.
     effect(() => {
       this.matrix.accountIds();
-      this.matrix.activeUserId();
+      this.matrix.activeAccountId();
       this.syncListeners();
       this.refresh();
     });
   }
 
   /** This account's profile, falling back to the bare user id before one is known. */
-  profileOf(userId: string): AccountProfile {
-    return this._profiles().get(userId) ?? bareProfile(userId);
+  identityOf(userId: string): AccountIdentity {
+    return this._identities().get(userId) ?? bareIdentity(userId);
   }
 
   /**
@@ -97,16 +94,16 @@ export class AccountProfilesService {
   private readonly flusher = coalesce(() => this.refresh());
 
   private refresh(): void {
-    const next = new Map<string, AccountProfile>();
+    const next = new Map<string, AccountIdentity>();
     for (const userId of this.matrix.accountIds()) {
-      const user = this.matrix.clientFor(userId)?.getUser(userId);
+      const user = this.matrix.forAccount(userId)?.getUser(userId);
       next.set(userId, {
         userId,
         displayName: user?.displayName || userId,
         avatarMxc: user?.avatarUrl ?? null,
       });
     }
-    this._profiles.set(next);
+    this._identities.set(next);
   }
 
   /** Reconcile the per-account listener set against who is signed in. */
@@ -121,7 +118,7 @@ export class AccountProfilesService {
     }
 
     for (const userId of wanted) {
-      const client = this.matrix.clientFor(userId);
+      const client = this.matrix.forAccount(userId);
       const held = this.listeners.get(userId);
       if (held) {
         // The same user id can get a NEW client object — re-adding an already signed-in
@@ -139,7 +136,7 @@ export class AccountProfilesService {
       // Filtered to the account's OWN user: the client re-emits these for every user it
       // knows about, which in a busy session is everyone in every room. See the class doc
       // for why this listener alone is NOT enough for the own user.
-      const onUser = (_event: unknown, user: User): void => {
+      const onUser = (_event: unknown, user: IdentitySdkUser): void => {
         if (user.userId === userId) {
           this.flusher.schedule();
         }
@@ -147,22 +144,22 @@ export class AccountProfilesService {
       // The trigger that actually fires for the account's own profile. Per account, so a
       // background account hydrating is heard without the active one having to sync.
       const onSync = (): void => this.flusher.schedule();
-      client.on(UserEvent.DisplayName, onUser);
-      client.on(UserEvent.AvatarUrl, onUser);
-      client.on(ClientEvent.Sync, onSync);
+      client.on(IDENTITY_MATRIX_EVENTS.displayName, onUser);
+      client.on(IDENTITY_MATRIX_EVENTS.avatarUrl, onUser);
+      client.on(IDENTITY_MATRIX_EVENTS.sync, onSync);
       this.listeners.set(userId, { client, onUser, onSync });
     }
   }
 
   private detach({ client, onUser, onSync }: AccountListener): void {
-    client.off(UserEvent.DisplayName, onUser);
-    client.off(UserEvent.AvatarUrl, onUser);
-    client.off(ClientEvent.Sync, onSync);
+    client.off(IDENTITY_MATRIX_EVENTS.displayName, onUser);
+    client.off(IDENTITY_MATRIX_EVENTS.avatarUrl, onUser);
+    client.off(IDENTITY_MATRIX_EVENTS.sync, onSync);
   }
 }
 
 /** The stand-in for an account whose profile the server has not given us yet. */
-function bareProfile(userId: string): AccountProfile {
+function bareIdentity(userId: string): AccountIdentity {
   return { userId, displayName: userId, avatarMxc: null };
 }
 
@@ -170,9 +167,9 @@ function bareProfile(userId: string): AccountProfile {
  * Whether two profile maps say the same thing, so a coalesced rebuild that changed nothing
  * does not tick the header chip, the account switcher and every mixed-account badge.
  */
-function sameProfiles(
-  a: ReadonlyMap<string, AccountProfile>,
-  b: ReadonlyMap<string, AccountProfile>,
+function sameIdentities(
+  a: ReadonlyMap<string, AccountIdentity>,
+  b: ReadonlyMap<string, AccountIdentity>,
 ): boolean {
   if (a.size !== b.size) {
     return false;

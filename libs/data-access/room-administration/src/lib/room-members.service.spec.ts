@@ -102,17 +102,17 @@ describe('RoomMembersService', () => {
     expect(service.membersOf('!room:hs')).toEqual([
       {
         userId: '@ada:hs',
-        name: 'Ada',
-        initial: 'A',
-        avatarMxc: 'mxc://hs/ada',
+        roomDisplayName: 'Ada',
+        roomInitial: 'A',
+        roomAvatarMxc: 'mxc://hs/ada',
         powerLevel: 100,
         isCreator: true,
       },
       {
         userId: '@zoe:hs',
-        name: 'Zoe',
-        initial: 'Z',
-        avatarMxc: null,
+        roomDisplayName: 'Zoe',
+        roomInitial: 'Z',
+        roomAvatarMxc: null,
         powerLevel: 50,
         isCreator: false,
       },
@@ -128,11 +128,14 @@ describe('RoomMembersService', () => {
 
     expect(roster).toBe(service.membersFor('!room:hs'));
     members.push(member('@bob:hs', 'Bob'));
-    expect(roster().map((item) => item.name)).toEqual(['Ada']);
+    expect(roster().map((item) => item.roomDisplayName)).toEqual(['Ada']);
 
     fireMemberChange(matrixClient, '!room:hs');
     await Promise.resolve();
-    expect(roster().map((item) => item.name)).toEqual(['Ada', 'Bob']);
+    expect(roster().map((item) => item.roomDisplayName)).toEqual([
+      'Ada',
+      'Bob',
+    ]);
   });
 
   it('coalesces the SDK per-member fan-out into one roster read', async () => {
@@ -175,8 +178,8 @@ describe('RoomMembersService', () => {
     const bans = service.bannedFor('!room:hs');
 
     expect(bans()).toEqual([
-      { userId: '@amy:hs', name: 'Amy', reason: null },
-      { userId: '@zed:hs', name: 'Zed', reason: 'spam' },
+      { userId: '@amy:hs', roomDisplayName: 'Amy', reason: null },
+      { userId: '@zed:hs', roomDisplayName: 'Zed', reason: 'spam' },
     ]);
 
     banned.splice(0, banned.length);

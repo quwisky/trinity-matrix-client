@@ -1,8 +1,8 @@
 {
   "$schema": "../../../node_modules/nx/schemas/project-schema.json",
-  "name": "data-access-profile",
+  "name": "data-access-identity",
   "projectType": "library",
-  "sourceRoot": "libs/data-access/profile/src",
+  "sourceRoot": "libs/data-access/identity/src",
   "prefix": "trn",
   "tags": [
     "type:data-access",

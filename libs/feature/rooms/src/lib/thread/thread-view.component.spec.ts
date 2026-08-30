@@ -138,9 +138,9 @@ async function build(
   const roster = signal<readonly MemberSummary[]>([
     {
       userId: '@ada:hs',
-      name: 'Ada',
-      initial: 'A',
-      avatarMxc: null,
+      roomDisplayName: 'Ada',
+      roomInitial: 'A',
+      roomAvatarMxc: null,
       powerLevel: 0,
       isCreator: false,
     },
@@ -540,17 +540,17 @@ describe('ThreadViewComponent members', () => {
     roster.set([
       {
         userId: '@ada:hs',
-        name: 'Ada',
-        initial: 'A',
-        avatarMxc: null,
+        roomDisplayName: 'Ada',
+        roomInitial: 'A',
+        roomAvatarMxc: null,
         powerLevel: 0,
         isCreator: false,
       },
       {
         userId: '@bo:hs',
-        name: 'Bo',
-        initial: 'B',
-        avatarMxc: null,
+        roomDisplayName: 'Bo',
+        roomInitial: 'B',
+        roomAvatarMxc: null,
         powerLevel: 0,
         isCreator: false,
       },

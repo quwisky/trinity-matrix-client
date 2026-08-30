@@ -58,7 +58,7 @@ describe('BannedMembersComponent', () => {
 
   it('lists each banned member with their reason', async () => {
     const { container } = await build([
-      { userId: '@bob:hs', name: 'Bob', reason: 'spam' },
+      { userId: '@bob:hs', roomDisplayName: 'Bob', reason: 'spam' },
     ]);
     expect(container.textContent).toContain('Bob');
     expect(container.textContent).toContain('spam');
@@ -69,10 +69,10 @@ describe('BannedMembersComponent', () => {
 
   it('waits for the authoritative sync echo after unban succeeds', async () => {
     const { cmp, fixture, container, unban, banned, toastShow } = await build([
-      { userId: '@bob:hs', name: 'Bob', reason: null },
+      { userId: '@bob:hs', roomDisplayName: 'Bob', reason: null },
     ]);
 
-    cmp.unban({ userId: '@bob:hs', name: 'Bob', reason: null });
+    cmp.unban({ userId: '@bob:hs', roomDisplayName: 'Bob', reason: null });
     fixture.detectChanges();
 
     expect(unban).toHaveBeenCalledWith('!r:hs', '@bob:hs');
@@ -99,22 +99,22 @@ describe('BannedMembersComponent', () => {
   it('reconciles remote ban changes while the panel is open', async () => {
     const { cmp, fixture, banned } = await build([]);
 
-    banned.set([{ userId: '@bob:hs', name: 'Bob', reason: 'spam' }]);
+    banned.set([{ userId: '@bob:hs', roomDisplayName: 'Bob', reason: 'spam' }]);
     fixture.detectChanges();
 
     expect(cmp.banned()).toEqual([
-      { userId: '@bob:hs', name: 'Bob', reason: 'spam' },
+      { userId: '@bob:hs', roomDisplayName: 'Bob', reason: 'spam' },
     ]);
   });
 
   it('keeps the member and toasts an error when the unban fails', async () => {
     const unban = vi.fn(() => throwError(() => new Error('nope')));
     const { cmp, toastShow } = await build(
-      [{ userId: '@bob:hs', name: 'Bob', reason: null }],
+      [{ userId: '@bob:hs', roomDisplayName: 'Bob', reason: null }],
       { unban },
     );
 
-    cmp.unban({ userId: '@bob:hs', name: 'Bob', reason: null });
+    cmp.unban({ userId: '@bob:hs', roomDisplayName: 'Bob', reason: null });
 
     expect(cmp.banned()).toHaveLength(1); // not removed on failure
     expect(cmp.isPending('@bob:hs')).toBe(false); // cleared
@@ -128,20 +128,20 @@ describe('BannedMembersComponent', () => {
     // A never-completing unban keeps the row pending; a re-click must not re-call.
     const unban = vi.fn(() => NEVER);
     const { cmp } = await build(
-      [{ userId: '@bob:hs', name: 'Bob', reason: null }],
+      [{ userId: '@bob:hs', roomDisplayName: 'Bob', reason: null }],
       { unban },
     );
 
-    cmp.unban({ userId: '@bob:hs', name: 'Bob', reason: null });
+    cmp.unban({ userId: '@bob:hs', roomDisplayName: 'Bob', reason: null });
     expect(cmp.isPending('@bob:hs')).toBe(true);
-    cmp.unban({ userId: '@bob:hs', name: 'Bob', reason: null });
+    cmp.unban({ userId: '@bob:hs', roomDisplayName: 'Bob', reason: null });
 
     expect(unban).toHaveBeenCalledTimes(1);
   });
 
   it('keeps an unavailable unban action focusable and blocks activation', async () => {
     const { container, unban } = await build(
-      [{ userId: '@bob:hs', name: 'Bob', reason: null }],
+      [{ userId: '@bob:hs', roomDisplayName: 'Bob', reason: null }],
       { canUnban: false },
     );
 

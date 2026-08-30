@@ -650,9 +650,9 @@ describe('RoomsPage room / DM / invite actions', () => {
     await settleWorkspace();
     const bob = {
       userId: '@bob:hs',
-      name: 'Bob',
-      initial: 'B',
-      avatarMxc: null,
+      roomDisplayName: 'Bob',
+      roomInitial: 'B',
+      roomAvatarMxc: null,
       powerLevel: 0,
       isCreator: false,
     };
@@ -682,9 +682,9 @@ describe('RoomsPage room / DM / invite actions', () => {
     // person who started the chat is labelled Owner and their friend Admin.
     const bob = {
       userId: '@bob:hs',
-      name: 'Bob',
-      initial: 'B',
-      avatarMxc: null,
+      roomDisplayName: 'Bob',
+      roomInitial: 'B',
+      roomAvatarMxc: null,
       powerLevel: 0,
       isCreator: false,
     };
@@ -711,9 +711,9 @@ describe('RoomsPage room / DM / invite actions', () => {
 
     shell.members.onSelectMember({
       userId: '@bob:hs',
-      name: 'Bob',
-      initial: 'B',
-      avatarMxc: null,
+      roomDisplayName: 'Bob',
+      roomInitial: 'B',
+      roomAvatarMxc: null,
       powerLevel: 0,
       isCreator: false,
     });
@@ -737,9 +737,9 @@ describe('RoomsPage room / DM / invite actions', () => {
 
       shell.members.onSelectMember({
         userId: '@bob:hs',
-        name: 'Bob',
-        initial: 'B',
-        avatarMxc: null,
+        roomDisplayName: 'Bob',
+        roomInitial: 'B',
+        roomAvatarMxc: null,
         powerLevel: 0,
         isCreator: false,
       });
@@ -763,9 +763,9 @@ describe('RoomsPage room / DM / invite actions', () => {
 
     shell.members.onSelectMember({
       userId: '@bob:hs',
-      name: 'Bob',
-      initial: 'B',
-      avatarMxc: null,
+      roomDisplayName: 'Bob',
+      roomInitial: 'B',
+      roomAvatarMxc: null,
       powerLevel: 0,
       isCreator: false,
     });
@@ -785,9 +785,9 @@ describe('RoomsPage room / DM / invite actions', () => {
     await settleWorkspace();
     shell.members.onSelectMember({
       userId: '@bob:hs',
-      name: 'Bob',
-      initial: 'B',
-      avatarMxc: null,
+      roomDisplayName: 'Bob',
+      roomInitial: 'B',
+      roomAvatarMxc: null,
       powerLevel: 0,
       isCreator: false,
     });
@@ -808,9 +808,9 @@ describe('RoomsPage room / DM / invite actions', () => {
     await settleWorkspace();
     shell.members.onSelectMember({
       userId: '@bob:hs',
-      name: 'Bob',
-      initial: 'B',
-      avatarMxc: null,
+      roomDisplayName: 'Bob',
+      roomInitial: 'B',
+      roomAvatarMxc: null,
       powerLevel: 0,
       isCreator: false,
     });
@@ -835,9 +835,9 @@ describe('RoomsPage room / DM / invite actions', () => {
     await shell.members.openMemberInfo(
       {
         userId: '@bob:hs',
-        name: 'Bob',
-        initial: 'B',
-        avatarMxc: null,
+        roomDisplayName: 'Bob',
+        roomInitial: 'B',
+        roomAvatarMxc: null,
         powerLevel: 0,
         isCreator: false,
       },
@@ -855,9 +855,9 @@ describe('RoomsPage room / DM / invite actions', () => {
 
     shell.members.onSelectMember({
       userId: '@bob:hs',
-      name: 'Bob',
-      initial: 'B',
-      avatarMxc: null,
+      roomDisplayName: 'Bob',
+      roomInitial: 'B',
+      roomAvatarMxc: null,
       powerLevel: 0,
       isCreator: false,
     });

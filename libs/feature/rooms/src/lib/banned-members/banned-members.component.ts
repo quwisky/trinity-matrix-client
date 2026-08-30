@@ -83,14 +83,14 @@ export class BannedMembersComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {
-          this.toast.show(`Unbanned ${member.name}.`, {
+          this.toast.show(`Unbanned ${member.roomDisplayName}.`, {
             duration: 3000,
             variant: 'success',
           });
         },
         error: () => {
           this.setPending(member.userId, false);
-          this.toast.show(`Could not unban ${member.name}.`, {
+          this.toast.show(`Could not unban ${member.roomDisplayName}.`, {
             duration: 4000,
             variant: 'destructive',
           });

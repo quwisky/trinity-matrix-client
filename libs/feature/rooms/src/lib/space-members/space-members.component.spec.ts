@@ -11,15 +11,15 @@ import { SpaceMembersComponent } from './space-members.component';
 
 function member(
   userId: string,
-  name: string,
+  roomDisplayName: string,
   powerLevel = 0,
   isCreator = false,
 ): MemberSummary {
   return {
     userId,
-    name,
-    initial: name[0],
-    avatarMxc: null,
+    roomDisplayName,
+    roomInitial: roomDisplayName[0],
+    roomAvatarMxc: null,
     powerLevel,
     isCreator,
   };

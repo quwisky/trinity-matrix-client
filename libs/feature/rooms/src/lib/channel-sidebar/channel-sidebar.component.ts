@@ -32,7 +32,7 @@ import {
   MixedInvitesService,
   type PendingInvite,
 } from '@trinity/data-access/room-library';
-import { PresenceService } from '@trinity/data-access/profile';
+import { IdentityPresenceService } from '@trinity/data-access/identity';
 import {
   AccountScopeService,
   DEFAULT_ROOM_SORT,
@@ -94,7 +94,7 @@ export class ChannelSidebarComponent {
    * would throw in all of them.
    */
   protected readonly typingByRoom = this.roomsSvc.typingByRoom;
-  private readonly presence = inject(PresenceService);
+  private readonly presence = inject(IdentityPresenceService);
   private readonly roomNotifications = inject(RoomNotificationsService);
 
   readonly spaceName = input('Home');

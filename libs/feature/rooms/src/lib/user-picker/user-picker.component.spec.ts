@@ -1,8 +1,8 @@
 import { TrnDialogRef } from '@trinity/components/overlay';
 import {
-  RoomLibraryService,
-  type UserSearchResult,
-} from '@trinity/data-access/room-library';
+  IdentityService,
+  type IdentitySummary,
+} from '@trinity/data-access/identity';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
@@ -10,13 +10,13 @@ import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { UserPickerComponent } from './user-picker.component';
 
-const RESULTS: UserSearchResult[] = [
+const RESULTS: IdentitySummary[] = [
   { userId: '@bob:hs', displayName: 'Bob', avatarMxc: null },
 ];
 
 describe('UserPickerComponent', () => {
   let dismiss: Mock;
-  let searchUsers: Mock;
+  let searchIdentities: Mock;
 
   function setInput(value: string, instance: UserPickerComponent): void {
     instance.onInput({ target: { value } } as unknown as Event);
@@ -24,7 +24,7 @@ describe('UserPickerComponent', () => {
 
   beforeEach(() => {
     dismiss = vi.fn().mockResolvedValue(true);
-    searchUsers = vi.fn(() => of(RESULTS));
+    searchIdentities = vi.fn(() => of(RESULTS));
   });
 
   /** Render the picker with the dialog ref and rooms service stubbed. */
@@ -32,7 +32,7 @@ describe('UserPickerComponent', () => {
     return render(UserPickerComponent, {
       providers: [
         { provide: TrnDialogRef, useValue: { close: dismiss } },
-        MockProvider(RoomLibraryService, { searchUsers }),
+        MockProvider(IdentityService, { search: searchIdentities }),
       ],
       imports: [MockComponent(AvatarComponent)],
     });
@@ -94,7 +94,7 @@ describe('UserPickerComponent', () => {
     fixture.detectChanges();
     await new Promise((resolve) => setTimeout(resolve, 320));
 
-    expect(searchUsers).not.toHaveBeenCalled();
+    expect(searchIdentities).not.toHaveBeenCalled();
   });
 
   it('searches the directory (debounced) and exposes the results', async () => {
@@ -105,7 +105,7 @@ describe('UserPickerComponent', () => {
     await new Promise((resolve) => setTimeout(resolve, 320)); // debounce window
     fixture.detectChanges();
 
-    expect(searchUsers).toHaveBeenCalledWith('bob');
+    expect(searchIdentities).toHaveBeenCalledWith('bob');
     expect(fixture.componentInstance.results()).toEqual(RESULTS);
   });
 });

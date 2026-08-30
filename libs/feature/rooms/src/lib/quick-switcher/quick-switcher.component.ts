@@ -13,7 +13,8 @@ import {
   type SwitcherResult,
   type SwitcherSelection,
 } from '@trinity/data-access/search';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { IdentityService } from '@trinity/data-access/identity';
+import { initialOf } from '@trinity/util/matrix';
 import { AccountBadgesService } from '../shared/account-badges.service';
 import { EmptyStateComponent } from '@trinity/components/empty-state';
 import {
@@ -27,6 +28,7 @@ import { TrnInput } from '@trinity/components/input';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
 import {
+  catchError,
   debounceTime,
   distinctUntilChanged,
   finalize,
@@ -60,7 +62,7 @@ const KIND_ICON: Record<SwitcherKind, TrnIconName> = {
  * Quick-switcher overlay (Ctrl/Cmd+K): a single search field over joined rooms,
  * spaces, DMs, and pending invites, with debounced directory-people results appended.
  * Presented by {@link QuickSwitcherService} as a {@link TrnDialogService} dialog;
- * injects {@link SearchService} directly so the aggregation stays in core.
+ * composes local {@link SearchService} results with stable Identity directory summaries.
  *
  * Local matches are an instant `computed` over the query signal; people are a
  * debounced RxJS stream. Keyboard nav (Up/Down move, Enter select, Esc close) lives on
@@ -88,8 +90,8 @@ export class QuickSwitcherComponent {
   private readonly dialogRef =
     inject<TrnDialogRef<SwitcherSelection | null>>(TrnDialogRef);
   private readonly search = inject(SearchService);
+  private readonly identity = inject(IdentityService);
   private readonly accountBadges = inject(AccountBadgesService);
-  private readonly matrix = inject(MatrixClientService);
 
   /**
    * Restrict results to the active account. Set by callers that act on the target without
@@ -113,7 +115,7 @@ export class QuickSwitcherComponent {
       // Scoping inside the query keeps the result cap meaningful — post-filtering would let
       // another account's rooms fill it and starve this one's out entirely.
       this.activeAccountOnly()
-        ? (this.matrix.activeUserId() ?? undefined)
+        ? (this.identity.activeUserId() ?? undefined)
         : undefined,
     ),
   );
@@ -131,9 +133,21 @@ export class QuickSwitcherComponent {
         }
         this.searching.set(true);
         // finalize resets on complete, error, or switchMap cancellation.
-        return this.search
-          .searchPeople(q)
-          .pipe(finalize(() => this.searching.set(false)));
+        return this.identity.search(q).pipe(
+          map((users) =>
+            users.map<SwitcherResult>((user) => ({
+              kind: 'user',
+              id: user.userId,
+              title: user.displayName,
+              subtitle: user.userId,
+              avatarMxc: user.avatarMxc,
+              initial: initialOf(user.displayName),
+              score: 0,
+            })),
+          ),
+          catchError(() => of<SwitcherResult[]>([])),
+          finalize(() => this.searching.set(false)),
+        );
       }),
     ),
     { initialValue: [] as SwitcherResult[] },

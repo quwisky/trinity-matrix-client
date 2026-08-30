@@ -13,7 +13,7 @@ import {
   TrnRadioGroupComponent,
   type TrnRadioOption,
 } from '@trinity/components/radio-group';
-import { PresenceService } from '@trinity/data-access/profile';
+import { IdentityPresenceService } from '@trinity/data-access/identity';
 import { presenceLabel, type PresenceState } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
 import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
@@ -30,7 +30,7 @@ const MAX_STATUS_LENGTH = 60;
 
 /**
  * Presence settings: set your own online state (Online / Away / Offline) and an
- * optional status message, published via {@link PresenceService.setOwnPresence}
+ * optional status message, published via {@link IdentityPresenceService.setOwnPresence}
  * (`m.presence`). Complements the presence dots shown for other people.
  */
 @Component({
@@ -46,7 +46,7 @@ const MAX_STATUS_LENGTH = 60;
   ],
 })
 export class PresenceSectionComponent {
-  private readonly presence = inject(PresenceService);
+  private readonly presence = inject(IdentityPresenceService);
   private readonly destroyRef = inject(DestroyRef);
 
   /** The same states, in the shape the radio group takes. */

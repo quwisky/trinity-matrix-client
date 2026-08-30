@@ -9,9 +9,9 @@ import {
   RoomMembersService,
 } from '@trinity/data-access/room-administration';
 import {
-  AccountProfilesService,
-  type AccountProfile,
-} from '@trinity/data-access/profile';
+  AccountIdentitiesService,
+  type AccountIdentity,
+} from '@trinity/data-access/identity';
 import {
   AccountScopeService,
   MixedRoomsService,
@@ -29,7 +29,7 @@ import { WorkspaceService } from './workspace.service';
 
 /**
  * The view model's own spec, for the two surfaces it derives from the projections this
- * branch introduced: the account chip (`AccountProfilesService`) and the member list
+ * branch introduced: the account chip (`AccountIdentitiesService`) and the member list
  * (`RoomMembersService.membersFor`).
  *
  * Its own file rather than an assertion on the page, because the page specs deliberately
@@ -40,9 +40,9 @@ import { WorkspaceService } from './workspace.service';
 function member(userId: string, name: string): MemberSummary {
   return {
     userId,
-    name,
-    initial: name[0],
-    avatarMxc: null,
+    roomDisplayName: name,
+    roomInitial: name[0],
+    roomAvatarMxc: null,
     powerLevel: 0,
     isCreator: false,
   };
@@ -52,12 +52,12 @@ function profile(
   userId: string,
   displayName: string,
   avatarMxc: string | null = null,
-): AccountProfile {
+): AccountIdentity {
   return { userId, displayName, avatarMxc };
 }
 
 function build(opts: { members?: Record<string, MemberSummary[]> } = {}) {
-  const profiles = signal<ReadonlyMap<string, AccountProfile>>(new Map());
+  const profiles = signal<ReadonlyMap<string, AccountIdentity>>(new Map());
   const activeUserId = signal<string | null>('@me:hs');
   const accountIds = signal<readonly string[]>(['@me:hs']);
   const rosters = new Map(
@@ -119,9 +119,9 @@ function build(opts: { members?: Record<string, MemberSummary[]> } = {}) {
           ).asReadonly(),
         },
       },
-      MockProvider(AccountProfilesService, {
-        profiles: profiles.asReadonly(),
-        profileOf: (userId: string) =>
+      MockProvider(AccountIdentitiesService, {
+        identities: profiles.asReadonly(),
+        identityOf: (userId: string) =>
           profiles().get(userId) ?? profile(userId, userId),
       }),
     ],

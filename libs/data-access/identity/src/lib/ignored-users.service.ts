@@ -1,6 +1,11 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, defer, from, map, throwError } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { Observable, defer, from, map } from 'rxjs';
+import { IdentityMatrixPort } from '@trinity/data-access/matrix-client';
+import {
+  identityNotReady,
+  recoverIdentityOperation,
+  type IdentityOperation,
+} from './identity-operation-error';
 
 /**
  * The account-wide ignore ("block") list (`m.ignored_user_list`). Ignoring a user makes
@@ -9,12 +14,13 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
  */
 @Injectable({ providedIn: 'root' })
 export class IgnoredUsersService {
-  private readonly matrix = inject(MatrixClientService);
+  private readonly matrix = inject(IdentityMatrixPort);
 
   /** Whether `userId` is currently ignored. */
   isIgnored(userId: string): boolean {
     return (
-      this.matrix.isInitialized && this.matrix.instance.isUserIgnored(userId)
+      this.matrix.isAvailable() &&
+      this.matrix.active().client.isUserIgnored(userId)
     );
   }
 
@@ -30,15 +36,20 @@ export class IgnoredUsersService {
 
   private write(userId: string, ignored: boolean): Observable<void> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
-        return throwError(() => new Error('Not signed in.'));
+      const operation: IdentityOperation = ignored
+        ? 'ignore-user'
+        : 'unignore-user';
+      if (!this.matrix.isAvailable()) {
+        throw identityNotReady(operation);
       }
-      const client = this.matrix.instance;
+      const client = this.matrix.active().client;
       const current = client.getIgnoredUsers();
       const next = ignored
         ? [...new Set([...current, userId])]
         : current.filter((id) => id !== userId);
       return from(client.setIgnoredUsers(next)).pipe(map(() => void 0));
-    });
+    }).pipe(
+      recoverIdentityOperation(ignored ? 'ignore-user' : 'unignore-user'),
+    );
   }
 }

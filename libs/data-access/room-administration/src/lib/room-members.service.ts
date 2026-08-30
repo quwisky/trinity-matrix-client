@@ -22,12 +22,17 @@ import {
 } from '@trinity/data-access/matrix-client';
 import { initialOf } from '@trinity/util/matrix';
 
-/** A joined member projected from authoritative Matrix room state. */
+/** A joined member projected from authoritative Matrix room state.
+ *
+ * Matrix membership events may override a user's display name and avatar for one Room.
+ * The explicit `room*` names keep that contextual presentation distinct from the stable
+ * user summary owned by Identity.
+ */
 export interface MemberSummary {
   readonly userId: string;
-  readonly name: string;
-  readonly initial: string;
-  readonly avatarMxc: string | null;
+  readonly roomDisplayName: string;
+  readonly roomInitial: string;
+  readonly roomAvatarMxc: string | null;
   readonly powerLevel: number;
   /** Immutable creator identity, independent of the member's current power level. */
   readonly isCreator: boolean;
@@ -36,7 +41,7 @@ export interface MemberSummary {
 /** A banned member projected from authoritative Matrix room state. */
 export interface BannedMember {
   readonly userId: string;
-  readonly name: string;
+  readonly roomDisplayName: string;
   readonly reason: string | null;
 }
 
@@ -170,7 +175,9 @@ export class RoomMembersService {
     const creatorId = room.getCreator();
     const members = joined
       .map((member) => this.toSummary(member, creatorId))
-      .sort((a, b) => this.collator.compare(a.name, b.name));
+      .sort((a, b) =>
+        this.collator.compare(a.roomDisplayName, b.roomDisplayName),
+      );
     this.memberCache.set(roomId, { fingerprint, members });
     return members;
   }
@@ -200,21 +207,23 @@ export class RoomMembersService {
       const reason = member.events?.member?.getContent()?.['reason'];
       return {
         userId: member.userId,
-        name: member.name || member.userId,
+        roomDisplayName: member.name || member.userId,
         reason: typeof reason === 'string' && reason ? reason : null,
       } satisfies BannedMember;
     });
     const fingerprint = summaries
       .map(
         (member) =>
-          `${member.userId}\x1f${member.name}\x1f${member.reason ?? ''}`,
+          `${member.userId}\x1f${member.roomDisplayName}\x1f${member.reason ?? ''}`,
       )
       .join('\x1e');
     const cached = this.bannedCache.get(roomId);
     if (cached?.fingerprint === fingerprint) {
       return cached.members;
     }
-    summaries.sort((a, b) => this.collator.compare(a.name, b.name));
+    summaries.sort((a, b) =>
+      this.collator.compare(a.roomDisplayName, b.roomDisplayName),
+    );
     this.bannedCache.set(roomId, { fingerprint, members: summaries });
     return summaries;
   }
@@ -251,12 +260,12 @@ export class RoomMembersService {
     member: RoomMember,
     creatorId: string | null,
   ): MemberSummary {
-    const name = member.name || member.userId;
+    const roomDisplayName = member.name || member.userId;
     return {
       userId: member.userId,
-      name,
-      initial: initialOf(name),
-      avatarMxc: member.getMxcAvatarUrl() ?? null,
+      roomDisplayName,
+      roomInitial: initialOf(roomDisplayName),
+      roomAvatarMxc: member.getMxcAvatarUrl() ?? null,
       powerLevel: member.powerLevel,
       isCreator: !!creatorId && member.userId === creatorId,
     };

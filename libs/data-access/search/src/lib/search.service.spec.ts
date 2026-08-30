@@ -7,8 +7,8 @@ import {
   type ISearchRequestBody,
 } from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
-import { firstValueFrom, of, throwError } from 'rxjs';
-import { describe, expect, it, type Mock, vi } from 'vitest';
+import { firstValueFrom } from 'rxjs';
+import { describe, expect, it, vi } from 'vitest';
 import {
   InvitesService,
   type PendingInvite,
@@ -20,7 +20,6 @@ import {
   MixedSpacesService,
   RoomLibraryService,
   type RoomSummary,
-  type UserSearchResult,
 } from '@trinity/data-access/room-library';
 import { SearchService } from './search.service';
 import {
@@ -82,15 +81,12 @@ function setup(opts: {
   directRoomIds?: Set<string>;
   spaces?: SpaceSummary[];
   invites?: PendingInvite[];
-  searchUsers?: Mock;
   matrix?: Partial<MatrixClientService>;
   /** Mixed-account corpus: when `mixing` is true these replace the single-account lists. */
   mixing?: boolean;
   mixedRooms?: RoomSummary[];
   mixedSpaces?: SpaceSummary[];
-}): { svc: SearchService; searchUsers: Mock } {
-  const searchUsers =
-    opts.searchUsers ?? vi.fn(() => of<UserSearchResult[]>([]));
+}): { svc: SearchService } {
   TestBed.configureTestingModule({
     providers: [
       SearchService,
@@ -99,7 +95,6 @@ function setup(opts: {
         directRoomIds: signal<ReadonlySet<string>>(
           opts.directRoomIds ?? new Set(),
         ),
-        searchUsers,
       }),
       MockProvider(SpacesService, { spaces: signal(opts.spaces ?? []) }),
       MockProvider(InvitesService, {
@@ -120,7 +115,7 @@ function setup(opts: {
       }),
     ],
   });
-  return { svc: TestBed.inject(SearchService), searchUsers };
+  return { svc: TestBed.inject(SearchService) };
 }
 
 /** A fake decrypted `m.room.message` event for the loaded-timeline search tests. */
@@ -279,47 +274,6 @@ describe('SearchService.localResults aggregation', () => {
     );
     const { svc } = setup({ rooms });
     expect(svc.localResults('room', 3)).toHaveLength(3);
-  });
-});
-
-describe('SearchService.searchPeople', () => {
-  it('does not query the directory for a term shorter than two characters', async () => {
-    const searchUsers = vi.fn(() => of<UserSearchResult[]>([]));
-    const { svc } = setup({ searchUsers });
-
-    const results = await firstValueFrom(svc.searchPeople('b'));
-
-    expect(results).toEqual([]);
-    expect(searchUsers).not.toHaveBeenCalled();
-  });
-
-  it('maps directory hits to user results', async () => {
-    const searchUsers = vi.fn(() =>
-      of<UserSearchResult[]>([
-        { userId: '@bob:hs', displayName: 'Bob', avatarMxc: 'mxc://a/b' },
-      ]),
-    );
-    const { svc } = setup({ searchUsers });
-
-    const [hit] = await firstValueFrom(svc.searchPeople('bob'));
-
-    expect(searchUsers).toHaveBeenCalledWith('bob');
-    expect(hit).toEqual({
-      kind: 'user',
-      id: '@bob:hs',
-      title: 'Bob',
-      subtitle: '@bob:hs',
-      avatarMxc: 'mxc://a/b',
-      initial: 'B',
-      score: 0,
-    });
-  });
-
-  it('degrades a failed directory lookup to an empty list', async () => {
-    const searchUsers = vi.fn(() => throwError(() => new Error('offline')));
-    const { svc } = setup({ searchUsers });
-
-    await expect(firstValueFrom(svc.searchPeople('bob'))).resolves.toEqual([]);
   });
 });
 

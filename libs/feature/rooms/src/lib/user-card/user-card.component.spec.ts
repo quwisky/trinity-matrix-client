@@ -5,15 +5,15 @@ import { MockComponent, MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import {
-  PresenceService,
-  ProfileService,
-  type UserProfile,
-} from '@trinity/data-access/profile';
+  IdentityPresenceService,
+  IdentityService,
+  type IdentitySummary,
+} from '@trinity/data-access/identity';
 import { AvatarComponent } from '@trinity/components/avatar';
 import { UserCardComponent } from './user-card.component';
 
 async function setup(
-  profile: UserProfile = {
+  profile: IdentitySummary = {
     userId: '@bob:hs',
     displayName: 'Bob',
     avatarMxc: 'mxc://hs/b',
@@ -24,8 +24,8 @@ async function setup(
     inputs: { userId: '@bob:hs' },
     providers: [
       { provide: TrnDialogRef, useValue: { close } },
-      MockProvider(ProfileService, { fetch: () => of(profile) }),
-      MockProvider(PresenceService, {
+      MockProvider(IdentityService, { lookup: () => of(profile) }),
+      MockProvider(IdentityPresenceService, {
         presenceFor: () => signal('online' as const).asReadonly(),
       }),
     ],
