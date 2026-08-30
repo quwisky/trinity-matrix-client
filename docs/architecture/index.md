@@ -28,8 +28,9 @@ policy. Its production TypeScript source surface is:
 
 | File                                                                       | What it is                                                            |
 | -------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `main.ts`                                                                  | `bootstrapApplication` plus the provider and initializer manifest     |
+| `main.ts`                                                                  | `bootstrapApplication`, adapter providers and runtime ownership       |
 | `app/app.routes.ts`                                                        | The eight top-level routes, plus a development-only ninth             |
+| `app/trinity-application-runtime.adapter.ts`                               | Production startup stages and session-long host ownership             |
 | `app/settings-dialog.config.ts`                                            | App-owned Settings lazy-loader and placement policy                   |
 | `app/workspace-application-surface.presenter.ts`                           | Workspace application-surface composition adapter                     |
 | `app/workspace-routed-surface.adapter.ts`                                  | Canonical deep-link and routed-Back composition adapter               |
@@ -39,10 +40,11 @@ policy. Its production TypeScript source surface is:
 | `test-setup.ts`                                                            | One line; it imports the workspace-root `test-setup.base.ts`          |
 | `index.html`, `global.scss`, `theme/`, `rendered-markdown.scss`, `assets/` | Shell markup, styles and static assets                                |
 
-The application shell itself — `AppComponent`, `VerificationHostComponent`,
-`NavigationFocusService` — lives in `libs/feature/shell`. Moving it out of the app is what makes
-the app project a composition root rather than a sixth feature library: product behavior lives in
-libraries, while the tested app-local adapters contain only host wiring and presentation policy.
+The application root, `VerificationHostComponent`, startup state, retry surface and route-focus
+source live in `@trinity/application/runtime`. The app project remains a composition root: it
+supplies the concrete adapter, subscribes to the runtime lifetime, and tears that ownership down
+with the Angular application. The remaining `@trinity/feature/shell` entrypoint is only the lazy,
+development-only crypto spike page.
 
 The build emits to the workspace-root `www/` directory rather than `dist/`, because Capacitor and
 the Electron shell both wrap that directory unchanged. See
@@ -58,14 +60,14 @@ frozen exception ledger.
 turns the current tags into compile-time-adjacent rules. Dependencies point inward, and the rule set is
 declared once at `eslint.config.mjs`.
 
-| Source tag         | May depend on                                      | The point of the restriction                                                                 |
-| ------------------ | -------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `type:app`         | `feature`, `ui`, `data-access`, `util`, `platform` | The app composes; `main.ts` may legitimately inject data-access services to run initializers |
-| `type:feature`     | `ui`, `data-access`, `util`, `platform`            | **A feature may not import another feature.** Screens stay independently loadable            |
-| `type:data-access` | `data-access`, `util`, `platform`                  | Domain services may fan out sideways to each other, but never up into a screen               |
-| `type:ui`          | `ui`, `util`, `platform`                           | Presentational only. A `ui` component can never reach a service                              |
-| `type:platform`    | `platform`, `util`                                 | Capability wrappers sit below everything except pure code                                    |
-| `type:util`        | `util`                                             | Pure, DI-free code. `libs/util/matrix` may depend on npm packages and nothing else           |
+| Source tag         | May depend on                                      | The point of the restriction                                                       |
+| ------------------ | -------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `type:app`         | `feature`, `ui`, `data-access`, `util`, `platform` | The app composes providers and supplies concrete application adapters              |
+| `type:feature`     | `ui`, `data-access`, `util`, `platform`            | **A feature may not import another feature.** Screens stay independently loadable  |
+| `type:data-access` | `data-access`, `util`, `platform`                  | Domain services may fan out sideways to each other, but never up into a screen     |
+| `type:ui`          | `ui`, `util`, `platform`                           | Presentational only. A `ui` component can never reach a service                    |
+| `type:platform`    | `platform`, `util`                                 | Capability wrappers sit below everything except pure code                          |
+| `type:util`        | `util`                                             | Pure, DI-free code. `libs/util/matrix` may depend on npm packages and nothing else |
 
 A third axis, `ui:*`, separates the two halves of the UI tier so third-party UI can be
 contained: `libs/components/*` is `ui:public`, the vendored Helm kit is `ui:vendor-wrapper`,
@@ -243,42 +245,35 @@ The dev-only `/spike` route is _spread out of the array_ rather than guarded by 
 `environment.production`. A ternary would leave the route absent at runtime but still ship the
 chunk and precache it in the service worker.
 
-The same class of trap applies to library barrels: `libs/feature/shell/src/index.ts` deliberately
-does not re-export the dev spike page, because `main.ts` imports that barrel eagerly for
-`AppComponent`. Nothing enforces this — only the comment at the barrel.
+The development-only spike is exported from `@trinity/feature/shell`, but the production
+entrypoint never imports that library. Its dynamic route import therefore keeps the crypto harness
+out of the eager application chunk.
 
 The router is configured with `withPreloading(PreloadAllModules)`, so lazy chunks are fetched in
 the background after the first route settles.
 
-## The initializer manifest
+## Application startup
 
-`main.ts` runs fifteen `provideAppInitializer` calls, and each one carries a one-line rationale
-about paint order rather than about what the service does. The pattern is worth understanding
-because the ordering constraints are real:
+`@trinity/application/runtime` exposes one read-only state signal plus cold `run`, `recover` and
+`stop` commands. A startup attempt executes six stages in order: host negotiation, installation
+preference hydration, saved-Account restoration, optional session capabilities, Workspace
+restoration, then application readiness. The production adapter preserves the old paint-order
+constraints while initial Router navigation is disabled; it releases `initialNavigation()` only
+after Account Runtime settles, so guards cannot race or duplicate cold-start restoration.
 
-- `ThemeService.init()` runs before the first paint, so a dark-mode user does not get a white
-  flash.
-- `PrivacySettingsService.init()` hydrates the Conversations-owned Privacy descriptors through
-  Preferences Store before the timeline can send its first read receipt — a user who turned
-  receipts off must not emit one during startup. The facade is temporary; Settings already renders
-  those descriptors without owning defaults, migration policy, or raw storage keys.
-- `DateTimeFormatService.init()` runs before the first timeline paints, because every message
-  header carries a timestamp and hydrating late would render the whole room in the default format
-  and then reflow it.
-- `AccountScopeService.init()` restores which accounts the room list mixes, so a multi-account
-  user's chosen mix does not flash as single-account on every cold start.
-- `PushGatewayService.init()` runs before the shell calls `PushService.register()`, or the first
-  registration uses the build-time default and push stays dead until a restart.
-- Two initializers exist purely to _construct_ a service so that its effect lives for the session:
-  `inject(AppBadgeService)` for the unread-total effect, and `SpaceRoomOrderService.init()` for its
-  hydrate effect.
-- `StoragePersistenceService.requestPersistence()` is explicitly fire-and-forget (`void`), so
-  startup never blocks on the browser's storage-permission prompt.
+A required failure publishes a value-free diagnostic and typed recovery while the application
+lifetime waits for `recover()` to execute that recovery before starting a new attempt. Partial
+inactive-Account restoration and optional push, badge or update failures accumulate as visible,
+non-blocking warnings. Once ready, the same runtime
+subscription owns badge projection, deep links, host Back, native gesture policy, route focus,
+Workspace surface registrations, per-Account space-order hydration and service-worker updates.
+`stop()` tears every source down;
+subscribing to `run()` again performs a clean restart.
 
-Alongside them, `main.ts` provides `provideZonelessChangeDetection()`, the `TrinityErrorHandler`,
-the two loader tokens above, the push configuration, the generated build info, and a service worker
-that is gated on web-and-production — Capacitor and Electron already load the shell and the crypto
-WASM as bundled assets and must not layer a second cache over them.
+`main.ts` now contains zero `provideAppInitializer` calls, frozen by the architecture contract.
+It still provides zoneless change detection, error handling, capability adapters, loader tokens,
+build configuration and the web-only service worker, then owns exactly one runtime subscription
+for the Angular application's lifetime.
 
 ## Where to read next
 

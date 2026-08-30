@@ -1,0 +1,108 @@
+export const APPLICATION_STARTUP_STAGES = [
+  'host-negotiation',
+  'preference-hydration',
+  'account-restoration',
+  'session-capabilities',
+  'workspace-restoration',
+  'readiness',
+] as const;
+
+export type ApplicationStartupStage =
+  (typeof APPLICATION_STARTUP_STAGES)[number];
+
+export type ApplicationStartupRecovery =
+  | 'retry-startup'
+  | 'reset-preferences'
+  | 'reauthenticate'
+  | 'reset-installation';
+
+export type ApplicationWarningScope =
+  | 'host'
+  | 'preferences'
+  | 'accounts'
+  | 'push'
+  | 'badge'
+  | 'updates'
+  | 'workspace';
+
+/** Stable, value-free metadata suitable for logs and support reports. */
+export interface ApplicationRuntimeDiagnostic {
+  readonly code: string;
+}
+
+export interface ApplicationRuntimeWarning {
+  readonly stage: ApplicationStartupStage | 'session';
+  readonly scope: ApplicationWarningScope;
+  readonly diagnostic: ApplicationRuntimeDiagnostic;
+  readonly recovery?: ApplicationStartupRecovery;
+}
+
+export interface ApplicationStartupFailure {
+  readonly stage: ApplicationStartupStage;
+  readonly recovery: ApplicationStartupRecovery;
+  readonly diagnostic: ApplicationRuntimeDiagnostic;
+}
+
+export type ApplicationStartupStageOutcome =
+  | {
+      readonly kind: 'ready';
+      readonly warnings?: readonly ApplicationRuntimeWarning[];
+    }
+  | {
+      readonly kind: 'blocked';
+      readonly recovery: ApplicationStartupRecovery;
+      readonly diagnostic: ApplicationRuntimeDiagnostic;
+      readonly warnings?: readonly ApplicationRuntimeWarning[];
+    };
+
+export type ApplicationStartOutcome =
+  | {
+      readonly kind: 'ready';
+      readonly attempt: number;
+      readonly warnings: readonly ApplicationRuntimeWarning[];
+    }
+  | {
+      readonly kind: 'blocked';
+      readonly attempt: number;
+      readonly failure: ApplicationStartupFailure;
+      readonly warnings: readonly ApplicationRuntimeWarning[];
+    };
+
+export type ApplicationRuntimeState =
+  | { readonly phase: 'stopped' }
+  | {
+      readonly phase: 'starting';
+      readonly attempt: number;
+      readonly stage: ApplicationStartupStage;
+      readonly warnings: readonly ApplicationRuntimeWarning[];
+    }
+  | {
+      readonly phase: 'blocked';
+      readonly attempt: number;
+      readonly failure: ApplicationStartupFailure;
+      readonly warnings: readonly ApplicationRuntimeWarning[];
+    }
+  | {
+      readonly phase: 'ready';
+      readonly attempt: number;
+      readonly warnings: readonly ApplicationRuntimeWarning[];
+    }
+  | { readonly phase: 'stopping'; readonly attempt: number };
+
+export type ApplicationRecoveryOutcome =
+  | { readonly kind: 'accepted' }
+  | {
+      readonly kind: 'unavailable';
+      readonly reason:
+        'not-blocked' | 'recovery-failed' | 'transition-in-progress';
+    };
+
+export type ApplicationRecoveryAdapterOutcome =
+  | { readonly kind: 'ready' }
+  | {
+      readonly kind: 'unavailable';
+      readonly reason: 'recovery-failed' | 'transition-in-progress';
+    };
+
+export type ApplicationStopOutcome =
+  { readonly kind: 'stopped' } | { readonly kind: 'already-stopped' };

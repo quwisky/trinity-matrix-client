@@ -14,7 +14,7 @@ import {
   TrnDialogService,
   TrnToastService,
 } from '@trinity/components/overlay';
-import { firstValueFrom, Subject } from 'rxjs';
+import { firstValueFrom, Subject, type Subscription } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 import { SETTINGS_DIALOG_APP_CONFIG } from './settings-dialog.config';
@@ -31,6 +31,7 @@ describe('Workspace application-surface composition adapter', () => {
   const navigate = vi.fn().mockResolvedValue(true);
   const dialogOpen = vi.fn();
   const close = vi.fn();
+  let lifetime: Subscription;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -59,9 +60,15 @@ describe('Workspace application-surface composition adapter', () => {
         },
       ],
     });
+    lifetime = TestBed.inject(WorkspaceApplicationSurfacePresenterAdapter)
+      .run()
+      .subscribe();
   });
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    lifetime.unsubscribe();
+    vi.unstubAllGlobals();
+  });
 
   function presenter() {
     return TestBed.inject(WorkspaceApplicationSurfacePresenterAdapter);

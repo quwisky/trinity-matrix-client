@@ -149,7 +149,7 @@ describe('architecture contract', () => {
       run(errors) {
         validateFrozenMeasurements(
           { appInitializers: 0 },
-          { sourceBaselines: { appInitializers: { value: 0 } } },
+          { sourceBaselines: { appInitializers: { value: 1 } } },
           errors,
         );
       },

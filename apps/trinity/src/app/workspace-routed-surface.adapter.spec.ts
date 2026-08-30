@@ -2,7 +2,7 @@ import { Location } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
 import { DefaultUrlSerializer, Router } from '@angular/router';
 import { WorkspaceBackService } from '@trinity/application/workspace';
-import { firstValueFrom, Subject } from 'rxjs';
+import { firstValueFrom, Subject, type Subscription } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
 
@@ -12,6 +12,7 @@ describe('WorkspaceRoutedSurfaceAdapter', () => {
   const navigateByUrl = vi.fn().mockResolvedValue(true);
   const locationBack = vi.fn();
   let router: { url: string };
+  let lifetime: Subscription;
 
   beforeEach(() => {
     router = { url: '/rooms' };
@@ -41,11 +42,14 @@ describe('WorkspaceRoutedSurfaceAdapter', () => {
     });
   });
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    lifetime?.unsubscribe();
+    vi.unstubAllGlobals();
+  });
 
   function build(url: string) {
     router.url = url;
-    TestBed.inject(WorkspaceRoutedSurfaceAdapter);
+    lifetime = TestBed.inject(WorkspaceRoutedSurfaceAdapter).run().subscribe();
     return TestBed.inject(WorkspaceBackService);
   }
 

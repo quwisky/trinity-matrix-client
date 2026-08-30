@@ -21,6 +21,13 @@ export const authGuard: CanActivateFn = (): Observable<boolean | UrlTree> => {
     return of(true);
   }
 
+  // Application Runtime owns cold-start restoration before it releases initial Router
+  // navigation. A settled no-account/failed result must not start a second restore from
+  // the guard; it is already the authoritative startup outcome.
+  if (accounts.state().phase === 'settled') {
+    return of(router.createUrlTree(['/login']));
+  }
+
   return accounts.restoreSavedAccounts().pipe(
     map((result) =>
       result.kind === 'restored' ||

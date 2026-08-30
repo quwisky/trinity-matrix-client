@@ -1,11 +1,4 @@
-import {
-  DestroyRef,
-  Injectable,
-  inject,
-  signal,
-  type Type,
-} from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Injectable, inject, signal, type Type } from '@angular/core';
 import { NavigationStart, Router } from '@angular/router';
 import {
   WorkspaceBackService,
@@ -61,7 +54,6 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
   private readonly dialog = inject(TrnDialogService);
   private readonly toast = inject(TrnToastService);
   private readonly back = inject(WorkspaceBackService);
-  private readonly destroyRef = inject(DestroyRef);
   private readonly encryptionLoaders = inject(ENCRYPTION_DIALOG_COMPONENTS, {
     optional: true,
   });
@@ -72,27 +64,40 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
   } | null = null;
   private navigationGeneration = 0;
 
-  constructor() {
-    this.router.events
-      .pipe(
-        filter((event) => event instanceof NavigationStart),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe(() => this.navigationGeneration++);
-    const unregister = this.back.register({
-      surface: () => {
-        const active = this.active().at(-1);
-        return active
-          ? ({ layer: 'application', surface: active.surface } as const)
-          : null;
-      },
-      dismiss: (surface) => this.dismiss(surface),
-      ownsTopmostOverlay: () => {
-        const active = this.active().at(-1);
-        return active ? this.dialog.isTopmost(active.ref) : false;
-      },
+  /** Application Runtime owns navigation observation and Back registration. */
+  run(): Observable<void> {
+    return new Observable((subscriber) => {
+      const navigation = this.router.events
+        .pipe(filter((event) => event instanceof NavigationStart))
+        .subscribe({
+          next: () => {
+            this.navigationGeneration++;
+            subscriber.next();
+          },
+          error: (error: unknown) => subscriber.error(error),
+        });
+      const unregister = this.back.register({
+        surface: () => {
+          const active = this.active().at(-1);
+          return active
+            ? ({ layer: 'application', surface: active.surface } as const)
+            : null;
+        },
+        dismiss: (surface) => this.dismiss(surface),
+        ownsTopmostOverlay: () => {
+          const active = this.active().at(-1);
+          return active ? this.dialog.isTopmost(active.ref) : false;
+        },
+      });
+      return () => {
+        this.navigationGeneration++;
+        navigation.unsubscribe();
+        unregister();
+        for (const active of this.active()) active.ref.close();
+        this.active.set([]);
+        this.pending = null;
+      };
     });
-    this.destroyRef.onDestroy(unregister);
   }
 
   present(

@@ -74,12 +74,6 @@
   ],
   "secondaryEntrypoints": [
     {
-      "alias": "@trinity/feature/shell/home-page",
-      "target": "./libs/feature/shell/src/lib/home.page.ts",
-      "removeBy": "#314",
-      "reason": "Keeps the development-only crypto spike out of the eager shell barrel."
-    },
-    {
       "alias": "@trinity/platform-native/qr-code",
       "target": "./libs/platform-native/src/lib/qr-code.service.ts",
       "removeBy": "#312",
@@ -116,12 +110,6 @@
       ],
       "removeBy": "#311, #317, #318, #321, #322",
       "reason": "The Workspace application workflow currently contains conversation, room-library, administration, and discovery surfaces."
-    },
-    {
-      "project": "feature-shell",
-      "capabilities": ["badge", "runtime", "workspace"],
-      "removeBy": "#314, #316",
-      "reason": "Workspace, application runtime, and badge coordination still share the shell."
     }
   ],
   "dependencyExceptions": [
@@ -147,8 +135,8 @@
   "sourceBaselines": {
     "appInitializers": {
       "path": "apps/trinity/src/main.ts",
-      "value": 17,
-      "removeBy": "#314"
+      "value": 0,
+      "removeBy": "complete"
     },
     "messageViewLines": {
       "path": "libs/util/matrix/src/lib/message-view.ts",

@@ -82,7 +82,7 @@ one of these is probably where it belongs.
 | Push registration           | `PushService`                                                       | Gated on `getPlatform()` being `'ios'` or `'android'`                                                           |
 | App icon badge              | `AppBadgeService`, `MobileBadgeService`                             | Preload `setBadgeCount` on desktop, `@capawesome/capacitor-badge` on mobile                                     |
 | Native chrome               | `ThemeService`                                                      | Sets the Capacitor status-bar style on native only                                                              |
-| Deep link intake            | `AppComponent` in `@trinity/feature/shell`                          | Preload `onDeepLink` on desktop, `@capacitor/app` `appUrlOpen` on mobile, the `/sso-callback` route on web      |
+| Deep link intake            | Application Runtime adapter                                         | Preload `onDeepLink` on desktop, `@capacitor/app` `appUrlOpen` on mobile, the `/sso-callback` route on web      |
 | Media capture and file save | `MediaPickerService`, `FileSaveService` in `@trinity/feature/rooms` | Native plugins only, with a browser fallback elsewhere                                                          |
 
 ## Read next

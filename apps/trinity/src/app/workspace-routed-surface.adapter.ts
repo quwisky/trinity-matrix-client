@@ -1,6 +1,5 @@
 import { Location } from '@angular/common';
-import { DestroyRef, Injectable, inject, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Injectable, inject, signal } from '@angular/core';
 import { NavigationEnd, Router } from '@angular/router';
 import {
   WorkspaceBackService,
@@ -27,23 +26,32 @@ import { Observable, defer, filter, from, map, of } from 'rxjs';
 export class WorkspaceRoutedSurfaceAdapter {
   private readonly router = inject(Router);
   private readonly location = inject(Location);
-  private readonly destroyRef = inject(DestroyRef);
   private readonly back = inject(WorkspaceBackService);
   private readonly active = signal<WorkspaceSurface | null>(null);
 
-  constructor() {
-    this.update(this.router.url);
-    this.router.events
-      .pipe(
-        filter((event) => event instanceof NavigationEnd),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe((event) => this.update(event.urlAfterRedirects));
-    const unregister = this.back.register({
-      surface: this.active,
-      dismiss: (surface) => this.dismiss(surface),
+  /** Application Runtime owns route projection and Back registration for one session. */
+  run(): Observable<void> {
+    return new Observable((subscriber) => {
+      this.update(this.router.url);
+      const routes = this.router.events
+        .pipe(filter((event) => event instanceof NavigationEnd))
+        .subscribe({
+          next: (event) => {
+            this.update(event.urlAfterRedirects);
+            subscriber.next();
+          },
+          error: (error: unknown) => subscriber.error(error),
+        });
+      const unregister = this.back.register({
+        surface: this.active,
+        dismiss: (surface) => this.dismiss(surface),
+      });
+      return () => {
+        routes.unsubscribe();
+        unregister();
+        this.active.set(null);
+      };
     });
-    this.destroyRef.onDestroy(unregister);
   }
 
   private dismiss(

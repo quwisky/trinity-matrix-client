@@ -378,7 +378,7 @@ export function validateEntrypoints(graph, contract, paths, errors) {
 export function validateFrozenMeasurements(measurements, contract, errors) {
   for (const [name, value] of Object.entries(measurements)) {
     const frozen = contract.sourceBaselines[name].value;
-    if (value === 0) {
+    if (value === 0 && frozen !== 0) {
       errors.push(`${name} source sweep found no matches`);
     }
     if (value !== frozen) {

@@ -1,9 +1,4 @@
-import {
-  ApplicationRef,
-  ErrorHandler,
-  WritableSignal,
-  signal,
-} from '@angular/core';
+import { ApplicationRef, WritableSignal, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { UnreadAggregatorService } from '@trinity/data-access/rooms';
 import {
@@ -21,36 +16,36 @@ function setup(
   ),
 ): {
   total: WritableSignal<number>;
+  service: AppBadgeService;
   set: typeof set;
-  handleError: ReturnType<typeof vi.fn>;
   flush: () => void;
 } {
   const total = signal(initial);
-  const handleError = vi.fn();
   TestBed.configureTestingModule({
     providers: [
       AppBadgeService,
       { provide: UnreadAggregatorService, useValue: { totalUnread: total } },
       { provide: HostBadgeService, useValue: { set } },
-      { provide: ErrorHandler, useValue: { handleError } },
     ],
   });
-  TestBed.inject(AppBadgeService);
+  const service = TestBed.inject(AppBadgeService);
   const appRef = TestBed.inject(ApplicationRef);
-  return { total, set, handleError, flush: () => appRef.tick() };
+  return { total, service, set, flush: () => appRef.tick() };
 }
 
 describe('AppBadgeService', () => {
   afterEach(() => TestBed.resetTestingModule());
 
   it('delegates unread totals to the host operation without platform branching', () => {
-    const { total, set, flush } = setup(3);
+    const { total, service, set, flush } = setup(3);
+    const lifetime = service.run().subscribe();
     flush();
     expect(set).toHaveBeenLastCalledWith(3);
 
     total.set(7);
     flush();
     expect(set).toHaveBeenLastCalledWith(7);
+    lifetime.unsubscribe();
   });
 
   it('cancels a stale host write when a newer total arrives', () => {
@@ -67,7 +62,8 @@ describe('AppBadgeService', () => {
           })
         : of({ kind: 'completed' }),
     );
-    const { total, flush } = setup(1, set);
+    const { total, service, flush } = setup(1, set);
+    const lifetime = service.run().subscribe();
     flush();
 
     total.set(2);
@@ -75,20 +71,19 @@ describe('AppBadgeService', () => {
 
     expect(set).toHaveBeenLastCalledWith(2);
     expect(cancelled).toHaveBeenCalledOnce();
+    lifetime.unsubscribe();
   });
 
-  it('reports a broken adapter without killing future badge updates', () => {
+  it('reports a broken adapter through the owned session error channel', () => {
     const defect = new Error('adapter defect');
-    const set = vi
-      .fn<(count: number) => Observable<HostOperationOutcome>>()
-      .mockReturnValueOnce(throwError(() => defect))
-      .mockReturnValue(of({ kind: 'completed' }));
-    const { total, handleError, flush } = setup(1, set);
+    const set = vi.fn<(count: number) => Observable<HostOperationOutcome>>(() =>
+      throwError(() => defect),
+    );
+    const { service, flush } = setup(1, set);
+    const error = vi.fn();
+    service.run().subscribe({ error });
     flush();
 
-    expect(handleError).toHaveBeenCalledWith(defect);
-    total.set(2);
-    flush();
-    expect(set).toHaveBeenLastCalledWith(2);
+    expect(error).toHaveBeenCalledWith(defect);
   });
 });

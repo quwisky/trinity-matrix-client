@@ -2,12 +2,12 @@ import { bootstrapApplication } from '@angular/platform-browser';
 import {
   ErrorHandler,
   inject,
-  provideAppInitializer,
   provideBrowserGlobalErrorListeners,
   provideZonelessChangeDetection,
 } from '@angular/core';
 import {
   provideRouter,
+  withDisabledInitialNavigation,
   withPreloading,
   withRouterConfig,
   PreloadAllModules,
@@ -21,15 +21,10 @@ import {
   ACCOUNT_LIFECYCLE_PORT,
   type AccountLifecyclePort,
 } from '@trinity/data-access/accounts';
+import { provideGifConfigEntries } from '@trinity/data-access/gif';
 import {
-  GifSettingsService,
-  provideGifConfigEntries,
-} from '@trinity/data-access/gif';
-import {
-  AccountScopeService,
   RoomMessageGovernanceService,
   RoomPinGovernanceService,
-  SpaceRoomOrderService,
 } from '@trinity/data-access/rooms';
 import {
   CONVERSATION_MESSAGE_POLICY,
@@ -40,25 +35,13 @@ import {
   provideConversationPrivacyPreferences,
 } from '@trinity/data-access/timeline';
 import {
-  AppBadgeService,
   PUSH_CONFIG,
-  PushGatewayService,
   PushService,
   providePushConfigEntries,
 } from '@trinity/data-access/notifications';
 import {
   BUILD_INFO,
-  DateTimeFormatService,
   DraftStoreService,
-  FeatureFlagsService,
-  KeyboardShortcutsService,
-  PrivacySettingsService,
-  StoragePersistenceService,
-  SystemLineSettingsService,
-  ComposerSettingsService,
-  MessageGestureSettingsService,
-  ShellLayoutService,
-  ThemeService,
   TrinityErrorHandler,
   isElectronRenderer,
   provideHostCapabilities,
@@ -66,6 +49,11 @@ import {
   providePrivacyPreferenceSet,
   providePlatformConfigEntries,
 } from '@trinity/platform-native';
+import {
+  APPLICATION_RUNTIME_ADAPTER,
+  ApplicationRootComponent,
+  ApplicationRuntimeService,
+} from '@trinity/application/runtime';
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
   type EncryptionDialogLoaders,
@@ -75,12 +63,11 @@ import { provideTrnIcons } from '@trinity/components/icon';
 import { provideTrnOverlayDefaults } from '@trinity/components/overlay';
 
 import { routes } from './app/app.routes';
-import { AppComponent, NavigationFocusService } from '@trinity/feature/shell';
 import { environment } from './environments/environment';
 import { BUILD_INFO_VALUE } from './app/build-info';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './app/workspace-application-surface.presenter';
-import { WorkspaceRoutedSurfaceAdapter } from './app/workspace-routed-surface.adapter';
-import { of } from 'rxjs';
+import { TrinityApplicationRuntimeAdapter } from './app/trinity-application-runtime.adapter';
+import { of, take } from 'rxjs';
 
 // Desktop (hand-rolled Electron) detection. Capacitor.isNativePlatform() is FALSE in
 // this shell, so the service worker must be gated on this flag too. The predicate lives
@@ -88,7 +75,7 @@ import { of } from 'rxjs';
 // root and has no test of its own.
 const isElectron = isElectronRenderer();
 
-bootstrapApplication(AppComponent, {
+void bootstrapApplication(ApplicationRootComponent, {
   providers: [
     // Zoneless change detection (no zone.js). The data-access services' matrix-js-sdk
     // event handlers write signals, which schedule change detection directly. See
@@ -172,68 +159,15 @@ bootstrapApplication(AppComponent, {
     // matching history index instead.
     provideRouter(
       routes,
+      withDisabledInitialNavigation(),
       withPreloading(PreloadAllModules),
       withRouterConfig({ canceledNavigationResolution: 'computed' }),
     ),
-    // Apply the saved light/dark preference before the first paint.
-    provideAppInitializer(() => inject(ThemeService).init()),
-    // Load the dragged pane widths before the shell first paints, so a customised layout is
-    // what renders rather than the default flashing first.
-    provideAppInitializer(() => inject(ShellLayoutService).init()),
-    // Load persisted experimental feature flags (e.g. virtualized timeline).
-    provideAppInitializer(() => inject(FeatureFlagsService).init()),
-    // Load persisted privacy preferences (e.g. whether to send read receipts)
-    // before the timeline sends its first receipt.
-    provideAppInitializer(() => inject(PrivacySettingsService).init()),
-    // Load persisted per-conversation composer drafts before any composer mounts,
-    // so a half-typed message is restored on cold start.
-    provideAppInitializer(() => inject(DraftStoreService).init()),
-    // Load which system lines (joins, profile changes, room changes) the timeline shows,
-    // before the first room is projected — otherwise a user who hid them would see the
-    // churn flash in on every cold start.
-    provideAppInitializer(() => inject(SystemLineSettingsService).init()),
-    provideAppInitializer(() => inject(ComposerSettingsService).init()),
-    provideAppInitializer(() => inject(MessageGestureSettingsService).init()),
-    // Load the saved date/time formats before the first timeline paints — every message
-    // header carries a timestamp, so hydrating late would render the whole room in the
-    // default format and then reflow it.
-    provideAppInitializer(() => inject(DateTimeFormatService).init()),
-    // Load any custom keyboard-shortcut bindings before the rooms page mounts, so a
-    // rebound chord is in effect from the first keydown.
-    provideAppInitializer(() => inject(KeyboardShortcutsService).init()),
-    // Ask the browser to make our IndexedDB persistent so multi-account sync +
-    // crypto stores aren't evicted under storage pressure (best-effort; no-op where
-    // unsupported). Fire-and-forget — nothing blocks startup on the prompt.
-    provideAppInitializer(() => {
-      void inject(StoragePersistenceService).requestPersistence();
-    }),
-    // Load the saved GIF provider + API key so the composer knows whether to
-    // offer the GIF picker on first paint.
-    provideAppInitializer(() => inject(GifSettingsService).init()),
-    // Construct the per-space room ordering store so its hydrate effect is live for the
-    // whole session, and read whatever accounts are already known. At this point the
-    // persisted session usually has not been restored yet, so the effect — not this call —
-    // does most of the work; it fires again as each account signs in.
-    provideAppInitializer(() => inject(SpaceRoomOrderService).init()),
-    // Restore which accounts the room list mixes, before the shell projects its
-    // first room list — otherwise a multi-account user's chosen mix would flash
-    // as single-account on every cold start.
-    provideAppInitializer(() => inject(AccountScopeService).init()),
-    // Load any user-set push gateway before the shell mounts and calls
-    // PushService.register() — otherwise the first registration would use the
-    // build-time default (usually none) and push would stay dead until a restart.
-    provideAppInitializer(() => inject(PushGatewayService).init()),
-    // Instantiate the dock-badge service so its unread-total effect is live for
-    // the whole session (desktop-only by feature detection; a no-op elsewhere).
-    provideAppInitializer(() => {
-      inject(AppBadgeService);
-    }),
-    // Move focus into the entering page on each route change (replaces Ionic's
-    // focus manager) — a11y for screen-reader/keyboard users.
-    provideAppInitializer(() => {
-      inject(NavigationFocusService).init();
-      inject(WorkspaceRoutedSurfaceAdapter);
-    }),
+    {
+      provide: APPLICATION_RUNTIME_ADAPTER,
+      useExisting: TrinityApplicationRuntimeAdapter,
+    },
+    TrinityApplicationRuntimeAdapter,
     // Let <trn-avatar> resolve mxc avatars to authenticated blob URLs (core).
     {
       provide: AVATAR_RESOLVER,
@@ -289,4 +223,14 @@ bootstrapApplication(AppComponent, {
       registrationStrategy: 'registerWhenStable:30000',
     }),
   ],
+}).then((applicationRef) => {
+  const runtime = applicationRef.injector.get(ApplicationRuntimeService);
+  const errors = applicationRef.injector.get(ErrorHandler);
+  const runtimeSubscription = runtime
+    .run()
+    .subscribe({ error: (error: unknown) => errors.handleError(error) });
+  applicationRef.onDestroy(() => {
+    runtime.stop().pipe(take(1)).subscribe();
+    runtimeSubscription.unsubscribe();
+  });
 });

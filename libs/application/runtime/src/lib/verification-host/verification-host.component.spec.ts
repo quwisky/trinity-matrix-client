@@ -1,6 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { render } from '@trinity/testing';
+import { ENCRYPTION_DIALOG_COMPONENTS } from '@trinity/components/encryption-dialog';
+import { TrnDialogService } from '@trinity/components/overlay';
 import {
   VerificationService,
   type VerificationView,
@@ -9,8 +10,7 @@ import {
   MatrixClientService,
   type SyncState,
 } from '@trinity/data-access/matrix-client';
-import { ENCRYPTION_DIALOG_COMPONENTS } from '@trinity/components/encryption-dialog';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -33,84 +33,94 @@ function incoming(): VerificationView {
   };
 }
 
-type SyncStateValue = SyncState | null;
-
-async function setup() {
-  const syncState = signal<SyncStateValue>(null);
+async function setup(
+  verify: () => Promise<unknown> = () => Promise.resolve(class StubVerify {}),
+) {
+  const syncState = signal<SyncState | null>(null);
   const active = signal<VerificationView | null>(null);
-  const open = vi.fn().mockReturnValue({ closed: new Subject() });
+  const closed = new Subject<void>();
+  const close = vi.fn();
+  const open = vi.fn().mockReturnValue({ closed, close });
   const { fixture } = await render(VerificationHostComponent, {
     providers: [
       MockProvider(MatrixClientService, { syncState }),
       MockProvider(VerificationService, { active }),
       MockProvider(TrnDialogService, { open }),
-      // The app provides these lazy loaders (main.ts); a stub page class here.
       {
         provide: ENCRYPTION_DIALOG_COMPONENTS,
         useValue: {
           unlock: () => Promise.resolve(class StubUnlock {}),
-          verify: () => Promise.resolve(class StubVerify {}),
+          verify,
         },
       },
     ],
   });
-  // `connect` is auto-spied by ng-mocks (see test-setup autoSpy).
-  const connect = TestBed.inject(VerificationService).connect;
-  return { fixture, syncState, active, connect, open };
+  return {
+    fixture,
+    syncState,
+    active,
+    open,
+    close,
+    connect: TestBed.inject(VerificationService).connect,
+  };
 }
 
 describe('VerificationHostComponent', () => {
-  it('connects only once the client is live', async () => {
+  it('connects only once a Matrix session is live', async () => {
     const { fixture, syncState, connect } = await setup();
     expect(connect).not.toHaveBeenCalled();
 
-    syncState.set('PREPARED' as SyncStateValue);
+    syncState.set('PREPARED' as SyncState);
     fixture.detectChanges();
 
     expect(connect).toHaveBeenCalled();
   });
 
-  it('presents a modal for an incoming verification request', async () => {
+  it('presents incoming and cross-user verification outside routed flows', async () => {
     const { fixture, active, open } = await setup();
-
     active.set(incoming());
     fixture.detectChanges();
-    // present() lazy-imports the verification page before opening the dialog.
     await vi.waitFor(() => expect(open).toHaveBeenCalled());
 
-    // The page is lazy-loaded (dynamic import), so a static import here would trip
-    // the module-boundary lint — assert on the class shape, not the identity.
-    expect(open).toHaveBeenCalledWith(
-      expect.any(Function),
-      expect.objectContaining({
-        inputs: { asModal: true },
-        ariaLabel: 'Verify device',
-        disableClose: true,
-      }),
-    );
+    expect(open).toHaveBeenCalledWith(expect.any(Function), {
+      inputs: { asModal: true },
+      ariaLabel: 'Verify device',
+      disableClose: true,
+    });
   });
 
-  it('does not present a modal for a self-initiated (outgoing) request', async () => {
+  it('leaves outgoing self-verification to the canonical route', async () => {
     const { fixture, active, open } = await setup();
-
     active.set({ ...incoming(), incoming: false });
     fixture.detectChanges();
 
     expect(open).not.toHaveBeenCalled();
   });
 
-  it('presents a modal for an outgoing cross-user verification', async () => {
-    const { fixture, active, open } = await setup();
-
-    // Outgoing (incoming: false) but cross-user (isSelfVerification: false) — the
-    // /encryption/verify route only owns outgoing *self* verification, so the host shows this.
-    active.set({
-      ...incoming(),
-      incoming: false,
-      isSelfVerification: false,
-      otherUserId: '@bob:hs',
+  it('does not open after destruction while the lazy page is loading', async () => {
+    let resolvePage: ((page: unknown) => void) | undefined;
+    const page = new Promise<unknown>((resolve) => {
+      resolvePage = resolve;
     });
+    const { fixture, active, open } = await setup(() => page);
+    active.set(incoming());
+    fixture.detectChanges();
+
+    fixture.destroy();
+    resolvePage?.(class StubVerify {});
+    await page;
+
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it('closes the active verification dialog on destruction', async () => {
+    const { fixture, active, open, close } = await setup();
+    active.set(incoming());
     fixture.detectChanges();
     await vi.waitFor(() => expect(open).toHaveBeenCalled());
+
+    fixture.destroy();
+
+    expect(close).toHaveBeenCalledOnce();
   });
 });

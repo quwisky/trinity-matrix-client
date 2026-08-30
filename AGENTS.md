@@ -151,6 +151,11 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   scoped reattachment, finite readiness barriers, and resource diagnostics without owning product
   state or SDK types. Active Account switches use `transition(active-account)` to rebind and
   acknowledge every live account-scoped projection before the Workspace is repaired.
+- `@trinity/application/runtime` `[type:feature]`, `[role:application]` — Application Runtime:
+  ordered host, preference, Account, session-capability, Workspace, and readiness stages; typed
+  executable blocked recovery and visible optional warnings; explicit recover/stop/restart; and one owned session-long
+  stream for deep links, Back, route focus, badges, updates, and surface registration. The app
+  entrypoint supplies its adapter and owns its lifetime subscription.
 - `@trinity/runtime/host` `[type:platform]`, `[role:kernel]` — Host Capabilities: narrow operation
   contracts and explicit supported/unavailable manifests for authentication handoff, deep links,
   Back, file export, notification presentation, location, badges, secure storage, lifecycle, and

@@ -60,9 +60,6 @@
       "@trinity/feature/rooms": ["./libs/feature/rooms/src/index.ts"],
       "@trinity/feature/settings": ["./libs/feature/settings/src/index.ts"],
       "@trinity/feature/shell": ["./libs/feature/shell/src/index.ts"],
-      "@trinity/feature/shell/home-page": [
-        "./libs/feature/shell/src/lib/home.page.ts"
-      ],
       "@trinity/helm/button": ["./libs/spartan/button/src/index.ts"],
       "@trinity/helm/utils": ["./libs/spartan/utils/src/index.ts"],
       "@trinity/helm/input": ["./libs/spartan/input/src/index.ts"],
@@ -155,6 +152,9 @@
       "@trinity/runtime/projection": ["./libs/runtime/projection/src/index.ts"],
       "@trinity/application/workspace": [
         "./libs/application/workspace/src/index.ts"
+      ],
+      "@trinity/application/runtime": [
+        "./libs/application/runtime/src/index.ts"
       ],
       "@trinity/runtime/host": ["./libs/runtime/host/src/index.ts"]
     },
