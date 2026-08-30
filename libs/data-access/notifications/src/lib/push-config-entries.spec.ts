@@ -33,7 +33,10 @@ vi.mock('@capacitor/preferences', () => ({
 
 vi.mock('@capacitor/core', () => ({
   registerPlugin: vi.fn(() => ({})),
-  Capacitor: { getPlatform: () => h.platform },
+  Capacitor: {
+    getPlatform: () => h.platform,
+    isPluginAvailable: () => h.platform === 'ios' || h.platform === 'android',
+  },
 }));
 
 const NOTIFY = 'https://push.example.org/_matrix/push/v1/notify';

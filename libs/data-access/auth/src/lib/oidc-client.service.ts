@@ -1,5 +1,4 @@
-import { Injectable } from '@angular/core';
-import { Preferences } from '@capacitor/preferences';
+import { Injectable, inject } from '@angular/core';
 import {
   OAuth2,
   createClient,
@@ -11,12 +10,14 @@ import {
   Observable,
   catchError,
   defer,
+  firstValueFrom,
   from,
   map,
   of,
   switchMap,
   throwError,
 } from 'rxjs';
+import { DevicePreferenceStorageService } from '@trinity/platform-native';
 import type { OidcSessionBinding } from '@trinity/util/matrix';
 
 /** How this client identifies itself to an OIDC provider during dynamic registration. */
@@ -103,6 +104,8 @@ export interface OidcGrant {
  */
 @Injectable({ providedIn: 'root' })
 export class OidcClientService {
+  private readonly storage = inject(DevicePreferenceStorageService);
+
   /**
    * Build the authorization URL to redirect to. Registers this client with the provider
    * (dynamic registration, cached per issuer) if needed, generates a PKCE authorization
@@ -255,9 +258,7 @@ export class OidcClientService {
    * after the provider pruned or expired the registration).
    */
   forgetClientId(issuer: string): Observable<void> {
-    return defer(() =>
-      from(Preferences.remove({ key: CLIENT_ID_KEY_PREFIX + issuer })),
-    );
+    return this.storage.remove(CLIENT_ID_KEY_PREFIX + issuer);
   }
 
   private async revoke(
@@ -314,7 +315,7 @@ export class OidcClientService {
     redirectUris: string[],
   ): Promise<string> {
     const key = CLIENT_ID_KEY_PREFIX + metadata.issuer;
-    const cached = (await Preferences.get({ key })).value;
+    const cached = await firstValueFrom(this.storage.get(key));
     if (cached) {
       return cached;
     }
@@ -329,7 +330,7 @@ export class OidcClientService {
       redirect_uris: redirectUris as OAuthRegistrationRequest['redirect_uris'],
     };
     const clientId = await OAuth2.registerClient(metadata, request);
-    await Preferences.set({ key, value: clientId });
+    await firstValueFrom(this.storage.set(key, clientId));
     return clientId;
   }
 

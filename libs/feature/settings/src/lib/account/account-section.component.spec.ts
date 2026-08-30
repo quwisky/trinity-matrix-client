@@ -5,12 +5,8 @@ import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthService, type AccountManagement } from '@trinity/data-access/auth';
 import { TrnToastService } from '@trinity/components/overlay';
+import { ExternalBrowserService } from '@trinity/platform-native';
 import { AccountSectionComponent } from './account-section.component';
-
-vi.mock('@capacitor/browser', () => ({
-  Browser: { open: vi.fn().mockResolvedValue(undefined) },
-}));
-import { Browser } from '@capacitor/browser';
 
 /**
  * Fill the three password boxes through the form's own fields — the same writable
@@ -42,17 +38,25 @@ describe('AccountSectionComponent', () => {
           getAccountManagement: () => of(management),
         }),
         MockProvider(TrnToastService),
+        MockProvider(ExternalBrowserService, { open: vi.fn(() => of(true)) }),
       ],
     });
     const auth = TestBed.inject(AuthService);
     const toast = TestBed.inject(TrnToastService);
+    const externalBrowser = TestBed.inject(ExternalBrowserService);
     // changePassword is a cold Observable the component feeds to runWithBusy.
     vi.mocked(auth.changePassword).mockReturnValue(of(undefined));
-    return { ...result, cmp: result.fixture.componentInstance, auth, toast };
+    return {
+      ...result,
+      cmp: result.fixture.componentInstance,
+      auth,
+      toast,
+      externalBrowser,
+    };
   }
 
   it('shows a provider link (no password form) for an OIDC account', async () => {
-    const { cmp } = await renderSection({
+    const { cmp, externalBrowser } = await renderSection({
       url: 'https://op.example/account',
       actionsSupported: [],
     });
@@ -63,9 +67,9 @@ describe('AccountSectionComponent', () => {
     expect(screen.getByTestId('manage-account')).toBeTruthy();
 
     cmp.openAccountManagement();
-    expect(Browser.open).toHaveBeenCalledWith({
-      url: 'https://op.example/account',
-    });
+    expect(externalBrowser.open).toHaveBeenCalledWith(
+      'https://op.example/account',
+    );
   });
 
   it('reveals each password field independently', async () => {

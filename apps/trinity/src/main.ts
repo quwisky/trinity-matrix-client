@@ -1,12 +1,14 @@
 import { bootstrapApplication } from '@angular/platform-browser';
 import { provideServiceWorker } from '@angular/service-worker';
-import { Capacitor } from '@capacitor/core';
 import {
   ApplicationRootComponent,
   provideTrinityApplication,
   startApplicationRuntime,
 } from '@trinity/application/runtime';
-import { isElectronRenderer } from '@trinity/platform-native';
+import {
+  isElectronRenderer,
+  isInstalledNativePlatform,
+} from '@trinity/platform-native';
 import { APPLICATION_DIALOG_LOADERS } from './app/application-dialog-loaders';
 import { BUILD_INFO_VALUE } from './app/build-info';
 import { routes } from './app/app.routes';
@@ -17,7 +19,7 @@ import { environment } from './environments/environment';
 // same files from local storage and must not layer a second cache over them.
 const serviceWorkerEnabled =
   environment.production &&
-  !Capacitor.isNativePlatform() &&
+  !isInstalledNativePlatform() &&
   !isElectronRenderer();
 
 void bootstrapApplication(ApplicationRootComponent, {

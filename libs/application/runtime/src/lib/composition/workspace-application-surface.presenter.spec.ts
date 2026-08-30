@@ -1,7 +1,6 @@
 import { Component, Type } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { NavigationStart, Router } from '@angular/router';
-import { Capacitor } from '@capacitor/core';
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
   SETTINGS_DIALOG_COMPONENT,
@@ -20,6 +19,12 @@ import { firstValueFrom, of, Subject, type Subscription } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 
+const platform = vi.hoisted(() => ({ native: false }));
+vi.mock('@trinity/platform-native', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@trinity/platform-native')>()),
+  isInstalledNativePlatform: () => platform.native,
+}));
+
 @Component({ template: '' })
 class StubSettingsComponent {}
 @Component({ template: '' })
@@ -35,6 +40,7 @@ describe('Workspace application-surface composition adapter', () => {
   let lifetime: Subscription;
 
   beforeEach(() => {
+    platform.native = false;
     vi.clearAllMocks();
     vi.stubGlobal(
       'matchMedia',
@@ -134,7 +140,7 @@ describe('Workspace application-surface composition adapter', () => {
   });
 
   it('keeps Settings routed in installed Capacitor hosts', async () => {
-    vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
+    platform.native = true;
 
     await firstValueFrom(
       presenter().present({

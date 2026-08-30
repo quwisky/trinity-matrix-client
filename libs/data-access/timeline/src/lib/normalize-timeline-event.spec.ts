@@ -242,16 +242,35 @@ describe('normalizeTimelineEvent', () => {
     });
   });
 
-  it('leaves media events for the later Media Pipeline migration', () => {
-    expect(
-      normalizeTimelineEvent(
-        client,
-        room,
-        event({
-          getContent: () => ({ msgtype: 'm.image', body: 'photo.png' }),
+  it('normalizes media source data before the Media Pipeline presents it', () => {
+    const normalized = normalizeTimelineEvent(
+      client,
+      room,
+      event({
+        getContent: () => ({
+          msgtype: 'm.image',
+          body: 'photo.png',
+          url: 'mxc://example.org/photo',
+          info: { mimetype: 'image/png', w: 640, h: 480 },
         }),
-        null,
-      ),
-    ).toBeNull();
+      }),
+      null,
+    );
+
+    expect(normalized).toMatchObject({
+      type: 'media',
+      messageKind: 'image',
+      body: 'photo.png',
+      media: {
+        kind: 'image',
+        mxc: 'mxc://example.org/photo',
+        width: 640,
+        height: 480,
+      },
+    });
+    expect(Object.isFrozen(normalized)).toBe(true);
+    expect(normalized).not.toHaveProperty('event');
+    expect(normalized).not.toHaveProperty('room');
+    expect(normalized).not.toHaveProperty('client');
   });
 });

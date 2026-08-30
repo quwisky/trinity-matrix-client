@@ -6,9 +6,18 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { Preferences } from '@capacitor/preferences';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
+import { DevicePreferenceStorageService } from '@trinity/platform-native';
+import {
+  Observable,
+  defer,
+  firstValueFrom,
+  from,
+  map,
+  of,
+  switchMap,
+  throwError,
+} from 'rxjs';
 import {
   DEFAULT_ROOM_SORT,
   TRINITY_ROOM_SORTS,
@@ -62,6 +71,7 @@ const EMPTY: AccountOrder = { fallback: DEFAULT_ROOM_SORT, bySpace: {} };
 export class SpaceRoomOrderService {
   private readonly matrix = inject(MatrixClientService);
   private readonly injector = inject(Injector);
+  private readonly storage = inject(DevicePreferenceStorageService);
 
   /** Hydrated preferences per account id; an account absent here reads as all-defaults. */
   private readonly byAccount = signal<ReadonlyMap<string, AccountOrder>>(
@@ -184,7 +194,7 @@ export class SpaceRoomOrderService {
       this.byAccount.set(map);
 
       if (this.loaded.has(userId)) {
-        return from(persistHalf(userId, key, next));
+        return from(persistHalf(this.storage, userId, key, next));
       }
 
       // `next` was derived from all-defaults, so writing it now would erase whatever is on
@@ -224,7 +234,7 @@ export class SpaceRoomOrderService {
 
   /** Read one account's stored value, replay anything queued onto it, and adopt the result. */
   private async readAndHydrate(userId: string): Promise<boolean> {
-    const stored = await readAccountOrder(userId);
+    const stored = await readAccountOrder(this.storage, userId);
 
     if (!stored) {
       // The read FAILED — distinct from finding nothing stored. Leave the account unloaded
@@ -247,7 +257,7 @@ export class SpaceRoomOrderService {
     for (const key of queued.length
       ? (['default', 'overrides'] as const)
       : []) {
-      await persistHalf(userId, key, merged);
+      await persistHalf(this.storage, userId, key, merged);
     }
     return true;
   }
@@ -258,17 +268,17 @@ export class SpaceRoomOrderService {
  * at all. The distinction matters: "nothing stored" is a legitimate all-defaults answer that a
  * write may build on, whereas a failed read leaves the account's real preferences unknown.
  */
-async function readAccountOrder(userId: string): Promise<AccountOrder | null> {
+async function readAccountOrder(
+  storage: DevicePreferenceStorageService,
+  userId: string,
+): Promise<AccountOrder | null> {
   try {
-    const [fallback, overrides] = await Promise.all([
-      Preferences.get({ key: DEFAULT_PREFIX + userId }),
-      Preferences.get({ key: OVERRIDES_PREFIX + userId }),
-    ]);
+    const [fallback, overrides] = await firstValueFrom(
+      storage.getMany([DEFAULT_PREFIX + userId, OVERRIDES_PREFIX + userId]),
+    );
     return {
-      fallback: isRoomSortMode(fallback.value)
-        ? fallback.value
-        : DEFAULT_ROOM_SORT,
-      bySpace: parseOverrides(overrides.value),
+      fallback: isRoomSortMode(fallback) ? fallback : DEFAULT_ROOM_SORT,
+      bySpace: parseOverrides(overrides),
     };
   } catch {
     return null; // storage unavailable → defaults for the session, and no write over it
@@ -277,11 +287,13 @@ async function readAccountOrder(userId: string): Promise<AccountOrder | null> {
 
 /** Write back one half of an account's record. */
 function persistHalf(
+  storage: DevicePreferenceStorageService,
   userId: string,
   key: OrderKey,
   order: AccountOrder,
 ): Promise<void> {
   return persist(
+    storage,
     key === 'default' ? DEFAULT_PREFIX + userId : OVERRIDES_PREFIX + userId,
     key === 'default' ? order.fallback : JSON.stringify(order.bySpace),
   );
@@ -311,6 +323,10 @@ function parseOverrides(raw: string | null): Record<string, RoomSortMode> {
   }
 }
 
-async function persist(key: string, value: string): Promise<void> {
-  await Preferences.set({ key, value });
+async function persist(
+  storage: DevicePreferenceStorageService,
+  key: string,
+  value: string,
+): Promise<void> {
+  await firstValueFrom(storage.set(key, value));
 }

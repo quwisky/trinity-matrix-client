@@ -9,43 +9,13 @@ import {
 } from 'matrix-js-sdk';
 import DOMPurify from 'dompurify';
 import type { EncryptedFileInfo, MediaKind, MediaPayload } from './media.model';
-import { buildPollView, isPollStart, type PollView } from './poll';
+import { isPollStart } from './poll';
 import { MSC1767_AUDIO, MSC3245_VOICE } from './voice';
 import {
   matrixToPermalink,
   parseMatrixLink,
   parseMatrixToLink,
 } from './matrix-to';
-
-/**
- * Shared, framework-free projection of a `matrix-js-sdk` {@link MatrixEvent} into a
- * plain legacy view. The Conversations capability now owns text and system-event
- * presentation; this temporary adapter remains only for media, polls, stickers, and
- * locations until #307-#309 remove it.
- * AND the threads view render identical view models with identical decryption
- * ("unable to decrypt") and sanitization handling — no SDK types leak past here.
- */
-
-export type MessageKind =
-  | 'text'
-  | 'emote'
-  | 'notice'
-  | 'redacted'
-  | 'unsupported'
-  | 'poll'
-  | 'location'
-  | 'sticker'
-  /** A room state / membership change rendered as a compact system line (see `summary`). */
-  | 'event'
-  | MediaKind;
-
-/** A shared location (`m.location`), parsed from its `geo:` URI for the map card. */
-export interface LocationView {
-  lat: number;
-  lng: number;
-  /** The description text (e.g. the sender's label), falling back to a default. */
-  label: string;
-}
 
 /** Parse a `geo:lat,lng` URI (ignoring any `;u=` uncertainty / altitude) into coords. */
 export function parseGeoUri(
@@ -223,77 +193,6 @@ export interface ReplyPreview {
   body: string;
 }
 
-/** A single rendered timeline message (plain view model — no SDK types leak out). */
-interface LegacyMessageView {
-  id: string;
-  senderId: string;
-  senderName: string;
-  senderInitial: string;
-  senderAvatarMxc: string | null;
-  /** Plain-text fallback. */
-  body: string;
-  /** Sanitized-on-render HTML from `formatted_body` (markdown), or null for plain. */
-  html: string | null;
-  timestamp: number;
-  isOwn: boolean;
-  decryptionFailed: boolean;
-  /** True once the message has been edited (m.replace). */
-  edited: boolean;
-  /** Aggregated reactions, ordered by the SDK (count then first-seen). */
-  reactions: ReactionView[];
-  /** The message this one replies to (`m.in_reply_to`), if loaded. */
-  replyTo: ReplyPreview | null;
-  /** Local-echo send state: 'sending' / 'failed', or null once confirmed. */
-  status: 'sending' | 'failed' | null;
-  kind: MessageKind;
-  /** Media attachment for image/file/video/audio messages, else null. */
-  media: MediaPayload | null;
-  /** MSC2530 caption text on a media message (else null). */
-  caption: string | null;
-  /** Sanitized HTML for a rich media caption (else null). */
-  captionHtml: string | null;
-  /** Members whose read receipt sits on this message ("seen by"), excluding you. */
-  readReceipts: ReceiptView[];
-  /** The projected poll (question + live tallies) when `kind` is `'poll'`, else null. */
-  poll: PollView | null;
-  /** The shared location when `kind` is `'location'`, else null/absent. */
-  location?: LocationView | null;
-  /**
-   * Authenticity shield for an encrypted message (grey = caution, red = warning), or
-   * null/absent when there's nothing to flag / the message isn't encrypted. Resolved
-   * asynchronously (the crypto trust API is async), so it's supplied by the caller.
-   */
-  shield?: MessageShield | null;
-  /**
-   * The first URL in a plain-text message to show a link preview for, or null/absent.
-   * Present regardless of room encryption; consumers combine it with
-   * {@link previewEncrypted} and the user's link-preview preferences to decide whether to
-   * actually fetch a preview (which discloses the URL to the homeserver's preview proxy).
-   */
-  previewUrl?: string | null;
-  /**
-   * Whether this message's room is end-to-end encrypted (fail-closed: true when the
-   * encryption state can't be determined). Gates {@link previewUrl}: previewing an
-   * encrypted message's link would disclose it to the homeserver, so it happens only when
-   * the user has explicitly opted into previews in encrypted rooms.
-   */
-  previewEncrypted?: boolean;
-  /**
-   * For a `kind: 'event'` row, the human-readable one-line summary of the state /
-   * membership change (e.g. `Alice changed the room name to "General"`). Absent otherwise.
-   */
-  summary?: string | null;
-}
-
-/** An authenticity shield on an encrypted message, with a human-readable reason. */
-export interface MessageShield {
-  level: 'grey' | 'red';
-  /** What was found, in one line — the shield's own label. */
-  reason: string;
-  /** What that means for the reader, and what (if anything) resolves it. */
-  explanation: string;
-}
-
 /** A member who has read up to a message, for the "seen by" receipt avatars. */
 export interface ReceiptView {
   userId: string;
@@ -340,139 +239,6 @@ export function readReceiptsFor(
       avatarMxc: member?.getMxcAvatarUrl() ?? null,
     };
   });
-}
-
-/**
- * Project a single timeline (or thread) event into a {@link MessageView}, resolving
- * the sender from room state, decryption state, reactions, and reply preview.
- */
-function buildLegacyMessageView(
-  client: MatrixClient,
-  room: Room,
-  event: MatrixEvent,
-  shield: MessageShield | null = null,
-): LegacyMessageView {
-  const senderId = event.getSender() ?? '';
-  const member = room.getMember(senderId);
-  // `||` (not `??`) so an empty display name still falls back to the mxid.
-  const senderName = member?.name || senderId;
-  const decryptionFailed = event.isDecryptionFailure();
-  // A poll renders as its own kind, driven by the projected PollView rather than the
-  // usual message body — so branch before renderBody (which expects m.room.message).
-  const poll = isPollStart(event) ? buildPollView(client, room, event) : null;
-  const {
-    body,
-    html,
-    kind,
-    media,
-    caption = null,
-    captionHtml = null,
-    location = null,
-  } = poll
-    ? {
-        body: poll.question,
-        html: null,
-        kind: 'poll' as const,
-        media: null,
-        caption: null,
-        captionHtml: null,
-        location: null,
-      }
-    : renderBody(event, decryptionFailed, client.getUserId() ?? '');
-  return {
-    id: event.getId() ?? '',
-    senderId,
-    senderName,
-    senderInitial: initialOf(senderName),
-    senderAvatarMxc: member?.getMxcAvatarUrl() ?? null,
-    body,
-    html,
-    timestamp: event.getTs(),
-    isOwn: senderId === client.getUserId(),
-    decryptionFailed,
-    edited: event.replacingEvent() !== null,
-    reactions: reactionsFor(client, room, event),
-    replyTo: event.replyEventId ? replyPreview(room, event.replyEventId) : null,
-    status: mapStatus(event.status),
-    kind,
-    media,
-    caption,
-    captionHtml,
-    readReceipts: readReceiptsFor(client, room, event),
-    poll,
-    location,
-    shield,
-    // The first URL in a plain-text message, for a link-preview card. Whether it's
-    // actually previewed is decided downstream from `previewEncrypted` + the user's
-    // preferences — a preview fetch discloses the URL to the homeserver, so in an
-    // encrypted room it happens only when the user has opted in.
-    previewUrl: kind === 'text' ? firstUrl(body) : null,
-    // Fail CLOSED: if the SDK can't report the room's encryption state, treat it as
-    // encrypted so a preview requires the explicit encrypted-rooms opt-in.
-    previewEncrypted: room.hasEncryptionStateEvent?.() ?? true,
-  };
-}
-
-/**
- * The legacy builder guarded against a hostile/malformed event: any projection
- * error degrades that one event to an 'unsupported' row instead of throwing out of the
- * timeline/thread projection loop (which would leave the whole room unrenderable and
- * re-crash on every resync). Callers project untrusted, federated events, so they must
- * use this temporary adapter rather than calling its implementation directly.
- */
-export function safeBuildLegacyMessageView(
-  client: MatrixClient,
-  room: Room,
-  event: MatrixEvent,
-  shield: MessageShield | null = null,
-): LegacyMessageView {
-  try {
-    return buildLegacyMessageView(client, room, event, shield);
-  } catch {
-    return unsupportedView(client, event);
-  }
-}
-
-/** A minimal, fully-defensive 'unsupported' fallback view for an un-projectable event. */
-function unsupportedView(
-  client: MatrixClient,
-  event: MatrixEvent,
-): LegacyMessageView {
-  const read = <T>(fn: () => T, fallback: T): T => {
-    try {
-      return fn();
-    } catch {
-      return fallback;
-    }
-  };
-  const senderId = read(() => event.getSender() ?? '', '');
-  const senderName = senderId || 'Unknown';
-  return {
-    id: read(() => event.getId() ?? '', ''),
-    senderId,
-    senderName,
-    senderInitial: initialOf(senderName),
-    senderAvatarMxc: null,
-    body: '[unsupported message]',
-    html: null,
-    timestamp: read(() => event.getTs(), 0),
-    isOwn: read(() => senderId === client.getUserId(), false),
-    decryptionFailed: false,
-    edited: false,
-    reactions: [],
-    replyTo: null,
-    status: null,
-    kind: 'unsupported',
-    media: null,
-    caption: null,
-    captionHtml: null,
-    readReceipts: [],
-    poll: null,
-    location: null,
-    shield: null,
-    previewUrl: null,
-    previewEncrypted: true,
-  };
 }
 
 /** True when an event should render as a message row (message, sticker, or poll). */
@@ -1341,16 +1107,6 @@ function markCodeLines(
  */
 export const UNDECRYPTABLE_BODY = '⚠️ Unable to decrypt this message';
 
-interface RenderedBody {
-  body: string;
-  html: string | null;
-  kind: MessageKind;
-  media: MediaPayload | null;
-  caption?: string | null;
-  captionHtml?: string | null;
-  location?: LocationView | null;
-}
-
 /** Whether an event's `m.mentions` names the viewer — the only trustworthy "this is for
  * you" signal, since everything else in the content is written by the sender. */
 function mentionsViewer(
@@ -1429,129 +1185,6 @@ export function renderNormalizedTextBody(
   return { text, html, textHtml: html ?? linkifyText(text) };
 }
 
-function renderBody(
-  event: MatrixEvent,
-  decryptionFailed: boolean,
-  selfUserId: string,
-): RenderedBody {
-  if (decryptionFailed) {
-    return {
-      body: UNDECRYPTABLE_BODY,
-      html: null,
-      kind: 'unsupported',
-      media: null,
-    };
-  }
-  if (event.isRedacted()) {
-    return {
-      body: '(message deleted)',
-      html: null,
-      kind: 'redacted',
-      media: null,
-    };
-  }
-  const content = event.getContent();
-  const { text, html } = renderTextBody(
-    content,
-    !!event.replyEventId,
-    selfUserId,
-  );
-  if (event.getType() === EventType.Sticker) {
-    const rawInfo =
-      content['info'] && typeof content['info'] === 'object'
-        ? (content['info'] as Record<string, unknown>)
-        : {};
-    const media = buildMediaPayload(
-      {
-        ...content,
-        info: {
-          ...rawInfo,
-          mimetype:
-            typeof rawInfo['mimetype'] === 'string'
-              ? rawInfo['mimetype']
-              : 'image/png',
-        },
-      },
-      MsgType.Image,
-    );
-    if (!media || !validMxc(media.mxc)) {
-      return {
-        body: text || '[sticker]',
-        html: null,
-        kind: 'unsupported',
-        media: null,
-      };
-    }
-    return {
-      body: text || media.filename,
-      html: null,
-      kind: 'sticker',
-      media,
-    };
-  }
-  switch (content.msgtype) {
-    case MsgType.Location: {
-      const geo = parseGeoUri(content['geo_uri']);
-      if (!geo) {
-        return {
-          body: text || '[location]',
-          html: null,
-          kind: 'unsupported',
-          media: null,
-        };
-      }
-      const label = text || 'Shared location';
-      return {
-        body: label,
-        html: null,
-        kind: 'location',
-        media: null,
-        location: { ...geo, label },
-      };
-    }
-    case MsgType.Image:
-    case MsgType.File:
-    case MsgType.Audio:
-    case MsgType.Video: {
-      const media = buildMediaPayload(content, content.msgtype);
-      // A malformed media event (no url/file) falls back to a plain label.
-      if (!media) {
-        return {
-          body: text || `[${String(content.msgtype).replace(/^m\./, '')}]`,
-          html: null,
-          kind: 'unsupported',
-          media: null,
-        };
-      }
-      // MSC2530: a `filename` distinct from `body` marks `body` as a caption —
-      // render it alongside the media (rich when the sender formatted it).
-      const captioned =
-        typeof content['filename'] === 'string' &&
-        !!text &&
-        text !== media.filename;
-      return {
-        body: media.filename,
-        html: null,
-        kind: media.kind,
-        media,
-        caption: captioned ? text : null,
-        captionHtml: captioned ? html : null,
-      };
-    }
-    default:
-      return {
-        body: text || '[unsupported message]',
-        html: null,
-        kind: 'unsupported',
-        media: null,
-      };
-  }
-}
-
-function validMxc(value: string | null): value is string {
-  return value !== null && /^mxc:\/\/[^/\s]+\/[^\s]+$/.test(value);
-}
-
 /** MIME types we never render inline (script-bearing), forced to download-only. */
 const UNSAFE_INLINE_MIME = /^(?:image\/svg\+xml|text\/html)$/i;
 
@@ -1561,7 +1194,7 @@ const UNSAFE_INLINE_MIME = /^(?:image\/svg\+xml|text\/html)$/i;
  * derived from the msgtype, then downgraded to `'file'` (download-only) for unknown
  * or script-bearing MIME types so nothing scriptable is rendered inline.
  */
-function buildMediaPayload(
+export function normalizeMediaPayload(
   content: Record<string, unknown>,
   msgtype: string,
 ): MediaPayload | null {

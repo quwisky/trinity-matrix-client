@@ -1218,7 +1218,7 @@ describe('TimelineService', () => {
       expect(JSON.stringify(media)).not.toContain('secret-iv');
     });
 
-    it('deep-freezes legacy poll payloads at the presentation boundary', () => {
+    it('deep-freezes normalized poll payloads at the presentation boundary', () => {
       const svc = setup([
         fakeEvent({
           id: '$poll',
@@ -1243,7 +1243,7 @@ describe('TimelineService', () => {
       expect(Object.isFrozen(poll?.options[0])).toBe(true);
     });
 
-    it('freezes legacy location payloads at the presentation boundary', () => {
+    it('freezes normalized location payloads at the presentation boundary', () => {
       const svc = setup([
         fakeEvent({
           id: '$location',

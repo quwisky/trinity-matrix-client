@@ -11,7 +11,6 @@ import {
   type AccountRuntimeState,
 } from '@trinity/data-access/accounts';
 
-/** Run the guard inside an injection context (it takes no route/state). */
 function run(): Observable<boolean | UrlTree> {
   return TestBed.runInInjectionContext(
     () => authGuard({} as never, {} as never) as Observable<boolean | UrlTree>,
@@ -65,10 +64,7 @@ describe('authGuard', () => {
   });
 
   it('does not repeat a settled Application Runtime restoration', async () => {
-    runtimeState.set({
-      phase: 'settled',
-      result: result('no-accounts'),
-    });
+    runtimeState.set({ phase: 'settled', result: result('no-accounts') });
 
     expect(await firstValueFrom(run())).toBe(loginTree);
     expect(accounts.restoreSavedAccounts).not.toHaveBeenCalled();

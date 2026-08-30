@@ -15,13 +15,13 @@ import {
   schema,
   validateTree,
 } from '@angular/forms/signals';
-import { Browser } from '@capacitor/browser';
 import { TrnButton, TrnIconButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
 import { TrnLabel } from '@trinity/components/controls';
 import { TrnToastService } from '@trinity/components/overlay';
 import { runWithBusy } from '@trinity/util/ui';
 import { AuthService, type AccountManagement } from '@trinity/data-access/auth';
+import { ExternalBrowserService } from '@trinity/platform-native';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
 
@@ -102,6 +102,7 @@ const passwordSchema = schema<PasswordModel>((path) => {
 })
 export class AccountSectionComponent {
   private readonly auth = inject(AuthService);
+  private readonly externalBrowser = inject(ExternalBrowserService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -119,7 +120,10 @@ export class AccountSectionComponent {
   openAccountManagement(): void {
     const management = this.accountManagement();
     if (management) {
-      void Browser.open({ url: management.url });
+      this.externalBrowser
+        .open(management.url)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe();
     }
   }
 

@@ -1,6 +1,6 @@
 import { Injectable, inject, signal, type Type } from '@angular/core';
 import { NavigationStart, Router } from '@angular/router';
-import { Capacitor } from '@capacitor/core';
+import { isInstalledNativePlatform } from '@trinity/platform-native';
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
   SETTINGS_DIALOG_COMPONENT,
@@ -121,7 +121,7 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
     if (surface.kind === 'settings') {
       // The shared artifact runs unchanged in every host. Installed Capacitor apps keep
       // native history; Web/PWA and Electron use the application dialog presenter.
-      if (Capacitor.isNativePlatform() || !this.settingsLoader) {
+      if (isInstalledNativePlatform() || !this.settingsLoader) {
         return this.navigate(request);
       }
       return this.presentDialog(request, this.settingsLoader, true, {

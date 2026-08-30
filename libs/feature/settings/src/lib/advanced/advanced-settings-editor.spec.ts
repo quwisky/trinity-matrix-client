@@ -1,5 +1,4 @@
 import { Component, input, output, signal } from '@angular/core';
-import { Capacitor } from '@capacitor/core';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { APP_CONFIG_ENTRIES, type ConfigEntry } from '@trinity/platform-native';
 import { render } from '@trinity/testing';
@@ -10,6 +9,12 @@ import {
   CONFIG_EDITOR_LOADER,
   type ConfigEditorHost,
 } from './config-editor-loader';
+
+const platform = vi.hoisted(() => ({ native: false }));
+vi.mock('@trinity/platform-native', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@trinity/platform-native')>()),
+  supportsRichConfigEditing: () => !platform.native,
+}));
 
 /**
  * The rich editor and the platform gate around it.
@@ -69,7 +74,7 @@ function documentJson(settings: object): string {
 describe('AdvancedSettingsComponent — the rich editor', () => {
   beforeEach(() => {
     palette.set('violet');
-    vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(false);
+    platform.native = false;
   });
 
   afterEach(() => vi.restoreAllMocks());
@@ -177,7 +182,7 @@ describe('AdvancedSettingsComponent — the rich editor', () => {
 describe('AdvancedSettingsComponent — the mobile app', () => {
   beforeEach(() => {
     palette.set('violet');
-    vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
+    platform.native = true;
   });
 
   afterEach(() => vi.restoreAllMocks());

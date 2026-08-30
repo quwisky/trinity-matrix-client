@@ -28,9 +28,6 @@
       "@trinity/runtime/preferences": [
         "./libs/runtime/preferences/src/index.ts"
       ],
-      "@trinity/platform-native/qr-code": [
-        "./libs/platform-native/src/lib/qr-code.service.ts"
-      ],
       "@trinity/data-access/matrix-client": [
         "./libs/data-access/matrix-client/src/index.ts"
       ],

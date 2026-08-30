@@ -40,7 +40,7 @@ function validInput() {
       "import { provideTrinityApplication, startApplicationRuntime } from '@trinity/application/runtime';",
       'provideTrinityApplication({',
       'provideServiceWorker(',
-      '!Capacitor.isNativePlatform()',
+      '!isInstalledNativePlatform()',
       '!isElectronRenderer()',
       '.then(startApplicationRuntime)',
     ].join('\n'),

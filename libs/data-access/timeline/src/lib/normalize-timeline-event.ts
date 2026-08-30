@@ -6,14 +6,19 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import {
+  buildPollView,
   initialOf,
+  isPollStart,
   mapStatus,
+  normalizeMediaPayload,
+  parseGeoUri,
   reactionsFor,
   readReceiptsFor,
   replyPreview,
 } from '@trinity/util/matrix';
 import type {
   MessageShield,
+  NormalizedMediaEvent,
   NormalizedSystemChange,
   NormalizedTimelineEvent,
   ReactionView,
@@ -32,14 +37,6 @@ const SYSTEM_EVENT_TYPES = new Set<string>([
   EventType.RoomGuestAccess,
   EventType.RoomEncryption,
   EventType.RoomCreate,
-]);
-
-const LEGACY_MESSAGE_TYPES = new Set<unknown>([
-  MsgType.Image,
-  MsgType.File,
-  MsgType.Audio,
-  MsgType.Video,
-  MsgType.Location,
 ]);
 
 /** Whether a raw event is a supported, non-redacted Matrix system event. */
@@ -86,6 +83,75 @@ function mentionsViewer(
     Array.isArray(userIds) &&
     userIds.some((value) => typeof value === 'string' && value === viewerId)
   );
+}
+
+function validMxc(value: string | null): value is string {
+  return value !== null && /^mxc:\/\/[^/\s]+\/[^\s]+$/.test(value);
+}
+
+function normalizeMedia(
+  common: ReturnType<typeof normalizeCommon>,
+  content: Readonly<Record<string, unknown>>,
+  msgtype: string,
+  event: MatrixEvent,
+  viewerId: string,
+): NormalizedMediaEvent | null {
+  const source = normalizeMediaPayload(
+    content as Record<string, unknown>,
+    msgtype,
+  );
+  if (!source) return null;
+  const body = typeof content['body'] === 'string' ? content['body'] : '';
+  const captioned =
+    typeof content['filename'] === 'string' &&
+    body !== '' &&
+    body !== source.filename;
+  return Object.freeze({
+    ...common,
+    type: 'media',
+    messageKind: source.kind,
+    media: Object.freeze(source),
+    body: source.filename,
+    caption: captioned ? body : null,
+    formattedCaption:
+      captioned &&
+      content['format'] === 'org.matrix.custom.html' &&
+      typeof content['formatted_body'] === 'string'
+        ? content['formatted_body']
+        : null,
+    replyFallback: read(() => Boolean(event.replyEventId), false),
+    addressesViewer: mentionsViewer(content, viewerId),
+  });
+}
+
+function normalizeSticker(
+  common: ReturnType<typeof normalizeCommon>,
+  content: Readonly<Record<string, unknown>>,
+): NormalizedMediaEvent | null {
+  const rawInfo = record(content['info']);
+  const source = normalizeMediaPayload(
+    {
+      ...content,
+      info: {
+        ...rawInfo,
+        mimetype: string(rawInfo['mimetype']) ?? 'image/png',
+      },
+    },
+    MsgType.Image,
+  );
+  if (!source || !validMxc(source.mxc)) return null;
+  const body = string(content['body']) ?? source.filename;
+  return Object.freeze({
+    ...common,
+    type: 'media',
+    messageKind: 'sticker',
+    media: Object.freeze(source),
+    body,
+    caption: null,
+    formattedCaption: null,
+    replyFallback: false,
+    addressesViewer: false,
+  });
 }
 
 function normalizeReactions(
@@ -289,8 +355,8 @@ function normalizeSystemChange(
 }
 
 /**
- * Matrix adapter for the #305 slice. It either returns a frozen, SDK-free text/system
- * record, an explicit safe fallback, or null when a later migration owns the event kind.
+ * Matrix-facing adapter for Message Presentation. Every displayable message kind is
+ * normalized into frozen SDK-free data before it reaches feature code.
  */
 export function normalizeTimelineEvent(
   client: MatrixClient,
@@ -312,6 +378,22 @@ export function normalizeTimelineEvent(
   }
   if (read(() => event.isRedacted(), false)) {
     return unsupported(client, room, event, shield, 'redacted-message', false);
+  }
+
+  if (read(() => isPollStart(event), false)) {
+    const poll = read(() => buildPollView(client, room, event), null);
+    return poll
+      ? Object.freeze({
+          ...normalizeCommon(client, room, event, shield),
+          type: 'poll',
+          poll: Object.freeze({
+            ...poll,
+            options: Object.freeze(
+              poll.options.map((option) => Object.freeze({ ...option })),
+            ),
+          }),
+        })
+      : unsupported(client, room, event, shield, 'unsupported-message', false);
   }
 
   if (SYSTEM_EVENT_TYPES.has(type)) {
@@ -345,11 +427,67 @@ export function normalizeTimelineEvent(
     }
   }
 
-  if (type !== EventType.RoomMessage) return null;
+  if (type !== EventType.RoomMessage && type !== EventType.Sticker) return null;
   try {
     const content = record(event.getContent());
+    const common = normalizeCommon(client, room, event, shield);
+    if (type === EventType.Sticker) {
+      return (
+        normalizeSticker(common, content) ??
+        unsupported(
+          client,
+          room,
+          event,
+          shield,
+          'unsupported-message',
+          false,
+          string(content['body']) ?? '[sticker]',
+        )
+      );
+    }
     const msgtype = content['msgtype'];
-    if (LEGACY_MESSAGE_TYPES.has(msgtype)) return null;
+    const viewerId =
+      string(read<unknown>(() => client.getUserId(), null)) ?? '';
+    if (msgtype === MsgType.Location) {
+      const geo = parseGeoUri(content['geo_uri']);
+      if (!geo) {
+        return unsupported(
+          client,
+          room,
+          event,
+          shield,
+          'unsupported-message',
+          false,
+          string(content['body']) ?? '[location]',
+        );
+      }
+      const body = string(content['body']) ?? 'Shared location';
+      return Object.freeze({
+        ...common,
+        type: 'location',
+        body,
+        location: Object.freeze({ ...geo, label: body }),
+      });
+    }
+    if (
+      msgtype === MsgType.Image ||
+      msgtype === MsgType.File ||
+      msgtype === MsgType.Audio ||
+      msgtype === MsgType.Video
+    ) {
+      return (
+        normalizeMedia(common, content, msgtype, event, viewerId) ??
+        unsupported(
+          client,
+          room,
+          event,
+          shield,
+          'unsupported-message',
+          false,
+          string(content['body']) ?? `[${String(msgtype).replace(/^m\./, '')}]`,
+        )
+      );
+    }
     if (
       msgtype !== MsgType.Text &&
       msgtype !== MsgType.Emote &&
@@ -375,10 +513,8 @@ export function normalizeTimelineEvent(
         false,
       );
     }
-    const viewerId =
-      string(read<unknown>(() => client.getUserId(), null)) ?? '';
     return Object.freeze({
-      ...normalizeCommon(client, room, event, shield),
+      ...common,
       type: 'text',
       messageKind:
         msgtype === MsgType.Emote

@@ -8,11 +8,7 @@
     "type:feature",
     "scope:matrix",
     "role:application",
-    "capability:workspace",
-    "capability:conversations",
-    "capability:room-library",
-    "capability:room-administration",
-    "capability:discovery"
+    "capability:workspace"
   ],
   "targets": {
     "test": {},

@@ -1,5 +1,6 @@
-import { Injectable, computed, signal } from '@angular/core';
-import { Preferences } from '@capacitor/preferences';
+import { Injectable, computed, inject, signal } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
+import { DevicePreferenceStorageService } from '@trinity/platform-native';
 import {
   isGifProviderId,
   retiredGifProvider,
@@ -21,6 +22,8 @@ export const DEFAULT_GIF_PROVIDER: GifProviderId = 'klipy';
  */
 @Injectable({ providedIn: 'root' })
 export class GifSettingsService {
+  private readonly storage = inject(DevicePreferenceStorageService);
+
   private readonly _provider = signal<GifProviderId>(DEFAULT_GIF_PROVIDER);
   /** The active GIF provider (defaults to KLIPY even before a key is set). */
   readonly provider = this._provider.asReadonly();
@@ -42,7 +45,7 @@ export class GifSettingsService {
   /** Read the saved config. Wired as an app initializer at startup. */
   async init(): Promise<void> {
     try {
-      const { value } = await Preferences.get({ key: CONFIG_KEY });
+      const value = await firstValueFrom(this.storage.get(CONFIG_KEY));
       const parsed = value ? (JSON.parse(value) as Partial<GifConfig>) : null;
       if (!parsed) {
         return;
@@ -74,10 +77,12 @@ export class GifSettingsService {
     const key = apiKey.trim();
     this._provider.set(provider);
     this._apiKey.set(key);
-    void Preferences.set({
-      key: CONFIG_KEY,
-      value: JSON.stringify({ provider, apiKey: key } satisfies GifConfig),
-    }).catch(() => undefined);
+    void firstValueFrom(
+      this.storage.set(
+        CONFIG_KEY,
+        JSON.stringify({ provider, apiKey: key } satisfies GifConfig),
+      ),
+    ).catch(() => undefined);
   }
 
   /** Clear the API key (disabling the picker); leaves the provider choice intact. */
@@ -86,12 +91,14 @@ export class GifSettingsService {
     // Rewrite the blob with an empty key rather than removing it: provider and
     // apiKey share one stored value, so a remove() would drop the provider too
     // and the next boot would silently fall back to DEFAULT_GIF_PROVIDER.
-    void Preferences.set({
-      key: CONFIG_KEY,
-      value: JSON.stringify({
-        provider: this._provider(),
-        apiKey: '',
-      } satisfies GifConfig),
-    }).catch(() => undefined);
+    void firstValueFrom(
+      this.storage.set(
+        CONFIG_KEY,
+        JSON.stringify({
+          provider: this._provider(),
+          apiKey: '',
+        } satisfies GifConfig),
+      ),
+    ).catch(() => undefined);
   }
 }

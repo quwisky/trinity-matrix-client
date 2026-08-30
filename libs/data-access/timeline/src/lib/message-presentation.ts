@@ -2,6 +2,7 @@ import {
   firstUrl,
   renderNormalizedTextBody,
   stripReplyFallbackText,
+  type MediaPayload,
   type PollView,
 } from '@trinity/util/matrix';
 import { type PresentedMediaReference } from '@trinity/data-access/media';
@@ -230,6 +231,28 @@ export interface NormalizedSystemEvent extends NormalizedCommon {
   readonly change: NormalizedSystemChange;
 }
 
+export interface NormalizedMediaEvent extends NormalizedCommon {
+  readonly type: 'media';
+  readonly messageKind: 'image' | 'file' | 'video' | 'audio' | 'sticker';
+  readonly media: MediaPayload;
+  readonly body: string;
+  readonly caption: string | null;
+  readonly formattedCaption: string | null;
+  readonly replyFallback: boolean;
+  readonly addressesViewer: boolean;
+}
+
+export interface NormalizedLocationEvent extends NormalizedCommon {
+  readonly type: 'location';
+  readonly body: string;
+  readonly location: LocationView;
+}
+
+export interface NormalizedPollEvent extends NormalizedCommon {
+  readonly type: 'poll';
+  readonly poll: MessagePollView;
+}
+
 export interface NormalizedUnsupportedEvent extends NormalizedCommon {
   readonly type: 'unsupported';
   readonly fallback:
@@ -241,7 +264,12 @@ export interface NormalizedUnsupportedEvent extends NormalizedCommon {
 }
 
 export type NormalizedTimelineEvent =
-  NormalizedTextEvent | NormalizedSystemEvent | NormalizedUnsupportedEvent;
+  | NormalizedTextEvent
+  | NormalizedSystemEvent
+  | NormalizedMediaEvent
+  | NormalizedLocationEvent
+  | NormalizedPollEvent
+  | NormalizedUnsupportedEvent;
 
 export interface MessagePresentationMetrics {
   readonly eventCount: number;
@@ -473,6 +501,7 @@ function immutableSystemCommon(event: NormalizedSystemEvent) {
 /** Present one already-normalized event; null means a supported no-op system change. */
 export function presentNormalizedTimelineEvent(
   event: NormalizedTimelineEvent,
+  presentMedia?: (media: MediaPayload) => PresentedMediaReference,
 ): MessageView | null {
   if (event.type === 'text') {
     const common = immutableCommon(event);
@@ -508,6 +537,75 @@ export function presentNormalizedTimelineEvent(
       previewEncrypted: true,
       summary: line.text,
       systemCategory: line.category,
+    });
+  }
+
+  if (event.type === 'media') {
+    if (!presentMedia) {
+      throw new Error('Media presentation requires the Media Pipeline');
+    }
+    const renderedCaption = event.caption
+      ? renderNormalizedTextBody(
+          event.caption,
+          event.formattedCaption,
+          event.replyFallback,
+          event.addressesViewer,
+        )
+      : null;
+    return Object.freeze({
+      ...immutableCommon(event),
+      body: event.body,
+      html: null,
+      decryptionFailed: false,
+      kind: event.messageKind,
+      media: presentMedia(event.media),
+      caption: renderedCaption?.text ?? null,
+      captionHtml: renderedCaption?.html ?? null,
+      poll: null,
+      location: null,
+      previewUrl: null,
+      previewEncrypted: true,
+      summary: null,
+      systemCategory: null,
+    });
+  }
+
+  if (event.type === 'location') {
+    return Object.freeze({
+      ...neutral(immutableCommon(event)),
+      body: event.body,
+      html: null,
+      decryptionFailed: false,
+      kind: 'location',
+      location: Object.freeze({ ...event.location }),
+      previewUrl: null,
+      previewEncrypted: true,
+      summary: null,
+      systemCategory: null,
+    });
+  }
+
+  if (event.type === 'poll') {
+    return Object.freeze({
+      ...immutableCommon(event),
+      body: event.poll.question,
+      html: null,
+      decryptionFailed: false,
+      kind: 'poll',
+      media: null,
+      caption: null,
+      captionHtml: null,
+      poll: Object.freeze({
+        ...event.poll,
+        options: Object.freeze(
+          event.poll.options.map((option) => Object.freeze({ ...option })),
+        ),
+      }),
+      location: null,
+      previewUrl: null,
+      previewEncrypted: true,
+      summary: null,
+      systemCategory: null,
     });
   }
 

@@ -227,8 +227,8 @@ that workflow.
     (`await Promise.resolve()`).
 
 `projectFromClient` must be called from a field initializer or constructor. It injects Projection
-Runtime and creates a compatibility account-change `effect`, so both need an injection context
-owned by the service's injector.
+Runtime and creates its account-change effect, so both need an injection context owned by the
+service's injector.
 
 ### Normalizing events for Message Presentation
 
@@ -237,10 +237,11 @@ code. `normalizeTimelineEvent` is the Matrix-facing adapter: it reads federated 
 resolves the bounded sender, reply, reaction, receipt, shield, and room context needed by the row,
 and emits a frozen discriminated record. Throwing getters and malformed text become an explicit
 unsupported record instead of aborting the room projection. Media, polls, stickers, and locations
-remain on the named legacy adapter until #307-#309 migrate those branches.
+cross that same normalizer; media is then exchanged for an opaque Media Pipeline reference.
 
 Message Presentation accepts only those normalized records. It owns text/emote/notice rendering,
-supported membership and room-state summaries, immutable authenticity-shield data, formatted-body
+supported membership and room-state summaries, immutable authenticity-shield data, rich message
+models, formatted-body
 sanitization, the HTTP(S)-only link-preview candidate policy, and safe redacted, undecryptable, and
 unsupported fallbacks. The main timeline and thread timeline both call the same production
 entrypoint, and feature code imports `MessageView` from `@trinity/data-access/timeline` rather than

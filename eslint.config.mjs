@@ -21,6 +21,12 @@ const KIT_IMPORT_MESSAGE =
 const SDK_IMPORT_MESSAGE =
   'Only libs/data-access/* (and libs/util/matrix, which models the SDK types) may import matrix-js-sdk. Re-export what you need from the data-access lib that owns the domain.';
 
+const PLATFORM_VENDOR_IMPORTS = [
+  '@capacitor/*',
+  '@aparajita/capacitor-*',
+  '@capawesome/capacitor-*',
+];
+
 export default defineConfig([
   globalIgnores([
     '**/dist',
@@ -93,6 +99,7 @@ export default defineConfig([
                 '@angular/cdk*',
                 '@ng-icons*',
                 '@ctrl/ngx-emoji-mart*',
+                ...PLATFORM_VENDOR_IMPORTS,
               ],
             },
             {
@@ -102,6 +109,7 @@ export default defineConfig([
                 '@angular/cdk*',
                 '@ng-icons*',
                 '@ctrl/ngx-emoji-mart*',
+                ...PLATFORM_VENDOR_IMPORTS,
               ],
             },
             {
@@ -111,6 +119,7 @@ export default defineConfig([
                 '@angular/cdk*',
                 '@ng-icons*',
                 '@ctrl/ngx-emoji-mart*',
+                ...PLATFORM_VENDOR_IMPORTS,
               ],
             },
             {
@@ -123,12 +132,17 @@ export default defineConfig([
               ],
             },
             {
+              sourceTag: 'type:ui',
+              bannedExternalImports: PLATFORM_VENDOR_IMPORTS,
+            },
+            {
               sourceTag: 'type:app',
               bannedExternalImports: [
                 '@spartan-ng/brain*',
                 '@angular/cdk*',
                 '@ng-icons*',
                 '@ctrl/ngx-emoji-mart*',
+                ...PLATFORM_VENDOR_IMPORTS,
               ],
             },
             {

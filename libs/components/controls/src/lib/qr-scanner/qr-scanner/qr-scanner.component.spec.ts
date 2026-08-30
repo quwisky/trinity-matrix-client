@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { QrCodeService } from '@trinity/platform-native/qr-code';
+import { QrCodeService } from '@trinity/platform-native';
 import { fireEvent, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

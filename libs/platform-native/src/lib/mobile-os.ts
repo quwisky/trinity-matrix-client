@@ -6,6 +6,11 @@ interface UserAgentData {
   readonly mobile?: boolean;
 }
 
+/** Whether the renderer is running inside an installed Capacitor host. */
+export function isInstalledNativePlatform(): boolean {
+  return Capacitor.isNativePlatform();
+}
+
 /**
  * Whether this is running on a phone or tablet — iOS or Android.
  *

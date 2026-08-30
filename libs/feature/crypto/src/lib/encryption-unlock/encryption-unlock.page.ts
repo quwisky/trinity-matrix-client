@@ -14,9 +14,9 @@ import { NgTemplateOutlet } from '@angular/common';
 import { FormField, disabled, form } from '@angular/forms/signals';
 import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Browser } from '@capacitor/browser';
 import { Observable, finalize, firstValueFrom } from 'rxjs';
 import { TrustService } from '@trinity/data-access/trust';
+import { ExternalBrowserService } from '@trinity/platform-native';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
 import { PageHeaderComponent } from '@trinity/components/navigation-layout';
 import { TrnButton } from '@trinity/components/controls';
@@ -61,6 +61,7 @@ import {
 export class EncryptionUnlockPage {
   private readonly crypto = inject(TrustService);
   private readonly alert = inject(TrnAlertService);
+  private readonly externalBrowser = inject(ExternalBrowserService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   // Present only when opened as a dialog (desktop); null on the routed page.
@@ -218,7 +219,10 @@ export class EncryptionUnlockPage {
       // Rendered as a link too — see providerResetUrl. Native has no popup blocker, so
       // this still opens straight away there.
       this.providerResetUrl.set(failure.providerUrl);
-      void Browser.open({ url: failure.providerUrl });
+      this.externalBrowser
+        .open(failure.providerUrl)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe();
     }
   }
 

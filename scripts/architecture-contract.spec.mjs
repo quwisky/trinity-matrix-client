@@ -7,7 +7,7 @@ import {
   findCycles,
   validateDependencies,
   validateEntrypoints,
-  validateFrozenMeasurements,
+  validateLedger,
   validateMapFreshness,
   validateQualityBaselines,
   validateRoleDirection,
@@ -133,23 +133,39 @@ describe('architecture contract', () => {
       },
     },
     {
-      name: 'changed source snapshots',
-      expected: 'changed from its frozen value 10 to 11',
+      name: 'temporary ledgers in the contracted phase',
+      expected: 'Contracted architecture cannot retain secondary entrypoint',
       run(errors) {
-        validateFrozenMeasurements(
-          { appInitializers: 11 },
-          { sourceBaselines: { appInitializers: { value: 10 } } },
+        validateLedger(
+          {
+            phase: 'contracted',
+            roles: { kernel: ['kernel'] },
+            classificationExceptions: [],
+            secondaryEntrypoints: [
+              { alias: '@trinity/legacy', reason: 'legacy', removeBy: '#1' },
+            ],
+            multiCapabilityProjects: [],
+            dependencyExceptions: [],
+            sourceBaselines: {},
+          },
           errors,
         );
       },
     },
     {
-      name: 'vacuous source sweeps',
-      expected: 'source sweep found no matches',
+      name: 'source baselines in the contracted phase',
+      expected: 'Contracted architecture cannot retain source baselines',
       run(errors) {
-        validateFrozenMeasurements(
-          { appInitializers: 0 },
-          { sourceBaselines: { appInitializers: { value: 1 } } },
+        validateLedger(
+          {
+            phase: 'contracted',
+            roles: { kernel: ['kernel'] },
+            classificationExceptions: [],
+            secondaryEntrypoints: [],
+            multiCapabilityProjects: [],
+            dependencyExceptions: [],
+            sourceBaselines: { legacyLines: { value: 0 } },
+          },
           errors,
         );
       },

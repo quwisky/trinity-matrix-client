@@ -4,7 +4,7 @@ import {
   computed,
   input,
 } from '@angular/core';
-import { type LocationView } from '@trinity/util/matrix';
+import { type LocationView } from '@trinity/data-access/timeline';
 import { TrnIconComponent } from '@trinity/components/foundations';
 
 /**
