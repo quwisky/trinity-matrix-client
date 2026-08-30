@@ -48,13 +48,14 @@ commands you can run locally, so nothing in CI is a black box.
 
 ## Where to go next
 
-| If you want to                                | Read                                               |
-| --------------------------------------------- | -------------------------------------------------- |
-| Get the repo running for the first time       | [Getting started](getting-started.md)              |
-| Look up a command                             | [Commands](commands.md)                            |
-| Understand what proves a change correct       | [Testing](testing.md)                              |
-| Know the code style and commit rules          | [Conventions](conventions.md)                      |
-| Understand the CI jobs and how a release cuts | [CI and releases](ci-and-releases.md)              |
-| Understand how the code is organised          | [Architecture](../architecture/index.md)           |
-| Check a pinned version or a known gotcha      | [The stack](../reference/stack.md)                 |
-| Fix something that is broken on your machine  | [Troubleshooting](../reference/troubleshooting.md) |
+| If you want to                                | Read                                                |
+| --------------------------------------------- | --------------------------------------------------- |
+| Get the repo running for the first time       | [Getting started](getting-started.md)               |
+| Look up a command                             | [Commands](commands.md)                             |
+| Understand what proves a change correct       | [Testing](testing.md)                               |
+| Understand the system-test ownership model    | [End-to-end test architecture](e2e-architecture.md) |
+| Know the code style and commit rules          | [Conventions](conventions.md)                       |
+| Understand the CI jobs and how a release cuts | [CI and releases](ci-and-releases.md)               |
+| Understand how the code is organised          | [Architecture](../architecture/index.md)            |
+| Check a pinned version or a known gotcha      | [The stack](../reference/stack.md)                  |
+| Fix something that is broken on your machine  | [Troubleshooting](../reference/troubleshooting.md)  |

@@ -194,7 +194,28 @@ The package scripts above are stable aliases for the explicit `trinity-android` 
 
 ## End to end harnesses
 
-There are three distinct kinds, and they do not share an entry point.
+The typed suite registry gives every environment one canonical entrypoint while focused historical
+commands remain behavior-compatible Nx aliases during the migration:
+
+| Command               | Selection                                                         |
+| --------------------- | ----------------------------------------------------------------- |
+| `pnpm e2e`            | Pull-request-classified suites                                    |
+| `pnpm e2e:all`        | Every suite available on this host                                |
+| `pnpm e2e:browser`    | Canonical Synapse browser journeys and shipped-interface evidence |
+| `pnpm e2e:web`        | Production Web/PWA contract                                       |
+| `pnpm e2e:components` | Storybook, styling and scrollbar contracts                        |
+| `pnpm e2e:protocol`   | Verification, crypto, media and other protocol/system drivers     |
+| `pnpm e2e:electron`   | Electron shell smoke and full desktop journeys                    |
+| `pnpm e2e:android`    | Installed API 36 WebView journeys                                 |
+
+`pnpm e2e:all` is the E2E portion of the local delivery gate while GitHub Actions capacity is
+unavailable. It validates the registry and all selected prerequisites before starting the first
+suite, then runs lifecycle owners in a safe order and stops at the first failure. Docker and the
+Android AVD are mandatory on the delivery host. See
+[End-to-end test architecture](e2e-architecture.md) for ownership, CI tiers, caching,
+serialization, aliases and artifacts.
+
+The sections below document the focused suites and their current transitional implementations.
 
 ### The app journey suite
 

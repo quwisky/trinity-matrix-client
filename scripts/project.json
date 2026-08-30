@@ -27,6 +27,8 @@
         "{workspaceRoot}/libs/**/*.scss",
         "{workspaceRoot}/libs/**/project.json",
         "{workspaceRoot}/ios/**/*.swift",
+        "{workspaceRoot}/android/project.json",
+        "{workspaceRoot}/electron/project.json",
         "{workspaceRoot}/e2e/project.json",
         "{workspaceRoot}/e2e/**/*.mts",
         "{workspaceRoot}/e2e/**/*.mjs",
@@ -37,6 +39,8 @@
         "{workspaceRoot}/tsconfig.base.json",
         "{workspaceRoot}/docs/reference/stack.md",
         "{workspaceRoot}/docs/architecture/matrix-and-encryption.md",
+        "{workspaceRoot}/.github/workflows/*.yml",
+        "{workspaceRoot}/package.json",
         "{workspaceRoot}/pnpm-lock.yaml"
       ]
     }

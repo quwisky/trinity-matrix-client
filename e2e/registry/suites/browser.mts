@@ -1,0 +1,41 @@
+import { defineSuites } from '../types.mts';
+
+export const BROWSER_E2E_SUITES = defineSuites([
+  {
+    id: 'browser.canonical',
+    environment: 'browser',
+    capabilities: ['cross-capability'],
+    contractTypes: ['journey', 'security'],
+    currentTarget: 'trinity-e2e:e2e',
+    targetProject: 'trinity-e2e-browser',
+    prerequisites: ['docker', 'playwright-chromium'],
+    ciTier: 'pull-request',
+    cachePolicy: 'never',
+    serializationKeys: ['synapse'],
+    timeoutClass: 'long',
+    canonicalScript: 'e2e:browser',
+    currentArtifactRoot: 'dist/.playwright/e2e',
+    targetArtifactRoot: 'dist/.playwright/browser/canonical',
+    sourceEntrypoints: ['e2e/playwright.config.mts'],
+  },
+  {
+    id: 'browser.shipped-interface',
+    environment: 'browser',
+    capabilities: ['cross-capability', 'design-system'],
+    contractTypes: ['accessibility', 'journey', 'visual'],
+    currentTarget: 'trinity-e2e:phase7-e2e',
+    targetProject: 'trinity-e2e-browser',
+    prerequisites: ['docker', 'playwright-chromium', 'playwright-webkit'],
+    ciTier: 'pull-request',
+    cachePolicy: 'never',
+    serializationKeys: ['synapse'],
+    timeoutClass: 'long',
+    canonicalScript: 'e2e:browser',
+    currentArtifactRoot: 'dist/.playwright/phase7',
+    targetArtifactRoot: 'dist/.playwright/browser/shipped-interface',
+    sourceEntrypoints: [
+      'e2e/playwright.phase7.config.mts',
+      'scripts/run-phase7-e2e.mjs',
+    ],
+  },
+]);

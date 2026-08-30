@@ -82,7 +82,9 @@
     {
       "plugin": "@nx/playwright/plugin",
       "options": {
-        "targetName": "e2e"
+        "targetName": "e2e",
+        "ciTargetName": "",
+        "//": "The canonical suite owns one fixed-port Synapse stack. Disable Nx atomization: per-spec inferred CI targets would each start that same stack, overlap by default, and cache external-process results. CI and local execution both use the serialized uncached e2e target instead."
       }
     },
     {
