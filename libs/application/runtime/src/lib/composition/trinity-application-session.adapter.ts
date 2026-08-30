@@ -2,10 +2,8 @@ import { Location } from '@angular/common';
 import { Injectable, Injector, effect, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { SwUpdate, type VersionReadyEvent } from '@angular/service-worker';
-import {
-  NavigationFocusService,
-  type ApplicationRuntimeWarning,
-} from '@trinity/application/runtime';
+import type { ApplicationRuntimeWarning } from '../application-runtime.models';
+import { NavigationFocusService } from '../navigation-focus.service';
 import { BadgeCoordinator } from '@trinity/application/badge';
 import { WorkspaceBackService } from '@trinity/application/workspace';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';

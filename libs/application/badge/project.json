@@ -5,7 +5,7 @@
   "sourceRoot": "libs/application/badge/src",
   "prefix": "trn",
   "tags": [
-    "type:feature",
+    "type:data-access",
     "scope:matrix",
     "role:application",
     "capability:badge"

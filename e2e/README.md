@@ -1,9 +1,11 @@
 # Trinity e2e
 
-> **Three app-journey targets, one `e2e/` root.** App-level user journeys (login,
+> **Four app-journey targets, one `e2e/` root.** App-level user journeys (login,
 > settings, theme, profile, devices) are **Playwright specs** in `e2e/playwright/`
 > (web), `e2e/android/` (installed Capacitor WebView), and `e2e/electron/` (desktop) — run the web suite with
-> `pnpm exec nx e2e trinity-e2e` (`@playwright/test`, Chromium; it builds the dev
+> `pnpm e2e:web` for the production Web/PWA host contract, or
+> `pnpm exec nx e2e trinity-e2e` for the Synapse-backed browser journeys
+> (`@playwright/test`, Chromium; the latter builds the dev
 > bundle, serves `www/`, and spins the Synapse harness below up/down via global
 > setup, skipping auth specs when Docker is absent locally — under `CI` a missing
 > harness fails the run instead, unless `TRINITY_E2E_ALLOW_NO_SYNAPSE=1`) and the desktop suite with
@@ -14,12 +16,15 @@
 > media, emoji composer) kept as raw `playwright` Node harnesses. All of it reuses
 > the same disposable Synapse (`e2e/synapse/`).
 >
-> The Playwright configs live at `e2e/playwright*.config.mts`. The web target is
-> inferred from `playwright.config.mts`; Android is explicit because its Nx target must
-> serialize and disable caching around external emulator state.
+> The Playwright configs live at `e2e/playwright*.config.mts`. The Synapse-backed web target is
+> inferred from `playwright.config.mts`; the production host target explicitly owns an
+> uncached production-build/offline-browser lifecycle, while Android is explicit and
+> serialized because it owns external emulator state.
 
-The web and protocol wrappers build the development bundle for you. Android instead
-builds the production web output and syncs it into the APK before every run.
+The Synapse-backed web and protocol wrappers build the development bundle for you.
+`pnpm e2e:web` builds the production PWA and verifies its routing, manifest, service
+worker, offline shell, and crypto WASM without Docker. Android builds the same production
+web output and syncs it into the APK before every run.
 
 > On a **containerised CI runner** (a job container talking to a separate Docker
 > daemon), set `TRINITY_E2E_STATE_DIR` and `TRINITY_E2E_NETWORK_CONTAINER` — bind
@@ -36,6 +41,7 @@ e2e/
               with the HS env, tear the harness down (the `pnpm e2e:*` entrypoints)
   playwright/ @nx/playwright web app-journey specs (app, navigation, settings) +
               support/ (global-setup/teardown, serve-www) — `nx e2e trinity-e2e`
+  web/        production Web/PWA host contract — `pnpm e2e:web`
   android/    API 36 Capacitor WebView fixture, native-only specs, and device
               orchestrator — `pnpm e2e:android`
   electron/   @nx/playwright Electron specs + support/launch — `pnpm electron:e2e`
@@ -53,6 +59,7 @@ disposable Synapse. Paths are relative to the repo root, so always invoke via th
 
 | Command                                       | What it does                                                                                                                               |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm e2e:web`                                | Build the production Web/PWA host and verify deep links, installability, service-worker control, offline routing, and cached crypto WASM.  |
 | `pnpm smoke:login`                            | Unauthenticated → `/login`, real `.well-known` discovery for matrix.org.                                                                   |
 | `pnpm spike:chromium` / `pnpm spike:webkit`   | In-app E2EE crypto spike.                                                                                                                  |
 | `pnpm e2e:verify`                             | **Two-client device verification (emoji SAS)** — full live flow against a disposable Synapse.                                              |

@@ -7,13 +7,13 @@ import {
   Router,
 } from '@angular/router';
 import { SwUpdate } from '@angular/service-worker';
-import {
-  type ApplicationRuntimeAdapter,
-  type ApplicationRecoveryAdapterOutcome,
-  type ApplicationRuntimeWarning,
-  type ApplicationStartupRecovery,
-  type ApplicationStartupStageOutcome,
-} from '@trinity/application/runtime';
+import type { ApplicationRuntimeAdapter } from '../application-runtime.adapter';
+import type {
+  ApplicationRecoveryAdapterOutcome,
+  ApplicationRuntimeWarning,
+  ApplicationStartupRecovery,
+  ApplicationStartupStageOutcome,
+} from '../application-runtime.models';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { GifSettingsService } from '@trinity/data-access/gif';
 import {

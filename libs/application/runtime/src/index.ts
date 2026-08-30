@@ -1,9 +1,10 @@
 export * from './lib/application-root/application-root.component';
 export {
-  ENCRYPTION_DIALOG_COMPONENTS,
-  type EncryptionDialogKind,
-  type EncryptionDialogLoaders,
-} from './lib/application-dialog-loaders';
+  provideTrinityApplication,
+  type TrinityApplicationDialogLoaders,
+  type TrinityApplicationProviderOptions,
+} from './lib/composition/trinity-application.providers';
+export { startApplicationRuntime } from './lib/composition/start-application-runtime';
 export * from './lib/application-runtime.adapter';
 export * from './lib/application-runtime.models';
 export * from './lib/application-runtime.service';

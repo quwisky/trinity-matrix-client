@@ -1,12 +1,13 @@
 # Architecture overview
 
-Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 83
+Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 58
 libraries under `libs/`, grouped by layer into `libs/application/`, `libs/data-access/`,
 `libs/feature/`, `libs/util/`, `libs/runtime/` and `libs/components/` (the public component tier),
 alongside `libs/platform-native`, `libs/testing` and the `libs/spartan/`
 Helm components. Web, iOS, Android and desktop are all the same compiled bundle wrapped
-differently, so there is no per-platform source tree — platform differences are branches inside
-`libs/platform-native`, not forks of the app.
+differently, so there is no per-platform source tree. Host differences are selected behind
+`@trinity/runtime/host` capabilities and implemented by `libs/platform-native`; they are not forks
+of the app.
 
 Names like `data-access-discovery` on this page are Nx project names, which is what `nx` commands take.
 A library's directory and its import alias are two further, different strings; see
@@ -22,30 +23,28 @@ and [generated dependency map](generated/dependency-map.md).
 
 ## The app project is a composition root
 
-`apps/trinity/src` contains no product component or directive. App-local services are limited to
-composition adapters that bind capability ports to Router, lazy feature loaders and presentation
-policy. Its production TypeScript source surface is:
+`apps/trinity/src` contains no product component, directive, service or product policy. It selects
+routes, environment values, lazy application-surface loaders and the Web-only service worker,
+then delegates composition and lifetime ownership to `@trinity/application/runtime`. Its
+production TypeScript source surface is:
 
-| File                                                                       | What it is                                                             |
-| -------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `main.ts`                                                                  | `bootstrapApplication`, adapter providers and runtime ownership        |
-| `app/app.routes.ts`                                                        | The eight top-level routes, plus a development-only ninth              |
-| `app/trinity-application-runtime.adapter.ts`                               | Production startup stages and session-long host ownership              |
-| `app/trinity-application-session.adapter.ts`                               | Session streams, notification activation, Back and update coordination |
-| `app/settings-dialog.config.ts`                                            | App-owned Settings lazy-loader and placement policy                    |
-| `app/workspace-application-surface.presenter.ts`                           | Workspace application-surface composition adapter                      |
-| `app/workspace-routed-surface.adapter.ts`                                  | Canonical deep-link and routed-Back composition adapter                |
-| `app/build-info.ts`                                                        | Generated at build time by the `build-info` target, and git-ignored    |
-| `environments/environment.ts`, `environment.prod.ts`                       | Build-time configuration                                               |
-| `polyfills.ts`                                                             | Comment-only; it exists to record that zone.js is deliberately absent  |
-| `test-setup.ts`                                                            | One line; it imports the workspace-root `test-setup.base.ts`           |
-| `index.html`, `global.scss`, `theme/`, `rendered-markdown.scss`, `assets/` | Shell markup, styles and static assets                                 |
+| File                                                                       | What it is                                                            |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `main.ts`                                                                  | Thin host bootstrap, environment selection and Web service worker     |
+| `app/app.routes.ts`                                                        | The eight top-level routes, plus a development-only ninth             |
+| `app/application-dialog-loaders.ts`                                        | Cold Settings and Trust lazy-loader selection                         |
+| `app/build-info.ts`                                                        | Generated at build time by the `build-info` target, and git-ignored   |
+| `environments/environment.ts`, `environment.prod.ts`                       | Build-time configuration                                              |
+| `polyfills.ts`                                                             | Comment-only; it exists to record that zone.js is deliberately absent |
+| `test-setup.ts`                                                            | One line; it imports the workspace-root `test-setup.base.ts`          |
+| `index.html`, `global.scss`, `theme/`, `rendered-markdown.scss`, `assets/` | Shell markup, styles and static assets                                |
 
-The application root, `VerificationHostComponent`, startup state, retry surface and route-focus
-source live in `@trinity/application/runtime`. The app project remains a composition root: it
-supplies the concrete adapter, subscribes to the runtime lifetime, and tears that ownership down
-with the Angular application. The remaining `@trinity/feature/shell` entrypoint is only the lazy,
-development-only crypto spike page.
+The application root, `VerificationHostComponent`, startup state, retry surface, route-focus
+source, concrete runtime/session adapters and Workspace presenters live in
+`@trinity/application/runtime`. `provideTrinityApplication()` binds those implementations and all
+cross-capability ports behind one provider interface; `startApplicationRuntime()` owns the sole
+runtime subscription until Angular destroys the application. The remaining
+`@trinity/feature/shell` entrypoint is only the lazy, development-only crypto spike page.
 
 The build emits to the workspace-root `www/` directory rather than `dist/`, because Capacitor and
 the Electron shell both wrap that directory unchanged. See
@@ -276,10 +275,12 @@ Workspace's normal destination validation and repair.
 `stop()` tears every source down;
 subscribing to `run()` again performs a clean restart.
 
-`main.ts` now contains zero `provideAppInitializer` calls, frozen by the architecture contract.
-It still provides zoneless change detection, error handling, capability adapters, loader tokens,
-build configuration and the web-only service worker, then owns exactly one runtime subscription
-for the Angular application's lifetime.
+`main.ts` contains zero `provideAppInitializer` calls and no direct product implementation imports,
+both frozen by the Web host contract. It passes routes, build/environment values and cold lazy
+loaders to `provideTrinityApplication()`, adds only the Web service-worker registration, and hands
+the bootstrapped application to `startApplicationRuntime()`. Application Runtime owns zoneless
+change detection, error handling, cross-capability adapters, presentation loaders and exactly one
+runtime subscription for the Angular application's lifetime.
 
 ## Where to read next
 

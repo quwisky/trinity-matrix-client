@@ -67,7 +67,8 @@ session by design.
 ## Zoneless, and what that changes
 
 The app runs without zone.js. `package.json` does not depend on it, `apps/trinity/src/polyfills.ts`
-is comment-only and says so, and `main.ts` provides `provideZonelessChangeDetection()`.
+is comment-only and says so, and Application Runtime's `provideTrinityApplication()` provides
+`provideZonelessChangeDetection()`.
 
 Two consequences hold across the whole workspace and are worth checking against before you write
 anything reactive:

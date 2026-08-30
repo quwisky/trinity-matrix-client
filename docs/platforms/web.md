@@ -52,7 +52,8 @@ Both `build` and `serve` declare `dependsOn: ["build-info"]`, an uncached target
 [scripts/gen-build-info.mjs](https://github.com/quwisky/trinity-matrix-client/blob/develop/scripts/gen-build-info.mjs).
 It writes `apps/trinity/src/app/build-info.ts` with the package version and the short git
 commit, suffixed `-dirty` when the working tree is modified. `apps/trinity/src/main.ts`
-provides it as the `BUILD_INFO` token, and the value is displayed in Settings.
+passes it to `provideTrinityApplication()`, whose capability bindings provide the `BUILD_INFO`
+token displayed in Settings.
 
 The generated file is gitignored and the generator is idempotent: it only writes when the
 version or commit actually changed, so rebuilding on the same commit does not dirty the
@@ -132,7 +133,7 @@ files from local storage and must not layer a second cache over them, which is w
 condition in `main.ts` checks Capacitor _and_ the Electron marker. See
 [Platforms](index.md#detecting-the-platform).
 
-The production Application Runtime adapter owns `SwUpdate.unrecoverable` and reloads the page
+The production Application Runtime session adapter owns `SwUpdate.unrecoverable` and reloads the page
 when it fires, recovering from a cache that storage eviction has left unusable.
 
 The same session-owned stream watches `versionUpdates` for `VERSION_READY` and offers a Reload toast that calls
@@ -145,6 +146,12 @@ the app most.
 
 The installable web app manifest (`manifest.webmanifest`) is linked from `index.html` and
 prefetched in the `app` asset group, which is what makes the browser offer **Install app**.
+
+`pnpm e2e:web` is the production Web/PWA acceptance target. It builds the exact `www/`
+artifact, serves it without Synapse or Docker, enters through an unknown deep link, verifies the
+login startup surface and manifest, waits for service-worker control, then reloads another deep
+link offline and reads the cached crypto WASM. Keep production-only host coverage here rather than
+in the development Playwright suite.
 
 ## Why inlineCritical is off
 

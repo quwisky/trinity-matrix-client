@@ -8,7 +8,7 @@ import {
   type Event as RouterEvent,
 } from '@angular/router';
 import { SwUpdate } from '@angular/service-worker';
-import { NavigationFocusService } from '@trinity/application/runtime';
+import { NavigationFocusService } from '../navigation-focus.service';
 import { BadgeCoordinator } from '@trinity/application/badge';
 import { WorkspaceBackService } from '@trinity/application/workspace';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';

@@ -7,7 +7,7 @@ import {
   type UnrecoverableStateEvent,
   type VersionEvent,
 } from '@angular/service-worker';
-import { NavigationFocusService } from '@trinity/application/runtime';
+import { NavigationFocusService } from '../navigation-focus.service';
 import { BadgeCoordinator } from '@trinity/application/badge';
 import { WorkspaceBackService } from '@trinity/application/workspace';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';

@@ -87,6 +87,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **The Web/PWA host is now a thin composition root.** `apps/trinity` selects routes,
+  environment/build values, cold application-surface loaders and the Web-only service worker;
+  `@trinity/application/runtime` owns the concrete startup/session adapters, Workspace presenters,
+  cross-capability providers and lifetime subscription behind `provideTrinityApplication()` and
+  `startApplicationRuntime()`. The production build still emits the same flat `www/` artifact
+  consumed unchanged by Capacitor and Electron. A Docker-free `trinity-e2e:web-e2e` Nx target now
+  verifies production startup, unknown deep-link repair, the installable manifest, service-worker
+  control, offline shell routing and cached crypto WASM. Poll presentation now accepts the deeply
+  immutable Conversations model, restoring a green production Angular compilation.
+
 - **The shared design system now has five stable category entrypoints instead of dozens of
   shallow component projects.** Foundations, controls, generic content, navigation/layout and
   overlays retain the same `trn` APIs while keeping Spartan, CDK, ng-icons and the emoji vendor

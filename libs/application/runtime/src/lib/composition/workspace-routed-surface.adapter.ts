@@ -15,7 +15,7 @@ import {
 import { Observable, defer, filter, from, map, of } from 'rxjs';
 
 /**
- * Host-owned adapter for canonical application-surface routes and cold deep links.
+ * Application-owned adapter for canonical application-surface routes and cold deep links.
  *
  * It deliberately lives in the composition root: parsing Router URLs and choosing the
  * wide/narrow Settings placement are host policy, not dependencies of Workspace or a

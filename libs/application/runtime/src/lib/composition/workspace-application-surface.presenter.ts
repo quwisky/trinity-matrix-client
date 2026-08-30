@@ -1,9 +1,12 @@
 import { Injectable, inject, signal, type Type } from '@angular/core';
 import { NavigationStart, Router } from '@angular/router';
+import { Capacitor } from '@capacitor/core';
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
+  SETTINGS_DIALOG_COMPONENT,
+  type ApplicationDialogLoader,
   type EncryptionDialogKind,
-} from '@trinity/application/runtime';
+} from '../application-dialog-loaders';
 import {
   WorkspaceBackService,
   sameWorkspaceApplicationSurface,
@@ -32,7 +35,6 @@ import {
   switchMap,
   take,
 } from 'rxjs';
-import { SETTINGS_DIALOG_APP_CONFIG } from './settings-dialog.config';
 
 interface ActiveApplicationDialog {
   readonly surface: WorkspaceApplicationSurface;
@@ -55,6 +57,9 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
   private readonly toast = inject(TrnToastService);
   private readonly back = inject(WorkspaceBackService);
   private readonly encryptionLoaders = inject(ENCRYPTION_DIALOG_COMPONENTS, {
+    optional: true,
+  });
+  private readonly settingsLoader = inject(SETTINGS_DIALOG_COMPONENT, {
     optional: true,
   });
   private readonly active = signal<readonly ActiveApplicationDialog[]>([]);
@@ -114,24 +119,21 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
       return of({ kind: 'unavailable', surface });
     }
     if (surface.kind === 'settings') {
-      if (!SETTINGS_DIALOG_APP_CONFIG.shouldPresentAsDialog()) {
+      // The shared artifact runs unchanged in every host. Installed Capacitor apps keep
+      // native history; Web/PWA and Electron use the application dialog presenter.
+      if (Capacitor.isNativePlatform() || !this.settingsLoader) {
         return this.navigate(request);
       }
-      return this.presentDialog(
-        request,
-        SETTINGS_DIALOG_APP_CONFIG.load,
-        true,
-        {
-          inputs: {
-            ...(surface.section ? { initialSection: surface.section } : {}),
-            ...(context?.sourceRoomId
-              ? { initialSource: context.sourceRoomId }
-              : {}),
-          },
-          ariaLabel: 'Settings',
-          autoFocus: '[data-settings-autofocus]',
+      return this.presentDialog(request, this.settingsLoader, true, {
+        inputs: {
+          ...(surface.section ? { initialSection: surface.section } : {}),
+          ...(context?.sourceRoomId
+            ? { initialSource: context.sourceRoomId }
+            : {}),
         },
-      );
+        ariaLabel: 'Settings',
+        autoFocus: '[data-settings-autofocus]',
+      });
     }
     if (surface.flow === 'setup') return this.navigate(request);
     const load = this.encryptionLoader(surface.flow);
@@ -154,7 +156,7 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
 
   private presentDialog(
     request: WorkspaceApplicationSurfaceRequest,
-    load: () => Observable<Type<unknown>>,
+    load: ApplicationDialogLoader,
     dismissible: boolean,
     options: Parameters<TrnDialogService['open']>[1],
   ): Observable<WorkspaceApplicationSurfaceOutcome> {

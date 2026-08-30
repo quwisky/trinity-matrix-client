@@ -121,6 +121,7 @@ icons, splash screens and bundled artwork remain tracked in their platform/app a
 | Command                                                                          | Purpose                                                                |
 | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
 | `pnpm exec nx e2e trinity-e2e`                                                   | App-journey specs (`@nx/playwright`); skips itself if Docker is absent |
+| `pnpm e2e:web`                                                                   | Production Web/PWA startup, deep-link and offline check; no Docker     |
 | `pnpm smoke:login`                                                               | Headless redirect→login + live matrix.org `.well-known` discovery      |
 | `pnpm spike:chromium` / `spike:webkit`                                           | E2EE WASM check in Blink / WebKit                                      |
 | `pnpm e2e:verify`                                                                | Two-client emoji-SAS device verification (needs Docker)                |
@@ -155,8 +156,9 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
 - `@trinity/application/runtime` `[type:feature]`, `[role:application]` — Application Runtime:
   ordered host, preference, Account, session-capability, Workspace, and readiness stages; typed
   executable blocked recovery and visible optional warnings; explicit recover/stop/restart; and one owned session-long
-  stream for deep links, Back, route focus, badges, updates, and surface registration. The app
-  entrypoint supplies its adapter and owns its lifetime subscription.
+  stream for deep links, Back, route focus, badges, updates, and surface registration. Its deep
+  provider interface owns concrete adapters and cross-capability bindings; the app entrypoint
+  supplies routes, environment values and lazy loaders, then starts its lifetime subscription.
 - `@trinity/runtime/host` `[type:platform]`, `[role:kernel]` — Host Capabilities: narrow operation
   contracts and explicit supported/unavailable manifests for authentication handoff, deep links,
   Back, file export, notification presentation, location, badges, secure storage, lifecycle, and

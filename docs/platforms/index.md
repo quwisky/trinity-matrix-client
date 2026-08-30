@@ -60,10 +60,9 @@ The service worker registration in
 is the clearest illustration of why both checks are needed:
 
 ```ts
-provideServiceWorker('ngsw-worker.js', {
-  enabled: environment.production && !Capacitor.isNativePlatform() && !isElectron,
-  registrationStrategy: 'registerWhenStable:30000',
-});
+const serviceWorkerEnabled = environment.production && !Capacitor.isNativePlatform() && !isElectronRenderer();
+
+provideServiceWorker('ngsw-worker.js', { enabled: serviceWorkerEnabled });
 ```
 
 Without the `!isElectron` term the desktop app would install a second cache layer over
@@ -82,7 +81,7 @@ one of these is probably where it belongs.
 | Push registration           | `PushService`                                                       | Gated on `getPlatform()` being `'ios'` or `'android'`                                                                   |
 | App icon badge              | `BadgeCoordinator`, `BadgeSink`, `MobileBadgeService`               | Room Library aggregate unread state flows through one selected Web, Capacitor, or Electron host sink                    |
 | Native chrome               | `ThemeService`                                                      | Sets the Capacitor status-bar style on native only                                                                      |
-| Deep link intake            | Application Runtime adapter                                         | Preload `onDeepLink` on desktop, `@capacitor/app` `appUrlOpen` on mobile, the `/sso-callback` route on web              |
+| Deep link intake            | Application Runtime session adapter                                 | Preload `onDeepLink` on desktop, `@capacitor/app` `appUrlOpen` on mobile, the `/sso-callback` route on web              |
 | Media capture and file save | `MediaPickerService`, `FileSaveService` in `@trinity/feature/rooms` | Native plugins only, with a browser fallback elsewhere                                                                  |
 
 ## Read next

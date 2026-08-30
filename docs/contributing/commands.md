@@ -9,6 +9,7 @@ the repo up yet, start with [Getting started](getting-started.md).
 | ------------------------- | --------------------------------------------------------------------------------------------- |
 | `pnpm start`              | `nx serve trinity` — dev server with hot reload on `http://localhost:4200`                    |
 | `pnpm build`              | `nx build trinity` — **production** bundle into root `www/`                                   |
+| `pnpm e2e:web`            | Production Web/PWA startup, deep-link and offline contract against `www/`                     |
 | `pnpm watch`              | Development build, rebuilt on change, no server                                               |
 | `pnpm test`               | `nx run-many -t test` — Vitest once across every project that has tests                       |
 | `pnpm lint`               | `nx run-many -t lint` — ESLint plus Nx module boundaries                                      |
