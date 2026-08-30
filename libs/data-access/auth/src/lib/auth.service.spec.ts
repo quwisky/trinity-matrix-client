@@ -24,6 +24,7 @@ import {
 } from './oidc-client.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { SessionStorageService } from '@trinity/platform-native';
+import { desktopBridgeFixture } from '@trinity/testing';
 
 const findClientConfig = vi.mocked(AutoDiscovery.findClientConfig);
 const createClientMock = vi.mocked(createClient);
@@ -107,9 +108,12 @@ describe('AuthService', () => {
       // serve those origins. The resolved base_url may differ from the typed domain, and
       // login POSTs to base_url — so both must be allowed.
       const allowOrigin = vi.fn();
-      (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
-        cors: { allowOrigin, setAllowedOrigins: vi.fn() },
-      };
+      (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+        desktopBridgeFixture({
+          capabilities: {
+            networkCors: { allowOrigin, setAllowedOrigins: vi.fn() },
+          },
+        });
       try {
         findClientConfig.mockResolvedValue(
           homeserver(AutoDiscovery.SUCCESS, 'https://matrix.example/'),

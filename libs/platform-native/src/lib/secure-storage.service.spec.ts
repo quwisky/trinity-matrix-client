@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Capacitor } from '@capacitor/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SecureStorageService } from './secure-storage.service';
+import { desktopBridgeFixture } from '@trinity/testing';
 
 // In-memory @capacitor/preferences + the native keychain plugin (hoisted so the
 // vi.mock factories can see them).
@@ -94,9 +95,8 @@ describe('SecureStorageService', () => {
       set: vi.fn().mockResolvedValue(true),
       delete: vi.fn().mockResolvedValue(undefined),
     };
-    (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
-      secureStore: store,
-    };
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+      desktopBridgeFixture({ capabilities: { secureStore: store } });
     try {
       const s = service();
 

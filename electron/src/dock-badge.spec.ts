@@ -10,7 +10,7 @@ const {
   createFromPath,
   mainWindowRef,
 } = vi.hoisted(() => ({
-  handlers: new Map<string, (event: unknown, ...args: unknown[]) => void>(),
+  handlers: new Map<string, (event: unknown, ...args: unknown[]) => unknown>(),
   setBadgeCount: vi.fn(),
   setOverlayIcon: vi.fn(),
   createFromPath: vi.fn(() => ({ isEmpty: () => false })),
@@ -26,9 +26,9 @@ vi.mock('electron', () => ({
   app: { setBadgeCount },
   nativeImage: { createFromPath },
   ipcMain: {
-    on: (
+    handle: (
       channel: string,
-      handler: (event: unknown, ...args: unknown[]) => void,
+      handler: (event: unknown, ...args: unknown[]) => unknown,
     ) => {
       handlers.set(channel, handler);
     },
@@ -56,13 +56,13 @@ const handler = handlers.get(SET_BADGE_COUNT_CHANNEL);
 const webContents = { id: 1 };
 
 /** Deliver a payload to the captured IPC handler as our own renderer would. */
-function send(count: unknown): void {
-  handler?.({ sender: webContents }, count);
+function send(count: unknown): unknown {
+  return handler?.({ sender: webContents }, count);
 }
 
 /** Deliver a payload as some OTHER webContents would (must be ignored). */
-function sendFromForeignSender(count: unknown): void {
-  handler?.({ sender: { id: 99 } }, count);
+function sendFromForeignSender(count: unknown): unknown {
+  return handler?.({ sender: { id: 99 } }, count);
 }
 
 const realPlatform = process.platform;
@@ -89,7 +89,10 @@ describe('dock badge IPC', () => {
 
   it('ignores a payload from any sender other than the main window', () => {
     setPlatform('darwin');
-    sendFromForeignSender(7);
+    expect(sendFromForeignSender(7)).toEqual({
+      kind: 'rejected',
+      diagnostic: { code: 'sender-rejected' },
+    });
     expect(setBadgeCount).not.toHaveBeenCalled();
   });
 
@@ -97,7 +100,7 @@ describe('dock badge IPC', () => {
     beforeEach(() => setPlatform('darwin'));
 
     it('sets the badge to a valid integer count', () => {
-      send(5);
+      expect(send(5)).toEqual({ kind: 'completed' });
       expect(setBadgeCount).toHaveBeenCalledExactlyOnceWith(5);
       expect(setOverlayIcon).not.toHaveBeenCalled();
     });
@@ -123,7 +126,10 @@ describe('dock badge IPC', () => {
     });
 
     it('ignores a non-number payload', () => {
-      send('5');
+      expect(send('5')).toEqual({
+        kind: 'rejected',
+        diagnostic: { code: 'invalid-badge-count' },
+      });
       expect(setBadgeCount).not.toHaveBeenCalled();
     });
 
@@ -135,6 +141,20 @@ describe('dock badge IPC', () => {
     it('ignores Infinity', () => {
       send(Number.POSITIVE_INFINITY);
       expect(setBadgeCount).not.toHaveBeenCalled();
+    });
+
+    it('contains a native failure behind a secret-safe outcome', () => {
+      setBadgeCount.mockImplementationOnce(() => {
+        throw new Error('native details must not cross IPC');
+      });
+
+      const result = send(5);
+
+      expect(result).toEqual({
+        kind: 'rejected',
+        diagnostic: { code: 'badge-host-failed' },
+      });
+      expect(JSON.stringify(result)).not.toContain('native details');
     });
   });
 

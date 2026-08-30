@@ -30,9 +30,9 @@ import {
   throwError,
 } from 'rxjs';
 import {
+  HostNetworkPolicyService,
   SessionStorageService,
   deleteDatabase,
-  getTrinityDesktopBridge,
 } from '@trinity/platform-native';
 import {
   ProjectionRuntime,
@@ -173,6 +173,7 @@ interface AccountClient {
 export class MatrixClientService {
   private readonly storage = inject(SessionStorageService);
   private readonly projections = inject(ProjectionRuntime);
+  private readonly hostNetworkPolicy = inject(HostNetworkPolicyService);
 
   private readonly clients = new Map<string, AccountClient>();
 
@@ -184,12 +185,8 @@ export class MatrixClientService {
    * desktop, where the bridge is absent.
    */
   private publishCorsOrigins(): void {
-    const bridge = getTrinityDesktopBridge();
-    if (!bridge?.cors) {
-      return;
-    }
     const origins = [...this.clients.values()].map((a) => a.client.baseUrl);
-    bridge.cors.setAllowedOrigins(origins);
+    this.hostNetworkPolicy.replaceAllowedOrigins(origins);
   }
 
   /**
@@ -202,7 +199,7 @@ export class MatrixClientService {
    * {@link publishCorsOrigins} still replaces the set, so removals keep applying.
    */
   private allowCorsOrigin(origin: string): void {
-    getTrinityDesktopBridge()?.cors?.allowOrigin(origin);
+    this.hostNetworkPolicy.allowOrigin(origin);
   }
   private readonly _activeUserId = signal<string | null>(null);
   /** The account currently in view (whose client {@link instance} returns). */

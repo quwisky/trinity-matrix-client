@@ -5,10 +5,10 @@ import {
   input,
   signal,
 } from '@angular/core';
-import { Capacitor } from '@capacitor/core';
 import { DOCUMENT } from '@angular/common';
 import { TrnButton } from '@trinity/components/button';
 import { TrnIconComponent } from '@trinity/components/icon';
+import { FileSaveService } from '@trinity/platform-native';
 
 /** How long the "Copied" affordance stays visible after a successful copy. */
 const COPIED_FEEDBACK_MS = 2000;
@@ -29,6 +29,7 @@ const COPIED_FEEDBACK_MS = 2000;
 })
 export class RecoveryKeyDisplayComponent {
   private readonly document = inject(DOCUMENT);
+  private readonly files = inject(FileSaveService);
 
   /** The encoded recovery key string to display. */
   readonly recoveryKey = input.required<string>();
@@ -43,7 +44,7 @@ export class RecoveryKeyDisplayComponent {
   readonly announcement = signal('');
 
   /** Native WebViews lack a reliable file download; offer it on web only. */
-  readonly canDownload = !Capacitor.isNativePlatform();
+  readonly canDownload = this.files.directDownloadAvailable;
 
   /** Copy the key to the clipboard, with transient + announced confirmation. */
   copy(): void {

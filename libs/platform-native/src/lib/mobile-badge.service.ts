@@ -1,6 +1,12 @@
 import { Injectable } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 import { Badge } from '@capawesome/capacitor-badge';
+import type {
+  HostBadgeOperation,
+  HostCapabilitySupport,
+  HostOperationOutcome,
+} from '@trinity/runtime/host';
+import { Observable, catchError, defer, from, map, of, switchMap } from 'rxjs';
 
 /**
  * iOS / Android app-icon (launcher) badge sink, called by {@link AppBadgeService}
@@ -11,13 +17,12 @@ import { Badge } from '@capawesome/capacitor-badge';
  * **Android** launcher badges are notification/launcher-driven and need no permission
  * (their availability depends on the launcher, so treat display as best-effort).
  *
- * Kept a separate injectable so the native dependency stays out of the
- * platform-agnostic {@link AppBadgeService} and can be swapped/mocked freely. Every
- * call is fire-and-forget and MUST NOT throw: the badge is decorative, so a missing
- * plugin, an unsupported OS, a denied permission, or a rejected call is swallowed.
+ * Kept behind the host-operation seam so the native dependency stays out of product
+ * code. Commands are cold, finite Observables and report unavailable/rejected outcomes
+ * with stable secret-safe diagnostic codes.
  */
 @Injectable({ providedIn: 'root' })
-export class MobileBadgeService {
+export class MobileBadgeService implements HostBadgeOperation {
   /**
    * Memoized readiness: resolves `true` once the plugin is present, supported, and
    * the badge permission has been granted. Computed (and the permission requested)
@@ -25,27 +30,46 @@ export class MobileBadgeService {
    */
   private ready?: Promise<boolean>;
 
-  /**
-   * Set the native launcher badge to `count` (`0` clears it). Fire-and-forget: any
-   * rejection — no plugin, unsupported OS, denied permission — is swallowed. Safe
-   * no-op off-native (guarded by the caller and re-checked here).
-   */
-  set(count: number): void {
-    void this.apply(count).catch((error) => {
-      // Decorative only — log at debug at most and move on.
-      console.debug('Trinity: native app-icon badge update failed', error);
-    });
+  support(): Observable<HostCapabilitySupport> {
+    return defer(() => from(this.ensureReady())).pipe(
+      map((ready) =>
+        ready
+          ? ({ kind: 'supported' } as const)
+          : ({ kind: 'unavailable', reason: 'not-supported' } as const),
+      ),
+      catchError(() =>
+        of({
+          kind: 'unavailable',
+          reason: 'host-rejected',
+          diagnostic: { code: 'badge-probe-failed' },
+        } as const),
+      ),
+    );
   }
 
-  private async apply(count: number): Promise<void> {
-    if (!(await this.ensureReady())) {
-      return;
-    }
-    await (count > 0 ? Badge.set({ count }) : Badge.clear());
+  set(count: number): Observable<HostOperationOutcome> {
+    return this.support().pipe(
+      switchMap((support) =>
+        support.kind === 'unavailable'
+          ? of(support)
+          : from(count > 0 ? Badge.set({ count }) : Badge.clear()).pipe(
+              map(() => ({ kind: 'completed' }) as const),
+              catchError(() =>
+                of({
+                  kind: 'rejected',
+                  diagnostic: { code: 'badge-update-failed' },
+                } as const),
+              ),
+            ),
+      ),
+    );
   }
 
   private ensureReady(): Promise<boolean> {
-    return (this.ready ??= this.probe());
+    return (this.ready ??= this.probe().catch((error: unknown) => {
+      this.ready = undefined;
+      throw error;
+    }));
   }
 
   private async probe(): Promise<boolean> {
@@ -55,18 +79,13 @@ export class MobileBadgeService {
     ) {
       return false;
     }
-    try {
-      const { isSupported } = await Badge.isSupported();
-      if (!isSupported) {
-        return false;
-      }
-      // iOS: prompts for the `badge` authorization once. Android: resolves granted
-      // without a prompt. Request rather than only check so first use can grant it.
-      const { display } = await Badge.requestPermissions();
-      return display === 'granted';
-    } catch (error) {
-      console.debug('Trinity: native app-icon badge unavailable', error);
+    const { isSupported } = await Badge.isSupported();
+    if (!isSupported) {
       return false;
     }
+    // iOS: prompts for the `badge` authorization once. Android: resolves granted
+    // without a prompt. Request rather than only check so first use can grant it.
+    const { display } = await Badge.requestPermissions();
+    return display === 'granted';
   }
 }

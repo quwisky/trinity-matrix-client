@@ -5,8 +5,7 @@ import {
   type OutputRef,
   type Type,
 } from '@angular/core';
-import { Capacitor } from '@capacitor/core';
-import { isElectronRenderer } from '@trinity/platform-native';
+import { supportsRichConfigEditing } from '@trinity/platform-native';
 
 /**
  * What the Advanced section needs of the rich editor, without importing it.
@@ -50,7 +49,7 @@ export const CONFIG_EDITOR_LOADER =
  * the loader, so the chunk is never fetched, parsed or executed there.
  */
 export function supportsConfigEditor(): boolean {
-  return isElectronRenderer() || !Capacitor.isNativePlatform();
+  return supportsRichConfigEditing();
 }
 
 /**

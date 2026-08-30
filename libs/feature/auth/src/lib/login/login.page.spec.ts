@@ -9,9 +9,10 @@ import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import {
   AppRestartService,
   SessionStorageService,
+  provideHostCapabilities,
 } from '@trinity/platform-native';
 import { TrnAlertService } from '@trinity/components/overlay';
-import { render } from '@trinity/testing';
+import { desktopBridgeFixture, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
@@ -57,6 +58,7 @@ async function renderLogin(
   };
   const { fixture } = await render(LoginPage, {
     providers: [
+      provideHostCapabilities(),
       MockProvider(AuthService, auth),
       MockProvider(RegistrationService, {
         getAvailability: vi.fn(() => of('unknown' as const)),
@@ -639,9 +641,8 @@ describe('LoginPage', () => {
   });
 
   it('uses the eu.qwky.trinity:// scheme and opens externally on Electron', async () => {
-    (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
-      isElectron: true,
-    };
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+      desktopBridgeFixture();
     const open = vi.spyOn(window, 'open').mockImplementation(() => null);
     try {
       const getSsoUrl = vi.fn(
@@ -905,9 +906,8 @@ describe('LoginPage', () => {
     });
 
     it('registers as native + opens externally on Electron', async () => {
-      (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
-        isElectron: true,
-      };
+      (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+        desktopBridgeFixture();
       const open = vi.spyOn(window, 'open').mockImplementation(() => null);
       try {
         const request = {

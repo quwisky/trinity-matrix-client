@@ -87,6 +87,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Host integrations now have explicit operation contracts.** Authentication handoff, deep links,
+  Back, file export, notification presentation, location, app badges, secure storage, lifecycle,
+  and updates publish supported or unavailable capability outcomes instead of relying on optional
+  platform methods. The app-wide unread badge is the cross-host tracer: one cold RxJS command selects
+  Web Badging, Capacitor, or Electron at composition and shares one adapter contract suite. Login
+  handoff, deep links, host Back, and notification presentation now use the same selected operation
+  seam, while file export and location callers ask platform adapters about capability semantics.
+  Electron negotiates protocol v1 with validated senders, grouped capability APIs, and a dedicated
+  badge IPC channel whose hostile or failed responses are normalized to stable, secret-safe codes.
+
 - **Back now follows semantic Workspace surfaces instead of registration timing.** Application
   surfaces such as Settings and encryption, nested Room panels, and the compact Conversation have
   typed identities and a fixed dismissal order before browser history or native host fallback.

@@ -4,7 +4,7 @@ import { iconCandidatePaths } from './icons';
 import { getMainWindow } from './window';
 
 // Dock / launcher / taskbar unread badge.
-//   renderer -> main (`ipcMain.on`, one-way): SET_BADGE_COUNT_CHANNEL pushes the
+//   renderer -> main (`ipcMain.handle`, request/response): SET_BADGE_COUNT_CHANNEL pushes the
 //     app-wide unread total. The payload is UNTRUSTED — it is fully validated and
 //     clamped (coerceBadgeCount) before it drives any native badge.
 //
@@ -16,7 +16,7 @@ import { getMainWindow } from './window';
 //     We show a red "unread present" dot for count > 0 and clear it at 0. The
 //     exact count can't be rendered reliably (see resolveOverlayIcon), so it is
 //     carried in the overlay's accessibility description ("5 unread" / "99+ unread").
-export const SET_BADGE_COUNT_CHANNEL = 'set-badge-count';
+export const SET_BADGE_COUNT_CHANNEL = 'trinity:host:v1:badge:set';
 
 /** Upper bound for the displayed badge; larger totals are clamped to it. */
 export const MAX_BADGE_COUNT = 9999;
@@ -111,23 +111,37 @@ export function applyBadgeCount(count: number): void {
 }
 
 /**
- * Wire the one-way `set-badge-count` IPC. Treats the channel as an untrusted
- * boundary: the payload is validated + clamped before it drives any native
- * badge; a malformed payload is silently ignored.
+ * Wire the versioned badge-operation IPC. Treats the channel as an untrusted
+ * boundary: the sender and payload are validated before native state changes,
+ * and every request gets an explicit secret-safe outcome.
  */
 export function registerDockBadge(): void {
-  ipcMain.on(SET_BADGE_COUNT_CHANNEL, (event, raw: unknown) => {
+  ipcMain.handle(SET_BADGE_COUNT_CHANNEL, (event, raw: unknown) => {
     // Every other IPC handler verifies the sender is our own window; this one didn't.
     // The value of that invariant is that it holds WITHOUT exception — a reader should
     // never have to work out why one channel is different.
     const win = getMainWindow();
     if (!win || event.sender !== win.webContents) {
-      return;
+      return {
+        kind: 'rejected',
+        diagnostic: { code: 'sender-rejected' },
+      } as const;
     }
     const count = coerceBadgeCount(raw);
     if (count === null) {
-      return; // malformed — leave the current badge as-is
+      return {
+        kind: 'rejected',
+        diagnostic: { code: 'invalid-badge-count' },
+      } as const;
     }
-    applyBadgeCount(count);
+    try {
+      applyBadgeCount(count);
+      return { kind: 'completed' } as const;
+    } catch {
+      return {
+        kind: 'rejected',
+        diagnostic: { code: 'badge-host-failed' },
+      } as const;
+    }
   });
 }

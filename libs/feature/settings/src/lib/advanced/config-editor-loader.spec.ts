@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Capacitor } from '@capacitor/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { desktopBridgeFixture } from '@trinity/testing';
 import {
   CONFIG_EDITOR_LOADER,
   provideConfigEditor,
@@ -9,10 +10,8 @@ import {
 
 /** Put the Electron preload marker on `globalThis`, the way the desktop shell does. */
 function pretendDesktop(): void {
-  (globalThis as { trinityDesktop?: { isElectron: boolean } }).trinityDesktop =
-    {
-      isElectron: true,
-    };
+  (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+    desktopBridgeFixture();
 }
 
 describe('config editor loader', () => {

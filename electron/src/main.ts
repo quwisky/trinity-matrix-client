@@ -18,6 +18,7 @@ import { registerSecureStoreIpc } from './secure-store-ipc';
 import { registerCorsIpc } from './cors-ipc';
 import { registerGeolocationIpc } from './geolocation-ipc';
 import { registerDockBadge } from './dock-badge';
+import { registerHostCapabilityHandshake } from './host-capabilities';
 import {
   deepLinkFromArgv,
   deliverDeepLink,
@@ -102,6 +103,8 @@ if (!app.requestSingleInstanceLock()) {
     // permission.
     installPermissionPolicy(session.defaultSession);
     buildMenu();
+    registerHostCapabilityHandshake();
+    registerDockBadge();
     createWindow();
     createTray();
     registerNotificationIpc();
@@ -113,7 +116,6 @@ if (!app.requestSingleInstanceLock()) {
     // Dock/launcher unread badge: the renderer pushes its unread total, which
     // main validates + clamps before app.setBadgeCount. Drives the macOS dock
     // (and Linux launcher); a no-op on Windows without an overlay icon.
-    registerDockBadge();
     maybeSendStartupTestNotification(); // dev-only, gated on TRINITY_NOTIFY_TEST
 
     // Block any extra web contents (e.g. from a future webview) at creation.

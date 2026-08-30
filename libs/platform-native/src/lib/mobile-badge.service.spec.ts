@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Capacitor } from '@capacitor/core';
 import { Badge } from '@capawesome/capacitor-badge';
+import { firstValueFrom } from 'rxjs';
 import { MobileBadgeService } from './mobile-badge.service';
 
 // Mock the native plugin: every method is a spy the tests drive per case.
@@ -15,11 +16,6 @@ vi.mock('@capawesome/capacitor-badge', () => ({
 }));
 
 const badge = vi.mocked(Badge);
-
-/** Let the fire-and-forget `set(...)` chain (probe → set/clear) settle. */
-function flush(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
-}
 
 function makeService(): MobileBadgeService {
   TestBed.configureTestingModule({ providers: [MobileBadgeService] });
@@ -43,16 +39,14 @@ describe('MobileBadgeService', () => {
   });
 
   it('sets the badge to the count for a positive value', async () => {
-    makeService().set(5);
-    await flush();
+    await firstValueFrom(makeService().set(5));
 
     expect(badge.set).toHaveBeenCalledWith({ count: 5 });
     expect(badge.clear).not.toHaveBeenCalled();
   });
 
   it('clears the badge for a count of 0', async () => {
-    makeService().set(0);
-    await flush();
+    await firstValueFrom(makeService().set(0));
 
     expect(badge.clear).toHaveBeenCalledTimes(1);
     expect(badge.set).not.toHaveBeenCalled();
@@ -60,12 +54,9 @@ describe('MobileBadgeService', () => {
 
   it('requests the badge permission once, not on every update', async () => {
     const service = makeService();
-    service.set(1);
-    await flush();
-    service.set(2);
-    await flush();
-    service.set(0);
-    await flush();
+    await firstValueFrom(service.set(1));
+    await firstValueFrom(service.set(2));
+    await firstValueFrom(service.set(0));
 
     expect(badge.requestPermissions).toHaveBeenCalledTimes(1);
     expect(badge.set).toHaveBeenNthCalledWith(1, { count: 1 });
@@ -76,8 +67,10 @@ describe('MobileBadgeService', () => {
   it('does not badge when the permission is denied', async () => {
     badge.requestPermissions.mockResolvedValue({ display: 'denied' });
 
-    makeService().set(3);
-    await flush();
+    await expect(firstValueFrom(makeService().set(3))).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
 
     expect(badge.set).not.toHaveBeenCalled();
     expect(badge.clear).not.toHaveBeenCalled();
@@ -86,26 +79,25 @@ describe('MobileBadgeService', () => {
   it('does not badge when the plugin reports it is unsupported', async () => {
     badge.isSupported.mockResolvedValue({ isSupported: false });
 
-    makeService().set(3);
-    await flush();
+    await firstValueFrom(makeService().set(3));
 
     expect(badge.requestPermissions).not.toHaveBeenCalled();
     expect(badge.set).not.toHaveBeenCalled();
   });
 
-  it('swallows a rejected plugin call without throwing', async () => {
+  it('reports a rejected plugin call with a secret-safe code', async () => {
     badge.set.mockRejectedValue(new Error('boom'));
 
-    const service = makeService();
-    expect(() => service.set(4)).not.toThrow();
-    await expect(flush()).resolves.toBeUndefined();
+    await expect(firstValueFrom(makeService().set(4))).resolves.toEqual({
+      kind: 'rejected',
+      diagnostic: { code: 'badge-update-failed' },
+    });
   });
 
   it('is a no-op off a native platform', async () => {
     vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(false);
 
-    makeService().set(7);
-    await flush();
+    await firstValueFrom(makeService().set(7));
 
     expect(badge.requestPermissions).not.toHaveBeenCalled();
     expect(badge.set).not.toHaveBeenCalled();
@@ -115,8 +107,7 @@ describe('MobileBadgeService', () => {
   it('is a no-op when the Badge plugin is unavailable', async () => {
     vi.spyOn(Capacitor, 'isPluginAvailable').mockReturnValue(false);
 
-    makeService().set(7);
-    await flush();
+    await firstValueFrom(makeService().set(7));
 
     expect(badge.set).not.toHaveBeenCalled();
   });

@@ -14,8 +14,6 @@ import {
 import { FormField, disabled, form } from '@angular/forms/signals';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
-import { Capacitor } from '@capacitor/core';
-import { Browser } from '@capacitor/browser';
 import {
   Observable,
   catchError,
@@ -23,6 +21,7 @@ import {
   map,
   of,
   switchMap,
+  take,
   throwError,
 } from 'rxjs';
 import { TrnButton } from '@trinity/components/button';
@@ -34,7 +33,6 @@ import {
   AuthService,
   RegistrationService,
   type LoginMode,
-  type OidcApplicationType,
   type OidcAuthorizationRequest,
   type AuthMetadata,
   type RegistrationAvailability,
@@ -56,6 +54,7 @@ import { AuthCardComponent } from '../auth-card/auth-card.component';
 import { OidcStateStore } from '../oidc-state.store';
 import { TrnIconComponent } from '@trinity/components/icon';
 import { accountEstablishmentError } from '../account-establishment-outcome';
+import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 
 @Component({
   selector: 'trn-login',
@@ -78,6 +77,9 @@ export class LoginPage {
   private readonly registration = inject(RegistrationService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private readonly authenticationHandoff = inject(
+    HostAuthenticationHandoffService,
+  );
   private readonly ssoState = inject(SsoStateStore);
   private readonly oidcState = inject(OidcStateStore);
   private readonly storage = inject(SessionStorageService);
@@ -344,17 +346,13 @@ export class LoginPage {
       this.reauthDeviceId ?? undefined,
     );
 
-    const { native, electron } = this.platform();
-    // Native and the Electron desktop shell deep-link back via the OS-registered
-    // `eu.qwky.trinity://` scheme. The bare web origin is wrong on Electron — there
-    // it's `trinity://app` (an internal, non-OS scheme that can't be launched).
-    const base =
-      native || electron
-        ? 'eu.qwky.trinity://sso-callback'
-        : `${window.location.origin}/sso-callback`;
-    const redirect = `${base}?sso_state=${encodeURIComponent(state)}`;
+    const callback = this.authenticationHandoff.callback({
+      webUrl: `${window.location.origin}/sso-callback`,
+      appUrl: 'eu.qwky.trinity://sso-callback',
+    });
+    const redirect = `${callback.url}?sso_state=${encodeURIComponent(state)}`;
     const ssoUrl = this.auth.getSsoUrl(baseUrl, redirect);
-    this.dispatchRedirect(ssoUrl, native, electron);
+    this.dispatchRedirect(ssoUrl);
   }
 
   /**
@@ -369,26 +367,24 @@ export class LoginPage {
     if (!baseUrl || !config?.issuer) {
       return;
     }
-    const { native, electron } = this.platform();
     // The redirect_uri must byte-match a value registered with the provider — a clean
     // callback with no extra query params (the CSRF `state` rides OAuth's own param).
     // Private-use scheme redirects take the RFC 8252 §7.1 form: no authority, so a
     // SINGLE slash after the scheme. `//sso-callback` parses the callback as the
     // authority with an empty path, which providers that enforce the rule reject at
     // dynamic registration ("must not have an authority") before login can start.
-    const redirectUri =
-      native || electron
-        ? 'eu.qwky.trinity:/sso-callback'
-        : `${window.location.origin}/sso-callback`;
-    const applicationType: OidcApplicationType =
-      native || electron ? 'native' : 'web';
+    const callback = this.authenticationHandoff.callback({
+      webUrl: `${window.location.origin}/sso-callback`,
+      appUrl: 'eu.qwky.trinity:/sso-callback',
+    });
+    const redirectUri = callback.url;
 
     this.withBusy(
       this.auth.buildOidcAuthorizationRequest({
         baseUrl,
         metadata: config,
         redirectUri,
-        applicationType,
+        applicationType: callback.applicationType,
         ...(prompt ? { prompt } : {}),
         // Re-auth reuses the stored device so the account comes back without needing a
         // fresh verification — the same reason it is threaded into the password and SSO
@@ -396,14 +392,7 @@ export class LoginPage {
         ...(this.reauthDeviceId ? { deviceId: this.reauthDeviceId } : {}),
       }),
     ).subscribe((request) => {
-      void this.stashAndRedirect(
-        request,
-        baseUrl,
-        config.issuer,
-        redirectUri,
-        native,
-        electron,
-      );
+      void this.stashAndRedirect(request, baseUrl, config.issuer, redirectUri);
     });
   }
 
@@ -416,8 +405,6 @@ export class LoginPage {
     baseUrl: string,
     issuer: string,
     redirectUri: string,
-    native: boolean,
-    electron: boolean,
   ): Promise<void> {
     // Persisted on every platform. Web used to be skipped because the SDK kept its own
     // sessionStorage copy of the sign-in state; matrix-js-sdk 42 keeps nothing, so this
@@ -436,37 +423,15 @@ export class LoginPage {
       // authorize silently as a different one.
       expectedUserId: this.reauthUserId(),
     });
-    this.dispatchRedirect(request.url, native, electron);
+    this.dispatchRedirect(request.url);
   }
 
-  /** Whether this build runs as a native app and/or the Electron desktop shell. */
-  private platform(): { native: boolean; electron: boolean } {
-    return {
-      native: Capacitor.isNativePlatform(),
-      electron:
-        (globalThis as { trinityDesktop?: { isElectron?: boolean } })
-          .trinityDesktop?.isElectron === true,
-    };
-  }
-
-  /** Redirect the user to an external auth URL, per platform. */
-  private dispatchRedirect(
-    url: string,
-    native: boolean,
-    electron: boolean,
-  ): void {
-    if (native) {
-      // Open the system browser so the app's webview — and the appUrlOpen listener in
-      // AppComponent — stay alive; the provider redirects back via the OS-registered
-      // eu.qwky.trinity:// scheme, which the OS hands to the running app.
-      void Browser.open({ url });
-    } else if (electron) {
-      // Electron's main process opens https externally (setWindowOpenHandler) and
-      // routes the eu.qwky.trinity:// callback back to the renderer (onDeepLink).
-      window.open(url, '_blank');
-    } else {
-      window.location.href = url;
-    }
+  /** Execute the selected host's cold, finite authentication handoff command. */
+  private dispatchRedirect(url: string): void {
+    this.authenticationHandoff
+      .open({ url })
+      .pipe(take(1), takeUntilDestroyed(this.destroyRef))
+      .subscribe();
   }
 
   /** A random, single-use state/nonce token (hex). */

@@ -151,6 +151,11 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   scoped reattachment, finite readiness barriers, and resource diagnostics without owning product
   state or SDK types. Active Account switches use `transition(active-account)` to rebind and
   acknowledge every live account-scoped projection before the Workspace is repaired.
+- `@trinity/runtime/host` `[type:platform]`, `[role:kernel]` — Host Capabilities: narrow operation
+  contracts and explicit supported/unavailable manifests for authentication handoff, deep links,
+  Back, file export, notification presentation, location, badges, secure storage, lifecycle, and
+  updates. Product commands are cold finite Observables; Web, Capacitor, and Electron selection
+  stays in the composition adapter.
 - `@trinity/platform-native` `[type:platform]` — Capacitor/native capabilities (session/secure storage,
   preferences, theme/status-bar, launcher badge, external browser, desktop bridge, error handler). Branches on
   `isNativePlatform()` internally. May depend only on `util`.

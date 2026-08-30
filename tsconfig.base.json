@@ -152,7 +152,8 @@
       "@trinity/runtime/projection": ["./libs/runtime/projection/src/index.ts"],
       "@trinity/application/workspace": [
         "./libs/application/workspace/src/index.ts"
-      ]
+      ],
+      "@trinity/runtime/host": ["./libs/runtime/host/src/index.ts"]
     },
     "noUncheckedSideEffectImports": false,
     "types": ["*"]

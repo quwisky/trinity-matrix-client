@@ -1,107 +1,68 @@
+import type {
+  HostOperation,
+  HostOperationOutcome,
+} from '@trinity/runtime/host';
+
 /**
  * Shape of the minimal, non-privileged bridge that the hand-rolled Electron
  * preload exposes on the renderer's `globalThis` as `trinityDesktop`
  * (see electron/src/preload.ts).
  *
  * It is present ONLY inside the desktop shell; on web/PWA and on mobile
- * (Capacitor) it is `undefined`. Every member is optional, so callers MUST
- * feature-detect (`typeof bridge?.fn === 'function'`) before use. The preload
- * never leaks `ipcRenderer` or Node — these are the only capabilities it grants.
+ * (Capacitor) it is `undefined`. Protocol v1 has a required negotiation core and grouped
+ * capability operations. The preload never leaks `ipcRenderer` or Node.
  */
 export interface TrinityDesktopBridge {
+  readonly protocolVersion: 1;
   /** Always `true` when running inside the Electron shell. */
-  readonly isElectron?: boolean;
+  readonly isElectron: true;
 
   /** Host `process.platform` ('darwin' | 'win32' | 'linux' | …). */
-  readonly platform?: string;
+  readonly platform: string;
 
-  /**
-   * Subscribe to `eu.qwky.trinity://…` OS deep links (e.g. the SSO callback)
-   * forwarded by the main process. Returns an unsubscribe function. Replays any
-   * link that was buffered before the renderer subscribed.
-   */
-  onDeepLink?: (callback: (url: string) => void) => () => void;
+  /** Negotiate a versioned, explicit capability manifest with the validated main process. */
+  readonly negotiate: (
+    operations: readonly HostOperation[],
+  ) => Promise<unknown>;
 
-  /**
-   * Ask the MAIN process to show a native OS notification. Routed through main
-   * (rather than the renderer Web `Notification` API) because Electron renderer
-   * notifications are unreliably surfaced/attributed by the OS — especially on
-   * macOS. The payload is validated + clamped in the main process; a malformed
-   * payload is silently ignored.
-   */
-  showNotification?: (payload: DesktopNotification) => void;
-
-  /**
-   * Subscribe to native-notification clicks forwarded by the main process. The
-   * callback receives the target `roomId` and the `userId` of the account the
-   * notification belongs to (so a tap can switch accounts before opening the
-   * room); `userId` is absent for legacy single-account payloads. The raw IPC
-   * event is never leaked. Returns an unsubscribe function.
-   */
-  onNotificationClick?: (
-    callback: (roomId: string, userId?: string) => void,
-  ) => () => void;
-
-  /**
-   * Push the app-wide unread total to the MAIN process, which sets the macOS
-   * dock badge (and the Linux launcher count where supported) via
-   * `app.setBadgeCount`. The value is validated + clamped in main (finite number,
-   * floored, `[0, 9999]`; `0` clears it); a malformed payload is silently ignored.
-   * A no-op where unsupported (Windows has no numeric taskbar badge without an
-   * overlay icon).
-   */
-  setBadgeCount?: (count: number) => void;
-
-  /**
-   * OS-keychain-backed secret storage in the MAIN process (Electron `safeStorage`).
-   * The renderer never touches the keyring or the on-disk ciphertext — it only asks
-   * main to get/set/delete a key. `set` resolves `false` when the OS keychain is
-   * unavailable (`safeStorage.isEncryptionAvailable()` false), and `isAvailable`
-   * reports the same so callers can fall back. Backs the Electron `SecureStorage`.
-   */
-  secureStore?: {
-    isAvailable: () => Promise<boolean>;
-    get: (key: string) => Promise<string | null>;
-    set: (key: string, value: string) => Promise<boolean>;
-    delete: (key: string) => Promise<void>;
+  /** Protocol-v1 operations are grouped by capability instead of widening the bridge. */
+  capabilities: {
+    deepLinks: {
+      /** Subscribe to validated OS deep links, replaying any buffered cold-start URL. */
+      subscribe: (callback: (url: string) => void) => () => void;
+    };
+    notificationPresentation: {
+      /** Present a validated native notification through the main process. */
+      present: (payload: DesktopNotification) => void;
+      /** Subscribe to validated notification activation targets. */
+      subscribeClicks: (
+        callback: (roomId: string, userId?: string) => void,
+      ) => () => void;
+    };
+    badge: {
+      /** Set the dock/launcher badge; `0` clears it. Main validates and clamps. */
+      set: (count: number) => Promise<HostOperationOutcome>;
+    };
+    /** OS-keychain-backed secret storage owned by the main process. */
+    secureStore: {
+      isAvailable: () => Promise<boolean>;
+      get: (key: string) => Promise<string | null>;
+      set: (key: string, value: string) => Promise<boolean>;
+      delete: (key: string) => Promise<void>;
+    };
+    /** Renderer-to-main transport policy, grouped separately from product operations. */
+    networkCors: {
+      setAllowedOrigins: (origins: readonly string[]) => void;
+      allowOrigin: (origin: string) => void;
+    };
+    location: {
+      /** Resolve an opt-in, city-level IP estimate or `null` when unavailable. */
+      approximate: () => Promise<{ lat: number; lng: number } | null>;
+    };
   };
-
-  /**
-   * Publish the origins the app legitimately talks to — every signed-in homeserver,
-   * plus any origin `.well-known` discovery is probing right now.
-   *
-   * Desktop-only. The renderer is served from `trinity://app`, so homeserver traffic is
-   * cross-origin; main injects CORS headers to unblock it (see electron/src/cors.ts)
-   * because non-compliant reverse proxies strip the ones the Matrix spec requires. Main
-   * cannot know WHICH origins those are — the user picks them at login — so it scopes
-   * the shim to whatever the renderer declares here. Anything undeclared is left alone,
-   * which keeps a future sanitizer bypass from borrowing the shim to read arbitrary
-   * https origins. Call it whenever the set changes; main replaces the whole set.
-   */
-  cors?: {
-    setAllowedOrigins: (origins: readonly string[]) => void;
-    /**
-     * Additively allow ONE origin. Discovery and login reach a homeserver before any
-     * account exists to declare it; the next `setAllowedOrigins` replaces the set, so a
-     * probe of a server never signed into does not linger.
-     */
-    allowOrigin: (origin: string) => void;
-  };
-
-  /**
-   * Ask the MAIN process to estimate the device's APPROXIMATE location from its
-   * public IP (city-level), resolving `null` when the lookup is unavailable or
-   * fails. Desktop-only: Chromium's own `navigator.geolocation` is backed by
-   * Google's network provider, which prebuilt Electron can't authenticate without
-   * an embedded API key, so it never resolves on a keyboard-and-mouse desktop.
-   * This is an explicit, opt-in convenience (the user taps it in the manual
-   * location dialog) — it is never called automatically, and it sends only the
-   * IP the request originates from, never GPS or Wi-Fi scan data.
-   */
-  resolveApproxLocation?: () => Promise<{ lat: number; lng: number } | null>;
 }
 
-/** Payload for {@link TrinityDesktopBridge.showNotification}. */
+/** Payload for Electron's grouped notification-presentation capability. */
 export interface DesktopNotification {
   /** Notification title (e.g. `sender · room`). */
   title: string;
@@ -132,8 +93,35 @@ export interface DesktopNotification {
  * Centralizes the (necessarily) loose global access so feature code stays typed.
  */
 export function getTrinityDesktopBridge(): TrinityDesktopBridge | undefined {
-  return (globalThis as { trinityDesktop?: TrinityDesktopBridge })
-    .trinityDesktop;
+  const bridge = (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+  if (!bridge || typeof bridge !== 'object') return undefined;
+  const candidate = bridge as Partial<TrinityDesktopBridge>;
+  const capabilities = candidate.capabilities;
+  return candidate.protocolVersion === 1 &&
+    candidate.isElectron === true &&
+    typeof candidate.platform === 'string' &&
+    typeof candidate.negotiate === 'function' &&
+    !!capabilities &&
+    !!capabilities.deepLinks &&
+    typeof capabilities.deepLinks.subscribe === 'function' &&
+    !!capabilities.notificationPresentation &&
+    typeof capabilities.notificationPresentation.present === 'function' &&
+    typeof capabilities.notificationPresentation.subscribeClicks ===
+      'function' &&
+    !!capabilities.badge &&
+    typeof capabilities.badge.set === 'function' &&
+    !!capabilities.secureStore &&
+    typeof capabilities.secureStore.isAvailable === 'function' &&
+    typeof capabilities.secureStore.get === 'function' &&
+    typeof capabilities.secureStore.set === 'function' &&
+    typeof capabilities.secureStore.delete === 'function' &&
+    !!capabilities.networkCors &&
+    typeof capabilities.networkCors.setAllowedOrigins === 'function' &&
+    typeof capabilities.networkCors.allowOrigin === 'function' &&
+    !!capabilities.location &&
+    typeof capabilities.location.approximate === 'function'
+    ? (bridge as TrinityDesktopBridge)
+    : undefined;
 }
 
 /**
@@ -150,7 +138,7 @@ export function getTrinityDesktopBridge(): TrinityDesktopBridge | undefined {
  */
 export function isElectronRenderer(): boolean {
   return (
-    !!getTrinityDesktopBridge()?.isElectron ||
+    !!getTrinityDesktopBridge() ||
     (typeof navigator !== 'undefined' &&
       navigator.userAgent.includes('Electron'))
   );

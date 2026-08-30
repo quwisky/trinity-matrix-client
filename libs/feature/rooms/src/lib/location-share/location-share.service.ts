@@ -9,11 +9,7 @@ import {
 } from 'rxjs';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
-import {
-  GeolocationService,
-  getTrinityDesktopBridge,
-  type GeoPoint,
-} from '@trinity/platform-native';
+import { GeolocationService, type GeoPoint } from '@trinity/platform-native';
 import { ManualLocationDialogComponent } from './manual-location-dialog/manual-location-dialog.component';
 
 /**
@@ -41,7 +37,7 @@ export class LocationShareService {
 
   /** Resolve a location and send it to the active room. */
   share(): void {
-    if (getTrinityDesktopBridge()?.isElectron) {
+    if (!this.geo.supportsPrecise()) {
       void this.shareViaDialog();
       return;
     }
