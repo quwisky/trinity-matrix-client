@@ -1,4 +1,5 @@
 import type {
+  HostNotificationDestination,
   HostOperation,
   HostOperationOutcome,
 } from '@trinity/runtime/host';
@@ -36,7 +37,7 @@ export interface TrinityDesktopBridge {
       present: (payload: DesktopNotification) => void;
       /** Subscribe to validated notification activation targets. */
       subscribeClicks: (
-        callback: (roomId: string, userId?: string) => void,
+        callback: (destination: HostNotificationDestination) => void,
       ) => () => void;
     };
     badge: {
@@ -78,14 +79,12 @@ export interface DesktopNotification {
   /**
    * Collapse key: a newer notification with the same tag replaces an earlier
    * still-open one. Mirrors the Web `Notification` `tag`. Trinity uses
-   * `userId|roomId` so messages from one room collapse per account (and the same
+   * `accountId|roomId` so messages from one room collapse per account (and the same
    * room on two accounts stays two distinct toasts).
    */
   tag?: string;
-  /** Matrix room id to route to when the notification is clicked. */
-  roomId: string;
-  /** User id of the account this notification belongs to (for switch-then-open). */
-  userId?: string;
+  /** Exact semantic destination to activate when the notification is clicked. */
+  destination: HostNotificationDestination;
 }
 
 /**

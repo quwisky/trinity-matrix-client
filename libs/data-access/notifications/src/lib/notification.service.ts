@@ -1,5 +1,4 @@
 import { DestroyRef, Injectable, effect, inject } from '@angular/core';
-import { Router } from '@angular/router';
 import {
   MatrixEventEvent,
   RoomEvent,
@@ -9,15 +8,13 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { ConversationRuntime } from '@trinity/data-access/timeline';
-import { SessionStorageService } from '@trinity/platform-native';
 import { NotificationSoundService } from './notification-sound.service';
-import { encodeRoomSegment } from '@trinity/util/matrix';
-import { HostNotificationPresentationService } from '@trinity/runtime/host';
-import { Subscription, take } from 'rxjs';
-
-/** Max characters of message body shown in a notification. */
-const PREVIEW_LIMIT = 140;
+import { Observable, Subscriber, Subscription, take } from 'rxjs';
+import { normalizeNotificationEvent } from './matrix-notification-event.adapter';
+import type { NotificationDestination } from './notification-intent';
+import { NotificationPolicy } from './notification-policy';
+import { NotificationPresenterService } from './notification-presenter.service';
+import { NOTIFICATION_VISIBILITY } from './notification-visibility.port';
 
 /** One account's client plus its bound timeline / decrypted listeners. */
 interface AccountNotifier {
@@ -51,8 +48,8 @@ interface AccountNotifier {
  * than us, when the user isn't looking at that room (the window is unfocused, a
  * different room is open, or the event is on a background account), and only when
  * that account's push rules say to notify (`getPushActionsForEvent().notify` —
- * respects mutes / mentions-only). A click switches to the owning account, focuses
- * the window, and opens the room.
+ * respects mutes / mentions-only). Activation emits an exact semantic destination;
+ * the application Workspace owns account switching, repair, focus, and navigation.
  *
  * Because several accounts sync concurrently, listeners are attached per account and
  * reconciled against the live account set; push scoring, own-message suppression, and
@@ -73,21 +70,22 @@ interface AccountNotifier {
 export class NotificationService {
   private readonly matrix = inject(MatrixClientService);
   private readonly sound = inject(NotificationSoundService);
-  private readonly router = inject(Router);
-  private readonly conversations = inject(ConversationRuntime);
-  private readonly storage = inject(SessionStorageService);
-  private readonly hostNotifications = inject(
-    HostNotificationPresentationService,
-  );
+  private readonly visibility = inject(NOTIFICATION_VISIBILITY);
+  private readonly policy = inject(NotificationPolicy);
+  private readonly presenter = inject(NotificationPresenterService);
   private readonly destroyRef = inject(DestroyRef);
 
-  /** Whether {@link connect} has enabled us (and thus reconcile may attach). */
+  /** Whether a current {@link run} subscription owns listener reconciliation. */
   private enabled = false;
+  private presentationReady = false;
+  private presentationPreparing = false;
 
   /** Per-account listeners, keyed by user id, so switches/sign-outs re-bind cleanly. */
   private readonly notifiers = new Map<string, AccountNotifier>();
 
   private connection: Subscription | null = null;
+  private activationSubscriber: Subscriber<NotificationDestination> | null =
+    null;
 
   /**
    * Live, still-encrypted events seen on the timeline that we deferred until
@@ -110,61 +108,42 @@ export class NotificationService {
 
   constructor() {
     // Re-bind listeners to the live account set: attaches to accounts added after
-    // connect() (e.g. a background account finishing its warm start) and drops ones
-    // signed out. No-ops until connect() enables us.
+    // run() (e.g. a background account finishing its warm start) and drops ones
+    // signed out. No-ops until a session subscription enables us.
     effect(() => this.reconcile(this.matrix.accountIds()));
-    this.destroyRef.onDestroy(() => this.disconnect());
+    this.destroyRef.onDestroy(() => this.stop());
   }
 
-  /** Attach to every account's live timeline + request permission. Idempotent; pair
-   * with {@link disconnect}. Call once the clients are live (from the rooms shell). */
-  connect(): void {
-    if (this.enabled || (this.connection && !this.connection.closed)) {
-      return;
-    }
-    if (!this.matrix.isInitialized) {
-      return;
-    }
-    const connection = new Subscription();
-    this.connection = connection;
-    const start = (): void => {
-      if (connection.closed) return;
-      if (this.enabled) return;
+  /**
+   * Own notification delivery for one Application Runtime session.
+   *
+   * Cold and long-lived: subscribing negotiates presentation and attaches every live
+   * Account; teardown releases host activation and SDK listeners. Emissions are semantic
+   * destinations only—the application Workspace decides how to open or repair them.
+   */
+  run(): Observable<NotificationDestination> {
+    return new Observable((subscriber) => {
+      if (this.enabled || (this.connection && !this.connection.closed)) {
+        subscriber.complete();
+        return;
+      }
+      const connection = new Subscription();
+      this.connection = connection;
+      this.activationSubscriber = subscriber;
       this.enabled = true;
-      const activation = this.hostNotifications.activated.subscribe(
-        ({ roomId, userId }) => this.openFromNotification(roomId, userId),
-      );
-      connection.add(activation);
       this.reconcile(this.matrix.accountIds());
-    };
-    connection.add(
-      this.hostNotifications
-        .support()
-        .pipe(take(1))
-        .subscribe({
-          next: (support) => {
-            if (connection.closed) return;
-            if (support.kind === 'unavailable') {
-              this.disconnect();
-              return;
-            }
-            start();
-            connection.add(
-              this.hostNotifications
-                .requestPermission()
-                .pipe(take(1))
-                .subscribe({ error: () => undefined }),
-            );
-          },
-          error: () => this.disconnect(),
-        }),
-    );
+      return () => this.stop(connection);
+    });
   }
 
-  disconnect(): void {
+  private stop(owner = this.connection): void {
+    if (owner !== this.connection) return;
     this.connection?.unsubscribe();
     this.connection = null;
+    this.activationSubscriber = null;
     this.enabled = false;
+    this.presentationReady = false;
+    this.presentationPreparing = false;
     for (const notifier of this.notifiers.values()) {
       this.detach(notifier);
     }
@@ -179,11 +158,17 @@ export class NotificationService {
       return;
     }
     if (ids.length === 0) {
-      // The last account signed out. Drop `enabled` too, not just the listeners: it is
-      // what lets this effect attach, so leaving it set would re-bind OS notifications
-      // to the next account that warms up — before the user has reached the shell and
-      // asked for any of this. connect() from the shell turns us back on.
-      this.disconnect();
+      // Stay dormant under the Application Runtime session. This avoids asking for Web
+      // permission on the signed-out screen while still allowing a later login to attach
+      // without relying on a page component to restart a root capability.
+      for (const notifier of this.notifiers.values()) this.detach(notifier);
+      this.notifiers.clear();
+      this.pendingDecryption.clear();
+      this.notified.clear();
+      return;
+    }
+    if (!this.presentationReady) {
+      this.preparePresentation();
       return;
     }
     const live = new Set(ids);
@@ -214,6 +199,43 @@ export class NotificationService {
       this.attach(notifier);
       this.notifiers.set(userId, notifier);
     }
+  }
+
+  private preparePresentation(): void {
+    if (this.presentationPreparing || !this.connection) return;
+    this.presentationPreparing = true;
+    const connection = this.connection;
+    connection.add(
+      this.presenter
+        .support()
+        .pipe(take(1))
+        .subscribe({
+          next: (support) => {
+            this.presentationPreparing = false;
+            if (connection.closed) return;
+            if (support.kind === 'unavailable') {
+              this.activationSubscriber?.complete();
+              return;
+            }
+            this.presentationReady = true;
+            if (this.activationSubscriber) {
+              connection.add(
+                this.presenter.activated.subscribe(this.activationSubscriber),
+              );
+            }
+            connection.add(
+              this.presenter
+                .requestPermission()
+                .pipe(take(1))
+                .subscribe({ error: () => undefined }),
+            );
+            this.reconcile(this.matrix.accountIds());
+          },
+          error: () => {
+            this.presentationPreparing = false;
+          },
+        }),
+    );
   }
 
   private buildNotifier(userId: string, client: MatrixClient): AccountNotifier {
@@ -309,96 +331,31 @@ export class NotificationService {
     if (!room) {
       return;
     }
-    if (event.getSender() === client.getUserId()) {
-      return; // our own message
-    }
-    // Suppress only when the user is actually looking at THIS room on THIS account:
-    // the window is focused, this is the active account, AND that room is open in the
-    // timeline. A message to any other room, or to a background account, still notifies.
-    const focused = typeof document !== 'undefined' && document.hasFocus();
-    const isActiveAccount = this.matrix.activeUserId() === userId;
-    if (
-      focused &&
-      isActiveAccount &&
-      room.roomId === this.conversations.focused()?.key.roomId
-    ) {
-      return;
-    }
     // Respect the account's push rules (mute / mentions-only / etc.).
     // `forceRecalculate` is set on the decrypted path so the rules score the
     // cleartext (mentions) rather than a cached ciphertext result.
-    if (!client.getPushActionsForEvent(event, forceRecalculate)?.notify) {
-      return;
-    }
-    // Notify each event at most once per account (Timeline + Decrypted can both fire).
-    const id = event.getId();
-    if (id) {
-      const key = this.key(userId, id);
-      if (this.notified.has(key)) {
-        return;
-      }
-      this.notified.add(key);
-      this.evictOldest(this.notified, NotificationService.NOTIFIED_CAP);
-    }
-
-    const sender = event.sender?.name ?? event.getSender() ?? 'Someone';
-    const raw = (event.getContent()?.['body'] ?? '') as string;
-    const preview =
-      typeof raw === 'string' && raw.trim()
-        ? raw.trim().slice(0, PREVIEW_LIMIT)
-        : 'New message';
-    const title = room.name ? `${sender} · ${room.name}` : sender;
-    this.show(title, preview, room.roomId, userId);
-  }
-
-  private show(
-    title: string,
-    body: string,
-    roomId: string,
-    userId: string,
-  ): void {
-    // Collapse per account+room: a newer message from the same room on the same
-    // account replaces the previous still-open toast, while the same room on another
-    // account stays a separate toast.
-    const tag = `${userId} ${roomId}`;
-    const command = this.hostNotifications.present({
-      title,
-      body,
-      tag,
-      roomId,
-      userId,
-      silent: !this.sound.isOn(userId),
+    const normalized = normalizeNotificationEvent(userId, event, room);
+    const key = this.key(userId, normalized.eventId);
+    const decision = this.policy.decide({
+      event: normalized,
+      viewerId: client.getUserId() ?? userId,
+      rules: {
+        notify:
+          client.getPushActionsForEvent(event, forceRecalculate)?.notify ===
+          true,
+        silent: !this.sound.isOn(userId),
+      },
+      visibility: this.visibility.snapshot(),
+      duplicate: this.notified.has(key),
     });
-    const subscription = command
+    if (decision.kind === 'suppress') return;
+    this.notified.add(key);
+    this.evictOldest(this.notified, NotificationService.NOTIFIED_CAP);
+    const subscription = this.presenter
+      .present(decision.intent)
       .pipe(take(1))
       .subscribe({ error: () => undefined });
     this.connection?.add(subscription);
-  }
-
-  /**
-   * Handle a notification click: switch to the account it belongs to (if any),
-   * bring the window forward, and route into the room. Invoked from the Web
-   * `onclick` and the desktop IPC callback; the Router self-schedules change
-   * detection on navigate. On desktop the main process has already focused the OS
-   * window.
-   */
-  private openFromNotification(roomId: string, userId?: string): void {
-    try {
-      window.focus();
-    } catch {
-      /* focus may be blocked — ignore */
-    }
-    if (
-      userId &&
-      userId !== this.matrix.activeUserId() &&
-      this.matrix.accountIds().includes(userId)
-    ) {
-      this.matrix.setActive(userId);
-      this.storage.setActive(userId).subscribe({ error: () => undefined });
-    }
-    void this.router
-      .navigate(['/rooms', encodeRoomSegment(roomId)])
-      .catch(() => undefined);
   }
 
   /** Namespace a dedupe key by account so two accounts don't share event ids. */

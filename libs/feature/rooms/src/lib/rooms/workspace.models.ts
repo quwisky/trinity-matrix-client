@@ -33,6 +33,11 @@ export interface WorkspaceTransitionMetrics {
   readonly routeDurationMs: number;
 }
 
+/** One event anchor requested by an inbound Workspace destination. */
+export interface WorkspaceEventTarget {
+  readonly eventId: string;
+}
+
 export type WorkspaceOpenFailure =
   'account-transition-failed' | 'navigation-rejected';
 

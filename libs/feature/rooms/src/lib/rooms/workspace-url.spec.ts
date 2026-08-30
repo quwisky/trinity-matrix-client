@@ -4,6 +4,29 @@ import { describe, expect, it } from 'vitest';
 import { parseWorkspaceUrl, workspaceUrlOf } from './workspace-url';
 
 describe('Workspace URL projection', () => {
+  it('parses a typed notification event anchor only beside a valid Room', () => {
+    expect(
+      parseWorkspaceUrl(
+        convertToParamMap({ roomId: encodeRoomSegment('!room:example.org') }),
+        convertToParamMap({
+          account: '@alice:example.org',
+          event: '$notification',
+        }),
+        '@alice:example.org',
+      ),
+    ).toMatchObject({ eventId: '$notification', canonical: true });
+    expect(
+      parseWorkspaceUrl(
+        convertToParamMap({ roomId: encodeRoomSegment('!room:example.org') }),
+        convertToParamMap({
+          account: '@alice:example.org',
+          event: 'not-an-event',
+        }),
+        '@alice:example.org',
+      ),
+    ).toMatchObject({ canonical: false });
+  });
+
   it('round-trips an exact Account, space, and room destination', () => {
     const destination = {
       accountId: '@alice:example.org',

@@ -1,6 +1,11 @@
-import { firstValueFrom } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { CapacitorHostOperationAdapter } from './host-operation.adapters';
+import { TestBed } from '@angular/core/testing';
+import { SwPush } from '@angular/service-worker';
+import { Subject, firstValueFrom } from 'rxjs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  CapacitorHostOperationAdapter,
+  WebHostOperationAdapter,
+} from './host-operation.adapters';
 
 const app = vi.hoisted(() => ({
   addListener: vi.fn(),
@@ -55,5 +60,116 @@ describe('CapacitorHostOperationAdapter event streams', () => {
     await Promise.resolve();
 
     expect(remove).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('WebHostOperationAdapter notifications', () => {
+  const requestPermission = vi.fn();
+  const clicks = new Subject<{
+    readonly action: string;
+    readonly notification: { readonly data?: unknown };
+  }>();
+
+  beforeEach(() => {
+    requestPermission.mockReset();
+    vi.stubGlobal(
+      'Notification',
+      class {
+        static permission = 'granted';
+        static requestPermission = requestPermission;
+      },
+    );
+    TestBed.configureTestingModule({
+      providers: [
+        WebHostOperationAdapter,
+        { provide: SwPush, useValue: { notificationClicks: clicks } },
+      ],
+    });
+  });
+
+  afterEach(() => {
+    TestBed.resetTestingModule();
+    Reflect.deleteProperty(navigator, 'serviceWorker');
+    vi.unstubAllGlobals();
+  });
+
+  it('delivers through the controlling service worker with a typed destination', async () => {
+    const showNotification = vi.fn();
+    Object.defineProperty(navigator, 'serviceWorker', {
+      configurable: true,
+      value: {
+        controller: {},
+        ready: Promise.resolve({ showNotification }),
+      },
+    });
+    const adapter = TestBed.inject(WebHostOperationAdapter);
+    const destination = {
+      accountId: '@me:example.org',
+      roomId: '!room:example.org',
+      eventId: '$event',
+    } as const;
+
+    await firstValueFrom(
+      adapter.present({
+        title: 'Alice · General',
+        body: 'Hello',
+        destination,
+      }),
+    );
+
+    expect(showNotification).toHaveBeenCalledWith('Alice · General', {
+      body: 'Hello',
+      data: destination,
+    });
+  });
+
+  it('returns a typed rejection when the permission prompt is denied', async () => {
+    Object.defineProperty(Notification, 'permission', { value: 'default' });
+    requestPermission.mockResolvedValueOnce('denied');
+
+    await expect(
+      firstValueFrom(
+        TestBed.inject(WebHostOperationAdapter).requestPermission(),
+      ),
+    ).resolves.toEqual({
+      kind: 'rejected',
+      diagnostic: { code: 'notification-permission-denied' },
+    });
+  });
+
+  it('returns a typed rejection when the permission prompt fails', async () => {
+    Object.defineProperty(Notification, 'permission', { value: 'default' });
+    requestPermission.mockRejectedValueOnce(new Error('prompt failed'));
+
+    await expect(
+      firstValueFrom(
+        TestBed.inject(WebHostOperationAdapter).requestPermission(),
+      ),
+    ).resolves.toEqual({
+      kind: 'rejected',
+      diagnostic: { code: 'notification-permission-failed' },
+    });
+  });
+
+  it('validates and emits service-worker notification clicks', async () => {
+    const adapter = TestBed.inject(WebHostOperationAdapter);
+    const activation = firstValueFrom(adapter.activated);
+    clicks.next({ action: '', notification: { data: { roomId: 42 } } });
+    clicks.next({
+      action: '',
+      notification: {
+        data: {
+          accountId: '@me:example.org',
+          roomId: '!room:example.org',
+          eventId: '$event',
+        },
+      },
+    });
+
+    await expect(activation).resolves.toEqual({
+      accountId: '@me:example.org',
+      roomId: '!room:example.org',
+      eventId: '$event',
+    });
   });
 });

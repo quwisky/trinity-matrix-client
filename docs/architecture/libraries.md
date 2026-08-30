@@ -99,7 +99,7 @@ are the only places `matrix-js-sdk` is imported — twelve of the fourteen do, w
 | `libs/data-access/widgets`       | `@trinity/data-access/widgets`       | `type:data-access`, `scope:matrix`     | Demand-driven room-widget discovery, safe URL-template expansion, and explicit disclosure metadata for external opening                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 Data-access libraries may depend on one another, and several do. The real edges today are
-`notifications → rooms, timeline`, `search → rooms, invites`, `timeline → media`, and
+`notifications → rooms`, `search → rooms, invites`, `timeline → media`, and
 `auth → accounts`. Every domain library except `data-access-gif` also depends on
 `data-access-matrix-client`.
 

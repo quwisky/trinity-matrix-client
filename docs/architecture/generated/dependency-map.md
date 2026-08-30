@@ -42,11 +42,10 @@ Capability-to-capability dependencies are valid only inside the same named capab
 
 The validator compares this table to the live Nx graph exactly. A new edge or a stale exception fails the check.
 
-| Source                      | Target                 | Removal issue | Reason                                                                   |
-| --------------------------- | ---------------------- | ------------- | ------------------------------------------------------------------------ |
-| `data-access-notifications` | `data-access-rooms`    | #315-#317     | Notification policy currently reads room state through the room service. |
-| `data-access-notifications` | `data-access-timeline` | #315          | Notification policy currently reaches into timeline projections.         |
-| `feature-crypto`            | `data-access-auth`     | #319          | Trust screens currently consume account lifecycle services directly.     |
+| Source                      | Target              | Removal issue | Reason                                                                   |
+| --------------------------- | ------------------- | ------------- | ------------------------------------------------------------------------ |
+| `data-access-notifications` | `data-access-rooms` | #315-#317     | Notification policy currently reads room state through the room service. |
+| `feature-crypto`            | `data-access-auth`  | #319          | Trust screens currently consume account lifecycle services directly.     |
 
 ## Multi-capability migration projects
 
@@ -209,7 +208,7 @@ These are ratcheted snapshots. Any change fails until the measured value and led
 | `data-access-invites`          | `libs/data-access/invites`          | role:capability; capability:room-library                                                                                                        |                   2 |
 | `data-access-matrix-client`    | `libs/data-access/matrix-client`    | role:adapter; capability:matrix-runtime                                                                                                         |                   4 |
 | `data-access-media`            | `libs/data-access/media`            | role:adapter; capability:media                                                                                                                  |                   2 |
-| `data-access-notifications`    | `libs/data-access/notifications`    | role:capability; capability:notifications, capability:badge                                                                                     |                   7 |
+| `data-access-notifications`    | `libs/data-access/notifications`    | role:capability; capability:notifications, capability:badge                                                                                     |                   6 |
 | `data-access-profile`          | `libs/data-access/profile`          | role:capability; capability:identity                                                                                                            |                   2 |
 | `data-access-rooms`            | `libs/data-access/rooms`            | role:capability; capability:room-library, capability:room-administration, capability:discovery                                                  |                   3 |
 | `data-access-search`           | `libs/data-access/search`           | role:capability; capability:discovery, capability:conversations, capability:room-library                                                        |                   4 |
@@ -242,7 +241,7 @@ These are ratcheted snapshots. Any change fails until the measured value and led
 | `toggle`                       | `libs/spartan/toggle`               | role:design-system; capability:design-system                                                                                                    |                   1 |
 | `toggle-group`                 | `libs/spartan/toggle-group`         | role:design-system; capability:design-system                                                                                                    |                   2 |
 | `tooltip`                      | `libs/spartan/tooltip`              | role:design-system; capability:design-system                                                                                                    |                   1 |
-| `trinity`                      | `apps/trinity`                      | role:app; capability:composition                                                                                                                |                  23 |
+| `trinity`                      | `apps/trinity`                      | role:app; capability:composition                                                                                                                |                  24 |
 | `trinity-desktop`              | `electron`                          | migration exception                                                                                                                             |                   0 |
 | `trinity-e2e`                  | `e2e`                               | unmanaged tooling/test                                                                                                                          |                   1 |
 | `util-matrix`                  | `libs/util/matrix`                  | role:kernel; capability:shared                                                                                                                  |                   0 |

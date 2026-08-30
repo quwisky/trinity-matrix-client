@@ -120,12 +120,6 @@
       "reason": "Notification policy currently reads room state through the room service."
     },
     {
-      "source": "data-access-notifications",
-      "target": "data-access-timeline",
-      "removeBy": "#315",
-      "reason": "Notification policy currently reaches into timeline projections."
-    },
-    {
       "source": "feature-crypto",
       "target": "data-access-auth",
       "removeBy": "#319",

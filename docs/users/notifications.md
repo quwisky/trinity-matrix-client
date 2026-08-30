@@ -118,7 +118,8 @@ The desktop app is the exception: closing its window **hides it to the system tr
 than quitting, so the process, the sync connection and notifications all stay alive. Only an
 explicit Quit stops them.
 
-The browser asks for notification permission once, the first time the app connects. The
+The browser asks for notification permission once, when an authenticated application session first
+has an Account to observe. It does not prompt on the signed-out screen. The
 desktop app does not ask: notifications there are posted by Electron's main process rather
 than by the page, because renderer-side web notifications are unreliably surfaced and
 attributed by macOS.
@@ -126,7 +127,9 @@ attributed by macOS.
 A notification is **suppressed only when you are demonstrably already looking at it** — the
 window is focused, that account is the one you are acting as, and that room is the one open.
 A message to any other room, or to a background account, still notifies. Clicking one
-focuses the window, switches to the owning account if needed, and opens the room.
+focuses the window and emits the exact account, room and event destination. Workspace then switches
+to the owning account if needed, repairs a destination that is no longer available, opens the room,
+and jumps to the event when it is still present.
 
 For an encrypted room the event arrives as ciphertext, so notifying immediately would give
 you a generic preview and would score your push rules against an encrypted payload — missing

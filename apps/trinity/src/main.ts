@@ -30,13 +30,16 @@ import {
   CONVERSATION_MESSAGE_POLICY,
   CONVERSATION_PIN_POLICY,
   CONVERSATION_PRIVACY_PREFERENCES,
+  ConversationRuntime,
   type ConversationMessagePolicy,
   type ConversationPinPolicy,
   provideConversationPrivacyPreferences,
 } from '@trinity/data-access/timeline';
 import {
+  NOTIFICATION_VISIBILITY,
   PUSH_CONFIG,
   PushService,
+  type NotificationVisibilityPort,
   providePushConfigEntries,
 } from '@trinity/data-access/notifications';
 import {
@@ -104,6 +107,18 @@ void bootstrapApplication(ApplicationRootComponent, {
           canMutate: (key) => governance.canMutate(key),
           authorize: (key, operation, eventId) =>
             governance.authorize(key, operation, eventId),
+        };
+      },
+    },
+    {
+      provide: NOTIFICATION_VISIBILITY,
+      useFactory: (): NotificationVisibilityPort => {
+        const conversations = inject(ConversationRuntime);
+        return {
+          snapshot: () => ({
+            foreground: document.hasFocus(),
+            conversation: conversations.focused()?.key ?? null,
+          }),
         };
       },
     },

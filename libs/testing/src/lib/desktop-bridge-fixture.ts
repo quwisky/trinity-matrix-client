@@ -11,7 +11,11 @@ export interface DesktopBridgeFixture {
     readonly notificationPresentation: {
       readonly present: (payload: unknown) => void;
       readonly subscribeClicks: (
-        callback: (roomId: string, userId?: string) => void,
+        callback: (destination: {
+          readonly accountId: string;
+          readonly roomId: string;
+          readonly eventId: string;
+        }) => void,
       ) => () => void;
     };
     readonly badge: {

@@ -46,7 +46,6 @@ import {
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ImagePackService } from '@trinity/data-access/media';
 import {
-  NotificationService,
   PushService,
   RoomNotificationsService,
 } from '@trinity/data-access/notifications';
@@ -298,7 +297,6 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly spaceChildren = inject(SpaceChildrenService);
   private readonly roomPermissions = inject(RoomActionPermissionsService);
   private readonly push = inject(PushService);
-  private readonly notifications = inject(NotificationService);
   private readonly roomNotifications = inject(RoomNotificationsService);
   private readonly accountPicker = inject(AccountPickerService);
   private readonly router = inject(Router);
@@ -350,6 +348,12 @@ export class RoomsPage implements OnInit, OnDestroy {
     // In the constructor, not ngOnInit: `TestBed.inject(RoomsPage)` never runs lifecycle
     // hooks, so binding there left the callback unset for all 170 unit tests.
     this.nav.bindFocus(() => this.focusActiveView());
+    effect(() => {
+      const target = this.workspace.eventTarget();
+      if (!target) return;
+      this.store.messageSearchTarget.set(target.eventId);
+      this.store.jumpRequest.update((revision) => revision + 1);
+    });
     // ShellStatusService presents runWithBusy failures directly. In the zoneless app,
     // a component effect that only reads the error signal is not a reliable render
     // trigger when the failed action changes no template-read state.
@@ -485,9 +489,6 @@ export class RoomsPage implements OnInit, OnDestroy {
     // Register for push once the authenticated shell is live (covers both fresh
     // login and a restored session). Best-effort + native-only; no-op elsewhere.
     this.push.register().subscribe({ error: () => undefined });
-    // Desktop/web OS notifications from live sync (no-op on native mobile + web
-    // without permission). Listener dies with the client on logout/reset.
-    this.notifications.connect();
   }
 
   /**
@@ -502,13 +503,13 @@ export class RoomsPage implements OnInit, OnDestroy {
   /**
    * Only the open room's panes are torn down here.
    *
-   * The seven projections `ngOnInit` connects are root-scoped and outlive this page —
+   * The eight Room-shell projections `ngOnInit` connects are root-scoped and outlive this page —
    * leaving `/rooms` for settings must not blank them, and they are re-`connect()`ed
    * on the way back in. Their real teardown is the one that matters (the last account
    * signing out), and that belongs to the projections themselves rather than to
    * whichever page happened to connect them: `reproject-on-switch` disconnects them
-   * when the active client goes away, and `NotificationService` drops its own listeners
-   * on the empty account set. This used to disconnect `invites` alone, which was neither
+   * when the active client goes away. Notification delivery is separately owned by
+   * Application Runtime for the whole session. This used to disconnect `invites` alone, which was neither
    * symmetric nor load-bearing — one owner, not one and a half.
    */
   ngOnDestroy(): void {

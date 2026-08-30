@@ -22,7 +22,12 @@ type ExposedBridge = {
   readonly negotiate: (operations: readonly string[]) => Promise<unknown>;
   readonly capabilities: {
     readonly deepLinks: unknown;
-    readonly notificationPresentation: unknown;
+    readonly notificationPresentation: {
+      readonly present: (payload: unknown) => void;
+      readonly subscribeClicks: (
+        callback: (destination: unknown) => void,
+      ) => () => void;
+    };
     readonly badge: { readonly set: (count: number) => Promise<unknown> };
     readonly secureStore: unknown;
     readonly networkCors: unknown;
@@ -45,7 +50,11 @@ describe('preload host capabilities', () => {
     bridge = exposed.value as ExposedBridge;
   });
 
-  beforeEach(() => invoke.mockClear());
+  beforeEach(() => {
+    invoke.mockClear();
+    send.mockClear();
+    removeListener.mockClear();
+  });
 
   it('exposes protocol v1 without leaking ipcRenderer', () => {
     expect(bridge.protocolVersion).toBe(1);
@@ -95,5 +104,38 @@ describe('preload host capabilities', () => {
       diagnostic: { code: 'invalid-badge-count' },
     });
     expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('round-trips only complete typed notification destinations', () => {
+    const destination = {
+      accountId: '@me:example.org',
+      roomId: '!room:example.org',
+      eventId: '$event',
+    };
+    bridge.capabilities.notificationPresentation.present({
+      title: 'Alice',
+      body: 'Hello',
+      destination,
+    });
+    expect(send).toHaveBeenCalledWith('show-notification', {
+      title: 'Alice',
+      body: 'Hello',
+      tag: undefined,
+      destination,
+      silent: false,
+    });
+
+    const activated = vi.fn();
+    const unsubscribe =
+      bridge.capabilities.notificationPresentation.subscribeClicks(activated);
+    const listener = on.mock.calls.find(
+      ([channel]) => channel === 'notification-click',
+    )?.[1] as (event: unknown, destination: unknown) => void;
+    listener({}, { roomId: 42 });
+    listener({}, destination);
+
+    expect(activated).toHaveBeenCalledExactlyOnceWith(destination);
+    unsubscribe();
+    expect(removeListener).toHaveBeenCalledWith('notification-click', listener);
   });
 });

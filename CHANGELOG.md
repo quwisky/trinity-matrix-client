@@ -87,6 +87,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Web notifications now travel as typed intents.** Matrix events, push-rule results, foreground
+  visibility and bounded deduplication are normalized before a platform-free Notifications policy
+  decides delivery. A host presenter owns permission, service-worker or constructor delivery, and
+  validated activation. Clicking a notification carries its exact Account, Room and event into
+  Workspace, which switches Accounts, repairs missing destinations and anchors the Conversation;
+  Application Runtime owns the stream across sign-out, later login, restart and teardown.
+
 - **Startup now runs through one explicit Application Runtime.** Host negotiation, preference
   hydration, Account restoration, optional session capabilities, Workspace restoration and final
   readiness run in one ordered cold RxJS workflow. Required failures expose executable typed

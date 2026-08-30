@@ -35,7 +35,11 @@ Tooling and black-box test projects are outside this runtime dependency model. E
 - **Room Administration** owns governance within a Room.
 - **Trust** owns verification, cross-signing, secret storage, recovery, key transfer, and encryption health.
 - **Identity** owns user summaries, profiles, avatars, presence, and lookup.
-- **Notifications** owns delivery policy and typed notification intents.
+- **Notifications** owns SDK-free delivery policy and immutable notification intents. Matrix
+  adapters normalize events and user-rule results before policy sees them; host presenters own
+  permission and delivery. Activation round-trips an exact Account, Room, and event destination
+  into Workspace, which performs its normal validation, Account transition, repair, Conversation
+  focus, and canonical URL projection.
 - **Discovery** owns remote homeserver, public-Room, and user-directory discovery.
 
 Workspace, Settings, Global Search, Badge coordination, and Application Runtime are application workflows. Matrix Runtime, Projection Runtime, Media Pipeline, Preferences Store, Host Capabilities, pure utilities, and the design system form the deliberately small shared kernel and supporting seams.

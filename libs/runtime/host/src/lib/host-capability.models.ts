@@ -75,19 +75,22 @@ export interface HostFileExportOperation {
 
 export interface HostNotificationPresentationOperation {
   presentationSupport(): Observable<HostCapabilitySupport>;
-  readonly activated: Observable<{
-    readonly roomId: string;
-    readonly userId?: string;
-  }>;
+  readonly activated: Observable<HostNotificationDestination>;
   requestPermission(): Observable<HostOperationOutcome>;
   present(request: {
     readonly title: string;
     readonly body: string;
     readonly tag?: string;
     readonly silent?: boolean;
-    readonly roomId: string;
-    readonly userId?: string;
+    readonly destination: HostNotificationDestination;
   }): Observable<HostOperationOutcome>;
+}
+
+/** Semantic target round-tripped through an untrusted host notification surface. */
+export interface HostNotificationDestination {
+  readonly accountId: string;
+  readonly roomId: string;
+  readonly eventId: string;
 }
 
 export interface HostLocationOperation {

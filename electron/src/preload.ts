@@ -23,10 +23,11 @@ import type { IpcRendererEvent } from 'electron';
  *   trinityDesktop.capabilities.notificationPresentation.present(...) asks the MAIN
  *   process to display a native OS notification (more reliably surfaced than a
  *   renderer Web Notification). The adjacent subscribeClicks(cb) operation subscribes
- *   to clicks the main process forwards over `notification-click`; only the
- *   `roomId` string is passed to the callback (never the raw event), and it
- *   returns an unsubscribe function. The payload is re-validated in main — this
- *   bridge grants no privileged capability and never exposes ipcRenderer/Node.
+ *   to clicks the main process forwards over `notification-click`; only the typed
+ *   account/room/event destination is passed to the callback (never the raw
+ *   event), and it returns an unsubscribe function. The payload is re-validated
+ *   in main — this bridge grants no privileged capability and never exposes
+ *   ipcRenderer/Node.
  */
 const DEEP_LINK_CHANNEL = 'deep-link';
 const SHOW_NOTIFICATION_CHANNEL = 'show-notification';
@@ -41,8 +42,11 @@ interface ShowNotificationPayload {
   title: string;
   body: string;
   tag?: string;
-  roomId: string;
-  userId?: string;
+  destination: {
+    accountId: string;
+    roomId: string;
+    eventId: string;
+  };
   /** Suppress the OS notification sound (the user's "Play a sound" setting is off). */
   silent?: boolean;
 }
@@ -92,29 +96,25 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
     notificationPresentation: {
       present(payload: ShowNotificationPayload): void {
         if (typeof payload !== 'object' || payload === null) return;
-        const { title, body, tag, roomId, userId, silent } =
+        const { title, body, tag, destination, silent } =
           payload as Partial<ShowNotificationPayload>;
-        if (typeof roomId !== 'string') return;
+        if (!isNotificationDestination(destination)) return;
         ipcRenderer.send(SHOW_NOTIFICATION_CHANNEL, {
           title: typeof title === 'string' ? title : '',
           body: typeof body === 'string' ? body : '',
           tag: typeof tag === 'string' ? tag : undefined,
-          roomId,
-          userId: typeof userId === 'string' ? userId : undefined,
+          destination,
           silent: silent === true,
         });
       },
       subscribeClicks(
-        callback: (roomId: string, userId?: string) => void,
+        callback: (destination: ShowNotificationPayload['destination']) => void,
       ): () => void {
         const listener = (
           _event: IpcRendererEvent,
-          roomId: unknown,
-          userId: unknown,
+          destination: unknown,
         ): void => {
-          if (typeof roomId === 'string') {
-            callback(roomId, typeof userId === 'string' ? userId : undefined);
-          }
+          if (isNotificationDestination(destination)) callback(destination);
         };
         ipcRenderer.on(NOTIFICATION_CLICK_CHANNEL, listener);
         return () =>
@@ -171,3 +171,15 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
     },
   },
 });
+
+function isNotificationDestination(
+  value: unknown,
+): value is ShowNotificationPayload['destination'] {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate['accountId'] === 'string' &&
+    typeof candidate['roomId'] === 'string' &&
+    typeof candidate['eventId'] === 'string'
+  );
+}
