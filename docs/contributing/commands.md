@@ -162,25 +162,33 @@ Each of these runs `pnpm build` and then `cap sync` before it does anything else
 so a web change is always included. Re-run a `*:sync` after any web change if you
 are iterating in Xcode or Android Studio.
 
-| Command                       | What it does                                         | Needs                                    |
-| ----------------------------- | ---------------------------------------------------- | ---------------------------------------- |
-| `pnpm android:sync`           | Build and sync only                                  | Android SDK                              |
-| `pnpm android:run`            | Build, sync, launch on a device or emulator          | Android SDK                              |
-| `pnpm android:open`           | Open the project in Android Studio                   | Android Studio                           |
-| `pnpm android:build`          | Debug APK into `android/app/build/outputs/apk/debug` | Android SDK                              |
-| `pnpm android:build:prebuilt` | Sync an existing `www/`, then build the debug APK    | Android SDK                              |
-| `pnpm android:build:release`  | Release AAB                                          | Android SDK, signing keystore            |
-| `pnpm e2e:android`            | Installed API 36 WebView journeys via Playwright     | JDK 21, API 36 SDK/emulator, Docker, KVM |
-| `pnpm ios:sync`               | Build and sync only                                  | macOS, Xcode                             |
-| `pnpm ios:run`                | Build, sync, launch on a simulator                   | macOS, Xcode                             |
-| `pnpm ios:open`               | Open the project in Xcode                            | macOS, Xcode                             |
-| `pnpm ios:build`              | `cap build ios --scheme App`                         | macOS, Xcode, signing identity           |
+| Command                                          | What it does                                         | Needs                                    |
+| ------------------------------------------------ | ---------------------------------------------------- | ---------------------------------------- |
+| `pnpm android:sync`                              | Build and sync only                                  | Android SDK                              |
+| `pnpm android:run`                               | Build, sync, launch on a device or emulator          | Android SDK                              |
+| `pnpm android:open`                              | Open the project in Android Studio                   | Android Studio                           |
+| `pnpm android:build`                             | Debug APK into `android/app/build/outputs/apk/debug` | Android SDK                              |
+| `pnpm android:build:prebuilt`                    | Sync an existing `www/`, then build the debug APK    | Android SDK                              |
+| `pnpm android:build:release`                     | Release AAB                                          | Android SDK, signing keystore            |
+| `pnpm android:verify`                            | Static Nx/artifact/plugin/capability contract        | Node only                                |
+| `pnpm exec nx run trinity-android:verify-native` | Gradle unit verification after sync                  | JDK 21, Android SDK                      |
+| `pnpm e2e:android`                               | Installed API 36 WebView journeys via Playwright     | JDK 21, API 36 SDK/emulator, Docker, KVM |
+| `pnpm ios:sync`                                  | Build and sync only                                  | macOS, Xcode                             |
+| `pnpm ios:run`                                   | Build, sync, launch on a simulator                   | macOS, Xcode                             |
+| `pnpm ios:open`                                  | Open the project in Xcode                            | macOS, Xcode                             |
+| `pnpm ios:build`                                 | `cap build ios --scheme App`                         | macOS, Xcode, signing identity           |
+| `pnpm ios:verify`                                | Static Nx/artifact/plugin/capability contract        | Node only                                |
+| `pnpm exec nx run trinity-ios:verify-native`     | Unsigned iPhone Simulator build after sync           | macOS, Xcode                             |
 
 The `*:prebuilt` commands exist for cross-platform evidence, not ordinary iteration.
 `pnpm e2e:ui:shipped` creates a production `www/`, records it, and tests that payload; Electron
 and Android can then copy it without rebuilding. `pnpm bundle:manifest:verify` proves both wrapper
 trees have the exact recorded web file set and bytes; only Android's named `cordova.js` and
 `cordova_plugins.js` bootstrap files are allowed in addition.
+
+The package scripts above are stable aliases for the explicit `trinity-android` and
+`trinity-ios` Nx application targets. Use `pnpm exec nx show project trinity-android` or
+`trinity-ios` to inspect their complete sync/build/run/verification lifecycle.
 
 ## End to end harnesses
 

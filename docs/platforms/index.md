@@ -9,7 +9,7 @@ apps/trinity + libs/*  --(nx build trinity)-->  www/
                                                  |
                           +----------------------+----------------------+
                           |                      |                      |
-                     served as-is        electron/scripts/copy-www   cap sync
+                     served as-is        electron/scripts/copy-www   Nx host sync targets
                      (web / PWA)         -> electron/www             -> android/ ios/
 ```
 
@@ -23,11 +23,11 @@ WebView. There is no per-platform fork of the timeline, the room list, or the cr
 | ------- | ----------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------- |
 | Web     | none                                      | `pnpm build`                                              | static bundle in `www/`                                  |
 | Desktop | hand-rolled Electron shell in `electron/` | `pnpm electron:package` or a named `:mac`/`:linux`/`:win` | dmg, zip, AppImage, deb, nsis exe in `electron/release/` |
-| Android | Capacitor                                 | `pnpm android:build`                                      | debug APK from Gradle                                    |
-| iOS     | Capacitor                                 | `pnpm ios:build`                                          | Xcode build of the `App` scheme                          |
+| Android | Capacitor, Nx project `trinity-android`   | `pnpm android:build`                                      | debug APK from Gradle                                    |
+| iOS     | Capacitor, Nx project `trinity-ios`       | `pnpm ios:build`                                          | Xcode build of the `App` scheme                          |
 
-Each of the desktop and mobile scripts runs `pnpm build` first, so they always package a
-freshly produced `www/`. `pnpm build` has no configuration argument and
+Each mobile Nx sync target depends on `trinity:build`; desktop scripts run `pnpm build`
+first. They therefore always package a freshly produced `www/`. `pnpm build` has no configuration argument and
 `defaultConfiguration` is `production`, which means every desktop and native script builds
 production — including during development.
 

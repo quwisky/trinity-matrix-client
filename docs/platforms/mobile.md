@@ -1,8 +1,12 @@
 # Mobile
 
-iOS and Android are Capacitor 8 wrappers around the same `www/` directory the web build
-produces. The native projects live in the repository at `android/` and `ios/`, are checked
-in, and are edited by the Capacitor CLI rather than by hand.
+iOS and Android are first-class Nx applications and Capacitor 8 wrappers around the same
+`www/` directory the web build produces. The native projects live in the repository at
+`android/` and `ios/`, are checked in, and are edited by the Capacitor CLI rather than by hand.
+
+`android/project.json` registers `trinity-android`; `ios/project.json` registers
+`trinity-ios`. Both are thin `role:app` composition projects with one dependency on the
+shared `trinity` renderer. They contain no product behavior or per-platform Angular fork.
 
 ## Capacitor configuration
 
@@ -33,17 +37,19 @@ honours `resize`; Android already resizes the WebView.
 
 Every mobile script rebuilds the web app and re-syncs before doing anything else:
 
-| Command                      | What it does                                           |
-| ---------------------------- | ------------------------------------------------------ |
-| `pnpm android:sync`          | `pnpm build` then `cap sync android`                   |
-| `pnpm ios:sync`              | `pnpm build` then `cap sync ios`                       |
-| `pnpm android:run`           | Build, then `cap run android` on an emulator or device |
-| `pnpm ios:run`               | Build, then `cap run ios`                              |
-| `pnpm android:open`          | Open the project in Android Studio, no rebuild         |
-| `pnpm ios:open`              | Open the project in Xcode, no rebuild                  |
-| `pnpm android:build`         | Sync, then `./gradlew assembleDebug`                   |
-| `pnpm android:build:release` | Sync, then `./gradlew bundleRelease`, needs a keystore |
-| `pnpm ios:build`             | Sync, then `cap build ios --scheme App`                |
+| Command                      | What it does                                                     |
+| ---------------------------- | ---------------------------------------------------------------- |
+| `pnpm android:sync`          | `trinity-android:sync`: build `trinity`, then `cap sync android` |
+| `pnpm ios:sync`              | `trinity-ios:sync`: build `trinity`, then `cap sync ios`         |
+| `pnpm android:run`           | Build, then `cap run android` on an emulator or device           |
+| `pnpm ios:run`               | Build, then `cap run ios`                                        |
+| `pnpm android:open`          | Open the project in Android Studio, no rebuild                   |
+| `pnpm ios:open`              | Open the project in Xcode, no rebuild                            |
+| `pnpm android:build`         | Sync, then `./gradlew assembleDebug`                             |
+| `pnpm android:build:release` | Sync, then `./gradlew bundleRelease`, needs a keystore           |
+| `pnpm ios:build`             | Sync, then `cap build ios --scheme App`                          |
+| `pnpm android:verify`        | Docker-free Nx, shared-artifact, plugin and capability contract  |
+| `pnpm ios:verify`            | Docker-free Nx, shared-artifact, plugin and capability contract  |
 
 `pnpm build` has no configuration flag, and the Angular target defaults to `production`, so
 these are always production builds of the web layer even during development.
@@ -53,6 +59,10 @@ deliberately skip the rebuild, so opening Xcode after editing a component shows 
 previous build until you run `pnpm ios:sync`.
 
 Android builds need an Android SDK that Gradle can find. iOS builds need macOS with Xcode.
+Toolchain-backed verification is discoverable as
+`pnpm exec nx run trinity-android:verify-native` and
+`pnpm exec nx run trinity-ios:verify-native`. The latter cannot run on Linux; it performs
+an unsigned iPhone Simulator build on a macOS/Xcode host.
 
 ## Android end-to-end testing
 
@@ -97,6 +107,16 @@ only the previous `tcp:8448` reverse mapping is restored.
 projects but have no TypeScript import anywhere in the workspace. Keyboard is configured
 natively through `capacitor.config.ts` and needs no runtime call; haptics is currently
 unused.
+
+## Host capability negotiation
+
+Both hosts explicitly negotiate authentication handoff, deep links, file export, location,
+secure storage and lifecycle support. Notification presentation and badges remain conditional
+on their plugins' runtime support. Android additionally advertises hardware Back and
+background/minimize; iOS does not emulate those Android operations because native WebKit history
+gestures are coordinated by `NativeNavigation` instead. Update checks are explicitly unavailable
+on both hosts until a native update channel exists. Commands remain cold RxJS Observables, and
+unsupported operations return typed outcomes rather than rejected promises.
 
 ## Android project
 
@@ -150,7 +170,7 @@ notifications will not work. Supplying it is part of setting up push, covered in
 The iOS project consumes its Capacitor dependencies through Swift Package Manager, defined
 in
 [ios/App/CapApp-SPM/Package.swift](https://github.com/quwisky/trinity-matrix-client/blob/develop/ios/App/CapApp-SPM/Package.swift).
-The platform floor is `.iOS(.v15)` and `capacitor-swift-pm` is pinned with `exact:`.
+The platform floor is `.iOS(.v16)` and `capacitor-swift-pm` is pinned with `exact:`.
 
 `Info.plist` declares `CFBundleURLSchemes: [eu.qwky.trinity]` for the auth callback, and
 six usage strings that iOS requires before the corresponding prompt can be shown:
@@ -189,10 +209,8 @@ right edge to native history.
 
     The fix is `pnpm android:sync` and `pnpm ios:sync`, then commit the regenerated files.
 
-This is not hypothetical. On `develop` today the generated files reference
-`@capacitor/core` 8.4.1 and `@capacitor/android` 8.4.1, while the installed tree resolves
-8.4.2 for both. Several plugins are similarly one patch behind. A contributor who runs
-`pnpm android:build` before re-syncing will hit it.
+The explicit Nx `sync` targets are the supported repair path; a contributor who runs a native
+tool directly before re-syncing can still hit stale generated plugin paths.
 
 Renovate's `ignorePaths` covers `android/**` and `ios/**`, so its Capacitor grouped update
 will never regenerate these files. A dependency bump and the re-sync it requires are two
