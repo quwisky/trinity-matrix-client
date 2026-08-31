@@ -64,8 +64,8 @@ are scheduled. Changing a tier without changing its CI command classification fa
 | `pnpm e2e`            | Pull-request-classified suites                                                        |
 | `pnpm e2e:all`        | Every registered suite available on this host                                         |
 | `pnpm e2e:browser`    | Canonical Synapse browser journeys                                                    |
-| `pnpm e2e:web`        | Production Web/PWA host contract                                                      |
-| `pnpm e2e:components` | Storybook, styling, cross-browser scrollbar and production-renderer contracts         |
+| `pnpm e2e:web`        | Production Web/PWA host and production-renderer contracts                             |
+| `pnpm e2e:components` | Storybook, styling and cross-browser scrollbar contracts                              |
 | `pnpm e2e:protocol`   | Verification, crypto, media, relation, room, search and emoji protocol/system drivers |
 | `pnpm e2e:electron`   | Docker-independent shell smoke plus the full Synapse-backed Electron journey          |
 | `pnpm e2e:android`    | Installed API 36 WebView journeys                                                     |
@@ -99,10 +99,10 @@ child cannot silently fall back to starting or stopping a replacement resource.
 
 The aggregate opens the owner before its first child and closes it after its last child. Direct
 Nx targets use the same support wrappers, so focused and aggregate runs have identical ownership.
-`trinity-e2e-web` now owns production Web/PWA startup and offline behavior. The
-`trinity-e2e-components` project owns explicit Storybook, styling, scrollbar and
-production-renderer targets. Their small configs compose the support builders and declare only
-their engine matrices and suite-specific browser policy. The nine `e2e/runners/*-run.mjs`
+`trinity-e2e-web` now owns production Web/PWA startup, offline behavior and the production-renderer
+matrix. The `trinity-e2e-components` project owns explicit Storybook, styling and scrollbar
+targets. Their small configs compose the support builders and declare only their engine matrices
+and suite-specific browser policy. The nine `e2e/runners/*-run.mjs`
 protocol paths remain thin compatibility entrypoints over one
 support runner. Browser, Android and Electron adapters depend inward on support contracts; only
 `e2e/fixtures.mts` chooses an environment fixture.
@@ -126,16 +126,16 @@ without changing assertions:
 | `trinity-e2e-support`    | **Current:** processes, ports, Synapse, APIs, resources and reporting |
 | `trinity-e2e-browser`    | Canonical application journeys, grouped by durable product capability |
 | `trinity-e2e-protocol`   | Verification, crypto and Matrix protocol/system drivers               |
-| `trinity-e2e-web`        | **Current:** production Web/PWA host behavior                         |
+| `trinity-e2e-web`        | **Current:** production Web/PWA host and renderer behavior            |
 | `trinity-e2e-electron`   | Launched desktop shell and full Electron journeys                     |
 | `trinity-e2e-android`    | Installed Capacitor WebView and Android-only journeys                 |
-| `trinity-e2e-components` | **Current:** Storybook, styling, scrollbar and renderer contracts     |
+| `trinity-e2e-components` | **Current:** Storybook, styling and scrollbar contracts               |
 
 Environment fixtures may depend on `trinity-e2e-support`; they must not import another
 environment's fixture implementation. Playwright configurations stay small and lifecycle-specific
 instead of becoming one mega-config.
 
-Every Playwright config writes below
+Every migrated lifecycle Playwright config writes below
 `dist/.playwright/<lifecycle-project>/<run-id>/<suite-id>/`. Raw output, mergeable blob reports,
 JUnit XML and local HTML share that identity, and the Playwright metadata repeats the registry's
 suite, environment, capabilities, contract types, prerequisites and CI tier. This keeps parallel

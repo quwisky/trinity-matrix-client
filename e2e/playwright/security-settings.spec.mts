@@ -6,7 +6,7 @@ import {
   type SynapseSession,
 } from '../support/app.mts';
 import { registerUser } from '../support/account.mts';
-import { openSettingsSection } from './journeys/navigation.mts';
+import { openSettingsSection } from '../support/journeys/navigation.mts';
 
 // Covers the Security settings section (Settings → Security): it surfaces this account's
 // encryption posture from TrustService and launches the existing setup/verify flows. A

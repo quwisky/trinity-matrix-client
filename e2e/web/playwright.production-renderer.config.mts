@@ -8,7 +8,7 @@ import {
 } from '../support/playwright-config.mts';
 
 const lifecycle = e2eLifecycleConfig({
-  suite: registeredE2ESuite('components.production-renderer'),
+  suite: registeredE2ESuite('web.production-renderer'),
   projectRoot: import.meta.dirname,
   testDir: './production-renderer',
   endpoint: 'application',

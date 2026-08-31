@@ -493,7 +493,7 @@ const validateCiEntrypoints = (errors, workspaceRoot, snapshot) => {
       errors.push(`pull-request suite has no CI entrypoint: ${suite.id}`);
     }
   }
-  if (!workflow.includes('# 104 canonical browser specs')) {
+  if (!workflow.includes('# 103 canonical browser specs')) {
     errors.push('CI canonical browser spec count is stale');
   }
 };
@@ -508,7 +508,7 @@ const validateArchitectureCommand = (errors, packageScripts) => {
   }
 };
 
-const validateDurableE2ENames = (errors, workspaceRoot) => {
+export const validateDurableE2ENames = (errors, workspaceRoot) => {
   const paths = [
     ...globSync('e2e/**/*', { cwd: workspaceRoot }),
     ...globSync('scripts/*e2e*', { cwd: workspaceRoot }),
@@ -526,7 +526,11 @@ const validateDurableE2ENames = (errors, workspaceRoot) => {
     'docs/contributing/commands.md',
     'docs/contributing/e2e-architecture.md',
     'docs/contributing/testing.md',
-  ].filter((path) => path !== 'scripts/e2e-suite-registry-validator.mjs');
+  ].filter(
+    (path) =>
+      path !== 'scripts/e2e-suite-registry-validator.mjs' &&
+      existsSync(join(workspaceRoot, path)),
+  );
   for (const path of primarySources) {
     const source = readFileSync(join(workspaceRoot, path), 'utf8').replaceAll(
       RETAINED_COMPATIBILITY_ALIAS,

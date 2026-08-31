@@ -7,7 +7,7 @@ import {
 } from '../fixtures.mts';
 import { login, synapseSession } from '../support/app.mts';
 import { registerUser } from '../support/account.mts';
-import { openSettingsSection } from './journeys/navigation.mts';
+import { openSettingsSection } from '../support/journeys/navigation.mts';
 
 // Covers issue #22: the Settings → Appearance dropdowns that choose how times and dates are
 // written. The unit tests cover the formatting itself; what only a real browser can prove is

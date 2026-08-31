@@ -9,7 +9,7 @@ import {
 const lifecycle = e2eLifecycleConfig({
   suite: registeredE2ESuite('components.scrollbars'),
   projectRoot: import.meta.dirname,
-  testDir: '../playwright',
+  testDir: './scrollbars',
   endpoint: 'application',
   timeout: 120_000,
 });
@@ -20,8 +20,7 @@ export default defineConfig({
   ...lifecycle,
   ...app,
   use: { ...lifecycle.use, ...app.use },
-  testMatch: ['settings-scrollbars.spec.mts', 'message-markdown.spec.mts'],
-  grep: /Settings scrollbars|syntax-highlights a fenced block/,
+  testMatch: ['settings-scrollbars.spec.mts', 'code-block-rendering.spec.mts'],
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'firefox', use: { ...devices['Desktop Firefox'] } },

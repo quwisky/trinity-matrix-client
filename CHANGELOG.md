@@ -88,9 +88,9 @@ All notable changes to this project are documented here. The format is based on
 ### Changed
 
 - **Web/PWA and visual browser contracts now have lifecycle-owned Nx projects.**
-  `trinity-e2e-web` owns production startup, routing, service-worker and offline-shell coverage;
-  `trinity-e2e-components` owns Storybook, styling, cross-browser scrollbar and production-renderer
-  targets. Small configs compose the shared invocation/report builders, while retained public
+  `trinity-e2e-web` owns production startup, routing, service-worker, offline-shell and renderer
+  coverage; `trinity-e2e-components` owns Storybook, styling and cross-browser scrollbar targets.
+  Small configs compose the shared invocation/report builders, while retained public
   commands delegate through registry-checked compatibility aliases. Historical phase names are
   gone from executable test paths and selectors. Playwright evidence now lands under
   `dist/.playwright/<project>/<run-id>/` with registry metadata plus mergeable blob and JUnit

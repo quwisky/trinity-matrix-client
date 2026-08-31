@@ -34,13 +34,13 @@ web output and syncs it into the APK before every run.
 ```
 e2e/
   registry/   typed suite, command, CI, prerequisite and migration-destination contract
-  components/ trinity-e2e-components: Storybook, CSS, scrollbar and production-renderer contracts
+  components/ trinity-e2e-components: Storybook, CSS and scrollbar contracts
   features/   raw-playwright test bodies — what each scenario drives in the browser
               (emoji, rooms, search, spaces, threads, send-media, verify-sas, …)
   runners/    nine thin protocol compatibility entrypoints over the support runner
   playwright/ @nx/playwright web app-journey specs (app, navigation, settings) +
               browser-only adapters — `nx e2e trinity-e2e`
-  web/        trinity-e2e-web: production Web/PWA host contract — `pnpm e2e:web`
+  web/        trinity-e2e-web: production Web/PWA host and renderer contracts — `pnpm e2e:web`
   android/    API 36 Capacitor WebView fixture, native-only specs, and device
               orchestrator — `pnpm e2e:android`
   electron/   @nx/playwright Electron specs + support/launch — `pnpm electron:e2e`
@@ -59,10 +59,10 @@ invocation descriptor and deliberately do not start a fallback server or homeser
 | `pnpm e2e`                                           | Run the pull-request-classified local E2E set after one registry/prerequisite preflight.                                                   |
 | `pnpm e2e:all`                                       | Run every registered suite available on this host; this is the migration pull-request delivery gate.                                       |
 | `pnpm e2e:browser`                                   | Run canonical Synapse browser journeys.                                                                                                    |
-| `pnpm e2e:components`                                | Run Storybook, styling, scrollbar and production-renderer contracts.                                                                       |
+| `pnpm e2e:components`                                | Run Storybook, styling and cross-browser scrollbar contracts.                                                                              |
 | `pnpm e2e:protocol`                                  | Run every registered verification, crypto and protocol/system driver.                                                                      |
 | `pnpm e2e:electron`                                  | Run Electron shell smoke and the full Synapse-backed desktop journey under Xvfb when needed.                                               |
-| `pnpm e2e:web`                                       | Build the production Web/PWA host and verify deep links, installability, service-worker control, offline routing, and cached crypto WASM.  |
+| `pnpm e2e:web`                                       | Build the production Web/PWA host and run host plus production-renderer contracts.                                                         |
 | `pnpm smoke:login`                                   | Unauthenticated → `/login`, real `.well-known` discovery for matrix.org.                                                                   |
 | `pnpm spike:chromium` / `pnpm spike:webkit`          | In-app E2EE crypto spike.                                                                                                                  |
 | `pnpm e2e:verify`                                    | **Two-client device verification (emoji SAS)** — full live flow against a disposable Synapse.                                              |

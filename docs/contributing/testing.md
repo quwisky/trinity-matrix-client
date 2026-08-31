@@ -670,7 +670,7 @@ repository-level invariant specs that guard configuration a green run cannot see
 The visual lifecycle provides a separate real-application semantic and geometry gate:
 
 ```bash
-pnpm exec nx run trinity-e2e-components:production-renderer
+pnpm exec nx run trinity-e2e-web:production-renderer
 ```
 
 It creates and records a production build, then drives seven representative cross-cutting
@@ -678,7 +678,7 @@ viewport/device profiles against disposable Synapse, including genuine WebKit pl
 and 320x568 mobile descriptors rather than resized desktop Chromium. The suite checks geometry,
 horizontal overflow, rendered contrast, focus, accessible names, unread content, safe encryption
 setup and the production reduced-motion contract with Trinity's production typography. See
-[`e2e/components/production-renderer/README.md`](../../e2e/components/production-renderer/README.md)
+[`e2e/web/production-renderer/README.md`](../../e2e/web/production-renderer/README.md)
 for the matrix.
 
 Visual proof is a review artifact, not source. Capture screenshots and GIFs under ignored
@@ -691,7 +691,7 @@ For cross-platform rollout evidence, the production-renderer target builds `www/
 before either wrapper copies it:
 
 ```bash
-pnpm exec nx run trinity-e2e-components:production-renderer
+pnpm exec nx run trinity-e2e-web:production-renderer
 pnpm electron:build:prebuilt
 TRINITY_E2E_PREBUILT_WWW=1 pnpm e2e:android -- --grep @renderer-smoke
 pnpm bundle:manifest:verify

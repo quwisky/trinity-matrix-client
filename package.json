@@ -39,7 +39,7 @@
     "e2e:search": "nx run trinity-e2e:protocol-search",
     "e2e:emoji": "nx run trinity-e2e:protocol-emoji",
     "e2e:android": "nx run trinity-e2e:e2e-android",
-    "e2e:ui:shipped": "nx run trinity-e2e-components:production-renderer",
+    "e2e:ui:shipped": "nx run trinity-e2e-web:production-renderer",
     "bundle:manifest:write": "node scripts/web-bundle-manifest.mjs write www",
     "bundle:manifest:verify": "node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json electron/www && node scripts/web-bundle-manifest.mjs verify-with-extras dist/web-bundle-manifest.json android/app/src/main/assets/public cordova.js cordova_plugins.js",
     "electron:install": "nx run trinity-desktop:install",

@@ -7,7 +7,7 @@ import {
 } from '../fixtures.mts';
 import { login, synapseSession, type SynapseSession } from '../support/app.mts';
 import { registerUser } from '../support/account.mts';
-import { openSettingsSection } from './journeys/navigation.mts';
+import { openSettingsSection } from '../support/journeys/navigation.mts';
 
 // Covers issue #21: the Settings → Appearance toggles that hide system lines (joins,
 // profile changes, room changes) from the timeline. Two users so a real

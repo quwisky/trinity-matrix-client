@@ -3,7 +3,6 @@ import {
   test,
   expect,
   type APIRequestContext,
-  type Page,
 } from '../fixtures.mts';
 import {
   isAndroidE2E,
@@ -14,6 +13,10 @@ import {
   type SynapseSession,
 } from '../support/app.mts';
 import { registerUser } from '../support/account.mts';
+import {
+  openNamedRoom,
+  sendComposerLines,
+} from '../support/message-composer.mts';
 
 // Covers the markdown render path end to end, through the REAL composer so the wire
 // format is exercised, not just the rendering:
@@ -23,37 +26,6 @@ import { registerUser } from '../support/account.mts';
 //   - fenced code is syntax-highlighted, and follows the theme
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = synapseSession();
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
-}
-
-/** Type a message with real newlines: Shift+Enter inserts one, Enter sends. */
-async function sendLines(page: Page, lines: readonly string[]): Promise<void> {
-  const composer = page.getByTestId('composer-input');
-  await composer.click();
-  for (const [index, line] of lines.entries()) {
-    if (index > 0) {
-      await composer.press('Shift+Enter');
-    }
-    // pressSequentially, not fill: the composer's mention/emoji autocomplete and draft
-    // persistence all hang off per-key input events. (Locator.type is deprecated.)
-    await composer.pressSequentially(line);
-  }
-  // A local echo can render before the authoritative send settles. Once this draft exists,
-  // wait for the actual single-flight control before Enter so the next send cannot be
-  // discarded. An empty composer intentionally keeps this control disabled.
-  await expect(page.getByTestId('composer-send')).toBeEnabled({
-    timeout: 20_000,
-  });
-  await composer.press('Enter');
-}
 
 /** Every message event in the room, oldest first, straight from the homeserver. */
 async function roomEvents(
@@ -108,17 +80,17 @@ test.describe('Message markdown', () => {
       .then((j) => j.room_id as string);
 
     await login(page, { available: true, hs, user, pass } as SynapseSession);
-    await openRoom(page, roomName);
+    await openNamedRoom(page, roomName);
 
     // 1. A plain multi-line message.
-    await sendLines(page, ['plain one', 'plain two']);
+    await sendComposerLines(page, ['plain one', 'plain two']);
     await expect(
       page.locator('.msg__text', { hasText: 'plain one' }),
     ).toBeVisible({ timeout: 20_000 });
 
     // 2. The same shape, but with formatting — this is the bug: before the fix the
     //    line break vanished the moment anything was bold.
-    await sendLines(page, ['**bold one**', 'rich two']);
+    await sendComposerLines(page, ['**bold one**', 'rich two']);
     const rich = page.locator('.msg__text--html', { hasText: 'rich two' });
     await expect(rich).toBeVisible({ timeout: 20_000 });
     await expect(rich.locator('strong')).toHaveText('bold one');
@@ -180,13 +152,13 @@ test.describe('Message markdown', () => {
     });
 
     await login(page, { available: true, hs, user, pass } as SynapseSession);
-    await openRoom(page, roomName);
+    await openNamedRoom(page, roomName);
 
     // Only the first marker is typed. Shift+Enter carries the whole marker onto the next
     // line — bullet AND task box, always unticked — so the second line is just its text.
     // Typing `- ` again would nest a second list; typing `[ ] ` again would put a literal
     // `[ ]` inside the item, which is what this spec caught when the box started carrying.
-    await sendLines(page, ['- [x] shipped', 'pending']);
+    await sendComposerLines(page, ['- [x] shipped', 'pending']);
 
     const list = page.locator('.msg__text--html', { hasText: 'shipped' });
     await expect(list).toBeVisible({ timeout: 20_000 });
@@ -223,14 +195,14 @@ test.describe('Message markdown', () => {
     });
 
     await login(page, { available: true, hs, user, pass } as SynapseSession);
-    await openRoom(page, roomName);
+    await openNamedRoom(page, roomName);
 
     // A leading message makes the block a CONTINUATION row — no author header to push it
     // down, which is where the row's hover toolbar sits lowest over it. Hovering the block
     // necessarily hovers the message, so the two are always shown together.
-    await sendLines(page, ['setting up']);
+    await sendComposerLines(page, ['setting up']);
     await page.waitForTimeout(500);
-    await sendLines(page, ['```python', 'x = 1', '```']);
+    await sendComposerLines(page, ['```python', 'x = 1', '```']);
 
     const pre = page.locator('.msg__text--html pre').first();
     await expect(pre).toBeVisible({ timeout: 20_000 });
@@ -304,185 +276,5 @@ test.describe('Message markdown', () => {
 
     expect(overlap?.isContinuation).toBe(true);
     expect(overlap?.overlaps).toBe(false);
-  });
-
-  test('syntax-highlights a fenced block, in the theme’s colours', async ({
-    page,
-    request,
-  }) => {
-    const hs = session.hs as string;
-    const runId = `${testResourceId('run')}hl`;
-    const user = `code-${runId}`;
-    const pass = `${user}-pass`;
-    const roomName = `Code ${runId}`;
-
-    await registerUser(request, user, pass);
-    const token = await request
-      .post(`${hs}/_matrix/client/v3/login`, {
-        data: {
-          type: 'm.login.password',
-          identifier: { type: 'm.id.user', user },
-          password: pass,
-        },
-      })
-      .then((r) => r.json())
-      .then((j) => j.access_token as string);
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: { Authorization: `Bearer ${token}` },
-      data: { name: roomName, preset: 'private_chat' },
-    });
-
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
-    await openRoom(page, roomName);
-
-    const source = `def greet(n): return "${'scrollbar-proof-'.repeat(16)}"`;
-    await sendLines(page, ['```python', source, '```']);
-
-    // Settle on the remote echo first. The row is re-created when the real event id
-    // arrives, and evaluating getComputedStyle across that swap resolves against a
-    // detached node, which returns '' — a flake that reads as a highlighting failure.
-    await waitForSent(
-      page.locator('.scroll .msg[data-mid]', { hasText: 'greet' }).first(),
-    );
-
-    const block = page.locator('.msg__text--html pre code').first();
-    await expect(block).toBeVisible({ timeout: 20_000 });
-    // The language survives the sanitizer, and the highlighter consumed it.
-    await expect(block).toHaveClass(/language-python/);
-    await expect(block.locator('.tok-keyword').first()).toHaveText('def');
-    // Tokenizing must not alter a single character of someone's code.
-    await expect(block).toHaveText(source);
-
-    // The colours come from --trinity-syntax-*, so they follow the mode. If they were
-    // hardcoded (or emitted as inline `style`, which Angular strips) neither would apply.
-    //
-    // Both modes are forced and asserted against their expected value rather than merely
-    // "the colour changed": the app may already have resolved to dark (ThemeService
-    // defaults to `system`), in which case adding the class is a no-op and a
-    // changed/not-changed check would spin without saying why.
-    const keyword = block.locator('.tok-keyword').first();
-    const colourIn = async (mode: 'light' | 'dark') => {
-      await page.evaluate((m) => {
-        document.documentElement.classList.toggle('dark', m === 'dark');
-      }, mode);
-      return keyword.evaluate((el) => getComputedStyle(el).color);
-    };
-
-    // The two --trinity-syntax-keyword values: #a626a4 light, #c678dd dark.
-    expect(await colourIn('light')).toBe('rgb(166, 38, 164)');
-    expect(await colourIn('dark')).toBe('rgb(198, 120, 221)');
-
-    // The language is captioned on the block, and only shown while pointing at it. The
-    // caption is generated content from a `language` attribute, so it never becomes part of
-    // the message's text — assert it the way the browser sees it.
-    const pre = page.locator('.msg__text--html pre').first();
-    await expect(pre).toHaveAttribute('language', 'python');
-
-    // This is a real horizontal overflow surface, not a synthetic test node. Its bar uses
-    // the same geometry and theme-aware thumb as vertical panels throughout the shell.
-    const horizontalScrollbar = await pre.evaluate((element) => {
-      const probe = document.createElement('span');
-      probe.style.cssText =
-        'position:absolute;height:var(--trinity-scrollbar-size);background:var(--trinity-scrollbar-thumb)';
-      const railProbe = document.createElement('span');
-      railProbe.style.cssText =
-        'position:absolute;background:var(--trinity-rail)';
-      element.append(probe);
-      element.append(railProbe);
-      const probeStyle = getComputedStyle(probe);
-      const railProbeStyle = getComputedStyle(railProbe);
-      const usesWebkit =
-        !navigator.userAgent.includes('Firefox') &&
-        CSS.supports('selector(::-webkit-scrollbar-thumb)');
-      const bar = usesWebkit
-        ? getComputedStyle(element, '::-webkit-scrollbar')
-        : undefined;
-      const thumb = usesWebkit
-        ? getComputedStyle(element, '::-webkit-scrollbar-thumb')
-        : undefined;
-      const originalScrollLeft = element.scrollLeft;
-      element.scrollLeft = element.scrollWidth;
-      const result = {
-        usesWebkit,
-        overflow: element.scrollWidth - element.clientWidth,
-        scrollLeft: element.scrollLeft,
-        standardColor: getComputedStyle(element).scrollbarColor,
-        height: bar?.height,
-        thumb: thumb?.backgroundColor,
-        expectedHeight: probeStyle.height,
-        expectedThumb: probeStyle.backgroundColor,
-        expectedRail: railProbeStyle.backgroundColor,
-      };
-      element.scrollLeft = originalScrollLeft;
-      probe.remove();
-      railProbe.remove();
-      return result;
-    });
-    expect(horizontalScrollbar.overflow).toBeGreaterThan(0);
-    expect(horizontalScrollbar.scrollLeft).toBeGreaterThan(0);
-    expect(horizontalScrollbar.expectedRail).not.toBe('rgba(0, 0, 0, 0)');
-    expect(horizontalScrollbar.expectedThumb).toBe(
-      horizontalScrollbar.expectedRail,
-    );
-    if (horizontalScrollbar.usesWebkit) {
-      expect(horizontalScrollbar.height).toBe(
-        horizontalScrollbar.expectedHeight,
-      );
-      expect(horizontalScrollbar.thumb).toBe(horizontalScrollbar.expectedThumb);
-    } else {
-      expect(horizontalScrollbar.standardColor).toContain(
-        horizontalScrollbar.expectedRail,
-      );
-    }
-
-    const captionStyle = () =>
-      pre.evaluate((el) => {
-        const style = getComputedStyle(el, '::after');
-        return { content: style.content, opacity: style.opacity };
-      });
-
-    const caption = await captionStyle();
-    // Firefox serializes generated attr() content as the function rather than its value.
-    expect(
-      caption.content === 'attr(language)' ||
-        caption.content.includes('python'),
-    ).toBe(true);
-    expect((await captionStyle()).opacity).toBe(isAndroidE2E ? '1' : '0');
-    if (!isAndroidE2E) {
-      await pre.hover();
-      await expect.poll(async () => (await captionStyle()).opacity).toBe('1');
-    }
-
-    // And it stays out of the text: the <pre> reads exactly as its <code> does, so
-    // selecting or copying the block yields only the sender's source — and the
-    // edit-history diff, which compares rendered text, never sees the caption.
-    expect(await pre.evaluate((el) => el.textContent)).toBe(
-      await block.evaluate((el) => el.textContent),
-    );
-
-    // The block carries the same optical correction inline code does. Both compute to 85%
-    // of the prose around them: a monospace face reads larger than the proportional UI font
-    // at an equal computed size, so an uncorrected block towers over the conversation even
-    // though the numbers match. Asserted as a RATIO against real rendered prose rather than
-    // as a px value, so it holds at every Text size rather than pinning one of them.
-    const correction = await block.evaluate((el) => {
-      const body = el.closest('.msg__text--html');
-      if (!body) {
-        throw new Error('code block is not inside a rendered message body');
-      }
-      const size = (node: Element) =>
-        parseFloat(getComputedStyle(node).fontSize);
-      return size(el) / size(body);
-    });
-
-    expect(correction).toBeCloseTo(0.85, 2);
-
-    // An unknown language still renders, just without tokens and without erroring.
-    await sendLines(page, ['```nosuchlang', 'anything at all', '```']);
-    const unknown = page
-      .locator('.msg__text--html pre code', { hasText: 'anything at all' })
-      .first();
-    await expect(unknown).toBeVisible({ timeout: 20_000 });
-    await expect(unknown.locator('.tok-keyword')).toHaveCount(0);
   });
 });

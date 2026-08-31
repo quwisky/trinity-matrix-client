@@ -63,7 +63,6 @@ export const E2E_PACKAGE_SCRIPTS = [
       'components.storybook',
       'components.styling',
       'components.scrollbars',
-      'components.production-renderer',
     ],
   },
   {
@@ -96,7 +95,7 @@ export const E2E_PACKAGE_SCRIPTS = [
     name: 'e2e:web',
     command: 'nx run trinity-e2e:e2e-web',
     kind: 'canonical',
-    suiteIds: ['web.production-pwa'],
+    suiteIds: ['web.production-pwa', 'web.production-renderer'],
   },
   {
     name: 'e2e:android',
@@ -169,9 +168,9 @@ export const E2E_PACKAGE_SCRIPTS = [
   },
   {
     name: 'e2e:ui:shipped',
-    command: 'nx run trinity-e2e-components:production-renderer',
+    command: 'nx run trinity-e2e-web:production-renderer',
     kind: 'compatibility',
-    suiteIds: ['components.production-renderer'],
+    suiteIds: ['web.production-renderer'],
     removalAfterRelease: compatibilityRelease,
   },
   {
@@ -233,8 +232,8 @@ export const E2E_CI_ENTRYPOINTS = [
     suiteIds: ['components.storybook'],
   },
   {
-    command: 'pnpm exec nx run trinity-e2e-components:production-renderer',
-    suiteIds: ['components.production-renderer'],
+    command: 'pnpm exec nx run trinity-e2e-web:production-renderer',
+    suiteIds: ['web.production-renderer'],
   },
   {
     command: 'pnpm exec nx run trinity-e2e-components:styling',

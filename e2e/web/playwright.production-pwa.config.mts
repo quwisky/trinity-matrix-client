@@ -14,6 +14,7 @@ const lifecycle = e2eLifecycleConfig({
 /** Production Web/PWA contract against the exact artifact wrapped by native hosts. */
 export default defineConfig({
   ...lifecycle,
+  testMatch: 'production-pwa.spec.mts',
   use: {
     ...lifecycle.use,
     ...devices['Desktop Chrome'],

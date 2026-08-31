@@ -8,7 +8,7 @@ import {
 import { login, synapseSession, type SynapseSession } from '../support/app.mts';
 import { registerUser } from '../support/account.mts';
 import { nextTestResourceId } from '../support/namespace.mts';
-import { openSettingsSection } from './journeys/navigation.mts';
+import { openSettingsSection } from '../support/journeys/navigation.mts';
 
 // Covers issue #34: how rooms are ordered inside a space.
 //

@@ -14,6 +14,7 @@ import {
   writeSession,
   type E2ESessionDescriptor,
 } from './session.mts';
+import RegistryMetadataReporter from './registry-metadata.reporter.mts';
 
 const directories: string[] = [];
 const previousSession = process.env[E2E_SESSION_ENV];
@@ -118,6 +119,32 @@ describe('Playwright config primitives', () => {
     });
     expect(JSON.stringify(report.reporter)).toContain('blob-report');
     expect(JSON.stringify(report.reporter)).toContain('junit/results.xml');
+  });
+
+  it('copies registry identity into per-test annotations consumed by JUnit', () => {
+    const testCase = {
+      annotations: [{ type: 'existing', description: 'preserved' }],
+    };
+    const reporter = new RegistryMetadataReporter({
+      metadata: {
+        'trinity.e2e.suite': 'web.production-pwa',
+        'trinity.e2e.project': 'trinity-e2e-web',
+      },
+    });
+
+    reporter.onBegin({} as never, { allTests: () => [testCase] } as never);
+
+    expect(testCase.annotations).toEqual([
+      { type: 'existing', description: 'preserved' },
+      {
+        type: 'trinity.e2e.suite',
+        description: 'web.production-pwa',
+      },
+      {
+        type: 'trinity.e2e.project',
+        description: 'trinity-e2e-web',
+      },
+    ]);
   });
 
   it('composes lifecycle defaults without hiding suite-owned browser projects', () => {

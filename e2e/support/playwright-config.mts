@@ -1,6 +1,7 @@
 import { join, resolve } from 'node:path';
 import type { PlaywrightTestConfig } from '@playwright/test';
 import { nxE2EPreset } from '@nx/playwright/preset';
+import type { E2ESuiteDefinition } from './e2e-registry.types.mts';
 import {
   E2E_SESSION_ENV,
   readSession,
@@ -9,15 +10,16 @@ import {
 
 export type E2EEndpoint = 'application' | 'report' | 'storybook';
 
-interface E2EReportingSuite {
-  readonly id: string;
-  readonly environment: string;
-  readonly capabilities: readonly string[];
-  readonly contractTypes: readonly string[];
-  readonly targetProject: string;
-  readonly prerequisites: readonly string[];
-  readonly ciTier: string;
-}
+type E2EReportingSuite = Pick<
+  E2ESuiteDefinition,
+  | 'id'
+  | 'environment'
+  | 'capabilities'
+  | 'contractTypes'
+  | 'targetProject'
+  | 'prerequisites'
+  | 'ciTier'
+>;
 
 interface E2ELifecycleConfigOptions {
   readonly suite: E2EReportingSuite;
@@ -75,9 +77,19 @@ export function e2eReportConfig(
 ): Pick<PlaywrightTestConfig, 'metadata' | 'outputDir' | 'reporter'> {
   const artifact = (leaf: string): string =>
     e2eArtifactPath(suite.targetProject, suite.id, leaf);
+  const metadata = {
+    'trinity.e2e.suite': suite.id,
+    'trinity.e2e.project': suite.targetProject,
+    'trinity.e2e.environment': suite.environment,
+    'trinity.e2e.capabilities': suite.capabilities.join(','),
+    'trinity.e2e.contractTypes': suite.contractTypes.join(','),
+    'trinity.e2e.prerequisites': suite.prerequisites.join(','),
+    'trinity.e2e.ciTier': suite.ciTier,
+  } as const;
   const consoleReporter = process.env['CI'] ? 'dot' : 'list';
   const reporter: NonNullable<PlaywrightTestConfig['reporter']> = [
     [consoleReporter],
+    [join(import.meta.dirname, 'registry-metadata.reporter.mts'), { metadata }],
     ['blob', { outputDir: artifact('blob-report') }],
     ['junit', { outputFile: artifact('junit/results.xml') }],
   ];
@@ -88,15 +100,7 @@ export function e2eReportConfig(
     ]);
   }
   return {
-    metadata: {
-      'trinity.e2e.suite': suite.id,
-      'trinity.e2e.project': suite.targetProject,
-      'trinity.e2e.environment': suite.environment,
-      'trinity.e2e.capabilities': suite.capabilities.join(','),
-      'trinity.e2e.contractTypes': suite.contractTypes.join(','),
-      'trinity.e2e.prerequisites': suite.prerequisites.join(','),
-      'trinity.e2e.ciTier': suite.ciTier,
-    },
+    metadata,
     outputDir: artifact('test-output'),
     reporter,
   };

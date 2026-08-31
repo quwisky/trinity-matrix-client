@@ -60,23 +60,4 @@ export const COMPONENT_E2E_SUITES = defineSuites([
     targetArtifactRoot: 'dist/.playwright/trinity-e2e-components/<run-id>',
     sourceEntrypoints: ['e2e/components/playwright.scrollbars.config.mts'],
   },
-  {
-    id: 'components.production-renderer',
-    environment: 'components',
-    capabilities: ['cross-capability', 'design-system'],
-    contractTypes: ['accessibility', 'visual'],
-    currentTarget: 'trinity-e2e-components:production-renderer',
-    targetProject: 'trinity-e2e-components',
-    prerequisites: ['docker', 'playwright-chromium', 'playwright-webkit'],
-    ciTier: 'pull-request',
-    cachePolicy: 'never',
-    serializationKeys: ['synapse'],
-    timeoutClass: 'long',
-    canonicalScript: 'e2e:components',
-    currentArtifactRoot: 'dist/.playwright/trinity-e2e-components/<run-id>',
-    targetArtifactRoot: 'dist/.playwright/trinity-e2e-components/<run-id>',
-    sourceEntrypoints: [
-      'e2e/components/playwright.production-renderer.config.mts',
-    ],
-  },
 ]);

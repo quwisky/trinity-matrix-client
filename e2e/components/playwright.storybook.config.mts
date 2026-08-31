@@ -13,9 +13,9 @@ const lifecycle = e2eLifecycleConfig({
 /**
  * Browser checks for the built Storybook, deliberately separate from the app journeys.
  *
- * Storybook needs neither the application dev build nor the disposable Synapse owned by
- * Keeping its server and output here means the small component-canvas check can run without
- * changing the cost or lifecycle of the canonical application journeys.
+ * Storybook needs neither the application dev build nor disposable Synapse. Keeping its
+ * server and output here means the small component-canvas check can run without changing
+ * the cost or lifecycle of the canonical application journeys.
  */
 export default defineConfig({
   ...lifecycle,

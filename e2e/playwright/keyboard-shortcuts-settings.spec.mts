@@ -1,7 +1,7 @@
 import { testResourceId, test, expect } from '../fixtures.mts';
 import { login, synapseSession, type SynapseSession } from '../support/app.mts';
 import { registerUser } from '../support/account.mts';
-import { openSettingsSection } from './journeys/navigation.mts';
+import { openSettingsSection } from '../support/journeys/navigation.mts';
 
 // Covers the "Keyboard shortcuts" settings section (issue #13): the list is reachable from
 // Settings, a rebound chord takes effect (the new chord switches rooms, the old one no

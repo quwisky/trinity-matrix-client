@@ -41,17 +41,6 @@
         "cwd": "{workspaceRoot}"
       }
     },
-    "production-renderer": {
-      "//": "Production semantic, responsive, contrast and geometry matrix over the manifest-recorded shared renderer.",
-      "cache": false,
-      "parallelism": false,
-      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-components"],
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "node e2e/support/run-playwright.mts --config=e2e/components/playwright.production-renderer.config.mts --build=trinity:build:production --bundle-manifest --resource=synapse",
-        "cwd": "{workspaceRoot}"
-      }
-    },
     "lint": {
       "executor": "nx:run-commands",
       "options": {

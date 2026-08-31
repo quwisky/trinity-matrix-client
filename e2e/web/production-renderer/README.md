@@ -6,7 +6,7 @@ It stores no screenshots or pixel baselines in the repository.
 Run it with:
 
 ```bash
-pnpm exec nx run trinity-e2e-components:production-renderer
+pnpm exec nx run trinity-e2e-web:production-renderer
 ```
 
 The command creates a production build and its SHA-256 manifest before Playwright starts. Set

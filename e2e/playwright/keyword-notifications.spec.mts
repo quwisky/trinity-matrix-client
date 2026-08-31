@@ -6,7 +6,7 @@ import {
 } from '../fixtures.mts';
 import { login, synapseSession, type SynapseSession } from '../support/app.mts';
 import { registerUser } from '../support/account.mts';
-import { openSettingsSection } from './journeys/navigation.mts';
+import { openSettingsSection } from '../support/journeys/navigation.mts';
 
 // Covers keyword notification rules (Settings → Notifications → Keywords). Adding a word
 // writes a `content` push rule keyed by the word itself, and a message containing it must
