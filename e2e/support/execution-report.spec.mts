@@ -135,4 +135,54 @@ describe('E2E execution reports', () => {
       'Invalid Playwright suite summary',
     );
   });
+
+  it.each([
+    ['negative', { failed: -1 }],
+    ['non-number', { failed: '1' }],
+  ])('rejects %s attempt status counts', (_name, attemptsByStatus) => {
+    const directory = mkdtempSync(join(tmpdir(), 'trinity-suite-report-'));
+    directories.push(directory);
+    const file = join(directory, 'suite-summary.json');
+    writeFileSync(
+      file,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        suiteId: 'browser.canonical',
+        status: 'failed',
+        attempts: 1,
+        retries: 0,
+        durationMs: 1,
+        attemptDurationMs: 1,
+        attemptsByStatus,
+      })}\n`,
+    );
+
+    expect(() => readPlaywrightSuiteSummary(file)).toThrow(
+      'Invalid Playwright suite summary',
+    );
+  });
+
+  it.each(['durationMs', 'attemptDurationMs'] as const)(
+    'rejects a non-finite %s',
+    (field) => {
+      const directory = mkdtempSync(join(tmpdir(), 'trinity-suite-report-'));
+      directories.push(directory);
+      const file = join(directory, 'suite-summary.json');
+      const encoded = JSON.stringify({
+        schemaVersion: 1,
+        suiteId: 'browser.canonical',
+        status: 'passed',
+        attempts: 1,
+        retries: 0,
+        durationMs: 1,
+        attemptDurationMs: 1,
+        attemptsByStatus: { passed: 1 },
+      }).replace(`"${field}":1`, `"${field}":1e400`);
+      writeFileSync(file, `${encoded}\n`);
+
+      expect(() => readPlaywrightSuiteSummary(file)).toThrow(
+        'Invalid Playwright suite summary',
+      );
+    },
+  );
 });
