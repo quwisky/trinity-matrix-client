@@ -24,8 +24,11 @@ export type E2ETimeoutClass = 'short' | 'medium' | 'long' | 'host';
 
 export type E2EPrerequisite =
   | 'android-avd'
+  | 'android-sdk'
   | 'docker'
   | 'electron'
+  | 'java-21'
+  | 'kvm'
   | 'network'
   | 'playwright-chromium'
   | 'playwright-firefox'

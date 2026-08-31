@@ -227,6 +227,7 @@
     },
     "protocol-crypto-spike-chromium": {
       "cache": false,
+      "parallelism": false,
       "executor": "nx:run-commands",
       "options": {
         "command": "pnpm exec nx build trinity --configuration=development && node e2e/features/crypto-spike.mjs chromium"
@@ -234,6 +235,7 @@
     },
     "protocol-crypto-spike-webkit": {
       "cache": false,
+      "parallelism": false,
       "executor": "nx:run-commands",
       "options": {
         "command": "pnpm exec nx build trinity --configuration=development && node e2e/features/crypto-spike.mjs webkit"

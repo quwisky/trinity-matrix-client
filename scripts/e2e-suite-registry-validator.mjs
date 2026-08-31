@@ -396,7 +396,12 @@ const validateEntrypointInventory = (errors, workspaceRoot, snapshot) => {
       owners.set(entrypoint, current);
     }
   }
-  const sharedEntrypoints = new Set(snapshot.inventory.sharedEntrypoints);
+  const sharedEntrypoints = new Map(
+    snapshot.inventory.sharedEntrypoints.map(({ path, serializationKey }) => [
+      path,
+      serializationKey,
+    ]),
+  );
   for (const entrypoint of trackedEntrypoints) {
     const entrypointOwners = owners.get(entrypoint) ?? [];
     if (entrypointOwners.length === 0) {
@@ -408,9 +413,18 @@ const validateEntrypointInventory = (errors, workspaceRoot, snapshot) => {
       errors.push(`E2E entrypoint has multiple owners: ${entrypoint}`);
     }
   }
-  for (const sharedEntrypoint of sharedEntrypoints) {
-    if ((owners.get(sharedEntrypoint) ?? []).length < 2) {
+  for (const [sharedEntrypoint, serializationKey] of sharedEntrypoints) {
+    const sharedOwners = owners.get(sharedEntrypoint) ?? [];
+    if (sharedOwners.length < 2) {
       errors.push(`shared entrypoint is no longer shared: ${sharedEntrypoint}`);
+    }
+    for (const suiteId of sharedOwners) {
+      const suite = snapshot.suites.find(({ id }) => id === suiteId);
+      if (!suite?.serializationKeys.includes(serializationKey)) {
+        errors.push(
+          `${suiteId} does not serialize shared entrypoint ${sharedEntrypoint} with ${serializationKey}`,
+        );
+      }
     }
   }
 };

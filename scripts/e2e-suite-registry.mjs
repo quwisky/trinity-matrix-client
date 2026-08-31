@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { accessSync, constants, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   E2E_AGGREGATE_TARGETS,
   E2E_QUARANTINE,
   E2E_SUITES,
+  E2E_TIMEOUTS_MS,
 } from '../e2e/registry/index.mts';
 import { validateWorkspace } from './e2e-suite-registry-validator.mjs';
 
@@ -19,6 +21,82 @@ const runCommand = (command, args, options = {}) =>
     env: { ...process.env, NX_DAEMON: 'false' },
     stdio: options.capture ? 'pipe' : 'inherit',
     encoding: 'utf8',
+  });
+
+const processGroupIsAlive = (pid, platform) => {
+  if (!pid || platform === 'win32') return false;
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const signalProcessTree = (child, signal, platform) => {
+  if (child.pid && platform !== 'win32') {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch {
+      // The process group may have exited between the liveness check and signal.
+    }
+  }
+  child.kill(signal);
+};
+
+export const runManagedCommand = (
+  command,
+  args,
+  {
+    timeout,
+    terminationGraceMs = 10_000,
+    platform = process.platform,
+    stdio = 'inherit',
+  } = {},
+) =>
+  new Promise((resolve) => {
+    const child = spawn(command, args, {
+      cwd: workspaceRoot,
+      env: { ...process.env, NX_DAEMON: 'false' },
+      stdio,
+      detached: platform !== 'win32',
+    });
+    let settled = false;
+    let timedOut = false;
+    let terminationTimer;
+
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutTimer);
+      clearTimeout(terminationTimer);
+      resolve(result);
+    };
+
+    child.once('error', (error) => finish({ status: 1, error, timedOut }));
+    child.once('exit', (code, signal) => {
+      if (
+        timedOut &&
+        processGroupIsAlive(child.pid, platform) &&
+        terminationTimer
+      ) {
+        return;
+      }
+      finish({ status: code ?? 1, signal, timedOut });
+    });
+
+    const timeoutTimer =
+      typeof timeout === 'number'
+        ? setTimeout(() => {
+            timedOut = true;
+            signalProcessTree(child, 'SIGTERM', platform);
+            terminationTimer = setTimeout(() => {
+              signalProcessTree(child, 'SIGKILL', platform);
+              finish({ status: 1, signal: 'SIGKILL', timedOut: true });
+            }, terminationGraceMs);
+          }, timeout)
+        : undefined;
   });
 
 const defaultCatalog = {
@@ -87,6 +165,15 @@ const playwrightExecutableExists = async (
   return fileExists(playwright[engineName].executablePath());
 };
 
+const fileIsReadWriteAccessible = (path) => {
+  try {
+    accessSync(path, constants.R_OK | constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export const checkPrerequisites = async (
   suites,
   {
@@ -94,6 +181,7 @@ export const checkPrerequisites = async (
     environment = process.env,
     platform = process.platform,
     fileExists = existsSync,
+    fileAccessible = fileIsReadWriteAccessible,
     fetchDiscovery = fetch,
     playwrightExists = playwrightExecutableExists,
   } = {},
@@ -102,35 +190,108 @@ export const checkPrerequisites = async (
     suites.flatMap(({ prerequisites: required }) => required),
   );
   const failures = [];
+  const androidSdkRoot =
+    environment['ANDROID_HOME'] ?? environment['ANDROID_SDK_ROOT'];
+  const adbCommand = androidSdkRoot
+    ? join(androidSdkRoot, 'platform-tools/adb')
+    : 'adb';
+  const emulatorCommand = androidSdkRoot
+    ? join(androidSdkRoot, 'emulator/emulator')
+    : 'emulator';
 
   if (prerequisites.has('docker')) {
     const result = execute('docker', ['info'], { capture: true });
     if (result.status !== 0) failures.push('Docker daemon is unavailable');
   }
+  if (prerequisites.has('android-sdk')) {
+    if (
+      !androidSdkRoot ||
+      !fileExists(adbCommand) ||
+      !fileExists(emulatorCommand)
+    ) {
+      failures.push(
+        'ANDROID_HOME or ANDROID_SDK_ROOT must contain platform-tools/adb and emulator/emulator',
+      );
+    }
+  }
+  if (prerequisites.has('java-21')) {
+    const result = execute('java', ['-version'], { capture: true });
+    const version = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+    if (
+      result.status !== 0 ||
+      !/(?:java|openjdk) version "21(?:\.|\")/i.test(version)
+    ) {
+      failures.push('JDK 21 is unavailable');
+    }
+  }
+  if (
+    prerequisites.has('kvm') &&
+    platform === 'linux' &&
+    !fileAccessible('/dev/kvm')
+  ) {
+    failures.push('/dev/kvm is not read/write accessible');
+  }
   if (prerequisites.has('android-avd')) {
-    const adbResult = execute('adb', ['devices'], { capture: true });
-    const devices = adbResult.stdout
-      ?.split('\n')
-      .slice(1)
-      .filter((line) => /\sdevice$/.test(line));
+    const adbResult = execute(adbCommand, ['devices'], { capture: true });
+    const devices =
+      adbResult.stdout
+        ?.split('\n')
+        .slice(1)
+        .filter((line) => /\sdevice$/.test(line))
+        .map((line) => line.split(/\s+/, 1)[0]) ?? [];
     const requestedSerial = environment['TRINITY_ANDROID_SERIAL'];
+    const matchesAndroidProfile = (serial) => {
+      const property = (name) => {
+        const result = execute(
+          adbCommand,
+          ['-s', serial, 'shell', 'getprop', name],
+          { capture: true },
+        );
+        return result.status === 0 ? result.stdout?.trim() : undefined;
+      };
+      return (
+        property('ro.kernel.qemu') === '1' &&
+        property('ro.build.version.sdk') === '36' &&
+        /^(?:x86_64|amd64)$/.test(property('ro.product.cpu.abi') ?? '')
+      );
+    };
     const hasRequestedDevice = requestedSerial
-      ? devices?.some((line) => line.startsWith(`${requestedSerial}\t`))
-      : devices?.some((line) => line.startsWith('emulator-'));
-    const avdResult = execute('emulator', ['-list-avds'], { capture: true });
-    const canStartCanonicalAvd = avdResult.stdout
-      ?.split('\n')
-      .includes('Trinity_API_36');
+      ? devices.includes(requestedSerial) &&
+        matchesAndroidProfile(requestedSerial)
+      : false;
+    const canonicalDevices = requestedSerial
+      ? []
+      : devices.filter((serial) => {
+          if (!serial.startsWith('emulator-')) return false;
+          const result = execute(
+            adbCommand,
+            ['-s', serial, 'emu', 'avd', 'name'],
+            { capture: true },
+          );
+          return (
+            result.status === 0 &&
+            result.stdout?.split(/\r?\n/, 1)[0]?.trim() === 'Trinity_API_36'
+          );
+        });
+    const hasCanonicalDevice = canonicalDevices.some((serial) =>
+      matchesAndroidProfile(serial),
+    );
+    const avdResult = execute(emulatorCommand, ['-list-avds'], {
+      capture: true,
+    });
+    const canStartCanonicalAvd =
+      avdResult.stdout?.split('\n').includes('Trinity_API_36') &&
+      canonicalDevices.length === 0;
     if (
       adbResult.status !== 0 ||
       (requestedSerial
         ? !hasRequestedDevice
-        : !hasRequestedDevice && !canStartCanonicalAvd)
+        : !hasCanonicalDevice && !canStartCanonicalAvd)
     ) {
       failures.push(
         requestedSerial
-          ? `Android device ${requestedSerial} is not ready`
-          : 'no ready Android emulator or Trinity_API_36 AVD is available',
+          ? `Android device ${requestedSerial} is not an online API 36 x86_64 emulator`
+          : 'no validated API 36 x86_64 emulator or startable Trinity_API_36 AVD is available',
       );
     }
   }
@@ -181,7 +342,7 @@ export const checkPrerequisites = async (
 export const runSuite = (
   suite,
   {
-    execute = runCommand,
+    execute = runManagedCommand,
     environment = process.env,
     platform = process.platform,
     report = writeOutput,
@@ -203,8 +364,13 @@ export const runSuite = (
   const args = needsXvfb ? ['-a', 'pnpm', ...targetArgs] : targetArgs;
 
   report(`[e2e] ${suite.id} -> ${suite.currentTarget}`);
-  const result = execute(command, args);
-  return result.status ?? 1;
+  const timeout = E2E_TIMEOUTS_MS[suite.timeoutClass];
+  return Promise.resolve(execute(command, args, { timeout })).then((result) => {
+    if (result.timedOut) {
+      report(`[e2e] ${suite.id} timed out after ${timeout} ms`);
+    }
+    return result.status ?? 1;
+  });
 };
 
 export const runSelection = async (
@@ -234,7 +400,7 @@ export const runSelection = async (
   }
 
   for (const suite of suites) {
-    const status = executeSuite(suite, { forwardedArgs });
+    const status = await executeSuite(suite, { forwardedArgs });
     if (status !== 0) {
       reportError(
         `${suite.id} failed with exit code ${status}; remaining suites were not run.`,

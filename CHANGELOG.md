@@ -95,8 +95,8 @@ All notable changes to this project are documented here. The format is based on
   remain guarded compatibility aliases. Mutation-tested source guards now reject unregistered
   resolved Nx targets or CI entrypoints, cacheable runtime results, missing annotations, stale
   spec counts, undefined resource ownership, command drift and expired quarantine. Unsafe
-  fixed-port Playwright target atomization is disabled so the canonical Synapse suite stays
-  serialized and uncached.
+  fixed-port Playwright target atomization is disabled, shared fixed-port drivers use explicit
+  cross-process serialization, and registry timeout classes terminate their owned process groups.
 
 - **The capability-centered architecture is now contracted and enforced.** All migration
   exception ledgers and secondary entrypoints are empty, rich message kinds use one normalized

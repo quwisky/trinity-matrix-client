@@ -46,7 +46,12 @@ export const E2E_INVENTORY = {
     'e2e/android/run.mts',
     'scripts/run-phase7-e2e.mjs',
   ],
-  sharedEntrypoints: ['e2e/features/crypto-spike.mjs'],
+  sharedEntrypoints: [
+    {
+      path: 'e2e/features/crypto-spike.mjs',
+      serializationKey: 'crypto-spike-http',
+    },
+  ],
 } as const;
 
 export {

@@ -19,10 +19,10 @@ Every suite declares:
 
 - a stable id, current Nx target and destination Nx project;
 - environment, capability and contract annotations;
-- required browsers, Docker, network, Electron, Xvfb or Android AVD;
+- required browsers, Docker, network, Electron, Xvfb, Android SDK/JDK, KVM or Android AVD;
 - pull-request, scheduled or local-only classification;
 - non-cacheable runtime policy and any exclusive serialization resources;
-- timeout class, canonical package command and current/target artifact roots;
+- enforced timeout class, canonical package command and current/target artifact roots;
 - the source config or runner entrypoints it owns.
 
 The validator fails on missing or multiply-owned entrypoints, unregistered or drifting targets,
@@ -73,7 +73,10 @@ are scheduled. Changing a tier without changing its CI command classification fa
 Every canonical aggregate is an uncached, serialized Nx target. It validates the registry and all
 selected prerequisites before starting the first suite, then stops at the first failed suite.
 Docker and the Android AVD are required for the local delivery gate. On headless Linux the
-aggregate wraps Electron targets with `xvfb-run`.
+aggregate wraps Electron targets with `xvfb-run`. Every child target is terminated at the timeout
+declared by its registry class, with process-group termination escalating from `SIGTERM` to
+`SIGKILL`. Shared fixed-port entrypoints must declare the same serialization resource, acquire one
+cross-invocation process lock and remain non-parallel Nx targets.
 
 The older focused package commands remain behavior-compatible Nx aliases for one release after
 the lifecycle migration completes. Removing an alias requires a released changelog entry, no
