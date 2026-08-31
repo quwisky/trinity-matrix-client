@@ -110,6 +110,7 @@ const LEDGER = [
   'libs/feature/rooms/src/lib/quick-switcher/quick-switcher.component.scss',
   'libs/feature/rooms/src/lib/reaction-picker/reaction-picker.component.scss',
   'libs/feature/rooms/src/lib/reactions-dialog/reactions-dialog.component.scss',
+  'libs/feature/rooms/src/lib/room-link-preview/room-link-preview.component.scss',
   'libs/feature/rooms/src/lib/room-settings/room-settings.component.scss',
   'libs/feature/rooms/src/lib/room-settings/room-widget-create/room-widget-create.component.scss',
   'libs/feature/rooms/src/lib/room-settings/room-widget-frame/room-widget-frame.component.scss',

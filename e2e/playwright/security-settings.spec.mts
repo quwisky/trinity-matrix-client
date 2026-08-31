@@ -1,5 +1,10 @@
 import { test, expect } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import {
+  isAndroidE2E,
+  login,
+  synapseSession,
+  type SynapseSession,
+} from './support/app.mts';
 import { registerUser } from './support/account.mts';
 import { openSettingsSection } from './journeys/navigation.mts';
 
@@ -49,7 +54,7 @@ test.describe('Security settings', () => {
     await page.waitForURL(/\/encryption\/setup(\?|$)/, { timeout: 20_000 });
   });
 
-  test('keeps verification nested in the narrow web settings dialog', async ({
+  test('keeps verification nested in the narrow settings surface', async ({
     page,
     request,
   }) => {
@@ -67,6 +72,25 @@ test.describe('Security settings', () => {
     const verify = page.getByTestId('security-verify');
     await expect(verify).toBeVisible({ timeout: 15_000 });
     await verify.click();
+
+    if (isAndroidE2E) {
+      await page.waitForURL((url) => url.pathname === '/encryption/verify', {
+        timeout: 20_000,
+      });
+      await expect(page.getByTestId('verify-page')).toBeVisible();
+      await expect(
+        page.getByRole('heading', { name: 'Verify device', exact: true }),
+      ).toBeFocused();
+
+      await page.getByRole('button', { name: 'Close' }).click();
+      await page.waitForURL((url) => url.pathname === '/settings/security', {
+        timeout: 20_000,
+      });
+      await expect(
+        page.getByRole('heading', { name: 'Security', exact: true }),
+      ).toBeFocused();
+      return;
+    }
 
     const encryption = page.getByRole('dialog', { name: 'Encryption' });
     await expect(encryption).toBeVisible({

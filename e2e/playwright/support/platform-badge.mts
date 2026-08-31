@@ -87,6 +87,14 @@ export async function installBadgeRecorder(page: Page): Promise<void> {
   // its first zero-count update and memoizes that readiness result.
   const nativeExpected = process.env['TRINITY_E2E_PLATFORM'] === 'android';
   await page.addInitScript(install, nativeExpected);
+  if (nativeExpected) {
+    // The Android fixture attaches after the first application boot, by which point
+    // MobileBadgeService may already have memoized the emulator launcher's real support
+    // result. Restart this still-signed-out document so the recorder owns the bridge
+    // before Angular constructs the service. Callers intentionally install it before login.
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    return;
+  }
   await page.evaluate(install, nativeExpected);
 }
 

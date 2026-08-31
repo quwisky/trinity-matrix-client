@@ -24,6 +24,7 @@ import {
 import { RoomNotificationsService } from '@trinity/data-access/notifications';
 import {
   RoomLibraryService,
+  RoomReadinessService,
   SpacesService,
   AccountScopeService,
   UnreadAggregatorService,
@@ -79,6 +80,7 @@ describe('RoomsPage panels, pins and media', () => {
   let markReadFn: Mock;
   let setMarkedUnreadFn: Mock;
   let clearMarkedUnreadFn: Mock;
+  let waitForRoom: Mock;
 
   function build() {
     toastShow = vi.fn();
@@ -116,6 +118,7 @@ describe('RoomsPage panels, pins and media', () => {
     markReadFn = vi.fn(() => of(undefined));
     setMarkedUnreadFn = vi.fn(() => of(undefined));
     clearMarkedUnreadFn = vi.fn(() => of(void 0));
+    waitForRoom = vi.fn(() => of(void 0));
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
@@ -129,6 +132,7 @@ describe('RoomsPage panels, pins and media', () => {
           setMarkedUnread: setMarkedUnreadFn,
           clearMarkedUnread: clearMarkedUnreadFn,
         }),
+        MockProvider(RoomReadinessService, { waitForRoom }),
         MockProvider(RoomSettingsService, {
           editableFields,
           currentAccess,
@@ -269,6 +273,7 @@ describe('RoomsPage panels, pins and media', () => {
     await shell.rooms.onExploreRooms();
 
     expect(dialog.openAndWait).toHaveBeenCalledWith(RoomDirectoryComponent);
+    expect(waitForRoom).toHaveBeenCalledWith('@me:hs', '!joined:hs');
     await vi.waitFor(() =>
       expect(shell.store.activeRoomId()).toBe('!joined:hs'),
     );
@@ -287,6 +292,7 @@ describe('RoomsPage panels, pins and media', () => {
 
     await shell.rooms.onExploreRooms();
 
+    expect(waitForRoom).toHaveBeenCalledWith('@me:hs', '!space:hs');
     expect(shell.store.activeSpaceId()).toBe('!space:hs'); // onSelectSpace ran
     expect(shell.store.activeRoomId()).toBeNull(); // no room opened
   });

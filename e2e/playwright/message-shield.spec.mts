@@ -1,5 +1,10 @@
 import { test, expect, type Page } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import {
+  login,
+  synapseSession,
+  waitForRooms,
+  type SynapseSession,
+} from './support/app.mts';
 import { passwordLogin, registerUser } from './support/account.mts';
 
 // Covers per-message authenticity shields (message-row `data-testid="msg-shield-*"`):
@@ -47,7 +52,7 @@ async function setUpEncryption(page: Page, password: string): Promise<void> {
     .getByRole('checkbox', { name: /I've saved my recovery key/ })
     .click();
   await page.getByRole('button', { name: 'Continue to Trinity' }).click();
-  await page.waitForURL('**/rooms', { timeout: 30_000 });
+  await waitForRooms(page);
 }
 
 /** Open a joined, named (non-DM) room from the Rooms view and wait for its composer. */

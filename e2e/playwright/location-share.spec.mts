@@ -1,5 +1,12 @@
 import { test, expect, type Page } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import {
+  clickRowToolbar,
+  isAndroidE2E,
+  login,
+  openMessageActionSheet,
+  synapseSession,
+  type SynapseSession,
+} from './support/app.mts';
 import { registerUser } from './support/account.mts';
 
 // Covers sharing a location (+ tray → Location → m.location): the location card
@@ -73,10 +80,16 @@ test.describe('Share location', () => {
     const row = page.locator('.scroll .msg', {
       hasText: '40.71280, -74.00600',
     });
-    await row.first().hover();
-    await row.first().getByTestId('msg-more').click();
-    await expect(page.getByTestId('msg-edit')).toHaveCount(0);
-    // The menu did open (a non-edit action is present), so the absence is real.
-    await expect(page.getByTestId('msg-copy-link')).toBeVisible();
+    if (isAndroidE2E) {
+      const sheet = await openMessageActionSheet(page, row.first());
+      await expect(sheet.getByTestId('sheet-edit')).toHaveCount(0);
+      // The sheet did open (a non-edit action is present), so the absence is real.
+      await expect(sheet.getByTestId('sheet-copy-link')).toBeVisible();
+    } else {
+      await clickRowToolbar(row.first(), row.first().getByTestId('msg-more'));
+      await expect(page.getByTestId('msg-edit')).toHaveCount(0);
+      // The menu did open (a non-edit action is present), so the absence is real.
+      await expect(page.getByTestId('msg-copy-link')).toBeVisible();
+    }
   });
 });

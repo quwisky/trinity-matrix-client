@@ -9,7 +9,7 @@ import {
   shellFrom,
   stubNarrowLayout,
 } from './rooms-page.spec-harness';
-import { ApplicationRef, signal, type WritableSignal } from '@angular/core';
+import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import {
@@ -21,6 +21,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaPipeline } from '@trinity/data-access/media';
 import {
   RoomLibraryService,
+  RoomReadinessService,
   SpacesService,
   UnreadAggregatorService,
   type RoomSummary,
@@ -35,7 +36,7 @@ import {
   TrnToastService,
 } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
-import { defer, map, of, tap, throwError } from 'rxjs';
+import { defer, map, of, Subject, tap, throwError } from 'rxjs';
 import { MatrixError } from '@trinity/util/matrix';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
@@ -58,6 +59,7 @@ describe('RoomsPage space actions', () => {
   let createSpace: Mock;
   let createRoomInSpace: Mock;
   let leaveSpace: Mock;
+  let waitForRoom: Mock;
 
   function build(
     activeUserId: string | null = '@me:hs',
@@ -69,6 +71,7 @@ describe('RoomsPage space actions', () => {
     createSpace = vi.fn(() => of('!new:hs'));
     createRoomInSpace = vi.fn(() => of('!room:hs'));
     leaveSpace = vi.fn(() => of(undefined));
+    waitForRoom = vi.fn(() => of(void 0));
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
@@ -77,6 +80,7 @@ describe('RoomsPage space actions', () => {
           selectionAvailability: () => 'available',
           clearMarkedUnread: () => of(void 0),
         }),
+        MockProvider(RoomReadinessService, { waitForRoom }),
         MockProvider(SpacesService, {
           openSpace: () => of(void 0),
           spaces: signal<SpaceSummary[]>([
@@ -147,7 +151,7 @@ describe('RoomsPage space actions', () => {
         MockProvider(TrnToastService),
       ],
     });
-    return shellFrom();
+    return { ...shellFrom(), activeAccountId };
   }
 
   it('creates a space and selects it on success', async () => {
@@ -157,6 +161,24 @@ describe('RoomsPage space actions', () => {
     await shell.spaces.onCreateSpace();
 
     expect(createSpace).toHaveBeenCalledWith({ name: 'My Space' });
+    expect(shell.store.activeSpaceId()).toBe('!new:hs');
+  });
+
+  it('waits for a created space to enter the Account SDK graph before selecting it', async () => {
+    const shell = build();
+    const ready = new Subject<void>();
+    waitForRoom.mockReturnValue(ready);
+    alertPrompt.mockResolvedValue('My Space');
+
+    await shell.spaces.onCreateSpace();
+
+    expect(waitForRoom).toHaveBeenCalledWith('@me:hs', '!new:hs');
+    expect(shell.store.activeSpaceId()).toBeNull();
+
+    ready.next();
+    ready.complete();
+    await settleWorkspace();
+
     expect(shell.store.activeSpaceId()).toBe('!new:hs');
   });
 
@@ -367,10 +389,11 @@ describe('RoomsPage space actions', () => {
   });
 
   it('returns to /login when the last account is lost (active becomes null)', () => {
-    build(null); // no active account — e.g. a soft-logout of the last one
+    const shell = build();
     const router = TestBed.inject(Router);
 
-    TestBed.inject(ApplicationRef).tick(); // run the redirect effect
+    shell.activeAccountId.set(null); // e.g. a soft-logout of the last account
+    TestBed.flushEffects();
 
     expect(router.navigateByUrl).toHaveBeenCalledWith('/login', {
       replaceUrl: true,

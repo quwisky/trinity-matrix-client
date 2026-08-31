@@ -4,7 +4,14 @@ import {
   type APIRequestContext,
   type Page,
 } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import {
+  clickRowMenuItem,
+  isAndroidE2E,
+  login,
+  openMessageActionSheet,
+  synapseSession,
+  type SynapseSession,
+} from './support/app.mts';
 import { registerUser } from './support/account.mts';
 
 // Covers moderator redaction: a room admin (power 100, the creator) can delete
@@ -116,11 +123,12 @@ test.describe('Moderator redaction', () => {
 
     // Reveal the hover toolbar → ⋯ menu → "Delete message" (offered because the
     // admin has redact power over others), then confirm the destructive dialog.
-    await row.first().hover();
-    await row.first().getByTestId('msg-more').click();
-    const deleteItem = page.getByTestId('msg-delete');
-    await deleteItem.waitFor({ state: 'visible', timeout: 10_000 });
-    await deleteItem.click();
+    if (isAndroidE2E) {
+      const sheet = await openMessageActionSheet(page, row.first());
+      await sheet.getByTestId('sheet-delete').click();
+    } else {
+      await clickRowMenuItem(row.first(), page.getByTestId('msg-delete'));
+    }
     await page.getByTestId('alert-confirm').click();
 
     // The message is redacted: the row now reads "(message deleted)" and the

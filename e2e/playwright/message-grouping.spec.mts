@@ -1,5 +1,10 @@
 import { test, expect, type APIRequestContext } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import {
+  isAndroidE2E,
+  login,
+  synapseSession,
+  type SynapseSession,
+} from './support/app.mts';
 import { registerUser } from './support/account.mts';
 
 // Covers the Discord-style grouping of consecutive messages from one sender: the
@@ -166,6 +171,63 @@ test.describe('Message grouping', () => {
     // continuation whatever the gap is. It has been removed rather than left to look like
     // evidence.)
     expect(gap.start.marginTop).toBe(0);
+
+    if (isAndroidE2E) {
+      // Phones and tablets intentionally replace every hover toolbar with the long-press
+      // action sheet. Keep the grouping and density assertions native-relevant while also
+      // proving desktop-only action markup did not leak into this interaction model.
+      await expect(page.locator('.msg__toolbar')).toHaveCount(0);
+      const cosyRowsHeight = await page
+        .locator('.msg')
+        .evaluateAll((rows) =>
+          rows
+            .filter((row) => row.querySelector('.msg__text'))
+            .reduce(
+              (total, row) => total + row.getBoundingClientRect().height,
+              0,
+            ),
+        );
+      await page.locator('html').evaluate((html) => {
+        html.setAttribute('data-density', 'compact');
+      });
+      await expect(page.locator('.msg').first()).toHaveCSS('column-gap', '8px');
+      const compact = await page.evaluate(() => {
+        const rows = [...document.querySelectorAll<HTMLElement>('.msg')].filter(
+          (row) => row.querySelector('.msg__text'),
+        );
+        const start = rows.find((row) => !row.classList.contains('msg--cont'));
+        const cont = rows.find((row) => row.classList.contains('msg--cont'));
+        if (!start || !cont) return null;
+        const rowBox = cont.getBoundingClientRect();
+        const bodyBox = cont
+          .querySelector<HTMLElement>('.msg__body')
+          ?.getBoundingClientRect();
+        return {
+          rowsHeight: rows.reduce(
+            (total, row) => total + row.getBoundingClientRect().height,
+            0,
+          ),
+          startPaddingTop: parseFloat(getComputedStyle(start).paddingTop),
+          startMarginTop: parseFloat(getComputedStyle(start).marginTop),
+          continuationPaddingTop: parseFloat(getComputedStyle(cont).paddingTop),
+          bodyEndGap:
+            bodyBox === undefined
+              ? null
+              : rowBox.right -
+                parseFloat(getComputedStyle(cont).paddingInlineEnd) -
+                bodyBox.right,
+        };
+      });
+      if (!compact)
+        throw new Error('expected compact grouped message geometry');
+      expect(compact.rowsHeight).toBeLessThan(cosyRowsHeight);
+      expect(compact.startPaddingTop).toBe(12);
+      expect(compact.startMarginTop).toBe(0);
+      expect(compact.continuationPaddingTop).toBe(0);
+      expect(compact.bodyEndGap).not.toBeNull();
+      expect(Math.abs(compact.bodyEndGap ?? Infinity)).toBeLessThanOrEqual(1);
+      return;
+    }
 
     // The hover toolbar floats over the trailing row boundary instead of reserving a permanent
     // action gutter. Measure a CONTINUATION row specifically: it has no author header or group

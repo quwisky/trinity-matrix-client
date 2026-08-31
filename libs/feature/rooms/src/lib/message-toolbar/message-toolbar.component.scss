@@ -6,10 +6,12 @@
 .toolbar {
   display: flex;
   overflow: hidden;
-  border: 1px solid var(--trinity-border-subtle);
+  border: none;
   border-radius: var(--trinity-shape-container-radius);
   background: var(--trinity-surface-floating);
-  box-shadow: var(--trinity-shadow-floating);
+  box-shadow:
+    inset 0 0 0 1px var(--trinity-border-subtle),
+    var(--trinity-shadow-floating);
 }
 
 .toolbar__picker {
@@ -64,16 +66,16 @@
   align-items: center;
   justify-content: center;
 
-  // A floating precise-pointer control only needs the WCAG 2.5.8 24px target. The
-  // any-coarse-pointer override below restores the 44px floor for touch-capable desktops.
+  // A floating precise-pointer control only needs the WCAG 2.5.8 24px target. Cosy
+  // keeps one extra pixel of chrome while compact reaches that floor; the inset toolbar
+  // border then keeps all four actions inside the 100px continuation-row budget.
+  // The any-coarse-pointer override below restores 44px for touch-capable desktops.
   width: max(
-    24px,
-    calc(var(--trinity-density-control-size) - var(--trinity-space-2)),
+    clamp(24px, calc(var(--trinity-density-control-size) - 7px), 25px),
     var(--trinity-interaction-target-min-size)
   );
   height: max(
-    24px,
-    calc(var(--trinity-density-control-size) - var(--trinity-space-2)),
+    clamp(24px, calc(var(--trinity-density-control-size) - 7px), 25px),
     var(--trinity-interaction-target-min-size)
   );
   border: none;

@@ -1,4 +1,10 @@
-import { DestroyRef, Injectable, effect, inject } from '@angular/core';
+import {
+  DestroyRef,
+  Injectable,
+  effect,
+  inject,
+  untracked,
+} from '@angular/core';
 import {
   MatrixEventEvent,
   RoomEvent,
@@ -110,7 +116,14 @@ export class NotificationService {
     // Re-bind listeners to the live account set: attaches to accounts added after
     // run() (e.g. a background account finishing its warm start) and drops ones
     // signed out. No-ops until a session subscription enables us.
-    effect(() => this.reconcile(this.matrix.accountIds()));
+    effect(() => {
+      const accountIds = this.matrix.accountIds();
+      // Reconciliation can synchronously emit a warning to Application Runtime. Its
+      // subscriber reads and writes runtime state; allowing those reads to become
+      // dependencies of this effect turns a rejected permission into a self-sustaining
+      // warning loop. Account membership is the only trigger this effect owns.
+      untracked(() => this.reconcile(accountIds));
+    });
     this.destroyRef.onDestroy(() => this.stop());
   }
 

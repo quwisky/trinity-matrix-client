@@ -11,6 +11,7 @@ import {
   isAndroidE2E,
   seedPreference,
   synapseSession,
+  waitForRooms,
   type SynapseSession,
 } from './support/app.mts';
 import { registerUser } from './support/account.mts';
@@ -103,7 +104,7 @@ async function signInFromPasswordStage(
   await fillLabeledInput(page, 'Username', credentials.user as string);
   await fillLabeledInput(page, 'Password', credentials.pass as string);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.waitForURL('**/rooms', { timeout: 30_000 });
+  await waitForRooms(page);
 }
 
 async function openRoom(page: Page, roomName: string): Promise<void> {

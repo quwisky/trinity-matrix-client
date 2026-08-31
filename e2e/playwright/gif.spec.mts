@@ -10,6 +10,7 @@ import {
   readPreference,
   seedPreference,
   synapseSession,
+  waitForRooms,
   type SynapseSession,
 } from './support/app.mts';
 import { registerUser } from './support/account.mts';
@@ -110,7 +111,7 @@ async function addAccountViaUi(
   await fillLabeledInput(page, 'Username', user);
   await fillLabeledInput(page, 'Password', pass);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.waitForURL('**/rooms', { timeout: 30_000 });
+  await waitForRooms(page);
 }
 
 interface TimelineEvent {

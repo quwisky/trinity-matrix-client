@@ -4,6 +4,7 @@
 // reads that image from a synthetic canvas MediaStream, avoiding physical camera
 // hardware while still exercising rendering, decoding, and scanQRCode end to end.
 import { mkdir } from 'node:fs/promises';
+import { waitForRooms } from '../support/navigation.mjs';
 import { serve } from '../support/serve.mjs';
 import { chromium } from 'playwright';
 
@@ -57,7 +58,7 @@ async function login(page, who) {
   await fillLabeledInput(page, 'Username', USER);
   await fillLabeledInput(page, 'Password', PASS);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.waitForURL('**/rooms', { timeout: 30_000 });
+  await waitForRooms(page);
 }
 
 async function setUpEncryption(page) {
@@ -89,7 +90,7 @@ async function setUpEncryption(page) {
     .getByRole('checkbox', { name: /I've saved my recovery key/ })
     .click();
   await page.getByRole('button', { name: 'Continue to Trinity' }).click();
-  await page.waitForURL('**/rooms', { timeout: 30_000 });
+  await waitForRooms(page);
 }
 
 /** Install a camera seam backed by a canvas containing the other device's QR. */

@@ -13,7 +13,7 @@
 //
 //   3. Quick Switcher → directory person → DM: register a 2nd user (admin API);
 //      type their username in the switcher; a "Person" directory result appears;
-//      select it → a DM channel opens and the header title shows the user.
+//      select it → an account-qualified DM opens and the header shows the user.
 //
 // Env:
 //   TRINITY_HS    default https://localhost:8448
@@ -25,6 +25,7 @@
 // MUST run sequentially with other e2e scripts (shared docker stack + www/ build).
 import { mkdir } from 'node:fs/promises';
 import { createHmac } from 'node:crypto';
+import { waitForRooms } from '../support/navigation.mjs';
 import { serve } from '../support/serve.mjs';
 import { REGISTRATION_SHARED_SECRET, SYNAPSE_HTTP } from '../synapse/start.mjs';
 import { chromium } from 'playwright';
@@ -39,6 +40,7 @@ const HS = process.env.TRINITY_HS ?? 'https://localhost:8448';
 const USER = process.env.TRINITY_USER ?? 'verify-e2e';
 const PASS = process.env.TRINITY_PASS ?? 'verify-e2e-pass-123';
 const SERVER_NAME = 'localhost';
+const USER_ID = `@${USER}:${SERVER_NAME}`;
 const HEADED = process.env.HEADED === '1';
 const SLOWMO = Number(process.env.SLOWMO ?? 0);
 
@@ -182,14 +184,14 @@ async function login(page) {
   await fillLabeledInput(page, 'Username', USER);
   await fillLabeledInput(page, 'Password', PASS);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.waitForURL('**/rooms', { timeout: 30_000 });
+  await waitForRooms(page);
   log('logged in → /rooms');
 }
 
 /**
- * Open a CDK dialog (quick-switcher / message-search — replaces Ionic's
- * <ion-modal>), interact with it, then wait for it to dismiss. Returns the
- * dialog locator so callers can scope further queries to it.
+ * Open the quick-switcher's CDK dialog, interact with it, then wait for it to
+ * dismiss. Returns the dialog locator so callers can scope further queries to
+ * it. In-room search lives in the shell's complementary panel instead.
  */
 async function waitForModal(page) {
   const modal = page.locator('.cdk-dialog-container');
@@ -404,17 +406,22 @@ async function main() {
 
     // Open in-room message search.
     await searchMsgsBtn.click();
-    const modal2 = await waitForModal(page);
-    log('message-search modal open');
+    const searchPanel = page.getByRole('complementary', {
+      name: 'Search messages',
+    });
+    await searchPanel.waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
+    log('message-search panel open');
 
     // Type the distinctive token into the message-search's native input.
-    const searchInput2 = modal2.getByPlaceholder('Search this conversation');
+    const searchInput2 = searchPanel.getByPlaceholder(
+      'Search this conversation',
+    );
     await searchInput2.waitFor({ state: 'visible', timeout: 10_000 });
     await searchInput2.click();
     await page.keyboard.type(TOKEN, { delay: 30 });
 
     // A [data-testid="result"] row should appear with the token in its text.
-    const searchResult = modal2.locator('[data-testid="result"]');
+    const searchResult = searchPanel.locator('[data-testid="result"]');
     await searchResult
       .first()
       .waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
@@ -428,11 +435,11 @@ async function main() {
     }
     log(`result confirms token "${TOKEN}" ✓`);
 
-    // Click the result → modal dismisses with eventId → RoomsPage sets
+    // Click the result → panel dismisses with eventId → RoomsPage sets
     // messageSearchTarget → MessageListComponent.jumpTo() scrolls [data-mid].
     await searchResult.first().click();
-    await waitForModalGone(page);
-    log('message-search modal dismissed ✓');
+    await searchPanel.waitFor({ state: 'hidden', timeout: STEP_TIMEOUT });
+    log('message-search panel dismissed ✓');
 
     // [data-mid="${tokenEventId}"] must be visible in the timeline (the element
     // is in the DOM and CSS-rendered; jumpTo() has scrolled it into view).
@@ -466,8 +473,7 @@ async function main() {
     // ── SCENARIO 3: Quick Switcher → directory person → DM ───────────────
     log(`--- Scenario 3: quick switcher → BOB person → DM ---`);
 
-    const channelsBefore = await page.locator('button.channel').count();
-
+    const roomRouteBefore = page.url();
     await page.getByTestId('open-switcher').click();
     const modal3 = await waitForModal(page);
     log('quick-switcher modal open (scenario 3)');
@@ -513,13 +519,18 @@ async function main() {
     await waitForModalGone(page);
     log('switcher modal dismissed (DM creation in progress) ✓');
 
-    // A new .channel button should appear (the DM room added to the sidebar).
-    await page.waitForFunction(
-      (before) => document.querySelectorAll('button.channel').length > before,
-      channelsBefore,
-      { timeout: STEP_TIMEOUT, polling: 500 },
+    // Workspace opens the created room in Home. The sidebar's Home list depends
+    // on the separately arriving m.direct account data, so its row count is not
+    // the navigation contract; the account-qualified room route is.
+    await page.waitForURL(
+      (url) =>
+        url.pathname.startsWith('/rooms/') &&
+        url.searchParams.get('account') === USER_ID &&
+        url.searchParams.get('view') === 'home' &&
+        url.href !== roomRouteBefore,
+      { timeout: STEP_TIMEOUT },
     );
-    log('DM channel appeared in sidebar ✓');
+    log('account-qualified DM route opened ✓');
 
     // The room header's heading should show BOB's name (localpart or full
     // MXID — both contain BOB_USER's localpart, e.g.

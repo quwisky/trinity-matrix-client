@@ -105,6 +105,7 @@ describe('CapacitorHostOperationAdapter event streams', () => {
 
 describe('file, lifecycle and update host operation contracts', () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     TestBed.resetTestingModule();
   });
@@ -221,6 +222,27 @@ describe('file, lifecycle and update host operation contracts', () => {
       kind: 'completed',
     });
     expect(checkForUpdate).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a supported update check that never settles', async () => {
+    vi.useFakeTimers();
+    const checkForUpdate = vi.fn(() => new Promise<boolean>(() => undefined));
+    TestBed.configureTestingModule({
+      providers: [
+        ServiceWorkerHostUpdatesAdapter,
+        MockProvider(SwUpdate, { isEnabled: true, checkForUpdate }),
+      ],
+    });
+    const result = firstValueFrom(
+      TestBed.inject(ServiceWorkerHostUpdatesAdapter).check(),
+    );
+
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(result).resolves.toEqual({
+      kind: 'rejected',
+      diagnostic: { code: 'update-check-timeout' },
+    });
   });
 
   it('keeps Web update discovery aligned with the shared operation', async () => {

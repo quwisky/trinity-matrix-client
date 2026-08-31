@@ -22,6 +22,8 @@ test.describe('Timeline virtualization', () => {
     request,
   }) => {
     const hs = session.hs as string;
+    const testInfo = test.info();
+    const roomName = `Virtualization E2E ${testInfo.workerIndex}-${testInfo.repeatEachIndex}-${testInfo.retry}-${Date.now().toString(36)}`;
 
     // Seed a room with SEED messages straight through the CS API (fast).
     const auth = await request
@@ -38,7 +40,7 @@ test.describe('Timeline virtualization', () => {
     const roomId = await request
       .post(`${hs}/_matrix/client/v3/createRoom`, {
         headers: auth,
-        data: { name: 'Virtualization E2E', preset: 'private_chat' },
+        data: { name: roomName, preset: 'private_chat' },
       })
       .then((r) => r.json())
       .then((j) => j.room_id as string);
@@ -64,10 +66,7 @@ test.describe('Timeline virtualization', () => {
     // only — see RoomsPage.visibleRooms()). Switch to Rooms before looking
     // for its channel row.
     await page.getByTestId('rail-rooms').click();
-    await page
-      .locator('.channel', { hasText: 'Virtualization E2E' })
-      .first()
-      .click();
+    await page.locator('.channel', { hasText: roomName }).click();
 
     // Scoped to the open timeline rather than the whole page — the sidebar's
     // `.channel__preview` row (ChannelSidebarComponent's last-message preview)
@@ -75,6 +74,28 @@ test.describe('Timeline virtualization', () => {
     // page-wide getByText strict-mode-ambiguous.
     const timeline = page.locator('.scroll');
     const rows = timeline.locator('trn-message-row');
+    const positionTimeline = async (bottomGap = 0): Promise<void> => {
+      await expect
+        .poll(() =>
+          timeline.evaluate(async (element, targetGap) => {
+            element.scrollTop = Math.max(
+              0,
+              element.scrollHeight - element.clientHeight - targetGap,
+            );
+            element.dispatchEvent(new Event('scroll'));
+            await new Promise<void>((resolve) => {
+              requestAnimationFrame(() =>
+                requestAnimationFrame(() => resolve()),
+              );
+            });
+
+            const actualGap =
+              element.scrollHeight - element.scrollTop - element.clientHeight;
+            return Math.abs(actualGap - targetGap);
+          }, bottomGap),
+        )
+        .toBeLessThan(1);
+    };
     await expect(rows.first()).toBeVisible({ timeout: 30_000 });
 
     // The flag selected the windowed component (not the simple one).
@@ -134,7 +155,7 @@ test.describe('Timeline virtualization', () => {
       .toBe(0);
 
     // …and scrolling back to the bottom brings it back (and drops the oldest).
-    await timeline.evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await positionTimeline();
     await expect(
       timeline.getByText(`seeded message ${SEED - 1}`, { exact: true }),
     ).toBeVisible();
@@ -146,6 +167,7 @@ test.describe('Timeline virtualization', () => {
     // room that the virtual list deliberately renders in full. A bottom pin follows growth;
     // even one pixel of deliberate reading offset does not.
     const composer = page.getByTestId('composer-input');
+    await positionTimeline();
     await composer.fill('one line');
     await composer.fill('one\ntwo\nthree\nfour\nfive\nsix');
     await expect
@@ -161,15 +183,9 @@ test.describe('Timeline virtualization', () => {
       .toBeLessThan(MAX_RENDERED);
 
     for (const bottomGap of [1, 119]) {
-      await timeline.evaluate((element) => {
-        element.scrollTop = element.scrollHeight;
-        element.dispatchEvent(new Event('scroll'));
-      });
+      await positionTimeline();
       await composer.fill('one line');
-      await timeline.evaluate((element, gap) => {
-        element.scrollTop = element.scrollHeight - element.clientHeight - gap;
-        element.dispatchEvent(new Event('scroll'));
-      }, bottomGap);
+      await positionTimeline(bottomGap);
       const before = await timeline.evaluate((element) => element.scrollTop);
       await composer.fill('one\ntwo\nthree\nfour\nfive\nsix');
       await expect

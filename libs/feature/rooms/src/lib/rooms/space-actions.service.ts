@@ -6,6 +6,7 @@ import { Injectable, inject } from '@angular/core';
 import { RoomAliasesService } from '@trinity/data-access/room-administration';
 import {
   RoomLibraryService,
+  RoomReadinessService,
   SpaceChildrenService,
   SpaceRoomOrderService,
   SpacesService,
@@ -13,7 +14,7 @@ import {
   type SpaceChildRoom,
 } from '@trinity/data-access/room-library';
 import { TrnAlertService, TrnDialogService } from '@trinity/components/overlay';
-import { map, switchMap } from 'rxjs';
+import { map, Observable, switchMap, throwError } from 'rxjs';
 import { AddToSpaceComponent } from '../add-to-space/add-to-space.component';
 import { ManageSpaceRoomsComponent } from '../manage-space-rooms/manage-space-rooms.component';
 import { SpaceMembersComponent } from '../space-members/space-members.component';
@@ -44,6 +45,7 @@ export class SpaceActionsService {
   private readonly memberActions = inject(MemberActionsService);
   private readonly status = inject(ShellStatusService);
   private readonly rooms = inject(RoomLibraryService);
+  private readonly roomReadiness = inject(RoomReadinessService);
   private readonly spaces = inject(SpacesService);
   private readonly spaceChildren = inject(SpaceChildrenService);
   private readonly spaceOrder = inject(SpaceRoomOrderService);
@@ -131,9 +133,12 @@ export class SpaceActionsService {
     if (!name.trim()) {
       return; // empty name — dismiss the prompt without creating
     }
-    runWithBusy(this.spaces.createSpace({ name }), this.status).subscribe(
-      (spaceId) => this.nav.onSelectSpace(spaceId),
-    );
+    runWithBusy(
+      this.spaces
+        .createSpace({ name })
+        .pipe(switchMap((spaceId) => this.waitForSpace(spaceId))),
+      this.status,
+    ).subscribe((spaceId) => this.nav.onSelectSpace(spaceId));
   }
 
   /**
@@ -149,15 +154,14 @@ export class SpaceActionsService {
       return;
     }
     runWithBusy(
-      this.spaces
-        .createSpace({ name })
-        .pipe(
-          switchMap((spaceId) =>
-            this.spaceChildren
-              .addExistingRoom(parentId, spaceId)
-              .pipe(map(() => spaceId)),
-          ),
+      this.spaces.createSpace({ name }).pipe(
+        switchMap((spaceId) =>
+          this.spaceChildren
+            .addExistingRoom(parentId, spaceId)
+            .pipe(map(() => spaceId)),
         ),
+        switchMap((spaceId) => this.waitForSpace(spaceId)),
+      ),
       this.status,
     ).subscribe((spaceId) => this.nav.onSelectSpace(spaceId));
   }
@@ -171,6 +175,17 @@ export class SpaceActionsService {
       this.spaces.createRoomInSpace(spaceId, { name }),
       this.status,
     ).subscribe();
+  }
+
+  /** Cross the post-create `/sync` barrier before Workspace validates the new Space. */
+  private waitForSpace(spaceId: string): Observable<string> {
+    const accountId = this.store.activeAccountId();
+    if (!accountId) {
+      return throwError(() => new Error('Account unavailable'));
+    }
+    return this.roomReadiness
+      .waitForRoom(accountId, spaceId)
+      .pipe(map(() => spaceId));
   }
 
   private applyLeaveSpace(spaceId: string): void {

@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { firstValueFrom } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { StoragePersistenceService } from './storage-persistence.service';
 
@@ -14,6 +15,7 @@ function make(): StoragePersistenceService {
 
 describe('StoragePersistenceService', () => {
   afterEach(() => {
+    vi.useRealTimers();
     Reflect.deleteProperty(navigator, 'storage');
     TestBed.resetTestingModule();
   });
@@ -23,7 +25,7 @@ describe('StoragePersistenceService', () => {
       const persist = vi.fn().mockResolvedValue(true);
       setStorage({ persist, persisted: vi.fn().mockResolvedValue(false) });
 
-      expect(await make().requestPersistence()).toBe(true);
+      expect(await firstValueFrom(make().requestPersistence())).toBe(true);
       expect(persist).toHaveBeenCalled();
     });
 
@@ -31,13 +33,13 @@ describe('StoragePersistenceService', () => {
       const persist = vi.fn().mockResolvedValue(false);
       setStorage({ persist, persisted: vi.fn().mockResolvedValue(true) });
 
-      expect(await make().requestPersistence()).toBe(true);
+      expect(await firstValueFrom(make().requestPersistence())).toBe(true);
       expect(persist).not.toHaveBeenCalled();
     });
 
     it('returns false when the API is unavailable', async () => {
       setStorage(undefined);
-      expect(await make().requestPersistence()).toBe(false);
+      expect(await firstValueFrom(make().requestPersistence())).toBe(false);
     });
 
     it('swallows a persist() rejection and returns false', async () => {
@@ -45,7 +47,20 @@ describe('StoragePersistenceService', () => {
         persist: vi.fn().mockRejectedValue(new Error('nope')),
         persisted: vi.fn().mockResolvedValue(false),
       });
-      expect(await make().requestPersistence()).toBe(false);
+      expect(await firstValueFrom(make().requestPersistence())).toBe(false);
+    });
+
+    it('fails open when the browser leaves the permission request pending', async () => {
+      vi.useFakeTimers();
+      setStorage({
+        persist: vi.fn(() => new Promise<boolean>(() => undefined)),
+        persisted: vi.fn().mockResolvedValue(false),
+      });
+      const result = firstValueFrom(make().requestPersistence());
+
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      await expect(result).resolves.toBe(false);
     });
   });
 

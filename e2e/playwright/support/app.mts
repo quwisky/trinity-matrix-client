@@ -1,10 +1,27 @@
 import { readFileSync } from 'node:fs';
 import { expect, type Locator, type Page } from '@playwright/test';
 import { SESSION_FILE } from './synapse-session.mts';
+import { touchLongPress } from './touch-platform.mts';
 
 export type Navigate = (page: Page, path: string) => Promise<void>;
 
 export const webNavigate: Navigate = async (page, path) => {
+  if (isAndroidE2E) {
+    const target = new URL(path, page.url()).href;
+    if (target === page.url()) return;
+    await page.evaluate((url) => {
+      const state = {
+        ...window.history.state,
+        navigationId:
+          typeof window.history.state?.navigationId === 'number'
+            ? window.history.state.navigationId + 1
+            : 1,
+      };
+      window.history.pushState(state, '', url);
+      window.dispatchEvent(new PopStateEvent('popstate', { state }));
+    }, target);
+    return;
+  }
   await page.goto(path, { waitUntil: 'networkidle' });
 };
 
@@ -206,6 +223,29 @@ export async function clickRowToolbar(
   }).toPass({ timeout: 30_000 });
 }
 
+/** Open a message row's overflow menu and choose an item as one replace-safe action. */
+export async function clickRowMenuItem(
+  row: Locator,
+  menuItem: Locator,
+): Promise<void> {
+  await expect(async () => {
+    await row.hover();
+    await row.getByTestId('msg-more').click({ timeout: 2_000 });
+    await menuItem.click({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+}
+
+/** Open the message actions surface used by the iOS/Android interaction model. */
+export async function openMessageActionSheet(
+  page: Page,
+  row: Locator,
+): Promise<Locator> {
+  await touchLongPress(page, row);
+  const sheet = page.getByRole('dialog', { name: 'Message actions' });
+  await expect(sheet).toBeVisible({ timeout: 10_000 });
+  return sheet;
+}
+
 /**
  * Switch a settings dialog to one of its tabs, and wait until that panel is the visible one.
  *
@@ -240,5 +280,18 @@ export async function login(
   await fillLabeledInput(page, 'Username', s.user as string);
   await fillLabeledInput(page, 'Password', s.pass as string);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.waitForURL('**/rooms', { timeout: 30_000 });
+  await waitForRooms(page);
+}
+
+/** Wait for Application Runtime's stable, Account-qualified Rooms destination. */
+export async function waitForRooms(
+  page: Page,
+  timeout = 30_000,
+): Promise<void> {
+  await page.waitForURL(
+    (url) =>
+      url.pathname === '/rooms' &&
+      (url.searchParams.get('account')?.length ?? 0) > 0,
+    { timeout },
+  );
 }

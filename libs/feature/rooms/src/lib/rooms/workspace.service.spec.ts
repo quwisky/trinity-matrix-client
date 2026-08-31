@@ -184,6 +184,30 @@ function harness(options: HarnessOptions = {}) {
 afterEach(() => TestBed.resetTestingModule());
 
 describe('WorkspaceService', () => {
+  it('commits a canonical external Back destination without redundantly navigating', async () => {
+    const h = harness({
+      routeAccountId: ALICE,
+      routeRoomId: ROOM,
+      routeView: 'rooms',
+    });
+    h.navigate.mockClear();
+    h.conversations.blur.mockClear();
+
+    h.paramMap.next(convertToParamMap({}));
+    h.queryParamMap.next(convertToParamMap({ account: ALICE, view: 'rooms' }));
+
+    await vi.waitFor(() =>
+      expect(h.service.view()).toEqual({
+        accountId: ALICE,
+        scope: { kind: 'rooms' },
+        roomId: null,
+        pane: 'list',
+      }),
+    );
+    expect(h.navigate).not.toHaveBeenCalled();
+    expect(h.conversations.blur).toHaveBeenCalled();
+  });
+
   it('opens an inactive notification destination and publishes its event anchor after repair', async () => {
     const h = harness({
       routeAccountId: BOB,
@@ -244,13 +268,7 @@ describe('WorkspaceService', () => {
       accountId: BOB,
       roomId: ROOM,
     });
-    expect(h.navigate).toHaveBeenLastCalledWith(
-      ['/rooms', encodeRoomSegment(ROOM)],
-      {
-        queryParams: { account: BOB },
-        replaceUrl: true,
-      },
-    );
+    expect(h.navigate).not.toHaveBeenCalled();
   });
 
   it('keeps the view unchanged until a user URL push succeeds', async () => {
@@ -539,7 +557,7 @@ describe('WorkspaceService', () => {
           roomId: ROOM,
           pane: 'conversation',
         },
-        { source: 'restore', history: 'replace' },
+        { source: 'repair', history: 'replace' },
       )
       .subscribe();
 
@@ -597,7 +615,7 @@ describe('WorkspaceService', () => {
           roomId: ROOM,
           pane: 'conversation',
         },
-        { source: 'restore', history: 'replace' },
+        { source: 'repair', history: 'replace' },
       )
       .subscribe();
 
@@ -643,7 +661,7 @@ describe('WorkspaceService', () => {
           roomId: ROOM,
           pane: 'conversation',
         },
-        { source: 'restore', history: 'replace' },
+        { source: 'repair', history: 'replace' },
       )
       .subscribe();
 

@@ -231,6 +231,14 @@ export class MatrixClientService {
    */
   private readonly starting = new Map<string, Observable<AccountClient>>();
 
+  /**
+   * matrix-js-sdk's legacy-to-Rust migration store is process-global during
+   * `initRustCrypto()`. Two Accounts entering that method together can observe the
+   * other's half-initialized IndexedDB migration state. Serialize only that critical
+   * section; sync-store startup and `startClient()` remain concurrent per Account.
+   */
+  private cryptoInitializationQueue: Promise<unknown> = Promise.resolve();
+
   /** Coarse sync state of the ACTIVE account (null until its first transition). */
   readonly syncState: Signal<SyncState | null> = computed(() => {
     // Depend on the account set too, so re-adding the active user re-binds to its
@@ -603,11 +611,9 @@ export class MatrixClientService {
         switchMap(() =>
           // Per-account crypto store; unset prefix (migrated legacy account) → the
           // SDK default store, preserving its existing keys.
-          from(
-            created!.initRustCrypto({
-              cryptoDatabasePrefix: session.cryptoPrefix,
-            }),
-          ).pipe(catchError(classifyCryptoStartupFailure)),
+          from(this.initializeCrypto(created!, session.cryptoPrefix)).pipe(
+            catchError(classifyCryptoStartupFailure),
+          ),
         ),
         tap(() => {
           const client = created!;
@@ -692,6 +698,20 @@ export class MatrixClientService {
         }),
       );
     });
+  }
+
+  private initializeCrypto(
+    client: MatrixClient,
+    cryptoDatabasePrefix: string | undefined,
+  ): Promise<void> {
+    const result = this.cryptoInitializationQueue.then(() =>
+      client.initRustCrypto({ cryptoDatabasePrefix }),
+    );
+    this.cryptoInitializationQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   }
 
   /** Stop + drop every client (no store deletion), and forget the 4S key. */

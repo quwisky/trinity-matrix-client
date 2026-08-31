@@ -1,5 +1,13 @@
 import { test, expect, type Page } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import {
+  clickRowMenuItem,
+  isAndroidE2E,
+  login,
+  openMessageActionSheet,
+  synapseSession,
+  type SynapseSession,
+  waitForSent,
+} from './support/app.mts';
 import { registerUser } from './support/account.mts';
 
 // Covers the message "View source" context action (msg-more → msg-view-source): a dialog
@@ -54,11 +62,15 @@ test.describe('Message source', () => {
     await composer.press('Enter');
     const row = page.locator('.scroll .msg', { hasText: body });
     await expect(row.first()).toBeVisible({ timeout: 20_000 });
+    await waitForSent(row.first());
 
-    // Open the overflow menu → View source.
-    await row.first().hover();
-    await row.first().getByTestId('msg-more').click();
-    await page.getByTestId('msg-view-source').click();
+    // Open the host's message-actions surface → View source.
+    if (isAndroidE2E) {
+      const sheet = await openMessageActionSheet(page, row.first());
+      await sheet.getByTestId('sheet-view-source').click();
+    } else {
+      await clickRowMenuItem(row.first(), page.getByTestId('msg-view-source'));
+    }
 
     // The dialog shows the raw event JSON — the event type and the message body.
     const dialog = page.getByTestId('message-source');

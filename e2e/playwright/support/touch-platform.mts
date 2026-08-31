@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 export interface TouchPoint {
   x: number;
@@ -6,7 +6,26 @@ export interface TouchPoint {
 }
 
 export interface TouchPlatform {
+  tap(page: Page, target: Locator): Promise<void>;
   swipe(page: Page, from: TouchPoint, to: TouchPoint): Promise<void>;
+}
+
+/** Press and release a target past Trinity's 500ms long-press threshold. */
+export async function touchLongPress(
+  page: Page,
+  target: Locator,
+): Promise<void> {
+  const box = await target.boundingBox();
+  if (!box) throw new Error('no box for long-press target');
+  const point = {
+    isPrimary: true,
+    pointerType: 'touch',
+    clientX: box.x + box.width / 2,
+    clientY: box.y + box.height / 2,
+  };
+  await target.dispatchEvent('pointerdown', point);
+  await page.waitForTimeout(700);
+  await target.dispatchEvent('pointerup', point);
 }
 
 export async function cdpSwipe(

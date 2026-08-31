@@ -112,7 +112,13 @@ test.describe('Clear all data', () => {
     // Deliberately from ?add: the clients are LIVE, holding open the very databases the
     // wipe has to delete. That is the state the bounded-delete path exists for, and the
     // one a signed-out test would never reach.
-    await page.goto('/login?add', { waitUntil: 'networkidle' });
+    // The signed-in client keeps a /sync long-poll open, so networkidle is not a
+    // reachable readiness signal here. Wait for the new document and the concrete
+    // escape-hatch control instead.
+    await page.goto('/login?add', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByTestId('clear-all-data')).toBeVisible({
+      timeout: 20_000,
+    });
 
     // A mistyped word must erase nothing at all.
     await page.getByTestId('clear-all-data').click();

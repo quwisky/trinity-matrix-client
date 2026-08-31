@@ -49,17 +49,23 @@ test.describe('Slash commands', () => {
     await login(page, { available: true, hs, user, pass } as SynapseSession);
     await openRoom(page, roomName);
     const composer = page.getByTestId('composer-input');
+    const sendDraft = async () => {
+      await expect(page.getByTestId('composer-send')).toBeEnabled({
+        timeout: 20_000,
+      });
+      await composer.press('Enter');
+    };
 
     // /shrug appends the kaomoji.
     await composer.fill('/shrug oh well');
-    await composer.press('Enter');
+    await sendDraft();
     await expect(
       page.locator('.msg__text', { hasText: 'oh well ¯\\_(ツ)_/¯' }),
     ).toBeVisible({ timeout: 20_000 });
 
     // /plain sends its argument literally — the `**` are not rendered as bold.
     await composer.fill('/plain **not bold**');
-    await composer.press('Enter');
+    await sendDraft();
     await expect(
       page.locator('.msg__text', { hasText: '**not bold**' }),
     ).toBeVisible({ timeout: 20_000 });
@@ -82,7 +88,7 @@ test.describe('Slash commands', () => {
     await expect(composer).toHaveValue('/me ');
 
     await composer.pressSequentially('waves');
-    await composer.press('Enter');
+    await sendDraft();
     // An emote renders as ordinary message text, so what this proves is that the completed
     // command sent at all — and sent as `/me waves`, not as the literal string.
     await expect(

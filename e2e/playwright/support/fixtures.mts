@@ -21,7 +21,12 @@ const webTestWithPlatform = webTest.extend<{
   touchPlatform: TouchPlatform;
 }>({
   touchPlatform: async ({}, use) => {
-    await use({ swipe: cdpSwipe });
+    await use({
+      async tap(_page, target): Promise<void> {
+        await target.tap({ force: true, timeout: 5_000 });
+      },
+      swipe: cdpSwipe,
+    });
   },
   secondaryApp: async ({ browser }, use) => {
     let context: Awaited<ReturnType<typeof browser.newContext>> | undefined;

@@ -8,6 +8,7 @@ import {
 } from './support/fixtures.mts';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 import { registerUser } from './support/account.mts';
+import { touchLongPress } from './support/touch-platform.mts';
 
 // The message action sheet (#220), which no other spec can see. Every authenticated spec
 // runs the desktop Chromium project, where a message's actions are a bar revealed by
@@ -26,22 +27,7 @@ async function longPress(page: Page, selector: string): Promise<void> {
 }
 
 async function longPressTarget(page: Page, target: Locator): Promise<void> {
-  const box = await target.boundingBox();
-  if (!box) {
-    throw new Error('no box for long-press target');
-  }
-  const point = {
-    isPrimary: true,
-    pointerType: 'touch',
-    clientX: box.x + box.width / 2,
-    clientY: box.y + box.height / 2,
-  };
-  await target.dispatchEvent('pointerdown', point);
-  await page.waitForTimeout(700);
-  // A finger LIFTS. Without the release the page is left with a pointer down forever —
-  // a state no gesture can produce, and one that made an earlier probe report a defect
-  // that did not exist (see the correction on #220).
-  await target.dispatchEvent('pointerup', point);
+  await touchLongPress(page, target);
 }
 
 /** Open a seeded room and hand back the newest row's stable selector. */

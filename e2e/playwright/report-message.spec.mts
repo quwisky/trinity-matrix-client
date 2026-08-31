@@ -1,5 +1,12 @@
 import { test, expect, type Page } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import {
+  clickRowMenuItem,
+  isAndroidE2E,
+  login,
+  openMessageActionSheet,
+  synapseSession,
+  type SynapseSession,
+} from './support/app.mts';
 import { registerUser } from './support/account.mts';
 
 // Covers reporting a message: a message's ⋯ menu (data-testid="msg-more") offers
@@ -59,11 +66,12 @@ test.describe('Report a message', () => {
     await row.first().waitFor({ state: 'visible', timeout: 20_000 });
 
     // Hover → ⋯ → Report message → confirm the reason prompt.
-    await row.first().hover();
-    await row.first().getByTestId('msg-more').click();
-    const reportItem = page.getByTestId('msg-report');
-    await reportItem.waitFor({ state: 'visible', timeout: 10_000 });
-    await reportItem.click();
+    if (isAndroidE2E) {
+      const sheet = await openMessageActionSheet(page, row.first());
+      await sheet.getByTestId('sheet-report').click();
+    } else {
+      await clickRowMenuItem(row.first(), page.getByTestId('msg-report'));
+    }
     await page.getByTestId('alert-confirm').click();
 
     await expect(page.getByText('Reported to the server admins.')).toBeVisible({

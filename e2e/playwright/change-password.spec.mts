@@ -77,9 +77,9 @@ test.describe('Change password', () => {
     // Correct the current password and submit again — success toast, form cleared.
     await page.getByTestId('current-password').fill(oldPass);
     await page.getByTestId('change-password').click();
-    await expect(page.getByText('Password changed.')).toBeVisible({
-      timeout: 20_000,
-    });
+    await expect(
+      page.getByLabel('Notifications alt+T').getByText('Password changed.'),
+    ).toBeVisible({ timeout: 20_000 });
 
     // The change persisted server-side: the new password logs in, the old no longer.
     await expect

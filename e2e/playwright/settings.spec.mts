@@ -1,10 +1,15 @@
 import { devices, test, expect, type Page } from './support/fixtures.mts';
 import {
+  isAndroidE2E,
   login,
   fillLabeledInput,
   readPreference,
   synapseSession,
 } from './support/app.mts';
+import {
+  closeSettings,
+  openSettingsFromRooms,
+} from './journeys/navigation.mts';
 import {
   AA_NORMAL_TEXT,
   measureContrast,
@@ -48,9 +53,14 @@ const hasDarkPalette = (page: Page): Promise<boolean> =>
 const paletteAttr = (page: Page): Promise<string | null> =>
   page.evaluate(() => document.documentElement.getAttribute('data-theme'));
 
-/** Open a settings section inside the web modal. */
+/** Open a section inside whichever Settings surface the host owns. */
 async function openSection(page: Page, path: string): Promise<void> {
   await page.getByTestId(`settings-nav-${path}`).click();
+  if (isAndroidE2E) {
+    await page.waitForURL((url) => url.pathname === `/settings/${path}`, {
+      timeout: 20_000,
+    });
+  }
   await expect(page.getByTestId('settings-detail')).not.toBeEmpty();
 }
 
@@ -84,11 +94,8 @@ test.describe('Settings', () => {
 
   test.beforeEach(async ({ page }) => {
     await login(page, session);
-    await page.getByTestId('open-settings').click();
-    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible({
-      timeout: 20_000,
-    });
-    // The modal shell loads; on the desktop viewport it auto-lands on Profile.
+    await openSettingsFromRooms(page);
+    // The host-owned shell loads; on the desktop viewport it auto-lands on Profile.
     await expect(page.getByTestId('settings-nav-profile')).toBeVisible({
       timeout: 20_000,
     });
@@ -100,7 +107,7 @@ test.describe('Settings', () => {
     for (const path of SECTIONS) {
       await expect(page.getByTestId(`settings-nav-${path}`)).toBeVisible();
     }
-    // Selecting a section swaps the modal detail without changing the room URL.
+    // Selecting a section swaps the active Settings detail.
     await openSection(page, 'appearance');
     await expect(page.getByTestId('theme-dark')).toBeVisible();
     await openSection(page, 'experimental');
@@ -111,8 +118,13 @@ test.describe('Settings', () => {
     page,
   }) => {
     // The default (wide) viewport auto-selects the first section and renders the
-    // submenu and detail together without replacing the underlying room route.
-    await expect(page).not.toHaveURL(/\/settings/);
+    // submenu and detail together. Web keeps the underlying room URL; installed
+    // Capacitor hosts expose the same composition through a routed Settings page.
+    if (isAndroidE2E) {
+      await expect(page).toHaveURL(/\/settings\/profile$/);
+    } else {
+      await expect(page).not.toHaveURL(/\/settings/);
+    }
     await expect(page.getByTestId('settings-nav-profile')).toBeVisible();
     await expect(page.getByTestId('display-name-input')).toBeVisible();
     // The active section link is marked current for assistive tech.
@@ -132,21 +144,25 @@ test.describe('Settings', () => {
     expect(detailBox).not.toBeNull();
     // Beside, not stacked: the detail starts after the nav ends.
     expect(detailBox!.x).toBeGreaterThanOrEqual(navBox!.x + navBox!.width - 1);
-    expect(navBox!.width).toBe(256);
-    await expect
-      .poll(async () => Math.abs(await settingsTitleAlignment(page)))
-      .toBeLessThanOrEqual(1);
+    // Android WebView reports CSS-pixel geometry as a float after device-scale
+    // conversion (for example 255.999992px for this exact 16rem pane).
+    expect(navBox!.width).toBeCloseTo(256, 4);
+    if (!isAndroidE2E) {
+      await expect
+        .poll(async () => Math.abs(await settingsTitleAlignment(page)))
+        .toBeLessThanOrEqual(1);
 
-    const settingsDialog = page.getByTestId('settings-dialog');
-    await settingsDialog.evaluate((element) => {
-      element.setAttribute('dir', 'rtl');
-    });
-    await expect
-      .poll(async () => Math.abs(await settingsTitleAlignment(page)))
-      .toBeLessThanOrEqual(1);
-    await settingsDialog.evaluate((element) => {
-      element.setAttribute('dir', 'ltr');
-    });
+      const settingsDialog = page.getByTestId('settings-dialog');
+      await settingsDialog.evaluate((element) => {
+        element.setAttribute('dir', 'rtl');
+      });
+      await expect
+        .poll(async () => Math.abs(await settingsTitleAlignment(page)))
+        .toBeLessThanOrEqual(1);
+      await settingsDialog.evaluate((element) => {
+        element.setAttribute('dir', 'ltr');
+      });
+    }
 
     // The mobile drill-in chevron is suppressed in the sidebar — and it is suppressed by
     // NOT BEING RENDERED, which is why this asserts absence rather than a computed style.
@@ -199,13 +215,22 @@ test.describe('Settings', () => {
     await expect(lightRadio).toBeFocused();
     const focusPaint = await pointerOption.evaluate((element) => {
       const style = getComputedStyle(element);
+      // Android WebView quantizes a 2 CSS-pixel outline onto the emulator's
+      // 2.625 DPR grid, so Chromium reports 1.90476 CSS px (5 device px).
+      // Compare in device pixels and allow only normal half-pixel rounding.
+      const devicePixelRatio = window.devicePixelRatio;
       return {
         style: style.outlineStyle,
-        width: Number.parseFloat(style.outlineWidth),
+        devicePixelWidth:
+          Number.parseFloat(style.outlineWidth) * devicePixelRatio,
+        expectedDevicePixelWidth: 2 * devicePixelRatio,
       };
     });
     expect(focusPaint.style).not.toBe('none');
-    expect(focusPaint.width).toBeGreaterThanOrEqual(2);
+    expect(focusPaint.devicePixelWidth).toBeCloseTo(
+      focusPaint.expectedDevicePixelWidth,
+      0,
+    );
 
     const densityRow = page.getByTestId('density-select').locator('..');
     const densityLabel = page.locator('#appearance-density-heading');
@@ -293,9 +318,17 @@ test.describe('Settings', () => {
     await openSection(page, 'devices');
     await openSection(page, 'gifs');
 
-    await page.getByTestId('close-settings').click();
+    await closeSettings(page);
     await expect(page.getByRole('dialog', { name: 'Settings' })).toBeHidden();
-    await expect(page).toHaveURL(roomUrl);
+    if (isAndroidE2E) {
+      await expect(page).toHaveURL(
+        (url) =>
+          url.pathname.startsWith('/rooms') &&
+          (url.searchParams.get('account')?.length ?? 0) > 0,
+      );
+    } else {
+      await expect(page).toHaveURL(roomUrl);
+    }
   });
 
   test('toggles the app theme between dark and light', async ({ page }) => {
@@ -361,7 +394,7 @@ test.describe('Settings', () => {
     // a light OS tooltip regardless of Trinity's selected theme. Close the dialog and drive
     // that exact control: a role=tooltip proves it now uses the design-system overlay, while
     // computed paint proves the public wrapper resolves its semantic pair in a real cascade.
-    await page.getByTestId('close-settings').click();
+    await closeSettings(page);
     await expect(page.getByRole('dialog', { name: 'Settings' })).toBeHidden();
     const settingsButton = page.getByRole('button', {
       name: 'Settings',
@@ -406,8 +439,7 @@ test.describe('Settings', () => {
     expect(arrowPaint).toEqual({ ...expectedBackground, a: 255 });
 
     await page.mouse.move(0, 0);
-    await settingsButton.click();
-    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
+    await openSettingsFromRooms(page);
     await openSection(page, 'appearance');
     await page.getByTestId('theme-light').click();
     await expect.poll(() => hasDarkPalette(page)).toBe(false);
@@ -450,9 +482,25 @@ test.describe('Settings', () => {
     await expect.poll(densityAttr).toBe('compact');
     await expect.poll(spaceToken).toBe('12px');
     await expect.poll(previewGap).toBe('8px');
-    await expect
-      .poll(async () => Math.abs(await settingsTitleAlignment(page)))
-      .toBeLessThanOrEqual(1);
+    if (isAndroidE2E) {
+      const routedTitleInsideDetail = await page.evaluate(() => {
+        const detail = document.querySelector<HTMLElement>(
+          '[data-testid=settings-detail]',
+        );
+        const title = document.querySelector<HTMLElement>(
+          '#appearance-heading',
+        );
+        if (!detail || !title) throw new Error('routed settings title missing');
+        const pane = detail.getBoundingClientRect();
+        const heading = title.getBoundingClientRect();
+        return heading.left >= pane.left - 1 && heading.right <= pane.right + 1;
+      });
+      expect(routedTitleInsideDetail).toBe(true);
+    } else {
+      await expect
+        .poll(async () => Math.abs(await settingsTitleAlignment(page)))
+        .toBeLessThanOrEqual(1);
+    }
     await expect(page.getByTestId('appearance-preview-state')).toContainText(
       'Compact',
     );
@@ -845,40 +893,48 @@ test.describe('Settings', () => {
     await expect(page.getByTestId('theme-dark')).toBeHidden();
   });
 
-  test('narrow web: resizing a drilled-in modal wide keeps one dialog', async ({
+  test('narrow: resizing a drilled-in surface wide keeps one settings owner', async ({
     page,
   }) => {
-    await page.getByTestId('close-settings').click();
+    await closeSettings(page);
     await page.setViewportSize({ width: 375, height: 800 });
-    await page.getByTestId('open-settings').click();
+    await openSettingsFromRooms(page);
     const appearance = page.getByTestId('settings-nav-appearance');
     await expect(appearance).toBeVisible({ timeout: 20_000 });
     await appearance.click();
     await expect(page.getByTestId('theme-dark')).toBeVisible();
 
-    // Crossing the responsive boundary changes the modal composition, not its
-    // presentation model or the underlying URL.
+    // Crossing the responsive boundary changes the composition, not its host-owned
+    // presentation model.
     await page.setViewportSize({ width: 1024, height: 700 });
     await expect(appearance).toBeVisible();
-    await expect(page.getByRole('dialog', { name: 'Settings' })).toHaveCount(1);
-    await page.getByTestId('close-settings').click();
+    if (isAndroidE2E) {
+      await expect(page.locator('trn-settings')).toHaveCount(1);
+    } else {
+      await expect(page.getByRole('dialog', { name: 'Settings' })).toHaveCount(
+        1,
+      );
+    }
+    await closeSettings(page);
     await expect(page).not.toHaveURL(/\/settings/);
   });
 
-  test('narrow web: modal back restores directory focus', async ({ page }) => {
-    await page.getByTestId('close-settings').click();
+  test('narrow: back restores directory focus', async ({ page }) => {
+    await closeSettings(page);
     await page.setViewportSize({ width: 375, height: 800 });
-    await page.getByTestId('open-settings').click();
+    await openSettingsFromRooms(page);
     const appearance = page.getByTestId('settings-nav-appearance');
     await appearance.click();
     await page
-      .getByRole('button', { name: 'Back to settings sections' })
+      .getByRole('button', {
+        name: isAndroidE2E ? 'Back' : 'Back to settings sections',
+      })
       .click();
     await expect(appearance).toBeFocused();
 
     await page.setViewportSize({ width: 1024, height: 700 });
     await expect(page.getByTestId('display-name-input')).toBeVisible();
-    await page.getByTestId('close-settings').click();
+    await closeSettings(page);
     await expect(page).not.toHaveURL(/\/settings/);
   });
 
@@ -901,6 +957,7 @@ test.describe('Settings', () => {
       const profile = await page.evaluate(() => ({
         userAgent: navigator.userAgent,
         touchPoints: navigator.maxTouchPoints,
+        devicePixelRatio: window.devicePixelRatio,
         overflow:
           document.documentElement.scrollWidth -
           document.documentElement.clientWidth,
@@ -909,7 +966,9 @@ test.describe('Settings', () => {
       expect(profile.touchPoints).toBeGreaterThan(0);
       expect(profile.overflow).toBeLessThanOrEqual(1);
       const target = await appearance.boundingBox();
-      expect(target?.height ?? 0).toBeGreaterThanOrEqual(44);
+      expect(
+        (target?.height ?? 0) * profile.devicePixelRatio,
+      ).toBeGreaterThanOrEqual(44 * profile.devicePixelRatio - 0.5);
 
       await appearance.click();
       await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
@@ -953,10 +1012,12 @@ test.describe('Settings', () => {
       expect(pixelGeometry.documentOverflow).toBeLessThanOrEqual(1);
       expect(pixelGeometry.detailOverflow).toBeLessThanOrEqual(1);
       expect(pixelGeometry.controlsInside).toBe(true);
+      const paletteTarget = await page
+        .getByRole('combobox', { name: 'Palette' })
+        .boundingBox();
       expect(
-        (await page.getByRole('combobox', { name: 'Palette' }).boundingBox())
-          ?.height ?? 0,
-      ).toBeGreaterThanOrEqual(44);
+        (paletteTarget?.height ?? 0) * profile.devicePixelRatio,
+      ).toBeGreaterThanOrEqual(44 * profile.devicePixelRatio - 0.5);
 
       await page.setViewportSize({ width: 320, height: 568 });
       const narrowGeometry = await appearanceGeometry();

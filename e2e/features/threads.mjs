@@ -22,6 +22,7 @@
 // Run standalone against an already-running HS:
 //   TRINITY_HS=… TRINITY_USER=… TRINITY_PASS=… node e2e/features/threads.mjs
 import { mkdir } from 'node:fs/promises';
+import { waitForRooms } from '../support/navigation.mjs';
 import { serve } from '../support/serve.mjs';
 import { chromium } from 'playwright';
 
@@ -144,7 +145,7 @@ async function login(page) {
   await fillLabeledInput(page, 'Username', USER);
   await fillLabeledInput(page, 'Password', PASS);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.waitForURL('**/rooms', { timeout: 30_000 });
+  await waitForRooms(page);
   log('logged in → /rooms');
 }
 
@@ -241,12 +242,12 @@ async function main() {
     log('waiting for thread modal to open');
     const closeBtn = page.getByRole('button', { name: 'Close thread' });
     await closeBtn.waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
+    const thread = page.getByTestId('thread-view');
+    await thread.waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
     log('thread modal open');
 
     // Type and send a reply into the thread composer.
-    const threadTextarea = page.locator(
-      '.cdk-dialog-container .composer__input',
-    );
+    const threadTextarea = thread.getByTestId('composer-input');
     await threadTextarea.waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
     await threadTextarea.click();
     await threadTextarea.fill(REPLY_TEXT);
@@ -255,8 +256,8 @@ async function main() {
 
     // Assert: the reply appears in the thread view.
     log('waiting for reply to appear in thread view');
-    const replyInThread = page
-      .locator('.cdk-dialog-container .msg')
+    const replyInThread = thread
+      .locator('.msg')
       .filter({ hasText: REPLY_TEXT });
     await replyInThread
       .first()
@@ -299,13 +300,13 @@ async function main() {
     log('thread modal reopened');
 
     // Both the root message and the reply must be present in the thread view.
-    await page
-      .locator('.cdk-dialog-container .msg')
+    await thread
+      .locator('.msg')
       .filter({ hasText: ROOT_MSG })
       .first()
       .waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
-    await page
-      .locator('.cdk-dialog-container .msg')
+    await thread
+      .locator('.msg')
       .filter({ hasText: REPLY_TEXT })
       .first()
       .waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
@@ -327,8 +328,8 @@ async function main() {
     await closeBtn.waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
     // Verify the thread view opened: the modal must contain the second message
     // as its root, and no reply rows beyond it (new thread, never sent to).
-    await page
-      .locator('.cdk-dialog-container .msg')
+    await thread
+      .locator('.msg')
       .filter({ hasText: NO_THREAD_MSG })
       .first()
       .waitFor({ state: 'visible', timeout: STEP_TIMEOUT });

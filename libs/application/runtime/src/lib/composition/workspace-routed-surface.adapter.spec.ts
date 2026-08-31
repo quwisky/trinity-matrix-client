@@ -1,13 +1,13 @@
 import { Location } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
-import { DefaultUrlSerializer, Router } from '@angular/router';
+import { DefaultUrlSerializer, NavigationEnd, Router } from '@angular/router';
 import { WorkspaceBackService } from '@trinity/application/workspace';
 import { firstValueFrom, Subject, type Subscription } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
 
 describe('Workspace routed-surface composition adapter', () => {
-  const events = new Subject<never>();
+  const events = new Subject<NavigationEnd>();
   const serializer = new DefaultUrlSerializer();
   const navigateByUrl = vi.fn().mockResolvedValue(true);
   const locationBack = vi.fn();
@@ -66,6 +66,19 @@ describe('Workspace routed-surface composition adapter', () => {
     expect(navigateByUrl).toHaveBeenCalledWith('/settings', {
       replaceUrl: true,
     });
+  });
+
+  it('pops a Settings section entered from the narrow directory', async () => {
+    const back = build('/settings');
+    router.url = '/settings/appearance';
+    events.next(
+      new NavigationEnd(2, '/settings/appearance', '/settings/appearance'),
+    );
+
+    await firstValueFrom(back.back());
+
+    expect(locationBack).toHaveBeenCalledOnce();
+    expect(navigateByUrl).not.toHaveBeenCalled();
   });
 
   it('honours a trust deep link return destination', async () => {

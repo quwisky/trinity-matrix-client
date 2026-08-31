@@ -1,5 +1,10 @@
 import { test, expect, type Page } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import {
+  login,
+  synapseSession,
+  waitForRooms,
+  type SynapseSession,
+} from './support/app.mts';
 import {
   defaultKeyId,
   keyBackupVersion,
@@ -64,7 +69,7 @@ async function setUpEncryption(page: Page, password: string): Promise<string> {
     .getByRole('checkbox', { name: /I've saved my recovery key/ })
     .click();
   await page.getByRole('button', { name: 'Continue to Trinity' }).click();
-  await page.waitForURL('**/rooms', { timeout: 30_000 });
+  await waitForRooms(page);
   return original;
 }
 
@@ -292,7 +297,7 @@ test.describe('Recovery reset', () => {
     // Leaving the unlock screen for the app is what success looks like: the page only
     // navigates once `recoverWithKey` has resolved, and an error would keep it here with
     // `unlock-error` filled in instead.
-    await page.waitForURL('**/rooms', { timeout: 60_000 });
+    await waitForRooms(page, 60_000);
     await expect(page.getByTestId('unlock-error')).toHaveCount(0);
 
     // The device is trusted again, by the app's own account of itself.

@@ -416,6 +416,33 @@ describe('NotificationService', () => {
     expect(warnings).toEqual(['notification-permission-failed']);
   });
 
+  it('does not track a synchronous warning consumer as an account dependency', () => {
+    MockNotification.permission = 'denied';
+    const { svc } = setup();
+    const runtimeWarnings = signal<readonly string[]>([]);
+    const lifetime = svc.run().subscribe((event) => {
+      if (event.kind !== 'warning') return;
+      const current = runtimeWarnings();
+      runtimeWarnings.set([...current, event.diagnostic.code]);
+    });
+
+    const appRef = TestBed.inject(ApplicationRef);
+    expect(() => appRef.tick()).not.toThrow();
+    const afterInitialReconciliation = runtimeWarnings();
+    expect(afterInitialReconciliation).toEqual([
+      'notification-permission-failed',
+      'notification-permission-failed',
+    ]);
+
+    runtimeWarnings.set([...afterInitialReconciliation, 'unrelated-warning']);
+    expect(() => appRef.tick()).not.toThrow();
+    expect(runtimeWarnings()).toEqual([
+      ...afterInitialReconciliation,
+      'unrelated-warning',
+    ]);
+    lifetime.unsubscribe();
+  });
+
   it('delivers through the same presenter contract on native mobile', () => {
     cap.native = true;
     const present = vi.fn(() => of({ kind: 'completed' as const }));

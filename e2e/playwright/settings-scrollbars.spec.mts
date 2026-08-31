@@ -1,5 +1,6 @@
 import { test, expect, type Locator, type Page } from './support/fixtures.mts';
-import { login, synapseSession } from './support/app.mts';
+import { isAndroidE2E, login, synapseSession } from './support/app.mts';
+import { openSettingsFromRooms } from './journeys/navigation.mts';
 
 // One scrollbar in Settings, never two.
 //
@@ -13,6 +14,12 @@ import { login, synapseSession } from './support/app.mts';
 // nothing at all — the preset defining it was never imported. A DOM assertion would have
 // been green throughout.
 const session = synapseSession();
+
+function settingsShell(page: Page): Locator {
+  return page.locator(
+    isAndroidE2E ? 'trn-settings' : '[data-testid="settings-dialog"]',
+  );
+}
 
 /**
  * Every element that overflows vertically AND would paint a scrollbar.
@@ -131,11 +138,8 @@ test.describe('Settings scrollbars', () => {
 
     await login(page, session);
     const roomUrl = page.url();
-    await page.getByTestId('open-settings').click();
-    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible({
-      timeout: 20_000,
-    });
-    await expect(page).toHaveURL(roomUrl);
+    await openSettingsFromRooms(page);
+    if (!isAndroidE2E) await expect(page).toHaveURL(roomUrl);
 
     for (const viewport of viewports) {
       await page.setViewportSize(viewport);
@@ -149,7 +153,7 @@ test.describe('Settings scrollbars', () => {
             '[data-testid=settings-workspace]',
           );
           const shell = document.querySelector<HTMLElement>(
-            '[data-testid=settings-dialog]',
+            '[data-testid=settings-dialog], trn-settings',
           );
           if (!workspace || !shell) throw new Error('settings shell missing');
           const frame = workspace.getBoundingClientRect();
@@ -168,10 +172,15 @@ test.describe('Settings scrollbars', () => {
         });
         expect(geometry.documentOverflow).toBeLessThanOrEqual(1);
         expect(geometry.shellOverflowY).toBe('hidden');
-        expect(geometry.frame.left).toBeGreaterThan(0);
-        expect(geometry.frame.right).toBeLessThan(viewport.width);
-        expect(geometry.frame.top).toBeGreaterThan(0);
+        expect(geometry.frame.left).toBeGreaterThanOrEqual(0);
+        expect(geometry.frame.right).toBeLessThanOrEqual(viewport.width + 1);
+        expect(geometry.frame.top).toBeGreaterThanOrEqual(0);
         expect(geometry.frame.bottom).toBeLessThanOrEqual(viewport.height + 1);
+        if (!isAndroidE2E) {
+          expect(geometry.frame.left).toBeGreaterThan(0);
+          expect(geometry.frame.right).toBeLessThan(viewport.width);
+          expect(geometry.frame.top).toBeGreaterThan(0);
+        }
       }
     }
   });
@@ -183,7 +192,7 @@ test.describe('Settings scrollbars', () => {
     // window here, and everything below the fold has to stay reachable.
     await login(page, session);
     await page.setViewportSize({ width: 1280, height: 560 });
-    await page.getByTestId('open-settings').click();
+    await openSettingsFromRooms(page);
     const nav = page.locator('nav[aria-label="Settings sections"]');
     await expect(nav).toBeVisible({ timeout: 20_000 });
 
@@ -212,7 +221,7 @@ test.describe('Settings scrollbars', () => {
   }) => {
     await login(page, session);
     await page.setViewportSize({ width: 1280, height: 700 });
-    await page.getByTestId('open-settings').click();
+    await openSettingsFromRooms(page);
     await page.getByTestId('settings-nav-notifications').click();
 
     // The detail pane owns vertical scrolling. Its routed content must not enlarge the
@@ -220,9 +229,9 @@ test.describe('Settings scrollbars', () => {
     // inset makes the body become a second scrollbar at the content threshold.
     await expect
       .poll(() =>
-        page
-          .getByTestId('settings-dialog')
-          .evaluate((shell) => getComputedStyle(shell).overflowY),
+        settingsShell(page).evaluate(
+          (shell) => getComputedStyle(shell).overflowY,
+        ),
       )
       .toBe('hidden');
     await expect
@@ -235,7 +244,7 @@ test.describe('Settings scrollbars', () => {
   }) => {
     await login(page, session);
     await page.setViewportSize({ width: 1280, height: 700 });
-    await page.getByTestId('open-settings').click();
+    await openSettingsFromRooms(page);
     await page.getByTestId('settings-nav-notifications').click();
 
     const detail = page.getByTestId('settings-detail');
