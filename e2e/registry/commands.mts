@@ -240,7 +240,7 @@ export const E2E_CI_ENTRYPOINTS = [
     suiteIds: ['components.styling'],
   },
   {
-    command: 'pnpm exec nx e2e trinity-e2e',
+    command: 'pnpm exec nx run trinity-e2e-browser:e2e',
     suiteIds: ['browser.canonical'],
   },
   {

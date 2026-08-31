@@ -31,5 +31,5 @@
     "noEmit": true
   },
   "include": ["**/*.mts", "**/*.d.mts"],
-  "exclude": ["components/**", "web/**"]
+  "exclude": ["browser/**", "components/**", "web/**"]
 }

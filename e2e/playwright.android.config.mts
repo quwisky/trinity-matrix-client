@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: '.',
-  testMatch: ['playwright/**/*.spec.mts', 'android/**/*.spec.mts'],
+  testMatch: ['browser/journeys/**/*.spec.mts', 'android/**/*.spec.mts'],
   fullyParallel: false,
   workers: 1,
   retries: 2,

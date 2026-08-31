@@ -21,7 +21,7 @@ import { describe, expect, it } from 'vitest';
  * The values now come from `e2e/support/synapse/start.mjs`, which patches them into
  * `homeserver.yaml` — one definition, on the side that actually configures Synapse.
  *
- * `mobile-nav.spec.mts` keeps a registration routine of its own, and is allowed to: it
+ * `compact-room-routing.spec.mts` keeps a registration routine of its own, and is allowed to: it
  * registers in `beforeAll`, where Playwright's test-scoped `request` fixture does not exist,
  * so it uses global `fetch`. It still imports both constants rather than restating them,
  * which is the part this guards.
@@ -50,7 +50,7 @@ const EXEMPT = ['e2e/support/account.mts', 'e2e/support/synapse/'];
 /**
  * The whole e2e tree, not just the Playwright specs.
  *
- * The first version of this guard globbed `e2e/playwright/**` and its docblock claimed the
+ * The first version of this guard globbed only the canonical browser journey tree and claimed the
  * constants had "one definition" — while `e2e/features/rooms.mjs` and `search.mjs`, both
  * live and both documented in `docs/contributing/testing.md`, restated BOTH literals and
  * carried a third `registerUser`. A guard narrower than the invariant it states is worse

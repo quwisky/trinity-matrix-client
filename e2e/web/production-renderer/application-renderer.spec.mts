@@ -16,7 +16,7 @@ import { passwordLogin, registerUser } from '../../support/account.mts';
 import {
   AA_NORMAL_TEXT,
   measureContrast,
-} from '../../playwright/support/contrast.mts';
+} from '../../browser/support/contrast.mts';
 
 const session = synapseSession();
 const ROOM_MESSAGES = [

@@ -1,5 +1,8 @@
 import { join, resolve } from 'node:path';
-import type { PlaywrightTestConfig } from '@playwright/test';
+import type {
+  PlaywrightTestConfig,
+  ReporterDescription,
+} from '@playwright/test';
 import { nxE2EPreset } from '@nx/playwright/preset';
 import type { E2ESuiteDefinition } from './e2e-registry.types.mts';
 import {
@@ -28,6 +31,11 @@ interface E2ELifecycleConfigOptions {
   readonly endpoint: E2EEndpoint;
   readonly timeout: number;
   readonly expectTimeout?: number;
+}
+
+interface E2EReportConfigOptions {
+  /** Reporters that add suite-specific annotations before artifact reporters serialize. */
+  readonly reportersAfterMetadata?: readonly ReporterDescription[];
 }
 
 function sessionForConfig(): E2ESessionDescriptor | undefined {
@@ -74,6 +82,7 @@ export function e2eArtifactPath(
 /** Shared reporting and evidence policy; suites still own projects and concurrency. */
 export function e2eReportConfig(
   suite: E2EReportingSuite,
+  options: E2EReportConfigOptions = {},
 ): Pick<PlaywrightTestConfig, 'metadata' | 'outputDir' | 'reporter'> {
   const artifact = (leaf: string): string =>
     e2eArtifactPath(suite.targetProject, suite.id, leaf);
@@ -90,6 +99,7 @@ export function e2eReportConfig(
   const reporter: NonNullable<PlaywrightTestConfig['reporter']> = [
     [consoleReporter],
     [join(import.meta.dirname, 'registry-metadata.reporter.mts'), { metadata }],
+    ...(options.reportersAfterMetadata ?? []),
     ['blob', { outputDir: artifact('blob-report') }],
     ['junit', { outputFile: artifact('junit/results.xml') }],
   ];

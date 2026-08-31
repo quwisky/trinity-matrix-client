@@ -11,13 +11,19 @@ export type E2ECapability =
   | 'cross-capability'
   | 'design-system'
   | 'discovery'
+  | 'discovery-search'
   | 'host'
+  | 'host-shell'
+  | 'identity'
   | 'matrix-runtime'
   | 'media'
+  | 'notifications'
+  | 'room-administration'
   | 'room-library'
   | 'search'
   | 'settings'
-  | 'trust';
+  | 'trust'
+  | 'workspace';
 
 export type E2ECiTier = 'local-only' | 'pull-request' | 'scheduled';
 export type E2ETimeoutClass = 'short' | 'medium' | 'long' | 'host';

@@ -70,21 +70,21 @@ For native and full testing details see the [contributor docs](docs/contributing
 
 ## Common commands
 
-| Command                             | Purpose                                                        |
-| ----------------------------------- | -------------------------------------------------------------- |
-| `pnpm start`                        | Web dev server (hot reload) at `:4200`                         |
-| `pnpm build`                        | Production web build into `www/`                               |
-| `pnpm test`                         | Vitest unit tests (`nx run-many -t test` for all projects)     |
-| `pnpm lint`                         | ESLint + Nx module boundaries                                  |
-| `pnpm stylelint`                    | Stylelint (SCSS and CSS)                                       |
-| `pnpm format`                       | Prettier-format the workspace                                  |
-| `pnpm storybook`                    | Storybook for the whole `libs/components/*` tier               |
-| `pnpm smoke:login`                  | Headless: redirect→login + real matrix.org discovery           |
-| `pnpm spike:chromium`               | Headless E2EE WASM check (Blink → Android WebView / Electron)  |
-| `pnpm spike:webkit`                 | Headless E2EE WASM check (WebKit → iOS WKWebView)              |
-| `pnpm e2e:verify`                   | Two-client emoji-SAS device verification (needs Docker)        |
-| `pnpm exec nx e2e trinity-e2e`      | Playwright app journeys: login, settings, theme (needs Docker) |
-| `pnpm exec cap run ios` / `android` | Build + launch on simulator/emulator                           |
+| Command                             | Purpose                                                       |
+| ----------------------------------- | ------------------------------------------------------------- |
+| `pnpm start`                        | Web dev server (hot reload) at `:4200`                        |
+| `pnpm build`                        | Production web build into `www/`                              |
+| `pnpm test`                         | Vitest unit tests (`nx run-many -t test` for all projects)    |
+| `pnpm lint`                         | ESLint + Nx module boundaries                                 |
+| `pnpm stylelint`                    | Stylelint (SCSS and CSS)                                      |
+| `pnpm format`                       | Prettier-format the workspace                                 |
+| `pnpm storybook`                    | Storybook for the whole `libs/components/*` tier              |
+| `pnpm smoke:login`                  | Headless: redirect→login + real matrix.org discovery          |
+| `pnpm spike:chromium`               | Headless E2EE WASM check (Blink → Android WebView / Electron) |
+| `pnpm spike:webkit`                 | Headless E2EE WASM check (WebKit → iOS WKWebView)             |
+| `pnpm e2e:verify`                   | Two-client emoji-SAS device verification (needs Docker)       |
+| `pnpm e2e:browser`                  | Capability-owned Playwright app journeys (needs Docker)       |
+| `pnpm exec cap run ios` / `android` | Build + launch on simulator/emulator                          |
 
 ## Project structure
 
@@ -145,7 +145,7 @@ libs/
                       headless Brain primitives (button, input, card, dropdown-menu, …),
                       generated via @spartan-ng/cli; consume through components/*
                       [type:ui, ui:vendor-wrapper]
-e2e/playwright/     @nx/playwright app-journey specs (run: nx e2e trinity-e2e)
+e2e/browser/        capability-owned app journeys (`trinity-e2e-browser:e2e`)
 e2e/                  standalone crypto/protocol harnesses (serve www/)
 android/ ios/         Capacitor native projects (webDir: www)
 www/                  web build output

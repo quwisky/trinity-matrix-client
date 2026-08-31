@@ -337,9 +337,9 @@ check that the mutation would actually change what you are asserting.
 
 ## Playwright: the app journeys
 
-The spec files under `e2e/playwright/` run in Chromium against the disposable
-Synapse stack.
-[`e2e/playwright.config.mts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/e2e/playwright.config.mts)
+The spec files under `e2e/browser/journeys/` run in Chromium against the disposable
+Synapse stack through `trinity-e2e-browser:e2e`.
+[`e2e/browser/playwright.config.mts`](../../e2e/browser/playwright.config.mts)
 spreads `nxE2EPreset(...)` and then overrides three of its values _after_ the
 spread, so the preset's CI-conditional defaults do not apply.
 
@@ -353,6 +353,22 @@ spread, so the preset's CI-conditional defaults do not apply.
 Because retries are unconditional, a spec that fails once and passes on the retry is
 reported as _flaky_ rather than failed, which is easy to skim past locally. Pass
 `--retries=0` when you want the honest first-attempt result.
+
+The journey tree is capability-owned rather than flat: accounts, workspace, room library,
+room administration, conversations, trust, identity, notifications, discovery/search, settings,
+and host shell each have a durable directory. `e2e/browser/journey-catalog.mts` assigns every spec
+exactly one primary contract classification. Architecture validation rejects filesystem/catalog
+drift and preserves the pre-move inventory of 266 tests and 1,782 assertion calls. Each run writes
+per-test annotations and an ignored `capability-coverage/coverage.json` summary grouped by
+capability and contract type.
+
+The lifecycle-owned Nx target is the serialized execution atom because selected specs share one
+fixed-port Synapse stack. Focus by path or name without creating competing resource owners:
+
+```bash
+pnpm exec nx run trinity-e2e-browser:e2e -- conversations/message-links.spec.mts
+pnpm exec nx run trinity-e2e-browser:e2e -- --grep "opens a copied message link"
+```
 
 After sign-in, do not use `networkidle` as a navigation readiness signal. The live
 Matrix client deliberately holds a `/sync` long-poll open, so the network may never
@@ -421,7 +437,7 @@ origin to browser, protocol, Android and Electron children without restarting sh
 Note also which build this is. The web suite runs the **development** bundle, with
 optimization off, no service worker and no file replacements. A production-only
 regression — the service worker, `inlineCritical`, `environment.prod.ts`, output
-hashing, a budget overage — passes all 79 spec files and is caught only by
+hashing, a budget overage — can pass the canonical browser suite and is caught only by
 `pnpm build`, `pnpm e2e:web` or by the desktop suite.
 
 ### The production Web/PWA host contract

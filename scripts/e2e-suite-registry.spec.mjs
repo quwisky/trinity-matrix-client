@@ -9,6 +9,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  BROWSER_ASSERTION_BASELINE,
+  captureBrowserAssertionInventory,
+} from './e2e-browser-inventory.mjs';
+import CapabilityCoverageReporter, {
+  browserJourneyPath,
+} from '../e2e/browser/capability-coverage.reporter.mts';
+import {
   registrySnapshot,
   validateDurableE2ENames,
   validateRegistry,
@@ -30,7 +37,7 @@ const workspaceRoot = join(import.meta.dirname, '..');
 describe('E2E suite registry', () => {
   it('matches the current workspace entrypoints, targets, commands and CI', () => {
     expect(validateWorkspace(workspaceRoot)).toEqual([]);
-  });
+  }, 15_000);
 
   it('rejects duplicate target ownership and serialization resources', () => {
     const snapshot = registrySnapshot();
@@ -145,6 +152,87 @@ describe('E2E suite registry', () => {
         ),
       ]),
     );
+  });
+
+  it('preserves every canonical browser test and assertion source', () => {
+    expect(captureBrowserAssertionInventory(workspaceRoot)).toEqual({
+      specFiles: BROWSER_ASSERTION_BASELINE.currentSpecFiles,
+      testDefinitions: BROWSER_ASSERTION_BASELINE.testDefinitions,
+      assertionCalls: BROWSER_ASSERTION_BASELINE.assertionCalls,
+      testFingerprint: BROWSER_ASSERTION_BASELINE.testFingerprint,
+      assertionFingerprint: BROWSER_ASSERTION_BASELINE.assertionFingerprint,
+    });
+  });
+
+  it('reports executable browser coverage from the typed journey catalog', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'trinity-e2e-coverage-'));
+    try {
+      const outputFile = join(directory, 'coverage.json');
+      const reporter = new CapabilityCoverageReporter({ outputFile });
+      const testCase = {
+        id: 'one',
+        location: {
+          file: join(
+            workspaceRoot,
+            'e2e/browser/journeys/accounts/registration.spec.mts',
+          ),
+        },
+        annotations: [],
+        titlePath: () => ['chromium', 'Accounts', 'registers'],
+        parent: { project: () => ({ name: 'chromium' }) },
+      };
+      const result = {
+        annotations: [],
+        status: 'passed',
+        retry: 0,
+        duration: 42,
+      };
+
+      reporter.onBegin({}, { allTests: () => [testCase] });
+      reporter.onTestEnd(testCase, result);
+      await reporter.onEnd({ status: 'passed' });
+
+      expect(browserJourneyPath(testCase.location.file)).toBe(
+        'journeys/accounts/registration.spec.mts',
+      );
+      expect(testCase.annotations).toEqual(
+        expect.arrayContaining([
+          {
+            type: 'trinity.e2e.capability',
+            description: 'accounts',
+          },
+          {
+            type: 'trinity.e2e.contractType',
+            description: 'journey',
+          },
+        ]),
+      );
+      const report = JSON.parse(readFileSync(outputFile, 'utf8'));
+      expect(report).toMatchObject({
+        expectedSpecCount: 110,
+        collectedSpecCount: 1,
+        testCount: 1,
+        attempts: 1,
+        retries: 0,
+        durationMs: 42,
+        byCapability: {
+          accounts: {
+            specCount: 1,
+            testCount: 1,
+            statuses: { passed: 1 },
+          },
+        },
+        byContractType: {
+          journey: {
+            specCount: 1,
+            testCount: 1,
+            statuses: { passed: 1 },
+          },
+        },
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it('requires migrated lifecycle targets and artifacts to use their durable owner', () => {

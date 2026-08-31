@@ -11,6 +11,7 @@ import {
   E2E_SUITES,
   E2E_TIMEOUTS_MS,
 } from '../e2e/registry/index.mts';
+import { validateBrowserJourneyInventory } from './e2e-browser-inventory.mjs';
 
 const TARGET_PROJECT_BY_ENVIRONMENT = {
   android: 'trinity-e2e-android',
@@ -25,6 +26,7 @@ const PROJECT_FILES = {
   'trinity-android': 'android/project.json',
   'trinity-desktop': 'electron/project.json',
   'trinity-e2e': 'e2e/project.json',
+  'trinity-e2e-browser': 'e2e/browser/project.json',
   'trinity-e2e-components': 'e2e/components/project.json',
   'trinity-e2e-web': 'e2e/web/project.json',
 };
@@ -34,6 +36,7 @@ const HISTORICAL_E2E_NAME =
   /(?:phase[ _-]?[67]|shipped[ _-]?ui|shipped-interface)/iu;
 const RETAINED_COMPATIBILITY_ALIAS = 'e2e:ui:shipped';
 const ACTIVE_LIFECYCLE_PROJECTS = new Set([
+  'trinity-e2e-browser',
   'trinity-e2e-components',
   'trinity-e2e-web',
 ]);
@@ -456,7 +459,7 @@ const validateEntrypointInventory = (errors, workspaceRoot, snapshot) => {
 };
 
 const validateCanonicalSpecInventory = (errors, workspaceRoot, snapshot) => {
-  const canonicalSpecs = globSync('e2e/playwright/*.spec.mts', {
+  const canonicalSpecs = globSync('e2e/browser/journeys/**/*.spec.mts', {
     cwd: workspaceRoot,
   });
   if (canonicalSpecs.length !== snapshot.inventory.canonicalBrowserSpecCount) {
@@ -493,7 +496,7 @@ const validateCiEntrypoints = (errors, workspaceRoot, snapshot) => {
       errors.push(`pull-request suite has no CI entrypoint: ${suite.id}`);
     }
   }
-  if (!workflow.includes('# 103 canonical browser specs')) {
+  if (!workflow.includes('# 110 canonical browser specs')) {
     errors.push('CI canonical browser spec count is stale');
   }
 };
@@ -556,6 +559,11 @@ export function validateWorkspace(
   validateTargetInventory(errors, workspaceRoot, snapshot);
   validateEntrypointInventory(errors, workspaceRoot, snapshot);
   validateCanonicalSpecInventory(errors, workspaceRoot, snapshot);
+  validateBrowserJourneyInventory(
+    errors,
+    workspaceRoot,
+    snapshot.suites.find(({ id }) => id === 'browser.canonical'),
+  );
   validateCiEntrypoints(errors, workspaceRoot, snapshot);
   validateArchitectureCommand(errors, packageScripts);
   validateDurableE2ENames(errors, workspaceRoot);

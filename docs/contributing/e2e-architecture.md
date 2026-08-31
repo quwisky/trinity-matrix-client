@@ -5,8 +5,8 @@ processes, prerequisites, serialization and artifacts; product capabilities clas
 inside that lifecycle. This prevents a folder name such as `playwright` from accidentally becoming
 the owner of Android, Electron, Synapse or component-browser support.
 
-The migration is intentionally incremental. The typed registry locks both the current executable
-surface and its destination before later changes move files or replace raw protocol runners.
+The migration is intentionally incremental. The typed registry locks each executable surface
+before later changes replace the remaining raw protocol runners.
 
 ## Executable registry
 
@@ -40,9 +40,10 @@ node scripts/e2e-suite-registry.mjs check
 ```
 
 The registry validates Nx's resolved project graph, not only authored `project.json` files. Nx
-Playwright atomization is disabled because each inferred per-spec target would otherwise start and
-cache work against the same fixed-port Synapse stack. The one resolved canonical target remains
-serialized and uncached.
+Playwright per-spec atomization is disabled because each inferred target would otherwise start and
+cache work against the same fixed-port Synapse stack. The lifecycle-owned
+`trinity-e2e-browser:e2e` target is the serialized, uncached execution atom; Playwright path and
+`--grep` arguments still focus that target without changing resource ownership.
 
 CI tiers have executable meanings:
 
@@ -101,8 +102,11 @@ The aggregate opens the owner before its first child and closes it after its las
 Nx targets use the same support wrappers, so focused and aggregate runs have identical ownership.
 `trinity-e2e-web` now owns production Web/PWA startup, offline behavior and the production-renderer
 matrix. The `trinity-e2e-components` project owns explicit Storybook, styling and scrollbar
-targets. Their small configs compose the support builders and declare only their engine matrices
-and suite-specific browser policy. The nine `e2e/runners/*-run.mjs`
+targets. `trinity-e2e-browser` owns the canonical Chromium/Synapse config, capability catalog and
+journey tree. The aggregate composition fixture owns the Web adapter and selects it or the Android
+adapter for shared journeys without either environment importing the other. Their small configs
+compose the support builders and declare only their engine matrices and suite-specific browser
+policy. The nine `e2e/runners/*-run.mjs`
 protocol paths remain thin compatibility entrypoints over one
 support runner. Browser, Android and Electron adapters depend inward on support contracts; only
 `e2e/fixtures.mts` chooses an environment fixture.
@@ -118,13 +122,14 @@ checking that no runner is active, recover a named stale lock explicitly with:
 node e2e/support/recover-lock.mts synapse
 ```
 
-Later tickets split the remaining mixed `trinity-e2e` environments into these owners
+The lifecycle migration uses these owners
 without changing assertions:
 
 | Project                  | Owns                                                                  |
 | ------------------------ | --------------------------------------------------------------------- |
+| `trinity-e2e`            | Cross-environment fixture composition and aggregate commands          |
 | `trinity-e2e-support`    | **Current:** processes, ports, Synapse, APIs, resources and reporting |
-| `trinity-e2e-browser`    | Canonical application journeys, grouped by durable product capability |
+| `trinity-e2e-browser`    | **Current:** capability-owned canonical application journeys          |
 | `trinity-e2e-protocol`   | Verification, crypto and Matrix protocol/system drivers               |
 | `trinity-e2e-web`        | **Current:** production Web/PWA host and renderer behavior            |
 | `trinity-e2e-electron`   | Launched desktop shell and full Electron journeys                     |
@@ -140,6 +145,13 @@ Every migrated lifecycle Playwright config writes below
 JUnit XML and local HTML share that identity, and the Playwright metadata repeats the registry's
 suite, environment, capabilities, contract types, prerequisites and CI tier. This keeps parallel
 or repeated runs distinct while allowing one job to merge results by lifecycle project.
+
+Canonical browser files add a finer-grained typed catalog. Each spec has exactly one capability
+and one primary `journey`, `host`, `accessibility`, `visual`, or `security` contract. Repository
+validation requires an exact catalog-to-filesystem match and preserves the pre-move inventory of
+266 executable tests and 1,782 assertion calls. The browser reporter copies the per-file
+classification onto every Playwright result and emits a JSON summary grouped by capability and
+contract type below `capability-coverage/` in the run artifact tree.
 
 ## Local delivery evidence
 

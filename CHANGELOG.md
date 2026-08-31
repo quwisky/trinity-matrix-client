@@ -87,6 +87,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Canonical browser journeys now have capability ownership.** The new
+  `trinity-e2e-browser` project groups 110 independently focusable specs under accounts,
+  workspace, room library, room administration, conversations, trust, identity, notifications,
+  discovery/search, settings, and host shell. Ambiguous mobile-navigation and pinned-message
+  files have behavior names, while the multi-account, Settings, and room-settings catch-alls are
+  split around shared support-owned setup. A typed catalog classifies every file by capability and
+  primary contract, a reporter emits per-test annotations and grouped JSON coverage, and
+  source-shape guards preserve all 266 tests and 1,782 assertions while keeping Android's shared
+  collection explicit. The one Synapse-owning Nx target remains uncached, serialized, and limited
+  to two Playwright workers; path and test-name arguments provide focused execution.
+
 - **Web/PWA and visual browser contracts now have lifecycle-owned Nx projects.**
   `trinity-e2e-web` owns production startup, routing, service-worker, offline-shell and renderer
   coverage; `trinity-e2e-components` owns Storybook, styling and cross-browser scrollbar targets.

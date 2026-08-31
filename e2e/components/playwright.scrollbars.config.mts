@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 import { registeredE2ESuite } from '../registry/index.mts';
-import { appE2EConfig } from '../playwright/support/app-e2e-config.mts';
+import { appE2EConfig } from '../browser/support/app-e2e-config.mts';
 import {
   e2eEndpoint,
   e2eLifecycleConfig,
