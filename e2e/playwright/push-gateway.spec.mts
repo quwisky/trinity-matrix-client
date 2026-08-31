@@ -11,7 +11,7 @@ import {
   type SynapseSession,
 } from '../support/app.mts';
 import { registerUser } from '../support/account.mts';
-import { openSettingsSection } from './journeys/navigation.mts';
+import { openSettingsSection } from '../support/journeys/navigation.mts';
 
 // Two things, both needing a Synapse homeserver (Docker); self-skips otherwise.
 //

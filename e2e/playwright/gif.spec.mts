@@ -15,7 +15,7 @@ import {
   type SynapseSession,
 } from '../support/app.mts';
 import { registerUser } from '../support/account.mts';
-import { openSettingsSection } from './journeys/navigation.mts';
+import { openSettingsSection } from '../support/journeys/navigation.mts';
 
 // GIF picker journeys. The send path round-trips through the REAL disposable
 // Synapse (upload → m.image → sync), like every app-journey spec; only the

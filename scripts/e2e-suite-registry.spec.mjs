@@ -1,9 +1,16 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   registrySnapshot,
+  validateDurableE2ENames,
   validateRegistry,
   validateWorkspace,
   yamlRunCommands,
@@ -127,7 +134,7 @@ describe('E2E suite registry', () => {
 
   it('rejects canonical spec-count and aggregate-target drift', () => {
     const snapshot = registrySnapshot();
-    snapshot.inventory.canonicalBrowserSpecCount = 103;
+    snapshot.inventory.canonicalBrowserSpecCount = 102;
     snapshot.aggregateTargets[0].target = 'missing-target';
 
     expect(validateWorkspace(workspaceRoot, snapshot)).toEqual(
@@ -138,6 +145,72 @@ describe('E2E suite registry', () => {
         ),
       ]),
     );
+  });
+
+  it('requires migrated lifecycle targets and artifacts to use their durable owner', () => {
+    const artifactSnapshot = registrySnapshot();
+    const artifactWeb = artifactSnapshot.suites.find(
+      ({ id }) => id === 'web.production-pwa',
+    );
+    artifactWeb.currentArtifactRoot = 'dist/.playwright/web';
+
+    expect(validateRegistry(artifactSnapshot)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          'web.production-pwa current artifacts must use dist/.playwright/trinity-e2e-web/<run-id>',
+        ),
+      ]),
+    );
+
+    const targetSnapshot = registrySnapshot();
+    const targetWeb = targetSnapshot.suites.find(
+      ({ id }) => id === 'web.production-pwa',
+    );
+    targetWeb.currentTarget = 'trinity-e2e:web-e2e';
+
+    expect(validateRegistry(targetSnapshot)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          'web.production-pwa bypasses its active lifecycle project',
+        ),
+      ]),
+    );
+  });
+
+  it('rejects historical E2E paths and source names but permits the retained alias', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'trinity-e2e-names-'));
+    try {
+      const phaseName = ['phase', '6'].join('');
+      const shippedName = ['shipped', 'UI'].join(' ');
+      mkdirSync(join(directory, 'e2e/nested'), { recursive: true });
+      writeFileSync(
+        join(directory, `e2e/${phaseName}.config.mts`),
+        'export {};\n',
+      );
+      writeFileSync(
+        join(directory, 'e2e/nested/active.mts'),
+        `export const name = '${shippedName}';\n`,
+      );
+      writeFileSync(
+        join(directory, 'e2e/compat.mts'),
+        "export const alias = 'e2e:ui:shipped';\n",
+      );
+      const errors = [];
+
+      validateDurableE2ENames(errors, directory);
+
+      expect(errors).toEqual(
+        expect.arrayContaining([
+          `historical E2E name remains in path: e2e/${phaseName}.config.mts`,
+          'historical E2E name remains in source: e2e/nested/active.mts',
+        ]),
+      );
+      expect(errors).not.toContain(
+        'historical E2E name remains in source: e2e/compat.mts',
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it('rejects canonical runner bypasses and incomplete CI tiers', () => {
@@ -179,6 +252,7 @@ describe('E2E suite registry runner', () => {
   it('selects environment suites and rejects unknown aggregates', () => {
     expect(selectSuites('e2e-web').map(({ id }) => id)).toEqual([
       'web.production-pwa',
+      'web.production-renderer',
     ]);
     expect(() => selectSuites('missing')).toThrow(
       'Unknown E2E aggregate target: missing',

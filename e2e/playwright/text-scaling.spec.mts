@@ -1,7 +1,7 @@
 import { testResourceId, test, expect, type Page } from '../fixtures.mts';
 import { login, synapseSession, type SynapseSession } from '../support/app.mts';
 import { registerUser } from '../support/account.mts';
-import { openSettingsSection } from './journeys/navigation.mts';
+import { openSettingsSection } from '../support/journeys/navigation.mts';
 
 // Covers the text-size setting (Settings → Appearance → Text size). The lever is the ROOT
 // font size, applied as a percentage, so everything that inherits from it scales.

@@ -11,16 +11,16 @@ import {
   seedPreference,
   synapseSession,
   type SynapseSession,
-} from '../support/app.mts';
-import { passwordLogin, registerUser } from '../support/account.mts';
+} from '../../support/app.mts';
+import { passwordLogin, registerUser } from '../../support/account.mts';
 import {
   AA_NORMAL_TEXT,
   measureContrast,
-} from '../playwright/support/contrast.mts';
+} from '../../playwright/support/contrast.mts';
 
 const session = synapseSession();
 const ROOM_MESSAGES = [
-  'The shipped interface keeps the conversation as the visual focus.',
+  'The production renderer keeps the conversation as the visual focus.',
   'Compact density and larger text remain independent choices.',
   'Web, Electron and Android share this exact application payload.',
 ] as const;
@@ -90,11 +90,11 @@ async function seedRoom(
   projectName: string,
 ): Promise<{ credentials: SynapseSession; roomName: string }> {
   const suffix = slug(projectName);
-  const reader = `phase7-${suffix}-reader`;
+  const reader = `renderer-${suffix}-reader`;
   const readerPass = `${reader}-pass`;
-  const sender = `phase7-${suffix}-sender`;
+  const sender = `renderer-${suffix}-sender`;
   const senderPass = `${sender}-pass`;
-  const roomName = `Phase 7 ${suffix}`;
+  const roomName = `Renderer contract ${suffix}`;
   await registerUser(request, reader, readerPass);
   await registerUser(request, sender, senderPass);
   const readerSession = await passwordLogin(
@@ -126,13 +126,13 @@ async function seedRoom(
       },
     },
   );
-  expect(created.ok(), 'create shipped-interface room').toBe(true);
+  expect(created.ok(), 'create renderer-contract room').toBe(true);
   const roomId = ((await created.json()) as { room_id: string }).room_id;
   const joined = await request.post(
     `${session.hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
     { headers: senderHeaders },
   );
-  expect(joined.ok(), 'join shipped-interface sender').toBe(true);
+  expect(joined.ok(), 'join renderer-contract sender').toBe(true);
 
   for (const [index, body] of ROOM_MESSAGES.entries()) {
     const response = await request.put(
@@ -250,9 +250,9 @@ async function expectNoHorizontalScroll(page: Page): Promise<void> {
 
 async function expectReadable(page: Page, heading: Locator): Promise<void> {
   await heading.evaluate((element) =>
-    element.setAttribute('data-testid', 'phase7-contrast-target'),
+    element.setAttribute('data-testid', 'renderer-contrast-target'),
   );
-  const contrast = await measureContrast(page, 'phase7-contrast-target');
+  const contrast = await measureContrast(page, 'renderer-contrast-target');
   expect(contrast.ratio).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
 }
 
@@ -325,7 +325,7 @@ async function attachPerformanceEvidence(
   });
 }
 
-test.describe('@phase7 shipped UI', () => {
+test.describe('@production-renderer application surface', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
   test('satisfies the representative semantic and responsive matrix', async ({
@@ -335,7 +335,9 @@ test.describe('@phase7 shipped UI', () => {
   }, testInfo) => {
     const appearance = MATRIX[testInfo.project.name];
     if (!appearance)
-      throw new Error(`Missing Phase 7 matrix entry: ${testInfo.project.name}`);
+      throw new Error(
+        `Missing production-renderer matrix entry: ${testInfo.project.name}`,
+      );
     if (testInfo.project.name === 'webkit-compact-light') {
       expect(browserName).toBe('webkit');
     }

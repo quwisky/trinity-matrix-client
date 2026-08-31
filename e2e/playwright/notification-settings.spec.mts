@@ -1,7 +1,7 @@
 import { testResourceId, test, expect } from '../fixtures.mts';
 import { login, synapseSession, type SynapseSession } from '../support/app.mts';
 import { registerUser } from '../support/account.mts';
-import { openSettingsSection } from './journeys/navigation.mts';
+import { openSettingsSection } from '../support/journeys/navigation.mts';
 
 // Covers the global Notifications settings (Settings → Notifications): each toggle maps
 // to a predefined push rule and writes via PushRulesService.setOn → setPushRuleEnabled.

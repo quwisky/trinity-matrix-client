@@ -560,7 +560,7 @@ Acceptance:
 
 ### Phase 7 - hardening and rollout
 
-Status: implemented. A separate shipped-interface suite checks semantic geometry, contrast, focus,
+Status: implemented. A separate production-renderer suite checks semantic geometry, contrast, focus,
 reduced motion, unread content, safe setup and overflow across a seven-project representative
 cross-cutting matrix, including genuine WebKit plus full Pixel 5 and 320x568 device descriptors.
 Three unused global compatibility tokens were removed, and a source-shape
@@ -615,7 +615,7 @@ Use the repository's usual loop:
 2. have a critique agent challenge scope, accessibility, responsive behaviour and architecture;
 3. update the plan from the critique;
 4. implement with tests;
-5. update architecture/user documentation and `CHANGELOG.md` when the slice changes shipped UI;
+5. update architecture/user documentation and `CHANGELOG.md` when the slice changes visible UI;
 6. run formatting, lint, stylelint, unit tests, typecheck and the relevant real-layout Playwright
    coverage;
 7. push and open a PR with before/after evidence;

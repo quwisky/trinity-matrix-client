@@ -1,10 +1,13 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   e2eArtifactPath,
   e2eEndpoint,
+  e2eLifecycleConfig,
   e2eReportConfig,
 } from './playwright-config.mts';
 import {
@@ -13,12 +16,23 @@ import {
   writeSession,
   type E2ESessionDescriptor,
 } from './session.mts';
+import RegistryMetadataReporter from './registry-metadata.reporter.mts';
 
 const directories: string[] = [];
 const previousSession = process.env[E2E_SESSION_ENV];
 const previousPluginWorker = (
   globalThis as typeof globalThis & { NX_PLUGIN_WORKER?: boolean }
 ).NX_PLUGIN_WORKER;
+
+const reportingSuite = {
+  id: 'web.production-pwa',
+  environment: 'web',
+  capabilities: ['composition', 'host'],
+  contractTypes: ['host', 'journey'],
+  targetProject: 'trinity-e2e-web',
+  prerequisites: ['playwright-chromium'],
+  ciTier: 'local-only',
+} as const;
 
 afterEach(() => {
   if (previousSession === undefined) delete process.env[E2E_SESSION_ENV];
@@ -65,7 +79,9 @@ describe('Playwright config primitives', () => {
     delete (globalThis as typeof globalThis & { NX_PLUGIN_WORKER?: boolean })
       .NX_PLUGIN_WORKER;
     expect(() => e2eEndpoint('application')).toThrow(E2E_SESSION_ENV);
-    expect(() => e2eArtifactPath('browser', 'output')).toThrow(E2E_SESSION_ENV);
+    expect(() =>
+      e2eArtifactPath('trinity-e2e-web', 'web.production-pwa', 'output'),
+    ).toThrow(E2E_SESSION_ENV);
   });
 
   it('exposes inert paths only to Nx project-graph discovery', () => {
@@ -74,19 +90,150 @@ describe('Playwright config primitives', () => {
       globalThis as typeof globalThis & { NX_PLUGIN_WORKER?: boolean }
     ).NX_PLUGIN_WORKER = true;
     expect(e2eEndpoint('application')).toBe('http://127.0.0.1:1');
-    expect(e2eArtifactPath('browser', 'output')).toContain(
-      'nx-config-discovery/browser/output',
+    expect(
+      e2eArtifactPath('trinity-e2e-web', 'web.production-pwa', 'output'),
+    ).toContain(
+      'trinity-e2e-web/nx-config-discovery/web.production-pwa/output',
     );
   });
 
-  it('binds endpoints and reports to the owner-scoped artifact root', () => {
+  it('binds endpoints and reports to the project and owner-scoped run root', () => {
     const descriptor = installSession();
     expect(e2eEndpoint('application')).toBe(descriptor.endpoints.application);
-    expect(e2eArtifactPath('browser', 'test-output')).toBe(
-      join(descriptor.artifactsRoot, 'browser', 'test-output'),
+    expect(
+      e2eArtifactPath('trinity-e2e-web', 'web.production-pwa', 'test-output'),
+    ).toBe(
+      join(
+        descriptor.workspaceRoot,
+        'dist/.playwright/trinity-e2e-web/config-session/web.production-pwa/test-output',
+      ),
     );
-    expect(e2eReportConfig('browser').outputDir).toBe(
-      join(descriptor.artifactsRoot, 'browser', 'test-output'),
+    const report = e2eReportConfig(reportingSuite);
+    expect(report.outputDir).toBe(
+      join(
+        descriptor.workspaceRoot,
+        'dist/.playwright/trinity-e2e-web/config-session/web.production-pwa/test-output',
+      ),
     );
+    expect(report.metadata).toMatchObject({
+      'trinity.e2e.suite': 'web.production-pwa',
+      'trinity.e2e.project': 'trinity-e2e-web',
+    });
+    expect(JSON.stringify(report.reporter)).toContain('blob-report');
+    expect(JSON.stringify(report.reporter)).toContain('junit/results.xml');
+  });
+
+  it('restores registry identity after the worker replaces annotations', () => {
+    const testCase = {
+      annotations: [] as Array<{ type: string; description?: string }>,
+    };
+    const result = {
+      annotations: [{ type: 'worker', description: 'preserved' }],
+    };
+    const reporter = new RegistryMetadataReporter({
+      metadata: {
+        'trinity.e2e.suite': 'web.production-pwa',
+        'trinity.e2e.project': 'trinity-e2e-web',
+      },
+    });
+
+    reporter.onTestEnd(testCase as never, result as never);
+
+    expect(testCase.annotations).toEqual([
+      {
+        type: 'trinity.e2e.suite',
+        description: 'web.production-pwa',
+      },
+      {
+        type: 'trinity.e2e.project',
+        description: 'trinity-e2e-web',
+      },
+    ]);
+    expect(result.annotations).toEqual([
+      { type: 'worker', description: 'preserved' },
+      ...testCase.annotations,
+    ]);
+  });
+
+  it('preserves registry identity in generated JUnit XML', () => {
+    const workspaceRoot = resolve(import.meta.dirname, '../..');
+    const directory = mkdtempSync(join(tmpdir(), 'trinity-junit-'));
+    directories.push(directory);
+    const specFile = join(directory, 'registry-metadata.pw.mts');
+    const configFile = join(directory, 'playwright.config.mts');
+    const junitFile = join(directory, 'results.xml');
+    const playwrightImport = pathToFileURL(
+      join(workspaceRoot, 'node_modules/@playwright/test/index.mjs'),
+    ).href;
+    const reporterPath = join(
+      workspaceRoot,
+      'e2e/support/registry-metadata.reporter.mts',
+    );
+
+    writeFileSync(
+      specFile,
+      `import { expect, test } from ${JSON.stringify(playwrightImport)};\n` +
+        `test('worker round-trip', async ({}, testInfo) => {\n` +
+        `  testInfo.annotations.push({ type: 'worker', description: 'kept' });\n` +
+        `  expect(true).toBe(true);\n` +
+        `});\n`,
+    );
+    writeFileSync(
+      configFile,
+      `export default {\n` +
+        `  testDir: ${JSON.stringify(directory)},\n` +
+        `  testMatch: 'registry-metadata.pw.mts',\n` +
+        `  outputDir: ${JSON.stringify(join(directory, 'test-output'))},\n` +
+        `  reporter: [\n` +
+        `    [${JSON.stringify(reporterPath)}, { metadata: {\n` +
+        `      'trinity.e2e.suite': 'web.production-pwa',\n` +
+        `      'trinity.e2e.project': 'trinity-e2e-web',\n` +
+        `    } }],\n` +
+        `    ['junit', { outputFile: ${JSON.stringify(junitFile)} }],\n` +
+        `  ],\n` +
+        `};\n`,
+    );
+
+    const run = spawnSync(
+      process.execPath,
+      [
+        join(workspaceRoot, 'node_modules/playwright/cli.js'),
+        'test',
+        '--config',
+        configFile,
+      ],
+      { cwd: workspaceRoot, encoding: 'utf8' },
+    );
+    expect(run.status, run.stderr || run.stdout).toBe(0);
+    expect(readFileSync(junitFile, 'utf8')).toContain(
+      '<property name="trinity.e2e.suite" value="web.production-pwa">',
+    );
+    expect(readFileSync(junitFile, 'utf8')).toContain(
+      '<property name="trinity.e2e.project" value="trinity-e2e-web">',
+    );
+  }, 30_000);
+
+  it('composes lifecycle defaults without hiding suite-owned browser projects', () => {
+    installSession();
+    const config = e2eLifecycleConfig({
+      suite: reportingSuite,
+      projectRoot: import.meta.dirname,
+      testDir: '.',
+      endpoint: 'application',
+      timeout: 90_000,
+      expectTimeout: 30_000,
+    });
+
+    expect(config).toMatchObject({
+      retries: 0,
+      workers: 1,
+      timeout: 90_000,
+      expect: { timeout: 30_000 },
+      use: {
+        baseURL: 'http://127.0.0.1:41001',
+        trace: 'retain-on-failure',
+      },
+    });
+    expect(config.projects).toBeUndefined();
   });
 });

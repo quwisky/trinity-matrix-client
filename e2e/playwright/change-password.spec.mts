@@ -7,7 +7,7 @@ import {
 } from '../fixtures.mts';
 import { login, synapseSession, type SynapseSession } from '../support/app.mts';
 import { registerUser } from '../support/account.mts';
-import { openSettingsSection } from './journeys/navigation.mts';
+import { openSettingsSection } from '../support/journeys/navigation.mts';
 
 // Covers changing your own account password from Settings → Account: the form
 // (data-testid current-password/new-password/confirm-password → change-password)

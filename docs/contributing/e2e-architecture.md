@@ -17,12 +17,12 @@ test project mutation-tests its refusal paths.
 
 Every suite declares:
 
-- a stable id, current Nx target and destination Nx project;
+- a stable id and lifecycle-owned Nx project/target;
 - environment, capability and contract annotations;
 - required browsers, Docker, network, Electron, Xvfb, Android SDK/JDK, KVM or Android AVD;
 - pull-request, scheduled or local-only classification;
 - non-cacheable runtime policy and any exclusive serialization resources;
-- enforced timeout class, canonical package command and current/target artifact roots;
+- enforced timeout class, canonical package command and standardized artifact root;
 - the source config or runner entrypoints it owns.
 
 The validator fails on missing or multiply-owned entrypoints, unregistered or drifting targets,
@@ -52,8 +52,8 @@ CI tiers have executable meanings:
 | `scheduled`    | Excluded from pull-request CI; included by exhaustive local and future scheduled selection  |
 | `local-only`   | Excluded from CI; included by exhaustive local or its environment selection                 |
 
-The current pull-request tier contains the canonical browser and shipped-interface suites,
-Storybook, styling, full Electron, QR verification and Android. Production Web/PWA, Electron smoke
+The current pull-request tier contains the canonical browser, production-renderer, Storybook,
+styling, full Electron, QR verification and Android suites. Production Web/PWA, Electron smoke
 and SAS verification remain local-only; the remaining protocol and cross-browser scrollbar suites
 are scheduled. Changing a tier without changing its CI command classification fails validation.
 
@@ -63,8 +63,8 @@ are scheduled. Changing a tier without changing its CI command classification fa
 | --------------------- | ------------------------------------------------------------------------------------- |
 | `pnpm e2e`            | Pull-request-classified suites                                                        |
 | `pnpm e2e:all`        | Every registered suite available on this host                                         |
-| `pnpm e2e:browser`    | Canonical Synapse browser journeys and shipped-interface evidence                     |
-| `pnpm e2e:web`        | Production Web/PWA host contract                                                      |
+| `pnpm e2e:browser`    | Canonical Synapse browser journeys                                                    |
+| `pnpm e2e:web`        | Production Web/PWA host and production-renderer contracts                             |
 | `pnpm e2e:components` | Storybook, styling and cross-browser scrollbar contracts                              |
 | `pnpm e2e:protocol`   | Verification, crypto, media, relation, room, search and emoji protocol/system drivers |
 | `pnpm e2e:electron`   | Docker-independent shell smoke plus the full Synapse-backed Electron journey          |
@@ -81,14 +81,15 @@ cross-invocation process lock and remain non-parallel Nx targets. Application, S
 report servers bind real port-zero sockets; only Synapse, Dex and Caddy retain fixed protocol
 ports.
 
-The older focused package commands remain behavior-compatible Nx aliases for one release after
+The older focused package commands, including `pnpm e2e:ui:shipped`, remain behavior-compatible
+Nx aliases for one release after
 the lifecycle migration completes. Removing an alias requires a released changelog entry, no
 repository or CI references, documented replacement and one full release cycle without migration
 reports.
 
 ## Lifecycle ownership
 
-`trinity-e2e-support` is the first extracted project. It owns the invocation descriptor,
+`trinity-e2e-support` owns the invocation descriptor,
 process-group cancellation, dynamic static servers, explicit resource locks, the disposable
 Synapse lease and stack, Matrix API primitives, per-attempt resource namespaces, cleanup and
 Playwright report paths. One owner writes a private descriptor below
@@ -98,7 +99,11 @@ child cannot silently fall back to starting or stopping a replacement resource.
 
 The aggregate opens the owner before its first child and closes it after its last child. Direct
 Nx targets use the same support wrappers, so focused and aggregate runs have identical ownership.
-The nine `e2e/runners/*-run.mjs` protocol paths remain thin compatibility entrypoints over one
+`trinity-e2e-web` now owns production Web/PWA startup, offline behavior and the production-renderer
+matrix. The `trinity-e2e-components` project owns explicit Storybook, styling and scrollbar
+targets. Their small configs compose the support builders and declare only their engine matrices
+and suite-specific browser policy. The nine `e2e/runners/*-run.mjs`
+protocol paths remain thin compatibility entrypoints over one
 support runner. Browser, Android and Electron adapters depend inward on support contracts; only
 `e2e/fixtures.mts` chooses an environment fixture.
 
@@ -113,7 +118,7 @@ checking that no runner is active, recover a named stale lock explicitly with:
 node e2e/support/recover-lock.mts synapse
 ```
 
-Later tickets split the remaining mixed `trinity-e2e` project into these environment owners
+Later tickets split the remaining mixed `trinity-e2e` environments into these owners
 without changing assertions:
 
 | Project                  | Owns                                                                  |
@@ -121,14 +126,20 @@ without changing assertions:
 | `trinity-e2e-support`    | **Current:** processes, ports, Synapse, APIs, resources and reporting |
 | `trinity-e2e-browser`    | Canonical application journeys, grouped by durable product capability |
 | `trinity-e2e-protocol`   | Verification, crypto and Matrix protocol/system drivers               |
-| `trinity-e2e-web`        | Production Web/PWA host behavior                                      |
+| `trinity-e2e-web`        | **Current:** production Web/PWA host and renderer behavior            |
 | `trinity-e2e-electron`   | Launched desktop shell and full Electron journeys                     |
 | `trinity-e2e-android`    | Installed Capacitor WebView and Android-only journeys                 |
-| `trinity-e2e-components` | Storybook component-browser, styling and scrollbar contracts          |
+| `trinity-e2e-components` | **Current:** Storybook, styling and scrollbar contracts               |
 
 Environment fixtures may depend on `trinity-e2e-support`; they must not import another
 environment's fixture implementation. Playwright configurations stay small and lifecycle-specific
 instead of becoming one mega-config.
+
+Every migrated lifecycle Playwright config writes below
+`dist/.playwright/<lifecycle-project>/<run-id>/<suite-id>/`. Raw output, mergeable blob reports,
+JUnit XML and local HTML share that identity, and the Playwright metadata repeats the registry's
+suite, environment, capabilities, contract types, prerequisites and CI tier. This keeps parallel
+or repeated runs distinct while allowing one job to merge results by lifecycle project.
 
 ## Local delivery evidence
 

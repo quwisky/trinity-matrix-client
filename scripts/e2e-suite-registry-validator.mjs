@@ -25,9 +25,18 @@ const PROJECT_FILES = {
   'trinity-android': 'android/project.json',
   'trinity-desktop': 'electron/project.json',
   'trinity-e2e': 'e2e/project.json',
+  'trinity-e2e-components': 'e2e/components/project.json',
+  'trinity-e2e-web': 'e2e/web/project.json',
 };
 
 const resolvedProjects = new Map();
+const HISTORICAL_E2E_NAME =
+  /(?:phase[ _-]?[67]|shipped[ _-]?ui|shipped-interface)/iu;
+const RETAINED_COMPATIBILITY_ALIAS = 'e2e:ui:shipped';
+const ACTIVE_LIFECYCLE_PROJECTS = new Set([
+  'trinity-e2e-components',
+  'trinity-e2e-web',
+]);
 
 export const registrySnapshot = () =>
   structuredClone({
@@ -122,8 +131,25 @@ export function validateRegistry(snapshot, now = new Date()) {
     if (!(suite.timeoutClass in snapshot.timeouts)) {
       errors.push(`${suite.id} uses an unknown timeout class`);
     }
-    if (!suite.targetArtifactRoot.startsWith('dist/.playwright/')) {
-      errors.push(`${suite.id} has a non-standard target artifact root`);
+    const standardArtifactRoot = `dist/.playwright/${suite.targetProject}/<run-id>`;
+    if (suite.targetArtifactRoot !== standardArtifactRoot) {
+      errors.push(
+        `${suite.id} target artifacts must use ${standardArtifactRoot}`,
+      );
+    }
+    if (
+      suite.currentTarget.startsWith(`${suite.targetProject}:`) &&
+      suite.currentArtifactRoot !== standardArtifactRoot
+    ) {
+      errors.push(
+        `${suite.id} current artifacts must use ${standardArtifactRoot}`,
+      );
+    }
+    if (
+      ACTIVE_LIFECYCLE_PROJECTS.has(suite.targetProject) &&
+      !suite.currentTarget.startsWith(`${suite.targetProject}:`)
+    ) {
+      errors.push(`${suite.id} bypasses its active lifecycle project`);
     }
     if (suite.sourceEntrypoints.length === 0) {
       errors.push(`${suite.id} has no source entrypoint`);
@@ -467,7 +493,7 @@ const validateCiEntrypoints = (errors, workspaceRoot, snapshot) => {
       errors.push(`pull-request suite has no CI entrypoint: ${suite.id}`);
     }
   }
-  if (!workflow.includes('# 104 canonical browser specs')) {
+  if (!workflow.includes('# 103 canonical browser specs')) {
     errors.push('CI canonical browser spec count is stale');
   }
 };
@@ -479,6 +505,40 @@ const validateArchitectureCommand = (errors, packageScripts) => {
     )
   ) {
     errors.push('architecture:check does not enforce the E2E registry');
+  }
+};
+
+export const validateDurableE2ENames = (errors, workspaceRoot) => {
+  const paths = [
+    ...globSync('e2e/**/*', { cwd: workspaceRoot }),
+    ...globSync('scripts/*e2e*', { cwd: workspaceRoot }),
+  ];
+  for (const path of paths) {
+    if (HISTORICAL_E2E_NAME.test(path)) {
+      errors.push(`historical E2E name remains in path: ${path}`);
+    }
+  }
+
+  const primarySources = [
+    ...globSync('e2e/**/*.{json,md,mjs,mts}', { cwd: workspaceRoot }),
+    ...globSync('scripts/*e2e*.{mjs,mts}', { cwd: workspaceRoot }),
+    '.github/workflows/ci.yml',
+    'docs/contributing/commands.md',
+    'docs/contributing/e2e-architecture.md',
+    'docs/contributing/testing.md',
+  ].filter(
+    (path) =>
+      path !== 'scripts/e2e-suite-registry-validator.mjs' &&
+      existsSync(join(workspaceRoot, path)),
+  );
+  for (const path of primarySources) {
+    const source = readFileSync(join(workspaceRoot, path), 'utf8').replaceAll(
+      RETAINED_COMPATIBILITY_ALIAS,
+      '',
+    );
+    if (HISTORICAL_E2E_NAME.test(source)) {
+      errors.push(`historical E2E name remains in source: ${path}`);
+    }
   }
 };
 
@@ -498,6 +558,7 @@ export function validateWorkspace(
   validateCanonicalSpecInventory(errors, workspaceRoot, snapshot);
   validateCiEntrypoints(errors, workspaceRoot, snapshot);
   validateArchitectureCommand(errors, packageScripts);
+  validateDurableE2ENames(errors, workspaceRoot);
 
   return errors;
 }

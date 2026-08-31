@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import {
   AA_NORMAL_TEXT,
   measureContrast,
-} from '../playwright/support/contrast.mts';
+} from '../../playwright/support/contrast.mts';
 
 /**
  * The values exposed by `TRINITY_PALETTES` in the Storybook toolbar.

@@ -147,11 +147,14 @@ the app most.
 The installable web app manifest (`manifest.webmanifest`) is linked from `index.html` and
 prefetched in the `app` asset group, which is what makes the browser offer **Install app**.
 
-`pnpm e2e:web` is the production Web/PWA acceptance target. It builds the exact `www/`
-artifact, serves it without Synapse or Docker, enters through an unknown deep link, verifies the
-login startup surface and manifest, waits for service-worker control, then reloads another deep
-link offline and reads the cached crypto WASM. Keep production-only host coverage here rather than
-in the development Playwright suite.
+`pnpm exec nx run trinity-e2e-web:production-pwa` is the focused production Web/PWA host
+acceptance target. It builds the exact `www/` artifact, serves it without Synapse or Docker,
+enters through an unknown deep link, verifies the login startup surface and manifest, waits for
+service-worker control, then reloads another deep link offline and reads the cached crypto WASM.
+Keep production-only host coverage here rather than in the development Playwright suite.
+
+`pnpm e2e:web` adds the production-renderer matrix to that host contract. The aggregate therefore
+requires Docker for its authenticated geometry and contrast scenarios.
 
 ## Why inlineCritical is off
 

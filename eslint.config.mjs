@@ -484,7 +484,7 @@ export default defineConfig([
     },
   },
   {
-    // The Playwright suite. Type-aware, against e2e/tsconfig.json — which is what makes
+    // The Playwright suites. Type-aware against their lifecycle tsconfigs — which is what makes
     // `no-floating-promises` possible, and it is the rule this block exists for: an
     // `expect(locator).toBeVisible()` missing its `await` resolves to a promise nobody
     // waits on, so the assertion never runs and the spec passes whatever the app did.
@@ -497,7 +497,11 @@ export default defineConfig([
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
-        project: ['./e2e/tsconfig.json'],
+        project: [
+          './e2e/tsconfig.json',
+          './e2e/components/tsconfig.json',
+          './e2e/web/tsconfig.json',
+        ],
         tsconfigRootDir: import.meta.dirname,
       },
     },

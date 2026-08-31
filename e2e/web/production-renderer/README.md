@@ -1,12 +1,12 @@
-# Shipped interface checks
+# Production renderer contract
 
-This suite is the Phase 7 semantic, responsive and geometry gate for Trinity's real production
-build. It stores no screenshots or pixel baselines in the repository.
+This suite is the semantic, responsive and geometry gate for Trinity's real production renderer.
+It stores no screenshots or pixel baselines in the repository.
 
 Run it with:
 
 ```bash
-pnpm e2e:ui:shipped
+pnpm exec nx run trinity-e2e-web:production-renderer
 ```
 
 The command creates a production build and its SHA-256 manifest before Playwright starts. Set
@@ -15,7 +15,7 @@ payload against the manifest before serving it and fails closed if either has dr
 
 The suite blocks the PWA service worker. Chromium otherwise routes the disposable homeserver's
 self-signed TLS discovery through the worker and synthesizes a 504, which tests worker/network
-behavior instead of the shipped UI this suite owns. The same production JavaScript, CSS and assets
+behavior instead of the renderer contract this suite owns. The same production JavaScript, CSS and assets
 are still served and hash-verified before they are copied into Electron and Android.
 
 ## Representative cross-cutting matrix

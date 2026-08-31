@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest';
  *     palette defines, so `color-mix()` was invalid and the sheet rendered with no background
  *     at all — the whole point of the overlay (#159).
  *
- * Phase 7 closes the other direction for the GLOBAL vocabulary too: a token declared in the
+ * The production renderer closes the other direction for the GLOBAL vocabulary too: a token declared in the
  * central variables file must have a real consumer somewhere in source. Palette blocks may
  * repeat those declarations, but they do not justify an otherwise dead API. Component-local
  * custom properties remain outside that check because template bindings and vendor contracts

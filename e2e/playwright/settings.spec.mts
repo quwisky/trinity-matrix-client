@@ -15,7 +15,7 @@ import {
 import {
   closeSettings,
   openSettingsFromRooms,
-} from './journeys/navigation.mts';
+} from '../support/journeys/navigation.mts';
 import {
   AA_NORMAL_TEXT,
   measureContrast,

@@ -1,0 +1,57 @@
+{
+  "name": "trinity-e2e-components",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "e2e/components",
+  "tags": ["type:e2e", "scope:trinity", "environment:components"],
+  "implicitDependencies": [
+    "trinity",
+    "trinity-e2e-support",
+    "components-storybook-host"
+  ],
+  "targets": {
+    "storybook": {
+      "//": "Static component-browser contracts; no application server or Synapse is required.",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-components"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/support/run-playwright.mts --config=e2e/components/playwright.storybook.config.mts --build=components-storybook-host:build-storybook",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "styling": {
+      "//": "CSS capability contracts against the application renderer without Matrix infrastructure.",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-components"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/support/run-playwright.mts --config=e2e/components/playwright.styling.config.mts --build=trinity:build:development",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "scrollbars": {
+      "//": "Chromium, Firefox and WebKit renderer contract against disposable Synapse.",
+      "cache": false,
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-components"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/support/run-playwright.mts --config=e2e/components/playwright.scrollbars.config.mts --build=trinity:build:development --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "eslint \"**/*.mts\"",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "typecheck": {
+      "options": {
+        "command": "tsc -p tsconfig.json --noEmit"
+      }
+    }
+  }
+}

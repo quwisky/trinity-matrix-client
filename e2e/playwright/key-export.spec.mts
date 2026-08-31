@@ -6,7 +6,7 @@ import {
   type SynapseSession,
 } from '../support/app.mts';
 import { registerUser } from '../support/account.mts';
-import { openSettingsSection } from './journeys/navigation.mts';
+import { openSettingsSection } from '../support/journeys/navigation.mts';
 
 // Covers encrypted room-key export / import (Settings → Security → Encrypted key export):
 // exporting prompts for a passphrase and downloads a megolm `.txt`; importing that file back

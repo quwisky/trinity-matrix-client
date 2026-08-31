@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 import { nxE2EPreset } from '@nx/playwright/preset';
 import { appE2EConfig } from './playwright/support/app-e2e-config.mts';
+import { registeredE2ESuite } from './registry/index.mts';
 import { e2eEndpoint, e2eReportConfig } from './support/playwright-config.mts';
 
 // Base URL of the invocation-owned development artifact server. The config is a
@@ -36,7 +37,7 @@ export default defineConfig({
   // event-propagation specs (rename, reactions, polls, threads). 120s (well under the
   // outer invocation budget) gives realistic headroom; retries still catch the rare tail.
   timeout: 120_000,
-  ...e2eReportConfig('browser-canonical'),
+  ...e2eReportConfig(registeredE2ESuite('browser.canonical')),
   // Shared with the current-interface evidence suite: Synapse lifecycle, app server, self-signed
   // TLS policy and retain-on-failure traces must not drift between real-app browser harnesses.
   ...appE2EConfig(baseURL),

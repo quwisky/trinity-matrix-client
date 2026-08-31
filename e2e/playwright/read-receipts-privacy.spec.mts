@@ -7,7 +7,7 @@ import {
 } from '../fixtures.mts';
 import { login, synapseSession, type SynapseSession } from '../support/app.mts';
 import { registerUser } from '../support/account.mts';
-import { openSettingsSection } from './journeys/navigation.mts';
+import { openSettingsSection } from '../support/journeys/navigation.mts';
 
 // Covers the "Send read receipts" privacy toggle (Settings → Privacy). With it
 // OFF, reading a message must still clear the reader's own unread state — but

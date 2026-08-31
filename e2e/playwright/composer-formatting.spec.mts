@@ -12,7 +12,7 @@ import {
   type SynapseSession,
 } from '../support/app.mts';
 import { registerUser } from '../support/account.mts';
-import { openSettingsSection } from './journeys/navigation.mts';
+import { openSettingsSection } from '../support/journeys/navigation.mts';
 
 // Covers the composer's formatting affordances (issue #29, second half): the toolbar, the
 // rebindable chords behind it, markdown-aware Shift+Enter, and the preview toggle.

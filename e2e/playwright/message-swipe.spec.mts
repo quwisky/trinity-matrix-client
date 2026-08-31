@@ -14,7 +14,10 @@ import {
   type SynapseSession,
 } from '../support/app.mts';
 import { registerUser } from '../support/account.mts';
-import { closeSettings, openSettingsSection } from './journeys/navigation.mts';
+import {
+  closeSettings,
+  openSettingsSection,
+} from '../support/journeys/navigation.mts';
 
 // Swiping a message row sideways to edit or reply to it (#222), on a real phone profile.
 //

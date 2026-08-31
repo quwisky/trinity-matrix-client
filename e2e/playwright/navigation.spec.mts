@@ -3,7 +3,7 @@ import {
   closeSettings,
   focusInside,
   openSettingsFromRooms,
-} from './journeys/navigation.mts';
+} from '../support/journeys/navigation.mts';
 import { isAndroidE2E, login, synapseSession } from '../support/app.mts';
 
 // Historical context: this file used to guard the IonRouterOutlet transition lock

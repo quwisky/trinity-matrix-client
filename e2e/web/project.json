@@ -1,0 +1,43 @@
+{
+  "name": "trinity-e2e-web",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "e2e/web",
+  "tags": ["type:e2e", "scope:trinity", "environment:web"],
+  "implicitDependencies": ["trinity", "trinity-e2e-support"],
+  "targets": {
+    "production-pwa": {
+      "//": "Production startup, routing, deep-link, service-worker and offline-shell contract against the shared www renderer.",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-web"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/support/run-playwright.mts --config=e2e/web/playwright.production-pwa.config.mts --build=trinity:build:production --bundle-manifest",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "production-renderer": {
+      "//": "Production semantic, responsive, contrast and geometry matrix over the manifest-recorded shared renderer.",
+      "cache": false,
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-web"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/support/run-playwright.mts --config=e2e/web/playwright.production-renderer.config.mts --build=trinity:build:production --bundle-manifest --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "eslint \"**/*.mts\"",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "typecheck": {
+      "options": {
+        "command": "tsc -p tsconfig.json --noEmit"
+      }
+    }
+  }
+}
