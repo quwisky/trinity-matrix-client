@@ -10,7 +10,8 @@ Use `pnpm e2e` for the pull-request-classified set, `pnpm e2e:all` for every sui
 this host, or `pnpm e2e:<environment>` for browser, Web/PWA, components, protocol, Electron or
 Android. The aggregate validates every prerequisite before starting work and runs registered
 suites in safe order. Strict tier/environment aggregates stop on an unavailable prerequisite;
-`e2e:all` records unavailable optional hosts and continues with available suites. Focused legacy
+`e2e:all` does the same for every suite marked required and continues only past a suite explicitly
+classified optional. Every current suite is required. Focused legacy
 commands remain Nx-backed compatibility aliases through one released changelog cycle, and may be
 removed only after replacements are documented, repository/CI references reach zero, and that
 cycle has no reported migration failures.
@@ -78,7 +79,7 @@ pnpm exec nx run trinity-e2e-browser:e2e -- --grep "opens a copied message link"
 | Command                                              | What it does                                                                                                                               |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `pnpm e2e`                                           | Run the pull-request-classified local E2E set after one registry/prerequisite preflight.                                                   |
-| `pnpm e2e:all`                                       | Run every registered suite available on this host; this is the complete local E2E delivery gate.                                           |
+| `pnpm e2e:all`                                       | Run the complete local E2E delivery gate; all current suites are required.                                                                 |
 | `pnpm e2e:scheduled`                                 | Run the scheduled-classified cross-browser and protocol suites with strict preflight.                                                      |
 | `pnpm e2e:browser`                                   | Run canonical Synapse browser journeys.                                                                                                    |
 | `pnpm e2e:components`                                | Run Storybook, styling and cross-browser scrollbar contracts.                                                                              |

@@ -130,6 +130,9 @@ export function validateRegistry(snapshot, now = new Date()) {
     if (suite.prerequisites.length === 0) {
       errors.push(`${suite.id} has no explicit prerequisite classification`);
     }
+    if (!['required', 'optional'].includes(suite.availabilityPolicy)) {
+      errors.push(`${suite.id} has no explicit availability policy`);
+    }
     if (suite.cachePolicy !== 'never') {
       errors.push(`${suite.id} permits caching for an E2E runtime result`);
     }

@@ -43,6 +43,7 @@ const runnerSuite = (overrides = {}) => ({
   currentTarget: 'trinity-e2e-components:storybook',
   targetProject: 'trinity-e2e-components',
   prerequisites: ['playwright-chromium'],
+  availabilityPolicy: 'required',
   ciTier: 'pull-request',
   serializationKeys: [],
   timeoutClass: 'medium',
@@ -72,11 +73,13 @@ describe('E2E suite registry', () => {
     snapshot.suites[0].cachePolicy = 'allowed';
     snapshot.suites[0].capabilities = [];
     snapshot.suites[0].prerequisites = [];
+    snapshot.suites[0].availabilityPolicy = undefined;
 
     expect(validateRegistry(snapshot)).toEqual(
       expect.arrayContaining([
         expect.stringContaining('missing capability or contract annotations'),
         expect.stringContaining('no explicit prerequisite classification'),
+        expect.stringContaining('no explicit availability policy'),
         expect.stringContaining('permits caching'),
       ]),
     );
@@ -767,6 +770,7 @@ describe('E2E suite registry runner', () => {
       currentTarget: 'trinity-e2e-android:e2e',
       targetProject: 'trinity-e2e-android',
       prerequisites: ['android-avd'],
+      availabilityPolicy: 'optional',
       serializationKeys: ['android-avd'],
       timeoutClass: 'host',
     });
@@ -810,11 +814,37 @@ describe('E2E suite registry runner', () => {
     );
   });
 
+  it('fails e2e-all before execution when a required suite is unavailable', async () => {
+    const required = runnerSuite();
+    const executeSuite = vi.fn();
+    const writeReport = vi.fn(() => undefined);
+
+    expect(
+      await runSelection('e2e-all', {
+        validate: () => [],
+        select: () => [required],
+        preflight: async () => ['browser missing'],
+        executeSuite,
+        writeReport,
+        reportError: () => undefined,
+        reportOutput: () => undefined,
+      }),
+    ).toBe(1);
+    expect(executeSuite).not.toHaveBeenCalled();
+    expect(writeReport.mock.calls[0][1].suites).toContainEqual(
+      expect.objectContaining({
+        id: required.id,
+        outcome: 'unavailable',
+      }),
+    );
+  });
+
   it('preflights identical prerequisite sets once per aggregate', async () => {
-    const first = runnerSuite();
+    const first = runnerSuite({ availabilityPolicy: 'optional' });
     const second = runnerSuite({
       id: 'components.styling',
       currentTarget: 'trinity-e2e-components:styling',
+      availabilityPolicy: 'optional',
     });
     const preflight = vi.fn(async () => ['browser missing']);
 
@@ -829,6 +859,70 @@ describe('E2E suite registry runner', () => {
       }),
     ).toBe(0);
     expect(preflight).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    {
+      name: 'a missing summary',
+      readSuiteResult: () => undefined,
+      detail: 'successful suite emitted no execution summary',
+    },
+    {
+      name: 'a mismatched suite identity',
+      readSuiteResult: () => ({
+        schemaVersion: 1,
+        suiteId: 'components.styling',
+        status: 'passed',
+        attempts: 1,
+        retries: 0,
+        durationMs: 5,
+        attemptDurationMs: 5,
+        attemptsByStatus: { passed: 1 },
+      }),
+      detail: 'suite summary identified components.styling',
+    },
+    {
+      name: 'a non-passing suite status',
+      readSuiteResult: () => ({
+        schemaVersion: 1,
+        suiteId: 'components.storybook',
+        status: 'failed',
+        attempts: 1,
+        retries: 0,
+        durationMs: 5,
+        attemptDurationMs: 5,
+        attemptsByStatus: { failed: 1 },
+      }),
+      detail: 'suite summary reported failed',
+    },
+  ])('rejects $name after a zero exit', async ({ readSuiteResult, detail }) => {
+    const suite = runnerSuite();
+    const writeReport = vi.fn(() => undefined);
+
+    expect(
+      await runSelection('e2e-components', {
+        validate: () => [],
+        select: () => [suite],
+        preflight: async () => [],
+        executeSuite: async () => 0,
+        openInvocation: async () => ({
+          descriptor: { id: 'run-12345678' },
+          environment: {},
+          close: async () => undefined,
+        }),
+        readSuiteResult,
+        writeReport,
+        reportError: () => undefined,
+        reportOutput: () => undefined,
+      }),
+    ).toBe(1);
+    expect(writeReport.mock.calls[0][1].suites).toContainEqual(
+      expect.objectContaining({
+        id: suite.id,
+        outcome: 'failure',
+        detail,
+      }),
+    );
   });
 
   it('records invocation teardown failure in the aggregate result', async () => {

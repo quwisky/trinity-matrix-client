@@ -319,6 +319,230 @@ export const runSuite = (
   });
 };
 
+const syntheticRunId = () =>
+  `preflight-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
+
+const suiteResult = (
+  suite,
+  outcome,
+  { retries = 0, durationMs = 0, detail } = {},
+) => ({
+  id: suite.id,
+  environment: suite.environment,
+  capabilities: suite.capabilities,
+  contractTypes: suite.contractTypes,
+  ciTier: suite.ciTier,
+  outcome,
+  retries,
+  durationMs,
+  ...(detail ? { detail } : {}),
+});
+
+const createReportPersister =
+  ({ targetName, startedAt, now, writeReport, reportOutput }) =>
+  (runId, results) => {
+    const report = buildAggregateReport({
+      target: targetName,
+      runId,
+      startedAt,
+      finishedAt: now(),
+      results,
+    });
+    const paths = writeReport(workspaceRoot, report);
+    if (paths?.json) reportOutput(`[e2e] aggregate summary -> ${paths.json}`);
+    return report;
+  };
+
+const initialSelectionResults = (aggregate, selectedSuites) => {
+  if (aggregate.selection.kind !== 'ci-tier') return [];
+  const selectedIds = new Set(selectedSuites.map(({ id }) => id));
+  return E2E_SUITES.filter(({ id }) => !selectedIds.has(id)).map((suite) =>
+    suiteResult(suite, 'skipped-by-tier'),
+  );
+};
+
+const planSelectedSuites = async ({
+  targetName,
+  selectedSuites,
+  results,
+  isQuarantined,
+  preflight,
+  reportError,
+}) => {
+  const runnableSuites = [];
+  const unavailableSuites = [];
+  const preflightByPrerequisites = new Map();
+  for (const suite of selectedSuites) {
+    if (isQuarantined(targetName, suite.id)) {
+      results.push(suiteResult(suite, 'quarantine'));
+      continue;
+    }
+    const prerequisiteKey = [...suite.prerequisites].sort().join('\0');
+    let failures = preflightByPrerequisites.get(prerequisiteKey);
+    if (!failures) {
+      failures = await preflight([suite]);
+      preflightByPrerequisites.set(prerequisiteKey, failures);
+    }
+    if (failures.length === 0) {
+      runnableSuites.push(suite);
+      continue;
+    }
+    const detail = failures.join('; ');
+    unavailableSuites.push(suite);
+    results.push(suiteResult(suite, 'unavailable', { detail }));
+    reportError(`[e2e] ${suite.id} unavailable: ${detail}`);
+  }
+  return { runnableSuites, unavailableSuites };
+};
+
+const blocksOnUnavailable = (aggregate, unavailableSuites) =>
+  unavailableSuites.length > 0 &&
+  (aggregate.unavailablePolicy === 'fail' ||
+    unavailableSuites.some(
+      ({ availabilityPolicy }) => availabilityPolicy === 'required',
+    ));
+
+const appendNotRun = (results, suites, detail) => {
+  for (const suite of suites) {
+    results.push(suiteResult(suite, 'not-run', { detail }));
+  }
+};
+
+const readValidatedSuiteSummary = ({
+  suite,
+  status,
+  runId,
+  readSuiteResult,
+}) => {
+  if (!runId) return {};
+  try {
+    const summary = readSuiteResult(
+      suiteSummaryPath(workspaceRoot, suite.targetProject, runId, suite.id),
+    );
+    if (summary && summary.suiteId !== suite.id) {
+      return {
+        summary,
+        summaryFailure: `suite summary identified ${summary.suiteId}`,
+      };
+    }
+    if (status === 0 && !summary) {
+      return {
+        summaryFailure: 'successful suite emitted no execution summary',
+      };
+    }
+    if (status === 0 && summary.status !== 'passed') {
+      return {
+        summary,
+        summaryFailure: `suite summary reported ${summary.status}`,
+      };
+    }
+    return { summary };
+  } catch (error) {
+    return {
+      summaryFailure: error instanceof Error ? error.message : String(error),
+    };
+  }
+};
+
+const executeRegisteredSuite = async ({
+  suite,
+  invocation,
+  forwardedArgs,
+  signal,
+  executeSuite,
+  readSuiteResult,
+}) => {
+  const startedAt = Date.now();
+  const status = await executeSuite(suite, {
+    forwardedArgs,
+    environment: invocation.environment,
+    signal,
+  });
+  const summaryResult = readValidatedSuiteSummary({
+    suite,
+    status,
+    runId: invocation.descriptor?.id,
+    readSuiteResult,
+  });
+  return {
+    status,
+    durationMs: Date.now() - startedAt,
+    ...summaryResult,
+  };
+};
+
+const executeRunnableSuites = async ({
+  runnableSuites,
+  results,
+  invocation,
+  forwardedArgs,
+  signal,
+  executeSuite,
+  readSuiteResult,
+  reportError,
+}) => {
+  for (const [index, suite] of runnableSuites.entries()) {
+    const execution = await executeRegisteredSuite({
+      suite,
+      invocation,
+      forwardedArgs,
+      signal,
+      executeSuite,
+      readSuiteResult,
+    });
+    const failed = execution.status !== 0 || Boolean(execution.summaryFailure);
+    results.push(
+      suiteResult(
+        suite,
+        failed ? 'failure' : execution.summary?.retries ? 'retry' : 'pass',
+        {
+          retries: execution.summary?.retries ?? 0,
+          durationMs: execution.durationMs,
+          ...(execution.summaryFailure
+            ? { detail: execution.summaryFailure }
+            : {}),
+        },
+      ),
+    );
+    if (!failed) continue;
+    reportError(
+      execution.summaryFailure
+        ? `${suite.id} failed report validation: ${execution.summaryFailure}`
+        : `${suite.id} failed with exit code ${execution.status}; remaining suites were not run.`,
+    );
+    appendNotRun(
+      results,
+      runnableSuites.slice(index + 1),
+      `stopped after ${suite.id}`,
+    );
+    return execution.status || 1;
+  }
+  return 0;
+};
+
+const closeInvocation = async ({
+  invocation,
+  results,
+  runnableSuites,
+  reportError,
+}) => {
+  try {
+    await invocation.close();
+    return 0;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const detail = `invocation teardown failed: ${message}`;
+    for (let index = results.length - 1; index >= 0; index -= 1) {
+      if (runnableSuites.some(({ id }) => id === results[index].id)) {
+        results[index] = { ...results[index], outcome: 'failure', detail };
+        break;
+      }
+    }
+    reportError(`E2E invocation teardown failed: ${message}`);
+    return 1;
+  }
+};
+
 export const runSelection = async (
   targetName,
   {
@@ -345,35 +569,13 @@ export const runSelection = async (
   } = {},
 ) => {
   const startedAt = now();
-  const syntheticRunId = () =>
-    `preflight-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
-  const suiteResult = (
-    suite,
-    outcome,
-    { retries = 0, durationMs = 0, detail } = {},
-  ) => ({
-    id: suite.id,
-    environment: suite.environment,
-    capabilities: suite.capabilities,
-    contractTypes: suite.contractTypes,
-    ciTier: suite.ciTier,
-    outcome,
-    retries,
-    durationMs,
-    ...(detail ? { detail } : {}),
+  const persistReport = createReportPersister({
+    targetName,
+    startedAt,
+    now,
+    writeReport,
+    reportOutput,
   });
-  const persistReport = (runId, results) => {
-    const report = buildAggregateReport({
-      target: targetName,
-      runId,
-      startedAt,
-      finishedAt: now(),
-      results,
-    });
-    const paths = writeReport(workspaceRoot, report);
-    if (paths?.json) reportOutput(`[e2e] aggregate summary -> ${paths.json}`);
-    return report;
-  };
   const termination = createTerminationScope();
   try {
     const errors = validate();
@@ -400,46 +602,21 @@ export const runSelection = async (
       return 1;
     }
 
-    const selectedIds = new Set(selectedSuites.map(({ id }) => id));
-    const results =
-      aggregate.selection.kind === 'ci-tier'
-        ? E2E_SUITES.filter(({ id }) => !selectedIds.has(id)).map((suite) =>
-            suiteResult(suite, 'skipped-by-tier'),
-          )
-        : [];
-    const runnableSuites = [];
-    const preflightByPrerequisites = new Map();
-    for (const suite of selectedSuites) {
-      if (isQuarantined(targetName, suite.id)) {
-        results.push(suiteResult(suite, 'quarantine'));
-        continue;
-      }
-      const prerequisiteKey = [...suite.prerequisites].sort().join('\0');
-      let failures = preflightByPrerequisites.get(prerequisiteKey);
-      if (!failures) {
-        failures = await preflight([suite]);
-        preflightByPrerequisites.set(prerequisiteKey, failures);
-      }
-      if (failures.length > 0) {
-        const detail = failures.join('; ');
-        results.push(suiteResult(suite, 'unavailable', { detail }));
-        reportError(`[e2e] ${suite.id} unavailable: ${detail}`);
-      } else {
-        runnableSuites.push(suite);
-      }
-    }
-
-    const unavailable = results.filter(
-      ({ outcome }) => outcome === 'unavailable',
-    );
-    if (unavailable.length > 0 && aggregate.unavailablePolicy === 'fail') {
-      for (const suite of runnableSuites) {
-        results.push(
-          suiteResult(suite, 'not-run', {
-            detail: 'required selection failed prerequisite preflight',
-          }),
-        );
-      }
+    const results = initialSelectionResults(aggregate, selectedSuites);
+    const { runnableSuites, unavailableSuites } = await planSelectedSuites({
+      targetName,
+      selectedSuites,
+      results,
+      isQuarantined,
+      preflight,
+      reportError,
+    });
+    if (blocksOnUnavailable(aggregate, unavailableSuites)) {
+      appendNotRun(
+        results,
+        runnableSuites,
+        'required selection failed prerequisite preflight',
+      );
       persistReport(syntheticRunId(), results);
       reportError('E2E prerequisite preflight failed; no suites were started.');
       return 1;
@@ -457,88 +634,26 @@ export const runSelection = async (
     ];
     const invocation = await openInvocation(resources, termination.signal);
     const runId = invocation.descriptor?.id ?? syntheticRunId();
-    let finalStatus = 0;
+    let finalStatus;
     try {
-      for (const [index, suite] of runnableSuites.entries()) {
-        const suiteStartedAt = Date.now();
-        const status = await executeSuite(suite, {
-          forwardedArgs,
-          environment: invocation.environment,
-          signal: termination.signal,
-        });
-        const durationMs = Date.now() - suiteStartedAt;
-        let summary;
-        let summaryFailure;
-        if (invocation.descriptor?.id) {
-          const summaryFile = suiteSummaryPath(
-            workspaceRoot,
-            suite.targetProject,
-            invocation.descriptor.id,
-            suite.id,
-          );
-          try {
-            summary = readSuiteResult(summaryFile);
-            if (summary && summary.suiteId !== suite.id) {
-              summaryFailure = `suite summary identified ${summary.suiteId}`;
-            } else if (status === 0 && !summary) {
-              summaryFailure = 'successful suite emitted no execution summary';
-            } else if (status === 0 && summary.status !== 'passed') {
-              summaryFailure = `suite summary reported ${summary.status}`;
-            }
-          } catch (error) {
-            summaryFailure =
-              error instanceof Error ? error.message : String(error);
-          }
-        }
-        const failed = status !== 0 || Boolean(summaryFailure);
-        results.push(
-          suiteResult(
-            suite,
-            failed ? 'failure' : summary?.retries ? 'retry' : 'pass',
-            {
-              retries: summary?.retries ?? 0,
-              durationMs,
-              ...(summaryFailure ? { detail: summaryFailure } : {}),
-            },
-          ),
-        );
-        if (failed) {
-          finalStatus = status || 1;
-          reportError(
-            summaryFailure
-              ? `${suite.id} failed report validation: ${summaryFailure}`
-              : `${suite.id} failed with exit code ${status}; remaining suites were not run.`,
-          );
-          for (const remaining of runnableSuites.slice(index + 1)) {
-            results.push(
-              suiteResult(remaining, 'not-run', {
-                detail: `stopped after ${suite.id}`,
-              }),
-            );
-          }
-          break;
-        }
-      }
+      finalStatus = await executeRunnableSuites({
+        runnableSuites,
+        results,
+        invocation,
+        forwardedArgs,
+        signal: termination.signal,
+        executeSuite,
+        readSuiteResult,
+        reportError,
+      });
     } finally {
-      try {
-        await invocation.close();
-      } catch (error) {
-        finalStatus ||= 1;
-        const detail = `invocation teardown failed: ${error instanceof Error ? error.message : String(error)}`;
-        for (let index = results.length - 1; index >= 0; index -= 1) {
-          if (runnableSuites.some(({ id }) => id === results[index].id)) {
-            results[index] = {
-              ...results[index],
-              outcome: 'failure',
-              detail,
-            };
-            break;
-          }
-        }
-        reportError(
-          `E2E invocation teardown failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
+      const teardownStatus = await closeInvocation({
+        invocation,
+        results,
+        runnableSuites,
+        reportError,
+      });
+      finalStatus ||= teardownStatus;
     }
     persistReport(runId, results);
     return finalStatus;

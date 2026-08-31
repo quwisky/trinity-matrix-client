@@ -50,6 +50,7 @@ export interface E2ESuiteDefinition {
   readonly delegatingTargets?: readonly `${string}:${string}`[];
   readonly targetProject: string;
   readonly prerequisites: readonly E2EPrerequisite[];
+  readonly availabilityPolicy: 'required' | 'optional';
   readonly ciTier: E2ECiTier;
   readonly cachePolicy: 'never';
   readonly serializationKeys: readonly string[];

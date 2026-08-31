@@ -6,6 +6,7 @@ import type {
   E2EContractType,
   E2EEnvironment,
 } from './e2e-registry.types.mts';
+import { assertE2EArtifactPathSegment } from './artifact-path.mts';
 
 export const E2E_OUTCOMES = [
   'pass',
@@ -19,10 +20,19 @@ export const E2E_OUTCOMES = [
 
 export type E2EOutcome = (typeof E2E_OUTCOMES)[number];
 
+export const PLAYWRIGHT_SUITE_STATUSES = [
+  'passed',
+  'failed',
+  'timedout',
+  'interrupted',
+] as const;
+
+export type PlaywrightSuiteStatus = (typeof PLAYWRIGHT_SUITE_STATUSES)[number];
+
 export interface PlaywrightSuiteSummary {
   readonly schemaVersion: 1;
   readonly suiteId: string;
-  readonly status: string;
+  readonly status: PlaywrightSuiteStatus;
   readonly attempts: number;
   readonly retries: number;
   readonly durationMs: number;
@@ -63,10 +73,28 @@ export interface E2EAggregateReport {
   readonly suites: readonly E2EAggregateSuiteResult[];
 }
 
-function assertPathSegment(value: string, label: string): void {
-  if (!/^[a-z0-9][a-z0-9.-]*$/u.test(value)) {
-    throw new Error(`Invalid E2E ${label} path segment: ${value}`);
-  }
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return Number.isInteger(value) && Number(value) >= 0;
+}
+
+function isNonNegativeNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+function isPlaywrightSuiteStatus(
+  value: unknown,
+): value is PlaywrightSuiteStatus {
+  return PLAYWRIGHT_SUITE_STATUSES.some((status) => status === value);
+}
+
+function isAttemptStatusCounts(
+  value: unknown,
+): value is Readonly<Record<string, number>> {
+  return isRecord(value) && Object.values(value).every(isNonNegativeInteger);
 }
 
 export function suiteSummaryPath(
@@ -80,7 +108,7 @@ export function suiteSummaryPath(
     [runId, 'run'],
     [suiteId, 'suite'],
   ] as const) {
-    assertPathSegment(value, label);
+    assertE2EArtifactPathSegment(value, label);
   }
   return join(
     workspaceRoot,
@@ -96,29 +124,30 @@ export function readPlaywrightSuiteSummary(
   file: string,
 ): PlaywrightSuiteSummary | undefined {
   if (!existsSync(file)) return undefined;
-  const parsed = JSON.parse(
-    readFileSync(file, 'utf8'),
-  ) as Partial<PlaywrightSuiteSummary>;
+  const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
   if (
-    parsed.schemaVersion !== 1 ||
-    typeof parsed.suiteId !== 'string' ||
-    !['passed', 'failed', 'timedout', 'interrupted'].includes(
-      parsed.status ?? '',
-    ) ||
-    !Number.isInteger(parsed.attempts) ||
-    (parsed.attempts ?? -1) < 0 ||
-    !Number.isInteger(parsed.retries) ||
-    (parsed.retries ?? -1) < 0 ||
-    typeof parsed.durationMs !== 'number' ||
-    parsed.durationMs < 0 ||
-    typeof parsed.attemptDurationMs !== 'number' ||
-    parsed.attemptDurationMs < 0 ||
-    typeof parsed.attemptsByStatus !== 'object' ||
-    parsed.attemptsByStatus === null
+    !isRecord(parsed) ||
+    parsed['schemaVersion'] !== 1 ||
+    typeof parsed['suiteId'] !== 'string' ||
+    !isPlaywrightSuiteStatus(parsed['status']) ||
+    !isNonNegativeInteger(parsed['attempts']) ||
+    !isNonNegativeInteger(parsed['retries']) ||
+    !isNonNegativeNumber(parsed['durationMs']) ||
+    !isNonNegativeNumber(parsed['attemptDurationMs']) ||
+    !isAttemptStatusCounts(parsed['attemptsByStatus'])
   ) {
     throw new Error(`Invalid Playwright suite summary: ${file}`);
   }
-  return parsed as PlaywrightSuiteSummary;
+  return {
+    schemaVersion: 1,
+    suiteId: parsed['suiteId'],
+    status: parsed['status'],
+    attempts: parsed['attempts'],
+    retries: parsed['retries'],
+    durationMs: parsed['durationMs'],
+    attemptDurationMs: parsed['attemptDurationMs'],
+    attemptsByStatus: parsed['attemptsByStatus'],
+  };
 }
 
 function emptyOutcomeCounts(): Record<E2EOutcome, number> {
@@ -231,8 +260,8 @@ export function writeAggregateReport(
   workspaceRoot: string,
   report: E2EAggregateReport,
 ): { readonly json: string; readonly markdown: string } {
-  assertPathSegment(report.runId, 'run');
-  assertPathSegment(report.target, 'aggregate');
+  assertE2EArtifactPathSegment(report.runId, 'run');
+  assertE2EArtifactPathSegment(report.target, 'aggregate');
   const root = join(
     workspaceRoot,
     'dist/.playwright/trinity-e2e',

@@ -31,6 +31,7 @@ const reportingSuite = {
   contractTypes: ['host', 'journey'],
   targetProject: 'trinity-e2e-web',
   prerequisites: ['playwright-chromium'],
+  availabilityPolicy: 'required',
   ciTier: 'local-only',
 } as const;
 

@@ -5,6 +5,7 @@ import type {
 } from '@playwright/test';
 import { nxE2EPreset } from '@nx/playwright/preset';
 import type { E2ESuiteDefinition } from './e2e-registry.types.mts';
+import { assertE2EArtifactPathSegment } from './artifact-path.mts';
 import {
   E2E_SESSION_ENV,
   readSession,
@@ -21,6 +22,7 @@ type E2EReportingSuite = Pick<
   | 'contractTypes'
   | 'targetProject'
   | 'prerequisites'
+  | 'availabilityPolicy'
   | 'ciTier'
 >;
 
@@ -58,20 +60,14 @@ export function e2eEndpoint(endpoint: E2EEndpoint): string {
   return sessionForConfig()?.endpoints[endpoint] ?? 'http://127.0.0.1:1';
 }
 
-function assertPathSegment(value: string, label: string): void {
-  if (!/^[a-z0-9][a-z0-9.-]*$/u.test(value)) {
-    throw new Error(`Invalid E2E ${label} path segment: ${value}`);
-  }
-}
-
 /** Resolve one suite path below dist/.playwright/<project>/<run-id>/. */
 export function e2eArtifactPath(
   project: string,
   runSuiteId: string,
   leaf: string,
 ): string {
-  assertPathSegment(project, 'project');
-  assertPathSegment(runSuiteId, 'suite');
+  assertE2EArtifactPathSegment(project, 'project');
+  assertE2EArtifactPathSegment(runSuiteId, 'suite');
   const session = sessionForConfig();
   const root = session
     ? join(session.workspaceRoot, 'dist/.playwright', project, session.id)
@@ -93,6 +89,7 @@ export function e2eReportConfig(
     'trinity.e2e.capabilities': suite.capabilities.join(','),
     'trinity.e2e.contractTypes': suite.contractTypes.join(','),
     'trinity.e2e.prerequisites': suite.prerequisites.join(','),
+    'trinity.e2e.availabilityPolicy': suite.availabilityPolicy,
     'trinity.e2e.ciTier': suite.ciTier,
   } as const;
   const consoleReporter = process.env['CI'] ? 'dot' : 'list';

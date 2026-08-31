@@ -48,7 +48,7 @@ describe('E2E support architecture', () => {
         expect(imports, path).not.toEqual(
           expect.arrayContaining([
             expect.stringMatching(
-              /(?:^|\/)(?:android|browser|electron|web)(?:\/.*)?\/fixtures\.mts$|^\.\.\/fixtures\.mts$/u,
+              /(?:^|\/)(?:android|browser|electron|web)(?:\/.*)?\/fixtures\.mts$|(?:^|\/)web-fixtures\.mts$|^\.\.\/fixtures\.mts$/u,
             ),
           ]),
         );

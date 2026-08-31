@@ -63,7 +63,7 @@ are scheduled. Changing a tier without changing its CI command classification fa
 | Command               | Selection                                                                             |
 | --------------------- | ------------------------------------------------------------------------------------- |
 | `pnpm e2e`            | Pull-request-classified suites                                                        |
-| `pnpm e2e:all`        | Every registered suite available on this host                                         |
+| `pnpm e2e:all`        | Complete local gate; every current registered suite is required                       |
 | `pnpm e2e:scheduled`  | Scheduled-classified suites                                                           |
 | `pnpm e2e:browser`    | Canonical Synapse browser journeys                                                    |
 | `pnpm e2e:web`        | Production Web/PWA host and production-renderer contracts                             |
@@ -74,9 +74,10 @@ are scheduled. Changing a tier without changing its CI command classification fa
 
 Every canonical aggregate is an uncached, serialized Nx target. Pull-request, scheduled and
 environment aggregates fail preflight before starting any suite when a required prerequisite is
-unavailable. `e2e:all` instead records a truly unavailable optional host distinctly and continues
-with every available suite. The runner opens one support invocation and stops after the first
-executed suite failure.
+unavailable. `e2e:all` also fails before execution when any suite classified `required` is
+unavailable, and continues only past a suite explicitly classified `optional`. Every current
+suite is required; the optional policy exists for a future genuinely host-inapplicable runtime.
+The runner opens one support invocation and stops after the first executed suite failure.
 Docker and the Android AVD are required for the local delivery gate. On headless Linux the
 aggregate wraps Electron targets with `xvfb-run`. Every child target is terminated at the timeout
 declared by its registry class, with process-group termination escalating from `SIGTERM` to

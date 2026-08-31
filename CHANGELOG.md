@@ -94,7 +94,8 @@ All notable changes to this project are documented here. The format is based on
   environment and exhaustive aggregates now write one JSON/Markdown summary grouped by
   environment, capability and contract type, distinguishing retries, quarantine, unavailable
   hosts and tier skips from failures. Strict selections fail preflight before starting, while
-  `e2e:all` continues through available suites and records optional unavailable hosts. CI tiering,
+  `e2e:all` requires every current suite and can continue only past a future suite explicitly
+  classified optional. CI tiering,
   artifact roots, fixture boundaries and compatibility aliases are source-guarded; old commands
   remain until a documented, reference-free release cycle completes without migration failures.
 

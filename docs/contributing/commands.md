@@ -201,7 +201,7 @@ commands remain behavior-compatible Nx aliases during the migration:
 | Command               | Selection                                                     |
 | --------------------- | ------------------------------------------------------------- |
 | `pnpm e2e`            | Pull-request-classified suites                                |
-| `pnpm e2e:all`        | Every suite available on this host                            |
+| `pnpm e2e:all`        | Complete local gate; every current suite is required          |
 | `pnpm e2e:scheduled`  | Scheduled-classified suites                                   |
 | `pnpm e2e:browser`    | Canonical Synapse browser journeys                            |
 | `pnpm e2e:web`        | Production Web/PWA host and renderer contracts                |
@@ -211,10 +211,12 @@ commands remain behavior-compatible Nx aliases during the migration:
 | `pnpm e2e:android`    | Installed API 36 WebView journeys                             |
 
 `pnpm e2e:all` is the E2E portion of the local delivery gate while GitHub Actions capacity is
-unavailable. It validates the registry, reports an unavailable optional host without hiding the
-available suites, then runs lifecycle owners in a safe order and stops at the first executed
-failure. Pull-request, scheduled and environment aggregates are strict: any missing prerequisite
-fails before their first suite. Docker and the Android AVD are mandatory on the delivery host. See
+unavailable. It validates the registry, fails before execution when any required suite is
+unavailable, then runs lifecycle owners in a safe order and stops at the first executed failure.
+Only a suite explicitly classified optional may be reported unavailable while the rest continue;
+every current suite is required. Pull-request, scheduled and environment aggregates are strict:
+any missing prerequisite fails before their first suite. Docker and the Android AVD are mandatory
+on the delivery host. See
 [End-to-end test architecture](e2e-architecture.md) for ownership, CI tiers, caching,
 serialization, aliases and artifacts.
 

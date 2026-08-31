@@ -14,6 +14,7 @@ export const BROWSER_E2E_SUITES = [
     currentTarget: 'trinity-e2e-browser:e2e',
     targetProject: 'trinity-e2e-browser',
     prerequisites: ['docker', 'playwright-chromium'],
+    availabilityPolicy: 'required',
     ciTier: 'pull-request',
     cachePolicy: 'never',
     serializationKeys: ['synapse'],
