@@ -7,7 +7,7 @@ const webSpecs = globSync('**/*.spec.mts', {
   cwd: join(workspaceRoot, 'e2e/browser/journeys'),
 }).sort();
 const androidConfig = readFileSync(
-  join(workspaceRoot, 'e2e/playwright.android.config.mts'),
+  join(workspaceRoot, 'e2e/android/playwright.config.mts'),
   'utf8',
 );
 const ciWorkflow = readFileSync(

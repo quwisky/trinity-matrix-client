@@ -7,13 +7,15 @@ const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
 
 describe('Electron Playwright image-pack coverage', () => {
   it('joins the support-owned disposable Synapse lifecycle', () => {
-    const config = read('e2e/playwright.electron.config.mts');
-    const project = read('electron/project.json');
+    const config = read('e2e/electron/playwright.full.config.mts');
+    const project = read('e2e/electron/project.json');
+    const hostProject = read('electron/project.json');
     expect(config).not.toContain('globalSetup');
     expect(config).not.toContain('globalTeardown');
     expect(config).toContain('ignoreHTTPSErrors: true');
     expect(project).toContain('support/run-playwright.mts');
     expect(project).toContain('--resource=electron --resource=synapse');
+    expect(hostProject).toContain('trinity-e2e-electron:full');
   });
 
   it('runs the canonical manager journey through the desktop shell', () => {

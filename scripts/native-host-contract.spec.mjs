@@ -56,7 +56,7 @@ function project(platform) {
               cache: false,
               parallelism: false,
               options: {
-                command: 'pnpm exec nx run trinity-e2e:android-e2e',
+                command: 'pnpm exec nx run trinity-e2e-android:e2e',
               },
             },
           }

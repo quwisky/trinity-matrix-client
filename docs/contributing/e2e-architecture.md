@@ -5,8 +5,8 @@ processes, prerequisites, serialization and artifacts; product capabilities clas
 inside that lifecycle. This prevents a folder name such as `playwright` from accidentally becoming
 the owner of Android, Electron, Synapse or component-browser support.
 
-The migration is intentionally incremental. The typed registry locks each executable surface
-while lifecycle projects replace environment-specific legacy entrypoints without losing checks.
+The typed registry locks the finalized lifecycle topology and every executable surface without
+losing the behavior of retained compatibility commands.
 
 ## Executable registry
 
@@ -50,7 +50,7 @@ CI tiers have executable meanings:
 | Tier           | Contract                                                                                    |
 | -------------- | ------------------------------------------------------------------------------------------- |
 | `pull-request` | Appears exactly once in the checked-in CI command registry and runs in the current workflow |
-| `scheduled`    | Excluded from pull-request CI; included by exhaustive local and future scheduled selection  |
+| `scheduled`    | Excluded from pull-request CI; run by the weekly registry-driven scheduled workflow         |
 | `local-only`   | Excluded from CI; included by exhaustive local or its environment selection                 |
 
 The current pull-request tier contains the canonical browser, production-renderer, Storybook,
@@ -64,6 +64,7 @@ are scheduled. Changing a tier without changing its CI command classification fa
 | --------------------- | ------------------------------------------------------------------------------------- |
 | `pnpm e2e`            | Pull-request-classified suites                                                        |
 | `pnpm e2e:all`        | Every registered suite available on this host                                         |
+| `pnpm e2e:scheduled`  | Scheduled-classified suites                                                           |
 | `pnpm e2e:browser`    | Canonical Synapse browser journeys                                                    |
 | `pnpm e2e:web`        | Production Web/PWA host and production-renderer contracts                             |
 | `pnpm e2e:components` | Storybook, styling and cross-browser scrollbar contracts                              |
@@ -71,9 +72,11 @@ are scheduled. Changing a tier without changing its CI command classification fa
 | `pnpm e2e:electron`   | Docker-independent shell smoke plus the full Synapse-backed Electron journey          |
 | `pnpm e2e:android`    | Installed API 36 WebView journeys                                                     |
 
-Every canonical aggregate is an uncached, serialized Nx target. It validates the registry and all
-selected prerequisites before starting the first suite, opens one support invocation, then stops
-at the first failed suite.
+Every canonical aggregate is an uncached, serialized Nx target. Pull-request, scheduled and
+environment aggregates fail preflight before starting any suite when a required prerequisite is
+unavailable. `e2e:all` instead records a truly unavailable optional host distinctly and continues
+with every available suite. The runner opens one support invocation and stops after the first
+executed suite failure.
 Docker and the Android AVD are required for the local delivery gate. On headless Linux the
 aggregate wraps Electron targets with `xvfb-run`. Every child target is terminated at the timeout
 declared by its registry class, with process-group termination escalating from `SIGTERM` to
@@ -83,10 +86,9 @@ report servers bind real port-zero sockets; only Synapse, Dex and Caddy retain f
 ports.
 
 The older focused package commands, including `pnpm e2e:ui:shipped`, remain behavior-compatible
-Nx aliases for one release after
-the lifecycle migration completes. Removing an alias requires a released changelog entry, no
-repository or CI references, documented replacement and one full release cycle without migration
-reports.
+Nx aliases through the first released changelog cycle after this migration. Removing an alias
+requires documented replacements, zero repository or CI references, and one complete released
+cycle without reported migration failures.
 
 ## Lifecycle ownership
 
@@ -105,12 +107,13 @@ matrix. The `trinity-e2e-components` project owns explicit Storybook, styling an
 targets. `trinity-e2e-browser` owns the canonical Chromium/Synapse config, capability catalog and
 journey tree. `trinity-e2e-protocol` owns twelve Playwright Test specs selected by thirteen
 registered suite targets; the shared config supplies standard reports, traces, retries,
-annotations and attempt-scoped Matrix resources. The aggregate composition fixture owns the Web adapter and selects it or the Android
-adapter for shared journeys without either environment importing the other. Their small configs
-compose the support builders and declare only their engine matrices and suite-specific browser
-policy. Focused protocol package commands delegate directly to the protocol project's targets.
-Browser, Android and Electron adapters depend inward on support contracts; only
-`e2e/fixtures.mts` chooses an environment fixture.
+annotations and attempt-scoped Matrix resources. `trinity-e2e-electron` owns the launched-shell
+smoke and full desktop configs; `trinity-e2e-android` owns the emulator runner, installed-WebView
+fixture and config. The `trinity-desktop`, `trinity-android`, and root `trinity-e2e` host targets
+are compatibility delegates and own no lifecycle implementation. The aggregate composition
+fixture selects the Web or Android adapter for shared journeys without either environment
+importing the other. Browser, Android and Electron adapters depend inward on support contracts;
+only `e2e/fixtures.mts` chooses an environment fixture.
 
 Every Playwright attempt receives a deterministic namespace containing the invocation, suite,
 worker, retry and test identity. Multi-client roles derive distinct names from that namespace.
@@ -146,6 +149,13 @@ Every migrated lifecycle Playwright config writes below
 JUnit XML and local HTML share that identity, and the Playwright metadata repeats the registry's
 suite, environment, capabilities, contract types, prerequisites and CI tier. This keeps parallel
 or repeated runs distinct while allowing one job to merge results by lifecycle project.
+
+Each suite also writes `suite-summary.json` with its final Playwright status, attempts, retry count,
+duration and attempt-status totals. An aggregate rejects a successful child that omitted or
+misidentified this summary. It then writes JSON and Markdown under
+`dist/.playwright/trinity-e2e/<run-id>/<aggregate>/`, grouped by environment, capability and
+contract type. Outcomes distinguish pass, failure, retry, quarantine, unavailable,
+skipped-by-tier and not-run; invocation teardown failure changes the aggregate result to failure.
 
 Canonical browser files add a finer-grained typed catalog. Each spec has exactly one capability
 and one primary `journey`, `host`, `accessibility`, `visual`, or `security` contract. Repository

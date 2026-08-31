@@ -500,8 +500,10 @@ export default defineConfig([
       parserOptions: {
         project: [
           './e2e/tsconfig.json',
+          './e2e/android/tsconfig.json',
           './e2e/browser/tsconfig.json',
           './e2e/components/tsconfig.json',
+          './e2e/electron/tsconfig.json',
           './e2e/protocol/tsconfig.json',
           './e2e/web/tsconfig.json',
         ],

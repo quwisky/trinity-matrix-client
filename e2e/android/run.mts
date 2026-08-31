@@ -21,10 +21,10 @@ import {
   openE2EInvocation,
   type E2EInvocation,
 } from '../support/invocation.mts';
+import { e2eArtifactPath } from '../support/playwright-config.mts';
 
 const exec = promisify(execFile);
 const workspaceRoot = join(import.meta.dirname, '../..');
-const artifactsDir = join(workspaceRoot, 'dist/.playwright/android');
 const packageName = 'eu.qwky.trinity';
 const driverPackages = [
   'com.microsoft.playwright.androiddriver',
@@ -37,7 +37,8 @@ let emulatorLogFd: number | undefined;
 let ownsEmulator = false;
 let spawnedEmulator: ChildProcess | undefined;
 let emulatorSpawnError: Error | undefined;
-let emulatorExit: { code: number | null; signal: NodeJS.Signals | null } | undefined;
+let emulatorExit:
+  { code: number | null; signal: NodeJS.Signals | null } | undefined;
 const requiredReversePorts = ['8448', '5556'] as const;
 const changedReverseMappings: Array<{
   local: string;
@@ -54,10 +55,19 @@ let signalCount = 0;
 
 const sdkRoot = process.env['ANDROID_HOME'] ?? process.env['ANDROID_SDK_ROOT'];
 if (!sdkRoot) {
-  throw new Error('ANDROID_HOME or ANDROID_SDK_ROOT must point at the Android SDK');
+  throw new Error(
+    'ANDROID_HOME or ANDROID_SDK_ROOT must point at the Android SDK',
+  );
 }
 const adb = join(sdkRoot, 'platform-tools/adb');
 const emulator = join(sdkRoot, 'emulator/emulator');
+
+const artifactsDir = (): string =>
+  e2eArtifactPath(
+    'trinity-e2e-android',
+    'android.installed-webview',
+    'host-output',
+  );
 
 function commandSignal(): AbortSignal | undefined {
   return cleaningUp ? undefined : abortController.signal;
@@ -119,7 +129,8 @@ async function run(command: string, args: string[]): Promise<void> {
 function packageVersion(packagePath: string): string {
   const require = createRequire(import.meta.url);
   const resolved = require.resolve(`${packagePath}/package.json`);
-  return (JSON.parse(readFileSync(resolved, 'utf8')) as { version: string }).version;
+  return (JSON.parse(readFileSync(resolved, 'utf8')) as { version: string })
+    .version;
 }
 
 function assertPlaywrightVersions(): void {
@@ -142,7 +153,9 @@ async function gitStatus(): Promise<string> {
 }
 
 async function assertJava21(): Promise<void> {
-  const { stdout, stderr } = await exec('java', ['-version'], { cwd: workspaceRoot });
+  const { stdout, stderr } = await exec('java', ['-version'], {
+    cwd: workspaceRoot,
+  });
   const version = `${stdout}\n${stderr}`;
   if (!/(?:java|openjdk) version "21(?:\.|\")/i.test(version)) {
     throw new Error(`Android E2E requires JDK 21; detected: ${version.trim()}`);
@@ -193,11 +206,16 @@ async function selectOrStartDevice(): Promise<void> {
   }
 
   const matches: string[] = [];
-  for (const candidate of connected.filter((value) => value.startsWith('emulator-'))) {
-    if ((await runningAvdName(candidate)) === DEFAULT_AVD) matches.push(candidate);
+  for (const candidate of connected.filter((value) =>
+    value.startsWith('emulator-'),
+  )) {
+    if ((await runningAvdName(candidate)) === DEFAULT_AVD)
+      matches.push(candidate);
   }
   if (matches.length > 1) {
-    throw new Error(`More than one running ${DEFAULT_AVD} emulator: ${matches.join(', ')}`);
+    throw new Error(
+      `More than one running ${DEFAULT_AVD} emulator: ${matches.join(', ')}`,
+    );
   }
   if (matches[0]) {
     serial = matches[0];
@@ -218,7 +236,9 @@ async function selectOrStartDevice(): Promise<void> {
     parseDevices(connectedOutput).map(({ serial: candidate }) => candidate),
   );
   serial = `emulator-${port}`;
-  emulatorLogFd = openSync(join(artifactsDir, 'emulator.log'), 'w');
+  const outputDirectory = artifactsDir();
+  mkdirSync(outputDirectory, { recursive: true });
+  emulatorLogFd = openSync(join(outputDirectory, 'emulator.log'), 'w');
   spawnedEmulator = spawn(
     emulator,
     [
@@ -232,7 +252,11 @@ async function selectOrStartDevice(): Promise<void> {
       '-gpu',
       'swiftshader_indirect',
     ],
-    { cwd: workspaceRoot, detached: true, stdio: ['ignore', emulatorLogFd, emulatorLogFd] },
+    {
+      cwd: workspaceRoot,
+      detached: true,
+      stdio: ['ignore', emulatorLogFd, emulatorLogFd],
+    },
   );
   spawnedEmulator.once('error', (error) => {
     emulatorSpawnError = error;
@@ -262,14 +286,18 @@ async function selectOrStartDevice(): Promise<void> {
     }
     await new Promise((resolve) => setTimeout(resolve, 1_000));
   }
-  throw new Error(`Timed out waiting for owned ${DEFAULT_AVD} emulator ${serial}`);
+  throw new Error(
+    `Timed out waiting for owned ${DEFAULT_AVD} emulator ${serial}`,
+  );
 }
 
 async function validateAndWaitForBoot(): Promise<void> {
   await waitUntil('Android boot completion', async () => {
     const complete = await adbRun('shell', 'getprop', 'sys.boot_completed');
     const bootAnimation = await adbRun('shell', 'getprop', 'init.svc.bootanim');
-    return complete === '1' && (bootAnimation === '' || bootAnimation === 'stopped');
+    return (
+      complete === '1' && (bootAnimation === '' || bootAnimation === 'stopped')
+    );
   });
   await waitUntil('Android package manager', async () =>
     (await adbRun('shell', 'pm', 'path', 'android')).startsWith('package:'),
@@ -292,12 +320,9 @@ async function validateAndWaitForBoot(): Promise<void> {
     ),
   );
   for (const driverPackage of driverPackages) {
-    const installed = await adbRun(
-      'shell',
-      'pm',
-      'path',
-      driverPackage,
-    ).catch(() => '');
+    const installed = await adbRun('shell', 'pm', 'path', driverPackage).catch(
+      () => '',
+    );
     if (installed.startsWith('package:')) {
       throw new Error(
         `${serial} already contains ${driverPackage}; remove pre-existing Playwright drivers before using this disposable test target`,
@@ -312,7 +337,9 @@ async function validateAndWaitForBoot(): Promise<void> {
   };
   const problems = validateEmulator(properties);
   if (problems.length > 0) {
-    throw new Error(`${serial} is not the dedicated test emulator: ${problems.join('; ')}`);
+    throw new Error(
+      `${serial} is not the dedicated test emulator: ${problems.join('; ')}`,
+    );
   }
 }
 
@@ -329,7 +356,8 @@ async function configureReverse(): Promise<void> {
 
 async function captureDiagnostics(): Promise<void> {
   if (!serial) return;
-  mkdirSync(artifactsDir, { recursive: true });
+  const outputDirectory = artifactsDir();
+  mkdirSync(outputDirectory, { recursive: true });
   const commands: Array<[string, string[]]> = [
     ['device-properties.txt', ['shell', 'getprop']],
     ['logcat-final.txt', ['logcat', '-b', 'all', '-d']],
@@ -338,14 +366,17 @@ async function captureDiagnostics(): Promise<void> {
   ];
   for (const [file, args] of commands) {
     try {
-      writeFileSync(join(artifactsDir, file), await adbRun(...args));
+      writeFileSync(join(outputDirectory, file), await adbRun(...args));
     } catch (error) {
-      writeFileSync(join(artifactsDir, file), String(error));
+      writeFileSync(join(outputDirectory, file), String(error));
     }
   }
 }
 
-async function waitForProcessExit(child: ChildProcess, timeout: number): Promise<boolean> {
+async function waitForProcessExit(
+  child: ChildProcess,
+  timeout: number,
+): Promise<boolean> {
   if (child.exitCode !== null || child.signalCode !== null) return true;
   return Promise.race([
     new Promise<true>((resolve) => child.once('exit', () => resolve(true))),
@@ -360,7 +391,9 @@ async function cleanup(): Promise<void> {
     try {
       await captureDiagnostics().catch(() => undefined);
       if (serial) {
-        await adbRun('shell', 'am', 'force-stop', packageName).catch(() => undefined);
+        await adbRun('shell', 'am', 'force-stop', packageName).catch(
+          () => undefined,
+        );
         if (playwrightAttachAttempted) {
           for (const driverPackage of driverPackages) {
             await adbRun('uninstall', driverPackage).catch(() => undefined);
@@ -378,7 +411,10 @@ async function cleanup(): Promise<void> {
       } else if (spawnedEmulator && !emulatorExit) {
         terminateProcessGroup(spawnedEmulator, 'SIGTERM');
       }
-      if (spawnedEmulator && !(await waitForProcessExit(spawnedEmulator, 5_000))) {
+      if (
+        spawnedEmulator &&
+        !(await waitForProcessExit(spawnedEmulator, 5_000))
+      ) {
         terminateProcessGroup(spawnedEmulator, 'SIGKILL');
         await waitForProcessExit(spawnedEmulator, 2_000);
       }
@@ -464,7 +500,7 @@ async function main(): Promise<void> {
     'playwright',
     'test',
     '-c',
-    'e2e/playwright.android.config.mts',
+    'e2e/android/playwright.config.mts',
     ...process.argv.slice(2),
   ]);
 }

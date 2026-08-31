@@ -216,24 +216,24 @@ export function validateElectronHostContract(input, errors) {
   }
   if (
     targets.e2e?.options?.command !==
-      'node e2e/support/run-playwright.mts --config=e2e/playwright.electron.config.mts --resource=electron --resource=synapse' ||
+      'pnpm exec nx run trinity-e2e-electron:full' ||
     targets.e2e?.cache !== false ||
     targets.e2e?.parallelism !== false ||
-    !targets.e2e?.dependsOn?.includes('build')
+    targets.e2e?.dependsOn !== undefined
   ) {
     errors.push(
-      'Electron e2e must launch the uncached serialized built desktop app',
+      'Electron e2e must delegate only to the uncached lifecycle-owned full suite',
     );
   }
   if (
     targets['e2e-smoke']?.options?.command !==
-      'node e2e/support/run-playwright.mts --config=e2e/playwright.electron.smoke.config.mts --resource=electron' ||
+      'pnpm exec nx run trinity-e2e-electron:smoke' ||
     targets['e2e-smoke']?.cache !== false ||
     targets['e2e-smoke']?.parallelism !== false ||
-    !targets['e2e-smoke']?.dependsOn?.includes('build')
+    targets['e2e-smoke']?.dependsOn !== undefined
   ) {
     errors.push(
-      'Electron smoke must launch the uncached serialized Docker-independent shell journey',
+      'Electron smoke must delegate only to the uncached lifecycle-owned smoke suite',
     );
   }
   for (const [targetName, command] of Object.entries(packageTargets)) {

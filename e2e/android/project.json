@@ -1,0 +1,39 @@
+{
+  "name": "trinity-e2e-android",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "e2e/android",
+  "tags": ["type:e2e", "scope:trinity", "environment:android"],
+  "implicitDependencies": [
+    "trinity",
+    "trinity-android",
+    "trinity-e2e-support"
+  ],
+  "targets": {
+    "e2e": {
+      "//": "Owns the API 36 emulator, installed applications, adb bridge and support-owned disposable Synapse lifecycle.",
+      "cache": false,
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node run.mts",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "eslint \"**/*.mts\"",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc -p tsconfig.json --noEmit",
+        "cwd": "{projectRoot}"
+      }
+    }
+  }
+}

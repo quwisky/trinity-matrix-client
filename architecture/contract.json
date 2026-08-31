@@ -75,6 +75,14 @@
     {
       "project": "trinity-e2e-web",
       "reason": "Black-box Web/PWA E2E harnesses are outside the shipped application dependency model."
+    },
+    {
+      "project": "trinity-e2e-electron",
+      "reason": "Black-box Electron E2E harnesses are outside the shipped application dependency model."
+    },
+    {
+      "project": "trinity-e2e-android",
+      "reason": "Black-box Android E2E harnesses are outside the shipped application dependency model."
     }
   ],
   "classificationExceptions": [],

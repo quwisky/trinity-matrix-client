@@ -76,6 +76,7 @@ export interface E2EPackageScriptContract {
 
 export interface E2EAggregateTarget {
   readonly target: string;
+  readonly unavailablePolicy: 'fail' | 'skip';
   readonly selection:
     | { readonly kind: 'all' }
     | { readonly kind: 'ci-tier'; readonly value: E2ECiTier }
@@ -84,6 +85,7 @@ export interface E2EAggregateTarget {
 
 export interface E2ECiEntrypoint {
   readonly command: string;
+  readonly tier: Exclude<E2ECiTier, 'local-only'>;
   readonly suiteIds: readonly string[];
 }
 

@@ -1,0 +1,48 @@
+{
+  "name": "trinity-e2e-electron",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "e2e/electron",
+  "tags": ["type:e2e", "scope:trinity", "environment:electron"],
+  "implicitDependencies": ["trinity-desktop", "trinity-e2e-support"],
+  "targets": {
+    "full": {
+      "//": "Owns the launched desktop shell and joins the support-owned Electron and disposable Synapse lifecycle.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [{ "projects": ["trinity-desktop"], "target": "build" }],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-electron"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/support/run-playwright.mts --config=e2e/electron/playwright.full.config.mts --resource=electron --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "smoke": {
+      "//": "Owns the Docker-independent launched-shell protocol, bridge, security and styling proof.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [{ "projects": ["trinity-desktop"], "target": "build" }],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-electron"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/support/run-playwright.mts --config=e2e/electron/playwright.smoke.config.mts --resource=electron",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "eslint \"**/*.mts\"",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc -p tsconfig.json --noEmit",
+        "cwd": "{projectRoot}"
+      }
+    }
+  }
+}

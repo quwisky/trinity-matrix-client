@@ -7,7 +7,6 @@ import {
   type Route,
 } from '@playwright/test';
 import { testResourceId } from './support/namespace.mts';
-import { resourceFixtureDefinitions } from './support/resource-fixtures.mts';
 
 /**
  * Composition-edge fixture selection. Environment adapters depend inward on shared
@@ -21,6 +20,6 @@ const adapter =
 const environmentTest =
   adapter.test as typeof import('./android/fixtures.mts').test;
 
-export const test = environmentTest.extend(resourceFixtureDefinitions);
+export const test = environmentTest;
 export { devices, expect, testResourceId };
 export type { APIRequestContext, Locator, Page, Route };

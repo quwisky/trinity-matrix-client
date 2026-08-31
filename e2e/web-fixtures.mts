@@ -9,6 +9,7 @@ import {
   type Route,
 } from '@playwright/test';
 import type { AuthPlatform } from './support/platform-contracts.mts';
+import { resourceFixtureDefinitions } from './support/resource-fixtures.mts';
 import { cdpSwipe, type TouchPlatform } from './support/touch-platform.mts';
 
 const webTestWithPlatform = webTest.extend<{
@@ -84,7 +85,7 @@ const webTestWithPlatform = webTest.extend<{
 });
 
 /** Web adapter selected by the aggregate fixture for browser journey runs. */
-export const test = webTestWithPlatform;
+export const test = webTestWithPlatform.extend(resourceFixtureDefinitions);
 
 export { devices, expect };
 export type { APIRequestContext, Locator, Page, Route };

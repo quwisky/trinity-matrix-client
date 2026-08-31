@@ -98,7 +98,10 @@ export function e2eReportConfig(
   const consoleReporter = process.env['CI'] ? 'dot' : 'list';
   const reporter: NonNullable<PlaywrightTestConfig['reporter']> = [
     [consoleReporter],
-    [join(import.meta.dirname, 'registry-metadata.reporter.mts'), { metadata }],
+    [
+      join(import.meta.dirname, 'registry-metadata.reporter.mts'),
+      { metadata, outputFile: artifact('suite-summary.json') },
+    ],
     ...(options.reportersAfterMetadata ?? []),
     ['blob', { outputDir: artifact('blob-report') }],
     ['junit', { outputFile: artifact('junit/results.xml') }],

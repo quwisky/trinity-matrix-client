@@ -6,7 +6,7 @@ import {
   waitForRooms,
 } from '../support/app.mts';
 import { registerUser } from '../support/account.mts';
-import { expect, test } from '../fixtures.mts';
+import { expect, test } from './fixtures.mts';
 
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 
@@ -33,7 +33,9 @@ async function openNativeSettingsFromRooms(
   await expect(
     page.getByRole('heading', { name: 'Settings', exact: true }),
   ).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByRole('navigation', { name: 'Settings sections' })).toBeVisible();
+  await expect(
+    page.getByRole('navigation', { name: 'Settings sections' }),
+  ).toBeVisible();
 }
 
 async function seedComposerRoom(request: APIRequestContext): Promise<void> {
@@ -91,7 +93,9 @@ test.describe('Android navigation', () => {
 
     const relaunchedPage = await app.relaunch();
     await waitForRooms(relaunchedPage, 30_000);
-    await expect(relaunchedPage.locator('trn-rooms')).toBeVisible({ timeout: 30_000 });
+    await expect(relaunchedPage.locator('trn-rooms')).toBeVisible({
+      timeout: 30_000,
+    });
   });
 
   test.describe('phone-sized Settings', () => {
@@ -231,9 +235,7 @@ test.describe('Android navigation', () => {
         };
       });
       expect(geometry.top).toBeGreaterThanOrEqual(geometry.viewportTop - 1);
-      expect(geometry.bottom).toBeLessThanOrEqual(
-        geometry.viewportBottom + 1,
-      );
+      expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportBottom + 1);
       await app.pressBack();
       await expect(sheet).toBeHidden();
       await expect(trigger).toBeFocused();

@@ -5,33 +5,52 @@ import type {
 } from './types.mts';
 
 const compatibilityRelease =
-  'first release after the E2E lifecycle migration completes';
+  'after one released changelog cycle with documented replacements, zero repository or CI references, and no reported migration failures';
 
 export const E2E_AGGREGATE_TARGETS = [
-  { target: 'e2e-pr', selection: { kind: 'ci-tier', value: 'pull-request' } },
-  { target: 'e2e-all', selection: { kind: 'all' } },
+  {
+    target: 'e2e-pr',
+    unavailablePolicy: 'fail',
+    selection: { kind: 'ci-tier', value: 'pull-request' },
+  },
+  {
+    target: 'e2e-scheduled',
+    unavailablePolicy: 'fail',
+    selection: { kind: 'ci-tier', value: 'scheduled' },
+  },
+  {
+    target: 'e2e-all',
+    unavailablePolicy: 'skip',
+    selection: { kind: 'all' },
+  },
   {
     target: 'e2e-browser',
+    unavailablePolicy: 'fail',
     selection: { kind: 'environment', value: 'browser' },
   },
   {
     target: 'e2e-components',
+    unavailablePolicy: 'fail',
     selection: { kind: 'environment', value: 'components' },
   },
   {
     target: 'e2e-protocol',
+    unavailablePolicy: 'fail',
     selection: { kind: 'environment', value: 'protocol' },
   },
   {
     target: 'e2e-electron',
+    unavailablePolicy: 'fail',
     selection: { kind: 'environment', value: 'electron' },
   },
   {
     target: 'e2e-web',
+    unavailablePolicy: 'fail',
     selection: { kind: 'environment', value: 'web' },
   },
   {
     target: 'e2e-android',
+    unavailablePolicy: 'fail',
     selection: { kind: 'environment', value: 'android' },
   },
 ] as const satisfies readonly E2EAggregateTarget[];
@@ -48,6 +67,23 @@ export const E2E_PACKAGE_SCRIPTS = [
     command: 'nx run trinity-e2e:e2e-all',
     kind: 'canonical',
     suiteIds: [],
+  },
+  {
+    name: 'e2e:scheduled',
+    command: 'nx run trinity-e2e:e2e-scheduled',
+    kind: 'canonical',
+    suiteIds: [
+      'components.scrollbars',
+      'protocol.media',
+      'protocol.threads',
+      'protocol.reply',
+      'protocol.spaces',
+      'protocol.rooms',
+      'protocol.search',
+      'protocol.emoji',
+      'protocol.crypto-spike-chromium',
+      'protocol.crypto-spike-webkit',
+    ],
   },
   {
     name: 'e2e:browser',
@@ -225,31 +261,54 @@ export const E2E_PACKAGE_SCRIPTS = [
 export const E2E_CI_ENTRYPOINTS = [
   {
     command: 'xvfb-run -a pnpm electron:e2e',
+    tier: 'pull-request',
     suiteIds: ['electron.full'],
   },
   {
     command: 'pnpm exec nx run trinity-e2e-components:storybook',
+    tier: 'pull-request',
     suiteIds: ['components.storybook'],
   },
   {
     command: 'pnpm exec nx run trinity-e2e-web:production-renderer',
+    tier: 'pull-request',
     suiteIds: ['web.production-renderer'],
   },
   {
     command: 'pnpm exec nx run trinity-e2e-components:styling',
+    tier: 'pull-request',
     suiteIds: ['components.styling'],
   },
   {
     command: 'pnpm exec nx run trinity-e2e-browser:e2e',
+    tier: 'pull-request',
     suiteIds: ['browser.canonical'],
   },
   {
     command: 'pnpm e2e:verify:qr',
+    tier: 'pull-request',
     suiteIds: ['protocol.verify-qr'],
   },
   {
     command:
       'TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm e2e:android -- --fail-on-flaky-tests --shard=${{ matrix.shard }}/4',
+    tier: 'pull-request',
     suiteIds: ['android.installed-webview'],
+  },
+  {
+    command: 'pnpm e2e:scheduled',
+    tier: 'scheduled',
+    suiteIds: [
+      'components.scrollbars',
+      'protocol.media',
+      'protocol.threads',
+      'protocol.reply',
+      'protocol.spaces',
+      'protocol.rooms',
+      'protocol.search',
+      'protocol.emoji',
+      'protocol.crypto-spike-chromium',
+      'protocol.crypto-spike-webkit',
+    ],
   },
 ] as const satisfies readonly E2ECiEntrypoint[];

@@ -89,12 +89,12 @@
       }
     },
     "e2e": {
-      "//": "The installed WebView journey owns emulator, fixed-port Synapse, APK and adb state, so it remains serialized and uncached.",
+      "//": "Compatibility host target; lifecycle ownership is trinity-e2e-android:e2e.",
       "cache": false,
       "parallelism": false,
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm exec nx run trinity-e2e:android-e2e",
+        "command": "pnpm exec nx run trinity-e2e-android:e2e",
         "cwd": "{workspaceRoot}"
       }
     }

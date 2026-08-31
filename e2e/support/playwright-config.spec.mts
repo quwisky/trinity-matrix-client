@@ -121,14 +121,19 @@ describe('Playwright config primitives', () => {
     });
     expect(JSON.stringify(report.reporter)).toContain('blob-report');
     expect(JSON.stringify(report.reporter)).toContain('junit/results.xml');
+    expect(JSON.stringify(report.reporter)).toContain('suite-summary.json');
   });
 
   it('restores registry identity after the worker replaces annotations', () => {
     const testCase = {
+      id: 'one',
       annotations: [] as Array<{ type: string; description?: string }>,
     };
     const result = {
       annotations: [{ type: 'worker', description: 'preserved' }],
+      duration: 42,
+      retry: 0,
+      status: 'passed',
     };
     const reporter = new RegistryMetadataReporter({
       metadata: {
@@ -162,6 +167,7 @@ describe('Playwright config primitives', () => {
     const specFile = join(directory, 'registry-metadata.pw.mts');
     const configFile = join(directory, 'playwright.config.mts');
     const junitFile = join(directory, 'results.xml');
+    const summaryFile = join(directory, 'suite-summary.json');
     const playwrightImport = pathToFileURL(
       join(workspaceRoot, 'node_modules/@playwright/test/index.mjs'),
     ).href;
@@ -185,7 +191,7 @@ describe('Playwright config primitives', () => {
         `  testMatch: 'registry-metadata.pw.mts',\n` +
         `  outputDir: ${JSON.stringify(join(directory, 'test-output'))},\n` +
         `  reporter: [\n` +
-        `    [${JSON.stringify(reporterPath)}, { metadata: {\n` +
+        `    [${JSON.stringify(reporterPath)}, { outputFile: ${JSON.stringify(summaryFile)}, metadata: {\n` +
         `      'trinity.e2e.suite': 'web.production-pwa',\n` +
         `      'trinity.e2e.project': 'trinity-e2e-web',\n` +
         `    } }],\n` +
@@ -211,6 +217,14 @@ describe('Playwright config primitives', () => {
     expect(readFileSync(junitFile, 'utf8')).toContain(
       '<property name="trinity.e2e.project" value="trinity-e2e-web">',
     );
+    expect(JSON.parse(readFileSync(summaryFile, 'utf8'))).toMatchObject({
+      schemaVersion: 1,
+      suiteId: 'web.production-pwa',
+      status: 'passed',
+      attempts: 1,
+      retries: 0,
+      attemptsByStatus: { passed: 1 },
+    });
   }, 30_000);
 
   it('composes lifecycle defaults without hiding suite-owned browser projects', () => {

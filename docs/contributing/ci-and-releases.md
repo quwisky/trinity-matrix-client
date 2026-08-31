@@ -3,27 +3,34 @@
 Two GitHub Actions workflows do the work that matters, plus one that keeps
 dependencies moving.
 
-| Workflow                                                                                                       | Fires on                                                                   | Job of                                                           |
-| -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| [`ci.yml`](https://github.com/quwisky/trinity-matrix-client/blob/develop/.github/workflows/ci.yml)             | Every pull request, and pushes to `develop`, `master`, `renovate/patch-**` | Five parallel jobs that gate a branch                            |
-| [`release.yml`](https://github.com/quwisky/trinity-matrix-client/blob/develop/.github/workflows/release.yml)   | A `v1.2.3` tag push, or a manual dispatch                                  | Verifying the tag, packaging three platforms, drafting a release |
-| [`renovate.yml`](https://github.com/quwisky/trinity-matrix-client/blob/develop/.github/workflows/renovate.yml) | A daily cron, or a manual dispatch                                         | Running Renovate under a short-lived GitHub App token            |
+| Workflow                                                                                                       | Fires on                                                               | Job of                                                           |
+| -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| [`ci.yml`](https://github.com/quwisky/trinity-matrix-client/blob/develop/.github/workflows/ci.yml)             | Every pull request, selected pushes, and the weekly scheduled E2E tier | Six branch gates plus one scheduled E2E job                      |
+| [`release.yml`](https://github.com/quwisky/trinity-matrix-client/blob/develop/.github/workflows/release.yml)   | A `v1.2.3` tag push, or a manual dispatch                              | Verifying the tag, packaging three platforms, drafting a release |
+| [`renovate.yml`](https://github.com/quwisky/trinity-matrix-client/blob/develop/.github/workflows/renovate.yml) | A daily cron, or a manual dispatch                                     | Running Renovate under a short-lived GitHub App token            |
 
 `ci.yml` sets `concurrency` on the workflow plus ref with `cancel-in-progress: true`,
 so a newer push supersedes a run in flight, and grants only `contents: read`.
 
-## The five CI jobs
+## The CI jobs
 
 Each job runs on its own runner and repeats the shared setup. They are independent:
 one failing does not stop the others.
 
-| Job       | Runs                                                                                         | Exists to catch                                                                                                                                                          |
-| --------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `quality` | `pnpm lint`, `pnpm stylelint`, `pnpm format:check`                                           | Lint rules, module-boundary violations, SCSS violations, and formatting drift                                                                                            |
-| `test`    | `pnpm test`                                                                                  | Unit regressions across the 38 projects with a `test` target, including the Electron shell                                                                               |
-| `build`   | `pnpm build`                                                                                 | AOT-only failures. The production build runs the Angular compiler, which rejects template type errors Vitest never sees, because Vitest transpiles without type checking |
-| `desktop` | Nx-owned Electron install, compile, typecheck, test, then `xvfb-run -a pnpm electron:e2e`    | Anything in the desktop shell, up to and including launching the real binary                                                                                             |
-| `e2e`     | Browser install, Docker pre-pull and a dev build in parallel, then `trinity-e2e-browser:e2e` | Broken user journeys against a real homeserver                                                                                                                           |
+| Job             | Runs                                                                                         | Exists to catch                                                                                                                                                          |
+| --------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `quality`       | `pnpm lint`, `pnpm stylelint`, `pnpm format:check`                                           | Lint rules, module-boundary violations, SCSS violations, and formatting drift                                                                                            |
+| `test`          | `pnpm test`                                                                                  | Unit regressions across every project with a `test` target, including the Electron shell                                                                                 |
+| `build`         | `pnpm build`                                                                                 | AOT-only failures. The production build runs the Angular compiler, which rejects template type errors Vitest never sees, because Vitest transpiles without type checking |
+| `desktop`       | Nx-owned Electron install, compile, typecheck, test, then `xvfb-run -a pnpm electron:e2e`    | Anything in the desktop shell, up to and including launching the real binary                                                                                             |
+| `e2e`           | Browser install, Docker pre-pull and a dev build in parallel, then `trinity-e2e-browser:e2e` | Broken user journeys against a real homeserver                                                                                                                           |
+| `android-e2e`   | Four installed-WebView shards through `pnpm e2e:android`                                     | Capacitor packaging, native Back/relaunch/TLS behavior and shared journeys in the actual WebView                                                                         |
+| `scheduled-e2e` | `pnpm e2e:scheduled` after installing Chromium, Firefox and WebKit                           | Cross-browser scrollbar and scheduled protocol/system contracts                                                                                                          |
+
+The first six jobs run for pull requests and selected pushes. The weekly schedule runs only
+`scheduled-e2e`; local-only suites are deliberately absent. The typed registry rejects a CI
+command whose suite tier disagrees with this classification, and strict preflight fails before
+starting work when the scheduled runner lacks a required browser, Docker service or other host.
 
 `stylelint` is a separate step because it is genuinely not part of `pnpm lint` in
 this repository. Running `pnpm lint` alone will not catch a SCSS violation, locally
@@ -31,8 +38,9 @@ or in CI.
 
 ### Why the desktop job pays for a second production build
 
-`xvfb-run -a pnpm electron:e2e` runs `trinity-desktop:e2e`, whose `build` dependency begins with
-a full production `trinity:build`. That duplicates the `build` job's work on a
+`xvfb-run -a pnpm electron:e2e` reaches `trinity-e2e-electron:full` through the retained
+`trinity-desktop:e2e` delegate. Its `build` dependency begins with a full production
+`trinity:build`. That duplicates the `build` job's work on a
 separate runner, and since there is no remote Nx cache it cannot be reused.
 
 This is an accepted cost rather than an oversight. The job comment records why the
