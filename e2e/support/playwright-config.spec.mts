@@ -1,6 +1,8 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   e2eArtifactPath,
@@ -121,9 +123,12 @@ describe('Playwright config primitives', () => {
     expect(JSON.stringify(report.reporter)).toContain('junit/results.xml');
   });
 
-  it('copies registry identity into per-test annotations consumed by JUnit', () => {
+  it('restores registry identity after the worker replaces annotations', () => {
     const testCase = {
-      annotations: [{ type: 'existing', description: 'preserved' }],
+      annotations: [] as Array<{ type: string; description?: string }>,
+    };
+    const result = {
+      annotations: [{ type: 'worker', description: 'preserved' }],
     };
     const reporter = new RegistryMetadataReporter({
       metadata: {
@@ -132,10 +137,9 @@ describe('Playwright config primitives', () => {
       },
     });
 
-    reporter.onBegin({} as never, { allTests: () => [testCase] } as never);
+    reporter.onTestEnd(testCase as never, result as never);
 
     expect(testCase.annotations).toEqual([
-      { type: 'existing', description: 'preserved' },
       {
         type: 'trinity.e2e.suite',
         description: 'web.production-pwa',
@@ -145,7 +149,69 @@ describe('Playwright config primitives', () => {
         description: 'trinity-e2e-web',
       },
     ]);
+    expect(result.annotations).toEqual([
+      { type: 'worker', description: 'preserved' },
+      ...testCase.annotations,
+    ]);
   });
+
+  it('preserves registry identity in generated JUnit XML', () => {
+    const workspaceRoot = resolve(import.meta.dirname, '../..');
+    const directory = mkdtempSync(join(tmpdir(), 'trinity-junit-'));
+    directories.push(directory);
+    const specFile = join(directory, 'registry-metadata.pw.mts');
+    const configFile = join(directory, 'playwright.config.mts');
+    const junitFile = join(directory, 'results.xml');
+    const playwrightImport = pathToFileURL(
+      join(workspaceRoot, 'node_modules/@playwright/test/index.mjs'),
+    ).href;
+    const reporterPath = join(
+      workspaceRoot,
+      'e2e/support/registry-metadata.reporter.mts',
+    );
+
+    writeFileSync(
+      specFile,
+      `import { expect, test } from ${JSON.stringify(playwrightImport)};\n` +
+        `test('worker round-trip', async ({}, testInfo) => {\n` +
+        `  testInfo.annotations.push({ type: 'worker', description: 'kept' });\n` +
+        `  expect(true).toBe(true);\n` +
+        `});\n`,
+    );
+    writeFileSync(
+      configFile,
+      `export default {\n` +
+        `  testDir: ${JSON.stringify(directory)},\n` +
+        `  testMatch: 'registry-metadata.pw.mts',\n` +
+        `  outputDir: ${JSON.stringify(join(directory, 'test-output'))},\n` +
+        `  reporter: [\n` +
+        `    [${JSON.stringify(reporterPath)}, { metadata: {\n` +
+        `      'trinity.e2e.suite': 'web.production-pwa',\n` +
+        `      'trinity.e2e.project': 'trinity-e2e-web',\n` +
+        `    } }],\n` +
+        `    ['junit', { outputFile: ${JSON.stringify(junitFile)} }],\n` +
+        `  ],\n` +
+        `};\n`,
+    );
+
+    const run = spawnSync(
+      process.execPath,
+      [
+        join(workspaceRoot, 'node_modules/playwright/cli.js'),
+        'test',
+        '--config',
+        configFile,
+      ],
+      { cwd: workspaceRoot, encoding: 'utf8' },
+    );
+    expect(run.status, run.stderr || run.stdout).toBe(0);
+    expect(readFileSync(junitFile, 'utf8')).toContain(
+      '<property name="trinity.e2e.suite" value="web.production-pwa">',
+    );
+    expect(readFileSync(junitFile, 'utf8')).toContain(
+      '<property name="trinity.e2e.project" value="trinity-e2e-web">',
+    );
+  }, 30_000);
 
   it('composes lifecycle defaults without hiding suite-owned browser projects', () => {
     installSession();
