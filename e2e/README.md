@@ -1,25 +1,22 @@
 # Trinity e2e
 
-> **Four app-journey targets, one `e2e/` root.** App-level user journeys (login,
-> settings, theme, profile, devices) are **Playwright specs** in `e2e/playwright/`
-> (web), `e2e/android/` (installed Capacitor WebView), and `e2e/electron/` (desktop) — run the web suite with
-> `pnpm e2e:web` for the production Web/PWA host contract, or
-> `pnpm exec nx e2e trinity-e2e` for the Synapse-backed browser journeys
-> (`@playwright/test`, Chromium; the latter builds the dev
-> bundle, serves `www/`, and spins the Synapse harness below up/down via global
-> setup, skipping auth specs when Docker is absent locally — under `CI` a missing
-> harness fails the run instead, unless `TRINITY_E2E_ALLOW_NO_SYNAPSE=1`) and the desktop suite with
-> `pnpm electron:e2e`, whose global setup applies the same Synapse policy. Run the same app-journey suite against the installed Android
-> package with `pnpm e2e:android`.
-> The `features/` + `runners/` scripts are specialised
-> crypto/protocol drivers (E2EE spike, two-client SAS verification, encrypted
-> media, emoji composer) kept as raw `playwright` Node harnesses. All of it reuses
-> the same disposable Synapse (`e2e/synapse/`).
->
-> The Playwright configs live at `e2e/playwright*.config.mts`. The Synapse-backed web target is
-> inferred from `playwright.config.mts`; the production host target explicitly owns an
-> uncached production-build/offline-browser lifecycle, while Android is explicit and
-> serialized because it owns external emulator state.
+Trinity's system-level tests are registered by execution environment first and product
+capability second. [`registry/index.mts`](registry/index.mts) owns the executable inventory:
+current and destination Nx projects, prerequisites, CI tier, cache policy, serialization,
+commands, artifacts and source entrypoints. `pnpm architecture:check` fails when that contract
+drifts.
+
+Use `pnpm e2e` for the pull-request-classified set, `pnpm e2e:all` for every suite available on
+this host, or `pnpm e2e:<environment>` for browser, Web/PWA, components, protocol, Electron or
+Android. The aggregate validates every prerequisite before starting work and runs registered
+suites in safe order. Focused legacy commands remain Nx-backed compatibility aliases for one
+release cycle.
+
+The source tree is still in its migration layout: canonical app journeys are Playwright specs in
+`e2e/playwright/`, installed WebView journeys in `e2e/android/`, desktop journeys in
+`e2e/electron/`, and raw protocol drivers in `features/` plus `runners/`. Later migration tickets
+split those into lifecycle-owned projects without removing assertions. All Synapse-backed suites
+reuse the same disposable stack under `e2e/synapse/` and therefore remain strictly serialized.
 
 The Synapse-backed web and protocol wrappers build the development bundle for you.
 `pnpm e2e:web` builds the production PWA and verifies its routing, manifest, service
@@ -35,6 +32,7 @@ web output and syncs it into the APK before every run.
 
 ```
 e2e/
+  registry/   typed suite, command, CI, prerequisite and migration-destination contract
   features/   raw-playwright test bodies — what each scenario drives in the browser
               (emoji, rooms, search, spaces, threads, send-media, verify-sas, …)
   runners/    Synapse orchestrators — start the harness, spawn one feature body
@@ -59,6 +57,12 @@ disposable Synapse. Paths are relative to the repo root, so always invoke via th
 
 | Command                                       | What it does                                                                                                                               |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm e2e`                                    | Run the pull-request-classified local E2E set after one registry/prerequisite preflight.                                                   |
+| `pnpm e2e:all`                                | Run every registered suite available on this host; this is the migration pull-request delivery gate.                                       |
+| `pnpm e2e:browser`                            | Run canonical Synapse browser journeys and shipped-interface evidence sequentially.                                                        |
+| `pnpm e2e:components`                         | Run Storybook, styling and scrollbar browser contracts.                                                                                    |
+| `pnpm e2e:protocol`                           | Run every registered verification, crypto and protocol/system driver.                                                                      |
+| `pnpm e2e:electron`                           | Run Electron shell smoke and the full Synapse-backed desktop journey under Xvfb when needed.                                               |
 | `pnpm e2e:web`                                | Build the production Web/PWA host and verify deep links, installability, service-worker control, offline routing, and cached crypto WASM.  |
 | `pnpm smoke:login`                            | Unauthenticated → `/login`, real `.well-known` discovery for matrix.org.                                                                   |
 | `pnpm spike:chromium` / `pnpm spike:webkit`   | In-app E2EE crypto spike.                                                                                                                  |
@@ -70,6 +74,9 @@ disposable Synapse. Paths are relative to the repo root, so always invoke via th
 | `pnpm exec nx run trinity-e2e:scrollbars-e2e` | Run the focused native-scrollbar contract in Chromium, Firefox and WebKit against disposable Synapse.                                      |
 | `pnpm e2e:android`                            | Build and install Android, then run every web journey plus native-only journeys in its API 36 WebView.                                     |
 | `pnpm electron:e2e`                           | Build and launch Electron, then run desktop shell checks and the image-pack manager journey against disposable Synapse.                    |
+
+The complete ownership model, compatibility policy and local delivery contract are in
+[End-to-end test architecture](../docs/contributing/e2e-architecture.md).
 
 ## Android WebView journeys
 

@@ -4,15 +4,17 @@ A change is proven here by four independent layers. None of them subsumes anothe
 and each one exists because the layer below it is blind to a specific class of
 failure.
 
-| Layer                       | Command                           | Proves                                                                                   |
-| --------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------- |
-| Vitest unit specs           | `pnpm test`                       | Component and service behaviour, in jsdom, against mocked collaborators                  |
-| Electron main-process specs | `pnpm electron:test`              | The desktop shell's Node-side logic, with the `electron` module mocked wholesale         |
-| Playwright journeys         | `pnpm exec nx e2e trinity-e2e`    | Real UI flows in Chromium against a real Synapse homeserver, on a **development** build  |
-| Desktop and protocol runs   | `pnpm electron:e2e`, `pnpm e2e:*` | The real Electron binary on a **production** build, and per-feature protocol round trips |
+| Layer                       | Command                    | Proves                                                                                 |
+| --------------------------- | -------------------------- | -------------------------------------------------------------------------------------- |
+| Vitest unit specs           | `pnpm test`                | Component and service behaviour, in jsdom, against mocked collaborators                |
+| Electron main-process specs | `pnpm electron:test`       | The desktop shell's Node-side logic, with the `electron` module mocked wholesale       |
+| Registered system journeys  | `pnpm e2e`, `pnpm e2e:all` | Environment-owned Web, Synapse, component, protocol, Electron and Android lifecycles   |
+| Focused Playwright journeys | `pnpm e2e:<environment>`   | One lifecycle with registry-validated prerequisites, serialization and artifact policy |
 
 Invocation details for all of these — argument forwarding, the harness table, which
-ones need Docker — are in [Commands](commands.md). This page is about what each
+ones need Docker — are in [Commands](commands.md). The executable ownership model,
+CI tiers and migration destination are in
+[End-to-end test architecture](e2e-architecture.md). This page is about what each
 layer actually establishes, and about the traps that make a spec pass without
 proving anything.
 

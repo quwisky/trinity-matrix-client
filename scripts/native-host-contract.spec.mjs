@@ -70,7 +70,7 @@ function validInput() {
     projects: { android: project('android'), ios: project('ios') },
     packageJson: {
       scripts: {
-        'e2e:android': 'nx run trinity-android:e2e',
+        'e2e:android': 'nx run trinity-e2e:e2e-android',
         'android:sync': 'nx run trinity-android:sync',
         'android:run': 'nx run trinity-android:run',
         'android:build': 'nx run trinity-android:build',

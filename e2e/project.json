@@ -6,6 +6,11 @@
   "tags": ["type:e2e", "scope:trinity"],
   "implicitDependencies": ["trinity"],
   "targets": {
+    "e2e": {
+      "//": "The inferred Playwright target owns a browser, app server and fixed-port Synapse stack. Its runtime result must never be restored from cache or overlap another Synapse owner.",
+      "cache": false,
+      "parallelism": false
+    },
     "lint": {
       "//": "Declared, not inferred: @nx/eslint only infers a lint target for projects with .ts/.js sources, and every file here is .mts — so removing 'e2e' from globalIgnores would otherwise have changed nothing about what `pnpm lint` actually runs.",
       "executor": "nx:run-commands",
@@ -75,6 +80,188 @@
       "options": {
         "command": "node android/run.mts",
         "cwd": "{projectRoot}"
+      }
+    },
+    "e2e-pr": {
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/e2e-suite-registry.mjs run e2e-pr"
+      }
+    },
+    "e2e-all": {
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/e2e-suite-registry.mjs run e2e-all"
+      }
+    },
+    "e2e-browser": {
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/e2e-suite-registry.mjs run e2e-browser"
+      }
+    },
+    "e2e-components": {
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/e2e-suite-registry.mjs run e2e-components"
+      }
+    },
+    "e2e-protocol": {
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/e2e-suite-registry.mjs run e2e-protocol"
+      }
+    },
+    "e2e-electron": {
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/e2e-suite-registry.mjs run e2e-electron"
+      }
+    },
+    "e2e-web": {
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/e2e-suite-registry.mjs run e2e-web"
+      }
+    },
+    "e2e-android": {
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/e2e-suite-registry.mjs run e2e-android"
+      }
+    },
+    "protocol-verify-sas": {
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec nx build trinity --configuration=development && node e2e/runners/verify-sas-run.mjs"
+      }
+    },
+    "protocol-verify-qr": {
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec nx build trinity --configuration=development && node e2e/runners/verify-qr-run.mjs"
+      }
+    },
+    "protocol-media": {
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec nx build trinity --configuration=development && node e2e/runners/send-media-run.mjs"
+      }
+    },
+    "protocol-threads": {
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec nx build trinity --configuration=development && node e2e/runners/threads-run.mjs"
+      }
+    },
+    "protocol-reply": {
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec nx build trinity --configuration=development && node e2e/runners/reply-run.mjs"
+      }
+    },
+    "protocol-spaces": {
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec nx build trinity --configuration=development && node e2e/runners/spaces-run.mjs"
+      }
+    },
+    "protocol-rooms": {
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec nx build trinity --configuration=development && node e2e/runners/rooms-run.mjs"
+      }
+    },
+    "protocol-search": {
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec nx build trinity --configuration=development && node e2e/runners/search-run.mjs"
+      }
+    },
+    "protocol-emoji": {
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec nx build trinity --configuration=development && node e2e/runners/emoji-run.mjs"
+      }
+    },
+    "protocol-verify-sas-selfcheck": {
+      "cache": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec nx build trinity --configuration=development && node e2e/features/verify-sas-selfcheck.mjs"
+      }
+    },
+    "protocol-crypto-spike-chromium": {
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec nx build trinity --configuration=development && node e2e/features/crypto-spike.mjs chromium"
+      }
+    },
+    "protocol-crypto-spike-webkit": {
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec nx build trinity --configuration=development && node e2e/features/crypto-spike.mjs webkit"
+      }
+    },
+    "protocol-login-smoke": {
+      "cache": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec nx build trinity --configuration=development && node e2e/features/smoke-login.mjs"
+      }
+    },
+    "synapse-up": {
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/synapse/start.mjs"
+      }
+    },
+    "synapse-down": {
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/synapse/stop.mjs"
       }
     }
   }

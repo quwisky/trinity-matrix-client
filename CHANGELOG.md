@@ -87,6 +87,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **System-level tests now have one executable ownership contract.** A typed E2E registry
+  classifies all 22 current browser, Web/PWA, component, protocol, Electron and Android suites by
+  lifecycle, capability, prerequisites, CI tier, serialization, timeout, artifacts, commands and
+  destination project. Canonical `pnpm e2e`, `e2e:all` and environment commands run only through
+  uncached Nx targets after registry and prerequisite preflight, while existing focused commands
+  remain guarded compatibility aliases. Mutation-tested source guards now reject unregistered
+  resolved Nx targets or CI entrypoints, cacheable runtime results, missing annotations, stale
+  spec counts, undefined resource ownership, command drift and expired quarantine. Unsafe
+  fixed-port Playwright target atomization is disabled, shared fixed-port drivers use explicit
+  cross-process serialization, and registry timeout classes terminate their owned process groups.
+
 - **The capability-centered architecture is now contracted and enforced.** All migration
   exception ledgers and secondary entrypoints are empty, rich message kinds use one normalized
   presentation path, and native preferences, push registration, external browsing, and platform
