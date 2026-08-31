@@ -1,6 +1,11 @@
-import { test, expect, type APIRequestContext } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import {
+  testResourceId,
+  test,
+  expect,
+  type APIRequestContext,
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers "Mark all as read" (data-testid="mark-all-read"): with an unread room the header
 // action appears; clicking it acks every room (RoomsService.markAllRead) so it disappears.
@@ -41,7 +46,7 @@ test.describe('Mark as read', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}mr`;
+    const runId = `${testResourceId('run')}mr`;
     const me = `mr-me-${runId}`;
     const mePass = `${me}-pass`;
     const sender = `mr-sender-${runId}`;

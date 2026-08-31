@@ -15,8 +15,9 @@ release cycle.
 The source tree is still in its migration layout: canonical app journeys are Playwright specs in
 `e2e/playwright/`, installed WebView journeys in `e2e/android/`, desktop journeys in
 `e2e/electron/`, and raw protocol drivers in `features/` plus `runners/`. Later migration tickets
-split those into lifecycle-owned projects without removing assertions. All Synapse-backed suites
-reuse the same disposable stack under `e2e/synapse/` and therefore remain strictly serialized.
+split those into environment projects without removing assertions. The extracted
+`trinity-e2e-support` project owns every process and the disposable stack under
+`e2e/support/synapse/`; Synapse-backed children only join its serialized invocation.
 
 The Synapse-backed web and protocol wrappers build the development bundle for you.
 `pnpm e2e:web` builds the production PWA and verifies its routing, manifest, service
@@ -26,7 +27,7 @@ web output and syncs it into the APK before every run.
 > On a **containerised CI runner** (a job container talking to a separate Docker
 > daemon), set `TRINITY_E2E_STATE_DIR` and `TRINITY_E2E_NETWORK_CONTAINER` — bind
 > mounts and published ports are both resolved by the daemon, not by the job. See
-> `e2e/synapse/paths.mjs` and docs/contributing/testing.md.
+> `e2e/support/synapse/paths.mjs` and docs/contributing/testing.md.
 
 ## Layout
 
@@ -35,23 +36,20 @@ e2e/
   registry/   typed suite, command, CI, prerequisite and migration-destination contract
   features/   raw-playwright test bodies — what each scenario drives in the browser
               (emoji, rooms, search, spaces, threads, send-media, verify-sas, …)
-  runners/    Synapse orchestrators — start the harness, spawn one feature body
-              with the HS env, tear the harness down (the `pnpm e2e:*` entrypoints)
+  runners/    nine thin protocol compatibility entrypoints over the support runner
   playwright/ @nx/playwright web app-journey specs (app, navigation, settings) +
-              support/ (global-setup/teardown, serve-www) — `nx e2e trinity-e2e`
+              browser-only adapters — `nx e2e trinity-e2e`
   web/        production Web/PWA host contract — `pnpm e2e:web`
   android/    API 36 Capacitor WebView fixture, native-only specs, and device
               orchestrator — `pnpm e2e:android`
   electron/   @nx/playwright Electron specs + support/launch — `pnpm electron:e2e`
-  support/    shared helpers (e.g. serve.mjs — static file server for www/)
-  synapse/    the disposable Synapse + Caddy + Dex harness (docker-compose, start/stop;
-              dex.yaml is the throwaway identity provider — see docs/contributing/testing.md)
+  support/    trinity-e2e-support: invocation/session ownership, dynamic servers,
+              process locks, namespaces, reporting, and the Synapse+Caddy+Dex harness
 ```
 
-A `features/` body can be run on its own against an already-running homeserver
-(set `TRINITY_HS`/`TRINITY_USER`/`TRINITY_PASS`); a runner just wraps it with the
-disposable Synapse. Paths are relative to the repo root, so always invoke via the
-`pnpm` scripts (or `node e2e/runners/<x>-run.mjs`) from there.
+Always invoke a feature through its `pnpm`/Nx command or one of the nine retained
+`node e2e/runners/<x>-run.mjs` compatibility paths. Raw feature bodies require the validated
+invocation descriptor and deliberately do not start a fallback server or homeserver.
 
 ## Scripts
 
@@ -121,7 +119,7 @@ fixture and requires the Android config to collect the canonical glob.
 
 ## MSC2545 image-pack management
 
-`playwright/support/image-pack-management-journey.mts` is shared by Chromium, the installed
+`support/image-pack-management-journey.mts` is shared by Chromium, the installed
 Android WebView, and Electron wrappers. Against disposable Synapse it:
 
 1. creates a public source room with two stable packs and a same-key legacy duplicate;
@@ -211,35 +209,20 @@ Requires **Docker** able to pull `matrixdotorg/synapse`, `caddy` and `ghcr.io/de
 pnpm e2e:verify
 ```
 
-This builds the dev bundle, runs `verify-sas-run.mjs` which: starts the harness
-(`e2e/synapse/`), registers the test user, runs `features/verify-sas.mjs`, and tears the
-harness down (`docker compose down -v` + removes `e2e/synapse/data`) — even on failure.
+This builds the dev bundle and runs `verify-sas-run.mjs`, a compatibility path that joins the
+support invocation. The owner starts `e2e/support/synapse/`, registers the test user, runs
+`features/verify-sas.mjs`, and performs bounded teardown even on failure.
 
 Debugging:
 
 ```bash
 HEADED=1 SLOWMO=100 pnpm e2e:verify        # watch it run
 pnpm e2e:verify:up                          # leave the HS up
-TRINITY_HS=https://localhost:8448 TRINITY_USER=verify-e2e TRINITY_PASS=verify-e2e-pass-123 \
-  node e2e/features/verify-sas.mjs                    # iterate the runner against it
 pnpm e2e:verify:down                         # tear down
 ```
 
-### Run against your own homeserver
-
-`verify-sas.mjs` is parameterised by env, so it runs against any HS that supports
-password login + E2EE and is reachable over **https** (the app CSP only allows
-`https:`/`wss:` for `connect-src`):
-
-```bash
-TRINITY_HS=https://your.hs \
-TRINITY_USER=alice \
-TRINITY_PASS=… \
-  node e2e/features/verify-sas.mjs
-```
-
-The account must be allowed to set up encryption fresh (the runner does the
-`/encryption/setup` bootstrap on Device A).
+The raw driver remains parameterized internally, but direct execution is unsupported because it
+would bypass dynamic endpoint, lock, cancellation and teardown ownership.
 
 ## `e2e:verify:qr` — two-client QR reciprocation
 
@@ -261,7 +244,7 @@ sequentially.
 ### Homeserver-free self-check
 
 ```bash
-node e2e/features/verify-sas-selfcheck.mjs
+pnpm exec nx run trinity-e2e:protocol-verify-sas-selfcheck
 ```
 
 Validates everything that does **not** need a homeserver: the build serves, the SPA
@@ -269,7 +252,7 @@ boots, `/login` renders the homeserver input + Continue, the form reacts (real
 matrix.org discovery surfaces the password form), and the guarded
 `/encryption/verify` route resolves. Does **not** assert the SAS flow.
 
-## The Synapse harness (`e2e/synapse/`)
+## The Synapse harness (`e2e/support/synapse/`)
 
 Disposable, self-contained:
 
@@ -300,7 +283,7 @@ fetches `https://<domain>/.well-known/matrix/client`. The contexts launch with
 `ignoreHTTPSErrors: true` to accept Caddy's self-signed cert. **No change to
 `index.html` was needed.**
 
-`e2e/synapse/data/` and `e2e/.artifacts/` (failure screenshots) are git-ignored.
+`e2e/support/synapse/data/` and `e2e/.artifacts/` (failure screenshots) are git-ignored.
 
 ## Verification status
 
@@ -317,7 +300,7 @@ green across all projects.
 
 `e2e:verify` **requires Docker** able to run those images. Where Docker or registry
 access is unavailable, fall back to the homeserver-free self-check
-(`node e2e/features/verify-sas-selfcheck.mjs` → `RESULT: PASS`), which still covers the dev
+(`pnpm exec nx run trinity-e2e:protocol-verify-sas-selfcheck` → `RESULT: PASS`), which still covers the dev
 build serving, the SPA booting, `/login` + discovery + the password form, and the
 guarded `/encryption/verify` route — everything except the live SAS exchange.
 

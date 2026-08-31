@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from './support/fixtures.mts';
+import { expect, test, type Page, type Route } from '../fixtures.mts';
 
 const HOMESERVER = 'https://hs.design-system.example';
 

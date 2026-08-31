@@ -1,11 +1,12 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // End-to-end for member online-status (presence): the room member list renders a
 // presence dot (`.presence-dot`) on every member's avatar, driven by the SDK's
@@ -149,7 +150,7 @@ test.describe('Member online status', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}p`;
+    const runId = `${testResourceId('run')}p`;
     const { reader, roomName } = await seedRoomWithMember(
       request,
       session.hs as string,
@@ -180,7 +181,7 @@ test.describe('Member online status', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}d`;
+    const runId = `${testResourceId('run')}d`;
     const { reader } = await seedDirectMessage(
       request,
       session.hs as string,

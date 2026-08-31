@@ -1,9 +1,10 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
+} from '../fixtures.mts';
 import {
   isAndroidE2E,
   login,
@@ -11,8 +12,8 @@ import {
   synapseSession,
   waitForSent,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers the markdown render path end to end, through the REAL composer so the wire
 // format is exercised, not just the rendering:
@@ -82,7 +83,7 @@ test.describe('Message markdown', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}md`;
+    const runId = `${testResourceId('run')}md`;
     const user = `md-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Markdown ${runId}`;
@@ -157,7 +158,7 @@ test.describe('Message markdown', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}tl`;
+    const runId = `${testResourceId('run')}tl`;
     const user = `task-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Tasks ${runId}`;
@@ -200,7 +201,7 @@ test.describe('Message markdown', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}ov`;
+    const runId = `${testResourceId('run')}ov`;
     const user = `ov-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Overlap ${runId}`;
@@ -310,7 +311,7 @@ test.describe('Message markdown', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}hl`;
+    const runId = `${testResourceId('run')}hl`;
     const user = `code-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Code ${runId}`;

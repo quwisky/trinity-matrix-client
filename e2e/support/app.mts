@@ -1,31 +1,11 @@
-import { readFileSync } from 'node:fs';
 import { expect, type Locator, type Page } from '@playwright/test';
-import { SESSION_FILE } from './synapse-session.mts';
+import { readSession } from './session.mts';
 import { touchLongPress } from './touch-platform.mts';
-
-export type Navigate = (page: Page, path: string) => Promise<void>;
-
-export const webNavigate: Navigate = async (page, path) => {
-  if (isAndroidE2E) {
-    const target = new URL(path, page.url()).href;
-    if (target === page.url()) return;
-    await page.evaluate((url) => {
-      const state = {
-        ...window.history.state,
-        navigationId:
-          typeof window.history.state?.navigationId === 'number'
-            ? window.history.state.navigationId + 1
-            : 1,
-      };
-      window.history.pushState(state, '', url);
-      window.dispatchEvent(new PopStateEvent('popstate', { state }));
-    }, target);
-    return;
-  }
-  await page.goto(path, { waitUntil: 'networkidle' });
-};
-
-export const isAndroidE2E = process.env['TRINITY_E2E_PLATFORM'] === 'android';
+import { isAndroidE2E, navigateApplication } from './navigation.mts';
+import type { Navigate } from './platform-contracts.mts';
+export { isAndroidE2E };
+export const webNavigate = navigateApplication;
+export type { Navigate };
 const capacitorStoragePrefix = 'CapacitorStorage.';
 
 function preferenceKey(key: string): string {
@@ -156,19 +136,14 @@ export interface SynapseSession {
   /**
    * A second Dex identity, for the one spec that leaves permanent state on the account
    * it uses and asserts that nothing else moved. Kept apart from `sso` because
-   * `fullyParallel` runs the two SSO specs in different workers — see e2e/synapse/dex.yaml.
+   * `fullyParallel` runs the two SSO specs in different workers — see e2e/support/synapse/dex.yaml.
    */
   ssoReset?: SsoAccount;
 }
 
-/** Read the homeserver session recorded by global-setup (available:false if Docker
- * wasn't there). Read at module load so `test.skip(...)` can gate suites. */
+/** Read the homeserver session published by the invocation owner. */
 export function synapseSession(): SynapseSession {
-  try {
-    return JSON.parse(readFileSync(SESSION_FILE, 'utf8')) as SynapseSession;
-  } catch {
-    return { available: false };
-  }
+  return readSession().synapse ?? { available: false };
 }
 
 /**

@@ -1,25 +1,14 @@
-import {
-  devices,
-  expect,
-  test,
-  type APIRequestContext,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import { devices, expect, test, type APIRequestContext } from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 
 const session = synapseSession();
-const runId = `${Date.now().toString(36)}-${process.pid}`;
-const user = `insert-${runId}`;
-const pass = `${user}-pass`;
-const isolatedSession: SynapseSession = {
-  available: session.available,
-  hs: session.hs,
-  user,
-  pass,
-};
-const roomName = `Mobile insert ${runId}`;
+let user = '';
+let pass = '';
+let isolatedSession: SynapseSession;
+let roomName = '';
 const pixel = devices['Pixel 5'];
 
 async function seedRoom(request: APIRequestContext): Promise<void> {
@@ -71,7 +60,19 @@ test.describe('Mobile composer insert sheet', () => {
     'Android has a separate installed-WebView journey',
   );
   test.skip(!session.available, 'requires the disposable Synapse homeserver');
-  test.beforeAll(async ({ request }) => seedRoom(request));
+  test.beforeAll(async ({ request, workerResourceNamespace }) => {
+    const runId = workerResourceNamespace.role('composer-insert-sheet');
+    user = `insert-${runId}`;
+    pass = `${user}-pass`;
+    isolatedSession = {
+      available: session.available,
+      hs: session.hs,
+      user,
+      pass,
+    };
+    roomName = `Mobile insert ${runId}`;
+    await seedRoom(request);
+  });
 
   test.describe('Pixel 5 profile', () => {
     test.use({

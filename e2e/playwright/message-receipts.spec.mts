@@ -1,11 +1,12 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // End-to-end for "seen by" read receipts: when another member reads a message, their
 // avatar appears on it in the reader's timeline. Needs Synapse (Docker).
@@ -49,7 +50,7 @@ test.describe('Read receipts (seen by)', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}s`;
+    const runId = `${testResourceId('run')}s`;
     const hs = session.hs as string;
 
     await registerUser(request, `rcpt-reader-${runId}`, 'pass-reader');

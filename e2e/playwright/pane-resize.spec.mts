@@ -1,5 +1,5 @@
-import { test, expect, type Page } from './support/fixtures.mts';
-import { login, readPreference, synapseSession } from './support/app.mts';
+import { test, expect, type Page } from '../fixtures.mts';
+import { login, readPreference, synapseSession } from '../support/app.mts';
 
 /**
  * Dragging a pane changes the layout, and the layout survives a reload.

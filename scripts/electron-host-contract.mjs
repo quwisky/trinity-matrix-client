@@ -216,7 +216,7 @@ export function validateElectronHostContract(input, errors) {
   }
   if (
     targets.e2e?.options?.command !==
-      'pnpm exec playwright test -c e2e/playwright.electron.config.mts' ||
+      'node e2e/support/run-playwright.mts --config=e2e/playwright.electron.config.mts --resource=electron --resource=synapse' ||
     targets.e2e?.cache !== false ||
     targets.e2e?.parallelism !== false ||
     !targets.e2e?.dependsOn?.includes('build')
@@ -227,7 +227,7 @@ export function validateElectronHostContract(input, errors) {
   }
   if (
     targets['e2e-smoke']?.options?.command !==
-      'pnpm exec playwright test -c e2e/playwright.electron.smoke.config.mts' ||
+      'node e2e/support/run-playwright.mts --config=e2e/playwright.electron.smoke.config.mts --resource=electron' ||
     targets['e2e-smoke']?.cache !== false ||
     targets['e2e-smoke']?.parallelism !== false ||
     !targets['e2e-smoke']?.dependsOn?.includes('build')

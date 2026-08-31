@@ -1,16 +1,17 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
+} from '../fixtures.mts';
 import {
   isAndroidE2E,
   login,
   synapseSession,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // End-to-end for the message list's jump-to-latest pill: once the user scrolls up
 // away from the newest message a pill appears (`data-testid="jump-to-latest"`), and
@@ -115,7 +116,7 @@ test.describe('Jump to latest', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}j`;
+    const runId = `${testResourceId('run')}j`;
     const { reader, roomName } = await seedBusyRoom(
       request,
       session.hs as string,

@@ -1,5 +1,5 @@
-import { test, expect, type Locator, type Page } from './support/fixtures.mts';
-import { isAndroidE2E, login, synapseSession } from './support/app.mts';
+import { test, expect, type Locator, type Page } from '../fixtures.mts';
+import { isAndroidE2E, login, synapseSession } from '../support/app.mts';
 import { openSettingsFromRooms } from './journeys/navigation.mts';
 
 // One scrollbar in Settings, never two.

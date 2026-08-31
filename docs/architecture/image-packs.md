@@ -152,7 +152,7 @@ stable writes, namespaced usage preferences, preservation, serialization, comple
 server readback and failure behavior. Settings tests own explicit submission, in-flight results,
 usage controls, focus recovery, accessibility feedback and removal disclosure.
 
-`e2e/playwright/support/image-pack-management-journey.mts` is the canonical journey used by
+`e2e/support/image-pack-management-journey.mts` is the canonical journey used by
 Chromium, the installed Android WebView, and the built Electron shell. It proves alias resolution
 and joining, multiple state keys, stable-over-legacy deduplication, immediate enable/disable
 behavior, visible account/room scope, sticker sending, uninstall, final empty stable account data,

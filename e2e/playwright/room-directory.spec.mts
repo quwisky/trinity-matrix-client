@@ -1,6 +1,6 @@
-import { test, expect } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import { testResourceId, test, expect } from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers browsing the public room directory: the Home "+" → "Explore public rooms"
 // opens a dialog (data-testid="room-directory") that searches publicRooms and joins a
@@ -17,7 +17,7 @@ test.describe('Room directory', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}dir`;
+    const runId = `${testResourceId('run')}dir`;
     const owner = `dir-owner-${runId}`;
     const ownerPass = `${owner}-pass`;
     const joiner = `dir-joiner-${runId}`;

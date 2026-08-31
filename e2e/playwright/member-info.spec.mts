@@ -1,16 +1,17 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
+} from '../fixtures.mts';
 import {
   isAndroidE2E,
   login,
   synapseSession,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers the member info panel: clicking a member row in the member list
 // (data-testid="member-row") opens a room-scoped info panel
@@ -64,7 +65,7 @@ test.describe('Member info panel', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}mi`;
+    const runId = `${testResourceId('run')}mi`;
     const adminUser = `mi-admin-${runId}`;
     const adminPass = `${adminUser}-pass`;
     const memberUser = `mi-member-${runId}`;

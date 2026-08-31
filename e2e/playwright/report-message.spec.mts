@@ -1,4 +1,4 @@
-import { test, expect, type Page } from './support/fixtures.mts';
+import { testResourceId, test, expect, type Page } from '../fixtures.mts';
 import {
   clickRowMenuItem,
   isAndroidE2E,
@@ -6,8 +6,8 @@ import {
   openMessageActionSheet,
   synapseSession,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers reporting a message: a message's ⋯ menu (data-testid="msg-more") offers
 // "Report message" (data-testid="msg-report"), which prompts for a reason
@@ -29,7 +29,7 @@ test.describe('Report a message', () => {
 
   test('reports a message to the server admins', async ({ page, request }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}r`;
+    const runId = `${testResourceId('run')}r`;
     const user = `report-user-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Report E2E ${runId}`;

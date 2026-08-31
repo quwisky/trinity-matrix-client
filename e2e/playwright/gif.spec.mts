@@ -1,9 +1,10 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
+} from '../fixtures.mts';
 import {
   fillLabeledInput,
   login,
@@ -12,8 +13,8 @@ import {
   synapseSession,
   waitForRooms,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 import { openSettingsSection } from './journeys/navigation.mts';
 
 // GIF picker journeys. The send path round-trips through the REAL disposable
@@ -184,7 +185,7 @@ test.describe('GIF picker', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}s`;
+    const runId = `${testResourceId('run')}s`;
     const { reader } = await seedRoom(request, hs, runId);
 
     await login(page, reader);
@@ -234,7 +235,7 @@ test.describe('GIF picker', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}h`;
+    const runId = `${testResourceId('run')}h`;
     const { reader, roomName } = await seedRoom(request, hs, runId);
 
     await login(page, reader);
@@ -253,7 +254,7 @@ test.describe('GIF picker', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}g`;
+    const runId = `${testResourceId('run')}g`;
     const { reader, roomName } = await seedRoom(request, hs, runId);
 
     // Enable the picker before the app boots, and stub the provider API + CDN.
@@ -299,7 +300,7 @@ test.describe('GIF picker', () => {
     test.setTimeout(120_000); // two full UI logins plus a media round-trip
 
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}ma`;
+    const runId = `${testResourceId('run')}ma`;
     const b = await seedRoom(request, hs, runId);
 
     await seedPreference(

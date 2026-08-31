@@ -1,6 +1,6 @@
-import { test, expect, type Page } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import { testResourceId, test, expect, type Page } from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 /**
  * Paging in older history must not move what the reader is looking at.
@@ -41,7 +41,7 @@ test.describe('Timeline anchoring', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}an`;
+    const runId = `${testResourceId('run')}an`;
     const user = `anchor-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Anchor ${runId}`;

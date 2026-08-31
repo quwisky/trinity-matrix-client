@@ -11,8 +11,8 @@ import {
   seedPreference,
   synapseSession,
   type SynapseSession,
-} from '../playwright/support/app.mts';
-import { passwordLogin, registerUser } from '../playwright/support/account.mts';
+} from '../support/app.mts';
+import { passwordLogin, registerUser } from '../support/account.mts';
 import {
   AA_NORMAL_TEXT,
   measureContrast,

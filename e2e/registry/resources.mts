@@ -12,10 +12,10 @@ export const E2E_SERIALIZATION_RESOURCES = [
     description: 'One launched Electron application and user-data lifecycle.',
   },
   {
-    key: 'crypto-spike-http',
+    key: 'crypto-spike',
     owner: 'trinity-e2e-support',
     description:
-      'The fixed localhost:8123 server shared by both crypto spikes.',
+      'The shared crypto-spike driver and mutable renderer artifact used by both browser engines.',
   },
   {
     key: 'synapse',

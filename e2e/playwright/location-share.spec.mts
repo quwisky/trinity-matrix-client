@@ -1,4 +1,4 @@
-import { test, expect, type Page } from './support/fixtures.mts';
+import { testResourceId, test, expect, type Page } from '../fixtures.mts';
 import {
   clickRowToolbar,
   isAndroidE2E,
@@ -6,8 +6,8 @@ import {
   openMessageActionSheet,
   synapseSession,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers sharing a location (+ tray → Location → m.location): the location card
 // (data-testid="location-card") shows the coordinates + an OpenStreetMap link. The
@@ -39,7 +39,7 @@ test.describe('Share location', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}loc`;
+    const runId = `${testResourceId('run')}loc`;
     const user = `loc-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Location ${runId}`;

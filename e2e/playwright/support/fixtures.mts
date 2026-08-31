@@ -8,9 +8,8 @@ import {
   type Page,
   type Route,
 } from '@playwright/test';
-import { test as androidTest } from '../../android/fixtures.mts';
 import type { AuthPlatform } from './auth-platform.mts';
-import { cdpSwipe, type TouchPlatform } from './touch-platform.mts';
+import { cdpSwipe, type TouchPlatform } from '../../support/touch-platform.mts';
 
 const webTestWithPlatform = webTest.extend<{
   secondaryApp: {
@@ -92,11 +91,7 @@ const webTestWithPlatform = webTest.extend<{
  * Keeping the selection here means a spec cannot accidentally import the desktop
  * Chromium fixture and still be counted as Android coverage.
  */
-export const test = (
-  process.env['TRINITY_E2E_PLATFORM'] === 'android'
-    ? androidTest
-    : webTestWithPlatform
-) as typeof androidTest;
+export const test = webTestWithPlatform;
 
 export { devices, expect };
 export type { APIRequestContext, Locator, Page, Route };

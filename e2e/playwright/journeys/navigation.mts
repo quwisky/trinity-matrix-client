@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test';
-import { isAndroidE2E } from '../support/app.mts';
+import { isAndroidE2E } from '../../support/app.mts';
 
 export type Activate = (control: Locator) => Promise<void>;
 

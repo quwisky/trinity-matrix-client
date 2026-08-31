@@ -1,11 +1,12 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // End-to-end for the mobile (narrow-viewport) room navigation the desktop specs
 // never exercise, since the shared config runs at Desktop Chrome (1280px):
@@ -128,7 +129,7 @@ test.describe('Mobile room navigation', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}k`;
+    const runId = `${testResourceId('run')}k`;
     const { reader, roomName } = await seedRoom(
       request,
       session.hs as string,
@@ -159,7 +160,7 @@ test.describe('Mobile room navigation', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}d`;
+    const runId = `${testResourceId('run')}d`;
     const { reader, roomName, buddyName } = await seedRoom(
       request,
       session.hs as string,
@@ -210,7 +211,7 @@ test.describe('Mobile room navigation', () => {
     // The drawer's backdrop is mouse-only, so Escape is the keyboard path to dismissing
     // it — and it had no coverage of any kind: it is reachable only through a `host`
     // binding, which the unit spec cannot drive because it never renders the page.
-    const runId = `${Date.now().toString(36)}e`;
+    const runId = `${testResourceId('run')}e`;
     const { reader, roomName } = await seedRoom(
       request,
       session.hs as string,
@@ -242,7 +243,7 @@ test.describe('Mobile room navigation', () => {
     // breakpoint the member list is a static column that starts OPEN, so a handler that
     // closed it unconditionally would hide it here. Verified by mutation: dropping the
     // `membersOpen() && membersShownAsDrawer()` guard fails this test and only this test.
-    const runId = `${Date.now().toString(36)}w`;
+    const runId = `${testResourceId('run')}w`;
     const { reader, roomName } = await seedRoom(
       request,
       session.hs as string,

@@ -1,6 +1,11 @@
-import { test, expect, type APIRequestContext } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import {
+  testResourceId,
+  test,
+  expect,
+  type APIRequestContext,
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers keyword notification rules (Settings → Notifications → Keywords). Adding a word
@@ -51,7 +56,7 @@ test.describe('Keyword notifications', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}k`;
+    const runId = `${testResourceId('run')}k`;
     const readerUser = `kw-reader-${runId}`;
     const readerPass = `${readerUser}-pass`;
     const senderUser = `kw-sender-${runId}`;
@@ -178,7 +183,7 @@ test.describe('Keyword notifications', () => {
     // rather than the API keeps RoomNotificationsService in the loop, so writing the mute
     // as the wrong rule kind fails here too.
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}m`;
+    const runId = `${testResourceId('run')}m`;
     const readerUser = `kwm-reader-${runId}`;
     const readerPass = `${readerUser}-pass`;
     const senderUser = `kwm-sender-${runId}`;

@@ -1,11 +1,12 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers issue #21: the Settings → Appearance toggles that hide system lines (joins,
@@ -58,7 +59,7 @@ test.describe('Hide system messages', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}sys`;
+    const runId = `${testResourceId('run')}sys`;
     const hostUser = `sys-host-${runId}`;
     const hostPass = `${hostUser}-pass`;
     const joinerUser = `sys-join-${runId}`;

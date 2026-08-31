@@ -1,11 +1,17 @@
-import { devices, test, expect, type Page } from './support/fixtures.mts';
+import {
+  devices,
+  test,
+  expect,
+  testResourceId,
+  type Page,
+} from '../fixtures.mts';
 import {
   isAndroidE2E,
   login,
   fillLabeledInput,
   readPreference,
   synapseSession,
-} from './support/app.mts';
+} from '../support/app.mts';
 import {
   closeSettings,
   openSettingsFromRooms,
@@ -732,7 +738,7 @@ test.describe('Settings', () => {
 
   test('edits and saves the display name', async ({ page }) => {
     await openSection(page, 'profile');
-    const name = `E2E ${Date.now()}`;
+    const name = `E2E ${testResourceId('display-name')}`;
     await fillLabeledInput(page, 'Display name', name);
     await page.getByTestId('save-name').click();
 

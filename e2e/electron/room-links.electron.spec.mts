@@ -1,15 +1,12 @@
 import {
+  testResourceId,
   expect,
   test,
   type APIRequestContext,
   type Page,
-} from '@playwright/test';
+} from './fixtures.mts';
 
-import {
-  login,
-  synapseSession,
-  type Navigate,
-} from '../playwright/support/app.mts';
+import { login, synapseSession, type Navigate } from '../support/app.mts';
 import { launchApp } from './support/launch.mts';
 
 const session = synapseSession();
@@ -40,7 +37,7 @@ test.describe('Electron room-link preview', () => {
     request,
   }) => {
     test.slow();
-    const runId = Date.now().toString(36);
+    const runId = testResourceId('run');
     const token = await loginApi(request);
     const headers = { Authorization: `Bearer ${token}` };
     const createRoom = async (name: string): Promise<string> => {

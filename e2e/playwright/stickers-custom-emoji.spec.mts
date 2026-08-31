@@ -1,9 +1,9 @@
-import { expect, test } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import { expect, test } from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
 import {
   openImagePackJourneyRoom,
   runImagePackManagementJourney,
-} from './support/image-pack-management-journey.mts';
+} from '../support/image-pack-management-journey.mts';
 
 const session = synapseSession();
 

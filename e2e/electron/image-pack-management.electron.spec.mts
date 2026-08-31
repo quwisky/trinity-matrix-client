@@ -1,7 +1,7 @@
-import { test, type Page } from '@playwright/test';
+import { test, type Page } from './fixtures.mts';
 
-import { synapseSession, type Navigate } from '../playwright/support/app.mts';
-import { runImagePackManagementJourney } from '../playwright/support/image-pack-management-journey.mts';
+import { synapseSession, type Navigate } from '../support/app.mts';
+import { runImagePackManagementJourney } from '../support/image-pack-management-journey.mts';
 import { launchApp } from './support/launch.mts';
 
 const session = synapseSession();

@@ -1,6 +1,6 @@
-import { test, expect, devices } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import { testResourceId, test, expect, devices } from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers the sidebar's touch affordances, which no other spec can see: every other
 // authenticated spec runs the desktop Chromium project, where `hover: hover` and
@@ -29,7 +29,7 @@ test.describe('Sidebar on a touch device', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}t`;
+    const runId = `${testResourceId('run')}t`;
     const user = `touch-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Touch ${runId}`;

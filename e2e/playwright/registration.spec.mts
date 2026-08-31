@@ -1,6 +1,6 @@
-import { test, expect } from './support/fixtures.mts';
-import { fillLabeledInput, synapseSession } from './support/app.mts';
-import { passwordLogin } from './support/account.mts';
+import { test, expect, testResourceId } from '../fixtures.mts';
+import { fillLabeledInput, synapseSession } from '../support/app.mts';
+import { passwordLogin } from '../support/account.mts';
 
 const session = synapseSession();
 
@@ -10,8 +10,8 @@ test.describe('Legacy Matrix registration', () => {
   test('creates a password account through UIA and enters encryption setup', async ({
     page,
     request,
-  }, testInfo) => {
-    const runId = `${Date.now()}-${testInfo.workerIndex}`;
+  }) => {
+    const runId = testResourceId('registration');
     const username = `signup-${runId}`;
     const password = `Trinity-registration-${runId}`;
 

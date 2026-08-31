@@ -71,7 +71,7 @@ describe('E2E suite registry', () => {
     );
   });
 
-  it('requires shared entrypoints to declare their exclusive resource', () => {
+  it('requires both compatibility aliases to serialize the shared crypto driver', () => {
     const snapshot = registrySnapshot();
     snapshot.suites.find(
       ({ id }) => id === 'protocol.crypto-spike-webkit',
@@ -80,7 +80,7 @@ describe('E2E suite registry', () => {
     expect(validateWorkspace(workspaceRoot, snapshot)).toEqual(
       expect.arrayContaining([
         expect.stringContaining(
-          'protocol.crypto-spike-webkit does not serialize shared entrypoint e2e/features/crypto-spike.mjs with crypto-spike-http',
+          'protocol.crypto-spike-webkit does not serialize shared entrypoint e2e/features/crypto-spike.mjs with crypto-spike',
         ),
       ]),
     );
@@ -403,7 +403,12 @@ describe('E2E suite registry runner', () => {
           '--fail-on-flaky-tests',
           '--shard=1/4',
         ],
-        { timeout: 3_600_000 },
+        {
+          timeout: 3_600_000,
+          cwd: workspaceRoot,
+          environment: {},
+          signal: undefined,
+        },
       ],
     ]);
   });
@@ -476,6 +481,7 @@ describe('E2E suite registry runner', () => {
   it('runs sequentially and stops at the first failing suite', async () => {
     const executed = [];
     const statuses = [0, 7, 0];
+    const close = vi.fn(async () => undefined);
 
     expect(
       await runSelection('e2e-components', {
@@ -485,10 +491,49 @@ describe('E2E suite registry runner', () => {
           executed.push(id);
           return statuses.shift();
         },
+        openInvocation: async (resources) => ({
+          environment: { TRINITY_TEST_RESOURCES: resources.join(',') },
+          close,
+        }),
         reportError: () => undefined,
       }),
     ).toBe(7);
     expect(executed).toEqual(['components.storybook', 'components.styling']);
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('passes aggregate termination through the owner and every managed child', async () => {
+    const controller = new AbortController();
+    const closeScope = vi.fn();
+    const closeInvocation = vi.fn(async () => undefined);
+    const openInvocation = vi.fn(async () => ({
+      environment: {},
+      close: closeInvocation,
+    }));
+    const executeSuite = vi.fn(async () => 0);
+
+    expect(
+      await runSelection('e2e-components', {
+        validate: () => [],
+        preflight: async () => [],
+        openInvocation,
+        executeSuite,
+        createTerminationScope: () => ({
+          signal: controller.signal,
+          close: closeScope,
+        }),
+      }),
+    ).toBe(0);
+    expect(openInvocation).toHaveBeenCalledWith(
+      expect.any(Array),
+      controller.signal,
+    );
+    expect(executeSuite).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ signal: controller.signal }),
+    );
+    expect(closeInvocation).toHaveBeenCalledOnce();
+    expect(closeScope).toHaveBeenCalledOnce();
   });
 
   it('forwards CLI arguments through the aggregate runner', async () => {

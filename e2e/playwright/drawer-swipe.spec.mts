@@ -1,6 +1,12 @@
-import { test, expect, devices, type Page } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import {
+  testResourceId,
+  test,
+  expect,
+  devices,
+  type Page,
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // The drawer gesture, on the only kind of device that has one.
 //
@@ -68,7 +74,7 @@ test.describe('Drawer swipe on a touch device', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}sw`;
+    const runId = `${testResourceId('run')}sw`;
     const user = `swipe-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Swipe ${runId}`;
@@ -130,7 +136,7 @@ test.describe('Drawer swipe on a touch device', () => {
     // Otherwise every leftward flick over the timeline would summon the roster, and the
     // timeline is the surface people swipe over most.
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}nw`;
+    const runId = `${testResourceId('run')}nw`;
     const user = `noswipe-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `NoSwipe ${runId}`;

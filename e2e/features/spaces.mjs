@@ -24,14 +24,16 @@
 // MUST run sequentially with other e2e scripts (shared docker stack + www/).
 import { mkdir } from 'node:fs/promises';
 import { waitForRooms } from '../support/navigation.mjs';
-import { serve } from '../support/serve.mjs';
+import {
+  applicationOrigin,
+  invocationResourceId,
+} from '../support/session.mts';
 import { chromium } from 'playwright';
 
 // Node's fetch (CS-API helpers) must accept Caddy's self-signed cert.
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
-const PORT = 8129;
-const APP = `http://localhost:${PORT}`;
+const APP = applicationOrigin();
 
 const HS = process.env.TRINITY_HS ?? 'https://localhost:8448';
 const USER = process.env.TRINITY_USER ?? 'verify-e2e';
@@ -40,7 +42,7 @@ const HEADED = process.env.HEADED === '1';
 const SLOWMO = Number(process.env.SLOWMO ?? 0);
 
 // Unique names per run so re-runs and re-used servers never produce stale matches.
-const RUN_ID = Date.now().toString(36);
+const RUN_ID = invocationResourceId('spaces');
 const SPACE_NAME = `Space ${RUN_ID}`;
 const CHANNEL_NAME = `chan-${RUN_ID}`;
 
@@ -127,7 +129,7 @@ async function findRoomIdByName(token, name, isSpace) {
 async function fillLabeledInput(page, label, value) {
   // Exact match: the password field's "Show password" reveal button (aria-label) otherwise
   // also matches a substring `getByLabel('Password')`, tripping strict mode. Same fix as
-  // e2e/playwright/support/app.mts:34.
+  // e2e/support/app.mts:34.
   const input = page.getByLabel(label, { exact: true });
   await input.waitFor({ state: 'visible', timeout: 15_000 });
   await input.click();
@@ -176,8 +178,6 @@ async function main() {
 
   const { access_token: token, user_id: userId } = await apiLogin();
   log(`api login ok; userId=${userId}`);
-
-  const server = await serve('www', PORT);
   log(`serving www on ${APP} (homeserver=${HS} user=${USER})`);
 
   const browser = await chromium.launch({
@@ -417,7 +417,6 @@ async function main() {
     console.log('\nRESULT: FAIL');
   } finally {
     await browser.close();
-    server.close();
   }
   process.exit(exit);
 }

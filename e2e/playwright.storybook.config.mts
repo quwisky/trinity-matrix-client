@@ -1,8 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 import { nxE2EPreset } from '@nx/playwright/preset';
-import { workspaceRoot } from '@nx/devkit';
+import { e2eEndpoint, e2eReportConfig } from './support/playwright-config.mts';
 
-const baseURL = 'http://localhost:4400';
+const baseURL = e2eEndpoint('storybook');
 
 /**
  * Browser checks for the built Storybook, deliberately separate from the app journeys.
@@ -16,29 +16,10 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   timeout: 30_000,
-  outputDir: '../dist/.playwright/storybook/test-output',
-  reporter: [
-    [
-      'html',
-      {
-        outputFolder: '../dist/.playwright/storybook/playwright-report',
-        open: 'never',
-      },
-    ],
-  ],
+  ...e2eReportConfig('storybook'),
   use: {
     baseURL,
     trace: 'retain-on-failure',
-  },
-  webServer: {
-    command:
-      'pnpm exec nx static-storybook components-storybook-host --port=4400 --watch=false',
-    url: `${baseURL}/iframe.html`,
-    // A stale static server can otherwise hide a freshly changed preview stylesheet locally.
-    // Determinism matters more than sharing this small, dedicated server.
-    reuseExistingServer: false,
-    timeout: 120_000,
-    cwd: workspaceRoot,
   },
   projects: [
     {

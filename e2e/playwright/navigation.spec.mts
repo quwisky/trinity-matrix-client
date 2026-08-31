@@ -1,10 +1,10 @@
-import { test, expect } from './support/fixtures.mts';
+import { test, expect } from '../fixtures.mts';
 import {
   closeSettings,
   focusInside,
   openSettingsFromRooms,
 } from './journeys/navigation.mts';
-import { isAndroidE2E, login, synapseSession } from './support/app.mts';
+import { isAndroidE2E, login, synapseSession } from '../support/app.mts';
 
 // Historical context: this file used to guard the IonRouterOutlet transition lock
 // (ionic-framework#30240) — a route transition had to relocate focus INTO the

@@ -1,11 +1,11 @@
-import { test, expect, type Page } from './support/fixtures.mts';
+import { test, expect, type Page } from '../fixtures.mts';
 import {
   isAndroidE2E,
   login,
   preferenceKeys,
   seedPreference,
   synapseSession,
-} from './support/app.mts';
+} from '../support/app.mts';
 import {
   AA_NORMAL_TEXT,
   measureContrast,

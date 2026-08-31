@@ -1,7 +1,7 @@
 import {
   expectLoginScreen,
   expectProtectedRouteRedirect,
-} from '../playwright/journeys/app-shell.mts';
+} from '../support/app-shell-journey.mts';
 import { test } from './fixtures.mts';
 
 test.describe('Android app shell', () => {

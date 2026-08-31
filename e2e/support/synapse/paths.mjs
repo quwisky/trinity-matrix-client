@@ -21,7 +21,7 @@ import { promisify } from 'node:util';
 
 const exec = promisify(execFile);
 
-/** The e2e/synapse directory itself: compose files, Caddyfile, these scripts. */
+/** The support-owned Synapse directory: compose files, Caddyfile, and adapters. */
 export const HERE = dirname(fileURLToPath(import.meta.url));
 
 /**

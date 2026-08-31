@@ -1,11 +1,16 @@
-import { test, expect, type APIRequestContext } from './support/fixtures.mts';
+import {
+  testResourceId,
+  test,
+  expect,
+  type APIRequestContext,
+} from '../fixtures.mts';
 import {
   isAndroidE2E,
   login,
   synapseSession,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 import { openSettingsSection } from './journeys/navigation.mts';
 
 // Two things, both needing a Synapse homeserver (Docker); self-skips otherwise.
@@ -59,7 +64,7 @@ test.describe('Push gateway', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}g`;
+    const runId = `${testResourceId('run')}g`;
     const user = `pgw-ui-${runId}`;
     const pass = `${user}-pass`;
     await registerUser(request, user, pass);
@@ -85,7 +90,7 @@ test.describe('Push gateway', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}p`;
+    const runId = `${testResourceId('run')}p`;
     const [aUser, bUser] = [`pgw-a-${runId}`, `pgw-b-${runId}`];
     await registerUser(request, aUser, 'pw');
     await registerUser(request, bUser, 'pw');

@@ -1,6 +1,11 @@
-import { test, expect, type APIRequestContext } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import {
+  testResourceId,
+  test,
+  expect,
+  type APIRequestContext,
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers the pinned-messages panel end to end: the room toolbar's pin button
 // (`data-testid="open-pinned"`) opens PinnedPanelService's side panel
@@ -89,7 +94,7 @@ test.describe('Pinned messages panel', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}p`;
+    const runId = `${testResourceId('run')}p`;
 
     const { reader, roomName, keepBody, unpinBody } = await seedPinnedRoom(
       request,

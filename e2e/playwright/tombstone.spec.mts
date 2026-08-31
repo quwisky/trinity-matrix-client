@@ -1,6 +1,6 @@
-import { test, expect, type Page } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import { testResourceId, test, expect, type Page } from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers the room-upgrade / tombstone banner (data-testid="tombstone-banner"): a room
 // with an m.room.tombstone shows a banner whose "Go to the new room" (tombstone-go) joins
@@ -26,7 +26,7 @@ test.describe('Room tombstone', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}tb`;
+    const runId = `${testResourceId('run')}tb`;
     const user = `tomb-${runId}`;
     const pass = `${user}-pass`;
     const oldName = `OldRoom ${runId}`;

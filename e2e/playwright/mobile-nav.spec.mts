@@ -1,9 +1,9 @@
-import { test, expect, type Page } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import { test, expect, type Page } from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Node's fetch (the CS-API room seeding below) must accept the disposable
-// Synapse + Caddy harness's self-signed cert — same bypass global-setup applies
+// Synapse + Caddy harness's self-signed cert — same bypass the invocation applies
 // in the main process, and the legacy e2e/features/*.mjs runners set at their own
 // module scope; set again here so it holds regardless of whether Playwright's
 // worker process inherits the main process's later `process.env` mutations.
@@ -19,22 +19,16 @@ const session = synapseSession();
 // below md, so every test below runs at a phone-sized viewport rather than 1280×720.
 const MOBILE_VIEWPORT = { width: 390, height: 844 };
 
-const ROOM_NAME = `Mobile drawer ${Date.now()}`;
+let ROOM_NAME = '';
 
 // A dedicated user (registered in beforeAll) instead of the shared session account.
 // The shared account is bloated by other specs (gif, multi-account,
 // timeline-virtualization) that seed rooms into it, so under full-suite load its
 // initial /sync was slow enough that ROOM_NAME took >30s (sometimes >90s) to appear —
 // the root cause of this file's flakiness. A fresh user syncs a single room, fast.
-const runId = `${Date.now().toString(36)}mn`;
-const MOBILE_USER = `mobile-user-${runId}`;
-const MOBILE_PASS = `${MOBILE_USER}-pass`;
-const mobileSession: SynapseSession = {
-  available: session.available,
-  hs: session.hs,
-  user: MOBILE_USER,
-  pass: MOBILE_PASS,
-};
+let MOBILE_USER = '';
+let MOBILE_PASS = '';
+let mobileSession: SynapseSession;
 const ROOM_ATTACH_TIMEOUT = 30_000;
 
 /** CS-API password login (bypasses the UI) — returns the access token + user id. */
@@ -142,7 +136,17 @@ test.describe('Mobile navigation (separate list/chat pages)', () => {
   // cannot be reused in a test"), and nothing here carries it. An earlier version of this
   // file claimed the fixture did not exist in `beforeAll` and kept a private `fetch`-based
   // copy of the registration routine on that basis; the claim was wrong.
-  test.beforeAll(async ({ request }) => {
+  test.beforeAll(async ({ request, workerResourceNamespace }) => {
+    const runId = workerResourceNamespace.role('mobile-nav');
+    ROOM_NAME = `Mobile drawer ${runId}`;
+    MOBILE_USER = `mobile-user-${runId}`;
+    MOBILE_PASS = `${MOBILE_USER}-pass`;
+    mobileSession = {
+      available: session.available,
+      hs: session.hs,
+      user: MOBILE_USER,
+      pass: MOBILE_PASS,
+    };
     await registerUser(request, MOBILE_USER, MOBILE_PASS);
     const { token, userId } = await apiLogin(
       mobileSession.hs as string,

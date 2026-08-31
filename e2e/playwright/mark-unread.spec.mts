@@ -1,6 +1,6 @@
-import { test, expect, type Page } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import { testResourceId, test, expect, type Page } from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // End-to-end for "Mark as unread" (MSC2867). Flagging a room writes `m.marked_unread`
 // into that room's account data — so it follows the user to their other devices — and the
@@ -27,7 +27,7 @@ test.describe('Mark as unread', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}u`;
+    const runId = `${testResourceId('run')}u`;
     const user = `unread-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Mark Unread E2E ${runId}`;
@@ -106,7 +106,7 @@ test.describe('Mark as unread', () => {
     // nothing proved that: this writes it the way another device would — straight to the
     // server, with the app already open — and then reloads to prove it was never local.
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}s`;
+    const runId = `${testResourceId('run')}s`;
     const user = `unread2-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Mark Unread Sync ${runId}`;

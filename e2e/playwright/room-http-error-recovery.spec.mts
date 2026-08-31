@@ -1,11 +1,12 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Regression for #282: a failed outbound invite or incoming room join must release
 // request state, show actionable guidance, and allow the same action to be retried
@@ -70,7 +71,7 @@ test.describe('Room HTTP error recovery', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}invite-retry`;
+    const runId = `${testResourceId('run')}invite-retry`;
     const owner = `invite-owner-${runId}`;
     const pass = `${owner}-pass`;
     const roomName = `Invite recovery ${runId}`;
@@ -126,7 +127,7 @@ test.describe('Room HTTP error recovery', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}join-retry`;
+    const runId = `${testResourceId('run')}join-retry`;
     const owner = `join-owner-${runId}`;
     const ownerPass = `${owner}-pass`;
     const joiner = `join-target-${runId}`;

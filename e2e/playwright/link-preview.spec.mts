@@ -1,6 +1,6 @@
-import { test, expect } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import { testResourceId, test, expect } from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers link previews (message-row `data-testid="link-preview"`): a URL in an
 // unencrypted message shows an Open-Graph card fetched via the homeserver
@@ -26,7 +26,7 @@ test.describe('Link previews', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}lp`;
+    const runId = `${testResourceId('run')}lp`;
     const user = `lp-user-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Links ${runId}`;

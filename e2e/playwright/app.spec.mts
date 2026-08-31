@@ -1,9 +1,9 @@
-import { test } from './support/fixtures.mts';
+import { test } from '../fixtures.mts';
 import {
   expectLoginScreen,
   expectProtectedRouteRedirect,
-} from './journeys/app-shell.mts';
-import { webNavigate } from './support/app.mts';
+} from '../support/app-shell-journey.mts';
+import { webNavigate } from '../support/app.mts';
 
 // Smoke checks that need no homeserver — the SPA boots, the login screen renders,
 // and the auth guard protects app routes.

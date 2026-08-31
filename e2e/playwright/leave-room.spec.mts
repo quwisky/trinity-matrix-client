@@ -1,11 +1,12 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers "leave a room": each room row's kebab (`.channel__menu`) opens a Helm
 // dropdown-menu (CDK overlay) with a destructive "Leave room" item
@@ -76,7 +77,7 @@ test.describe('Leave a room', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}l`;
+    const runId = `${testResourceId('run')}l`;
 
     const { reader, leaveName, keepName } = await seedTwoRooms(
       request,
@@ -124,7 +125,7 @@ test.describe('Destructive menu item contrast', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}dc`;
+    const runId = `${testResourceId('run')}dc`;
     const { reader, leaveName } = await seedTwoRooms(request, hs, runId);
     await login(page, reader);
     await openRoomMenu(page, leaveName);

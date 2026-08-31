@@ -1,6 +1,5 @@
 import { defineConfig } from '@playwright/test';
-import { workspaceRoot } from '@nx/devkit';
-import { join } from 'node:path';
+import { e2eReportConfig } from './support/playwright-config.mts';
 
 /**
  * Electron e2e — launches the BUILT desktop app (electron/dist/main.js serving www/
@@ -18,9 +17,7 @@ export default defineConfig({
   // Electron specs live alongside this config in the `trinity-e2e` project.
   testDir: './electron',
   testMatch: '**/*.electron.spec.mts',
-  outputDir: join(workspaceRoot, 'dist/.playwright/electron'),
-  globalSetup: './playwright/support/global-setup.mts',
-  globalTeardown: './playwright/support/global-teardown.mts',
+  ...e2eReportConfig('electron'),
   // Each test launches its own Electron instance — keep them serial.
   fullyParallel: false,
   workers: 1,

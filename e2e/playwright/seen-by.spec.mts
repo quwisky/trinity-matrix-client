@@ -1,11 +1,12 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers the "seen by" reader list: clicking a message's read-receipt cluster
 // (data-testid="read-receipts") expands the names of who read it (seen-by-list).
@@ -57,7 +58,7 @@ test.describe('Seen by', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}sb`;
+    const runId = `${testResourceId('run')}sb`;
     const me = `sb-me-${runId}`;
     const mePass = `${me}-pass`;
     const reader = `sb-reader-${runId}`;

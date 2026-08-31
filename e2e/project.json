@@ -7,9 +7,14 @@
   "implicitDependencies": ["trinity"],
   "targets": {
     "e2e": {
-      "//": "The inferred Playwright target owns a browser, app server and fixed-port Synapse stack. Its runtime result must never be restored from cache or overlap another Synapse owner.",
+      "//": "The support invocation owns dynamic app/report servers and the fixed-port Synapse stack; Playwright only joins it.",
       "cache": false,
-      "parallelism": false
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/support/run-playwright.mts --config=e2e/playwright.config.mts --build=trinity:build:development --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
     },
     "lint": {
       "//": "Declared, not inferred: @nx/eslint only infers a lint target for projects with .ts/.js sources, and every file here is .mts — so removing 'e2e' from globalIgnores would otherwise have changed nothing about what `pnpm lint` actually runs.",
@@ -30,8 +35,8 @@
       "cache": false,
       "executor": "nx:run-commands",
       "options": {
-        "command": "playwright test -c playwright.storybook.config.mts",
-        "cwd": "{projectRoot}"
+        "command": "node e2e/support/run-playwright.mts --config=e2e/playwright.storybook.config.mts --build=components-storybook-host:build-storybook",
+        "cwd": "{workspaceRoot}"
       }
     },
     "web-e2e": {
@@ -39,8 +44,8 @@
       "cache": false,
       "executor": "nx:run-commands",
       "options": {
-        "command": "playwright test -c playwright.web.config.mts",
-        "cwd": "{projectRoot}"
+        "command": "node e2e/support/run-playwright.mts --config=e2e/playwright.web.config.mts --build=trinity:build:production",
+        "cwd": "{workspaceRoot}"
       }
     },
     "phase7-e2e": {
@@ -58,8 +63,8 @@
       "cache": false,
       "executor": "nx:run-commands",
       "options": {
-        "command": "playwright test -c playwright.styling.config.mts",
-        "cwd": "{projectRoot}"
+        "command": "node e2e/support/run-playwright.mts --config=e2e/playwright.styling.config.mts --build=trinity:build:development",
+        "cwd": "{workspaceRoot}"
       }
     },
     "scrollbars-e2e": {
@@ -68,8 +73,8 @@
       "parallelism": false,
       "executor": "nx:run-commands",
       "options": {
-        "command": "playwright test -c playwright.scrollbars.config.mts",
-        "cwd": "{projectRoot}"
+        "command": "node e2e/support/run-playwright.mts --config=e2e/playwright.scrollbars.config.mts --build=trinity:build:development --resource=synapse",
+        "cwd": "{workspaceRoot}"
       }
     },
     "android-e2e": {
@@ -220,9 +225,10 @@
     },
     "protocol-verify-sas-selfcheck": {
       "cache": false,
+      "parallelism": false,
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm exec nx build trinity --configuration=development && node e2e/features/verify-sas-selfcheck.mjs"
+        "command": "node e2e/support/run-feature.mts --feature=verify-sas-selfcheck --build=trinity:build:development"
       }
     },
     "protocol-crypto-spike-chromium": {
@@ -230,7 +236,7 @@
       "parallelism": false,
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm exec nx build trinity --configuration=development && node e2e/features/crypto-spike.mjs chromium"
+        "command": "node e2e/support/run-feature.mts --feature=crypto-spike --build=trinity:build:development --resource=crypto-spike -- chromium"
       }
     },
     "protocol-crypto-spike-webkit": {
@@ -238,14 +244,14 @@
       "parallelism": false,
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm exec nx build trinity --configuration=development && node e2e/features/crypto-spike.mjs webkit"
+        "command": "node e2e/support/run-feature.mts --feature=crypto-spike --build=trinity:build:development --resource=crypto-spike -- webkit"
       }
     },
     "protocol-login-smoke": {
       "cache": false,
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm exec nx build trinity --configuration=development && node e2e/features/smoke-login.mjs"
+        "command": "node e2e/support/run-feature.mts --feature=smoke-login --build=trinity:build:development"
       }
     },
     "synapse-up": {
@@ -253,7 +259,7 @@
       "parallelism": false,
       "executor": "nx:run-commands",
       "options": {
-        "command": "node e2e/synapse/start.mjs"
+        "command": "node e2e/support/synapse/start.mjs"
       }
     },
     "synapse-down": {
@@ -261,7 +267,7 @@
       "parallelism": false,
       "executor": "nx:run-commands",
       "options": {
-        "command": "node e2e/synapse/stop.mjs"
+        "command": "node e2e/support/synapse/stop.mjs"
       }
     }
   }

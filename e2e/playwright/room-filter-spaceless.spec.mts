@@ -1,6 +1,11 @@
-import { test, expect, type APIRequestContext } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import {
+  testResourceId,
+  test,
+  expect,
+  type APIRequestContext,
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers the "Rooms view excludes space-owned rooms" behavior: the flat Rooms
 // view (revealed by the `rail-rooms` pill) lists only non-DM joined rooms that
@@ -140,7 +145,7 @@ test.describe('Rooms view excludes space-owned rooms', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}s`;
+    const runId = `${testResourceId('run')}s`;
 
     const { reader, freestandingName, spaceName, childName } =
       await seedSpaceAndRooms(request, hs, runId);

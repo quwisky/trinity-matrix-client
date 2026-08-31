@@ -1,11 +1,13 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
+import { nextTestResourceId } from '../support/namespace.mts';
 import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers issue #34: how rooms are ordered inside a space.
@@ -157,7 +159,7 @@ async function sendMessage(
   const res = await request.put(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(
       roomId,
-    )}/send/m.room.message/${encodeURIComponent(`${Date.now()}-${Math.random()}`)}`,
+    )}/send/m.room.message/${encodeURIComponent(nextTestResourceId('message'))}`,
     { headers: user.headers, data: { msgtype: 'm.text', body } },
   );
   if (!res.ok()) {
@@ -231,7 +233,7 @@ test.describe('Room order inside a space', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}ord`;
+    const runId = `${testResourceId('run')}ord`;
 
     const { reader, spaceName, zulu, alpha, mike } = await seedOrderedSpace(
       request,
@@ -283,7 +285,7 @@ test.describe('Room order inside a space', () => {
     tag: string,
   ): Promise<void> {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}${tag}`;
+    const runId = `${testResourceId('run')}${tag}`;
     const user = `hdr-${runId}`;
     const pass = `hdr-pass-${runId}`;
     const spaceName = `Header ${runId}`;
@@ -356,7 +358,7 @@ test.describe('Room order inside a space', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}live`;
+    const runId = `${testResourceId('run')}live`;
 
     const { reader, spaceName, zulu, alpha, mike } = await seedOrderedSpace(
       request,

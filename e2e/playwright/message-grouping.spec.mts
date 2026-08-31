@@ -1,11 +1,16 @@
-import { test, expect, type APIRequestContext } from './support/fixtures.mts';
+import {
+  testResourceId,
+  test,
+  expect,
+  type APIRequestContext,
+} from '../fixtures.mts';
 import {
   isAndroidE2E,
   login,
   synapseSession,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers the Discord-style grouping of consecutive messages from one sender: the
 // follow-on rows drop the avatar for a hover-only timestamp gutter, which must measure
@@ -54,7 +59,7 @@ test.describe('Message grouping', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}mg`;
+    const runId = `${testResourceId('run')}mg`;
     const me = `mg-me-${runId}`;
     const mePass = `${me}-pass`;
     const roomName = `Grouping ${runId}`;

@@ -1,18 +1,19 @@
 import {
+  testResourceId,
   test,
   expect,
   devices,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
+} from '../fixtures.mts';
 import {
   isAndroidE2E,
   login,
   seedPreference,
   synapseSession,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 import { closeSettings, openSettingsSection } from './journeys/navigation.mts';
 
 // Swiping a message row sideways to edit or reply to it (#222), on a real phone profile.
@@ -85,7 +86,7 @@ async function openRoom(
   filler = 0,
 ): Promise<{ own: string; other: string; roomName: string }> {
   const hs = session.hs as string;
-  const runId = `${Date.now().toString(36)}${tag}`;
+  const runId = `${testResourceId('run')}${tag}`;
   const user = `swipeact-${runId}`;
   const pass = `${user}-pass`;
   const friend = `swipefr-${runId}`;

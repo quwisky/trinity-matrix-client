@@ -1,11 +1,11 @@
-import { test, expect, type Page } from './support/fixtures.mts';
+import { testResourceId, test, expect, type Page } from '../fixtures.mts';
 import {
   login,
   synapseSession,
   waitForRooms,
   type SynapseSession,
-} from './support/app.mts';
-import { passwordLogin, registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { passwordLogin, registerUser } from '../support/account.mts';
 
 // Covers per-message authenticity shields (message-row `data-testid="msg-shield-*"`):
 // that a plaintext room raises none — shields are resolved only for encrypted events —
@@ -75,7 +75,7 @@ test.describe('Message authenticity shields', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}sh`;
+    const runId = `${testResourceId('run')}sh`;
     const owner = `shield-owner-${runId}`;
     const ownerPass = `${owner}-pass`;
     const reader = `shield-reader-${runId}`;
@@ -145,7 +145,7 @@ test.describe('Message authenticity shields', () => {
     test.slow();
 
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}st`;
+    const runId = `${testResourceId('run')}st`;
     const user = `shield-tip-${runId}`;
     const pass = `${user}-pass`;
     const seerUser = `shield-seer-${runId}`;

@@ -129,7 +129,7 @@
       "dependsOn": ["build"],
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm exec playwright test -c e2e/playwright.electron.config.mts",
+        "command": "node e2e/support/run-playwright.mts --config=e2e/playwright.electron.config.mts --resource=electron --resource=synapse",
         "cwd": "{workspaceRoot}"
       }
     },
@@ -140,7 +140,7 @@
       "dependsOn": ["build"],
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm exec playwright test -c e2e/playwright.electron.smoke.config.mts",
+        "command": "node e2e/support/run-playwright.mts --config=e2e/playwright.electron.smoke.config.mts --resource=electron",
         "cwd": "{workspaceRoot}"
       }
     },

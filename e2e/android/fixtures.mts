@@ -11,17 +11,13 @@ import {
   type TestInfo,
 } from '@playwright/test';
 import { _android, type AndroidDevice } from 'playwright';
-import {
-  webNavigate,
-  type Navigate,
-} from '../playwright/support/app.mts';
+import { navigateApplication } from '../support/navigation.mts';
 import type {
   AuthCallbackKind,
   AuthPlatform,
-} from '../playwright/support/auth-platform.mts';
-import type {
+  Navigate,
   TouchPlatform,
-} from '../playwright/support/touch-platform.mts';
+} from '../support/platform-contracts.mts';
 
 const packageName = 'eu.qwky.trinity';
 const secondaryPackageName = 'eu.qwky.trinity.secondary';
@@ -529,7 +525,7 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
       tracePaths.push(path);
     };
 
-    const navigate: Navigate = webNavigate;
+    const navigate: Navigate = navigateApplication;
 
     const app: AndroidApp = {
       device: androidDevice,

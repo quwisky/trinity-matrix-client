@@ -1,4 +1,9 @@
-import { test, expect, type APIRequestContext } from './support/fixtures.mts';
+import {
+  testResourceId,
+  test,
+  expect,
+  type APIRequestContext,
+} from '../fixtures.mts';
 import {
   clickRowMenuItem,
   isAndroidE2E,
@@ -6,8 +11,8 @@ import {
   openMessageActionSheet,
   synapseSession,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers the notification half of quoting: carrying someone else's words must not notify
 // the people those words happen to name.
@@ -60,7 +65,7 @@ test.describe('Quoting does not notify the people it quotes', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}qm`;
+    const runId = `${testResourceId('run')}qm`;
     const writer = `qmw-${runId}`;
     const reader = `qmr-${runId}`;
     const pass = `${runId}-pass`;

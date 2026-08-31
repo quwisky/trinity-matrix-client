@@ -1,11 +1,12 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // End-to-end for the unread "New messages" divider + jump-to-unread pill: a reader
 // whose fully-read marker sits at an old message sees a divider before the first
@@ -68,7 +69,7 @@ test.describe('Unread divider + jump-to-unread', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}u`;
+    const runId = `${testResourceId('run')}u`;
     const hs = session.hs as string;
 
     // Seed a reader + a member who fills the room with messages.

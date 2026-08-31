@@ -1,10 +1,6 @@
-import { expect, test, type Page } from '@playwright/test';
+import { testResourceId, expect, test, type Page } from './fixtures.mts';
 
-import {
-  login,
-  synapseSession,
-  type Navigate,
-} from '../playwright/support/app.mts';
+import { login, synapseSession, type Navigate } from '../support/app.mts';
 import { launchApp } from './support/launch.mts';
 
 const session = synapseSession();
@@ -36,7 +32,7 @@ test.describe('Electron composer insert menu', () => {
     const { access_token: token } = (await loginResponse.json()) as {
       access_token: string;
     };
-    const roomName = `Electron insert ${Date.now()}`;
+    const roomName = `Electron insert ${testResourceId('room')}`;
     const roomResponse = await request.post(
       `${session.hs}/_matrix/client/v3/createRoom`,
       {

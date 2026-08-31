@@ -1,17 +1,18 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
+} from '../fixtures.mts';
 import {
   isAndroidE2E,
   login,
   openMessageActionSheet,
   synapseSession,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // End-to-end for the full emoji reaction picker: hover a message, open the quick
 // reactions, escalate to the full emoji-mart picker via "+", search and pick an
@@ -83,7 +84,7 @@ test.describe('Full emoji reaction picker', () => {
     // the button's own handler. Both wrote the same signal. The second click left the state
     // saying open with nothing rendered — and 202 e2e tests passed, because none of them ever
     // closed it.
-    const runId = `${Date.now().toString(36)}p`;
+    const runId = `${testResourceId('run')}p`;
     const { user, roomName } = await seedRoom(
       request,
       session.hs as string,
@@ -110,7 +111,7 @@ test.describe('Full emoji reaction picker', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}r`;
+    const runId = `${testResourceId('run')}r`;
     const { user, roomName, roomId, headers } = await seedRoom(
       request,
       session.hs as string,

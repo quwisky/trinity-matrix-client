@@ -1,4 +1,4 @@
-import { test, expect, type Page } from './support/fixtures.mts';
+import { testResourceId, test, expect, type Page } from '../fixtures.mts';
 import {
   clickRowMenuItem,
   isAndroidE2E,
@@ -7,8 +7,8 @@ import {
   synapseSession,
   type SynapseSession,
   waitForSent,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // End-to-end for message forwarding: pick another room from the switcher and the
 // message lands there. Needs a Synapse homeserver (Docker).
@@ -28,7 +28,7 @@ test.describe('Message forwarding', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
   test('forwards a message to another room', async ({ page, request }) => {
-    const runId = `${Date.now().toString(36)}f`;
+    const runId = `${testResourceId('run')}f`;
     const hs = session.hs as string;
     const username = `fwd-user-${runId}`;
     const password = `${username}-pass`;

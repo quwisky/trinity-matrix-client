@@ -1,6 +1,6 @@
-import { test, expect, type Page } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import { testResourceId, test, expect, type Page } from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers the text-size setting (Settings → Appearance → Text size). The lever is the ROOT
@@ -87,7 +87,7 @@ test.describe('Text size', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}ts`;
+    const runId = `${testResourceId('run')}ts`;
     const user = `scale-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Scale ${runId}`;
@@ -206,7 +206,7 @@ test.describe('Code size', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}cs`;
+    const runId = `${testResourceId('run')}cs`;
     const user = `code-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Code ${runId}`;
@@ -315,7 +315,7 @@ test.describe('Code line numbers', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}ln`;
+    const runId = `${testResourceId('run')}ln`;
     const user = `lines-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Lines ${runId}`;
@@ -432,7 +432,7 @@ test.describe('Code line numbers', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}gw`;
+    const runId = `${testResourceId('run')}gw`;
     const user = `gutter-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Gutter ${runId}`;

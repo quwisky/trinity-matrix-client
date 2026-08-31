@@ -6,15 +6,14 @@ const workspaceRoot = join(import.meta.dirname, '..');
 const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
 
 describe('Electron Playwright image-pack coverage', () => {
-  it('owns the disposable Synapse lifecycle', () => {
+  it('joins the support-owned disposable Synapse lifecycle', () => {
     const config = read('e2e/playwright.electron.config.mts');
-    expect(config).toContain(
-      "globalSetup: './playwright/support/global-setup.mts'",
-    );
-    expect(config).toContain(
-      "globalTeardown: './playwright/support/global-teardown.mts'",
-    );
+    const project = read('electron/project.json');
+    expect(config).not.toContain('globalSetup');
+    expect(config).not.toContain('globalTeardown');
     expect(config).toContain('ignoreHTTPSErrors: true');
+    expect(project).toContain('support/run-playwright.mts');
+    expect(project).toContain('--resource=electron --resource=synapse');
   });
 
   it('runs the canonical manager journey through the desktop shell', () => {
@@ -27,14 +26,12 @@ describe('Electron Playwright image-pack coverage', () => {
   });
 
   it('keeps platform lifecycle outside the shared journey', () => {
-    const journey = read(
-      'e2e/playwright/support/image-pack-management-journey.mts',
-    );
+    const journey = read('e2e/support/image-pack-management-journey.mts');
     expect(journey).toContain('runImagePackManagementJourney');
     expect(journey).not.toMatch(/\btest\s*(?:\.|\()/);
 
     const webSpec = read('e2e/playwright/stickers-custom-emoji.spec.mts');
-    expect(webSpec).toContain("from './support/fixtures.mts'");
+    expect(webSpec).toContain("from '../fixtures.mts'");
     expect(webSpec).toContain('verifyInstalledOnSecondClient');
   });
 });

@@ -1,10 +1,10 @@
-import { test, expect, type APIRequestContext } from './support/fixtures.mts';
-import { synapseSession, type SsoAccount } from './support/app.mts';
+import { test, expect, type APIRequestContext } from '../fixtures.mts';
+import { synapseSession, type SsoAccount } from '../support/app.mts';
 import {
   keyBackupVersion,
   masterKey,
   type AccountSession,
-} from './support/account.mts';
+} from '../support/account.mts';
 import { ensureCrossSigning, ssoApiSession, ssoLogin } from './support/sso.mts';
 
 // End-to-end for the half of the recovery-key reset (issue #43) that Trinity CANNOT
@@ -18,7 +18,7 @@ import { ensureCrossSigning, ssoApiSession, ssoLogin } from './support/sso.mts';
 //
 // This used to be unit-tested only, against a fabricated 401. It is now driven against a
 // real password-less account, courtesy of the harness's Dex provider — see
-// e2e/synapse/dex.yaml. Needs Docker; self-skips otherwise like the other web specs.
+// e2e/support/synapse/dex.yaml. Needs Docker; self-skips otherwise like the other web specs.
 //
 // It runs on `session.ssoReset`, NOT the general `session.sso`: everything it seeds is
 // permanent (a cross-signing master key can be replaced but never removed, and a
@@ -29,14 +29,14 @@ const session = synapseSession();
 
 test.describe('Recovery reset on an SSO account', () => {
   test.skip(!session.available, 'needs the Synapse + Dex harness (Docker)');
-  // Not part of the skip: global-setup rethrows under CI precisely so a missing harness
+  // Not part of the skip: the invocation owner fails before tests when the harness is missing
   // cannot report a green run, and start() cannot resolve without the sso block (it
   // waits on Dex's discovery document first). Gating the skip on it too would hand back
   // the silence that rule exists to prevent — so if it is ever absent, say so loudly.
   test.beforeAll(() => {
     if (session.available && !session.ssoReset) {
       throw new Error(
-        'the harness came up without the reset SSO account; e2e/synapse/start.mjs should never allow this',
+        'the harness came up without the reset SSO account; e2e/support/synapse/start.mjs should never allow this',
       );
     }
   });

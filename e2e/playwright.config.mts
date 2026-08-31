@@ -1,11 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
 import { nxE2EPreset } from '@nx/playwright/preset';
 import { appE2EConfig } from './playwright/support/app-e2e-config.mts';
+import { e2eEndpoint, e2eReportConfig } from './support/playwright-config.mts';
 
-// Base URL of the app under test. The webServer below builds the dev bundle and
-// serves www/ statically (the same proven path the legacy e2e/ harness uses — it
-// serves the crypto WASM at /assets/crypto/, which the in-app E2EE init needs).
-const baseURL = process.env['BASE_URL'] || 'http://localhost:4200';
+// Base URL of the invocation-owned development artifact server. The config is a
+// fail-closed joiner and never starts or tears down application infrastructure.
+const baseURL = e2eEndpoint('application');
 
 /**
  * See https://playwright.dev/docs/test-configuration.
@@ -34,8 +34,9 @@ export default defineConfig({
   // flows: a cold UI login (Rust-crypto init + first /sync ≈ 15-40s under load) plus a
   // state-event sync echo can exceed it mid-wait, which surfaced as flakes across the
   // event-propagation specs (rename, reactions, polls, threads). 120s (well under the
-  // 240s webServer budget) gives realistic headroom; retries still catch the rare tail.
+  // outer invocation budget) gives realistic headroom; retries still catch the rare tail.
   timeout: 120_000,
+  ...e2eReportConfig('browser-canonical'),
   // Shared with the current-interface evidence suite: Synapse lifecycle, app server, self-signed
   // TLS policy and retain-on-failure traces must not drift between real-app browser harnesses.
   ...appE2EConfig(baseURL),

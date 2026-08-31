@@ -1,6 +1,11 @@
-import { test, expect, type APIRequestContext } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import {
+  testResourceId,
+  test,
+  expect,
+  type APIRequestContext,
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers the "Recent activity" view (issue #9): the first rail item
 // (`data-testid="rail-recent"`), active on launch, whose channel list mixes direct
@@ -90,7 +95,7 @@ test.describe('Recent activity', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}ra`;
+    const runId = `${testResourceId('run')}ra`;
     const reader = await seedReader(request, hs, runId);
     const dmName = `Direct ${runId}`;
     const roomName = `Channel ${runId}`;
@@ -137,7 +142,7 @@ test.describe('Recent activity', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}rf`;
+    const runId = `${testResourceId('run')}rf`;
     const reader = await seedReader(request, hs, runId);
     const dmName = `Direct ${runId}`;
     const favName = `Favourite ${runId}`;
@@ -184,7 +189,7 @@ test.describe('Recent activity', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}rs`;
+    const runId = `${testResourceId('run')}rs`;
     const reader = await seedReader(request, hs, runId);
     const freeName = `Freestanding ${runId}`;
     const childName = `Team Chat ${runId}`;
@@ -235,7 +240,7 @@ test.describe('Recent activity', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}ru`;
+    const runId = `${testResourceId('run')}ru`;
     const reader = await seedReader(request, hs, runId);
     const seed = 3;
 

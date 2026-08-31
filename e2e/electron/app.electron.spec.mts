@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './fixtures.mts';
 import { type ElectronApplication } from 'playwright';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:https';

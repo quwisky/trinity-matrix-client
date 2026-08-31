@@ -1,16 +1,17 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
+} from '../fixtures.mts';
 import {
   login,
   seedPreference,
   synapseSession,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers the composer's formatting affordances (issue #29, second half): the toolbar, the
@@ -30,7 +31,7 @@ async function openComposer(
   openInitially = true,
 ) {
   const hs = session.hs as string;
-  const runId = `${Date.now().toString(36)}${tag}`;
+  const runId = `${testResourceId('run')}${tag}`;
   const user = `fmt-${runId}`;
   const pass = `${user}-pass`;
   const roomName = `Format ${runId}`;

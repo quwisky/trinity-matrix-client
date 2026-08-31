@@ -1,9 +1,10 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
+} from '../fixtures.mts';
 import {
   clickRowMenuItem,
   isAndroidE2E,
@@ -11,8 +12,8 @@ import {
   openMessageActionSheet,
   synapseSession,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers moderator redaction: a room admin (power 100, the creator) can delete
 // ANOTHER user's message. TimelineService.canRedactOthers compares the user's
@@ -69,7 +70,7 @@ test.describe('Moderator redaction', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}m`;
+    const runId = `${testResourceId('run')}m`;
 
     const adminUser = `mod-admin-${runId}`;
     const adminPass = `${adminUser}-pass`;

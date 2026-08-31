@@ -17,7 +17,7 @@ const MIME = {
   '.ico': 'image/x-icon',
 };
 
-export function serve(root, port, mounts = {}) {
+export function serve(root, port = 0, mounts = {}) {
   const server = createServer(async (req, res) => {
     const urlPath = decodeURIComponent(
       new URL(req.url, 'http://localhost').pathname,
@@ -55,5 +55,20 @@ export function serve(root, port, mounts = {}) {
       res.end('Not found');
     }
   });
-  return new Promise((resolve) => server.listen(port, () => resolve(server)));
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, '127.0.0.1', () => {
+      server.off('error', reject);
+      resolve(server);
+    });
+  });
+}
+
+/** Return the actual loopback origin selected by a listening server. */
+export function serverOrigin(server) {
+  const address = server.address();
+  if (!address || typeof address === 'string') {
+    throw new Error('Static E2E server has no TCP address');
+  }
+  return `http://127.0.0.1:${address.port}`;
 }

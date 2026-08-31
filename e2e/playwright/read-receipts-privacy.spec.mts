@@ -1,11 +1,12 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers the "Send read receipts" privacy toggle (Settings → Privacy). With it
@@ -88,7 +89,7 @@ test.describe('Read-receipt privacy', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}rr`;
+    const runId = `${testResourceId('run')}rr`;
     const readerUser = `rr-reader-${runId}`;
     const readerPass = `${readerUser}-pass`;
     const senderUser = `rr-sender-${runId}`;

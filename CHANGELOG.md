@@ -98,6 +98,14 @@ All notable changes to this project are documented here. The format is based on
   fixed-port Playwright target atomization is disabled, shared fixed-port drivers use explicit
   cross-process serialization, and registry timeout classes terminate their owned process groups.
 
+- **E2E processes now have one lifecycle owner.** The new `trinity-e2e-support` project binds
+  dynamic application, Storybook and report endpoints, publishes a validated private session,
+  starts the fixed-port Synapse stack once per aggregate, and makes every child join without
+  restart or teardown authority. Browser, Android and Electron fixtures no longer import one
+  another, protocol compatibility entrypoints share one runner, per-attempt resource namespaces
+  isolate multi-client data, and bounded cancellation, stale-lock recovery and aggregate cleanup
+  failures are executable contracts.
+
 - **The capability-centered architecture is now contracted and enforced.** All migration
   exception ledgers and secondary entrypoints are empty, rich message kinds use one normalized
   presentation path, and native preferences, push registration, external browsing, and platform

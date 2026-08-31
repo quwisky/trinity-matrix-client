@@ -1,11 +1,12 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers blocking (ignoring) a member: from the member info panel the Block action
 // (data-testid="member-info-ignore") ignores the user account-wide
@@ -57,7 +58,7 @@ test.describe('Block a member', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}b`;
+    const runId = `${testResourceId('run')}b`;
     const adminUser = `block-admin-${runId}`;
     const adminPass = `${adminUser}-pass`;
     const memberUser = `block-member-${runId}`;

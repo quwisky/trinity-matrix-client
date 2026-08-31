@@ -22,7 +22,7 @@ describe('Android Playwright canonical coverage', () => {
         join(workspaceRoot, 'e2e/playwright', spec),
         'utf8',
       );
-      return !source.includes("from './support/fixtures.mts'");
+      return !source.includes("from '../fixtures.mts'");
     });
     expect(bypasses).toEqual([]);
   });

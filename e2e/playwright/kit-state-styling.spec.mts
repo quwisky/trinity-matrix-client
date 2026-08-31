@@ -1,12 +1,13 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Locator,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // The rest of the `data-*` variant sweep, measured where the cascade decides.
 //
@@ -32,7 +33,7 @@ async function openRoom(
   tag: string,
 ): Promise<void> {
   const hs = session.hs as string;
-  const runId = `${Date.now().toString(36)}${tag}`;
+  const runId = `${testResourceId('run')}${tag}`;
   const user = `kitstyle-${runId}`;
   const pass = `${user}-pass`;
   const roomName = `Kit ${runId}`;

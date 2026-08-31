@@ -1,11 +1,11 @@
-import { test, expect, type Page } from './support/fixtures.mts';
+import { testResourceId, test, expect, type Page } from '../fixtures.mts';
 import {
   login,
   synapseSession,
   waitForSent,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // End-to-end for polls (MSC3381): create a poll from the composer, vote, see the tally
 // update, and end it. Needs a Synapse homeserver (Docker).
@@ -25,7 +25,7 @@ test.describe('Polls', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
   test('creates a poll, votes, and ends it', async ({ page, request }) => {
-    const runId = `${Date.now().toString(36)}p`;
+    const runId = `${testResourceId('run')}p`;
     const hs = session.hs as string;
     const username = `poll-user-${runId}`;
     const password = `${username}-pass`;
