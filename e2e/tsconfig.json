@@ -30,5 +30,6 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["**/*.mts", "**/*.d.mts"]
+  "include": ["**/*.mts", "**/*.d.mts"],
+  "exclude": ["components/**", "web/**"]
 }

@@ -29,6 +29,16 @@ export const E2E_INVENTORY = {
       ignoredTargets: ['lint', 'typecheck'],
     },
     {
+      project: 'trinity-e2e-web',
+      projectFile: 'e2e/web/project.json',
+      ignoredTargets: ['lint', 'typecheck'],
+    },
+    {
+      project: 'trinity-e2e-components',
+      projectFile: 'e2e/components/project.json',
+      ignoredTargets: ['lint', 'typecheck'],
+    },
+    {
       project: 'trinity-desktop',
       projectFile: 'electron/project.json',
       includedTargets: ['e2e', 'e2e-smoke'],
@@ -40,11 +50,10 @@ export const E2E_INVENTORY = {
     },
   ],
   trackedEntrypointPatterns: [
-    'e2e/playwright*.config.mts',
+    'e2e/**/playwright*.config.mts',
     'e2e/runners/*.mjs',
     'e2e/features/*.mjs',
     'e2e/android/run.mts',
-    'scripts/run-phase7-e2e.mjs',
   ],
   sharedEntrypoints: [
     {
@@ -53,6 +62,14 @@ export const E2E_INVENTORY = {
     },
   ],
 } as const;
+
+export function registeredE2ESuite(
+  id: (typeof E2E_SUITES)[number]['id'],
+): (typeof E2E_SUITES)[number] {
+  const suite = E2E_SUITES.find((candidate) => candidate.id === id);
+  if (!suite) throw new Error(`Unknown registered E2E suite: ${id}`);
+  return suite;
+}
 
 export {
   E2E_AGGREGATE_TARGETS,

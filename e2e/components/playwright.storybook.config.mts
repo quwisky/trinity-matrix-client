@@ -1,26 +1,24 @@
 import { defineConfig, devices } from '@playwright/test';
-import { nxE2EPreset } from '@nx/playwright/preset';
-import { e2eEndpoint, e2eReportConfig } from './support/playwright-config.mts';
+import { registeredE2ESuite } from '../registry/index.mts';
+import { e2eLifecycleConfig } from '../support/playwright-config.mts';
 
-const baseURL = e2eEndpoint('storybook');
+const lifecycle = e2eLifecycleConfig({
+  suite: registeredE2ESuite('components.storybook'),
+  projectRoot: import.meta.dirname,
+  testDir: './storybook',
+  endpoint: 'storybook',
+  timeout: 30_000,
+});
 
 /**
  * Browser checks for the built Storybook, deliberately separate from the app journeys.
  *
  * Storybook needs neither the application dev build nor the disposable Synapse owned by
- * `playwright.config.mts`. Keeping its server and output here means the small component-canvas
- * check can run without changing the cost or lifecycle of `trinity-e2e:e2e`.
+ * Keeping its server and output here means the small component-canvas check can run without
+ * changing the cost or lifecycle of the canonical application journeys.
  */
 export default defineConfig({
-  ...nxE2EPreset(import.meta.dirname, { testDir: './storybook' }),
-  retries: 0,
-  workers: 1,
-  timeout: 30_000,
-  ...e2eReportConfig('storybook'),
-  use: {
-    baseURL,
-    trace: 'retain-on-failure',
-  },
+  ...lifecycle,
   projects: [
     {
       name: 'chromium',

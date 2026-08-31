@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test';
+import { registeredE2ESuite } from './registry/index.mts';
 import { e2eReportConfig } from './support/playwright-config.mts';
 
 /**
@@ -17,7 +18,7 @@ export default defineConfig({
   // Electron specs live alongside this config in the `trinity-e2e` project.
   testDir: './electron',
   testMatch: '**/*.electron.spec.mts',
-  ...e2eReportConfig('electron'),
+  ...e2eReportConfig(registeredE2ESuite('electron.full')),
   // Each test launches its own Electron instance — keep them serial.
   fullyParallel: false,
   workers: 1,
@@ -28,5 +29,4 @@ export default defineConfig({
     ignoreHTTPSErrors: true,
     trace: 'retain-on-failure',
   },
-  reporter: process.env['CI'] ? 'dot' : 'list',
 });

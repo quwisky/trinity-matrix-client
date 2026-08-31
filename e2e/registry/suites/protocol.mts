@@ -19,7 +19,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     contractTypes: ['protocol', 'security'],
     currentTarget: 'trinity-e2e:protocol-verify-sas',
     ciTier: 'local-only',
-    targetArtifactRoot: 'dist/.playwright/protocol/verify-sas',
+    targetArtifactRoot: 'dist/.playwright/trinity-e2e-protocol/<run-id>',
     sourceEntrypoints: [
       'e2e/features/verify-sas.mjs',
       'e2e/runners/verify-sas-run.mjs',
@@ -32,7 +32,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     contractTypes: ['protocol', 'security'],
     currentTarget: 'trinity-e2e:protocol-verify-qr',
     ciTier: 'pull-request',
-    targetArtifactRoot: 'dist/.playwright/protocol/verify-qr',
+    targetArtifactRoot: 'dist/.playwright/trinity-e2e-protocol/<run-id>',
     sourceEntrypoints: [
       'e2e/features/verify-qr.mjs',
       'e2e/runners/verify-qr-run.mjs',
@@ -45,7 +45,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     contractTypes: ['journey', 'protocol', 'security'],
     currentTarget: 'trinity-e2e:protocol-media',
     ciTier: 'scheduled',
-    targetArtifactRoot: 'dist/.playwright/protocol/media',
+    targetArtifactRoot: 'dist/.playwright/trinity-e2e-protocol/<run-id>',
     sourceEntrypoints: [
       'e2e/features/send-media.mjs',
       'e2e/runners/send-media-run.mjs',
@@ -58,7 +58,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     contractTypes: ['journey', 'protocol'],
     currentTarget: 'trinity-e2e:protocol-threads',
     ciTier: 'scheduled',
-    targetArtifactRoot: 'dist/.playwright/protocol/threads',
+    targetArtifactRoot: 'dist/.playwright/trinity-e2e-protocol/<run-id>',
     sourceEntrypoints: [
       'e2e/features/threads.mjs',
       'e2e/runners/threads-run.mjs',
@@ -71,7 +71,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     contractTypes: ['journey', 'protocol'],
     currentTarget: 'trinity-e2e:protocol-reply',
     ciTier: 'scheduled',
-    targetArtifactRoot: 'dist/.playwright/protocol/reply',
+    targetArtifactRoot: 'dist/.playwright/trinity-e2e-protocol/<run-id>',
     sourceEntrypoints: ['e2e/features/reply.mjs', 'e2e/runners/reply-run.mjs'],
   },
   {
@@ -81,7 +81,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     contractTypes: ['journey', 'protocol'],
     currentTarget: 'trinity-e2e:protocol-spaces',
     ciTier: 'scheduled',
-    targetArtifactRoot: 'dist/.playwright/protocol/spaces',
+    targetArtifactRoot: 'dist/.playwright/trinity-e2e-protocol/<run-id>',
     sourceEntrypoints: [
       'e2e/features/spaces.mjs',
       'e2e/runners/spaces-run.mjs',
@@ -94,7 +94,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     contractTypes: ['journey', 'protocol'],
     currentTarget: 'trinity-e2e:protocol-rooms',
     ciTier: 'scheduled',
-    targetArtifactRoot: 'dist/.playwright/protocol/rooms',
+    targetArtifactRoot: 'dist/.playwright/trinity-e2e-protocol/<run-id>',
     sourceEntrypoints: ['e2e/features/rooms.mjs', 'e2e/runners/rooms-run.mjs'],
   },
   {
@@ -104,7 +104,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     contractTypes: ['journey', 'protocol'],
     currentTarget: 'trinity-e2e:protocol-search',
     ciTier: 'scheduled',
-    targetArtifactRoot: 'dist/.playwright/protocol/search',
+    targetArtifactRoot: 'dist/.playwright/trinity-e2e-protocol/<run-id>',
     sourceEntrypoints: [
       'e2e/features/search.mjs',
       'e2e/runners/search-run.mjs',
@@ -117,7 +117,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     contractTypes: ['journey', 'protocol'],
     currentTarget: 'trinity-e2e:protocol-emoji',
     ciTier: 'scheduled',
-    targetArtifactRoot: 'dist/.playwright/protocol/emoji',
+    targetArtifactRoot: 'dist/.playwright/trinity-e2e-protocol/<run-id>',
     sourceEntrypoints: ['e2e/features/emoji.mjs', 'e2e/runners/emoji-run.mjs'],
   },
   {
@@ -134,7 +134,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     timeoutClass: 'medium',
     canonicalScript: 'e2e:protocol',
     currentArtifactRoot: 'e2e/.artifacts',
-    targetArtifactRoot: 'dist/.playwright/protocol/verify-sas-selfcheck',
+    targetArtifactRoot: 'dist/.playwright/trinity-e2e-protocol/<run-id>',
     sourceEntrypoints: ['e2e/features/verify-sas-selfcheck.mjs'],
   },
   {
@@ -151,7 +151,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     timeoutClass: 'medium',
     canonicalScript: 'e2e:protocol',
     currentArtifactRoot: 'e2e/.artifacts',
-    targetArtifactRoot: 'dist/.playwright/protocol/crypto-spike-chromium',
+    targetArtifactRoot: 'dist/.playwright/trinity-e2e-protocol/<run-id>',
     sourceEntrypoints: ['e2e/features/crypto-spike.mjs'],
   },
   {
@@ -168,7 +168,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     timeoutClass: 'medium',
     canonicalScript: 'e2e:protocol',
     currentArtifactRoot: 'e2e/.artifacts',
-    targetArtifactRoot: 'dist/.playwright/protocol/crypto-spike-webkit',
+    targetArtifactRoot: 'dist/.playwright/trinity-e2e-protocol/<run-id>',
     sourceEntrypoints: ['e2e/features/crypto-spike.mjs'],
   },
   {
@@ -185,7 +185,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     timeoutClass: 'medium',
     canonicalScript: 'e2e:protocol',
     currentArtifactRoot: 'e2e/.artifacts',
-    targetArtifactRoot: 'dist/.playwright/protocol/login-smoke',
+    targetArtifactRoot: 'dist/.playwright/trinity-e2e-protocol/<run-id>',
     sourceEntrypoints: ['e2e/features/smoke-login.mjs'],
   },
 ]);

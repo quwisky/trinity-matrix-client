@@ -87,6 +87,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Web/PWA and visual browser contracts now have lifecycle-owned Nx projects.**
+  `trinity-e2e-web` owns production startup, routing, service-worker and offline-shell coverage;
+  `trinity-e2e-components` owns Storybook, styling, cross-browser scrollbar and production-renderer
+  targets. Small configs compose the shared invocation/report builders, while retained public
+  commands delegate through registry-checked compatibility aliases. Historical phase names are
+  gone from executable test paths and selectors. Playwright evidence now lands under
+  `dist/.playwright/<project>/<run-id>/` with registry metadata plus mergeable blob and JUnit
+  reports, and production renderer reuse is manifest-verified before Web, Electron or Android
+  consume the shared payload.
+
 - **System-level tests now have one executable ownership contract.** A typed E2E registry
   classifies all 22 current browser, Web/PWA, component, protocol, Electron and Android suites by
   lifecycle, capability, prerequisites, CI tier, serialization, timeout, artifacts, commands and
@@ -142,7 +152,7 @@ All notable changes to this project are documented here. The format is based on
   `@trinity/application/runtime` owns the concrete startup/session adapters, Workspace presenters,
   cross-capability providers and lifetime subscription behind `provideTrinityApplication()` and
   `startApplicationRuntime()`. The production build still emits the same flat `www/` artifact
-  consumed unchanged by Capacitor and Electron. A Docker-free `trinity-e2e:web-e2e` Nx target now
+  consumed unchanged by Capacitor and Electron. A Docker-free `trinity-e2e-web:production-pwa` Nx target now
   verifies production startup, unknown deep-link repair, the installable manifest, service-worker
   control, offline shell routing and cached crypto WASM. Poll presentation now accepts the deeply
   immutable Conversations model, restoring a green production Angular compilation.

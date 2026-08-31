@@ -1,8 +1,14 @@
 import { defineConfig, devices } from '@playwright/test';
-import { nxE2EPreset } from '@nx/playwright/preset';
-import { e2eEndpoint, e2eReportConfig } from './support/playwright-config.mts';
+import { registeredE2ESuite } from '../registry/index.mts';
+import { e2eLifecycleConfig } from '../support/playwright-config.mts';
 
-const baseURL = e2eEndpoint('application');
+const lifecycle = e2eLifecycleConfig({
+  suite: registeredE2ESuite('components.styling'),
+  projectRoot: import.meta.dirname,
+  testDir: './styling',
+  endpoint: 'application',
+  timeout: 30_000,
+});
 
 /**
  * Browser-level CSS capability checks, deliberately separate from the Matrix journeys.
@@ -12,14 +18,6 @@ const baseURL = e2eEndpoint('application');
  * regression into a Docker-backed test.
  */
 export default defineConfig({
-  ...nxE2EPreset(import.meta.dirname, { testDir: './styling' }),
-  retries: 0,
-  workers: 1,
-  timeout: 30_000,
-  ...e2eReportConfig('styling'),
-  use: {
-    baseURL,
-    trace: 'retain-on-failure',
-  },
+  ...lifecycle,
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 });

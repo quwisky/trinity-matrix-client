@@ -426,7 +426,7 @@ hashing, a budget overage — passes all 79 spec files and is caught only by
 
 ### The production Web/PWA host contract
 
-`pnpm e2e:web` runs the `trinity-e2e:web-e2e` Nx target without Docker. The support wrapper
+`pnpm e2e:web` runs the `trinity-e2e-web:production-pwa` Nx target without Docker. The support wrapper
 builds the production configuration and its dynamic server exposes the exact shared `www/`
 artifact. The check enters on an unknown deep link,
 waits for Application Runtime to reach the login surface, verifies the manifest and crypto WASM,
@@ -665,12 +665,12 @@ The release pipeline runs no browser or Electron end-to-end test at all — see
 [CI and releases](ci-and-releases.md) for what does gate a tag, and for the
 repository-level invariant specs that guard configuration a green run cannot see.
 
-## Shipped-interface responsive checks and pull-request proof
+## Production-renderer responsive checks and pull-request proof
 
-Phase 7 provides a separate real-application semantic and geometry gate:
+The visual lifecycle provides a separate real-application semantic and geometry gate:
 
 ```bash
-pnpm e2e:ui:shipped
+pnpm exec nx run trinity-e2e-components:production-renderer
 ```
 
 It creates and records a production build, then drives seven representative cross-cutting
@@ -678,7 +678,8 @@ viewport/device profiles against disposable Synapse, including genuine WebKit pl
 and 320x568 mobile descriptors rather than resized desktop Chromium. The suite checks geometry,
 horizontal overflow, rendered contrast, focus, accessible names, unread content, safe encryption
 setup and the production reduced-motion contract with Trinity's production typography. See
-[`e2e/phase7/README.md`](../../e2e/phase7/README.md) for the matrix.
+[`e2e/components/production-renderer/README.md`](../../e2e/components/production-renderer/README.md)
+for the matrix.
 
 Visual proof is a review artifact, not source. Capture screenshots and GIFs under ignored
 Playwright output or another temporary directory, upload them directly to the pull request, then
@@ -686,13 +687,13 @@ discard the local copies. Never commit prototypes, proof media or pixel baseline
 screenshots, traces and videos remain useful diagnostics, but they stay in ignored local output or
 short-lived CI artifacts.
 
-For cross-platform rollout evidence, the shipped-interface command builds `www/` once and hashes it
+For cross-platform rollout evidence, the production-renderer target builds `www/` once and hashes it
 before either wrapper copies it:
 
 ```bash
-pnpm e2e:ui:shipped
+pnpm exec nx run trinity-e2e-components:production-renderer
 pnpm electron:build:prebuilt
-TRINITY_E2E_PREBUILT_WWW=1 pnpm e2e:android -- --grep @phase7-smoke
+TRINITY_E2E_PREBUILT_WWW=1 pnpm e2e:android -- --grep @renderer-smoke
 pnpm bundle:manifest:verify
 ```
 

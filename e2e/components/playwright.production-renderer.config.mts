@@ -1,32 +1,38 @@
 import { defineConfig, devices } from '@playwright/test';
-import { nxE2EPreset } from '@nx/playwright/preset';
-import { appE2EConfig } from './playwright/support/app-e2e-config.mts';
-import { DESIGN_VIEWPORTS } from './playwright/support/design-viewports.mts';
-import { e2eEndpoint, e2eReportConfig } from './support/playwright-config.mts';
+import { registeredE2ESuite } from '../registry/index.mts';
+import { appE2EConfig } from '../playwright/support/app-e2e-config.mts';
+import { DESIGN_VIEWPORTS } from '../playwright/support/design-viewports.mts';
+import {
+  e2eEndpoint,
+  e2eLifecycleConfig,
+} from '../support/playwright-config.mts';
 
-const baseURL = e2eEndpoint('application');
-const appConfig = appE2EConfig(baseURL);
+const lifecycle = e2eLifecycleConfig({
+  suite: registeredE2ESuite('components.production-renderer'),
+  projectRoot: import.meta.dirname,
+  testDir: './production-renderer',
+  endpoint: 'application',
+  timeout: 180_000,
+});
+const appConfig = appE2EConfig(e2eEndpoint('application'));
 const { defaultBrowserType: _safariBrowser, ...desktopSafari } =
   devices['Desktop Safari'];
 
 /**
- * Real shipped-interface semantic and responsive coverage for Phase 7.
+ * Real production-renderer semantic and responsive coverage.
  *
  * Seven projects cover a representative cross-cutting appearance, density, viewport and browser
  * matrix without storing pixel baselines in the repository.
  */
 export default defineConfig({
-  ...nxE2EPreset(import.meta.dirname, { testDir: './phase7' }),
+  ...lifecycle,
   ...appConfig,
-  retries: 0,
-  workers: 1,
-  timeout: 180_000,
-  ...e2eReportConfig('phase7'),
   use: {
+    ...lifecycle.use,
     ...appConfig.use,
     locale: 'en-US',
     // The PWA worker turns Chromium's local self-signed Synapse fetch into a synthetic 504.
-    // This suite owns shipped UI/layout evidence; service-worker behavior has separate tests.
+    // This suite owns renderer/layout evidence; service-worker behavior has separate tests.
     serviceWorkers: 'block',
     timezoneId: 'UTC',
   },

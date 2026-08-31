@@ -74,8 +74,16 @@ function imports(source) {
 }
 
 export function validateWebHostContract(input, errors) {
-  const { project, e2eProject, main, composition, capacitor, electron, ngsw } =
-    input;
+  const {
+    project,
+    e2eProject,
+    webE2EProject,
+    main,
+    composition,
+    capacitor,
+    electron,
+    ngsw,
+  } = input;
   const executableMain = withoutComments(main, false);
   const executableComposition = withoutComments(composition, false);
   for (const tag of ['type:app', 'role:app', 'capability:composition']) {
@@ -147,11 +155,19 @@ export function validateWebHostContract(input, errors) {
   }
 
   if (
-    e2eProject.targets?.['web-e2e']?.options?.command !==
-    'node e2e/support/run-playwright.mts --config=e2e/playwright.web.config.mts --build=trinity:build:production'
+    webE2EProject.targets?.['production-pwa']?.options?.command !==
+    'node e2e/support/run-playwright.mts --config=e2e/web/playwright.production-pwa.config.mts --build=trinity:build:production --bundle-manifest'
   ) {
     errors.push(
       'Web host must expose the production Web/PWA Playwright target',
+    );
+  }
+  if (
+    e2eProject.targets?.['web-e2e']?.options?.command !==
+    'pnpm exec nx run trinity-e2e-web:production-pwa'
+  ) {
+    errors.push(
+      'Web host compatibility target must delegate to trinity-e2e-web',
     );
   }
   if (!/webDir:\s*['"]www['"]/u.test(capacitor)) {
@@ -185,6 +201,7 @@ export function validateCurrentWebHost() {
     {
       project: readJson('apps/trinity/project.json'),
       e2eProject: readJson('e2e/project.json'),
+      webE2EProject: readJson('e2e/web/project.json'),
       main: read('apps/trinity/src/main.ts'),
       composition: read(
         'libs/application/runtime/src/lib/composition/trinity-application.providers.ts',

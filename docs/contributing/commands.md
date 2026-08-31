@@ -183,7 +183,8 @@ are iterating in Xcode or Android Studio.
 | `pnpm exec nx run trinity-ios:verify-native`     | Unsigned iPhone Simulator build after sync           | macOS, Xcode                             |
 
 The `*:prebuilt` commands exist for cross-platform evidence, not ordinary iteration.
-`pnpm e2e:ui:shipped` creates a production `www/`, records it, and tests that payload; Electron
+`pnpm exec nx run trinity-e2e-components:production-renderer` creates a production `www/`, records
+it, and tests that payload; Electron
 and Android can then copy it without rebuilding. `pnpm bundle:manifest:verify` proves both wrapper
 trees have the exact recorded web file set and bytes; only Android's named `cordova.js` and
 `cordova_plugins.js` bootstrap files are allowed in addition.
@@ -197,16 +198,16 @@ The package scripts above are stable aliases for the explicit `trinity-android` 
 The typed suite registry gives every environment one canonical entrypoint while focused historical
 commands remain behavior-compatible Nx aliases during the migration:
 
-| Command               | Selection                                                         |
-| --------------------- | ----------------------------------------------------------------- |
-| `pnpm e2e`            | Pull-request-classified suites                                    |
-| `pnpm e2e:all`        | Every suite available on this host                                |
-| `pnpm e2e:browser`    | Canonical Synapse browser journeys and shipped-interface evidence |
-| `pnpm e2e:web`        | Production Web/PWA contract                                       |
-| `pnpm e2e:components` | Storybook, styling and scrollbar contracts                        |
-| `pnpm e2e:protocol`   | Verification, crypto, media and other protocol/system drivers     |
-| `pnpm e2e:electron`   | Electron shell smoke and full desktop journeys                    |
-| `pnpm e2e:android`    | Installed API 36 WebView journeys                                 |
+| Command               | Selection                                                       |
+| --------------------- | --------------------------------------------------------------- |
+| `pnpm e2e`            | Pull-request-classified suites                                  |
+| `pnpm e2e:all`        | Every suite available on this host                              |
+| `pnpm e2e:browser`    | Canonical Synapse browser journeys                              |
+| `pnpm e2e:web`        | Production Web/PWA contract                                     |
+| `pnpm e2e:components` | Storybook, styling, scrollbar and production-renderer contracts |
+| `pnpm e2e:protocol`   | Verification, crypto, media and other protocol/system drivers   |
+| `pnpm e2e:electron`   | Electron shell smoke and full desktop journeys                  |
+| `pnpm e2e:android`    | Installed API 36 WebView journeys                               |
 
 `pnpm e2e:all` is the E2E portion of the local delivery gate while GitHub Actions capacity is
 unavailable. It validates the registry and all selected prerequisites before starting the first

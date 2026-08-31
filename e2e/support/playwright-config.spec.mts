@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   e2eArtifactPath,
   e2eEndpoint,
+  e2eLifecycleConfig,
   e2eReportConfig,
 } from './playwright-config.mts';
 import {
@@ -19,6 +20,16 @@ const previousSession = process.env[E2E_SESSION_ENV];
 const previousPluginWorker = (
   globalThis as typeof globalThis & { NX_PLUGIN_WORKER?: boolean }
 ).NX_PLUGIN_WORKER;
+
+const reportingSuite = {
+  id: 'web.production-pwa',
+  environment: 'web',
+  capabilities: ['composition', 'host'],
+  contractTypes: ['host', 'journey'],
+  targetProject: 'trinity-e2e-web',
+  prerequisites: ['playwright-chromium'],
+  ciTier: 'local-only',
+} as const;
 
 afterEach(() => {
   if (previousSession === undefined) delete process.env[E2E_SESSION_ENV];
@@ -65,7 +76,9 @@ describe('Playwright config primitives', () => {
     delete (globalThis as typeof globalThis & { NX_PLUGIN_WORKER?: boolean })
       .NX_PLUGIN_WORKER;
     expect(() => e2eEndpoint('application')).toThrow(E2E_SESSION_ENV);
-    expect(() => e2eArtifactPath('browser', 'output')).toThrow(E2E_SESSION_ENV);
+    expect(() =>
+      e2eArtifactPath('trinity-e2e-web', 'web.production-pwa', 'output'),
+    ).toThrow(E2E_SESSION_ENV);
   });
 
   it('exposes inert paths only to Nx project-graph discovery', () => {
@@ -74,19 +87,60 @@ describe('Playwright config primitives', () => {
       globalThis as typeof globalThis & { NX_PLUGIN_WORKER?: boolean }
     ).NX_PLUGIN_WORKER = true;
     expect(e2eEndpoint('application')).toBe('http://127.0.0.1:1');
-    expect(e2eArtifactPath('browser', 'output')).toContain(
-      'nx-config-discovery/browser/output',
+    expect(
+      e2eArtifactPath('trinity-e2e-web', 'web.production-pwa', 'output'),
+    ).toContain(
+      'trinity-e2e-web/nx-config-discovery/web.production-pwa/output',
     );
   });
 
-  it('binds endpoints and reports to the owner-scoped artifact root', () => {
+  it('binds endpoints and reports to the project and owner-scoped run root', () => {
     const descriptor = installSession();
     expect(e2eEndpoint('application')).toBe(descriptor.endpoints.application);
-    expect(e2eArtifactPath('browser', 'test-output')).toBe(
-      join(descriptor.artifactsRoot, 'browser', 'test-output'),
+    expect(
+      e2eArtifactPath('trinity-e2e-web', 'web.production-pwa', 'test-output'),
+    ).toBe(
+      join(
+        descriptor.workspaceRoot,
+        'dist/.playwright/trinity-e2e-web/config-session/web.production-pwa/test-output',
+      ),
     );
-    expect(e2eReportConfig('browser').outputDir).toBe(
-      join(descriptor.artifactsRoot, 'browser', 'test-output'),
+    const report = e2eReportConfig(reportingSuite);
+    expect(report.outputDir).toBe(
+      join(
+        descriptor.workspaceRoot,
+        'dist/.playwright/trinity-e2e-web/config-session/web.production-pwa/test-output',
+      ),
     );
+    expect(report.metadata).toMatchObject({
+      'trinity.e2e.suite': 'web.production-pwa',
+      'trinity.e2e.project': 'trinity-e2e-web',
+    });
+    expect(JSON.stringify(report.reporter)).toContain('blob-report');
+    expect(JSON.stringify(report.reporter)).toContain('junit/results.xml');
+  });
+
+  it('composes lifecycle defaults without hiding suite-owned browser projects', () => {
+    installSession();
+    const config = e2eLifecycleConfig({
+      suite: reportingSuite,
+      projectRoot: import.meta.dirname,
+      testDir: '.',
+      endpoint: 'application',
+      timeout: 90_000,
+      expectTimeout: 30_000,
+    });
+
+    expect(config).toMatchObject({
+      retries: 0,
+      workers: 1,
+      timeout: 90_000,
+      expect: { timeout: 30_000 },
+      use: {
+        baseURL: 'http://127.0.0.1:41001',
+        trace: 'retain-on-failure',
+      },
+    });
+    expect(config.projects).toBeUndefined();
   });
 });

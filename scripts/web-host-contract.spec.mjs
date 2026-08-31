@@ -33,8 +33,17 @@ function validInput() {
       targets: {
         'web-e2e': {
           options: {
+            command: 'pnpm exec nx run trinity-e2e-web:production-pwa',
+          },
+        },
+      },
+    },
+    webE2EProject: {
+      targets: {
+        'production-pwa': {
+          options: {
             command:
-              'node e2e/support/run-playwright.mts --config=e2e/playwright.web.config.mts --build=trinity:build:production',
+              'node e2e/support/run-playwright.mts --config=e2e/web/playwright.production-pwa.config.mts --build=trinity:build:production --bundle-manifest',
           },
         },
       },

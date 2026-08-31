@@ -140,6 +140,36 @@ describe('E2E suite registry', () => {
     );
   });
 
+  it('requires migrated lifecycle targets and artifacts to use their durable owner', () => {
+    const artifactSnapshot = registrySnapshot();
+    const artifactWeb = artifactSnapshot.suites.find(
+      ({ id }) => id === 'web.production-pwa',
+    );
+    artifactWeb.currentArtifactRoot = 'dist/.playwright/web';
+
+    expect(validateRegistry(artifactSnapshot)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          'web.production-pwa current artifacts must use dist/.playwright/trinity-e2e-web/<run-id>',
+        ),
+      ]),
+    );
+
+    const targetSnapshot = registrySnapshot();
+    const targetWeb = targetSnapshot.suites.find(
+      ({ id }) => id === 'web.production-pwa',
+    );
+    targetWeb.currentTarget = 'trinity-e2e:web-e2e';
+
+    expect(validateRegistry(targetSnapshot)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          'web.production-pwa bypasses its active lifecycle project',
+        ),
+      ]),
+    );
+  });
+
   it('rejects canonical runner bypasses and incomplete CI tiers', () => {
     const snapshot = registrySnapshot();
     snapshot.packageScripts.find(({ name }) => name === 'e2e:web').command =

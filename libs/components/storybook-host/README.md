@@ -8,7 +8,7 @@ public design-system categories plus the retained capability presentation storie
 ```
 pnpm exec nx storybook components-storybook-host        # serve
 pnpm exec nx build-storybook components-storybook-host  # static build
-pnpm exec nx run trinity-e2e:storybook-e2e              # palette × mode canvas check
+pnpm exec nx run trinity-e2e-components:storybook       # palette × mode canvas check
 ```
 
 The static build lands in `dist/storybook/components-storybook-host`, not in the Storybook

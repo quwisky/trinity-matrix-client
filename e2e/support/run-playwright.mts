@@ -13,6 +13,7 @@ interface Arguments {
   readonly config: string;
   readonly resources: readonly string[];
   readonly buildTarget?: string;
+  readonly bundleManifest: boolean;
   readonly platform?: string;
   readonly forwarded: readonly string[];
 }
@@ -21,6 +22,7 @@ function parseArguments(argv: readonly string[]): Arguments {
   let config: string | undefined;
   let buildTarget: string | undefined;
   let platform: string | undefined;
+  let bundleManifest = false;
   const resources: string[] = [];
   const separator = argv.indexOf('--');
   const ownArguments = separator < 0 ? argv : argv.slice(0, separator);
@@ -29,6 +31,7 @@ function parseArguments(argv: readonly string[]): Arguments {
     if (argument.startsWith('--config=')) config = argument.slice(9);
     else if (argument.startsWith('--build=')) buildTarget = argument.slice(8);
     else if (argument.startsWith('--platform=')) platform = argument.slice(11);
+    else if (argument === '--bundle-manifest') bundleManifest = true;
     else if (argument.startsWith('--resource='))
       resources.push(argument.slice(11));
     // Nx run-commands appends forwarded target arguments directly to the command,
@@ -39,7 +42,14 @@ function parseArguments(argv: readonly string[]): Arguments {
   if (separator >= 0) forwarded.push(...argv.slice(separator + 1));
   if (!config)
     throw new Error('E2E Playwright runner requires --config=<path>');
-  return { config, resources, buildTarget, platform, forwarded };
+  return {
+    config,
+    resources,
+    buildTarget,
+    bundleManifest,
+    platform,
+    forwarded,
+  };
 }
 
 export async function runPlaywright(argv: readonly string[]): Promise<number> {
@@ -52,11 +62,13 @@ export async function runPlaywright(argv: readonly string[]): Promise<number> {
       workspaceRoot,
       signal: termination.signal,
     });
-    const environment = {
+    const environment: NodeJS.ProcessEnv = {
       ...invocation.environment,
       ...(options.platform ? { TRINITY_E2E_PLATFORM: options.platform } : {}),
     };
-    if (options.buildTarget) {
+    const reusingPrebuiltBundle =
+      options.bundleManifest && process.env['TRINITY_E2E_PREBUILT_WWW'] === '1';
+    if (options.buildTarget && !reusingPrebuiltBundle) {
       const build = await runManagedCommand(
         'pnpm',
         ['exec', 'nx', 'run', options.buildTarget],
@@ -68,6 +80,27 @@ export async function runPlaywright(argv: readonly string[]): Promise<number> {
         },
       );
       if (build.status !== 0) return build.status;
+    }
+    if (options.bundleManifest) {
+      const manifest = await runManagedCommand(
+        process.execPath,
+        reusingPrebuiltBundle
+          ? [
+              'scripts/web-bundle-manifest.mjs',
+              'verify',
+              'dist/web-bundle-manifest.json',
+              'www',
+            ]
+          : ['scripts/web-bundle-manifest.mjs', 'write', 'www'],
+        {
+          cwd: workspaceRoot,
+          environment,
+          timeout: 60_000,
+          signal: termination.signal,
+        },
+      );
+      if (manifest.status !== 0) return manifest.status;
+      environment['TRINITY_E2E_PREBUILT_WWW'] = '1';
     }
     const result = await runManagedCommand(
       'pnpm',

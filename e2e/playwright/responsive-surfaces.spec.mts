@@ -44,9 +44,9 @@ async function seedImageRoom(
   hs: string,
   runId: string,
 ): Promise<SeededRoom> {
-  const user = `phase6-${runId}`;
+  const user = `responsive-${runId}`;
   const pass = `${user}-pass`;
-  const roomName = `Phase 6 layout ${runId}`;
+  const roomName = `Responsive surfaces ${runId}`;
   await registerUser(request, user, pass);
 
   const loginResponse = await request.post(`${hs}/_matrix/client/v3/login`, {
@@ -68,7 +68,7 @@ async function seedImageRoom(
   const roomId = ((await roomResponse.json()) as { room_id: string }).room_id;
 
   const uploadResponse = await request.post(
-    `${hs}/_matrix/media/v3/upload?filename=phase-6-lightbox.png`,
+    `${hs}/_matrix/media/v3/upload?filename=responsive-lightbox.png`,
     {
       headers: { ...headers, 'Content-Type': 'image/png' },
       data: PNG_1X1,
@@ -84,7 +84,7 @@ async function seedImageRoom(
       headers,
       data: {
         msgtype: 'm.image',
-        body: 'phase-6-lightbox.png',
+        body: 'responsive-lightbox.png',
         url: mxc,
         info: { mimetype: 'image/png', size: PNG_1X1.length, w: 1, h: 1 },
       },
@@ -151,7 +151,7 @@ async function expectInsideViewport(
   ).toBeLessThanOrEqual(viewport!.height + 1);
 }
 
-test.describe('Phase 6 responsive surfaces', () => {
+test.describe('Responsive auth, crypto, and overlay surfaces', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
   test.skip(
     isAndroidE2E,
@@ -265,12 +265,14 @@ test.describe('Phase 6 responsive surfaces', () => {
     await openRoom(page, roomName);
 
     const source = page.getByRole('button', {
-      name: 'Open image phase-6-lightbox.png',
+      name: 'Open image responsive-lightbox.png',
     });
     await expect(source).toBeVisible({ timeout: 20_000 });
     await source.click();
 
-    const dialog = page.getByRole('dialog', { name: 'phase-6-lightbox.png' });
+    const dialog = page.getByRole('dialog', {
+      name: 'responsive-lightbox.png',
+    });
     const close = page.getByTestId('lightbox-close');
     await expect(dialog).toBeVisible({ timeout: 20_000 });
     await expect(close).toBeVisible();

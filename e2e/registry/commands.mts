@@ -53,7 +53,7 @@ export const E2E_PACKAGE_SCRIPTS = [
     name: 'e2e:browser',
     command: 'nx run trinity-e2e:e2e-browser',
     kind: 'canonical',
-    suiteIds: ['browser.canonical', 'browser.shipped-interface'],
+    suiteIds: ['browser.canonical'],
   },
   {
     name: 'e2e:components',
@@ -63,6 +63,7 @@ export const E2E_PACKAGE_SCRIPTS = [
       'components.storybook',
       'components.styling',
       'components.scrollbars',
+      'components.production-renderer',
     ],
   },
   {
@@ -168,9 +169,9 @@ export const E2E_PACKAGE_SCRIPTS = [
   },
   {
     name: 'e2e:ui:shipped',
-    command: 'nx run trinity-e2e:phase7-e2e',
+    command: 'nx run trinity-e2e-components:production-renderer',
     kind: 'compatibility',
-    suiteIds: ['browser.shipped-interface'],
+    suiteIds: ['components.production-renderer'],
     removalAfterRelease: compatibilityRelease,
   },
   {
@@ -228,15 +229,15 @@ export const E2E_CI_ENTRYPOINTS = [
     suiteIds: ['electron.full'],
   },
   {
-    command: 'pnpm exec nx run trinity-e2e:storybook-e2e',
+    command: 'pnpm exec nx run trinity-e2e-components:storybook',
     suiteIds: ['components.storybook'],
   },
   {
-    command: 'pnpm exec nx run trinity-e2e:phase7-e2e',
-    suiteIds: ['browser.shipped-interface'],
+    command: 'pnpm exec nx run trinity-e2e-components:production-renderer',
+    suiteIds: ['components.production-renderer'],
   },
   {
-    command: 'pnpm exec nx run trinity-e2e:styling-e2e',
+    command: 'pnpm exec nx run trinity-e2e-components:styling',
     suiteIds: ['components.styling'],
   },
   {

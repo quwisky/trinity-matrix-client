@@ -24,7 +24,7 @@ test.afterAll(async () => {
   await app?.close();
 });
 
-test('@phase7-smoke boots the app over the trinity:// custom scheme', async () => {
+test('@renderer-smoke boots the app over the trinity:// custom scheme', async () => {
   // Served via the privileged trinity://app scheme (secure context), not file://.
   await expect
     .poll(() => page.evaluate(() => location.origin))

@@ -20,7 +20,7 @@
       "//": "Declared, not inferred: @nx/eslint only infers a lint target for projects with .ts/.js sources, and every file here is .mts — so removing 'e2e' from globalIgnores would otherwise have changed nothing about what `pnpm lint` actually runs.",
       "executor": "nx:run-commands",
       "options": {
-        "command": "eslint \"**/*.mts\"",
+        "command": "eslint \"**/*.mts\" --ignore-pattern \"components/**\" --ignore-pattern \"support/**\" --ignore-pattern \"web/**\"",
         "cwd": "{projectRoot}"
       }
     },
@@ -31,49 +31,39 @@
       }
     },
     "storybook-e2e": {
-      "//": "A separate browser lifecycle from the app E2E target: static Storybook needs no Synapse, and this target is intentionally uncached because its webServer builds component stories and theme files outside the e2e project input graph.",
+      "//": "Compatibility alias; lifecycle ownership is trinity-e2e-components:storybook.",
       "cache": false,
       "executor": "nx:run-commands",
       "options": {
-        "command": "node e2e/support/run-playwright.mts --config=e2e/playwright.storybook.config.mts --build=components-storybook-host:build-storybook",
+        "command": "pnpm exec nx run trinity-e2e-components:storybook",
         "cwd": "{workspaceRoot}"
       }
     },
     "web-e2e": {
-      "//": "Production Web/PWA startup, routing and offline checks against the exact shared www artifact. No Synapse or Docker is required.",
+      "//": "Compatibility alias; lifecycle ownership is trinity-e2e-web:production-pwa.",
       "cache": false,
       "executor": "nx:run-commands",
       "options": {
-        "command": "node e2e/support/run-playwright.mts --config=e2e/playwright.web.config.mts --build=trinity:build:production",
+        "command": "pnpm exec nx run trinity-e2e-web:production-pwa",
         "cwd": "{workspaceRoot}"
       }
     },
-    "phase7-e2e": {
-      "//": "Shipped real-app semantic, responsive, contrast and geometry coverage. Serialized because it owns the fixed Synapse stack and deterministic accounts.",
-      "cache": false,
-      "parallelism": false,
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "node ../scripts/run-phase7-e2e.mjs",
-        "cwd": "{projectRoot}"
-      }
-    },
     "styling-e2e": {
-      "//": "A separate browser lifecycle from the Synapse-backed app journeys. It is intentionally uncached because its webServer builds application/theme files outside the e2e project input graph.",
+      "//": "Compatibility alias; lifecycle ownership is trinity-e2e-components:styling.",
       "cache": false,
       "executor": "nx:run-commands",
       "options": {
-        "command": "node e2e/support/run-playwright.mts --config=e2e/playwright.styling.config.mts --build=trinity:build:development",
+        "command": "pnpm exec nx run trinity-e2e-components:styling",
         "cwd": "{workspaceRoot}"
       }
     },
     "scrollbars-e2e": {
-      "//": "Focused Chromium, Firefox and WebKit scrollbar contract against the real app and disposable Synapse.",
+      "//": "Compatibility alias; lifecycle ownership is trinity-e2e-components:scrollbars.",
       "cache": false,
       "parallelism": false,
       "executor": "nx:run-commands",
       "options": {
-        "command": "node e2e/support/run-playwright.mts --config=e2e/playwright.scrollbars.config.mts --build=trinity:build:development --resource=synapse",
+        "command": "pnpm exec nx run trinity-e2e-components:scrollbars",
         "cwd": "{workspaceRoot}"
       }
     },

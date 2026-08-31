@@ -175,15 +175,15 @@ jobs:
 
       # Separate from the Synapse suite: this builds and serves the component Storybook, then
       # verifies its palette × mode canvas and focused text contrast in the installed browser.
-      - run: pnpm exec nx run trinity-e2e:storybook-e2e
+      - run: pnpm exec nx run trinity-e2e-components:storybook
 
       # Real production UI semantics, contrast and geometry across the canonical viewport matrix.
       # Review screenshots are PR uploads, never committed pixel baselines.
-      - run: pnpm exec nx run trinity-e2e:phase7-e2e
+      - run: pnpm exec nx run trinity-e2e-components:production-renderer
 
       # Separate from the Synapse suite: this serves the already-built app and checks CSS
       # capability queries in desktop and real mobile-device browser profiles.
-      - run: pnpm exec nx run trinity-e2e:styling-e2e
+      - run: pnpm exec nx run trinity-e2e-components:styling
 
       # No env var needed to make this strict: the harness's graceful "Docker is missing,
       # skip the authenticated specs" fallback turns itself off whenever CI is set, so a
@@ -203,15 +203,11 @@ jobs:
         if: always()
         with:
           name: playwright-report
-          # blob-report is included because the Nx preset turns that reporter on whenever
-          # CI is set (@nx/playwright preset.js), and it is what merges into a report.
+          # Each lifecycle config emits mergeable blob and JUnit reports plus raw output under
+          # one project/run id, so a single recursive upload preserves the complete evidence.
           path: |
-            dist/.playwright/e2e/playwright-report/
-            dist/.playwright/e2e/test-output/
-            dist/.playwright/e2e/blob-report/
-            dist/.playwright/storybook/
-            dist/.playwright/phase7/
-            dist/.playwright/styling/
+            dist/.playwright/trinity-e2e-browser/
+            dist/.playwright/trinity-e2e-components/
           if-no-files-found: warn
           retention-days: 7
           # Artifacts are immutable per run, so without this a re-run of a failed job
