@@ -20,9 +20,10 @@ tickets split those remaining environments without removing assertions. The extr
 `e2e/support/synapse/`; Synapse-backed children only join its serialized invocation.
 
 The Synapse-backed web and protocol wrappers build the development bundle for you.
-`pnpm e2e:web` builds the production PWA and verifies its routing, manifest, service
-worker, offline shell, and crypto WASM without Docker. Android builds the same production
-web output and syncs it into the APK before every run.
+`pnpm exec nx run trinity-e2e-web:production-pwa` builds the production PWA and verifies its
+routing, manifest, service worker, offline shell, and crypto WASM without Docker. The aggregate
+`pnpm e2e:web` also runs the Docker-backed production-renderer matrix. Android builds the same
+production web output and syncs it into the APK before every run.
 
 > On a **containerised CI runner** (a job container talking to a separate Docker
 > daemon), set `TRINITY_E2E_STATE_DIR` and `TRINITY_E2E_NETWORK_CONTAINER` — bind
@@ -62,7 +63,8 @@ invocation descriptor and deliberately do not start a fallback server or homeser
 | `pnpm e2e:components`                                | Run Storybook, styling and cross-browser scrollbar contracts.                                                                              |
 | `pnpm e2e:protocol`                                  | Run every registered verification, crypto and protocol/system driver.                                                                      |
 | `pnpm e2e:electron`                                  | Run Electron shell smoke and the full Synapse-backed desktop journey under Xvfb when needed.                                               |
-| `pnpm e2e:web`                                       | Build the production Web/PWA host and run host plus production-renderer contracts.                                                         |
+| `pnpm exec nx run trinity-e2e-web:production-pwa`    | Build the production Web/PWA host and verify routing, offline shell and crypto WASM without Docker.                                        |
+| `pnpm e2e:web`                                       | Run the Web/PWA host plus Docker-backed production-renderer contracts.                                                                     |
 | `pnpm smoke:login`                                   | Unauthenticated → `/login`, real `.well-known` discovery for matrix.org.                                                                   |
 | `pnpm spike:chromium` / `pnpm spike:webkit`          | In-app E2EE crypto spike.                                                                                                                  |
 | `pnpm e2e:verify`                                    | **Two-client device verification (emoji SAS)** — full live flow against a disposable Synapse.                                              |

@@ -23,7 +23,6 @@ import {
 //   - a soft line break survives alongside formatting (issue #29's sharpest bug)
 //   - a plain multi-line message still goes as plain text, not formatted_body
 //   - task lists arrive as ☑/☐ rather than being silently dropped
-//   - fenced code is syntax-highlighted, and follows the theme
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = synapseSession();
 

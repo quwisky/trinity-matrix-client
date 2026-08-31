@@ -129,7 +129,8 @@ The direct toolchain gates are `pnpm exec nx run trinity-android:verify-native` 
 | Command                                                                          | Purpose                                                                |
 | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
 | `pnpm exec nx e2e trinity-e2e`                                                   | App-journey specs (`@nx/playwright`); skips itself if Docker is absent |
-| `pnpm e2e:web`                                                                   | Production Web/PWA startup, deep-link and offline check; no Docker     |
+| `pnpm exec nx run trinity-e2e-web:production-pwa`                                | Production Web/PWA startup, deep-link and offline check; no Docker     |
+| `pnpm e2e:web`                                                                   | Web/PWA host plus renderer matrix; renderer needs Docker               |
 | `pnpm smoke:login`                                                               | Headless redirect→login + live matrix.org `.well-known` discovery      |
 | `pnpm spike:chromium` / `spike:webkit`                                           | E2EE WASM check in Blink / WebKit                                      |
 | `pnpm e2e:verify`                                                                | Two-client emoji-SAS device verification (needs Docker)                |

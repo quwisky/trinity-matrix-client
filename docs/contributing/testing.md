@@ -426,13 +426,16 @@ hashing, a budget overage — passes all 79 spec files and is caught only by
 
 ### The production Web/PWA host contract
 
-`pnpm e2e:web` runs the `trinity-e2e-web:production-pwa` Nx target without Docker. The support wrapper
-builds the production configuration and its dynamic server exposes the exact shared `www/`
-artifact. The check enters on an unknown deep link,
+`pnpm exec nx run trinity-e2e-web:production-pwa` runs the focused host contract without Docker.
+The support wrapper builds the production configuration and its dynamic server exposes the exact
+shared `www/` artifact. The check enters on an unknown deep link,
 waits for Application Runtime to reach the login surface, verifies the manifest and crypto WASM,
 then switches Chromium offline and reloads another deep link under service-worker control. This
 is the executable boundary for Web startup, routing and offline shell behavior; authenticated
 Matrix journeys remain in the sequential Synapse-backed suite.
+
+`pnpm e2e:web` is the aggregate Web lifecycle gate. It runs that Docker-free host contract and the
+production-renderer matrix, whose authenticated geometry and contrast scenarios require Docker.
 
 ### One invocation owns external resources
 
