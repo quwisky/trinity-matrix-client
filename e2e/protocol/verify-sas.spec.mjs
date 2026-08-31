@@ -11,29 +11,20 @@
 // peer (spinner, answer spent) while B is still being asked. Only a two-device run can
 // observe that state honestly.
 //
-// Homeserver is parameterized by env so this runs against anything:
-//   TRINITY_HS    homeserver the login form types (default https://localhost:8448,
-//                 the bundled Synapse+Caddy harness)
-//   TRINITY_USER  username    (default verify-e2e)
-//   TRINITY_PASS  password    (default verify-e2e-pass-123)
-//   HEADED=1      run headed for debugging
-//   SLOWMO=ms     slow down actions for debugging
+// The Nx target defaults to disposable attempt-scoped credentials. Explicit
+// remote mode accepts TRINITY_HS/TRINITY_USER/TRINITY_PASS; HEADED/SLOWMO aid debugging.
 //
 // `pnpm e2e:verify` builds dev, starts the harness, runs this, and tears down.
-// Run standalone against an existing HS with:
-//   TRINITY_HS=… TRINITY_USER=… TRINITY_PASS=… node e2e/features/verify-sas.mjs
-import { mkdir } from 'node:fs/promises';
 import { waitForRooms } from '../support/navigation.mjs';
 import { applicationOrigin } from '../support/session.mts';
-import { chromium } from 'playwright';
+import { test, expect } from './fixtures.mts';
 
 const APP = applicationOrigin();
 
-const HS = process.env.TRINITY_HS ?? 'https://localhost:8448';
-const USER = process.env.TRINITY_USER ?? 'verify-e2e';
-const PASS = process.env.TRINITY_PASS ?? 'verify-e2e-pass-123';
-const HEADED = process.env.HEADED === '1';
-const SLOWMO = Number(process.env.SLOWMO ?? 0);
+let HS;
+let USER;
+let PASS;
+let IGNORE_HTTP_ERRORS;
 
 // Generous: real SAS round-trips cross-context to-device traffic through the HS.
 const STAGE_TIMEOUT = 60_000;
@@ -133,7 +124,7 @@ async function setUpEncryption(page) {
 
   // Recovery key is shown once; tick "I've saved", then continue.
   await key.waitFor({ state: 'visible', timeout: SETUP_TIMEOUT });
-  log(`A: recovery key shown (${(await key.innerText()).slice(0, 12)}…)`);
+  log('A: recovery key shown');
 
   await page
     .getByRole('checkbox', { name: /I've saved my recovery key/ })
@@ -175,20 +166,17 @@ async function assertWaitingOnPeer(scope) {
   }
 }
 
-async function main() {
-  await mkdir('e2e/.artifacts', { recursive: true });
+async function main(browser, testInfo) {
   log(`serving www on ${APP}`);
-  log(`homeserver=${HS} user=${USER}`);
-
-  const browser = await chromium.launch({
-    headless: !HEADED,
-    slowMo: SLOWMO,
-    args: ['--disable-dev-shm-usage'],
-  });
+  log(`homeserver=${HS}`);
 
   // ignoreHTTPSErrors lets the contexts talk to the self-signed Caddy TLS front.
-  const ctxA = await browser.newContext({ ignoreHTTPSErrors: true });
-  const ctxB = await browser.newContext({ ignoreHTTPSErrors: true });
+  const ctxA = await browser.newContext({
+    ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
+  });
+  const ctxB = await browser.newContext({
+    ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
+  });
   const A = await ctxA.newPage();
   const B = await ctxB.newPage();
   for (const [page, who] of [
@@ -316,23 +304,30 @@ async function main() {
     try {
       console.error(`  A stage=${await stageOf(A)} url=${A.url()}`);
       console.error(`  B stage=${await stageOf(B)} url=${B.url()}`);
-      await A.screenshot({ path: 'e2e/.artifacts/A-failure.png' }).catch(
+      await A.screenshot({ path: testInfo.outputPath('A-failure.png') }).catch(
         () => {},
       );
-      await B.screenshot({ path: 'e2e/.artifacts/B-failure.png' }).catch(
+      await B.screenshot({ path: testInfo.outputPath('B-failure.png') }).catch(
         () => {},
       );
     } catch {
       /* best effort */
     }
     console.log('\nRESULT: FAIL');
+    throw err;
   } finally {
-    await browser.close();
+    await Promise.all([ctxA.close(), ctxB.close()]);
   }
-  process.exit(exit);
+  expect(exit).toBe(0);
 }
 
-main().catch((err) => {
-  console.error('[verify] fatal:', err);
-  process.exit(1);
+test('verifies two devices through matching emoji SAS', async ({
+  browser,
+  protocolCredentials,
+}, testInfo) => {
+  HS = protocolCredentials.hs;
+  USER = protocolCredentials.user;
+  PASS = protocolCredentials.pass;
+  IGNORE_HTTP_ERRORS = protocolCredentials.mode === 'disposable';
+  await main(browser, testInfo);
 });

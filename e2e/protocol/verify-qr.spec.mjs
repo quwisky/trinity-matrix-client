@@ -3,17 +3,15 @@
 // Device A renders the real SDK QR payload. Device B's production camera scanner
 // reads that image from a synthetic canvas MediaStream, avoiding physical camera
 // hardware while still exercising rendering, decoding, and scanQRCode end to end.
-import { mkdir } from 'node:fs/promises';
 import { waitForRooms } from '../support/navigation.mjs';
 import { applicationOrigin } from '../support/session.mts';
-import { chromium } from 'playwright';
+import { test, expect } from './fixtures.mts';
 
 const APP = applicationOrigin();
-const HS = process.env.TRINITY_HS ?? 'https://localhost:8448';
-const USER = process.env.TRINITY_USER ?? 'verify-e2e';
-const PASS = process.env.TRINITY_PASS ?? 'verify-e2e-pass-123';
-const HEADED = process.env.HEADED === '1';
-const SLOWMO = Number(process.env.SLOWMO ?? 0);
+let HS;
+let USER;
+let PASS;
+let IGNORE_HTTP_ERRORS;
 const STAGE_TIMEOUT = 60_000;
 const SETUP_TIMEOUT = 90_000;
 const log = (message) => console.log(`[verify-qr] ${message}`);
@@ -127,15 +125,13 @@ async function installSyntheticCamera(page) {
   });
 }
 
-async function main() {
-  await mkdir('e2e/.artifacts', { recursive: true });
-  const browser = await chromium.launch({
-    headless: !HEADED,
-    slowMo: SLOWMO,
-    args: ['--disable-dev-shm-usage'],
+async function main(browser, testInfo) {
+  const ctxA = await browser.newContext({
+    ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
   });
-  const ctxA = await browser.newContext({ ignoreHTTPSErrors: true });
-  const ctxB = await browser.newContext({ ignoreHTTPSErrors: true });
+  const ctxB = await browser.newContext({
+    ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
+  });
   const A = await ctxA.newPage();
   const B = await ctxB.newPage();
   await installSyntheticCamera(B);
@@ -202,20 +198,27 @@ async function main() {
     console.error('\n[verify-qr] error:', err.message);
     console.error(`  A stage=${await stageOf(A)} url=${A.url()}`);
     console.error(`  B stage=${await stageOf(B)} url=${B.url()}`);
-    await A.screenshot({ path: 'e2e/.artifacts/A-qr-failure.png' }).catch(
+    await A.screenshot({ path: testInfo.outputPath('A-qr-failure.png') }).catch(
       () => {},
     );
-    await B.screenshot({ path: 'e2e/.artifacts/B-qr-failure.png' }).catch(
+    await B.screenshot({ path: testInfo.outputPath('B-qr-failure.png') }).catch(
       () => {},
     );
     console.log('\nRESULT: FAIL');
+    throw err;
   } finally {
-    await browser.close();
+    await Promise.all([ctxA.close(), ctxB.close()]);
   }
-  process.exit(exit);
+  expect(exit).toBe(0);
 }
 
-main().catch((err) => {
-  console.error('[verify-qr] fatal:', err);
-  process.exit(1);
+test('verifies two devices through QR reciprocation', async ({
+  browser,
+  protocolCredentials,
+}, testInfo) => {
+  HS = protocolCredentials.hs;
+  USER = protocolCredentials.user;
+  PASS = protocolCredentials.pass;
+  IGNORE_HTTP_ERRORS = protocolCredentials.mode === 'disposable';
+  await main(browser, testInfo);
 });

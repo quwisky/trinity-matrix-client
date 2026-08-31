@@ -9,29 +9,21 @@
 // caption rendered below it (markdown applied). One context is enough: a device
 // decrypts the media + caption it sent itself.
 //
-// Env (same as verify-sas):
-//   TRINITY_HS    default https://localhost:8448 (bundled Synapse+Caddy)
-//   TRINITY_USER  default verify-e2e
-//   TRINITY_PASS  default verify-e2e-pass-123
-//   HEADED=1 / SLOWMO=ms  for debugging
+// The Nx target defaults to disposable attempt-scoped credentials. Explicit
+// remote mode accepts TRINITY_HS/TRINITY_USER/TRINITY_PASS; HEADED/SLOWMO aid debugging.
 //
 // `pnpm e2e:media` builds dev, starts the harness, runs this, and tears down.
-import { mkdir } from 'node:fs/promises';
 import { waitForRooms } from '../support/navigation.mjs';
 import { applicationOrigin } from '../support/session.mts';
-import { chromium } from 'playwright';
-
-// Node's fetch (room setup) must accept Caddy's self-signed cert.
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+import { test, expect } from './fixtures.mts';
 
 const APP = applicationOrigin();
 
-const HS = process.env.TRINITY_HS ?? 'https://localhost:8448';
-const USER = process.env.TRINITY_USER ?? 'verify-e2e';
-const PASS = process.env.TRINITY_PASS ?? 'verify-e2e-pass-123';
-const HEADED = process.env.HEADED === '1';
-const SLOWMO = Number(process.env.SLOWMO ?? 0);
-const ROOM_NAME = 'Media E2E';
+let HS;
+let USER;
+let PASS;
+let IGNORE_HTTP_ERRORS;
+let ROOM_NAME;
 
 const SETUP_TIMEOUT = 90_000;
 
@@ -144,17 +136,13 @@ async function setUpEncryption(page) {
   log('encryption set up → /rooms');
 }
 
-async function main() {
-  await mkdir('e2e/.artifacts', { recursive: true });
+async function main(browser, testInfo) {
   const roomId = await createEncryptedRoom();
-  log(`serving www on ${APP} (homeserver=${HS} user=${USER})`);
+  log(`serving www on ${APP} (homeserver=${HS})`);
 
-  const browser = await chromium.launch({
-    headless: !HEADED,
-    slowMo: SLOWMO,
-    args: ['--disable-dev-shm-usage'],
+  const ctx = await browser.newContext({
+    ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
   });
-  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => console.log(`  [error] ${e.message}`));
   page.on('console', (m) => {
@@ -521,16 +509,25 @@ async function main() {
   } catch (err) {
     console.error('\n[send-media] error:', err.message);
     await page
-      .screenshot({ path: 'e2e/.artifacts/send-media-failure.png' })
+      .screenshot({ path: testInfo.outputPath('send-media-failure.png') })
       .catch(() => {});
     console.log('\nRESULT: FAIL');
+    throw err;
   } finally {
-    await browser.close();
+    await ctx.close();
   }
-  process.exit(exit);
+  expect(exit).toBe(0);
 }
 
-main().catch((err) => {
-  console.error('[send-media] fatal:', err);
-  process.exit(1);
+test('sends encrypted media, captions, batches, and retries', async ({
+  browser,
+  protocolCredentials,
+  resourceNamespace,
+}, testInfo) => {
+  HS = protocolCredentials.hs;
+  USER = protocolCredentials.user;
+  PASS = protocolCredentials.pass;
+  IGNORE_HTTP_ERRORS = protocolCredentials.mode === 'disposable';
+  ROOM_NAME = `Media ${resourceNamespace.role('media')}`;
+  await main(browser, testInfo);
 });

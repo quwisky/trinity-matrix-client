@@ -12,40 +12,27 @@
 //   3. Abandon creates nothing (lazy-creation regression): open "Reply in thread"
 //      on a second message, close without sending → no thread indicator appears.
 //
-// Env:
-//   TRINITY_HS    default https://localhost:8448 (bundled Synapse + Caddy)
-//   TRINITY_USER  default verify-e2e
-//   TRINITY_PASS  default verify-e2e-pass-123
-//   HEADED=1 / SLOWMO=ms  for debugging
+// The Nx target defaults to disposable attempt-scoped credentials. Explicit
+// remote mode accepts TRINITY_HS/TRINITY_USER/TRINITY_PASS; HEADED/SLOWMO aid debugging.
 //
 // `pnpm e2e:threads` builds dev, starts the harness, runs this, and tears down.
-// Run standalone against an already-running HS:
-//   TRINITY_HS=… TRINITY_USER=… TRINITY_PASS=… node e2e/features/threads.mjs
-import { mkdir } from 'node:fs/promises';
 import { waitForRooms } from '../support/navigation.mjs';
-import {
-  applicationOrigin,
-  invocationResourceId,
-} from '../support/session.mts';
-import { chromium } from 'playwright';
-
-// Node's fetch (room setup) must accept Caddy's self-signed cert.
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+import { applicationOrigin } from '../support/session.mts';
+import { test, expect } from './fixtures.mts';
 
 const APP = applicationOrigin();
 
-const HS = process.env.TRINITY_HS ?? 'https://localhost:8448';
-const USER = process.env.TRINITY_USER ?? 'verify-e2e';
-const PASS = process.env.TRINITY_PASS ?? 'verify-e2e-pass-123';
-const HEADED = process.env.HEADED === '1';
-const SLOWMO = Number(process.env.SLOWMO ?? 0);
+let HS;
+let USER;
+let PASS;
+let IGNORE_HTTP_ERRORS;
 
 // Each run gets its own unique names so re-runs don't collide.
-const RUN_ID = invocationResourceId('threads');
-const ROOM_NAME = `Threads E2E ${RUN_ID}`;
-const ROOT_MSG = `Root message ${RUN_ID}`;
-const NO_THREAD_MSG = `No-thread message ${RUN_ID}`;
-const REPLY_TEXT = `First reply ${RUN_ID}`;
+let RUN_ID;
+let ROOM_NAME;
+let ROOT_MSG;
+let NO_THREAD_MSG;
+let REPLY_TEXT;
 
 const SETUP_TIMEOUT = 90_000;
 const STEP_TIMEOUT = 30_000;
@@ -157,34 +144,28 @@ async function login(page) {
  */
 async function hoverAndClickToolbar(page, msgLocator, buttonName) {
   // Keep the mouse over the message so the CSS :hover state stays active.
-  await msgLocator.hover({ force: true });
+  await msgLocator.hover();
   const btn = msgLocator.getByRole('button', { name: buttonName });
-  // The toolbar transitions from opacity:0 to opacity:1 on hover; wait for it
-  // to be visible (CSS transition ~100 ms) before clicking.
   await btn.waitFor({ state: 'visible', timeout: 5_000 });
-  await btn.click({ force: true });
+  // Opacity does not participate in Playwright visibility and the toolbar does
+  // not receive pointer events until the row's hover state is stable. A normal
+  // click waits for that real actionability contract.
+  await btn.click();
 }
 
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
-async function main() {
-  await mkdir('e2e/.artifacts', { recursive: true });
-
+async function main(browser, testInfo) {
   // 1. Seed the room + messages via the CS API before the browser runs.
   const { rootEventId, noThreadEventId } = await setupRoom();
   log(`rootEventId=${rootEventId}  noThreadEventId=${noThreadEventId}`);
-  log(`serving www on ${APP} (homeserver=${HS} user=${USER})`);
+  log(`serving www on ${APP} (homeserver=${HS})`);
 
-  const browser = await chromium.launch({
-    headless: !HEADED,
-    slowMo: SLOWMO,
-    args: ['--disable-dev-shm-usage'],
-  });
   // ignoreHTTPSErrors so the app can talk to Caddy's self-signed TLS front.
   const ctx = await browser.newContext({
-    ignoreHTTPSErrors: true,
+    ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
     viewport: { width: 1280, height: 720 },
   });
 
@@ -197,7 +178,9 @@ async function main() {
   // restoring 200 responses. This is a no-op when the build is dev (no SW).
   await ctx.route(`${HS}/**`, async (route) => {
     try {
-      const response = await route.fetch({ ignoreHTTPSErrors: true });
+      const response = await route.fetch({
+        ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
+      });
       await route.fulfill({ response });
     } catch {
       await route.fallback();
@@ -221,8 +204,12 @@ async function main() {
 
     // Wait for both seeded messages to sync and render.
     log('waiting for seeded messages to sync');
-    const rootMsgRow = page.locator('.msg').filter({ hasText: ROOT_MSG });
-    const noThreadRow = page.locator('.msg').filter({ hasText: NO_THREAD_MSG });
+    const rootMsgRow = page.locator(
+      `.msg[data-mid=${JSON.stringify(rootEventId)}]`,
+    );
+    const noThreadRow = page.locator(
+      `.msg[data-mid=${JSON.stringify(noThreadEventId)}]`,
+    );
     await rootMsgRow
       .first()
       .waitFor({ state: 'visible', timeout: SETUP_TIMEOUT });
@@ -361,16 +348,29 @@ async function main() {
   } catch (err) {
     console.error('\n[threads] error:', err.message);
     await page
-      .screenshot({ path: 'e2e/.artifacts/threads-failure.png' })
+      .screenshot({ path: testInfo.outputPath('threads-failure.png') })
       .catch(() => {});
     console.log('\nRESULT: FAIL');
+    throw err;
   } finally {
-    await browser.close();
+    await ctx.close();
   }
-  process.exit(exit);
+  expect(exit).toBe(0);
 }
 
-main().catch((err) => {
-  console.error('[threads] fatal:', err);
-  process.exit(1);
+test('creates, reopens, and abandons threads correctly', async ({
+  browser,
+  protocolCredentials,
+  resourceNamespace,
+}, testInfo) => {
+  HS = protocolCredentials.hs;
+  USER = protocolCredentials.user;
+  PASS = protocolCredentials.pass;
+  IGNORE_HTTP_ERRORS = protocolCredentials.mode === 'disposable';
+  RUN_ID = resourceNamespace.role('threads');
+  ROOM_NAME = `Threads E2E ${RUN_ID}`;
+  ROOT_MSG = `Root message ${RUN_ID}`;
+  NO_THREAD_MSG = `No-thread message ${RUN_ID}`;
+  REPLY_TEXT = `First reply ${RUN_ID}`;
+  await main(browser, testInfo);
 });

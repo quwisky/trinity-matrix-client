@@ -19,47 +19,29 @@
 // The second user is registered via Synapse's shared-secret admin endpoint before
 // the browser session starts.
 //
-// Env:
-//   TRINITY_HS    default https://localhost:8448 (bundled Synapse + Caddy)
-//   TRINITY_USER  default verify-e2e
-//   TRINITY_PASS  default verify-e2e-pass-123
-//   HEADED=1 / SLOWMO=ms  for debugging
+// The Nx target defaults to disposable attempt-scoped credentials. Explicit remote mode
+// additionally requires TRINITY_SECONDARY_USER/TRINITY_SECONDARY_PASS.
 //
 // `pnpm e2e:rooms` builds dev, starts the harness, runs this, and tears down.
-// MUST run sequentially with other e2e scripts (shared docker stack + www/ build).
-import { mkdir } from 'node:fs/promises';
-import { createHmac } from 'node:crypto';
 import { waitForRooms } from '../support/navigation.mjs';
-import {
-  applicationOrigin,
-  invocationResourceId,
-} from '../support/session.mts';
-import {
-  REGISTRATION_SHARED_SECRET,
-  SYNAPSE_HTTP,
-} from '../support/synapse/start.mjs';
-import { chromium } from 'playwright';
-
-// Node's fetch (CS-API helpers) must accept Caddy's self-signed cert.
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+import { applicationOrigin } from '../support/session.mts';
+import { test, expect } from './fixtures.mts';
 
 const APP = applicationOrigin();
 
-const HS = process.env.TRINITY_HS ?? 'https://localhost:8448';
-const USER = process.env.TRINITY_USER ?? 'verify-e2e';
-const PASS = process.env.TRINITY_PASS ?? 'verify-e2e-pass-123';
-const SERVER_NAME = 'localhost';
-const HEADED = process.env.HEADED === '1';
-const SLOWMO = Number(process.env.SLOWMO ?? 0);
+let HS;
+let USER;
+let PASS;
+let IGNORE_HTTP_ERRORS;
 
 // Unique names per run so re-runs never collide with stale rooms.
-const RUN_ID = invocationResourceId('rooms');
-const ROOM_NAME = `Room ${RUN_ID}`;
-const BOB_USER = `bob-${RUN_ID}`;
-const BOB_PASS = `bob-pass-${RUN_ID}`;
-const BOB_ID = `@${BOB_USER}:${SERVER_NAME}`;
-const ACCEPT_ROOM_NAME = `Accept ${RUN_ID}`;
-const DECLINE_ROOM_NAME = `Decline ${RUN_ID}`;
+let RUN_ID;
+let ROOM_NAME;
+let BOB_USER;
+let BOB_PASS;
+let BOB_ID;
+let ACCEPT_ROOM_NAME;
+let DECLINE_ROOM_NAME;
 
 const STEP_TIMEOUT = 30_000;
 
@@ -68,38 +50,6 @@ const log = (m) => console.log(`[rooms] ${m}`);
 // ---------------------------------------------------------------------------
 // CS-API helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Register a user via Synapse's shared-secret admin endpoint (bypasses the
- * normal auth flow — works on the disposable test Synapse only). Idempotent:
- * "already exists" is treated as success.
- */
-async function registerUser(username, password) {
-  const nonceRes = await fetch(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`);
-  if (!nonceRes.ok) {
-    throw new Error(
-      `register nonce → ${nonceRes.status} ${await nonceRes.text()}`,
-    );
-  }
-  const { nonce } = await nonceRes.json();
-  const mac = createHmac('sha1', REGISTRATION_SHARED_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await fetch(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nonce, username, password, admin: false, mac }),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    if (/already.*exists|user.*taken/i.test(text)) {
-      log(`@${username}:${SERVER_NAME} already exists — reusing`);
-      return;
-    }
-    throw new Error(`register ${username} → ${res.status} ${text}`);
-  }
-  log(`registered @${username}:${SERVER_NAME}`);
-}
 
 async function apiLogin(user, pass) {
   const res = await fetch(`${HS}/_matrix/client/v3/login`, {
@@ -255,24 +205,20 @@ async function fillUserPickerAndConfirm(page, mxid, confirmLabelText) {
 // Main
 // ---------------------------------------------------------------------------
 
-async function main() {
-  await mkdir('e2e/.artifacts', { recursive: true });
-
-  // ── CS-API pre-setup: register BOB + seed invite rooms ────────────────────
-  log(`registering second user @${BOB_USER}:${SERVER_NAME}`);
-  await registerUser(BOB_USER, BOB_PASS);
-
+async function main(browser, testInfo) {
+  // ── CS-API pre-setup: seed invite rooms with the fixture-owned account ────
   const { access_token: bobToken, user_id: bobId } = await apiLogin(
     BOB_USER,
     BOB_PASS,
   );
-  log(`BOB api login ok (${bobId})`);
+  BOB_ID = bobId;
+  log('BOB api login ok');
 
   const { access_token: aliceToken, user_id: aliceId } = await apiLogin(
     USER,
     PASS,
   );
-  log(`alice api login ok (${aliceId})`);
+  log('alice api login ok');
 
   // BOB creates rooms that will carry incoming invites for alice (scenarios 4+5).
   const { room_id: acceptRoomId } = await csPost(
@@ -310,22 +256,19 @@ async function main() {
   log(`BOB invited alice to DeclineRoom`);
 
   // ── Browser setup ──────────────────────────────────────────────────────────
-  log(`serving www on ${APP} (homeserver=${HS} user=${USER})`);
+  log(`serving www on ${APP} (homeserver=${HS})`);
 
-  const browser = await chromium.launch({
-    headless: !HEADED,
-    slowMo: SLOWMO,
-    args: ['--disable-dev-shm-usage'],
-  });
   const ctx = await browser.newContext({
-    ignoreHTTPSErrors: true,
+    ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
     viewport: { width: 1280, height: 720 },
   });
 
   // Service-worker / TLS bypass (same rationale as spaces.mjs / threads.mjs).
   await ctx.route(`${HS}/**`, async (route) => {
     try {
-      const response = await route.fetch({ ignoreHTTPSErrors: true });
+      const response = await route.fetch({
+        ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
+      });
       await route.fulfill({ response });
     } catch {
       await route.fallback();
@@ -536,16 +479,31 @@ async function main() {
   } catch (err) {
     console.error('\n[rooms] error:', err.message);
     await page
-      .screenshot({ path: 'e2e/.artifacts/rooms-failure.png' })
+      .screenshot({ path: testInfo.outputPath('rooms-failure.png') })
       .catch(() => {});
     console.log('\nRESULT: FAIL');
+    throw err;
   } finally {
-    await browser.close();
+    await ctx.close();
   }
-  process.exit(exit);
+  expect(exit).toBe(0);
 }
 
-main().catch((err) => {
-  console.error('[rooms] fatal:', err);
-  process.exit(1);
+test('covers room, DM, invite, accept, and decline flows', async ({
+  browser,
+  protocolCredentials,
+  resourceNamespace,
+}, testInfo) => {
+  HS = protocolCredentials.hs;
+  USER = protocolCredentials.user;
+  PASS = protocolCredentials.pass;
+  IGNORE_HTTP_ERRORS = protocolCredentials.mode === 'disposable';
+  expect(protocolCredentials.secondary).toBeDefined();
+  BOB_USER = protocolCredentials.secondary.user;
+  BOB_PASS = protocolCredentials.secondary.pass;
+  RUN_ID = resourceNamespace.role('rooms');
+  ROOM_NAME = `Room ${RUN_ID}`;
+  ACCEPT_ROOM_NAME = `Accept ${RUN_ID}`;
+  DECLINE_ROOM_NAME = `Decline ${RUN_ID}`;
+  await main(browser, testInfo);
 });

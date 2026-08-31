@@ -6,7 +6,7 @@ inside that lifecycle. This prevents a folder name such as `playwright` from acc
 the owner of Android, Electron, Synapse or component-browser support.
 
 The migration is intentionally incremental. The typed registry locks each executable surface
-before later changes replace the remaining raw protocol runners.
+while lifecycle projects replace environment-specific legacy entrypoints without losing checks.
 
 ## Executable registry
 
@@ -103,12 +103,13 @@ Nx targets use the same support wrappers, so focused and aggregate runs have ide
 `trinity-e2e-web` now owns production Web/PWA startup, offline behavior and the production-renderer
 matrix. The `trinity-e2e-components` project owns explicit Storybook, styling and scrollbar
 targets. `trinity-e2e-browser` owns the canonical Chromium/Synapse config, capability catalog and
-journey tree. The aggregate composition fixture owns the Web adapter and selects it or the Android
+journey tree. `trinity-e2e-protocol` owns twelve Playwright Test specs selected by thirteen
+registered suite targets; the shared config supplies standard reports, traces, retries,
+annotations and attempt-scoped Matrix resources. The aggregate composition fixture owns the Web adapter and selects it or the Android
 adapter for shared journeys without either environment importing the other. Their small configs
 compose the support builders and declare only their engine matrices and suite-specific browser
-policy. The nine `e2e/runners/*-run.mjs`
-protocol paths remain thin compatibility entrypoints over one
-support runner. Browser, Android and Electron adapters depend inward on support contracts; only
+policy. Focused protocol package commands delegate directly to the protocol project's targets.
+Browser, Android and Electron adapters depend inward on support contracts; only
 `e2e/fixtures.mts` chooses an environment fixture.
 
 Every Playwright attempt receives a deterministic namespace containing the invocation, suite,

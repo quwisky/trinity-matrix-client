@@ -491,9 +491,9 @@ export default defineConfig([
     // The canonical browser specs once had nothing but review discipline standing between
     // them and that failure mode.
     //
-    // `.mts` only: the harness under e2e/synapse and e2e/features is plain `.mjs` (it is
-    // run by bare `node` for the manual bring-up), carries no types, and would only
-    // produce "not found by the project service" here.
+    // `.mts` only: protocol journeys are plain `.mjs`; their shared runtime remains
+    // type-checked through the protocol tsconfig, while the journey bodies use the
+    // ordinary syntax-aware rules outside this type-aware block.
     files: ['e2e/**/*.mts'],
     languageOptions: {
       parser: tseslint.parser,
@@ -502,6 +502,7 @@ export default defineConfig([
           './e2e/tsconfig.json',
           './e2e/browser/tsconfig.json',
           './e2e/components/tsconfig.json',
+          './e2e/protocol/tsconfig.json',
           './e2e/web/tsconfig.json',
         ],
         tsconfigRootDir: import.meta.dirname,

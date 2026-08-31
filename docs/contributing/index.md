@@ -19,7 +19,7 @@ which library may import which.
 | `libs/*`       | Every reusable library, imported as `@trinity/` plus its path under `libs/`.                                  |
 | `libs/spartan` | Generated spartan-ng Helm components, the one alias exception: `@trinity/helm/*`, owned by `@spartan-ng/cli`. |
 | `electron/`    | The desktop shell. Its own `package.json`, own lockfile, own TypeScript version, installed separately.        |
-| `e2e/`         | Playwright specs, standalone protocol harnesses, and the disposable Synapse Docker stack they run against.    |
+| `e2e/`         | Lifecycle-owned Playwright specs and the disposable Synapse Docker stack they run against.                    |
 | `scripts/`     | Node build scripts plus the invariant specs that guard configuration a green test run cannot see.             |
 | `android/`     | The checked-in Capacitor Android project.                                                                     |
 | `ios/`         | The checked-in Capacitor iOS project, using Swift Package Manager.                                            |

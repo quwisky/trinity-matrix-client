@@ -2,19 +2,12 @@
 //  1. unauthenticated load redirects to /login
 //  2. real .well-known discovery for matrix.org resolves the homeserver
 //  3. the discovered flows surface the password form + SSO button
-import { applicationOrigin } from '../support/session.mts';
-import { chromium } from 'playwright';
+import { test, expect } from './fixtures.mts';
 
-const APP = applicationOrigin();
-// SPA fallback so deep links resolve to index.html.
-
-const browser = await chromium.launch();
-const page = await browser.newPage();
-page.on('pageerror', (e) => console.log(`  [page:error] ${e.message}`));
-
-let exit = 1;
-try {
-  await page.goto(`${APP}/`, { waitUntil: 'networkidle' });
+test('discovers the live matrix.org login options', async ({ page }) => {
+  page.on('pageerror', (e) => console.log(`  [page:error] ${e.message}`));
+  let exit = 1;
+  await page.goto('/', { waitUntil: 'networkidle' });
   await page.waitForURL('**/login', { timeout: 15000 });
   console.log('PASS: redirected to /login when unauthenticated');
 
@@ -47,9 +40,5 @@ try {
   } else {
     console.log('\nRESULT: FAIL (no login options surfaced)');
   }
-} catch (err) {
-  console.error('smoke error:', err.message);
-} finally {
-  await browser.close();
-  process.exit(exit);
-}
+  expect(exit).toBe(0);
+});

@@ -12,6 +12,7 @@ import {
   E2E_TIMEOUTS_MS,
 } from '../e2e/registry/index.mts';
 import { validateBrowserJourneyInventory } from './e2e-browser-inventory.mjs';
+import { validateProtocolAssertionInventory } from './e2e-protocol-inventory.mjs';
 
 const TARGET_PROJECT_BY_ENVIRONMENT = {
   android: 'trinity-e2e-android',
@@ -28,6 +29,7 @@ const PROJECT_FILES = {
   'trinity-e2e': 'e2e/project.json',
   'trinity-e2e-browser': 'e2e/browser/project.json',
   'trinity-e2e-components': 'e2e/components/project.json',
+  'trinity-e2e-protocol': 'e2e/protocol/project.json',
   'trinity-e2e-web': 'e2e/web/project.json',
 };
 
@@ -38,6 +40,7 @@ const RETAINED_COMPATIBILITY_ALIAS = 'e2e:ui:shipped';
 const ACTIVE_LIFECYCLE_PROJECTS = new Set([
   'trinity-e2e-browser',
   'trinity-e2e-components',
+  'trinity-e2e-protocol',
   'trinity-e2e-web',
 ]);
 
@@ -564,6 +567,7 @@ export function validateWorkspace(
     workspaceRoot,
     snapshot.suites.find(({ id }) => id === 'browser.canonical'),
   );
+  validateProtocolAssertionInventory(errors, workspaceRoot);
   validateCiEntrypoints(errors, workspaceRoot, snapshot);
   validateArchitectureCommand(errors, packageScripts);
   validateDurableE2ENames(errors, workspaceRoot);

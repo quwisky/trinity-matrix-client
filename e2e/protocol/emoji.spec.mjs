@@ -17,35 +17,22 @@
 //   4. The emoji-mart picker: the emoji button opens <emoji-mart>; clicking an
 //      emoji inserts its native character into the composer and closes the picker.
 //
-// Env:
-//   TRINITY_HS    default https://localhost:8448
-//   TRINITY_USER  default verify-e2e
-//   TRINITY_PASS  default verify-e2e-pass-123
-//   HEADED=1 / SLOWMO=ms  for debugging
+// The Nx target defaults to disposable attempt-scoped credentials. Explicit
+// remote mode accepts TRINITY_HS/TRINITY_USER/TRINITY_PASS; HEADED/SLOWMO aid debugging.
 //
 // `pnpm e2e:emoji` builds dev, starts the harness, runs this, and tears down.
-// MUST run sequentially with other e2e scripts (shared docker stack + www/ build).
-import { mkdir } from 'node:fs/promises';
 import { waitForRooms } from '../support/navigation.mjs';
-import {
-  applicationOrigin,
-  invocationResourceId,
-} from '../support/session.mts';
-import { chromium } from 'playwright';
-
-// Node's fetch (CS-API helpers) must accept Caddy's self-signed cert.
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+import { applicationOrigin } from '../support/session.mts';
+import { test, expect } from './fixtures.mts';
 
 const APP = applicationOrigin();
 
-const HS = process.env.TRINITY_HS ?? 'https://localhost:8448';
-const USER = process.env.TRINITY_USER ?? 'verify-e2e';
-const PASS = process.env.TRINITY_PASS ?? 'verify-e2e-pass-123';
-const HEADED = process.env.HEADED === '1';
-const SLOWMO = Number(process.env.SLOWMO ?? 0);
-
-const RUN_ID = invocationResourceId('emoji');
-const ROOM = `Emoji-${RUN_ID}`;
+let HS;
+let USER;
+let PASS;
+let IGNORE_HTTP_ERRORS;
+let RUN_ID;
+let ROOM;
 
 const STEP_TIMEOUT = 30_000;
 const SETUP_TIMEOUT = 60_000;
@@ -130,9 +117,7 @@ async function typeInComposer(page, textarea, text) {
 // Main
 // ---------------------------------------------------------------------------
 
-async function main() {
-  await mkdir('e2e/.artifacts', { recursive: true });
-
+async function main(browser, testInfo) {
   // ── CS-API pre-setup: one plaintext room to chat in ────────────────────────
   const { access_token: token } = await apiLogin(USER, PASS);
   log('api login ok');
@@ -144,22 +129,19 @@ async function main() {
   log(`created room ${roomId} ("${ROOM}")`);
 
   // ── Browser setup ──────────────────────────────────────────────────────────
-  log(`serving www on ${APP} (homeserver=${HS} user=${USER})`);
+  log(`serving www on ${APP} (homeserver=${HS})`);
 
-  const browser = await chromium.launch({
-    headless: !HEADED,
-    slowMo: SLOWMO,
-    args: ['--disable-dev-shm-usage'],
-  });
   const ctx = await browser.newContext({
-    ignoreHTTPSErrors: true,
+    ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
     viewport: { width: 1280, height: 720 },
   });
 
   // Re-fetch HS requests at the CDP layer where ignoreHTTPSErrors applies.
   await ctx.route(`${HS}/**`, async (route) => {
     try {
-      const response = await route.fetch({ ignoreHTTPSErrors: true });
+      const response = await route.fetch({
+        ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
+      });
       await route.fulfill({ response });
     } catch {
       await route.fallback();
@@ -310,16 +292,26 @@ async function main() {
   } catch (err) {
     console.error('\n[emoji] error:', err.message);
     await page
-      .screenshot({ path: 'e2e/.artifacts/emoji-failure.png' })
+      .screenshot({ path: testInfo.outputPath('emoji-failure.png') })
       .catch(() => {});
     console.log('\nRESULT: FAIL');
+    throw err;
   } finally {
-    await browser.close();
+    await ctx.close();
   }
-  process.exit(exit);
+  expect(exit).toBe(0);
 }
 
-main().catch((err) => {
-  console.error('[emoji] fatal:', err);
-  process.exit(1);
+test('covers shortcode conversion and emoji picker insertion', async ({
+  browser,
+  protocolCredentials,
+  resourceNamespace,
+}, testInfo) => {
+  HS = protocolCredentials.hs;
+  USER = protocolCredentials.user;
+  PASS = protocolCredentials.pass;
+  IGNORE_HTTP_ERRORS = protocolCredentials.mode === 'disposable';
+  RUN_ID = resourceNamespace.role('emoji');
+  ROOM = `Emoji-${RUN_ID}`;
+  await main(browser, testInfo);
 });

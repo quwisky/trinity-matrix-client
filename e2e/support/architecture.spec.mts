@@ -20,16 +20,15 @@ describe('E2E support architecture', () => {
     expect(composition).toContain("import('./web-fixtures.mts')");
   });
 
-  it('keeps all nine protocol entrypoints as thin support-owned adapters', () => {
-    const runners = readdirSync(join(workspaceRoot, 'e2e/runners')).filter(
-      (file) => file.endsWith('-run.mjs'),
-    );
-    expect(runners).toHaveLength(9);
-    for (const runner of runners) {
-      const source = read(`e2e/runners/${runner}`);
-      expect(source).toContain("from '../support/protocol-runner.mts'");
-      expect(source).not.toMatch(/synapse\/(?:start|stop|lease)/);
-      expect(source).not.toMatch(/node:child_process/);
+  it('keeps protocol journeys inside the Playwright Test lifecycle', () => {
+    const specs = globSync('e2e/protocol/*.spec.mjs', { cwd: workspaceRoot });
+    expect(specs).toHaveLength(12);
+    for (const spec of specs) {
+      const source = read(spec);
+      expect(source).toContain("from './fixtures.mts'");
+      expect(source).not.toMatch(
+        /chromium\.launch|process\.exit|node:child_process/,
+      );
     }
   });
 
@@ -51,6 +50,7 @@ describe('E2E support architecture', () => {
       ...globSync('e2e/browser/journeys/**/*.spec.mts', {
         cwd: workspaceRoot,
       }),
+      ...globSync('e2e/protocol/*.spec.mjs', { cwd: workspaceRoot }),
       ...readdirSync(join(workspaceRoot, 'e2e/electron'))
         .filter((file) => file.endsWith('.electron.spec.mts'))
         .map((file) => `e2e/electron/${file}`),
@@ -66,15 +66,16 @@ describe('E2E support architecture', () => {
   it('routes every official app-server entrypoint through the invocation owner', () => {
     const aggregateProject = read('e2e/project.json');
     const browserProject = read('e2e/browser/project.json');
+    const protocolProject = read('e2e/protocol/project.json');
     expect(browserProject).toContain('support/run-playwright.mts');
-    expect(aggregateProject).toContain('support/run-feature.mts');
-    expect(`${aggregateProject}\n${browserProject}`).not.toMatch(
-      /PORT=\d+ node e2e\/playwright\/support\/serve-www/,
-    );
-    for (const feature of readdirSync(
-      join(workspaceRoot, 'e2e/features'),
-    ).filter((file) => file.endsWith('.mjs'))) {
-      const source = read(`e2e/features/${feature}`);
+    expect(protocolProject).toContain('protocol/run.mts');
+    expect(
+      `${aggregateProject}\n${browserProject}\n${protocolProject}`,
+    ).not.toMatch(/PORT=\d+ node e2e\/playwright\/support\/serve-www/);
+    for (const feature of globSync('e2e/protocol/*.spec.mjs', {
+      cwd: workspaceRoot,
+    })) {
+      const source = read(feature);
       expect(source).not.toMatch(/support\/serve\.mjs/);
       expect(source).not.toMatch(/localhost:(?:812[3-9]|813[0-3])/);
     }

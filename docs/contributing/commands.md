@@ -257,11 +257,11 @@ Focused single-spec Web/Android commands are documented beside each owned scenar
 [`e2e/README.md`](../../e2e/README.md); the MSC2545 pair is under
 [image-pack management](../../e2e/README.md#msc2545-image-pack-management).
 
-### Standalone protocol harnesses
+### Protocol Playwright tests
 
-Raw Playwright scripts under `e2e/features/`, each joining the support owner's dynamic
-application endpoint and printing `RESULT: PASS` or `RESULT: FAIL`. Every standalone
-entrypoint builds the app with
+Ordinary Playwright Test specs under `e2e/protocol/`, each joining the support owner's dynamic
+application endpoint and writing the standard list, blob, JUnit and local HTML reports. Every focused
+target builds the app with
 `--configuration=development` first, which matters: the `/spike` route the crypto
 harnesses drive is compiled out of production builds entirely.
 
@@ -281,6 +281,25 @@ harnesses drive is compiled out of production builds entirely.
 
 `smoke:login` reaches the public internet: it performs real `.well-known`
 discovery against `matrix.org`. It needs no credentials.
+
+Synapse-backed flows default to disposable, attempt-scoped accounts. A mutating focused flow can
+instead use a deliberately selected remote homeserver:
+
+```bash
+TRINITY_E2E_PROTOCOL_MODE=remote \
+TRINITY_HS=https://matrix.example.test \
+TRINITY_USER=protocol-test-user \
+TRINITY_PASS=... \
+pnpm e2e:verify
+```
+
+Remote mode requires an absolute HTTPS homeserver URL without embedded credentials and validates
+all required fields before building or starting a browser. `e2e:rooms` and `e2e:search` additionally
+require `TRINITY_SECONDARY_USER` and `TRINITY_SECONDARY_PASS`. Use dedicated test accounts: these
+flows create rooms, messages, account data and encryption state. Password values are never copied
+into annotations, reports or validation errors, and remote traces are disabled so authenticated
+request tokens cannot land in artifacts. The exhaustive `pnpm e2e:protocol` aggregate is the
+disposable-mode gate; remote mode is intentionally a focused-flow operation.
 
 To hold the Synapse stack up across several manual runs:
 

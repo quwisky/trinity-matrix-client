@@ -15,53 +15,35 @@
 //      type their username in the switcher; a "Person" directory result appears;
 //      select it → an account-qualified DM opens and the header shows the user.
 //
-// Env:
-//   TRINITY_HS    default https://localhost:8448
-//   TRINITY_USER  default verify-e2e
-//   TRINITY_PASS  default verify-e2e-pass-123
-//   HEADED=1 / SLOWMO=ms  for debugging
+// The Nx target defaults to disposable attempt-scoped credentials. Explicit remote mode
+// additionally requires TRINITY_SECONDARY_USER/TRINITY_SECONDARY_PASS.
 //
 // `pnpm e2e:search` builds dev, starts the harness, runs this, and tears down.
-// MUST run sequentially with other e2e scripts (shared docker stack + www/ build).
-import { mkdir } from 'node:fs/promises';
-import { createHmac } from 'node:crypto';
 import { waitForRooms } from '../support/navigation.mjs';
-import {
-  applicationOrigin,
-  invocationResourceId,
-} from '../support/session.mts';
-import {
-  REGISTRATION_SHARED_SECRET,
-  SYNAPSE_HTTP,
-} from '../support/synapse/start.mjs';
-import { chromium } from 'playwright';
-
-// Node's fetch (CS-API helpers) must accept Caddy's self-signed cert.
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+import { applicationOrigin } from '../support/session.mts';
+import { test, expect } from './fixtures.mts';
 
 const APP = applicationOrigin();
 
-const HS = process.env.TRINITY_HS ?? 'https://localhost:8448';
-const USER = process.env.TRINITY_USER ?? 'verify-e2e';
-const PASS = process.env.TRINITY_PASS ?? 'verify-e2e-pass-123';
-const SERVER_NAME = 'localhost';
-const USER_ID = `@${USER}:${SERVER_NAME}`;
-const HEADED = process.env.HEADED === '1';
-const SLOWMO = Number(process.env.SLOWMO ?? 0);
+let HS;
+let USER;
+let PASS;
+let IGNORE_HTTP_ERRORS;
+let USER_ID;
 
 // Unique names per run so re-runs never collide with stale rooms.
-const RUN_ID = invocationResourceId('search');
+let RUN_ID;
 // Scenario 1 — two rooms for the quick-switcher jump test.
-const ROOM_A = `Alpha-${RUN_ID}`;
-const ROOM_B = `Beta-${RUN_ID}`;
+let ROOM_A;
+let ROOM_B;
 // Scenario 2 — plaintext room with a seeded message that has a distinctive token.
-const SEARCH_ROOM = `Search-${RUN_ID}`;
+let SEARCH_ROOM;
 // The token is a short, unique string with no spaces so it matches exactly.
-const TOKEN = `XSRCH${RUN_ID}`;
+let TOKEN;
 // Scenario 3 — second user for the directory → DM path.
-const BOB_USER = `bob-${RUN_ID}`;
-const BOB_PASS = `bobpass-${RUN_ID}`;
-const BOB_ID = `@${BOB_USER}:${SERVER_NAME}`;
+let BOB_USER;
+let BOB_PASS;
+let BOB_ID;
 
 const STEP_TIMEOUT = 30_000;
 const SETUP_TIMEOUT = 60_000;
@@ -71,37 +53,6 @@ const log = (m) => console.log(`[search] ${m}`);
 // ---------------------------------------------------------------------------
 // CS-API helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Register a user via Synapse's shared-secret admin endpoint. Idempotent: "already
- * exists" is treated as success (mirrors rooms.mjs).
- */
-async function registerUser(username, password) {
-  const nonceRes = await fetch(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`);
-  if (!nonceRes.ok) {
-    throw new Error(
-      `register nonce → ${nonceRes.status} ${await nonceRes.text()}`,
-    );
-  }
-  const { nonce } = await nonceRes.json();
-  const mac = createHmac('sha1', REGISTRATION_SHARED_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await fetch(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nonce, username, password, admin: false, mac }),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    if (/already.*exists|user.*taken/i.test(text)) {
-      log(`@${username}:${SERVER_NAME} already exists — reusing`);
-      return;
-    }
-    throw new Error(`register ${username} → ${res.status} ${text}`);
-  }
-  log(`registered @${username}:${SERVER_NAME}`);
-}
 
 async function apiLogin(user, pass) {
   const res = await fetch(`${HS}/_matrix/client/v3/login`, {
@@ -216,11 +167,13 @@ async function waitForModalGone(page) {
 // Main
 // ---------------------------------------------------------------------------
 
-async function main() {
-  await mkdir('e2e/.artifacts', { recursive: true });
-
+async function main(browser, testInfo) {
   // ── CS-API pre-setup ───────────────────────────────────────────────────────
-  const { access_token: aliceToken } = await apiLogin(USER, PASS);
+  const { access_token: aliceToken, user_id: aliceId } = await apiLogin(
+    USER,
+    PASS,
+  );
+  USER_ID = aliceId;
   log(`alice api login ok`);
 
   // Scenario 1: two rooms for quick-switcher jump.
@@ -271,10 +224,12 @@ async function main() {
     { msgtype: 'm.text', body: `Post ${RUN_ID}` },
   );
 
-  // Scenario 3: register BOB and seed BOB into the user directory.
-  log(`registering second user @${BOB_USER}:${SERVER_NAME}`);
-  await registerUser(BOB_USER, BOB_PASS);
-  const { access_token: bobToken } = await apiLogin(BOB_USER, BOB_PASS);
+  // Scenario 3: seed the fixture-owned BOB account into the user directory.
+  const { access_token: bobToken, user_id: bobId } = await apiLogin(
+    BOB_USER,
+    BOB_PASS,
+  );
+  BOB_ID = bobId;
   log(`BOB api login ok`);
 
   // BOB creates a public room → Synapse indexes BOB in the user directory.
@@ -307,15 +262,10 @@ async function main() {
   log(`BOB is in user directory ✓`);
 
   // ── Browser setup ──────────────────────────────────────────────────────────
-  log(`serving www on ${APP} (homeserver=${HS} user=${USER})`);
+  log(`serving www on ${APP} (homeserver=${HS})`);
 
-  const browser = await chromium.launch({
-    headless: !HEADED,
-    slowMo: SLOWMO,
-    args: ['--disable-dev-shm-usage'],
-  });
   const ctx = await browser.newContext({
-    ignoreHTTPSErrors: true,
+    ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
     viewport: { width: 1280, height: 720 },
   });
 
@@ -323,7 +273,9 @@ async function main() {
   // CDP layer where ignoreHTTPSErrors applies (same rationale as rooms.mjs).
   await ctx.route(`${HS}/**`, async (route) => {
     try {
-      const response = await route.fetch({ ignoreHTTPSErrors: true });
+      const response = await route.fetch({
+        ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
+      });
       await route.fulfill({ response });
     } catch {
       await route.fallback();
@@ -511,7 +463,7 @@ async function main() {
       BOB_USER,
       { timeout: STEP_TIMEOUT, polling: 300 },
     );
-    log(`directory "Person" result for BOB ("${BOB_USER}") visible ✓`);
+    log('directory "Person" result for BOB visible ✓');
 
     // Click the Person result to start the DM.
     const personResult = modal3.locator('.qs-row').filter({
@@ -559,16 +511,32 @@ async function main() {
   } catch (err) {
     console.error('\n[search] error:', err.message);
     await page
-      .screenshot({ path: 'e2e/.artifacts/search-failure.png' })
+      .screenshot({ path: testInfo.outputPath('search-failure.png') })
       .catch(() => {});
     console.log('\nRESULT: FAIL');
+    throw err;
   } finally {
-    await browser.close();
+    await ctx.close();
   }
-  process.exit(exit);
+  expect(exit).toBe(0);
 }
 
-main().catch((err) => {
-  console.error('[search] fatal:', err);
-  process.exit(1);
+test('covers room, message, and directory search journeys', async ({
+  browser,
+  protocolCredentials,
+  resourceNamespace,
+}, testInfo) => {
+  HS = protocolCredentials.hs;
+  USER = protocolCredentials.user;
+  PASS = protocolCredentials.pass;
+  IGNORE_HTTP_ERRORS = protocolCredentials.mode === 'disposable';
+  expect(protocolCredentials.secondary).toBeDefined();
+  BOB_USER = protocolCredentials.secondary.user;
+  BOB_PASS = protocolCredentials.secondary.pass;
+  RUN_ID = resourceNamespace.role('search');
+  ROOM_A = `Alpha-${RUN_ID}`;
+  ROOM_B = `Beta-${RUN_ID}`;
+  SEARCH_ROOM = `Search-${RUN_ID}`;
+  TOKEN = `XSRCH${RUN_ID}`;
+  await main(browser, testInfo);
 });

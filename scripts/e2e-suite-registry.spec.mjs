@@ -94,7 +94,7 @@ describe('E2E suite registry', () => {
     expect(validateWorkspace(workspaceRoot, snapshot)).toEqual(
       expect.arrayContaining([
         expect.stringContaining(
-          'protocol.crypto-spike-webkit does not serialize shared entrypoint e2e/features/crypto-spike.mjs with crypto-spike',
+          'protocol.crypto-spike-webkit does not serialize shared entrypoint e2e/protocol/crypto-spike.spec.mjs with crypto-spike',
         ),
       ]),
     );

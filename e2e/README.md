@@ -12,11 +12,10 @@ Android. The aggregate validates every prerequisite before starting work and run
 suites in safe order. Focused legacy commands remain Nx-backed compatibility aliases for one
 release cycle.
 
-Web/PWA, component/visual, and canonical browser contracts now live in lifecycle-owned projects.
+Web/PWA, component/visual, canonical browser and protocol contracts now live in lifecycle-owned projects.
 Canonical app journeys are grouped by capability under `e2e/browser/journeys/`, installed WebView
-journeys live in `e2e/android/`, desktop journeys in `e2e/electron/`, and raw protocol drivers in
-`features/` plus `runners/`; later migration tickets split those remaining environments without
-removing assertions. The extracted
+journeys live in `e2e/android/`, desktop journeys in `e2e/electron/`, and protocol journeys in
+`e2e/protocol/`. The extracted
 `trinity-e2e-support` project owns every process and the disposable stack under
 `e2e/support/synapse/`; Synapse-backed children only join its serialized invocation.
 
@@ -39,9 +38,8 @@ e2e/
   browser/    trinity-e2e-browser: capability-owned canonical journeys, catalog,
               browser-owned journey helpers and coverage reporting — `pnpm e2e:browser`
   components/ trinity-e2e-components: Storybook, CSS and scrollbar contracts
-  features/   raw-playwright test bodies — what each scenario drives in the browser
-              (emoji, rooms, search, spaces, threads, send-media, verify-sas, …)
-  runners/    nine thin protocol compatibility entrypoints over the support runner
+  protocol/   trinity-e2e-protocol: Playwright Test verification, crypto, media,
+              relation, room, search and emoji journeys — `pnpm e2e:protocol`
   web/        trinity-e2e-web: production Web/PWA host and renderer contracts — `pnpm e2e:web`
   android/    API 36 Capacitor WebView fixture, native-only specs, and device
               orchestrator — `pnpm e2e:android`
@@ -50,9 +48,9 @@ e2e/
               process locks, namespaces, reporting, and the Synapse+Caddy+Dex harness
 ```
 
-Always invoke a feature through its `pnpm`/Nx command or one of the nine retained
-`node e2e/runners/<x>-run.mjs` compatibility paths. Raw feature bodies require the validated
-invocation descriptor and deliberately do not start a fallback server or homeserver.
+Always invoke a journey through its `pnpm`/Nx command. Protocol specs use the same validated
+invocation descriptor, Playwright fixtures, attempt namespace and report policy as the other
+lifecycle projects; they never start a fallback server or homeserver.
 
 [`browser/journey-catalog.mts`](browser/journey-catalog.mts) gives every canonical spec exactly
 one owning capability and one primary contract type. The registry validator rejects missing,
@@ -97,6 +95,27 @@ pnpm exec nx run trinity-e2e-browser:e2e -- --grep "opens a copied message link"
 
 The complete ownership model, compatibility policy and local delivery contract are in
 [End-to-end test architecture](../docs/contributing/e2e-architecture.md).
+
+### Remote protocol mode
+
+Synapse-backed protocol targets normally create attempt-scoped accounts on the disposable
+support stack. A focused mutating target can explicitly use a remote homeserver instead:
+
+```bash
+TRINITY_E2E_PROTOCOL_MODE=remote \
+TRINITY_HS=https://matrix.example.test \
+TRINITY_USER=protocol-test-user \
+TRINITY_PASS=... \
+pnpm e2e:verify
+```
+
+Remote mode validates the complete credential set before the build, requires an absolute HTTPS
+URL without embedded credentials, keeps normal TLS verification enabled, and never copies
+password values into annotations, reports or validation errors. It disables Playwright traces so
+authenticated request tokens cannot land in artifacts. `e2e:rooms` and `e2e:search`
+also require `TRINITY_SECONDARY_USER` and `TRINITY_SECONDARY_PASS`. These are mutating journeys:
+use dedicated test accounts and expect rooms, messages, account data and encryption state to be
+created. The exhaustive `pnpm e2e:protocol` gate deliberately remains disposable-only.
 
 ## Android WebView journeys
 
@@ -185,19 +204,19 @@ xvfb-run -a pnpm electron:e2e image-pack-management.electron.spec.mts
 
 ## `e2e:media` — encrypted media send round-trip
 
-`send-media.mjs` creates an **E2EE room** via the CS API, logs into the app as that
+`protocol/send-media.spec.mjs` creates an **E2EE room** via the CS API, logs into the app as that
 user, sets up encryption, opens the room, and picks a 1×1 PNG through the composer's
 hidden `<input type="file">` (`[data-testid=composer-file-input]`, driven with
 Playwright `setInputFiles` — no native dialog). It then asserts the app renders its
 **own** sent attachment: `[data-testid=media-bubble]` reaches `data-media-state="ready"`,
 which only happens once the client has uploaded the ciphertext and **downloaded +
 decrypted it back** into an `<img>`. One context suffices — a device decrypts the media
-it sent itself. `send-media-run.mjs` (run by `pnpm e2e:media`) brings the bundled Synapse
-harness up, runs it, and tears it down.
+it sent itself. The `trinity-e2e-protocol:media` target (run by `pnpm e2e:media`) joins the
+support-owned bundled Synapse invocation and relies on its bounded teardown.
 
 ## `e2e:verify` — two-client emoji SAS
 
-`verify-sas.mjs` opens **two browser contexts in one Chromium**. Isolated IndexedDB
+`protocol/verify-sas.spec.mjs` opens **two browser contexts in one Chromium**. Isolated IndexedDB
 ⇒ two crypto stores ⇒ two devices of the **same** Matrix user. It then:
 
 1. **Device A** logs in (fresh account, crypto `needs-setup`), goes to
@@ -231,9 +250,9 @@ Requires **Docker** able to pull `matrixdotorg/synapse`, `caddy` and `ghcr.io/de
 pnpm e2e:verify
 ```
 
-This builds the dev bundle and runs `verify-sas-run.mjs`, a compatibility path that joins the
-support invocation. The owner starts `e2e/support/synapse/`, registers the test user, runs
-`features/verify-sas.mjs`, and performs bounded teardown even on failure.
+This builds the dev bundle and runs the ordinary Playwright Test spec through
+`trinity-e2e-protocol:verify-sas`. The support owner starts `e2e/support/synapse/`, the fixture
+registers an attempt-scoped test user, and the invocation performs bounded teardown even on failure.
 
 Debugging:
 
@@ -243,12 +262,12 @@ pnpm e2e:verify:up                          # leave the HS up
 pnpm e2e:verify:down                         # tear down
 ```
 
-The raw driver remains parameterized internally, but direct execution is unsupported because it
-would bypass dynamic endpoint, lock, cancellation and teardown ownership.
+Direct spec execution is unsupported because it would bypass dynamic endpoint, lock,
+cancellation and teardown ownership. Use the Nx/package target, including for remote mode.
 
 ## `e2e:verify:qr` — two-client QR reciprocation
 
-`verify-qr.mjs` performs the same two-context account and encryption setup, then has
+`protocol/verify-qr.spec.mjs` performs the same two-context account and encryption setup, then has
 Device A explicitly reveal the SDK's binary QR payload. Device B scans that exact image
 through the production camera component and decoder. The camera input is a canvas-backed
 `MediaStream`, so the run needs no physical hardware while still exercising QR rendering,
@@ -260,13 +279,13 @@ code is removed once consumed.
 pnpm e2e:verify:qr
 ```
 
-The QR and SAS runners each own the same disposable Synapse ports and therefore must run
-sequentially.
+The QR and SAS targets request the same support-owned disposable Synapse resource and therefore
+run sequentially.
 
 ### Homeserver-free self-check
 
 ```bash
-pnpm exec nx run trinity-e2e:protocol-verify-sas-selfcheck
+pnpm exec nx run trinity-e2e-protocol:verify-sas-selfcheck
 ```
 
 Validates everything that does **not** need a homeserver: the build serves, the SPA
@@ -322,7 +341,7 @@ green across all projects.
 
 `e2e:verify` **requires Docker** able to run those images. Where Docker or registry
 access is unavailable, fall back to the homeserver-free self-check
-(`pnpm exec nx run trinity-e2e:protocol-verify-sas-selfcheck` → `RESULT: PASS`), which still covers the dev
+(`pnpm exec nx run trinity-e2e-protocol:verify-sas-selfcheck` → `RESULT: PASS`), which still covers the dev
 build serving, the SPA booting, `/login` + discovery + the password form, and the
 guarded `/encryption/verify` route — everything except the live SAS exchange.
 

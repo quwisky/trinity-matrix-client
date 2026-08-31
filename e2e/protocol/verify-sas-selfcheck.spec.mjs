@@ -4,7 +4,7 @@
 // selectors and routing are exercised even where Docker/Synapse is unavailable:
 //   1. the dev build serves and the SPA boots
 //   2. /login renders the homeserver input (labeled "Homeserver") + "Continue" button
-//   3. after typing a homeserver and clicking Continue, an *invalid* host still
+//   3. after typing a homeserver and clicking Continue, matrix.org discovery
 //      drives discovery (proving the form wiring + serve fallback work)
 //   4. /encryption/verify (behind authGuard) is reachable as a route and the
 //      [data-testid=verify-start] selector + verify-page/data-stage exist in the
@@ -13,28 +13,19 @@
 //
 // This is the "verify as much as we can headlessly" path the task asks for when the
 // live round-trip is gated. It does NOT assert a PASS of the SAS flow.
-import { applicationOrigin } from '../support/session.mts';
-import { chromium } from 'playwright';
+import { test, expect } from './fixtures.mts';
 
-const APP = applicationOrigin();
 const log = (m) => console.log(`[selfcheck] ${m}`);
-log(`serving www on ${APP}`);
-
-const browser = await chromium.launch({ headless: true });
-const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
-const page = await ctx.newPage();
-page.on('pageerror', (e) => console.log(`  [page:error] ${e.message}`));
-
-const checks = [];
-const check = (name, ok) => {
-  checks.push({ name, ok });
-  log(`${ok ? 'PASS' : 'FAIL'} — ${name}`);
-};
-
-let exit = 1;
-try {
+test('validates the homeserver-free SAS surface', async ({ page }) => {
+  page.on('pageerror', (e) => console.log(`  [page:error] ${e.message}`));
+  const checks = [];
+  const check = (name, ok) => {
+    checks.push({ name, ok });
+    log(`${ok ? 'PASS' : 'FAIL'} — ${name}`);
+  };
+  let exit = 1;
   // 1. App boots, unauthenticated load redirects to /login.
-  await page.goto(`${APP}/`, { waitUntil: 'networkidle' });
+  await page.goto('/', { waitUntil: 'networkidle' });
   await page.waitForURL('**/login', { timeout: 15_000 });
   check('app boots and redirects to /login when unauthenticated', true);
 
@@ -50,10 +41,12 @@ try {
   await hsInput.click();
   await hsInput.fill('matrix.org');
   await continueBtn.click();
-  // Either the password form (real discovery succeeded) or an error/busy state —
-  // both prove the click handler + discovery path are wired. We don't depend on
-  // network here, just that the UI reacts.
-  const reacted = await Promise.race([
+  // OIDC, password, discovered-base-URL, or error state all prove that the click
+  // handler and live matrix.org discovery path are wired.
+  const reacted = await Promise.any([
+    expect(page.getByTestId('oidc-continue'))
+      .toBeVisible({ timeout: 30_000 })
+      .then(() => 'oidc'),
     page
       .getByRole('button', { name: 'Sign in' })
       .waitFor({ timeout: 30_000 })
@@ -77,7 +70,7 @@ try {
 
   // 4. /encryption/verify route resolves (authGuard redirects to /login when
   //    unauthenticated — proving the route + lazy chunk load without 404).
-  await page.goto(`${APP}/encryption/verify`, { waitUntil: 'networkidle' });
+  await page.goto('/encryption/verify', { waitUntil: 'networkidle' });
   const onLogin = /\/login/.test(page.url());
   check('/encryption/verify route resolves (guarded → /login)', onLogin);
 
@@ -97,10 +90,5 @@ try {
   console.log(
     `\nRESULT: ${exit === 0 ? 'PASS' : 'FAIL'} (homeserver-free self-check)`,
   );
-} catch (err) {
-  console.error('[selfcheck] error:', err.message);
-  console.log('\nRESULT: FAIL');
-} finally {
-  await browser.close();
-}
-process.exit(exit);
+  expect(exit).toBe(0);
+});
