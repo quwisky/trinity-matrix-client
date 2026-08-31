@@ -11,45 +11,25 @@
 // peer (spinner, answer spent) while B is still being asked. Only a two-device run can
 // observe that state honestly.
 //
-// Homeserver is parameterized by env so this runs against anything:
-//   TRINITY_HS    homeserver the login form types (default https://localhost:8448,
-//                 the bundled Synapse+Caddy harness)
-//   TRINITY_USER  username    (default verify-e2e)
-//   TRINITY_PASS  password    (default verify-e2e-pass-123)
-//   HEADED=1      run headed for debugging
-//   SLOWMO=ms     slow down actions for debugging
+// The Nx target defaults to disposable attempt-scoped credentials. Explicit
+// remote mode accepts TRINITY_HS/TRINITY_USER/TRINITY_PASS; HEADED/SLOWMO aid debugging.
 //
 // `pnpm e2e:verify` builds dev, starts the harness, runs this, and tears down.
-// Run standalone against an existing HS with:
-//   TRINITY_HS=… TRINITY_USER=… TRINITY_PASS=… node e2e/features/verify-sas.mjs
-import { mkdir } from 'node:fs/promises';
 import { waitForRooms } from '../support/navigation.mjs';
 import { applicationOrigin } from '../support/session.mts';
-import { chromium } from 'playwright';
+import { test, expect } from './fixtures.mts';
 
 const APP = applicationOrigin();
 
-const HS = process.env.TRINITY_HS ?? 'https://localhost:8448';
-const USER = process.env.TRINITY_USER ?? 'verify-e2e';
-const PASS = process.env.TRINITY_PASS ?? 'verify-e2e-pass-123';
-const HEADED = process.env.HEADED === '1';
-const SLOWMO = Number(process.env.SLOWMO ?? 0);
+let HS;
+let USER;
+let PASS;
 
 // Generous: real SAS round-trips cross-context to-device traffic through the HS.
 const STAGE_TIMEOUT = 60_000;
 const SETUP_TIMEOUT = 90_000;
 
 const log = (m) => console.log(`[verify] ${m}`);
-
-/** Fill a native `<input hlmInput>` by its associated `<label for="…">`. */
-async function fillLabeledInput(page, label, value) {
-  // Exact match: the password field's "Show password" reveal button (aria-label)
-  // otherwise also matches a substring `getByLabel('Password')`, tripping strict mode.
-  const input = page.getByLabel(label, { exact: true });
-  await input.waitFor({ state: 'visible', timeout: 15_000 });
-  await input.click();
-  await input.fill(value);
-}
 
 /** Read the verify-page's live stage attribute (or null if the page isn't shown). */
 async function stageOf(scope) {
@@ -73,27 +53,6 @@ async function waitForStage(scope, stages, timeout = STAGE_TIMEOUT) {
     wanted,
     { timeout, polling: 200 },
   );
-}
-
-/** Log in: type the homeserver, Continue, fill credentials, Sign in → /rooms. */
-async function login(page, who) {
-  log(`${who}: loading app`);
-  await page.goto(`${APP}/login`, { waitUntil: 'networkidle' });
-  await page.waitForURL('**/login', { timeout: 15_000 });
-
-  await fillLabeledInput(page, 'Homeserver', HS);
-  await page.getByText('Continue', { exact: true }).click();
-
-  // Discovery + loginFlows resolve, then the password form appears.
-  await page
-    .getByRole('button', { name: 'Sign in' })
-    .waitFor({ timeout: 30_000 });
-  await fillLabeledInput(page, 'Username', USER);
-  await fillLabeledInput(page, 'Password', PASS);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-
-  await waitForRooms(page);
-  log(`${who}: logged in → /rooms`);
 }
 
 /** Device A: set up encryption (UIA password alert → recovery key → continue). */
@@ -133,7 +92,7 @@ async function setUpEncryption(page) {
 
   // Recovery key is shown once; tick "I've saved", then continue.
   await key.waitFor({ state: 'visible', timeout: SETUP_TIMEOUT });
-  log(`A: recovery key shown (${(await key.innerText()).slice(0, 12)}…)`);
+  log('A: recovery key shown');
 
   await page
     .getByRole('checkbox', { name: /I've saved my recovery key/ })
@@ -175,42 +134,20 @@ async function assertWaitingOnPeer(scope) {
   }
 }
 
-async function main() {
-  await mkdir('e2e/.artifacts', { recursive: true });
+async function main(protocolBrowser) {
   log(`serving www on ${APP}`);
-  log(`homeserver=${HS} user=${USER}`);
+  log(`homeserver=${HS}`);
 
-  const browser = await chromium.launch({
-    headless: !HEADED,
-    slowMo: SLOWMO,
-    args: ['--disable-dev-shm-usage'],
-  });
-
-  // ignoreHTTPSErrors lets the contexts talk to the self-signed Caddy TLS front.
-  const ctxA = await browser.newContext({ ignoreHTTPSErrors: true });
-  const ctxB = await browser.newContext({ ignoreHTTPSErrors: true });
-  const A = await ctxA.newPage();
-  const B = await ctxB.newPage();
-  for (const [page, who] of [
-    [A, 'A'],
-    [B, 'B'],
-  ]) {
-    page.on('pageerror', (e) => console.log(`  [${who}:error] ${e.message}`));
-    page.on('console', (m) => {
-      if (m.type() === 'error')
-        console.log(`  [${who}:console.error] ${m.text()}`);
-    });
-  }
+  const A = await protocolBrowser.newAuthenticatedPage({ label: 'device-a' });
+  let B;
 
   let exit = 1;
   try {
-    // 1. Device A: first device — log in and bootstrap crypto.
-    await login(A, 'A (device 1)');
+    // 1. Device A: first device — bootstrap crypto.
     await setUpEncryption(A);
 
     // 2. Device B: same user, new context ⇒ new device, needs-recovery.
-    await login(B, 'B (device 2)');
-
+    B = await protocolBrowser.newAuthenticatedPage({ label: 'device-b' });
     // 3. B initiates the SAS verification.
     log('B: starting verification (/encryption/verify)');
     // domcontentloaded, not networkidle: sync long-poll keeps the network busy.
@@ -312,27 +249,24 @@ async function main() {
     console.log('\nRESULT: PASS');
     exit = 0;
   } catch (err) {
-    console.error('\n[verify] error:', err.message);
     try {
       console.error(`  A stage=${await stageOf(A)} url=${A.url()}`);
-      console.error(`  B stage=${await stageOf(B)} url=${B.url()}`);
-      await A.screenshot({ path: 'e2e/.artifacts/A-failure.png' }).catch(
-        () => {},
-      );
-      await B.screenshot({ path: 'e2e/.artifacts/B-failure.png' }).catch(
-        () => {},
-      );
+      if (B) console.error(`  B stage=${await stageOf(B)} url=${B.url()}`);
     } catch {
       /* best effort */
     }
     console.log('\nRESULT: FAIL');
-  } finally {
-    await browser.close();
+    throw err;
   }
-  process.exit(exit);
+  expect(exit).toBe(0);
 }
 
-main().catch((err) => {
-  console.error('[verify] fatal:', err);
-  process.exit(1);
+test('verifies two devices through matching emoji SAS', async ({
+  protocolBrowser,
+  protocolCredentials,
+}) => {
+  HS = protocolCredentials.hs;
+  USER = protocolCredentials.user;
+  PASS = protocolCredentials.pass;
+  await main(protocolBrowser);
 });

@@ -69,6 +69,10 @@
       "reason": "Component-browser and visual E2E harnesses are outside the shipped application dependency model."
     },
     {
+      "project": "trinity-e2e-protocol",
+      "reason": "Protocol E2E harnesses are outside the shipped application dependency model."
+    },
+    {
       "project": "trinity-e2e-web",
       "reason": "Black-box Web/PWA E2E harnesses are outside the shipped application dependency model."
     }

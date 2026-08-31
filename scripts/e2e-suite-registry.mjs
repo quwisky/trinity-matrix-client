@@ -315,12 +315,18 @@ export const runSuite = (
 export const runSelection = async (
   targetName,
   {
+    environment = process.env,
     validate = () => validateWorkspace(workspaceRoot),
     select = suitesForRun,
     preflight = checkPrerequisites,
     executeSuite = runSuite,
     openInvocation = (resources, signal) =>
-      openE2EInvocation({ resources, workspaceRoot, signal }),
+      openE2EInvocation({
+        resources,
+        workspaceRoot,
+        environment,
+        signal,
+      }),
     reportError = writeError,
     forwardedArgs = [],
     createTerminationScope = createProcessTerminationScope,
@@ -336,6 +342,15 @@ export const runSelection = async (
     }
 
     const suites = select(targetName);
+    if (
+      environment['TRINITY_E2E_PROTOCOL_MODE'] === 'remote' &&
+      suites.some(({ environment }) => environment === 'protocol')
+    ) {
+      reportError(
+        'Remote protocol mode is focused-only; aggregate selections are disposable-only.',
+      );
+      return 1;
+    }
     const prerequisiteFailures = await preflight(suites);
     if (prerequisiteFailures.length > 0) {
       for (const failure of prerequisiteFailures) reportError(`- ${failure}`);

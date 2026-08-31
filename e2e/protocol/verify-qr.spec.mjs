@@ -3,26 +3,17 @@
 // Device A renders the real SDK QR payload. Device B's production camera scanner
 // reads that image from a synthetic canvas MediaStream, avoiding physical camera
 // hardware while still exercising rendering, decoding, and scanQRCode end to end.
-import { mkdir } from 'node:fs/promises';
 import { waitForRooms } from '../support/navigation.mjs';
 import { applicationOrigin } from '../support/session.mts';
-import { chromium } from 'playwright';
+import { test, expect } from './fixtures.mts';
 
 const APP = applicationOrigin();
-const HS = process.env.TRINITY_HS ?? 'https://localhost:8448';
-const USER = process.env.TRINITY_USER ?? 'verify-e2e';
-const PASS = process.env.TRINITY_PASS ?? 'verify-e2e-pass-123';
-const HEADED = process.env.HEADED === '1';
-const SLOWMO = Number(process.env.SLOWMO ?? 0);
+let HS;
+let USER;
+let PASS;
 const STAGE_TIMEOUT = 60_000;
 const SETUP_TIMEOUT = 90_000;
 const log = (message) => console.log(`[verify-qr] ${message}`);
-
-async function fillLabeledInput(page, label, value) {
-  const input = page.getByLabel(label, { exact: true });
-  await input.waitFor({ state: 'visible', timeout: 15_000 });
-  await input.fill(value);
-}
 
 async function stageOf(scope) {
   const page = scope.getByTestId('verify-page');
@@ -44,20 +35,6 @@ async function waitForStage(scope, stages, timeout = STAGE_TIMEOUT) {
     wanted,
     { timeout, polling: 200 },
   );
-}
-
-async function login(page, who) {
-  log(`${who}: loading app`);
-  await page.goto(`${APP}/login`, { waitUntil: 'networkidle' });
-  await fillLabeledInput(page, 'Homeserver', HS);
-  await page.getByText('Continue', { exact: true }).click();
-  await page
-    .getByRole('button', { name: 'Sign in' })
-    .waitFor({ timeout: 30_000 });
-  await fillLabeledInput(page, 'Username', USER);
-  await fillLabeledInput(page, 'Password', PASS);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await waitForRooms(page);
 }
 
 async function setUpEncryption(page) {
@@ -127,33 +104,15 @@ async function installSyntheticCamera(page) {
   });
 }
 
-async function main() {
-  await mkdir('e2e/.artifacts', { recursive: true });
-  const browser = await chromium.launch({
-    headless: !HEADED,
-    slowMo: SLOWMO,
-    args: ['--disable-dev-shm-usage'],
-  });
-  const ctxA = await browser.newContext({ ignoreHTTPSErrors: true });
-  const ctxB = await browser.newContext({ ignoreHTTPSErrors: true });
-  const A = await ctxA.newPage();
-  const B = await ctxB.newPage();
+async function main(protocolBrowser) {
+  const A = await protocolBrowser.newAuthenticatedPage({ label: 'device-a' });
+  const B = await protocolBrowser.newPage({ label: 'device-b' });
   await installSyntheticCamera(B);
-
-  for (const [page, who] of [
-    [A, 'A'],
-    [B, 'B'],
-  ]) {
-    page.on('pageerror', (error) =>
-      console.log(`  [${who}:error] ${error.message}`),
-    );
-  }
 
   let exit = 1;
   try {
-    await login(A, 'A (device 1)');
     await setUpEncryption(A);
-    await login(B, 'B (device 2)');
+    await protocolBrowser.login(B);
 
     log('B: starting verification');
     await B.goto(`${APP}/encryption/verify`, {
@@ -199,23 +158,20 @@ async function main() {
     console.log('\nRESULT: PASS');
     exit = 0;
   } catch (err) {
-    console.error('\n[verify-qr] error:', err.message);
     console.error(`  A stage=${await stageOf(A)} url=${A.url()}`);
     console.error(`  B stage=${await stageOf(B)} url=${B.url()}`);
-    await A.screenshot({ path: 'e2e/.artifacts/A-qr-failure.png' }).catch(
-      () => {},
-    );
-    await B.screenshot({ path: 'e2e/.artifacts/B-qr-failure.png' }).catch(
-      () => {},
-    );
     console.log('\nRESULT: FAIL');
-  } finally {
-    await browser.close();
+    throw err;
   }
-  process.exit(exit);
+  expect(exit).toBe(0);
 }
 
-main().catch((err) => {
-  console.error('[verify-qr] fatal:', err);
-  process.exit(1);
+test('verifies two devices through QR reciprocation', async ({
+  protocolBrowser,
+  protocolCredentials,
+}) => {
+  HS = protocolCredentials.hs;
+  USER = protocolCredentials.user;
+  PASS = protocolCredentials.pass;
+  await main(protocolBrowser);
 });

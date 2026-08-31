@@ -8,8 +8,8 @@ import { registerUser } from '../../../support/account.mts';
 
 // Node's fetch (the CS-API room seeding below) must accept the disposable
 // Synapse + Caddy harness's self-signed cert — same bypass the invocation applies
-// in the main process, and the legacy e2e/features/*.mjs runners set at their own
-// module scope; set again here so it holds regardless of whether Playwright's
+// in the main process at module scope; set again here so it holds regardless of
+// whether Playwright's
 // worker process inherits the main process's later `process.env` mutations.
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 
@@ -62,7 +62,7 @@ async function apiLogin(
  * it as a direct message (`m.direct` account data) so it renders in the
  * server rail's default Home view. Deliberately bypasses the create-room UI
  * (the header "+" action sheet + alert dialog) — that flow is already covered
- * end to end by e2e/features/rooms.mjs; this file only needs *a* room to
+ * end to end by the protocol rooms spec; this file only needs *a* room to
  * exercise the drawer's open/select/close mechanics, and seeding it before
  * `login()` means it's already part of the account's initial sync rather than
  * something each test has to wait to arrive.

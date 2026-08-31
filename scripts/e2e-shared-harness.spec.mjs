@@ -51,7 +51,7 @@ const EXEMPT = ['e2e/support/account.mts', 'e2e/support/synapse/'];
  * The whole e2e tree, not just the Playwright specs.
  *
  * The first version of this guard globbed only the canonical browser journey tree and claimed the
- * constants had "one definition" — while `e2e/features/rooms.mjs` and `search.mjs`, both
+ * constants had "one definition" — while the former rooms and search protocol drivers, both
  * live and both documented in `docs/contributing/testing.md`, restated BOTH literals and
  * carried a third `registerUser`. A guard narrower than the invariant it states is worse
  * than no guard: it reads as tree-wide and is not.
@@ -126,10 +126,6 @@ describe('e2e harness constants', () => {
     // A second local `registerUser` is how the first eighty-two happened. The exceptions are
     // named rather than pattern-matched, so adding another is a visible line here.
     //
-    // The two that remain are the standalone `.mjs` runners, which drive Playwright's
-    // library API directly and so have no `request` fixture to hand — they register over
-    // plain `fetch`. They import both constants, which is the half that actually drifts.
-    //
     // `mobile-nav.spec.mts` is NOT among them any more. It used to be, on the stated
     // grounds that `beforeAll` has no `request` fixture; that was simply false — Playwright
     // provisions one for the hook and only forbids reusing it inside a test.
@@ -137,9 +133,6 @@ describe('e2e harness constants', () => {
       /\b(?:function registerUser\(|const registerUser\s*=)/.test(read(file)),
     );
 
-    expect(local).toEqual([
-      'e2e/features/rooms.mjs',
-      'e2e/features/search.mjs',
-    ]);
+    expect(local).toEqual([]);
   });
 });

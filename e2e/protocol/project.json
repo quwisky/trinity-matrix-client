@@ -1,0 +1,166 @@
+{
+  "name": "trinity-e2e-protocol",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "e2e/protocol",
+  "tags": ["type:e2e", "scope:trinity", "environment:protocol"],
+  "implicitDependencies": ["trinity", "trinity-e2e-support"],
+  "targets": {
+    "verify-sas": {
+      "cache": false,
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-protocol"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/protocol/run.mts --suite=protocol.verify-sas",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "verify-qr": {
+      "cache": false,
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-protocol"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/protocol/run.mts --suite=protocol.verify-qr",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "media": {
+      "cache": false,
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-protocol"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/protocol/run.mts --suite=protocol.media",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "threads": {
+      "cache": false,
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-protocol"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/protocol/run.mts --suite=protocol.threads",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "reply": {
+      "cache": false,
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-protocol"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/protocol/run.mts --suite=protocol.reply",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "spaces": {
+      "cache": false,
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-protocol"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/protocol/run.mts --suite=protocol.spaces",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "rooms": {
+      "cache": false,
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-protocol"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/protocol/run.mts --suite=protocol.rooms",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "search": {
+      "cache": false,
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-protocol"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/protocol/run.mts --suite=protocol.search",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "emoji": {
+      "cache": false,
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-protocol"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/protocol/run.mts --suite=protocol.emoji",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "verify-sas-selfcheck": {
+      "cache": false,
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-protocol"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/protocol/run.mts --suite=protocol.verify-sas-selfcheck",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "crypto-spike-chromium": {
+      "cache": false,
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-protocol"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/protocol/run.mts --suite=protocol.crypto-spike-chromium",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "crypto-spike-webkit": {
+      "cache": false,
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-protocol"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/protocol/run.mts --suite=protocol.crypto-spike-webkit",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "login-smoke": {
+      "cache": false,
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-protocol"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/protocol/run.mts --suite=protocol.login-smoke",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "eslint \"**/*.{mjs,mts}\"",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc -p tsconfig.json --noEmit",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --config vitest.config.mts",
+        "cwd": "{projectRoot}"
+      },
+      "configurations": {
+        "watch": {
+          "command": "vitest --config vitest.config.mts"
+        }
+      }
+    }
+  }
+}

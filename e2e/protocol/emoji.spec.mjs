@@ -17,35 +17,21 @@
 //   4. The emoji-mart picker: the emoji button opens <emoji-mart>; clicking an
 //      emoji inserts its native character into the composer and closes the picker.
 //
-// Env:
-//   TRINITY_HS    default https://localhost:8448
-//   TRINITY_USER  default verify-e2e
-//   TRINITY_PASS  default verify-e2e-pass-123
-//   HEADED=1 / SLOWMO=ms  for debugging
+// The Nx target defaults to disposable attempt-scoped credentials. Explicit
+// remote mode accepts TRINITY_HS/TRINITY_USER/TRINITY_PASS; HEADED/SLOWMO aid debugging.
 //
 // `pnpm e2e:emoji` builds dev, starts the harness, runs this, and tears down.
-// MUST run sequentially with other e2e scripts (shared docker stack + www/ build).
-import { mkdir } from 'node:fs/promises';
-import { waitForRooms } from '../support/navigation.mjs';
-import {
-  applicationOrigin,
-  invocationResourceId,
-} from '../support/session.mts';
-import { chromium } from 'playwright';
-
-// Node's fetch (CS-API helpers) must accept Caddy's self-signed cert.
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+import { applicationOrigin } from '../support/session.mts';
+import { protocolResponseFailure } from './diagnostics.mts';
+import { test, expect } from './fixtures.mts';
 
 const APP = applicationOrigin();
 
-const HS = process.env.TRINITY_HS ?? 'https://localhost:8448';
-const USER = process.env.TRINITY_USER ?? 'verify-e2e';
-const PASS = process.env.TRINITY_PASS ?? 'verify-e2e-pass-123';
-const HEADED = process.env.HEADED === '1';
-const SLOWMO = Number(process.env.SLOWMO ?? 0);
-
-const RUN_ID = invocationResourceId('emoji');
-const ROOM = `Emoji-${RUN_ID}`;
+let HS;
+let USER;
+let PASS;
+let RUN_ID;
+let ROOM;
 
 const STEP_TIMEOUT = 30_000;
 const SETUP_TIMEOUT = 60_000;
@@ -67,7 +53,7 @@ async function apiLogin(user, pass) {
     }),
   });
   if (!res.ok) {
-    throw new Error(`login ${user} → ${res.status} ${await res.text()}`);
+    throw protocolResponseFailure(`login ${user}`, res);
   }
   return res.json();
 }
@@ -82,7 +68,7 @@ async function csPost(token, path, body) {
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    throw new Error(`POST ${path} → ${res.status} ${await res.text()}`);
+    throw protocolResponseFailure(`POST ${path}`, res);
   }
   const ct = res.headers.get('content-type') ?? '';
   return ct.includes('application/json') ? res.json() : {};
@@ -91,33 +77,6 @@ async function csPost(token, path, body) {
 // ---------------------------------------------------------------------------
 // UI helpers
 // ---------------------------------------------------------------------------
-
-/** Fill a native `<input hlmInput>` by its associated `<label for="…">`. */
-async function fillLabeledInput(page, label, value) {
-  // Exact match: the password field's "Show password" reveal button (aria-label) otherwise
-  // also matches a substring `getByLabel('Password')`, tripping strict mode. Same fix as
-  // e2e/support/app.mts:34 and verify-sas.mjs:45.
-  const input = page.getByLabel(label, { exact: true });
-  await input.waitFor({ state: 'visible', timeout: 15_000 });
-  await input.click();
-  await input.fill(value);
-}
-
-/** Log in: type the homeserver, Continue, fill credentials, Sign in → /rooms. */
-async function login(page) {
-  log('loading app');
-  await page.goto(`${APP}/login`, { waitUntil: 'networkidle' });
-  await fillLabeledInput(page, 'Homeserver', HS);
-  await page.getByText('Continue', { exact: true }).click();
-  await page
-    .getByRole('button', { name: 'Sign in' })
-    .waitFor({ timeout: 30_000 });
-  await fillLabeledInput(page, 'Username', USER);
-  await fillLabeledInput(page, 'Password', PASS);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await waitForRooms(page);
-  log('logged in → /rooms');
-}
 
 /** Focus the composer textarea, type `text` keystroke-by-keystroke (so every
  *  input event fires and the autocomplete tracks), waiting on the textarea. */
@@ -130,9 +89,7 @@ async function typeInComposer(page, textarea, text) {
 // Main
 // ---------------------------------------------------------------------------
 
-async function main() {
-  await mkdir('e2e/.artifacts', { recursive: true });
-
+async function main(protocolBrowser) {
   // ── CS-API pre-setup: one plaintext room to chat in ────────────────────────
   const { access_token: token } = await apiLogin(USER, PASS);
   log('api login ok');
@@ -144,38 +101,12 @@ async function main() {
   log(`created room ${roomId} ("${ROOM}")`);
 
   // ── Browser setup ──────────────────────────────────────────────────────────
-  log(`serving www on ${APP} (homeserver=${HS} user=${USER})`);
+  log(`serving www on ${APP} (homeserver=${HS})`);
 
-  const browser = await chromium.launch({
-    headless: !HEADED,
-    slowMo: SLOWMO,
-    args: ['--disable-dev-shm-usage'],
-  });
-  const ctx = await browser.newContext({
-    ignoreHTTPSErrors: true,
-    viewport: { width: 1280, height: 720 },
-  });
-
-  // Re-fetch HS requests at the CDP layer where ignoreHTTPSErrors applies.
-  await ctx.route(`${HS}/**`, async (route) => {
-    try {
-      const response = await route.fetch({ ignoreHTTPSErrors: true });
-      await route.fulfill({ response });
-    } catch {
-      await route.fallback();
-    }
-  });
-
-  const page = await ctx.newPage();
-  page.on('pageerror', (e) => console.log(`  [page:error] ${e.message}`));
-  page.on('console', (m) => {
-    if (m.type() === 'error') console.log(`  [console.error] ${m.text()}`);
-  });
+  const page = await protocolBrowser.newAuthenticatedPage({ label: 'emoji' });
 
   let exit = 1;
   try {
-    await login(page);
-
     // Open the seeded room from the sidebar.
     log('waiting for the seeded room in the sidebar');
     const channel = page.locator('.channel', { hasText: ROOM });
@@ -308,18 +239,21 @@ async function main() {
     console.log('\nRESULT: PASS');
     exit = 0;
   } catch (err) {
-    console.error('\n[emoji] error:', err.message);
-    await page
-      .screenshot({ path: 'e2e/.artifacts/emoji-failure.png' })
-      .catch(() => {});
     console.log('\nRESULT: FAIL');
-  } finally {
-    await browser.close();
+    throw err;
   }
-  process.exit(exit);
+  expect(exit).toBe(0);
 }
 
-main().catch((err) => {
-  console.error('[emoji] fatal:', err);
-  process.exit(1);
+test('covers shortcode conversion and emoji picker insertion', async ({
+  protocolBrowser,
+  protocolCredentials,
+  resourceNamespace,
+}) => {
+  HS = protocolCredentials.hs;
+  USER = protocolCredentials.user;
+  PASS = protocolCredentials.pass;
+  RUN_ID = resourceNamespace.role('emoji');
+  ROOM = `Emoji-${RUN_ID}`;
+  await main(protocolBrowser);
 });

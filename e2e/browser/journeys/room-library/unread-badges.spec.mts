@@ -29,8 +29,8 @@ import {
 //      effort) that reading the room clears it back to 0.
 //
 // Both scenarios register a throwaway "reader" + "sender" pair per test via
-// Synapse's shared-secret admin endpoint (same trick as e2e/features/rooms.mjs
-// and search.mjs) instead of reusing the shared session user — that keeps the
+// Synapse's shared-secret admin endpoint (same mechanism as the protocol rooms
+// and search specs) instead of reusing the shared session user — that keeps the
 // unread *count* exact and the tests order-independent: a fresh account has no
 // other rooms to pollute the aggregate the badges sum.
 //

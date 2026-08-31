@@ -44,6 +44,11 @@ export const E2E_INVENTORY = {
       ignoredTargets: ['lint', 'typecheck'],
     },
     {
+      project: 'trinity-e2e-protocol',
+      projectFile: 'e2e/protocol/project.json',
+      ignoredTargets: ['e2e', 'lint', 'typecheck', 'test'],
+    },
+    {
       project: 'trinity-desktop',
       projectFile: 'electron/project.json',
       includedTargets: ['e2e', 'e2e-smoke'],
@@ -56,13 +61,12 @@ export const E2E_INVENTORY = {
   ],
   trackedEntrypointPatterns: [
     'e2e/**/playwright*.config.mts',
-    'e2e/runners/*.mjs',
-    'e2e/features/*.mjs',
+    'e2e/protocol/*.spec.mjs',
     'e2e/android/run.mts',
   ],
   sharedEntrypoints: [
     {
-      path: 'e2e/features/crypto-spike.mjs',
+      path: 'e2e/protocol/crypto-spike.spec.mjs',
       serializationKey: 'crypto-spike',
     },
   ],

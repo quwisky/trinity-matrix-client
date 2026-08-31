@@ -378,7 +378,7 @@ then wait for the route or the concrete control the journey needs.
 The stable signed-in destination is Account-qualified: wait for `/rooms` with a
 non-empty `account` query parameter (use `waitForRooms`) before capturing a route or
 opening a modal that must preserve it. Every environment imports the typed helper from
-`e2e/support/app.mts`; standalone protocol features import the same contract
+`e2e/support/app.mts`; protocol specs import the same contract
 from `support/navigation.mjs`. A bare `/rooms` is the pre-repair spelling.
 
 Composer sends are single-flight. A local echo can paint before the SDK send settles,
@@ -627,25 +627,25 @@ renderer" spec.
     message, which reads like a Playwright bug rather than a missing display. Wrap
     it: `xvfb-run -a pnpm electron:e2e`.
 
-## Standalone protocol harnesses
+## Protocol Playwright tests
 
-`e2e/features/*.mjs` are raw `playwright` Node scripts rather than
-`@playwright/test` specs. Each joins the invocation owner's dynamically allocated
-application endpoint and drives Chromium or WebKit, parameterised by `TRINITY_HS`,
-`TRINITY_USER` and `TRINITY_PASS` so it can run against any homeserver. They print
-`RESULT: PASS` or `RESULT: FAIL` and exit accordingly, and `HEADED=1` plus
-`SLOWMO=<ms>` make them watchable. The nine Synapse-backed ones have a thin runner
-under `e2e/runners/` that starts the stack, spawns the body, and stops the stack in a
-`finally`. The compatibility files do not own servers, ports, locks, or Synapse.
+`e2e/protocol/*.spec.mjs` are ordinary `@playwright/test` specs owned by
+`trinity-e2e-protocol`. Each joins the invocation owner's dynamically allocated application
+endpoint, receives attempt-scoped accounts and resource names through fixtures, and drives the
+registered Chromium or WebKit engine. Playwright owns pass/fail, retries, traces and artifacts;
+the compatibility package commands simply select one explicit Nx target. The assertion inventory
+reconciles the 209 pre-migration checks: 188 flow-specific checks remain pinned across twelve
+specs, while 21 duplicated login and replace-safe toolbar checks are pinned at their shared fixture
+owners. Moving code cannot silently reduce either side of that coverage map.
 
-`verify-sas.mjs` is the deepest of them: two browser contexts in one Chromium are two
+`verify-sas.spec.mjs` is the deepest of them: two browser contexts in one Chromium are two
 devices of the same Matrix user, because isolated IndexedDB means two crypto stores
 and therefore two device ids. It synchronises off a live `data-stage` attribute with
 `waitForFunction` and no fixed sleeps, asserts the seven emoji match across both
 contexts, and deliberately observes the half-confirmed window that only a two-device
 run can see.
 
-`verify-qr.mjs` uses the same two-client setup but supplies Device B with a
+`verify-qr.spec.mjs` uses the same two-client setup but supplies Device B with a
 canvas-backed synthetic camera stream containing Device A's rendered QR image. This
 keeps physical hardware out of CI while exercising the production encoder, camera
 scanner, raw-byte decoder, Matrix reciprocation, and completion on both clients.

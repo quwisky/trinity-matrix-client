@@ -10,7 +10,7 @@
       "//": "Declared, not inferred: @nx/eslint only infers a lint target for projects with .ts/.js sources, and every file here is .mts — so removing 'e2e' from globalIgnores would otherwise have changed nothing about what `pnpm lint` actually runs.",
       "executor": "nx:run-commands",
       "options": {
-        "command": "eslint \"**/*.mts\" --ignore-pattern \"browser/**\" --ignore-pattern \"components/**\" --ignore-pattern \"support/**\" --ignore-pattern \"web/**\"",
+        "command": "eslint \"**/*.mts\" --ignore-pattern \"browser/**\" --ignore-pattern \"components/**\" --ignore-pattern \"protocol/**\" --ignore-pattern \"support/**\" --ignore-pattern \"web/**\"",
         "cwd": "{projectRoot}"
       }
     },
@@ -129,109 +129,6 @@
       "executor": "nx:run-commands",
       "options": {
         "command": "node scripts/e2e-suite-registry.mjs run e2e-android"
-      }
-    },
-    "protocol-verify-sas": {
-      "cache": false,
-      "parallelism": false,
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "pnpm exec nx build trinity --configuration=development && node e2e/runners/verify-sas-run.mjs"
-      }
-    },
-    "protocol-verify-qr": {
-      "cache": false,
-      "parallelism": false,
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "pnpm exec nx build trinity --configuration=development && node e2e/runners/verify-qr-run.mjs"
-      }
-    },
-    "protocol-media": {
-      "cache": false,
-      "parallelism": false,
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "pnpm exec nx build trinity --configuration=development && node e2e/runners/send-media-run.mjs"
-      }
-    },
-    "protocol-threads": {
-      "cache": false,
-      "parallelism": false,
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "pnpm exec nx build trinity --configuration=development && node e2e/runners/threads-run.mjs"
-      }
-    },
-    "protocol-reply": {
-      "cache": false,
-      "parallelism": false,
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "pnpm exec nx build trinity --configuration=development && node e2e/runners/reply-run.mjs"
-      }
-    },
-    "protocol-spaces": {
-      "cache": false,
-      "parallelism": false,
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "pnpm exec nx build trinity --configuration=development && node e2e/runners/spaces-run.mjs"
-      }
-    },
-    "protocol-rooms": {
-      "cache": false,
-      "parallelism": false,
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "pnpm exec nx build trinity --configuration=development && node e2e/runners/rooms-run.mjs"
-      }
-    },
-    "protocol-search": {
-      "cache": false,
-      "parallelism": false,
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "pnpm exec nx build trinity --configuration=development && node e2e/runners/search-run.mjs"
-      }
-    },
-    "protocol-emoji": {
-      "cache": false,
-      "parallelism": false,
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "pnpm exec nx build trinity --configuration=development && node e2e/runners/emoji-run.mjs"
-      }
-    },
-    "protocol-verify-sas-selfcheck": {
-      "cache": false,
-      "parallelism": false,
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "node e2e/support/run-feature.mts --feature=verify-sas-selfcheck --build=trinity:build:development"
-      }
-    },
-    "protocol-crypto-spike-chromium": {
-      "cache": false,
-      "parallelism": false,
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "node e2e/support/run-feature.mts --feature=crypto-spike --build=trinity:build:development --resource=crypto-spike -- chromium"
-      }
-    },
-    "protocol-crypto-spike-webkit": {
-      "cache": false,
-      "parallelism": false,
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "node e2e/support/run-feature.mts --feature=crypto-spike --build=trinity:build:development --resource=crypto-spike -- webkit"
-      }
-    },
-    "protocol-login-smoke": {
-      "cache": false,
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "node e2e/support/run-feature.mts --feature=smoke-login --build=trinity:build:development"
       }
     },
     "synapse-up": {

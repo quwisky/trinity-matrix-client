@@ -9,29 +9,21 @@
 // caption rendered below it (markdown applied). One context is enough: a device
 // decrypts the media + caption it sent itself.
 //
-// Env (same as verify-sas):
-//   TRINITY_HS    default https://localhost:8448 (bundled Synapse+Caddy)
-//   TRINITY_USER  default verify-e2e
-//   TRINITY_PASS  default verify-e2e-pass-123
-//   HEADED=1 / SLOWMO=ms  for debugging
+// The Nx target defaults to disposable attempt-scoped credentials. Explicit
+// remote mode accepts TRINITY_HS/TRINITY_USER/TRINITY_PASS; HEADED/SLOWMO aid debugging.
 //
 // `pnpm e2e:media` builds dev, starts the harness, runs this, and tears down.
-import { mkdir } from 'node:fs/promises';
 import { waitForRooms } from '../support/navigation.mjs';
 import { applicationOrigin } from '../support/session.mts';
-import { chromium } from 'playwright';
-
-// Node's fetch (room setup) must accept Caddy's self-signed cert.
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+import { protocolResponseFailure } from './diagnostics.mts';
+import { test, expect } from './fixtures.mts';
 
 const APP = applicationOrigin();
 
-const HS = process.env.TRINITY_HS ?? 'https://localhost:8448';
-const USER = process.env.TRINITY_USER ?? 'verify-e2e';
-const PASS = process.env.TRINITY_PASS ?? 'verify-e2e-pass-123';
-const HEADED = process.env.HEADED === '1';
-const SLOWMO = Number(process.env.SLOWMO ?? 0);
-const ROOM_NAME = 'Media E2E';
+let HS;
+let USER;
+let PASS;
+let ROOM_NAME;
 
 const SETUP_TIMEOUT = 90_000;
 
@@ -52,7 +44,7 @@ async function api(path, { token, body } = {}) {
     body: JSON.stringify(body ?? {}),
   });
   if (!res.ok) {
-    throw new Error(`${path} → ${res.status} ${await res.text()}`);
+    throw protocolResponseFailure(path, res);
   }
   return res.json();
 }
@@ -82,33 +74,6 @@ async function createEncryptedRoom() {
   });
   log(`created encrypted room ${roomId}`);
   return roomId;
-}
-
-/** Fill a native `<input hlmInput>` by its associated `<label for="…">`. */
-async function fillLabeledInput(page, label, value) {
-  // Exact match: the password field's "Show password" reveal button (aria-label) otherwise
-  // also matches a substring `getByLabel('Password')`, tripping strict mode. Same fix as
-  // e2e/support/app.mts:34 and verify-sas.mjs:45.
-  const input = page.getByLabel(label, { exact: true });
-  await input.waitFor({ state: 'visible', timeout: 15_000 });
-  await input.click();
-  await input.fill(value);
-}
-
-/** Log in: type the homeserver, Continue, fill credentials, Sign in → /rooms. */
-async function login(page) {
-  log('loading app');
-  await page.goto(`${APP}/login`, { waitUntil: 'networkidle' });
-  await fillLabeledInput(page, 'Homeserver', HS);
-  await page.getByText('Continue', { exact: true }).click();
-  await page
-    .getByRole('button', { name: 'Sign in' })
-    .waitFor({ timeout: 30_000 });
-  await fillLabeledInput(page, 'Username', USER);
-  await fillLabeledInput(page, 'Password', PASS);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await waitForRooms(page);
-  log('logged in → /rooms');
 }
 
 /** Set up encryption (UIA password alert → recovery key → continue). */
@@ -144,26 +109,14 @@ async function setUpEncryption(page) {
   log('encryption set up → /rooms');
 }
 
-async function main() {
-  await mkdir('e2e/.artifacts', { recursive: true });
+async function main(protocolBrowser) {
   const roomId = await createEncryptedRoom();
-  log(`serving www on ${APP} (homeserver=${HS} user=${USER})`);
+  log(`serving www on ${APP} (homeserver=${HS})`);
 
-  const browser = await chromium.launch({
-    headless: !HEADED,
-    slowMo: SLOWMO,
-    args: ['--disable-dev-shm-usage'],
-  });
-  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
-  const page = await ctx.newPage();
-  page.on('pageerror', (e) => console.log(`  [error] ${e.message}`));
-  page.on('console', (m) => {
-    if (m.type() === 'error') console.log(`  [console.error] ${m.text()}`);
-  });
+  const page = await protocolBrowser.newAuthenticatedPage({ label: 'media' });
 
   let exit = 1;
   try {
-    await login(page);
     await setUpEncryption(page);
 
     // Open the synced encrypted room from the sidebar.
@@ -519,18 +472,20 @@ async function main() {
     console.log('\nRESULT: PASS');
     exit = 0;
   } catch (err) {
-    console.error('\n[send-media] error:', err.message);
-    await page
-      .screenshot({ path: 'e2e/.artifacts/send-media-failure.png' })
-      .catch(() => {});
     console.log('\nRESULT: FAIL');
-  } finally {
-    await browser.close();
+    throw err;
   }
-  process.exit(exit);
+  expect(exit).toBe(0);
 }
 
-main().catch((err) => {
-  console.error('[send-media] fatal:', err);
-  process.exit(1);
+test('sends encrypted media, captions, batches, and retries', async ({
+  protocolBrowser,
+  protocolCredentials,
+  resourceNamespace,
+}) => {
+  HS = protocolCredentials.hs;
+  USER = protocolCredentials.user;
+  PASS = protocolCredentials.pass;
+  ROOM_NAME = `Media ${resourceNamespace.role('media')}`;
+  await main(protocolBrowser);
 });
