@@ -49,7 +49,7 @@ export const E2E_INVENTORY = {
   sharedEntrypoints: [
     {
       path: 'e2e/features/crypto-spike.mjs',
-      serializationKey: 'crypto-spike-http',
+      serializationKey: 'crypto-spike',
     },
   ],
 } as const;

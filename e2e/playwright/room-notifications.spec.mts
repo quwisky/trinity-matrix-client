@@ -1,11 +1,12 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // End-to-end for the per-room notification level: the room's ⋮ menu in the channel list
 // has a Notifications submenu (All / Mentions / Mute); picking one writes push rules, and
@@ -166,7 +167,7 @@ test.describe('Per-room notifications', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}n`;
+    const runId = `${testResourceId('run')}n`;
     const { user, roomName, roomId, accessToken } = await seedRoom(
       request,
       session.hs as string,

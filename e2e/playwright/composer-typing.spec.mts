@@ -1,12 +1,13 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Locator,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // End-to-end for typing indicators: when another member of the open room starts
 // typing, the app shows an "X is typing" row under the timeline, and clears it once
@@ -123,7 +124,7 @@ test.describe('Typing indicators', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}t`;
+    const runId = `${testResourceId('run')}t`;
     const hs = session.hs as string;
     const { reader, roomName, roomId, memberName, memberId, memberHeaders } =
       await seedRoomWithMember(request, hs, runId);
@@ -153,7 +154,7 @@ test.describe('Typing indicators', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}r`;
+    const runId = `${testResourceId('run')}r`;
     const hs = session.hs as string;
     const { reader, roomName, roomId, memberId, memberHeaders } =
       await seedRoomWithMember(request, hs, runId);
@@ -201,7 +202,7 @@ test.describe('Typing indicators', () => {
     request,
   }) => {
     test.setTimeout(150_000);
-    const runId = `${Date.now().toString(36)}w`;
+    const runId = `${testResourceId('run')}w`;
     const hs = session.hs as string;
     const { reader, roomName, roomId, memberId, memberHeaders } =
       await seedRoomWithMember(
@@ -244,7 +245,7 @@ test.describe('Typing indicators', () => {
   });
 
   test('the dots are actually animating', async ({ page, request }) => {
-    const runId = `${Date.now().toString(36)}a`;
+    const runId = `${testResourceId('run')}a`;
     const hs = session.hs as string;
     const { reader, roomName, roomId, memberId, memberHeaders } =
       await seedRoomWithMember(request, hs, runId);
@@ -281,7 +282,7 @@ test.describe('Typing indicators', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}m`;
+    const runId = `${testResourceId('run')}m`;
     const hs = session.hs as string;
     const { reader, roomName, roomId, memberId, memberHeaders } =
       await seedRoomWithMember(request, hs, runId);
@@ -315,7 +316,7 @@ test.describe('Typing indicators', () => {
 
   test('shows the typist in the room list', async ({ page, request }) => {
     test.setTimeout(150_000);
-    const runId = `${Date.now().toString(36)}s`;
+    const runId = `${testResourceId('run')}s`;
     const hs = session.hs as string;
     const { reader, roomName, roomId, memberName, memberId, memberHeaders } =
       await seedRoomWithMember(request, hs, runId);

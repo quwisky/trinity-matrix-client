@@ -1,4 +1,9 @@
-import { test, expect, type APIRequestContext } from './support/fixtures.mts';
+import {
+  testResourceId,
+  test,
+  expect,
+  type APIRequestContext,
+} from '../fixtures.mts';
 import {
   clickRowMenuItem,
   isAndroidE2E,
@@ -6,8 +11,8 @@ import {
   openMessageActionSheet,
   synapseSession,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers the pin-messages feature end to end: a message's hover toolbar's ⋯
 // menu (`data-testid="msg-more"`) offers "Pin message" (`data-testid="msg-pin"`),
@@ -190,7 +195,7 @@ test.describe('Pin messages', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}p`;
+    const runId = `${testResourceId('run')}p`;
 
     const { reader, roomName } = await seedPinRoom(request, hs, runId);
 
@@ -297,7 +302,7 @@ test.describe('Pin messages', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}pr`;
+    const runId = `${testResourceId('run')}pr`;
 
     const { reader, roomName, roomId, api } = await seedRepeatJumpPinRoom(
       request,
@@ -401,7 +406,7 @@ test.describe('Pin messages', () => {
     // Two things the panel's geometry has to get right, both invisible to every unit test
     // and to the rest of this suite, which only ever runs at the default 1280px viewport.
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}pg`;
+    const runId = `${testResourceId('run')}pg`;
     const { reader, roomName } = await seedPinRoom(request, hs, runId);
 
     await login(page, reader);

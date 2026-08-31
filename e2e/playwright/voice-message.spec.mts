@@ -1,6 +1,6 @@
-import { test, expect, type Page } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import { testResourceId, test, expect, type Page } from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers recording + sending a voice message (+ tray → Voice message → record → send →
 // m.audio with the MSC3245 voice marker), rendered in the timeline as a voice player
@@ -35,7 +35,7 @@ test.describe('Voice messages', () => {
 
   test('records and sends a voice message', async ({ page, request }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}vox`;
+    const runId = `${testResourceId('run')}vox`;
     const user = `vox-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Voice ${runId}`;

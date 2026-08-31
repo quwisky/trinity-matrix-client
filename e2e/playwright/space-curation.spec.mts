@@ -1,11 +1,12 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers the space-curation half of #40: adding a room you are ALREADY in to a space
 // (until now a room could only join a space by being created in it), flagging a child as
@@ -89,7 +90,7 @@ test.describe('Space curation', () => {
   }) => {
     test.setTimeout(150_000);
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}ad`;
+    const runId = `${testResourceId('run')}ad`;
     const user = `curate-add-${runId}`;
     const pass = `${user}-pass`;
     const spaceName = `Curated ${runId}`;
@@ -136,7 +137,7 @@ test.describe('Space curation', () => {
   test('an admin creates a space inside a space', async ({ page, request }) => {
     test.setTimeout(150_000);
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}sub`;
+    const runId = `${testResourceId('run')}sub`;
     const user = `curate-sub-${runId}`;
     const pass = `${user}-pass`;
     const parentName = `Parent ${runId}`;
@@ -220,7 +221,7 @@ test.describe('Space curation', () => {
   }) => {
     test.setTimeout(150_000);
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}cu`;
+    const runId = `${testResourceId('run')}cu`;
     const user = `curate-order-${runId}`;
     const pass = `${user}-pass`;
     const spaceName = `Ordered ${runId}`;
@@ -329,7 +330,7 @@ test.describe('Space curation', () => {
     // "More Channels" into the channel list with no re-fetch and no reload. That
     // derivation is the whole reason SpacesService carried a bump counter.
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}jn`;
+    const runId = `${testResourceId('run')}jn`;
     const owner = `spacer-${runId}`;
     const pass = `${owner}-pass`;
     // A second account, because the room has to be one the viewer is NOT in. Anything

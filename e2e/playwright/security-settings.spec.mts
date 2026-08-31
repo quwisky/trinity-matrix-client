@@ -1,11 +1,11 @@
-import { test, expect } from './support/fixtures.mts';
+import { testResourceId, test, expect } from '../fixtures.mts';
 import {
   isAndroidE2E,
   login,
   synapseSession,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers the Security settings section (Settings → Security): it surfaces this account's
@@ -24,7 +24,7 @@ test.describe('Security settings', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}sec`;
+    const runId = `${testResourceId('run')}sec`;
     const user = `sec-user-${runId}`;
     const pass = `${user}-pass`;
 
@@ -59,7 +59,7 @@ test.describe('Security settings', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}narrow-sec`;
+    const runId = `${testResourceId('run')}narrow-sec`;
     const user = `sec-user-${runId}`;
     const pass = `${user}-pass`;
 

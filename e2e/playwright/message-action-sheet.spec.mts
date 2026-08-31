@@ -1,14 +1,15 @@
 import {
+  testResourceId,
   test,
   expect,
   devices,
   type APIRequestContext,
   type Locator,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
-import { touchLongPress } from './support/touch-platform.mts';
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
+import { touchLongPress } from '../support/touch-platform.mts';
 
 // The message action sheet (#220), which no other spec can see. Every authenticated spec
 // runs the desktop Chromium project, where a message's actions are a bar revealed by
@@ -38,7 +39,7 @@ async function openRoomWithMessage(
   messageCount = 1,
 ): Promise<string> {
   const hs = session.hs as string;
-  const runId = `${Date.now().toString(36)}${tag}`;
+  const runId = `${testResourceId('run')}${tag}`;
   const user = `sheet-${runId}`;
   const pass = `${user}-pass`;
   const roomName = `Sheet ${runId}`;

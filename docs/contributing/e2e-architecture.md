@@ -71,32 +71,60 @@ are scheduled. Changing a tier without changing its CI command classification fa
 | `pnpm e2e:android`    | Installed API 36 WebView journeys                                                     |
 
 Every canonical aggregate is an uncached, serialized Nx target. It validates the registry and all
-selected prerequisites before starting the first suite, then stops at the first failed suite.
+selected prerequisites before starting the first suite, opens one support invocation, then stops
+at the first failed suite.
 Docker and the Android AVD are required for the local delivery gate. On headless Linux the
 aggregate wraps Electron targets with `xvfb-run`. Every child target is terminated at the timeout
 declared by its registry class, with process-group termination escalating from `SIGTERM` to
-`SIGKILL`. Shared fixed-port entrypoints must declare the same serialization resource, acquire one
-cross-invocation process lock and remain non-parallel Nx targets.
+`SIGKILL`. Shared external resources declare the same serialization key, acquire one
+cross-invocation process lock and remain non-parallel Nx targets. Application, Storybook and
+report servers bind real port-zero sockets; only Synapse, Dex and Caddy retain fixed protocol
+ports.
 
 The older focused package commands remain behavior-compatible Nx aliases for one release after
 the lifecycle migration completes. Removing an alias requires a released changelog entry, no
 repository or CI references, documented replacement and one full release cycle without migration
 reports.
 
-## Lifecycle destination
+## Lifecycle ownership
 
-Later tickets split the current mixed `trinity-e2e` project into these owners without changing
-assertions:
+`trinity-e2e-support` is the first extracted project. It owns the invocation descriptor,
+process-group cancellation, dynamic static servers, explicit resource locks, the disposable
+Synapse lease and stack, Matrix API primitives, per-attempt resource namespaces, cleanup and
+Playwright report paths. One owner writes a private descriptor below
+`dist/.playwright/sessions/`; children receive its path through
+`TRINITY_E2E_SESSION_FILE`, validate the live owner and requested resources, and only join. A
+child cannot silently fall back to starting or stopping a replacement resource.
 
-| Project                  | Owns                                                                             |
-| ------------------------ | -------------------------------------------------------------------------------- |
-| `trinity-e2e-support`    | Processes, dynamic ports, Synapse session, APIs, resource builders and reporting |
-| `trinity-e2e-browser`    | Canonical application journeys, grouped by durable product capability            |
-| `trinity-e2e-protocol`   | Verification, crypto and Matrix protocol/system drivers                          |
-| `trinity-e2e-web`        | Production Web/PWA host behavior                                                 |
-| `trinity-e2e-electron`   | Launched desktop shell and full Electron journeys                                |
-| `trinity-e2e-android`    | Installed Capacitor WebView and Android-only journeys                            |
-| `trinity-e2e-components` | Storybook component-browser, styling and scrollbar contracts                     |
+The aggregate opens the owner before its first child and closes it after its last child. Direct
+Nx targets use the same support wrappers, so focused and aggregate runs have identical ownership.
+The nine `e2e/runners/*-run.mjs` protocol paths remain thin compatibility entrypoints over one
+support runner. Browser, Android and Electron adapters depend inward on support contracts; only
+`e2e/fixtures.mts` chooses an environment fixture.
+
+Every Playwright attempt receives a deterministic namespace containing the invocation, suite,
+worker, retry and test identity. Multi-client roles derive distinct names from that namespace.
+Registered cleanup runs in reverse order, attempts every operation and raises an aggregate error
+instead of hiding best-effort failures. Teardown is bounded and reports static-server and Synapse
+failures without printing credentials. Acquisition never removes stale locks implicitly; after
+checking that no runner is active, recover a named stale lock explicitly with:
+
+```bash
+node e2e/support/recover-lock.mts synapse
+```
+
+Later tickets split the remaining mixed `trinity-e2e` project into these environment owners
+without changing assertions:
+
+| Project                  | Owns                                                                  |
+| ------------------------ | --------------------------------------------------------------------- |
+| `trinity-e2e-support`    | **Current:** processes, ports, Synapse, APIs, resources and reporting |
+| `trinity-e2e-browser`    | Canonical application journeys, grouped by durable product capability |
+| `trinity-e2e-protocol`   | Verification, crypto and Matrix protocol/system drivers               |
+| `trinity-e2e-web`        | Production Web/PWA host behavior                                      |
+| `trinity-e2e-electron`   | Launched desktop shell and full Electron journeys                     |
+| `trinity-e2e-android`    | Installed Capacitor WebView and Android-only journeys                 |
+| `trinity-e2e-components` | Storybook component-browser, styling and scrollbar contracts          |
 
 Environment fixtures may depend on `trinity-e2e-support`; they must not import another
 environment's fixture implementation. Playwright configurations stay small and lifecycle-specific

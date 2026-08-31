@@ -1,0 +1,43 @@
+{
+  "name": "trinity-e2e-support",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "e2e/support",
+  "projectType": "library",
+  "tags": ["type:e2e", "scope:shared"],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "eslint \"**/*.{mts,mjs,ts}\"",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc -p tsconfig.lib.json --noEmit",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --config vitest.config.mts",
+        "cwd": "{projectRoot}"
+      },
+      "configurations": {
+        "watch": {
+          "command": "vitest --config vitest.config.mts"
+        }
+      }
+    },
+    "recover-lock": {
+      "cache": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node recover-lock.mts",
+        "cwd": "{projectRoot}"
+      }
+    }
+  }
+}

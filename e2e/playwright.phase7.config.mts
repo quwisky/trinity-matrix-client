@@ -2,9 +2,10 @@ import { defineConfig, devices } from '@playwright/test';
 import { nxE2EPreset } from '@nx/playwright/preset';
 import { appE2EConfig } from './playwright/support/app-e2e-config.mts';
 import { DESIGN_VIEWPORTS } from './playwright/support/design-viewports.mts';
+import { e2eEndpoint, e2eReportConfig } from './support/playwright-config.mts';
 
-const baseURL = 'http://localhost:4200';
-const appConfig = appE2EConfig(baseURL, { reuseExistingServer: false });
+const baseURL = e2eEndpoint('application');
+const appConfig = appE2EConfig(baseURL);
 const { defaultBrowserType: _safariBrowser, ...desktopSafari } =
   devices['Desktop Safari'];
 
@@ -20,17 +21,7 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   timeout: 180_000,
-  outputDir: '../dist/.playwright/phase7/test-output',
-  reporter: [
-    ['list'],
-    [
-      'html',
-      {
-        outputFolder: '../dist/.playwright/phase7/playwright-report',
-        open: 'never',
-      },
-    ],
-  ],
+  ...e2eReportConfig('phase7'),
   use: {
     ...appConfig.use,
     locale: 'en-US',

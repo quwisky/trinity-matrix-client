@@ -1,11 +1,12 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // End-to-end for @-mention autocomplete: typing `@` opens a member menu, picking one
 // inserts a pill, and the sent message carries a matrix.to mention link (so it pings
@@ -104,7 +105,7 @@ test.describe('Composer @-mentions', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}m`;
+    const runId = `${testResourceId('run')}m`;
     const { reader, roomName, memberName, memberId } = await seedRoomWithMember(
       request,
       session.hs as string,
@@ -163,7 +164,7 @@ test.describe('Composer @-mentions', () => {
   });
 
   test('accepts a mention with the keyboard', async ({ page, request }) => {
-    const runId = `${Date.now().toString(36)}k`;
+    const runId = `${testResourceId('run')}k`;
     const { reader, roomName, memberName, memberId } = await seedRoomWithMember(
       request,
       session.hs as string,

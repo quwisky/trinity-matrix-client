@@ -6,6 +6,7 @@ import {
   type SynapseSession,
 } from './app.mts';
 import { registerUser } from './account.mts';
+import { testResourceId } from './namespace.mts';
 
 export async function openImagePackJourneyRoom(
   page: Page,
@@ -68,7 +69,7 @@ export async function runImagePackManagementJourney({
   verifyInstalledOnSecondClient,
 }: ImagePackManagementJourneyOptions): Promise<void> {
   const hs = session.hs as string;
-  const runId = `${Date.now().toString(36)}stk`;
+  const runId = `${testResourceId('image-pack')}stk`;
   const user = `sticker-${runId}`;
   const pass = `${user}-pass`;
   const publisher = `publisher-${runId}`;

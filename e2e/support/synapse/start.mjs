@@ -73,7 +73,7 @@ export const TEST_PASS = process.env.TRINITY_PASS ?? 'verify-e2e-pass-123';
 
 // The Dex-backed SSO account. It has no Matrix password by construction — Synapse
 // creates it through `oidc_providers` — which is exactly what the specs need it for.
-// These must match e2e/synapse/dex.yaml.
+// These must match e2e/support/synapse/dex.yaml.
 export const DEX_ISSUER = 'http://localhost:5556/dex';
 export const SSO_EMAIL = 'sso-e2e@trinity.test';
 export const SSO_PASS = 'sso-e2e-pass-123';
@@ -173,11 +173,17 @@ function oidcBlock() {
   // No compose network under the netns override, so no `dex` DNS name — but everything
   // shares one loopback there, so the published port is reachable as localhost.
   const internal = networkContainer ? 'localhost:5556' : 'dex:5556';
-  const appOrigin = process.env.BASE_URL ?? 'http://localhost:4200';
-  const clientWhitelist = [`${appOrigin.replace(/\/$/, '')}/`];
-  if (process.env.TRINITY_E2E_PLATFORM === 'android') {
-    clientWhitelist.push('eu.qwky.trinity://sso-callback');
-  }
+  const appOrigin =
+    process.env.TRINITY_E2E_APP_URL ??
+    process.env.BASE_URL ??
+    'http://127.0.0.1:0';
+  // The invocation can serve browser and Android children sequentially. Publishing
+  // the native callback unconditionally keeps one owner/session valid for both without
+  // restarting Synapse between environment adapters.
+  const clientWhitelist = [
+    `${appOrigin.replace(/\/$/, '')}/`,
+    'eu.qwky.trinity://sso-callback',
+  ];
   return [
     OIDC_START,
     // Synapse refuses to redirect a login token anywhere it was not told to.
@@ -324,7 +330,7 @@ async function ensureConfig() {
   }
 
   if (additions.length) {
-    yaml += `\n\n# === appended by e2e/synapse/start.mjs ===\n${additions.join('\n')}\n`;
+    yaml += `\n\n# === appended by e2e/support/synapse/start.mjs ===\n${additions.join('\n')}\n`;
   }
 
   // Unlike the blocks above, the OIDC region is torn out and rewritten every time —

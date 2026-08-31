@@ -1,17 +1,18 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Locator,
   type Page,
-} from './support/fixtures.mts';
+} from '../fixtures.mts';
 import {
   login,
   seedPreference,
   synapseSession,
   type SynapseSession,
-} from './support/app.mts';
-import { passwordLogin, registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { passwordLogin, registerUser } from '../support/account.mts';
 
 /**
  * Rendered Phase 2 shell contract.
@@ -438,7 +439,7 @@ test.describe('Modern room shell layout', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}sh`;
+    const runId = `${testResourceId('run')}sh`;
     const readerName = `shell-${runId}`;
     const readerPass = `${readerName}-pass`;
     const longAccountName = `Alexandria Very Long Account Name ${runId} That Must Truncate`;

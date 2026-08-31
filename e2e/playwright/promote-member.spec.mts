@@ -1,11 +1,12 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers power-level editing: from the member info panel an admin uses a role
 // button (data-testid="member-info-role-50" = Moderator), confirms
@@ -56,7 +57,7 @@ test.describe('Promote a member', () => {
 
   test('an admin promotes a member to moderator', async ({ page, request }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}p`;
+    const runId = `${testResourceId('run')}p`;
     const adminUser = `promo-admin-${runId}`;
     const adminPass = `${adminUser}-pass`;
     const memberUser = `promo-member-${runId}`;

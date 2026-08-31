@@ -223,8 +223,8 @@ const UI_BOUNDARY = [
  * The projects deliberately outside the vendor bans, listed so the exemption is a decision
  * somebody made rather than a gap nobody noticed.
  *
- * - `e2e` (`type:e2e`) drives a real browser from node. It renders no Angular UI, and it
- *   must be free to import whatever a Playwright spec needs.
+ * - `e2e` and `e2e/support` (`type:e2e`) drive browsers and external-process adapters
+ *   from Node. They render no Angular UI and may import Playwright's driver APIs.
  * - `scripts` (`type:tool`) is node tooling — guards, codegen, version checks.
  *
  * The vendored kit is not listed here: it is exempted by its `ui:vendor-wrapper` tag in the
@@ -236,7 +236,11 @@ const UI_BOUNDARY = [
  * `electron/package.json#nx.includedScripts` suppresses duplicate inferred package-script
  * targets. The module-boundary rule stays active for its authored TypeScript.
  */
-const OUTSIDE_THE_VENDOR_BANS = ['e2e/project.json', 'scripts/project.json'];
+const OUTSIDE_THE_VENDOR_BANS = [
+  'e2e/project.json',
+  'e2e/support/project.json',
+  'scripts/project.json',
+];
 
 describe('UI vendor boundary', () => {
   const tagsOf = (project) =>

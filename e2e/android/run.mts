@@ -18,19 +18,13 @@ import {
   validateEmulator,
 } from './device.mts';
 import {
-  acquireProcessLock,
-  releaseProcessLock,
-  type ProcessLock,
-} from '../support/process-lock.mts';
-import {
-  startSynapseSession,
-  stopSynapseSession,
-} from '../playwright/support/synapse-session.mts';
+  openE2EInvocation,
+  type E2EInvocation,
+} from '../support/invocation.mts';
 
 const exec = promisify(execFile);
 const workspaceRoot = join(import.meta.dirname, '../..');
 const artifactsDir = join(workspaceRoot, 'dist/.playwright/android');
-const lockFile = join(artifactsDir, '.lock');
 const packageName = 'eu.qwky.trinity';
 const driverPackages = [
   'com.microsoft.playwright.androiddriver',
@@ -52,7 +46,7 @@ const changedReverseMappings: Array<{
 let playwrightAttachAttempted = false;
 let activeChild: ChildProcess | undefined;
 let cleanupPromise: Promise<void> | undefined;
-let processLock: ProcessLock | undefined;
+let invocation: E2EInvocation | undefined;
 let baselineWorktree: string | undefined;
 let cleaningUp = false;
 let requestedExitCode: number | undefined;
@@ -379,7 +373,6 @@ async function cleanup(): Promise<void> {
           }
         }
       }
-      await stopSynapseSession().catch(() => undefined);
       if (ownsEmulator && serial) {
         await adbRun('emu', 'kill').catch(() => undefined);
       } else if (spawnedEmulator && !emulatorExit) {
@@ -396,8 +389,8 @@ async function cleanup(): Promise<void> {
           emulatorLogFd = undefined;
         }
       } finally {
-        releaseProcessLock(processLock);
-        processLock = undefined;
+        await invocation?.close();
+        invocation = undefined;
       }
     }
 
@@ -448,10 +441,6 @@ async function main(): Promise<void> {
     'android',
     'assembleSecondaryDebug',
   ]);
-  await startSynapseSession({
-    allowUnavailable: false,
-    signal: abortController.signal,
-  });
   await configureReverse();
   await adbRun(
     'install',
@@ -481,11 +470,16 @@ async function main(): Promise<void> {
 }
 
 async function execute(): Promise<void> {
-  processLock = acquireProcessLock(lockFile, 'Android Playwright');
   registerSignals();
 
   let failure: unknown;
   try {
+    invocation = await openE2EInvocation({
+      resources: ['android-avd', 'synapse'],
+      workspaceRoot,
+      signal: abortController.signal,
+    });
+    Object.assign(process.env, invocation.environment);
     baselineWorktree = await gitStatus();
     await main();
   } catch (error) {

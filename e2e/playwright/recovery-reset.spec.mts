@@ -1,17 +1,17 @@
-import { test, expect, type Page } from './support/fixtures.mts';
+import { testResourceId, test, expect, type Page } from '../fixtures.mts';
 import {
   login,
   synapseSession,
   waitForRooms,
   type SynapseSession,
-} from './support/app.mts';
+} from '../support/app.mts';
 import {
   defaultKeyId,
   keyBackupVersion,
   masterKey,
   passwordLogin,
   registerUser,
-} from './support/account.mts';
+} from '../support/account.mts';
 
 // End-to-end for the recovery-key reset (issue #43): the escape hatch for someone who has
 // lost their recovery key and has no other verified device.
@@ -81,7 +81,7 @@ test.describe('Recovery reset', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}r`;
+    const runId = `${testResourceId('run')}r`;
     const user = `reset-${runId}`;
     const pass = `${user}-pass`;
 
@@ -192,7 +192,7 @@ test.describe('Recovery reset', () => {
     // backup, no new key, and nothing to show for it. Measured, then fixed by doing the
     // authenticated step first. This is the spec that stops it coming back.
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}c`;
+    const runId = `${testResourceId('run')}c`;
     const user = `reset-cancel-${runId}`;
     const pass = `${user}-pass`;
 
@@ -256,7 +256,7 @@ test.describe('Recovery reset', () => {
     // they finally find the key they thought they had lost — so the round trip through
     // the real unlock path is the assertion, not the server-side values alone.
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}f`;
+    const runId = `${testResourceId('run')}f`;
     const user = `reset-found-${runId}`;
     const pass = `${user}-pass`;
 
@@ -325,7 +325,7 @@ test.describe('Recovery reset', () => {
     // account that HAS secret storage on a device that cannot open it — so this needs a
     // second, unverified device rather than the one that just set encryption up.
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}d`;
+    const runId = `${testResourceId('run')}d`;
     const user = `reset-door-${runId}`;
     const pass = `${user}-pass`;
 

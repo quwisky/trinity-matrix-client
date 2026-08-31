@@ -1,6 +1,11 @@
-import { test, expect, type APIRequestContext } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import {
+  testResourceId,
+  test,
+  expect,
+  type APIRequestContext,
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers the web-available keyboard room-switching shortcuts (issue #12): Ctrl/Cmd+'
 // hops through the most-recently-VISITED stack (alt-tab, cycling deeper; Shift reverses),
@@ -61,7 +66,7 @@ test.describe('Keyboard room switching', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}k`;
+    const runId = `${testResourceId('run')}k`;
     const user = `hotkeys-${runId}`;
     const pass = `${user}-pass`;
     await registerUser(request, user, pass);

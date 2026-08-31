@@ -1,6 +1,6 @@
-import { test, expect, type Page } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import { testResourceId, test, expect, type Page } from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 /**
  * The open room is in the URL, so a room is linkable and survives a reload.
@@ -34,7 +34,7 @@ test.describe('The open room lives in the URL', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}url`;
+    const runId = `${testResourceId('run')}url`;
     const user = `urlroom-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Linkable ${runId}`;

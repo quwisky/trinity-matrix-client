@@ -1,10 +1,6 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './fixtures.mts';
 
-import {
-  login,
-  synapseSession,
-  type Navigate,
-} from '../playwright/support/app.mts';
+import { login, synapseSession, type Navigate } from '../support/app.mts';
 import { launchApp } from './support/launch.mts';
 
 const session = synapseSession();

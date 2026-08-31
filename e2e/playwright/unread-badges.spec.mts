@@ -1,16 +1,21 @@
-import { test, expect, type APIRequestContext } from './support/fixtures.mts';
+import {
+  testResourceId,
+  test,
+  expect,
+  type APIRequestContext,
+} from '../fixtures.mts';
 import {
   isAndroidE2E,
   login,
   synapseSession,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 import {
   installBadgeRecorder,
   recordedBadgeCalls,
   recordedBadgeCount,
-} from './support/platform-badge.mts';
+} from '../support/platform-badge.mts';
 
 // Covers the two unread-badge features end to end:
 //
@@ -130,7 +135,7 @@ test.describe('Unread badges', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}r`;
+    const runId = `${testResourceId('run')}r`;
 
     const { reader } = await seedUnreadRoom(request, hs, runId, SEED);
 
@@ -159,7 +164,7 @@ test.describe('Unread badges', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}b`;
+    const runId = `${testResourceId('run')}b`;
 
     const { reader, roomName } = await seedUnreadRoom(request, hs, runId, SEED);
 

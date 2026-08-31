@@ -1,6 +1,6 @@
-import { test, expect } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import { testResourceId, test, expect } from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers the timeline system lines (message-row `data-testid="timeline-event"`): a room
 // state change (here an m.room.name rename) renders as a compact human-readable line
@@ -13,7 +13,7 @@ test.describe('Timeline system events', () => {
 
   test('renders a room rename as a system line', async ({ page, request }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}se`;
+    const runId = `${testResourceId('run')}se`;
     const user = `se-user-${runId}`;
     const pass = `${user}-pass`;
     const renamed = `Renamed ${runId}`;
@@ -66,7 +66,7 @@ test.describe('Timeline system events', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}mj`;
+    const runId = `${testResourceId('run')}mj`;
     const owner = `mj-owner-${runId}`;
     const joiner = `mj-joiner-${runId}`;
     const joinerName = `Joiner ${runId}`;

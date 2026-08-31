@@ -1,11 +1,12 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers the sidebar's in-place filter box (`data-testid="sidebar-filter"`), which
 // ChannelSidebarComponent renders between the header and the scrolling list. It narrows
@@ -100,7 +101,7 @@ test.describe('Sidebar room filter', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}q`;
+    const runId = `${testResourceId('run')}q`;
 
     const { reader, cafeName, warehouseName } = await seedTwoRooms(
       request,
@@ -161,7 +162,7 @@ test.describe('Sidebar room filter', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}e`;
+    const runId = `${testResourceId('run')}e`;
 
     const { reader, cafeName, warehouseName } = await seedTwoRooms(
       request,

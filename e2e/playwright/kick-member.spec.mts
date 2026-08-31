@@ -1,11 +1,12 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers kick and ban projection recovery. The roster must be visible again before the
 // removed row assertion: opening member info replaces the roster, so asserting only that
@@ -70,7 +71,7 @@ test.describe('Remove a member', () => {
       request,
     }) => {
       const hs = session.hs as string;
-      const runId = `${Date.now().toString(36)}${moderation.slug[0]}`;
+      const runId = `${testResourceId('run')}${moderation.slug[0]}`;
       const adminUser = `${moderation.slug}-admin-${runId}`;
       const adminPass = `${adminUser}-pass`;
       const memberUser = `${moderation.slug}-member-${runId}`;

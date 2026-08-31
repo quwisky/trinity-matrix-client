@@ -1,11 +1,17 @@
-import { devices, expect, test, type Page } from './support/fixtures.mts';
+import {
+  testResourceId,
+  devices,
+  expect,
+  test,
+  type Page,
+} from '../fixtures.mts';
 import {
   login,
   openSettingsTab,
   synapseSession,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 import { installWidgetFixture } from './support/widget.mts';
 
 // A real device profile is essential here: a touch-enabled desktop user agent keeps the
@@ -32,7 +38,7 @@ test.describe('Room settings widgets on a phone', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}wm`;
+    const runId = `${testResourceId('run')}wm`;
     const user = `widget-mobile-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Many widgets ${runId}`;

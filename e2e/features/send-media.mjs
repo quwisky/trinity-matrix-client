@@ -18,14 +18,13 @@
 // `pnpm e2e:media` builds dev, starts the harness, runs this, and tears down.
 import { mkdir } from 'node:fs/promises';
 import { waitForRooms } from '../support/navigation.mjs';
-import { serve } from '../support/serve.mjs';
+import { applicationOrigin } from '../support/session.mts';
 import { chromium } from 'playwright';
 
 // Node's fetch (room setup) must accept Caddy's self-signed cert.
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
-const PORT = 8127;
-const APP = `http://localhost:${PORT}`;
+const APP = applicationOrigin();
 
 const HS = process.env.TRINITY_HS ?? 'https://localhost:8448';
 const USER = process.env.TRINITY_USER ?? 'verify-e2e';
@@ -89,7 +88,7 @@ async function createEncryptedRoom() {
 async function fillLabeledInput(page, label, value) {
   // Exact match: the password field's "Show password" reveal button (aria-label) otherwise
   // also matches a substring `getByLabel('Password')`, tripping strict mode. Same fix as
-  // e2e/playwright/support/app.mts:34 and verify-sas.mjs:45.
+  // e2e/support/app.mts:34 and verify-sas.mjs:45.
   const input = page.getByLabel(label, { exact: true });
   await input.waitFor({ state: 'visible', timeout: 15_000 });
   await input.click();
@@ -148,7 +147,6 @@ async function setUpEncryption(page) {
 async function main() {
   await mkdir('e2e/.artifacts', { recursive: true });
   const roomId = await createEncryptedRoom();
-  const server = await serve('www', PORT);
   log(`serving www on ${APP} (homeserver=${HS} user=${USER})`);
 
   const browser = await chromium.launch({
@@ -528,7 +526,6 @@ async function main() {
     console.log('\nRESULT: FAIL');
   } finally {
     await browser.close();
-    server.close();
   }
   process.exit(exit);
 }

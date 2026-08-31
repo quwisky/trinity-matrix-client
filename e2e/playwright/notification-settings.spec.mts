@@ -1,6 +1,6 @@
-import { test, expect } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import { testResourceId, test, expect } from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers the global Notifications settings (Settings → Notifications): each toggle maps
@@ -20,7 +20,7 @@ test.describe('Notification settings', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}n`;
+    const runId = `${testResourceId('run')}n`;
     const user = `notif-user-${runId}`;
     const pass = `${user}-pass`;
 

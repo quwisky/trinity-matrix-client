@@ -55,6 +55,10 @@
     {
       "project": "trinity-e2e",
       "reason": "Black-box test harnesses are outside the shipped application dependency model."
+    },
+    {
+      "project": "trinity-e2e-support",
+      "reason": "Runner-neutral E2E lifecycle infrastructure is outside the shipped application dependency model."
     }
   ],
   "classificationExceptions": [],

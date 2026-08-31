@@ -1,4 +1,4 @@
-import { test, expect, type Page } from './support/fixtures.mts';
+import { testResourceId, test, expect, type Page } from '../fixtures.mts';
 import {
   clickRowMenuItem,
   isAndroidE2E,
@@ -7,8 +7,8 @@ import {
   synapseSession,
   type SynapseSession,
   waitForSent,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers the message "View source" context action (msg-more → msg-view-source): a dialog
 // (data-testid="message-source") shows the event's raw JSON. Needs Synapse (Docker).
@@ -32,7 +32,7 @@ test.describe('Message source', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}src`;
+    const runId = `${testResourceId('run')}src`;
     const user = `src-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Source ${runId}`;

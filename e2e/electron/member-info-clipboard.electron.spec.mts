@@ -1,11 +1,7 @@
-import { expect, test, type Page } from '@playwright/test';
+import { testResourceId, expect, test, type Page } from './fixtures.mts';
 
-import {
-  login,
-  synapseSession,
-  type Navigate,
-} from '../playwright/support/app.mts';
-import { passwordLogin, registerUser } from '../playwright/support/account.mts';
+import { login, synapseSession, type Navigate } from '../support/app.mts';
+import { passwordLogin, registerUser } from '../support/account.mts';
 import { launchApp } from './support/launch.mts';
 
 const session = synapseSession();
@@ -24,7 +20,7 @@ test.describe('Electron member clipboard', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = Date.now().toString(36);
+    const runId = testResourceId('run');
     const username = `clipboard-user-${runId}-${'long'.repeat(20)}`;
     const password = `${username}-pass`;
     const displayName = `Clipboard display ${runId}`;

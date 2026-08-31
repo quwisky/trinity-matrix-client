@@ -1,6 +1,6 @@
-import { test, expect, type Page } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import { testResourceId, test, expect, type Page } from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers "Jump to date" (room ⋯ → overflow-jump-to-date): a date picker resolves a day to
 // an event via /timestamp_to_event (MSC3030), and the timeline pages history back until
@@ -42,7 +42,7 @@ test.describe('Jump to date', () => {
     test.slow(); // seeds ~120 messages over the API
 
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}j`;
+    const runId = `${testResourceId('run')}j`;
     const user = `jump-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Jump ${runId}`;
@@ -119,7 +119,7 @@ test.describe('Jump to date', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}jn`;
+    const runId = `${testResourceId('run')}jn`;
     const user = `jumpn-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Jump none ${runId}`;

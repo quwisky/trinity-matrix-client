@@ -9,6 +9,4 @@ import electronConfig from './playwright.electron.config.mts';
 export default defineConfig({
   ...electronConfig,
   testMatch: 'app.electron.spec.mts',
-  globalSetup: undefined,
-  globalTeardown: undefined,
 });

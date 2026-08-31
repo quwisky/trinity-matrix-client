@@ -1,6 +1,11 @@
-import { test, expect, type APIRequestContext } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import {
+  testResourceId,
+  test,
+  expect,
+  type APIRequestContext,
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // End-to-end for the direct-message avatar. A DM is never given an `m.room.avatar`, so
 // the room row has to fall back to the other person's picture; reading only the state
@@ -140,7 +145,7 @@ test.describe('Direct-message avatar', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}a`;
+    const runId = `${testResourceId('run')}a`;
     const { reader, groupName, partner } = await seedDmAndGroup(
       request,
       session.hs as string,

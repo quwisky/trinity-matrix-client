@@ -1,16 +1,17 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
+} from '../fixtures.mts';
 import {
   isAndroidE2E,
   login,
   synapseSession,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers NotificationService's core rule end to end: a live message fires an OS
 // notification unless the user is actually looking at that room — i.e. the window
@@ -277,7 +278,7 @@ test.describe('Message notifications', () => {
       'native notification delivery needs an FCM integration environment; renderer notification assertions are web-only',
     );
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}n`;
+    const runId = `${testResourceId('run')}n`;
 
     const { reader, readerUserId, sender, roomId, roomName, senderName } =
       await seedNotifyRoom(request, hs, runId);
@@ -342,7 +343,7 @@ test.describe('Message notifications', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}s`;
+    const runId = `${testResourceId('run')}s`;
 
     const { reader, sender, roomId, roomName } = await seedNotifyRoom(
       request,

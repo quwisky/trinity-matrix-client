@@ -4,23 +4,17 @@ import {
   synapseSession,
   type SynapseSession,
   waitForRooms,
-} from '../playwright/support/app.mts';
-import { registerUser } from '../playwright/support/account.mts';
-import { expect, test } from './fixtures.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
+import { expect, test } from '../fixtures.mts';
 
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 
 const session = synapseSession();
-const composerRunId = `${Date.now().toString(36)}-${process.pid}`;
-const composerUser = `android-insert-${composerRunId}`;
-const composerPass = `${composerUser}-pass`;
-const composerSession: SynapseSession = {
-  available: session.available,
-  hs: session.hs,
-  user: composerUser,
-  pass: composerPass,
-};
-const composerRoomName = `Android insert ${composerRunId}`;
+let composerUser = '';
+let composerPass = '';
+let composerSession: SynapseSession;
+let composerRoomName = '';
 
 async function openNativeSettingsFromRooms(
   page: Page,
@@ -148,7 +142,19 @@ test.describe('Android navigation', () => {
       hasTouch: true,
       isMobile: true,
     });
-    test.beforeAll(async ({ request }) => seedComposerRoom(request));
+    test.beforeAll(async ({ request, workerResourceNamespace }) => {
+      const runId = workerResourceNamespace.role('android-navigation');
+      composerUser = `android-insert-${runId}`;
+      composerPass = `${composerUser}-pass`;
+      composerSession = {
+        available: session.available,
+        hs: session.hs,
+        user: composerUser,
+        pass: composerPass,
+      };
+      composerRoomName = `Android insert ${runId}`;
+      await seedComposerRoom(request);
+    });
 
     test('dismisses the native keyboard before opening a bounded sheet and handles hardware Back', async ({
       app,

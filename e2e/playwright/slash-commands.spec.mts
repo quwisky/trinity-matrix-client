@@ -1,6 +1,6 @@
-import { test, expect, type Page } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import { testResourceId, test, expect, type Page } from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers composer slash commands (TimelineService.send → slashCommandContent):
 // /shrug appends the kaomoji, and /plain sends its argument literally (no markdown).
@@ -25,7 +25,7 @@ test.describe('Slash commands', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}sc`;
+    const runId = `${testResourceId('run')}sc`;
     const user = `slash-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Slash ${runId}`;

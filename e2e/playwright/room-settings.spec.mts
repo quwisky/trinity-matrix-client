@@ -1,16 +1,17 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
+} from '../fixtures.mts';
 import {
   login,
   openSettingsTab,
   synapseSession,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 import { installWidgetFixture } from './support/widget.mts';
 
 // Covers editing a room's settings: the room header's ⚙ button
@@ -101,7 +102,7 @@ test.describe('Room settings', () => {
     // homeserver. Give this one echo-gated test extra budget for the wait below.
     test.setTimeout(150_000);
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}s`;
+    const runId = `${testResourceId('run')}s`;
     const user = `settings-user-${runId}`;
     const pass = `${user}-pass`;
     const originalName = `Before ${runId}`;
@@ -150,7 +151,7 @@ test.describe('Room settings', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}wd`;
+    const runId = `${testResourceId('run')}wd`;
     const user = `widget-user-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Widgets ${runId}`;
@@ -368,7 +369,7 @@ test.describe('Room settings', () => {
   }) => {
     test.setTimeout(150_000);
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}wg`;
+    const runId = `${testResourceId('run')}wg`;
     const user = `widget-manage-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Manage widgets ${runId}`;
@@ -463,7 +464,7 @@ test.describe('Room settings', () => {
   }) => {
     test.setTimeout(150_000);
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}wp`;
+    const runId = `${testResourceId('run')}wp`;
     const owner = `widget-owner-${runId}`;
     const ownerPass = `${owner}-pass`;
     const member = `widget-member-${runId}`;
@@ -584,7 +585,7 @@ test.describe('Room settings', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}ac`;
+    const runId = `${testResourceId('run')}ac`;
     const user = `access-user-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Access ${runId}`;
@@ -663,7 +664,7 @@ test.describe('Room settings', () => {
   }) => {
     test.setTimeout(150_000);
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}rs`;
+    const runId = `${testResourceId('run')}rs`;
     const user = `restrict-user-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Restricted ${runId}`;
@@ -745,7 +746,7 @@ test.describe('Room settings', () => {
     // room's parent spaces, so it could only ever grow.
     test.setTimeout(150_000);
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}rv`;
+    const runId = `${testResourceId('run')}rv`;
     const user = `revoke-user-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Revoke ${runId}`;
@@ -829,7 +830,7 @@ test.describe('Room settings', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}ub`;
+    const runId = `${testResourceId('run')}ub`;
     const admin = `unban-admin-${runId}`;
     const adminPass = `${admin}-pass`;
     const target = `unban-target-${runId}`;
@@ -913,7 +914,7 @@ test.describe('Room settings', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}al`;
+    const runId = `${testResourceId('run')}al`;
     const user = `alias-user-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Addr ${runId}`;
@@ -980,7 +981,7 @@ test.describe('Room settings', () => {
 
   test('an admin changes the room photo', async ({ page, request }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}a`;
+    const runId = `${testResourceId('run')}a`;
     const user = `photo-user-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Photo ${runId}`;

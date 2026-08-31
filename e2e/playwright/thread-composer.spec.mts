@@ -1,4 +1,4 @@
-import { test, expect, type Page } from './support/fixtures.mts';
+import { testResourceId, test, expect, type Page } from '../fixtures.mts';
 import {
   clickRowToolbar,
   isAndroidE2E,
@@ -7,8 +7,8 @@ import {
   synapseSession,
   waitForSent,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers the thread composer (data-testid="thread-view"): the room-scoped actions
 // (poll/location/voice) are hidden there because they post to the main room,
@@ -34,7 +34,7 @@ test.describe('Thread composer', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}thr`;
+    const runId = `${testResourceId('run')}thr`;
     const user = `thr-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Thread ${runId}`;
@@ -124,7 +124,7 @@ test.describe('Thread composer', () => {
   }) => {
     test.setTimeout(150_000);
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}tht`;
+    const runId = `${testResourceId('run')}tht`;
     const user = `tht-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Thread ${runId}`;

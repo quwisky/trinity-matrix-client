@@ -1,6 +1,11 @@
-import { test, expect, type APIRequestContext } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import {
+  testResourceId,
+  test,
+  expect,
+  type APIRequestContext,
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers the redesigned room-list row (ChannelSidebarComponent): each `.channel`
 // row now renders a `trn-avatar`, the room name (`.channel__name`), and a
@@ -178,7 +183,7 @@ test.describe('Room list preview row', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}p`;
+    const runId = `${testResourceId('run')}p`;
 
     const { reader, roomName } = await seedPreviewRoom(request, hs, runId);
 
@@ -212,7 +217,7 @@ test.describe('Room list preview row', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}u`;
+    const runId = `${testResourceId('run')}u`;
 
     const { reader, roomName } = await seedUnreadRoom(
       request,

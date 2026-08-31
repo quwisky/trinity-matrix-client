@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import type { Navigate } from '../support/app.mts';
+import type { Navigate } from './app.mts';
 
 export async function expectLoginScreen(
   page: Page,

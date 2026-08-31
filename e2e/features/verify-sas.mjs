@@ -24,11 +24,10 @@
 //   TRINITY_HS=… TRINITY_USER=… TRINITY_PASS=… node e2e/features/verify-sas.mjs
 import { mkdir } from 'node:fs/promises';
 import { waitForRooms } from '../support/navigation.mjs';
-import { serve } from '../support/serve.mjs';
+import { applicationOrigin } from '../support/session.mts';
 import { chromium } from 'playwright';
 
-const PORT = 8125;
-const APP = `http://localhost:${PORT}`;
+const APP = applicationOrigin();
 
 const HS = process.env.TRINITY_HS ?? 'https://localhost:8448';
 const USER = process.env.TRINITY_USER ?? 'verify-e2e';
@@ -178,7 +177,6 @@ async function assertWaitingOnPeer(scope) {
 
 async function main() {
   await mkdir('e2e/.artifacts', { recursive: true });
-  const server = await serve('www', PORT);
   log(`serving www on ${APP}`);
   log(`homeserver=${HS} user=${USER}`);
 
@@ -330,7 +328,6 @@ async function main() {
     console.log('\nRESULT: FAIL');
   } finally {
     await browser.close();
-    server.close();
   }
   process.exit(exit);
 }

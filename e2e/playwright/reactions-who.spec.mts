@@ -1,11 +1,12 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers "who reacted" (issue #8): a reaction pill names its reactors on hover, and
 // the trailing chip opens the full list, grouped by emoji.
@@ -140,7 +141,7 @@ test.describe('Who reacted', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}w`;
+    const runId = `${testResourceId('run')}w`;
     const seeded = await seedReactedMessage(
       request,
       session.hs as string,

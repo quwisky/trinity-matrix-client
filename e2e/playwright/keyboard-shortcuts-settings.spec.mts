@@ -1,6 +1,6 @@
-import { test, expect } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import { testResourceId, test, expect } from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers the "Keyboard shortcuts" settings section (issue #13): the list is reachable from
@@ -19,7 +19,7 @@ test.describe('Keyboard shortcuts settings', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}ks`;
+    const runId = `${testResourceId('run')}ks`;
     const user = `shortcuts-${runId}`;
     const pass = `${user}-pass`;
     await registerUser(request, user, pass);

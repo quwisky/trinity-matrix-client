@@ -1,5 +1,5 @@
-import { test, expect, type Locator } from './support/fixtures.mts';
-import { login, synapseSession } from './support/app.mts';
+import { test, expect, type Locator } from '../fixtures.mts';
+import { login, synapseSession } from '../support/app.mts';
 import { openSettingsSection } from './journeys/navigation.mts';
 
 // A switch has to LOOK like the value it holds, and that claim can only be made in a

@@ -1,13 +1,14 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Locator,
   type Page,
-} from './support/fixtures.mts';
+} from '../fixtures.mts';
 import { devices } from '@playwright/test';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 const { defaultBrowserType: _pixelBrowser, ...pixel5 } = devices['Pixel 5'];
 
@@ -202,7 +203,7 @@ test.describe('Member role sections', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}r`;
+    const runId = `${testResourceId('run')}r`;
     // Extras: one moderator (50) and one plain member (0); the reader is the admin (100).
     const { reader, roomName, admin, extras } = await seedRoleRoom(
       request,
@@ -286,7 +287,7 @@ test.describe('Member role sections', () => {
     // trusted_private_chat, which puts BOTH participants at power level 100 — seeding
     // with plain private_chat would leave the peer at 0 and the bug would not reproduce.
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}dm`;
+    const runId = `${testResourceId('run')}dm`;
     const meUser = `dm-me-${runId}`;
     const mePass = `${meUser}-pass`;
     const themUser = `dm-them-${runId}`;
@@ -364,7 +365,7 @@ test.describe('Member role sections', () => {
     // The list groups; the panel labels. Both read the same classification, and a change
     // that updated one without the other would leave the two disagreeing about the same
     // person on the same screen.
-    const runId = `${Date.now().toString(36)}pan`;
+    const runId = `${testResourceId('run')}pan`;
     const { reader, roomName, admin } = await seedRoleRoom(
       request,
       session.hs as string,
@@ -396,7 +397,7 @@ test.describe('Member role sections', () => {
     // The case the Owner section exists for, and the one the other tests cannot show:
     // both of these sit at power level 100, so before the creator flag they rendered
     // under one header and "whose room is this?" was unanswerable.
-    const runId = `${Date.now().toString(36)}own`;
+    const runId = `${testResourceId('run')}own`;
     const { reader, roomName, admin, extras } = await seedRoleRoom(
       request,
       session.hs as string,
@@ -433,7 +434,7 @@ test.describe('Member role sections', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}p`;
+    const runId = `${testResourceId('run')}p`;
     // Just the admin (reader) and one plain member (0) to start.
     const { reader, roomName, roomId, admin, extras } = await seedRoleRoom(
       request,
@@ -481,7 +482,7 @@ test.describe('Member role sections', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}perm`;
+    const runId = `${testResourceId('run')}perm`;
     const { reader, roomName, roomId, admin, extras } = await seedRoleRoom(
       request,
       hs,
@@ -544,7 +545,7 @@ test.describe('Member role sections', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}settings`;
+    const runId = `${testResourceId('run')}settings`;
     const { reader, roomName, roomId, admin } = await seedRoleRoom(
       request,
       hs,
@@ -590,7 +591,7 @@ test.describe('Unavailable action touch feedback', () => {
     touchPlatform,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}touch`;
+    const runId = `${testResourceId('run')}touch`;
     const { reader, roomName, roomId, admin, extras } = await seedRoleRoom(
       request,
       hs,

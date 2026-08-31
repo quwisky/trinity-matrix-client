@@ -1,16 +1,17 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
+} from '../fixtures.mts';
 import {
   isAndroidE2E,
   login,
   synapseSession,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 import { AA_NORMAL_TEXT, measureContrast } from './support/contrast.mts';
 
 // End-to-end for matrix.to link navigation: a message linking to another room routes
@@ -84,7 +85,7 @@ async function sendRoomLink(
   label: string,
 ): Promise<void> {
   const response = await request.put(
-    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(sourceId)}/send/m.room.message/link-${Date.now().toString(36)}`,
+    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(sourceId)}/send/m.room.message/link-${testResourceId('run')}`,
     {
       headers: { Authorization: `Bearer ${auth.accessToken}` },
       data: {
@@ -140,7 +141,7 @@ test.describe('Matrix room links', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}l`;
+    const runId = `${testResourceId('run')}l`;
     const hs = session.hs as string;
     const username = `link-user-${runId}`;
     const password = `${username}-pass`;
@@ -217,7 +218,7 @@ test.describe('Matrix room links', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}f`;
+    const runId = `${testResourceId('run')}f`;
     const local = await localScenario(request, runId);
     const remotePassword = `remote-${runId}-pass`;
     const remote = await registerRemote(
@@ -308,7 +309,7 @@ test.describe('Matrix room links', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}x`;
+    const runId = `${testResourceId('run')}x`;
     const local = await localScenario(request, runId);
     const remote = await registerRemote(
       request,
@@ -349,7 +350,7 @@ test.describe('Matrix room links', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}r`;
+    const runId = `${testResourceId('run')}r`;
     const local = await localScenario(request, runId);
     const remote = await registerRemote(
       request,
@@ -419,7 +420,7 @@ test.describe('Matrix room links', () => {
       request,
     }) => {
       test.skip(!isAndroidE2E, 'Android WebView geometry only');
-      const runId = `${Date.now().toString(36)}m`;
+      const runId = `${testResourceId('run')}m`;
       const local = await localScenario(request, runId);
       const targetName = `Portrait Target ${runId}`;
       const targetId = await createRoom(request, local.hs, local.auth, {
@@ -492,7 +493,7 @@ test.describe('Matrix room links', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}u`;
+    const runId = `${testResourceId('run')}u`;
     const hs = session.hs as string;
     const user = `mention-user-${runId}`;
     const pass = `${user}-pass`;

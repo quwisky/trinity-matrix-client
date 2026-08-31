@@ -13,14 +13,11 @@
 //
 // This is the "verify as much as we can headlessly" path the task asks for when the
 // live round-trip is gated. It does NOT assert a PASS of the SAS flow.
-import { serve } from '../support/serve.mjs';
+import { applicationOrigin } from '../support/session.mts';
 import { chromium } from 'playwright';
 
-const PORT = 8126;
-const APP = `http://localhost:${PORT}`;
+const APP = applicationOrigin();
 const log = (m) => console.log(`[selfcheck] ${m}`);
-
-const server = await serve('www', PORT);
 log(`serving www on ${APP}`);
 
 const browser = await chromium.launch({ headless: true });
@@ -105,6 +102,5 @@ try {
   console.log('\nRESULT: FAIL');
 } finally {
   await browser.close();
-  server.close();
 }
 process.exit(exit);

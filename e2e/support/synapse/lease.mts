@@ -1,15 +1,16 @@
 import { execFile } from 'node:child_process';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import {
   acquireProcessLock,
   releaseProcessLock,
   type ProcessLock,
-} from '../support/process-lock.mts';
+} from '../process-lock.mts';
 
-const lockFile = join(
-  import.meta.dirname,
-  '../../dist/.playwright/synapse.lock',
+const workspaceRoot = resolve(import.meta.dirname, '../../..');
+export const synapseLockFile = join(
+  workspaceRoot,
+  'dist/.playwright/synapse.lock',
 );
 const composeFile = join(import.meta.dirname, 'docker-compose.yml');
 const exec = promisify(execFile);
@@ -17,7 +18,7 @@ const exec = promisify(execFile);
 export async function acquireSynapseLease(
   signal?: AbortSignal,
 ): Promise<ProcessLock> {
-  const lease = acquireProcessLock(lockFile, 'Synapse E2E harness');
+  const lease = acquireProcessLock(synapseLockFile, 'Synapse E2E harness');
   try {
     const { stdout } = await exec(
       'docker',
@@ -46,7 +47,7 @@ export async function acquireSynapseLease(
 
 /** Claim teardown without rejecting the running stack that teardown is meant to stop. */
 export function acquireSynapseTeardownLease(): ProcessLock {
-  return acquireProcessLock(lockFile, 'Synapse E2E harness');
+  return acquireProcessLock(synapseLockFile, 'Synapse E2E harness');
 }
 
 export function releaseSynapseLease(lease: ProcessLock | undefined): void {

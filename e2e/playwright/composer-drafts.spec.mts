@@ -1,16 +1,17 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
+} from '../fixtures.mts';
 import {
   login,
   readPreference,
   synapseSession,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // End-to-end for per-conversation composer drafts: a half-typed message is kept per
 // room while switching between rooms, and survives a reload (persisted to Capacitor
@@ -74,7 +75,7 @@ test.describe('Composer drafts', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}d`;
+    const runId = `${testResourceId('run')}d`;
     const { reader, roomA, roomB } = await seedTwoRooms(
       request,
       session.hs as string,

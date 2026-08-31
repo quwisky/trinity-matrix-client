@@ -1,4 +1,4 @@
-import { test, expect, type Page } from './support/fixtures.mts';
+import { testResourceId, test, expect, type Page } from '../fixtures.mts';
 import {
   clickRowMenuItem,
   clickRowToolbar,
@@ -8,8 +8,8 @@ import {
   synapseSession,
   type SynapseSession,
   waitForSent,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers quoting a message (msg-more → msg-quote): the message's text is pulled into the
 // composer as a markdown `>` block for the user to write around, and sending it renders a
@@ -43,7 +43,7 @@ test.describe('Quote a message', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}q`;
+    const runId = `${testResourceId('run')}q`;
     const user = `quote-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Quote ${runId}`;
@@ -118,7 +118,7 @@ test.describe('Quote a message', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}qn`;
+    const runId = `${testResourceId('run')}qn`;
     const user = `quoten-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Quote none ${runId}`;

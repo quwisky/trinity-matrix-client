@@ -225,11 +225,11 @@ pnpm exec nx e2e trinity-e2e -- --list        # enumerate specs without running 
 pnpm exec nx e2e trinity-e2e -- --retries=0   # honest first-attempt result
 ```
 
-Chromium only. Its own `webServer` produces a **development** build and serves
-`www/` statically, and its global setup brings the disposable Synapse stack up and
-tears it down. Without Docker the authenticated specs skip themselves; under `CI`
-that graceful degradation is deliberately turned off and a missing Docker fails the
-run instead, so a runner that cannot reach Docker cannot report green.
+Chromium only. The support owner produces the **development** build, serves `www/`
+on an OS-selected loopback port, and brings the disposable Synapse stack up once.
+The Playwright config joins its validated session descriptor and owns no server or
+global setup/teardown. Docker is a mandatory preflight requirement; a runner that
+cannot reach it fails before any authenticated spec starts and cannot report green.
 
 The config sets `retries: 2` unconditionally, including locally. A spec that fails
 once and passes on retry is reported as _flaky_, not failed, which is easy to skim
@@ -256,8 +256,9 @@ Focused single-spec Web/Android commands are documented beside each owned scenar
 
 ### Standalone protocol harnesses
 
-Raw Playwright scripts under `e2e/features/`, each serving `www/` on its own port
-and printing `RESULT: PASS` or `RESULT: FAIL`. Every one of them builds the app with
+Raw Playwright scripts under `e2e/features/`, each joining the support owner's dynamic
+application endpoint and printing `RESULT: PASS` or `RESULT: FAIL`. Every standalone
+entrypoint builds the app with
 `--configuration=development` first, which matters: the `/spike` route the crypto
 harnesses drive is compiled out of production builds entirely.
 
@@ -285,14 +286,13 @@ pnpm e2e:verify:up     # start Synapse, Caddy and Dex
 pnpm e2e:verify:down   # stop and delete their state
 ```
 
-!!! danger "The Synapse-backed suites must run one at a time"
+!!! danger "Do not start independent E2E invocations concurrently"
 
-    Every Docker-backed entry point owns *the same* stack: fixed ports 8008, 8448
-    and 5556, and one shared `e2e/synapse/data` state directory. Running two of
-    them at once, or running one alongside `nx e2e trinity-e2e`, means two
-    orchestrators fighting over one homeserver and one state directory, and the
-    second teardown deletes the first run's data underneath it. Chain them with
-    `&&` instead: `pnpm e2e:threads && pnpm e2e:spaces`.
+    Synapse, Dex and Caddy retain fixed ports 8008, 8448 and 5556 plus one
+    `e2e/support/synapse/data` state directory. An official aggregate safely runs many selected
+    suites sequentially under one support owner. Separate `pnpm e2e:*` processes contend for the
+    same explicit lock and the second is rejected; do not remove the lock or start the manual
+    `e2e:verify:up` stack beside an invocation.
 
 ### Desktop specs
 

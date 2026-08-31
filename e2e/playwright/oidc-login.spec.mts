@@ -1,5 +1,5 @@
-import { test, expect, type Page, type Route } from './support/fixtures.mts';
-import { webNavigate } from './support/app.mts';
+import { test, expect, type Page, type Route } from '../fixtures.mts';
+import { webNavigate } from '../support/app.mts';
 
 // OIDC-native ("next-gen auth", MSC3861/MSC2965) login, against a FULLY MOCKED
 // homeserver + provider. Unlike the other app-journey specs this needs no Synapse/MAS,

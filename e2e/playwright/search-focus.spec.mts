@@ -1,6 +1,6 @@
-import { test, expect, type Page } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import { testResourceId, test, expect, type Page } from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Both search dialogs must open ready to type: the quick switcher (Ctrl/Cmd+K, from the
 // sidebar's ⌘ button) and in-room message search (the room header's magnifier). Each
@@ -49,7 +49,7 @@ test.describe('Search dialogs', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}s`;
+    const runId = `${testResourceId('run')}s`;
     const user = `search-focus-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Search focus ${runId}`;

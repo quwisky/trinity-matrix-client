@@ -20,7 +20,8 @@ const exec = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const log = (m) => console.log(`[synapse] ${m}`);
 
-export async function stop({ keepData = false } = {}) {
+export async function stop({ keepData = false, signal } = {}) {
+  const failures = [];
   try {
     // Detection failing must not strand the stack: fall back to the default file set.
     const networkContainer = await resolveNetworkContainer().catch(() => '');
@@ -36,6 +37,7 @@ export async function stop({ keepData = false } = {}) {
       ],
       {
         cwd: HERE,
+        signal,
         env: {
           ...process.env,
           TRINITY_E2E_NETWORK_CONTAINER: networkContainer,
@@ -43,16 +45,24 @@ export async function stop({ keepData = false } = {}) {
       },
     );
   } catch (err) {
-    log(`compose down warning: ${err.message ?? err}`);
+    log(`compose down failed: ${err.message ?? err}`);
+    failures.push(err);
   }
   if (!keepData) {
-    await Promise.all([
-      rm(DATA, { recursive: true, force: true }),
-      rm(REMOTE_DATA, { recursive: true, force: true }),
-    ]);
-    log('removed ./data and ./remote-data');
+    try {
+      await Promise.all([
+        rm(DATA, { recursive: true, force: true }),
+        rm(REMOTE_DATA, { recursive: true, force: true }),
+      ]);
+      log('removed ./data and ./remote-data');
+    } catch (err) {
+      failures.push(err);
+    }
   }
   log('down.');
+  if (failures.length > 0) {
+    throw new AggregateError(failures, 'Synapse teardown failed');
+  }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

@@ -18,7 +18,7 @@ import { describe, expect, it } from 'vitest';
  * than "user exists" was silent and the spec failed later, somewhere else, for a reason that
  * had nothing to do with the cause.
  *
- * The values now come from `e2e/synapse/start.mjs`, which is the file that patches them into
+ * The values now come from `e2e/support/synapse/start.mjs`, which patches them into
  * `homeserver.yaml` — one definition, on the side that actually configures Synapse.
  *
  * `mobile-nav.spec.mts` keeps a registration routine of its own, and is allowed to: it
@@ -42,10 +42,10 @@ const RESTATED = [
 ];
 
 /** The one file allowed to define them: the harness that writes them into homeserver.yaml. */
-const DEFINITION = 'e2e/synapse/start.mjs';
+const DEFINITION = 'e2e/support/synapse/start.mjs';
 
 /** Where the shared helpers live — `registerUser`'s home, not a copy of it. */
-const EXEMPT = ['e2e/playwright/support/', 'e2e/synapse/'];
+const EXEMPT = ['e2e/support/account.mts', 'e2e/support/synapse/'];
 
 /**
  * The whole e2e tree, not just the Playwright specs.

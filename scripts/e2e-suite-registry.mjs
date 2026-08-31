@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { accessSync, constants, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   E2E_AGGREGATE_TARGETS,
@@ -10,8 +10,15 @@ import {
   E2E_TIMEOUTS_MS,
 } from '../e2e/registry/index.mts';
 import { validateWorkspace } from './e2e-suite-registry-validator.mjs';
+import { openE2EInvocation } from '../e2e/support/invocation.mts';
+import {
+  createProcessTerminationScope,
+  runManagedCommand,
+} from '../e2e/support/managed-command.mts';
 
-const workspaceRoot = fileURLToPath(new URL('..', import.meta.url));
+export { runManagedCommand } from '../e2e/support/managed-command.mts';
+
+const workspaceRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const writeOutput = (message) => process.stdout.write(`${message}\n`);
 const writeError = (message) => process.stderr.write(`${message}\n`);
 
@@ -21,82 +28,6 @@ const runCommand = (command, args, options = {}) =>
     env: { ...process.env, NX_DAEMON: 'false' },
     stdio: options.capture ? 'pipe' : 'inherit',
     encoding: 'utf8',
-  });
-
-const processGroupIsAlive = (pid, platform) => {
-  if (!pid || platform === 'win32') return false;
-  try {
-    process.kill(-pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-const signalProcessTree = (child, signal, platform) => {
-  if (child.pid && platform !== 'win32') {
-    try {
-      process.kill(-child.pid, signal);
-      return;
-    } catch {
-      // The process group may have exited between the liveness check and signal.
-    }
-  }
-  child.kill(signal);
-};
-
-export const runManagedCommand = (
-  command,
-  args,
-  {
-    timeout,
-    terminationGraceMs = 10_000,
-    platform = process.platform,
-    stdio = 'inherit',
-  } = {},
-) =>
-  new Promise((resolve) => {
-    const child = spawn(command, args, {
-      cwd: workspaceRoot,
-      env: { ...process.env, NX_DAEMON: 'false' },
-      stdio,
-      detached: platform !== 'win32',
-    });
-    let settled = false;
-    let timedOut = false;
-    let terminationTimer;
-
-    const finish = (result) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeoutTimer);
-      clearTimeout(terminationTimer);
-      resolve(result);
-    };
-
-    child.once('error', (error) => finish({ status: 1, error, timedOut }));
-    child.once('exit', (code, signal) => {
-      if (
-        timedOut &&
-        processGroupIsAlive(child.pid, platform) &&
-        terminationTimer
-      ) {
-        return;
-      }
-      finish({ status: code ?? 1, signal, timedOut });
-    });
-
-    const timeoutTimer =
-      typeof timeout === 'number'
-        ? setTimeout(() => {
-            timedOut = true;
-            signalProcessTree(child, 'SIGTERM', platform);
-            terminationTimer = setTimeout(() => {
-              signalProcessTree(child, 'SIGKILL', platform);
-              finish({ status: 1, signal: 'SIGKILL', timedOut: true });
-            }, terminationGraceMs);
-          }, timeout)
-        : undefined;
   });
 
 const defaultCatalog = {
@@ -347,6 +278,7 @@ export const runSuite = (
     platform = process.platform,
     report = writeOutput,
     forwardedArgs = [],
+    signal,
   } = {},
 ) => {
   const targetArgs = [
@@ -365,7 +297,14 @@ export const runSuite = (
 
   report(`[e2e] ${suite.id} -> ${suite.currentTarget}`);
   const timeout = E2E_TIMEOUTS_MS[suite.timeoutClass];
-  return Promise.resolve(execute(command, args, { timeout })).then((result) => {
+  return Promise.resolve(
+    execute(command, args, {
+      timeout,
+      cwd: workspaceRoot,
+      environment,
+      signal,
+    }),
+  ).then((result) => {
     if (result.timedOut) {
       report(`[e2e] ${suite.id} timed out after ${timeout} ms`);
     }
@@ -380,35 +319,55 @@ export const runSelection = async (
     select = suitesForRun,
     preflight = checkPrerequisites,
     executeSuite = runSuite,
+    openInvocation = (resources, signal) =>
+      openE2EInvocation({ resources, workspaceRoot, signal }),
     reportError = writeError,
     forwardedArgs = [],
+    createTerminationScope = createProcessTerminationScope,
   } = {},
 ) => {
-  const errors = validate();
-  if (errors.length > 0) {
-    for (const error of errors) reportError(`- ${error}`);
-    reportError('Refusing to run a drifting E2E registry.');
-    return 1;
-  }
-
-  const suites = select(targetName);
-  const prerequisiteFailures = await preflight(suites);
-  if (prerequisiteFailures.length > 0) {
-    for (const failure of prerequisiteFailures) reportError(`- ${failure}`);
-    reportError('E2E prerequisite preflight failed; no suites were started.');
-    return 1;
-  }
-
-  for (const suite of suites) {
-    const status = await executeSuite(suite, { forwardedArgs });
-    if (status !== 0) {
-      reportError(
-        `${suite.id} failed with exit code ${status}; remaining suites were not run.`,
-      );
-      return status;
+  const termination = createTerminationScope();
+  try {
+    const errors = validate();
+    if (errors.length > 0) {
+      for (const error of errors) reportError(`- ${error}`);
+      reportError('Refusing to run a drifting E2E registry.');
+      return 1;
     }
+
+    const suites = select(targetName);
+    const prerequisiteFailures = await preflight(suites);
+    if (prerequisiteFailures.length > 0) {
+      for (const failure of prerequisiteFailures) reportError(`- ${failure}`);
+      reportError('E2E prerequisite preflight failed; no suites were started.');
+      return 1;
+    }
+
+    const resources = [
+      ...new Set(suites.flatMap(({ serializationKeys }) => serializationKeys)),
+    ];
+    const invocation = await openInvocation(resources, termination.signal);
+    try {
+      for (const suite of suites) {
+        const status = await executeSuite(suite, {
+          forwardedArgs,
+          environment: invocation.environment,
+          signal: termination.signal,
+        });
+        if (status !== 0) {
+          reportError(
+            `${suite.id} failed with exit code ${status}; remaining suites were not run.`,
+          );
+          return status;
+        }
+      }
+      return 0;
+    } finally {
+      await invocation.close();
+    }
+  } finally {
+    termination.close();
   }
-  return 0;
 };
 
 const check = () => {

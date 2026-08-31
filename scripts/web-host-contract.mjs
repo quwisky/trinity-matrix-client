@@ -148,7 +148,7 @@ export function validateWebHostContract(input, errors) {
 
   if (
     e2eProject.targets?.['web-e2e']?.options?.command !==
-    'playwright test -c playwright.web.config.mts'
+    'node e2e/support/run-playwright.mts --config=e2e/playwright.web.config.mts --build=trinity:build:production'
   ) {
     errors.push(
       'Web host must expose the production Web/PWA Playwright target',

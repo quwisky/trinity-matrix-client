@@ -5,11 +5,10 @@
 // hardware while still exercising rendering, decoding, and scanQRCode end to end.
 import { mkdir } from 'node:fs/promises';
 import { waitForRooms } from '../support/navigation.mjs';
-import { serve } from '../support/serve.mjs';
+import { applicationOrigin } from '../support/session.mts';
 import { chromium } from 'playwright';
 
-const PORT = 8127;
-const APP = `http://localhost:${PORT}`;
+const APP = applicationOrigin();
 const HS = process.env.TRINITY_HS ?? 'https://localhost:8448';
 const USER = process.env.TRINITY_USER ?? 'verify-e2e';
 const PASS = process.env.TRINITY_PASS ?? 'verify-e2e-pass-123';
@@ -130,7 +129,6 @@ async function installSyntheticCamera(page) {
 
 async function main() {
   await mkdir('e2e/.artifacts', { recursive: true });
-  const server = await serve('www', PORT);
   const browser = await chromium.launch({
     headless: !HEADED,
     slowMo: SLOWMO,
@@ -213,7 +211,6 @@ async function main() {
     console.log('\nRESULT: FAIL');
   } finally {
     await browser.close();
-    server.close();
   }
   process.exit(exit);
 }

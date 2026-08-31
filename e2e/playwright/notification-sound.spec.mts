@@ -1,6 +1,11 @@
-import { test, expect, type APIRequestContext } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import {
+  testResourceId,
+  test,
+  expect,
+  type APIRequestContext,
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers the global "Play a sound" switch (Settings → Notifications). The preference lives in
@@ -40,7 +45,7 @@ test.describe('Notification sound', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}snd`;
+    const runId = `${testResourceId('run')}snd`;
     const user = `sound-${runId}`;
     const pass = `${user}-pass`;
 

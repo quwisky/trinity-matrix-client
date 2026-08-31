@@ -1,6 +1,6 @@
-import { test, expect, type Page } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import { testResourceId, test, expect, type Page } from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // End-to-end for clickable links: a bare URL sent as a plain-text message renders as a
 // real <a> link (linkified on render), not inert text. Needs a Synapse homeserver
@@ -24,7 +24,7 @@ test.describe('Clickable links', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}l`;
+    const runId = `${testResourceId('run')}l`;
     const hs = session.hs as string;
     const username = `linkify-user-${runId}`;
     const password = `${username}-pass`;

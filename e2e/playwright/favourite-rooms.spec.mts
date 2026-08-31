@@ -1,11 +1,12 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers the two room-tag features, which share one fixture and one menu:
 // SidebarRoomListComponent renders a hover-revealed kebab (`.channel__menu`) on
@@ -127,7 +128,7 @@ test.describe('Room tags: favourite and low priority', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}f`;
+    const runId = `${testResourceId('run')}f`;
 
     const { reader, alphaName, bravoName } = await seedTwoRooms(
       request,
@@ -195,7 +196,7 @@ test.describe('Room tags: favourite and low priority', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}l`;
+    const runId = `${testResourceId('run')}l`;
 
     const { reader, alphaName, bravoName } = await seedTwoRooms(
       request,

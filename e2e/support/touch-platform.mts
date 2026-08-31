@@ -1,14 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
-
-export interface TouchPoint {
-  x: number;
-  y: number;
-}
-
-export interface TouchPlatform {
-  tap(page: Page, target: Locator): Promise<void>;
-  swipe(page: Page, from: TouchPoint, to: TouchPoint): Promise<void>;
-}
+import type { TouchPoint } from './platform-contracts.mts';
+export type { TouchPlatform, TouchPoint } from './platform-contracts.mts';
 
 /** Press and release a target past Trinity's 500ms long-press threshold. */
 export async function touchLongPress(

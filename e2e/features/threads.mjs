@@ -23,14 +23,16 @@
 //   TRINITY_HS=… TRINITY_USER=… TRINITY_PASS=… node e2e/features/threads.mjs
 import { mkdir } from 'node:fs/promises';
 import { waitForRooms } from '../support/navigation.mjs';
-import { serve } from '../support/serve.mjs';
+import {
+  applicationOrigin,
+  invocationResourceId,
+} from '../support/session.mts';
 import { chromium } from 'playwright';
 
 // Node's fetch (room setup) must accept Caddy's self-signed cert.
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
-const PORT = 8128;
-const APP = `http://localhost:${PORT}`;
+const APP = applicationOrigin();
 
 const HS = process.env.TRINITY_HS ?? 'https://localhost:8448';
 const USER = process.env.TRINITY_USER ?? 'verify-e2e';
@@ -39,7 +41,7 @@ const HEADED = process.env.HEADED === '1';
 const SLOWMO = Number(process.env.SLOWMO ?? 0);
 
 // Each run gets its own unique names so re-runs don't collide.
-const RUN_ID = Date.now();
+const RUN_ID = invocationResourceId('threads');
 const ROOM_NAME = `Threads E2E ${RUN_ID}`;
 const ROOT_MSG = `Root message ${RUN_ID}`;
 const NO_THREAD_MSG = `No-thread message ${RUN_ID}`;
@@ -126,7 +128,7 @@ async function setupRoom() {
 async function fillLabeledInput(page, label, value) {
   // Exact match: the password field's "Show password" reveal button (aria-label) otherwise
   // also matches a substring `getByLabel('Password')`, tripping strict mode. Same fix as
-  // e2e/playwright/support/app.mts:34 and verify-sas.mjs:45.
+  // e2e/support/app.mts:34 and verify-sas.mjs:45.
   const input = page.getByLabel(label, { exact: true });
   await input.waitFor({ state: 'visible', timeout: 15_000 });
   await input.click();
@@ -173,8 +175,6 @@ async function main() {
   // 1. Seed the room + messages via the CS API before the browser runs.
   const { rootEventId, noThreadEventId } = await setupRoom();
   log(`rootEventId=${rootEventId}  noThreadEventId=${noThreadEventId}`);
-
-  const server = await serve('www', PORT);
   log(`serving www on ${APP} (homeserver=${HS} user=${USER})`);
 
   const browser = await chromium.launch({
@@ -366,7 +366,6 @@ async function main() {
     console.log('\nRESULT: FAIL');
   } finally {
     await browser.close();
-    server.close();
   }
   process.exit(exit);
 }

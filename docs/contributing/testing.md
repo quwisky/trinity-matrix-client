@@ -361,8 +361,8 @@ then wait for the route or the concrete control the journey needs.
 
 The stable signed-in destination is Account-qualified: wait for `/rooms` with a
 non-empty `account` query parameter (use `waitForRooms`) before capturing a route or
-opening a modal that must preserve it. Playwright specs import the typed helper from
-`playwright/support/app.mts`; standalone protocol features import the same contract
+opening a modal that must preserve it. Every environment imports the typed helper from
+`e2e/support/app.mts`; standalone protocol features import the same contract
 from `support/navigation.mjs`. A bare `/rooms` is the pre-repair spelling.
 
 Composer sends are single-flight. A local echo can paint before the SDK send settles,
@@ -380,10 +380,11 @@ production Capacitor app, installs it on a validated API 36 x86_64 emulator, and
 Playwright to the app's own WebView. That boundary makes native hardware Back, touch input,
 Android TLS handling, and session restoration after force-stop/relaunch observable.
 
-Every canonical spec imports `e2e/playwright/support/fixtures.mts`. It selects the normal
-browser lifecycle for web and overrides both `page` and `context` with the installed
-package WebView for Android. The Android config collects the entire canonical glob plus
-native-only specs; a source-shape guard prevents new specs from bypassing that boundary.
+Every canonical spec imports the composition fixture at `e2e/fixtures.mts`. That edge
+selects the browser adapter for Web or the Android adapter for the installed package;
+neither environment fixture imports the other. The Android config collects the entire
+canonical glob plus native-only specs, and a source-shape guard prevents new specs from
+bypassing the composition boundary.
 Platform adapters cover test options, native preferences and permissions, external
 authentication, and a separately packaged second device while keeping one set of journey
 assertions. External FCM notification delivery, encrypted-key export, and the one
@@ -411,12 +412,11 @@ plugins, deep-link scheme and negotiated capabilities; the second performs an un
 iPhone Simulator build. There is not yet a Playwright iOS WebView driver equivalent to the
 Android harness, so no browser journey is claimed on Linux or CI outside a macOS/Xcode runner.
 
-The `webServer` runs `nx run trinity:build:development` and then serves `www/`
-statically on port 4200, with `reuseExistingServer` on whenever `CI` is unset. That
-last part has a sharp edge: `pnpm start` uses the same port, so if a dev server is
-running, Playwright skips the whole `webServer` command, the build never runs, and
-the suite silently tests whatever `www/` happens to contain. Kill the dev server
-first, or set `PORT`/`BASE_URL`.
+The `trinity-e2e-support` invocation binds application, Storybook and report servers to
+OS-selected loopback ports before a child builds its artifact. Playwright configs only read the
+validated descriptor and never own `webServer`, global setup or teardown. A running development
+server therefore cannot make a suite reuse stale `www/`, and an aggregate can pass the same live
+origin to browser, protocol, Android and Electron children without restarting shared resources.
 
 Note also which build this is. The web suite runs the **development** bundle, with
 optimization off, no service worker and no file replacements. A production-only
@@ -426,30 +426,26 @@ hashing, a budget overage — passes all 79 spec files and is caught only by
 
 ### The production Web/PWA host contract
 
-`pnpm e2e:web` runs the `trinity-e2e:web-e2e` Nx target without Docker. Its dedicated
-Playwright server builds the production configuration and serves the exact shared `www/`
-artifact on port 4402 with server reuse disabled. The check enters on an unknown deep link,
+`pnpm e2e:web` runs the `trinity-e2e:web-e2e` Nx target without Docker. The support wrapper
+builds the production configuration and its dynamic server exposes the exact shared `www/`
+artifact. The check enters on an unknown deep link,
 waits for Application Runtime to reach the login surface, verifies the manifest and crypto WASM,
 then switches Chromium offline and reloads another deep link under service-worker control. This
 is the executable boundary for Web startup, routing and offline shell behavior; authenticated
 Matrix journeys remain in the sequential Synapse-backed suite.
 
-### Global setup turns its own graceful degradation off in CI
+### One invocation owns external resources
 
-[`global-setup.mts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/e2e/playwright/support/global-setup.mts)
-brings the stack up and writes credentials to `.synapse-session.json`. Every
-authenticated spec reads that at module load and calls
-`test.skip(!session.available, …)`.
-
-Locally, a missing Docker records `available: false` and those specs skip. Under
-`CI` the failure is rethrown instead, because almost every spec is authenticated and
-a runner that cannot reach Docker would otherwise report a green E2E job that tested
-next to nothing. `TRINITY_E2E_ALLOW_NO_SYNAPSE=1` opts back out. This is why the CI
-job needs no extra environment variable to be strict.
+The registry preflights Docker and every other selected prerequisite before opening an
+invocation. When Synapse is required, the owner acquires its process lock, starts the fixed-port
+stack once, writes the credentials only to a mode-0600 descriptor under ignored `dist/`, and
+passes that descriptor to children. Missing Docker is a failed preflight, never a green run made
+of skipped authenticated specs. Child suites validate and join the live owner; their teardown is
+a no-op. The outer owner performs bounded teardown and surfaces cleanup failures.
 
 ### Three race fixes the support helpers encode
 
-[`e2e/playwright/support/app.mts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/e2e/playwright/support/app.mts)
+[`e2e/support/app.mts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/e2e/support/app.mts)
 exists mostly to stop specs re-learning the same three lessons.
 
 - `waitForSent(row)` waits for `data-mid` to match `/^\$/`. A local echo renders with
@@ -472,7 +468,7 @@ Throwaway accounts are registered through Synapse's admin HMAC API in
 
 ## The disposable Synapse stack
 
-[`e2e/synapse/docker-compose.yml`](https://github.com/quwisky/trinity-matrix-client/blob/develop/e2e/synapse/docker-compose.yml)
+[`e2e/support/synapse/docker-compose.yml`](../../e2e/support/synapse/docker-compose.yml)
 runs four services on a `trinity-e2e` network:
 
 | Service        | Image                               | Published on              | Role                                                                              |
@@ -498,7 +494,7 @@ join the remote room. Both generated state directories are discarded at teardown
 
 ### What start.mjs does, and the traps it exists to close
 
-[`start.mjs`](https://github.com/quwisky/trinity-matrix-client/blob/develop/e2e/synapse/start.mjs)
+[`start.mjs`](../../e2e/support/synapse/start.mjs)
 does considerably more than `docker compose up`, and each step is there because
 something failed without it.
 
@@ -573,10 +569,9 @@ is exactly why the desktop dark-theme regression and image-pack manager journey 
 `pnpm electron:e2e:smoke` focuses the Docker-independent launched-shell checks.
 
 The config sets `fullyParallel: false`, `workers: 1` and a 120s timeout, and has no
-`webServer` or `baseURL`: each spec launches the process itself. Global setup and teardown own the
-same disposable Synapse stack as the Web suite, with the same local skip and strict CI behavior.
-The smoke config derives from it but explicitly removes global setup and teardown, so the nine
-shell/protocol/security checks do not require Docker even under CI.
+`webServer` or `baseURL`: each spec launches the process itself. The support invocation owns the
+disposable Synapse stack for the full suite, while the smoke suite requests no Synapse resource;
+both Playwright configs are descriptor-only joiners and own no global setup or teardown.
 [`launch.mts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/e2e/electron/support/launch.mts)
 resolves the Electron executable through `createRequire` against
 `electron/package.json`, since the package lives in `electron/` and not at the root,
@@ -616,13 +611,13 @@ renderer" spec.
 ## Standalone protocol harnesses
 
 `e2e/features/*.mjs` are raw `playwright` Node scripts rather than
-`@playwright/test` specs. Each serves `www/` on its own dedicated port through a
-small static server and drives Chromium or WebKit, parameterised by `TRINITY_HS`,
+`@playwright/test` specs. Each joins the invocation owner's dynamically allocated
+application endpoint and drives Chromium or WebKit, parameterised by `TRINITY_HS`,
 `TRINITY_USER` and `TRINITY_PASS` so it can run against any homeserver. They print
 `RESULT: PASS` or `RESULT: FAIL` and exit accordingly, and `HEADED=1` plus
 `SLOWMO=<ms>` make them watchable. The nine Synapse-backed ones have a thin runner
 under `e2e/runners/` that starts the stack, spawns the body, and stops the stack in a
-`finally`.
+`finally`. The compatibility files do not own servers, ports, locks, or Synapse.
 
 `verify-sas.mjs` is the deepest of them: two browser contexts in one Chromium are two
 devices of the same Matrix user, because isolated IndexedDB means two crypto stores

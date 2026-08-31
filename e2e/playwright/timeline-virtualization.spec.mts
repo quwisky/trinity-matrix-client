@@ -1,5 +1,5 @@
-import { test, expect } from './support/fixtures.mts';
-import { login, seedPreference, synapseSession } from './support/app.mts';
+import { testResourceId, test, expect } from '../fixtures.mts';
+import { login, seedPreference, synapseSession } from '../support/app.mts';
 
 // Seeds a long room over the CS API, turns on the virtualized-timeline flag, and
 // asserts the timeline windows: even after every message is paged into the client,
@@ -23,7 +23,7 @@ test.describe('Timeline virtualization', () => {
   }) => {
     const hs = session.hs as string;
     const testInfo = test.info();
-    const roomName = `Virtualization E2E ${testInfo.workerIndex}-${testInfo.repeatEachIndex}-${testInfo.retry}-${Date.now().toString(36)}`;
+    const roomName = `Virtualization E2E ${testInfo.workerIndex}-${testInfo.repeatEachIndex}-${testInfo.retry}-${testResourceId('run')}`;
 
     // Seed a room with SEED messages straight through the CS API (fast).
     const auth = await request

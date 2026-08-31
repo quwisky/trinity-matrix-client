@@ -1,11 +1,11 @@
-import { test, expect } from './support/fixtures.mts';
+import { testResourceId, test, expect } from '../fixtures.mts';
 import {
   isAndroidE2E,
   login,
   synapseSession,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers encrypted room-key export / import (Settings → Security → Encrypted key export):
@@ -29,7 +29,7 @@ test.describe('Encrypted key export', () => {
       'native WebView export needs a production Files/Share implementation before this browser download journey is portable',
     );
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}ke`;
+    const runId = `${testResourceId('run')}ke`;
     const user = `keyexp-${runId}`;
     const pass = `${user}-pass`;
 

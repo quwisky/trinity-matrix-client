@@ -32,7 +32,10 @@ function validInput() {
     e2eProject: {
       targets: {
         'web-e2e': {
-          options: { command: 'playwright test -c playwright.web.config.mts' },
+          options: {
+            command:
+              'node e2e/support/run-playwright.mts --config=e2e/playwright.web.config.mts --build=trinity:build:production',
+          },
         },
       },
     },

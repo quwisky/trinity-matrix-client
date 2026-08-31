@@ -1,22 +1,24 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
+} from '../fixtures.mts';
 import {
   fillLabeledInput,
   isAndroidE2E,
   login,
   synapseSession,
   waitForRooms,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 import {
   installBadgeRecorder,
   recordedBadgeCalls,
   recordedBadgeCount,
-} from './support/platform-badge.mts';
+} from '../support/platform-badge.mts';
+import type { MatrixTestResources } from '../support/test-resources.mts';
 
 // End-to-end for concurrent multi-account (Milestones 9 + 6/10): add a second account
 // from the user-panel "Add account" (routes to /login?add), switch the active account,
@@ -67,13 +69,13 @@ async function apiLogin(
 async function seedUnreadReader(
   request: APIRequestContext,
   hs: string,
-  runId: string,
   seed: number,
+  resources: MatrixTestResources,
 ): Promise<{ user: string; pass: string }> {
-  const user = `multi-rdr-${runId}`;
-  const pass = `multi-rdr-pass-${runId}`;
-  const senderUser = `multi-snd-${runId}`;
-  const senderPass = `multi-snd-pass-${runId}`;
+  const user = resources.userLocalpart('unread-reader');
+  const pass = `${user}-pass`;
+  const senderUser = resources.userLocalpart('unread-sender');
+  const senderPass = `${senderUser}-pass`;
   await registerUser(request, user, pass);
   await registerUser(request, senderUser, senderPass);
   const reader = await apiLogin(request, hs, user, pass);
@@ -82,7 +84,10 @@ async function seedUnreadReader(
   const roomId = await request
     .post(`${hs}/_matrix/client/v3/createRoom`, {
       headers: reader.headers,
-      data: { name: `Unread ${runId}`, invite: [sender.userId] },
+      data: {
+        name: resources.roomName('unread-room'),
+        invite: [sender.userId],
+      },
     })
     .then((r) => r.json())
     .then((j) => j.room_id as string);
@@ -90,9 +95,10 @@ async function seedUnreadReader(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
     { headers: sender.headers },
   );
+  registerRoomCleanup(resources, request, hs, roomId, [reader, sender]);
   for (let i = 0; i < seed; i++) {
     await request.put(
-      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/multi-${runId}-${i}`,
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${resources.namespace.role('unread-message')}-${i}`,
       {
         headers: sender.headers,
         data: { msgtype: 'm.text', body: `msg ${i}` },
@@ -153,7 +159,7 @@ async function addAccountViaUi(
 async function seedLiveNotifyReader(
   request: APIRequestContext,
   hs: string,
-  runId: string,
+  resources: MatrixTestResources,
 ): Promise<{
   user: string;
   pass: string;
@@ -163,12 +169,12 @@ async function seedLiveNotifyReader(
   roomName: string;
   senderName: string;
 }> {
-  const user = `multi-nrdr-${runId}`;
-  const pass = `multi-nrdr-pass-${runId}`;
-  const senderUser = `multi-nsnd-${runId}`;
-  const senderPass = `multi-nsnd-pass-${runId}`;
-  const roomName = `Multi Notify ${runId}`;
-  const senderName = `Multi Sender ${runId}`;
+  const user = resources.userLocalpart('notify-reader');
+  const pass = `${user}-pass`;
+  const senderUser = resources.userLocalpart('notify-sender');
+  const senderPass = `${senderUser}-pass`;
+  const roomName = resources.roomName('notify-room');
+  const senderName = `Multi Sender ${resources.namespace.role('notify-sender')}`;
 
   await registerUser(request, user, pass);
   await registerUser(request, senderUser, senderPass);
@@ -195,6 +201,7 @@ async function seedLiveNotifyReader(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
     { headers: sender.headers },
   );
+  registerRoomCleanup(resources, request, hs, roomId, [reader, sender]);
 
   return {
     user,
@@ -205,6 +212,28 @@ async function seedLiveNotifyReader(
     roomName,
     senderName,
   };
+}
+
+function registerRoomCleanup(
+  resources: MatrixTestResources,
+  request: APIRequestContext,
+  hs: string,
+  roomId: string,
+  users: readonly ApiUser[],
+): void {
+  for (const user of users) {
+    resources.cleanup(`leave ${roomId} as ${user.userId}`, async () => {
+      const response = await request.post(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/leave`,
+        { headers: user.headers },
+      );
+      if (!response.ok()) {
+        throw new Error(
+          `Matrix room cleanup failed for ${user.userId} with HTTP ${response.status()}`,
+        );
+      }
+    });
+  }
 }
 
 /** Have the sender post one live message via the CS API. */
@@ -301,7 +330,7 @@ test.describe('Multiple accounts', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}m`;
+    const runId = `${testResourceId('run')}m`;
     const userB = `multi-b-${runId}`;
     const passB = `multi-b-pass-${runId}`;
     await registerUser(request, userB, passB);
@@ -346,7 +375,7 @@ test.describe('Multiple accounts', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}r`;
+    const runId = `${testResourceId('run')}r`;
     const userB = `multi-b-${runId}`;
     const passB = `multi-b-pass-${runId}`;
     const userC = `multi-c-${runId}`;
@@ -389,18 +418,18 @@ test.describe('Multiple accounts', () => {
   });
 
   test('the app badge sums unread across accounts, invariant to which is active', async ({
+    matrixResources,
     page,
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}u`;
     const SEED = 2;
 
     // Account A: fresh, zero unread. Account B: seeded with SEED unread messages.
-    const userA = `multi-a-${runId}`;
-    const passA = `multi-a-pass-${runId}`;
+    const userA = matrixResources.userLocalpart('badge-primary');
+    const passA = `${userA}-pass`;
     await registerUser(request, userA, passA);
-    const b = await seedUnreadReader(request, hs, runId, SEED);
+    const b = await seedUnreadReader(request, hs, SEED, matrixResources);
 
     await installBadgeRecorder(page);
 
@@ -454,7 +483,7 @@ test.describe('Multiple accounts', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}o`;
+    const runId = `${testResourceId('run')}o`;
     const userB = `multi-b-${runId}`;
     const passB = `multi-b-pass-${runId}`;
     await registerUser(request, userB, passB);
@@ -490,7 +519,7 @@ test.describe('Multiple accounts', () => {
     // stale store, initRustCrypto threw, and the client never started. Needs real crypto
     // + persistent IndexedDB across the logout/login cycle, so it lives here, not in a unit.
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}x`;
+    const runId = `${testResourceId('run')}x`;
     const userB = `multi-b-${runId}`;
     const passB = `multi-b-pass-${runId}`;
     await registerUser(request, userB, passB);
@@ -589,6 +618,7 @@ test.describe('Multiple accounts', () => {
   });
 
   test('raises a notification for a live message to a background account, tagged for that account', async ({
+    matrixResources,
     page,
     request,
   }) => {
@@ -597,11 +627,11 @@ test.describe('Multiple accounts', () => {
       'native notification delivery and collapse tags need an FCM integration environment; renderer notification assertions are web-only',
     );
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}n`;
+    const runId = `${testResourceId('run')}n`;
 
     // Account B: a fresh reader in a plain room with a sender who has joined but
     // not yet spoken. The message is posted *live*, after B's client is up.
-    const b = await seedLiveNotifyReader(request, hs, runId);
+    const b = await seedLiveNotifyReader(request, hs, matrixResources);
 
     await installNotificationRecorder(page);
 
@@ -683,7 +713,7 @@ test.describe('Multiple accounts', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}mx`;
+    const runId = `${testResourceId('run')}mx`;
     const userA = `mixed-a-${runId}`;
     const passA = `mixed-a-pass-${runId}`;
     const userB = `mixed-b-${runId}`;
@@ -740,7 +770,7 @@ test.describe('Multiple accounts', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}sp`;
+    const runId = `${testResourceId('run')}sp`;
     const userA = `msp-a-${runId}`;
     const passA = `msp-a-pass-${runId}`;
     const userB = `msp-b-${runId}`;
@@ -799,7 +829,7 @@ test.describe('Multiple accounts', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}pk`;
+    const runId = `${testResourceId('run')}pk`;
     const userA = `pick-a-${runId}`;
     const passA = `pick-a-pass-${runId}`;
     const userB = `pick-b-${runId}`;
@@ -868,7 +898,7 @@ test.describe('Multiple accounts', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}nrw`;
+    const runId = `${testResourceId('run')}nrw`;
     const userA = `narrow-a-${runId}`;
     const passA = `narrow-a-pass-${runId}`;
     const userB = `narrow-b-${runId}`;
@@ -924,7 +954,7 @@ test.describe('Multiple accounts', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}qs`;
+    const runId = `${testResourceId('run')}qs`;
     const userA = `qs-a-${runId}`;
     const passA = `qs-a-pass-${runId}`;
     const userB = `qs-b-${runId}`;
@@ -977,7 +1007,7 @@ test.describe('Multiple accounts', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}iv`;
+    const runId = `${testResourceId('run')}iv`;
     const userA = `inv-a-${runId}`;
     const passA = `inv-a-pass-${runId}`;
     const userB = `inv-b-${runId}`;

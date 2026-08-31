@@ -1,11 +1,12 @@
 import type { APIResponse } from '@playwright/test';
 import {
+  testResourceId,
   expect,
   test,
   type APIRequestContext,
   type Locator,
   type Page,
-} from './support/fixtures.mts';
+} from '../fixtures.mts';
 import {
   fillLabeledInput,
   isAndroidE2E,
@@ -13,8 +14,8 @@ import {
   synapseSession,
   waitForRooms,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 const session = synapseSession();
 const PNG_1X1 = Buffer.from(
@@ -161,7 +162,7 @@ test.describe('Phase 6 responsive surfaces', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}layout`;
+    const runId = `${testResourceId('run')}layout`;
     const { credentials, roomName } = await seedImageRoom(
       request,
       session.hs as string,
@@ -249,7 +250,7 @@ test.describe('Phase 6 responsive surfaces', () => {
     page,
     request,
   }) => {
-    const runId = `${Date.now().toString(36)}lightbox`;
+    const runId = `${testResourceId('run')}lightbox`;
     const { credentials, roomName } = await seedImageRoom(
       request,
       session.hs as string,

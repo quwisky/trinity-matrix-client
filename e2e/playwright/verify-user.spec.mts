@@ -1,16 +1,17 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
+} from '../fixtures.mts';
 import {
   login,
   synapseSession,
   waitForRooms,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers starting cross-user verification from a member's info panel: "Verify"
 // (data-testid="member-info-verify") ensures a DM with them and requests emoji-SAS
@@ -97,7 +98,7 @@ test.describe('Verify another user', () => {
   }) => {
     test.slow();
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}vu`;
+    const runId = `${testResourceId('run')}vu`;
     const me = `verify-me-${runId}`;
     const mePass = `${me}-pass`;
     const other = `verify-other-${runId}`;

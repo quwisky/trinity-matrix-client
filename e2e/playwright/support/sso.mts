@@ -1,16 +1,17 @@
 import { randomBytes } from 'node:crypto';
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
-import type { AccountSession } from './account.mts';
+import { applicationOrigin } from '../../support/session.mts';
+import type { AccountSession } from '../../support/account.mts';
 import type { AuthPlatform } from './auth-platform.mts';
 import {
   fillLabeledInput,
   waitForRooms,
   type SsoAccount,
   type SynapseSession,
-} from './app.mts';
+} from '../../support/app.mts';
 
 // Helpers for the harness's SSO accounts — Matrix users Synapse created through the
-// throwaway Dex provider (e2e/synapse/dex.yaml), and which therefore have no password.
+// throwaway Dex provider (e2e/support/synapse/dex.yaml), and which therefore have no password.
 //
 // That is the point of them. Trinity's password user-interactive auth can never be
 // satisfied by such an account, which is the only way to drive the "your identity
@@ -20,7 +21,7 @@ import {
 // which one a spec must use is not a detail: see `ssoReset` in app.mts.
 
 /** Where the app under test is served; must stay in step with `playwright.config.mts`. */
-const APP_ORIGIN = process.env['BASE_URL'] ?? 'http://localhost:4200';
+const APP_ORIGIN = applicationOrigin();
 
 /**
  * Answer Dex's own login form.

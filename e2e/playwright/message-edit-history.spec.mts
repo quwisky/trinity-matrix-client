@@ -1,6 +1,6 @@
-import { test, expect } from './support/fixtures.mts';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+import { testResourceId, test, expect } from '../fixtures.mts';
+import { login, synapseSession, type SynapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers the edit history: the "(edited)" marker (message-row `data-testid="msg-edited"`)
 // opens a dialog listing every version of a message, oldest first.
@@ -20,7 +20,7 @@ test.describe('Edit history', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}eh`;
+    const runId = `${testResourceId('run')}eh`;
     const user = `edits-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Edits ${runId}`;

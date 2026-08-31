@@ -1,16 +1,17 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
+} from '../fixtures.mts';
 import {
   login,
   openSettingsTab,
   synapseSession,
   type SynapseSession,
-} from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 
 // Covers editing a SPACE's settings, which had no surface at all before #40: a space was
 // configured once at creation and never again. The space overflow menu
@@ -132,7 +133,7 @@ test.describe('Space settings', () => {
     // Three state events round-tripping through /sync, which is slow under full-suite load.
     test.setTimeout(150_000);
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}sp`;
+    const runId = `${testResourceId('run')}sp`;
     const user = `space-settings-${runId}`;
     const pass = `${user}-pass`;
     const originalName = `Team ${runId}`;
@@ -191,7 +192,7 @@ test.describe('Space settings', () => {
     // is "changed" from empty), so seeding needs its own assertion — and the name has to
     // come from m.room.name, not the SDK's fabricated display name.
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}sd`;
+    const runId = `${testResourceId('run')}sd`;
     const user = `space-seed-${runId}`;
     const pass = `${user}-pass`;
     const spaceName = `Seeded ${runId}`;
@@ -244,7 +245,7 @@ test.describe('Space settings', () => {
     // would be indistinguishable from a broken write.
     test.setTimeout(150_000);
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}ro`;
+    const runId = `${testResourceId('run')}ro`;
     const owner = `space-owner-${runId}`;
     const ownerPass = `${owner}-pass`;
     const member = `space-member-${runId}`;
@@ -303,7 +304,7 @@ test.describe('Space settings', () => {
     // submit the dialog and close it instead of adding the address.
     test.setTimeout(150_000);
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}sa`;
+    const runId = `${testResourceId('run')}sa`;
     const user = `space-addr-${runId}`;
     const pass = `${user}-pass`;
     const spaceName = `Addressed ${runId}`;
@@ -356,7 +357,7 @@ test.describe('Space settings', () => {
     // only visible once two people share the top power level.
     test.setTimeout(150_000);
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}som`;
+    const runId = `${testResourceId('run')}som`;
     const owner = `space-owner-${runId}`;
     const ownerPass = `${owner}-pass`;
     const other = `space-admin-${runId}`;

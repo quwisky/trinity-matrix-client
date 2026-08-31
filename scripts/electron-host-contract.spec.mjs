@@ -85,7 +85,7 @@ function validInput() {
           dependsOn: ['build'],
           options: {
             command:
-              'pnpm exec playwright test -c e2e/playwright.electron.config.mts',
+              'node e2e/support/run-playwright.mts --config=e2e/playwright.electron.config.mts --resource=electron --resource=synapse',
           },
         },
         'e2e-smoke': {
@@ -94,7 +94,7 @@ function validInput() {
           dependsOn: ['build'],
           options: {
             command:
-              'pnpm exec playwright test -c e2e/playwright.electron.smoke.config.mts',
+              'node e2e/support/run-playwright.mts --config=e2e/playwright.electron.smoke.config.mts --resource=electron',
           },
         },
         package: {

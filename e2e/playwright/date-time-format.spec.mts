@@ -1,11 +1,12 @@
 import {
+  testResourceId,
   test,
   expect,
   type APIRequestContext,
   type Page,
-} from './support/fixtures.mts';
-import { login, synapseSession } from './support/app.mts';
-import { registerUser } from './support/account.mts';
+} from '../fixtures.mts';
+import { login, synapseSession } from '../support/app.mts';
+import { registerUser } from '../support/account.mts';
 import { openSettingsSection } from './journeys/navigation.mts';
 
 // Covers issue #22: the Settings → Appearance dropdowns that choose how times and dates are
@@ -82,7 +83,7 @@ test.describe('Date and time format', () => {
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}fmt`;
+    const runId = `${testResourceId('run')}fmt`;
     const user = `fmt-${runId}`;
     const pass = `${user}-pass`;
     const roomName = `Format ${runId}`;
