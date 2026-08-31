@@ -223,7 +223,7 @@ const UI_BOUNDARY = [
  * The projects deliberately outside the vendor bans, listed so the exemption is a decision
  * somebody made rather than a gap nobody noticed.
  *
- * - `e2e` and `e2e/support` (`type:e2e`) drive browsers and external-process adapters
+ * - the `e2e` lifecycle projects (`type:e2e`) drive browsers and external-process adapters
  *   from Node. They render no Angular UI and may import Playwright's driver APIs.
  * - `scripts` (`type:tool`) is node tooling — guards, codegen, version checks.
  *
@@ -237,8 +237,10 @@ const UI_BOUNDARY = [
  * targets. The module-boundary rule stays active for its authored TypeScript.
  */
 const OUTSIDE_THE_VENDOR_BANS = [
+  'e2e/components/project.json',
   'e2e/project.json',
   'e2e/support/project.json',
+  'e2e/web/project.json',
   'scripts/project.json',
 ];
 
@@ -337,8 +339,13 @@ describe('UI vendor boundary', () => {
 
     // A shorter list than the vendor-ban exemption above, and deliberately its own: the
     // `scripts` project is `scope:shared`, so it DOES carry a layering rule even though no
-    // vendor ban keys on `type:tool`. Only `e2e` (`scope:trinity`) sits outside both.
-    expect(unscoped).toEqual(['e2e/project.json']);
+    // vendor ban keys on `type:tool`. The Trinity-scoped executable E2E projects sit outside
+    // that library scope axis; shared lifecycle support remains covered by `scope:shared`.
+    expect(unscoped).toEqual([
+      'e2e/components/project.json',
+      'e2e/project.json',
+      'e2e/web/project.json',
+    ]);
   });
 
   it('keys every ban on a tag some project actually carries', async () => {
