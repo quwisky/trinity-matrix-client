@@ -6,21 +6,11 @@
   "tags": ["type:e2e", "scope:trinity"],
   "implicitDependencies": ["trinity"],
   "targets": {
-    "e2e": {
-      "//": "The support invocation owns dynamic app/report servers and the fixed-port Synapse stack; Playwright only joins it.",
-      "cache": false,
-      "parallelism": false,
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "node e2e/support/run-playwright.mts --config=e2e/playwright.config.mts --build=trinity:build:development --resource=synapse",
-        "cwd": "{workspaceRoot}"
-      }
-    },
     "lint": {
       "//": "Declared, not inferred: @nx/eslint only infers a lint target for projects with .ts/.js sources, and every file here is .mts — so removing 'e2e' from globalIgnores would otherwise have changed nothing about what `pnpm lint` actually runs.",
       "executor": "nx:run-commands",
       "options": {
-        "command": "eslint \"**/*.mts\" --ignore-pattern \"components/**\" --ignore-pattern \"support/**\" --ignore-pattern \"web/**\"",
+        "command": "eslint \"**/*.mts\" --ignore-pattern \"browser/**\" --ignore-pattern \"components/**\" --ignore-pattern \"support/**\" --ignore-pattern \"web/**\"",
         "cwd": "{projectRoot}"
       }
     },

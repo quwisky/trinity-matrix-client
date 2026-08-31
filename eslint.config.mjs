@@ -488,7 +488,8 @@ export default defineConfig([
     // `no-floating-promises` possible, and it is the rule this block exists for: an
     // `expect(locator).toBeVisible()` missing its `await` resolves to a promise nobody
     // waits on, so the assertion never runs and the spec passes whatever the app did.
-    // Ninety-seven specs had nothing but review discipline standing between them and that.
+    // The canonical browser specs once had nothing but review discipline standing between
+    // them and that failure mode.
     //
     // `.mts` only: the harness under e2e/synapse and e2e/features is plain `.mjs` (it is
     // run by bare `node` for the manual bring-up), carries no types, and would only
@@ -499,6 +500,7 @@ export default defineConfig([
       parserOptions: {
         project: [
           './e2e/tsconfig.json',
+          './e2e/browser/tsconfig.json',
           './e2e/components/tsconfig.json',
           './e2e/web/tsconfig.json',
         ],
@@ -518,7 +520,7 @@ export default defineConfig([
         {
           selector: "MemberExpression[property.name='only']",
           message:
-            'Focused test: `.only` runs this spec and silently skips the other ~96, which still reports as a passing E2E job. Remove it before committing.',
+            'Focused test: `.only` runs this spec and silently skips the rest, which still reports as a passing E2E job. Remove it before committing.',
         },
       ],
       // The Playwright harness is a Node process driving a browser; console is how a

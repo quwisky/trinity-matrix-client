@@ -128,7 +128,7 @@ jobs:
   e2e:
     name: E2E (Playwright + Synapse)
     runs-on: ubuntu-latest
-    # 103 canonical browser specs, each doing a cold UI login (Rust-crypto init + first
+    # 110 canonical browser specs, each doing a cold UI login (Rust-crypto init + first
     # /sync), at workers: 2 with retries: 2 — plus browser installation, three Docker image
     # pulls and a full development build. The measured critical path is 8-11 minutes
     # (docs/contributing/testing.md); the 60-minute ceiling is hang containment, not an
@@ -189,7 +189,7 @@ jobs:
       # skip the authenticated specs" fallback turns itself off whenever CI is set, so a
       # runner that cannot reach Docker Hub fails here instead of reporting a green E2E
       # job that tested almost nothing. See e2e/playwright/support/global-setup.mts.
-      - run: pnpm exec nx e2e trinity-e2e
+      - run: pnpm exec nx run trinity-e2e-browser:e2e
 
       # The QR protocol harness owns the same fixed Synapse stack, so run it only after
       # the main suite has completed and torn its stack down. Its synthetic camera feeds

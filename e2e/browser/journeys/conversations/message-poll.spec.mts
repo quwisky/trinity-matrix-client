@@ -1,0 +1,93 @@
+import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
+import {
+  login,
+  synapseSession,
+  waitForSent,
+  type SynapseSession,
+} from '../../../support/app.mts';
+import { registerUser } from '../../../support/account.mts';
+
+// End-to-end for polls (MSC3381): create a poll from the composer, vote, see the tally
+// update, and end it. Needs a Synapse homeserver (Docker).
+const session = synapseSession();
+
+async function openRoom(page: Page, roomName: string): Promise<void> {
+  await page.getByTestId('rail-rooms').click();
+  const channel = page.locator('.channel', { hasText: roomName });
+  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
+  await channel.first().click();
+  await expect(page.getByTestId('composer-input')).toBeVisible({
+    timeout: 15_000,
+  });
+}
+
+test.describe('Polls', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+
+  test('creates a poll, votes, and ends it', async ({ page, request }) => {
+    const runId = `${testResourceId('run')}p`;
+    const hs = session.hs as string;
+    const username = `poll-user-${runId}`;
+    const password = `${username}-pass`;
+    await registerUser(request, username, password);
+    const { access_token } = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user: username },
+          password,
+        },
+      })
+      .then((r) => r.json());
+    const roomName = `Poll E2E ${runId}`;
+    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: { Authorization: `Bearer ${access_token}` },
+      data: { name: roomName },
+    });
+
+    await login(page, {
+      available: true,
+      hs,
+      user: username,
+      pass: password,
+    } as SynapseSession);
+    await openRoom(page, roomName);
+
+    // This runs at the desktop viewport: the composer uses the `+` tray here too, with no
+    // inline action buttons (mobile-nav.spec asserts the same at 390px). Guards the
+    // "tray at all widths" behaviour on the side that actually changed.
+    await expect(page.getByTestId('composer-insert')).toBeVisible();
+    await expect(page.getByTestId('composer-poll')).toHaveCount(0);
+
+    // Open the create-poll dialog from the composer's `+` tray and fill it in.
+    await page.getByTestId('composer-insert').click();
+    await page.getByTestId('insert-poll').click();
+    const question = `Best fruit ${runId}?`;
+    await page.getByTestId('poll-question').fill(question);
+    await page.getByTestId('poll-option-0').fill('Apple');
+    await page.getByTestId('poll-option-1').fill('Pear');
+    await page.getByTestId('poll-create').click();
+
+    // The poll renders in the timeline.
+    const poll = page.getByTestId('poll').first();
+    await expect(poll).toBeVisible({ timeout: 20_000 });
+    await expect(poll).toContainText(question);
+    await expect(poll).toContainText('0 votes');
+
+    // Vote for the first option → the tally updates live. A vote *relates* to the
+    // poll's event id, so it can only be cast once the poll itself has been sent —
+    // the options stay disabled while it is still a local echo.
+    await waitForSent(
+      page
+        .locator('.scroll .msg[data-mid]', { has: page.getByTestId('poll') })
+        .first(),
+    );
+    await poll.locator('.poll__option').first().click();
+    await expect(poll).toContainText('1 vote');
+    await expect(poll).toContainText('1 (100%)');
+
+    // End the poll → results are final and voting is closed.
+    await poll.getByTestId('poll-end').click();
+    await expect(poll).toContainText('Final results');
+  });
+});

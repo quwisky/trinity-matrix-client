@@ -23,7 +23,7 @@
 // element had none.)
 
 // Nothing caught it: jsdom applies no CSS, and every spec here asserts `data-testid` and text.
-// `e2e/playwright/message-unread.spec.mts` now measures the computed style in Chromium.
+// `e2e/browser/journeys/conversations/message-unread.spec.mts` measures this in Chromium.
 
 // Marks where the local calendar day changes. Neutral tokens deliberately: this is
 // wayfinding chrome, not an alert, and it has to sit quieter than the accent-coloured

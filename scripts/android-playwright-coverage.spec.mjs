@@ -3,8 +3,8 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const workspaceRoot = join(import.meta.dirname, '..');
-const webSpecs = globSync('*.spec.mts', {
-  cwd: join(workspaceRoot, 'e2e/playwright'),
+const webSpecs = globSync('**/*.spec.mts', {
+  cwd: join(workspaceRoot, 'e2e/browser/journeys'),
 }).sort();
 const androidConfig = readFileSync(
   join(workspaceRoot, 'e2e/playwright.android.config.mts'),
@@ -19,16 +19,16 @@ describe('Android Playwright canonical coverage', () => {
   it('routes every web spec through the platform fixture', () => {
     const bypasses = webSpecs.filter((spec) => {
       const source = readFileSync(
-        join(workspaceRoot, 'e2e/playwright', spec),
+        join(workspaceRoot, 'e2e/browser/journeys', spec),
         'utf8',
       );
-      return !source.includes("from '../fixtures.mts'");
+      return !source.includes("from '../../../fixtures.mts'");
     });
     expect(bypasses).toEqual([]);
   });
 
   it('collects all canonical web specs and the Android-only lifecycle specs', () => {
-    expect(androidConfig).toContain("'playwright/**/*.spec.mts'");
+    expect(androidConfig).toContain("'browser/journeys/**/*.spec.mts'");
     expect(androidConfig).toContain("'android/**/*.spec.mts'");
   });
 
@@ -63,29 +63,29 @@ describe('Android Playwright canonical coverage', () => {
 
     const explicitSkips = [
       [
-        'key-export.spec.mts',
+        'trust/key-export.spec.mts',
         'exports room keys to a file and imports them back',
         'native WebView export needs',
       ],
       [
-        'notifications.spec.mts',
+        'notifications/notifications.spec.mts',
         'notifies for a live message in a room you are not viewing',
         'native notification delivery needs',
       ],
       [
-        'multi-account.spec.mts',
+        'accounts/account-notification-routing.spec.mts',
         'raises a notification for a live message to a background account',
         'native notification delivery and collapse tags need',
       ],
       [
-        'message-swipe.spec.mts',
+        'conversations/message-swipe.spec.mts',
         'a vertical drag still scrolls the timeline',
         'does not expose compositor touch panning',
       ],
     ];
     for (const [spec, title, reason] of explicitSkips) {
       const source = readFileSync(
-        join(workspaceRoot, 'e2e/playwright', spec),
+        join(workspaceRoot, 'e2e/browser/journeys', spec),
         'utf8',
       );
       const titleAt = source.indexOf(title);

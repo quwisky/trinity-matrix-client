@@ -9,9 +9,12 @@ import {
 import {
   createTestResourceNamespace,
   testResourceId,
-  type TestResourceNamespace,
   withTestResourceNamespace,
 } from './support/namespace.mts';
+import type {
+  E2EResourceFixtures,
+  E2EWorkerFixtures,
+} from './support/composition-fixture.types.mts';
 import { readSession } from './support/session.mts';
 import { MatrixTestResources } from './support/test-resources.mts';
 
@@ -22,22 +25,15 @@ import { MatrixTestResources } from './support/test-resources.mts';
 const adapter =
   process.env['TRINITY_E2E_PLATFORM'] === 'android'
     ? await import('./android/fixtures.mts')
-    : await import('./playwright/support/fixtures.mts');
+    : await import('./web-fixtures.mts');
 
 const environmentTest =
   adapter.test as typeof import('./android/fixtures.mts').test;
 
-interface E2ETestFixtures {
-  matrixResources: MatrixTestResources;
-  resourceCleanup: void;
-  resourceNamespace: TestResourceNamespace;
-}
-
-interface E2EWorkerFixtures {
-  workerResourceNamespace: TestResourceNamespace;
-}
-
-export const test = environmentTest.extend<E2ETestFixtures, E2EWorkerFixtures>({
+export const test = environmentTest.extend<
+  E2EResourceFixtures,
+  E2EWorkerFixtures
+>({
   workerResourceNamespace: [
     async ({}, use, workerInfo) => {
       const namespace = createTestResourceNamespace({

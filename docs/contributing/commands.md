@@ -221,9 +221,11 @@ The sections below document the focused suites and their current transitional im
 ### The app journey suite
 
 ```bash
-pnpm exec nx e2e trinity-e2e
-pnpm exec nx e2e trinity-e2e -- --list        # enumerate specs without running them
-pnpm exec nx e2e trinity-e2e -- --retries=0   # honest first-attempt result
+pnpm exec nx run trinity-e2e-browser:e2e
+pnpm exec nx run trinity-e2e-browser:e2e -- --list        # enumerate specs without running them
+pnpm exec nx run trinity-e2e-browser:e2e -- --retries=0   # honest first-attempt result
+pnpm exec nx run trinity-e2e-browser:e2e -- conversations/message-links.spec.mts
+pnpm exec nx run trinity-e2e-browser:e2e -- --grep "opens a copied message link"
 ```
 
 Chromium only. The support owner produces the **development** build, serves `www/`

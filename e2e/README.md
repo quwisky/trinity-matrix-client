@@ -12,10 +12,11 @@ Android. The aggregate validates every prerequisite before starting work and run
 suites in safe order. Focused legacy commands remain Nx-backed compatibility aliases for one
 release cycle.
 
-Web/PWA and component/visual contracts now live in lifecycle-owned projects. Canonical app journeys
-remain Playwright specs in `e2e/playwright/`, installed WebView journeys in `e2e/android/`, desktop
-journeys in `e2e/electron/`, and raw protocol drivers in `features/` plus `runners/`; later migration
-tickets split those remaining environments without removing assertions. The extracted
+Web/PWA, component/visual, and canonical browser contracts now live in lifecycle-owned projects.
+Canonical app journeys are grouped by capability under `e2e/browser/journeys/`, installed WebView
+journeys live in `e2e/android/`, desktop journeys in `e2e/electron/`, and raw protocol drivers in
+`features/` plus `runners/`; later migration tickets split those remaining environments without
+removing assertions. The extracted
 `trinity-e2e-support` project owns every process and the disposable stack under
 `e2e/support/synapse/`; Synapse-backed children only join its serialized invocation.
 
@@ -35,12 +36,12 @@ production web output and syncs it into the APK before every run.
 ```
 e2e/
   registry/   typed suite, command, CI, prerequisite and migration-destination contract
+  browser/    trinity-e2e-browser: capability-owned canonical journeys, catalog,
+              browser-owned journey helpers and coverage reporting — `pnpm e2e:browser`
   components/ trinity-e2e-components: Storybook, CSS and scrollbar contracts
   features/   raw-playwright test bodies — what each scenario drives in the browser
               (emoji, rooms, search, spaces, threads, send-media, verify-sas, …)
   runners/    nine thin protocol compatibility entrypoints over the support runner
-  playwright/ @nx/playwright web app-journey specs (app, navigation, settings) +
-              browser-only adapters — `nx e2e trinity-e2e`
   web/        trinity-e2e-web: production Web/PWA host and renderer contracts — `pnpm e2e:web`
   android/    API 36 Capacitor WebView fixture, native-only specs, and device
               orchestrator — `pnpm e2e:android`
@@ -52,6 +53,24 @@ e2e/
 Always invoke a feature through its `pnpm`/Nx command or one of the nine retained
 `node e2e/runners/<x>-run.mjs` compatibility paths. Raw feature bodies require the validated
 invocation descriptor and deliberately do not start a fallback server or homeserver.
+
+[`browser/journey-catalog.mts`](browser/journey-catalog.mts) gives every canonical spec exactly
+one owning capability and one primary contract type. The registry validator rejects missing,
+duplicate, stale, or folder-mismatched entries and pins the pre-move inventory of 266 tests and
+1,782 assertion calls. A browser run adds those classifications to each Playwright result and
+writes `capability-coverage/coverage.json` below that run's ignored artifact directory, grouped by
+capability and contract type. The eleven capability directories are `accounts`, `workspace`,
+`room-library`, `room-administration`, `conversations`, `trust`, `identity`, `notifications`,
+`discovery-search`, `settings`, and `host-shell`.
+
+The canonical Nx target is one serialized, uncached lifecycle atom because every selected file
+shares one disposable fixed-port Synapse stack. Per-spec inferred CI targets remain disabled;
+focus the owned target by capability path or test name instead:
+
+```bash
+pnpm exec nx run trinity-e2e-browser:e2e -- conversations/message-links.spec.mts
+pnpm exec nx run trinity-e2e-browser:e2e -- --grep "opens a copied message link"
+```
 
 ## Scripts
 
@@ -94,7 +113,7 @@ current user also needs read/write access to `/dev/kvm`; software emulation is t
 this suite.
 
 The installed Capacitor app is cleared and relaunched for each test. Every canonical spec
-under `e2e/playwright/` imports the shared platform fixture, so Android collects the same
+under `e2e/browser/journeys/` imports the shared platform fixture, so Android collects the same
 journeys in the package WebView. Platform adapters map browser options, permissions,
 preferences, multi-device isolation, and native authentication boundaries without
 substituting a desktop browser for the app under test. External FCM notification delivery
@@ -146,13 +165,13 @@ conflict freedom; Matrix account-data writes have no CAS primitive.
 Run only this journey on web:
 
 ```bash
-pnpm exec nx e2e trinity-e2e -- playwright/stickers-custom-emoji.spec.mts
+pnpm exec nx run trinity-e2e-browser:e2e -- conversations/stickers-custom-emoji.spec.mts
 ```
 
 Run the same file in the installed Android app:
 
 ```bash
-pnpm exec nx run trinity-e2e:android-e2e -- playwright/stickers-custom-emoji.spec.mts
+pnpm exec nx run trinity-e2e:android-e2e -- browser/journeys/conversations/stickers-custom-emoji.spec.mts
 ```
 
 The Android prerequisites and `TRINITY_ANDROID_SERIAL` rules are the same as for the full suite

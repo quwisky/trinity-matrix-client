@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { globSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -9,16 +9,15 @@ const read = (path: string): string =>
 describe('E2E support architecture', () => {
   it('keeps environment adapters independent and selects them only at composition', () => {
     const android = read('e2e/android/fixtures.mts');
-    const browser = read('e2e/playwright/support/fixtures.mts');
+    const web = read('e2e/web-fixtures.mts');
     const electron = read('e2e/electron/fixtures.mts');
     const composition = read('e2e/fixtures.mts');
-    expect(android).not.toMatch(/\.\.\/playwright\//);
-    expect(browser).not.toMatch(/\.\.\/\.\.\/android\//);
-    expect(electron).not.toMatch(/\.\.\/(?:android|playwright)\//);
+    expect(android).not.toMatch(/\.\.\/(?:browser|web-fixtures)/);
+    expect(web).not.toMatch(/\.\/android\//);
+    expect(electron).not.toMatch(/\.\.\/(?:android|browser)\//);
+    expect(electron).not.toMatch(/\.\.\/web-fixtures/);
     expect(composition).toContain("import('./android/fixtures.mts')");
-    expect(composition).toContain(
-      "import('./playwright/support/fixtures.mts')",
-    );
+    expect(composition).toContain("import('./web-fixtures.mts')");
   });
 
   it('keeps all nine protocol entrypoints as thin support-owned adapters', () => {
@@ -35,11 +34,12 @@ describe('E2E support architecture', () => {
   });
 
   it('keeps Playwright configs declarative and free of server ownership', () => {
-    const configs = readdirSync(join(workspaceRoot, 'e2e')).filter((file) =>
-      /^playwright.*\.config\.mts$/.test(file),
-    );
+    const configs = globSync('e2e/**/playwright*.config.mts', {
+      cwd: workspaceRoot,
+    });
+    expect(configs.length).toBeGreaterThan(0);
     for (const config of configs) {
-      const source = read(`e2e/${config}`);
+      const source = read(config);
       expect(source).not.toMatch(/\bwebServer\s*:/);
       expect(source).not.toMatch(/\bglobal(?:Setup|Teardown)\s*:/);
       expect(source).not.toMatch(/localhost:(?:4200|4400|4401|4402)/);
@@ -48,9 +48,9 @@ describe('E2E support architecture', () => {
 
   it('keeps server-side test data on the support namespace contract', () => {
     const specs = [
-      ...readdirSync(join(workspaceRoot, 'e2e/playwright'))
-        .filter((file) => file.endsWith('.spec.mts'))
-        .map((file) => `e2e/playwright/${file}`),
+      ...globSync('e2e/browser/journeys/**/*.spec.mts', {
+        cwd: workspaceRoot,
+      }),
       ...readdirSync(join(workspaceRoot, 'e2e/electron'))
         .filter((file) => file.endsWith('.electron.spec.mts'))
         .map((file) => `e2e/electron/${file}`),
@@ -64,10 +64,11 @@ describe('E2E support architecture', () => {
   });
 
   it('routes every official app-server entrypoint through the invocation owner', () => {
-    const project = read('e2e/project.json');
-    expect(project).toContain('support/run-playwright.mts');
-    expect(project).toContain('support/run-feature.mts');
-    expect(project).not.toMatch(
+    const aggregateProject = read('e2e/project.json');
+    const browserProject = read('e2e/browser/project.json');
+    expect(browserProject).toContain('support/run-playwright.mts');
+    expect(aggregateProject).toContain('support/run-feature.mts');
+    expect(`${aggregateProject}\n${browserProject}`).not.toMatch(
       /PORT=\d+ node e2e\/playwright\/support\/serve-www/,
     );
     for (const feature of readdirSync(

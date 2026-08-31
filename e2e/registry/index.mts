@@ -21,11 +21,16 @@ export const E2E_SUITES = [
 ] as const;
 
 export const E2E_INVENTORY = {
-  canonicalBrowserSpecCount: 103,
+  canonicalBrowserSpecCount: 110,
   trackedTargetProjects: [
     {
       project: 'trinity-e2e',
       projectFile: 'e2e/project.json',
+      ignoredTargets: ['lint', 'typecheck'],
+    },
+    {
+      project: 'trinity-e2e-browser',
+      projectFile: 'e2e/browser/project.json',
       ignoredTargets: ['lint', 'typecheck'],
     },
     {

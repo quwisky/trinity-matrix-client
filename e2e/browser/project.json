@@ -1,0 +1,33 @@
+{
+  "name": "trinity-e2e-browser",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "e2e/browser",
+  "tags": ["type:e2e", "scope:trinity"],
+  "implicitDependencies": ["trinity", "trinity-e2e", "trinity-e2e-support"],
+  "targets": {
+    "e2e": {
+      "//": "The support invocation owns the application server and serialized Synapse lifecycle; focused capability and test-name arguments are forwarded to Playwright.",
+      "cache": false,
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-browser"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/support/run-playwright.mts --config=e2e/browser/playwright.config.mts --build=trinity:build:development --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "eslint \"**/*.mts\"",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "typecheck": {
+      "options": {
+        "command": "tsc -p tsconfig.json --noEmit"
+      }
+    }
+  }
+}

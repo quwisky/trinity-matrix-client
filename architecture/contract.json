@@ -61,6 +61,10 @@
       "reason": "Runner-neutral E2E lifecycle infrastructure is outside the shipped application dependency model."
     },
     {
+      "project": "trinity-e2e-browser",
+      "reason": "Canonical browser journey harnesses are outside the shipped application dependency model."
+    },
+    {
       "project": "trinity-e2e-components",
       "reason": "Component-browser and visual E2E harnesses are outside the shipped application dependency model."
     },

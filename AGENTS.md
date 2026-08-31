@@ -75,7 +75,7 @@ claiming a tree is green, and check exit codes rather than grepping output — N
 
 **jsdom has no layout and evaluates no media queries.** It cannot see a rendered size, an element
 covering another, a cascade result, or anything behind a `@media` rule — a unit test asserting
-those passes for the wrong reason. Those claims belong in `e2e/playwright/`, and a mobile one
+those passes for the wrong reason. Those claims belong in `e2e/browser/journeys/`, and a mobile one
 needs a real device profile (`devices['Pixel 5']`), not `hasTouch`: a touch-emulated desktop
 Chromium keeps its desktop user agent and silently takes the desktop path. Note also that
 Playwright counts `opacity: 0` as **visible**, so assert on the class that hides a thing rather
@@ -126,17 +126,17 @@ The direct toolchain gates are `pnpm exec nx run trinity-android:verify-native` 
 **E2E / protocol harnesses** — Playwright. Install browsers once with
 `pnpm exec playwright install chromium webkit`.
 
-| Command                                                                          | Purpose                                                                |
-| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `pnpm exec nx e2e trinity-e2e`                                                   | App-journey specs (`@nx/playwright`); skips itself if Docker is absent |
-| `pnpm exec nx run trinity-e2e-web:production-pwa`                                | Production Web/PWA startup, deep-link and offline check; no Docker     |
-| `pnpm e2e:web`                                                                   | Web/PWA host plus renderer matrix; renderer needs Docker               |
-| `pnpm smoke:login`                                                               | Headless redirect→login + live matrix.org `.well-known` discovery      |
-| `pnpm spike:chromium` / `spike:webkit`                                           | E2EE WASM check in Blink / WebKit                                      |
-| `pnpm e2e:verify`                                                                | Two-client emoji-SAS device verification (needs Docker)                |
-| `pnpm e2e:verify:qr`                                                             | Two-client QR verification through a synthetic camera (needs Docker)   |
-| `pnpm e2e:media` / `threads` / `reply` / `spaces` / `rooms` / `search` / `emoji` | Feature round-trips vs. disposable Synapse (needs Docker)              |
-| `pnpm e2e:verify:up` / `e2e:verify:down`                                         | Start / stop the Synapse Docker harness manually                       |
+| Command                                                                          | Purpose                                                              |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `pnpm exec nx run trinity-e2e-browser:e2e`                                       | Capability-owned app journeys against disposable Synapse             |
+| `pnpm exec nx run trinity-e2e-web:production-pwa`                                | Production Web/PWA startup, deep-link and offline check; no Docker   |
+| `pnpm e2e:web`                                                                   | Web/PWA host plus renderer matrix; renderer needs Docker             |
+| `pnpm smoke:login`                                                               | Headless redirect→login + live matrix.org `.well-known` discovery    |
+| `pnpm spike:chromium` / `spike:webkit`                                           | E2EE WASM check in Blink / WebKit                                    |
+| `pnpm e2e:verify`                                                                | Two-client emoji-SAS device verification (needs Docker)              |
+| `pnpm e2e:verify:qr`                                                             | Two-client QR verification through a synthetic camera (needs Docker) |
+| `pnpm e2e:media` / `threads` / `reply` / `spaces` / `rooms` / `search` / `emoji` | Feature round-trips vs. disposable Synapse (needs Docker)            |
+| `pnpm e2e:verify:up` / `e2e:verify:down`                                         | Start / stop the Synapse Docker harness manually                     |
 
 The Synapse-backed flows (`e2e:verify`, `e2e:verify:qr`, `e2e:media`, `e2e:threads`, `e2e:reply`, `e2e:spaces`,
 `e2e:rooms`, `e2e:search`, `e2e:emoji`) each own **one** disposable Synapse Docker stack on fixed ports, so they

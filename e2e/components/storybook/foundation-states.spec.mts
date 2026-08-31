@@ -3,7 +3,7 @@ import {
   contrastRatio,
   resolveTokenSrgb,
   type Srgb,
-} from '../../playwright/support/contrast.mts';
+} from '../../browser/support/contrast.mts';
 
 const PALETTES = ['trinity', 'amethyst', 'onyx'] as const;
 const MODES = ['light', 'dark'] as const;

@@ -159,7 +159,7 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
     // viewport — so at 360x640 the last row fell outside with no scrollbar and no
     // affordance. jsdom has no layout, so this asserts the STRUCTURE that fixes it:
     // every row inside an element that can scroll. The geometry is measured in
-    // `e2e/playwright/message-action-sheet.spec.mts`.
+    // `e2e/browser/journeys/conversations/message-action-sheet.spec.mts`.
     const svc = TestBed.inject(TrnActionSheetService);
     svc.open({
       buttons: Array.from({ length: 13 }, (_, i) => ({

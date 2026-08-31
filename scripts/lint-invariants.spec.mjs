@@ -150,14 +150,16 @@ describe('lint invariants', () => {
     // no-floating-promises catches `expect(locator).toBeVisible()` without its `await`
     // (the assertion never runs, the spec passes whatever the app did), and the `.only`
     // ban catches a focused test that silently reduces the suite to one spec.
-    const spec = await resolve('e2e/playwright/app.spec.mts');
+    const spec = await resolve(
+      'e2e/browser/journeys/host-shell/unauthenticated-shell.spec.mts',
+    );
 
     expect(severityOf(spec, '@typescript-eslint/no-floating-promises')).toBe(2);
     expect(severityOf(spec, 'no-restricted-syntax')).toBe(2);
     // no-floating-promises is type-aware: without a program behind it the rule loads and
     // reports nothing at all, which looks identical to a clean suite.
     expect(spec.languageOptions?.parserOptions?.project ?? []).toContain(
-      './e2e/tsconfig.json',
+      './e2e/browser/tsconfig.json',
     );
   });
 
@@ -237,6 +239,7 @@ const UI_BOUNDARY = [
  * targets. The module-boundary rule stays active for its authored TypeScript.
  */
 const OUTSIDE_THE_VENDOR_BANS = [
+  'e2e/browser/project.json',
   'e2e/components/project.json',
   'e2e/project.json',
   'e2e/support/project.json',
@@ -342,6 +345,7 @@ describe('UI vendor boundary', () => {
     // vendor ban keys on `type:tool`. The Trinity-scoped executable E2E projects sit outside
     // that library scope axis; shared lifecycle support remains covered by `scope:shared`.
     expect(unscoped).toEqual([
+      'e2e/browser/project.json',
       'e2e/components/project.json',
       'e2e/project.json',
       'e2e/web/project.json',

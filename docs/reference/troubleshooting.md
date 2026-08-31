@@ -177,39 +177,37 @@ A project tagged with "scope:shared" can only depend on libs tagged with "scope:
 
 An unused-variable error rides along with it; the boundary error is the one that matters.
 
-### A broken import in an e2e spec survives lint
+### A browser journey type error survives test transpilation
 
-**Symptom.** An unused symbol or a wrong import in an `.mts` Playwright spec passes
-`pnpm lint` and only fails when the suite runs.
+**Symptom.** A type-only mistake in an `.mts` Playwright spec is not reported by a focused
+browser execution.
 
-**Cause.** `eslint.config.mjs` lists `e2e` in `globalIgnores`, alongside `android`, `ios`,
-`**/www`, `**/dist` and `**/release`. Those specs are also not covered by any `tsc`
-invocation in the repo.
+**Cause.** Playwright transpiles the journey; it is not the TypeScript compiler. The browser
+lifecycle has separate lint and typecheck targets so runtime execution can stay focused.
 
-**Fix.** Verify edits to `e2e/**` by running the suite, or with an explicit `tsc --noEmit`
-against them.
+**Fix.** Run `pnpm exec nx run trinity-e2e-browser:typecheck` and
+`pnpm exec nx run trinity-e2e-browser:lint` while iterating. The full local gate runs both through
+the repository-wide target sets.
 
 ## Tests
 
-### The Playwright web suite tested code you did not build
+### The canonical browser config refuses to run directly
 
-**Symptom.** `nx e2e trinity-e2e` asserts on stale UI, or passes against an uncommitted
-hot-reloaded change.
+**Symptom.** Running `playwright test -c e2e/browser/playwright.config.mts` directly fails
+before a journey can reach the app.
 
-**Cause.** The config sets `reuseExistingServer: !process.env['CI']` with
-`url: http://localhost:4200`, and the static server defaults to the same port `pnpm start`
-uses. When anything answers on 4200, Playwright skips the entire `webServer.command`, so
-`nx run trinity:build:development` never runs and `www/` is never refreshed.
+**Cause.** The lifecycle config is deliberately a fail-closed joiner. It does not own a fallback
+build, static server, port, lock, or Synapse stack; those belong to the support invocation.
 
-**Fix.** Kill the dev server before running the suite, or set `PORT` and `BASE_URL`. CI is
-safe because the flag is false there.
+**Fix.** Run `pnpm exec nx run trinity-e2e-browser:e2e`. Pass a capability-relative spec path
+or `--grep` after `--` for a focused run.
 
 ### A spec passes locally and fails in CI, reported as flaky
 
 **Symptom.** Playwright's summary says "flaky" rather than "failed", which is easy to skim
 past.
 
-**Cause.** `playwright.config.mts` sets an unconditional `retries: 2` after spreading the
+**Cause.** `e2e/browser/playwright.config.mts` sets an unconditional `retries: 2` after spreading the
 Nx preset, so local runs retry too. Workers are likewise forced to 2 everywhere, on purpose:
 every spec drives one shared disposable Synapse and the default worker count oversubscribes
 it.
@@ -262,14 +260,13 @@ purge a symlinked `node_modules` and aborts with `ERR_PNPM_ABORTED_REMOVE_MODULE
 
 ### The e2e web server dies with a Go stack trace
 
-**Symptom.** `nx e2e trinity-e2e` fails before any test runs, with
-`Error: Process from config.webServer was not able to start`, and the `[WebServer]` output
-carries `fatal error: all goroutines are asleep - deadlock!` and a Go stack through
+**Symptom.** `trinity-e2e-browser:e2e` fails before any test runs, and the build output carries
+`fatal error: all goroutines are asleep - deadlock!` with a Go stack through
 `esbuild/internal/bundler`. A plain `pnpm build` succeeds moments earlier.
 
-**Cause.** Memory pressure, not a build error. The webServer builds `trinity:build:development`
-in a second process while Playwright, Chromium and the Synapse containers are already resident;
-esbuild's Go runtime deadlocks rather than reporting an allocation failure. Below roughly
+**Cause.** Memory pressure, not a build error. The lifecycle owner builds
+`trinity:build:development` before launching Playwright; esbuild's Go runtime can deadlock rather
+than reporting an allocation failure. Below roughly
 2.3 GB available it reproduces reliably; at ~2.9 GB it does not.
 
 **Fix.** Free memory and re-run — stop the Nx daemon (`pnpm exec nx daemon --stop`) and close

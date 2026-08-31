@@ -17,13 +17,13 @@ so a newer push supersedes a run in flight, and grants only `contents: read`.
 Each job runs on its own runner and repeats the shared setup. They are independent:
 one failing does not stop the others.
 
-| Job       | Runs                                                                                              | Exists to catch                                                                                                                                                          |
-| --------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `quality` | `pnpm lint`, `pnpm stylelint`, `pnpm format:check`                                                | Lint rules, module-boundary violations, SCSS violations, and formatting drift                                                                                            |
-| `test`    | `pnpm test`                                                                                       | Unit regressions across the 38 projects with a `test` target, including the Electron shell                                                                               |
-| `build`   | `pnpm build`                                                                                      | AOT-only failures. The production build runs the Angular compiler, which rejects template type errors Vitest never sees, because Vitest transpiles without type checking |
-| `desktop` | Nx-owned Electron install, compile, typecheck, test, then `xvfb-run -a pnpm electron:e2e`         | Anything in the desktop shell, up to and including launching the real binary                                                                                             |
-| `e2e`     | Browser install, Docker pre-pull and a dev build in parallel, then `pnpm exec nx e2e trinity-e2e` | Broken user journeys against a real homeserver                                                                                                                           |
+| Job       | Runs                                                                                         | Exists to catch                                                                                                                                                          |
+| --------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `quality` | `pnpm lint`, `pnpm stylelint`, `pnpm format:check`                                           | Lint rules, module-boundary violations, SCSS violations, and formatting drift                                                                                            |
+| `test`    | `pnpm test`                                                                                  | Unit regressions across the 38 projects with a `test` target, including the Electron shell                                                                               |
+| `build`   | `pnpm build`                                                                                 | AOT-only failures. The production build runs the Angular compiler, which rejects template type errors Vitest never sees, because Vitest transpiles without type checking |
+| `desktop` | Nx-owned Electron install, compile, typecheck, test, then `xvfb-run -a pnpm electron:e2e`    | Anything in the desktop shell, up to and including launching the real binary                                                                                             |
+| `e2e`     | Browser install, Docker pre-pull and a dev build in parallel, then `trinity-e2e-browser:e2e` | Broken user journeys against a real homeserver                                                                                                                           |
 
 `stylelint` is a separate step because it is genuinely not part of `pnpm lint` in
 this repository. Running `pnpm lint` alone will not catch a SCSS violation, locally
@@ -273,7 +273,7 @@ that the version bump and the changelog entry land in one release commit.
 
 !!! warning "A release runs no browser or Electron end-to-end test"
 
-    `verify` deliberately skips both `nx e2e trinity-e2e` and `pnpm electron:e2e`. An
+    `verify` deliberately skips both `trinity-e2e-browser:e2e` and `pnpm electron:e2e`. An
     installer can therefore ship from a commit whose UI journeys were never exercised
     on that exact tree. The mitigating control is the ancestry gate: the commit is
     contained in a long-lived branch, so it went through a pull request where all
