@@ -112,7 +112,10 @@ export async function prepareWebBundle(
   return manifest.status;
 }
 
-export async function runPlaywright(argv: readonly string[]): Promise<number> {
+export async function runPlaywright(
+  argv: readonly string[],
+  environment: NodeJS.ProcessEnv = process.env,
+): Promise<number> {
   const options = parseArguments(argv);
   const termination = createProcessTerminationScope();
   let invocation: E2EInvocation | undefined;
@@ -120,19 +123,20 @@ export async function runPlaywright(argv: readonly string[]): Promise<number> {
     invocation = await openE2EInvocation({
       resources: options.resources,
       workspaceRoot,
+      environment,
       signal: termination.signal,
     });
-    const environment: NodeJS.ProcessEnv = {
+    const invocationEnvironment: NodeJS.ProcessEnv = {
       ...invocation.environment,
       ...(options.platform ? { TRINITY_E2E_PLATFORM: options.platform } : {}),
     };
     const reusingPrebuiltBundle =
-      options.bundleManifest && process.env['TRINITY_E2E_PREBUILT_WWW'] === '1';
+      options.bundleManifest && environment['TRINITY_E2E_PREBUILT_WWW'] === '1';
     const prepared = await prepareWebBundle({
       buildTarget: options.buildTarget,
       bundleManifest: options.bundleManifest,
       reusePrebuilt: reusingPrebuiltBundle,
-      environment,
+      environment: invocationEnvironment,
       signal: termination.signal,
     });
     if (prepared !== 0) return prepared;
@@ -148,7 +152,7 @@ export async function runPlaywright(argv: readonly string[]): Promise<number> {
       ],
       {
         cwd: workspaceRoot,
-        environment,
+        environment: invocationEnvironment,
         timeout: 3_600_000,
         signal: termination.signal,
       },

@@ -91,7 +91,8 @@ All notable changes to this project are documented here. The format is based on
   `trinity-e2e-protocol` project owns all verification, crypto, media, relation, room,
   search and emoji flows with standard reports, traces, retries and attempt-scoped Matrix
   resources. The focused package commands remain compatible, the duplicated raw-script
-  runners are gone, and an assertion inventory pins all 209 pre-migration product checks.
+  runners are gone, and an assertion inventory reconciles all 209 pre-migration checks after
+  centralizing 21 duplicated login and replace-safe toolbar checks.
   Mutating flows can also target an explicitly selected remote HTTPS homeserver when complete
   credentials are supplied; validation errors and reports never include password values, and
   traces stay disabled so authenticated request tokens cannot enter artifacts.

@@ -290,7 +290,7 @@ pnpm exec nx run trinity-e2e-protocol:verify-sas-selfcheck
 
 Validates everything that does **not** need a homeserver: the build serves, the SPA
 boots, `/login` renders the homeserver input + Continue, the form reacts (real
-matrix.org discovery surfaces the password form), and the guarded
+matrix.org discovery surfaces an authentication path), and the guarded
 `/encryption/verify` route resolves. Does **not** assert the SAS flow.
 
 ## The Synapse harness (`e2e/support/synapse/`)
@@ -342,7 +342,7 @@ green across all projects.
 `e2e:verify` **requires Docker** able to run those images. Where Docker or registry
 access is unavailable, fall back to the homeserver-free self-check
 (`pnpm exec nx run trinity-e2e-protocol:verify-sas-selfcheck` → `RESULT: PASS`), which still covers the dev
-build serving, the SPA booting, `/login` + discovery + the password form, and the
+build serving, the SPA booting, `/login` + discovery + an authentication path, and the
 guarded `/encryption/verify` route — everything except the live SAS exchange.
 
 The live `e2e:verify:qr` round-trip was run to **PASS** on 2026-08-26. The synthetic

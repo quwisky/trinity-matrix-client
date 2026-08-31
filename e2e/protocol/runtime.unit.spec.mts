@@ -1,9 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  protocolResponseFailure,
+  redactProtocolDiagnostic,
+} from './diagnostics.mts';
+import { runProtocol } from './run.mts';
 import {
   PROTOCOL_CASES,
   PROTOCOL_MODE_ENV,
+  PROTOCOL_SUITE_ENV,
   protocolMode,
   protocolResources,
+  protocolScreenshotPolicy,
   protocolTracePolicy,
   remoteProtocolCredentials,
 } from './runtime.mts';
@@ -96,6 +103,8 @@ describe('protocol runtime configuration', () => {
     expect(protocolTracePolicy('remote', true)).toBe('off');
     expect(protocolTracePolicy('disposable', false)).toBe('retain-on-failure');
     expect(protocolTracePolicy('disposable', true)).toBe('on-first-retry');
+    expect(protocolScreenshotPolicy('remote')).toBe('off');
+    expect(protocolScreenshotPolicy('disposable')).toBe('only-on-failure');
   });
 
   it('drops only the local Synapse lease in explicit remote mode', () => {
@@ -121,5 +130,70 @@ describe('protocol runtime configuration', () => {
     expect(
       new Set(Object.values(PROTOCOL_CASES).map(({ spec }) => spec)).size,
     ).toBe(12);
+  });
+
+  it('redacts raw and encoded supplied secrets and omits remote bodies', () => {
+    const credentials = remoteProtocolCredentials(
+      'protocol.rooms',
+      remoteEnvironment(),
+    );
+    const diagnostic = redactProtocolDiagnostic(
+      `raw=primary-secret encoded=${encodeURIComponent('secondary-secret')}`,
+      credentials,
+    );
+    expect(diagnostic).not.toContain('primary-secret');
+    expect(diagnostic).not.toContain('secondary-secret');
+    expect(diagnostic).toContain('[REDACTED]');
+    const statusTextSentinel = 'server-controlled-bearer-token';
+    const serverControlledResponse = {
+      status: 401,
+      statusText: statusTextSentinel,
+    };
+    const responseFailure = protocolResponseFailure(
+      'POST /login',
+      serverControlledResponse,
+    );
+    expect(responseFailure.message).toBe('POST /login → 401');
+    expect(responseFailure.message).not.toContain(statusTextSentinel);
+  });
+
+  it('maps one focused invocation into the shared runner with its environment', async () => {
+    const execute = vi.fn(async () => 0);
+    const environment: NodeJS.ProcessEnv = {};
+
+    await expect(
+      runProtocol(
+        ['--suite=protocol.verify-sas', '--headed', '--grep=SAS'],
+        environment,
+        execute,
+      ),
+    ).resolves.toBe(0);
+
+    expect(environment).toMatchObject({
+      [PROTOCOL_SUITE_ENV]: 'protocol.verify-sas',
+      [PROTOCOL_MODE_ENV]: 'disposable',
+    });
+    expect(execute).toHaveBeenCalledWith(
+      [
+        '--config=e2e/protocol/playwright.config.mts',
+        '--build=trinity:build:development',
+        '--resource=synapse',
+        '--',
+        '--headed',
+        '--grep=SAS',
+      ],
+      environment,
+    );
+  });
+
+  it('rejects missing and unknown suite arguments without starting Playwright', async () => {
+    const execute = vi.fn(async () => 0);
+    await expect(runProtocol([], {}, execute)).rejects.toThrow(
+      '--suite=<registered-suite-id>',
+    );
+    await expect(
+      runProtocol(['--suite=protocol.unknown'], {}, execute),
+    ).rejects.toThrow('--suite=<registered-suite-id>');
+    expect(execute).not.toHaveBeenCalled();
   });
 });

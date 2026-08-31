@@ -21,8 +21,8 @@
 // remote mode accepts TRINITY_HS/TRINITY_USER/TRINITY_PASS; HEADED/SLOWMO aid debugging.
 //
 // `pnpm e2e:emoji` builds dev, starts the harness, runs this, and tears down.
-import { waitForRooms } from '../support/navigation.mjs';
 import { applicationOrigin } from '../support/session.mts';
+import { protocolResponseFailure } from './diagnostics.mts';
 import { test, expect } from './fixtures.mts';
 
 const APP = applicationOrigin();
@@ -30,7 +30,6 @@ const APP = applicationOrigin();
 let HS;
 let USER;
 let PASS;
-let IGNORE_HTTP_ERRORS;
 let RUN_ID;
 let ROOM;
 
@@ -54,7 +53,7 @@ async function apiLogin(user, pass) {
     }),
   });
   if (!res.ok) {
-    throw new Error(`login ${user} → ${res.status} ${await res.text()}`);
+    throw protocolResponseFailure(`login ${user}`, res);
   }
   return res.json();
 }
@@ -69,7 +68,7 @@ async function csPost(token, path, body) {
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    throw new Error(`POST ${path} → ${res.status} ${await res.text()}`);
+    throw protocolResponseFailure(`POST ${path}`, res);
   }
   const ct = res.headers.get('content-type') ?? '';
   return ct.includes('application/json') ? res.json() : {};
@@ -78,33 +77,6 @@ async function csPost(token, path, body) {
 // ---------------------------------------------------------------------------
 // UI helpers
 // ---------------------------------------------------------------------------
-
-/** Fill a native `<input hlmInput>` by its associated `<label for="…">`. */
-async function fillLabeledInput(page, label, value) {
-  // Exact match: the password field's "Show password" reveal button (aria-label) otherwise
-  // also matches a substring `getByLabel('Password')`, tripping strict mode. Same fix as
-  // e2e/support/app.mts:34 and verify-sas.mjs:45.
-  const input = page.getByLabel(label, { exact: true });
-  await input.waitFor({ state: 'visible', timeout: 15_000 });
-  await input.click();
-  await input.fill(value);
-}
-
-/** Log in: type the homeserver, Continue, fill credentials, Sign in → /rooms. */
-async function login(page) {
-  log('loading app');
-  await page.goto(`${APP}/login`, { waitUntil: 'networkidle' });
-  await fillLabeledInput(page, 'Homeserver', HS);
-  await page.getByText('Continue', { exact: true }).click();
-  await page
-    .getByRole('button', { name: 'Sign in' })
-    .waitFor({ timeout: 30_000 });
-  await fillLabeledInput(page, 'Username', USER);
-  await fillLabeledInput(page, 'Password', PASS);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await waitForRooms(page);
-  log('logged in → /rooms');
-}
 
 /** Focus the composer textarea, type `text` keystroke-by-keystroke (so every
  *  input event fires and the autocomplete tracks), waiting on the textarea. */
@@ -117,7 +89,7 @@ async function typeInComposer(page, textarea, text) {
 // Main
 // ---------------------------------------------------------------------------
 
-async function main(browser, testInfo) {
+async function main(protocolBrowser) {
   // ── CS-API pre-setup: one plaintext room to chat in ────────────────────────
   const { access_token: token } = await apiLogin(USER, PASS);
   log('api login ok');
@@ -131,33 +103,10 @@ async function main(browser, testInfo) {
   // ── Browser setup ──────────────────────────────────────────────────────────
   log(`serving www on ${APP} (homeserver=${HS})`);
 
-  const ctx = await browser.newContext({
-    ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
-    viewport: { width: 1280, height: 720 },
-  });
-
-  // Re-fetch HS requests at the CDP layer where ignoreHTTPSErrors applies.
-  await ctx.route(`${HS}/**`, async (route) => {
-    try {
-      const response = await route.fetch({
-        ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
-      });
-      await route.fulfill({ response });
-    } catch {
-      await route.fallback();
-    }
-  });
-
-  const page = await ctx.newPage();
-  page.on('pageerror', (e) => console.log(`  [page:error] ${e.message}`));
-  page.on('console', (m) => {
-    if (m.type() === 'error') console.log(`  [console.error] ${m.text()}`);
-  });
+  const page = await protocolBrowser.newAuthenticatedPage({ label: 'emoji' });
 
   let exit = 1;
   try {
-    await login(page);
-
     // Open the seeded room from the sidebar.
     log('waiting for the seeded room in the sidebar');
     const channel = page.locator('.channel', { hasText: ROOM });
@@ -290,28 +239,21 @@ async function main(browser, testInfo) {
     console.log('\nRESULT: PASS');
     exit = 0;
   } catch (err) {
-    console.error('\n[emoji] error:', err.message);
-    await page
-      .screenshot({ path: testInfo.outputPath('emoji-failure.png') })
-      .catch(() => {});
     console.log('\nRESULT: FAIL');
     throw err;
-  } finally {
-    await ctx.close();
   }
   expect(exit).toBe(0);
 }
 
 test('covers shortcode conversion and emoji picker insertion', async ({
-  browser,
+  protocolBrowser,
   protocolCredentials,
   resourceNamespace,
-}, testInfo) => {
+}) => {
   HS = protocolCredentials.hs;
   USER = protocolCredentials.user;
   PASS = protocolCredentials.pass;
-  IGNORE_HTTP_ERRORS = protocolCredentials.mode === 'disposable';
   RUN_ID = resourceNamespace.role('emoji');
   ROOM = `Emoji-${RUN_ID}`;
-  await main(browser, testInfo);
+  await main(protocolBrowser);
 });

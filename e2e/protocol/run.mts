@@ -12,6 +12,7 @@ import {
 export async function runProtocol(
   argv: readonly string[],
   environment: NodeJS.ProcessEnv = process.env,
+  execute: typeof runPlaywright = runPlaywright,
 ): Promise<number> {
   const suiteArgument = argv.find((argument) =>
     argument.startsWith('--suite='),
@@ -25,13 +26,16 @@ export async function runProtocol(
   const resources = protocolResources(suiteId, mode, environment);
   environment[PROTOCOL_SUITE_ENV] = suiteId;
   environment[PROTOCOL_MODE_ENV] = mode;
-  return runPlaywright([
-    '--config=e2e/protocol/playwright.config.mts',
-    '--build=trinity:build:development',
-    ...resources.map((resource) => `--resource=${resource}`),
-    '--',
-    ...forwarded,
-  ]);
+  return execute(
+    [
+      '--config=e2e/protocol/playwright.config.mts',
+      '--build=trinity:build:development',
+      ...resources.map((resource) => `--resource=${resource}`),
+      '--',
+      ...forwarded,
+    ],
+    environment,
+  );
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

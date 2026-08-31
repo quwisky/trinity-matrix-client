@@ -18,8 +18,8 @@
 // remote mode accepts TRINITY_HS/TRINITY_USER/TRINITY_PASS; HEADED/SLOWMO aid debugging.
 //
 // `pnpm e2e:spaces` builds dev, starts the harness, runs this, and tears down.
-import { waitForRooms } from '../support/navigation.mjs';
 import { applicationOrigin } from '../support/session.mts';
+import { protocolResponseFailure } from './diagnostics.mts';
 import { test, expect } from './fixtures.mts';
 
 const APP = applicationOrigin();
@@ -27,7 +27,6 @@ const APP = applicationOrigin();
 let HS;
 let USER;
 let PASS;
-let IGNORE_HTTP_ERRORS;
 
 // Unique names per run so re-runs and re-used servers never produce stale matches.
 let RUN_ID;
@@ -52,7 +51,7 @@ async function apiLogin() {
       password: PASS,
     }),
   });
-  if (!res.ok) throw new Error(`api login → ${res.status} ${await res.text()}`);
+  if (!res.ok) throw protocolResponseFailure('api login', res);
   return res.json(); // { access_token, user_id, … }
 }
 
@@ -113,33 +112,6 @@ async function findRoomIdByName(token, name, isSpace) {
 // UI helpers (mirrors threads.mjs / send-media.mjs)
 // ---------------------------------------------------------------------------
 
-/** Fill a native `<input hlmInput>` by its associated `<label for="…">`. */
-async function fillLabeledInput(page, label, value) {
-  // Exact match: the password field's "Show password" reveal button (aria-label) otherwise
-  // also matches a substring `getByLabel('Password')`, tripping strict mode. Same fix as
-  // e2e/support/app.mts:34.
-  const input = page.getByLabel(label, { exact: true });
-  await input.waitFor({ state: 'visible', timeout: 15_000 });
-  await input.click();
-  await input.fill(value);
-}
-
-/** Log in: type the homeserver, Continue, fill credentials, Sign in → /rooms. */
-async function login(page) {
-  log('loading app');
-  await page.goto(`${APP}/login`, { waitUntil: 'networkidle' });
-  await fillLabeledInput(page, 'Homeserver', HS);
-  await page.getByText('Continue', { exact: true }).click();
-  await page
-    .getByRole('button', { name: 'Sign in' })
-    .waitFor({ timeout: 30_000 });
-  await fillLabeledInput(page, 'Username', USER);
-  await fillLabeledInput(page, 'Password', PASS);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await waitForRooms(page);
-  log('logged in → /rooms');
-}
-
 /**
  * Interact with TrnAlertService's confirm/prompt dialog (<trn-alert-dialog> in
  * a CDK dialog — replaces Ionic's <ion-alert>): wait for it to appear,
@@ -161,44 +133,15 @@ async function fillAlertAndConfirm(page, placeholder, value, buttonName) {
 // Main
 // ---------------------------------------------------------------------------
 
-async function main(browser, testInfo) {
+async function main(protocolBrowser) {
   const { access_token: token, user_id: userId } = await apiLogin();
   log('api login ok');
   log(`serving www on ${APP} (homeserver=${HS})`);
 
-  const ctx = await browser.newContext({
-    ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
-    viewport: { width: 1280, height: 720 },
-  });
-
-  // Service-worker / TLS bypass: production www/ ships an Angular service worker
-  // that intercepts ALL fetches including cross-origin calls to Caddy's
-  // self-signed https://localhost:8448. In the SW execution context
-  // `ignoreHTTPSErrors` does not apply, so every homeserver request gets a 504.
-  // Playwright's context.route() hooks in at the CDP network layer (below the SW)
-  // and re-fetches via route.fetch(), which DOES honour ignoreHTTPSErrors,
-  // restoring 200 responses. This is a no-op on dev builds (no SW registered).
-  await ctx.route(`${HS}/**`, async (route) => {
-    try {
-      const response = await route.fetch({
-        ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
-      });
-      await route.fulfill({ response });
-    } catch {
-      await route.fallback();
-    }
-  });
-
-  const page = await ctx.newPage();
-  page.on('pageerror', (e) => console.log(`  [page:error] ${e.message}`));
-  page.on('console', (m) => {
-    if (m.type() === 'error') console.log(`  [console.error] ${m.text()}`);
-  });
+  const page = await protocolBrowser.newAuthenticatedPage({ label: 'spaces' });
 
   let exit = 1;
   try {
-    await login(page);
-
     // -----------------------------------------------------------------------
     // SCENARIO 1: Create a space → pill appears in the server rail
     // -----------------------------------------------------------------------
@@ -393,29 +336,22 @@ async function main(browser, testInfo) {
     console.log('\nRESULT: PASS');
     exit = 0;
   } catch (err) {
-    console.error('\n[spaces] error:', err.message);
-    await page
-      .screenshot({ path: testInfo.outputPath('spaces-failure.png') })
-      .catch(() => {});
     console.log('\nRESULT: FAIL');
     throw err;
-  } finally {
-    await ctx.close();
   }
   expect(exit).toBe(0);
 }
 
 test('creates, manages, and leaves a space', async ({
-  browser,
+  protocolBrowser,
   protocolCredentials,
   resourceNamespace,
-}, testInfo) => {
+}) => {
   HS = protocolCredentials.hs;
   USER = protocolCredentials.user;
   PASS = protocolCredentials.pass;
-  IGNORE_HTTP_ERRORS = protocolCredentials.mode === 'disposable';
   RUN_ID = resourceNamespace.role('spaces');
   SPACE_NAME = `Space ${RUN_ID}`;
   CHANNEL_NAME = `chan-${RUN_ID}`;
-  await main(browser, testInfo);
+  await main(protocolBrowser);
 });

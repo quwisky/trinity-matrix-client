@@ -11,16 +11,9 @@ const APP = applicationOrigin();
 let HS;
 let USER;
 let PASS;
-let IGNORE_HTTP_ERRORS;
 const STAGE_TIMEOUT = 60_000;
 const SETUP_TIMEOUT = 90_000;
 const log = (message) => console.log(`[verify-qr] ${message}`);
-
-async function fillLabeledInput(page, label, value) {
-  const input = page.getByLabel(label, { exact: true });
-  await input.waitFor({ state: 'visible', timeout: 15_000 });
-  await input.fill(value);
-}
 
 async function stageOf(scope) {
   const page = scope.getByTestId('verify-page');
@@ -42,20 +35,6 @@ async function waitForStage(scope, stages, timeout = STAGE_TIMEOUT) {
     wanted,
     { timeout, polling: 200 },
   );
-}
-
-async function login(page, who) {
-  log(`${who}: loading app`);
-  await page.goto(`${APP}/login`, { waitUntil: 'networkidle' });
-  await fillLabeledInput(page, 'Homeserver', HS);
-  await page.getByText('Continue', { exact: true }).click();
-  await page
-    .getByRole('button', { name: 'Sign in' })
-    .waitFor({ timeout: 30_000 });
-  await fillLabeledInput(page, 'Username', USER);
-  await fillLabeledInput(page, 'Password', PASS);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await waitForRooms(page);
 }
 
 async function setUpEncryption(page) {
@@ -125,31 +104,15 @@ async function installSyntheticCamera(page) {
   });
 }
 
-async function main(browser, testInfo) {
-  const ctxA = await browser.newContext({
-    ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
-  });
-  const ctxB = await browser.newContext({
-    ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
-  });
-  const A = await ctxA.newPage();
-  const B = await ctxB.newPage();
+async function main(protocolBrowser) {
+  const A = await protocolBrowser.newAuthenticatedPage({ label: 'device-a' });
+  const B = await protocolBrowser.newPage({ label: 'device-b' });
   await installSyntheticCamera(B);
-
-  for (const [page, who] of [
-    [A, 'A'],
-    [B, 'B'],
-  ]) {
-    page.on('pageerror', (error) =>
-      console.log(`  [${who}:error] ${error.message}`),
-    );
-  }
 
   let exit = 1;
   try {
-    await login(A, 'A (device 1)');
     await setUpEncryption(A);
-    await login(B, 'B (device 2)');
+    await protocolBrowser.login(B);
 
     log('B: starting verification');
     await B.goto(`${APP}/encryption/verify`, {
@@ -195,30 +158,20 @@ async function main(browser, testInfo) {
     console.log('\nRESULT: PASS');
     exit = 0;
   } catch (err) {
-    console.error('\n[verify-qr] error:', err.message);
     console.error(`  A stage=${await stageOf(A)} url=${A.url()}`);
     console.error(`  B stage=${await stageOf(B)} url=${B.url()}`);
-    await A.screenshot({ path: testInfo.outputPath('A-qr-failure.png') }).catch(
-      () => {},
-    );
-    await B.screenshot({ path: testInfo.outputPath('B-qr-failure.png') }).catch(
-      () => {},
-    );
     console.log('\nRESULT: FAIL');
     throw err;
-  } finally {
-    await Promise.all([ctxA.close(), ctxB.close()]);
   }
   expect(exit).toBe(0);
 }
 
 test('verifies two devices through QR reciprocation', async ({
-  browser,
+  protocolBrowser,
   protocolCredentials,
-}, testInfo) => {
+}) => {
   HS = protocolCredentials.hs;
   USER = protocolCredentials.user;
   PASS = protocolCredentials.pass;
-  IGNORE_HTTP_ERRORS = protocolCredentials.mode === 'disposable';
-  await main(browser, testInfo);
+  await main(protocolBrowser);
 });

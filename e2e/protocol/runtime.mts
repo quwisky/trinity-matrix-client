@@ -217,3 +217,9 @@ export function protocolTracePolicy(
   if (mode === 'remote') return 'off';
   return ci ? 'on-first-retry' : 'retain-on-failure';
 }
+
+export function protocolScreenshotPolicy(
+  mode: ProtocolMode,
+): 'off' | 'only-on-failure' {
+  return mode === 'remote' ? 'off' : 'only-on-failure';
+}

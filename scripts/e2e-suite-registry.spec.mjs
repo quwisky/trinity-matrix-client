@@ -640,6 +640,29 @@ describe('E2E suite registry runner', () => {
     expect(executeSuite).not.toHaveBeenCalled();
   });
 
+  it('rejects any remote protocol aggregate before preflight or invocation', async () => {
+    const preflight = vi.fn();
+    const openInvocation = vi.fn();
+    const reportError = vi.fn();
+
+    for (const target of ['e2e-protocol', 'e2e-pr']) {
+      expect(
+        await runSelection(target, {
+          environment: { TRINITY_E2E_PROTOCOL_MODE: 'remote' },
+          validate: () => [],
+          preflight,
+          openInvocation,
+          reportError,
+        }),
+      ).toBe(1);
+    }
+    expect(preflight).not.toHaveBeenCalled();
+    expect(openInvocation).not.toHaveBeenCalled();
+    expect(reportError).toHaveBeenCalledWith(
+      expect.stringContaining('focused-only'),
+    );
+  });
+
   it('runs sequentially and stops at the first failing suite', async () => {
     const executed = [];
     const statuses = [0, 7, 0];

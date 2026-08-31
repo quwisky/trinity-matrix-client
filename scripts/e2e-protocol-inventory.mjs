@@ -7,10 +7,14 @@ const DEFAULT_PATTERN = 'e2e/protocol/**/*.spec.mjs';
 const ASSERTION_METHODS = new Set(['waitFor', 'waitForFunction', 'waitForURL']);
 const EXPECTED_INVENTORY = {
   files: 12,
-  assertions: 209,
+  assertions: 188,
   fingerprint:
-    '112ce5c6f4f79c43a33383cd311bf70f45e514316a9d32cb73daf36462bc9edf',
+    '0a0d2ceb4c9af3c425842efeb509996aca8b4285a1f11000ab8c7bf0fb45f90d',
 };
+const PRE_MIGRATION_ASSERTIONS = 209;
+const CENTRALIZED_SHARED_CHECKS = 21;
+const EXPECTED_SHARED_OWNER_FINGERPRINT =
+  '71d32ffab7c5c62b8eddb23d73e6cfd72c736867627456db29ddf089f581c1f2';
 
 const normalize = (source) => source.replace(/\s+/gu, ' ').trim();
 
@@ -81,6 +85,49 @@ function assertionRecords(path, source) {
   return records;
 }
 
+function namedFunctionRecord(path, source, name) {
+  const tree = ts.createSourceFile(
+    path,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  let record;
+  const visit = (node) => {
+    if (ts.isFunctionDeclaration(node) && node.name?.text === name && !record) {
+      record = `${path}:${name}:${normalize(node.getText(tree))}`;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(tree);
+  if (!record) throw new Error(`Missing shared protocol owner ${path}:${name}`);
+  return record;
+}
+
+export function captureProtocolCentralizedChecks(workspaceRoot) {
+  const owners = [
+    ['e2e/protocol/fixtures.mts', 'fillLabeledInput'],
+    ['e2e/protocol/fixtures.mts', 'login'],
+    ['e2e/support/app.mts', 'clickRowToolbar'],
+  ];
+  const records = owners.map(([path, name]) =>
+    namedFunctionRecord(
+      path,
+      readFileSync(join(workspaceRoot, path), 'utf8'),
+      name,
+    ),
+  );
+  return {
+    legacyChecks: CENTRALIZED_SHARED_CHECKS,
+    owners: records.length,
+    fingerprint: createHash('sha256')
+      .update(records.sort().join('\n'))
+      .digest('hex'),
+  };
+}
+
 export function captureProtocolAssertionInventory(
   workspaceRoot,
   pattern = DEFAULT_PATTERN,
@@ -100,12 +147,26 @@ export function captureProtocolAssertionInventory(
 
 export function validateProtocolAssertionInventory(errors, workspaceRoot) {
   const observed = captureProtocolAssertionInventory(workspaceRoot);
+  const centralized = captureProtocolCentralizedChecks(workspaceRoot);
   for (const key of ['files', 'assertions', 'fingerprint']) {
     if (observed[key] !== EXPECTED_INVENTORY[key]) {
       errors.push(
         `protocol assertion inventory ${key} drifted: expected ${EXPECTED_INVENTORY[key]}, found ${observed[key]}`,
       );
     }
+  }
+  if (
+    observed.assertions + CENTRALIZED_SHARED_CHECKS !==
+    PRE_MIGRATION_ASSERTIONS
+  ) {
+    errors.push(
+      'protocol assertion inventory no longer reconciles with the pre-migration baseline',
+    );
+  }
+  if (centralized.fingerprint !== EXPECTED_SHARED_OWNER_FINGERPRINT) {
+    errors.push(
+      `protocol centralized-check owners drifted: expected ${EXPECTED_SHARED_OWNER_FINGERPRINT}, found ${centralized.fingerprint}`,
+    );
   }
 }
 

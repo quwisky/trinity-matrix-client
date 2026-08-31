@@ -634,8 +634,9 @@ renderer" spec.
 endpoint, receives attempt-scoped accounts and resource names through fixtures, and drives the
 registered Chromium or WebKit engine. Playwright owns pass/fail, retries, traces and artifacts;
 the compatibility package commands simply select one explicit Nx target. The assertion inventory
-pins twelve files and 209 pre-migration product checks so moving lifecycle code cannot silently
-reduce coverage.
+reconciles the 209 pre-migration checks: 188 flow-specific checks remain pinned across twelve
+specs, while 21 duplicated login and replace-safe toolbar checks are pinned at their shared fixture
+owners. Moving code cannot silently reduce either side of that coverage map.
 
 `verify-sas.spec.mjs` is the deepest of them: two browser contexts in one Chromium are two
 devices of the same Matrix user, because isolated IndexedDB means two crypto stores

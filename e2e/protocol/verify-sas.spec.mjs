@@ -24,23 +24,12 @@ const APP = applicationOrigin();
 let HS;
 let USER;
 let PASS;
-let IGNORE_HTTP_ERRORS;
 
 // Generous: real SAS round-trips cross-context to-device traffic through the HS.
 const STAGE_TIMEOUT = 60_000;
 const SETUP_TIMEOUT = 90_000;
 
 const log = (m) => console.log(`[verify] ${m}`);
-
-/** Fill a native `<input hlmInput>` by its associated `<label for="…">`. */
-async function fillLabeledInput(page, label, value) {
-  // Exact match: the password field's "Show password" reveal button (aria-label)
-  // otherwise also matches a substring `getByLabel('Password')`, tripping strict mode.
-  const input = page.getByLabel(label, { exact: true });
-  await input.waitFor({ state: 'visible', timeout: 15_000 });
-  await input.click();
-  await input.fill(value);
-}
 
 /** Read the verify-page's live stage attribute (or null if the page isn't shown). */
 async function stageOf(scope) {
@@ -64,27 +53,6 @@ async function waitForStage(scope, stages, timeout = STAGE_TIMEOUT) {
     wanted,
     { timeout, polling: 200 },
   );
-}
-
-/** Log in: type the homeserver, Continue, fill credentials, Sign in → /rooms. */
-async function login(page, who) {
-  log(`${who}: loading app`);
-  await page.goto(`${APP}/login`, { waitUntil: 'networkidle' });
-  await page.waitForURL('**/login', { timeout: 15_000 });
-
-  await fillLabeledInput(page, 'Homeserver', HS);
-  await page.getByText('Continue', { exact: true }).click();
-
-  // Discovery + loginFlows resolve, then the password form appears.
-  await page
-    .getByRole('button', { name: 'Sign in' })
-    .waitFor({ timeout: 30_000 });
-  await fillLabeledInput(page, 'Username', USER);
-  await fillLabeledInput(page, 'Password', PASS);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-
-  await waitForRooms(page);
-  log(`${who}: logged in → /rooms`);
 }
 
 /** Device A: set up encryption (UIA password alert → recovery key → continue). */
@@ -166,39 +134,20 @@ async function assertWaitingOnPeer(scope) {
   }
 }
 
-async function main(browser, testInfo) {
+async function main(protocolBrowser) {
   log(`serving www on ${APP}`);
   log(`homeserver=${HS}`);
 
-  // ignoreHTTPSErrors lets the contexts talk to the self-signed Caddy TLS front.
-  const ctxA = await browser.newContext({
-    ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
-  });
-  const ctxB = await browser.newContext({
-    ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
-  });
-  const A = await ctxA.newPage();
-  const B = await ctxB.newPage();
-  for (const [page, who] of [
-    [A, 'A'],
-    [B, 'B'],
-  ]) {
-    page.on('pageerror', (e) => console.log(`  [${who}:error] ${e.message}`));
-    page.on('console', (m) => {
-      if (m.type() === 'error')
-        console.log(`  [${who}:console.error] ${m.text()}`);
-    });
-  }
+  const A = await protocolBrowser.newAuthenticatedPage({ label: 'device-a' });
+  let B;
 
   let exit = 1;
   try {
-    // 1. Device A: first device — log in and bootstrap crypto.
-    await login(A, 'A (device 1)');
+    // 1. Device A: first device — bootstrap crypto.
     await setUpEncryption(A);
 
     // 2. Device B: same user, new context ⇒ new device, needs-recovery.
-    await login(B, 'B (device 2)');
-
+    B = await protocolBrowser.newAuthenticatedPage({ label: 'device-b' });
     // 3. B initiates the SAS verification.
     log('B: starting verification (/encryption/verify)');
     // domcontentloaded, not networkidle: sync long-poll keeps the network busy.
@@ -300,34 +249,24 @@ async function main(browser, testInfo) {
     console.log('\nRESULT: PASS');
     exit = 0;
   } catch (err) {
-    console.error('\n[verify] error:', err.message);
     try {
       console.error(`  A stage=${await stageOf(A)} url=${A.url()}`);
-      console.error(`  B stage=${await stageOf(B)} url=${B.url()}`);
-      await A.screenshot({ path: testInfo.outputPath('A-failure.png') }).catch(
-        () => {},
-      );
-      await B.screenshot({ path: testInfo.outputPath('B-failure.png') }).catch(
-        () => {},
-      );
+      if (B) console.error(`  B stage=${await stageOf(B)} url=${B.url()}`);
     } catch {
       /* best effort */
     }
     console.log('\nRESULT: FAIL');
     throw err;
-  } finally {
-    await Promise.all([ctxA.close(), ctxB.close()]);
   }
   expect(exit).toBe(0);
 }
 
 test('verifies two devices through matching emoji SAS', async ({
-  browser,
+  protocolBrowser,
   protocolCredentials,
-}, testInfo) => {
+}) => {
   HS = protocolCredentials.hs;
   USER = protocolCredentials.user;
   PASS = protocolCredentials.pass;
-  IGNORE_HTTP_ERRORS = protocolCredentials.mode === 'disposable';
-  await main(browser, testInfo);
+  await main(protocolBrowser);
 });

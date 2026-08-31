@@ -19,8 +19,8 @@
 // additionally requires TRINITY_SECONDARY_USER/TRINITY_SECONDARY_PASS.
 //
 // `pnpm e2e:search` builds dev, starts the harness, runs this, and tears down.
-import { waitForRooms } from '../support/navigation.mjs';
 import { applicationOrigin } from '../support/session.mts';
+import { protocolResponseFailure } from './diagnostics.mts';
 import { test, expect } from './fixtures.mts';
 
 const APP = applicationOrigin();
@@ -28,7 +28,6 @@ const APP = applicationOrigin();
 let HS;
 let USER;
 let PASS;
-let IGNORE_HTTP_ERRORS;
 let USER_ID;
 
 // Unique names per run so re-runs never collide with stale rooms.
@@ -65,7 +64,7 @@ async function apiLogin(user, pass) {
     }),
   });
   if (!res.ok) {
-    throw new Error(`login ${user} → ${res.status} ${await res.text()}`);
+    throw protocolResponseFailure(`login ${user}`, res);
   }
   return res.json(); // { access_token, user_id, … }
 }
@@ -80,7 +79,7 @@ async function csPost(token, path, body) {
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    throw new Error(`POST ${path} → ${res.status} ${await res.text()}`);
+    throw protocolResponseFailure(`POST ${path}`, res);
   }
   const ct = res.headers.get('content-type') ?? '';
   return ct.includes('application/json') ? res.json() : {};
@@ -97,7 +96,7 @@ async function csPut(token, path, body) {
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    throw new Error(`PUT ${path} → ${res.status} ${await res.text()}`);
+    throw protocolResponseFailure(`PUT ${path}`, res);
   }
   const ct = res.headers.get('content-type') ?? '';
   return ct.includes('application/json') ? res.json() : {};
@@ -116,33 +115,6 @@ async function poll(fn, { tries = 30, delayMs = 1000 } = {}) {
 // ---------------------------------------------------------------------------
 // UI helpers
 // ---------------------------------------------------------------------------
-
-/** Fill a native `<input hlmInput>` by its associated `<label for="…">`. */
-async function fillLabeledInput(page, label, value) {
-  // Exact match: the password field's "Show password" reveal button (aria-label) otherwise
-  // also matches a substring `getByLabel('Password')`, tripping strict mode. Same fix as
-  // e2e/support/app.mts:34 and verify-sas.mjs:45.
-  const input = page.getByLabel(label, { exact: true });
-  await input.waitFor({ state: 'visible', timeout: 15_000 });
-  await input.click();
-  await input.fill(value);
-}
-
-/** Log in: type the homeserver, Continue, fill credentials, Sign in → /rooms. */
-async function login(page) {
-  log('loading app');
-  await page.goto(`${APP}/login`, { waitUntil: 'networkidle' });
-  await fillLabeledInput(page, 'Homeserver', HS);
-  await page.getByText('Continue', { exact: true }).click();
-  await page
-    .getByRole('button', { name: 'Sign in' })
-    .waitFor({ timeout: 30_000 });
-  await fillLabeledInput(page, 'Username', USER);
-  await fillLabeledInput(page, 'Password', PASS);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await waitForRooms(page);
-  log('logged in → /rooms');
-}
 
 /**
  * Open the quick-switcher's CDK dialog, interact with it, then wait for it to
@@ -167,7 +139,7 @@ async function waitForModalGone(page) {
 // Main
 // ---------------------------------------------------------------------------
 
-async function main(browser, testInfo) {
+async function main(protocolBrowser) {
   // ── CS-API pre-setup ───────────────────────────────────────────────────────
   const { access_token: aliceToken, user_id: aliceId } = await apiLogin(
     USER,
@@ -264,34 +236,10 @@ async function main(browser, testInfo) {
   // ── Browser setup ──────────────────────────────────────────────────────────
   log(`serving www on ${APP} (homeserver=${HS})`);
 
-  const ctx = await browser.newContext({
-    ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
-    viewport: { width: 1280, height: 720 },
-  });
-
-  // Service-worker / TLS bypass: context.route() re-fetches HS requests at the
-  // CDP layer where ignoreHTTPSErrors applies (same rationale as rooms.mjs).
-  await ctx.route(`${HS}/**`, async (route) => {
-    try {
-      const response = await route.fetch({
-        ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
-      });
-      await route.fulfill({ response });
-    } catch {
-      await route.fallback();
-    }
-  });
-
-  const page = await ctx.newPage();
-  page.on('pageerror', (e) => console.log(`  [page:error] ${e.message}`));
-  page.on('console', (m) => {
-    if (m.type() === 'error') console.log(`  [console.error] ${m.text()}`);
-  });
+  const page = await protocolBrowser.newAuthenticatedPage({ label: 'search' });
 
   let exit = 1;
   try {
-    await login(page);
-
     // Wait for the seeded rooms to sync and appear in the sidebar so the local
     // switcher corpus is populated before we start typing.
     log('waiting for seeded rooms to appear in sidebar');
@@ -509,27 +457,20 @@ async function main(browser, testInfo) {
     console.log('\nRESULT: PASS');
     exit = 0;
   } catch (err) {
-    console.error('\n[search] error:', err.message);
-    await page
-      .screenshot({ path: testInfo.outputPath('search-failure.png') })
-      .catch(() => {});
     console.log('\nRESULT: FAIL');
     throw err;
-  } finally {
-    await ctx.close();
   }
   expect(exit).toBe(0);
 }
 
 test('covers room, message, and directory search journeys', async ({
-  browser,
+  protocolBrowser,
   protocolCredentials,
   resourceNamespace,
-}, testInfo) => {
+}) => {
   HS = protocolCredentials.hs;
   USER = protocolCredentials.user;
   PASS = protocolCredentials.pass;
-  IGNORE_HTTP_ERRORS = protocolCredentials.mode === 'disposable';
   expect(protocolCredentials.secondary).toBeDefined();
   BOB_USER = protocolCredentials.secondary.user;
   BOB_PASS = protocolCredentials.secondary.pass;
@@ -538,5 +479,5 @@ test('covers room, message, and directory search journeys', async ({
   ROOM_B = `Beta-${RUN_ID}`;
   SEARCH_ROOM = `Search-${RUN_ID}`;
   TOKEN = `XSRCH${RUN_ID}`;
-  await main(browser, testInfo);
+  await main(protocolBrowser);
 });

@@ -14,8 +14,9 @@
 // remote mode accepts TRINITY_HS/TRINITY_USER/TRINITY_PASS; HEADED/SLOWMO aid debugging.
 //
 // `pnpm e2e:reply` builds dev, starts the harness, runs this, and tears down.
-import { waitForRooms } from '../support/navigation.mjs';
 import { applicationOrigin } from '../support/session.mts';
+import { clickRowToolbar } from '../support/app.mts';
+import { protocolResponseFailure } from './diagnostics.mts';
 import { test, expect } from './fixtures.mts';
 
 const APP = applicationOrigin();
@@ -23,7 +24,6 @@ const APP = applicationOrigin();
 let HS;
 let USER;
 let PASS;
-let IGNORE_HTTP_ERRORS;
 
 // Each run gets its own unique names so re-runs don't collide.
 let RUN_ID;
@@ -51,7 +51,7 @@ async function api(path, { token, body, method = 'POST' } = {}) {
   };
   const res = await fetch(`${HS}${path}`, opts);
   if (!res.ok) {
-    throw new Error(`${method} ${path} → ${res.status} ${await res.text()}`);
+    throw protocolResponseFailure(`${method} ${path}`, res);
   }
   return res.json();
 }
@@ -96,97 +96,20 @@ async function setupRoom() {
 }
 
 // ---------------------------------------------------------------------------
-// UI helpers (mirrors threads.mjs / send-media.mjs / verify-sas.mjs)
-// ---------------------------------------------------------------------------
-
-/** Fill a native `<input hlmInput>` by its associated `<label for="…">`. */
-async function fillLabeledInput(page, label, value) {
-  // Exact match: the password field's "Show password" reveal button (aria-label) otherwise
-  // also matches a substring `getByLabel('Password')`, tripping strict mode. Same fix as
-  // e2e/support/app.mts:34 and verify-sas.mjs:45.
-  const input = page.getByLabel(label, { exact: true });
-  await input.waitFor({ state: 'visible', timeout: 15_000 });
-  await input.click();
-  await input.fill(value);
-}
-
-/** Log in: type the homeserver, Continue, fill credentials, Sign in → /rooms. */
-async function login(page) {
-  log('loading app');
-  await page.goto(`${APP}/login`, { waitUntil: 'networkidle' });
-  await fillLabeledInput(page, 'Homeserver', HS);
-  await page.getByText('Continue', { exact: true }).click();
-  await page
-    .getByRole('button', { name: 'Sign in' })
-    .waitFor({ timeout: 30_000 });
-  await fillLabeledInput(page, 'Username', USER);
-  await fillLabeledInput(page, 'Password', PASS);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await waitForRooms(page);
-  log('logged in → /rooms');
-}
-
-/**
- * Hover over a message row, wait for the floating toolbar to become interactive,
- * then click the named button inside it. `opts` is forwarded to `getByRole` so
- * callers can request an exact-name match — the toolbar also has a "Reply in
- * thread" button, which is a superstring of "Reply" and would otherwise match too.
- */
-async function hoverAndClickToolbar(page, msgLocator, buttonName, opts = {}) {
-  // Keep the mouse over the message so the CSS :hover state stays active.
-  await msgLocator.hover({ force: true });
-  const btn = msgLocator.getByRole('button', { name: buttonName, ...opts });
-  // The toolbar transitions from opacity:0 to opacity:1 on hover; wait for it
-  // to be visible (CSS transition ~100 ms) before clicking.
-  await btn.waitFor({ state: 'visible', timeout: 5_000 });
-  await btn.click({ force: true });
-}
-
-// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
-async function main(browser, testInfo) {
+async function main(protocolBrowser) {
   // 1. Seed the room + original message via the CS API before the browser runs.
   const { originalEventId } = await setupRoom();
   log(`originalEventId=${originalEventId}`);
   log(`serving www on ${APP} (homeserver=${HS})`);
 
-  // ignoreHTTPSErrors so the app can talk to Caddy's self-signed TLS front.
-  const ctx = await browser.newContext({
-    ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
-    viewport: { width: 1280, height: 720 },
-  });
-
-  // Production builds include Angular's ngsw service worker. The SW intercepts
-  // ALL fetch requests including cross-origin calls to https://localhost:8448.
-  // In the SW's execution context, `ignoreHTTPSErrors` does not apply, so
-  // Caddy's self-signed cert causes every homeserver request to get a 504.
-  // Playwright's context.route() hooks in at the CDP network layer (below the
-  // SW) and re-fetches via route.fetch(), which DOES honour ignoreHTTPSErrors,
-  // restoring 200 responses. This is a no-op when the build is dev (no SW).
-  await ctx.route(`${HS}/**`, async (route) => {
-    try {
-      const response = await route.fetch({
-        ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
-      });
-      await route.fulfill({ response });
-    } catch {
-      await route.fallback();
-    }
-  });
-
-  const page = await ctx.newPage();
-  page.on('pageerror', (e) => console.log(`  [page:error] ${e.message}`));
-  page.on('console', (m) => {
-    if (m.type() === 'error') console.log(`  [console.error] ${m.text()}`);
-  });
+  const page = await protocolBrowser.newAuthenticatedPage({ label: 'reply' });
 
   let exit = 1;
   try {
-    // 2. Log in and open the seeded room.
-    await login(page);
-
+    // 2. Open the seeded room.
     log(`opening room "${ROOM_NAME}"`);
     const channel = page.locator('.channel', { hasText: ROOM_NAME });
     await channel.first().click({ timeout: SETUP_TIMEOUT });
@@ -206,9 +129,13 @@ async function main(browser, testInfo) {
 
     // Match "Reply" exactly — the toolbar also has "Reply in thread", which
     // would otherwise satisfy a substring match on "Reply".
-    await hoverAndClickToolbar(page, rootMsgRow.first(), 'Reply', {
-      exact: true,
-    });
+    await clickRowToolbar(
+      rootMsgRow.first(),
+      rootMsgRow.first().getByRole('button', {
+        name: 'Reply',
+        exact: true,
+      }),
+    );
 
     // Confirm the composer reply banner appears.
     log('waiting for the composer reply banner');
@@ -318,30 +245,23 @@ async function main(browser, testInfo) {
     console.log('\nRESULT: PASS');
     exit = 0;
   } catch (err) {
-    console.error('\n[reply] error:', err.message);
-    await page
-      .screenshot({ path: testInfo.outputPath('reply-failure.png') })
-      .catch(() => {});
     console.log('\nRESULT: FAIL');
     throw err;
-  } finally {
-    await ctx.close();
   }
   expect(exit).toBe(0);
 }
 
 test('renders a reply with its author and quoted preview', async ({
-  browser,
+  protocolBrowser,
   protocolCredentials,
   resourceNamespace,
-}, testInfo) => {
+}) => {
   HS = protocolCredentials.hs;
   USER = protocolCredentials.user;
   PASS = protocolCredentials.pass;
-  IGNORE_HTTP_ERRORS = protocolCredentials.mode === 'disposable';
   RUN_ID = resourceNamespace.role('reply');
   ROOM_NAME = `Reply E2E ${RUN_ID}`;
   ORIGINAL_MSG = `Original message ${RUN_ID}`;
   REPLY_TEXT = `My reply ${RUN_ID}`;
-  await main(browser, testInfo);
+  await main(protocolBrowser);
 });

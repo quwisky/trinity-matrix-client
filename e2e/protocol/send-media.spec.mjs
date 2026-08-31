@@ -15,6 +15,7 @@
 // `pnpm e2e:media` builds dev, starts the harness, runs this, and tears down.
 import { waitForRooms } from '../support/navigation.mjs';
 import { applicationOrigin } from '../support/session.mts';
+import { protocolResponseFailure } from './diagnostics.mts';
 import { test, expect } from './fixtures.mts';
 
 const APP = applicationOrigin();
@@ -22,7 +23,6 @@ const APP = applicationOrigin();
 let HS;
 let USER;
 let PASS;
-let IGNORE_HTTP_ERRORS;
 let ROOM_NAME;
 
 const SETUP_TIMEOUT = 90_000;
@@ -44,7 +44,7 @@ async function api(path, { token, body } = {}) {
     body: JSON.stringify(body ?? {}),
   });
   if (!res.ok) {
-    throw new Error(`${path} → ${res.status} ${await res.text()}`);
+    throw protocolResponseFailure(path, res);
   }
   return res.json();
 }
@@ -74,33 +74,6 @@ async function createEncryptedRoom() {
   });
   log(`created encrypted room ${roomId}`);
   return roomId;
-}
-
-/** Fill a native `<input hlmInput>` by its associated `<label for="…">`. */
-async function fillLabeledInput(page, label, value) {
-  // Exact match: the password field's "Show password" reveal button (aria-label) otherwise
-  // also matches a substring `getByLabel('Password')`, tripping strict mode. Same fix as
-  // e2e/support/app.mts:34 and verify-sas.mjs:45.
-  const input = page.getByLabel(label, { exact: true });
-  await input.waitFor({ state: 'visible', timeout: 15_000 });
-  await input.click();
-  await input.fill(value);
-}
-
-/** Log in: type the homeserver, Continue, fill credentials, Sign in → /rooms. */
-async function login(page) {
-  log('loading app');
-  await page.goto(`${APP}/login`, { waitUntil: 'networkidle' });
-  await fillLabeledInput(page, 'Homeserver', HS);
-  await page.getByText('Continue', { exact: true }).click();
-  await page
-    .getByRole('button', { name: 'Sign in' })
-    .waitFor({ timeout: 30_000 });
-  await fillLabeledInput(page, 'Username', USER);
-  await fillLabeledInput(page, 'Password', PASS);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await waitForRooms(page);
-  log('logged in → /rooms');
 }
 
 /** Set up encryption (UIA password alert → recovery key → continue). */
@@ -136,22 +109,14 @@ async function setUpEncryption(page) {
   log('encryption set up → /rooms');
 }
 
-async function main(browser, testInfo) {
+async function main(protocolBrowser) {
   const roomId = await createEncryptedRoom();
   log(`serving www on ${APP} (homeserver=${HS})`);
 
-  const ctx = await browser.newContext({
-    ignoreHTTPSErrors: IGNORE_HTTP_ERRORS,
-  });
-  const page = await ctx.newPage();
-  page.on('pageerror', (e) => console.log(`  [error] ${e.message}`));
-  page.on('console', (m) => {
-    if (m.type() === 'error') console.log(`  [console.error] ${m.text()}`);
-  });
+  const page = await protocolBrowser.newAuthenticatedPage({ label: 'media' });
 
   let exit = 1;
   try {
-    await login(page);
     await setUpEncryption(page);
 
     // Open the synced encrypted room from the sidebar.
@@ -507,27 +472,20 @@ async function main(browser, testInfo) {
     console.log('\nRESULT: PASS');
     exit = 0;
   } catch (err) {
-    console.error('\n[send-media] error:', err.message);
-    await page
-      .screenshot({ path: testInfo.outputPath('send-media-failure.png') })
-      .catch(() => {});
     console.log('\nRESULT: FAIL');
     throw err;
-  } finally {
-    await ctx.close();
   }
   expect(exit).toBe(0);
 }
 
 test('sends encrypted media, captions, batches, and retries', async ({
-  browser,
+  protocolBrowser,
   protocolCredentials,
   resourceNamespace,
-}, testInfo) => {
+}) => {
   HS = protocolCredentials.hs;
   USER = protocolCredentials.user;
   PASS = protocolCredentials.pass;
-  IGNORE_HTTP_ERRORS = protocolCredentials.mode === 'disposable';
   ROOM_NAME = `Media ${resourceNamespace.role('media')}`;
-  await main(browser, testInfo);
+  await main(protocolBrowser);
 });

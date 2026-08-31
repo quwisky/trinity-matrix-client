@@ -4,6 +4,7 @@ import {
   PROTOCOL_SUITE_ENV,
   protocolCase,
   protocolMode,
+  protocolScreenshotPolicy,
   protocolSuite,
   protocolTimeout,
   protocolTracePolicy,
@@ -46,6 +47,9 @@ export default defineConfig({
             ? { args: ['--disable-dev-shm-usage'] }
             : {}),
         },
+        // Recovery setup can display a one-time key. Remote diagnostics must
+        // never persist authenticated screens, even on failure.
+        screenshot: protocolScreenshotPolicy(protocolMode()),
         // Remote traces can capture authenticated Matrix requests. Keep full
         // diagnostics for disposable accounts, but never persist remote tokens.
         trace: protocolTracePolicy(protocolMode(), Boolean(process.env['CI'])),
