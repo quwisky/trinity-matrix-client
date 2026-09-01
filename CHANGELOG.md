@@ -619,6 +619,10 @@ All notable changes to this project are documented here. The format is based on
   and refocuses the active Conversation. Selecting the same Room from the compact list still
   opens its Conversation because that changes the pane.
 
+- **Signing in always leaves Rooms on its Account-qualified address.** The Workspace still avoids
+  duplicate navigation when its state and URL are already exact, but now repairs a bare `/rooms`
+  address even when the active Account already matches the in-memory destination.
+
 - **Runtime warnings no longer push the message composer below small phone screens.** The
   Application Runtime warning region stays visible and keyboard-scrollable while yielding the
   rest of the visual viewport to the routed surface, including with larger text and an encryption

@@ -116,6 +116,7 @@ export class WorkspaceTransitionWorkflow {
       requested.accountId !== this.accounts.activeAccountId();
 
     if (
+      options.source !== 'repair' &&
       !resolved.repaired &&
       !accountChanges &&
       sameWorkspaceDestination(previous, resolved.destination)

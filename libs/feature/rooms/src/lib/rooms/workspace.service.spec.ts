@@ -184,6 +184,26 @@ function harness(options: HarnessOptions = {}) {
 afterEach(() => TestBed.resetTestingModule());
 
 describe('WorkspaceService', () => {
+  it('canonicalizes a bare route even when its destination matches the active Workspace', async () => {
+    const h = harness();
+
+    await vi.waitFor(() =>
+      expect(h.navigate).toHaveBeenCalledWith(['/rooms'], {
+        queryParams: { account: ALICE },
+        replaceUrl: true,
+      }),
+    );
+    expect(h.service.view()).toEqual({
+      accountId: ALICE,
+      scope: { kind: 'recent' },
+      roomId: null,
+      pane: 'list',
+    });
+    expect(h.conversations.focus).not.toHaveBeenCalled();
+    expect(h.conversations.blur).not.toHaveBeenCalled();
+    expect(h.media.releaseAll).not.toHaveBeenCalled();
+  });
+
   it('commits a canonical external Back destination without redundantly navigating', async () => {
     const h = harness({
       routeAccountId: ALICE,
