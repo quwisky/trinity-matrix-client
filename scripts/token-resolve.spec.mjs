@@ -32,6 +32,7 @@ const workspaceRoot = join(import.meta.dirname, '..');
 /** Stylesheets and templates can both consume a token; both are scanned. */
 const consumerGlobs = [
   'libs/**/*.scss',
+  'libs/**/*.css',
   'apps/**/*.scss',
   'apps/**/*.css',
   'libs/**/*.html',
@@ -45,7 +46,7 @@ const definitionPattern = /(--trinity-[a-zA-Z0-9-]+)\s*:/g;
 const usagePattern = /var\(\s*(--trinity-[a-zA-Z0-9-]+)/g;
 
 const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
-const variablesFile = 'apps/trinity/src/theme/variables.scss';
+const variablesFile = 'libs/theme-foundation/styles/internal/variables.scss';
 const variables = read(variablesFile);
 
 const files = consumerGlobs

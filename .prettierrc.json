@@ -1,7 +1,7 @@
 {
   "singleQuote": true,
   "plugins": ["prettier-plugin-tailwindcss"],
-  "tailwindStylesheet": "apps/trinity/src/theme/spartan.css",
+  "tailwindStylesheet": "libs/theme-foundation/styles/internal/tailwind-adapter.css",
   "tailwindFunctions": [
     "classnames",
     "classNames",

@@ -76,7 +76,7 @@ function bareTriggers(source) {
   });
 }
 
-const THEME = 'apps/trinity/src/theme/spartan.css';
+const THEME = 'libs/theme-foundation/styles/internal/tailwind-adapter.css';
 
 describe('kit animations respect reduced motion', () => {
   it('reads the kit at all, so an empty sweep cannot pass', () => {

@@ -2,32 +2,22 @@ import { Injectable, signal } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import { StatusBar, Style } from '@capacitor/status-bar';
+import {
+  THEME_CATALOG,
+  type ResolvedThemeMode,
+  type ThemeId,
+  type ThemeMode,
+} from '@trinity/theme-foundation';
 
-/** The mode choices offered, in the order the settings picker shows them. */
-export const TRINITY_THEME_MODES = ['system', 'light', 'dark'] as const;
 /** What the user picked: follow the OS, or force a mode. */
-export type ThemePreference = (typeof TRINITY_THEME_MODES)[number];
+export type ThemePreference = ThemeMode;
 /** The mode actually applied after resolving `system`. */
-export type ResolvedTheme = 'light' | 'dark';
+export type ResolvedTheme = ResolvedThemeMode;
 
-/**
- * The named colour schemes shipped with the app. A palette is orthogonal to
- * light/dark — every palette works in both modes. Adding one is two steps: a CSS
- * block in apps/trinity/src/theme/variables.scss (keyed on `[data-theme='<id>']`)
- * and an entry here. See docs/architecture/ui-and-theming.md.
- *
- * `trinity` is the default and applies no `data-theme` attribute (the `:root`
- * defaults in variables.scss).
- */
-export const TRINITY_PALETTES = [
-  { id: 'trinity', label: 'Trinity' },
-  { id: 'amethyst', label: 'Amethyst' },
-  { id: 'onyx', label: 'Onyx' },
-] as const;
 /** The id of a registered palette. */
-export type Palette = (typeof TRINITY_PALETTES)[number]['id'];
+export type Palette = ThemeId;
 /** The palette an untouched install uses. */
-export const DEFAULT_PALETTE: Palette = 'trinity';
+export const DEFAULT_PALETTE: Palette = THEME_CATALOG.defaults.theme;
 
 /**
  * How large text is, as a multiplier on the ROOT font size.
@@ -133,7 +123,8 @@ export type CodeLineMode = (typeof TRINITY_CODE_LINE_MODES)[number]['id'];
 export const DEFAULT_CODE_LINE_MODE: CodeLineMode = 'auto';
 
 /** The mode preference an untouched install uses: follow the OS. */
-export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'system';
+export const DEFAULT_THEME_PREFERENCE: ThemePreference =
+  THEME_CATALOG.defaults.mode;
 
 const THEME_KEY = 'trinity.theme';
 const PALETTE_KEY = 'trinity.palette';
@@ -149,7 +140,7 @@ const CODE_SCALE_PROP = '--trinity-code-scale';
 const CODE_LINES_ATTR = 'data-code-lines';
 /**
  * Class toggled on <html>; its PRESENCE means dark. Light is the `:root` default and
- * dark is layered under `.dark` (see apps/trinity/src/theme/variables.scss), so a
+ * dark is layered under `.dark` (see Theme Foundation's `variables.scss`), so a
  * resolved dark theme ADDS this class and light removes it.
  */
 const DARK_CLASS = 'dark';
@@ -212,7 +203,7 @@ export class ThemeService {
   readonly palette = this._palette.asReadonly();
 
   /** The palettes available to offer in the UI. */
-  readonly palettes = TRINITY_PALETTES;
+  readonly palettes = THEME_CATALOG.themes;
 
   private media: MediaQueryList | null = null;
   private readonly onSystemChange = (): void => {
@@ -443,16 +434,16 @@ export class ThemeService {
     }
   }
 
-  /** Reflect the active palette on the document root (default palette = no attribute). */
+  /** Reflect the active Theme's catalog-owned carrier on the document root. */
   private applyPalette(): void {
     if (typeof document === 'undefined') {
       return;
     }
-    const palette = this._palette();
-    if (palette === DEFAULT_PALETTE) {
+    const theme = THEME_CATALOG.themes.find(({ id }) => id === this._palette());
+    if (!theme?.dataTheme) {
       document.documentElement.removeAttribute(PALETTE_ATTR);
     } else {
-      document.documentElement.setAttribute(PALETTE_ATTR, palette);
+      document.documentElement.setAttribute(PALETTE_ATTR, theme.dataTheme);
     }
   }
 
@@ -482,12 +473,12 @@ export class ThemeService {
 export function isThemePreference(
   value: string | null,
 ): value is ThemePreference {
-  return TRINITY_THEME_MODES.some((mode) => mode === value);
+  return THEME_CATALOG.modes.some(({ id }) => id === value);
 }
 
 /** True when `value` is a registered palette id. */
 export function isPalette(value: string | null): value is Palette {
-  return TRINITY_PALETTES.some((p) => p.id === value);
+  return THEME_CATALOG.themes.some(({ id }) => id === value);
 }
 
 /** True when `value` is a registered text scale id. */

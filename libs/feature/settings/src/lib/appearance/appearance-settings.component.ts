@@ -31,6 +31,7 @@ import {
   isRoomSortMode,
 } from '@trinity/data-access/room-library';
 import { isDateFormat, isTimeFormat } from '@trinity/util/matrix';
+import { THEME_CATALOG } from '@trinity/theme-foundation';
 import { CodeAppearanceBlockComponent } from './code-appearance-block.component';
 import { MessageGesturesBlockComponent } from './message-gestures-block.component';
 import { AppearancePreviewComponent } from './appearance-preview.component';
@@ -67,11 +68,12 @@ import { SettingsGroupComponent } from '../shared/settings-group/settings-group.
 export class AppearanceSettingsComponent {
   readonly theme = inject(ThemeService);
   /** Light/dark/system, in the shape the radio group takes. */
-  readonly themeOptions: readonly TrnRadioOption<ThemePreference>[] = [
-    { value: 'system', label: 'Use system setting', testId: 'theme-system' },
-    { value: 'light', label: 'Light', testId: 'theme-light' },
-    { value: 'dark', label: 'Dark', testId: 'theme-dark' },
-  ];
+  readonly themeOptions: readonly TrnRadioOption<ThemePreference>[] =
+    THEME_CATALOG.modes.map(({ id, label }) => ({
+      value: id,
+      label,
+      testId: `theme-${id}`,
+    }));
   readonly systemLines = inject(SystemLineSettingsService);
   readonly composer = inject(ComposerSettingsService);
   readonly format = inject(DateTimeFormatService);

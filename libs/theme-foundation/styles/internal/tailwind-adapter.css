@@ -1,16 +1,17 @@
 /*
- * Tailwind v4 + spartan.ng framework wiring for the helm libs (@trinity/helm/*).
+ * Theme Foundation's private Tailwind v4 + Spartan adapter for @trinity/helm/*.
  *
  * This file is *framework wiring only* — it owns no colour values. The design tokens
- * (both `--trinity-*` and the Helm `--background`/`--card`/… tokens) and every palette
- * live in theme/variables.scss, the single source of truth. Here we just:
+ * (both `--trinity-*` and the private Helm `--background`/`--card`/… mappings) and every
+ * Theme live in `variables.scss`, the single source of truth. Here we just:
  *   • pull in Tailwind's layers (preflight is the app's base reset now Ionic is gone),
  *   • declare the `dark:` variant, and
  *   • map the Helm tokens to Tailwind colour utilities *by reference* (`@theme inline`),
- *     so flipping `.dark` or the `data-theme` palette re-themes every utility at runtime.
+ *     so flipping `.dark` or the `data-theme` Theme re-themes every utility at runtime.
  *
- * Loaded as its own `styles` entry after variables.scss (see project.json); the
- * `var()` references below resolve at use-time from whichever palette/mode is active.
+ * The aggregate `../theme.scss` owns the loading relationship with variables. Token values
+ * stay unlayered, while framework output uses the explicit layer order below except for the
+ * documented state overrides that must outrank utilities.
  */
 @layer theme, base, components, utilities;
 @import 'tailwindcss/theme.css' layer(theme);

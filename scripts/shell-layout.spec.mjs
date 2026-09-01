@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest';
 const root = join(import.meta.dirname, '..');
 const read = (file) => readFileSync(join(root, file), 'utf8');
 
-const variables = read('apps/trinity/src/theme/variables.scss');
+const variables = read('libs/theme-foundation/styles/internal/variables.scss');
 const roomsHtml = read('libs/feature/rooms/src/lib/rooms/rooms.page.html');
 const roomsCss = read('libs/feature/rooms/src/lib/rooms/rooms.page.scss');
 const roomMixins = read('libs/feature/rooms/src/lib/styles/_mixins.scss');

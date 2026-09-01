@@ -1,4 +1,9 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import {
+  STORYBOOK_THEME_PREVIEWS,
+  expectStorybookThemeRoot,
+  storybookThemeGlobals,
+} from './theme-preview.mts';
 
 const STORY = '/iframe.html?id=components-icon-motion';
 
@@ -284,45 +289,36 @@ test.describe('icon motion', () => {
     await page.mouse.up();
   });
 
-  for (const palette of ['trinity', 'amethyst', 'onyx']) {
-    for (const mode of ['light', 'dark']) {
-      test(`${palette} ${mode} renders every supported variant`, async ({
-        page,
-      }) => {
-        const globals = encodeURIComponent(`mode:${mode};palette:${palette}`);
-        await page.goto(
-          `${STORY}--all-variants&viewMode=story&globals=${globals}`,
-        );
+  for (const preview of STORYBOOK_THEME_PREVIEWS) {
+    const { theme, mode } = preview;
+    test(`${theme.id} ${mode.id} renders every supported variant`, async ({
+      page,
+    }) => {
+      await page.goto(
+        `${STORY}--all-variants&viewMode=story&globals=${storybookThemeGlobals(preview)}`,
+      );
 
-        const rootState = await page.locator('html').evaluate((root) => ({
-          dark: root.classList.contains('dark'),
-          palette: root.getAttribute('data-theme'),
-        }));
-        expect(rootState).toEqual({
-          dark: mode === 'dark',
-          palette: palette === 'trinity' ? null : palette,
-        });
+      await expectStorybookThemeRoot(page, preview);
 
-        await expect(page.getByRole('button')).toHaveCount(6);
-        for (const name of [
-          'Back',
-          'Move up',
-          'Move down',
-          'Send',
-          'Search',
-          'Settings',
-        ]) {
-          const button = page.getByRole('button', { name });
-          const icon = innerIcon(button);
-          await expect(button).toBeVisible();
-          await expect(icon.locator('svg')).toBeVisible();
-          const rest = await transformOf(icon);
+      await expect(page.getByRole('button')).toHaveCount(6);
+      for (const name of [
+        'Back',
+        'Move up',
+        'Move down',
+        'Send',
+        'Search',
+        'Settings',
+      ]) {
+        const button = page.getByRole('button', { name });
+        const icon = innerIcon(button);
+        await expect(button).toBeVisible();
+        await expect(icon.locator('svg')).toBeVisible();
+        const rest = await transformOf(icon);
 
-          await button.hover();
+        await button.hover();
 
-          await expect.poll(() => transformOf(icon)).not.toBe(rest);
-        }
-      });
-    }
+        await expect.poll(() => transformOf(icon)).not.toBe(rest);
+      }
+    });
   }
 });

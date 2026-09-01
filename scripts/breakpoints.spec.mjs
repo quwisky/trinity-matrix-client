@@ -32,7 +32,7 @@ const workspaceRoot = join(import.meta.dirname, '..');
  */
 const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
 
-const THEME = 'apps/trinity/src/theme/spartan.css';
+const THEME = 'libs/theme-foundation/styles/internal/tailwind-adapter.css';
 const QUERIES = 'libs/util/ui/src/lib/media-query.ts';
 const MIXINS = 'libs/feature/rooms/src/lib/styles/_mixins.scss';
 

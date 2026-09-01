@@ -5,8 +5,9 @@ import { inlineStyleSheets } from './inline-styles.mjs';
 
 const workspaceRoot = join(import.meta.dirname, '..');
 const GLOBAL_STYLESHEET = 'apps/trinity/src/global.scss';
-const TOKEN_STYLESHEET = 'apps/trinity/src/theme/variables.scss';
-const HIDDEN_UTILITY_STYLESHEET = 'apps/trinity/src/theme/spartan.css';
+const TOKEN_STYLESHEET = 'libs/theme-foundation/styles/internal/variables.scss';
+const HIDDEN_UTILITY_STYLESHEET =
+  'libs/theme-foundation/styles/internal/tailwind-adapter.css';
 
 const stripComments = (source) =>
   source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
@@ -14,9 +15,12 @@ const stripComments = (source) =>
 const read = (file) =>
   stripComments(readFileSync(join(workspaceRoot, file), 'utf8'));
 
-const stylesheetFiles = globSync(['apps/**/*.{css,scss}', 'libs/**/*.scss'], {
-  cwd: workspaceRoot,
-}).sort();
+const stylesheetFiles = globSync(
+  ['apps/**/*.{css,scss}', 'libs/**/*.{css,scss}'],
+  {
+    cwd: workspaceRoot,
+  },
+).sort();
 
 const scrollbarOwner = (source) =>
   /scrollbar-(?:color|width)\s*:|::-(?:webkit-)?scrollbar/.test(source);

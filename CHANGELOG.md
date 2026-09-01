@@ -93,6 +93,12 @@ All notable changes to this project are documented here. The format is based on
   envelope before it becomes visible. Invalid data and storage failures affect only that
   preference and return value-free recovery, and all later writes use only the current key.
 
+- **Theme ownership now has one source.** Theme and Mode identity, defaults and preview metadata
+  come from one read-only catalog, while one aggregate stylesheet owns the semantic token values
+  and private Helm/Tailwind mappings. The application and Storybook consume those interfaces
+  directly, Storybook derives all six fixed Theme/Mode previews from the catalog, and source guards
+  prevent compatibility catalogs or root Theme definitions from returning elsewhere.
+
 - **Local validation output is quiet and classified.** Nx commands now normalize contradictory
   color variables, Vitest configs are ready for Vite's native loader, component tests install
   deterministic browser APIs and the icons they render, and expected failure logs are asserted at

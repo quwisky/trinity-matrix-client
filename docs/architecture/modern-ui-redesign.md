@@ -263,8 +263,10 @@ stable. The floating/bounded layout does not depend on search.
 
 ### Tokens
 
-Continue using `apps/trinity/src/theme/variables.scss` as the single source of truth. Add or clarify
-semantic roles only when at least two components need them. Likely additions are:
+Use `libs/theme-foundation` as the single Theme owner. Its supported interface is one aggregate
+stylesheet plus one read-only catalog; the old application theme paths are temporary compatibility
+entrypoints during migration. Add or clarify semantic roles only when at least two components need
+them. Likely additions are:
 
 - outer app frame, workspace and raised-control surfaces;
 - selected, selected-hover and attention surfaces;
@@ -272,8 +274,8 @@ semantic roles only when at least two components need them. Likely additions are
 - component density values derived from the existing spacing scale;
 - focus, pressed and disabled opacity roles if repeated values remain after the first migrations.
 
-Components consume semantic roles, never raw colour values. Helm mappings remain references to the
-Trinity roles. No new design-token package or runtime theming library is needed.
+Components consume semantic roles, never raw colour values. Helm mappings remain private references
+to Trinity roles. Theme Foundation is a build-time kernel module, not a runtime theme interpreter.
 
 ### Typography
 
@@ -355,8 +357,8 @@ recorded.
 
 Primary ownership:
 
-- `apps/trinity/src/theme/variables.scss`
-- `apps/trinity/src/theme/spartan.css`
+- `libs/theme-foundation/styles/theme.scss`
+- `libs/theme-foundation/src/lib/theme-catalog.ts`
 - `libs/platform-native/src/lib/theme.service.ts`
 - `libs/components/*`
 - `docs/architecture/ui-and-theming.md`

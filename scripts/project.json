@@ -25,6 +25,7 @@
         "{workspaceRoot}/libs/**/*.ts",
         "{workspaceRoot}/libs/**/*.html",
         "{workspaceRoot}/libs/**/*.scss",
+        "{workspaceRoot}/libs/**/*.css",
         "{workspaceRoot}/libs/**/project.json",
         "{workspaceRoot}/ios/**/*.swift",
         "{workspaceRoot}/android/project.json",

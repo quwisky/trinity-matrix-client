@@ -37,7 +37,7 @@ import { describe, expect, it } from 'vitest';
 const workspaceRoot = join(import.meta.dirname, '..');
 const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
 
-const THEME = 'apps/trinity/src/theme/spartan.css';
+const THEME = 'libs/theme-foundation/styles/internal/tailwind-adapter.css';
 const themeAst = postcss.parse(read(THEME), { from: THEME });
 
 const rulesWithSelector = (selector) => {

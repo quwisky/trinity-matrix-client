@@ -1,13 +1,13 @@
 // =============================================================================
-// Trinity design tokens — the single source of truth for every app colour/radius.
+// Theme Foundation implementation — semantic tokens and private Helm mappings.
 // =============================================================================
 
 // TWO ORTHOGONAL AXES
 // -------------------
 //   • Mode    — light / dark, toggled by the `.dark` class on <html> (ThemeService).
-//   • Palette — a named colour scheme, selected by the `data-theme` attribute on
-//               <html> (ThemeService). No attribute == the default "trinity" palette.
-// The axes compose: any palette works in both light and dark.
+//   • Theme   — a named visual token set, selected by the `data-theme` attribute on
+//               <html> (ThemeService). No attribute == the default "trinity" Theme.
+// The axes compose: any Theme works in both light and dark.
 
 // TOKEN LAYERS
 // ------------
@@ -15,16 +15,17 @@
 //      by hand-authored component SCSS (surfaces, text, accent, radii).
 //   2. Helm/shadcn tokens (`--background`, `--card`, `--primary`, …) — consumed by the
 //      generated Helm components through Tailwind colour utilities (`bg-card`,
-//      `text-muted-foreground`, …). spartan.css maps these to `--color-*` by reference.
+//      `text-muted-foreground`, …). The private Tailwind adapter maps these to `--color-*`
+//      by reference.
 //   Where a Helm token always equals a Trinity token it is defined *as a reference*
 //   (`--card: var(--trinity-sidebar)`) so a palette only sets the value once.
 
-// HOW TO ADD A PALETTE  (see docs/architecture/ui-and-theming.md for the full walk-through)
+// HOW TO ADD A THEME  (see docs/architecture/ui-and-theming.md for the full walk-through)
 // --------------------
 //   1. Copy the two `[data-theme='amethyst']` blocks below, rename the attribute.
 //   2. Override only the tokens that differ from the default — anything you leave out
 //      falls through to the `:root` / `:root.dark` defaults.
-//   3. Register the id + label in TRINITY_PALETTES (libs/platform-native theme.service).
+//   3. Register its id, label and carrier metadata in THEME_CATALOG.
 //   That's it — Helm components and Tailwind utilities re-theme automatically.
 
 // Selector specificity is deliberate. `:root.dark` (0,2,0) out-ranks a bare `:root`
@@ -195,30 +196,10 @@
   // declaration is what "Default" actually means.
   --trinity-code-scale: 1;
 
-  // --- Mode- & palette-invariant Helm bindings (define once) --------------------
-  // Card/popover text tracks the base foreground; primary tracks the Trinity accent; Helm's
-  // translucent focus halo tracks its own high-contrast source; and input tracks the border.
-  // Palettes reset the *source* tokens and these follow for free. (The
-  // secondary/accent surface text is a touch lighter than --foreground in light, so it
-  // is set per mode below rather than bound here.)
-  --card-foreground: var(--foreground);
-  --popover-foreground: var(--foreground);
-
-  // Tooltips stay dark in light mode instead of becoming another pale surface. The dark
-  // mode override below switches the fill to the palette-aware elevated surface while
-  // keeping the same readable foreground pairing.
-  --trinity-tooltip-surface: var(--foreground);
-  --trinity-tooltip-foreground: var(--background);
-  --secondary-foreground: hsl(240deg 5.9% 10%);
-  --accent-foreground: hsl(240deg 5.9% 10%);
-  --primary: var(--trinity-accent);
-  --primary-foreground: hsl(0deg 0% 100%);
-  --ring: var(--trinity-focus-ring-halo);
-  --input: var(--border);
-
-  // Warning is identical across modes; destructive/success flip in dark (see below).
-  --warning: hsl(38deg 92% 50%);
-  --warning-foreground: hsl(20deg 14% 4%);
+  // Tooltips stay dark in light mode instead of becoming another pale surface. These are
+  // product roles; the private Helm adapter below maps vendor tokens to them.
+  --trinity-tooltip-surface: var(--trinity-control-foreground);
+  --trinity-tooltip-foreground: var(--trinity-surface-canvas);
 
   // --- Trinity brand (constant across modes in this palette) --------------------
   --trinity-accent: #5865f2; // blurple — a FILL. Not readable as text; see --trinity-link.
@@ -229,15 +210,16 @@
   // read the accent reads this instead; borders and fills still use the accent.
   --trinity-link: #3f49b8; // 5.09:1 on the worst light surface (--trinity-active)
 
-  // Readable text/icon colour on an accent fill — tracks the Helm on-primary token, so a
+  // Readable text/icon colour on an accent fill. The private Helm adapter maps its
+  // on-primary token outward from the same Trinity semantic role.
   // light-accent palette (e.g. Amethyst dark) gets dark on-accent text, not unreadable white.
-  --trinity-accent-foreground: var(--primary-foreground);
+  --trinity-accent-foreground: hsl(0deg 0% 100%);
   --trinity-green: #23a55a;
 
   // On-green text/icon — mirrors the accent pairing so a palette that lightens
   // --trinity-green can darken this too. White on #23a55a is 3.18:1: it passes AA only
   // as large text, which is what the sole consumer is (a 32px aria-hidden checkmark).
-  --trinity-green-foreground: var(--primary-foreground);
+  --trinity-green-foreground: var(--trinity-accent-foreground);
 
   // Danger splits into two roles because one colour cannot serve both in dark mode.
   //   --trinity-danger              — alert TEXT/ICONS drawn straight on a surface.
@@ -271,7 +253,7 @@
   // per-state — a button lifts /10 to /20 on hover in light and /20 to /30 in dark, while a
   // menu item and a badge stay put — so a rest/hover pair would have to be re-decided for
   // every selector, and getting it wrong is invisible. This way each override maps to the
-  // number it literally declares. See spartan.css.
+  // number it literally declares. See the private Tailwind adapter.
   // `in srgb`, NOT `in oklab`, and that is the point rather than a detail: mixing a colour
   // with `transparent` yields that colour at N% alpha, which the browser then composites in
   // gamma-encoded sRGB. An sRGB mix over --card therefore reproduces today's pixels exactly
@@ -282,18 +264,18 @@
   // serves both modes and there is nothing to keep in step.
   --trinity-danger-tint-10: color-mix(
     in srgb,
-    var(--destructive) 10%,
-    var(--card)
+    var(--trinity-status-danger-surface) 10%,
+    var(--trinity-surface-card)
   );
   --trinity-danger-tint-20: color-mix(
     in srgb,
-    var(--destructive) 20%,
-    var(--card)
+    var(--trinity-status-danger-surface) 20%,
+    var(--trinity-surface-card)
   );
   --trinity-danger-tint-30: color-mix(
     in srgb,
-    var(--destructive) 30%,
-    var(--card)
+    var(--trinity-status-danger-surface) 30%,
+    var(--trinity-surface-card)
   );
 
   // --- Syntax highlighting ------------------------------------------------------
@@ -370,23 +352,54 @@
   --trinity-text-muted: #5b5d65; // 4.55:1 on --trinity-active (was #5c5e66, 4.48:1)
   --trinity-text-bright: #060607;
 
-  // --- Helm surfaces (light) ----------------------------------------------------
-  --background: var(--trinity-chat); // #fff
-  --foreground: hsl(240deg 10% 3.9%);
-  --card: var(--trinity-chat);
-  --popover: var(--trinity-chat);
-  --secondary: hsl(240deg 4.8% 95.9%);
-  --muted: hsl(240deg 4.8% 95.9%);
-  --muted-foreground: hsl(
+  // --- Semantic control roles (light) ------------------------------------------
+  // Theme authors own these values. Vendor names are mapped only in the private adapter
+  // below, so a Theme never needs to understand Helm or Tailwind component vocabulary.
+  --trinity-surface-canvas: var(--trinity-chat); // #fff
+  --trinity-surface-card: var(--trinity-chat);
+  --trinity-surface-popover: var(--trinity-chat);
+  --trinity-surface-control: hsl(240deg 4.8% 95.9%);
+  --trinity-control-foreground: hsl(240deg 10% 3.9%);
+  --trinity-control-secondary-foreground: hsl(240deg 5.9% 10%);
+  --trinity-control-accent-foreground: hsl(240deg 5.9% 10%);
+  --trinity-control-muted-foreground: hsl(
     240deg 3.8% 38%
   ); // 4.52:1 on the lightest row ground (was 3.35:1)
 
-  --accent: hsl(240deg 4.8% 95.9%);
-  --destructive: hsl(0deg 84.2% 60.2%);
-  --destructive-foreground: hsl(0deg 0% 98%);
-  --success: hsl(145deg 63% 42%);
-  --success-foreground: hsl(0deg 0% 100%);
-  --border: hsl(240deg 5.9% 90%);
+  --trinity-border-control: hsl(240deg 5.9% 90%);
+  --trinity-status-danger-surface: hsl(0deg 84.2% 60.2%);
+  --trinity-status-danger-surface-foreground: hsl(0deg 0% 98%);
+  --trinity-status-success-surface: hsl(145deg 63% 42%);
+  --trinity-status-success-surface-foreground: hsl(0deg 0% 100%);
+  --trinity-status-warning-surface: hsl(38deg 92% 50%);
+  --trinity-status-warning-surface-foreground: hsl(20deg 14% 4%);
+
+  // --- Private Helm adapter -----------------------------------------------------
+  // Product and Theme code consumes `--trinity-*`. These compatibility mappings are an
+  // implementation detail of Theme Foundation and disappear from its supported interface.
+  --background: var(--trinity-surface-canvas);
+  --foreground: var(--trinity-control-foreground);
+  --card: var(--trinity-surface-card);
+  --card-foreground: var(--trinity-control-foreground);
+  --popover: var(--trinity-surface-popover);
+  --popover-foreground: var(--trinity-control-foreground);
+  --secondary: var(--trinity-surface-control);
+  --secondary-foreground: var(--trinity-control-secondary-foreground);
+  --muted: var(--trinity-surface-control);
+  --muted-foreground: var(--trinity-control-muted-foreground);
+  --accent: var(--trinity-surface-control);
+  --accent-foreground: var(--trinity-control-accent-foreground);
+  --primary: var(--trinity-accent);
+  --primary-foreground: var(--trinity-accent-foreground);
+  --destructive: var(--trinity-status-danger-surface);
+  --destructive-foreground: var(--trinity-status-danger-surface-foreground);
+  --success: var(--trinity-status-success-surface);
+  --success-foreground: var(--trinity-status-success-surface-foreground);
+  --warning: var(--trinity-status-warning-surface);
+  --warning-foreground: var(--trinity-status-warning-surface-foreground);
+  --border: var(--trinity-border-control);
+  --ring: var(--trinity-focus-ring-halo);
+  --input: var(--trinity-border-control);
 }
 
 // -----------------------------------------------------------------------------
@@ -439,31 +452,26 @@
   --trinity-danger-solid: #ef4444; // shadcn's *light* destructive red, reused as a fill
   --trinity-danger-solid-foreground: #1a1a1a;
 
-  // Helm surfaces (dark). Elevated surfaces track the Trinity palette: cards/popovers
-  // are the sidebar tone, the muted/secondary/accent layer is one step lighter
-  // (--trinity-hover) so `hover:bg-accent` reads as a lift rather than inverting darker.
-  --background: hsl(240deg 10% 3.9%);
-  --foreground: hsl(0deg 0% 98%);
-
-  // Dark surface text collapses back onto --foreground (no light/dark split here).
-  --secondary-foreground: var(--foreground);
-  --accent-foreground: var(--foreground);
-  --card: var(--trinity-sidebar); // #2b2d31
-  --popover: var(--trinity-sidebar);
-  --trinity-tooltip-surface: var(--popover);
-  --trinity-tooltip-foreground: var(--popover-foreground);
-  --secondary: var(--trinity-hover); // #35373c
-  --muted: var(--trinity-hover);
-  --muted-foreground: hsl(
+  // Semantic control roles (dark). Elevated surfaces track the active Theme: cards and
+  // popovers use navigation, while muted/secondary/accent use the hover surface.
+  --trinity-surface-canvas: hsl(240deg 10% 3.9%);
+  --trinity-control-foreground: hsl(0deg 0% 98%);
+  --trinity-control-secondary-foreground: var(--trinity-control-foreground);
+  --trinity-control-accent-foreground: var(--trinity-control-foreground);
+  --trinity-surface-card: var(--trinity-sidebar); // #2b2d31
+  --trinity-surface-popover: var(--trinity-sidebar);
+  --trinity-tooltip-surface: var(--trinity-surface-popover);
+  --trinity-tooltip-foreground: var(--trinity-control-foreground);
+  --trinity-surface-control: var(--trinity-hover); // #35373c
+  --trinity-control-muted-foreground: hsl(
     240deg 5% 70%
   ); // 4.60:1 on --trinity-active (was 3.91:1)
 
-  --accent: var(--trinity-hover);
-  --destructive: hsl(0deg 62.8% 30.6%);
-  --destructive-foreground: hsl(0deg 0% 98%);
-  --success: hsl(145deg 58% 45%);
-  --success-foreground: hsl(0deg 0% 100%);
-  --border: hsl(240deg 3.7% 15.9%);
+  --trinity-status-danger-surface: hsl(0deg 62.8% 30.6%);
+  --trinity-status-danger-surface-foreground: hsl(0deg 0% 98%);
+  --trinity-status-success-surface: hsl(145deg 58% 45%);
+  --trinity-status-success-surface-foreground: hsl(0deg 0% 100%);
+  --trinity-border-control: hsl(240deg 3.7% 15.9%);
 }
 
 // =============================================================================
@@ -493,20 +501,16 @@
   --trinity-text-muted: #5d5470; // 4.90:1 on --trinity-active (was #635a74, 4.38:1)
   --trinity-text-bright: #120a1e;
 
-  // Helm tokens that hold a literal value in light (so are not auto-aliased). New
-  // palettes can simply track the palette foreground; only the default keeps a
-  // hand-tuned pair for exact back-compat.
-  --foreground: hsl(260deg 22% 14%);
-  --secondary-foreground: var(--foreground);
-  --accent-foreground: var(--foreground);
-  --secondary: #ece5f6;
-  --muted: #ece5f6;
-  --muted-foreground: hsl(
+  // Control roles that differ from the complete default Theme.
+  --trinity-control-foreground: hsl(260deg 22% 14%);
+  --trinity-control-secondary-foreground: var(--trinity-control-foreground);
+  --trinity-control-accent-foreground: var(--trinity-control-foreground);
+  --trinity-surface-control: #ece5f6;
+  --trinity-control-muted-foreground: hsl(
     260deg 10% 38%
   ); // 4.77:1 on --trinity-active (was 3.84:1)
 
-  --accent: #ece5f6;
-  --border: #e6ddf2;
+  --trinity-border-control: #e6ddf2;
 }
 
 :root[data-theme='amethyst'].dark {
@@ -516,7 +520,7 @@
 
   // The light accent needs dark on-accent text: white would be 2.7:1 (fails WCAG AA);
   // this dark violet is 6.3:1. --primary-foreground defaults to white in :root.
-  --primary-foreground: #1e1633;
+  --trinity-accent-foreground: #1e1633;
   --trinity-rail: #1c1826;
   --trinity-sidebar: #262232;
   --trinity-sidebar-header: #201c2b;
@@ -527,13 +531,13 @@
   --trinity-text: #ddd8e6;
   --trinity-text-muted: #aaa3bd; // 4.76:1 on the worst amethyst-dark surface (was 4.22:1)
   --trinity-text-bright: #f5f2fa;
-  --background: hsl(260deg 20% 8%);
-  --foreground: hsl(260deg 20% 96%);
-  --muted-foreground: hsl(
+  --trinity-surface-canvas: hsl(260deg 20% 8%);
+  --trinity-control-foreground: hsl(260deg 20% 96%);
+  --trinity-control-muted-foreground: hsl(
     260deg 12% 70%
   ); // 5.06:1 on the worst amethyst-dark ground
 
-  --border: #322c42;
+  --trinity-border-control: #322c42;
 }
 
 // -----------------------------------------------------------------------------
@@ -560,7 +564,7 @@
   --trinity-hover: #efeff1;
   --trinity-active: #dcdce0;
   --trinity-divider: #e4e4e6;
-  --border: #e4e4e6;
+  --trinity-border-control: #e4e4e6;
 }
 
 :root[data-theme='onyx'].dark {
@@ -574,8 +578,8 @@
   --trinity-hover: #1c1c20;
   --trinity-active: #26262b;
   --trinity-divider: #1f1f24;
-  --background: #000;
-  --border: #1f1f24;
+  --trinity-surface-canvas: #000;
+  --trinity-border-control: #1f1f24;
 }
 
 // -----------------------------------------------------------------------------

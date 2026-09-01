@@ -183,7 +183,7 @@ test.describe('Clear all data', () => {
  *
  * The unit test beside this one can only assert class names: jsdom has no Tailwind and no
  * theme tokens, so a `text-danger` that resolved to nothing, or to the near-black maroon
- * documented in theme/spartan.css, stays green there. This is the only layer that reads the
+ * documented in Theme Foundation's Tailwind adapter, stays green there. This is the only layer that reads the
  * colour a person actually gets.
  *
  * Both palettes, because the argument for this styling is surface-specific — `amethyst`

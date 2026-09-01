@@ -11,7 +11,7 @@ import tseslint from 'typescript-eslint';
 // anchored at this config's location (the repo root).
 const tailwindCssConfigPath = join(
   import.meta.dirname,
-  'apps/trinity/src/theme/spartan.css',
+  'libs/theme-foundation/styles/internal/tailwind-adapter.css',
 );
 
 /** Shared by the two rules below, which police the same ban over different AST shapes. */
@@ -249,6 +249,7 @@ export default defineConfig([
       // direct SDK knowledge at their composition boundary.
       'libs/application/**/*.ts',
       'libs/testing/**/*.ts',
+      'libs/theme-foundation/**/*.ts',
       // `libs/util/ui` and not `libs/util/**`: the sibling `libs/util/matrix` is the
       // sanctioned exception that models the SDK's own types, so a directory-wide glob here
       // would ban the one library that has to import it.

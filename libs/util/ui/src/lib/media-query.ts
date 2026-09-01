@@ -23,7 +23,7 @@ export const BELOW_MD_QUERY = '(max-width: 767.98px)';
  * timeline wide enough to read, and a 240px member column — not a decision of its own.
  *
  * Paired with the Tailwind variant of the same name (`--breakpoint-members` in
- * `apps/trinity/src/theme/spartan.css`) and with `$below-members` in the rooms feature's
+ * Theme Foundation's Tailwind adapter) and with `$below-members` in the rooms feature's
  * shared SCSS. Media queries cannot read a custom property, so the value genuinely exists
  * three times; `scripts/breakpoints.spec.mjs` is what stops the three drifting apart.
  *

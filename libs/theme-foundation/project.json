@@ -1,0 +1,14 @@
+{
+  "name": "theme-foundation",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/theme-foundation/src",
+  "prefix": "trn",
+  "tags": [
+    "type:util",
+    "scope:shared",
+    "role:kernel",
+    "capability:design-system"
+  ],
+  "projectType": "library",
+  "targets": { "test": {}, "typecheck": {} }
+}

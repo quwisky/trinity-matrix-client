@@ -10,7 +10,7 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 // `data-checked:bg-primary` and `data-unchecked:bg-input`. Tailwind reads a bare `data-foo:`
 // as an attribute PRESENCE test and compiled `[data-checked]`, which nothing in the tree
 // carries — so fourteen rules were emitted, matched nothing, and the switch rendered
-// identically on and off. `apps/trinity/src/theme/spartan.css` declares the two variants.
+// identically on and off. Theme Foundation's Tailwind adapter declares the two variants.
 //
 // No unit test can see this and none ever will: jsdom applies no CSS, so `className`
 // contains exactly the tokens the author wrote and every assertion about them passes
