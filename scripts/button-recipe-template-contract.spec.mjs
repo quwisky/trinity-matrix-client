@@ -15,6 +15,7 @@ import { TrnButton } from '@trinity/components/controls';
     <button trnBtn variant="primary" size="md">Primary</button>
     <button trnBtn variant="danger" size="md">Danger</button>
     <button trnBtn variant="primary" presentation="ghost" shape="icon" size="md">Icon</button>
+    <button trnBtn variant="primary" shape="icon" size="default">Mixed migration icon</button>
     <button trnBtn variant="default" size="default">Legacy default</button>
     <button trnBtn variant="destructive" size="icon">Legacy icon</button>
   \`,

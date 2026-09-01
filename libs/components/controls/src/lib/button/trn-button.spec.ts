@@ -123,6 +123,58 @@ describe('TrnButton', () => {
     );
   });
 
+  it('preserves semantic tone across non-solid presentations', () => {
+    const primaryGhost = trnButtonRecipe({
+      presentation: 'ghost',
+      shape: 'label',
+      size: 'md',
+      variant: 'primary',
+    });
+    const secondaryGhost = trnButtonRecipe({
+      presentation: 'ghost',
+      shape: 'label',
+      size: 'md',
+      variant: 'secondary',
+    });
+    const dangerGhost = trnButtonRecipe({
+      presentation: 'ghost',
+      shape: 'label',
+      size: 'md',
+      variant: 'danger',
+    });
+
+    expect(secondaryGhost).not.toBe(primaryGhost);
+    expect(secondaryGhost).toContain('text-secondary-foreground');
+    expect(dangerGhost).not.toBe(primaryGhost);
+    expect(dangerGhost).toContain('text-danger');
+  });
+
+  it('normalizes mixed canonical and compatibility icon inputs', () => {
+    const canonicalIcon = trnButtonRecipe({
+      presentation: 'solid',
+      shape: 'icon',
+      size: 'md',
+      variant: 'primary',
+    });
+
+    expect(
+      trnButtonRecipe({
+        presentation: 'solid',
+        shape: 'icon',
+        size: 'default',
+        variant: 'primary',
+      }),
+    ).toBe(canonicalIcon);
+    expect(
+      trnButtonRecipe({
+        presentation: 'solid',
+        shape: 'label',
+        size: 'icon',
+        variant: 'primary',
+      }),
+    ).toBe(canonicalIcon);
+  });
+
   it('marks canonical and compatibility icon recipes without marking labels', async () => {
     const { container, fixture } = await render(IconHostComponent);
     const buttons = [...container.querySelectorAll('button')];
@@ -150,7 +202,7 @@ describe('TrnButton', () => {
     ).toBe(true);
   });
 
-  it('updates the marker when a bound size changes', async () => {
+  it('updates the marker when a bound shape changes', async () => {
     const { container, fixture } = await render(IconHostComponent);
     const host = fixture.componentInstance;
     const dynamic = container.querySelector('[data-testid="dynamic"]')!;

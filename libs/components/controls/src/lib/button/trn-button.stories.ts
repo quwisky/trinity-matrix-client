@@ -54,6 +54,26 @@ export const CanonicalAndCompatibility: Story = {
         </div>
         <div class="flex flex-wrap items-center gap-3">
           <button
+            data-testid="canonical-primary-ghost"
+            type="button"
+            trnBtn
+            variant="primary"
+            presentation="ghost"
+          >
+            Primary quiet
+          </button>
+          <button
+            data-testid="canonical-danger-ghost"
+            type="button"
+            trnBtn
+            variant="danger"
+            presentation="ghost"
+          >
+            Danger quiet
+          </button>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <button
             data-testid="canonical-icon"
             type="button"
             trnBtn

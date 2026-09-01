@@ -1,5 +1,6 @@
 import type { TrnSize, TrnVariant } from '@trinity/components/foundations';
 import { buttonVariants } from '@trinity/helm/button';
+import { hlm } from '@trinity/helm/utils';
 
 export type TrnButtonVariant = Extract<
   TrnVariant,
@@ -44,6 +45,26 @@ const iconSize = {
   lg: 'icon-lg',
 } as const;
 
+const nonSolidTone = {
+  primary: {
+    outline: '',
+    ghost: '',
+    link: '',
+  },
+  secondary: {
+    outline:
+      'text-secondary-foreground hover:bg-secondary hover:text-secondary-foreground',
+    ghost:
+      'text-secondary-foreground hover:bg-secondary hover:text-secondary-foreground',
+    link: 'text-secondary-foreground',
+  },
+  danger: {
+    outline: 'border-danger text-danger hover:bg-danger/10 hover:text-danger',
+    ghost: 'text-danger hover:bg-danger/10 hover:text-danger',
+    link: 'text-danger hover:text-danger',
+  },
+} as const;
+
 function isCanonicalVariant(
   variant: TrnButtonVariantInput,
 ): variant is TrnButtonVariant {
@@ -67,17 +88,47 @@ export function isTrnButtonIconSize(size: TrnButtonSizeInput): boolean {
  * only this mapping changes; canonical component callers keep their semantic vocabulary.
  */
 export function trnButtonRecipe(options: TrnButtonRecipeOptions): string {
-  const variant = isCanonicalVariant(options.variant)
-    ? options.presentation === 'solid'
-      ? solidVariant[options.variant]
-      : options.presentation
-    : options.variant;
+  const { tone, variant } = resolveVariant(options);
+  const canonicalSize = normalizeSize(options.size);
+  const shape = isTrnButtonIconSize(options.size) ? 'icon' : options.shape;
+  const size =
+    shape === 'icon' ? iconSize[canonicalSize] : labelSize[canonicalSize];
 
-  const size = isCanonicalSize(options.size)
-    ? options.shape === 'icon'
-      ? iconSize[options.size]
-      : labelSize[options.size]
-    : options.size;
+  return hlm(buttonVariants({ variant, size }), tone);
+}
 
-  return buttonVariants({ variant, size });
+function resolveVariant(options: TrnButtonRecipeOptions): {
+  tone: string;
+  variant: LegacyButtonVariant;
+} {
+  if (!isCanonicalVariant(options.variant)) {
+    return { tone: '', variant: options.variant };
+  }
+
+  if (options.presentation === 'solid') {
+    return { tone: '', variant: solidVariant[options.variant] };
+  }
+
+  return {
+    tone: nonSolidTone[options.variant][options.presentation],
+    variant: options.presentation,
+  };
+}
+
+function normalizeSize(size: TrnButtonSizeInput): TrnButtonSize {
+  if (isCanonicalSize(size)) {
+    return size;
+  }
+
+  switch (size) {
+    case 'default':
+    case 'icon':
+      return 'md';
+    case 'icon-xs':
+      return 'xs';
+    case 'icon-sm':
+      return 'sm';
+    case 'icon-lg':
+      return 'lg';
+  }
 }

@@ -42,11 +42,6 @@ import {
   ],
 })
 export class TrnButton {
-  readonly variant = input<TrnButtonVariantInput>('primary');
-  readonly size = input<TrnButtonSizeInput>('md');
-  readonly presentation = input<TrnButtonPresentation>('solid');
-  readonly shape = input<TrnButtonShape>('label');
-
   /**
    * Icon shape opts into Trinity's shared icon-button interaction contract.
    *
@@ -55,6 +50,11 @@ export class TrnButton {
   protected readonly iconButton = computed(
     () => this.shape() === 'icon' || isTrnButtonIconSize(this.size()),
   );
+
+  readonly variant = input<TrnButtonVariantInput>('primary');
+  readonly size = input<TrnButtonSizeInput>('md');
+  readonly presentation = input<TrnButtonPresentation>('solid');
+  readonly shape = input<TrnButtonShape>('label');
 
   constructor() {
     classes(() =>

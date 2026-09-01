@@ -43,4 +43,9 @@ test('canonical button recipes render like their compatibility inputs', async ({
   expect(await recipeStyle(canonicalDanger)).not.toEqual(
     await recipeStyle(canonicalPrimary),
   );
+  expect(
+    (await recipeStyle(page.getByTestId('canonical-danger-ghost'))).color,
+  ).not.toBe(
+    (await recipeStyle(page.getByTestId('canonical-primary-ghost'))).color,
+  );
 });
