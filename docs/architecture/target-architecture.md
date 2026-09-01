@@ -47,8 +47,11 @@ Workspace, Settings, Global Search, Badge coordination, and Application Runtime 
 Application Runtime is the sole startup and session owner. Its ordered attempt negotiates the
 host, hydrates preferences, restores Accounts, establishes optional session capabilities,
 restores Workspace and crosses one final readiness stage. Required failures block with typed
-executable recovery; optional failures are retained and presented as non-blocking warnings. Its one lifetime subscription owns every
-session-long source and can be stopped and restarted without retained listeners.
+executable recovery; optional failures are retained and presented as non-blocking warnings. The
+application root keeps that warning region visible and keyboard-scrollable, caps it at one quarter
+of the visual viewport, and gives the remaining height to the routed surface. Its one lifetime
+subscription owns every session-long source and can be stopped and restarted without retained
+listeners.
 
 Workspace is the live cross-capability coordinator for navigation. It exposes one immutable
 Account, sidebar-scope, optional-Conversation, and pane view. Its URL is a canonical projection and

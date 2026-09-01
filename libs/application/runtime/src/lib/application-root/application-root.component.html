@@ -38,8 +38,10 @@
   } @else {
     @if (warnings().length > 0) {
       <aside
-        class="border-b border-border bg-muted px-4 py-3 text-sm text-foreground"
+        class="runtime-warnings border-b border-border bg-muted px-4 py-3 text-sm text-foreground"
         role="status"
+        aria-label="Application runtime warnings"
+        tabindex="0"
         data-testid="app-runtime-warnings"
       >
         <p class="font-medium">Trinity started with limited capabilities.</p>
