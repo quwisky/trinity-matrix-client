@@ -447,7 +447,7 @@ test.describe('@production-renderer application surface', () => {
     );
     await expect(
       page.getByTestId('palette-select').getByRole('combobox'),
-    ).toHaveAccessibleName('Palette');
+    ).toHaveAccessibleName('Theme');
     await expect(
       page.getByTestId('text-scale-select').getByRole('combobox'),
     ).toHaveAccessibleName('Text size');

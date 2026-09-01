@@ -8,6 +8,7 @@ import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppConfigService } from './app-config.service';
 import {
+  CONFIG_EXPORT_VERSION,
   exportedKeysFor,
   provideConfigEntries,
   type ConfigDocument,
@@ -24,7 +25,10 @@ import {
 } from './privacy-settings.service';
 import { provideCapacitorPreferenceStorage } from './preferences/capacitor-preference-storage.adapter';
 import { KeyboardShortcutsService } from './shortcuts/keyboard-shortcuts.service';
-import { ThemeService } from './theme.service';
+import {
+  DEFAULT_SIDEBAR_WIDTH,
+  ShellLayoutService,
+} from './shell-layout.service';
 
 vi.mock('@capacitor/preferences', () => ({
   Preferences: { get: vi.fn(), set: vi.fn(), remove: vi.fn() },
@@ -174,7 +178,10 @@ function run(action: ReturnType<AppConfigService['resetToDefaults']>) {
 }
 
 /** A document carrying exactly the given settings, in the committed envelope. */
-function documentOf(settings: unknown, version = 1): unknown {
+function documentOf(
+  settings: unknown,
+  version = CONFIG_EXPORT_VERSION,
+): unknown {
   return { version, exportedAt: new Date().toISOString(), settings };
 }
 
@@ -256,21 +263,23 @@ describe('AppConfigService', () => {
   describe('export', () => {
     it('nests the values under their owner rather than dumping raw keys', () => {
       const config = setup();
-      TestBed.inject(ThemeService).setPalette('amethyst');
+      TestBed.inject(ShellLayoutService).setSidebarWidth(420);
 
       const { settings } = config.export();
 
-      expect(at(settings, 'theme.palette')).toBe('amethyst');
+      expect(at(settings, 'shell.sidebarWidth')).toBe(420);
       expect(at(settings, 'privacy.sendReadReceipts')).toBe(true);
       expect(at(settings, 'flags.virtualTimeline')).toBe(true);
       // The stored key must not leak into the document — the path IS the format.
-      expect(JSON.stringify(settings)).not.toContain('trinity.palette');
+      expect(JSON.stringify(settings)).not.toContain(
+        'trinity.shell.sidebar-width',
+      );
     });
 
     it('wraps the settings in a versioned, timestamped envelope', () => {
       const document = setup().export();
 
-      expect(document.version).toBe(1);
+      expect(document.version).toBe(CONFIG_EXPORT_VERSION);
       expect(new Date(document.exportedAt).toISOString()).toBe(
         document.exportedAt,
       );
@@ -286,7 +295,9 @@ describe('AppConfigService', () => {
 
       const parsed = JSON.parse(config.exportJson()) as ConfigDocument;
 
-      expect(config.exportJson()).toContain('\n  "version": 1');
+      expect(config.exportJson()).toContain(
+        `\n  "version": ${CONFIG_EXPORT_VERSION}`,
+      );
       expect(parsed.settings).toEqual(config.settings());
     });
 
@@ -329,7 +340,7 @@ describe('AppConfigService', () => {
   describe('validate', () => {
     it("accepts the app's own export unchanged, with nothing to do", () => {
       const config = setup();
-      TestBed.inject(ThemeService).setPalette('amethyst');
+      TestBed.inject(ShellLayoutService).setSidebarWidth(420);
 
       const plan = config.validate(config.export());
 
@@ -343,15 +354,15 @@ describe('AppConfigService', () => {
 
       const plan = config.validate(
         documentOf({
-          theme: { palette: 'amethyst', mode: 'dark' },
           privacy: { linkPreviews: false },
+          shell: { rightPanelWidth: 640, sidebarWidth: 420 },
         }),
       );
 
       expect(plan.ok && plan.changes).toEqual([
         { path: 'privacy.linkPreviews', from: true, to: false },
-        { path: 'theme.mode', from: 'system', to: 'dark' },
-        { path: 'theme.palette', from: 'trinity', to: 'amethyst' },
+        { path: 'shell.rightPanelWidth', from: 480, to: 640 },
+        { path: 'shell.sidebarWidth', from: 352, to: 420 },
       ]);
     });
 
@@ -360,14 +371,14 @@ describe('AppConfigService', () => {
 
       const plan = config.validate(
         documentOf({
-          theme: { palette: 'mauve' },
           privacy: { linkPreviews: false },
+          shell: { sidebarWidth: 'narrow' },
         }),
       );
 
       expect(plan.ok).toBe(false);
       expect(plan.ok === false && plan.problems).toEqual([
-        "theme.palette: 'mauve' is not a known palette (expected trinity, amethyst or onyx)",
+        "shell.sidebarWidth: 'narrow' is not a width between 200 and 560 pixels",
       ]);
     });
 
@@ -386,7 +397,8 @@ describe('AppConfigService', () => {
 
       const plan = config.validate(
         documentOf({
-          theme: { palette: 'amethyst', shadows: 'soft' },
+          privacy: { linkPreviews: false },
+          theme: { shadows: 'soft' },
           matrix: { accounts: ['@someone:hs'] },
         }),
       );
@@ -397,17 +409,22 @@ describe('AppConfigService', () => {
         'matrix.accounts is not a setting this version of Trinity has, so it will not be applied.',
       ]);
       expect(plan.ok && plan.changes.map((change) => change.path)).toEqual([
-        'theme.palette',
+        'privacy.linkPreviews',
       ]);
     });
 
     it('warns about a document from a newer build rather than refusing it', () => {
       const plan = setup().validate(
-        documentOf({ theme: { palette: 'amethyst' } }, 2),
+        documentOf(
+          { privacy: { linkPreviews: false } },
+          CONFIG_EXPORT_VERSION + 1,
+        ),
       );
 
       expect(plan.ok).toBe(true);
-      expect(plan.warnings[0]).toContain('format version 2');
+      expect(plan.warnings[0]).toContain(
+        `format version ${CONFIG_EXPORT_VERSION + 1}`,
+      );
     });
 
     it('rejects anything that is not the committed envelope', () => {
@@ -456,44 +473,43 @@ describe('AppConfigService', () => {
   describe('apply', () => {
     it('does nothing until it is subscribed', () => {
       const config = setup();
-      const theme = TestBed.inject(ThemeService);
+      const shell = TestBed.inject(ShellLayoutService);
       const plan = config.validate(
-        documentOf({ theme: { palette: 'amethyst' } }),
+        documentOf({ shell: { sidebarWidth: 420 } }),
       );
 
       if (plan.ok) {
         config.apply(plan);
       }
 
-      expect(theme.palette()).toBe('trinity');
+      expect(shell.sidebarWidth()).toBe(DEFAULT_SIDEBAR_WIDTH);
     });
 
     it('moves the running app, through the owning services', async () => {
       const config = setup();
-      const theme = TestBed.inject(ThemeService);
+      const shell = TestBed.inject(ShellLayoutService);
       const privacy = TestBed.inject(PrivacySettingsService);
 
       await applyDocument(
         config,
         documentOf({
-          theme: { palette: 'amethyst', textScale: 'large' },
           privacy: { sendReadReceipts: false },
+          shell: { sidebarWidth: 420 },
         }),
       );
 
-      expect(theme.palette()).toBe('amethyst');
-      expect(theme.textScale()).toBe('large');
+      expect(shell.sidebarWidth()).toBe(420);
       expect(privacy.sendReadReceipts()).toBe(false);
       // Through the setter, so storage agrees with the signal without a reload.
       expect(set).toHaveBeenCalledWith({
-        key: 'trinity.palette',
-        value: 'amethyst',
+        key: 'trinity.shell.sidebar-width',
+        value: '420',
       });
     });
 
     it('round-trips: applying an export leaves the document identical', async () => {
       const config = setup();
-      TestBed.inject(ThemeService).setPalette('amethyst');
+      TestBed.inject(ShellLayoutService).setSidebarWidth(420);
       TestBed.inject(KeyboardShortcutsService).rebind('switcher.open', {
         accel: true,
         alt: false,
@@ -509,13 +525,10 @@ describe('AppConfigService', () => {
 
     it('writes only the settings that differ', async () => {
       const config = setup();
-      TestBed.inject(ThemeService).setPalette('amethyst');
+      TestBed.inject(ShellLayoutService).setSidebarWidth(420);
       set.mockClear();
 
-      await applyDocument(
-        config,
-        documentOf({ theme: { palette: 'amethyst' } }),
-      );
+      await applyDocument(config, documentOf({ shell: { sidebarWidth: 420 } }));
 
       expect(set).not.toHaveBeenCalled();
     });
@@ -549,10 +562,10 @@ describe('AppConfigService', () => {
       drafts.set('!room:hs', 'half-typed secret');
       set.mockClear();
 
-      await applyDocument(config, documentOf({ theme: { mode: 'dark' } }));
+      await applyDocument(config, documentOf({ shell: { sidebarWidth: 420 } }));
 
       expect(set.mock.calls.map(([options]) => options.key)).toEqual([
-        'trinity.theme',
+        'trinity.shell.sidebar-width',
       ]);
       expect(drafts.get('!room:hs')).toBe('half-typed secret');
     });
@@ -561,31 +574,29 @@ describe('AppConfigService', () => {
   describe('reset to defaults', () => {
     it('does nothing until it is subscribed', () => {
       const config = setup();
-      const theme = TestBed.inject(ThemeService);
-      theme.setPalette('amethyst');
+      const shell = TestBed.inject(ShellLayoutService);
+      shell.setSidebarWidth(420);
 
       config.resetToDefaults();
 
-      expect(theme.palette()).toBe('amethyst');
+      expect(shell.sidebarWidth()).toBe(420);
     });
 
     it('restores every exported setting through its owning service', async () => {
       const config = setup();
-      const theme = TestBed.inject(ThemeService);
+      const shell = TestBed.inject(ShellLayoutService);
       const privacy = TestBed.inject(PrivacySettingsService);
-      theme.setPalette('amethyst');
-      theme.setTextScale('larger');
+      shell.setSidebarWidth(420);
       await firstValueFrom(privacy.setSendReadReceipts(false));
 
       await run(config.resetToDefaults());
 
-      expect(theme.palette()).toBe('trinity');
-      expect(theme.textScale()).toBe('default');
+      expect(shell.sidebarWidth()).toBe(DEFAULT_SIDEBAR_WIDTH);
       expect(privacy.sendReadReceipts()).toBe(true);
       // Through the setter, so storage agrees with the signal without a reload.
       expect(set).toHaveBeenCalledWith({
-        key: 'trinity.palette',
-        value: 'trinity',
+        key: 'trinity.shell.sidebar-width',
+        value: String(DEFAULT_SIDEBAR_WIDTH),
       });
     });
 

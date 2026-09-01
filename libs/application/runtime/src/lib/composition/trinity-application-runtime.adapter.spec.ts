@@ -9,6 +9,11 @@ import {
 } from '@angular/router';
 import { SwUpdate } from '@angular/service-worker';
 import { NavigationFocusService } from '../navigation-focus.service';
+import {
+  AppearanceEffects,
+  AppearancePreferences,
+  type AppearanceHydrationOutcome,
+} from '@trinity/application/appearance';
 import { BadgeCoordinator } from '@trinity/application/badge';
 import { WorkspaceBackService } from '@trinity/application/workspace';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
@@ -39,7 +44,6 @@ import {
   ShellLayoutService,
   StoragePersistenceService,
   SystemLineSettingsService,
-  ThemeService,
 } from '@trinity/platform-native';
 import {
   HOST_OPERATIONS,
@@ -63,8 +67,9 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   let navigateByUrl: ReturnType<typeof vi.fn>;
   let restoreAccounts: Mock<() => Observable<AccountRestoreResult>>;
   let hostManifest: Subject<HostCapabilityManifest>;
-  let themeInit: Mock<() => Promise<void>>;
+  let appearanceHydrate: Mock<() => Observable<AppearanceHydrationOutcome>>;
   let badgeSession: Subject<HostOperationOutcome>;
+  let appearanceSession: Subject<never>;
   let notificationSession: Subject<never>;
   let focusSession: Subject<void>;
   let routedSession: Subject<void>;
@@ -103,8 +108,11 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       }),
     );
     hostManifest = new Subject<HostCapabilityManifest>();
-    themeInit = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+    appearanceHydrate = vi.fn<() => Observable<AppearanceHydrationOutcome>>(
+      () => of({ kind: 'ready', hydrated: 6 }),
+    );
     badgeSession = new Subject<HostOperationOutcome>();
+    appearanceSession = new Subject<never>();
     notificationSession = new Subject<never>();
     focusSession = new Subject<void>();
     routedSession = new Subject<void>();
@@ -189,7 +197,8 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         MockProvider(WorkspaceApplicationSurfacePresenterAdapter, {
           run: () => surfaceSession,
         }),
-        MockProvider(ThemeService, { init: themeInit }),
+        MockProvider(AppearanceEffects, { run: () => appearanceSession }),
+        MockProvider(AppearancePreferences, { hydrate: appearanceHydrate }),
         MockProvider(ShellLayoutService, promiseInit()),
         MockProvider(FeatureFlagsService, promiseInit()),
         MockProvider(PrivacySettingsService, {
@@ -219,15 +228,19 @@ describe('TrinityApplicationRuntimeAdapter', () => {
 
   it('keeps preference hydration cold', async () => {
     const hydration = adapter.hydratePreferences();
-    expect(themeInit).not.toHaveBeenCalled();
+    expect(appearanceHydrate).not.toHaveBeenCalled();
 
     await firstValueFrom(hydration);
 
-    expect(themeInit).toHaveBeenCalledOnce();
+    expect(appearanceHydrate).toHaveBeenCalledOnce();
   });
 
   it('maps required preference failure and keeps optional session capabilities non-blocking', async () => {
-    themeInit.mockRejectedValueOnce(new Error('preferences unavailable'));
+    appearanceHydrate.mockReturnValueOnce(
+      new Observable((subscriber) =>
+        subscriber.error(new Error('preferences unavailable')),
+      ),
+    );
     await expect(firstValueFrom(adapter.hydratePreferences())).resolves.toEqual(
       {
         kind: 'blocked',
@@ -240,6 +253,34 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       firstValueFrom(adapter.establishSessionCapabilities()),
     ).resolves.toEqual({ kind: 'ready' });
     expect(updateCheck).toHaveBeenCalledOnce();
+  });
+
+  it('publishes one recoverable warning for partial Appearance hydration', async () => {
+    appearanceHydrate.mockReturnValueOnce(
+      of({
+        kind: 'partial',
+        hydrated: 5,
+        failures: [],
+        warning: {
+          code: 'appearance-preference-hydration-partial',
+          recovery: 'reset-preferences',
+        },
+      }),
+    );
+
+    await expect(firstValueFrom(adapter.hydratePreferences())).resolves.toEqual(
+      {
+        kind: 'ready',
+        warnings: [
+          {
+            stage: 'preference-hydration',
+            scope: 'preferences',
+            diagnostic: { code: 'appearance-preference-hydration-partial' },
+            recovery: 'reset-preferences',
+          },
+        ],
+      },
+    );
   });
 
   it('keeps a rejected badge probe as an optional startup warning', async () => {
@@ -454,5 +495,18 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     expect(badgeSession.observed).toBe(false);
     expect(notificationSession.observed).toBe(false);
     expect(orderSession.observed).toBe(false);
+  });
+
+  it('owns Appearance effects in the post-hydration preference lifetime', () => {
+    const first = adapter.runPreferenceLifetime().subscribe();
+    expect(appearanceSession.observed).toBe(true);
+
+    first.unsubscribe();
+    expect(appearanceSession.observed).toBe(false);
+
+    const second = adapter.runPreferenceLifetime().subscribe();
+    expect(appearanceSession.observed).toBe(true);
+    second.unsubscribe();
+    expect(appearanceSession.observed).toBe(false);
   });
 });

@@ -4,9 +4,9 @@
 
 // TWO ORTHOGONAL AXES
 // -------------------
-//   • Mode    — light / dark, toggled by the `.dark` class on <html> (ThemeService).
+//   • Mode    — light / dark, carried by the `.dark` class on <html> (Appearance).
 //   • Theme   — a named visual token set, selected by the `data-theme` attribute on
-//               <html> (ThemeService). No attribute == the default "trinity" Theme.
+//               <html> (Appearance). No attribute == the default "trinity" Theme.
 // The axes compose: any Theme works in both light and dark.
 
 // TOKEN LAYERS
@@ -191,9 +191,9 @@
   // A unitless MULTIPLIER, not a size. rendered-markdown.scss multiplies the 85%
   // optical correction by it, so code stays a proportion of whatever Settings →
   // Appearance → Text size resolves to — the two compose instead of fighting. An
-  // absolute px value here would pin code and break Text size for it. Written on
-  // <html> by ThemeService.applyCodeScale; the default writes nothing, so this
-  // declaration is what "Default" actually means.
+  // absolute px value here would pin code and break Text size for it. The Appearance
+  // document adapter writes the carrier on <html>; the default writes nothing, so
+  // this declaration is what "Default" actually means.
   --trinity-code-scale: 1;
 
   // Tooltips stay dark in light mode instead of becoming another pale surface. These are

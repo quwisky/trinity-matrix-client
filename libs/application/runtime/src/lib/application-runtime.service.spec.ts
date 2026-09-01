@@ -16,6 +16,8 @@ const ready = (): ApplicationStartupStageOutcome => ({ kind: 'ready' });
 
 describe('ApplicationRuntimeService', () => {
   let order: string[];
+  let preferenceLifetime: Subject<ApplicationRuntimeWarning>;
+  let preferenceLifetimeStopped: Mock<() => void>;
   let session: Subject<ApplicationRuntimeWarning>;
   let sessionStopped: Mock<() => void>;
   let adapter: ApplicationRuntimeAdapter;
@@ -23,6 +25,8 @@ describe('ApplicationRuntimeService', () => {
 
   beforeEach(() => {
     order = [];
+    preferenceLifetime = new Subject<ApplicationRuntimeWarning>();
+    preferenceLifetimeStopped = vi.fn<() => void>();
     session = new Subject<ApplicationRuntimeWarning>();
     sessionStopped = vi.fn<() => void>();
     const stage = (name: string) =>
@@ -38,9 +42,21 @@ describe('ApplicationRuntimeService', () => {
       restoreWorkspace: stage('workspace-restoration'),
       awaitReadiness: stage('readiness'),
       recover: vi.fn(() => of({ kind: 'ready' as const })),
+      runPreferenceLifetime: vi.fn<() => Observable<ApplicationRuntimeWarning>>(
+        () =>
+          new Observable<ApplicationRuntimeWarning>((subscriber) => {
+            order.push('preference-lifetime');
+            const subscription = preferenceLifetime.subscribe(subscriber);
+            return () => {
+              subscription.unsubscribe();
+              preferenceLifetimeStopped();
+            };
+          }),
+      ),
       runSession: vi.fn<() => Observable<ApplicationRuntimeWarning>>(
         () =>
           new Observable<ApplicationRuntimeWarning>((subscriber) => {
+            order.push('session');
             const subscription = session.subscribe(subscriber);
             return () => {
               subscription.unsubscribe();
@@ -69,13 +85,16 @@ describe('ApplicationRuntimeService', () => {
     expect(order).toEqual([
       'host-negotiation',
       'preference-hydration',
+      'preference-lifetime',
       'account-restoration',
       'session-capabilities',
       'workspace-restoration',
       'readiness',
+      'session',
     ]);
     expect(outcomes).toEqual([{ kind: 'ready', attempt: 1, warnings: [] }]);
     expect(adapter.runSession).toHaveBeenCalledOnce();
+    expect(adapter.runPreferenceLifetime).toHaveBeenCalledOnce();
     lifetime.unsubscribe();
   });
 
@@ -155,6 +174,7 @@ describe('ApplicationRuntimeService', () => {
     );
     expect(adapter.negotiateHost).toHaveBeenCalledTimes(2);
     expect(adapter.runSession).toHaveBeenCalledOnce();
+    expect(adapter.runPreferenceLifetime).toHaveBeenCalledOnce();
     lifetime.unsubscribe();
   });
 
@@ -185,6 +205,7 @@ describe('ApplicationRuntimeService', () => {
       kind: 'stopped',
     });
     expect(first.closed).toBe(true);
+    expect(preferenceLifetimeStopped).toHaveBeenCalledOnce();
     expect(sessionStopped).toHaveBeenCalledOnce();
     expect(runtime.state()).toEqual({ phase: 'stopped' });
 
@@ -193,7 +214,9 @@ describe('ApplicationRuntimeService', () => {
       expect(runtime.state()).toMatchObject({ phase: 'ready', attempt: 2 }),
     );
     expect(adapter.runSession).toHaveBeenCalledTimes(2);
+    expect(adapter.runPreferenceLifetime).toHaveBeenCalledTimes(2);
     second.unsubscribe();
+    expect(preferenceLifetimeStopped).toHaveBeenCalledTimes(2);
     expect(sessionStopped).toHaveBeenCalledTimes(2);
   });
 });

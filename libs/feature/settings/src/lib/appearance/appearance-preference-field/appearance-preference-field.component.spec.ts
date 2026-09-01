@@ -1,6 +1,8 @@
 import { signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import {
   AppearanceEffects,
+  AppearancePreferences,
   provideAppearancePreferences,
   type ResolvedAppearance,
 } from '@trinity/application/appearance';
@@ -9,8 +11,8 @@ import {
   type PreferenceStorageAdapter,
 } from '@trinity/runtime/preferences';
 import { render } from '@trinity/testing';
-import { NEVER, of, type Observable } from 'rxjs';
-import { describe, expect, it } from 'vitest';
+import { NEVER, firstValueFrom, of, type Observable } from 'rxjs';
+import { describe, expect, it, vi } from 'vitest';
 import { AppearanceSettingsController } from '../appearance-settings.controller';
 import {
   AppearancePreferenceFieldComponent,
@@ -46,16 +48,21 @@ describe('AppearancePreferenceFieldComponent', () => {
     ).toBe(THEME_FIELD.headingId);
   });
 
-  it('disables the control until hydration settles', async () => {
-    const { container } = await renderField(() => NEVER);
+  it('does not start a second hydration lifetime from the routed field', async () => {
+    const read = vi.fn<PreferenceStorageAdapter['read']>(() => NEVER);
+    const { container } = await renderField(read, false);
 
-    expect(container.querySelector('[role=combobox][disabled]')).not.toBeNull();
+    expect(read).not.toHaveBeenCalled();
+    expect(container.querySelector('[role=combobox][disabled]')).toBeNull();
   });
 });
 
-function renderField(read: PreferenceStorageAdapter['read']) {
+async function renderField(
+  read: PreferenceStorageAdapter['read'],
+  hydrate = true,
+) {
   const resolved = signal<ResolvedAppearance | undefined>(undefined);
-  return render(AppearancePreferenceFieldComponent, {
+  const rendered = await render(AppearancePreferenceFieldComponent, {
     inputs: { field: THEME_FIELD },
     providers: [
       AppearanceSettingsController,
@@ -76,4 +83,9 @@ function renderField(read: PreferenceStorageAdapter['read']) {
       },
     ],
   });
+  if (hydrate) {
+    await firstValueFrom(TestBed.inject(AppearancePreferences).hydrate());
+    await rendered.fixture.whenStable();
+  }
+  return rendered;
 }

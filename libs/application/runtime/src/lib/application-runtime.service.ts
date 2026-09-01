@@ -1,11 +1,13 @@
 import { Injectable, inject, signal } from '@angular/core';
 import {
   Observable,
+  ReplaySubject,
   Subject,
   concat,
   defer,
   ignoreElements,
   map,
+  merge,
   of,
   switchMap,
   take,
@@ -53,22 +55,36 @@ export class ApplicationRuntimeService {
         throw new ApplicationRuntimeAlreadyRunningError();
       }
       const stop = new Subject<void>();
+      const preferenceLifetimeStart = new ReplaySubject<void>(1);
       this.activeStop = stop;
-      return this.attemptUntilReady().pipe(
-        switchMap((outcome) =>
-          outcome.kind === 'blocked'
-            ? of(outcome)
-            : concat(
-                of(outcome),
-                this.adapter.runSession().pipe(
-                  tap((warning) => this.recordSessionWarning(warning)),
-                  ignoreElements(),
-                ),
-              ),
+      return merge(
+        preferenceLifetimeStart.pipe(
+          take(1),
+          switchMap(() => this.adapter.runPreferenceLifetime()),
+          tap((warning) => this.recordSessionWarning(warning)),
+          ignoreElements(),
         ),
+        this.attemptUntilReady(() => {
+          preferenceLifetimeStart.next();
+          preferenceLifetimeStart.complete();
+        }).pipe(
+          switchMap((outcome) =>
+            outcome.kind === 'blocked'
+              ? of(outcome)
+              : concat(
+                  of(outcome),
+                  this.adapter.runSession().pipe(
+                    tap((warning) => this.recordSessionWarning(warning)),
+                    ignoreElements(),
+                  ),
+                ),
+          ),
+        ),
+      ).pipe(
         takeUntil(stop),
         tap({
           finalize: () => {
+            preferenceLifetimeStart.complete();
             stop.complete();
             if (this.activeStop === stop) this.activeStop = null;
             this.runtimeState.set({ phase: 'stopped' });
@@ -108,8 +124,10 @@ export class ApplicationRuntimeService {
     });
   }
 
-  private attemptUntilReady(): Observable<ApplicationStartOutcome> {
-    return this.runAttempt().pipe(
+  private attemptUntilReady(
+    onPreferencesHydrated: () => void,
+  ): Observable<ApplicationStartOutcome> {
+    return this.runAttempt(onPreferencesHydrated).pipe(
       switchMap((outcome) =>
         outcome.kind === 'ready'
           ? of(outcome)
@@ -117,17 +135,19 @@ export class ApplicationRuntimeService {
               of(outcome),
               this.retries.pipe(
                 take(1),
-                switchMap(() => this.attemptUntilReady()),
+                switchMap(() => this.attemptUntilReady(onPreferencesHydrated)),
               ),
             ),
       ),
     );
   }
 
-  private runAttempt(): Observable<ApplicationStartOutcome> {
+  private runAttempt(
+    onPreferencesHydrated: () => void,
+  ): Observable<ApplicationStartOutcome> {
     return defer(() => {
       const attempt = ++this.attempt;
-      return this.runStage(attempt, 0, []);
+      return this.runStage(attempt, 0, [], onPreferencesHydrated);
     });
   }
 
@@ -135,6 +155,7 @@ export class ApplicationRuntimeService {
     attempt: number,
     index: number,
     warnings: readonly ApplicationRuntimeWarning[],
+    onPreferencesHydrated: () => void,
   ): Observable<ApplicationStartOutcome> {
     const stage = APPLICATION_STARTUP_STAGES[index];
     if (!stage) {
@@ -150,7 +171,14 @@ export class ApplicationRuntimeService {
           new Error(`Application Runtime stage '${stage}' emitted nothing.`),
       ),
       switchMap((outcome) =>
-        this.advanceStage(attempt, index, stage, warnings, outcome),
+        this.advanceStage(
+          attempt,
+          index,
+          stage,
+          warnings,
+          outcome,
+          onPreferencesHydrated,
+        ),
       ),
     );
   }
@@ -161,6 +189,7 @@ export class ApplicationRuntimeService {
     stage: ApplicationStartupStage,
     warnings: readonly ApplicationRuntimeWarning[],
     outcome: ApplicationStartupStageOutcome,
+    onPreferencesHydrated: () => void,
   ): Observable<ApplicationStartOutcome> {
     const nextWarnings = [...warnings, ...(outcome.warnings ?? [])];
     if (outcome.kind === 'blocked') {
@@ -183,7 +212,15 @@ export class ApplicationRuntimeService {
       });
       return of(blocked);
     }
-    return this.runStage(attempt, index + 1, nextWarnings);
+    if (stage === 'preference-hydration') {
+      onPreferencesHydrated();
+    }
+    return this.runStage(
+      attempt,
+      index + 1,
+      nextWarnings,
+      onPreferencesHydrated,
+    );
   }
 
   private stageCommand(

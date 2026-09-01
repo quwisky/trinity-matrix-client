@@ -3,7 +3,7 @@
  * ----------------------------------------------------------------------------
  * Global styles for the whole app. Ionic is fully removed: the base reset now comes
  * from Tailwind's preflight and the design tokens from Theme Foundation's aggregate
- * stylesheet. Dark mode is keyed off the `.dark` class ThemeService toggles on <html>.
+ * stylesheet. Dark mode is keyed off the `.dark` class the Appearance document adapter owns.
  */
 
 /*

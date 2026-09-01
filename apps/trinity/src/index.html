@@ -59,7 +59,7 @@
       Colours come from `prefers-color-scheme` rather than from the app's theme tokens,
       because the tokens live in a stylesheet the app owns and the user's chosen palette is
       in storage this document cannot read without script. The default preference IS
-      `system` (see ThemeService), so this matches for everyone who has not overridden it.
+      `system` (see Appearance preferences), so this matches for everyone who has not overridden it.
 
       For those who HAVE overridden it — dark chosen on a light OS, or the reverse — this
       paints the wrong colour for the whole pre-bootstrap window: HTML paint until Angular's
@@ -67,8 +67,8 @@
       seconds. That is not fixable from here and is a deliberate trade. Reading the stored
       preference needs script, the CSP above allows none inline (`boot-splash.spec.mjs` pins
       that), and the alternatives are worse: keying the light rule on `:root:not(.dark)`
-      would match BEFORE `ThemeService` has stamped anything and so hand every system-dark
-      user a white flash, while a marker stamped by `ThemeService` only covers the window
+      would match BEFORE the Appearance document effect has stamped anything and so hand every system-dark
+      user a white flash, while a marker stamped during Application Runtime startup covers the window
       from app-initializer to root render — tens of milliseconds, and not the part that
       hurts. A splash that is occasionally the wrong colour beats a blank screen, which is
       what this replaced.

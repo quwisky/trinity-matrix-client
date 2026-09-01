@@ -8,6 +8,16 @@ import { isConfigRecord } from './config-validation';
 /** How much of a value is shown in a one-line change summary. */
 const MAX_SUMMARY = 60;
 
+/** Import-only aliases for Appearance paths written by portable format version 1. */
+const VERSION_ONE_APPEARANCE_PATHS: Readonly<Record<string, string>> = {
+  'theme.mode': 'appearance.mode',
+  'theme.palette': 'appearance.theme',
+  'theme.textScale': 'appearance.textSize',
+  'theme.density': 'appearance.density',
+  'theme.codeScale': 'appearance.codeSize',
+  'theme.codeLineNumbers': 'appearance.codeLinePresentation',
+};
+
 /** One setting the document would move, and where it would move it. */
 export interface ConfigChange {
   readonly path: string;
@@ -104,10 +114,24 @@ export function planConfigApply(
   }
 
   const pasted = new Map<string, unknown>();
-  collect(settings, '', new Set(entries.map((entry) => entry.path)), {
-    pasted,
-    warnings,
-  });
+  const migratedPaths = new Set<string>();
+  collect(
+    settings,
+    '',
+    new Set(entries.map((entry) => entry.path)),
+    {
+      pasted,
+      directPaths: new Set<string>(),
+      migratedPaths,
+      warnings,
+    },
+    version,
+  );
+  if (migratedPaths.size > 0) {
+    warnings.unshift(
+      'Appearance settings from portable format version 1 were migrated to their current paths.',
+    );
+  }
 
   const problems: string[] = [];
   const changes: ConfigChange[] = [];
@@ -146,16 +170,32 @@ function collect(
   node: { readonly [key: string]: unknown },
   prefix: string,
   paths: ReadonlySet<string>,
-  out: { pasted: Map<string, unknown>; warnings: string[] },
+  out: {
+    pasted: Map<string, unknown>;
+    directPaths: Set<string>;
+    migratedPaths: Set<string>;
+    warnings: string[];
+  },
+  version: number,
 ): void {
   for (const [key, value] of Object.entries(node)) {
     const path = prefix ? `${prefix}.${key}` : key;
     if (paths.has(path)) {
       out.pasted.set(path, value);
+      out.directPaths.add(path);
+      continue;
+    }
+    const migratedPath =
+      version === 1 ? VERSION_ONE_APPEARANCE_PATHS[path] : undefined;
+    if (migratedPath && paths.has(migratedPath)) {
+      if (!out.directPaths.has(migratedPath)) {
+        out.pasted.set(migratedPath, value);
+      }
+      out.migratedPaths.add(migratedPath);
       continue;
     }
     if (isConfigRecord(value)) {
-      collect(value, path, paths, out);
+      collect(value, path, paths, out, version);
       continue;
     }
     out.warnings.push(

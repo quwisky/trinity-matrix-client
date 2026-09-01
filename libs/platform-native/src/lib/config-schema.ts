@@ -67,8 +67,8 @@ export type ConfigValidation =
  */
 export interface ConfigEntry {
   /**
-   * Dotted path in the exported document, grouped by owner (`theme.palette`, not
-   * `trinity.palette`). **Part of the committed export format** — renaming one needs a
+   * Dotted path in the exported document, grouped by owner (`appearance.theme`, not
+   * `trinity.appearance.theme`). **Part of the committed export format** — renaming one needs a
    * migration keyed off {@link CONFIG_EXPORT_VERSION}.
    *
    * Each owning lib keeps its paths under its own top-level group; `AppConfigService`
@@ -218,82 +218,82 @@ export type ConfigKeyRecord =
  * {@link CONFIG_EXCLUSION_NOTES}.
  */
 export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
-  // — application/appearance, excluded until the descriptor-backed config migration —
+  // — application/appearance —
   {
-    disposition: 'excluded',
+    disposition: 'exported',
     key: 'trinity.appearance.mode',
     owner: 'application/appearance',
-    reason:
-      'A portable typed descriptor, but the legacy Advanced configuration registry cannot ' +
-      'read descriptor envelopes yet. Issue #387 moves export and import to the descriptor ' +
-      'catalog; exporting this key through the legacy ThemeService facade would duplicate it.',
   },
   {
-    disposition: 'excluded',
+    disposition: 'exported',
     key: 'trinity.appearance.theme',
     owner: 'application/appearance',
-    reason:
-      'A portable typed descriptor, but the legacy Advanced configuration registry cannot ' +
-      'read descriptor envelopes yet. Issue #387 moves export and import to the descriptor ' +
-      'catalog; exporting this key through the legacy ThemeService facade would duplicate it.',
   },
   {
-    disposition: 'excluded',
+    disposition: 'exported',
     key: 'trinity.appearance.text-size',
     owner: 'application/appearance',
-    reason:
-      'A portable typed descriptor, but the legacy Advanced configuration registry cannot ' +
-      'read descriptor envelopes yet. Issue #387 moves export and import to the descriptor ' +
-      'catalog; exporting this key through the legacy ThemeService facade would duplicate it.',
   },
   {
-    disposition: 'excluded',
+    disposition: 'exported',
     key: 'trinity.appearance.density',
     owner: 'application/appearance',
-    reason:
-      'A portable typed descriptor, but the legacy Advanced configuration registry cannot ' +
-      'read descriptor envelopes yet. Issue #387 moves export and import to the descriptor ' +
-      'catalog; exporting this key through the legacy ThemeService facade would duplicate it.',
   },
 
-  // — data-access/timeline, excluded until the descriptor-backed config migration —
+  // — data-access/timeline —
   {
-    disposition: 'excluded',
+    disposition: 'exported',
     key: 'trinity.appearance.code-size',
     owner: 'data-access/timeline',
-    reason:
-      'A portable typed descriptor, but the legacy Advanced configuration registry cannot ' +
-      'read descriptor envelopes yet. Issue #387 moves export and import to the descriptor ' +
-      'catalog; exporting this key through the legacy ThemeService facade would duplicate it.',
   },
   {
-    disposition: 'excluded',
+    disposition: 'exported',
     key: 'trinity.appearance.code-line-presentation',
     owner: 'data-access/timeline',
-    reason:
-      'A portable typed descriptor, but the legacy Advanced configuration registry cannot ' +
-      'read descriptor envelopes yet. Issue #387 moves export and import to the descriptor ' +
-      'catalog; exporting this key through the legacy ThemeService facade would duplicate it.',
   },
 
   // — theme.service.ts —
-  { disposition: 'exported', key: 'trinity.theme', owner: 'platform-native' },
-  { disposition: 'exported', key: 'trinity.palette', owner: 'platform-native' },
   {
-    disposition: 'exported',
+    disposition: 'excluded',
+    key: 'trinity.theme',
+    owner: 'platform-native',
+    reason:
+      'Read-only Appearance migration predecessor; portable export uses the current descriptor key.',
+  },
+  {
+    disposition: 'excluded',
+    key: 'trinity.palette',
+    owner: 'platform-native',
+    reason:
+      'Read-only Appearance migration predecessor; portable export uses the current descriptor key.',
+  },
+  {
+    disposition: 'excluded',
     key: 'trinity.text-scale',
     owner: 'platform-native',
+    reason:
+      'Read-only Appearance migration predecessor; portable export uses the current descriptor key.',
   },
-  { disposition: 'exported', key: 'trinity.density', owner: 'platform-native' },
   {
-    disposition: 'exported',
+    disposition: 'excluded',
+    key: 'trinity.density',
+    owner: 'platform-native',
+    reason:
+      'Read-only Appearance migration predecessor; portable export uses the current descriptor key.',
+  },
+  {
+    disposition: 'excluded',
     key: 'trinity.code-scale',
     owner: 'platform-native',
+    reason:
+      'Read-only Appearance migration predecessor; portable export uses the current descriptor key.',
   },
   {
-    disposition: 'exported',
+    disposition: 'excluded',
     key: 'trinity.code-lines',
     owner: 'platform-native',
+    reason:
+      'Read-only Appearance migration predecessor; portable export uses the current descriptor key.',
   },
 
   // — shell-layout.service.ts —
@@ -527,7 +527,7 @@ export function exportedKeysFor(owner: ConfigOwner): readonly string[] {
  * Bumped when a path is renamed or removed, so an import can tell a document written by an
  * older build from a malformed one — without it the two are indistinguishable.
  */
-export const CONFIG_EXPORT_VERSION = 1;
+export const CONFIG_EXPORT_VERSION = 2;
 
 /** The exported document: a versioned envelope around the nested settings. */
 export interface ConfigDocument {

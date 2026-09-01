@@ -4,10 +4,11 @@ import {
   planConfigApply,
   type ConfigApplyPlan,
 } from './config-plan';
-import type {
-  ConfigEntry,
-  ConfigValidation,
-  ConfigValue,
+import {
+  CONFIG_EXPORT_VERSION,
+  type ConfigEntry,
+  type ConfigValidation,
+  type ConfigValue,
 } from './config-schema';
 
 /** A setting that takes any text, standing in for the real registry. */
@@ -37,7 +38,7 @@ function entry(
 }
 
 /** A well-formed envelope around `settings`. */
-function document(settings: unknown, version = 1): unknown {
+function document(settings: unknown, version = CONFIG_EXPORT_VERSION): unknown {
   return { version, exportedAt: '2026-08-09T00:00:00.000Z', settings };
 }
 
@@ -79,13 +80,15 @@ describe('planConfigApply', () => {
 
     it('warns about a newer format but applies what it understands', () => {
       const plan = planConfigApply(
-        document({ theme: { palette: 'amethyst' } }, 2),
+        document({ theme: { palette: 'amethyst' } }, CONFIG_EXPORT_VERSION + 1),
         registry,
       );
 
       expect(plan.ok).toBe(true);
       expect(plan.warnings[0]).toContain('newer version');
-      expect(plan.warnings[0]).toContain('version 2');
+      expect(plan.warnings[0]).toContain(
+        `version ${CONFIG_EXPORT_VERSION + 1}`,
+      );
       expect(plan.ok && plan.changes).toEqual([
         { path: 'theme.palette', from: 'trinity', to: 'amethyst' },
       ]);

@@ -4,6 +4,7 @@ import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import {
   APP_CONFIG_ENTRIES,
   AppConfigService,
+  CONFIG_EXPORT_VERSION,
   type ConfigEntry,
   type ConfigValidation,
 } from '@trinity/platform-native';
@@ -106,7 +107,7 @@ const ENTRIES: readonly ConfigEntry[] = [
 /** A document that sets only the paths given, as an import would arrive. */
 function documentJson(settings: object): string {
   return JSON.stringify({
-    version: 1,
+    version: CONFIG_EXPORT_VERSION,
     exportedAt: '2026-08-09T00:00:00.000Z',
     settings,
   });
@@ -245,11 +246,11 @@ describe('AdvancedSettingsComponent', () => {
 
     const json = textareaValue(container);
     expect(JSON.parse(json)).toMatchObject({
-      version: 1,
+      version: CONFIG_EXPORT_VERSION,
       settings: { theme: { palette: 'violet' } },
     });
     // Two-space indent: what people paste around, and part of the committed format.
-    expect(json).toContain('\n  "version": 1');
+    expect(json).toContain(`\n  "version": ${CONFIG_EXPORT_VERSION}`);
   });
 
   // What the export leaves out is proved in `app-config.service.spec.ts`, over the real

@@ -43,15 +43,16 @@ System colour-scheme changes therefore have no observable effect under an explic
 Mode, and a failed preference write cannot change resolved or rendered Appearance because the
 Preferences Store has not committed it.
 
-During the routed-screen migration slice, the document adapter idempotently reasserts a fixed Mode
-after system-colour events because the earlier `ThemeService` startup listener still shares those
-root carriers until the Application Runtime slice removes it. This compatibility reconciliation
-does not publish new resolved state or invoke native chrome under a fixed Mode.
+Application Runtime starts the effect immediately after successful preference hydration, before
+Account restoration and Workspace routing, and owns it until runtime stop. Settings observes the
+read-only resolved projection but does not own the effect. The legacy `ThemeService` remains an
+isolated compatibility surface pending contraction; it no longer participates in application
+startup or shares the document carriers.
 
 Default values remain stylesheet-owned. The document adapter removes the optional Theme, text
 size, density, code-size, and code-line carriers at their defaults; light Mode removes the dark
-class. Concrete startup and native-host bindings remain part of the staged migration, so this
-expand step does not alter the existing CSS-only first-paint splash contract.
+class. Startup, native chrome, portable configuration, and widget consumers bind through narrow
+Appearance projections without altering the existing CSS-only first-paint splash contract.
 
 Settings is a catalog consumer, not a policy owner. Its shared renderer selects descriptor editor
 metadata for an exact context and subscribes to the descriptor command; it does not know raw keys,
@@ -60,8 +61,9 @@ application model and the select editor metadata carried by each descriptor. A u
 the committed value rendered until its write completes; failure leaves that value in place and
 offers Retry beside only the initiating control. Partial hydration produces one screen warning,
 and recovery resets only failed axes through their descriptor defaults while preserving the other
-five. Until Application Runtime owns this lifetime in the next migration slice, the routed screen
-temporarily hydrates Appearance and subscribes to its cold effects for its own lifetime.
+five. Application Runtime hydrates the aggregate before Workspace routing and owns one cold
+Appearance effect subscription for the whole application session; the routed screen owns only
+user commands and failed-axis recovery.
 
 The Privacy journey follows the same policy boundary through the shared catalog renderer. Its
 descriptors are defined and exported by the Conversations capability in
@@ -69,5 +71,7 @@ descriptors are defined and exported by the Conversations capability in
 application composition root separately binds the same descriptor set to the temporary
 `PrivacySettingsService` compatibility facade. Existing callers continue to read signals while
 migration proceeds under the incremental-facade decision. The Advanced configuration registry
-continues through the facade, and its guard pins portable descriptor keys to the export ledger
-until that older registry can consume the catalog directly.
+continues through the facade, while Appearance contributes six descriptor-backed entries directly.
+Portable Appearance documents therefore use only current `appearance.*` paths and current
+descriptor keys. Portable format 2 maps the six former version 1 Theme paths into those current
+entries on import; predecessor ThemeService names remain read-only migration metadata.

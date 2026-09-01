@@ -1,5 +1,4 @@
 import { inject, type EnvironmentProviders } from '@angular/core';
-import { THEME_CATALOG } from '@trinity/theme-foundation';
 import {
   DEFAULT_DATE_FORMAT,
   DEFAULT_TIME_FORMAT,
@@ -46,25 +45,6 @@ import {
   DEFAULT_SHOW_ROOM_CHANGES,
   SystemLineSettingsService,
 } from './system-line-settings.service';
-import {
-  DEFAULT_CODE_LINE_MODE,
-  DEFAULT_CODE_SCALE,
-  DEFAULT_PALETTE,
-  DEFAULT_DENSITY,
-  DEFAULT_TEXT_SCALE,
-  DEFAULT_THEME_PREFERENCE,
-  TRINITY_CODE_LINE_MODES,
-  TRINITY_CODE_SCALES,
-  TRINITY_DENSITIES,
-  TRINITY_TEXT_SCALES,
-  ThemeService,
-  isCodeLineMode,
-  isCodeScale,
-  isPalette,
-  isDensity,
-  isTextScale,
-  isThemePreference,
-} from './theme.service';
 
 /** The offered ids of a catalogue, for the "expected …" half of a rejection. */
 function idsOf(options: readonly { readonly id: string }[]): readonly string[] {
@@ -81,7 +61,6 @@ function idsOf(options: readonly { readonly id: string }[]): readonly string[] {
  */
 export function providePlatformConfigEntries(): EnvironmentProviders {
   return provideConfigEntries(() => [
-    ...themeEntries(inject(ThemeService)),
     ...shellEntries(inject(ShellLayoutService)),
     ...privacyEntries(inject(PrivacySettingsService)),
     ...timelineEntries(inject(SystemLineSettingsService)),
@@ -91,91 +70,6 @@ export function providePlatformConfigEntries(): EnvironmentProviders {
     ...flagEntries(inject(FeatureFlagsService)),
     ...shortcutEntries(inject(KeyboardShortcutsService)),
   ]);
-}
-
-function themeEntries(theme: ThemeService): readonly ConfigEntry[] {
-  return [
-    {
-      path: 'theme.mode',
-      key: 'trinity.theme',
-      description:
-        'Whether the app follows your system theme, or is always light or always dark.',
-      read: () => theme.preference(),
-      reset: () => theme.setPreference(DEFAULT_THEME_PREFERENCE),
-      ...choiceSetting({
-        isValid: isThemePreference,
-        options: THEME_CATALOG.modes.map(({ id }) => id),
-        noun: 'a theme mode',
-        set: (value) => theme.setPreference(value),
-      }),
-    },
-    {
-      path: 'theme.palette',
-      key: 'trinity.palette',
-      description: 'The accent colour the whole app is themed from.',
-      read: () => theme.palette(),
-      reset: () => theme.setPalette(DEFAULT_PALETTE),
-      ...choiceSetting({
-        isValid: isPalette,
-        options: idsOf(THEME_CATALOG.themes),
-        noun: 'a known palette',
-        set: (value) => theme.setPalette(value),
-      }),
-    },
-    {
-      path: 'theme.textScale',
-      key: 'trinity.text-scale',
-      description: 'How large text is throughout the app.',
-      read: () => theme.textScale(),
-      reset: () => theme.setTextScale(DEFAULT_TEXT_SCALE),
-      ...choiceSetting({
-        isValid: isTextScale,
-        options: idsOf(TRINITY_TEXT_SCALES),
-        noun: 'a text size',
-        set: (value) => theme.setTextScale(value),
-      }),
-    },
-    {
-      path: 'theme.density',
-      key: 'trinity.density',
-      description: 'How much room the app leaves around things.',
-      read: () => theme.density(),
-      reset: () => theme.setDensity(DEFAULT_DENSITY),
-      ...choiceSetting({
-        isValid: isDensity,
-        options: idsOf(TRINITY_DENSITIES),
-        noun: 'a density',
-        set: (value) => theme.setDensity(value),
-      }),
-    },
-    {
-      path: 'theme.codeScale',
-      key: 'trinity.code-scale',
-      description:
-        'How large text is inside code blocks, set separately from the rest.',
-      read: () => theme.codeScale(),
-      reset: () => theme.setCodeScale(DEFAULT_CODE_SCALE),
-      ...choiceSetting({
-        isValid: isCodeScale,
-        options: idsOf(TRINITY_CODE_SCALES),
-        noun: 'a code size',
-        set: (value) => theme.setCodeScale(value),
-      }),
-    },
-    {
-      path: 'theme.codeLineNumbers',
-      key: 'trinity.code-lines',
-      description: 'When code blocks show line numbers down the side.',
-      read: () => theme.codeLines(),
-      reset: () => theme.setCodeLines(DEFAULT_CODE_LINE_MODE),
-      ...choiceSetting({
-        isValid: isCodeLineMode,
-        options: idsOf(TRINITY_CODE_LINE_MODES),
-        noun: 'a line-number mode',
-        set: (value) => theme.setCodeLines(value),
-      }),
-    },
-  ];
 }
 
 /** The rooms shell's draggable pane widths. */
