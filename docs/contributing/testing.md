@@ -411,6 +411,12 @@ assertions. External FCM notification delivery, encrypted-key export, and the on
 compositor-panning assertion remain explicit Android skips: none is replaced with an
 in-page assertion that bypasses the named native behavior.
 
+The Android external-authentication adapter attributes a Custom Tab to one trigger by observing
+Chrome page creation and main-frame navigation for that trigger's exact lifetime. This event
+window covers both a reused provider tab and a short-lived OIDC redirect that returns to Trinity
+before the polling loop can sample it; an untouched Chrome page from an earlier journey remains
+ineligible. The trigger is still invoked exactly once and keeps the same finite timeout.
+
 The MSC2545 journey is a useful example of why this sharing matters. One platform-neutral helper
 creates a pack room on disposable Synapse, discovers and installs one state key through Settings,
 sends its sticker, and removes the account reference. Chromium proves the browser flow; collection
