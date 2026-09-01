@@ -18,6 +18,42 @@ export interface AndroidInfrastructureFailure {
   readonly recordedAt: string;
 }
 
+export type AndroidApplicationSurfaceState =
+  | 'ready'
+  | 'route-empty'
+  | 'runtime-blocked'
+  | 'runtime-restoring'
+  | 'static-boot';
+
+export interface StabilizedApplicationSurface {
+  readonly state: AndroidApplicationSurfaceState;
+  readonly recovered: boolean;
+}
+
+/**
+ * Gives an installed WebView one document-level recovery for transient boot
+ * states. A visibly blocked startup is a product result, not a host retry
+ * signal, and a second stalled observation is deliberately returned to the
+ * caller for infrastructure classification.
+ */
+export async function stabilizeApplicationSurface(
+  inspect: () => Promise<AndroidApplicationSurfaceState>,
+  recover?: () => Promise<void>,
+): Promise<StabilizedApplicationSurface> {
+  let state = await inspect();
+  if (
+    state === 'ready' ||
+    state === 'runtime-blocked' ||
+    !recover
+  ) {
+    return { state, recovered: false };
+  }
+
+  await recover();
+  state = await inspect();
+  return { state, recovered: true };
+}
+
 export function parseInfrastructureFailure(
   source: string,
 ): AndroidInfrastructureFailure {

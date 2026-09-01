@@ -54,6 +54,11 @@ describe('Android Playwright canonical coverage', () => {
     expect(runner).toContain('ADB_FAILURE_LIMIT');
     expect(fixture).toContain("TRINITY_ANDROID_FATAL_MARKER']");
     expect(fixture).toContain('waitForApplicationReadySurface');
+    expect(fixture).toContain('stabilizeApplicationSurface');
+    expect(fixture).toContain(
+      "configureApplicationNavigation(page, 'Android WebView')",
+    );
+    expect(fixture).toContain("'secondary Android WebView'");
     expect(fixture).toContain('trinityCrashProcessNames(crashLog)');
   });
 

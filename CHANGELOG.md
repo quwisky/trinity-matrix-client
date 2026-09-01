@@ -634,7 +634,9 @@ All notable changes to this project are documented here. The format is based on
   Vulkan-disabled launch; consecutive device-health probes and fixture failure markers stop a
   lost emulator, Playwright driver, app process, or WebView with process, memory, graphics,
   activity, WebView, logcat, and crash diagnostics. Reloads and relaunches wait for a finite
-  routed surface, and unrelated Android system-process crashes no longer fail Trinity journeys.
+  routed surface; a stalled document receives one bounded recovery before the suite records the
+  application-surface failure. Unrelated Android system-process crashes no longer fail Trinity
+  journeys.
 
 - **The homeserver-free SAS self-check runs without disposable Matrix credentials again.**
   Standalone protocol checks now join only the application lifecycle, while mutating journeys keep

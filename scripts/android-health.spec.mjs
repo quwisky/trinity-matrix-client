@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   ADB_FAILURE_LIMIT,
   ANDROID_INFRASTRUCTURE_FAILURE,
   crashProcessNames,
   nextAdbFailureCount,
   parseInfrastructureFailure,
+  stabilizeApplicationSurface,
   trinityCrashProcessNames,
 } from '../e2e/android/health.mts';
 
@@ -52,5 +53,42 @@ describe('Android E2E infrastructure health', () => {
         'AndroidRuntime: Process: com.google.android.bluetooth, PID: 100',
       ),
     ).toEqual([]);
+  });
+
+  it('uses at most one bounded recovery for a stalled application surface', async () => {
+    const states = ['runtime-restoring', 'ready'];
+    const inspect = vi.fn(async () => states.shift());
+    const recover = vi.fn(async () => undefined);
+
+    await expect(
+      stabilizeApplicationSurface(inspect, recover),
+    ).resolves.toEqual({
+      state: 'ready',
+      recovered: true,
+    });
+    expect(inspect).toHaveBeenCalledTimes(2);
+    expect(recover).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves a final stall or blocked startup for classification', async () => {
+    const stalled = vi
+      .fn()
+      .mockResolvedValueOnce('runtime-restoring')
+      .mockResolvedValueOnce('runtime-restoring');
+    const recover = vi.fn(async () => undefined);
+
+    await expect(
+      stabilizeApplicationSurface(stalled, recover),
+    ).resolves.toEqual({
+      state: 'runtime-restoring',
+      recovered: true,
+    });
+    expect(recover).toHaveBeenCalledTimes(1);
+
+    recover.mockClear();
+    await expect(
+      stabilizeApplicationSurface(async () => 'runtime-blocked', recover),
+    ).resolves.toEqual({ state: 'runtime-blocked', recovered: false });
+    expect(recover).not.toHaveBeenCalled();
   });
 });

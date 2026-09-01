@@ -169,6 +169,10 @@ DevTools sockets, memory, graphics configuration, and the separate crash buffer.
 records naming a Trinity package fail the journey; unrelated Android process crashes remain in
 the retained log without being misattributed.
 
+Document navigation waits for the routed Application Runtime surface. A static boot shell, empty
+route, or restoration stall receives one fresh document; a blocked startup or second stall remains
+a classified failure and stops the suite through the shared fixture marker.
+
 An explicitly supplied serial must be disposable. The suite clears both Trinity test
 package IDs before their tests, replaces their APKs, and clears the device's logcat buffers;
 those mutations cannot be restored. It also force-stops Trinity after the run. The exact

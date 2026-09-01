@@ -440,6 +440,9 @@ process group once. Host output then records the emulator process, adb state, ap
 driver processes, current WebView provider and sockets, system/application memory, graphics
 configuration, activities, package state, logcat, and the crash buffer. The fixture waits through
 both the static shell and Application Runtime restoration before a reload or relaunch returns.
+If a document navigation remains in the static shell, an empty route, or restoration under sustained
+load, the fixture performs one bounded document reload and proves the routed surface again. A visibly
+blocked startup is not retried, and a second stall writes the fatal application-surface marker.
 Crash-buffer enforcement is package-scoped to `eu.qwky.trinity` and its secondary test package;
 a crash from an unrelated Android service remains diagnostic evidence, not a Trinity failure.
 

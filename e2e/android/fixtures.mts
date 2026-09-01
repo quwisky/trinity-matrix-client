@@ -15,8 +15,10 @@ import { _android, type AndroidDevice } from 'playwright';
 import { findTriggeredExternalPage } from '../support/external-page.mts';
 import {
   ANDROID_INFRASTRUCTURE_FAILURE,
+  type AndroidApplicationSurfaceState,
   type AndroidInfrastructureFailure,
   type AndroidInfrastructureLayer,
+  stabilizeApplicationSurface,
   trinityCrashProcessNames,
 } from './health.mts';
 import { navigateApplication } from '../support/navigation.mts';
@@ -72,39 +74,35 @@ async function shell(device: AndroidDevice, command: string): Promise<string> {
   }
 }
 
-type ApplicationSurfaceState =
-  | 'ready'
-  | 'route-empty'
-  | 'runtime-blocked'
-  | 'runtime-restoring'
-  | 'static-boot';
+async function readApplicationSurfaceState(
+  page: Page,
+): Promise<AndroidApplicationSurfaceState> {
+  return page.evaluate<AndroidApplicationSurfaceState>(() => {
+    if (document.querySelector('.trn-boot')) return 'static-boot';
+    if (document.querySelector('[data-testid="app-startup-blocked"]'))
+      return 'runtime-blocked';
+    if (document.querySelector('[data-testid="app-booting"]'))
+      return 'runtime-restoring';
+    const outlet = document.querySelector('router-outlet');
+    const routedSurface = outlet?.nextElementSibling;
+    if (!routedSurface || routedSurface.matches('trn-verification-host')) {
+      return 'route-empty';
+    }
+    return 'ready';
+  });
+}
 
-async function waitForApplicationReadySurface(
+async function inspectApplicationReadySurface(
   page: Page,
   description: string,
-  timeout = 60_000,
-): Promise<void> {
-  let lastState: ApplicationSurfaceState = 'static-boot';
+  timeout: number,
+): Promise<AndroidApplicationSurfaceState> {
+  let lastState: AndroidApplicationSurfaceState = 'static-boot';
   try {
     await expect
       .poll(
         async () => {
-          lastState = await page.evaluate<ApplicationSurfaceState>(() => {
-            if (document.querySelector('.trn-boot')) return 'static-boot';
-            if (document.querySelector('[data-testid="app-startup-blocked"]'))
-              return 'runtime-blocked';
-            if (document.querySelector('[data-testid="app-booting"]'))
-              return 'runtime-restoring';
-            const outlet = document.querySelector('router-outlet');
-            const routedSurface = outlet?.nextElementSibling;
-            if (
-              !routedSurface ||
-              routedSurface.matches('trn-verification-host')
-            ) {
-              return 'route-empty';
-            }
-            return 'ready';
-          });
+          lastState = await readApplicationSurfaceState(page);
           return lastState;
         },
         {
@@ -113,12 +111,79 @@ async function waitForApplicationReadySurface(
         },
       )
       .toBe('ready');
+    return 'ready';
   } catch {
+    try {
+      return await readApplicationSurfaceState(page);
+    } catch {
+      throw infrastructureFailure(
+        'playwright-driver',
+        `${description} could not inspect the Android WebView`,
+      );
+    }
+  }
+}
+
+async function waitForApplicationReadySurface(
+  page: Page,
+  description: string,
+  recover?: () => Promise<void>,
+): Promise<void> {
+  let inspection = 0;
+  const result = await stabilizeApplicationSurface(
+    () =>
+      inspectApplicationReadySurface(
+        page,
+        description,
+        recover && inspection++ === 0 ? 20_000 : 60_000,
+      ),
+    recover,
+  );
+  if (result.state !== 'ready') {
     throw infrastructureFailure(
       'application-surface',
-      `${description} did not become ready (last state: ${lastState})`,
+      `${description} did not become ready${result.recovered ? ' after one document recovery' : ''} ` +
+        `(last state: ${result.state})`,
     );
   }
+}
+
+function configureApplicationNavigation(
+  page: Page,
+  description: string,
+): void {
+  const originalGoto = page.goto.bind(page);
+  const originalReload = page.reload.bind(page);
+
+  page.reload = async (reloadOptions) => {
+    let response = await originalReload(reloadOptions);
+    await waitForApplicationReadySurface(
+      page,
+      `${description} reload`,
+      async () => {
+        response = await originalReload({ waitUntil: 'domcontentloaded' });
+      },
+    );
+    return response;
+  };
+  page.goto = async (url, gotoOptions) => {
+    let response = await originalGoto(
+      new URL(url, appOrigin).href,
+      gotoOptions,
+    );
+    await waitForApplicationReadySurface(
+      page,
+      `${description} navigation`,
+      async () => {
+        // Android System WebView occasionally commits the local HTTPS document
+        // without executing its module scripts, or leaves Application Runtime
+        // restoring after sustained load. One fresh document is the bounded
+        // host recovery; any second stall remains a classified suite failure.
+        response = await originalReload({ waitUntil: 'domcontentloaded' });
+      },
+    );
+    return response;
+  };
 }
 
 async function clearPackageData(
@@ -335,40 +400,7 @@ async function configurePage(
   page: Page,
   options: AndroidUseOptions,
 ): Promise<() => Promise<void>> {
-  const originalGoto = page.goto.bind(page);
-  const originalReload = page.reload.bind(page);
-  const waitForAngular = (timeout: number) =>
-    page.locator('.trn-boot').waitFor({ state: 'hidden', timeout });
-
-  page.reload = async (reloadOptions) => {
-    let response = await originalReload(reloadOptions);
-    try {
-      await waitForAngular(10_000);
-    } catch {
-      response = await originalReload(reloadOptions);
-      await waitForAngular(30_000);
-    }
-    await waitForApplicationReadySurface(page, 'Android WebView reload');
-    return response;
-  };
-  page.goto = async (url, gotoOptions) => {
-    let response = await originalGoto(
-      new URL(url, appOrigin).href,
-      gotoOptions,
-    );
-    try {
-      await waitForAngular(10_000);
-    } catch {
-      // Android System WebView occasionally commits the local HTTPS document but
-      // never executes its module scripts after a rapid force-stop / relaunch.
-      // Retry only that recognizable pre-Angular state; journey failures must not
-      // be hidden behind a generic navigation retry.
-      response = await originalReload({ waitUntil: 'domcontentloaded' });
-      await waitForAngular(30_000);
-    }
-    await waitForApplicationReadySurface(page, 'Android WebView navigation');
-    return response;
-  };
+  configureApplicationNavigation(page, 'Android WebView');
 
   const session = await page.context().newCDPSession(page);
   let currentViewport = options.viewport;
@@ -891,32 +923,10 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
               state: 'visible',
               timeout: 60_000,
             });
-          const originalGoto = secondaryPage.goto.bind(secondaryPage);
-          const originalReload = secondaryPage.reload.bind(secondaryPage);
-          const waitForAngular = (timeout: number) =>
-            secondaryPage!.locator('.trn-boot').waitFor({
-              state: 'hidden',
-              timeout,
-            });
-          secondaryPage.goto = async (url, options) => {
-            let response = await originalGoto(
-              new URL(url, appOrigin).href,
-              options,
-            );
-            try {
-              await waitForAngular(10_000);
-            } catch {
-              response = await originalReload({
-                waitUntil: 'domcontentloaded',
-              });
-              await waitForAngular(30_000);
-            }
-            await waitForApplicationReadySurface(
-              secondaryPage!,
-              'secondary Android WebView navigation',
-            );
-            return response;
-          };
+          configureApplicationNavigation(
+            secondaryPage,
+            'secondary Android WebView',
+          );
           return secondaryPage;
         },
         async activatePrimary(): Promise<void> {
