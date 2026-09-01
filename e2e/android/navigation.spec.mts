@@ -193,14 +193,11 @@ test.describe('Android navigation', () => {
           { timeout: 10_000 },
         )
         .toBeLessThan(fullViewportHeight - 100);
-      // Android's input-text transport treats an embedded space as an argument
-      // boundary. Drive the space as a real key event so both words reach the IME.
-      await app.inputText('keyboard');
-      await app.pressKey(62);
-      await app.inputText('proof');
-      // The emulator keyboard may auto-capitalize the first word; either value proves that
-      // input came through the native IME rather than CDP's synthetic fill path.
-      await expect(composer).toHaveValue(/keyboard proof/i);
+      // Keep the native-IME proof as one uncommitted token. Sending Space commits
+      // the composing word to the emulator dictionary, whose autocorrect result is
+      // host-image dependent and unrelated to whether Android input reached WebView.
+      await app.inputText('trinity42');
+      await expect(composer).toHaveValue(/trinity42/i);
       const trigger = page.getByTestId('composer-insert');
       await app.touch(trigger);
       const sheet = page.getByTestId('action-sheet-surface');
