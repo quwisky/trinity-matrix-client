@@ -431,12 +431,12 @@ cannot be put in a named author layer without forking the library, and they are 
 component-style exceptions. The complete allowlist lives in
 [`architecture/runtime-vendor-styles.json`](../../architecture/runtime-vendor-styles.json):
 
-| Runtime owner          | Unavoidable mechanism                                                       | Trinity seam                                                                                             |
-| ---------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| CodeMirror `style-mod` | mounts base and selected theme modules in the editor's document root        | `config-editor-theme.ts` supplies one `EditorView.theme()` extension built entirely from semantic tokens |
-| Angular CDK Overlay    | creates its global style-loader component and writes overlay geometry       | `@trinity/components/overlay`; the static baseline also enters `vendor.css` through `layer(vendor)`      |
-| `@ng-icons/core`       | injects `NgIcon`'s component rules and writes size/colour custom properties | `<trn-icon>` plus the audited generated Helm wrappers                                                    |
-| Brain Sonner           | injects its global toaster rules and writes stack/swipe custom properties   | `<trn-toaster>` and `TrnToastService`                                                                    |
+| Runtime owner          | Unavoidable mechanism                                                          | Trinity seam                                                                                             |
+| ---------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| CodeMirror `style-mod` | mounts base and selected theme modules in the editor's document root           | `config-editor-theme.ts` supplies one `EditorView.theme()` extension built entirely from semantic tokens |
+| Angular CDK Overlay    | creates global overlay and visually-hidden loaders and writes overlay geometry | `@trinity/components/overlay`; the static baseline also enters `vendor.css` through `layer(vendor)`      |
+| `@ng-icons/core`       | injects `NgIcon`'s component rules and writes size/colour custom properties    | `<trn-icon>` plus the audited generated Helm wrappers                                                    |
+| Brain Sonner           | injects its global toaster rules and writes stack/swipe custom properties      | `<trn-toaster>` and `TrnToastService`                                                                    |
 
 The architecture check pins the four ids, the installed package versions, the upstream injection
 markers, each owned seam, and every permitted production import prefix. A package upgrade or a

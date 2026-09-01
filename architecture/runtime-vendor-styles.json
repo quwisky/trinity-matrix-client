@@ -44,15 +44,18 @@
       "id": "cdk-overlay-loader",
       "package": "@angular/cdk",
       "version": "22.1.0",
-      "mechanism": "CDK creates a global overlay style-loader component and writes geometry to overlay elements inline",
+      "mechanism": "CDK creates global overlay and visually-hidden style-loader components and writes overlay geometry inline",
       "seam": "libs/components/overlay/src/index.ts",
       "importPrefixes": [
+        "@angular/cdk/a11y",
         "@angular/cdk/dialog",
+        "@angular/cdk/menu",
         "@angular/cdk/overlay",
         "@angular/cdk/portal"
       ],
       "allowedSourcePrefixes": [
         "libs/components/overlay/",
+        "libs/spartan/dropdown-menu/src/lib/hlm-dropdown-menu.ts",
         "libs/spartan/utils/src/lib/provide-spartan-hlm.ts"
       ],
       "modules": [
@@ -67,16 +70,41 @@
             "this._styleLoader.load(_CdkOverlayStyleLoader)",
             "this._pane.style.pointerEvents"
           ]
+        },
+        {
+          "path": "fesm2022/private.mjs",
+          "markers": [
+            "class _VisuallyHiddenLoader",
+            "styles: [\".cdk-visually-hidden",
+            "encapsulation: i0.ViewEncapsulation.None"
+          ]
+        },
+        {
+          "path": "fesm2022/a11y.mjs",
+          "markers": [
+            "inject(_CdkPrivateStyleLoader).load(_VisuallyHiddenLoader)"
+          ]
+        },
+        {
+          "path": "fesm2022/menu.mjs",
+          "markers": [
+            "from './_overlay-module-chunk.mjs'",
+            "this.overlayRef = createOverlayRef"
+          ]
         }
       ],
-      "seamMarkers": ["TrnDialogService", "TrnDropdownMenuImports"]
+      "seamMarkers": [
+        "TrnDialogService",
+        "TrnDropdownMenuImports",
+        "TrnToastService"
+      ]
     },
     {
       "id": "ng-icon-component",
       "package": "@ng-icons/core",
       "version": "34.0.0",
       "mechanism": "NgIcon injects an Angular component stylesheet and writes size, stroke, and color custom properties inline",
-      "seam": "libs/components/foundations/src/lib/icon/trn-icon/trn-icon.component.ts",
+      "seam": "libs/components/foundations/src/lib/icon/trn-icon/trn-icon.component.html",
       "importPrefixes": ["@ng-icons/core", "@ng-icons/lucide"],
       "allowedSourcePrefixes": [
         "libs/components/foundations/src/lib/icon/",
@@ -95,7 +123,7 @@
           ]
         }
       ],
-      "seamMarkers": ["import { NgIcon } from '@ng-icons/core'", "<ng-icon"]
+      "seamMarkers": ["<ng-icon"]
     },
     {
       "id": "brain-sonner-component",

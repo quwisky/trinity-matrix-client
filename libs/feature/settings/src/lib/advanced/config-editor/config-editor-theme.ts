@@ -41,7 +41,7 @@ const TRINITY_CONFIG_EDITOR_THEME = EditorView.theme({
   },
   '.cm-scroller': {
     overflow: 'auto',
-    fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+    fontFamily: 'ui-monospace, monospace',
     lineHeight: '1.5',
   },
   '.cm-content': {
@@ -84,7 +84,7 @@ const TRINITY_CONFIG_EDITOR_THEME = EditorView.theme({
     borderLeftColor: 'var(--trinity-danger)',
   },
   '.cm-diagnostic-warning': {
-    borderLeftColor: 'var(--warning)',
+    borderLeftColor: 'var(--trinity-status-warning-surface)',
   },
   '.cm-lintRange-error': {
     background:
@@ -92,20 +92,20 @@ const TRINITY_CONFIG_EDITOR_THEME = EditorView.theme({
   },
   '.cm-lintRange-warning': {
     background:
-      'linear-gradient(var(--warning), var(--warning)) 0 100% / 100% 2px no-repeat',
+      'linear-gradient(var(--trinity-status-warning-surface), var(--trinity-status-warning-surface)) 0 100% / 100% 2px no-repeat',
   },
   '.cm-lint-marker-error': {
     color: 'var(--trinity-danger)',
   },
   '.cm-lint-marker-warning': {
-    color: 'var(--warning)',
+    color: 'var(--trinity-status-warning-surface)',
   },
   '.cm-tooltip': {
-    background: 'var(--card)',
+    background: 'var(--trinity-surface-card)',
     color: 'var(--trinity-text)',
     border: '1px solid var(--trinity-divider)',
     borderRadius: 'var(--trinity-radius-md)',
-    boxShadow: '0 4px 12px rgb(0 0 0 / 18%)',
+    boxShadow: 'var(--trinity-shadow-floating)',
   },
   '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': {
     background: 'var(--trinity-accent)',
@@ -116,7 +116,7 @@ const TRINITY_CONFIG_EDITOR_THEME = EditorView.theme({
     fontStyle: 'normal',
   },
   '.cm-completionInfo': {
-    background: 'var(--card)',
+    background: 'var(--trinity-surface-card)',
     color: 'var(--trinity-text)',
     border: '1px solid var(--trinity-divider)',
     borderRadius: 'var(--trinity-radius-md)',
@@ -127,7 +127,7 @@ const TRINITY_CONFIG_EDITOR_THEME = EditorView.theme({
     maxWidth: '24rem',
   },
   '.trn-cm-hover__path': {
-    fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+    fontFamily: 'ui-monospace, monospace',
     fontSize: '0.75rem',
     color: 'var(--trinity-text-muted)',
   },

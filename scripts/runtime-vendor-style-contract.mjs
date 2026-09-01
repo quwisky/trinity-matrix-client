@@ -1,6 +1,10 @@
 import { globSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import {
+  stripMarkupComments,
+  stripSourceComments,
+} from './source-style-blocks.mjs';
 
 const workspaceRoot = join(import.meta.dirname, '..');
 const catalogPath = join(
@@ -19,6 +23,11 @@ const EXPECTED_RUNTIME_IDS = [
 const read = (path) => readFileSync(join(workspaceRoot, path), 'utf8');
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
 const sorted = (values) => [...values].sort();
+
+const stripComments = (path, source) =>
+  path.endsWith('.html')
+    ? stripMarkupComments(source)
+    : stripSourceComments(source);
 
 function packageRoot(packageName) {
   return join(workspaceRoot, 'node_modules', packageName);
@@ -69,10 +78,10 @@ function validateInstalledPackage(entry, errors) {
   }
 }
 
-function importSpecifiers(source) {
+export function runtimeVendorImportSpecifiers(source) {
   return [
-    ...source.matchAll(
-      /(?:from\s+|import\s*\()\s*['"](?<specifier>[^'"]+)['"]/gu,
+    ...stripSourceComments(source).matchAll(
+      /(?:from\s+|import\s*(?:\(\s*)?)['"](?<specifier>[^'"]+)['"]/gu,
     ),
   ].map((match) => match.groups.specifier);
 }
@@ -89,9 +98,9 @@ export function validateRuntimeVendorStyles(catalog) {
   validateIds(catalog.staticStyles, EXPECTED_STATIC_IDS, 'static', errors);
   validateIds(catalog.runtimeStyles, EXPECTED_RUNTIME_IDS, 'runtime', errors);
 
-  const vendorStyles = readFileSync(vendorStylesPath, 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//gu, '')
-    .trim();
+  const vendorStyles = stripSourceComments(
+    readFileSync(vendorStylesPath, 'utf8'),
+  ).trim();
   const expectedImports = catalog.staticStyles.map(
     ({ source, layer }) => `@import '${source}' layer(${layer});`,
   );
@@ -117,7 +126,7 @@ export function validateRuntimeVendorStyles(catalog) {
 
     let seamSource = '';
     try {
-      seamSource = read(entry.seam);
+      seamSource = stripComments(entry.seam, read(entry.seam));
     } catch {
       errors.push(`${entry.id} owned seam is missing: ${entry.seam}`);
     }
@@ -130,7 +139,7 @@ export function validateRuntimeVendorStyles(catalog) {
     }
 
     const matchingImports = sources.flatMap((file) =>
-      importSpecifiers(read(file))
+      runtimeVendorImportSpecifiers(read(file))
         .filter((specifier) =>
           entry.importPrefixes.some(
             (prefix) => specifier === prefix || specifier.startsWith(prefix),
@@ -152,8 +161,10 @@ export function validateRuntimeVendorStyles(catalog) {
     }
   }
 
-  const editorComponent = read(
-    'libs/feature/settings/src/lib/advanced/config-editor/config-editor.component.ts',
+  const editorComponent = stripSourceComments(
+    read(
+      'libs/feature/settings/src/lib/advanced/config-editor/config-editor.component.ts',
+    ),
   );
   if (
     /ViewEncapsulation\.None|config-editor\.component\.scss/u.test(

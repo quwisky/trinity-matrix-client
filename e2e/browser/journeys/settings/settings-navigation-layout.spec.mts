@@ -231,29 +231,21 @@ test.describe('Settings', () => {
     await expect(editor).toBeVisible({ timeout: 20_000 });
     const editorPaint = await editorFrame.evaluate((element) => {
       const editorStyle = getComputedStyle(element);
-      const resolve = (token: string) => {
+      const resolve = (property: 'color' | 'border-radius', token: string) => {
         const probe = document.createElement('span');
-        probe.style.color = `var(${token})`;
+        probe.style.setProperty(property, `var(${token})`);
         document.body.appendChild(probe);
-        const value = getComputedStyle(probe).color;
-        probe.remove();
-        return value;
-      };
-      const resolveRadius = (token: string) => {
-        const probe = document.createElement('span');
-        probe.style.borderRadius = `var(${token})`;
-        document.body.appendChild(probe);
-        const value = getComputedStyle(probe).borderRadius;
+        const value = getComputedStyle(probe).getPropertyValue(property);
         probe.remove();
         return value;
       };
       return {
         background: editorStyle.backgroundColor,
         text: editorStyle.color,
-        expectedBackground: resolve('--trinity-chat'),
-        expectedText: resolve('--trinity-text'),
+        expectedBackground: resolve('color', '--trinity-chat'),
+        expectedText: resolve('color', '--trinity-text'),
         radius: editorStyle.borderRadius,
-        expectedRadius: resolveRadius('--trinity-radius-md'),
+        expectedRadius: resolve('border-radius', '--trinity-radius-md'),
       };
     });
     expect(editorPaint.background).toBe(editorPaint.expectedBackground);
