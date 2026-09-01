@@ -622,6 +622,10 @@ All notable changes to this project are documented here. The format is based on
   the authentication trigger, including a provider tab that redirects back and closes between
   polling samples, without extending the journey timeout or retrying the action.
 
+- **Android virtual-timeline fixture positioning now survives WebView's one-pixel rounding.** The
+  long journey returns through the product's jump-to-latest action while keeping its bottom-pin and
+  deliberate-reading-offset assertions strict.
+
 - **The homeserver-free SAS self-check runs without disposable Matrix credentials again.**
   Standalone protocol checks now join only the application lifecycle, while mutating journeys keep
   their attempt-scoped Accounts and secret-redacting diagnostics. A failed Continue response also
