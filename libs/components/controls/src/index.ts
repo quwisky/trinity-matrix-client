@@ -5,6 +5,12 @@ export {
   TrnButtonImports,
   TrnIconButton,
 } from './lib/button/trn-button';
+export type {
+  TrnButtonPresentation,
+  TrnButtonShape,
+  TrnButtonSize,
+  TrnButtonVariant,
+} from './lib/button/trn-button-recipe';
 export { TrnCheckboxComponent } from './lib/checkbox/trn-checkbox.component';
 export { TrnEmojiIndex } from './lib/emoji-picker/trn-emoji-index.service';
 export { TrnEmojiPickerComponent } from './lib/emoji-picker/trn-emoji-picker/trn-emoji-picker.component';

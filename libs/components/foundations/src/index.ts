@@ -7,4 +7,10 @@ export {
   type TrnIconMotion,
 } from './lib/icon/trn-icon-motion';
 export { TRN_ICONS, provideTrnIcons } from './lib/icon/trn-icon.icons';
+export {
+  TRN_SIZES,
+  TRN_VARIANTS,
+  type TrnSize,
+  type TrnVariant,
+} from './lib/style/trn-recipe-vocabulary';
 export { classes, hlm as trn } from '@trinity/helm/utils';

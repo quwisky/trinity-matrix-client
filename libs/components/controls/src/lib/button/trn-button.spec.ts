@@ -1,9 +1,15 @@
 import { Component, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
-import { HlmButton } from '@trinity/helm/button';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import { TrnActionAvailability, TrnButton, TrnIconButton } from './trn-button';
+import {
+  trnButtonRecipe,
+  type TrnButtonPresentation,
+  type TrnButtonShape,
+  type TrnButtonSize,
+  type TrnButtonVariant,
+} from './trn-button-recipe';
 
 @Component({
   imports: [TrnButton, TrnIconButton],
@@ -19,15 +25,18 @@ class HostComponent {}
     @for (size of iconSizes; track size) {
       <button trnBtn [size]="size">Icon</button>
     }
-    <button trnBtn size="default">Label</button>
-    <button data-testid="dynamic" trnBtn [size]="dynamicSize()">Dynamic</button>
+    <button trnBtn size="md">Label</button>
+    <button trnBtn shape="icon" size="md">Canonical icon</button>
+    <button data-testid="dynamic" trnBtn [shape]="dynamicShape()">
+      Dynamic
+    </button>
     <a data-testid="icon-link" trnBtn size="icon" href="#target">Link</a>
     <button data-testid="bespoke" trnIconButton>Bespoke</button>
   `,
 })
 class IconHostComponent {
   readonly iconSizes = ['icon', 'icon-xs', 'icon-sm', 'icon-lg'] as const;
-  readonly dynamicSize = signal<'default' | 'icon'>('default');
+  readonly dynamicShape = signal<TrnButtonShape>('label');
 }
 
 @Component({
@@ -46,20 +55,75 @@ class AvailabilityHostComponent {
 }
 
 describe('TrnButton', () => {
-  it('forwards the supported button contract to the vendored treatment', async () => {
-    const { container, fixture } = await render(HostComponent);
+  it('keeps the Helm substrate private while preserving native button semantics', async () => {
+    const { container } = await render(HostComponent);
     const button = container.querySelector('button');
-    const helm = fixture.debugElement
-      .query(By.directive(HlmButton))
-      .injector.get(HlmButton);
 
     expect(button?.disabled).toBe(true);
     expect(button?.getAttribute('data-slot')).toBe('button');
-    expect(helm.variant()).toBe('destructive');
-    expect(helm.size()).toBe('sm');
   });
 
-  it('marks every icon size without marking labelled sizes', async () => {
+  it('exposes only the button subset of the canonical vocabulary', () => {
+    expectTypeOf<TrnButtonVariant>().toEqualTypeOf<
+      'primary' | 'secondary' | 'danger'
+    >();
+    expectTypeOf<'success'>().not.toExtend<TrnButtonVariant>();
+    expectTypeOf<TrnButtonSize>().toEqualTypeOf<'xs' | 'sm' | 'md' | 'lg'>();
+    expectTypeOf<'xl'>().not.toExtend<TrnButtonSize>();
+    expectTypeOf<TrnButtonPresentation>().toEqualTypeOf<
+      'solid' | 'outline' | 'ghost' | 'link'
+    >();
+  });
+
+  it('renders canonical and compatibility inputs through equivalent recipes', () => {
+    expect(
+      trnButtonRecipe({
+        presentation: 'solid',
+        shape: 'label',
+        size: 'md',
+        variant: 'primary',
+      }),
+    ).toBe(
+      trnButtonRecipe({
+        presentation: 'solid',
+        shape: 'label',
+        size: 'default',
+        variant: 'default',
+      }),
+    );
+    expect(
+      trnButtonRecipe({
+        presentation: 'solid',
+        shape: 'label',
+        size: 'md',
+        variant: 'danger',
+      }),
+    ).toBe(
+      trnButtonRecipe({
+        presentation: 'solid',
+        shape: 'label',
+        size: 'default',
+        variant: 'destructive',
+      }),
+    );
+    expect(
+      trnButtonRecipe({
+        presentation: 'ghost',
+        shape: 'icon',
+        size: 'md',
+        variant: 'primary',
+      }),
+    ).toBe(
+      trnButtonRecipe({
+        presentation: 'solid',
+        shape: 'label',
+        size: 'icon',
+        variant: 'ghost',
+      }),
+    );
+  });
+
+  it('marks canonical and compatibility icon recipes without marking labels', async () => {
     const { container, fixture } = await render(IconHostComponent);
     const buttons = [...container.querySelectorAll('button')];
 
@@ -69,7 +133,8 @@ describe('TrnButton', () => {
         .every((button) => button.hasAttribute('data-trn-icon-button')),
     ).toBe(true);
     expect(buttons[4].hasAttribute('data-trn-icon-button')).toBe(false);
-    expect(buttons[5].hasAttribute('data-trn-icon-button')).toBe(false);
+    expect(buttons[5].hasAttribute('data-trn-icon-button')).toBe(true);
+    expect(buttons[6].hasAttribute('data-trn-icon-button')).toBe(false);
     expect(
       container
         .querySelector('[data-testid="icon-link"]')
@@ -92,8 +157,7 @@ describe('TrnButton', () => {
 
     expect(dynamic.hasAttribute('data-trn-icon-button')).toBe(false);
 
-    host.dynamicSize.set('icon');
-    fixture.detectChanges();
+    host.dynamicShape.set('icon');
     await fixture.whenStable();
 
     expect(dynamic.hasAttribute('data-trn-icon-button')).toBe(true);
@@ -128,7 +192,7 @@ describe('TrnButton', () => {
     expect(host.activations()).toBe(0);
 
     host.allowed.set(true);
-    fixture.detectChanges();
+    await fixture.whenStable();
     button.click();
     expect(host.activations()).toBe(1);
     expect(button.hasAttribute('aria-disabled')).toBe(false);

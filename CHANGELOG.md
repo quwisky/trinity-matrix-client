@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Buttons now speak Trinity's design language instead of the underlying UI kit's.** Public
+  button recipes introduce semantic `primary`, `secondary` and `danger` variants, ordinal
+  `xs`–`lg` sizes, and separate presentation and icon-shape choices. Existing button inputs keep
+  rendering the same during migration, while unsupported design-system values now fail template
+  type-checking rather than falling through to an accidental style.
+
 - **Room links now open a safe information preview before anything changes.** Links in both
   `matrix.to` and `matrix:` form show the room name, address, topic, member count, encryption and
   access rule without navigating or changing membership. Joined rooms offer **Open**; public rooms
