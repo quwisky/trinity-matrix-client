@@ -1,45 +1,47 @@
-:host {
-  display: block;
-}
+@layer components {
+  :host {
+    display: block;
+  }
 
-.banner {
-  display: flex;
-  align-items: center;
-  gap: var(--trinity-density-row-gap);
-  padding: var(--trinity-density-row-padding-block)
-    var(--trinity-density-row-padding-inline);
-  font-size: var(--trinity-type-body-size);
-  font-weight: var(--trinity-type-body-weight);
-  line-height: var(--trinity-type-body-line-height);
-}
+  .banner {
+    display: flex;
+    align-items: center;
+    gap: var(--trinity-density-row-gap);
+    padding: var(--trinity-density-row-padding-block)
+      var(--trinity-density-row-padding-inline);
+    font-size: var(--trinity-type-body-size);
+    font-weight: var(--trinity-type-body-weight);
+    line-height: var(--trinity-type-body-line-height);
+  }
 
-.banner[data-tone='neutral'] {
-  background: var(--trinity-status-neutral-surface);
-  color: var(--trinity-status-neutral-foreground);
-}
+  .banner[data-variant='neutral'] {
+    background: var(--trinity-status-neutral-surface);
+    color: var(--trinity-status-neutral-foreground);
+  }
 
-.banner[data-tone='accent'] {
-  --trinity-focus-ring: var(--trinity-focus-ring-on-attention);
+  .banner[data-variant='accent'] {
+    --trinity-focus-ring: var(--trinity-focus-ring-on-attention);
 
-  background: var(--trinity-state-attention-surface);
-  color: var(--trinity-state-attention-foreground);
-}
+    background: var(--trinity-state-attention-surface);
+    color: var(--trinity-state-attention-foreground);
+  }
 
-.banner__icon {
-  flex: 0 0 auto;
-  display: inline-flex;
-  font-size: 18px;
-}
+  .banner__icon {
+    flex: 0 0 auto;
+    display: inline-flex;
+    font-size: 18px;
+  }
 
-.banner__text {
-  flex: 1;
-  min-width: 0;
-}
+  .banner__text {
+    flex: 1;
+    min-width: 0;
+  }
 
-.banner__actions {
-  flex: 0 0 auto;
-  display: flex;
-  gap: var(--trinity-density-item-gap);
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  .banner__actions {
+    flex: 0 0 auto;
+    display: flex;
+    gap: var(--trinity-density-item-gap);
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
 }

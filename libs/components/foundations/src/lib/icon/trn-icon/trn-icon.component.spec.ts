@@ -89,6 +89,20 @@ describe('TrnIconComponent', () => {
     expect(inner.style.getPropertyValue('--ng-icon__size')).toBe('1.25rem');
   });
 
+  it('publishes canonical size and semantic ink without exposing vendor names', async () => {
+    const { fixture } = await setup({
+      name: 'lock',
+      size: 'lg',
+      variant: 'danger',
+    });
+    const host = fixture.nativeElement as HTMLElement;
+    const inner = host.querySelector('ng-icon') as HTMLElement;
+
+    expect(host.getAttribute('data-size')).toBe('lg');
+    expect(host.getAttribute('data-variant')).toBe('danger');
+    expect(inner.style.getPropertyValue('--ng-icon__size')).toBe('1.25rem');
+  });
+
   it('leaves the size property off entirely when unset, so 1em still applies', async () => {
     // The ~100 icons that correctly inherit their size from the button utility must not
     // change. The input defaults to '', which the vendor's coercion returns untouched and
@@ -101,23 +115,15 @@ describe('TrnIconComponent', () => {
     expect(inner.style.getPropertyValue('--ng-icon__size')).toBe('');
   });
 
-  it('keeps the box model of the element it replaced', async () => {
-    // `inline-flex`, not `inline-block`. Both give the host a block-ish box, but only
-    // inline-flex sizes it to the glyph: an inline-block host takes its height from the
-    // line box, so it is taller than the icon by the strut's half-leading and descent, and
-    // inside an `hlmBtn` — a flex row with `items-center` — that taller box is what gets
-    // centred, leaving the glyph ~2.5px high at every one of ~115 call sites. The element
-    // this wrapper replaced was the flex item itself, with explicit width and height.
-    // `HlmSpinner`, the same one-`<ng-icon>` shape, uses inline-flex for the same reason.
-    //
-    // This assertion only works because the rule is a component STYLE. jsdom loads no
-    // stylesheet, so moving the display onto a Tailwind class — the kit's usual `classes()`
-    // pattern — would leave this passing against `display: inline`. See the note on the
-    // component: the two decisions are coupled.
+  it('keeps appearance off the host class contract', async () => {
+    // The layered stylesheet now owns the inline-flex box. jsdom cannot evaluate @layer, so
+    // real dimensions are asserted in Storybook. The unit-level contract is that variants
+    // and sizes do not smuggle appearance classes onto the public host; a consumer class is
+    // therefore reserved for external layout.
     const { fixture } = await setup({ name: 'lock' });
     const host = fixture.nativeElement as HTMLElement;
 
-    expect(getComputedStyle(host).display).toBe('inline-flex');
+    expect([...host.classList]).toEqual([]);
   });
 
   it('is motionless by default, without leaving an activation hook behind', async () => {

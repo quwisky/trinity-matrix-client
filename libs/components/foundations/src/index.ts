@@ -3,6 +3,10 @@
 export { TrnIconComponent } from './lib/icon/trn-icon/trn-icon.component';
 export { TRN_ICON_NAMES, type TrnIconName } from './lib/icon/trn-icon-name';
 export {
+  type TrnIconSize,
+  type TrnIconVariant,
+} from './lib/icon/trn-icon-recipe';
+export {
   TRN_ICON_MOTIONS,
   type TrnIconMotion,
 } from './lib/icon/trn-icon-motion';

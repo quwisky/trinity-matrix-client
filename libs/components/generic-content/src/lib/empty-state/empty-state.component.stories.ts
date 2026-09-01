@@ -1,5 +1,5 @@
 import { type Meta, type StoryObj } from '@storybook/angular-vite';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '../spinner/trn-spinner.component';
 import { EmptyStateComponent } from './empty-state.component';
 
@@ -19,7 +19,7 @@ const meta: Meta<EmptyStateComponent> = {
   decorators: [
     (story) => ({
       ...story(),
-      moduleMetadata: { imports: [HlmButton, TrnSpinnerComponent] },
+      moduleMetadata: { imports: [TrnButton, TrnSpinnerComponent] },
     }),
   ],
 };
@@ -38,7 +38,7 @@ export const WithAction: Story = {
     props: args,
     template: `
       <trn-empty-state [icon]="icon" [title]="title" [body]="body">
-        <button trnEmptyStateActions hlmBtn size="sm">Start a thread</button>
+        <button trnEmptyStateActions trnBtn size="sm">Start a thread</button>
       </trn-empty-state>
     `,
   }),
@@ -64,14 +64,39 @@ export const Danger: Story = {
     // the empty line would otherwise be, and the registry has no general alert glyph.
     title: "Couldn't load rooms",
     body: 'Check your connection and try again.',
-    tone: 'danger',
+    variant: 'danger',
   },
   render: (args) => ({
     props: args,
     template: `
-      <trn-empty-state [title]="title" [body]="body" [tone]="tone">
-        <button trnEmptyStateActions hlmBtn size="sm" variant="outline">Retry</button>
+      <trn-empty-state [title]="title" [body]="body" [variant]="variant">
+        <button trnEmptyStateActions trnBtn size="sm" variant="secondary" presentation="outline">Retry</button>
       </trn-empty-state>
+    `,
+  }),
+};
+
+/** Layout is behavior, so it has a precise name rather than pretending to be ordinal size. */
+export const CanonicalLayouts: Story = {
+  render: () => ({
+    template: `
+      <div class="grid gap-4 p-4">
+        <trn-empty-state data-testid="empty-line" layout="line" body="Nothing in this list." />
+        <trn-empty-state data-testid="empty-panel" layout="panel" icon="search" title="No results" body="Try another search." />
+        <trn-empty-state data-testid="empty-hero" layout="hero" badge="#" title="Trinity" titleAs="h2" body="Choose a room to begin." />
+      </div>
+    `,
+  }),
+};
+
+/** The old behavior names remain valid until existing feature templates migrate. */
+export const CompatibilityNames: Story = {
+  render: () => ({
+    template: `
+      <div class="grid gap-4 p-4">
+        <trn-empty-state data-testid="empty-canonical" variant="danger" layout="line" body="Couldn't load rooms" />
+        <trn-empty-state data-testid="empty-legacy" tone="danger" size="line" body="Couldn't load rooms" />
+      </div>
     `,
   }),
 };

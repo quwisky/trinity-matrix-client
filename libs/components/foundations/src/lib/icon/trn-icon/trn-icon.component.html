@@ -7,8 +7,8 @@
   is the bug this component was built to make unwritable.
 -->
 <!--
-  `size` is bound rather than left off: its default is '', which coerceCssPixelValue returns
-  untouched, so Angular drops `--ng-icon__size` and the `1em` default applies — an unsized
-  icon behaves exactly as before.
+  `size` is bound rather than left off: the public null default resolves to '', which
+  coerceCssPixelValue returns untouched, so Angular drops `--ng-icon__size` and the `1em`
+  default applies — an unsized icon behaves exactly as before.
 -->
-<ng-icon aria-hidden="true" [name]="name()" [size]="size()" />
+<ng-icon aria-hidden="true" [name]="name()" [size]="resolvedSize()" />

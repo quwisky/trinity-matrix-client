@@ -24,21 +24,64 @@ export const SemanticShapes: Story = {
     template: `
       <div style="display:grid;grid-template-columns:repeat(2,auto);gap:24px 32px;text-align:center">
         <figure style="display:grid;gap:8px;justify-items:center;margin:0">
-          <trn-avatar name="Alice" initial="A" shape="person" [size]="48" />
+          <trn-avatar name="Alice" initial="A" shape="person" size="2xl" />
           <figcaption>Person fallback</figcaption>
         </figure>
         <figure style="display:grid;gap:8px;justify-items:center;margin:0">
-          <trn-avatar name="Design room" initial="D" shape="place" [size]="48" />
+          <trn-avatar name="Design room" initial="D" shape="place" size="2xl" />
           <figcaption>Place fallback</figcaption>
         </figure>
         <figure style="display:grid;gap:8px;justify-items:center;margin:0">
-          <trn-avatar name="Alice" shape="person" [url]="sampleImage" [size]="48" />
+          <trn-avatar name="Alice" shape="person" [url]="sampleImage" size="2xl" />
           <figcaption>Person image</figcaption>
         </figure>
         <figure style="display:grid;gap:8px;justify-items:center;margin:0">
-          <trn-avatar name="Design room" shape="place" [url]="sampleImage" [size]="48" />
+          <trn-avatar name="Design room" shape="place" [url]="sampleImage" size="2xl" />
           <figcaption>Place image</figcaption>
         </figure>
+      </div>
+    `,
+  }),
+};
+
+/** Named sizes cover ordinary identity surfaces from metadata through profiles. */
+export const CanonicalSizes: Story = {
+  render: () => ({
+    template: `
+      <div class="flex items-end gap-4 p-4">
+        <trn-avatar data-testid="avatar-2xs" name="Ada" initial="A" size="2xs" />
+        <trn-avatar data-testid="avatar-xs" name="Ada" initial="A" size="xs" />
+        <trn-avatar data-testid="avatar-sm" name="Ada" initial="A" size="sm" />
+        <trn-avatar data-testid="avatar-md" name="Ada" initial="A" size="md" />
+        <trn-avatar data-testid="avatar-lg" name="Ada" initial="A" size="lg" />
+        <trn-avatar data-testid="avatar-xl" name="Ada" initial="A" size="xl" />
+        <trn-avatar data-testid="avatar-2xl" name="Ada" initial="A" size="2xl" />
+      </div>
+    `,
+  }),
+};
+
+/** Presence roles resolve through Theme Foundation rather than component-local colours. */
+export const SemanticPresence: Story = {
+  render: () => ({
+    template: `
+      <div class="flex gap-6 p-4">
+        <trn-avatar data-testid="avatar-online" name="Online" initial="O" size="xl" presence="online" />
+        <trn-avatar data-testid="avatar-away" name="Away" initial="A" size="xl" presence="unavailable" />
+        <trn-avatar data-testid="avatar-offline" name="Offline" initial="F" size="xl" presence="offline" />
+      </div>
+    `,
+  }),
+};
+
+/** Numeric size and the bounded exact escape remain valid while layouts migrate. */
+export const CompatibilityGeometry: Story = {
+  render: () => ({
+    template: `
+      <div class="flex items-center gap-4 p-4">
+        <trn-avatar data-testid="avatar-canonical" name="Canonical" initial="C" size="2xl" />
+        <trn-avatar data-testid="avatar-legacy" name="Legacy" initial="L" [size]="48" />
+        <trn-avatar data-testid="avatar-exact" name="Exact" initial="E" size="sm" [exactSize]="48" />
       </div>
     `,
   }),

@@ -1,4 +1,7 @@
-<hlm-avatar [style.width.px]="size()" [style.height.px]="size()">
+<hlm-avatar
+  [style.width.px]="resolvedSize()"
+  [style.height.px]="resolvedSize()"
+>
   @if (src()) {
     <img decoding="async" hlmAvatarImage [src]="src()" [alt]="name()" />
   }
@@ -7,7 +10,7 @@
     class="leading-none font-semibold"
     [style.background]="color()"
     [style.color]="initialColor()"
-    [style.font-size.px]="size() * 0.4"
+    [style.font-size.px]="resolvedSize() * 0.4"
     >{{ initial() }}</span
   >
 </hlm-avatar>
@@ -20,7 +23,6 @@
     [attr.data-presence]="state"
     [style.width.px]="dotSize()"
     [style.height.px]="dotSize()"
-    [style.background]="presenceColor()"
   ></span>
 }
 @if (accountBadge(); as badge) {

@@ -1,0 +1,54 @@
+@layer components {
+  :host {
+    display: inline-flex;
+    position: relative;
+  }
+
+  hlm-avatar,
+  hlm-avatar::after,
+  [hlmAvatarImage],
+  [hlmAvatarFallback] {
+    border-radius: var(--trn-avatar-radius);
+  }
+
+  .presence-dot {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    border-radius: var(--trinity-shape-person-radius);
+    box-shadow: 0 0 0 2px var(--trn-presence-ring, var(--background));
+  }
+
+  .presence-dot[data-presence='online'] {
+    background: var(--trinity-status-success-surface);
+  }
+
+  .presence-dot[data-presence='unavailable'] {
+    background: var(--trinity-status-warning-surface);
+  }
+
+  .presence-dot[data-presence='offline'] {
+    background: var(--trinity-control-muted-foreground);
+  }
+
+  .account-badge {
+    position: absolute;
+    left: -2px;
+    bottom: -2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--trinity-shape-person-radius);
+    font-weight: 700;
+    line-height: 1;
+    overflow: hidden;
+    box-shadow: 0 0 0 2px var(--trn-presence-ring, var(--background));
+  }
+
+  .account-badge__img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: var(--trinity-shape-person-radius);
+  }
+}

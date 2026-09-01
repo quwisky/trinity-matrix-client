@@ -95,7 +95,9 @@ describe('EmptyStateComponent', () => {
     fixture.componentRef.setInput('icon', 'search');
     fixture.detectChanges();
 
-    expect(container.querySelector('trn-icon')).not.toBeNull();
+    const icon = container.querySelector('trn-icon');
+    expect(icon?.getAttribute('data-size')).toBe('xl');
+    expect(icon?.getAttribute('data-variant')).toBe('muted');
   });
 
   it('takes the danger tone without reaching for text-destructive', async () => {
@@ -113,6 +115,21 @@ describe('EmptyStateComponent', () => {
       "Couldn't load rooms",
     );
     expect(container.querySelector('.text-destructive')).toBeNull();
+  });
+
+  it('lets the canonical variant override the compatibility tone', async () => {
+    const { container } = await render(EmptyStateComponent, {
+      inputs: {
+        body: 'No results',
+        tone: 'danger',
+        variant: 'muted',
+      },
+    });
+
+    const layout = container.querySelector('[data-variant]');
+    expect(layout?.getAttribute('data-variant')).toBe('muted');
+    expect(layout?.getAttribute('data-tone')).toBe('muted');
+    expect(container.querySelector('.text-muted-foreground')).not.toBeNull();
   });
 
   it('leaves nothing inside the body paragraph when there is neither a string nor projected content', async () => {
@@ -152,7 +169,7 @@ describe('EmptyStateComponent', () => {
     expect(body?.textContent?.trim()).toBe('No pinned messages in this room.');
   });
 
-  it("takes a panel's padding by default and a line's when asked", async () => {
+  it("takes a panel's padding by default and a canonical line layout when asked", async () => {
     // The fifteen rules this replaces were three sizes: 24px panels, and 8-12px lines inside
     // a list. A single size would have grown the compact ones roughly fourfold in a 280px
     // sidebar column, which is the thing adoption revealed and the component had missed.
@@ -166,11 +183,20 @@ describe('EmptyStateComponent', () => {
 
     expect(column()?.className).toContain('py-6');
 
-    fixture.componentRef.setInput('size', 'line');
+    fixture.componentRef.setInput('layout', 'line');
     fixture.detectChanges();
 
     expect(column()?.className).toContain('py-2');
     expect(column()?.className).not.toContain('py-6');
+    expect(column()?.getAttribute('data-layout')).toBe('line');
+  });
+
+  it('keeps the legacy size input valid during expansion', async () => {
+    const { container } = await render(EmptyStateComponent, {
+      inputs: { body: 'nothing', size: 'hero' },
+    });
+
+    expect(container.querySelector('[data-layout=hero]')).not.toBeNull();
   });
 
   it('renders the title as an h2 when the call site asks for one', async () => {
@@ -178,7 +204,7 @@ describe('EmptyStateComponent', () => {
     // owns the page's single `<h1>`, so this is an `<h2>` and must not silently become a `<p>`
     // on the way into this component.
     const { fixture, container } = await render(EmptyStateComponent, {
-      inputs: { title: 'Trinity', size: 'hero' as const },
+      inputs: { title: 'Trinity', layout: 'hero' as const },
     });
     expect(container.querySelector('h2')).toBeNull();
 

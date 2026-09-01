@@ -1,0 +1,28 @@
+@layer components {
+  :host {
+    display: inline-flex;
+  }
+
+  :host([data-size='xs']) {
+    --trn-spinner-size: 0.75rem;
+  }
+
+  :host([data-size='sm']) {
+    --trn-spinner-size: 0.875rem;
+  }
+
+  :host([data-size='md']) {
+    --trn-spinner-size: 1rem;
+  }
+
+  :host([data-size='lg']) {
+    --trn-spinner-size: 1.25rem;
+  }
+
+  hlm-spinner {
+    // ng-icon's box is driven by this property; inherited font-size alone can be
+    // fractional after the Storybook font stack resolves.
+    // stylelint-disable-next-line custom-property-pattern -- ng-icon's public vendor property
+    --ng-icon__size: var(--trn-spinner-size);
+  }
+}

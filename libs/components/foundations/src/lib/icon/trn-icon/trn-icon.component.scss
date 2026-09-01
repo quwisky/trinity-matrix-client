@@ -1,111 +1,133 @@
-// `inline-flex`, NOT `inline-block`, and the difference is visible on ~115 call sites.
-// An inline-block host sizes its height from its line box, so it is taller than the glyph by
-// the strut's half-leading and descent. As an `hlmBtn` flex item that taller box is centred,
-// putting the glyph above the button's true middle. Measured in Chromium, `inline-flex`
-// restores the same 6/6px or 8/8px gaps as the direct `<ng-icon>` this wrapper replaced.
-// Motion is composed on the inner glyph. The host remains an unchanged layout box and does
-// not gain a transformed stacking context; consumers can still transform the host itself.
-:host([data-motion]) {
-  --trn-icon-motion-x: 0;
-  --trn-icon-motion-y: 0;
-  --trn-icon-motion-rotation: 0deg;
-  --trn-icon-motion-scale: 1;
-  --trn-icon-motion-target-x: 0;
-  --trn-icon-motion-target-y: 0;
-  --trn-icon-motion-target-rotation: 0deg;
-  --trn-icon-motion-target-scale: 1;
-  --trn-icon-motion-duration: var(--trinity-duration-fast);
-
-  ng-icon {
-    transform: translate(var(--trn-icon-motion-x), var(--trn-icon-motion-y))
-      rotate(var(--trn-icon-motion-rotation))
-      scale(var(--trn-icon-motion-scale));
-    transform-origin: center;
-    transition: transform var(--trn-icon-motion-duration)
-      var(--trinity-ease-decelerate);
+@layer components {
+  // `inline-flex`, NOT `inline-block`, and the difference is visible on ~115 call sites.
+  // An inline-block host sizes its height from its line box, so it is taller than the glyph by
+  // the strut's half-leading and descent. As an `hlmBtn` flex item that taller box is centred,
+  // putting the glyph above the button's true middle. Measured in Chromium, `inline-flex`
+  // restores the same 6/6px or 8/8px gaps as the direct `<ng-icon>` this wrapper replaced.
+  // Motion is composed on the inner glyph. The host remains an unchanged layout box and does
+  // not gain a transformed stacking context; consumers can still transform the host itself.
+  :host {
+    display: inline-flex;
   }
-}
 
-:host([data-motion='nudge-left']) {
-  --trn-icon-motion-target-x: -0.125em;
-}
+  :host([data-variant='neutral']) {
+    color: var(--trinity-text);
+  }
 
-:host([data-motion='nudge-up']) {
-  --trn-icon-motion-target-y: -0.125em;
-}
+  :host([data-variant='accent']) {
+    color: var(--trinity-link);
+  }
 
-:host([data-motion='nudge-down']) {
-  --trn-icon-motion-target-y: 0.125em;
-}
+  :host([data-variant='muted']) {
+    color: var(--trinity-text-muted);
+  }
 
-:host([data-motion='nudge-up-right']) {
-  --trn-icon-motion-target-x: 0.125em;
-  --trn-icon-motion-target-y: -0.125em;
-}
+  :host([data-variant='danger']) {
+    color: var(--trinity-danger);
+  }
 
-:host([data-motion='pop']) {
-  --trn-icon-motion-target-scale: 1.1;
-}
+  :host([data-motion]) {
+    --trn-icon-motion-x: 0;
+    --trn-icon-motion-y: 0;
+    --trn-icon-motion-rotation: 0deg;
+    --trn-icon-motion-scale: 1;
+    --trn-icon-motion-target-x: 0;
+    --trn-icon-motion-target-y: 0;
+    --trn-icon-motion-target-rotation: 0deg;
+    --trn-icon-motion-target-scale: 1;
+    --trn-icon-motion-duration: var(--trinity-duration-fast);
 
-:host([data-motion='rotate']) {
-  --trn-icon-motion-target-rotation: 30deg;
-}
+    ng-icon {
+      transform: translate(var(--trn-icon-motion-x), var(--trn-icon-motion-y))
+        rotate(var(--trn-icon-motion-rotation))
+        scale(var(--trn-icon-motion-scale));
+      transform-origin: center;
+      transition: transform var(--trn-icon-motion-duration)
+        var(--trinity-ease-decelerate);
+    }
+  }
 
-// Keep the ancestor selectors deliberately simple: Angular's emulated encapsulation rewrites
-// `:host-context`, and built-Storybook tests exercise the emitted form in Chromium.
-:host-context(button:enabled:not([aria-disabled='true']):focus-visible) {
-  --trn-icon-motion-x: var(--trn-icon-motion-target-x);
-  --trn-icon-motion-y: var(--trn-icon-motion-target-y);
-  --trn-icon-motion-rotation: var(--trn-icon-motion-target-rotation);
-  --trn-icon-motion-scale: var(--trn-icon-motion-target-scale);
-}
+  :host([data-motion='nudge-left']) {
+    --trn-icon-motion-target-x: -0.125em;
+  }
 
-:host-context(a[href]:not([aria-disabled='true']):focus-visible) {
-  --trn-icon-motion-x: var(--trn-icon-motion-target-x);
-  --trn-icon-motion-y: var(--trn-icon-motion-target-y);
-  --trn-icon-motion-rotation: var(--trn-icon-motion-target-rotation);
-  --trn-icon-motion-scale: var(--trn-icon-motion-target-scale);
-}
+  :host([data-motion='nudge-up']) {
+    --trn-icon-motion-target-y: -0.125em;
+  }
 
-// Hover only exists on devices that actually have it, avoiding a sticky translated icon after
-// a touch tap. Focus-visible and active stay outside so keyboard and touch still get feedback.
-@media (hover: hover) {
-  :host-context(button:enabled:not([aria-disabled='true']):hover) {
+  :host([data-motion='nudge-down']) {
+    --trn-icon-motion-target-y: 0.125em;
+  }
+
+  :host([data-motion='nudge-up-right']) {
+    --trn-icon-motion-target-x: 0.125em;
+    --trn-icon-motion-target-y: -0.125em;
+  }
+
+  :host([data-motion='pop']) {
+    --trn-icon-motion-target-scale: 1.1;
+  }
+
+  :host([data-motion='rotate']) {
+    --trn-icon-motion-target-rotation: 30deg;
+  }
+
+  // Keep the ancestor selectors deliberately simple: Angular's emulated encapsulation rewrites
+  // `:host-context`, and built-Storybook tests exercise the emitted form in Chromium.
+  :host-context(button:enabled:not([aria-disabled='true']):focus-visible) {
     --trn-icon-motion-x: var(--trn-icon-motion-target-x);
     --trn-icon-motion-y: var(--trn-icon-motion-target-y);
     --trn-icon-motion-rotation: var(--trn-icon-motion-target-rotation);
     --trn-icon-motion-scale: var(--trn-icon-motion-target-scale);
   }
 
-  :host-context(a[href]:not([aria-disabled='true']):hover) {
+  :host-context(a[href]:not([aria-disabled='true']):focus-visible) {
     --trn-icon-motion-x: var(--trn-icon-motion-target-x);
     --trn-icon-motion-y: var(--trn-icon-motion-target-y);
     --trn-icon-motion-rotation: var(--trn-icon-motion-target-rotation);
     --trn-icon-motion-scale: var(--trn-icon-motion-target-scale);
   }
-}
 
-:host-context(button:enabled:not([aria-disabled='true']):active) {
-  --trn-icon-motion-x: var(--trn-icon-motion-target-x);
-  --trn-icon-motion-y: var(--trn-icon-motion-target-y);
-  --trn-icon-motion-rotation: var(--trn-icon-motion-target-rotation);
-  --trn-icon-motion-scale: 0.9;
-  --trn-icon-motion-duration: var(--trinity-duration-press);
-}
+  // Hover only exists on devices that actually have it, avoiding a sticky translated icon after
+  // a touch tap. Focus-visible and active stay outside so keyboard and touch still get feedback.
+  @media (hover: hover) {
+    :host-context(button:enabled:not([aria-disabled='true']):hover) {
+      --trn-icon-motion-x: var(--trn-icon-motion-target-x);
+      --trn-icon-motion-y: var(--trn-icon-motion-target-y);
+      --trn-icon-motion-rotation: var(--trn-icon-motion-target-rotation);
+      --trn-icon-motion-scale: var(--trn-icon-motion-target-scale);
+    }
 
-:host-context(a[href]:not([aria-disabled='true']):active) {
-  --trn-icon-motion-x: var(--trn-icon-motion-target-x);
-  --trn-icon-motion-y: var(--trn-icon-motion-target-y);
-  --trn-icon-motion-rotation: var(--trn-icon-motion-target-rotation);
-  --trn-icon-motion-scale: 0.9;
-  --trn-icon-motion-duration: var(--trinity-duration-press);
-}
+    :host-context(a[href]:not([aria-disabled='true']):hover) {
+      --trn-icon-motion-x: var(--trn-icon-motion-target-x);
+      --trn-icon-motion-y: var(--trn-icon-motion-target-y);
+      --trn-icon-motion-rotation: var(--trn-icon-motion-target-rotation);
+      --trn-icon-motion-scale: var(--trn-icon-motion-target-scale);
+    }
+  }
 
-// Collapsing a transition duration alone would leave an instantaneous positional jump. Motion
-// preference removes the transform itself; the button's existing tint and focus ring remain.
-@media (prefers-reduced-motion: reduce) {
-  :host([data-motion]) ng-icon {
-    transform: none;
-    transition: none;
+  :host-context(button:enabled:not([aria-disabled='true']):active) {
+    --trn-icon-motion-x: var(--trn-icon-motion-target-x);
+    --trn-icon-motion-y: var(--trn-icon-motion-target-y);
+    --trn-icon-motion-rotation: var(--trn-icon-motion-target-rotation);
+    --trn-icon-motion-scale: 0.9;
+    --trn-icon-motion-duration: var(--trinity-duration-press);
+  }
+
+  :host-context(a[href]:not([aria-disabled='true']):active) {
+    --trn-icon-motion-x: var(--trn-icon-motion-target-x);
+    --trn-icon-motion-y: var(--trn-icon-motion-target-y);
+    --trn-icon-motion-rotation: var(--trn-icon-motion-target-rotation);
+    --trn-icon-motion-scale: 0.9;
+    --trn-icon-motion-duration: var(--trinity-duration-press);
+  }
+
+  // Collapsing a transition duration alone would leave an instantaneous positional jump. Motion
+  // preference removes the transform itself; the button's existing tint and focus ring remain.
+  @media (prefers-reduced-motion: reduce) {
+    :host([data-motion]) ng-icon {
+      transform: none;
+      transition: none;
+    }
   }
 }

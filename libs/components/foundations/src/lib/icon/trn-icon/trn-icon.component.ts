@@ -7,6 +7,11 @@ import {
 import { NgIcon } from '@ng-icons/core';
 import type { TrnIconName } from '../trn-icon-name';
 import type { TrnIconMotion } from '../trn-icon-motion';
+import {
+  resolveTrnIconSize,
+  type TrnIconSizeInput,
+  type TrnIconVariant,
+} from '../trn-icon-recipe';
 
 /**
  * Trinity's icon.
@@ -36,10 +41,6 @@ import type { TrnIconMotion } from '../trn-icon-motion';
   templateUrl: './trn-icon.component.html',
   imports: [NgIcon],
   styleUrl: './trn-icon.component.scss',
-  // Keep the one box-model rule inline. jsdom does not load external stylesheets, and the
-  // component spec deliberately proves this wrapper retains the direct icon's inline-flex
-  // geometry. The interaction state machine lives in SCSS so stylelint and token guards see it.
-  styles: [':host { display: inline-flex; }'],
   host: {
     // Null rather than absent-when-false: an unlabelled icon must expose no role at all,
     // or every decorative icon becomes an announceable image with no name. An EMPTY label
@@ -49,6 +50,8 @@ import type { TrnIconMotion } from '../trn-icon-motion';
     '[attr.role]': 'announced() ? "img" : null',
     '[attr.aria-label]': 'announced()',
     '[attr.data-motion]': 'motion()',
+    '[attr.data-size]': 'size()',
+    '[attr.data-variant]': 'variant()',
   },
 })
 export class TrnIconComponent {
@@ -66,13 +69,14 @@ export class TrnIconComponent {
    * for `class="text-xl"` — whenever an icon must be BIGGER than its context: see the note
    * above for why the class form silently stops working through this wrapper.
    *
-   * `''` rather than `null` for "unset": `NgIcon.size` declares a `coerceCssPixelValue`
-   * transform whose parameter is `string`, so a nullable input is an NG-template type error
-   * under `strictTemplates` — caught by `pnpm build` and by nothing else. Empty behaves
-   * identically at runtime; the coercion returns it untouched, Angular then drops the custom
-   * property, and `1em` applies as before.
+   * The public input uses `null` for "unset" while {@link resolvedSize} translates that to
+   * the empty string required by `NgIcon.size` under strict template checking. The vendor
+   * coercion returns it untouched, Angular drops the custom property, and `1em` applies as
+   * before.
    */
-  readonly size = input('');
+  readonly size = input<TrnIconSizeInput | null>(null);
+  /** Optional semantic ink. Leave unset when the surrounding control supplies the colour. */
+  readonly variant = input<TrnIconVariant | null>(null);
   /**
    * Optional transform gesture driven by the surrounding interactive button. The default
    * writes no activation hook, so decorative icons and controls not explicitly audited for
@@ -81,4 +85,7 @@ export class TrnIconComponent {
   readonly motion = input<TrnIconMotion | null>(null);
 
   protected readonly announced = computed(() => this.label() || null);
+  protected readonly resolvedSize = computed(() =>
+    resolveTrnIconSize(this.size()),
+  );
 }

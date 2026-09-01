@@ -1,7 +1,13 @@
 <!-- Centred column. `text-balance` on the copy rather than a width cap: these sit in panels
      from a 280px sidebar to a full chat pane, and a fixed measure that reads well in one is
      wrong in the other. -->
-<div [class]="layoutClass()">
+<div
+  [class]="layoutClass()"
+  [attr.data-variant]="resolvedVariant()"
+  [attr.data-layout]="resolvedLayout()"
+  [attr.data-tone]="resolvedVariant()"
+  [attr.data-size]="resolvedLayout()"
+>
   @if (badge(); as glyph) {
     <!-- The disc the hero already drew, moved off `.hero__badge`. A `<span>` with
          `aria-hidden`: it is decoration for a title that says the same thing in words. -->
@@ -13,7 +19,7 @@
   }
 
   @if (icon(); as name) {
-    <trn-icon [name]="name" class="text-2xl text-muted-foreground" />
+    <trn-icon [name]="name" size="xl" variant="muted" />
   }
 
   @if (title(); as heading) {

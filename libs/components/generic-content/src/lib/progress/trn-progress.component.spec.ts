@@ -8,6 +8,8 @@ import { TrnProgressComponent } from './trn-progress.component';
   imports: [TrnProgressComponent],
   template: `<trn-progress
     [value]="value()"
+    variant="success"
+    size="md"
     aria-label="Uploading attachment"
   />`,
 })
@@ -51,5 +53,19 @@ describe('TrnProgressComponent', () => {
     expect(
       container.querySelector('[aria-label="Uploading attachment"]'),
     ).not.toBeNull();
+  });
+
+  it('publishes semantic recipe and behavior state independently', async () => {
+    const { container, fixture } = await render(HostComponent);
+    const host = container.querySelector('trn-progress');
+
+    expect(host?.getAttribute('data-variant')).toBe('success');
+    expect(host?.getAttribute('data-size')).toBe('md');
+    expect(host?.getAttribute('data-state')).toBe('determinate');
+
+    fixture.componentInstance.value.set(null);
+    fixture.detectChanges();
+    expect(host?.getAttribute('data-state')).toBe('indeterminate');
+    expect(host?.getAttribute('data-variant')).toBe('success');
   });
 });

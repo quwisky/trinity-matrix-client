@@ -67,6 +67,25 @@ entrypoint. The expansion window still accepts Helm-shaped button values such as
 equivalently. Those aliases exist only until the consumer-migration and contract tickets remove
 them.
 
+Foundations and Generic Content apply the same rule to the narrower vocabulary each component
+can actually render:
+
+| Component         | Canonical contract                                                                                | Expansion compatibility                                                |
+| ----------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `trn-icon`        | Sizes `2xs`, `xs`, `sm`, `md`, `lg`, `xl`, `2xl`; variants `neutral`, `accent`, `muted`, `danger` | Exact `px`, `rem`, or `em` lengths remain accepted.                    |
+| `trn-avatar`      | Named `2xs`–`2xl` sizes; `exactSize` is a bounded 16–256 px escape hatch.                         | Numeric `size` values keep their geometry; `exactSize` wins if set.    |
+| `trnBadge`        | Variants `neutral`, `success`, `warning`; sizes `xs`, `sm`, `md`                                  | `variant="default"` maps to `neutral`.                                 |
+| `trn-banner`      | Variants `neutral`, `accent`                                                                      | `tone` remains an alias; canonical `variant` wins when both are bound. |
+| `trn-empty-state` | Variants `muted`, `danger`; layouts `panel`, `line`, `hero`                                       | `tone` and `size` remain aliases for the corresponding axes.           |
+| `trn-progress`    | Variants `accent`, `success`, `warning`, `danger`; sizes `xs`, `sm`, `md`                         | Determinate and indeterminate are behavior, not appearance variants.   |
+| `trn-spinner`     | Variants `neutral`, `muted`, `accent`, `danger`; sizes `xs`, `sm`, `md`, `lg`                     | An omitted variant inherits the surrounding control ink.               |
+| `trnTooltip`      | Positions `top`, `right`, `bottom`, `left`                                                        | Position remains behavior; the tooltip has one semantic surface.       |
+
+Recipe classes and vendor adapters stay private. Public entrypoints export only Trinity names,
+and semantic statuses resolve through Theme tokens rather than local colours or Helm variants.
+Canonical and compatibility stories coexist during this expansion window; strict template
+fixtures reject values outside the bounded subsets.
+
 The login page is the first production proof screen. It composes labels, inputs, buttons,
 cards, icons, overlays and progress only through Trinity entrypoints, including
 `@trinity/components/controls` for the native label/control association. The executable ledger
