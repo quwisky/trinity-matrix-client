@@ -627,6 +627,10 @@ All notable changes to this project are documented here. The format is based on
   accepts the Settings index used on narrow layouts and the canonical first section selected on
   wide layouts, while still requiring the real Settings surface after the native touch.
 
+- **The installed Android composer journey no longer depends on emulator autocorrect.** Its native
+  keyboard proof now enters one deterministic token, keeping the real IME and viewport checks while
+  avoiding dictionary-specific rewrites when an English word is committed with Space.
+
 - **Runtime warnings no longer push the message composer below small phone screens.** The
   Application Runtime warning region stays visible and keyboard-scrollable while yielding the
   rest of the visual viewport to the routed surface, including with larger text and an encryption
