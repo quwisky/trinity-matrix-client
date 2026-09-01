@@ -15,7 +15,8 @@
 //      by hand-authored component SCSS (surfaces, text, accent, radii).
 //   2. Helm/shadcn tokens (`--background`, `--card`, `--primary`, …) — consumed by the
 //      generated Helm components through Tailwind colour utilities (`bg-card`,
-//      `text-muted-foreground`, …). spartan.css maps these to `--color-*` by reference.
+//      `text-muted-foreground`, …). The private Tailwind adapter maps these to `--color-*`
+//      by reference.
 //   Where a Helm token always equals a Trinity token it is defined *as a reference*
 //   (`--card: var(--trinity-sidebar)`) so a palette only sets the value once.
 
@@ -252,7 +253,7 @@
   // per-state — a button lifts /10 to /20 on hover in light and /20 to /30 in dark, while a
   // menu item and a badge stay put — so a rest/hover pair would have to be re-decided for
   // every selector, and getting it wrong is invisible. This way each override maps to the
-  // number it literally declares. See spartan.css.
+  // number it literally declares. See the private Tailwind adapter.
   // `in srgb`, NOT `in oklab`, and that is the point rather than a detail: mixing a colour
   // with `transparent` yields that colour at N% alpha, which the browser then composites in
   // gamma-encoded sRGB. An sRGB mix over --card therefore reproduces today's pixels exactly

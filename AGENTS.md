@@ -288,7 +288,8 @@ Electron's `trinity://` scheme, which broke the desktop dark theme.
   is a near-black maroon (in a template the alert-text utility is `text-danger`, **not**
   `text-destructive`). Rendered `[innerHTML]` markdown is styled globally in
   `apps/trinity/src/rendered-markdown.scss` (not `::ng-deep`). See [docs/architecture/ui-and-theming.md](docs/architecture/ui-and-theming.md).
-- **A Tailwind utility loses to an unlayered rule, whatever the specificity.** `theme/spartan.css`
+- **A Tailwind utility loses to an unlayered rule, whatever the specificity.** Theme Foundation's
+  private Tailwind adapter
   imports Tailwind into `@layer utilities`; Angular component styles and `global.scss` are
   UNLAYERED, and an unlayered author declaration always wins. So `md:hidden` on a component with
   its own `:host { display: … }` does nothing, and pairing `.safe-*` with `p-3` REPLACES the

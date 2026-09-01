@@ -3,9 +3,7 @@ import { expect, test } from '@playwright/test';
 test('compact media controls retain the coarse-pointer target floor', async ({
   page,
 }) => {
-  const globals = encodeURIComponent(
-    'mode:dark;palette:trinity;density:compact',
-  );
+  const globals = encodeURIComponent('mode:dark;theme:trinity;density:compact');
   await page.goto(
     `/iframe.html?id=components-media-bubble--compact-file&viewMode=story&globals=${globals}`,
   );
@@ -22,9 +20,7 @@ test('compact media controls retain the coarse-pointer target floor', async ({
 test('compact banner actions retain the coarse-pointer target floor', async ({
   page,
 }) => {
-  const globals = encodeURIComponent(
-    'mode:dark;palette:trinity;density:compact',
-  );
+  const globals = encodeURIComponent('mode:dark;theme:trinity;density:compact');
   await page.goto(
     `/iframe.html?id=components-banner--accent&viewMode=story&globals=${globals}`,
   );

@@ -11,7 +11,7 @@ import tseslint from 'typescript-eslint';
 // anchored at this config's location (the repo root).
 const tailwindCssConfigPath = join(
   import.meta.dirname,
-  'apps/trinity/src/theme/spartan.css',
+  'libs/theme-foundation/styles/internal/tailwind-adapter.css',
 );
 
 /** Shared by the two rules below, which police the same ban over different AST shapes. */

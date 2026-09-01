@@ -1,5 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { THEME_CATALOG } from '@trinity/theme-foundation';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
@@ -7,7 +8,6 @@ import {
   ComposerSettingsService,
   SystemLineSettingsService,
   ThemeService,
-  TRINITY_PALETTES,
   TRINITY_TEXT_SCALES,
   TRINITY_CODE_SCALES,
   TRINITY_CODE_LINE_MODES,
@@ -81,7 +81,7 @@ describe('AppearanceSettingsComponent', () => {
           preference,
           resolved,
           palette,
-          palettes: TRINITY_PALETTES,
+          palettes: THEME_CATALOG.themes,
           textScale,
           textScales: TRINITY_TEXT_SCALES,
           codeScale,
