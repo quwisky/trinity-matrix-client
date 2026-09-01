@@ -86,6 +86,10 @@ record. Design System owns Mode, Theme, text size, and density; Conversations ow
 code-line presentation. `@trinity/application/appearance` composes their six read-only preference
 cells into one value plus per-axis state, delegates hydration to Preferences Store, and turns any
 partial result into one warning-ready outcome while each failed axis keeps only its own default.
+It resolves committed values with the current system Mode through a platform-neutral function.
+One cold effect lifetime owns the system-Mode observation, document-root carrier adapter, and a
+Mode-only native-chrome projection; unsuccessful persistence never publishes a candidate into
+that lifetime.
 
 ## Public interfaces
 

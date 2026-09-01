@@ -87,6 +87,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Appearance resolution and rendering now have explicit boundaries.** The six committed
+  Appearance axes resolve independently from browser and native APIs, one document adapter owns
+  every root class, attribute and style carrier, and default axes leave no root footprint. A cold
+  system-Mode source affects rendering and the narrow native-chrome projection only while Mode is
+  `system`; failed preference persistence never reaches either effect boundary.
+
 - **Appearance preferences now keep their capability ownership.** Mode, Theme, text size, and
   density are independently persisted Design System descriptors, while Conversations owns code
   size and code-line presentation. One read-only application model composes all six values and
