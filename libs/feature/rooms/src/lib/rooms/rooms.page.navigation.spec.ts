@@ -882,6 +882,41 @@ describe('RoomsPage mobile navigation', () => {
     expect(timelineOpen).toHaveBeenCalledWith('!r:hs');
     expect(releaseAll).toHaveBeenCalled();
   });
+
+  it('silently ignores selecting the exact Room that is already open', async () => {
+    const shell = build();
+    shell.nav.onSelectRoom('!r:hs');
+    await settleWorkspace();
+    const navigate = TestBed.inject(Router).navigate as Mock;
+    const showError = vi.spyOn(shell.status, 'showError');
+    navigate.mockClear();
+    navigate.mockResolvedValueOnce(false);
+    timelineOpen.mockClear();
+    releaseAll.mockClear();
+
+    shell.nav.onSelectRoom('!r:hs');
+    await settleWorkspace();
+
+    expect(showError).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+    expect(timelineOpen).not.toHaveBeenCalled();
+    expect(releaseAll).not.toHaveBeenCalled();
+  });
+
+  it('reports a genuine Room navigation rejection', async () => {
+    const shell = build();
+    const navigate = TestBed.inject(Router).navigate as Mock;
+    const showError = vi.spyOn(shell.status, 'showError');
+    navigate.mockResolvedValueOnce(false);
+
+    shell.nav.onSelectRoom('!r:hs');
+    await settleWorkspace();
+
+    expect(showError).toHaveBeenCalledWith(
+      'Unable to open that destination right now.',
+    );
+    expect(shell.store.activeRoomId()).toBeNull();
+  });
 });
 
 // The user-panel switcher summarises every signed-in account: each row is that account's

@@ -308,6 +308,59 @@ describe('WorkspaceService', () => {
     });
   });
 
+  it('treats selecting the exact active destination as a successful no-op', async () => {
+    const h = harness({ routeAccountId: ALICE, routeRoomId: ROOM });
+    const current = h.service.view();
+    const destination = {
+      accountId: ALICE,
+      scope: { kind: 'recent' },
+      roomId: ROOM,
+      pane: 'conversation',
+    } as const;
+    h.navigate.mockClear();
+    h.navigate.mockResolvedValueOnce(false);
+    h.conversations.focus.mockClear();
+    h.conversations.blur.mockClear();
+    h.media.releaseAll.mockClear();
+
+    await expect(
+      firstValueFrom(
+        h.service.open(destination, { source: 'user', history: 'push' }),
+      ),
+    ).resolves.toMatchObject({
+      kind: 'ready',
+      view: current,
+      repaired: false,
+    });
+    expect(h.navigate).not.toHaveBeenCalled();
+    expect(h.conversations.focus).not.toHaveBeenCalled();
+    expect(h.conversations.blur).not.toHaveBeenCalled();
+    expect(h.media.releaseAll).not.toHaveBeenCalled();
+  });
+
+  it('transitions when selecting a different pane for the active Room', async () => {
+    const h = harness({ routeAccountId: ALICE, routeRoomId: ROOM });
+    h.navigate.mockClear();
+
+    await expect(
+      firstValueFrom(
+        h.service.open(
+          {
+            accountId: ALICE,
+            scope: { kind: 'recent' },
+            roomId: ROOM,
+            pane: 'list',
+          },
+          { source: 'user', history: 'push' },
+        ),
+      ),
+    ).resolves.toMatchObject({
+      kind: 'ready',
+      view: { accountId: ALICE, roomId: ROOM, pane: 'list' },
+    });
+    expect(h.navigate).toHaveBeenCalledOnce();
+  });
+
   it('repairs a missing room to the list and replaces malformed history', async () => {
     const h = harness({ routeAccountId: ALICE });
     h.navigate.mockClear();

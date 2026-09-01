@@ -601,6 +601,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Selecting the Room already open no longer reports a navigation error.** An exact Workspace
+  selection is now a successful no-op: it neither writes duplicate browser history nor releases
+  and refocuses the active Conversation. Selecting the same Room from the compact list still
+  opens its Conversation because that changes the pane.
+
 - **Runtime warnings no longer push the message composer below small phone screens.** The
   Application Runtime warning region stays visible and keyboard-scrollable while yielding the
   rest of the visual viewport to the routed surface, including with larger text and an encryption

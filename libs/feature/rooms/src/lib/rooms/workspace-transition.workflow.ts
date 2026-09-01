@@ -57,6 +57,12 @@ const ZERO_ACCOUNT_METRICS = {
   projectionCount: 0,
 } as const;
 
+const NOOP_TRANSITION_METRICS = {
+  durationMs: 0,
+  accountDurationMs: 0,
+  routeDurationMs: 0,
+} as const satisfies WorkspaceTransitionMetrics;
+
 class WorkspaceNavigationRejected extends Error {}
 
 /** Package-internal, joining transition engine behind Workspace's small public API. */
@@ -108,6 +114,19 @@ export class WorkspaceTransitionWorkflow {
     const resolved = this.resolveDestination(requested);
     const accountChanges =
       requested.accountId !== this.accounts.activeAccountId();
+
+    if (
+      !resolved.repaired &&
+      !accountChanges &&
+      sameWorkspaceDestination(previous, resolved.destination)
+    ) {
+      return of({
+        kind: 'ready',
+        view: previous,
+        repaired: false,
+        metrics: NOOP_TRANSITION_METRICS,
+      });
+    }
 
     const projectRequestedUrl = () => {
       routeStartedAt = performance.now();
