@@ -609,6 +609,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A stalled native badge plugin can no longer hold the app on “Restoring your session…”.** Badge
+  support, permission, and update calls now have a finite bound, report typed secret-safe outcomes,
+  and discard timed-out readiness attempts so later startup attempts can probe again.
+
 - **The homeserver-free SAS self-check runs without disposable Matrix credentials again.**
   Standalone protocol checks now join only the application lifecycle, while mutating journeys keep
   their attempt-scoped Accounts and secret-redacting diagnostics. A failed Continue response also

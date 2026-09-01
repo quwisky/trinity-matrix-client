@@ -723,21 +723,24 @@ immediately schedules the same warning again.
 `untracked`. Keep a regression whose synchronous warning subscriber also reads and writes a signal;
 changing that unrelated signal must not trigger another permission negotiation.
 
-### The startup spinner never leaves in a browser
+### The startup spinner never leaves during optional capability discovery
 
 **Symptom.** The application stays on "Restoring your session…" even though Account restoration
-finished. This is especially reproducible in Firefox storage-permission flows or in a production
-Playwright run that blocks service workers.
+finished. This is especially reproducible in Firefox storage-permission flows, in a production
+Playwright run that blocks service workers, or after an Android WebView document restart where the
+native badge bridge logs a call but never delivers its callback.
 
-**Cause.** Browser APIs do not guarantee that `navigator.storage.persist()` or Angular's
-`SwUpdate.checkForUpdate()` promise will settle. Application Runtime treats storage durability and
-update discovery as optional session capabilities, but an unbounded promise inside their startup
-commands turns either best-effort capability into a readiness deadlock.
+**Cause.** Browser and native bridge APIs do not guarantee that
+`navigator.storage.persist()`, Angular's `SwUpdate.checkForUpdate()`, or a Capacitor badge promise
+will settle. Application Runtime treats storage durability, update discovery, and badge support as
+optional session capabilities, but an unbounded promise inside their startup commands turns a
+best-effort capability into a readiness deadlock.
 
-**Fix.** Keep both host commands cold and finite. Their adapters use bounded RxJS `timeout`
-fallbacks and normalize a pending request to a denied persistence result or an update warning;
-neither optional capability may block Workspace restoration. Preserve the never-settling-promise
-regressions when changing these adapters.
+**Fix.** Keep all three host commands cold and finite. Their adapters use bounded RxJS `timeout`
+fallbacks and normalize a pending request to a denied persistence result or a typed warning. The
+native badge adapter also discards a timed-out readiness attempt instead of memoizing its pending
+promise forever. No optional capability may block Workspace restoration. Preserve the
+never-settling-promise regressions when changing these adapters.
 
 ### A second stored account fails while Rust crypto starts
 

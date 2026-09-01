@@ -173,9 +173,12 @@ in the overlay's accessibility description, collapsing anything past 99 to `99+`
 count arriving over IPC is untrusted and is validated and clamped before it reaches any
 native call.
 
-Every write is a cold, finite command, and a newer aggregate cancels a stale write. Unsupported
-hosts remain a no-op; rejected or failed sinks emit a non-blocking Application Runtime warning.
-They do not change readiness, unread ownership, or notification navigation.
+Every probe and write is a cold, finite command, and a newer aggregate cancels a stale write.
+Native plugin probes, permission requests, and writes have the same finite bound as other optional
+host capabilities; a timed-out readiness attempt is discarded so a later attempt can retry it.
+Unsupported hosts remain a no-op; rejected, timed-out, or failed sinks emit a non-blocking
+Application Runtime warning. They do not change readiness, unread ownership, or notification
+navigation.
 
 ## Mobile push
 
