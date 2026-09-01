@@ -9,14 +9,38 @@
   class="grid gap-[var(--trinity-space-7)] px-[var(--trinity-space-4)] pb-[var(--trinity-space-7)] md:px-0"
 >
   <trn-appearance-preview
-    [themeLabel]="theme.resolved()"
-    [paletteLabel]="paletteLabel()"
+    [themeLabel]="resolvedMode()"
+    [paletteLabel]="themeLabel()"
     [densityLabel]="densityLabel()"
     [timeLabel]="format.sampleTime(sample, format.timeFormat())"
   />
 
+  @if (appearance.hydrationWarning()) {
+    <div
+      role="alert"
+      class="flex flex-wrap items-center justify-between gap-3 rounded-[var(--trinity-shape-control-radius)] border border-danger p-[var(--trinity-space-4)] text-13 text-danger"
+      data-testid="appearance-hydration-warning"
+    >
+      <span
+        >One Appearance preference could not be restored. The other choices are
+        unchanged.</span
+      >
+      <button
+        trnBtn
+        type="button"
+        variant="outline"
+        size="sm"
+        [disabled]="appearance.hydrationBusy()"
+        data-testid="appearance-hydration-recover"
+        (click)="appearance.recoverHydration()"
+      >
+        Restore affected defaults
+      </button>
+    </div>
+  }
+
   <trn-settings-group
-    title="Mode and palette"
+    title="Mode and Theme"
     headingId="appearance-mode-heading"
     description="Choose the surface contrast and colour accents that feel most comfortable."
     data-testid="appearance-mode-palette"
@@ -25,33 +49,33 @@
       variant="segmented"
       aria-labelledby="appearance-mode-heading"
       [options]="themeOptions"
-      [value]="theme.preference()"
+      [value]="appearance.axes.mode.value()"
+      [disabled]="appearance.hydrationBusy() || appearance.status.mode.busy()"
       (valueChange)="onThemeChange($event)"
     />
     <p class="text-13 text-[var(--trinity-text-muted)]">
-      Showing the {{ theme.resolved() }} theme.
+      Showing the {{ resolvedMode() }} Mode.
     </p>
-    <div trnSettingsFieldRow>
-      <span class="min-w-0">
-        <strong
-          id="appearance-palette-heading"
-          class="block text-sm font-semibold text-[var(--trinity-text-bright)]"
-          >Palette</strong
+    @if (appearance.status.mode.failed()) {
+      <div
+        role="alert"
+        class="flex flex-wrap items-center justify-end gap-2 text-13 text-danger"
+        data-testid="theme-mode-failure"
+      >
+        <span>This choice could not be saved.</span>
+        <button
+          trnBtn
+          type="button"
+          variant="outline"
+          size="sm"
+          data-testid="theme-mode-retry"
+          (click)="appearance.retry('mode')"
         >
-        <small class="block text-13 text-[var(--trinity-text-muted)]"
-          >Accent and supporting neutrals</small
-        >
-      </span>
-      <trn-select
-        data-testid="palette-select"
-        aria-labelledby="appearance-palette-heading"
-        placeholder="Select a palette"
-        triggerClass="w-full"
-        [options]="paletteOptions"
-        [value]="theme.palette()"
-        (valueChange)="onPaletteChange($event)"
-      />
-    </div>
+          Retry
+        </button>
+      </div>
+    }
+    <trn-appearance-preference-field [field]="themeField" />
   </trn-settings-group>
 
   <trn-settings-group
@@ -60,48 +84,8 @@
     description="Density changes spacing while accessible targets stay the same size."
     data-testid="appearance-layout"
   >
-    <div trnSettingsFieldRow>
-      <span class="min-w-0">
-        <strong
-          id="appearance-density-heading"
-          class="block text-sm font-semibold text-[var(--trinity-text-bright)]"
-          >Conversation density</strong
-        >
-        <small class="block text-13 text-[var(--trinity-text-muted)]"
-          >Space between messages and navigation rows</small
-        >
-      </span>
-      <trn-select
-        data-testid="density-select"
-        aria-labelledby="appearance-density-heading"
-        placeholder="Select a density"
-        triggerClass="w-full"
-        [options]="densityOptions"
-        [value]="theme.density()"
-        (valueChange)="onDensityChange($event)"
-      />
-    </div>
-    <div trnSettingsFieldRow>
-      <span class="min-w-0">
-        <strong
-          id="appearance-text-size-heading"
-          class="block text-sm font-semibold text-[var(--trinity-text-bright)]"
-          >Text size</strong
-        >
-        <small class="block text-13 text-[var(--trinity-text-muted)]"
-          >Applies throughout the application</small
-        >
-      </span>
-      <trn-select
-        data-testid="text-scale-select"
-        aria-labelledby="appearance-text-size-heading"
-        placeholder="Select a text size"
-        triggerClass="w-full"
-        [options]="textScaleOptions"
-        [value]="theme.textScale()"
-        (valueChange)="onTextScaleChange($event)"
-      />
-    </div>
+    <trn-appearance-preference-field [field]="densityField" />
+    <trn-appearance-preference-field [field]="textSizeField" />
   </trn-settings-group>
 
   <trn-code-appearance-block />

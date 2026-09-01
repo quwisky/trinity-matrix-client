@@ -73,19 +73,21 @@ describe('AppearanceEffects', () => {
     expect(documentAdapter.apply).toHaveBeenCalledTimes(3);
     expect(nativeAdapter.apply).toHaveBeenCalledTimes(3);
 
+    const fixedAppearance = effects.resolved();
     systemMode.next('light');
-    expect(documentAdapter.apply).toHaveBeenCalledTimes(3);
+    expect(effects.resolved()).toBe(fixedAppearance);
+    expect(documentAdapter.apply).toHaveBeenCalledTimes(4);
     expect(nativeAdapter.apply).toHaveBeenCalledTimes(3);
 
     committed.set({ ...committed(), theme: 'amethyst' });
     TestBed.flushEffects();
-    expect(documentAdapter.apply).toHaveBeenCalledTimes(4);
+    expect(documentAdapter.apply).toHaveBeenCalledTimes(5);
     expect(nativeAdapter.apply).toHaveBeenCalledTimes(3);
 
     subscription.unsubscribe();
     committed.set({ ...committed(), mode: 'dark' });
     TestBed.flushEffects();
-    expect(documentAdapter.apply).toHaveBeenCalledTimes(4);
+    expect(documentAdapter.apply).toHaveBeenCalledTimes(5);
   });
 
   it('keeps the document effect alive without a native adapter', () => {

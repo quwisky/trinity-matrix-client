@@ -175,7 +175,10 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   independent defaults/failures and reduces to one recoverable startup warning. A platform-neutral
   resolver combines committed values with system Mode; one cold effect lifetime owns the system
   source, document-root carrier adapter, and Mode-only native-chrome projection. The temporary
-  `ThemeService` startup/caller path remains until its migration slice.
+  Settings controller binds all six descriptor commands, keeps committed values visible through
+  failed writes, offers per-control Retry, and recovers only failed hydration axes. It owns the
+  cold effect only while the routed screen exists until Application Runtime takes over the
+  session-long lifetime; the `ThemeService` startup/caller path remains until that migration slice.
 - `@trinity/runtime/host` `[type:platform]`, `[role:kernel]` — Host Capabilities: narrow operation
   contracts and explicit supported/unavailable manifests for authentication handoff, deep links,
   Back, file export, notification presentation, location, badges, secure storage, lifecycle, and

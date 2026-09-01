@@ -17,13 +17,23 @@ import {
 import {
   INSTALLATION_PREFERENCE_CONTEXT,
   PreferenceStoreService,
+  type PreferenceCommandOutcome,
   type PreferenceDescriptor,
+  type PreferenceEditor,
   type PreferenceFailure,
   type PreferenceState,
   type PreferenceValue,
 } from '@trinity/runtime/preferences';
 import type { ThemeId, ThemeMode } from '@trinity/theme-foundation';
-import { map, type Observable } from 'rxjs';
+import {
+  concatMap,
+  defer,
+  from,
+  map,
+  switchMap,
+  toArray,
+  type Observable,
+} from 'rxjs';
 import {
   DENSITY_PREFERENCE,
   DESIGN_SYSTEM_APPEARANCE_PREFERENCE_DESCRIPTORS,
@@ -51,8 +61,10 @@ export interface AppearanceValue {
 }
 
 export interface AppearanceAxis<T extends PreferenceValue> {
+  readonly editor: Extract<PreferenceEditor, { readonly kind: 'select' }>;
   readonly state: Signal<PreferenceState<T>>;
   readonly value: Signal<T>;
+  readonly set: (candidate: unknown) => Observable<PreferenceCommandOutcome>;
 }
 
 export interface AppearanceStartupWarning {
@@ -119,16 +131,54 @@ export class AppearancePreferences {
       );
   }
 
+  /** Reset only axes that failed hydration, then report the resulting aggregate state. */
+  recoverHydration(
+    failures: readonly PreferenceFailure[],
+  ): Observable<AppearanceHydrationOutcome> {
+    return defer(() => {
+      const failedDescriptors = failures.flatMap((failure) => {
+        const descriptor = APPEARANCE_PREFERENCE_DESCRIPTORS.find(
+          ({ id }) => id === failure.preferenceId,
+        );
+        return descriptor ? [descriptor] : [];
+      });
+      return from(failedDescriptors).pipe(
+        concatMap((descriptor) =>
+          this.preferences.setPreference(
+            descriptor,
+            INSTALLATION_PREFERENCE_CONTEXT,
+            descriptor.defaultValue,
+          ),
+        ),
+        toArray(),
+        switchMap(() => this.hydrate()),
+      );
+    });
+  }
+
   private axis<T extends PreferenceValue>(
     descriptor: PreferenceDescriptor<T>,
   ): AppearanceAxis<T> {
+    const editor = descriptor.editor;
+    if (editor.kind !== 'select') {
+      throw new Error(
+        `Appearance preference ${descriptor.id} is not selectable`,
+      );
+    }
     const state = this.preferences.stateFor(
       descriptor,
       INSTALLATION_PREFERENCE_CONTEXT,
     );
     return Object.freeze({
+      editor,
       state,
       value: computed(() => state().value),
+      set: (candidate: unknown) =>
+        this.preferences.setPreference(
+          descriptor,
+          INSTALLATION_PREFERENCE_CONTEXT,
+          candidate,
+        ),
     });
   }
 }

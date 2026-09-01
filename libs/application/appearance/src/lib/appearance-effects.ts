@@ -58,12 +58,17 @@ export class AppearanceEffects {
         map(([committed, systemMode]) =>
           resolveAppearance(committed, systemMode),
         ),
-        distinctUntilChanged(sameResolvedAppearance),
         shareReplay({ bufferSize: 1, refCount: true }),
       );
       const documentEffects = resolved.pipe(
         tap((appearance) => {
-          this._resolved.set(appearance);
+          const previous = this._resolved();
+          if (!previous || !sameResolvedAppearance(previous, appearance)) {
+            this._resolved.set(appearance);
+          }
+          // ThemeService remains an earlier document-root listener until #387. Reasserting
+          // the committed carriers after each OS event prevents that temporary co-owner from
+          // overriding a fixed Mode; resolved state and native chrome remain deduplicated.
           this.documentAdapter.apply(appearance);
         }),
         ignoreElements(),

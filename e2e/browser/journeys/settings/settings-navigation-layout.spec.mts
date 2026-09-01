@@ -108,9 +108,9 @@ test.describe('Settings', () => {
     await expect(mode).toBeVisible();
     await expect(layout).toBeVisible();
     await expect(
-      page.getByRole('radiogroup', { name: 'Mode and palette' }),
+      page.getByRole('radiogroup', { name: 'Mode and Theme' }),
     ).toBeVisible();
-    await expect(page.getByRole('combobox', { name: 'Palette' })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Theme' })).toBeVisible();
     await expect(
       page.getByRole('combobox', { name: 'Conversation density' }),
     ).toBeVisible();
@@ -415,7 +415,7 @@ test.describe('Settings', () => {
       expect(pixelGeometry.detailOverflow).toBeLessThanOrEqual(1);
       expect(pixelGeometry.controlsInside).toBe(true);
       const paletteTarget = await page
-        .getByRole('combobox', { name: 'Palette' })
+        .getByRole('combobox', { name: 'Theme' })
         .boundingBox();
       expect(
         (paletteTarget?.height ?? 0) * profile.devicePixelRatio,
