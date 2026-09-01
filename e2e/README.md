@@ -163,7 +163,9 @@ An explicitly supplied serial must be disposable. The suite clears both Trinity 
 package IDs before their tests, replaces their APKs, and clears the device's logcat buffers;
 those mutations cannot be restored. It also force-stops Trinity after the run. The exact
 pre-run `adb reverse tcp:8448` mapping is restored, and a pre-existing emulator is left
-running. The target must provide Chrome for native OIDC/SSO journeys. Pass normal
+running. The target must provide Chrome for native OIDC/SSO journeys. Their adapter observes both
+a newly created Custom Tab page and navigation of a reused tab, which Android may choose for a
+second provider launch in the same journey. Pass normal
 Playwright arguments after `--`; CI divides the suite with `--shard=N/4` and fails on any
 flaky retry. A source-shape guard requires every canonical spec to import the shared
 fixture and requires the Android config to collect the canonical glob.

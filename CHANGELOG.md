@@ -613,6 +613,10 @@ All notable changes to this project are documented here. The format is based on
   support, permission, and update calls now have a finite bound, report typed secret-safe outcomes,
   and discard timed-out readiness attempts so later startup attempts can probe again.
 
+- **Repeated Android SSO launches no longer wait for a Custom Tab that already exists.** The
+  installed-WebView adapter now recognizes both a new Chrome page and navigation of a reused tab,
+  so rejecting a forged callback cannot make the legitimate provider continuation time out.
+
 - **The homeserver-free SAS self-check runs without disposable Matrix credentials again.**
   Standalone protocol checks now join only the application lifecycle, while mutating journeys keep
   their attempt-scoped Accounts and secret-redacting diagnostics. A failed Continue response also
