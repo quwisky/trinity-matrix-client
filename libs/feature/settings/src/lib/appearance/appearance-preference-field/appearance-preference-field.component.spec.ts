@@ -22,8 +22,8 @@ import {
 const THEME_FIELD = {
   axis: 'theme',
   headingId: 'appearance-theme-heading',
-  testId: 'palette-select',
-  optionTestIdPrefix: 'palette',
+  testId: 'theme-select',
+  optionTestIdPrefix: 'theme',
 } as const satisfies AppearancePreferenceField;
 
 describe('AppearancePreferenceFieldComponent', () => {
@@ -34,11 +34,11 @@ describe('AppearancePreferenceFieldComponent', () => {
 
     expect(container.querySelector('strong')?.textContent).toContain('Theme');
     expect(
-      container.querySelector('[data-testid=palette-select]')?.textContent,
+      container.querySelector('[data-testid=theme-select]')?.textContent,
     ).toContain('Trinity');
     expect(
       container
-        .querySelector('[data-testid=palette-select]')
+        .querySelector('[data-testid=theme-select]')
         ?.getAttribute('aria-labelledby'),
     ).toBeNull();
     expect(

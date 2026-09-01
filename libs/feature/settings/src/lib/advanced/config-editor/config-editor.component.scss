@@ -6,7 +6,7 @@
  * `.trn-config-editor`.
  *
  * Nothing here is a colour — every value is a `--trinity-*` token, so the editor follows
- * light/dark and whichever palette is chosen for free, exactly like the rest of the app. The
+ * light/dark and whichever Theme is chosen for free, exactly like the rest of the app. The
  * token names are the same ones the message-timeline code blocks use, so a JSON key here and a
  * JSON key in a message are the same green.
  */
@@ -62,7 +62,7 @@
   }
 
   // --- Syntax ------------------------------------------------------------------
-  // Classes, not inline colours: the `HighlightStyle` names them and the palette lives here.
+  // Classes, not inline colours: the `HighlightStyle` names them and the Theme lives here.
   .trn-cm-property {
     color: var(--trinity-syntax-variable);
   }

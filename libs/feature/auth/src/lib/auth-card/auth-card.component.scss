@@ -8,7 +8,7 @@
 
 // Mobile-first: the card fills the viewport edge-to-edge, blending into the page so the
 // login surface feels native. From 480px up it is a centred task card over the recessed app
-// frame. All colours come from theme roles, so every mode and palette follows automatically.
+// frame. All colours come from Theme roles, so every Mode and Theme follows automatically.
 
 // There is deliberately no `.login-page` rule. One lived here, setting `--background` per
 // breakpoint, and it was dead twice over: the class arrives via `host: { class: … }`, and

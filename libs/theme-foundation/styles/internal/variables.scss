@@ -18,7 +18,7 @@
 //      `text-muted-foreground`, …). The private Tailwind adapter maps these to `--color-*`
 //      by reference.
 //   Where a Helm token always equals a Trinity token it is defined *as a reference*
-//   (`--card: var(--trinity-sidebar)`) so a palette only sets the value once.
+//   (`--card: var(--trinity-sidebar)`) so a Theme only sets the value once.
 
 // HOW TO ADD A THEME  (see docs/architecture/ui-and-theming.md for the full walk-through)
 // --------------------
@@ -33,15 +33,15 @@
 // `:root` on source order in the Electron build). NOTE: attribute selectors weigh in the
 // same column as classes, so `:root[data-theme='x']` is also (0,2,0) — it would TIE
 // `:root.dark` and, being authored later, leak its light values into dark. To prevent
-// that, a palette's light block is scoped `:not(.dark)` (so it never matches in dark);
+// that, a Theme's light block is scoped `:not(.dark)` (so it never matches in dark);
 // its dark block (`:root[data-theme='x'].dark`, 0,3,0) out-ranks the default `:root.dark`,
 // and any token it leaves unset falls through to that default.
 
 // -----------------------------------------------------------------------------
-// Default palette — light  (also the fallback every other palette inherits from)
+// Default Theme — light  (also the fallback every other Theme inherits from)
 // -----------------------------------------------------------------------------
 :root {
-  // --- Radii (mode- and palette-agnostic; a palette may override) ---------------
+  // --- Radii (Mode- and Theme-agnostic; a Theme may override) -------------------
   --radius: 0.5rem; // 8px — the canonical base radius (Helm `--radius-*` derive from it)
   --trinity-radius: var(--radius); // 8px (default / lg)
   --trinity-radius-sm: calc(var(--radius) - 4px); // 4px
@@ -60,7 +60,7 @@
   --trinity-shape-person-radius: 50%;
   --trinity-shape-place-radius: 30%;
 
-  // --- Typography (mode- & palette-agnostic; a palette may override) -------------
+  // --- Typography (Mode- & Theme-agnostic; a Theme may override) -----------------
   // Roles, not sizes. `--trinity-text-sm` is the compact workhorse used by sidebar rows
   // and chrome, and is the same 13px the `text-13` utility emits, which stays as an alias
   // until its call sites migrate. Conversation prose gets the roomier `md` step instead.
@@ -102,7 +102,7 @@
   --trinity-type-title-line-height: var(--trinity-text-lg--line-height);
   --trinity-type-title-weight: 700;
 
-  // --- Spacing (mode- & palette-agnostic) ---------------------------------------
+  // --- Spacing (Mode- & Theme-agnostic) -----------------------------------------
   // A 4px rhythm. Named by step rather than by use, because the same gap means
   // different things in different components; what matters is that it is ON the grid.
   --trinity-space-1: 2px;
@@ -147,7 +147,7 @@
   --trinity-shadow-overlay: 0 12px 32px rgb(0 0 0 / 18%);
   --trinity-camera-scrim: rgb(0 0 0 / 35%);
 
-  // QR modules require a stable light quiet zone regardless of mode or palette.
+  // QR modules require a stable light quiet zone regardless of Mode or Theme.
   --trinity-qr-surface: #fff;
 
   // --- Z-index layers -----------------------------------------------------------
@@ -187,7 +187,7 @@
     1
   ); // entering: fast in, settles
 
-  // --- Code size (mode- & palette-agnostic) -------------------------------------
+  // --- Code size (Mode- & Theme-agnostic) ---------------------------------------
   // A unitless MULTIPLIER, not a size. rendered-markdown.scss multiplies the 85%
   // optical correction by it, so code stays a proportion of whatever Settings →
   // Appearance → Text size resolves to — the two compose instead of fighting. An
@@ -201,7 +201,7 @@
   --trinity-tooltip-surface: var(--trinity-control-foreground);
   --trinity-tooltip-foreground: var(--trinity-surface-canvas);
 
-  // --- Trinity brand (constant across modes in this palette) --------------------
+  // --- Trinity brand (constant across Modes in this Theme) ----------------------
   --trinity-accent: #5865f2; // blurple — a FILL. Not readable as text; see --trinity-link.
   --trinity-accent-hover: #4752c4;
 
@@ -212,11 +212,11 @@
 
   // Readable text/icon colour on an accent fill. The private Helm adapter maps its
   // on-primary token outward from the same Trinity semantic role.
-  // light-accent palette (e.g. Amethyst dark) gets dark on-accent text, not unreadable white.
+  // A light-accent Theme (e.g. Amethyst dark) gets dark on-accent text, not unreadable white.
   --trinity-accent-foreground: hsl(0deg 0% 100%);
   --trinity-green: #23a55a;
 
-  // On-green text/icon — mirrors the accent pairing so a palette that lightens
+  // On-green text/icon — mirrors the accent pairing so a Theme that lightens
   // --trinity-green can darken this too. White on #23a55a is 3.18:1: it passes AA only
   // as large text, which is what the sole consumer is (a 32px aria-hidden checkmark).
   --trinity-green-foreground: var(--trinity-accent-foreground);
@@ -230,7 +230,7 @@
   // invisible. The values below are measured instead, against the WORST backdrop the role
   // lands on. One of those is easy to miss: --trinity-hover, since a row that recolours on
   // :hover is where a danger label is usually read. #bf1e24 clears 4.5:1 on
-  // --trinity-chat/-sidebar/-rail/-hover in both palettes — worst case 4.83:1, on the rail.
+  // --trinity-chat/-sidebar/-rail/-hover in both Themes — worst case 4.83:1, on the rail.
   // NOT swept: --trinity-active, the selected-row tone, where it is only 4.11–4.25:1 — no
   // danger text lands on a selected row today, so do not put one there without re-measuring.
   // This sweep covers the token drawn straight on a surface. It does NOT cover the
@@ -282,10 +282,10 @@
   // Consumed only by rendered-markdown.scss, on the `tok-*` classes the sanitizer's
   // highlighter emits inside `pre > code`. Eight roles, matching TOKEN_ROLES in
   // libs/feature/rooms/src/lib/message-presentation/code-highlight.ts — keep the lists in step.
-  // Measured against --trinity-rail, which is the `pre` background in BOTH palettes:
+  // Measured against --trinity-rail, which is the `pre` background in BOTH Themes:
   // #e3e5e8 (default light) and #e7e2f0 (amethyst light). Every value below clears
-  // 4.5:1 on both — worst case 4.61:1 — so a palette inherits these rather than
-  // restating them. Re-measure before adding a palette whose rail departs from these
+  // 4.5:1 on both — worst case 4.61:1 — so a Theme inherits these rather than
+  // restating them. Re-measure before adding a Theme whose rail departs from these
   // tones. One Light hues, darkened until they passed: the published values sit
   // around 2.5–3.8:1 here and are not usable as body text.
   --trinity-syntax-plain: var(--trinity-text);
@@ -312,7 +312,7 @@
   // the sidebar tone in both modes.
   --trinity-surface: var(--trinity-sidebar);
 
-  // Semantic surface hierarchy. The established palette primitives above remain supported
+  // Semantic surface hierarchy. The established colour primitives above remain supported
   // aliases while feature phases migrate; new component work should consume these roles.
   --trinity-surface-frame: var(--trinity-rail);
   --trinity-surface-navigation: var(--trinity-sidebar);
@@ -325,7 +325,7 @@
   --trinity-border-strong: var(--trinity-active);
 
   // Interaction-state contract. A state always carries both surface and foreground even when
-  // today's pair aliases another role; that keeps future palette tuning atomic. Focus uses the
+  // today's pair aliases another role; that keeps future Theme tuning atomic. Focus uses the
   // measured text-link colour rather than the accent fill, which falls below 3:1 on some dark
   // interactive grounds. scripts/contrast-matrix.spec.mjs enforces the non-text threshold.
   --trinity-state-hover-surface: var(--trinity-hover);
@@ -403,7 +403,7 @@
 }
 
 // -----------------------------------------------------------------------------
-// Default palette — dark
+// Default Theme — dark
 // -----------------------------------------------------------------------------
 :root.dark {
   --trinity-focus-ring-halo: #fff;
@@ -475,7 +475,7 @@
 }
 
 // =============================================================================
-// Example palette: "Amethyst" — a violet reskin. Demonstrates that a palette only
+// Example Theme: "Amethyst" — a violet reskin. Demonstrates that a Theme only
 // needs to override what differs; brand-bound Helm tokens (--primary, --ring) and
 // the aliased dark surfaces (--card, --popover) re-theme automatically. The light
 // block is scoped `:not(.dark)` so its literals never leak into dark (see the header).
@@ -485,10 +485,10 @@
   --trinity-accent-hover: #6d28d9;
 
   // Violet-800, two steps down the same scale the accent is violet-600 of — the same
-  // derivation the default palette makes when it darkens blurple to #3f49b8. Without it this
+  // derivation the default Theme makes when it darkens blurple to #3f49b8. Without it this
   // block inherited the DEFAULT link, so amethyst light painted violet fills beside indigo
   // text: `.settings__item--active` draws both on one row. 6.08:1 on --trinity-active
-  // #dccfef, the darkest ground this palette puts text on.
+  // #dccfef, the darkest ground this Theme puts text on.
   --trinity-link: #5b21b6;
   --trinity-rail: #e7e2f0;
   --trinity-sidebar: #f4f1fa;
@@ -541,18 +541,18 @@
 }
 
 // -----------------------------------------------------------------------------
-// Onyx — an achromatic palette; dark is AMOLED (a true-black rail)
+// Onyx — an achromatic Theme; dark is AMOLED (a true-black rail)
 // -----------------------------------------------------------------------------
 // Deliberately SURFACES ONLY. Every text role, the link, the danger colours, the accent and
 // the whole syntax set are left unset and fall through to the `:root` / `:root.dark` defaults
-// — which is the palette contract doing its job, and the reason this palette is worth
+// — which is the Theme contract doing its job, and the reason this Theme is worth
 // shipping: it is the proof that adding a theme is a data change. If it needed a component
 // edited, or a role redefined to stay legible, the token layer would be incomplete.
 // `scripts/contrast-matrix.spec.mjs` is what makes that claim checkable rather than hopeful:
-// it picks this palette up automatically and measures every inherited role against these new
+// it picks this Theme up automatically and measures every inherited role against these new
 // grounds, which is exactly where an inherited value is most likely to stop working.
-// Light is included because the two axes compose — "any palette works in both light and dark"
-// is the model stated at the top of this file, and a palette that silently rendered the
+// Light is included because the two axes compose — "any Theme works in both light and dark"
+// is the model stated at the top of this file, and a Theme that silently rendered the
 // default in one mode would make the picker lie. Onyx light is therefore the same idea as
 // Onyx dark: neutral greys, no blue cast, rather than a second dark theme.
 
@@ -569,8 +569,8 @@
 
 :root[data-theme='onyx'].dark {
   // #000 on purpose: on an OLED panel a black pixel is an unlit pixel, which is the whole
-  // point of the palette. The ramp above it stays shallow so the surfaces remain
-  // distinguishable without reintroducing the grey wash the palette exists to avoid.
+  // point of the Theme. The ramp above it stays shallow so the surfaces remain
+  // distinguishable without reintroducing the grey wash the Theme exists to avoid.
   --trinity-rail: #000;
   --trinity-sidebar: #0b0b0d;
   --trinity-sidebar-header: #08080a;

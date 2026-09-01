@@ -19,7 +19,7 @@ import type { TrnEmojiPick } from '../trn-emoji.model';
  *
  * **`darkMode` is deliberately not exposed, and pinned `false`.** The vendor's idea of
  * theming is one boolean that toggles an `.emoji-mart-dark` class, which cannot express
- * Trinity's mode x palette grid — so the picker rendered its own purple and its own greys
+ * Trinity's Mode × Theme grid — so the picker rendered its own purple and its own greys
  * under all four combinations. It has to be pinned rather than simply left unbound: the
  * vendor's default is `matchMedia('(prefers-color-scheme: dark)').matches`, so an absent
  * binding follows the OS. Pinned `false`, the class stays off the element entirely, which

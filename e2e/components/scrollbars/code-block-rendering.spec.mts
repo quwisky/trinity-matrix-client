@@ -68,8 +68,8 @@ test.describe('Code block rendering', () => {
     // hardcoded (or emitted as inline `style`, which Angular strips) neither would apply.
     //
     // Both modes are forced and asserted against their expected value rather than merely
-    // "the colour changed": the app may already have resolved to dark (ThemeService
-    // defaults to `system`), in which case adding the class is a no-op and a
+    // "the colour changed": the app may already have resolved system Mode to dark, in
+    // which case adding the class is a no-op and a
     // changed/not-changed check would spin without saying why.
     const keyword = block.locator('.tok-keyword').first();
     const colourIn = async (mode: 'light' | 'dark') => {

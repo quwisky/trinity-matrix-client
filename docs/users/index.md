@@ -106,7 +106,7 @@ room switches to that account first.
 Fourteen sections: profile, presence, appearance, devices, account, security, notifications,
 privacy, GIFs, Stickers & emoji, keyboard shortcuts, an experimental flag, the server your
 account is on, and an advanced view of everything Trinity keeps on this device. Appearance carries a
-light/dark/system choice, a colour palette picker, time and date formats, and toggles for
+light/dark/system Mode choice, a Theme picker, time and date formats, and toggles for
 the system lines in the timeline. Thirteen keyboard shortcuts are defined and twelve are
 rebindable; the numbered desktop room jump is fixed.
 

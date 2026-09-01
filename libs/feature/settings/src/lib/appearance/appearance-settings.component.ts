@@ -71,17 +71,17 @@ export class AppearanceSettingsComponent {
 
   readonly appearance = inject(AppearanceSettingsController);
   /** Light/dark/system, in the shape the radio group takes. */
-  readonly themeOptions: readonly TrnRadioOption<string>[] =
+  readonly modeOptions: readonly TrnRadioOption<string>[] =
     this.appearance.axes.mode.editor.options.map(({ value, label }) => ({
       value,
       label,
-      testId: `theme-${value}`,
+      testId: `mode-${value}`,
     }));
   readonly themeField = {
     axis: 'theme',
-    headingId: 'appearance-palette-heading',
-    testId: 'palette-select',
-    optionTestIdPrefix: 'palette',
+    headingId: 'appearance-theme-heading',
+    testId: 'theme-select',
+    optionTestIdPrefix: 'theme',
   } as const satisfies AppearancePreferenceField;
   readonly densityField = {
     axis: 'density',
@@ -118,7 +118,7 @@ export class AppearanceSettingsComponent {
   readonly densityLabel = computed(() => this.labelFor('density'));
 
   /** Persist the chosen Mode; projection observes it only after the command commits. */
-  onThemeChange(value: string): void {
+  onModeChange(value: string): void {
     this.appearance.update('mode', value);
   }
   /**

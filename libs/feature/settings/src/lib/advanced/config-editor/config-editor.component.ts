@@ -54,9 +54,9 @@ const INDENT = '  ';
 const LINT_DELAY = 300;
 
 /**
- * Syntax colours by class rather than by value, so the palette lives in SCSS with the rest of
- * the app's tokens. A `HighlightStyle` that carried colours would be a second theme, blind to
- * light/dark and to the palette the user picked.
+ * Syntax colours by class rather than by value, so the Theme lives in SCSS with the rest of
+ * the app's tokens. A `HighlightStyle` that carried colours would be a second Theme, blind to
+ * light/dark and to the Theme the user picked.
  */
 const TRINITY_JSON_HIGHLIGHT = HighlightStyle.define([
   { tag: tags.propertyName, class: 'trn-cm-property' },

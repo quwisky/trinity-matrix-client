@@ -58,7 +58,7 @@ import { setCodeHighlighter } from '@trinity/util/matrix';
  */
 
 /**
- * The token roles we colour. Deliberately small: each one is a colour a palette author has
+ * The token roles we colour. Deliberately small: each one is a colour a Theme author has
  * to choose, while TextMate scopes are effectively unbounded. The mapping is scope-family →
  * role rather than theme-colour → role, so it stays stable across grammars.
  *

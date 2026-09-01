@@ -186,31 +186,30 @@ test.describe('Clear all data', () => {
  * documented in Theme Foundation's Tailwind adapter, stays green there. This is the only layer that reads the
  * colour a person actually gets.
  *
- * Both palettes, because the argument for this styling is surface-specific — `amethyst`
+ * Both Themes, because the argument for this styling is surface-specific — `amethyst`
  * overrides `--trinity-sidebar`, the very surface the ratio is measured against, while
  * leaving `--trinity-danger` alone.
  */
-const PALETTES = [
+const THEMES = [
   { id: 'trinity', attribute: null },
   { id: 'amethyst', attribute: 'amethyst' },
 ] as const;
 
 for (const scheme of ['light', 'dark'] as const) {
   test.describe(`Clear all data — destructive styling (${scheme})`, () => {
-    // Set on the CONTEXT rather than patched onto a live page, so the scheme is already
-    // right when ThemeService runs in provideAppInitializer, before the first paint.
+    // Set on the context before first navigation so system Mode is already resolved when
+    // Application Runtime starts the Appearance effect.
     test.use({ colorScheme: scheme });
 
-    for (const palette of PALETTES) {
-      test(`stays a legible danger red on ${palette.id}`, async ({ page }) => {
-        // The palette is restored from Preferences on boot, so seed it the way the app
-        // stores it rather than reaching into ThemeService.
-        await seedPreference(page, 'trinity.palette', palette.id);
+    for (const theme of THEMES) {
+      test(`stays a legible danger red on ${theme.id}`, async ({ page }) => {
+        // The Theme is restored from its current descriptor key on boot.
+        await seedPreference(page, 'trinity.appearance.theme', theme.id);
         await page.goto('/login', { waitUntil: 'networkidle' });
         const button = page.getByTestId('clear-all-data');
         await button.waitFor({ state: 'visible', timeout: 20_000 });
 
-        // Without this the theme could silently fail to apply and every assertion below
+        // Without this the Theme could silently fail to apply and every assertion below
         // would re-measure the light/default case twice and still pass — and dark is where
         // the token trap actually lives.
         await expect
@@ -220,7 +219,7 @@ for (const scheme of ['light', 'dark'] as const) {
               theme: document.documentElement.getAttribute('data-theme'),
             })),
           )
-          .toEqual({ dark: scheme === 'dark', theme: palette.attribute });
+          .toEqual({ dark: scheme === 'dark', theme: theme.attribute });
 
         const danger = await resolveTokenSrgb(
           page,
@@ -235,7 +234,7 @@ for (const scheme of ['light', 'dark'] as const) {
             await button.hover();
           }
           const measured = await measureContrast(page, 'clear-all-data');
-          const where = `${palette.id}/${scheme}/${state}`;
+          const where = `${theme.id}/${scheme}/${state}`;
 
           // Legibility alone would not say this looks DESTRUCTIVE: plain `--foreground` is
           // near-black and clears the ratio comfortably while reading as an ordinary link.

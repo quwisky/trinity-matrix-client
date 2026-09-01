@@ -72,7 +72,7 @@ titles off every button and link; vertically stacked navigation and member label
 hoverable overlay cannot cover the preceding control. The public tooltip wrapper keeps Helm's geometry
 and motion but replaces its inverted colours with the semantic `--trinity-tooltip-surface` /
 `--trinity-tooltip-foreground` pair. Light mode preserves the dark tooltip treatment; dark mode
-resolves the surface through the active palette's elevated popover tokens, including the arrow.
+resolves the surface through the active Theme's elevated popover tokens, including the arrow.
 
 `libs/ui` is gone entirely. View helpers live in `@trinity/util/ui` (`type:util`, reachable
 from every layer), while Workspace application-surface presentation owns settings and Trust
@@ -140,7 +140,7 @@ meant.
 The emoji picker is the clearest case of what the vendor layer costs when it is not wrapped.
 `@ctrl/ngx-emoji-mart`'s `picker.css` is 453 lines with **zero** custom properties — every
 colour a literal — and its whole idea of theming is one `darkMode` boolean that toggles an
-`.emoji-mart-dark` class. That cannot express Trinity's mode x palette grid, so the picker
+`.emoji-mart-dark` class. That cannot express Trinity's Mode × Theme grid, so the picker
 rendered its own purple accent and its own greys under all four combinations.
 `<trn-emoji-picker>` pins that boolean to `false` and paints the chrome from design tokens
 instead, so it re-themes with everything else.
@@ -388,7 +388,7 @@ which is **private framework wiring only** and owns no colour values:
 because Helm's variant class strings live in `.ts` files, not templates.
 
 The `@theme inline` block maps each Helm token to a Tailwind colour utility **by reference**
-(`--color-card: var(--card)`), which is what makes flipping the mode or the palette re-theme
+(`--color-card: var(--card)`), which is what makes switching the Mode or Theme re-theme
 every utility at runtime rather than at build time. Only entries inside a `@theme` block
 generate a utility, which is why the two non-colour tokens live there rather than in
 `variables.scss`: `--text-13` (0.8125rem — the compact body size used across templates as
@@ -426,9 +426,8 @@ references for previewing but no resolved colour or shadow values.
 
 A **Theme** is a named visual token set (`trinity`, `amethyst` or `onyx`); **Mode** is the
 `system`, `light` or `dark` selection; **Appearance** is their composition with text size,
-density and Conversations' code preferences. `Palette` remains only in temporary compatibility
-names such as `ThemeService.setPalette()` and its persisted storage key while the migration is
-expanded. Theme identity and selector metadata are read from `THEME_CATALOG` directly.
+density and Conversations' code preferences. Theme identity and selector metadata are read from
+`THEME_CATALOG` directly; no compatibility Theme API remains.
 
 Theme authors may override only the catalog's governed semantic colour and elevation roles.
 Fonts, assets, arbitrary selectors and component mappings are outside that contract. The default
@@ -469,8 +468,8 @@ publishes only successful writes, so rejected persistence never changes resolved
 Appearance.
 
 Settings consumes those six axes through one screen-scoped controller. Labels, descriptions and
-options come from descriptor editor metadata; controls invoke descriptor-backed commands rather
-than `ThemeService` setters. All six remain disabled until hydration settles, so a write cannot race
+options come from descriptor editor metadata; controls invoke descriptor-backed commands. All six
+remain disabled until hydration settles, so a write cannot race
 a current or predecessor-key read. A pending or failed command continues to render the committed value,
 and failure adds an inline Retry beside that control. The screen displays one warning for partial
 hydration and can restore only the affected defaults. The routed screen never starts another
@@ -479,27 +478,27 @@ hydration or effect lifetime; Application Runtime has already settled both befor
 Application Runtime also composes the concrete integration ports. Capacitor status-bar projection
 receives only resolved Mode, and widgets receive a read-only resolved Appearance projection. The
 Advanced configuration registry exposes six `appearance.*` paths whose defaults, validation,
-choices, current persistence keys, and commands come from the descriptors. The former
-`trinity.theme`, `trinity.palette`, `trinity.text-scale`, `trinity.density`, `trinity.code-scale`,
-and `trinity.code-lines` keys remain read-only predecessors and never appear in a portable export.
+choices, current persistence keys, and commands come from the descriptors. Former storage keys
+remain read-only descriptor migration metadata and never appear in a portable export.
 Portable format 2 also imports the six former version 1 Theme paths through a one-way mapping to
 the current `appearance.*` entries; new exports contain only the current names.
-`ThemeService` remains only as a removable compatibility implementation for the next contraction
-slice. First paint remains the existing CSS-only splash; no inline bootstrap script is added. The
-axes remain orthogonal: any Theme works in either Mode, and code size multiplies text size rather
-than replacing it.
+Source guards keep those predecessor keys in migration metadata, keep old portable paths inside
+the version-one importer, and give the Appearance document adapter sole ownership of root
+carriers. First paint remains the existing CSS-only splash; no inline bootstrap script is added.
+The axes remain orthogonal: any Theme works in either Mode, and code size multiplies text size
+rather than replacing it.
 
 Density is the odd one in what it drives: rather than styling anything itself, it re-cuts
 the `--trinity-space-*` scale, so any stylesheet already reading those tokens follows
 without knowing the preference exists. `:root[data-density='compact']` is (0,2,0) — the
-same tie with `:root.dark` the palette section below describes. The two do not overlap
+same tie with `:root.dark` the Theme section below describes. The two do not overlap
 today (mode re-cuts colour, density re-cuts spacing); a colour added to the density block,
 or a spacing token to a mode block, would be decided by source order alone.
 
 **Every axis writes nothing at its default.** An untouched app leaves no footprint on
 `<html>` at all, so the stylesheet is the single definition of what "Default" means and
 whatever the browser or a user stylesheet says still wins. Adding an axis means following
-that rule too — `applyX()` removes the class/attribute/property rather than writing an
+that rule too — the document adapter removes the class, attribute or property rather than writing an
 explicit default value.
 
 The last two exist because a rendered message body cannot carry a preference itself: its HTML
@@ -517,10 +516,10 @@ directly from the read-only `THEME_CATALOG`; the preview loads the same aggregat
 application and derives all six fixed Theme/Mode combinations from the catalog rather than
 maintaining a parallel matrix.
 
-That is what it is for. A palette is meant to be a data change — a block of token overrides plus
+That is what it is for. A Theme is meant to be a data change — a block of token overrides plus
 a registry entry — and before this the only way to know that held was to launch the app and
-navigate to every surface. **If a component looks wrong under a new palette, the token layer is
-incomplete; that is a bug in the tokens, not in the theme.**
+navigate to every surface. **If a component looks wrong under a new Theme, the token layer is
+incomplete; that is a bug in the tokens, not in the Theme.**
 
 Stories are written per _state_ (default, hover, disabled, loading, empty, long content), not one
 per component: the default is the state least likely to be broken. They are not a substitute for
@@ -534,9 +533,9 @@ hand-authored component SCSS.
 
 | Group               | Tokens                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Surface primitives  | Palette values: `--trinity-rail`, `--trinity-sidebar`, `--trinity-sidebar-header`, `--trinity-chat`, `--trinity-hover`, `--trinity-active`, `--trinity-divider`, `--trinity-surface`. Existing consumers keep working while feature phases migrate.                                                                                                                                                                                                                                                                                                                                                                                                  |
-| Semantic surfaces   | Component-facing aliases: `--trinity-surface-frame`, `-navigation`, `-navigation-header`, `-workspace`, `-panel`, `-raised`, `-floating`; `--trinity-border-subtle` / `-strong`. These point inward to the palette primitives, never the other way round.                                                                                                                                                                                                                                                                                                                                                                                            |
-| Interaction states  | Paired `--trinity-state-{hover,pressed,selected,selected-hover,attention}-{surface,foreground}` roles, plus the paired `--trinity-status-neutral-*` recipe, `--trinity-focus-ring` / `-on-attention` / `-halo` / `-width` / `-offset`, and `--trinity-disabled-opacity`. A state is a pair so palette tuning cannot change its fill without its ink.                                                                                                                                                                                                                                                                                                 |
+| Surface primitives  | Theme values: `--trinity-rail`, `--trinity-sidebar`, `--trinity-sidebar-header`, `--trinity-chat`, `--trinity-hover`, `--trinity-active`, `--trinity-divider`, `--trinity-surface`. Existing consumers keep working while feature phases migrate.                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Semantic surfaces   | Component-facing aliases: `--trinity-surface-frame`, `-navigation`, `-navigation-header`, `-workspace`, `-panel`, `-raised`, `-floating`; `--trinity-border-subtle` / `-strong`. These point inward to the Theme primitives, never the other way round.                                                                                                                                                                                                                                                                                                                                                                                              |
+| Interaction states  | Paired `--trinity-state-{hover,pressed,selected,selected-hover,attention}-{surface,foreground}` roles, plus the paired `--trinity-status-neutral-*` recipe, `--trinity-focus-ring` / `-on-attention` / `-halo` / `-width` / `-offset`, and `--trinity-disabled-opacity`. A state is a pair so Theme tuning cannot change its fill without its ink.                                                                                                                                                                                                                                                                                                   |
 | Text                | `--trinity-text`, `--trinity-text-muted`, `--trinity-text-bright`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | Brand               | `--trinity-accent`, `--trinity-accent-foreground`, `--trinity-green`, `--trinity-green-foreground`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | Link                | `--trinity-link` — accent-coloured **text**. Split from `--trinity-accent`, which is a fill: a fill and a readable text colour cannot be the same value and both clear AA (blurple is 3.19:1 on the light row grounds). Every `color:` that reads as accent uses this; borders and backgrounds use the accent.                                                                                                                                                                                                                                                                                                                                       |
@@ -545,9 +544,9 @@ hand-authored component SCSS.
 | Syntax              | eight `--trinity-syntax-*` roles plus `-plain`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | Typography          | Measurement scale: `--trinity-text-xs` / `-sm` / `-base` / `-md` / `-lg`, each with matching leading. Semantic `--trinity-type-{caption,metadata,body,message,control,title}-{size,line-height,weight}` roles keep the three decisions together; metadata also exposes tabular-number treatment. The message role is 1rem with 1.5 leading, while smaller conversation chrome stays on the compact roles. Sizes remain in `rem`, so Appearance → Text size scales them.                                                                                                                                                                              |
 | Spacing and density | `--trinity-space-1`…`-7` — a 4px rhythm (2, 4, 8, 12, 16, 24, 32). Shared components consume `--trinity-density-item-gap`, `-row-gap`, `-row-padding-*` and `-control-size`; the room shell adds `-shell-gap`, `-shell-padding-inline` and `-channel-padding-block`, while the conversation adds `-message-column-gap` and `-composer-{padding-inline,field-gap,field-inset,action-size}`. Compact re-cuts these while `--trinity-interaction-target-min-size` enforces the global 44px coarse-pointer floor. Member rows and role headers deliberately do not use vertical density roles: their fixed 44px/34px boxes are inputs to virtualization. |
-| Scrollbars          | `--trinity-scrollbar-size`, `-radius`, `-thumb` and `-track` apply the former room-container treatment to every visible vertical and horizontal scrollbar. The thumb aliases the active palette's `--trinity-rail`; Blink/WebKit use the fixed 8px rounded geometry, while Firefox shares the rail colour with its platform-defined `thin` geometry.                                                                                                                                                                                                                                                                                                 |
+| Scrollbars          | `--trinity-scrollbar-size`, `-radius`, `-thumb` and `-track` apply the former room-container treatment to every visible vertical and horizontal scrollbar. The thumb aliases the active Theme's `--trinity-rail`; Blink/WebKit use the fixed 8px rounded geometry, while Firefox shares the rail colour with its platform-defined `thin` geometry.                                                                                                                                                                                                                                                                                                   |
 | Elevation           | `--trinity-shadow-raised` / `-floating` / `-overlay`. Overridden per mode: a shadow tuned for white is invisible on `#313338`, so dark raises the alpha.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| Protocol media      | `--trinity-qr-surface` is the palette-invariant light quiet zone around QR modules. It is deliberately not a general card/background role.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Protocol media      | `--trinity-qr-surface` is the Theme-invariant light quiet zone around QR modules. It is deliberately not a general card/background role.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | Z-index layers      | `--trinity-z-sticky` (5) → `-floating` (10) → `-overlay` (20) → `-panel` (40), plus `-feedback` (10000) for the transient unavailable-action reason that must remain visible above a CDK dialog. **App-level only** — a component stacking its own children is local and stays a literal. The CDK overlay container sits at 1000.                                                                                                                                                                                                                                                                                                                    |
 | Motion              | `--trinity-duration-press` for the down response and `-fast` / `-base` / `-slow` for transitions, plus `--trinity-duration-pulse` / `-flash` for motion that is not one (an ambient loop, a one-shot cue). `--trinity-ease-standard` / `-decelerate` / `-accelerate`. All collapsed to 0.01ms under `prefers-reduced-motion` at the bottom of `variables.scss` — which is why a literal duration is a bug, not a style. An `infinite` animation needs `global.scss`'s `animation-iteration-count` too: collapsing its duration alone makes it repeat per frame rather than stop.                                                                     |
 
@@ -572,7 +571,7 @@ type and density roles without importing the room feature or duplicating theme v
 colour utilities.
 
 Where a Helm token always equals a Trinity token it is defined **as a reference**, so a
-palette only has to set the value once:
+Theme only has to set the value once:
 
 ```scss
 --card: var(--trinity-sidebar);
@@ -586,18 +585,18 @@ fill. The fill drops below the 3:1 non-text threshold on some dark interactive s
 surfaces override it with `--trinity-focus-ring-on-attention`, whose value is paired to that fill.
 Helm controls draw a 50%-alpha halo, so `--trinity-focus-ring-halo` supplies black in light mode and
 white in dark mode; the browser suite measures the composited halo rather than trusting its source
-colour. Every focus recipe is checked against its semantic surface across all palettes and modes.
+colour. Every focus recipe is checked against its semantic surface across all Themes and Modes.
 
-Mode-invariant bindings are declared once in the base `:root` block. Three palettes ship:
+Mode-invariant bindings are declared once in the base `:root` block. Three Themes ship:
 `trinity` (blurple `#5865f2`), `amethyst` (violet) and `onyx` (achromatic; dark is AMOLED
 true black).
 
 `onyx` is worth reading as the worked example of the contract: it overrides **surfaces only**.
 Every text role, the link, the danger colours, the accent and the whole syntax set are left
 unset and fall through to the `:root` / `:root.dark` defaults — and `contrast-matrix.spec.mjs`
-picks the palette up automatically and proves those inherited values still clear AA against the
+picks the Theme up automatically and proves those inherited values still clear AA against the
 new grounds, which is exactly where an inherited colour is most likely to stop working. A
-palette that needed a component edited, or a role redefined to stay legible, would be telling
+Theme that needed a component edited, or a role redefined to stay legible, would be telling
 you the token layer is incomplete.
 
 ### The danger versus destructive rule
@@ -630,7 +629,7 @@ Theme Foundation's private Tailwind adapter maps
 Each value was measured against the **worst backdrop the role actually lands on**. One of
 those is easy to overlook: `--trinity-hover`, because a row that recolours on hover is where a
 danger label is usually read. `#bf1e24` clears 4.5:1 on chat, sidebar, rail and hover in both
-palettes — worst case 4.83:1, on the rail.
+Themes — worst case 4.83:1, on the rail.
 
 `--trinity-active`, the selected-row tone, was **not** swept and reaches only 4.11–4.25:1. No
 danger text lands on a selected row today; do not put one there without re-measuring.
@@ -702,13 +701,13 @@ stay in step with `TOKEN_ROLES` in
 [`code-highlight.ts`](https://github.com/quwisky/trinity-matrix-client/blob/refactor/refine-architecture/libs/feature/rooms/src/lib/message-presentation/code-highlight.ts).
 
 The backdrop is `--trinity-rail`, not the chat canvas — that is the `pre` background — and
-every value clears 4.5:1 against it in both shipped palettes (worst case 4.61:1 light,
+every value clears 4.5:1 against it in both shipped Themes (worst case 4.61:1 light,
 5.16:1 dark). The light set is One Light's hues _darkened until they passed_; the published
 values sit at 2.5–3.8:1 on this rail and are not usable as body text. One Dark's values pass
 unchanged. `-plain` and `-punctuation` are `var()` references to `--trinity-text` and
 `--trinity-text-muted`, so they follow the mode automatically.
 
-A new palette inherits all eight, and nothing checks them. If your rail departs from
+A new Theme inherits all eight, and nothing checks them. If your rail departs from
 `#e3e5e8` or `#e7e2f0` (light) or `#1e1f22` or `#1c1826` (dark), re-measure.
 
 Highlighting itself is Shiki with thirty-one statically imported grammars — the chunk they
@@ -761,14 +760,14 @@ are shared by Appearance and preview consumers:
 const themes = Object.freeze([Object.freeze({ id: 'trinity', label: 'Trinity', dataTheme: null }), Object.freeze({ id: 'amethyst', label: 'Amethyst', dataTheme: 'amethyst' })]);
 ```
 
-The compatibility `setPalette()` method writes or removes the `data-theme` attribute; the default
-Theme applies no attribute at all.
+The Appearance document adapter writes or removes the `data-theme` attribute; the default Theme
+applies no attribute at all.
 
 !!! danger "Scope the light block with :not(.dark)"
 
     Attribute selectors weigh in the same specificity column as classes, so
     `:root[data-theme='x']` is (0,2,0) — a **tie** with `:root.dark`. Being authored later it
-    wins, and the palette's light values leak into dark mode.
+    wins, and the Theme's light values leak into dark Mode.
 
     Scoping the light block `:not(.dark)` raises it to (0,3,0) *and* makes it simply not
     match in dark. The intended ladder is:
@@ -793,17 +792,17 @@ Theme applies no attribute at all.
     `scripts/token-resolve.spec.mjs` does. It collects every `var(--trinity-…)` in `libs` and
     `apps` — stylesheets, templates and TypeScript — and fails on any token nothing defines. It
     was written from a shipped bug: the mobile account picker asked for `var(--trinity-radius-lg)`,
-    which no palette defines, so the declaration was invalid and the dialog rendered with square
+    which no Theme defines, so the declaration was invalid and the dialog rendered with square
     corners. The base 8px token is `--trinity-radius`; the private Tailwind adapter *does* define
     a Tailwind `--radius-lg`, but that is a different namespace and would not have helped.
 
     `scripts/contrast-matrix.spec.mjs` checks the other half — that a token which resolves is
-    also readable. It measures every text role against every surface it can land on, per palette
-    × mode, including the nine `--trinity-syntax-*` colours against `--trinity-rail`. A palette
+    also readable. It measures every text role against every surface it can land on, per Theme
+    × Mode, including the nine `--trinity-syntax-*` colours against `--trinity-rail`. A Theme
     that retunes a ground now passes or fails instead of needing to be re-measured by hand.
 
     Both are one-directional on purpose: they fail on a token that is used and never defined, and
-    say nothing about one that is defined and unused, because a palette block legitimately
+    say nothing about one that is defined and unused, because a Theme block legitimately
     defines the whole vocabulary whether or not today's components reach for all of it.
 
 ## Rendered markdown is styled globally
@@ -873,7 +872,7 @@ overrides three `marked` renderers, each for a stated reason:
   `ellipsis`, `category-label`, `profile-card`, `dialog-surface($width)`, `column($bg)`,
   `interactive-row`, `scrollable`.
 - Component SCSS references design tokens. Never hardcode a colour, or it will not re-theme
-  with the mode or the palette.
+  with the Mode or Theme.
 - Component SCSS declares overflow but leaves visible scrollbar paint to the global token
   contract. Use `.no-scrollbar` only for an intentional hidden-bar exception.
 

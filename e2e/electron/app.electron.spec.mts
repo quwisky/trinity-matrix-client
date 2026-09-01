@@ -236,7 +236,7 @@ test('secureStore round-trips through the main process (or degrades cleanly)', a
   }
 });
 
-test('dark palette wins the cascade when .dark is set (regression)', async () => {
+test('dark Theme wins the cascade when .dark is set (regression)', async () => {
   // Regression for the desktop dark-theme bug: the class lands on <html>, but the
   // dark tokens must actually beat the light :root in the real Electron renderer.
   // This is why apps/trinity/project.json sets optimization.styles.inlineCritical to

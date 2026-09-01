@@ -516,14 +516,14 @@ exists: Stylelint sets `custom-property-pattern: null` and does no cross-file re
 confirm each is defined in `variables.scss`. References that do supply a fallback are safe,
 because they render the fallback.
 
-### A new palette looks right in light and shows light surfaces in dark
+### A new Theme looks right in light and shows light surfaces in dark
 
 **Symptom.** Exactly that, with no error anywhere.
 
 **Cause.** Attribute selectors weigh in the same specificity column as classes, so
 `:root[data-theme='x']` is a **tie** with `:root.dark` and, being authored later, wins.
 
-**Fix.** Scope the palette's light block with `:not(.dark)`, which raises it and makes it
+**Fix.** Scope the Theme's light block with `:not(.dark)`, which raises it and makes it
 simply not match in dark mode. The intended ladder is `:root`, then `:root.dark`, then
 `:root[data-theme='x']:not(.dark)` and `:root[data-theme='x'].dark`. Using `:root.dark`
 rather than a bare `.dark` is what makes dark out-rank the light default regardless of

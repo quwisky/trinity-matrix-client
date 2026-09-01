@@ -30,7 +30,7 @@ export interface TrnRadioOption<T> {
  *
  * ```html
  * <hlm-radio-group [value] (valueChange)>
- *   <label class="flex cursor-pointer items-center gap-3 …" data-testid="theme-dark">
+ *   <label class="flex cursor-pointer items-center gap-3 …" data-testid="mode-dark">
  *     <hlm-radio value="dark"><hlm-radio-indicator /></hlm-radio>
  *     Dark
  *   </label>
@@ -42,7 +42,7 @@ export interface TrnRadioOption<T> {
  *
  * **The label is rendered here rather than left to the caller, and that is load-bearing in
  * two ways.** It keeps the click target label-sized, which is what makes the text clickable
- * and what e2e drives (`getByTestId('theme-dark').click()` addresses the label, not the
+ * and what e2e drives (`getByTestId('mode-dark').click()` addresses the label, not the
  * radio). And the kit's radio resolves `closest('label')` in a constructor effect to stamp
  * its disabled state — a wrapper that stopped emitting a wrapping label would leave that
  * silently doing nothing.

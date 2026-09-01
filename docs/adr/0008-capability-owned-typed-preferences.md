@@ -28,7 +28,7 @@ contained behind the same stable read/write diagnostics.
 Appearance is the first cross-capability composition of this contract. Design System owns four
 installation-scoped descriptors (Mode, Theme, text size, and density), while Conversations owns
 code size and code-line presentation. Each has its own current `trinity.appearance.*` key and uses
-the former ThemeService key only as read-only migration metadata. The application Appearance model
+its predecessor key only as read-only migration metadata. The application Appearance model
 projects the six committed values and their individual states without owning storage. An invalid or
 unavailable axis therefore defaults independently, and one partial hydration outcome carries one
 recoverable Appearance warning instead of six application-level warnings. Theme validation reads
@@ -45,9 +45,8 @@ Preferences Store has not committed it.
 
 Application Runtime starts the effect immediately after successful preference hydration, before
 Account restoration and Workspace routing, and owns it until runtime stop. Settings observes the
-read-only resolved projection but does not own the effect. The legacy `ThemeService` remains an
-isolated compatibility surface pending contraction; it no longer participates in application
-startup or shares the document carriers.
+read-only resolved projection but does not own the effect. No compatibility facade remains, and
+the document adapter is the only owner of the root carriers.
 
 Default values remain stylesheet-owned. The document adapter removes the optional Theme, text
 size, density, code-size, and code-line carriers at their defaults; light Mode removes the dark
@@ -74,4 +73,4 @@ migration proceeds under the incremental-facade decision. The Advanced configura
 continues through the facade, while Appearance contributes six descriptor-backed entries directly.
 Portable Appearance documents therefore use only current `appearance.*` paths and current
 descriptor keys. Portable format 2 maps the six former version 1 Theme paths into those current
-entries on import; predecessor ThemeService names remain read-only migration metadata.
+entries on import; predecessor storage keys remain read-only migration metadata.

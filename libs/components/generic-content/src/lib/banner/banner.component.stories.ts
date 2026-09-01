@@ -7,7 +7,7 @@ import { BannerComponent } from './banner.component';
  * Everything in this component is projected — icon, message, actions — so the stories render
  * a template rather than binding args. That is the point: the tone is the only thing the
  * component decides, and the only way to see whether a tone works is to put real content in
- * it and flip the palette.
+ * it and switch the Theme.
  */
 const meta: Meta<BannerComponent> = {
   title: 'Components/Banner',

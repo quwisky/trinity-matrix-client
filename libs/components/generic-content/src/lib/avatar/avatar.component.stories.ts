@@ -5,7 +5,7 @@ const SAMPLE_IMAGE =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%235865f2'/%3E%3Ccircle cx='50' cy='36' r='19' fill='white'/%3E%3Cpath d='M16 100c3-25 17-39 34-39s31 14 34 39' fill='white'/%3E%3C/svg%3E";
 
 /**
- * The semantic geometry contract in one canvas. Use Storybook's palette and mode toolbar
+ * The semantic geometry contract in one canvas. Use Storybook's Theme and Mode toolbar
  * controls to compare every combination; avatar geometry is deliberately density-invariant.
  */
 const meta: Meta<AvatarComponent> = {

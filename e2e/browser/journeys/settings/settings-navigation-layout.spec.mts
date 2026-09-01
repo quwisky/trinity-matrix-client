@@ -23,7 +23,7 @@ test.describe('Settings', () => {
     }
     // Selecting a section swaps the active Settings detail.
     await openSection(page, 'appearance');
-    await expect(page.getByTestId('theme-dark')).toBeVisible();
+    await expect(page.getByTestId('mode-dark')).toBeVisible();
     await openSection(page, 'experimental');
     await expect(page.getByTestId('flag-virtual-timeline')).toBeVisible();
   });
@@ -103,7 +103,7 @@ test.describe('Settings', () => {
   }) => {
     await openSection(page, 'appearance');
 
-    const mode = page.getByTestId('appearance-mode-palette');
+    const mode = page.getByTestId('appearance-mode-theme');
     const layout = page.getByTestId('appearance-layout');
     await expect(mode).toBeVisible();
     await expect(layout).toBeVisible();
@@ -115,7 +115,7 @@ test.describe('Settings', () => {
       page.getByRole('combobox', { name: 'Conversation density' }),
     ).toBeVisible();
 
-    const pointerOption = page.getByTestId('theme-light');
+    const pointerOption = page.getByTestId('mode-light');
     await pointerOption.click();
     expect(
       await pointerOption.evaluate(
@@ -253,13 +253,13 @@ test.describe('Settings', () => {
 
     const appearance = page.getByTestId('settings-nav-appearance');
     await expect(appearance).toBeVisible({ timeout: 20_000 });
-    // The index shows only the list — no section detail (theme options) yet.
-    await expect(page.getByTestId('theme-dark')).toBeHidden();
+    // The index shows only the list — no section detail (Mode options) yet.
+    await expect(page.getByTestId('mode-dark')).toBeHidden();
 
     // Drilling into a section swaps to its detail; the list collapses (single-pane).
     await appearance.click();
     await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
-    await expect(page.getByTestId('theme-dark')).toBeVisible();
+    await expect(page.getByTestId('mode-dark')).toBeVisible();
     await expect(appearance).toBeHidden();
     await expect(
       page.getByRole('heading', { name: 'Appearance' }),
@@ -268,7 +268,7 @@ test.describe('Settings', () => {
     // The header back returns to the category list.
     await page.getByRole('button', { name: 'Back' }).click();
     await expect(appearance).toBeVisible();
-    await expect(page.getByTestId('theme-dark')).toBeHidden();
+    await expect(page.getByTestId('mode-dark')).toBeHidden();
     await expect(appearance).toBeFocused();
   });
 
@@ -278,7 +278,7 @@ test.describe('Settings', () => {
     await page.setViewportSize({ width: 375, height: 800 });
     // Deep-link straight into a section — no prior /settings entry in history.
     await page.goto('/settings/appearance');
-    await expect(page.getByTestId('theme-dark')).toBeVisible({
+    await expect(page.getByTestId('mode-dark')).toBeVisible({
       timeout: 20_000,
     });
     // Single-pane detail view: the category list is collapsed.
@@ -292,7 +292,7 @@ test.describe('Settings', () => {
     await page.getByRole('button', { name: 'Back' }).click();
     await page.waitForURL(/\/settings$/, { timeout: 20_000 });
     await expect(page.getByTestId('settings-nav-appearance')).toBeVisible();
-    await expect(page.getByTestId('theme-dark')).toBeHidden();
+    await expect(page.getByTestId('mode-dark')).toBeHidden();
   });
 
   test('narrow: resizing a drilled-in surface wide keeps one settings owner', async ({
@@ -304,7 +304,7 @@ test.describe('Settings', () => {
     const appearance = page.getByTestId('settings-nav-appearance');
     await expect(appearance).toBeVisible({ timeout: 20_000 });
     await appearance.click();
-    await expect(page.getByTestId('theme-dark')).toBeVisible();
+    await expect(page.getByTestId('mode-dark')).toBeVisible();
 
     // Crossing the responsive boundary changes the composition, not its host-owned
     // presentation model.
@@ -414,11 +414,11 @@ test.describe('Settings', () => {
       expect(pixelGeometry.documentOverflow).toBeLessThanOrEqual(1);
       expect(pixelGeometry.detailOverflow).toBeLessThanOrEqual(1);
       expect(pixelGeometry.controlsInside).toBe(true);
-      const paletteTarget = await page
+      const themeTarget = await page
         .getByRole('combobox', { name: 'Theme' })
         .boundingBox();
       expect(
-        (paletteTarget?.height ?? 0) * profile.devicePixelRatio,
+        (themeTarget?.height ?? 0) * profile.devicePixelRatio,
       ).toBeGreaterThanOrEqual(44 * profile.devicePixelRatio - 0.5);
 
       await page.setViewportSize({ width: 320, height: 568 });

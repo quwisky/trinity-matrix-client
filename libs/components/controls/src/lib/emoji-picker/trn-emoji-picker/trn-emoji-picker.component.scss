@@ -8,7 +8,7 @@
 // so nothing leaks past this element.
 // ---
 // Every rule below is keyed on a token, never a literal, so the picker follows light/dark
-// AND the palette. That is four combinations the vendor's own `darkMode` boolean could
+// AND the Theme. That is four combinations the vendor's own `darkMode` boolean could
 // never express — which is exactly why the template pins it to `false` (NOT merely leaves
 // it unbound, which would follow the OS): that keeps `.emoji-mart-dark` and its ten rules
 // off the element, so these only have to beat `.emoji-mart` base rules.

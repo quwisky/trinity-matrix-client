@@ -101,7 +101,7 @@ export const Disabled: Story = {
     motionButton('nudge-up-right', 'send', 'Send unavailable', true),
 };
 
-/** The complete supported vocabulary, for quick palette and light/dark review. */
+/** The complete supported vocabulary, for quick Theme and light/dark review. */
 export const AllVariants: Story = {
   render: () => ({
     template: `

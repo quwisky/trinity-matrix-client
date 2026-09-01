@@ -14,7 +14,7 @@ Rust crypto WASM, Capacitor 8, and a hand-rolled Electron shell, in an Nx monore
 (file-size / single-responsibility thresholds) ·
 [docs/architecture/](docs/architecture/index.md) (layering · the state pattern ·
 [Matrix and encryption](docs/architecture/matrix-and-encryption.md) ·
-[UI and theming](docs/architecture/ui-and-theming.md) — design tokens, light/dark × palette,
+[UI and theming](docs/architecture/ui-and-theming.md) — design tokens, Mode × Theme,
 adding a theme) · [docs/contributing/](docs/contributing/index.md) (setup · commands · testing ·
 CI · conventions) · [docs/platforms/](docs/platforms/index.md) (web · desktop · mobile) ·
 [docs/reference/stack.md](docs/reference/stack.md) (pinned versions + gotchas) ·
@@ -179,7 +179,7 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   Workspace routing, and owns it until runtime stop. The Settings controller binds all six
   descriptor commands, keeps committed values visible through failed writes, offers per-control
   Retry, and recovers only failed hydration axes; it observes resolved Appearance but does not own
-  the effect. The legacy `ThemeService` surface remains isolated pending its contraction.
+  the effect. No platform compatibility facade or direct document writer remains.
 - `@trinity/runtime/host` `[type:platform]`, `[role:kernel]` — Host Capabilities: narrow operation
   contracts and explicit supported/unavailable manifests for authentication handoff, deep links,
   Back, file export, notification presentation, location, badges, secure storage, lifecycle, and
@@ -192,7 +192,7 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   ordered legacy keys are read-only and upgrade into the authoritative current envelope before
   publication. Adapters enforce storage/export policy and diagnostics never expose values.
 - `@trinity/platform-native` `[type:platform]` — Capacitor/native capabilities (session/secure storage,
-  the device-preference adapter, theme/status-bar, launcher badge, external browser, desktop bridge, error handler). Branches on
+  the device-preference adapter, Appearance status-bar projection, launcher badge, external browser, desktop bridge, error handler). Branches on
   `isNativePlatform()` internally. May depend only on `util`.
 - `@trinity/data-access/accounts` `[type:data-access]` — Account Runtime: read-only lifecycle state plus
   cold, finite restoration, authenticated-establishment, atomic switch, explicit Account sign-out,
@@ -296,8 +296,8 @@ Electron's `trinity://` scheme, which broke the desktop dark theme.
 - **Component SCSS references design tokens** (`--trinity-*`; alert **text/icons** =
   `--trinity-danger`, a filled danger badge = `--trinity-danger-solid` +
   `--trinity-danger-solid-foreground`, on-accent text = `--trinity-accent-foreground`, which
-  tracks the Helm `--primary-foreground` so a palette overrides one value). Never hardcode
-  colours, or they won't re-theme with light/dark or the palette; and never
+  tracks the Helm `--primary-foreground` so a Theme overrides one value). Never hardcode
+  colours, or they won't re-theme with Mode or Theme; and never
   use Helm's `--destructive` as a foreground — it's a fill/tint-only token whose dark value
   is a near-black maroon (in a template the alert-text utility is `text-danger`, **not**
   `text-destructive`). Rendered `[innerHTML]` markdown is styled globally in

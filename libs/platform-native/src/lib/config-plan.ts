@@ -58,7 +58,7 @@ export interface RejectedConfigPlan {
 /** What checking a document produced. Warnings appear on both: they never block. */
 export type ConfigApplyPlan = AcceptedConfigPlan | RejectedConfigPlan;
 
-/** One change as a line the UI can list: `theme.palette: "trinity" → "amethyst"`. */
+/** One change as a line the UI can list: `appearance.theme: "trinity" → "amethyst"`. */
 export function describeConfigChange(change: ConfigChange): string {
   return `${change.path}: ${summarise(change.from)} → ${summarise(change.to)}`;
 }

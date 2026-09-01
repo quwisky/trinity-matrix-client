@@ -10,7 +10,7 @@
 }
 
 // The one sentence that has to be noticed: the key is shown once. Design tokens, not
-// Tailwind colours, so it re-themes with the palette and with dark mode.
+// Tailwind colours, so it re-themes with the Theme and with dark Mode.
 .warning {
   @include warning;
 }

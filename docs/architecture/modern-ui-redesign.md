@@ -32,7 +32,7 @@ notification, account, timeline, or sending semantics.
 Success means:
 
 - the application has one clear surface hierarchy across Web, Electron, Android and iOS;
-- light, dark, Onyx and named palettes look intentional rather than recoloured;
+- light and dark Modes across Trinity, Onyx and named Themes look intentional rather than recoloured;
 - Cosy and Compact density affect the entire communication shell, not only message rows;
 - people, spaces, rooms, apps and actions have consistent shapes and icon treatment;
 - primary actions are obvious and secondary actions remain discoverable without crowding the UI;
@@ -47,7 +47,7 @@ Trinity already has most of the architecture the redesign needs:
 - a Discord-shaped room shell with a 72px space rail, resizable room list, timeline and optional
   right panel;
 - semantic `--trinity-*` surface, text, spacing, radius, elevation and motion tokens;
-- orthogonal mode and palette axes, including Onyx;
+- orthogonal Mode and Theme axes, including Onyx;
 - Cosy and Compact density, currently applied mainly to timeline spacing;
 - public UI wrappers under `libs/components/*`, with spartan-ng contained behind them;
 - a shared page header, avatar, message toolbar, inputs, overlays and empty states;
@@ -229,7 +229,7 @@ action should reuse the same gesture everywhere, and every motion must collapse 
 - Group related controls into semantic sections with sentence-case headings, short supporting text
   and optional dividers. Do not wrap every group in a bordered card.
 - Keep the existing one-pane mobile drill-in navigation.
-- Add a small live preview to Appearance for mode, palette, text size and density so changes are
+- Add a small live preview to Appearance for Mode, Theme, text size and density so changes are
   understandable before leaving the page.
 - Finish density across settings and replace repeated literal spacing with tokens.
 
@@ -349,7 +349,7 @@ Acceptance:
 ### Phase 1 - foundations
 
 Status: implemented. The first foundations slice introduces component-facing surface, shape,
-typography, density and interaction roles while preserving the existing palette primitives. It
+typography, density and interaction roles while preserving the existing colour primitives. It
 applies the recipes to the banner, message toolbar and media bubble and tests their rendered
 states through Storybook. Final value tuning and a production font decision remain gated on the
 Phase 0 human design approval; the system font remains authoritative until that decision is
@@ -359,7 +359,7 @@ Primary ownership:
 
 - `libs/theme-foundation/styles/theme.scss`
 - `libs/theme-foundation/src/lib/theme-catalog.ts`
-- `libs/platform-native/src/lib/theme.service.ts`
+- `libs/application/appearance/src/lib/appearance-document.adapter.ts`
 - `libs/components/*`
 - `docs/architecture/ui-and-theming.md`
 
@@ -374,7 +374,7 @@ Acceptance:
 
 - no new hard-coded colour in component SCSS;
 - all new motion uses existing duration/easing tokens and respects reduced motion;
-- text and focus contrast pass in every mode/palette combination;
+- text and focus contrast pass in every Mode/Theme combination;
 - no theme flash or native status-bar regression.
 
 ### Phase 2 - desktop shell and navigation
@@ -462,7 +462,7 @@ scrollable but visually quiet directory and the detail pane as the only painted 
 directory is grouped by task. Detail panes now share a title-and-description intro and logical
 trailing switch rows; Appearance additionally uses reusable labelled field rows and quiet section
 groups, a true-radio segmented mode picker, and a compact token-only conversation preview that
-responds to mode, palette, text size, time format and density. Select names are forwarded to the
+responds to Mode, Theme, text size, time format and density. Select names are forwarded to the
 actual combobox trigger rather than left on a role-less wrapper. Nested routes explicitly focus
 their section heading; mobile Back restores the originating directory link, and a mobile drill-in
 resized wide still exits Settings in one step. Search remains deliberately deferred to its own
@@ -594,16 +594,16 @@ Acceptance:
 
 Every implementation issue selects the relevant rows; the phase-closing PR runs the full matrix.
 
-| Axis         | Required coverage                                                          |
-| ------------ | -------------------------------------------------------------------------- |
-| Viewport     | 1440x900, 1280x720, 1024x768, 900x700, Pixel 5, 320x568                    |
-| Platform     | Chromium web, WebKit where layout differs, Electron, Android WebView       |
-| Mode/palette | light and dark default; dark Onyx; Amethyst spot check                     |
-| Density      | Cosy and Compact                                                           |
-| Text         | Default and Larger (125%)                                                  |
-| Input        | mouse, keyboard-only and coarse pointer                                    |
-| Motion       | normal and `prefers-reduced-motion: reduce`                                |
-| Content      | empty, loading, error, offline, long names, unread-heavy and busy timeline |
+| Axis       | Required coverage                                                          |
+| ---------- | -------------------------------------------------------------------------- |
+| Viewport   | 1440x900, 1280x720, 1024x768, 900x700, Pixel 5, 320x568                    |
+| Platform   | Chromium web, WebKit where layout differs, Electron, Android WebView       |
+| Mode/Theme | light and dark Trinity; dark Onyx; Amethyst spot check                     |
+| Density    | Cosy and Compact                                                           |
+| Text       | Default and Larger (125%)                                                  |
+| Input      | mouse, keyboard-only and coarse pointer                                    |
+| Motion     | normal and `prefers-reduced-motion: reduce`                                |
+| Content    | empty, loading, error, offline, long names, unread-heavy and busy timeline |
 
 Layout assertions belong in Playwright, not jsdom. Existing behavioural tests remain focused on
 semantics, computed styles and measured geometry. Screenshots and GIFs used for human review are

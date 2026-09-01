@@ -9,8 +9,8 @@
   class="grid gap-[var(--trinity-space-7)] px-[var(--trinity-space-4)] pb-[var(--trinity-space-7)] md:px-0"
 >
   <trn-appearance-preview
-    [themeLabel]="resolvedMode()"
-    [paletteLabel]="themeLabel()"
+    [modeLabel]="resolvedMode()"
+    [themeLabel]="themeLabel()"
     [densityLabel]="densityLabel()"
     [timeLabel]="format.sampleTime(sample, format.timeFormat())"
   />
@@ -43,15 +43,15 @@
     title="Mode and Theme"
     headingId="appearance-mode-heading"
     description="Choose the surface contrast and colour accents that feel most comfortable."
-    data-testid="appearance-mode-palette"
+    data-testid="appearance-mode-theme"
   >
     <trn-radio-group
       variant="segmented"
       aria-labelledby="appearance-mode-heading"
-      [options]="themeOptions"
+      [options]="modeOptions"
       [value]="appearance.axes.mode.value()"
       [disabled]="appearance.hydrationBusy() || appearance.status.mode.busy()"
-      (valueChange)="onThemeChange($event)"
+      (valueChange)="onModeChange($event)"
     />
     <p class="text-13 text-[var(--trinity-text-muted)]">
       Showing the {{ resolvedMode() }} Mode.

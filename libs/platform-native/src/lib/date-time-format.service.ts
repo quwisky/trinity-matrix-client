@@ -127,8 +127,8 @@ export class DateTimeFormatService {
 
   constructor() {
     // The OS language can change under a running app (and a Capacitor WebView is long-lived),
-    // which moves what "Match system" means. Mirrors ThemeService's prefers-color-scheme
-    // listener. Guarded for the non-DOM contexts the rest of the lib guards for.
+    // which moves what "Match system" means. Like Appearance's system-Mode source, this is
+    // guarded for the non-DOM contexts the rest of the library supports.
     const target = typeof window !== 'undefined' ? window : null;
     const onLanguageChange = () => this._locales.set(systemLocales());
     target?.addEventListener('languagechange', onLanguageChange);
