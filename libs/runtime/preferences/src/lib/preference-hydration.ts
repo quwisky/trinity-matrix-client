@@ -13,7 +13,6 @@ import type {
 import {
   decodeStoredPreference,
   encodeStoredPreference,
-  preferenceFailureState,
   preferenceStorageFailure,
   preferenceStorageRequest,
 } from './preference-store.helpers';
@@ -22,10 +21,23 @@ import {
   writePreferenceStorage,
 } from './preference-storage.operations';
 
-export interface PreferenceHydrationResult {
-  readonly state: PreferenceState<PreferenceValue>;
-  readonly failure: PreferenceFailure | null;
-}
+export type PreferenceHydrationResult =
+  | {
+      readonly state: Extract<
+        PreferenceState<PreferenceValue>,
+        { kind: 'ready' }
+      >;
+      readonly failure: null;
+    }
+  | {
+      readonly state: Extract<
+        PreferenceState<PreferenceValue>,
+        { kind: 'recoverable-failure' }
+      >;
+      readonly failure: PreferenceFailure;
+    };
+
+type StoredPreferenceSource = 'current' | 'legacy';
 
 export function hydratePreference(
   adapter: PreferenceStorageAdapter,
@@ -37,7 +49,7 @@ export function hydratePreference(
     switchMap((outcome) =>
       outcome.kind === 'missing'
         ? readLegacyPreference(adapter, descriptor, context, 0)
-        : applyStoredOutcome(adapter, descriptor, context, outcome, false),
+        : applyStoredOutcome(adapter, descriptor, context, outcome, 'current'),
     ),
   );
 }
@@ -59,7 +71,7 @@ function readLegacyPreference(
     switchMap((outcome) =>
       outcome.kind === 'missing'
         ? readLegacyPreference(adapter, descriptor, context, index + 1)
-        : applyStoredOutcome(adapter, descriptor, context, outcome, true),
+        : applyStoredOutcome(adapter, descriptor, context, outcome, 'legacy'),
     ),
   );
 }
@@ -69,7 +81,7 @@ function applyStoredOutcome(
   descriptor: PreferenceDescriptor<PreferenceValue>,
   context: PreferenceContext,
   outcome: Exclude<PreferenceStorageReadOutcome, { readonly kind: 'missing' }>,
-  fromLegacyKey: boolean,
+  source: StoredPreferenceSource,
 ): Observable<PreferenceHydrationResult> {
   if (outcome.kind === 'unavailable') {
     return of(
@@ -95,7 +107,7 @@ function applyStoredOutcome(
   }
 
   const needsCurrentWrite =
-    fromLegacyKey ||
+    source === 'legacy' ||
     !decoded.enveloped ||
     decoded.stored.version !== descriptor.persistence.migration.currentVersion;
   if (!needsCurrentWrite) return of(readyResult(migrated.value));
@@ -117,7 +129,7 @@ function applyStoredOutcome(
       );
       return of(
         failureResult(
-          fromLegacyKey ? descriptor.defaultValue : migrated.value,
+          source === 'legacy' ? descriptor.defaultValue : migrated.value,
           failure,
         ),
       );
@@ -144,5 +156,13 @@ function failureResult(
   value: PreferenceValue,
   failure: PreferenceFailure,
 ): PreferenceHydrationResult {
-  return { state: preferenceFailureState(value, failure), failure };
+  return {
+    state: {
+      kind: 'recoverable-failure',
+      value,
+      recovery: failure.recovery,
+      diagnostic: failure.diagnostic,
+    },
+    failure,
+  };
 }
