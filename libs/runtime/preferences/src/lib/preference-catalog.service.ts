@@ -89,6 +89,17 @@ function buildCatalog(
 export function assertPreferenceDescriptor(
   descriptor: PreferenceDescriptor<PreferenceValue>,
 ): void {
+  const legacyKeys = descriptor.persistence.legacyKeys ?? [];
+  if (
+    legacyKeys.some(
+      (key) => key.trim().length === 0 || key === descriptor.persistence.key,
+    ) ||
+    new Set(legacyKeys).size !== legacyKeys.length
+  ) {
+    throw new Error(
+      `Preference '${descriptor.id}' has invalid legacy persistence keys.`,
+    );
+  }
   const defaultValidation = descriptor.validate(descriptor.defaultValue);
   if (defaultValidation.kind === 'rejected') {
     throw new Error(

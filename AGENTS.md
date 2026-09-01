@@ -177,7 +177,8 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   policy-free typed descriptor catalog and context-keyed signal store. Capabilities own defaults,
   validation, migration, sensitivity, editor metadata, and explicit installation, Account,
   Conversation, or server-authoritative scope. Hydration and updates are cold finite Observables;
-  adapters enforce storage/export policy and diagnostics never expose values.
+  ordered legacy keys are read-only and upgrade into the authoritative current envelope before
+  publication. Adapters enforce storage/export policy and diagnostics never expose values.
 - `@trinity/platform-native` `[type:platform]` — Capacitor/native capabilities (session/secure storage,
   the device-preference adapter, theme/status-bar, launcher badge, external browser, desktop bridge, error handler). Branches on
   `isNativePlatform()` internally. May depend only on `util`.

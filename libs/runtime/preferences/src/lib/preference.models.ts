@@ -128,6 +128,11 @@ export interface PreferenceDescriptor<T extends PreferenceValue> {
   readonly editor: PreferenceEditor;
   readonly persistence: {
     readonly key: string;
+    /**
+     * Read-only predecessor keys, checked in declaration order only when the
+     * current key is missing. The runtime never writes these keys.
+     */
+    readonly legacyKeys?: readonly string[];
     readonly migration: PreferenceMigration<T>;
   };
   readonly validate: (value: unknown) => PreferenceValidation<T>;

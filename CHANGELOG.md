@@ -87,6 +87,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Preference storage keys now upgrade in one direction.** Capability descriptors can name
+  ordered, read-only predecessor keys without exposing them through Settings. The current key
+  remains authoritative; otherwise a valid legacy value is written into its current versioned
+  envelope before it becomes visible. Invalid data and storage failures affect only that
+  preference and return value-free recovery, and all later writes use only the current key.
+
 - **Local validation output is quiet and classified.** Nx commands now normalize contradictory
   color variables, Vitest configs are ready for Vite's native loader, component tests install
   deterministic browser APIs and the icons they render, and expected failure logs are asserted at

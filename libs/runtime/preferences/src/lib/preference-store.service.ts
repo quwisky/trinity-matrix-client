@@ -6,16 +6,7 @@ import {
   type Signal,
   type WritableSignal,
 } from '@angular/core';
-import {
-  Observable,
-  concatMap,
-  defer,
-  from,
-  map,
-  of,
-  switchMap,
-  toArray,
-} from 'rxjs';
+import { Observable, concatMap, defer, from, map, of, toArray } from 'rxjs';
 import {
   PreferenceCatalogService,
   assertPreferenceDescriptor,
@@ -30,8 +21,8 @@ import {
   type PreferenceState,
   type PreferenceValue,
 } from './preference.models';
+import { hydratePreference } from './preference-hydration';
 import {
-  decodeStoredPreference,
   encodeStoredPreference,
   preferenceContextKey,
   preferenceFailureState,
@@ -44,6 +35,7 @@ import {
   unavailablePreferenceCommand,
 } from './preference-store.helpers';
 import { PREFERENCE_STORAGE_ADAPTER } from './preference-storage';
+import { writePreferenceStorage } from './preference-storage.operations';
 
 type PreferenceCell = WritableSignal<PreferenceState<PreferenceValue>>;
 
@@ -176,26 +168,24 @@ export class PreferenceStoreService {
         );
       }
       const request = preferenceStorageRequest(descriptor, context);
-      return this.adapter
-        .write({
-          ...request,
-          payload: encodeStoredPreference(
-            descriptor.persistence.migration.currentVersion,
-            validation.value,
-          ),
-        })
-        .pipe(
-          map((outcome) => {
-            if (outcome.kind === 'completed') {
-              this.cell(descriptor, context).set({
-                kind: 'ready',
-                value: validation.value,
-              });
-              return { kind: 'completed' } as const;
-            }
-            return preferenceStorageCommandFailure(outcome);
-          }),
-        );
+      return writePreferenceStorage(this.adapter, {
+        ...request,
+        payload: encodeStoredPreference(
+          descriptor.persistence.migration.currentVersion,
+          validation.value,
+        ),
+      }).pipe(
+        map((outcome) => {
+          if (outcome.kind === 'completed') {
+            this.cell(descriptor, context).set({
+              kind: 'ready',
+              value: validation.value,
+            });
+            return { kind: 'completed' } as const;
+          }
+          return preferenceStorageCommandFailure(outcome);
+        }),
+      );
     });
   }
 
@@ -282,83 +272,12 @@ export class PreferenceStoreService {
       cell.set(preferenceFailureState(descriptor.defaultValue, failure));
       return of(failure);
     }
-    const request = preferenceStorageRequest(descriptor, context);
-    return this.adapter.read(request).pipe(
-      switchMap((outcome) => {
-        if (outcome.kind === 'missing') {
-          cell.set({ kind: 'ready', value: descriptor.defaultValue });
-          return of(null);
-        }
-        if (outcome.kind === 'unavailable') {
-          const failure: PreferenceFailure = {
-            preferenceId: descriptor.id,
-            recovery: 'retry-storage',
-            diagnostic: { code: 'preference-storage-read-failed' },
-          };
-          cell.set(preferenceFailureState(descriptor.defaultValue, failure));
-          return of(failure);
-        }
-        return this.applyStored(descriptor, context, outcome.payload, cell);
+    return hydratePreference(this.adapter, descriptor, context).pipe(
+      map((result) => {
+        cell.set(result.state);
+        return result.failure;
       }),
     );
-  }
-
-  private applyStored(
-    descriptor: PreferenceDescriptor<PreferenceValue>,
-    context: PreferenceContext,
-    payload: string,
-    cell: PreferenceCell,
-  ): Observable<PreferenceFailure | null> {
-    const decoded = decodeStoredPreference(payload);
-    let migrated: ReturnType<typeof descriptor.persistence.migration.migrate>;
-    try {
-      migrated = descriptor.persistence.migration.migrate(decoded.stored);
-    } catch {
-      const failure: PreferenceFailure = {
-        preferenceId: descriptor.id,
-        recovery: 'reset-preference',
-        diagnostic: { code: 'preference-migration-rejected' },
-      };
-      cell.set(preferenceFailureState(descriptor.defaultValue, failure));
-      return of(failure);
-    }
-    if (migrated.kind === 'rejected') {
-      const failure: PreferenceFailure = {
-        preferenceId: descriptor.id,
-        recovery: 'reset-preference',
-        diagnostic: { code: 'preference-migration-rejected' },
-      };
-      cell.set(preferenceFailureState(descriptor.defaultValue, failure));
-      return of(failure);
-    }
-    cell.set({ kind: 'ready', value: migrated.value });
-    if (
-      decoded.enveloped &&
-      decoded.stored.version === descriptor.persistence.migration.currentVersion
-    ) {
-      return of(null);
-    }
-    if (!this.adapter) return of(null);
-    return this.adapter
-      .write({
-        ...preferenceStorageRequest(descriptor, context),
-        payload: encodeStoredPreference(
-          descriptor.persistence.migration.currentVersion,
-          migrated.value,
-        ),
-      })
-      .pipe(
-        map((outcome) => {
-          if (outcome.kind === 'completed') return null;
-          const failure: PreferenceFailure = {
-            preferenceId: descriptor.id,
-            recovery: 'retry-storage',
-            diagnostic: { code: 'preference-storage-write-failed' },
-          };
-          cell.set(preferenceFailureState(migrated.value, failure));
-          return failure;
-        }),
-      );
   }
 
   private cell(
