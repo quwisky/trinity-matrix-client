@@ -617,6 +617,11 @@ All notable changes to this project are documented here. The format is based on
   installed-WebView adapter now recognizes both a new Chrome page and navigation of a reused tab,
   so rejecting a forged callback cannot make the legitimate provider continuation time out.
 
+- **Fast Android OIDC redirects no longer look like a missing Custom Tab in local E2E runs.** The
+  installed-WebView adapter observes external page creation and main-frame navigation throughout
+  the authentication trigger, including a provider tab that redirects back and closes between
+  polling samples, without extending the journey timeout or retrying the action.
+
 - **The homeserver-free SAS self-check runs without disposable Matrix credentials again.**
   Standalone protocol checks now join only the application lifecycle, while mutating journeys keep
   their attempt-scoped Accounts and secret-redacting diagnostics. A failed Continue response also

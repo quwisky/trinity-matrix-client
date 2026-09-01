@@ -10,9 +10,13 @@ interface ExternalPageCandidate {
 export function findTriggeredExternalPage<T extends ExternalPageCandidate>(
   before: ReadonlyMap<T, string>,
   current: readonly T[],
+  observed: readonly T[] = [],
 ): T | undefined {
-  return current.find(
-    (candidate) =>
-      !before.has(candidate) || before.get(candidate) !== candidate.url(),
+  return (
+    observed[0] ??
+    current.find(
+      (candidate) =>
+        !before.has(candidate) || before.get(candidate) !== candidate.url(),
+    )
   );
 }

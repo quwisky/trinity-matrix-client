@@ -31,6 +31,16 @@ describe('external page selection', () => {
     expect(findTriggeredExternalPage(before, [reused])).toBe(reused);
   });
 
+  it('selects a short-lived page observed during the trigger', () => {
+    const stale = candidate('https://provider.test/previous');
+    const transient = candidate('trinity://auth/callback?code=complete');
+    const before = new Map([[stale, stale.url()]]);
+
+    expect(findTriggeredExternalPage(before, [stale], [transient])).toBe(
+      transient,
+    );
+  });
+
   it('does not select an untouched stale page', () => {
     const stale = candidate('https://provider.test/previous');
     const before = new Map([[stale, stale.url()]]);

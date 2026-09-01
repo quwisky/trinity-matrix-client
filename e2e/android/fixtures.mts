@@ -6,6 +6,7 @@ import {
   expect,
   test as base,
   type BrowserContext,
+  type Frame,
   type Locator,
   type Page,
   type TestInfo,
@@ -842,27 +843,65 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
           const context = await ensureExternalContext();
           await context.clearCookies();
           await activatePrimary();
+          const observedPages: Page[] = [];
+          const navigationListeners = new Map<
+            Page,
+            (frame: Frame) => void
+          >();
+          let observingTrigger = false;
+          const notePage = (candidate: Page): void => {
+            if (
+              observingTrigger &&
+              !observedPages.includes(candidate)
+            ) {
+              observedPages.push(candidate);
+            }
+          };
+          const watchPage = (candidate: Page): void => {
+            if (navigationListeners.has(candidate)) return;
+            const onFrameNavigated = (frame: Frame): void => {
+              if (frame === candidate.mainFrame()) notePage(candidate);
+            };
+            candidate.on('framenavigated', onFrameNavigated);
+            navigationListeners.set(candidate, onFrameNavigated);
+          };
+          const onPage = (candidate: Page): void => {
+            notePage(candidate);
+            watchPage(candidate);
+          };
+          context.on('page', onPage);
           const knownPages = new Map(
             context.pages().map((candidate) => [candidate, candidate.url()]),
           );
-          await trigger();
+          for (const candidate of knownPages.keys()) watchPage(candidate);
           let externalPage: Page | undefined;
-          await expect
-            .poll(
-              () => {
-                externalPage = findTriggeredExternalPage(
-                  knownPages,
-                  context.pages(),
-                );
-                return externalPage !== undefined;
-              },
-              {
-                message:
-                  'Native authentication must create or navigate a Custom Tab',
-                timeout: 30_000,
-              },
-            )
-            .toBe(true);
+          try {
+            observingTrigger = true;
+            await trigger();
+            await expect
+              .poll(
+                () => {
+                  externalPage = findTriggeredExternalPage(
+                    knownPages,
+                    context.pages(),
+                    observedPages,
+                  );
+                  return externalPage !== undefined;
+                },
+                {
+                  message:
+                    'Native authentication must create or navigate a Custom Tab',
+                  timeout: 30_000,
+                },
+              )
+              .toBe(true);
+          } finally {
+            observingTrigger = false;
+            context.off('page', onPage);
+            for (const [candidate, listener] of navigationListeners) {
+              candidate.off('framenavigated', listener);
+            }
+          }
           if (!externalPage) {
             throw new Error(
               'Native authentication did not expose a changed Custom Tab page',
