@@ -12,6 +12,12 @@ export type TrnButtonShape = 'label' | 'icon';
 
 type LegacyButtonVariant =
   'default' | 'outline' | 'secondary' | 'ghost' | 'destructive' | 'link';
+type LegacyPresentationVariant = Extract<
+  LegacyButtonVariant,
+  TrnButtonPresentation
+>;
+type SemanticButtonVariantInput =
+  TrnButtonVariant | Extract<LegacyButtonVariant, 'default' | 'destructive'>;
 type LegacyButtonSize =
   'default' | 'xs' | 'sm' | 'lg' | 'icon' | 'icon-xs' | 'icon-sm' | 'icon-lg';
 
@@ -59,8 +65,10 @@ const nonSolidTone = {
     link: 'text-secondary-foreground',
   },
   danger: {
-    outline: 'border-danger text-danger hover:bg-danger/10 hover:text-danger',
-    ghost: 'text-danger hover:bg-danger/10 hover:text-danger',
+    outline:
+      'border-danger text-danger hover:bg-[var(--trinity-danger-tint-10)] dark:hover:bg-[var(--trinity-danger-tint-10)] hover:text-danger',
+    ghost:
+      'text-danger hover:bg-[var(--trinity-danger-tint-10)] dark:hover:bg-[var(--trinity-danger-tint-10)] hover:text-danger',
     link: 'text-danger hover:text-danger',
   },
 } as const;
@@ -75,6 +83,12 @@ function isCanonicalVariant(
 
 function isCanonicalSize(size: TrnButtonSizeInput): size is TrnButtonSize {
   return size === 'xs' || size === 'sm' || size === 'md' || size === 'lg';
+}
+
+function isLegacyPresentationVariant(
+  variant: TrnButtonVariantInput,
+): variant is LegacyPresentationVariant {
+  return variant === 'outline' || variant === 'ghost' || variant === 'link';
 }
 
 export function isTrnButtonIconSize(size: TrnButtonSizeInput): boolean {
@@ -101,18 +115,34 @@ function resolveVariant(options: TrnButtonRecipeOptions): {
   tone: string;
   variant: LegacyButtonVariant;
 } {
-  if (!isCanonicalVariant(options.variant)) {
+  if (isLegacyPresentationVariant(options.variant)) {
     return { tone: '', variant: options.variant };
   }
+  const semanticVariant = normalizeVariant(options.variant);
 
   if (options.presentation === 'solid') {
-    return { tone: '', variant: solidVariant[options.variant] };
+    return { tone: '', variant: solidVariant[semanticVariant] };
   }
 
   return {
-    tone: nonSolidTone[options.variant][options.presentation],
+    tone: nonSolidTone[semanticVariant][options.presentation],
     variant: options.presentation,
   };
+}
+
+function normalizeVariant(
+  variant: SemanticButtonVariantInput,
+): TrnButtonVariant {
+  if (isCanonicalVariant(variant)) {
+    return variant;
+  }
+
+  switch (variant) {
+    case 'default':
+      return 'primary';
+    case 'destructive':
+      return 'danger';
+  }
 }
 
 function normalizeSize(size: TrnButtonSizeInput): TrnButtonSize {

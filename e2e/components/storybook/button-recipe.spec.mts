@@ -1,4 +1,14 @@
 import { expect, test, type Locator } from '@playwright/test';
+import {
+  AA_NORMAL_TEXT,
+  measureContrast,
+  resolveTokenSrgb,
+} from '../../browser/support/contrast.mts';
+import {
+  STORYBOOK_THEME_PREVIEWS,
+  expectStorybookThemeRoot,
+  storybookThemeGlobals,
+} from './theme-preview.mts';
 
 const STORY =
   '/iframe.html?id=components-button--canonical-and-compatibility&viewMode=story';
@@ -49,3 +59,32 @@ test('canonical button recipes render like their compatibility inputs', async ({
     (await recipeStyle(page.getByTestId('canonical-primary-ghost'))).color,
   );
 });
+
+for (const preview of STORYBOOK_THEME_PREVIEWS.filter(
+  ({ mode }) => mode.id === 'light',
+)) {
+  test(`${preview.theme.id} light danger hover is opaque on card and rail surfaces`, async ({
+    page,
+  }) => {
+    await page.goto(`${STORY}&globals=${storybookThemeGlobals(preview)}`);
+    await expectStorybookThemeRoot(page, preview);
+
+    for (const testId of ['danger-ghost-card', 'danger-ghost-rail']) {
+      const button = page.getByTestId(testId);
+      await expect(button).toBeVisible();
+      await button.hover();
+
+      const tint = await resolveTokenSrgb(
+        page,
+        testId,
+        '--trinity-danger-tint-10',
+      );
+      await expect
+        .poll(async () => (await measureContrast(page, testId)).background)
+        .toEqual(tint);
+
+      const measured = await measureContrast(page, testId);
+      expect(measured.ratio).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
+    }
+  });
+}

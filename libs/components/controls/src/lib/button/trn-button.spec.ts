@@ -147,6 +147,43 @@ describe('TrnButton', () => {
     expect(secondaryGhost).toContain('text-secondary-foreground');
     expect(dangerGhost).not.toBe(primaryGhost);
     expect(dangerGhost).toContain('text-danger');
+    expect(dangerGhost).toContain('hover:bg-[var(--trinity-danger-tint-10)]');
+    expect(dangerGhost).toContain(
+      'dark:hover:bg-[var(--trinity-danger-tint-10)]',
+    );
+  });
+
+  it('combines compatibility semantic aliases with canonical presentations', () => {
+    expect(
+      trnButtonRecipe({
+        presentation: 'outline',
+        shape: 'label',
+        size: 'md',
+        variant: 'default',
+      }),
+    ).toBe(
+      trnButtonRecipe({
+        presentation: 'outline',
+        shape: 'label',
+        size: 'md',
+        variant: 'primary',
+      }),
+    );
+    expect(
+      trnButtonRecipe({
+        presentation: 'ghost',
+        shape: 'label',
+        size: 'md',
+        variant: 'destructive',
+      }),
+    ).toBe(
+      trnButtonRecipe({
+        presentation: 'ghost',
+        shape: 'label',
+        size: 'md',
+        variant: 'danger',
+      }),
+    );
   });
 
   it('normalizes mixed canonical and compatibility icon inputs', () => {

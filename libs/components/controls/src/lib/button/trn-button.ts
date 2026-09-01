@@ -7,7 +7,7 @@ import {
   input,
 } from '@angular/core';
 import { DOCUMENT } from '@angular/common';
-import { HlmButton } from '@trinity/helm/button';
+import { HlmButton, provideBrnButtonConfig } from '@trinity/helm/button';
 import { classes } from '@trinity/helm/utils';
 import {
   isTrnButtonIconSize,
@@ -30,6 +30,10 @@ import {
 @Directive({
   selector: 'button[trnBtn], a[trnBtn]',
   exportAs: 'trnBtn',
+  // HlmButton still owns the Brain behaviour and slot contract, but its default recipe
+  // must not compete with the Trinity recipe applied below. Null keeps only Helm's shared
+  // base classes; Trinity supplies the mapped variant and size through the same CVA table.
+  providers: [provideBrnButtonConfig({ variant: null, size: null })],
   host: {
     '[attr.data-trn-icon-button]': "iconButton() ? '' : null",
   },

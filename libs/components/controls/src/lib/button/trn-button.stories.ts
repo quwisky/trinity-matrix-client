@@ -44,6 +44,36 @@ export const CanonicalAndCompatibility: Story = {
             Continue
           </button>
         </div>
+        <div
+          data-testid="danger-card-surface"
+          class="flex flex-wrap items-center gap-3 p-3"
+          style="background: var(--trinity-surface-card)"
+        >
+          <button
+            data-testid="danger-ghost-card"
+            type="button"
+            trnBtn
+            variant="danger"
+            presentation="ghost"
+          >
+            Remove from card
+          </button>
+        </div>
+        <div
+          data-testid="danger-rail-surface"
+          class="flex flex-wrap items-center gap-3 p-3"
+          style="background: var(--trinity-rail)"
+        >
+          <button
+            data-testid="danger-ghost-rail"
+            type="button"
+            trnBtn
+            variant="danger"
+            presentation="ghost"
+          >
+            Remove from rail
+          </button>
+        </div>
         <div class="flex flex-wrap items-center gap-3">
           <button data-testid="canonical-danger" type="button" trnBtn variant="danger" size="md">
             Remove
