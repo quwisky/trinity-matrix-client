@@ -1,18 +1,9 @@
 // The app's global stylesheets, in the order `apps/trinity/project.json` loads them.
-// Composed here as SCSS rather than imported from `preview.ts` as modules: these are build
-// assets, the same way the app's `styles` array is, and a TypeScript import would be a
-// cross-project reference that `@nx/enforce-module-boundaries` rightly rejects.
-// That it has to reach into `apps/` at all is worth naming: the design tokens live in the
-// app, but `libs/components/*` consume them — every component stylesheet already references
-// `var(--trinity-*)` it cannot itself provide. Rendering a component in isolation is what
-// makes that visible. Moving the theme into a library of its own would remove this reach and
-// is the right fix; it is a bigger change than adding Storybook and belongs with the token
-// work in the redesign epic.
-@use '../../../../apps/trinity/src/theme/variables';
+// Storybook keeps the app-wide interaction and layout rules, then consumes Theme
+// Foundation's supported aggregate directly. The aggregate is the only source of semantic
+// Theme values and the private Tailwind/Helm mapping for both renderers.
 @use '../../../../apps/trinity/src/global';
-
-// Tailwind's layers plus the Helm token mapping. Plain CSS, so it passes straight through.
-@use '../../../../apps/trinity/src/theme/spartan.css';
+@use '../../../theme-foundation/styles/theme';
 
 // The application shell paints these semantic tokens on its own root, but an isolated story
 // has no shell. Paint the preview body itself so transparent component hosts are reviewed on

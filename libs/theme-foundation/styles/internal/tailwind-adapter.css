@@ -9,8 +9,9 @@
  *   • map the Helm tokens to Tailwind colour utilities *by reference* (`@theme inline`),
  *     so flipping `.dark` or the `data-theme` Theme re-themes every utility at runtime.
  *
- * The aggregate `../theme.scss` fixes its order after variables. The temporary application
- * compatibility entrypoint preserves that same order until #382 adopts the aggregate.
+ * The aggregate `../theme.scss` owns the loading relationship with variables. Token values
+ * stay unlayered, while framework output uses the explicit layer order below except for the
+ * documented state overrides that must outrank utilities.
  */
 @layer theme, base, components, utilities;
 @import 'tailwindcss/theme.css' layer(theme);

@@ -1,2 +1,0 @@
-/* Temporary compatibility entrypoint; remove after #382 adopts the aggregate stylesheet. */
-@import '../../../../libs/theme-foundation/styles/internal/tailwind-adapter.css';

@@ -1,4 +1,5 @@
 import { inject, type EnvironmentProviders } from '@angular/core';
+import { THEME_CATALOG } from '@trinity/theme-foundation';
 import {
   DEFAULT_DATE_FORMAT,
   DEFAULT_TIME_FORMAT,
@@ -54,10 +55,8 @@ import {
   DEFAULT_THEME_PREFERENCE,
   TRINITY_CODE_LINE_MODES,
   TRINITY_CODE_SCALES,
-  TRINITY_PALETTES,
   TRINITY_DENSITIES,
   TRINITY_TEXT_SCALES,
-  TRINITY_THEME_MODES,
   ThemeService,
   isCodeLineMode,
   isCodeScale,
@@ -105,7 +104,7 @@ function themeEntries(theme: ThemeService): readonly ConfigEntry[] {
       reset: () => theme.setPreference(DEFAULT_THEME_PREFERENCE),
       ...choiceSetting({
         isValid: isThemePreference,
-        options: TRINITY_THEME_MODES,
+        options: THEME_CATALOG.modes.map(({ id }) => id),
         noun: 'a theme mode',
         set: (value) => theme.setPreference(value),
       }),
@@ -118,7 +117,7 @@ function themeEntries(theme: ThemeService): readonly ConfigEntry[] {
       reset: () => theme.setPalette(DEFAULT_PALETTE),
       ...choiceSetting({
         isValid: isPalette,
-        options: idsOf(TRINITY_PALETTES),
+        options: idsOf(THEME_CATALOG.themes),
         noun: 'a known palette',
         set: (value) => theme.setPalette(value),
       }),

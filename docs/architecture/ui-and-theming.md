@@ -326,21 +326,21 @@ a lost override fails the suite rather than shipping. This table is the register
 step with the banner in
 [`hlm-dropdown-menu.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/spartan/dropdown-menu/src/lib/hlm-dropdown-menu.ts).
 
-| File and symbol                                              | Override                                                                                                                                                                                                                                                                          | Pinned by                                                    |
-| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | `_handleClick` shadowed so a sub-trigger click opens the submenu instead of toggling it closed under zoneless change detection                                                                                                                                                    | `dropdown-menu-submenu.spec.ts`                              |
-| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | The same shadow re-does CDK's focus move, so keyboard Enter and Space land inside the submenu                                                                                                                                                                                     | `dropdown-menu-submenu.spec.ts`                              |
-| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | `side` defaults to `'right'`, so a submenu opens beside its parent rather than over it                                                                                                                                                                                            | `dropdown-menu-submenu.spec.ts`                              |
-| `dropdown-menu` · `HlmDropdownMenu` and `HlmDropdownMenuSub` | `CdkTargetMenuAim` host directive                                                                                                                                                                                                                                                 | `dropdown-menu-submenu.spec.ts`                              |
-| `dropdown-menu` · `HlmDropdownMenuItem`                      | A destructive item's text and icon use `text-danger`, not upstream's `text-destructive`                                                                                                                                                                                           | `dropdown-menu-submenu.spec.ts`                              |
-| `badge` · `badgeVariants`                                    | Adds `success` and `warning` variants that upstream Helm does not ship                                                                                                                                                                                                            | `helm-components.spec.ts`                                    |
-| `tabs` · `HlmTabsPaginatedList`                              | Generated and then deleted — nothing wraps the scrolling trigger row, and it pulled `@angular/cdk/observers`, `@ng-icons/*` and the button lib in behind it                                                                                                                       | `helm-components.spec.ts`                                    |
-| `dropdown-menu` · `HlmDropdownMenu` and `HlmDropdownMenuSub` | Both `animate-in` / `animate-out` triggers carry `motion-safe:` — upstream ships them bare                                                                                                                                                                                        | `kit-reduced-motion.spec.mjs`                                |
-| `tooltip` · `DEFAULT_TOOLTIP_CONTENT_CLASSES`                | All three `animate-in` / `animate-out` triggers carry `motion-safe:`, including `data-[state=delayed-open]:`                                                                                                                                                                      | `kit-reduced-motion.spec.mjs`                                |
-| `select` · `HlmSelectContent`                                | Both `animate-in` / `animate-out` triggers carry `motion-safe:`                                                                                                                                                                                                                   | `kit-reduced-motion.spec.mjs`                                |
-| `select` · `HlmSelectTrigger`                                | Forwards `aria-labelledby` to the inner focusable combobox button instead of leaving it on a role-less wrapper, applies Trinity's coarse-pointer target floor to that button, and pins its foreground to the theme token                                                          | `trn-select.component.spec.ts`; Settings Playwright journeys |
-| `progress` · `HlmProgressIndicator`                          | Its **indeterminate** sweep is guarded for reduced motion in `theme/spartan.css` — the class is applied through a `[class.…]` binding, so the guard is a rule rather than a variant. The determinate `transition-all` is not covered and still rests on the `global.scss` blanket | `kit-reduced-motion.spec.mjs`                                |
-| Every file with `hostDirectives`, kit and public tier alike  | Every entry states its `inputs` and `outputs` explicitly, even when empty — the generator's shorthand decides the element's public API by omission                                                                                                                                | `host-directives.spec.mjs`                                   |
+| File and symbol                                              | Override                                                                                                                                                                                                                                                                                                  | Pinned by                                                    |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | `_handleClick` shadowed so a sub-trigger click opens the submenu instead of toggling it closed under zoneless change detection                                                                                                                                                                            | `dropdown-menu-submenu.spec.ts`                              |
+| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | The same shadow re-does CDK's focus move, so keyboard Enter and Space land inside the submenu                                                                                                                                                                                                             | `dropdown-menu-submenu.spec.ts`                              |
+| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | `side` defaults to `'right'`, so a submenu opens beside its parent rather than over it                                                                                                                                                                                                                    | `dropdown-menu-submenu.spec.ts`                              |
+| `dropdown-menu` · `HlmDropdownMenu` and `HlmDropdownMenuSub` | `CdkTargetMenuAim` host directive                                                                                                                                                                                                                                                                         | `dropdown-menu-submenu.spec.ts`                              |
+| `dropdown-menu` · `HlmDropdownMenuItem`                      | A destructive item's text and icon use `text-danger`, not upstream's `text-destructive`                                                                                                                                                                                                                   | `dropdown-menu-submenu.spec.ts`                              |
+| `badge` · `badgeVariants`                                    | Adds `success` and `warning` variants that upstream Helm does not ship                                                                                                                                                                                                                                    | `helm-components.spec.ts`                                    |
+| `tabs` · `HlmTabsPaginatedList`                              | Generated and then deleted — nothing wraps the scrolling trigger row, and it pulled `@angular/cdk/observers`, `@ng-icons/*` and the button lib in behind it                                                                                                                                               | `helm-components.spec.ts`                                    |
+| `dropdown-menu` · `HlmDropdownMenu` and `HlmDropdownMenuSub` | Both `animate-in` / `animate-out` triggers carry `motion-safe:` — upstream ships them bare                                                                                                                                                                                                                | `kit-reduced-motion.spec.mjs`                                |
+| `tooltip` · `DEFAULT_TOOLTIP_CONTENT_CLASSES`                | All three `animate-in` / `animate-out` triggers carry `motion-safe:`, including `data-[state=delayed-open]:`                                                                                                                                                                                              | `kit-reduced-motion.spec.mjs`                                |
+| `select` · `HlmSelectContent`                                | Both `animate-in` / `animate-out` triggers carry `motion-safe:`                                                                                                                                                                                                                                           | `kit-reduced-motion.spec.mjs`                                |
+| `select` · `HlmSelectTrigger`                                | Forwards `aria-labelledby` to the inner focusable combobox button instead of leaving it on a role-less wrapper, applies Trinity's coarse-pointer target floor to that button, and pins its foreground to the theme token                                                                                  | `trn-select.component.spec.ts`; Settings Playwright journeys |
+| `progress` · `HlmProgressIndicator`                          | Its **indeterminate** sweep is guarded for reduced motion in Theme Foundation's private Tailwind adapter — the class is applied through a `[class.…]` binding, so the guard is a rule rather than a variant. The determinate `transition-all` is not covered and still rests on the `global.scss` blanket | `kit-reduced-motion.spec.mjs`                                |
+| Every file with `hostDirectives`, kit and public tier alike  | Every entry states its `inputs` and `outputs` explicitly, even when empty — the generator's shorthand decides the element's public API by omission                                                                                                                                                        | `host-directives.spec.mjs`                                   |
 
 The two `.spec.ts` files live in
 [`libs/spartan/tests/src/lib`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/spartan/tests/src/lib),
@@ -395,15 +395,13 @@ generate a utility, which is why the two non-colour tokens live there rather tha
 `text-13`, between Tailwind's `text-xs` and `text-sm`) and `--animate-indeterminate`.
 
 Theme Foundation's supported stylesheet interface is the single aggregate
-`libs/theme-foundation/styles/theme.scss`. During the expand phase, build wiring retains the
-two old application paths in their established order: `theme/variables.scss` forwards the
-Foundation's token implementation and `theme/spartan.css` imports its private Tailwind adapter.
-Those compatibility entrypoints preserve application and Storybook rendering until #382 moves
-both consumers to the aggregate and removes them.
+`libs/theme-foundation/styles/theme.scss`. The application and Storybook both load that aggregate
+directly, after the app-wide global rules. Private token and Tailwind adapter files are implementation
+details; compatibility stylesheet entrypoints outside Theme Foundation do not exist.
 
-ESLint runs `eslint-plugin-tailwindcss` pointed at `spartan.css` with `classnames-order` off
-(`prettier-plugin-tailwindcss` owns ordering) and `no-custom-classname` off (the app mixes
-BEM class names with utilities). The remaining rules are warnings.
+ESLint and Prettier point their Tailwind integration at Theme Foundation's private adapter, with
+`classnames-order` off (`prettier-plugin-tailwindcss` owns ordering) and `no-custom-classname` off
+(the app mixes BEM class names with utilities). The remaining ESLint rules are warnings.
 
 !!! warning "inlineCritical must stay false in production"
 
@@ -429,7 +427,8 @@ references for previewing but no resolved colour or shadow values.
 A **Theme** is a named visual token set (`trinity`, `amethyst` or `onyx`); **Mode** is the
 `system`, `light` or `dark` selection; **Appearance** is their composition with text size,
 density and Conversations' code preferences. `Palette` remains only in temporary compatibility
-names such as `ThemeService.setPalette()` and `TRINITY_PALETTES` while the migration is expanded.
+names such as `ThemeService.setPalette()` and its persisted storage key while the migration is
+expanded. Theme identity and selector metadata are read from `THEME_CATALOG` directly.
 
 Theme authors may override only the catalog's governed semantic colour and elevation roles.
 Fonts, assets, arbitrary selectors and component mappings are outside that contract. The default
@@ -477,9 +476,10 @@ decides what to do about it.
 
 `pnpm storybook` serves one Storybook covering the whole `libs/components/*` tier
 (`libs/components/storybook-host` is config only — the stories live beside the components they
-document). The toolbar carries Theme, light/dark Mode and density. During the compatibility phase
-its Theme choices arrive through `TRINITY_PALETTES`, a read-only view of `THEME_CATALOG.themes`;
-#382 switches Storybook to consume the catalog and aggregate stylesheet directly.
+document). The toolbar carries Theme, light/dark Mode and density. Its Theme and Mode choices come
+directly from the read-only `THEME_CATALOG`; the preview loads the same aggregate stylesheet as the
+application and derives all six fixed Theme/Mode combinations from the catalog rather than
+maintaining a parallel matrix.
 
 That is what it is for. A palette is meant to be a data change — a block of token overrides plus
 a registry entry — and before this the only way to know that held was to launch the app and
@@ -588,8 +588,8 @@ Trinity splits danger into three roles instead:
 | `--trinity-danger-solid`            | A **filled** badge                          | `#d92b31` | `#ef4444` |
 | `--trinity-danger-solid-foreground` | The text on that fill                       | `#fff`    | `#1a1a1a` |
 
-`spartan.css` maps `--color-danger: var(--trinity-danger)`, which is what makes the
-`text-danger` utility exist.
+Theme Foundation's private Tailwind adapter maps
+`--color-danger: var(--trinity-danger)`, which is what makes the `text-danger` utility exist.
 
 Each value was measured against the **worst backdrop the role actually lands on**. One of
 those is easy to overlook: `--trinity-hover`, because a row that recolours on hover is where a
@@ -631,9 +631,9 @@ one token serving as both the tint and the ink drawn on it. That is unfixable by
 against its own 20% tint is above 90% lightness, which is a pale pink that no longer reads as
 danger.
 
-So `spartan.css` decouples the roles with **unlayered** rules. Tailwind emits utilities into
-`@layer utilities`, and unlayered declarations outrank every cascade layer, so this wins
-without a specificity war.
+So Theme Foundation's private Tailwind adapter decouples the roles with **unlayered** rules.
+Tailwind emits utilities into `@layer utilities`, and unlayered declarations outrank every
+cascade layer, so this wins without a specificity war.
 
 !!! warning "The selector list must cover every emitted variant"
 
@@ -758,8 +758,8 @@ Theme applies no attribute at all.
     `apps` — stylesheets, templates and TypeScript — and fails on any token nothing defines. It
     was written from a shipped bug: the mobile account picker asked for `var(--trinity-radius-lg)`,
     which no palette defines, so the declaration was invalid and the dialog rendered with square
-    corners. The base 8px token is `--trinity-radius`; `spartan.css` *does* define a Tailwind
-    `--radius-lg`, but that is a different namespace and would not have helped.
+    corners. The base 8px token is `--trinity-radius`; the private Tailwind adapter *does* define
+    a Tailwind `--radius-lg`, but that is a different namespace and would not have helped.
 
     `scripts/contrast-matrix.spec.mjs` checks the other half — that a token which resolves is
     also readable. It measures every text role against every surface it can land on, per palette

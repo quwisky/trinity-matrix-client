@@ -9,25 +9,11 @@ import {
   type ThemeMode,
 } from '@trinity/theme-foundation';
 
-/** The mode choices offered, in the order the settings picker shows them. */
-export const TRINITY_THEME_MODES: readonly ThemeMode[] = Object.freeze(
-  THEME_CATALOG.modes.map(({ id }) => id),
-);
 /** What the user picked: follow the OS, or force a mode. */
 export type ThemePreference = ThemeMode;
 /** The mode actually applied after resolving `system`. */
 export type ResolvedTheme = ResolvedThemeMode;
 
-/**
- * Temporary compatibility view of Theme Foundation's named Themes. A Theme is orthogonal
- * to light/dark Mode, and every Theme works in both resolved Modes. New identity and label
- * metadata belongs in `THEME_CATALOG`; values belong in Theme Foundation's internal
- * `variables.scss`. See docs/architecture/ui-and-theming.md.
- *
- * `trinity` is the default and applies no `data-theme` attribute (the `:root`
- * defaults in Theme Foundation).
- */
-export const TRINITY_PALETTES = THEME_CATALOG.themes;
 /** The id of a registered palette. */
 export type Palette = ThemeId;
 /** The palette an untouched install uses. */
@@ -217,7 +203,7 @@ export class ThemeService {
   readonly palette = this._palette.asReadonly();
 
   /** The palettes available to offer in the UI. */
-  readonly palettes = TRINITY_PALETTES;
+  readonly palettes = THEME_CATALOG.themes;
 
   private media: MediaQueryList | null = null;
   private readonly onSystemChange = (): void => {
@@ -487,12 +473,12 @@ export class ThemeService {
 export function isThemePreference(
   value: string | null,
 ): value is ThemePreference {
-  return TRINITY_THEME_MODES.some((mode) => mode === value);
+  return THEME_CATALOG.modes.some(({ id }) => id === value);
 }
 
 /** True when `value` is a registered palette id. */
 export function isPalette(value: string | null): value is Palette {
-  return TRINITY_PALETTES.some((p) => p.id === value);
+  return THEME_CATALOG.themes.some(({ id }) => id === value);
 }
 
 /** True when `value` is a registered text scale id. */

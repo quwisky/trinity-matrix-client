@@ -100,15 +100,9 @@ describe('Theme Foundation catalog', () => {
 });
 
 describe('Theme Foundation stylesheet interface', () => {
-  it('keeps the supported aggregate and compatibility entrypoints narrow', () => {
+  it('keeps the supported aggregate narrow', () => {
     expect(read('styles/theme.scss')).toContain(
       "@use './internal/variables';\n@use './internal/tailwind-adapter.css';",
-    );
-    expect(read('../../apps/trinity/src/theme/variables.scss')).toContain(
-      "@forward '../../../../libs/theme-foundation/styles/internal/variables';",
-    );
-    expect(read('../../apps/trinity/src/theme/spartan.css')).toContain(
-      "@import '../../../../libs/theme-foundation/styles/internal/tailwind-adapter.css';",
     );
   });
 

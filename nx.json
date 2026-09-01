@@ -24,7 +24,7 @@
       "inputs": ["production", "^production"]
     },
     "build-storybook": {
-      "//": "Storybook's sources are exactly the two things the `production` named input throws away — `*.stories.*` and `.storybook/**` — so the inferred `['production', '^production']` left this target with no real inputs at all, and `storybook build` served a stale build from the cache after an edit to either. The exclusions stay: they are what stops a story invalidating the app and library builds it has nothing to do with. This target opts out of them instead, by hashing `default` (the same fileset, un-subtracted) rather than `production`. Re-adding the two globs on top of `production` does NOT work and was measured, not assumed: Nx applies every `!` pattern in an input list to the whole list, so a later positive glob cannot undo an earlier exclusion — with `{projectRoot}/.storybook/**/*` restated here, editing `.storybook/main.ts` still reported `Cache: 1/1 hit`. The `{workspaceRoot}` globs are separate and not optional: `.storybook/main.ts` reaches stories by FILE GLOB, while its stylesheet reaches application compatibility styles and Theme Foundation by relative Sass paths, so Nx sees no dependency edges for any of them. The inputs therefore name the whole public story tier, the two capability story directories, the application compatibility paths and Theme Foundation itself.",
+      "//": "Storybook's sources are exactly the two things the `production` named input throws away — `*.stories.*` and `.storybook/**` — so the inferred `['production', '^production']` left this target with no real inputs at all, and `storybook build` served a stale build from the cache after an edit to either. The exclusions stay: they are what stops a story invalidating the app and library builds it has nothing to do with. This target opts out of them instead, by hashing `default` (the same fileset, un-subtracted) rather than `production`. Re-adding the two globs on top of `production` does NOT work and was measured, not assumed: Nx applies every `!` pattern in an input list to the whole list, so a later positive glob cannot undo an earlier exclusion — with `{projectRoot}/.storybook/**/*` restated here, editing `.storybook/main.ts` still reported `Cache: 1/1 hit`. The `{workspaceRoot}` globs are separate and not optional: `.storybook/main.ts` reaches stories by FILE GLOB, while its stylesheet reaches the application global stylesheet and Theme Foundation by relative Sass paths. The inputs therefore name the whole public story tier, the two capability story directories, the application global stylesheet and Theme Foundation itself.",
       "inputs": [
         "default",
         "^production",
@@ -32,7 +32,6 @@
         "{workspaceRoot}/libs/feature/rooms/src/lib/media-bubble/**/*",
         "{workspaceRoot}/libs/feature/rooms/src/lib/message-toolbar/**/*",
         "{workspaceRoot}/libs/theme-foundation/**/*",
-        "{workspaceRoot}/apps/trinity/src/theme/**/*",
         "{workspaceRoot}/apps/trinity/src/global.scss",
         { "externalDependencies": ["storybook"] }
       ]

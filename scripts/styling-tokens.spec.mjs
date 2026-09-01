@@ -133,7 +133,7 @@ describe('styling tokens', () => {
     // ledger stops describing the tree and starts excusing it. It is empty now, so this
     // reads as "no SCSS stylesheet may hand-pick an animation duration".
     //
-    // SCSS only: `files` globs `*.scss`, so `theme/spartan.css` — which is hand-written
+    // SCSS only: `files` globs `*.scss`, so Theme Foundation's Tailwind adapter — which is hand-written
     // wiring and does carry keyframes — is outside it. Nothing there hand-picks a duration
     // today, so this is a gap in reach rather than a miss, and widening the glob is a
     // separate change because the CSS file's `@theme` blocks are a different kind of thing.
@@ -158,7 +158,7 @@ describe('styling tokens', () => {
   it('paints accent TEXT with text-link, never with the text-primary fill', () => {
     // `--primary` aliases `--trinity-accent`, a fill: `:root.dark` never overrides it, so
     // `text-primary` renders blurple at 2.74:1 on the settings canvas. `text-link` maps to
-    // the measured text role (see the note in theme/spartan.css). The negative lookahead is
+    // the measured text role (see the note in Theme Foundation's Tailwind adapter). The negative lookahead is
     // load-bearing — `text-primary-foreground` is the ON-accent colour, a correct and
     // unrelated utility that sits on `bg-primary` fills.
     const offenders = templates.filter((file) =>

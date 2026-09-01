@@ -5,6 +5,7 @@
   "sourceRoot": "apps/trinity/src",
   "prefix": "trn",
   "tags": ["type:app", "scope:matrix", "role:app", "capability:composition"],
+  "implicitDependencies": ["theme-foundation"],
   "targets": {
     "build-info": {
       "executor": "nx:run-commands",
@@ -46,8 +47,7 @@
         ],
         "styles": [
           "apps/trinity/src/global.scss",
-          "apps/trinity/src/theme/variables.scss",
-          "apps/trinity/src/theme/spartan.css",
+          "libs/theme-foundation/styles/theme.scss",
           "apps/trinity/src/rendered-markdown.scss",
           "node_modules/@angular/cdk/overlay-prebuilt.css",
           "node_modules/@ctrl/ngx-emoji-mart/picker.css"
