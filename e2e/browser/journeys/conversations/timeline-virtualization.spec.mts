@@ -82,10 +82,16 @@ test.describe('Timeline virtualization', () => {
       await expect
         .poll(() =>
           timeline.evaluate(async (element, targetGap) => {
-            element.scrollTop = Math.max(
-              0,
-              element.scrollHeight - element.clientHeight - targetGap,
-            );
+            // Assign past the maximum for an exact bottom pin and let the browser clamp
+            // it. Computing the maximum can settle one CSS pixel short in Android
+            // WebView after the virtualizer adjusts its spacer heights.
+            element.scrollTop =
+              targetGap === 0
+                ? element.scrollHeight
+                : Math.max(
+                    0,
+                    element.scrollHeight - element.clientHeight - targetGap,
+                  );
             element.dispatchEvent(new Event('scroll'));
             await new Promise<void>((resolve) => {
               requestAnimationFrame(() =>
@@ -98,7 +104,10 @@ test.describe('Timeline virtualization', () => {
             return Math.abs(actualGap - targetGap);
           }, bottomGap),
         )
-        .toBeLessThan(1);
+        // WebView can report a one-CSS-pixel residual after the virtualizer remeasures
+        // its spacers. This only positions the fixture; the assertions below still prove
+        // that bottom growth pins to <1px and deliberate reading offsets do not move.
+        .toBeLessThanOrEqual(1);
     };
     await expect(rows.first()).toBeVisible({ timeout: 30_000 });
 
@@ -159,7 +168,7 @@ test.describe('Timeline virtualization', () => {
       .toBe(0);
 
     // …and scrolling back to the bottom brings it back (and drops the oldest).
-    await positionTimeline();
+    await page.getByTestId('jump-to-latest').click();
     await expect(
       timeline.getByText(`seeded message ${SEED - 1}`, { exact: true }),
     ).toBeVisible();
