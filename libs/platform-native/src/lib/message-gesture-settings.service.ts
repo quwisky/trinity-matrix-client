@@ -50,13 +50,12 @@ export function isSwipeAction(
 /**
  * How a message row responds to a sideways drag.
  *
- * A dedicated service rather than another axis on {@link ThemeService}, because this is an
- * INPUT-MODEL preference, not an appearance one. Every theme axis reflects itself onto
- * `<html>` as a `data-*` attribute and is consumed by the token layer; a gesture direction has
+ * A dedicated service rather than an Appearance axis, because this is an input-model
+ * preference. Every Appearance axis projects through its owning interface; a gesture direction has
  * no DOM footprint at all — it is read by one component's pointer handling and by nothing
  * else. Putting it there would have meant an `applyX()` with nothing to apply.
  *
- * Device-scoped, like the other UI preferences ({@link ComposerSettingsService}, the theme):
+ * Device-scoped, like the other UI preferences ({@link ComposerSettingsService}, Theme):
  * non-secret, so it lives in Capacitor `Preferences` rather than secure storage. It is also
  * genuinely per-device — the hand holding a phone is not the hand on a tablet.
  */

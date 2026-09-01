@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 /**
  * Every text role must clear WCAG AA against every surface it can actually land on, in every
- * palette x mode combination.
+ * theme x mode combination.
  *
  * The existing measurements in `variables.scss` were done by hand, recorded in a comment, and
  * stop at the base surfaces — which is exactly where the failures are not. A row's text sits
@@ -12,18 +12,18 @@ import { describe, expect, it } from 'vitest';
  * selected, and those two grounds are lighter than the base, so muted text that passes at rest
  * fails the moment you interact with it. A floor that is not executable is a preference.
  *
- * This also makes the palette contract falsifiable: adding a palette is meant to be a data
+ * This also makes the theme contract falsifiable: adding a theme is meant to be a data
  * change, and this is what stops a data change from silently shipping unreadable text.
  *
  * The matrix is deliberately built from the FILE rather than from a list maintained here — a
- * new palette is picked up automatically, which is the whole point.
+ * new theme is picked up automatically, which is the whole point.
  */
 
 const workspaceRoot = join(import.meta.dirname, '..');
 /**
  * Comments are stripped FIRST. `variables.scss` explains the specificity rule using
- * `:root[data-theme='x']` as an example, and reading palettes off the raw text invents a
- * palette called `x` — which then "fails" with a copy of the default palette's ratios.
+ * `:root[data-theme='x']` as an example, and reading themes off the raw text invents a
+ * theme called `x` — which then "fails" with a copy of the default theme's ratios.
  */
 const source = readFileSync(
   join(workspaceRoot, 'libs/theme-foundation/styles/internal/variables.scss'),
@@ -214,8 +214,8 @@ function parseBlocks(css) {
 
 const blocks = parseBlocks(source);
 
-/** The palettes present in the file, derived rather than listed. */
-const palettes = [
+/** The themes present in the file, derived rather than listed. */
+const themes = [
   'trinity',
   ...new Set(
     [...source.matchAll(/\[data-theme='([a-z0-9-]+)'\]/g)].map((m) => m[1]),
@@ -223,22 +223,22 @@ const palettes = [
 ];
 
 /**
- * Resolve a token for one palette x mode, honouring the cascade the selectors encode:
- * defaults first, then dark, then the palette's block for that mode.
+ * Resolve a token for one theme x mode, honouring the cascade the selectors encode:
+ * defaults first, then dark, then the theme's block for that mode.
  */
-function resolve(token, palette, mode, seen = new Set()) {
+function resolve(token, theme, mode, seen = new Set()) {
   if (seen.has(token)) return null; // a var() cycle; nothing to measure
   seen.add(token);
   const applicable = blocks.filter(({ selector }) => {
-    // `:not(.dark)` CONTAINS `.dark`, so a substring test calls every light palette block a
+    // `:not(.dark)` CONTAINS `.dark`, so a substring test calls every light theme block a
     // dark one — applying it in dark mode and skipping it in light, i.e. exactly inverted.
     // Strip the negations before asking.
     const isDark = selector.replace(/:not\([^)]*\)/g, '').includes('.dark');
     const themed = /\[data-theme='([a-z0-9-]+)'\]/.exec(selector);
-    if (themed && themed[1] !== palette) return false;
-    // NO palette filter on an un-themed block. `:root` applies in EVERY palette — that is
-    // what makes it the base — and a filter that dropped it for named palettes in dark mode
-    // silently unmeasured every role those palettes inherit rather than override, which is
+    if (themed && themed[1] !== theme) return false;
+    // NO theme filter on an un-themed block. `:root` applies in EVERY theme — that is
+    // what makes it the base — and a filter that dropped it for named themes in dark mode
+    // silently unmeasured every role those themes inherit rather than override, which is
     // precisely the set most likely to stop working on a new ground. It reported nothing,
     // because `pairs()` discards a pair whose value fails to resolve, and the
     // "can measure every role" guard only catches a value it cannot PARSE, not one it never
@@ -254,7 +254,7 @@ function resolve(token, palette, mode, seen = new Set()) {
   }
   if (!value) return null;
   const alias = /^var\(\s*(--[a-zA-Z0-9-]+)\s*\)$/.exec(value);
-  if (alias) return resolve(alias[1], palette, mode, seen);
+  if (alias) return resolve(alias[1], theme, mode, seen);
   return value;
 }
 
@@ -353,15 +353,15 @@ const ratio = (a, b) => {
   return (x + 0.05) / (y + 0.05);
 };
 
-/** Every (palette, mode, text, surface) pair that is measurable. */
+/** Every (theme, mode, text, surface) pair that is measurable. */
 function* pairs() {
-  for (const palette of palettes) {
+  for (const theme of themes) {
     for (const mode of ['light', 'dark']) {
       const check = (text, surface) => {
-        const fg = toRgb(resolve(text, palette, mode));
-        const bg = toRgb(resolve(surface, palette, mode));
+        const fg = toRgb(resolve(text, theme, mode));
+        const bg = toRgb(resolve(surface, theme, mode));
         return fg && bg
-          ? { palette, mode, text, surface, ratio: ratio(fg, bg) }
+          ? { theme, mode, text, surface, ratio: ratio(fg, bg) }
           : null;
       };
       for (const role of [...ROLES, ...HELM_ROLES]) {
@@ -381,15 +381,15 @@ function* pairs() {
 const measured = [...pairs()];
 
 function* nonTextPairs() {
-  for (const palette of palettes) {
+  for (const theme of themes) {
     for (const mode of ['light', 'dark']) {
       for (const role of NON_TEXT_ROLES) {
         for (const surface of role.on) {
-          const foreground = toRgb(resolve(role.foreground, palette, mode));
-          const background = toRgb(resolve(surface, palette, mode));
+          const foreground = toRgb(resolve(role.foreground, theme, mode));
+          const background = toRgb(resolve(surface, theme, mode));
           if (foreground && background) {
             yield {
-              palette,
+              theme,
               mode,
               foreground: role.foreground,
               surface,
@@ -406,9 +406,9 @@ const measuredNonText = [...nonTextPairs()];
 
 describe('contrast matrix', () => {
   it('measures something, so an empty matrix cannot pass as a clean one', () => {
-    // A parser change that stopped matching the palette blocks would otherwise report every
+    // A parser change that stopped matching the theme blocks would otherwise report every
     // combination compliant.
-    expect(palettes.length).toBeGreaterThanOrEqual(2);
+    expect(themes.length).toBeGreaterThanOrEqual(2);
     expect(measured.length).toBeGreaterThan(50);
   });
 
@@ -431,15 +431,15 @@ describe('contrast matrix', () => {
     // the run stays green and the floor quietly stops covering it. Naming the gap is the
     // difference between "these all pass" and "these all pass, as far as I could tell".
     const unmeasurable = [];
-    for (const palette of palettes) {
+    for (const theme of themes) {
       for (const mode of ['light', 'dark']) {
         for (const role of [...ROLES, ...HELM_ROLES]) {
           for (const token of [role.text, ...role.on]) {
-            const value = resolve(token, palette, mode);
+            const value = resolve(token, theme, mode);
             if (!value) {
-              unmeasurable.push(`${palette}/${mode}: ${token} is not defined`);
+              unmeasurable.push(`${theme}/${mode}: ${token} is not defined`);
             } else if (!toRgb(value)) {
-              unmeasurable.push(`${palette}/${mode}: ${token} = ${value}`);
+              unmeasurable.push(`${theme}/${mode}: ${token} = ${value}`);
             }
           }
         }
@@ -449,18 +449,18 @@ describe('contrast matrix', () => {
     expect([...new Set(unmeasurable)].sort()).toEqual([]);
   });
 
-  it('keeps the tooltip surface dark in every dark palette', () => {
-    const failures = palettes.flatMap((palette) => {
-      const value = resolve('--trinity-tooltip-surface', palette, 'dark');
+  it('keeps the tooltip surface dark in every dark theme', () => {
+    const failures = themes.flatMap((theme) => {
+      const value = resolve('--trinity-tooltip-surface', theme, 'dark');
       const colour = toRgb(value);
       if (!value || !colour) {
-        return [`${palette}/dark: tooltip surface is not measurable`];
+        return [`${theme}/dark: tooltip surface is not measurable`];
       }
       const level = luminance(colour);
       return level < 0.2
         ? []
         : [
-            `${palette}/dark: --trinity-tooltip-surface = ${value} (${level.toFixed(3)} luminance)`,
+            `${theme}/dark: --trinity-tooltip-surface = ${value} (${level.toFixed(3)} luminance)`,
           ];
     });
 
@@ -472,7 +472,7 @@ describe('contrast matrix', () => {
       .filter((m) => m.ratio < AA)
       .map(
         (m) =>
-          `${m.palette}/${m.mode}: ${m.text} on ${m.surface} = ${m.ratio.toFixed(2)}:1`,
+          `${m.theme}/${m.mode}: ${m.text} on ${m.surface} = ${m.ratio.toFixed(2)}:1`,
       )
       .sort();
 
@@ -481,7 +481,7 @@ describe('contrast matrix', () => {
 
   it('keeps the focus indicator above the non-text contrast floor on every surface', () => {
     expect(measuredNonText.length).toBe(
-      palettes.length *
+      themes.length *
         2 *
         NON_TEXT_ROLES.reduce((total, role) => total + role.on.length, 0),
     );
@@ -489,7 +489,7 @@ describe('contrast matrix', () => {
       .filter((measurement) => measurement.ratio < 3)
       .map(
         (measurement) =>
-          `${measurement.palette}/${measurement.mode}: ${measurement.foreground} on ${measurement.surface} = ${measurement.ratio.toFixed(2)}:1`,
+          `${measurement.theme}/${measurement.mode}: ${measurement.foreground} on ${measurement.surface} = ${measurement.ratio.toFixed(2)}:1`,
       )
       .sort();
 

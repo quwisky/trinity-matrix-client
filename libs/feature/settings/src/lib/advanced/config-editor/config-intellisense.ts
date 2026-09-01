@@ -60,7 +60,7 @@ interface TextRange {
 
 /** What the schema says about one path, for the hover card. */
 export interface ConfigHoverInfo extends TextRange {
-  /** The dotted path as the document spells it, e.g. `settings.theme.palette`. */
+  /** The dotted path as the document spells it, e.g. `settings.appearance.theme`. */
   readonly path: string;
   readonly description: string;
   /** The JSON type(s), already prose: `string`, or `object or null`. */
@@ -89,7 +89,7 @@ type CursorPlace =
     }
   | {
       readonly kind: 'value';
-      /** Path of the setting whose value is being typed: `['settings','theme','palette']`. */
+      /** Path of the setting whose value is being typed: `['appearance','theme']`. */
       readonly path: readonly string[];
       readonly range: TextRange;
       readonly quoted: boolean;
@@ -99,7 +99,7 @@ type CursorPlace =
  * Completions for the document: the names a group offers at a key position, and the values a
  * setting accepts at a value position.
  *
- * The value half is the one that earns the feature: a palette or a date format is a closed set
+ * The value half is the one that earns the feature: a Theme or a date format is a closed set
  * the registry already declares, and picking from it is the difference between a document that
  * applies and one Apply refuses.
  */
@@ -545,7 +545,7 @@ interface SettingRange {
 /**
  * Every path the *document* writes, keyed the way the plan names it.
  *
- * The plan's paths are relative to the settings block (`theme.palette`), so the walk drops that
+ * The plan's paths are relative to the settings block (`appearance.theme`), so the walk drops that
  * one prefix and keeps everything else verbatim — including a path this build has never heard
  * of, which is exactly the one an "unknown setting" warning needs a range for.
  */
@@ -636,7 +636,7 @@ function syntaxDiagnostics(state: EditorState): readonly Diagnostic[] {
 /**
  * Put one of the plan's lines on the range it is about.
  *
- * A line names its path first (`theme.palette: 'mauve' is not …`, `theme.mauve is not a
+ * A line names its path first (`appearance.theme: 'mauve' is not …`, `appearance.mauve is not a
  * setting …`), so the longest path the document actually writes that the line starts with is
  * the one it belongs to. A line about the document as a whole — a missing version, unreadable
  * JSON — has no path, and lands on the first line unless the parser has already underlined the

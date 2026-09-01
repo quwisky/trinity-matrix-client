@@ -6,7 +6,7 @@ import { TrnProgressComponent } from './trn-progress.component';
  *
  * The determinate/indeterminate split is the whole of this component's behaviour and it is
  * invisible in a screenshot of the default: an indeterminate bar has no `aria-valuenow` and
- * animates, a determinate one reports its value and does not. Flip the palette and mode in the
+ * animates, a determinate one reports its value and does not. Switch the Theme and Mode in the
  * toolbar to see both against every ground the app can put them on.
  */
 const meta: Meta<TrnProgressComponent> = {

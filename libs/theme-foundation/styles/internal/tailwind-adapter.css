@@ -23,7 +23,7 @@
 @source '../../../../libs';
 @source '../../../../apps';
 
-/* Dark mode keyed to the class ThemeService toggles on <html>. */
+/* Dark Mode keyed to the class the Appearance document adapter toggles on <html>. */
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*

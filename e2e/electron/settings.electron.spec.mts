@@ -36,7 +36,7 @@ test.describe('Electron settings geometry', () => {
       // The Appearance page is intentionally used for the native geometry proof:
       // unlike Notifications, its overflow does not depend on account seed data.
       await page.getByTestId('settings-nav-appearance').click();
-      await expect(page.getByTestId('theme-dark')).toBeVisible({
+      await expect(page.getByTestId('mode-dark')).toBeVisible({
         timeout: 30_000,
       });
 

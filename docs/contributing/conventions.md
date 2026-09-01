@@ -155,7 +155,7 @@ payload in the initial bundle.
 
 Component styles live in the component's own `.scss`. Reference the `--trinity-*`
 design tokens rather than hardcoding colours, or the component will not re-theme with
-light or dark mode or with a palette change — the details, including which token is a
+light or dark Mode or with a Theme change — the details, including which token is a
 text colour and which is a fill, are in
 [UI and theming](../architecture/ui-and-theming.md).
 

@@ -239,7 +239,7 @@ test.describe('Settings scrollbars', () => {
       .toEqual(['SECTION[settings-detail]']);
   });
 
-  test('uses the shared visible design across mode and palette changes', async ({
+  test('uses the shared visible design across Mode and Theme changes', async ({
     page,
   }) => {
     await login(page, session);
@@ -255,14 +255,14 @@ test.describe('Settings scrollbars', () => {
 
     for (const theme of [
       {
-        palette: 'amethyst',
+        theme: 'amethyst',
         dark: false,
         expectedRail: 'rgb(231, 226, 240)',
       },
-      { palette: 'onyx', dark: true, expectedRail: 'rgb(0, 0, 0)' },
+      { theme: 'onyx', dark: true, expectedRail: 'rgb(0, 0, 0)' },
     ]) {
-      await page.evaluate(({ palette, dark }) => {
-        document.documentElement.dataset['theme'] = palette;
+      await page.evaluate(({ theme, dark }) => {
+        document.documentElement.dataset['theme'] = theme;
         document.documentElement.classList.toggle('dark', dark);
       }, theme);
 

@@ -32,11 +32,11 @@ export const PNG_1x1 = Buffer.from(
   'base64',
 );
 
-export const hasDarkPalette = (page: Page): Promise<boolean> =>
+export const hasDarkMode = (page: Page): Promise<boolean> =>
   page.evaluate(() => document.documentElement.classList.contains('dark'));
 
-/** The active colour palette, reflected as <html data-theme>; null for the default. */
-export const paletteAttr = (page: Page): Promise<string | null> =>
+/** The active Theme, reflected as <html data-theme>; null for the default. */
+export const themeAttr = (page: Page): Promise<string | null> =>
   page.evaluate(() => document.documentElement.getAttribute('data-theme'));
 
 /** Open a section inside whichever Settings surface the host owns. */

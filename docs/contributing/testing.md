@@ -794,10 +794,11 @@ are covered in [CI and releases](ci-and-releases.md).
 
 | Spec                                 | What it refuses to let through                                                                                                 |
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `appearance-contract.spec.mjs`       | A restored ThemeService API, writable predecessor keys, old config paths, or bypassed Appearance effect adapters               |
 | `architecture-contract.spec.mjs`     | Unclassified projects, new dependency exceptions, implicit entrypoints, cycles, source-counter drift, or a stale generated map |
 | `boot-splash.spec.mjs`               | A splash outside `<trn-root>`, one that needs a script, or colours drifted from the tokens                                     |
 | `component-styling.spec.mjs`         | A class styled in one component and rendered only by another                                                                   |
-| `contrast-matrix.spec.mjs`           | A text role below WCAG AA on a surface it can land on, in any palette × mode                                                   |
+| `contrast-matrix.spec.mjs`           | A text role below WCAG AA on a surface it can land on, in any Theme × Mode                                                     |
 | `message-list-bindings.spec.mjs`     | The windowed and simple message lists drifting apart on the bindings they share                                                |
 | `scroll-behaviour.spec.mjs`          | A programmatic scroll that hard-codes `behavior: 'smooth'`, which no stylesheet can undo                                       |
 | `scrollbar-style.spec.mjs`           | Visible scrollbar paint outside the global token contract, or a drifting hidden exception                                      |

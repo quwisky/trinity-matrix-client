@@ -55,8 +55,8 @@
     }
 
     // A mention OF YOU has to be findable while scrolling past, so it takes the solid
-    // accent rather than a tint. `--trinity-accent-foreground` tracks the palette's
-    // on-accent colour, so this stays legible when the palette changes.
+    // accent rather than a tint. `--trinity-accent-foreground` tracks the Theme's
+    // on-accent colour, so this stays legible when the Theme changes.
     &.mention--self {
       background: var(--trinity-accent);
       color: var(--trinity-accent-foreground);

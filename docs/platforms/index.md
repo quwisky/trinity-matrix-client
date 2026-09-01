@@ -80,7 +80,7 @@ one of these is probably where it belongs.
 | Notification delivery       | `NotificationService` in `@trinity/data-access/notifications`       | Capacitor Local Notifications on mobile; request/response main-process notification on desktop; Web Notification on web |
 | Push registration           | `PushService`                                                       | Gated on `getPlatform()` being `'ios'` or `'android'`                                                                   |
 | App icon badge              | `BadgeCoordinator`, `BadgeSink`, `MobileBadgeService`               | Room Library aggregate unread state flows through one selected Web, Capacitor, or Electron host sink                    |
-| Native chrome               | `ThemeService`                                                      | Sets the Capacitor status-bar style on native only                                                                      |
+| Native chrome               | Appearance native-chrome adapter                                    | Projects resolved Mode to the Capacitor status bar on native only                                                       |
 | Deep link intake            | Application Runtime session adapter                                 | Preload `onDeepLink` on desktop, `@capacitor/app` `appUrlOpen` on mobile, the `/sso-callback` route on web              |
 | Media capture and file save | `MediaPickerService`, `FileSaveService` in `@trinity/feature/rooms` | Native plugins only, with a browser fallback elsewhere                                                                  |
 

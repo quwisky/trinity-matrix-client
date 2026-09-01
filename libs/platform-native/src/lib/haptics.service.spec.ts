@@ -4,10 +4,9 @@ import { Haptics } from '@capacitor/haptics';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HapticsService } from './haptics.service';
 
-// Same idiom as theme.service.spec.ts / mobile-badge.service.spec.ts: replace the plugin
+// Same idiom as mobile-badge.service.spec.ts: replace the plugin
 // modules wholesale, then drive the spies per case. `ImpactStyle` is a real runtime enum the
-// service reads, not just a type, so the mock has to carry it — exactly like the `Style` enum
-// in theme.service.spec.ts.
+// service reads, not just a type, so the mock has to carry it too.
 vi.mock('@capacitor/core', () => ({
   Capacitor: { isNativePlatform: vi.fn(() => false) },
 }));

@@ -117,13 +117,13 @@ describe('AppearanceSettingsComponent', () => {
     return rendered;
   }
 
-  it('renders the theme options bound to the current preference', async () => {
+  it('renders the Mode options bound to the current preference', async () => {
     const { container } = await renderPage();
 
-    expect(container.querySelectorAll('[data-testid^=theme-]').length).toBe(3);
+    expect(container.querySelectorAll('[data-testid^=mode-]').length).toBe(3);
     // The bound preference ('system') is reflected on the native radio input.
     const systemInput = container.querySelector<HTMLInputElement>(
-      '[data-testid=theme-system] input',
+      '[data-testid=mode-system] input',
     );
     expect(systemInput?.checked).toBe(true);
     expect(container.textContent).toContain('dark'); // resolved-theme note
@@ -133,7 +133,7 @@ describe('AppearanceSettingsComponent', () => {
     const { container } = await renderPage();
 
     expect(
-      container.querySelector('[data-testid=appearance-mode-palette]'),
+      container.querySelector('[data-testid=appearance-mode-theme]'),
     ).not.toBeNull();
     expect(
       container.querySelector('[data-testid=appearance-layout]'),
@@ -172,10 +172,10 @@ describe('AppearanceSettingsComponent', () => {
     expect(state?.textContent).toContain('light · Onyx · Compact');
   });
 
-  it('applies the chosen theme on change', async () => {
+  it('applies the chosen Mode on change', async () => {
     const { fixture } = await renderPage();
 
-    fixture.componentInstance.onThemeChange('light');
+    fixture.componentInstance.onModeChange('light');
 
     expect(TestBed.inject(AppearancePreferences).axes.mode.value()).toBe(
       'light',
@@ -230,7 +230,7 @@ describe('AppearanceSettingsComponent', () => {
 
   // The option lists render in a CDK overlay only once opened (jsdom has no
   // ResizeObserver/scrollIntoView), so the open→select round-trip is covered in e2e — same as
-  // the palette dropdown above. Here: the controls exist, are bound, and validate what they
+  // the Theme dropdown above. Here: the controls exist, are bound, and validate what they
   // are handed.
   it('offers every registered text size, bound to the current one', async () => {
     const { container, fixture } = await renderPage();
@@ -367,7 +367,7 @@ describe('AppearanceSettingsComponent', () => {
     });
   });
 
-  // Same jsdom caveat as the palette dropdown: the option list lives in a CDK overlay that
+  // Same jsdom caveat as the Theme dropdown: the option list lives in a CDK overlay that
   // only renders once opened, so the open→select round-trip is covered in e2e.
   describe('room order in spaces', () => {
     it('renders a select bound to this account’s default', async () => {
@@ -424,35 +424,35 @@ describe('AppearanceSettingsComponent', () => {
     });
   });
 
-  it('renders the palette dropdown as a select control', async () => {
+  it('renders the Theme dropdown as a select control', async () => {
     // The option list renders in a CDK overlay only once opened (needs a real browser —
     // ResizeObserver/scrollIntoView are absent in jsdom), so the open→select round-trip
     // is covered in e2e (settings.spec.mts). Here: the control is present and is an
     // trn-select with a trigger button.
     const { container } = await renderPage();
 
-    const select = container.querySelector('[data-testid=palette-select]');
+    const select = container.querySelector('[data-testid=theme-select]');
     expect(select?.tagName.toLowerCase()).toBe('trn-select');
     expect(select?.querySelector('button')).not.toBeNull();
   });
 
-  // #168, and the quietest of the three: the palette dropdown lost only a capital letter,
+  // #168, and the quietest of the three: the Theme dropdown lost only a capital letter,
   // reading `amethyst` under an option labelled 'Amethyst'. `toContain` is case-sensitive,
   // which is the whole reason the negative half of this assertion can still fail.
-  it('shows the chosen palette’s label on the collapsed trigger, not the stored id', async () => {
+  it('shows the chosen Theme label on the collapsed trigger, not the stored id', async () => {
     const { container, fixture } = await renderPage();
-    selectFor(fixture, 'palette-select')?.value.set('amethyst');
+    selectFor(fixture, 'theme-select')?.value.set('amethyst');
     fixture.detectChanges();
 
     const trigger = container.querySelector(
-      '[data-testid="palette-select"] hlm-select-trigger',
+      '[data-testid="theme-select"] hlm-select-trigger',
     );
 
     expect(trigger?.textContent).toContain('Amethyst');
     expect(trigger?.textContent).not.toContain('amethyst');
   });
 
-  it('applies the chosen palette when the dropdown emits a value', async () => {
+  it('applies the chosen Theme when the dropdown emits a value', async () => {
     const { fixture } = await renderPage();
 
     fixture.componentInstance.appearance.update('theme', 'amethyst');
@@ -477,21 +477,21 @@ describe('AppearanceSettingsComponent', () => {
     fixture.detectChanges();
 
     const trigger = container.querySelector(
-      '[data-testid="palette-select"] hlm-select-trigger',
+      '[data-testid="theme-select"] hlm-select-trigger',
     );
     expect(trigger?.textContent).toContain('Trinity');
     expect(
-      container.querySelector('[data-testid=palette-select-failure]'),
+      container.querySelector('[data-testid=theme-select-failure]'),
     ).not.toBeNull();
 
     container
-      .querySelector<HTMLButtonElement>('[data-testid=palette-select-retry]')
+      .querySelector<HTMLButtonElement>('[data-testid=theme-select-retry]')
       ?.click();
     fixture.detectChanges();
 
     expect(trigger?.textContent).toContain('Amethyst');
     expect(
-      container.querySelector('[data-testid=palette-select-failure]'),
+      container.querySelector('[data-testid=theme-select-failure]'),
     ).toBeNull();
   });
 

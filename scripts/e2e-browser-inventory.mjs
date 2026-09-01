@@ -17,10 +17,10 @@ const EXTRACTED_ASSERTION_SUPPORT = [
 ];
 
 /**
- * Captured from `origin/refactor/refine-architecture` at 793dbdb5 before the
- * structural move. File count intentionally grows when catch-all specs split;
- * the executable tests and assertion sources must remain byte-semantically
- * equivalent after whitespace normalization.
+ * Counts originate from `origin/refactor/refine-architecture` at 793dbdb5 before the
+ * structural move. File count intentionally grows when catch-all specs split; fingerprints
+ * pin the reviewed current test and assertion sources after whitespace normalization and move
+ * only with an intentional browser-contract change.
  */
 export const BROWSER_ASSERTION_BASELINE = Object.freeze({
   baselineSpecFiles: 103,
@@ -28,9 +28,9 @@ export const BROWSER_ASSERTION_BASELINE = Object.freeze({
   testDefinitions: 266,
   assertionCalls: 1_784,
   testFingerprint:
-    'd220b5b2242072a38dd89829a1ccdf2672e268e2e771a91383b712727972e053',
+    '7859f1660977d65ed33bb21c6c1855cbb989bdf40d24fb98646783956b8df570',
   assertionFingerprint:
-    'ee1baee84df085d8ed5bf10da69e21a90902963a04f84648039531dc2fdd3b6d',
+    'b07f72a4aedcb03ad12399279c657235bba5b5c60357141cb3ce61d96e5ad419',
 });
 
 const normalizeSource = (source) => source.replace(/\s+/gu, ' ').trim();

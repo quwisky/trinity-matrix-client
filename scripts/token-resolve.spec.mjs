@@ -14,11 +14,11 @@ import { describe, expect, it } from 'vitest';
  *   • `--trinity-radius-lg` is consumed by the mobile account-picker dialog and defined
  *     nowhere, so it ships square corners.
  *   • The composer's drag-and-drop overlay mixed toward `--trinity-background`, which no
- *     palette defines, so `color-mix()` was invalid and the sheet rendered with no background
+ *     Theme defines, so `color-mix()` was invalid and the sheet rendered with no background
  *     at all — the whole point of the overlay (#159).
  *
  * The production renderer closes the other direction for the GLOBAL vocabulary too: a token declared in the
- * central variables file must have a real consumer somewhere in source. Palette blocks may
+ * central variables file must have a real consumer somewhere in source. Theme blocks may
  * repeat those declarations, but they do not justify an otherwise dead API. Component-local
  * custom properties remain outside that check because template bindings and vendor contracts
  * can consume them dynamically.
@@ -40,7 +40,7 @@ const consumerGlobs = [
   'libs/**/*.ts',
 ];
 
-/** A token is DEFINED by `--name:` anywhere — a palette block, a media query, inline. */
+/** A token is DEFINED by `--name:` anywhere — a Theme block, a media query, inline. */
 const definitionPattern = /(--trinity-[a-zA-Z0-9-]+)\s*:/g;
 /** A token is USED by `var(--name)`, optionally with a fallback we deliberately ignore. */
 const usagePattern = /var\(\s*(--trinity-[a-zA-Z0-9-]+)/g;

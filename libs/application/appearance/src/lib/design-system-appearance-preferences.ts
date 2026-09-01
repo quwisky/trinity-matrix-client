@@ -129,9 +129,12 @@ export const DENSITY_PREFERENCE = definePreference({
   persistence: {
     key: 'trinity.appearance.density',
     legacyKeys: ['trinity.density'],
-    migration: closedStringMigration(isDensity),
+    migration: closedStringMigration(isAppearanceDensity),
   },
-  validate: closedStringValidation(isDensity, 'appearance-density-invalid'),
+  validate: closedStringValidation(
+    isAppearanceDensity,
+    'appearance-density-invalid',
+  ),
 } satisfies PreferenceDescriptor<AppearanceDensity>);
 
 export const DESIGN_SYSTEM_APPEARANCE_PREFERENCE_DESCRIPTORS: readonly PreferenceDescriptor<PreferenceValue>[] =
@@ -155,7 +158,7 @@ function isTextSize(value: unknown): value is TextSize {
   return TEXT_SIZE_OPTIONS.some(({ id }) => id === value);
 }
 
-function isDensity(value: unknown): value is AppearanceDensity {
+function isAppearanceDensity(value: unknown): value is AppearanceDensity {
   return DENSITY_OPTIONS.some(({ id }) => id === value);
 }
 

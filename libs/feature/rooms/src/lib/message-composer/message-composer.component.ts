@@ -280,7 +280,7 @@ export class MessageComposerComponent {
     // back to the raw body when there is no URL) — mirror both, including which container it
     // lands in. `linkifyText` replaces newlines with `<br>`, so its output belongs in the
     // rendered-markdown container the timeline uses at `message-row.component.html:88`;
-    // without that class the link would render browser-blue instead of in the palette.
+    // without that class the link would render browser-blue instead of in the Theme.
     // The fallback keeps raw newlines and so needs `pre-wrap`, which is what `rich: false`
     // selects — hence `escapeHtml` and NOT `escapeInlineText`, whose `<br>`s would double
     // every line break under it.

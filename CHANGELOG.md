@@ -81,18 +81,24 @@ All notable changes to this project are documented here. The format is based on
   with Copy in it — and right-clicking a link or an image still gets you "Open link in new tab"
   and "Save image as…".
 
-- **A third theme: Onyx.** A neutral, achromatic palette whose dark mode is true black — on an
+- **A third Theme: Onyx.** A neutral, achromatic Theme whose dark Mode is true black — on an
   OLED screen a black pixel is simply switched off, so it saves power and looks properly dark
   rather than dark grey. Pick it under Settings → Appearance, in either light or dark mode.
 
 ### Changed
+
+- **Appearance no longer carries its migration facade.** The obsolete platform Theme service,
+  Palette-shaped API, direct preference writers, and legacy test hooks are gone. Current code uses
+  Mode, Theme, and Appearance vocabulary through descriptor, projection, and effect interfaces;
+  predecessor storage keys remain read-only migration metadata, and source guards prevent those
+  bypasses from returning through document carriers, templates, or widget projections.
 
 - **Appearance now follows one application-owned lifetime everywhere.** Startup hydrates the six
   descriptor-backed axes before routing and keeps one document/native effect subscription for the
   whole session. Advanced configuration exports and imports the current `appearance.*` values,
   with portable format 2 importing the former version 1 Theme paths through a one-way migration.
   The Capacitor status bar receives only resolved light/dark Mode, and widget links read that same
-  read-only projection instead of the legacy platform theme service.
+  read-only projection.
 
 - **Appearance settings now saves every visual choice through one reliable model.** Mode, Theme,
   text size, density, code size, and code-line presentation keep the previous choice visible until
@@ -110,7 +116,7 @@ All notable changes to this project are documented here. The format is based on
   size and code-line presentation. One read-only application model composes all six values and
   their per-axis states without duplicating storage; an invalid or unavailable axis keeps its own
   default and contributes to one recoverable startup warning. The new versioned
-  `trinity.appearance.*` identities upgrade from the former ThemeService keys, and Theme choices
+  `trinity.appearance.*` identities upgrade from predecessor storage keys, and Theme choices
   are validated directly against the Theme Foundation catalog.
 
 - **Preference storage keys now upgrade in one direction.** Capability descriptors can name

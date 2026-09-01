@@ -26,58 +26,58 @@ const ROOM_MESSAGES = [
 ] as const;
 
 type Mode = 'light' | 'dark';
-type Palette = 'trinity' | 'amethyst' | 'onyx';
+type Theme = 'trinity' | 'amethyst' | 'onyx';
 type Density = 'cosy' | 'compact';
-type TextScale = 'default' | 'larger';
+type TextSize = 'default' | 'larger';
 interface Appearance {
   mode: Mode;
-  palette: Palette;
+  theme: Theme;
   density: Density;
-  textScale: TextScale;
+  textSize: TextSize;
 }
 
 const MATRIX: Record<string, Appearance> = {
   'wide-dark-cosy': {
     mode: 'dark',
-    palette: 'trinity',
+    theme: 'trinity',
     density: 'cosy',
-    textScale: 'default',
+    textSize: 'default',
   },
   'standard-amethyst-cosy': {
     mode: 'dark',
-    palette: 'amethyst',
+    theme: 'amethyst',
     density: 'cosy',
-    textScale: 'default',
+    textSize: 'default',
   },
   'tablet-light-compact': {
     mode: 'light',
-    palette: 'trinity',
+    theme: 'trinity',
     density: 'compact',
-    textScale: 'default',
+    textSize: 'default',
   },
   'compact-light-large': {
     mode: 'light',
-    palette: 'trinity',
+    theme: 'trinity',
     density: 'compact',
-    textScale: 'larger',
+    textSize: 'larger',
   },
   'pixel-onyx-cosy': {
     mode: 'dark',
-    palette: 'onyx',
+    theme: 'onyx',
     density: 'cosy',
-    textScale: 'default',
+    textSize: 'default',
   },
   'small-light-large': {
     mode: 'light',
-    palette: 'trinity',
+    theme: 'trinity',
     density: 'compact',
-    textScale: 'larger',
+    textSize: 'larger',
   },
   'webkit-compact-light': {
     mode: 'light',
-    palette: 'trinity',
+    theme: 'trinity',
     density: 'compact',
-    textScale: 'default',
+    textSize: 'default',
   },
 };
 
@@ -195,10 +195,14 @@ async function seedAppearance(
   page: Page,
   appearance: Appearance,
 ): Promise<void> {
-  await seedPreference(page, 'trinity.theme', appearance.mode);
-  await seedPreference(page, 'trinity.palette', appearance.palette);
-  await seedPreference(page, 'trinity.density', appearance.density);
-  await seedPreference(page, 'trinity.text-scale', appearance.textScale);
+  await seedPreference(page, 'trinity.appearance.mode', appearance.mode);
+  await seedPreference(page, 'trinity.appearance.theme', appearance.theme);
+  await seedPreference(page, 'trinity.appearance.density', appearance.density);
+  await seedPreference(
+    page,
+    'trinity.appearance.text-size',
+    appearance.textSize,
+  );
 }
 
 async function signIn(page: Page, credentials: SynapseSession): Promise<void> {
@@ -260,14 +264,14 @@ async function expectAppearanceApplied(
   page: Page,
   appearance: Appearance,
 ): Promise<void> {
-  const expectedScale = appearance.textScale === 'larger' ? 1.25 : 1;
+  const expectedScale = appearance.textSize === 'larger' ? 1.25 : 1;
   await expect
     .poll(() =>
       page.evaluate(() => {
         const root = document.documentElement;
         return {
           mode: root.classList.contains('dark') ? 'dark' : 'light',
-          palette: root.getAttribute('data-theme') ?? 'trinity',
+          theme: root.getAttribute('data-theme') ?? 'trinity',
           density: root.getAttribute('data-density') ?? 'cosy',
           rootSize: Number.parseFloat(getComputedStyle(root).fontSize),
         };
@@ -275,7 +279,7 @@ async function expectAppearanceApplied(
     )
     .toEqual({
       mode: appearance.mode,
-      palette: appearance.palette,
+      theme: appearance.theme,
       density: appearance.density,
       rootSize: 16 * expectedScale,
     });
@@ -446,7 +450,7 @@ test.describe('@production-renderer application surface', () => {
       page.getByRole('heading', { name: 'Appearance' }),
     );
     await expect(
-      page.getByTestId('palette-select').getByRole('combobox'),
+      page.getByTestId('theme-select').getByRole('combobox'),
     ).toHaveAccessibleName('Theme');
     await expect(
       page.getByTestId('text-scale-select').getByRole('combobox'),

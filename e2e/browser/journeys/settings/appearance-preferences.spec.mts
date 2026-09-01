@@ -5,10 +5,10 @@ import {
   openSettingsFromRooms,
 } from '../../../support/journeys/navigation.mts';
 import {
-  hasDarkPalette,
+  hasDarkMode,
   configureSettingsSuite,
   openSection,
-  paletteAttr,
+  themeAttr,
   settingsTitleAlignment,
 } from '../../support/settings-journey.mts';
 import {
@@ -23,51 +23,49 @@ test.describe('Settings', () => {
   test('toggles the app theme between dark and light', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await openSection(page, 'appearance');
-    await page.getByTestId('theme-dark').click();
-    await expect.poll(() => hasDarkPalette(page)).toBe(true);
+    await page.getByTestId('mode-dark').click();
+    await expect.poll(() => hasDarkMode(page)).toBe(true);
 
-    // ThemeService is still the startup owner until #387. Its earlier media listener must
-    // not overwrite the successfully committed descriptor when the OS changes underneath a
-    // fixed Mode during this migration slice.
+    // A fixed committed Mode must remain authoritative when the OS changes underneath it.
     await page.emulateMedia({ colorScheme: 'light' });
-    await expect.poll(() => hasDarkPalette(page)).toBe(true);
+    await expect.poll(() => hasDarkMode(page)).toBe(true);
 
-    const paletteTrigger = page.getByRole('combobox', { name: 'Theme' });
-    await paletteTrigger.evaluate((element) => {
-      element.setAttribute('data-testid', 'dark-palette-trigger');
+    const themeTrigger = page.getByRole('combobox', { name: 'Theme' });
+    await themeTrigger.evaluate((element) => {
+      element.setAttribute('data-testid', 'dark-theme-trigger');
     });
     const selectText = await resolveTokenSrgb(
       page,
-      'dark-palette-trigger',
+      'dark-theme-trigger',
       '--trinity-text-bright',
     );
     await expect
       .poll(
-        async () => (await measureContrast(page, 'dark-palette-trigger')).text,
+        async () => (await measureContrast(page, 'dark-theme-trigger')).text,
       )
       .toEqual(selectText);
-    const selectPaint = await measureContrast(page, 'dark-palette-trigger');
+    const selectPaint = await measureContrast(page, 'dark-theme-trigger');
     expect(selectPaint.ratio).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
 
-    await paletteTrigger.evaluate((element) => {
+    await themeTrigger.evaluate((element) => {
       element.setAttribute('data-placeholder', '');
     });
     const placeholderText = await resolveTokenSrgb(
       page,
-      'dark-palette-trigger',
+      'dark-theme-trigger',
       '--muted-foreground',
     );
     await expect
       .poll(
-        async () => (await measureContrast(page, 'dark-palette-trigger')).text,
+        async () => (await measureContrast(page, 'dark-theme-trigger')).text,
       )
       .toEqual(placeholderText);
-    await paletteTrigger.evaluate((element) => {
+    await themeTrigger.evaluate((element) => {
       element.removeAttribute('data-placeholder');
     });
     await expect
       .poll(
-        async () => (await measureContrast(page, 'dark-palette-trigger')).text,
+        async () => (await measureContrast(page, 'dark-theme-trigger')).text,
       )
       .toEqual(selectText);
 
@@ -125,7 +123,7 @@ test.describe('Settings', () => {
       return { r, g, b, a };
     });
 
-    expect(await hasDarkPalette(page)).toBe(true);
+    expect(await hasDarkMode(page)).toBe(true);
     expect(paint.background).toEqual(expectedBackground);
     expect(paint.text).toEqual(expectedForeground);
     expect(
@@ -137,8 +135,8 @@ test.describe('Settings', () => {
     await page.mouse.move(0, 0);
     await openSettingsFromRooms(page);
     await openSection(page, 'appearance');
-    await page.getByTestId('theme-light').click();
-    await expect.poll(() => hasDarkPalette(page)).toBe(false);
+    await page.getByTestId('mode-light').click();
+    await expect.poll(() => hasDarkMode(page)).toBe(false);
   });
 
   test('compact density tightens the spacing scale itself', async ({
@@ -261,7 +259,7 @@ test.describe('Settings', () => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await openSection(page, 'appearance');
 
-    const trigger = page.getByTestId('palette-select').locator('button');
+    const trigger = page.getByTestId('theme-select').locator('button');
     await trigger.click();
     const panel = page.locator('hlm-select-content').first();
     await expect(panel).toBeVisible();
@@ -283,7 +281,7 @@ test.describe('Settings', () => {
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     await openSection(page, 'appearance');
 
-    const trigger = page.getByTestId('palette-select').locator('button');
+    const trigger = page.getByTestId('theme-select').locator('button');
     await trigger.click();
     const panel = page.locator('hlm-select-content').first();
     await expect(panel).toBeVisible();
@@ -295,19 +293,19 @@ test.describe('Settings', () => {
     ).toBe('enter');
   });
 
-  test('selects a colour palette from the dropdown', async ({ page }) => {
+  test('selects a Theme from the dropdown', async ({ page }) => {
     await openSection(page, 'appearance');
 
-    // The default palette sets no data-theme attribute.
-    expect(await paletteAttr(page)).toBeNull();
+    // The default Theme sets no data-theme attribute.
+    expect(await themeAttr(page)).toBeNull();
     const previewAccent = () =>
       page
         .locator('.preview__avatar')
         .evaluate((element) => getComputedStyle(element).backgroundColor);
     const initialPreviewAccent = await previewAccent();
 
-    const trigger = page.getByTestId('palette-select').locator('button');
-    const amethyst = page.getByTestId('palette-amethyst');
+    const trigger = page.getByTestId('theme-select').locator('button');
+    const amethyst = page.getByTestId('theme-amethyst');
 
     // Closed to start: the options live in the popover overlay, absent until opened.
     // (A missing *hlmSelectPortal renders them inline and the dropdown can never close.)
@@ -318,16 +316,16 @@ test.describe('Settings', () => {
     await trigger.click();
     await expect(amethyst).toBeVisible();
     await amethyst.click();
-    await expect.poll(() => paletteAttr(page)).toBe('amethyst');
+    await expect.poll(() => themeAttr(page)).toBe('amethyst');
     await expect(amethyst).toHaveCount(0); // closed after selecting
     // #168: and the closed trigger reads the label, not the stored id `amethyst`.
     await expect(trigger).toHaveText('Amethyst');
     expect(await previewAccent()).not.toBe(initialPreviewAccent);
 
-    // Back to the default palette → the attribute is removed again.
+    // Back to the default Theme → the attribute is removed again.
     await trigger.click();
-    await page.getByTestId('palette-trinity').click();
-    await expect.poll(() => paletteAttr(page)).toBeNull();
+    await page.getByTestId('theme-trinity').click();
+    await expect.poll(() => themeAttr(page)).toBeNull();
     await expect(amethyst).toHaveCount(0);
     await expect(trigger).toHaveText('Trinity');
   });

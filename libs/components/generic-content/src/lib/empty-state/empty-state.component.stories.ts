@@ -9,7 +9,7 @@ import { EmptyStateComponent } from './empty-state.component';
  * side — icon or none, heading or none, an action or not — is what says whether one panel can
  * carry all of them.
  *
- * The danger tone is here to be looked at in **dark mode with each palette**, because that is
+ * The danger tone is here to be looked at in **dark Mode with each Theme**, because that is
  * where the token choice matters: `--destructive` used as a foreground is a near-black maroon,
  * and only the theme switcher shows it.
  */

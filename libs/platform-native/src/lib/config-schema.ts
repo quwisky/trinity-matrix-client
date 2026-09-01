@@ -60,10 +60,10 @@ export type ConfigValidation =
  * One exported setting: where it appears in the document, which stored key it stands for,
  * and how to read and reset it.
  *
- * **`read` must go through the owning service's public getter and `reset` through its public
- * setter — never through `Preferences`.** The setters write storage *and* move the signal the
- * app renders from, so a reset takes effect in the running app; a raw key write would leave
- * the signal and the store disagreeing until the next launch.
+ * **`read` must use the owning read model and `reset` its public command — never
+ * `Preferences`.** The command writes storage *and* moves the committed signal the app renders
+ * from, so a reset takes effect in the running app; a raw key write would leave state and storage
+ * disagreeing until the next launch.
  */
 export interface ConfigEntry {
   /**
@@ -252,46 +252,46 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     owner: 'data-access/timeline',
   },
 
-  // — theme.service.ts —
+  // — read-only Appearance predecessor keys —
   {
     disposition: 'excluded',
     key: 'trinity.theme',
-    owner: 'platform-native',
+    owner: 'application/appearance',
     reason:
       'Read-only Appearance migration predecessor; portable export uses the current descriptor key.',
   },
   {
     disposition: 'excluded',
     key: 'trinity.palette',
-    owner: 'platform-native',
+    owner: 'application/appearance',
     reason:
       'Read-only Appearance migration predecessor; portable export uses the current descriptor key.',
   },
   {
     disposition: 'excluded',
     key: 'trinity.text-scale',
-    owner: 'platform-native',
+    owner: 'application/appearance',
     reason:
       'Read-only Appearance migration predecessor; portable export uses the current descriptor key.',
   },
   {
     disposition: 'excluded',
     key: 'trinity.density',
-    owner: 'platform-native',
+    owner: 'application/appearance',
     reason:
       'Read-only Appearance migration predecessor; portable export uses the current descriptor key.',
   },
   {
     disposition: 'excluded',
     key: 'trinity.code-scale',
-    owner: 'platform-native',
+    owner: 'data-access/timeline',
     reason:
       'Read-only Appearance migration predecessor; portable export uses the current descriptor key.',
   },
   {
     disposition: 'excluded',
     key: 'trinity.code-lines',
-    owner: 'platform-native',
+    owner: 'data-access/timeline',
     reason:
       'Read-only Appearance migration predecessor; portable export uses the current descriptor key.',
   },
