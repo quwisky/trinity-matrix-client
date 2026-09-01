@@ -16,6 +16,46 @@ function declarations(source: string): readonly string[] {
   );
 }
 
+interface ThemeBlock {
+  readonly selector: string;
+  readonly body: string;
+}
+
+function themeBlocks(source: string): readonly ThemeBlock[] {
+  const blocks: ThemeBlock[] = [];
+  const selectors = source.matchAll(
+    /^(?<selector>[^\n{]*\[data-theme='[^']+'\][^\n{]*)\s*\{/gmu,
+  );
+
+  for (const match of selectors) {
+    const openBrace = (match.index ?? 0) + match[0].lastIndexOf('{');
+    let depth = 1;
+    let cursor = openBrace + 1;
+    while (cursor < source.length && depth > 0) {
+      if (source[cursor] === '{') depth += 1;
+      if (source[cursor] === '}') depth -= 1;
+      cursor += 1;
+    }
+    if (depth !== 0) throw new Error(`Unclosed Theme block: ${match[0]}`);
+
+    blocks.push({
+      selector: match.groups?.['selector']?.trim() ?? '',
+      body: source.slice(openBrace + 1, cursor - 1),
+    });
+  }
+
+  return blocks;
+}
+
+function authoredStatements(body: string): readonly string[] {
+  return body
+    .replace(/\/\*[\s\S]*?\*\//gu, '')
+    .replace(/\/\/.*$/gmu, '')
+    .split(';')
+    .map((statement) => statement.trim())
+    .filter(Boolean);
+}
+
 describe('Theme Foundation catalog', () => {
   it('is deeply read-only and carries exactly six fixed Theme and Mode previews', () => {
     expect(THEME_CATALOG.defaults).toEqual({
@@ -75,21 +115,29 @@ describe('Theme Foundation stylesheet interface', () => {
       ...THEME_CATALOG.authoring.colorRoles,
       ...THEME_CATALOG.authoring.elevationRoles,
     ]);
-    const blocks = [
-      ...source.matchAll(
-        /:root\[data-theme='(?<theme>[^']+)'\](?<mode>:not\(\.dark\)|\.dark)\s*\{(?<body>[\s\S]*?)\n\}/gu,
-      ),
-    ];
+    const blocks = themeBlocks(source);
+    const expectedSelectors = THEME_CATALOG.themes.flatMap(({ dataTheme }) =>
+      dataTheme === null
+        ? []
+        : [
+            `:root[data-theme='${dataTheme}']:not(.dark)`,
+            `:root[data-theme='${dataTheme}'].dark`,
+          ],
+    );
 
-    expect(blocks).toHaveLength((THEME_CATALOG.themes.length - 1) * 2);
+    expect(blocks.map(({ selector }) => selector)).toEqual(expectedSelectors);
     for (const block of blocks) {
-      expect(THEME_CATALOG.themes.map(({ id }) => id)).toContain(
-        block.groups?.['theme'],
-      );
+      const statements = authoredStatements(block.body);
+      expect(block.body).not.toMatch(/\burl\s*\(/iu);
       expect(
-        declarations(block.groups?.['body'] ?? '').every((role) =>
-          allowed.has(role as never),
+        statements.every((statement) =>
+          /^--[a-z0-9-]+\s*:[^{}]+$/u.test(statement),
         ),
+      ).toBe(true);
+      expect(
+        statements
+          .map((statement) => statement.match(/^(--[a-z0-9-]+)\s*:/u)?.[1])
+          .every((role) => role !== undefined && allowed.has(role as never)),
       ).toBe(true);
     }
   });

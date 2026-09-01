@@ -706,23 +706,17 @@ Two steps.
 }
 ```
 
-Override only what differs; anything omitted falls through to `:root` or `:root.dark`.
+Override only what differs; anything omitted falls through to `:root` or `:root.dark`. Every
+declaration must be one of the semantic color or elevation roles listed by
+`THEME_CATALOG.authoring`. A Theme must not name Helm/Tailwind tokens, component selectors,
+fonts, assets, or arbitrary CSS. Those are private implementation details, and the Theme
+Foundation contract tests reject them inside named-Theme blocks.
 
-You will mostly be overriding Trinity tokens. Helm tokens defined as references re-theme for
-free — `--primary` and the measured focus-backed `--ring` in both modes, and in **dark** also `--card`, `--popover`,
-`--secondary`, `--muted` and `--accent`. Helm tokens holding a _literal_ need explicit
-overrides:
-
-| Token                                            | When it needs an override     |
-| ------------------------------------------------ | ----------------------------- |
-| `--foreground`, `--muted-foreground`, `--border` | Both modes                    |
-| `--secondary`, `--muted`, `--accent`             | Light only                    |
-| `--background`                                   | Dark, where it is a literal   |
-| `--primary-foreground`                           | Whenever your accent is light |
-
-That last one matters. Amethyst dark sets `--primary-foreground: #1e1633` at 6.3:1, because
-white on `#a78bfa` is 2.7:1 and fails WCAG AA. `--trinity-accent-foreground` tracks
-`--primary-foreground`, so on-accent text follows automatically.
+The private adapter maps Helm/Tailwind roles outward from the Trinity semantic roles, so those
+consumers re-theme automatically. For example, a light accent must pair its
+`--trinity-accent` override with a measured `--trinity-accent-foreground`; Amethyst dark uses
+dark on-accent text because white on its light violet accent would fail WCAG AA. Theme authors
+never override `--primary` or `--primary-foreground` directly.
 
 **2. Register the Theme** in `THEME_CATALOG` so its identity, label and absent-default carrier
 are shared by Appearance and preview consumers:

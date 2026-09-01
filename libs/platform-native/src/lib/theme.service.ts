@@ -448,16 +448,16 @@ export class ThemeService {
     }
   }
 
-  /** Reflect the active palette on the document root (default palette = no attribute). */
+  /** Reflect the active Theme's catalog-owned carrier on the document root. */
   private applyPalette(): void {
     if (typeof document === 'undefined') {
       return;
     }
-    const palette = this._palette();
-    if (palette === DEFAULT_PALETTE) {
+    const theme = THEME_CATALOG.themes.find(({ id }) => id === this._palette());
+    if (!theme?.dataTheme) {
       document.documentElement.removeAttribute(PALETTE_ATTR);
     } else {
-      document.documentElement.setAttribute(PALETTE_ATTR, palette);
+      document.documentElement.setAttribute(PALETTE_ATTR, theme.dataTheme);
     }
   }
 

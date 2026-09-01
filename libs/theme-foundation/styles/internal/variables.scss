@@ -209,7 +209,8 @@
   // read the accent reads this instead; borders and fills still use the accent.
   --trinity-link: #3f49b8; // 5.09:1 on the worst light surface (--trinity-active)
 
-  // Readable text/icon colour on an accent fill — tracks the Helm on-primary token, so a
+  // Readable text/icon colour on an accent fill. The private Helm adapter maps its
+  // on-primary token outward from the same Trinity semantic role.
   // light-accent palette (e.g. Amethyst dark) gets dark on-accent text, not unreadable white.
   --trinity-accent-foreground: hsl(0deg 0% 100%);
   --trinity-green: #23a55a;
@@ -217,7 +218,7 @@
   // On-green text/icon — mirrors the accent pairing so a palette that lightens
   // --trinity-green can darken this too. White on #23a55a is 3.18:1: it passes AA only
   // as large text, which is what the sole consumer is (a 32px aria-hidden checkmark).
-  --trinity-green-foreground: var(--primary-foreground);
+  --trinity-green-foreground: var(--trinity-accent-foreground);
 
   // Danger splits into two roles because one colour cannot serve both in dark mode.
   //   --trinity-danger              — alert TEXT/ICONS drawn straight on a surface.
