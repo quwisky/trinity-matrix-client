@@ -623,6 +623,10 @@ All notable changes to this project are documented here. The format is based on
   duplicate navigation when its state and URL are already exact, but now repairs a bare `/rooms`
   address even when the active Account already matches the in-memory destination.
 
+- **The installed Android Settings journey no longer races its responsive redirect.** It now
+  accepts the Settings index used on narrow layouts and the canonical first section selected on
+  wide layouts, while still requiring the real Settings surface after the native touch.
+
 - **Runtime warnings no longer push the message composer below small phone screens.** The
   Application Runtime warning region stays visible and keyboard-scrollable while yielding the
   rest of the visual viewport to the routed surface, including with larger text and an encryption

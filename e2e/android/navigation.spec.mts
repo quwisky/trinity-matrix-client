@@ -27,9 +27,11 @@ async function openNativeSettingsFromRooms(
   );
 
   await activate(page.getByTestId('open-settings'));
-  await page.waitForURL((url) => url.pathname === '/settings', {
-    timeout: 20_000,
-  });
+  await page.waitForURL(
+    (url) =>
+      url.pathname === '/settings' || url.pathname.startsWith('/settings/'),
+    { timeout: 20_000 },
+  );
   await expect(
     page.getByRole('heading', { name: 'Settings', exact: true }),
   ).toBeVisible({ timeout: 20_000 });
