@@ -1,9 +1,11 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import {
   closeSync,
+  existsSync,
   mkdirSync,
   openSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -18,6 +20,13 @@ import {
   validateEmulator,
 } from './device.mts';
 import {
+  ADB_FAILURE_LIMIT,
+  ANDROID_INFRASTRUCTURE_FAILURE,
+  nextAdbFailureCount,
+  parseInfrastructureFailure,
+  startAndroidInfrastructureWatchdog,
+} from './health.mts';
+import {
   openE2EInvocation,
   type E2EInvocation,
 } from '../support/invocation.mts';
@@ -30,6 +39,16 @@ const driverPackages = [
   'com.microsoft.playwright.androiddriver',
   'com.microsoft.playwright.androiddriver.test',
 ];
+const ownedEmulatorLaunchArgs = [
+  '-no-window',
+  '-no-audio',
+  '-no-boot-anim',
+  '-no-snapshot',
+  '-gpu',
+  'software',
+  '-feature',
+  '-Vulkan',
+] as const;
 const abortController = new AbortController();
 
 let serial = '';
@@ -52,6 +71,8 @@ let baselineWorktree: string | undefined;
 let cleaningUp = false;
 let requestedExitCode: number | undefined;
 let signalCount = 0;
+let infrastructureFailureMarker = '';
+let adbFailureCount = 0;
 
 const sdkRoot = process.env['ANDROID_HOME'] ?? process.env['ANDROID_SDK_ROOT'];
 if (!sdkRoot) {
@@ -88,6 +109,7 @@ async function adbFor(target: string, ...args: string[]): Promise<string> {
     cwd: workspaceRoot,
     maxBuffer: 20 * 1024 * 1024,
     signal: commandSignal(),
+    timeout: cleaningUp ? 15_000 : 10_000,
   });
   return stdout.trim();
 }
@@ -105,7 +127,58 @@ function terminateProcessGroup(
   }
 }
 
-async function run(command: string, args: string[]): Promise<void> {
+async function inspectAndroidInfrastructure(): Promise<Error | undefined> {
+  if (abortController.signal.aborted) return undefined;
+  if (infrastructureFailureMarker && existsSync(infrastructureFailureMarker)) {
+    try {
+      const failure = parseInfrastructureFailure(
+        readFileSync(infrastructureFailureMarker, 'utf8'),
+      );
+      return new Error(
+        `${failure.kind}: ${failure.layer}: ${failure.summary}; ` +
+          `diagnostics=${artifactsDir()}`,
+      );
+    } catch (error) {
+      return new Error(
+        `${ANDROID_INFRASTRUCTURE_FAILURE}: invalid fixture failure marker: ${String(error)}; ` +
+          `diagnostics=${artifactsDir()}`,
+      );
+    }
+  }
+  if (emulatorSpawnError) {
+    return new Error(
+      `${ANDROID_INFRASTRUCTURE_FAILURE}: emulator-process: ${emulatorSpawnError.message}; ` +
+        `diagnostics=${artifactsDir()}`,
+    );
+  }
+  if (emulatorExit) {
+    return new Error(
+      `${ANDROID_INFRASTRUCTURE_FAILURE}: emulator-process: ${serial} exited ` +
+        `with ${emulatorExit.code ?? emulatorExit.signal}; diagnostics=${artifactsDir()}`,
+    );
+  }
+
+  let state: string | undefined;
+  try {
+    state = await adbFor(serial, 'get-state');
+  } catch {
+    state = undefined;
+  }
+  adbFailureCount = nextAdbFailureCount(adbFailureCount, state);
+  if (adbFailureCount >= ADB_FAILURE_LIMIT) {
+    return new Error(
+      `${ANDROID_INFRASTRUCTURE_FAILURE}: transport: ${serial} failed ` +
+        `${adbFailureCount} consecutive adb get-state probes; diagnostics=${artifactsDir()}`,
+    );
+  }
+  return undefined;
+}
+
+async function run(
+  command: string,
+  args: string[],
+  monitorAndroid = false,
+): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: workspaceRoot,
@@ -114,13 +187,26 @@ async function run(command: string, args: string[]): Promise<void> {
       detached: process.platform !== 'win32',
     });
     activeChild = child;
-    child.once('error', (error) => {
+    const watchdog = monitorAndroid
+      ? startAndroidInfrastructureWatchdog({
+          inspect: inspectAndroidInfrastructure,
+          terminate: (signal) => {
+            if (activeChild === child) terminateProcessGroup(child, signal);
+          },
+        })
+      : undefined;
+    const finish = (): void => {
+      watchdog?.stop();
       if (activeChild === child) activeChild = undefined;
-      reject(error);
+    };
+    child.once('error', (error) => {
+      finish();
+      reject(watchdog?.failure ?? error);
     });
     child.once('exit', (code, signalName) => {
-      if (activeChild === child) activeChild = undefined;
-      if (code === 0) resolve();
+      finish();
+      if (watchdog?.failure) reject(watchdog.failure);
+      else if (code === 0) resolve();
       else reject(new Error(`${command} exited with ${code ?? signalName}`));
     });
   });
@@ -246,11 +332,7 @@ async function selectOrStartDevice(): Promise<void> {
       DEFAULT_AVD,
       '-port',
       String(port),
-      '-no-window',
-      '-no-audio',
-      '-no-boot-anim',
-      '-gpu',
-      'swiftshader_indirect',
+      ...ownedEmulatorLaunchArgs,
     ],
     {
       cwd: workspaceRoot,
@@ -358,18 +440,124 @@ async function captureDiagnostics(): Promise<void> {
   if (!serial) return;
   const outputDirectory = artifactsDir();
   mkdirSync(outputDirectory, { recursive: true });
-  const commands: Array<[string, string[]]> = [
-    ['device-properties.txt', ['shell', 'getprop']],
-    ['logcat-final.txt', ['logcat', '-b', 'all', '-d']],
-    ['activity-final.txt', ['shell', 'dumpsys', 'activity', 'activities']],
-    ['package-final.txt', ['shell', 'dumpsys', 'package', packageName]],
-  ];
-  for (const [file, args] of commands) {
+  writeFileSync(
+    join(outputDirectory, 'runner-state.json'),
+    `${JSON.stringify(
+      {
+        serial,
+        ownsEmulator,
+        emulatorPid: spawnedEmulator?.pid ?? null,
+        emulatorExit: emulatorExit ?? null,
+        emulatorSpawnError: emulatorSpawnError?.message ?? null,
+        activeChildPid: activeChild?.pid ?? null,
+        ownedEmulatorLaunchArgs,
+        infrastructureFailureMarker:
+          infrastructureFailureMarker && existsSync(infrastructureFailureMarker)
+            ? readFileSync(infrastructureFailureMarker, 'utf8')
+            : null,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+
+  const writeDiagnostic = async (
+    file: string,
+    operation: () => Promise<string>,
+  ): Promise<void> => {
     try {
-      writeFileSync(join(outputDirectory, file), await adbRun(...args));
+      writeFileSync(join(outputDirectory, file), await operation());
     } catch (error) {
       writeFileSync(join(outputDirectory, file), String(error));
     }
+  };
+
+  await writeDiagnostic('adb-devices.txt', async () => {
+    const { stdout } = await exec(adb, ['devices', '-l'], {
+      cwd: workspaceRoot,
+      timeout: 15_000,
+    });
+    return stdout;
+  });
+  await writeDiagnostic('emulator-process.txt', async () => {
+    const { stdout } = await exec(
+      'ps',
+      ['-eo', 'pid,ppid,stat,etime,rss,vsz,args'],
+      { cwd: workspaceRoot, timeout: 15_000 },
+    );
+    const emulatorProcesses = stdout
+      .split(/\r?\n/)
+      .filter(
+        (line) =>
+          line.includes(DEFAULT_AVD) ||
+          (spawnedEmulator?.pid !== undefined &&
+            line.trimStart().startsWith(`${spawnedEmulator.pid} `)),
+      );
+    return `${emulatorProcesses.join('\n') || '<no matching emulator process>'}\n`;
+  });
+  await writeDiagnostic('webview-final.txt', async () => {
+    const [provider, appPids, primaryDriverPids, testDriverPids, sockets] =
+      await Promise.all([
+        adbRun(
+          'shell',
+          'cmd',
+          'webviewupdate',
+          'getCurrentWebViewPackage',
+        ).catch(() => adbRun('shell', 'dumpsys', 'webviewupdate')),
+        adbRun('shell', 'pidof', packageName).catch(() => '<not running>'),
+        adbRun('shell', 'pidof', driverPackages[0]!).catch(
+          () => '<not running>',
+        ),
+        adbRun('shell', 'pidof', driverPackages[1]!).catch(
+          () => '<not running>',
+        ),
+        adbRun('shell', 'cat', '/proc/net/unix').catch(() => ''),
+      ]);
+    const webViewSockets = sockets
+      .split(/\r?\n/)
+      .filter((line) => line.includes('webview_devtools_remote'));
+    return [
+      `provider=${provider}`,
+      `app-pids=${appPids || '<not running>'}`,
+      `driver-pids=${primaryDriverPids || '<not running>'}`,
+      `driver-test-pids=${testDriverPids || '<not running>'}`,
+      'devtools-sockets:',
+      webViewSockets.join('\n') || '<none>',
+      '',
+    ].join('\n');
+  });
+  await writeDiagnostic('graphics-final.txt', async () => {
+    const properties = [
+      'ro.hardware.egl',
+      'ro.hardware.vulkan',
+      'debug.hwui.renderer',
+      'debug.renderengine.backend',
+      'ro.opengles.version',
+    ];
+    const values = await Promise.all(
+      properties.map((property) =>
+        adbRun('shell', 'getprop', property).catch(() => '<unavailable>'),
+      ),
+    );
+    return [
+      `runner-args=${ownedEmulatorLaunchArgs.join(' ')}`,
+      ...properties.map((property, index) => `${property}=${values[index]}`),
+      '',
+    ].join('\n');
+  });
+
+  const commands: Array<[string, string[]]> = [
+    ['adb-get-state.txt', ['get-state']],
+    ['device-properties.txt', ['shell', 'getprop']],
+    ['logcat-final.txt', ['logcat', '-b', 'all', '-d']],
+    ['crash-final.txt', ['logcat', '-b', 'crash', '-d']],
+    ['activity-final.txt', ['shell', 'dumpsys', 'activity', 'activities']],
+    ['package-final.txt', ['shell', 'dumpsys', 'package', packageName]],
+    ['memory-final.txt', ['shell', 'dumpsys', 'meminfo']],
+    ['surfaceflinger-final.txt', ['shell', 'dumpsys', 'SurfaceFlinger']],
+  ];
+  for (const [file, args] of commands) {
+    await writeDiagnostic(file, () => adbRun(...args));
   }
 }
 
@@ -494,15 +682,27 @@ async function main(): Promise<void> {
     ),
   );
   process.env['TRINITY_ANDROID_SERIAL'] = serial;
+  const outputDirectory = artifactsDir();
+  mkdirSync(outputDirectory, { recursive: true });
+  infrastructureFailureMarker = join(
+    outputDirectory,
+    'infrastructure-failure.json',
+  );
+  rmSync(infrastructureFailureMarker, { force: true });
+  process.env['TRINITY_ANDROID_FATAL_MARKER'] = infrastructureFailureMarker;
   playwrightAttachAttempted = true;
-  await run('pnpm', [
-    'exec',
-    'playwright',
-    'test',
-    '-c',
-    'e2e/android/playwright.config.mts',
-    ...process.argv.slice(2),
-  ]);
+  await run(
+    'pnpm',
+    [
+      'exec',
+      'playwright',
+      'test',
+      '-c',
+      'e2e/android/playwright.config.mts',
+      ...process.argv.slice(2),
+    ],
+    true,
+  );
 }
 
 async function execute(): Promise<void> {

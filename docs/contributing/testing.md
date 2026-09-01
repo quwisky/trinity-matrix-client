@@ -433,6 +433,19 @@ records screenshots, traces, logcat/crash buffers, activity state, and package d
 under
 `dist/.playwright/trinity-e2e-android/<run-id>/android.installed-webview/` on failure.
 
+Runner-owned emulators cold-boot with software GLES and Vulkan disabled. While Playwright is
+active, the outer process probes `adb get-state`; two consecutive failures, an emulator-process
+exit, or a fixture marker for a lost driver, app surface, or WebView terminates the Playwright
+process group once. Host output then records the emulator process, adb state, application and
+driver processes, current WebView provider and sockets, system/application memory, graphics
+configuration, activities, package state, logcat, and the crash buffer. The fixture waits through
+both the static shell and Application Runtime restoration before a reload or relaunch returns.
+If a document navigation remains in the static shell, an empty route, or restoration under sustained
+load, the fixture performs one bounded document reload and proves the routed surface again. A visibly
+blocked startup is not retried, and a second stall writes the fatal application-surface marker.
+Crash-buffer enforcement is package-scoped to `eu.qwky.trinity` and its secondary test package;
+a crash from an unrelated Android service remains diagnostic evidence, not a Trinity failure.
+
 The matching iOS host exposes `trinity-ios:verify` on every OS and
 `trinity-ios:verify-native` on macOS. The first pins its Nx lifecycle, shared artifact,
 plugins, deep-link scheme and negotiated capabilities; the second performs an unsigned

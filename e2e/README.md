@@ -159,6 +159,20 @@ including the crash buffer, activity state, and package diagnostics under
 driver packages; cleanup can therefore remove the run-installed drivers, restore the prior
 reverse mapping, and stop only an emulator the runner started.
 
+The supported runner-owned headless AVD launch is a cold `-no-snapshot` boot with
+`-gpu software -feature -Vulkan`. A suite-level watchdog requires two consecutive failed adb
+health probes before declaring transport loss, but emulator exit or a fixture marker for the
+driver, application surface, or package WebView is immediately fatal. That classification stops
+the Playwright process group once instead of turning a lost host into one failure per remaining
+journey. Host diagnostics add emulator process state, `adb get-state`, WebView provider and
+DevTools sockets, memory, graphics configuration, and the separate crash buffer. Only crash
+records naming a Trinity package fail the journey; unrelated Android process crashes are ignored
+by that assertion and appear in logcat only when another failure retains its diagnostics.
+
+Document navigation waits for the routed Application Runtime surface. A static boot shell, empty
+route, or restoration stall receives one fresh document; a blocked startup or second stall remains
+a classified failure and stops the suite through the shared fixture marker.
+
 An explicitly supplied serial must be disposable. The suite clears both Trinity test
 package IDs before their tests, replaces their APKs, and clears the device's logcat buffers;
 those mutations cannot be restored. It also force-stops Trinity after the run. The exact
