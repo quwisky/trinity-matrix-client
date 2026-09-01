@@ -9,7 +9,7 @@
     "nx": "node scripts/nx.mjs",
     "format": "node scripts/nx.mjs format:write --all",
     "format:check": "node scripts/nx.mjs format:check --all",
-    "architecture:check": "node scripts/architecture-contract.mjs check && node scripts/design-system-contract.mjs && node scripts/web-host-contract.mjs && node scripts/native-host-contract.mjs && node scripts/electron-host-contract.mjs && node scripts/e2e-suite-registry.mjs check",
+    "architecture:check": "node scripts/architecture-contract.mjs check && node scripts/design-system-contract.mjs && node scripts/runtime-vendor-style-contract.mjs && node scripts/web-host-contract.mjs && node scripts/native-host-contract.mjs && node scripts/electron-host-contract.mjs && node scripts/e2e-suite-registry.mjs check",
     "architecture:map": "node scripts/architecture-contract.mjs write-map",
     "start": "node scripts/nx.mjs serve trinity",
     "build": "node scripts/nx.mjs build trinity",

@@ -1,0 +1,124 @@
+{
+  "staticStyles": [
+    {
+      "id": "cdk-overlay-static",
+      "package": "@angular/cdk",
+      "version": "22.1.0",
+      "source": "../../../node_modules/@angular/cdk/overlay-prebuilt.css",
+      "layer": "vendor"
+    },
+    {
+      "id": "emoji-mart-static",
+      "package": "@ctrl/ngx-emoji-mart",
+      "version": "9.3.0",
+      "source": "../../../node_modules/@ctrl/ngx-emoji-mart/picker.css",
+      "layer": "vendor"
+    }
+  ],
+  "runtimeStyles": [
+    {
+      "id": "codemirror-style-module",
+      "package": "@codemirror/view",
+      "version": "6.43.8",
+      "mechanism": "style-mod mounts CodeMirror base and theme modules in the editor document root",
+      "seam": "libs/feature/settings/src/lib/advanced/config-editor/config-editor-theme.ts",
+      "importPrefixes": ["@codemirror/", "@lezer/highlight"],
+      "allowedSourcePrefixes": [
+        "libs/feature/settings/src/lib/advanced/config-editor/"
+      ],
+      "modules": [
+        {
+          "path": "dist/index.js",
+          "markers": [
+            "StyleModule.mount(this.root, this.styleModules.concat(baseTheme$1).reverse()",
+            "static theme(spec, options)"
+          ]
+        }
+      ],
+      "seamMarkers": [
+        "EditorView.theme({",
+        "TRINITY_CONFIG_EDITOR_THEME_EXTENSIONS"
+      ]
+    },
+    {
+      "id": "cdk-overlay-loader",
+      "package": "@angular/cdk",
+      "version": "22.1.0",
+      "mechanism": "CDK creates a global overlay style-loader component and writes geometry to overlay elements inline",
+      "seam": "libs/components/overlay/src/index.ts",
+      "importPrefixes": [
+        "@angular/cdk/dialog",
+        "@angular/cdk/overlay",
+        "@angular/cdk/portal"
+      ],
+      "allowedSourcePrefixes": [
+        "libs/components/overlay/",
+        "libs/spartan/utils/src/lib/provide-spartan-hlm.ts"
+      ],
+      "modules": [
+        {
+          "path": "fesm2022/_style-loader-chunk.mjs",
+          "markers": ["class _CdkPrivateStyleLoader", "createComponent(loader"]
+        },
+        {
+          "path": "fesm2022/_overlay-module-chunk.mjs",
+          "markers": [
+            "class _CdkOverlayStyleLoader",
+            "this._styleLoader.load(_CdkOverlayStyleLoader)",
+            "this._pane.style.pointerEvents"
+          ]
+        }
+      ],
+      "seamMarkers": ["TrnDialogService", "TrnDropdownMenuImports"]
+    },
+    {
+      "id": "ng-icon-component",
+      "package": "@ng-icons/core",
+      "version": "34.0.0",
+      "mechanism": "NgIcon injects an Angular component stylesheet and writes size, stroke, and color custom properties inline",
+      "seam": "libs/components/foundations/src/lib/icon/trn-icon/trn-icon.component.ts",
+      "importPrefixes": ["@ng-icons/core", "@ng-icons/lucide"],
+      "allowedSourcePrefixes": [
+        "libs/components/foundations/src/lib/icon/",
+        "libs/spartan/checkbox/src/lib/hlm-checkbox.ts",
+        "libs/spartan/dropdown-menu/src/lib/hlm-dropdown-menu.ts",
+        "libs/spartan/select/src/lib/",
+        "libs/spartan/sonner/src/lib/hlm-toaster.ts",
+        "libs/spartan/spinner/src/lib/hlm-spinner.ts"
+      ],
+      "modules": [
+        {
+          "path": "fesm2022/ng-icons-core.mjs",
+          "markers": [
+            "styles: [\":host{display:inline-block;width:var(--ng-icon__size, 1em)",
+            "style.--ng-icon__size"
+          ]
+        }
+      ],
+      "seamMarkers": ["import { NgIcon } from '@ng-icons/core'", "<ng-icon"]
+    },
+    {
+      "id": "brain-sonner-component",
+      "package": "@spartan-ng/brain",
+      "version": "1.3.0",
+      "mechanism": "Brain Sonner injects its global Angular component stylesheet and writes layout and swipe custom properties inline",
+      "seam": "libs/components/overlay/src/lib/toast/trn-toaster.component.ts",
+      "importPrefixes": ["@spartan-ng/brain/sonner"],
+      "allowedSourcePrefixes": [
+        "libs/components/overlay/src/lib/toast/",
+        "libs/spartan/sonner/"
+      ],
+      "modules": [
+        {
+          "path": "fesm2022/spartan-ng-brain-sonner.mjs",
+          "markers": [
+            "styles: [\"html[dir=ltr],[data-sonner-toaster]",
+            "style.setProperty('--swipe-amount'",
+            "'--front-toast-height'"
+          ]
+        }
+      ],
+      "seamMarkers": ["HlmToaster", "<hlm-toaster"]
+    }
+  ]
+}

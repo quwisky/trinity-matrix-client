@@ -221,6 +221,54 @@ test.describe('Settings', () => {
         'Inspect, move or reset the preferences stored on this device.',
       ),
     ).toBeVisible();
+
+    // CodeMirror owns this DOM and injects its own base stylesheet at runtime. Trinity's
+    // appearance therefore has to enter through EditorView.theme(), not through an unlayered
+    // component override. Compare rendered paint to the live semantic tokens and then prove
+    // keyboard focus still reaches the editor's supported outer focus treatment.
+    const editor = page.getByTestId('advanced-config-editor');
+    const editorFrame = page.locator('.cm-editor', { has: editor });
+    await expect(editor).toBeVisible({ timeout: 20_000 });
+    const editorPaint = await editorFrame.evaluate((element) => {
+      const editorStyle = getComputedStyle(element);
+      const resolve = (token: string) => {
+        const probe = document.createElement('span');
+        probe.style.color = `var(${token})`;
+        document.body.appendChild(probe);
+        const value = getComputedStyle(probe).color;
+        probe.remove();
+        return value;
+      };
+      const resolveRadius = (token: string) => {
+        const probe = document.createElement('span');
+        probe.style.borderRadius = `var(${token})`;
+        document.body.appendChild(probe);
+        const value = getComputedStyle(probe).borderRadius;
+        probe.remove();
+        return value;
+      };
+      return {
+        background: editorStyle.backgroundColor,
+        text: editorStyle.color,
+        expectedBackground: resolve('--trinity-chat'),
+        expectedText: resolve('--trinity-text'),
+        radius: editorStyle.borderRadius,
+        expectedRadius: resolveRadius('--trinity-radius-md'),
+      };
+    });
+    expect(editorPaint.background).toBe(editorPaint.expectedBackground);
+    expect(editorPaint.text).toBe(editorPaint.expectedText);
+    expect(editorPaint.radius).toBe(editorPaint.expectedRadius);
+
+    await editor.focus();
+    await expect(editor).toBeFocused();
+    await expect
+      .poll(() =>
+        editorFrame.evaluate(
+          (element) => getComputedStyle(element).outlineStyle,
+        ),
+      )
+      .toBe('solid');
   });
 
   test('desktop: close leaves settings without changing the room route', async ({
