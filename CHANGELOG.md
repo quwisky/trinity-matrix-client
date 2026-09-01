@@ -87,6 +87,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Preference storage keys now upgrade in one direction.** Capability descriptors can name
+  ordered, read-only predecessor keys without exposing them through Settings. The current key
+  remains authoritative; otherwise a valid legacy value is written into its current versioned
+  envelope before it becomes visible. Invalid data and storage failures affect only that
+  preference and return value-free recovery, and all later writes use only the current key.
+
 - **Theme ownership now has one source.** Theme and Mode identity, defaults and preview metadata
   come from one read-only catalog, while one aggregate stylesheet owns the semantic token values
   and private Helm/Tailwind mappings. The application and Storybook consume those interfaces

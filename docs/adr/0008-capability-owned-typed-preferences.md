@@ -17,6 +17,14 @@ server-authoritative values instead of silently weakening their policy. Secret d
 use `secure-store` storage and be excluded from portable exports, and diagnostics contain stable
 codes only—never candidate, stored, or thrown values.
 
+A descriptor may declare ordered, read-only legacy persistence keys. The current key is always
+authoritative when present; predecessor keys are consulted only when it is missing. A valid legacy
+value is migrated and written as the current versioned envelope before the signal publishes it,
+while invalid legacy data defaults only that descriptor and reports value-free recovery. Every
+later write targets only the current key, so this is a one-way upgrade contract and does not
+promise downgrade compatibility. Synchronous adapter failures and errored storage streams are
+contained behind the same stable read/write diagnostics.
+
 Settings is a catalog consumer, not a policy owner. Its shared renderer selects descriptor editor
 metadata for an exact context and subscribes to the descriptor command; it does not know raw keys,
 defaults, migration rules, or capability policy. The Privacy journey is the first migrated slice.
