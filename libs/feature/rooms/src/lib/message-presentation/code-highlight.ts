@@ -62,7 +62,7 @@ import { setCodeHighlighter } from '@trinity/util/matrix';
  * to choose, while TextMate scopes are effectively unbounded. The mapping is scope-family →
  * role rather than theme-colour → role, so it stays stable across grammars.
  *
- * Keep in step with the `--trinity-syntax-*` tokens in `apps/trinity/src/theme/variables.scss`.
+ * Keep in step with the `--trinity-syntax-*` roles in Theme Foundation.
  */
 const TOKEN_ROLES = [
   'keyword',

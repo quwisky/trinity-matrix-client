@@ -114,7 +114,8 @@
       ],
       "@trinity/components/generic-content": [
         "./libs/components/generic-content/src/index.ts"
-      ]
+      ],
+      "@trinity/theme-foundation": ["./libs/theme-foundation/src/index.ts"]
     },
     "noUncheckedSideEffectImports": false,
     "types": ["*"]

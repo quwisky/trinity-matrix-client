@@ -26,7 +26,7 @@ const workspaceRoot = join(import.meta.dirname, '..');
  * palette called `x` — which then "fails" with a copy of the default palette's ratios.
  */
 const source = readFileSync(
-  join(workspaceRoot, 'apps/trinity/src/theme/variables.scss'),
+  join(workspaceRoot, 'libs/theme-foundation/styles/internal/variables.scss'),
   'utf8',
 )
   .replace(/\/\*[\s\S]*?\*\//g, '')

@@ -1,6 +1,6 @@
 // Shared SCSS mixins for the crypto feature's surfaces.
 // Colour tokens are global CSS custom properties — see
-// apps/trinity/src/theme/variables.scss.
+// libs/theme-foundation/styles/internal/variables.scss.
 // Local to this lib on purpose: feature-rooms owns an equivalent file, but a
 // `type:feature` lib may not depend on another feature (@nx/enforce-module-boundaries),
 // and a cross-lib `@use` would smuggle in exactly the edge that rule forbids — SCSS is

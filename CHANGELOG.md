@@ -87,6 +87,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Theme ownership now has one internal foundation.** Theme and Mode identity, defaults and
+  preview metadata come from one read-only catalog, while one aggregate stylesheet owns the
+  semantic token values and the private Helm/Tailwind mappings. The existing application and
+  Storybook stylesheet paths remain as temporary compatibility entrypoints, so this expansion
+  does not change current rendering while consumers migrate.
+
 - **Local validation output is quiet and classified.** Nx commands now normalize contradictory
   color variables, Vitest configs are ready for Vite's native loader, component tests install
   deterministic browser APIs and the icons they render, and expected failure logs are asserted at

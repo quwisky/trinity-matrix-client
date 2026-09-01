@@ -2,32 +2,36 @@ import { Injectable, signal } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import { StatusBar, Style } from '@capacitor/status-bar';
+import {
+  THEME_CATALOG,
+  type ResolvedThemeMode,
+  type ThemeId,
+  type ThemeMode,
+} from '@trinity/theme-foundation';
 
 /** The mode choices offered, in the order the settings picker shows them. */
-export const TRINITY_THEME_MODES = ['system', 'light', 'dark'] as const;
+export const TRINITY_THEME_MODES: readonly ThemeMode[] = Object.freeze(
+  THEME_CATALOG.modes.map(({ id }) => id),
+);
 /** What the user picked: follow the OS, or force a mode. */
-export type ThemePreference = (typeof TRINITY_THEME_MODES)[number];
+export type ThemePreference = ThemeMode;
 /** The mode actually applied after resolving `system`. */
-export type ResolvedTheme = 'light' | 'dark';
+export type ResolvedTheme = ResolvedThemeMode;
 
 /**
- * The named colour schemes shipped with the app. A palette is orthogonal to
- * light/dark — every palette works in both modes. Adding one is two steps: a CSS
- * block in apps/trinity/src/theme/variables.scss (keyed on `[data-theme='<id>']`)
- * and an entry here. See docs/architecture/ui-and-theming.md.
+ * Temporary compatibility view of Theme Foundation's named Themes. A Theme is orthogonal
+ * to light/dark Mode, and every Theme works in both resolved Modes. New identity and label
+ * metadata belongs in `THEME_CATALOG`; values belong in Theme Foundation's internal
+ * `variables.scss`. See docs/architecture/ui-and-theming.md.
  *
  * `trinity` is the default and applies no `data-theme` attribute (the `:root`
- * defaults in variables.scss).
+ * defaults in Theme Foundation).
  */
-export const TRINITY_PALETTES = [
-  { id: 'trinity', label: 'Trinity' },
-  { id: 'amethyst', label: 'Amethyst' },
-  { id: 'onyx', label: 'Onyx' },
-] as const;
+export const TRINITY_PALETTES = THEME_CATALOG.themes;
 /** The id of a registered palette. */
-export type Palette = (typeof TRINITY_PALETTES)[number]['id'];
+export type Palette = ThemeId;
 /** The palette an untouched install uses. */
-export const DEFAULT_PALETTE: Palette = 'trinity';
+export const DEFAULT_PALETTE: Palette = THEME_CATALOG.defaults.theme;
 
 /**
  * How large text is, as a multiplier on the ROOT font size.
@@ -133,7 +137,8 @@ export type CodeLineMode = (typeof TRINITY_CODE_LINE_MODES)[number]['id'];
 export const DEFAULT_CODE_LINE_MODE: CodeLineMode = 'auto';
 
 /** The mode preference an untouched install uses: follow the OS. */
-export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'system';
+export const DEFAULT_THEME_PREFERENCE: ThemePreference =
+  THEME_CATALOG.defaults.mode;
 
 const THEME_KEY = 'trinity.theme';
 const PALETTE_KEY = 'trinity.palette';
@@ -149,7 +154,7 @@ const CODE_SCALE_PROP = '--trinity-code-scale';
 const CODE_LINES_ATTR = 'data-code-lines';
 /**
  * Class toggled on <html>; its PRESENCE means dark. Light is the `:root` default and
- * dark is layered under `.dark` (see apps/trinity/src/theme/variables.scss), so a
+ * dark is layered under `.dark` (see Theme Foundation's `variables.scss`), so a
  * resolved dark theme ADDS this class and light removes it.
  */
 const DARK_CLASS = 'dark';
