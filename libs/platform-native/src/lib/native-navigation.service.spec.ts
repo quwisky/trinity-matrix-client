@@ -79,6 +79,9 @@ describe('NativeNavigationService', () => {
   });
 
   it('contains a rejected bridge call', async () => {
+    const debug = vi
+      .spyOn(console, 'debug')
+      .mockImplementation(() => undefined);
     mocks.setGesturesEnabled.mockRejectedValueOnce(
       new Error('bridge rejected'),
     );
@@ -87,9 +90,17 @@ describe('NativeNavigationService', () => {
     await flush();
 
     expect(escaped).toEqual([]);
+    expect(debug).toHaveBeenCalledWith(
+      'Trinity: native navigation gesture coordination unavailable',
+      expect.any(Error),
+    );
+    debug.mockRestore();
   });
 
   it('contains a synchronous bridge failure', async () => {
+    const debug = vi
+      .spyOn(console, 'debug')
+      .mockImplementation(() => undefined);
     mocks.setGesturesEnabled.mockImplementationOnce(() => {
       throw new Error('bridge missing');
     });
@@ -98,5 +109,10 @@ describe('NativeNavigationService', () => {
     await flush();
 
     expect(escaped).toEqual([]);
+    expect(debug).toHaveBeenCalledWith(
+      'Trinity: native navigation gesture coordination unavailable',
+      expect.any(Error),
+    );
+    debug.mockRestore();
   });
 });

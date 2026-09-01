@@ -95,6 +95,9 @@ describe('HapticsService', () => {
   });
 
   it('swallows a rejecting plugin: no throw, no escaped rejection', async () => {
+    const debug = vi
+      .spyOn(console, 'debug')
+      .mockImplementation(() => undefined);
     // A PLAIN function, not `impactSpy.mockRejectedValue(...)` — see `plugin` above. This is
     // the real device case: no haptic engine, or a simulator.
     let calls = 0;
@@ -110,9 +113,17 @@ describe('HapticsService', () => {
 
     expect(calls).toBe(1);
     expect(escaped).toEqual([]);
+    expect(debug).toHaveBeenCalledWith(
+      'Trinity: haptic feedback unavailable',
+      expect.any(Error),
+    );
+    debug.mockRestore();
   });
 
   it('swallows a bridge that throws synchronously instead of rejecting', async () => {
+    const debug = vi
+      .spyOn(console, 'debug')
+      .mockImplementation(() => undefined);
     // An unregistered plugin can fail at the bridge rather than by rejecting. The caller is a
     // pointer handler mid-gesture, so a throw here would abort the gesture, not just the tick.
     plugin.impact = () => {
@@ -125,5 +136,10 @@ describe('HapticsService', () => {
     await flush();
 
     expect(escaped).toEqual([]);
+    expect(debug).toHaveBeenCalledWith(
+      'Trinity: haptic feedback unavailable',
+      expect.any(Error),
+    );
+    debug.mockRestore();
   });
 });

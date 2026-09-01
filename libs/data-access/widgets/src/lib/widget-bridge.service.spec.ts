@@ -56,6 +56,9 @@ describe('WidgetBridgeService', () => {
     const postMessage = vi
       .spyOn(iframe.contentWindow!, 'postMessage')
       .mockImplementation(() => undefined);
+    const transportLog = vi
+      .spyOn(console, 'log')
+      .mockImplementation(() => undefined);
     const session = new WidgetBridgeService().start(
       WIDGET,
       EMBED,
@@ -70,8 +73,13 @@ describe('WidgetBridgeService', () => {
       'https://widgets.example',
     );
     expect(session.state()).toBe('negotiating');
+    expect(transportLog).toHaveBeenCalledWith(
+      '[PostmessageTransport] Sending object to https://widgets.example: ',
+      expect.objectContaining({ action: 'capabilities' }),
+    );
 
     session.stop();
     expect(iframe.isConnected).toBe(false);
+    transportLog.mockRestore();
   });
 });

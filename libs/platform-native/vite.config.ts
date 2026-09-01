@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite';
 
-import { createVitestConfig } from '../../vite.base.config';
+import { createVitestConfig } from '../../vite.base.config.ts';
 
-export default defineConfig(() => createVitestConfig(__dirname));
+export default defineConfig(() => createVitestConfig(import.meta.dirname));

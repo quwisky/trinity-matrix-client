@@ -1103,6 +1103,7 @@ describe('TrustService', () => {
       // died, which is exactly when the next PUT throws — so one blip would lose the only
       // write the rollback exists to make.
       vi.useFakeTimers();
+      const retryLog = vi.spyOn(console, 'debug').mockImplementation(() => {});
       try {
         const { svc, secretStorage, client } = setup({
           defaultKeyId: 'old-key',
@@ -1131,7 +1132,11 @@ describe('TrustService', () => {
           'm.secret_storage.default_key',
           { key: 'old-key' },
         );
+        expect(retryLog).toHaveBeenCalledExactlyOnceWith(
+          'network operation failed 1 times, retrying in 2000ms...',
+        );
       } finally {
+        retryLog.mockRestore();
         vi.useRealTimers();
       }
     });

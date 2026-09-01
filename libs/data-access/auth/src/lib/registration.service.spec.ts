@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { MatrixError, createClient } from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, lastValueFrom, of, throwError } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RegistrationService } from './registration.service';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 
@@ -52,9 +52,13 @@ function client(overrides: Record<string, unknown> = {}) {
 describe('RegistrationService', () => {
   let service: RegistrationService;
   let accounts: AccountRuntimeService;
+  let interactiveAuthLog: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    interactiveAuthLog = vi
+      .spyOn(console, 'debug')
+      .mockImplementation(() => {});
     TestBed.configureTestingModule({
       providers: [
         RegistrationService,
@@ -71,6 +75,20 @@ describe('RegistrationService', () => {
     });
     service = TestBed.inject(RegistrationService);
     accounts = TestBed.inject(AccountRuntimeService);
+  });
+
+  afterEach(() => {
+    const calls = [...interactiveAuthLog.mock.calls];
+    interactiveAuthLog.mockRestore();
+    for (const args of calls) {
+      expect(args).toHaveLength(2);
+      if (args[0] === 'Active flow => %s') {
+        expect(args[1]).toMatch(/^\{"stages":\[.*\]\}$/u);
+      } else {
+        expect(args[0]).toBe('Next stage: %s');
+        expect(args[1]).toMatch(/^\S+$/u);
+      }
+    }
   });
 
   describe('registration availability', () => {

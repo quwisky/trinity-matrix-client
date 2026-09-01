@@ -330,7 +330,7 @@
  * the glyph behind. After running the spartan CLI, re-derive this list mechanically from
  * the built CSS rather than by reading the Helm class strings:
  *
- *   pnpm exec nx build trinity
+ *   pnpm nx build trinity
  *   tr '}' '\n' < www/styles-*.css | grep 'text-destructive.*color:var(--destructive)'
  *
  * See docs/architecture/ui-and-theming.md.
@@ -370,7 +370,7 @@
  * deliberately paints no hover tint, and an ungated override would reinstate one on the
  * sticky :hover that follows a tap. Re-derive after running the spartan CLI:
  *
- *   pnpm exec nx build trinity
+ *   pnpm nx build trinity
  *   tr '}' '\n' < www/styles-*.css | grep 'bg-destructive'
  */
 .bg-destructive\/10,

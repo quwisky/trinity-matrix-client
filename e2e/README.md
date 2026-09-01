@@ -24,7 +24,7 @@ journeys live in `e2e/android/`, desktop journeys in `e2e/electron/`, and protoc
 `e2e/support/synapse/`; Synapse-backed children only join its serialized invocation.
 
 The Synapse-backed web and protocol wrappers build the development bundle for you.
-`pnpm exec nx run trinity-e2e-web:production-pwa` builds the production PWA and verifies its
+`pnpm nx run trinity-e2e-web:production-pwa` builds the production PWA and verifies its
 routing, manifest, service worker, offline shell, and crypto WASM without Docker. The aggregate
 `pnpm e2e:web` also runs the Docker-backed production-renderer matrix. Android builds the same
 production web output and syncs it into the APK before every run.
@@ -70,33 +70,33 @@ shares one disposable fixed-port Synapse stack. Per-spec inferred CI targets rem
 focus the owned target by capability path or test name instead:
 
 ```bash
-pnpm exec nx run trinity-e2e-browser:e2e -- conversations/message-links.spec.mts
-pnpm exec nx run trinity-e2e-browser:e2e -- --grep "opens a copied message link"
+pnpm nx run trinity-e2e-browser:e2e -- conversations/message-links.spec.mts
+pnpm nx run trinity-e2e-browser:e2e -- --grep "opens a copied message link"
 ```
 
 ## Scripts
 
-| Command                                              | What it does                                                                                                                               |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `pnpm e2e`                                           | Run the pull-request-classified local E2E set after one registry/prerequisite preflight.                                                   |
-| `pnpm e2e:all`                                       | Run the complete local E2E delivery gate; all current suites are required.                                                                 |
-| `pnpm e2e:scheduled`                                 | Run the scheduled-classified cross-browser and protocol suites with strict preflight.                                                      |
-| `pnpm e2e:browser`                                   | Run canonical Synapse browser journeys.                                                                                                    |
-| `pnpm e2e:components`                                | Run Storybook, styling and cross-browser scrollbar contracts.                                                                              |
-| `pnpm e2e:protocol`                                  | Run every registered verification, crypto and protocol/system driver.                                                                      |
-| `pnpm e2e:electron`                                  | Run Electron shell smoke and the full Synapse-backed desktop journey under Xvfb when needed.                                               |
-| `pnpm exec nx run trinity-e2e-web:production-pwa`    | Build the production Web/PWA host and verify routing, offline shell and crypto WASM without Docker.                                        |
-| `pnpm e2e:web`                                       | Run the Web/PWA host plus Docker-backed production-renderer contracts.                                                                     |
-| `pnpm smoke:login`                                   | Unauthenticated → `/login`, real `.well-known` discovery for matrix.org.                                                                   |
-| `pnpm spike:chromium` / `pnpm spike:webkit`          | In-app E2EE crypto spike.                                                                                                                  |
-| `pnpm e2e:verify`                                    | **Two-client device verification (emoji SAS)** — full live flow against a disposable Synapse.                                              |
-| `pnpm e2e:verify:qr`                                 | **Two-client QR verification** — production rendering/scanning through a synthetic camera stream against disposable Synapse.               |
-| `pnpm e2e:media`                                     | **Note-to-self encrypted media send** — pick a file → encrypt → upload → decrypt own echo.                                                 |
-| `pnpm e2e:reply`                                     | **Reply header + preview** — a reply keeps its own author/avatar even as a same-sender continuation, and renders the quoted reply preview. |
-| `pnpm e2e:verify:up` / `pnpm e2e:verify:down`        | Bring the Synapse+Caddy+Dex harness up / tear it down by hand.                                                                             |
-| `pnpm exec nx run trinity-e2e-components:scrollbars` | Run the focused native-scrollbar contract in Chromium, Firefox and WebKit against disposable Synapse.                                      |
-| `pnpm e2e:android`                                   | Build and install Android, then run every web journey plus native-only journeys in its API 36 WebView.                                     |
-| `pnpm electron:e2e`                                  | Build and launch Electron, then run desktop shell checks and the image-pack manager journey against disposable Synapse.                    |
+| Command                                         | What it does                                                                                                                               |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm e2e`                                      | Run the pull-request-classified local E2E set after one registry/prerequisite preflight.                                                   |
+| `pnpm e2e:all`                                  | Run the complete local E2E delivery gate; all current suites are required.                                                                 |
+| `pnpm e2e:scheduled`                            | Run the scheduled-classified cross-browser and protocol suites with strict preflight.                                                      |
+| `pnpm e2e:browser`                              | Run canonical Synapse browser journeys.                                                                                                    |
+| `pnpm e2e:components`                           | Run Storybook, styling and cross-browser scrollbar contracts.                                                                              |
+| `pnpm e2e:protocol`                             | Run every registered verification, crypto and protocol/system driver.                                                                      |
+| `pnpm e2e:electron`                             | Run Electron shell smoke and the full Synapse-backed desktop journey under Xvfb when needed.                                               |
+| `pnpm nx run trinity-e2e-web:production-pwa`    | Build the production Web/PWA host and verify routing, offline shell and crypto WASM without Docker.                                        |
+| `pnpm e2e:web`                                  | Run the Web/PWA host plus Docker-backed production-renderer contracts.                                                                     |
+| `pnpm smoke:login`                              | Unauthenticated → `/login`, real `.well-known` discovery for matrix.org.                                                                   |
+| `pnpm spike:chromium` / `pnpm spike:webkit`     | In-app E2EE crypto spike.                                                                                                                  |
+| `pnpm e2e:verify`                               | **Two-client device verification (emoji SAS)** — full live flow against a disposable Synapse.                                              |
+| `pnpm e2e:verify:qr`                            | **Two-client QR verification** — production rendering/scanning through a synthetic camera stream against disposable Synapse.               |
+| `pnpm e2e:media`                                | **Note-to-self encrypted media send** — pick a file → encrypt → upload → decrypt own echo.                                                 |
+| `pnpm e2e:reply`                                | **Reply header + preview** — a reply keeps its own author/avatar even as a same-sender continuation, and renders the quoted reply preview. |
+| `pnpm e2e:verify:up` / `pnpm e2e:verify:down`   | Bring the Synapse+Caddy+Dex harness up / tear it down by hand.                                                                             |
+| `pnpm nx run trinity-e2e-components:scrollbars` | Run the focused native-scrollbar contract in Chromium, Firefox and WebKit against disposable Synapse.                                      |
+| `pnpm e2e:android`                              | Build and install Android, then run every web journey plus native-only journeys in its API 36 WebView.                                     |
+| `pnpm electron:e2e`                             | Build and launch Electron, then run desktop shell checks and the image-pack manager journey against disposable Synapse.                    |
 
 The complete ownership model, compatibility policy and local delivery contract are in
 [End-to-end test architecture](../docs/contributing/e2e-architecture.md).
@@ -194,13 +194,13 @@ conflict freedom; Matrix account-data writes have no CAS primitive.
 Run only this journey on web:
 
 ```bash
-pnpm exec nx run trinity-e2e-browser:e2e -- conversations/stickers-custom-emoji.spec.mts
+pnpm nx run trinity-e2e-browser:e2e -- conversations/stickers-custom-emoji.spec.mts
 ```
 
 Run the same file in the installed Android app:
 
 ```bash
-pnpm exec nx run trinity-e2e-android:e2e -- browser/journeys/conversations/stickers-custom-emoji.spec.mts
+pnpm nx run trinity-e2e-android:e2e -- browser/journeys/conversations/stickers-custom-emoji.spec.mts
 ```
 
 The Android prerequisites and `TRINITY_ANDROID_SERIAL` rules are the same as for the full suite
@@ -295,7 +295,7 @@ run sequentially.
 ### Homeserver-free self-check
 
 ```bash
-pnpm exec nx run trinity-e2e-protocol:verify-sas-selfcheck
+pnpm nx run trinity-e2e-protocol:verify-sas-selfcheck
 ```
 
 Validates everything that does **not** need a homeserver: the build serves, the SPA
@@ -351,7 +351,7 @@ green across all projects.
 
 `e2e:verify` **requires Docker** able to run those images. Where Docker or registry
 access is unavailable, fall back to the homeserver-free self-check
-(`pnpm exec nx run trinity-e2e-protocol:verify-sas-selfcheck` → `RESULT: PASS`), which still covers the dev
+(`pnpm nx run trinity-e2e-protocol:verify-sas-selfcheck` → `RESULT: PASS`), which still covers the dev
 build serving, the SPA booting, `/login` + discovery + an authentication path, and the
 guarded `/encryption/verify` route — everything except the live SAS exchange.
 

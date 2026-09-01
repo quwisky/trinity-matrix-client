@@ -1,5 +1,3 @@
-@use '../styles/mixins' as *;
-
 // Transparent wrapper: the row participates in the list's layout as if `.msg`
 // were a direct child (so the full-width hover bleed and padding are unchanged).
 :host {
@@ -253,69 +251,6 @@
   min-width: 0;
 }
 
-// A full-width reply preview sits on its own line above the message, indented
-// to align with the body, with a Discord-style connector curving to the avatar.
-.msg__reply {
-  position: relative;
-
-  // Full row minus the avatar + density gap indent, so the margin-box stays within the row
-  // (otherwise a long body overflows and adds a horizontal scrollbar).
-  flex: 0 0 calc(100% - var(--message-body-indent));
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  margin: 0 0 2px var(--message-body-indent);
-  padding: 0;
-  border: none;
-  border-radius: var(--trinity-shape-control-radius);
-  background: none;
-  color: var(--trinity-text-muted);
-  font-size: var(--trinity-type-body-size);
-  line-height: var(--trinity-type-body-line-height);
-  text-align: left;
-  cursor: pointer;
-
-  &:hover,
-  &:focus-visible {
-    background: var(--trinity-state-hover-surface);
-  }
-
-  &::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    bottom: -8px;
-    left: -32px;
-    width: 28px;
-    border-top: 2px solid var(--trinity-text-muted);
-    border-left: 2px solid var(--trinity-text-muted);
-    border-top-left-radius: 8px;
-  }
-
-  &:hover .msg__reply-author,
-  &:hover .msg__reply-body {
-    color: var(--trinity-text);
-  }
-}
-
-.msg__reply-avatar {
-  flex: 0 0 auto;
-}
-
-.msg__reply-author {
-  flex: 0 0 auto;
-  color: var(--trinity-text-bright);
-  font-weight: 500;
-}
-
-.msg__reply-body {
-  @include ellipsis;
-
-  flex: 1;
-  min-width: 0;
-}
-
 .msg__head {
   display: flex;
   align-items: baseline;
@@ -381,65 +316,6 @@
 .msg--sticker .msg__media {
   display: block;
   max-width: 12rem;
-}
-
-// Compact "💬 N replies · last reply <time>" affordance under a thread root,
-// indented to align with the message body (avatar 40 + the active density gap).
-.msg__thread {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin: 4px 0 0 var(--message-body-indent);
-  padding: 4px 10px;
-  min-height: var(--trinity-density-control-size);
-  border: 1px solid var(--trinity-border-subtle);
-  border-radius: var(--trinity-radius-pill);
-  background: var(--trinity-surface-raised);
-  color: var(--trinity-link);
-  font-size: var(--trinity-type-control-size);
-  line-height: var(--trinity-type-control-line-height);
-  font-weight: var(--trinity-type-control-weight);
-  cursor: pointer;
-
-  &:hover {
-    background: var(--trinity-state-hover-surface);
-  }
-}
-
-.msg__thread-icon {
-  font-size: 15px;
-}
-
-.msg__thread-sep {
-  color: var(--trinity-text-muted);
-}
-
-.msg__thread-time {
-  color: var(--trinity-text-muted);
-  font-weight: 400;
-}
-
-// Unread badge on the thread indicator: a neutral pill for unread replies,
-// switching to the danger ramp when the thread holds a highlight (mention).
-.msg__thread-badge {
-  flex: 0 0 auto;
-  min-width: 16px;
-  height: 16px;
-  margin-left: 2px;
-  padding: 0 5px;
-  border-radius: var(--trinity-radius-pill);
-  background: var(--trinity-accent);
-  color: var(--trinity-accent-foreground);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 16px;
-  text-align: center;
-}
-
-.msg__thread-badge--highlight {
-  background: var(--trinity-danger-solid);
-  color: var(--trinity-danger-solid-foreground);
 }
 
 // Rendered-markdown (`.msg__text--html` innerHTML) styling is global — see

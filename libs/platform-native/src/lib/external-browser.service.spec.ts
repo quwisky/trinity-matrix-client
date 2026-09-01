@@ -74,7 +74,9 @@ describe('ExternalBrowserService', () => {
   it('reports a Capacitor browser rejection to the caller', async () => {
     isNative.mockReturnValue(true);
     browserOpen.mockRejectedValueOnce(new Error('browser unavailable'));
-    vi.spyOn(console, 'debug').mockImplementation(() => undefined);
+    const debug = vi
+      .spyOn(console, 'debug')
+      .mockImplementation(() => undefined);
 
     const opened = await firstValueFrom(
       TestBed.inject(ExternalBrowserService).open(
@@ -83,6 +85,11 @@ describe('ExternalBrowserService', () => {
     );
 
     expect(opened).toBe(false);
+    expect(debug).toHaveBeenCalledWith(
+      'Trinity: external browser unavailable',
+      expect.any(Error),
+    );
+    debug.mockRestore();
   });
 
   it.each(['javascript:alert(1)', 'data:text/html,hello', 'not a URL'])(

@@ -27,13 +27,13 @@ directory. Each project opts in by declaring an empty `"test": {}` in its own
 `project.json`. Because it is run-commands and not a Vitest executor, extra Vitest
 arguments have to be forwarded after `--`.
 
-Every project's `vite.config.ts` is a single line calling `createVitestConfig(__dirname)`
+Every project's `vite.config.ts` is a single line calling `createVitestConfig(import.meta.dirname)`
 from
 [`vite.base.config.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/vite.base.config.ts).
 That factory walks up from the project directory to the folder holding `nx.json` to
 find the workspace root, so it works at any nesting depth, and wires the Analog
-Angular plugin, `vite-tsconfig-paths` against `tsconfig.base.json` (which is how
-`@trinity/*` aliases resolve inside specs), `environment: 'jsdom'`, and
+Angular plugin, an explicit alias map from `tsconfig.base.json` (which is how
+`@trinity/*` aliases resolve inside specs without the obsolete path plugin), `environment: 'jsdom'`, and
 `setupFiles: ['src/test-setup.ts']`.
 
 Coverage is fully configured — the v8 provider, `text`/`html`/`lcov` reporters,
@@ -85,13 +85,16 @@ entirely.
 calls `setupTestBed({ zoneless: true })`, so specs exercise the same
 change-detection mode as production rather than a zone-driven approximation of it.
 
-Every project's `src/test-setup.ts` is a one-line import of that shared file. Two
-projects append a local shim: `feature-rooms` a controllable `ResizeObserver` with
-a static instance registry and an `emit()` hook, so the virtualized-list specs can
-drive the measurement path; `feature-settings` a no-op `ResizeObserver`, because
-Brain's `hlm-select` installs one on render. `util-matrix` is the exception that
+The shared setup provides a no-layout `ResizeObserver` so components and Brain controls can
+initialize deterministically in jsdom. `feature-rooms` replaces it with a controllable observer
+that has a static instance registry and an `emit()` hook, so the virtualized-list specs can
+drive the measurement path. Feature setups that render Trinity icons also register the typed
+production icon catalog. `util-matrix` is the exception that
 imports only `@testing-library/jest-dom/vitest` — that library is DI-free and has
 no TestBed.
+
+Expected warnings and the only output that may remain after platform validation are tracked in
+the [validation warning ledger](validation-warnings.md).
 
 ### Import render from the workspace testing wrapper
 
@@ -230,7 +233,7 @@ still reports it through `config.onUnhandledError` and rethrows it asynchronousl
 Vitest counts it against the run.
 
 ```bash
-pnpm exec nx test feature-rooms --skip-nx-cache; echo "exit=$?"
+pnpm nx test feature-rooms --skip-nx-cache; echo "exit=$?"
 ```
 
 If a test deliberately drives such a path, capture the report rather than leaking it, and
@@ -366,8 +369,8 @@ The lifecycle-owned Nx target is the serialized execution atom because selected 
 fixed-port Synapse stack. Focus by path or name without creating competing resource owners:
 
 ```bash
-pnpm exec nx run trinity-e2e-browser:e2e -- conversations/message-links.spec.mts
-pnpm exec nx run trinity-e2e-browser:e2e -- --grep "opens a copied message link"
+pnpm nx run trinity-e2e-browser:e2e -- conversations/message-links.spec.mts
+pnpm nx run trinity-e2e-browser:e2e -- --grep "opens a copied message link"
 ```
 
 After sign-in, do not use `networkidle` as a navigation readiness signal. The live
@@ -444,7 +447,7 @@ hashing, a budget overage — can pass the canonical browser suite and is caught
 
 ### The production Web/PWA host contract
 
-`pnpm exec nx run trinity-e2e-web:production-pwa` runs the focused host contract without Docker.
+`pnpm nx run trinity-e2e-web:production-pwa` runs the focused host contract without Docker.
 The support wrapper builds the production configuration and its dynamic server exposes the exact
 shared `www/` artifact. The check enters on an unknown deep link,
 waits for Application Runtime to reach the login surface, verifies the manifest and crypto WASM,
@@ -699,7 +702,7 @@ repository-level invariant specs that guard configuration a green run cannot see
 The visual lifecycle provides a separate real-application semantic and geometry gate:
 
 ```bash
-pnpm exec nx run trinity-e2e-web:production-renderer
+pnpm nx run trinity-e2e-web:production-renderer
 ```
 
 It creates and records a production build, then drives seven representative cross-cutting
@@ -720,7 +723,7 @@ For cross-platform rollout evidence, the production-renderer target builds `www/
 before either wrapper copies it:
 
 ```bash
-pnpm exec nx run trinity-e2e-web:production-renderer
+pnpm nx run trinity-e2e-web:production-renderer
 pnpm electron:build:prebuilt
 TRINITY_E2E_PREBUILT_WWW=1 pnpm e2e:android -- --grep @renderer-smoke
 pnpm bundle:manifest:verify
@@ -787,8 +790,8 @@ are covered in [CI and releases](ci-and-releases.md).
 They are ordinary Vitest specs, so `pnpm test` runs them with everything else. On their own:
 
 ```bash
-pnpm exec nx test scripts
-pnpm exec nx test scripts -- token-resolve   # one of them, by path substring
+pnpm nx test scripts
+pnpm nx test scripts -- token-resolve   # one of them, by path substring
 ```
 
 That target lists its cache inputs by hand in `scripts/project.json`, and it has to. The specs

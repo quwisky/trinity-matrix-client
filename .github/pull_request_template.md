@@ -37,7 +37,7 @@ Capacitor — so a change is often correct on one target and broken on another. 
 - [ ] `pnpm lint` and `pnpm test`
 - [ ] `pnpm build` (production build / AOT template typecheck)
 - [ ] `pnpm stylelint` (only if SCSS changed — it is not part of `pnpm lint`)
-- [ ] End-to-end (`pnpm exec nx e2e trinity-e2e`, or a named `pnpm e2e:*` flow) — needs Docker
+- [ ] End-to-end (`pnpm nx e2e trinity-e2e`, or a named `pnpm e2e:*` flow) — needs Docker
 - [ ] Ran it by hand (say where: `pnpm start`, a device, the desktop shell)
 
 <!-- If a check doesn't apply or you couldn't run it (e.g. no Docker locally), say so

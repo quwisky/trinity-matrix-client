@@ -84,7 +84,7 @@ const expectedCompositeCounts = {
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-user-panel/sidebar-user-panel.component.html': 5,
   'libs/feature/rooms/src/lib/location-share/location.component.html': 1,
   'libs/feature/rooms/src/lib/message-composer/composer-insert-menu/composer-insert-menu.component.html': 1,
-  'libs/feature/rooms/src/lib/message-row/message-row.component.html': 1,
+  'libs/feature/rooms/src/lib/message-thread-summary/message-thread-summary.component.html': 1,
   'libs/feature/rooms/src/lib/quick-switcher/quick-switcher.component.html': 1,
   'libs/feature/rooms/src/lib/rooms/rooms.page.html': 5,
   'libs/feature/settings/src/lib/settings/settings.page.html': 1,

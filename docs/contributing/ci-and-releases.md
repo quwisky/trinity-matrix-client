@@ -240,7 +240,7 @@ attribute was silently overwritten with null and could not be set at all.
 It carries the same shape of floor assertion as the two above — it asserts it found entries at
 all — so a parser change that matched nothing cannot pass as a clean sweep.
 
-    If you restructure that table, run `pnpm exec nx test scripts` before committing.
+    If you restructure that table, run `pnpm nx test scripts` before committing.
 
 A fourth spec in the same project drives the build-info generator against a temporary
 manifest and an injected fake `git`, deliberately never reading the real repository

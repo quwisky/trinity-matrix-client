@@ -147,7 +147,7 @@ the app most.
 The installable web app manifest (`manifest.webmanifest`) is linked from `index.html` and
 prefetched in the `app` asset group, which is what makes the browser offer **Install app**.
 
-`pnpm exec nx run trinity-e2e-web:production-pwa` is the focused production Web/PWA host
+`pnpm nx run trinity-e2e-web:production-pwa` is the focused production Web/PWA host
 acceptance target. It builds the exact `www/` artifact, serves it without Synapse or Docker,
 enters through an unknown deep link, verifies the login startup surface and manifest, waits for
 service-worker control, then reloads another deep link offline and reads the cached crypto WASM.
@@ -188,7 +188,7 @@ it toggles `.dark` on `<html>` inside the real Electron renderer and asserts tha
 | Budgets                | initial 2 mb warn, 5 mb error; component style 6 kb and 8 kb | The initial budget is the one that bites when a lazy route stops being lazy |
 
 The development configuration disables optimization and enables source maps and named
-chunks. Run it with `pnpm exec nx build trinity --configuration=development`; the e2e
+chunks. Run it with `pnpm nx build trinity --configuration=development`; the e2e
 harnesses use exactly that.
 
 `apps/trinity/src/polyfills.ts` is intentionally empty. The application is zoneless, so

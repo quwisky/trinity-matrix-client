@@ -1,8 +1,7 @@
 import angular from '@analogjs/vite-plugin-angular';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { mergeConfig, type UserConfig } from 'vite';
-import tsconfigPaths from 'vite-tsconfig-paths';
 
 /** Walk up from a project dir to the workspace root (the dir holding nx.json). */
 function workspaceRootFrom(projectDir: string): string {
@@ -16,10 +15,24 @@ function workspaceRootFrom(projectDir: string): string {
   return projectDir;
 }
 
+function workspaceAliases(root: string): Record<string, string> {
+  const tsconfig = JSON.parse(
+    readFileSync(join(root, 'tsconfig.base.json'), 'utf8'),
+  ) as { compilerOptions?: { paths?: Record<string, string[]> } };
+  return Object.fromEntries(
+    Object.entries(tsconfig.compilerOptions?.paths ?? {}).flatMap(
+      ([alias, candidates]) => {
+        const candidate = candidates[0];
+        return candidate ? [[alias, join(root, candidate)]] : [];
+      },
+    ),
+  );
+}
+
 /**
  * Shared Vitest config for the Angular libs + app: the Analog compiler plugin,
  * jsdom, `@trinity/*` alias resolution, and coverage. Each project's
- * `vite.config.ts` calls this with its own `__dirname`; the workspace root (and
+ * `vite.config.ts` calls this with its own `import.meta.dirname`; the workspace root (and
  * therefore cacheDir / coverage output) is derived by walking up to nx.json, so
  * this works at any directory depth (libs/* and libs/spartan/* alike).
  * Per-project extras (e.g. `passWithNoTests`) go in `overrides`.
@@ -34,10 +47,12 @@ export function createVitestConfig(
     {
       root: projectDir,
       cacheDir: join(root, 'node_modules/.vite', rel),
-      plugins: [
-        angular(),
-        tsconfigPaths({ root, projects: ['tsconfig.base.json'] }),
-      ],
+      plugins: [angular()],
+      // Vite 8's built-in `resolve.tsconfigPaths` starts at `root` (the individual Nx
+      // project) and does not discover the workspace-level path catalog through this
+      // workspace's extended tsconfigs. Materialize that one exact catalog instead of
+      // retaining the now-obsolete vite-tsconfig-paths plugin.
+      resolve: { alias: workspaceAliases(root) },
       test: {
         globals: true,
         // Set explicitly, and load-bearing: @analogjs/vite-plugin-angular defaults the pool to

@@ -1,0 +1,17 @@
+@let r = reply();
+<button
+  type="button"
+  class="msg__reply msg__target"
+  [attr.aria-label]="'Replying to ' + r.senderName"
+  (click)="jump.emit(r.id)"
+>
+  <trn-avatar
+    class="msg__reply-avatar"
+    [mxc]="r.senderAvatarMxc"
+    [initial]="r.senderInitial"
+    [name]="r.senderName"
+    [size]="16"
+  />
+  <span class="msg__reply-author">{{ r.senderName }}</span>
+  <span class="msg__reply-body">{{ r.body }}</span>
+</button>
