@@ -21,10 +21,13 @@ interface ThemeBlock {
   readonly body: string;
 }
 
+const ASSET_VALUE_FUNCTION =
+  /\b(?:cross-fade|element|image|(?:-webkit-)?image-set|paint|url)\s*\(/iu;
+
 function themeBlocks(source: string): readonly ThemeBlock[] {
   const blocks: ThemeBlock[] = [];
   const selectors = source.matchAll(
-    /^(?<selector>[^\n{]*\[data-theme='[^']+'\][^\n{]*)\s*\{/gmu,
+    /(?<selector>[^{}]*\[data-theme(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\]\s]+))?\][^{}]*)\s*\{/gu,
   );
 
   for (const match of selectors) {
@@ -111,11 +114,14 @@ describe('Theme Foundation stylesheet interface', () => {
 
   it('allows named Themes to override governed semantic roles only', () => {
     const source = readFileSync(variablesPath, 'utf8');
+    const authoredSource = source
+      .replace(/\/\*[\s\S]*?\*\//gu, '')
+      .replace(/\/\/.*$/gmu, '');
     const allowed = new Set([
       ...THEME_CATALOG.authoring.colorRoles,
       ...THEME_CATALOG.authoring.elevationRoles,
     ]);
-    const blocks = themeBlocks(source);
+    const blocks = themeBlocks(authoredSource);
     const expectedSelectors = THEME_CATALOG.themes.flatMap(({ dataTheme }) =>
       dataTheme === null
         ? []
@@ -128,7 +134,7 @@ describe('Theme Foundation stylesheet interface', () => {
     expect(blocks.map(({ selector }) => selector)).toEqual(expectedSelectors);
     for (const block of blocks) {
       const statements = authoredStatements(block.body);
-      expect(block.body).not.toMatch(/\burl\s*\(/iu);
+      expect(block.body).not.toMatch(ASSET_VALUE_FUNCTION);
       expect(
         statements.every((statement) =>
           /^--[a-z0-9-]+\s*:[^{}]+$/u.test(statement),
@@ -140,6 +146,20 @@ describe('Theme Foundation stylesheet interface', () => {
           .every((role) => role !== undefined && allowed.has(role as never)),
       ).toBe(true);
     }
+  });
+
+  it('discovers alternate Theme selector syntax and asset functions for rejection', () => {
+    const bypassAttempts = `
+      :root[data-theme="amethyst"] .component { font-family: serif; }
+      @media (width > 1px) {
+        :root[data-theme=onyx] { --trinity-accent: image-set("asset.png" 1x); }
+      }
+    `;
+
+    expect(themeBlocks(bypassAttempts).map(({ selector }) => selector)).toEqual(
+      [':root[data-theme="amethyst"] .component', ':root[data-theme=onyx]'],
+    );
+    expect(bypassAttempts).toMatch(ASSET_VALUE_FUNCTION);
   });
 
   it('resolves every governed role from one complete base without Theme chaining', () => {
