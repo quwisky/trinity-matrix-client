@@ -11,6 +11,7 @@ import {
   type TestInfo,
 } from '@playwright/test';
 import { _android, type AndroidDevice } from 'playwright';
+import { findTriggeredExternalPage } from '../support/external-page.mts';
 import { navigateApplication } from '../support/navigation.mts';
 import { resourceFixtureDefinitions } from '../support/resource-fixtures.mts';
 import type {
@@ -841,13 +842,32 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
           const context = await ensureExternalContext();
           await context.clearCookies();
           await activatePrimary();
-          const knownPages = new Set(context.pages());
-          const externalPagePromise = context.waitForEvent('page', {
-            timeout: 30_000,
-            predicate: (candidate) => !knownPages.has(candidate),
-          });
+          const knownPages = new Map(
+            context.pages().map((candidate) => [candidate, candidate.url()]),
+          );
           await trigger();
-          const externalPage = await externalPagePromise;
+          let externalPage: Page | undefined;
+          await expect
+            .poll(
+              () => {
+                externalPage = findTriggeredExternalPage(
+                  knownPages,
+                  context.pages(),
+                );
+                return externalPage !== undefined;
+              },
+              {
+                message:
+                  'Native authentication must create or navigate a Custom Tab',
+                timeout: 30_000,
+              },
+            )
+            .toBe(true);
+          if (!externalPage) {
+            throw new Error(
+              'Native authentication did not expose a changed Custom Tab page',
+            );
+          }
           if (externalPage === appPage) {
             throw new Error(
               'Native authentication stayed in Trinity instead of opening a Custom Tab',
