@@ -422,8 +422,33 @@ complete source inventory is frozen in
 ledger in `cascade-layer-exceptions.mjs` fingerprints each comment-free unlayered ruleset, so a
 rule added or changed inside an existing source fails too. Shared SCSS partials have their own
 entries, so a transitive mixin or emitted-rule change cannot bypass the component fingerprints;
-later migrations delete entries. Runtime vendor injection and the CodeMirror adapter are migrated
-by the next vendor-seam ticket rather than hidden here.
+later migrations delete entries.
+
+### Runtime vendor styles are an explicit exception class
+
+Some libraries must calculate or mount styling after the application stylesheet has loaded. They
+cannot be put in a named author layer without forking the library, and they are not ordinary
+component-style exceptions. The complete allowlist lives in
+[`architecture/runtime-vendor-styles.json`](../../architecture/runtime-vendor-styles.json):
+
+| Runtime owner          | Unavoidable mechanism                                                          | Trinity seam                                                                                             |
+| ---------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| CodeMirror `style-mod` | mounts base and selected theme modules in the editor's document root           | `config-editor-theme.ts` supplies one `EditorView.theme()` extension built entirely from semantic tokens |
+| Angular CDK Overlay    | creates global overlay and visually-hidden loaders and writes overlay geometry | `@trinity/components/overlay`; the static baseline also enters `vendor.css` through `layer(vendor)`      |
+| `@ng-icons/core`       | injects `NgIcon`'s component rules and writes size/colour custom properties    | `<trn-icon>` plus the audited generated Helm wrappers                                                    |
+| Brain Sonner           | injects its global toaster rules and writes stack/swipe custom properties      | `<trn-toaster>` and `TrnToastService`                                                                    |
+
+The architecture check pins the four ids, the installed package versions, the upstream injection
+markers, each owned seam, and every permitted production import prefix. A package upgrade or a
+direct import outside those seams therefore fails for review. Adding an authored stylesheet to
+this catalog is not a migration path: ordinary app and component CSS remains governed by the
+named-layer contract and the shrinking unlayered fingerprint ledger.
+
+CodeMirror used to be the misleading edge case. Its generated DOM was reached with
+`ViewEncapsulation.None` and a global `.trn-config-editor .cm-*` stylesheet. The editor now receives
+the same token-based paint through `EditorView.theme()`, which CodeMirror orders after its own base
+modules. No Trinity selector has to outrank that runtime sheet, and no global `!important` bridge
+is involved.
 
 Three old reversals are deliberate now. Public input and textarea controls are excluded from
 the base focus selector so their Helm ring remains the only indicator. The semantic disabled

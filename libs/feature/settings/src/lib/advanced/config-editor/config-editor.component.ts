@@ -3,7 +3,6 @@ import {
   Component,
   DestroyRef,
   ElementRef,
-  ViewEncapsulation,
   afterNextRender,
   computed,
   effect,
@@ -22,11 +21,9 @@ import {
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { json } from '@codemirror/lang-json';
 import {
-  HighlightStyle,
   bracketMatching,
   indentOnInput,
   indentUnit,
-  syntaxHighlighting,
 } from '@codemirror/language';
 import { lintKeymap, linter, lintGutter } from '@codemirror/lint';
 import { EditorState, type Extension } from '@codemirror/state';
@@ -37,7 +34,6 @@ import {
   lineNumbers,
   type Tooltip,
 } from '@codemirror/view';
-import { tags } from '@lezer/highlight';
 import { AppConfigService, configJsonSchema } from '@trinity/platform-native';
 import type { ConfigEditorHost } from '../config-editor-loader';
 import {
@@ -46,28 +42,13 @@ import {
   configHoverInfo,
   type ConfigHoverInfo,
 } from './config-intellisense';
+import { TRINITY_CONFIG_EDITOR_THEME_EXTENSIONS } from './config-editor-theme';
 
 /** The exported document is written with two spaces; typing in it should match. */
 const INDENT = '  ';
 
 /** How long typing settles before the document is re-checked. */
 const LINT_DELAY = 300;
-
-/**
- * Syntax colours by class rather than by value, so the Theme lives in SCSS with the rest of
- * the app's tokens. A `HighlightStyle` that carried colours would be a second Theme, blind to
- * light/dark and to the Theme the user picked.
- */
-const TRINITY_JSON_HIGHLIGHT = HighlightStyle.define([
-  { tag: tags.propertyName, class: 'trn-cm-property' },
-  { tag: tags.string, class: 'trn-cm-string' },
-  { tag: tags.number, class: 'trn-cm-number' },
-  { tag: tags.bool, class: 'trn-cm-literal' },
-  { tag: tags.null, class: 'trn-cm-literal' },
-  { tag: tags.separator, class: 'trn-cm-punctuation' },
-  { tag: tags.brace, class: 'trn-cm-punctuation' },
-  { tag: tags.squareBracket, class: 'trn-cm-punctuation' },
-]);
 
 /**
  * The configuration document in a real editor: completion, hover text and live diagnostics,
@@ -97,11 +78,7 @@ const TRINITY_JSON_HIGHLIGHT = HighlightStyle.define([
 @Component({
   selector: 'trn-config-editor',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  // The editor builds its own DOM, which no component stylesheet could reach through emulated
-  // encapsulation. Every selector in the stylesheet is under `.trn-config-editor` for it.
-  encapsulation: ViewEncapsulation.None,
   templateUrl: './config-editor.component.html',
-  styleUrl: './config-editor.component.scss',
 })
 export class ConfigEditorComponent implements ConfigEditorHost {
   private readonly config = inject(AppConfigService);
@@ -157,7 +134,7 @@ export class ConfigEditorComponent implements ConfigEditorHost {
       indentOnInput(),
       bracketMatching(),
       closeBrackets(),
-      syntaxHighlighting(TRINITY_JSON_HIGHLIGHT),
+      ...TRINITY_CONFIG_EDITOR_THEME_EXTENSIONS,
       autocompletion({ override: [configCompletionSource(this.schema())] }),
       hoverTooltip((view, pos) => this.tooltip(view.state, pos)),
       linter(

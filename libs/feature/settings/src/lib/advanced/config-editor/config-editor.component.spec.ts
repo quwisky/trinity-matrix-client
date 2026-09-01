@@ -68,6 +68,17 @@ describe('ConfigEditorComponent', () => {
     expect(content?.getAttribute('aria-label')).toBe('Settings JSON');
   });
 
+  it("mounts its semantic paint through CodeMirror's theme adapter", async () => {
+    const { view } = await open(documentOf('trinity'));
+    const runtimeTheme = [...document.head.querySelectorAll('style')].find(
+      (style) => style.textContent?.includes('var(--trinity-chat)'),
+    );
+
+    expect(runtimeTheme?.textContent).toContain('var(--trinity-accent)');
+    expect(runtimeTheme?.textContent).toContain('var(--trinity-syntax-string)');
+    expect(view?.dom.className).toMatch(/cm-editor.*ͼ/u);
+  });
+
   it('reports what the user types', async () => {
     const { view, edits } = await open(documentOf('trinity'));
 

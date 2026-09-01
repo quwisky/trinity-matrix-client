@@ -325,10 +325,6 @@ export const UNLAYERED_RULESET_LEDGER = [
     '12b53744651ada7b966b03cf094b7661f1f40dcade2228e3613b8546acbe0a5a',
   ],
   [
-    'libs/feature/settings/src/lib/advanced/config-editor/config-editor.component.scss',
-    '8e77a5622ba1475809896710684752b9057a92ff356b4e1a74293c79257d0e58',
-  ],
-  [
     'libs/feature/settings/src/lib/appearance/appearance-preview.component.scss',
     '9c0fb5b4fdce56af0522db11275fbcd53148d77d27eac17eedc4a12c2c9dc258',
   ],

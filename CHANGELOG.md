@@ -87,6 +87,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Runtime vendor styling now has named, audited seams.** The advanced configuration editor uses
+  CodeMirror's supported theme extension instead of a global component override. CDK overlays,
+  ng-icons, and the Sonner toaster remain behind Trinity's public wrappers, while a versioned
+  architecture allowlist records their unavoidable runtime styles and inline geometry. Static CDK
+  and emoji styles still enter the explicit `vendor` layer, and repository checks reject package,
+  injection-mechanism, import-boundary, or seam drift without adding another global `!important`
+  escape hatch.
+
 - **Application styles now follow one explicit cascade.** Theme values, browser defaults,
   third-party styles, component defaults, utilities, and narrow invariants have a fixed order
   shared by the app and Storybook. Focus, disabled, responsive shell, and safe-area behavior no
