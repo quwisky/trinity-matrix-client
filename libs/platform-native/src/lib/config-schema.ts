@@ -177,6 +177,8 @@ export function provideConfigEntries(
 
 /** Which library owns a stored key. */
 export type ConfigOwner =
+  | 'application/appearance'
+  | 'data-access/timeline'
   | 'platform-native'
   | 'data-access/gif'
   | 'data-access/notifications'
@@ -216,6 +218,64 @@ export type ConfigKeyRecord =
  * {@link CONFIG_EXCLUSION_NOTES}.
  */
 export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
+  // — application/appearance, excluded until the descriptor-backed config migration —
+  {
+    disposition: 'excluded',
+    key: 'trinity.appearance.mode',
+    owner: 'application/appearance',
+    reason:
+      'A portable typed descriptor, but the legacy Advanced configuration registry cannot ' +
+      'read descriptor envelopes yet. Issue #387 moves export and import to the descriptor ' +
+      'catalog; exporting this key through the legacy ThemeService facade would duplicate it.',
+  },
+  {
+    disposition: 'excluded',
+    key: 'trinity.appearance.theme',
+    owner: 'application/appearance',
+    reason:
+      'A portable typed descriptor, but the legacy Advanced configuration registry cannot ' +
+      'read descriptor envelopes yet. Issue #387 moves export and import to the descriptor ' +
+      'catalog; exporting this key through the legacy ThemeService facade would duplicate it.',
+  },
+  {
+    disposition: 'excluded',
+    key: 'trinity.appearance.text-size',
+    owner: 'application/appearance',
+    reason:
+      'A portable typed descriptor, but the legacy Advanced configuration registry cannot ' +
+      'read descriptor envelopes yet. Issue #387 moves export and import to the descriptor ' +
+      'catalog; exporting this key through the legacy ThemeService facade would duplicate it.',
+  },
+  {
+    disposition: 'excluded',
+    key: 'trinity.appearance.density',
+    owner: 'application/appearance',
+    reason:
+      'A portable typed descriptor, but the legacy Advanced configuration registry cannot ' +
+      'read descriptor envelopes yet. Issue #387 moves export and import to the descriptor ' +
+      'catalog; exporting this key through the legacy ThemeService facade would duplicate it.',
+  },
+
+  // — data-access/timeline, excluded until the descriptor-backed config migration —
+  {
+    disposition: 'excluded',
+    key: 'trinity.appearance.code-size',
+    owner: 'data-access/timeline',
+    reason:
+      'A portable typed descriptor, but the legacy Advanced configuration registry cannot ' +
+      'read descriptor envelopes yet. Issue #387 moves export and import to the descriptor ' +
+      'catalog; exporting this key through the legacy ThemeService facade would duplicate it.',
+  },
+  {
+    disposition: 'excluded',
+    key: 'trinity.appearance.code-line-presentation',
+    owner: 'data-access/timeline',
+    reason:
+      'A portable typed descriptor, but the legacy Advanced configuration registry cannot ' +
+      'read descriptor envelopes yet. Issue #387 moves export and import to the descriptor ' +
+      'catalog; exporting this key through the legacy ThemeService facade would duplicate it.',
+  },
+
   // — theme.service.ts —
   { disposition: 'exported', key: 'trinity.theme', owner: 'platform-native' },
   { disposition: 'exported', key: 'trinity.palette', owner: 'platform-native' },
