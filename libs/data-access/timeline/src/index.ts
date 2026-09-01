@@ -51,3 +51,4 @@ export * from './lib/edit-history.service';
 export * from './lib/conversation-search.service';
 export * from './lib/message-presentation';
 export * from './lib/privacy-preferences';
+export * from './lib/appearance-preferences';

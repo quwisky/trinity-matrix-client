@@ -168,6 +168,11 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   stream for deep links, Back, route focus, badges, updates, and surface registration. Its deep
   provider interface owns concrete adapters and cross-capability bindings; the app entrypoint
   supplies routes, environment values and lazy loaders, then starts its lifetime subscription.
+- `@trinity/application/appearance` `[type:data-access]`, `[role:application]` — Appearance:
+  four installation-scoped Design System descriptors compose with Conversations' two code
+  presentation descriptors as one read-only six-axis value and per-axis state. The projection
+  delegates all hydration and persistence to Preferences Store; any partial hydration retains
+  independent defaults/failures and reduces to one recoverable startup warning.
 - `@trinity/runtime/host` `[type:platform]`, `[role:kernel]` — Host Capabilities: narrow operation
   contracts and explicit supported/unavailable manifests for authentication handoff, deep links,
   Back, file export, notification presentation, location, badges, secure storage, lifecycle, and
@@ -206,9 +211,10 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   explicit inter-lib edges (auth→accounts, notification→room-library/timeline, timeline→media).
 - `@trinity/data-access/timeline` owns `ConversationRuntime` and Message Presentation: immutable
   Account-and-Room handles with one timeline child each, a two-entry per-Account retained LRU,
-  permanent retirement, exact child-bound message search, a stable focused-timeline interface, and the Conversations privacy
-  preference descriptors. Normalize SDK events first, then expose immutable `MessageView` models
-  from this public entrypoint.
+  permanent retirement, exact child-bound message search, a stable focused-timeline interface,
+  and the Conversations privacy, code-size, and code-line presentation preference descriptors.
+  Normalize SDK events first, then expose immutable `MessageView` models from this public
+  entrypoint.
 - `@trinity/feature/*` `[type:feature]` — screens/pages incl. `feature-shell` (the app shell moved out of
   `apps/trinity`). May depend on `data-access-*` + `ui` + `util` + `platform`, **never another feature**.
 - `@trinity/components/{foundations,controls,generic-content,navigation-layout,overlay}`

@@ -87,6 +87,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Appearance preferences now keep their capability ownership.** Mode, Theme, text size, and
+  density are independently persisted Design System descriptors, while Conversations owns code
+  size and code-line presentation. One read-only application model composes all six values and
+  their per-axis states without duplicating storage; an invalid or unavailable axis keeps its own
+  default and contributes to one recoverable startup warning. The new versioned
+  `trinity.appearance.*` identities upgrade from the former ThemeService keys, and Theme choices
+  are validated directly against the Theme Foundation catalog.
+
 - **Preference storage keys now upgrade in one direction.** Capability descriptors can name
   ordered, read-only predecessor keys without exposing them through Settings. The current key
   remains authoritative; otherwise a valid legacy value is written into its current versioned
