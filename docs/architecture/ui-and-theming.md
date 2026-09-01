@@ -397,12 +397,12 @@ The six layers are a responsibility contract, not a ranking chosen at each call 
 | `utilities`  | Tailwind, its directive plugins, and Trinity's utility classes      |
 | `overrides`  | Narrow accessibility and design-system invariants only              |
 
-Tailwind expands its imports ahead of ordinary authored rules. The application therefore loads
-Theme Foundation's tiny `cascade-layers.css` contract first, before the Theme aggregate, then
-[`vendor.css`](../../apps/trinity/src/vendor.css), `global.scss`, and
-`rendered-markdown.scss`. CDK and the emoji picker enter through an explicit `vendor` seam
-instead of anonymous build entries. Storybook's preview head embeds the same guarded statement
-before composing Theme Foundation and its app defaults, because its bundler hoists imported CSS.
+Tailwind expands its imports ahead of ordinary authored rules. The application document therefore
+embeds the order statement before Angular's injected stylesheet link, then loads Theme Foundation's
+single aggregate, [`vendor.css`](../../apps/trinity/src/vendor.css), `global.scss`, and
+`rendered-markdown.scss`. CDK and the emoji picker enter through an explicit `vendor` seam instead
+of anonymous build entries. Storybook's preview head embeds the same guarded statement before
+composing Theme Foundation and its app defaults, because its bundler also hoists imported CSS.
 
 `tw-animate-css` is not a static vendor sheet: it is a Tailwind directive plugin containing
 `@theme` and `@utility`, which Tailwind requires at top level. Its generated tokens and classes
@@ -417,11 +417,12 @@ important declarations are the four reduced-motion properties required to cross 
 still-unlayered component style tags, and the repository contract rejects any fifth one.
 
 Angular currently injects component `styleUrl` and inline `styles` blocks without a layer. The
-complete temporary exception inventory is frozen in
-[`scripts/styling-idiom.spec.mjs`](../../scripts/styling-idiom.spec.mjs) and audited by
-`cascade-layer-contract.spec.mjs`: a new source fails until it is explicitly accounted for,
-while later migrations shrink the derived unlayered set. Runtime vendor injection and the
-CodeMirror adapter are migrated by the next vendor-seam ticket rather than hidden here.
+complete source inventory is frozen in
+[`scripts/styling-idiom.spec.mjs`](../../scripts/styling-idiom.spec.mjs). The stricter temporary
+ledger in `cascade-layer-exceptions.mjs` fingerprints each comment-free unlayered ruleset, so a
+rule added or changed inside an existing source fails too; later migrations delete entries.
+Runtime vendor injection and the CodeMirror adapter are migrated by the next vendor-seam ticket
+rather than hidden here.
 
 Three old reversals are deliberate now. Public input and textarea controls are excluded from
 the base focus selector so their Helm ring remains the only indicator. The semantic disabled
@@ -441,9 +442,9 @@ generate a utility, which is why the two non-colour tokens live there rather tha
 
 Theme Foundation's supported stylesheet interface is the single aggregate
 `libs/theme-foundation/styles/theme.scss`. The application and Storybook both load that aggregate
-directly before authored application defaults, so it establishes the cascade order. Private token
-and Tailwind adapter files are implementation details; compatibility stylesheet entrypoints outside
-Theme Foundation do not exist.
+directly before authored application defaults; their document/preview heads establish the shared
+order before the aggregate is parsed. Private token and Tailwind adapter files are implementation
+details; compatibility stylesheet entrypoints outside Theme Foundation do not exist.
 
 ESLint and Prettier point their Tailwind integration at Theme Foundation's private adapter, with
 `classnames-order` off (`prettier-plugin-tailwindcss` owns ordering) and `no-custom-classname` off

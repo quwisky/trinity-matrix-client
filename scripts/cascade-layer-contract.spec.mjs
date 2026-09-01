@@ -1,15 +1,21 @@
+import { createHash } from 'node:crypto';
 import { globSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { UNLAYERED_RULESET_LEDGER } from './cascade-layer-exceptions.mjs';
 import { inlineStyleSheets } from './inline-styles.mjs';
+import {
+  stripSourceComments,
+  topLevelStyleBlocks,
+} from './source-style-blocks.mjs';
 
 /**
  * The application has one cascade and six responsibilities.
  *
  * Angular component styles are still emitted as unlayered runtime style tags. Their complete
- * source inventory is frozen in `styling-idiom.spec.mjs`; this contract treats every inventoried
- * source without an `@layer` as a temporary exception. A new stylesheet or inline block fails
- * that ledger before it can become a silent seventh precedence tier.
+ * source inventory is frozen in `styling-idiom.spec.mjs`; this contract fingerprints the exact
+ * comment-free ruleset of every source without an `@layer`. A new or changed unlayered rule
+ * therefore fails before it can become a silent seventh precedence tier.
  */
 
 const workspaceRoot = join(import.meta.dirname, '..');
@@ -24,8 +30,20 @@ const LAYERS = [
 ];
 const LAYER_ORDER = `@layer ${LAYERS.join(', ')};`;
 
-const stripComments = (source) =>
-  source.replace(/\/\*[\s\S]*?\*\//gu, '').replace(/(^|\s)\/\/.*$/gmu, '$1');
+const normalizedRules = (source) =>
+  stripSourceComments(source).replace(/\s+/gu, ' ').trim();
+const rulesetFingerprint = (source) =>
+  createHash('sha256').update(normalizedRules(source)).digest('hex');
+const stripHtmlComments = (source) => source.replace(/<!--[\s\S]*?-->/gu, '');
+
+function documentStyle(attribute) {
+  const html = stripHtmlComments(read('apps/trinity/src/index.html'));
+  const body = html.match(
+    new RegExp(`<style\\s+${attribute}(?:=[^>]*)?>([\\s\\S]*?)<\\/style>`, 'u'),
+  )?.[1];
+  expect(body, `index.html must contain <style ${attribute}>`).toBeDefined();
+  return body;
+}
 
 function ledger(name) {
   const source = read('scripts/styling-idiom.spec.mjs');
@@ -36,68 +54,28 @@ function ledger(name) {
   return [...body.matchAll(/'([^']+)'/gu)].map(([, file]) => file);
 }
 
-/** Return the outer rule blocks; nested selectors stay inside their owning layer body. */
-function topLevelBlocks(source) {
-  const css = stripComments(source);
-  const blocks = [];
-  let start = 0;
-  let depth = 0;
-  let quote = null;
-  let escaped = false;
-
-  for (let index = 0; index < css.length; index += 1) {
-    const character = css[index];
-    if (quote) {
-      if (escaped) escaped = false;
-      else if (character === '\\') escaped = true;
-      else if (character === quote) quote = null;
-      continue;
-    }
-    if (character === "'" || character === '"') {
-      quote = character;
-      continue;
-    }
-    if (character === '{') {
-      if (depth === 0) {
-        blocks.push({
-          prelude: css.slice(start, index).trim(),
-          bodyStart: index + 1,
-        });
-      }
-      depth += 1;
-      continue;
-    }
-    if (character === '}') {
-      depth -= 1;
-      if (depth === 0) {
-        blocks.at(-1).body = css.slice(blocks.at(-1).bodyStart, index);
-        start = index + 1;
-      }
-      continue;
-    }
-    if (character === ';' && depth === 0) start = index + 1;
-  }
-
-  expect(depth, 'stylesheet braces must balance').toBe(0);
-  return blocks;
-}
+const isFullyLayered = (source) => {
+  const blocks = topLevelStyleBlocks(source);
+  return (
+    blocks.length > 0 &&
+    blocks.every(({ prelude }) =>
+      /^@layer (?:components|overrides)$/u.test(prelude),
+    )
+  );
+};
 
 const layerBodies = (file, layer) =>
-  topLevelBlocks(read(file))
+  topLevelStyleBlocks(read(file))
     .filter(({ prelude }) => prelude === `@layer ${layer}`)
     .map(({ body }) => body)
     .join('\n');
 
 describe('cascade layer contract', () => {
   it('declares the one supported order and classifies every static stylesheet', () => {
-    const adapter = read(
-      'libs/theme-foundation/styles/internal/tailwind-adapter.css',
+    const adapter = stripSourceComments(
+      read('libs/theme-foundation/styles/internal/tailwind-adapter.css'),
     );
-    expect(
-      stripComments(
-        read('libs/theme-foundation/styles/internal/cascade-layers.css'),
-      ).trim(),
-    ).toBe(LAYER_ORDER);
+    expect(documentStyle('data-trn-cascade-contract').trim()).toBe(LAYER_ORDER);
     expect(adapter).toContain(LAYER_ORDER);
     expect(adapter).toContain("@import 'tw-animate-css';");
 
@@ -105,13 +83,14 @@ describe('cascade layer contract', () => {
       JSON.parse(read('apps/trinity/project.json')).targets.build.options
         .styles,
     ).toEqual([
-      'libs/theme-foundation/styles/internal/cascade-layers.css',
       'libs/theme-foundation/styles/theme.scss',
       'apps/trinity/src/vendor.css',
       'apps/trinity/src/global.scss',
       'apps/trinity/src/rendered-markdown.scss',
     ]);
-    expect(stripComments(read('apps/trinity/src/vendor.css')).trim()).toBe(
+    expect(
+      stripSourceComments(read('apps/trinity/src/vendor.css')).trim(),
+    ).toBe(
       "@import '../../../node_modules/@angular/cdk/overlay-prebuilt.css' layer(vendor);\n" +
         "@import '../../../node_modules/@ctrl/ngx-emoji-mart/picker.css' layer(vendor);",
     );
@@ -132,7 +111,9 @@ describe('cascade layer contract', () => {
       ],
       ['apps/trinity/src/rendered-markdown.scss', ['@layer components']],
     ]) {
-      const topLevel = topLevelBlocks(read(file)).map(({ prelude }) => prelude);
+      const topLevel = topLevelStyleBlocks(read(file)).map(
+        ({ prelude }) => prelude,
+      );
       expect(
         topLevel.length,
         `${file} must contain authored rules`,
@@ -142,6 +123,12 @@ describe('cascade layer contract', () => {
         `${file} has an unclassified top-level rule`,
       ).toEqual(new Set(allowed));
     }
+
+    expect(
+      topLevelStyleBlocks(documentStyle('data-trn-boot-style')).map(
+        ({ prelude }) => prelude,
+      ),
+    ).toEqual(['@layer components']);
   });
 
   it('assigns the known precedence reversals to deliberate responsibilities', () => {
@@ -169,7 +156,7 @@ describe('cascade layer contract', () => {
     expect(overrides).toContain('@media (prefers-reduced-motion: reduce)');
   });
 
-  it('freezes every still-unlayered component source as a temporary exception', () => {
+  it('fingerprints every still-unlayered production ruleset as a temporary exception', () => {
     const componentSources = globSync(
       [
         'libs/**/*.component.scss',
@@ -182,35 +169,33 @@ describe('cascade layer contract', () => {
     const componentLedger = ledger('COMPONENT_STYLESHEET_LEDGER');
     expect(componentSources).toEqual(componentLedger);
 
-    const unlayeredComponents = componentSources.filter(
-      (file) =>
-        !/@layer\s+(?:components|overrides)\b/u.test(stripComments(read(file))),
-    );
-    expect(unlayeredComponents.length).toBeGreaterThan(50);
-    expect(
-      unlayeredComponents.every((file) => componentLedger.includes(file)),
-    ).toBe(true);
-
     const inlineSources = inlineStyleSheets();
     const inlineLedger = ledger('INLINE_STYLE_LEDGER');
     expect(inlineSources.map(({ file }) => file)).toEqual(inlineLedger);
     expect(
       inlineSources
-        .filter(({ css }) =>
-          /@layer\s+(?:components|overrides)\b/u.test(stripComments(css)),
-        )
+        .filter(({ css }) => isFullyLayered(css))
         .map(({ file }) => file),
     ).toEqual([
       'libs/components/overlay/src/lib/action-sheet/trn-action-sheet.component.ts',
     ]);
-    const unlayeredInline = inlineSources.filter(
-      ({ css }) =>
-        !/@layer\s+(?:components|overrides)\b/u.test(stripComments(css)),
-    );
-    expect(unlayeredInline.length).toBeGreaterThan(5);
-    expect(
-      unlayeredInline.every(({ file }) => inlineLedger.includes(file)),
-    ).toBe(true);
+
+    const actualExceptions = [
+      ...componentSources.flatMap((file) => {
+        const css = read(file);
+        return topLevelStyleBlocks(css).length > 0 && !isFullyLayered(css)
+          ? [[file, rulesetFingerprint(css)]]
+          : [];
+      }),
+      ...inlineSources.flatMap(({ file, css }) =>
+        isFullyLayered(css)
+          ? []
+          : [[`${file}#inline-styles`, rulesetFingerprint(css)]],
+      ),
+    ].sort(([left], [right]) => left.localeCompare(right));
+
+    expect(actualExceptions.length).toBeGreaterThan(50);
+    expect(actualExceptions).toEqual(UNLAYERED_RULESET_LEDGER);
   });
 
   it('allows only the audited reduced-motion important bridge', () => {
@@ -221,7 +206,7 @@ describe('cascade layer contract', () => {
         cwd: workspaceRoot,
       },
     ).sort()) {
-      const source = stripComments(read(file));
+      const source = stripSourceComments(read(file));
       for (const [, property, value] of source.matchAll(
         /([a-z-]+)\s*:\s*([^;{}]*!important)\s*;/gu,
       )) {

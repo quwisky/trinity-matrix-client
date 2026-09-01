@@ -1,11 +1,11 @@
 import { existsSync, globSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { stripSourceComments } from './source-style-blocks.mjs';
 
 const workspaceRoot = join(import.meta.dirname, '..');
 const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
-const stripComments = (source) =>
-  source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1');
+const stripHtmlComments = (source) => source.replace(/<!--[\s\S]*?-->/g, '');
 
 const allCodeFiles = globSync(
   ['apps/**/*.ts', 'libs/**/*.ts', 'e2e/**/*.mts'],
@@ -30,7 +30,7 @@ const carriesCatalogTriplet = (source, ids) =>
   );
 
 const definesThemeMetadata = (source, production = true) => {
-  const code = stripComments(source);
+  const code = stripSourceComments(source);
   if (
     /\bTRINITY_(?:PALETTES|THEME_MODES)\b/u.test(code) ||
     /(?:^|[,{])\s*dataTheme\s*:/mu.test(code)
@@ -47,22 +47,23 @@ const definesThemeMetadata = (source, production = true) => {
 describe('Theme Foundation repository contract', () => {
   it('makes the application and Storybook consume the supported aggregate', () => {
     const appProject = read('apps/trinity/project.json');
-    expect(appProject).toContain(
-      '"libs/theme-foundation/styles/internal/cascade-layers.css"',
-    );
-    expect(appProject).toContain('"libs/theme-foundation/styles/theme.scss"');
+    const appStyles = JSON.parse(appProject).targets.build.options.styles;
+    expect(appStyles[0]).toBe('libs/theme-foundation/styles/theme.scss');
+    expect(appStyles).not.toContain(expect.stringContaining('/internal/'));
     expect(appProject).not.toContain('apps/trinity/src/theme/');
 
     const storybookStyles = read(
       'libs/components/storybook-host/.storybook/global-styles.scss',
     );
-    const cascadeOrder = read(
-      'libs/theme-foundation/styles/internal/cascade-layers.css',
+    const cascadeOrder = stripSourceComments(
+      read('libs/theme-foundation/styles/internal/tailwind-adapter.css'),
     ).match(/@layer [^;]+;/u)?.[0];
-    const storybookPreviewHead = read(
-      'libs/components/storybook-host/.storybook/preview-head.html',
+    const appIndex = stripHtmlComments(read('apps/trinity/src/index.html'));
+    const storybookPreviewHead = stripHtmlComments(
+      read('libs/components/storybook-host/.storybook/preview-head.html'),
     );
     expect(cascadeOrder).toBeDefined();
+    expect(appIndex.match(/@layer [^;]+;/u)?.[0]).toBe(cascadeOrder);
     expect(storybookPreviewHead.match(/@layer [^;]+;/u)?.[0]).toBe(
       cascadeOrder,
     );
@@ -119,7 +120,7 @@ describe('Theme Foundation repository contract', () => {
 
   it('keeps root semantic Theme definitions in Theme Foundation', () => {
     const externalDefinitions = styleFiles.filter((file) => {
-      const source = stripComments(read(file));
+      const source = stripSourceComments(read(file));
       return (
         /\[data-theme(?:\s*=|\])/u.test(source) ||
         /:root[^{}]*\{[^{}]*--trinity-[a-z0-9-]+\s*:/u.test(source)

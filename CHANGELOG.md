@@ -90,8 +90,9 @@ All notable changes to this project are documented here. The format is based on
 - **Application styles now follow one explicit cascade.** Theme values, browser defaults,
   third-party styles, component defaults, utilities, and narrow invariants have a fixed order
   shared by the app and Storybook. Focus, disabled, responsive shell, and safe-area behavior no
-  longer depends on an accidental unlayered rule; repository and browser checks freeze the
-  remaining component-style exceptions while later migrations remove them.
+  longer depends on an accidental unlayered rule; repository checks fingerprint every remaining
+  component-style exception and browser checks prove the compiled precedence while later
+  migrations remove them.
 
 - **Appearance no longer carries its migration facade.** The obsolete platform Theme service,
   Palette-shaped API, direct preference writers, and legacy test hooks are gone. Current code uses

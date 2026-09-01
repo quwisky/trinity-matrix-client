@@ -1,6 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import {
+  sourceStyleBlockAt,
+  stripSourceComments,
+} from './source-style-blocks.mjs';
 
 /**
  * The first paint is not a blank page, and it stays cheap.
@@ -93,19 +97,14 @@ describe('boot splash', () => {
     // Anchored at a line start, because the file's header comment discusses `:root.dark`
     // several times and `indexOf` happily matched the prose — which then read the LIGHT
     // block's values and reported a mismatch that was not there.
+    const tokenCss = stripSourceComments(tokens);
     const blockOf = (selector) => {
-      const match = new RegExp(`^\\s*${selector} \\{$`, 'm').exec(tokens);
+      const match = new RegExp(`^\\s*${selector} \\{$`, 'm').exec(tokenCss);
       if (!match) {
         return null;
       }
-      const start = tokens.indexOf('{', match.index) + 1;
-      let depth = 1;
-      let end = start;
-      for (; end < tokens.length && depth > 0; end += 1) {
-        if (tokens[end] === '{') depth += 1;
-        else if (tokens[end] === '}') depth -= 1;
-      }
-      return tokens.slice(start, end - 1);
+      const openingBrace = tokenCss.indexOf('{', match.index);
+      return sourceStyleBlockAt(tokenCss, openingBrace).body;
     };
 
     /** The LAST declaration wins, as it would in the browser. */

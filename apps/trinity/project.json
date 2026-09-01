@@ -46,7 +46,6 @@
           }
         ],
         "styles": [
-          "libs/theme-foundation/styles/internal/cascade-layers.css",
           "libs/theme-foundation/styles/theme.scss",
           "apps/trinity/src/vendor.css",
           "apps/trinity/src/global.scss",

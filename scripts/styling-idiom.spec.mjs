@@ -12,10 +12,11 @@ import { inlineStyleSheets } from './inline-styles.mjs';
  * on the day it landed and be deleted the first time it cried wolf.
  *
  * So this is a **frozen ledger**: the set of stylesheet-owning components is recorded, and the
- * assertion is that it does not GROW. `cascade-layer-contract.spec.mjs` reads the same ledger
- * and classifies every source that has not adopted `@layer` as a temporary exception. Migrating
- * one leaves its ownership entry here but removes it from that derived exception set. Adding a
- * stylesheet still means adding an explicit ledger entry, which is a conversation.
+ * assertion is that it does not GROW. `cascade-layer-contract.spec.mjs` reads the same inventory
+ * and checks each still-unlayered ruleset against the stricter fingerprint ledger in
+ * `cascade-layer-exceptions.mjs`. Migrating one leaves its ownership entry here but removes its
+ * exception fingerprint. Adding a stylesheet still means adding an explicit inventory entry,
+ * which is a conversation.
  *
  * It lives in `scripts` for the same reason `confirmation-words.spec.mjs` does: the files span
  * libraries that the Nx module boundaries stop any single project from importing.
