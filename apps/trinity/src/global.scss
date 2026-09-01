@@ -6,56 +6,50 @@
  * stylesheet. Dark mode is keyed off the `.dark` class the Appearance document adapter owns.
  */
 
-/*
+@layer base {
+  /*
  * Keyboard-focus baseline. The custom Discord-style controls strip native
  * outlines for the look, so guarantee a visible focus ring for keyboard users.
  * Scoped to native focusable elements — Ionic web components manage their own
  * focus inside shadow DOM and are unaffected.
  */
-button:focus-visible,
-a:focus-visible,
-[role='button']:focus-visible,
-[role='link']:focus-visible,
-input:not([data-slot='input']):focus-visible,
-select:not([data-slot='input']):focus-visible,
-textarea:not([data-slot='input'], [data-slot='textarea']):focus-visible,
-[tabindex]:focus-visible {
-  outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
-  outline-offset: var(--trinity-focus-ring-offset);
+  button:focus-visible,
+  a:focus-visible,
+  [role='button']:focus-visible,
+  [role='link']:focus-visible,
+  input:not([data-slot='input']):focus-visible,
+  select:not([data-slot='input']):focus-visible,
+  textarea:not([data-slot='input'], [data-slot='textarea']):focus-visible,
+  [tabindex]:focus-visible {
+    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+    outline-offset: var(--trinity-focus-ring-offset);
+  }
 }
 
-button:disabled,
-[aria-disabled='true'] {
-  opacity: var(--trinity-disabled-opacity);
-}
-
-[data-trn-action-disabled] {
-  cursor: not-allowed;
-}
-
-/* Touch pointers cannot hover a tooltip. A blocked action therefore announces the same
+@layer components {
+  /* Touch pointers cannot hover a tooltip. A blocked action therefore announces the same
  * reason in a short, non-interactive surface near the thumb zone. */
-.trn-action-feedback {
-  position: fixed;
-  z-index: var(--trinity-z-feedback);
-  right: max(1rem, env(safe-area-inset-right));
-  bottom: max(1rem, env(safe-area-inset-bottom));
-  left: max(1rem, env(safe-area-inset-left));
-  width: fit-content;
-  max-width: min(32rem, calc(100vw - 2rem));
-  margin-inline: auto;
-  padding: 0.625rem 0.875rem;
-  color: var(--trinity-tooltip-foreground);
-  font-size: 0.875rem;
-  line-height: 1.25rem;
-  text-align: center;
-  pointer-events: none;
-  background: var(--trinity-tooltip-surface);
-  border-radius: var(--radius-md);
-  box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 24%);
-}
+  .trn-action-feedback {
+    position: fixed;
+    z-index: var(--trinity-z-feedback);
+    right: max(1rem, env(safe-area-inset-right));
+    bottom: max(1rem, env(safe-area-inset-bottom));
+    left: max(1rem, env(safe-area-inset-left));
+    width: fit-content;
+    max-width: min(32rem, calc(100vw - 2rem));
+    margin-inline: auto;
+    padding: 0.625rem 0.875rem;
+    color: var(--trinity-tooltip-foreground);
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    text-align: center;
+    pointer-events: none;
+    background: var(--trinity-tooltip-surface);
+    border-radius: var(--radius-md);
+    box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 24%);
+  }
 
-/*
+  /*
  * Shared visible-scrollbar contract. The selector has deliberately zero specificity so a
  * component can opt out with `.no-scrollbar`; that utility keeps compact navigation and
  * select panels scrollable without drawing a second bar. Chromium gives the standards
@@ -64,105 +58,123 @@ button:disabled,
  * Firefox 153 claims support for the WebKit selector family without painting it, which makes
  * selector-based feature detection a false positive; `-moz-appearance` is the reliable split.
  */
-@supports (-moz-appearance: none) {
-  :where(:not(.no-scrollbar)) {
-    scrollbar-width: thin;
-    scrollbar-color: var(--trinity-scrollbar-thumb)
-      var(--trinity-scrollbar-track);
+  @supports (-moz-appearance: none) {
+    :where(:not(.no-scrollbar)) {
+      scrollbar-width: thin;
+      scrollbar-color: var(--trinity-scrollbar-thumb)
+        var(--trinity-scrollbar-track);
+    }
+  }
+
+  @supports selector(::-webkit-scrollbar-thumb) {
+    :where(:not(.no-scrollbar))::-webkit-scrollbar {
+      width: var(--trinity-scrollbar-size);
+      height: var(--trinity-scrollbar-size);
+    }
+
+    :where(:not(.no-scrollbar))::-webkit-scrollbar-thumb {
+      border-radius: var(--trinity-scrollbar-radius);
+      background: var(--trinity-scrollbar-thumb);
+    }
+
+    :where(:not(.no-scrollbar))::-webkit-scrollbar-track,
+    :where(:not(.no-scrollbar))::-webkit-scrollbar-corner {
+      background: var(--trinity-scrollbar-track);
+    }
   }
 }
 
-@supports selector(::-webkit-scrollbar-thumb) {
-  :where(:not(.no-scrollbar))::-webkit-scrollbar {
-    width: var(--trinity-scrollbar-size);
-    height: var(--trinity-scrollbar-size);
+@layer overrides {
+  /* Disabled interaction is a semantic invariant rather than a component default: callers may
+   * choose layout and colour utilities, but cannot create a second disabled-strength recipe. */
+  button:disabled,
+  [aria-disabled='true'] {
+    opacity: var(--trinity-disabled-opacity);
   }
 
-  :where(:not(.no-scrollbar))::-webkit-scrollbar-thumb {
-    border-radius: var(--trinity-scrollbar-radius);
-    background: var(--trinity-scrollbar-thumb);
+  [data-trn-action-disabled] {
+    cursor: not-allowed;
   }
 
-  :where(:not(.no-scrollbar))::-webkit-scrollbar-track,
-  :where(:not(.no-scrollbar))::-webkit-scrollbar-corner {
-    background: var(--trinity-scrollbar-track);
-  }
-}
-
-/*
+  /*
  * Shared icon-button interaction contract.
  *
  * `TrnButton` publishes the marker for every `size="icon*"` public button, while
  * `TrnIconButton` lets purpose-built controls keep meaningful component-owned geometry. These
- * rules are intentionally unlayered so the invariant state treatment wins over layered vendor
- * utilities. Contextual rest treatments still belong to the caller; cursor and interaction
+ * These rules are an allowlisted invariant in the final `overrides` layer, so their state
+ * treatment wins over vendor and utility declarations without escaping the layer contract.
+ * Contextual rest treatments still belong to the caller; cursor and interaction
  * feedback are shared everywhere, while only public square controls receive the common radius.
  */
-:is(button, a)[data-trn-icon-button] {
-  cursor: pointer;
-  transition:
-    background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
-    color var(--trinity-duration-fast) var(--trinity-ease-standard),
-    border-color var(--trinity-duration-fast) var(--trinity-ease-standard),
-    box-shadow var(--trinity-duration-fast) var(--trinity-ease-standard);
-}
+  :is(button, a)[data-trn-icon-button] {
+    cursor: pointer;
+    transition:
+      background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
+      color var(--trinity-duration-fast) var(--trinity-ease-standard),
+      border-color var(--trinity-duration-fast) var(--trinity-ease-standard),
+      box-shadow var(--trinity-duration-fast) var(--trinity-ease-standard);
+  }
 
-:is(button, a)[trnBtn][data-trn-icon-button] {
-  border-radius: var(--trinity-shape-control-radius);
-}
+  :is(button, a)[trnBtn][data-trn-icon-button] {
+    border-radius: var(--trinity-shape-control-radius);
+  }
 
-@media (hover: hover) {
+  @media (hover: hover) {
+    :is(button, a)[data-trn-icon-button]:not(
+        :disabled,
+        [aria-disabled='true'],
+        [data-disabled='true'],
+        [data-disabled='']
+      ) {
+      &:hover {
+        background: var(--trinity-state-hover-surface);
+      }
+    }
+  }
+
   :is(button, a)[data-trn-icon-button]:not(
       :disabled,
       [aria-disabled='true'],
       [data-disabled='true'],
       [data-disabled='']
     ) {
-    &:hover {
-      background: var(--trinity-state-hover-surface);
+    &:active {
+      background: var(--trinity-state-pressed-surface);
+
+      // Helm moves every pressed button down by 1px. Icon actions animate only their inner glyph,
+      // so keep the control and its hit target fixed in both normal and reduced-motion modes.
+      translate: none;
     }
   }
-}
 
-:is(button, a)[data-trn-icon-button]:not(
-    :disabled,
-    [aria-disabled='true'],
-    [data-disabled='true'],
-    [data-disabled='']
-  ) {
-  &:active {
-    background: var(--trinity-state-pressed-surface);
-
-    // Helm moves every pressed button down by 1px. Icon actions animate only their inner glyph,
-    // so keep the control and its hit target fixed in both normal and reduced-motion modes.
-    translate: none;
+  :is(button, a)[data-trn-icon-button]:is(
+      :disabled,
+      [aria-disabled='true'],
+      [data-disabled='true'],
+      [data-disabled='']
+    ) {
+    cursor: default;
   }
 }
 
-:is(button, a)[data-trn-icon-button]:is(
-    :disabled,
-    [aria-disabled='true'],
-    [data-disabled='true'],
-    [data-disabled='']
-  ) {
-  cursor: default;
-}
-
-/*
+@layer components {
+  /*
  * App-shell layout. <trn-root> is a fixed-height flex column (h-dvh); Angular renders
  * the routed page as the sibling immediately after <router-outlet>, so make that page
  * fill the remaining space and be its own flex column (its <header> is shrink-0, its
  * <main>/body is flex-1 overflow-auto). This replaces Ionic's `.ion-page`, which
  * `ion-router-outlet` used to apply to every routed host.
  */
-router-outlet + * {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+  router-outlet + * {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
 }
 
-/*
+@layer utilities {
+  /*
  * Safe-area insets (notch / status bar / home indicator). Ionic's ion-content /
  * ion-toolbar used to pad content clear of the device chrome automatically; with the
  * plain shell we do it here. `env(safe-area-inset-*)` resolves to 0 on web and
@@ -171,32 +183,34 @@ router-outlet + * {
  * `viewport-fit=cover`. Pair `.safe-top` with `min-h-*` (not a fixed `h-*`) so the
  * bar grows by the inset and its content keeps full height below the cutout.
  */
-.safe-top {
-  padding-top: env(safe-area-inset-top);
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .safe-left {
+    padding-left: env(safe-area-inset-left);
+  }
+
+  .safe-right {
+    padding-right: env(safe-area-inset-right);
+  }
 }
 
-.safe-bottom {
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-.safe-left {
-  padding-left: env(safe-area-inset-left);
-}
-
-.safe-right {
-  padding-right: env(safe-area-inset-right);
-}
-
-/*
+@layer components {
+  /*
  * A right-hand panel's top bar (threads, a thread, pinned, search, member info).
  *
  * It exists because the obvious spelling is broken: `class="safe-top safe-left safe-right
- * p-3"` looks like padding plus an inset and is neither. The `.safe-*` rules above are
- * UNLAYERED — this file is a plain stylesheet — while Tailwind's `p-3` lives in
- * `@layer utilities`, and an unlayered author declaration beats a layered one whatever the
- * specificity. So each `.safe-*` class REPLACED the padding on its side rather than adding
- * to it, and all five panel headers rendered with `padding: 0 0 12px`: a 45px bar with its
- * title flush against the border, beside a 56px room header with a 12px inset title.
+ * p-3"` asks two utilities to own the same padding longhand. Before the cascade contract,
+ * the unlayered `.safe-*` helpers replaced Tailwind's layered spacing; after classification,
+ * source order inside `utilities` can reverse the loss and discard the inset instead. The
+ * source guard rejects the ambiguous pairing in either direction. All five panel headers had
+ * rendered with `padding: 0 0 12px`: a 45px bar with its title flush against the border,
+ * beside a 56px room header with a 12px inset title.
  *
  * Here the two are composed in one declaration, so there is nothing to lose a cascade
  * fight with — and the bar is built the way the room header beside it is built, which is
@@ -208,49 +222,56 @@ router-outlet + * {
  * The height grows by the top inset rather than being eaten by it, so on a notched device
  * the bar sits below the cutout at full height instead of being clipped into it.
  */
-.panel-header {
-  height: calc(3.5rem + env(safe-area-inset-top));
-  padding-top: env(safe-area-inset-top);
-  padding-right: calc(0.75rem + env(safe-area-inset-right));
-  padding-left: calc(0.75rem + env(safe-area-inset-left));
-  background: var(--trinity-surface-panel);
-  color: var(--trinity-text-bright);
-}
-
-/* Respect users who prefer reduced motion. */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
+  .panel-header {
+    height: calc(3.5rem + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+    padding-right: calc(0.75rem + env(safe-area-inset-right));
+    padding-left: calc(0.75rem + env(safe-area-inset-left));
+    background: var(--trinity-surface-panel);
+    color: var(--trinity-text-bright);
   }
 }
 
-/* Visually hidden but available to assistive tech (e.g. page-title headings). */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  border: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
+@layer overrides {
+  /* Respect users who prefer reduced motion. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }
 
-/* Touch targets. On coarse-pointer (touch) devices only, lift every Helm button to
+@layer utilities {
+  /* Visually hidden but available to assistive tech (e.g. page-title headings). */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+@layer overrides {
+  /* Touch targets. On coarse-pointer (touch) devices only, lift every Helm button to
  * the ~44px minimum tap size. Keyed on the directive's host [data-slot="button"],
  * so it covers all size="icon" call sites with no markup changes. `(pointer: coarse)`
  * is false for a mouse — including a narrow Electron window — so the desktop layout
  * is untouched (icon buttons stay 32×32 there). */
-@media (pointer: coarse) {
-  button[trnBtn][data-slot='button'],
-  a[trnBtn][data-slot='button'] {
-    min-width: var(--trinity-interaction-target-min-size);
-    min-height: var(--trinity-interaction-target-min-size);
+  @media (pointer: coarse) {
+    button[trnBtn][data-slot='button'],
+    a[trnBtn][data-slot='button'] {
+      min-width: var(--trinity-interaction-target-min-size);
+      min-height: var(--trinity-interaction-target-min-size);
+    }
   }
 }

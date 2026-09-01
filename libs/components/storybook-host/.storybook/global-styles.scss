@@ -1,15 +1,16 @@
-// The app's global stylesheets, in the order `apps/trinity/project.json` loads them.
-// Storybook keeps the app-wide interaction and layout rules, then consumes Theme
-// Foundation's supported aggregate directly. The aggregate is the only source of semantic
-// Theme values and the private Tailwind/Helm mapping for both renderers.
-@use '../../../../apps/trinity/src/global';
+// The app's authored stylesheets, in the order `apps/trinity/project.json` loads them.
+// Theme Foundation declares the cascade before Storybook adds app-wide defaults. Static
+// application-only vendor sheets are omitted because Storybook loads each component itself.
 @use '../../../theme-foundation/styles/theme';
+@use '../../../../apps/trinity/src/global';
 
 // The application shell paints these semantic tokens on its own root, but an isolated story
 // has no shell. Paint the preview body itself so transparent component hosts are reviewed on
 // the same surface they inherit in the app, including the browser canvas beyond their content.
-body {
-  min-height: 100vh;
-  background: var(--background);
-  color: var(--foreground);
+@layer components {
+  body {
+    min-height: 100vh;
+    background: var(--background);
+    color: var(--foreground);
+  }
 }

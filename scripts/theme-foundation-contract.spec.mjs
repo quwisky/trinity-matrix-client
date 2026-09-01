@@ -47,11 +47,24 @@ const definesThemeMetadata = (source, production = true) => {
 describe('Theme Foundation repository contract', () => {
   it('makes the application and Storybook consume the supported aggregate', () => {
     const appProject = read('apps/trinity/project.json');
+    expect(appProject).toContain(
+      '"libs/theme-foundation/styles/internal/cascade-layers.css"',
+    );
     expect(appProject).toContain('"libs/theme-foundation/styles/theme.scss"');
     expect(appProject).not.toContain('apps/trinity/src/theme/');
 
     const storybookStyles = read(
       'libs/components/storybook-host/.storybook/global-styles.scss',
+    );
+    const cascadeOrder = read(
+      'libs/theme-foundation/styles/internal/cascade-layers.css',
+    ).match(/@layer [^;]+;/u)?.[0];
+    const storybookPreviewHead = read(
+      'libs/components/storybook-host/.storybook/preview-head.html',
+    );
+    expect(cascadeOrder).toBeDefined();
+    expect(storybookPreviewHead.match(/@layer [^;]+;/u)?.[0]).toBe(
+      cascadeOrder,
     );
     const globalIndex = storybookStyles.indexOf(
       "@use '../../../../apps/trinity/src/global';",
@@ -59,8 +72,8 @@ describe('Theme Foundation repository contract', () => {
     const themeIndex = storybookStyles.indexOf(
       "@use '../../../theme-foundation/styles/theme';",
     );
-    expect(globalIndex).toBeGreaterThanOrEqual(0);
-    expect(themeIndex).toBeGreaterThan(globalIndex);
+    expect(themeIndex).toBeGreaterThanOrEqual(0);
+    expect(globalIndex).toBeGreaterThan(themeIndex);
     expect(storybookStyles).not.toContain('apps/trinity/src/theme/');
     expect(storybookStyles).not.toContain('styles/internal/');
 

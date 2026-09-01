@@ -92,8 +92,8 @@ describe('styling tokens', () => {
   });
 
   it('leaves focus indicators to public and Helm controls that already own one', () => {
-    // These selectors live outside a cascade layer, while Helm's outline reset and ring live
-    // in Tailwind's utilities layer. Forgetting either wrapper here paints both indicators.
+    // These selectors are base defaults, while Helm's outline reset and ring live in the later
+    // utilities layer. Forgetting either wrapper here can still paint both indicators.
     expect(globalStyles).toContain(
       "input:not([data-slot='input']):focus-visible",
     );

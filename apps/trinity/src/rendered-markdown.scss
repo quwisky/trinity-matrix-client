@@ -1,4 +1,5 @@
-/*
+@layer components {
+  /*
  * Styling for rendered message markdown (sanitized Matrix `formatted_body`).
  *
  * The message body is injected via `[innerHTML]`, so its child elements carry no
@@ -13,410 +14,415 @@
  * live in each component's stylesheet, since the dialog renders in an overlay that
  * message-row's scoped styles cannot reach.
  */
-.msg__text--html {
-  img.mx-emoticon {
-    display: inline-block;
-    width: auto;
-    height: 1.5em;
-    vertical-align: -0.3em;
-  }
-
-  p {
-    margin: 0 0 4px;
-
-    &:last-child {
-      margin-bottom: 0;
-    }
-  }
-
-  a {
-    color: var(--trinity-link);
-    text-decoration: none;
-
-    &:hover {
-      text-decoration: underline;
+  .msg__text--html {
+    img.mx-emoticon {
+      display: inline-block;
+      width: auto;
+      height: 1.5em;
+      vertical-align: -0.3em;
     }
 
-    // A mention is a person, not a destination — give it a pill so it reads as one at a
-    // glance instead of looking like any other link. Marked by `markMentionPills` from the
-    // matrix.to href, so mentions written by Element and other clients get it too.
-    &.mention {
-      padding: 0 0.35em;
-      border-radius: var(--trinity-radius-pill);
-      background: color-mix(in srgb, var(--trinity-accent) 18%, transparent);
-      color: var(--trinity-text-bright);
-      font-weight: 600;
+    p {
+      margin: 0 0 4px;
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+
+    a {
+      color: var(--trinity-link);
       text-decoration: none;
 
       &:hover {
-        background: color-mix(in srgb, var(--trinity-accent) 28%, transparent);
+        text-decoration: underline;
+      }
+
+      // A mention is a person, not a destination — give it a pill so it reads as one at a
+      // glance instead of looking like any other link. Marked by `markMentionPills` from the
+      // matrix.to href, so mentions written by Element and other clients get it too.
+      &.mention {
+        padding: 0 0.35em;
+        border-radius: var(--trinity-radius-pill);
+        background: color-mix(in srgb, var(--trinity-accent) 18%, transparent);
+        color: var(--trinity-text-bright);
+        font-weight: 600;
         text-decoration: none;
+
+        &:hover {
+          background: color-mix(
+            in srgb,
+            var(--trinity-accent) 28%,
+            transparent
+          );
+          text-decoration: none;
+        }
+      }
+
+      // A mention OF YOU has to be findable while scrolling past, so it takes the solid
+      // accent rather than a tint. `--trinity-accent-foreground` tracks the Theme's
+      // on-accent colour, so this stays legible when the Theme changes.
+      &.mention--self {
+        background: var(--trinity-accent);
+        color: var(--trinity-accent-foreground);
+
+        &:hover {
+          background: var(--trinity-accent-hover);
+        }
       }
     }
 
-    // A mention OF YOU has to be findable while scrolling past, so it takes the solid
-    // accent rather than a tint. `--trinity-accent-foreground` tracks the Theme's
-    // on-accent colour, so this stays legible when the Theme changes.
-    &.mention--self {
-      background: var(--trinity-accent);
-      color: var(--trinity-accent-foreground);
-
-      &:hover {
-        background: var(--trinity-accent-hover);
-      }
-    }
-  }
-
-  // 85% is the optical correction (see `pre code` below); --trinity-code-scale is the
-  // user's Code size preference multiplying it. Both are relative, so code tracks
-  // Settings → Appearance → Text size as well, rather than replacing it.
-  // The `, 1` fallback is load-bearing, not defensive habit: an undefined custom property
-  // makes the whole declaration invalid at computed-value time, and because `font-size`
-  // inherits, it would resolve to `inherit` — silently restoring the 100% this very rule
-  // exists to avoid, anywhere this sheet renders without variables.scss.
-  code {
-    padding: 1px 5px;
-    border-radius: var(--trinity-radius-sm);
-    background: var(--trinity-rail);
-    font-family: ui-monospace, monospace;
-    font-size: calc(85% * var(--trinity-code-scale, 1));
-  }
-
-  // Inline code keeps its literal spacing under the container's `white-space: normal`.
-  // Scoped away from `pre > code`, which must stay `pre` so `overflow-x: auto` works.
-  :not(pre) > code {
-    white-space: pre-wrap;
-  }
-
-  pre {
-    position: relative;
-    margin: 4px 0;
-    padding: 8px 10px;
-    border-radius: var(--trinity-radius-sm);
-    background: var(--trinity-rail);
-    overflow-x: auto;
-
-    // Keep a sideways scroll inside the code block. iOS now has the WebView's back/forward
-    // swipe enabled (see ios/App/App/MainViewController.swift), and without this, flicking a
-    // wide code line to its end continues into the gesture and navigates out of the room —
-    // a horizontal scroll that reads as "go back" is the exact failure this prevents.
-    overscroll-behavior-x: contain;
-
-    // The fenced block's declared language, captioned on hover the way GitHub does it.
-    // Generated content from the `language` attribute the sanitizer writes: that keeps the
-    // caption out of the element's text, so it cannot be selected, copied, or picked up by
-    // the edit-history diff (which compares the text of two rendered revisions).
-    // BOTTOM-RIGHT. Two things have to be avoided and they pull in opposite directions.
-
-    // Vertically: the message's hover toolbar straddles the row's upper edge, and the block
-    // is hovered whenever the message is, so the two are always shown together. A caption at
-    // the block's TOP can still land under that compact corner on a continuation row, which
-    // has no author header to push the block down. Hence the bottom.
-
-    // Horizontally: the end of the last line is the one part of a code block that is
-    // reliably blank — code is left-aligned, and with line numbers on the left is where the
-    // gutter is. A caption on the left was tried in this branch and printed straight over
-    // the code. Hence the right.
-
-    // The `padding-bottom` above is what keeps it off the code entirely rather than merely
-    // usually: the caption gets a strip of its own that no line can reach into.
-    // The caption's band, reserved only where a caption can appear. Generated content is
-    // painted over the element rather than inside its flow, so without a strip of its own
-    // the caption sits on the last line of code — whichever corner it is put in. A block
-    // with no `language` attribute renders no caption and so needs no band; giving every
-    // `pre` one padded the fenced blocks that carry no language for nothing.
-    &[language] {
-      padding-bottom: 20px;
-    }
-
-    &[language]::after {
-      content: attr(language);
-      position: absolute;
-      right: 10px;
-      bottom: 6px;
-      color: var(--trinity-text-muted);
+    // 85% is the optical correction (see `pre code` below); --trinity-code-scale is the
+    // user's Code size preference multiplying it. Both are relative, so code tracks
+    // Settings → Appearance → Text size as well, rather than replacing it.
+    // The `, 1` fallback is load-bearing, not defensive habit: an undefined custom property
+    // makes the whole declaration invalid at computed-value time, and because `font-size`
+    // inherits, it would resolve to `inherit` — silently restoring the 100% this very rule
+    // exists to avoid, anywhere this sheet renders without variables.scss.
+    code {
+      padding: 1px 5px;
+      border-radius: var(--trinity-radius-sm);
+      background: var(--trinity-rail);
       font-family: ui-monospace, monospace;
-      font-size: 11px;
-      line-height: 1;
-      opacity: 0;
-      transition: opacity var(--trinity-duration-fast)
-        var(--trinity-ease-standard);
+      font-size: calc(85% * var(--trinity-code-scale, 1));
     }
 
-    &[language]:hover::after {
-      opacity: 1;
+    // Inline code keeps its literal spacing under the container's `white-space: normal`.
+    // Scoped away from `pre > code`, which must stay `pre` so `overflow-x: auto` works.
+    :not(pre) > code {
+      white-space: pre-wrap;
     }
 
-    // No hover on a touchscreen, so there is no way to reveal it — show it outright.
-    @media (hover: none) {
+    pre {
+      position: relative;
+      margin: 4px 0;
+      padding: 8px 10px;
+      border-radius: var(--trinity-radius-sm);
+      background: var(--trinity-rail);
+      overflow-x: auto;
+
+      // Keep a sideways scroll inside the code block. iOS now has the WebView's back/forward
+      // swipe enabled (see ios/App/App/MainViewController.swift), and without this, flicking a
+      // wide code line to its end continues into the gesture and navigates out of the room —
+      // a horizontal scroll that reads as "go back" is the exact failure this prevents.
+      overscroll-behavior-x: contain;
+
+      // The fenced block's declared language, captioned on hover the way GitHub does it.
+      // Generated content from the `language` attribute the sanitizer writes: that keeps the
+      // caption out of the element's text, so it cannot be selected, copied, or picked up by
+      // the edit-history diff (which compares the text of two rendered revisions).
+      // BOTTOM-RIGHT. Two things have to be avoided and they pull in opposite directions.
+
+      // Vertically: the message's hover toolbar straddles the row's upper edge, and the block
+      // is hovered whenever the message is, so the two are always shown together. A caption at
+      // the block's TOP can still land under that compact corner on a continuation row, which
+      // has no author header to push the block down. Hence the bottom.
+
+      // Horizontally: the end of the last line is the one part of a code block that is
+      // reliably blank — code is left-aligned, and with line numbers on the left is where the
+      // gutter is. A caption on the left was tried in this branch and printed straight over
+      // the code. Hence the right.
+
+      // The `padding-bottom` above is what keeps it off the code entirely rather than merely
+      // usually: the caption gets a strip of its own that no line can reach into.
+      // The caption's band, reserved only where a caption can appear. Generated content is
+      // painted over the element rather than inside its flow, so without a strip of its own
+      // the caption sits on the last line of code — whichever corner it is put in. A block
+      // with no `language` attribute renders no caption and so needs no band; giving every
+      // `pre` one padded the fenced blocks that carry no language for nothing.
+      &[language] {
+        padding-bottom: 20px;
+      }
+
       &[language]::after {
+        content: attr(language);
+        position: absolute;
+        right: 10px;
+        bottom: 6px;
+        color: var(--trinity-text-muted);
+        font-family: ui-monospace, monospace;
+        font-size: 11px;
+        line-height: 1;
+        opacity: 0;
+        transition: opacity var(--trinity-duration-fast)
+          var(--trinity-ease-standard);
+      }
+
+      &[language]:hover::after {
         opacity: 1;
       }
-    }
 
-    // Deliberately no `font-size` here. The 85% above is an OPTICAL correction, not a
-    // preference: a monospace face reads larger than the proportional UI font at the same
-    // computed size, so an uncorrected block towers over the prose around it even though
-    // both measure 16px. Restoring 100% here applied that correction to inline code and
-    // then cancelled it inside a fence, which is what made pasted listings dominate the
-    // timeline.
-    code {
-      padding: 0;
-      background: none;
-      color: var(--trinity-syntax-plain);
+      // No hover on a touchscreen, so there is no way to reveal it — show it outright.
+      @media (hover: none) {
+        &[language]::after {
+          opacity: 1;
+        }
+      }
 
-      // Reset per `code`, matching where `rows` is written. The Matrix allowlist lets a
-      // sender put two `<code>` children in one `<pre>`; resetting on the block would run
-      // one sequence across both, so the second listing would continue the first's numbers.
-      counter-reset: code-line;
-    }
+      // Deliberately no `font-size` here. The 85% above is an OPTICAL correction, not a
+      // preference: a monospace face reads larger than the proportional UI font at the same
+      // computed size, so an uncorrected block towers over the prose around it even though
+      // both measure 16px. Restoring 100% here applied that correction to inline code and
+      // then cancelled it inside a fence, which is what made pasted listings dominate the
+      // timeline.
+      code {
+        padding: 0;
+        background: none;
+        color: var(--trinity-syntax-plain);
 
-    // Syntax tokens, emitted by Message Presentation's registered code highlighter AFTER
-    // DOMPurify — which is why these names are absent from
-    // ALLOWED_CLASS: they are ours, not the sender's.
-    .tok-keyword {
-      color: var(--trinity-syntax-keyword);
-    }
+        // Reset per `code`, matching where `rows` is written. The Matrix allowlist lets a
+        // sender put two `<code>` children in one `<pre>`; resetting on the block would run
+        // one sequence across both, so the second listing would continue the first's numbers.
+        counter-reset: code-line;
+      }
 
-    .tok-string {
-      color: var(--trinity-syntax-string);
-    }
+      // Syntax tokens, emitted by Message Presentation's registered code highlighter AFTER
+      // DOMPurify — which is why these names are absent from
+      // ALLOWED_CLASS: they are ours, not the sender's.
+      .tok-keyword {
+        color: var(--trinity-syntax-keyword);
+      }
 
-    .tok-number {
-      color: var(--trinity-syntax-number);
-    }
+      .tok-string {
+        color: var(--trinity-syntax-string);
+      }
 
-    .tok-comment {
-      color: var(--trinity-syntax-comment);
-    }
+      .tok-number {
+        color: var(--trinity-syntax-number);
+      }
 
-    .tok-function {
-      color: var(--trinity-syntax-function);
-    }
+      .tok-comment {
+        color: var(--trinity-syntax-comment);
+      }
 
-    .tok-type {
-      color: var(--trinity-syntax-type);
-    }
+      .tok-function {
+        color: var(--trinity-syntax-function);
+      }
 
-    .tok-variable {
-      color: var(--trinity-syntax-variable);
-    }
+      .tok-type {
+        color: var(--trinity-syntax-type);
+      }
 
-    .tok-punctuation {
-      color: var(--trinity-syntax-punctuation);
-    }
+      .tok-variable {
+        color: var(--trinity-syntax-variable);
+      }
 
-    .tok-italic {
-      font-style: italic;
-    }
+      .tok-punctuation {
+        color: var(--trinity-syntax-punctuation);
+      }
 
-    // One wrapper per line of the block (message-view.ts), carrying the line number as
-    // GENERATED CONTENT. Never text: a number in the DOM would be selectable, would land in
-    // the clipboard when someone copies a pasted file, and would be read by the
-    // edit-history diff, which compares the text of two rendered revisions — the same
-    // reasoning as the language caption above.
-    // The wrapper stays INLINE. The newlines the sanitizer leaves between wrappers are what
-    // break the lines under `white-space: pre`, so making these block-level would render a
-    // blank line between every line of code, double-space anything copied out, and give the
-    // diff's `<ins>`-wrapped newline a full-width row of its own.
-    .code-line {
-      counter-increment: code-line;
+      .tok-italic {
+        font-style: italic;
+      }
 
-      // `content` is the ONLY thing the three states below switch, so the counter keeps
-      // incrementing in every state and the numbering cannot drift.
-      &::before {
-        content: none;
+      // One wrapper per line of the block (message-view.ts), carrying the line number as
+      // GENERATED CONTENT. Never text: a number in the DOM would be selectable, would land in
+      // the clipboard when someone copies a pasted file, and would be read by the
+      // edit-history diff, which compares the text of two rendered revisions — the same
+      // reasoning as the language caption above.
+      // The wrapper stays INLINE. The newlines the sanitizer leaves between wrappers are what
+      // break the lines under `white-space: pre`, so making these block-level would render a
+      // blank line between every line of code, double-space anything copied out, and give the
+      // diff's `<ins>`-wrapped newline a full-width row of its own.
+      .code-line {
+        counter-increment: code-line;
 
-        // Sticky so a number survives scrolling a long line sideways: `pre` is the scroll
-        // container, and without this the gutter would scroll out of view exactly when it
-        // is being used. inline-block because sticky on a non-replaced inline box is
-        // under-specified; logical inset so it follows writing direction for free.
-        position: sticky;
-        display: inline-block;
+        // `content` is the ONLY thing the three states below switch, so the counter keeps
+        // incrementing in every state and the numbering cannot drift.
+        &::before {
+          content: none;
 
-        // -10px, not 0: the offset resolves against the block's CONTENT edge, so a plain 0
-        // leaves the block's own 10px of padding uncovered and the line's text scrolls
-        // through that strip. This pulls the opaque box out to the border edge.
-        inset-inline-start: -10px;
-        z-index: 1;
+          // Sticky so a number survives scrolling a long line sideways: `pre` is the scroll
+          // container, and without this the gutter would scroll out of view exactly when it
+          // is being used. inline-block because sticky on a non-replaced inline box is
+          // under-specified; logical inset so it follows writing direction for free.
+          position: sticky;
+          display: inline-block;
 
-        // Reserve three digits' worth of column so the gutter is one fixed width for every
-        // line of every block, rather than each number sizing to its own digits and stepping
-        // the code right at line 10 and again at line 100. MAX_NUMBERED_LINES caps a block
-        // at three digits, so three is the widest this can ever need to be.
-        // content-box is the load-bearing half, and the reason a bare `min-width: 3ch` did
-        // NOT hold the column: Tailwind's preflight sets `box-sizing: border-box` on `*` AND
-        // on `::before`, so 3ch (~25px here) was measured against the 22px of padding below
-        // and reserved ~3px of actual digits — inert. Widening the floor could not have
-        // fixed that; only taking the padding back out of the measurement does.
-        box-sizing: content-box;
-        min-width: 3ch;
+          // -10px, not 0: the offset resolves against the block's CONTENT edge, so a plain 0
+          // leaves the block's own 10px of padding uncovered and the line's text scrolls
+          // through that strip. This pulls the opaque box out to the border edge.
+          inset-inline-start: -10px;
+          z-index: 1;
 
-        // Padding, NOT margin, for the gap before the code: it has to be part of the OPAQUE
-        // box or the text slides through it. Sticky content does not push the line along —
-        // the line passes underneath.
-        padding-inline: 10px 12px;
-        background: var(--trinity-rail);
-        color: var(--trinity-text-muted);
-        text-align: end;
+          // Reserve three digits' worth of column so the gutter is one fixed width for every
+          // line of every block, rather than each number sizing to its own digits and stepping
+          // the code right at line 10 and again at line 100. MAX_NUMBERED_LINES caps a block
+          // at three digits, so three is the widest this can ever need to be.
+          // content-box is the load-bearing half, and the reason a bare `min-width: 3ch` did
+          // NOT hold the column: Tailwind's preflight sets `box-sizing: border-box` on `*` AND
+          // on `::before`, so 3ch (~25px here) was measured against the 22px of padding below
+          // and reserved ~3px of actual digits — inert. Widening the floor could not have
+          // fixed that; only taking the padding back out of the measurement does.
+          box-sizing: content-box;
+          min-width: 3ch;
 
-        // The line's text slides UNDER a stuck number rather than pushing it along, so the
-        // background above is load-bearing, and this stops a drag-select over the block
-        // picking the digits up as if they were part of the code.
-        user-select: none;
+          // Padding, NOT margin, for the gap before the code: it has to be part of the OPAQUE
+          // box or the text slides through it. Sticky content does not push the line along —
+          // the line passes underneath.
+          padding-inline: 10px 12px;
+          background: var(--trinity-rail);
+          color: var(--trinity-text-muted);
+          text-align: end;
+
+          // The line's text slides UNDER a stuck number rather than pushing it along, so the
+          // background above is load-bearing, and this stops a drag-select over the block
+          // picking the digits up as if they were part of the code.
+          user-select: none;
+        }
+      }
+
+      // Automatic — the default, and why it needs no attribute on <html>. `rows` is set by
+      // the sanitizer from the CONTENT (past the line threshold), never from the preference:
+      // this HTML is memoized per message and shared by every viewer.
+      code[rows] .code-line::before {
+        content: counter(code-line);
       }
     }
 
-    // Automatic — the default, and why it needs no attribute on <html>. `rows` is set by
-    // the sanitizer from the CONTENT (past the line threshold), never from the preference:
-    // this HTML is memoized per message and shared by every viewer.
-    code[rows] .code-line::before {
+    // The two non-default states. `:root` rather than a class on the block, because the
+    // preference must not touch the markup at all.
+    :root[data-code-lines='always'] & pre .code-line::before {
       content: counter(code-line);
     }
-  }
 
-  // The two non-default states. `:root` rather than a class on the block, because the
-  // preference must not touch the markup at all.
-  :root[data-code-lines='always'] & pre .code-line::before {
-    content: counter(code-line);
-  }
+    :root[data-code-lines='off'] & pre .code-line::before {
+      content: none;
+    }
 
-  :root[data-code-lines='off'] & pre .code-line::before {
-    content: none;
-  }
+    // Never number a diffed revision, in any of the three states — hence the `:root` here,
+    // which matches the specificity of the `always` rule above and, coming later, wins.
+    // annotateRevision inserts a removed run as one `<del>` at a single offset, so a removal
+    // spanning lines lands inside ONE wrapper and renders as several lines under a single
+    // number. That is exactly the lie markCodeLines refuses to tell when it declines a block
+    // whose newline sits inside a child element — reintroduced downstream by a module that
+    // does not re-sanitize. Suppressing the numbers leaves the diff rendering exactly as it
+    // did before line numbers existed; the wrappers are inline and add nothing.
+    :root &.revision__text pre .code-line::before {
+      content: none;
+    }
 
-  // Never number a diffed revision, in any of the three states — hence the `:root` here,
-  // which matches the specificity of the `always` rule above and, coming later, wins.
-  // annotateRevision inserts a removed run as one `<del>` at a single offset, so a removal
-  // spanning lines lands inside ONE wrapper and renders as several lines under a single
-  // number. That is exactly the lie markCodeLines refuses to tell when it declines a block
-  // whose newline sits inside a child element — reintroduced downstream by a module that
-  // does not re-sanitize. Suppressing the numbers leaves the diff rendering exactly as it
-  // did before line numbers existed; the wrappers are inline and add nothing.
-  :root &.revision__text pre .code-line::before {
-    content: none;
-  }
+    // Reachable now that `gfm` is pinned on and outgoing HTML carries these: the file
+    // had no rules for them even though the Matrix allowlist has always permitted them.
+    table {
+      display: block;
+      margin: 4px 0;
+      border-collapse: collapse;
 
-  // Reachable now that `gfm` is pinned on and outgoing HTML carries these: the file
-  // had no rules for them even though the Matrix allowlist has always permitted them.
-  table {
-    display: block;
-    margin: 4px 0;
-    border-collapse: collapse;
+      // A wide table scrolls itself rather than stretching the message row, and that scroll
+      // stays inside it — see the note on `pre` above; the same back-swipe applies here.
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+    }
 
-    // A wide table scrolls itself rather than stretching the message row, and that scroll
-    // stays inside it — see the note on `pre` above; the same back-swipe applies here.
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-  }
+    th,
+    td {
+      padding: 3px 8px;
+      border: 1px solid var(--trinity-divider);
+      text-align: left;
+    }
 
-  th,
-  td {
-    padding: 3px 8px;
-    border: 1px solid var(--trinity-divider);
-    text-align: left;
-  }
+    th {
+      background: var(--trinity-rail);
+      font-weight: 600;
+    }
 
-  th {
-    background: var(--trinity-rail);
-    font-weight: 600;
-  }
+    details {
+      margin: 4px 0;
+    }
 
-  details {
-    margin: 4px 0;
-  }
+    summary {
+      cursor: pointer;
+    }
 
-  summary {
-    cursor: pointer;
-  }
+    // No rules for del/strike/sub/sup: Tailwind's preflight already positions sub/sup, and
+    // line-through is the UA default for del/strike. Adding them back would be a no-op that
+    // reads as deliberate styling.
 
-  // No rules for del/strike/sub/sup: Tailwind's preflight already positions sub/sup, and
-  // line-through is the UA default for del/strike. Adding them back would be a no-op that
-  // reads as deliberate styling.
+    blockquote {
+      margin: 4px 0;
+      padding-left: 10px;
+      border-left: 3px solid var(--trinity-divider);
+      color: var(--trinity-text-muted);
+    }
 
-  blockquote {
-    margin: 4px 0;
-    padding-left: 10px;
-    border-left: 3px solid var(--trinity-divider);
-    color: var(--trinity-text-muted);
-  }
+    // `revert`, not an explicit `disc`/`decimal`: Tailwind's preflight resets every list to
+    // `list-style: none`, and this rule restored the indent but not the marker — so a bulleted
+    // list arrived as unmarked indented lines. Reverting to the user-agent value brings back
+    // the nesting sequence too (disc → circle → square), which naming one type would flatten.
+    ul,
+    ol {
+      margin: 4px 0;
+      padding-left: 22px;
+      list-style: revert;
+    }
 
-  // `revert`, not an explicit `disc`/`decimal`: Tailwind's preflight resets every list to
-  // `list-style: none`, and this rule restored the indent but not the marker — so a bulleted
-  // list arrived as unmarked indented lines. Reverting to the user-agent value brings back
-  // the nesting sequence too (disc → circle → square), which naming one type would flatten.
-  ul,
-  ol {
-    margin: 4px 0;
-    padding-left: 22px;
-    list-style: revert;
-  }
+    // A task item carries its own ☑/☐, so a bullet beside it reads as "• ☑ done". The class is
+    // put on by `normaliseTaskItems` at render time; the indent stays, which is how every other
+    // client draws a checklist.
+    li.mx-task {
+      list-style: none;
+    }
 
-  // A task item carries its own ☑/☐, so a bullet beside it reads as "• ☑ done". The class is
-  // put on by `normaliseTaskItems` at render time; the indent stays, which is how every other
-  // client draws a checklist.
-  li.mx-task {
-    list-style: none;
-  }
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+      margin: 8px 0 4px;
+      font-weight: 600;
+      line-height: 1.3;
+    }
 
-  h1,
-  h2,
-  h3,
-  h4,
-  h5,
-  h6 {
-    margin: 8px 0 4px;
-    font-weight: 600;
-    line-height: 1.3;
-  }
+    h1 {
+      font-size: 1.4em;
+    }
 
-  h1 {
-    font-size: 1.4em;
-  }
+    h2 {
+      font-size: 1.25em;
+    }
 
-  h2 {
-    font-size: 1.25em;
-  }
+    h3 {
+      font-size: 1.1em;
+    }
 
-  h3 {
-    font-size: 1.1em;
-  }
+    hr {
+      margin: 8px 0;
+      border: none;
+      border-top: 1px solid var(--trinity-divider);
+    }
 
-  hr {
-    margin: 8px 0;
-    border: none;
-    border-top: 1px solid var(--trinity-divider);
-  }
+    img {
+      max-width: 100%;
+      border-radius: var(--trinity-radius-sm);
+    }
 
-  img {
-    max-width: 100%;
-    border-radius: var(--trinity-radius-sm);
-  }
+    // Spoilers render as a black bar until clicked/activated. The sanitizer tags them
+    // `mx-spoiler` (data-mx-spoiler doesn't survive Angular's [innerHTML] sanitizer);
+    // the renderer's SpoilerRevealDirective adds `is-revealed` on activation.
+    .mx-spoiler {
+      border-radius: var(--trinity-radius-sm);
+      transition:
+        background-color var(--trinity-duration-fast)
+          var(--trinity-ease-standard),
+        color var(--trinity-duration-fast) var(--trinity-ease-standard);
+    }
 
-  // Spoilers render as a black bar until clicked/activated. The sanitizer tags them
-  // `mx-spoiler` (data-mx-spoiler doesn't survive Angular's [innerHTML] sanitizer);
-  // the renderer's SpoilerRevealDirective adds `is-revealed` on activation.
-  .mx-spoiler {
-    border-radius: var(--trinity-radius-sm);
-    transition:
-      background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
-      color var(--trinity-duration-fast) var(--trinity-ease-standard);
-  }
+    .mx-spoiler:not(.is-revealed) {
+      background-color: var(--trinity-text-bright);
+      color: transparent;
+      cursor: pointer;
+      user-select: none;
 
-  .mx-spoiler:not(.is-revealed) {
-    background-color: var(--trinity-text-bright);
-    color: transparent;
-    cursor: pointer;
-    user-select: none;
-
-    // Conceal nested links/images/code while keeping the bar's width.
-    * {
-      visibility: hidden;
+      // Conceal nested links/images/code while keeping the bar's width.
+      * {
+        visibility: hidden;
+      }
     }
   }
-}
 
-/*
+  /*
  * Edit-history diff highlights. Injected via [innerHTML] by the edit-history dialog, so
  * like the markdown rules above they cannot live in a component stylesheet.
  *
@@ -428,18 +434,19 @@
  * through — so the marks survive a colour-blind reader, a monochrome display, and the
  * tint failing to render.
  */
-.diff-ins {
-  background: color-mix(in srgb, var(--success) 22%, transparent);
-  color: inherit;
-  border-radius: var(--trinity-radius-sm);
-  padding: 0 2px;
-  text-decoration: underline;
-}
+  .diff-ins {
+    background: color-mix(in srgb, var(--success) 22%, transparent);
+    color: inherit;
+    border-radius: var(--trinity-radius-sm);
+    padding: 0 2px;
+    text-decoration: underline;
+  }
 
-.diff-del {
-  background: color-mix(in srgb, var(--trinity-danger) 18%, transparent);
-  color: inherit;
-  border-radius: var(--trinity-radius-sm);
-  padding: 0 2px;
-  text-decoration: line-through;
+  .diff-del {
+    background: color-mix(in srgb, var(--trinity-danger) 18%, transparent);
+    color: inherit;
+    border-radius: var(--trinity-radius-sm);
+    padding: 0 2px;
+    text-decoration: line-through;
+  }
 }

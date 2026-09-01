@@ -73,19 +73,20 @@ export interface ActionSheetData {
     `
       /*
        * Clear of the home indicator, composed with the design padding in ONE
-       * declaration. The .safe-bottom helper is an unlayered rule in global.scss and
-       * Tailwind's padding utilities are layered, so pairing them silently replaces the
-       * padding rather than adding to it — the defect #219 fixed across five panel
-       * headers. Not repeating it here.
+       * declaration. This component default owns the bottom longhand; the template uses
+       * only inline and top spacing utilities, so no cascade order can discard either
+       * half — the defect #219 fixed across five panel headers.
        */
-      .sheet {
-        padding-bottom: calc(0.375rem + env(safe-area-inset-bottom));
+      @layer components {
+        .sheet {
+          padding-bottom: calc(0.375rem + env(safe-area-inset-bottom));
+        }
       }
     `,
   ],
   template: `
     <div
-      class="sheet mb-3 flex max-h-[80svh] w-[min(96vw,26rem)] flex-col overflow-hidden rounded-xl border border-solid border-border bg-card p-1.5 shadow-lg"
+      class="sheet mb-3 flex max-h-[80svh] w-[min(96vw,26rem)] flex-col overflow-hidden rounded-xl border border-solid border-border bg-card px-1.5 pt-1.5 shadow-lg"
       data-testid="action-sheet-surface"
     >
       @if (data.header) {

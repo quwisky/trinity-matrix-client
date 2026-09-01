@@ -1,5 +1,5 @@
-// The app's global stylesheets. See `global-styles.scss` for why they are composed there
-// rather than imported here.
+// App globals stay composed in SCSS so their shared dependencies load once. The preview head
+// establishes the cascade before this bundle because Tailwind hoists its imported output.
 import './global-styles.scss';
 
 import { type Decorator, type Preview } from '@storybook/angular-vite';

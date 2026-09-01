@@ -94,11 +94,18 @@ describe('boot splash', () => {
     // several times and `indexOf` happily matched the prose — which then read the LIGHT
     // block's values and reported a mismatch that was not there.
     const blockOf = (selector) => {
-      const start = new RegExp(`^${selector} \\{$`, 'm').exec(tokens)?.index;
-      if (start === undefined) {
+      const match = new RegExp(`^\\s*${selector} \\{$`, 'm').exec(tokens);
+      if (!match) {
         return null;
       }
-      return tokens.slice(start, tokens.indexOf('\n}', start));
+      const start = tokens.indexOf('{', match.index) + 1;
+      let depth = 1;
+      let end = start;
+      for (; end < tokens.length && depth > 0; end += 1) {
+        if (tokens[end] === '{') depth += 1;
+        else if (tokens[end] === '}') depth -= 1;
+      }
+      return tokens.slice(start, end - 1);
     };
 
     /** The LAST declaration wins, as it would in the browser. */

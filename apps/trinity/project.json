@@ -46,11 +46,11 @@
           }
         ],
         "styles": [
-          "apps/trinity/src/global.scss",
+          "libs/theme-foundation/styles/internal/cascade-layers.css",
           "libs/theme-foundation/styles/theme.scss",
-          "apps/trinity/src/rendered-markdown.scss",
-          "node_modules/@angular/cdk/overlay-prebuilt.css",
-          "node_modules/@ctrl/ngx-emoji-mart/picker.css"
+          "apps/trinity/src/vendor.css",
+          "apps/trinity/src/global.scss",
+          "apps/trinity/src/rendered-markdown.scss"
         ],
         "scripts": [],
         "allowedCommonJsDependencies": [

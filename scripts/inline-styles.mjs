@@ -7,8 +7,9 @@ import { join } from 'node:path';
  * Trinity's third styling idiom, after a `styleUrl` stylesheet and Tailwind utilities in the
  * template. Ten wrapper components in `libs/components` use it, and every styling guard read
  * `.scss` files only — so those rules were counted by nothing. That is not a hypothetical
- * gap: the action sheet's safe-area rule is one of them, and it composes an unlayered author
- * declaration with a layered utility, which is the exact shape #219 shipped.
+ * gap: the action sheet's safe-area rule was one of them, and composed an unlayered author
+ * declaration with a layered utility — the exact shape #219 shipped. Its migration is now a
+ * fixture proving this extractor notices layered inline CSS too.
  *
  * Shared by `shorthand-overrides` and `styling-idiom` rather than copied into each, because
  * a parser that silently stops matching makes every guard reading it pass on a broken tree,

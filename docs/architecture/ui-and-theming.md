@@ -109,13 +109,12 @@ rather than left behind, because a ban keyed on a tag no project carries enforce
 while reading as a closed door. `lint-invariants.spec.mjs` now fails on exactly that.
 
 The ban reads TypeScript import specifiers and nothing else, so it is worth knowing where it
-cannot see. `apps/trinity`'s build `styles` array names two vendor stylesheets directly —
+cannot see. `apps/trinity` loads one `vendor.css` seam containing two global imports:
 `@angular/cdk/overlay-prebuilt.css`, without which no overlay positions at all, and
-`@ctrl/ngx-emoji-mart/picker.css`. Both must load globally. The picker's _can_ be pulled into
-its lazy component chunk (`@import '@ctrl/ngx-emoji-mart/picker'` resolves and inlines), but
-that puts the component 517 bytes over the 8 kB `anyComponentStyle` budget, and widening a
-budget that guards every component to relocate one vendored file is the worse trade. So the
-two are pinned by `lint-invariants.spec.mjs` instead: a third has to be argued for there
+`@ctrl/ngx-emoji-mart/picker.css`. The picker's stylesheet can be pulled into its lazy component
+chunk, but that puts the component 517 bytes over the 8 kB `anyComponentStyle` budget, and
+widening a budget that guards every component is the worse trade. The seam puts both imports in
+`vendor` and `lint-invariants.spec.mjs` pins the exact list, so a third has to be argued for
 rather than appearing in build config nobody reads as part of the boundary.
 
 Composition is the other half of that containment. `hostDirectives` **is** public API — a
@@ -372,7 +371,7 @@ There is no `tailwind.config.js`. Everything is in
 which is **private framework wiring only** and owns no colour values:
 
 ```css
-@layer theme, base, components, utilities;
+@layer theme, base, vendor, components, utilities, overrides;
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/preflight.css' layer(base);
 @import 'tailwindcss/utilities.css' layer(utilities);
@@ -387,6 +386,52 @@ which is **private framework wiring only** and owns no colour values:
 `preflight.css` is the app's base reset. The `@source` globs cover the whole workspace
 because Helm's variant class strings live in `.ts` files, not templates.
 
+The six layers are a responsibility contract, not a ranking chosen at each call site:
+
+| Layer        | Owns                                                                |
+| ------------ | ------------------------------------------------------------------- |
+| `theme`      | Semantic token values, Tailwind Theme variables and named keyframes |
+| `base`       | Preflight plus native focus defaults                                |
+| `vendor`     | Static third-party CSS                                              |
+| `components` | Authored shell, content and component defaults                      |
+| `utilities`  | Tailwind, its directive plugins, and Trinity's utility classes      |
+| `overrides`  | Narrow accessibility and design-system invariants only              |
+
+Tailwind expands its imports ahead of ordinary authored rules. The application therefore loads
+Theme Foundation's tiny `cascade-layers.css` contract first, before the Theme aggregate, then
+[`vendor.css`](../../apps/trinity/src/vendor.css), `global.scss`, and
+`rendered-markdown.scss`. CDK and the emoji picker enter through an explicit `vendor` seam
+instead of anonymous build entries. Storybook's preview head embeds the same guarded statement
+before composing Theme Foundation and its app defaults, because its bundler hoists imported CSS.
+
+`tw-animate-css` is not a static vendor sheet: it is a Tailwind directive plugin containing
+`@theme` and `@utility`, which Tailwind requires at top level. Its generated tokens and classes
+therefore join Tailwind's `theme` and `utilities` output rather than being wrapped in `vendor`.
+
+Authored global rules are classified by what they do. The generic focus treatment is `base`;
+routed-shell and rendered-content defaults are `components`; safe-area and visually hidden
+helpers are `utilities`; shared disabled opacity, icon-button, reduced-motion and coarse-pointer
+invariants are the small `overrides` allowlist. There is no project-wide Tailwind `important`
+mode. The only
+important declarations are the four reduced-motion properties required to cross Angular's
+still-unlayered component style tags, and the repository contract rejects any fifth one.
+
+Angular currently injects component `styleUrl` and inline `styles` blocks without a layer. The
+complete temporary exception inventory is frozen in
+[`scripts/styling-idiom.spec.mjs`](../../scripts/styling-idiom.spec.mjs) and audited by
+`cascade-layer-contract.spec.mjs`: a new source fails until it is explicitly accounted for,
+while later migrations shrink the derived unlayered set. Runtime vendor injection and the
+CodeMirror adapter are migrated by the next vendor-seam ticket rather than hidden here.
+
+Three old reversals are deliberate now. Public input and textarea controls are excluded from
+the base focus selector so their Helm ring remains the only indicator. The semantic disabled
+opacity invariant beats arbitrary state utilities, and utility display classes beat routed-shell
+component defaults.
+Safe-area helpers and padding utilities must never share a longhand; the source guard requires
+one composed declaration such as `.panel-header` instead of depending on which utility happens
+to be emitted last. A compiled Playwright probe measures both directions of the contract:
+utilities beat component defaults, while allowlisted invariants beat utilities.
+
 The `@theme inline` block maps each Helm token to a Tailwind colour utility **by reference**
 (`--color-card: var(--card)`), which is what makes switching the Mode or Theme re-theme
 every utility at runtime rather than at build time. Only entries inside a `@theme` block
@@ -396,8 +441,9 @@ generate a utility, which is why the two non-colour tokens live there rather tha
 
 Theme Foundation's supported stylesheet interface is the single aggregate
 `libs/theme-foundation/styles/theme.scss`. The application and Storybook both load that aggregate
-directly, after the app-wide global rules. Private token and Tailwind adapter files are implementation
-details; compatibility stylesheet entrypoints outside Theme Foundation do not exist.
+directly before authored application defaults, so it establishes the cascade order. Private token
+and Tailwind adapter files are implementation details; compatibility stylesheet entrypoints outside
+Theme Foundation do not exist.
 
 ESLint and Prettier point their Tailwind integration at Theme Foundation's private adapter, with
 `classnames-order` off (`prettier-plugin-tailwindcss` owns ordering) and `no-custom-classname` off
@@ -658,7 +704,7 @@ danger text lands on a selected row today; do not put one there without re-measu
 `--destructive` itself is left alone and stays the border and ring source, and the colour the
 tint is mixed from. That is exactly what the token is for.
 
-#### The unlayered override, and how to regenerate its selector list
+#### The invariant override layer, and how to regenerate its selector list
 
 Helm paints destructive controls as `bg-destructive/10..30` with `text-destructive` on top:
 one token serving as both the tint and the ink drawn on it. That is unfixable by retoning
@@ -666,9 +712,9 @@ one token serving as both the tint and the ink drawn on it. That is unfixable by
 against its own 20% tint is above 90% lightness, which is a pale pink that no longer reads as
 danger.
 
-So Theme Foundation's private Tailwind adapter decouples the roles with **unlayered** rules.
-Tailwind emits utilities into `@layer utilities`, and unlayered declarations outrank every
-cascade layer, so this wins without a specificity war.
+So Theme Foundation's private Tailwind adapter decouples the roles in the narrow
+`overrides` layer. Tailwind emits the originals into `utilities`; the declared order makes the
+semantic invariant win without a specificity war or an unlayered escape.
 
 !!! warning "The selector list must cover every emitted variant"
 

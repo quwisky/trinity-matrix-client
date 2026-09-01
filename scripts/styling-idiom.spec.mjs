@@ -12,9 +12,10 @@ import { inlineStyleSheets } from './inline-styles.mjs';
  * on the day it landed and be deleted the first time it cried wolf.
  *
  * So this is a **frozen ledger**: the set of stylesheet-owning components is recorded, and the
- * assertion is that it does not GROW. Migrating one means deleting its entry, which is a
- * one-line diff in the right direction. Adding a sixty-second stylesheet means adding an entry,
- * which is a conversation.
+ * assertion is that it does not GROW. `cascade-layer-contract.spec.mjs` reads the same ledger
+ * and classifies every source that has not adopted `@layer` as a temporary exception. Migrating
+ * one leaves its ownership entry here but removes it from that derived exception set. Adding a
+ * stylesheet still means adding an explicit ledger entry, which is a conversation.
  *
  * It lives in `scripts` for the same reason `confirmation-words.spec.mjs` does: the files span
  * libraries that the Nx module boundaries stop any single project from importing.
@@ -57,7 +58,7 @@ const componentStylesheets = stylesheets.filter(
  * diff this phase wants to see. It may not grow without a deliberate edit here, so the cost of
  * a sixty-second stylesheet is a visible line in a shared file rather than an invisible default.
  */
-const LEDGER = [
+const COMPONENT_STYLESHEET_LEDGER = [
   'libs/application/runtime/src/lib/application-root/application-root.component.scss',
   'libs/components/controls/src/lib/emoji-picker/trn-emoji-picker/trn-emoji-picker.component.scss',
   'libs/components/controls/src/lib/field/field-label/trn-field-label.component.scss',
@@ -145,7 +146,7 @@ const LEDGER = [
  * escapes from a kit default, which is the case inline styles are actually good for. A
  * feature component appearing here would be the thing worth a conversation.
  */
-const INLINE_LEDGER = [
+const INLINE_STYLE_LEDGER = [
   'libs/components/controls/src/lib/checkbox/trn-checkbox.component.ts',
   'libs/components/controls/src/lib/radio-group/trn-radio-group.component.ts',
   'libs/components/controls/src/lib/select/trn-select.component.ts',
@@ -168,7 +169,7 @@ describe('styling idiom', () => {
   it('has a ledger that still describes the tree', () => {
     // Equality both ways. A stylesheet that is deleted must leave the ledger too, or the
     // ledger stops being a description and becomes a wish.
-    expect(componentStylesheets).toEqual(LEDGER);
+    expect(componentStylesheets).toEqual(COMPONENT_STYLESHEET_LEDGER);
   });
 
   it('accounts for every shared partial by name', () => {
@@ -209,7 +210,7 @@ describe('styling idiom', () => {
   });
 
   it('has a ledger for the inline idiom too, and it still describes the tree', () => {
-    expect(inlineStyled.map(({ file }) => file)).toEqual(INLINE_LEDGER);
+    expect(inlineStyled.map(({ file }) => file)).toEqual(INLINE_STYLE_LEDGER);
   });
 
   it('actually extracts the CSS, so an empty parse cannot pass as an empty idiom', () => {
