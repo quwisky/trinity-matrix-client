@@ -1,8 +1,13 @@
 import { Component } from '@angular/core';
-import { badgeVariants } from '@trinity/helm/badge';
 import { render } from '@trinity/testing';
 import { describe, expect, it } from 'vitest';
-import { TrnBadge, type TrnBadgeVariant } from './trn-badge';
+import { TrnBadge } from './trn-badge';
+import {
+  normalizeTrnBadgeVariant,
+  trnBadgeRecipe,
+  type TrnBadgeSize,
+  type TrnBadgeVariant,
+} from './trn-badge-recipe';
 
 @Component({
   imports: [TrnBadge],
@@ -21,14 +26,24 @@ describe('TrnBadge', () => {
     expect(badge?.getAttribute('data-variant')).toBe('success');
   });
 
-  it('maps every variant we publish onto one the kit actually has', () => {
-    // Asserted on the pure cva function rather than the applied class string, which is
-    // applied asynchronously and is explicitly not safe to assert (see ui-and-theming.md).
-    // What this catches is the real drift risk: an upstream rename would make one of our
-    // variants fall through to `defaultVariants` and render as `default`, silently.
-    const ours: TrnBadgeVariant[] = ['default', 'success', 'warning'];
-    const rendered = ours.map((variant) => badgeVariants({ variant }));
+  it('maps every published semantic variant onto a distinct recipe', () => {
+    const ours: TrnBadgeVariant[] = ['neutral', 'success', 'warning'];
+    const rendered = ours.map((variant) => trnBadgeRecipe(variant, 'sm'));
 
     expect(new Set(rendered).size).toBe(ours.length);
+  });
+
+  it('normalizes the legacy default name onto neutral', () => {
+    expect(normalizeTrnBadgeVariant('default')).toBe('neutral');
+    expect(trnBadgeRecipe('default', 'sm')).toBe(
+      trnBadgeRecipe('neutral', 'sm'),
+    );
+  });
+
+  it('keeps badge geometry to the compact subset', () => {
+    const sizes: TrnBadgeSize[] = ['xs', 'sm', 'md'];
+    expect(
+      new Set(sizes.map((size) => trnBadgeRecipe('neutral', size))).size,
+    ).toBe(sizes.length);
   });
 });

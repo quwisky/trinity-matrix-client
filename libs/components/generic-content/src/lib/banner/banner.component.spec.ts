@@ -32,16 +32,31 @@ describe('BannerComponent', () => {
     ).toBe('Do it');
   });
 
-  it('reflects the tone as a data attribute', async () => {
+  it('reflects the canonical variant while retaining the legacy data hook', async () => {
     const { fixture, container } = await render(BannerComponent);
-    expect(container.querySelector('.banner')?.getAttribute('data-tone')).toBe(
-      'neutral',
-    );
+    const banner = () => container.querySelector('.banner');
+    expect(banner()?.getAttribute('data-variant')).toBe('neutral');
+    expect(banner()?.getAttribute('data-tone')).toBe('neutral');
 
-    fixture.componentRef.setInput('tone', 'accent');
+    fixture.componentRef.setInput('variant', 'accent');
     fixture.detectChanges();
-    expect(container.querySelector('.banner')?.getAttribute('data-tone')).toBe(
-      'accent',
-    );
+    expect(banner()?.getAttribute('data-variant')).toBe('accent');
+    expect(banner()?.getAttribute('data-tone')).toBe('accent');
+  });
+
+  it('keeps the legacy tone input valid during expansion', async () => {
+    const { fixture, container } = await render(BannerComponent, {
+      inputs: { tone: 'accent' },
+    });
+
+    expect(
+      container.querySelector('.banner')?.getAttribute('data-variant'),
+    ).toBe('accent');
+
+    fixture.componentRef.setInput('variant', 'neutral');
+    fixture.detectChanges();
+    expect(
+      container.querySelector('.banner')?.getAttribute('data-variant'),
+    ).toBe('neutral');
   });
 });

@@ -6,7 +6,7 @@ import { BannerComponent } from './banner.component';
 /**
  * Everything in this component is projected — icon, message, actions — so the stories render
  * a template rather than binding args. That is the point: the tone is the only thing the
- * component decides, and the only way to see whether a tone works is to put real content in
+ * component decides, and the only way to see whether a variant works is to put real content in
  * it and switch the Theme.
  */
 const meta: Meta<BannerComponent> = {
@@ -30,7 +30,7 @@ export const Neutral: Story = {
   // Passive status: something is true, nothing is being asked of you.
   render: () => ({
     template: `
-      <trn-banner tone="neutral">
+      <trn-banner variant="neutral">
         <trn-icon trnBannerIcon name="cloud-off" />
         You are offline. Messages will send when the connection returns.
       </trn-banner>`,
@@ -41,7 +41,7 @@ export const Accent: Story = {
   // A call to action, which is why it carries a button and the louder tone.
   render: () => ({
     template: `
-      <trn-banner tone="accent">
+      <trn-banner variant="accent">
         <trn-icon trnBannerIcon name="lock" />
         Set up encryption to secure your messages.
         <span trnBannerActions>
@@ -56,7 +56,7 @@ export const LongMessage: Story = {
   // wrap without pushing the actions off the end or crushing the icon.
   render: () => ({
     template: `
-      <trn-banner tone="neutral">
+      <trn-banner variant="neutral">
         <trn-icon trnBannerIcon name="eye-off" />
         This room's history is only visible to members who joined before you, so the messages
         above may be missing context that other people in the room can see.
@@ -70,7 +70,7 @@ export const LongMessage: Story = {
 export const NoActions: Story = {
   render: () => ({
     template: `
-      <trn-banner tone="neutral">
+      <trn-banner variant="neutral">
         <trn-icon trnBannerIcon name="loader-circle" />
         Reconnecting…
       </trn-banner>`,
@@ -81,7 +81,7 @@ export const NoActions: Story = {
 export const DisabledAction: Story = {
   render: () => ({
     template: `
-      <trn-banner tone="neutral">
+      <trn-banner variant="neutral">
         <trn-icon trnBannerIcon name="cloud-off" />
         Reconnecting before this action becomes available.
         <span trnBannerActions>
@@ -96,9 +96,26 @@ export const Compact: Story = {
   globals: { density: 'compact' },
   render: () => ({
     template: `
-      <trn-banner tone="neutral">
+      <trn-banner variant="neutral">
         <trn-icon trnBannerIcon name="loader-circle" />
         Compact density keeps status chrome quiet.
       </trn-banner>`,
+  }),
+};
+
+/** The former `tone` name remains valid while call sites move to `variant`. */
+export const CompatibilityTone: Story = {
+  render: () => ({
+    template: `
+      <div class="grid gap-4">
+        <trn-banner data-testid="banner-canonical" variant="accent">
+          <trn-icon trnBannerIcon name="lock" />
+          Canonical variant.
+        </trn-banner>
+        <trn-banner data-testid="banner-legacy" tone="accent">
+          <trn-icon trnBannerIcon name="lock" />
+          Compatibility tone.
+        </trn-banner>
+      </div>`,
   }),
 };

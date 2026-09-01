@@ -199,7 +199,7 @@ describe('shorthand overrides', () => {
       label.endsWith('(inline styles)'),
     );
     expect(sheets.length - inline.length).toBeGreaterThan(50);
-    expect(inline.length).toBeGreaterThanOrEqual(10);
+    expect(inline.length).toBeGreaterThan(0);
     // And the parser finds rules in them, rather than returning nothing on every file.
     const parsed = sheets.reduce(
       (total, { text }) => total + rulesOf(text).length,

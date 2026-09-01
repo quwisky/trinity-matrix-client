@@ -45,30 +45,6 @@ export const UNLAYERED_RULESET_LEDGER = [
     '0b8eaf4efc082689f4f52fcf987c9ec87d7d8b5ccdc8cbf50297844afb1e276d',
   ],
   [
-    'libs/components/foundations/src/lib/icon/trn-icon/trn-icon.component.scss',
-    '37276b6c7dd3d4ef4a5c8fc44f8da2cbf497b34b2dbb3a7e47c688325a6b1f7d',
-  ],
-  [
-    'libs/components/foundations/src/lib/icon/trn-icon/trn-icon.component.ts#inline-styles',
-    '5e3479853b343bb68696c39cf16be53940eb30aeb6acb80622d2575b0ec56684',
-  ],
-  [
-    'libs/components/generic-content/src/lib/avatar/avatar.component.ts#inline-styles',
-    '1aed8138682f50aac7313f2291a60e3a9c60665c96c2d3340eb7980954193808',
-  ],
-  [
-    'libs/components/generic-content/src/lib/banner/banner.component.scss',
-    '8234eb5284d6e8a8cb1a10e2ca96537015f86c74825123cdbc27df73c3b7ec2a',
-  ],
-  [
-    'libs/components/generic-content/src/lib/progress/trn-progress.component.ts#inline-styles',
-    'c483ff224f1484acb700866912871b7e5c89b6f8fd751c798859cf5ef8b16b4a',
-  ],
-  [
-    'libs/components/generic-content/src/lib/spinner/trn-spinner.component.ts#inline-styles',
-    '5e3479853b343bb68696c39cf16be53940eb30aeb6acb80622d2575b0ec56684',
-  ],
-  [
     'libs/components/navigation-layout/src/lib/tabs/trn-tab-panel.component.ts#inline-styles',
     '0b8eaf4efc082689f4f52fcf987c9ec87d7d8b5ccdc8cbf50297844afb1e276d',
   ],

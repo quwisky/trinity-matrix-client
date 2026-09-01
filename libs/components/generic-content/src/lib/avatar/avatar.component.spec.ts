@@ -94,7 +94,7 @@ describe('AvatarComponent', () => {
     expect(dot(container)).toBeNull();
   });
 
-  it('renders a labelled presence dot coloured for the state', async () => {
+  it('renders a labelled presence dot for the semantic state', async () => {
     const { container } = await render(AvatarComponent, {
       inputs: { initial: 'A', presence: 'online' },
     });
@@ -102,16 +102,30 @@ describe('AvatarComponent', () => {
     expect(el).toBeTruthy();
     expect(el?.getAttribute('data-presence')).toBe('online');
     expect(el?.getAttribute('aria-label')).toBe('Online');
-    expect(el?.style.background).toBe('rgb(35, 165, 90)'); // #23a55a
   });
 
-  it('shows an amber Away dot for the unavailable state', async () => {
+  it('labels the unavailable state as Away', async () => {
     const { container } = await render(AvatarComponent, {
       inputs: { initial: 'A', presence: 'unavailable' },
     });
     const el = dot(container);
     expect(el?.getAttribute('aria-label')).toBe('Away');
-    expect(el?.style.background).toBe('rgb(240, 178, 50)'); // #f0b232
+  });
+
+  it('resolves named sizes and lets exact geometry take precedence', async () => {
+    const { fixture } = await render(AvatarComponent, {
+      inputs: { initial: 'A', size: 'sm' },
+    });
+    const host = fixture.nativeElement as HTMLElement;
+
+    expect(fixture.componentInstance.resolvedSize()).toBe(24);
+    expect(host.getAttribute('data-size')).toBe('sm');
+    expect(host.getAttribute('data-exact-size')).toBeNull();
+
+    fixture.componentRef.setInput('exactSize', 64);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.resolvedSize()).toBe(64);
+    expect(host.getAttribute('data-exact-size')).toBe('64');
   });
 
   it('scales the dot to the avatar size', async () => {

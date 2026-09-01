@@ -1,0 +1,13 @@
+<hlm-progress
+  [value]="value()"
+  [attr.aria-label]="ariaLabel()"
+  [attr.data-variant]="variant()"
+  [attr.data-size]="size()"
+  [class]="trackClass()"
+>
+  <div
+    hlmProgressIndicator
+    [attr.data-variant]="variant()"
+    [class]="indicatorClass()"
+  ></div>
+</hlm-progress>

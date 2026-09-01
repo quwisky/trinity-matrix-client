@@ -1,6 +1,11 @@
 import { Directive, computed, input } from '@angular/core';
-import { badgeVariants } from '@trinity/helm/badge';
 import { classes } from '@trinity/components/foundations';
+import {
+  normalizeTrnBadgeVariant,
+  trnBadgeRecipe,
+  type TrnBadgeSize,
+  type TrnBadgeVariantInput,
+} from './trn-badge-recipe';
 
 /**
  * What a badge can say in Trinity. Ours, and deliberately narrower than the kit's.
@@ -10,36 +15,28 @@ import { classes } from '@trinity/components/foundations';
  * to what call sites actually ask for: five fewer things for the next library to satisfy, and
  * five fewer things to check when one is swapped in. Widen it when something needs it.
  */
-export type TrnBadgeVariant = 'default' | 'success' | 'warning';
-
-/**
- * Trinity's status badge.
- *
- * An attribute directive on a `<span>`, matching every call site. Unlike {@link TrnLabel}
- * this cannot compose the kit directive through `hostDirectives`, because our `variant`
- * vocabulary is not the kit's and `hostDirectives` cannot transform an input — Angular
- * accepts only `'name'` or `'name: alias'`, and an `input()` is a read-only signal that
- * nothing outside the directive can write.
- *
- * So the variant is mapped here and the classes are applied here, from the kit's own `cva`
- * table. That is still one table, not two: `badgeVariants` is imported rather than copied,
- * so a re-sync cannot leave a stale duplicate behind. Only the mapping is ours.
- */
+/** Trinity's status badge, expressed only through semantic Trinity recipes. */
 @Directive({
   selector: '[trnBadge]',
   host: {
     'data-slot': 'badge',
-    '[attr.data-variant]': 'variant()',
+    '[attr.data-variant]': 'resolvedVariant()',
+    '[attr.data-size]': 'size()',
   },
 })
 export class TrnBadge {
-  readonly variant = input<TrnBadgeVariant>('default');
+  /** `default` remains accepted while pre-recipe templates migrate to `neutral`. */
+  readonly variant = input<TrnBadgeVariantInput>('neutral');
+  readonly size = input<TrnBadgeSize>('sm');
 
-  private readonly variantClasses = computed(() =>
-    badgeVariants({ variant: this.variant() }),
+  protected readonly resolvedVariant = computed(() =>
+    normalizeTrnBadgeVariant(this.variant()),
+  );
+  private readonly recipeClasses = computed(() =>
+    trnBadgeRecipe(this.variant(), this.size()),
   );
 
   constructor() {
-    classes(() => this.variantClasses());
+    classes(() => this.recipeClasses());
   }
 }

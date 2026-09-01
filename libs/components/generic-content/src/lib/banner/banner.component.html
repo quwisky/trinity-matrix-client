@@ -1,4 +1,8 @@
-<div class="banner" [attr.data-tone]="tone()">
+<div
+  class="banner"
+  [attr.data-variant]="resolvedVariant()"
+  [attr.data-tone]="resolvedVariant()"
+>
   <span class="banner__icon"><ng-content select="[trnBannerIcon]" /></span>
   <!-- Presentational only. Announcement is the consumer's job via a persistent
        sr-only live region: a role="status" inserted together with its text (as an

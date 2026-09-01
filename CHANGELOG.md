@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Foundations and generic content now use bounded Trinity recipes.** Icons, avatars, badges,
+  banners, empty states, progress and spinners expose only the semantic variants and ordinal
+  sizes they support, while tooltip position stays a behavior choice. Existing exact sizes and
+  renamed inputs remain compatible during migration, stories cover both forms, and browser
+  checks prove the recipes resolve through Theme tokens without leaking vendor types.
+
 - **Buttons now speak Trinity's design language instead of the underlying UI kit's.** Public
   button recipes introduce semantic `primary`, `secondary` and `danger` variants, ordinal
   `xs`–`lg` sizes, and separate presentation and icon-shape choices. Existing button inputs keep

@@ -7,7 +7,11 @@ import {
 import {
   TrnIconComponent,
   type TrnIconName,
+  type TrnVariant,
 } from '@trinity/components/foundations';
+
+export type TrnEmptyStateVariant = Extract<TrnVariant, 'muted' | 'danger'>;
+export type TrnEmptyStateLayout = 'panel' | 'line' | 'hero';
 
 /**
  * The "there is nothing here" panel: an optional icon, a line or two of text, and somewhere to
@@ -76,7 +80,9 @@ export class EmptyStateComponent {
    * How the text reads. `danger` is for the ones that are a failure rather than an absence —
    * the channel sidebar's "Couldn't load rooms" sits in the same place as its empty line.
    */
-  readonly tone = input<'muted' | 'danger'>('muted');
+  readonly variant = input<TrnEmptyStateVariant | null>(null);
+  /** Compatibility alias retained while existing templates migrate to `variant`. */
+  readonly tone = input<TrnEmptyStateVariant>('muted');
 
   /**
    * How much room it takes.
@@ -90,7 +96,16 @@ export class EmptyStateComponent {
    * Two, not three: 8px and 12px are near enough to consolidate, and consolidating drift is
    * the point of the component. 24px against 32px is not — that is a panel's worth.
    */
-  readonly size = input<'panel' | 'line' | 'hero'>('panel');
+  readonly layout = input<TrnEmptyStateLayout | null>(null);
+  /** Compatibility alias; this behavior is named `layout`, not ordinal size. */
+  readonly size = input<TrnEmptyStateLayout>('panel');
+
+  protected readonly resolvedVariant = computed(
+    () => this.variant() ?? this.tone(),
+  );
+  protected readonly resolvedLayout = computed(
+    () => this.layout() ?? this.size(),
+  );
 
   /**
    * A short glyph in a circle above the text — `#` for a room, an initial for a person.
@@ -134,7 +149,7 @@ export class EmptyStateComponent {
    * the theme where an error matters most.
    */
   protected readonly bodyClass = computed(() =>
-    this.tone() === 'danger'
+    this.resolvedVariant() === 'danger'
       ? 'text-13 text-balance text-danger empty:hidden'
       : 'text-13 text-balance text-muted-foreground empty:hidden',
   );
@@ -147,7 +162,7 @@ export class EmptyStateComponent {
    * would have changed every one of them.
    */
   protected readonly layoutClass = computed(() => {
-    switch (this.size()) {
+    switch (this.resolvedLayout()) {
       case 'line':
         return 'flex flex-col items-center gap-1 px-2 py-2 text-center';
       case 'hero':
@@ -162,7 +177,7 @@ export class EmptyStateComponent {
 
   /** The title's type. A hero's is the pane's own headline; the rest are a label. */
   protected readonly titleClass = computed(() =>
-    this.size() === 'hero'
+    this.resolvedLayout() === 'hero'
       ? 'text-[22px] font-bold text-balance text-foreground'
       : 'text-sm font-semibold text-balance text-foreground',
   );

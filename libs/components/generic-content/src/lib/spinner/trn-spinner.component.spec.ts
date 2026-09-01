@@ -8,7 +8,7 @@ import { TrnSpinnerComponent } from './trn-spinner.component';
 // template binding is also how every call site actually addresses it.
 @Component({
   imports: [TrnSpinnerComponent],
-  template: `<trn-spinner aria-label="Verifying" />`,
+  template: `<trn-spinner aria-label="Verifying" size="lg" variant="accent" />`,
 })
 class LabelledHostComponent {}
 
@@ -37,12 +37,21 @@ describe('TrnSpinnerComponent', () => {
     expect(spinner(container)?.getAttribute('aria-label')).toBe('Loading');
   });
 
-  it('keeps the box model of the element it replaces', async () => {
-    // Assertable precisely because it is a component `styles:` declaration rather than a
-    // Tailwind class — jsdom loads no stylesheet, but it does apply component styles.
+  it('publishes only the applicable size and semantic ink', async () => {
+    const { container } = await render(LabelledHostComponent);
+    const host = container.querySelector('trn-spinner');
+
+    expect(host?.getAttribute('data-size')).toBe('lg');
+    expect(host?.getAttribute('data-variant')).toBe('accent');
+  });
+
+  it('keeps appearance off the host class contract', async () => {
+    // The layered stylesheet owns the host box and the inner recipe owns appearance. jsdom
+    // cannot evaluate @layer; Storybook verifies the dimensions in a real browser. Keeping
+    // this host free of recipe classes reserves consumer classes for external layout.
     const { container } = await render(BareHostComponent);
     const host = container.querySelector('trn-spinner') as HTMLElement;
 
-    expect(getComputedStyle(host).display).toBe('inline-flex');
+    expect([...host.classList]).toEqual([]);
   });
 });

@@ -14,6 +14,10 @@ import {
 } from '@trinity/helm/avatar';
 import { type PresenceState, presenceLabel } from '@trinity/util/matrix';
 import { AVATAR_RESOLVER } from './avatar-resolver';
+import {
+  resolveTrnAvatarSize,
+  type TrnAvatarSizeInput,
+} from './trn-avatar-size';
 
 /**
  * Owning-account badge for the mixed-account corner overlay: the account's real avatar
@@ -89,63 +93,22 @@ function readableInk(hex: string): string {
  * either a ready `url`, or an `mxc` which is resolved via the injected
  * {@link AVATAR_RESOLVER} (authenticated blob URL) when one is provided.
  *
- * The helm avatar is fixed-size, circular, and neutral-filled, so `size` (arbitrary
- * px), semantic `shape`, and the name-hashed fallback colour are applied through this
- * wrapper. The shape rule also covers Helm's decorative `::after` outline.
+ * The helm avatar is fixed-size, circular, and neutral-filled, so named `size`, the bounded
+ * `exactSize` escape, semantic `shape`, and the name-hashed fallback colour are applied
+ * through this wrapper. The shape rule also covers Helm's decorative `::after` outline.
  */
 @Component({
   selector: 'trn-avatar',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[attr.data-shape]': 'shape()',
+    '[attr.data-size]': 'canonicalSize()',
+    '[attr.data-exact-size]': 'requestedExactSize()',
     '[style.--trn-avatar-radius]': 'shapeRadius()',
   },
   imports: [HlmAvatar, HlmAvatarImage, HlmAvatarFallback],
   templateUrl: './avatar.component.html',
-  styles: [
-    `
-      :host {
-        display: inline-flex;
-        position: relative;
-      }
-      hlm-avatar,
-      hlm-avatar::after,
-      [hlmAvatarImage],
-      [hlmAvatarFallback] {
-        border-radius: var(--trn-avatar-radius);
-      }
-      .presence-dot {
-        position: absolute;
-        right: 0;
-        bottom: 0;
-        border-radius: 50%;
-        /* Ring in the surrounding surface colour so the dot reads as an overlay. */
-        box-shadow: 0 0 0 2px var(--trn-presence-ring, var(--background));
-      }
-      .account-badge {
-        position: absolute;
-        /* Bottom-LEFT: the presence dot owns bottom-right, and a DM row in the mixed view
-           carries both — same corner would hide the online indicator entirely. */
-        left: -2px;
-        bottom: -2px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 50%;
-        font-weight: 700;
-        line-height: 1;
-        overflow: hidden;
-        /* Ring in the surrounding surface colour so the badge reads as an overlay. */
-        box-shadow: 0 0 0 2px var(--trn-presence-ring, var(--background));
-      }
-      .account-badge__img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        border-radius: 50%;
-      }
-    `,
-  ],
+  styleUrl: './avatar.component.scss',
 })
 export class AvatarComponent {
   readonly url = input<string | null>(null);
@@ -160,7 +123,10 @@ export class AvatarComponent {
   readonly accountId = input<string | null>(null);
   readonly name = input('');
   readonly initial = input('?');
-  readonly size = input(40);
+  /** Named geometry. Numeric values remain accepted while existing callers migrate. */
+  readonly size = input<TrnAvatarSizeInput>('xl');
+  /** Bounded 16–256px escape for layouts whose geometry cannot use an ordinal size. */
+  readonly exactSize = input<number | null>(null);
   readonly shape = input<AvatarShape>('person');
   /** Online-status indicator; omit (null) to render no presence dot. */
   readonly presence = input<PresenceState | null>(null);
@@ -173,6 +139,23 @@ export class AvatarComponent {
 
   private readonly resolver = inject(AVATAR_RESOLVER, { optional: true });
 
+  readonly resolvedSize = computed(() =>
+    resolveTrnAvatarSize(this.size(), this.exactSize()),
+  );
+  protected readonly canonicalSize = computed(() => {
+    const size = this.size();
+    return typeof size === 'string' ? size : null;
+  });
+  protected readonly requestedExactSize = computed(() => {
+    const exact = this.exactSize();
+    if (exact !== null) {
+      return exact;
+    }
+
+    const size = this.size();
+    return typeof size === 'number' ? size : null;
+  });
+
   /** One inherited radius drives the Helm host, image, fallback and outline together. */
   readonly shapeRadius = computed(() =>
     this.shape() === 'place'
@@ -181,11 +164,13 @@ export class AvatarComponent {
   );
 
   /** Diameter of the presence dot, scaled to the avatar (floored so it stays visible). */
-  readonly dotSize = computed(() => Math.max(8, Math.round(this.size() * 0.3)));
+  readonly dotSize = computed(() =>
+    Math.max(8, Math.round(this.resolvedSize() * 0.3)),
+  );
 
   /** Diameter of the account badge, scaled to the avatar (floored so its letter fits). */
   readonly badgeSize = computed(() =>
-    Math.max(14, Math.round(this.size() * 0.42)),
+    Math.max(14, Math.round(this.resolvedSize() * 0.42)),
   );
 
   /** Account-hashed fill for the badge, and a readable ink for its letter. Hashed on the
@@ -195,18 +180,6 @@ export class AvatarComponent {
     return hashColor(badge?.id || badge?.name || '');
   });
   readonly badgeInk = computed(() => readableInk(this.badgeColor()));
-
-  /** Fill colour for the presence dot, by state. */
-  readonly presenceColor = computed(() => {
-    switch (this.presence()) {
-      case 'online':
-        return '#23a55a';
-      case 'unavailable':
-        return '#f0b232';
-      default:
-        return '#80848e';
-    }
-  });
 
   /** Accessible label / tooltip for the presence dot (null when there's no dot). */
   readonly presenceTitle = computed(() => {
@@ -263,7 +236,7 @@ export class AvatarComponent {
     // rows); the subscription is torn down on the next run/destroy.
     effect((onCleanup) => {
       const mxc = this.mxc();
-      const size = this.size();
+      const size = this.resolvedSize();
       const accountId = this.accountId() ?? undefined;
       this.resolvedUrl.set(null);
       if (mxc && this.resolver) {

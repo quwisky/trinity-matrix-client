@@ -26,6 +26,11 @@ const meta: Meta<TrnProgressComponent> = {
       control: { type: 'range', min: 0, max: 100, step: 1 },
       description: '0–100, or null for indeterminate',
     },
+    variant: {
+      control: 'select',
+      options: ['accent', 'success', 'warning', 'danger'],
+    },
+    size: { control: 'select', options: ['xs', 'sm', 'md'] },
   },
 };
 
@@ -45,7 +50,12 @@ type ProgressArgs = TrnProgressComponent & { 'aria-label': string | null };
 type Story = StoryObj<ProgressArgs>;
 
 export const Determinate: Story = {
-  args: { value: 60, 'aria-label': 'Uploading holiday.png' },
+  args: {
+    value: 60,
+    variant: 'accent',
+    size: 'sm',
+    'aria-label': 'Uploading holiday.png',
+  },
 };
 
 export const Indeterminate: Story = {
@@ -66,4 +76,19 @@ export const InABatch: Story = {
   // How the composer labels it mid-batch. The label is the component's accessible name, so
   // this is also the check that it is announced rather than merely drawn.
   args: { value: 40, 'aria-label': 'Uploading holiday.png (2 of 5)' },
+};
+
+/** Appearance recipes are independent of determinate/indeterminate behavior. */
+export const CanonicalRecipes: Story = {
+  render: () => ({
+    template: `
+      <div class="grid min-w-80 gap-5 p-4">
+        <trn-progress data-testid="progress-accent-xs" variant="accent" size="xs" [value]="35" aria-label="Accent progress" />
+        <trn-progress data-testid="progress-success-sm" variant="success" size="sm" [value]="55" aria-label="Success progress" />
+        <trn-progress data-testid="progress-warning-md" variant="warning" size="md" [value]="75" aria-label="Warning progress" />
+        <trn-progress data-testid="progress-danger-md" variant="danger" size="md" [value]="90" aria-label="Danger progress" />
+        <trn-progress data-testid="progress-indeterminate" variant="accent" size="sm" [value]="null" aria-label="Indeterminate progress" />
+      </div>
+    `,
+  }),
 };
