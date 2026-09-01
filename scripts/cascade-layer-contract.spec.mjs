@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { UNLAYERED_RULESET_LEDGER } from './cascade-layer-exceptions.mjs';
 import { inlineStyleSheets } from './inline-styles.mjs';
 import {
+  stripMarkupComments,
   stripSourceComments,
   topLevelStyleBlocks,
 } from './source-style-blocks.mjs';
@@ -34,10 +35,8 @@ const normalizedRules = (source) =>
   stripSourceComments(source).replace(/\s+/gu, ' ').trim();
 const rulesetFingerprint = (source) =>
   createHash('sha256').update(normalizedRules(source)).digest('hex');
-const stripHtmlComments = (source) => source.replace(/<!--[\s\S]*?-->/gu, '');
-
 function documentStyle(attribute) {
-  const html = stripHtmlComments(read('apps/trinity/src/index.html'));
+  const html = stripMarkupComments(read('apps/trinity/src/index.html'));
   const body = html.match(
     new RegExp(`<style\\s+${attribute}(?:=[^>]*)?>([\\s\\S]*?)<\\/style>`, 'u'),
   )?.[1];
@@ -46,7 +45,7 @@ function documentStyle(attribute) {
 }
 
 function ledger(name) {
-  const source = read('scripts/styling-idiom.spec.mjs');
+  const source = stripSourceComments(read('scripts/styling-idiom.spec.mjs'));
   const body = source.match(
     new RegExp(`const ${name} = \\[([\\s\\S]*?)\\n\\];`, 'u'),
   )?.[1];
@@ -168,6 +167,7 @@ describe('cascade layer contract', () => {
     ).sort();
     const componentLedger = ledger('COMPONENT_STYLESHEET_LEDGER');
     expect(componentSources).toEqual(componentLedger);
+    const sharedPartials = ledger('SHARED_PARTIALS');
 
     const inlineSources = inlineStyleSheets();
     const inlineLedger = ledger('INLINE_STYLE_LEDGER');
@@ -187,6 +187,7 @@ describe('cascade layer contract', () => {
           ? [[file, rulesetFingerprint(css)]]
           : [];
       }),
+      ...sharedPartials.map((file) => [file, rulesetFingerprint(read(file))]),
       ...inlineSources.flatMap(({ file, css }) =>
         isFullyLayered(css)
           ? []
@@ -195,7 +196,11 @@ describe('cascade layer contract', () => {
     ].sort(([left], [right]) => left.localeCompare(right));
 
     expect(actualExceptions.length).toBeGreaterThan(50);
-    expect(actualExceptions).toEqual(UNLAYERED_RULESET_LEDGER);
+    expect(actualExceptions).toEqual(
+      [...UNLAYERED_RULESET_LEDGER].sort(([left], [right]) =>
+        left.localeCompare(right),
+      ),
+    );
   });
 
   it('allows only the audited reduced-motion important bridge', () => {

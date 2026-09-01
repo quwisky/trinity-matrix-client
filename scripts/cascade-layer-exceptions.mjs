@@ -348,4 +348,20 @@ export const UNLAYERED_RULESET_LEDGER = [
     'libs/feature/settings/src/lib/settings/settings.page.scss',
     '33faee7f788b03682bda03bf701ae9bbd08a2d0087cd57e3d96b121cf1e7de59',
   ],
+  [
+    'libs/feature/auth/src/lib/styles/_auth-form.scss',
+    'dae2357cab08c84417d57c321af7835bee72e40db88275a2c476cc11081a1d1d',
+  ],
+  [
+    'libs/feature/crypto/src/lib/styles/_mixins.scss',
+    'b528cd290beb6eda7c1964aa08493711810c850bfb9d56553389b3179d764c33',
+  ],
+  [
+    'libs/feature/rooms/src/lib/message-list/_message-list-shared.scss',
+    '4ea26f2dc4e87f40aee8d004666dc0145f078bc0c54703cda9c59fc3c85e561c',
+  ],
+  [
+    'libs/feature/rooms/src/lib/styles/_mixins.scss',
+    'b508bec77b86d9143d2e12e393c2763fefd77ef5b1c981f1fca61eeb5ec1a1fb',
+  ],
 ];

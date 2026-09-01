@@ -2,6 +2,10 @@
 export const stripSourceComments = (source) =>
   source.replace(/\/\*[\s\S]*?\*\//gu, '').replace(/(^|\s)\/\/.*$/gmu, '$1');
 
+/** Strip HTML comments before a source guard searches document-owned styles. */
+export const stripMarkupComments = (source) =>
+  source.replace(/<!--[\s\S]*?-->/gu, '');
+
 /** Return the balanced block opened at `openingBrace`, including its closing offset. */
 export function sourceStyleBlockAt(source, openingBrace) {
   if (source[openingBrace] !== '{') {

@@ -420,9 +420,10 @@ Angular currently injects component `styleUrl` and inline `styles` blocks withou
 complete source inventory is frozen in
 [`scripts/styling-idiom.spec.mjs`](../../scripts/styling-idiom.spec.mjs). The stricter temporary
 ledger in `cascade-layer-exceptions.mjs` fingerprints each comment-free unlayered ruleset, so a
-rule added or changed inside an existing source fails too; later migrations delete entries.
-Runtime vendor injection and the CodeMirror adapter are migrated by the next vendor-seam ticket
-rather than hidden here.
+rule added or changed inside an existing source fails too. Shared SCSS partials have their own
+entries, so a transitive mixin or emitted-rule change cannot bypass the component fingerprints;
+later migrations delete entries. Runtime vendor injection and the CodeMirror adapter are migrated
+by the next vendor-seam ticket rather than hidden here.
 
 Three old reversals are deliberate now. Public input and textarea controls are excluded from
 the base focus selector so their Helm ring remains the only indicator. The semantic disabled

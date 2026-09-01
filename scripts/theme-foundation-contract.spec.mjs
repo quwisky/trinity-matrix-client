@@ -1,11 +1,13 @@
 import { existsSync, globSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { stripSourceComments } from './source-style-blocks.mjs';
+import {
+  stripMarkupComments,
+  stripSourceComments,
+} from './source-style-blocks.mjs';
 
 const workspaceRoot = join(import.meta.dirname, '..');
 const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
-const stripHtmlComments = (source) => source.replace(/<!--[\s\S]*?-->/g, '');
 
 const allCodeFiles = globSync(
   ['apps/**/*.ts', 'libs/**/*.ts', 'e2e/**/*.mts'],
@@ -58,8 +60,8 @@ describe('Theme Foundation repository contract', () => {
     const cascadeOrder = stripSourceComments(
       read('libs/theme-foundation/styles/internal/tailwind-adapter.css'),
     ).match(/@layer [^;]+;/u)?.[0];
-    const appIndex = stripHtmlComments(read('apps/trinity/src/index.html'));
-    const storybookPreviewHead = stripHtmlComments(
+    const appIndex = stripMarkupComments(read('apps/trinity/src/index.html'));
+    const storybookPreviewHead = stripMarkupComments(
       read('libs/components/storybook-host/.storybook/preview-head.html'),
     );
     expect(cascadeOrder).toBeDefined();
