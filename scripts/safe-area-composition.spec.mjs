@@ -5,17 +5,16 @@ import { describe, expect, it } from 'vitest';
 /**
  * A `.safe-*` helper and a Tailwind padding utility must not claim the same side.
  *
- * `class="safe-top p-3"` looks like padding plus an inset and is neither. The helpers in
- * `global.scss` are UNLAYERED author rules — that file is a plain stylesheet — while
- * Tailwind's utilities live in `@layer utilities`, and an unlayered declaration beats a
- * layered one whatever the specificity says. So the helper REPLACES the padding on its side
- * rather than adding to it, and the element silently loses the spacing it appears to ask for.
+ * `class="safe-top p-3"` looks like padding plus an inset and is neither. Both helpers now
+ * live in `@layer utilities`, so source order chooses one padding declaration and discards the
+ * other. The old unlayered contract chose the inset; the classified contract can choose the
+ * spacing instead. Either direction loses half the author's intent.
  *
  * This has shipped here twice. All five right-hand panel headers rendered as
  * `padding: 0 0 12px` — a 45px bar with its title flush against the border, beside a 56px
- * room header with a 12px inset (#219). The same cascade rule, in its other direction, left
- * the desktop sidebar showing its mobile chevron because an unlayered author rule beat a
- * layered `md:hidden`.
+ * room header with a 12px inset (#219). A related layer reversal left the desktop sidebar
+ * showing its mobile chevron because a component default beat `md:hidden`; component defaults
+ * now live before utilities, and the browser-level cascade probe pins that order.
  *
  * Neither was visible to a unit test: jsdom applies no CSS, so `className` contains exactly
  * the tokens the author wrote and every assertion about it passes. It is decidable from the
@@ -201,8 +200,8 @@ describe('safe-area helpers and padding utilities', () => {
           );
           if (shared.length) {
             clashes.push(
-              `${file}:${line}: \`${token}\` is unlayered and replaces \`${other}\` ` +
-                `on ${shared.join(', ')} — compose them in one declaration instead`,
+              `${file}:${line}: \`${token}\` and \`${other}\` both own ` +
+                `${shared.join(', ')} — compose them in one declaration instead`,
             );
           }
         }

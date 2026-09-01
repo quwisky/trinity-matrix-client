@@ -185,7 +185,7 @@ const SYNTAX_ROLES = [
 /** Every `:root…{ }` block in the file, in source order. */
 function parseBlocks(css) {
   const blocks = [];
-  const pattern = /^(:root[^{]*)\{/gm;
+  const pattern = /^\s*(:root[^{]*)\{/gm;
   for (const match of css.matchAll(pattern)) {
     const start = match.index + match[0].length;
     let depth = 1;

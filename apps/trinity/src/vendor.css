@@ -1,0 +1,7 @@
+/*
+ * Static third-party styles participate in Trinity's cascade instead of arriving as
+ * anonymous top-level author rules. Runtime-injected vendor styles are tracked separately
+ * by the temporary exception ledger until their owning adapters migrate them.
+ */
+@import '../../../node_modules/@angular/cdk/overlay-prebuilt.css' layer(vendor);
+@import '../../../node_modules/@ctrl/ngx-emoji-mart/picker.css' layer(vendor);

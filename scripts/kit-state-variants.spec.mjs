@@ -216,24 +216,30 @@ describe('destructive tint state overrides', () => {
       parent: rules[0].parent.type,
       name: rules[0].parent.name,
       params: rules[0].parent.params,
+      layer: rules[0].parent.parent?.params,
       background: backgroundOf(rules[0]),
     }).toEqual({
       parent: 'atrule',
       name: 'media',
       params: '(hover: hover)',
+      layer: 'overrides',
       background: 'var(--trinity-danger-tint-20)',
     });
   });
 
-  it('keeps the non-hover dark tint at the root', () => {
+  it('keeps the non-hover dark tint directly in overrides', () => {
     const rules = rulesWithSelector('.dark .dark\\:bg-destructive\\/20');
 
     expect(rules).toHaveLength(1);
     expect({
       parent: rules[0].parent.type,
+      name: rules[0].parent.name,
+      params: rules[0].parent.params,
       background: backgroundOf(rules[0]),
     }).toEqual({
-      parent: 'root',
+      parent: 'atrule',
+      name: 'layer',
+      params: 'overrides',
       background: 'var(--trinity-danger-tint-20)',
     });
   });

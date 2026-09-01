@@ -392,30 +392,39 @@ describe('UI vendor boundary', () => {
     ).toEqual([]);
   });
 
-  it('keeps the app-tier vendor stylesheets to the two the ban cannot cover', () => {
+  it('keeps the app-tier vendor stylesheet seam to the two the ban cannot cover', () => {
     // `bannedExternalImports` matches TS/JS import specifiers, and nothing else. The app's
     // build `styles` array is configuration, so a vendor stylesheet listed there is
     // invisible to every rule above — the boundary is enforced for code and silent here.
-    // Both entries below are deliberate and both have to live at this tier: CDK's overlay
+    // Both imports below are deliberate and both have to live at this tier: CDK's overlay
     // sheet must be global for any overlay to position at all, and while the emoji picker's
     // CAN be pulled into the lazy component chunk (`@import '@ctrl/ngx-emoji-mart/picker'`
     // resolves and inlines), doing so puts that component 517 bytes over the workspace's
     // 8 kB `anyComponentStyle` budget — and raising a budget that guards every component,
     // to relocate one vendored file, is the worse trade.
     //
-    // So this is pinned rather than fixed: the list is a decision with a reason, and a third
-    // entry has to be argued for here instead of appearing in a build config nobody reads as
-    // part of the boundary.
+    // They enter through one explicit `vendor` layer instead of two anonymous build entries.
+    // A third import has to be argued for here instead of appearing in configuration nobody
+    // reads as part of the boundary.
     const app = JSON.parse(
       readFileSync(join(workspaceRoot, 'apps/trinity/project.json'), 'utf8'),
     );
-    const vendorStyles = app.targets.build.options.styles.filter((style) =>
-      style.startsWith('node_modules/'),
+    expect(app.targets.build.options.styles).toContain(
+      'apps/trinity/src/vendor.css',
     );
+    expect(
+      app.targets.build.options.styles.filter((style) =>
+        style.startsWith('node_modules/'),
+      ),
+    ).toEqual([]);
 
-    expect(vendorStyles).toEqual([
-      'node_modules/@angular/cdk/overlay-prebuilt.css',
-      'node_modules/@ctrl/ngx-emoji-mart/picker.css',
+    const vendorStyles = readFileSync(
+      join(workspaceRoot, 'apps/trinity/src/vendor.css'),
+      'utf8',
+    );
+    expect(vendorStyles.match(/^@import .+ layer\(vendor\);$/gmu)).toEqual([
+      "@import '../../../node_modules/@angular/cdk/overlay-prebuilt.css' layer(vendor);",
+      "@import '../../../node_modules/@ctrl/ngx-emoji-mart/picker.css' layer(vendor);",
     ]);
   });
 

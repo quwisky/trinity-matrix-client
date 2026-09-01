@@ -4,6 +4,11 @@
     <meta charset="utf-8" />
     <title>Trinity</title>
 
+    <!-- This must precede Angular's injected stylesheet link so every host sees one order. -->
+    <style data-trn-cascade-contract>
+      @layer theme, base, vendor, components, utilities, overrides;
+    </style>
+
     <!--
       Content-Security-Policy backstop behind the explicit message-HTML
       sanitization. The homeserver is user-chosen at login, so connect/media
@@ -77,56 +82,58 @@
       `--trinity-text` defaults on purpose — a stylesheet import would be another request to
       wait for, which defeats the point of painting early.
     -->
-    <style>
-      .trn-boot {
-        position: fixed;
-        inset: 0;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 16px;
-        background: #fff;
-        color: #313338;
-        font-family:
-          system-ui,
-          -apple-system,
-          sans-serif;
-      }
-
-      @media (prefers-color-scheme: dark) {
+    <style data-trn-boot-style>
+      @layer components {
         .trn-boot {
-          background: hsl(240deg 10% 3.9%);
-          color: #dbdee1;
+          position: fixed;
+          inset: 0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 16px;
+          background: #fff;
+          color: #313338;
+          font-family:
+            system-ui,
+            -apple-system,
+            sans-serif;
         }
-      }
 
-      .trn-boot__mark {
-        font-size: 20px;
-        font-weight: 600;
-        letter-spacing: 0.04em;
-      }
+        @media (prefers-color-scheme: dark) {
+          .trn-boot {
+            background: hsl(240deg 10% 3.9%);
+            color: #dbdee1;
+          }
+        }
 
-      .trn-boot__hint {
-        font-size: 13px;
-        opacity: 0.7;
-      }
-
-      /* Opt IN to motion rather than out of it: this markup paints before the app's
-         stylesheet, so it cannot rely on the reduced-motion reset in global.scss. */
-      @media (prefers-reduced-motion: no-preference) {
         .trn-boot__mark {
-          animation: trn-boot-pulse 1.6s ease-in-out infinite;
+          font-size: 20px;
+          font-weight: 600;
+          letter-spacing: 0.04em;
         }
 
-        @keyframes trn-boot-pulse {
-          0%,
-          100% {
-            opacity: 1;
+        .trn-boot__hint {
+          font-size: 13px;
+          opacity: 0.7;
+        }
+
+        /* Opt IN to motion rather than out of it: this markup paints before the app's
+         stylesheet, so it cannot rely on the reduced-motion reset in global.scss. */
+        @media (prefers-reduced-motion: no-preference) {
+          .trn-boot__mark {
+            animation: trn-boot-pulse 1.6s ease-in-out infinite;
           }
 
-          50% {
-            opacity: 0.55;
+          @keyframes trn-boot-pulse {
+            0%,
+            100% {
+              opacity: 1;
+            }
+
+            50% {
+              opacity: 0.55;
+            }
           }
         }
       }

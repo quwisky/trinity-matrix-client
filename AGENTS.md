@@ -302,14 +302,13 @@ Electron's `trinity://` scheme, which broke the desktop dark theme.
   is a near-black maroon (in a template the alert-text utility is `text-danger`, **not**
   `text-destructive`). Rendered `[innerHTML]` markdown is styled globally in
   `apps/trinity/src/rendered-markdown.scss` (not `::ng-deep`). See [docs/architecture/ui-and-theming.md](docs/architecture/ui-and-theming.md).
-- **A Tailwind utility loses to an unlayered rule, whatever the specificity.** Theme Foundation's
-  private Tailwind adapter
-  imports Tailwind into `@layer utilities`; Angular component styles and `global.scss` are
-  UNLAYERED, and an unlayered author declaration always wins. So `md:hidden` on a component with
-  its own `:host { display: … }` does nothing, and pairing `.safe-*` with `p-3` REPLACES the
-  padding on that side instead of adding to it. Three separate bugs came from this. If a utility
-  "does nothing", check the layer before anything else — and compose an inset with its padding in
-  one declaration (see `.panel-header` in `global.scss`) rather than stacking the two classes.
+- **Cascade roles are fixed:** `theme, base, vendor, components, utilities, overrides`. Global
+  authored rules use those roles; Angular component style tags remain temporary unlayered
+  exceptions inventoried by `scripts/styling-idiom.spec.mjs` and fingerprinted by
+  `scripts/cascade-layer-exceptions.mjs`. When a utility "does nothing", check those ledgers and
+  the compiled cascade. A `.safe-*` helper and a padding utility still claim the same longhand,
+  so compose the inset and padding in one declaration (see `.panel-header`) rather than stacking
+  them. See [docs/architecture/ui-and-theming.md](docs/architecture/ui-and-theming.md).
 - **Platform vs capability are different questions, and both predicates exist.** `isMobileOs()`
   (`@trinity/platform-native`) asks the OS and picks the INTERACTION MODEL — a bottom sheet is an
   iOS/Android convention, and a touchscreen Windows laptop should not be handed one. A
