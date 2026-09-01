@@ -29,6 +29,9 @@ const stripComments = (path, source) =>
     ? stripMarkupComments(source)
     : stripSourceComments(source);
 
+export const runtimeVendorSourceIncludesMarker = (path, source, marker) =>
+  stripComments(path, source).includes(marker);
+
 function packageRoot(packageName) {
   return join(workspaceRoot, 'node_modules', packageName);
 }
@@ -69,7 +72,7 @@ function validateInstalledPackage(entry, errors) {
       continue;
     }
     for (const marker of module.markers) {
-      if (!source.includes(marker)) {
+      if (!runtimeVendorSourceIncludesMarker(module.path, source, marker)) {
         errors.push(
           `${entry.id} runtime injection changed in ${module.path}; missing marker: ${marker}`,
         );

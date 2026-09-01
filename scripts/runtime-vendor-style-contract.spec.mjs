@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   runtimeVendorImportSpecifiers,
+  runtimeVendorSourceIncludesMarker,
   validateRuntimeVendorStyles,
 } from './runtime-vendor-style-contract.mjs';
 
@@ -67,5 +68,22 @@ describe('runtime vendor style contract', () => {
       '@ng-icons/core',
       '@spartan-ng/brain/sonner',
     ]);
+  });
+
+  it('does not accept an upstream marker that exists only in a comment', () => {
+    expect(
+      runtimeVendorSourceIncludesMarker(
+        'vendor.mjs',
+        '// class RuntimeStyleLoader {}',
+        'class RuntimeStyleLoader',
+      ),
+    ).toBe(false);
+    expect(
+      runtimeVendorSourceIncludesMarker(
+        'vendor.mjs',
+        'class RuntimeStyleLoader {}',
+        'class RuntimeStyleLoader',
+      ),
+    ).toBe(true);
   });
 });
