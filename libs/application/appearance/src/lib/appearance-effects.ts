@@ -36,17 +36,17 @@ import { APPEARANCE_SYSTEM_MODE_SOURCE } from './appearance-system-mode.source';
 @Injectable({ providedIn: 'root' })
 export class AppearanceEffects {
   private readonly preferences = inject(AppearancePreferences);
-  private readonly document = inject(APPEARANCE_DOCUMENT_ADAPTER);
+  private readonly documentAdapter = inject(APPEARANCE_DOCUMENT_ADAPTER);
   private readonly systemMode = inject(APPEARANCE_SYSTEM_MODE_SOURCE);
   private readonly nativeChrome = inject(APPEARANCE_NATIVE_CHROME_ADAPTER, {
     optional: true,
   });
   private readonly committed = toObservable(this.preferences.value);
-  private readonly _resolved = signal<ResolvedAppearance>(
-    resolveAppearance(this.preferences.value(), 'dark'),
+  private readonly _resolved = signal<ResolvedAppearance | undefined>(
+    undefined,
   );
 
-  /** Last Appearance projected by the running effect lifetime. */
+  /** Last Appearance projected by the effect lifetime, or undefined before it first runs. */
   readonly resolved = this._resolved.asReadonly();
 
   run(): Observable<never> {
@@ -64,7 +64,7 @@ export class AppearanceEffects {
       const documentEffects = resolved.pipe(
         tap((appearance) => {
           this._resolved.set(appearance);
-          this.document.apply(appearance);
+          this.documentAdapter.apply(appearance);
         }),
         ignoreElements(),
       );

@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { BehaviorSubject, firstValueFrom, of } from 'rxjs';
+import { BehaviorSubject, firstValueFrom, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   AppearancePreferences,
@@ -55,20 +55,21 @@ describe('AppearanceEffects', () => {
     );
     const effects = TestBed.inject(AppearanceEffects);
 
+    expect(effects.resolved()).toBeUndefined();
     const subscription = effects.run().subscribe();
     TestBed.flushEffects();
-    expect(effects.resolved().mode).toBe('light');
+    expect(effects.resolved()?.mode).toBe('light');
     expect(documentAdapter.apply).toHaveBeenCalledTimes(1);
     expect(nativeAdapter.apply).toHaveBeenLastCalledWith({ mode: 'light' });
 
     systemMode.next('dark');
-    expect(effects.resolved().mode).toBe('dark');
+    expect(effects.resolved()?.mode).toBe('dark');
     expect(documentAdapter.apply).toHaveBeenCalledTimes(2);
     expect(nativeAdapter.apply).toHaveBeenLastCalledWith({ mode: 'dark' });
 
     committed.set({ ...committed(), mode: 'light' });
     TestBed.flushEffects();
-    expect(effects.resolved().mode).toBe('light');
+    expect(effects.resolved()?.mode).toBe('light');
     expect(documentAdapter.apply).toHaveBeenCalledTimes(3);
     expect(nativeAdapter.apply).toHaveBeenCalledTimes(3);
 
@@ -85,6 +86,55 @@ describe('AppearanceEffects', () => {
     committed.set({ ...committed(), mode: 'dark' });
     TestBed.flushEffects();
     expect(documentAdapter.apply).toHaveBeenCalledTimes(4);
+  });
+
+  it('keeps the document effect alive without a native adapter', () => {
+    const committed = signal(defaults());
+    const systemMode = new BehaviorSubject<'light' | 'dark'>('light');
+    const documentAdapter: AppearanceDocumentAdapter = {
+      apply: vi.fn(),
+    };
+    configureEffects(
+      { value: committed.asReadonly() },
+      systemMode,
+      documentAdapter,
+    );
+    const effects = TestBed.inject(AppearanceEffects);
+
+    const subscription = effects.run().subscribe();
+    TestBed.flushEffects();
+    systemMode.next('dark');
+
+    expect(effects.resolved()?.mode).toBe('dark');
+    expect(documentAdapter.apply).toHaveBeenCalledTimes(2);
+    subscription.unsubscribe();
+  });
+
+  it('keeps the document effect alive when native chrome rejects a command', () => {
+    const committed = signal(defaults());
+    const systemMode = new BehaviorSubject<'light' | 'dark'>('light');
+    const documentAdapter: AppearanceDocumentAdapter = {
+      apply: vi.fn(),
+    };
+    const nativeAdapter: AppearanceNativeChromeAdapter = {
+      apply: vi.fn(() => throwError(() => new Error('native unavailable'))),
+    };
+    configureEffects(
+      { value: committed.asReadonly() },
+      systemMode,
+      documentAdapter,
+      nativeAdapter,
+    );
+    const effects = TestBed.inject(AppearanceEffects);
+
+    const subscription = effects.run().subscribe();
+    TestBed.flushEffects();
+    systemMode.next('dark');
+
+    expect(effects.resolved()?.mode).toBe('dark');
+    expect(documentAdapter.apply).toHaveBeenCalledTimes(2);
+    expect(nativeAdapter.apply).toHaveBeenCalledTimes(2);
+    subscription.unsubscribe();
   });
 
   it('never resolves or renders an uncommitted persistence failure', async () => {
@@ -138,7 +188,7 @@ describe('AppearanceEffects', () => {
       diagnostic: { code: 'preference-storage-write-failed' },
     });
     expect(appearance.value().mode).toBe('system');
-    expect(effects.resolved().mode).toBe('light');
+    expect(effects.resolved()?.mode).toBe('light');
     expect(documentAdapter.apply).toHaveBeenCalledTimes(1);
     expect(nativeAdapter.apply).toHaveBeenCalledTimes(1);
     subscription.unsubscribe();
@@ -149,7 +199,7 @@ function configureEffects(
   appearance: Pick<AppearancePreferences, 'value'>,
   systemMode: BehaviorSubject<'light' | 'dark'>,
   documentAdapter: AppearanceDocumentAdapter,
-  nativeAdapter: AppearanceNativeChromeAdapter,
+  nativeAdapter?: AppearanceNativeChromeAdapter,
 ): void {
   TestBed.configureTestingModule({
     providers: [
@@ -161,7 +211,14 @@ function configureEffects(
         } satisfies AppearanceSystemModeSource,
       },
       { provide: APPEARANCE_DOCUMENT_ADAPTER, useValue: documentAdapter },
-      { provide: APPEARANCE_NATIVE_CHROME_ADAPTER, useValue: nativeAdapter },
+      ...(nativeAdapter
+        ? [
+            {
+              provide: APPEARANCE_NATIVE_CHROME_ADAPTER,
+              useValue: nativeAdapter,
+            },
+          ]
+        : []),
     ],
   });
 }

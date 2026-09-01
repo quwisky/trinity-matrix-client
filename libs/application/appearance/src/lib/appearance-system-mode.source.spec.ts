@@ -1,5 +1,6 @@
 import { DOCUMENT } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
+import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import { BrowserAppearanceSystemModeSource } from './appearance-system-mode.source';
 
@@ -27,9 +28,9 @@ describe('BrowserAppearanceSystemModeSource', () => {
     const media = mediaQuery(false);
     const fakeDocument = {
       defaultView: {
-        matchMedia: vi.fn(() => media as unknown as MediaQueryList),
+        matchMedia: vi.fn(() => media),
       },
-    } as unknown as Document;
+    };
     TestBed.configureTestingModule({
       providers: [
         BrowserAppearanceSystemModeSource,
@@ -50,5 +51,20 @@ describe('BrowserAppearanceSystemModeSource', () => {
 
     subscription.unsubscribe();
     expect(media.removeEventListener).toHaveBeenCalledOnce();
+  });
+
+  it('falls back to dark when media-query APIs are unavailable', async () => {
+    TestBed.configureTestingModule({
+      providers: [
+        BrowserAppearanceSystemModeSource,
+        { provide: DOCUMENT, useValue: { defaultView: null } },
+      ],
+    });
+
+    await expect(
+      firstValueFrom(
+        TestBed.inject(BrowserAppearanceSystemModeSource).observe(),
+      ),
+    ).resolves.toBe('dark');
   });
 });
