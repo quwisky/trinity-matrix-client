@@ -5,36 +5,27 @@ import {
   type Srgb,
 } from '../../browser/support/contrast.mts';
 import {
-  THEME_CATALOG,
   type ResolvedThemeMode,
   type ThemeId,
-} from '../../../libs/theme-foundation/src/lib/theme-catalog.ts';
+} from '@trinity/theme-foundation';
+import {
+  DEFAULT_STORYBOOK_THEME_PREVIEW,
+  STORYBOOK_THEME_PREVIEWS,
+  storybookThemeGlobals,
+} from './theme-preview.mts';
 
 const TOOLBAR_STORY = 'components-message-toolbar--all-actions';
-const defaultPreviewMode = THEME_CATALOG.modes.find(
-  ({ previewClass }) => previewClass === 'dark',
-);
-
-if (!defaultPreviewMode || defaultPreviewMode.previewClass === null) {
-  throw new Error(
-    'Theme Foundation must provide a dark Storybook preview Mode.',
-  );
-}
-
-const DEFAULT_PREVIEW_MODE: ResolvedThemeMode = defaultPreviewMode.id;
-
 const globals = (
   theme: ThemeId,
   mode: ResolvedThemeMode,
   density: 'cosy' | 'compact' = 'cosy',
-): string =>
-  encodeURIComponent(`mode:${mode};theme:${theme};density:${density}`);
+): string => storybookThemeGlobals({ theme, mode }, density);
 
 async function openStory(
   page: Page,
   id: string,
-  theme: ThemeId = THEME_CATALOG.defaults.theme,
-  mode: ResolvedThemeMode = DEFAULT_PREVIEW_MODE,
+  theme: ThemeId = DEFAULT_STORYBOOK_THEME_PREVIEW.theme.id,
+  mode: ResolvedThemeMode = DEFAULT_STORYBOOK_THEME_PREVIEW.mode.id,
   density: 'cosy' | 'compact' = 'cosy',
 ): Promise<void> {
   await page.goto(
@@ -60,12 +51,12 @@ async function computedColour(
 }
 
 test.describe('semantic design foundations', () => {
-  for (const { theme, mode } of THEME_CATALOG.preview.combinations) {
-    test(`${theme} ${mode} toolbar states use accessible semantic recipes`, async ({
+  for (const { theme, mode } of STORYBOOK_THEME_PREVIEWS) {
+    test(`${theme.id} ${mode.id} toolbar states use accessible semantic recipes`, async ({
       page,
     }) => {
       await page.emulateMedia({ reducedMotion: 'reduce' });
-      await openStory(page, TOOLBAR_STORY, theme, mode);
+      await openStory(page, TOOLBAR_STORY, theme.id, mode.id);
       const toolbar = page.getByRole('toolbar', { name: 'Message actions' });
       const action = page.getByRole('button', { name: 'Add reaction' });
       await expect(toolbar).toBeVisible();
@@ -128,7 +119,7 @@ test.describe('semantic design foundations', () => {
       );
       expect(contrastRatio(focus, floating)).toBeGreaterThanOrEqual(3);
 
-      await openStory(page, 'components-banner--accent', theme, mode);
+      await openStory(page, 'components-banner--accent', theme.id, mode.id);
       const banner = page.locator('[data-tone="accent"]');
       const bannerAction = page.getByRole('button', { name: 'Set up' });
       await bannerAction.evaluate((element) =>
@@ -149,7 +140,7 @@ test.describe('semantic design foundations', () => {
         contrastRatio(attentionRing, attentionSurface),
       ).toBeGreaterThanOrEqual(3);
 
-      await openStory(page, 'components-input--default', theme, mode);
+      await openStory(page, 'components-input--default', theme.id, mode.id);
       const field = page.getByRole('textbox', { name: 'Room name' });
       await field.evaluate((element) => {
         element.setAttribute('data-testid', 'focus-field');
@@ -190,8 +181,8 @@ test.describe('semantic design foundations', () => {
     await openStory(
       page,
       TOOLBAR_STORY,
-      THEME_CATALOG.defaults.theme,
-      DEFAULT_PREVIEW_MODE,
+      DEFAULT_STORYBOOK_THEME_PREVIEW.theme.id,
+      DEFAULT_STORYBOOK_THEME_PREVIEW.mode.id,
       'cosy',
     );
     const action = page.getByRole('button', { name: 'Add reaction' });
@@ -201,8 +192,8 @@ test.describe('semantic design foundations', () => {
     await openStory(
       page,
       TOOLBAR_STORY,
-      THEME_CATALOG.defaults.theme,
-      DEFAULT_PREVIEW_MODE,
+      DEFAULT_STORYBOOK_THEME_PREVIEW.theme.id,
+      DEFAULT_STORYBOOK_THEME_PREVIEW.mode.id,
       'compact',
     );
     const compactAction = page.getByRole('button', { name: 'Add reaction' });

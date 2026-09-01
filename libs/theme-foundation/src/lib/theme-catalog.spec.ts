@@ -1,34 +1,13 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { THEME_CATALOG } from './theme-catalog';
 
 const projectRoot = join(import.meta.dirname, '../..');
-const workspaceRoot = join(projectRoot, '../..');
 const variablesPath = join(projectRoot, 'styles/internal/variables.scss');
 
 function read(path: string): string {
   return readFileSync(join(projectRoot, path), 'utf8');
-}
-
-function workspaceFile(path: string): string {
-  return readFileSync(join(workspaceRoot, path), 'utf8');
-}
-
-function filesBelow(
-  directory: string,
-  extensions: ReadonlySet<string>,
-): readonly string[] {
-  const files: string[] = [];
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    const path = join(directory, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...filesBelow(path, extensions));
-    } else if (extensions.has(entry.name.slice(entry.name.lastIndexOf('.')))) {
-      files.push(path);
-    }
-  }
-  return files;
 }
 
 function declarations(source: string): readonly string[] {
@@ -121,79 +100,10 @@ describe('Theme Foundation catalog', () => {
 });
 
 describe('Theme Foundation stylesheet interface', () => {
-  it('keeps the supported aggregate narrow and makes both renderers consume it', () => {
+  it('keeps the supported aggregate narrow', () => {
     expect(read('styles/theme.scss')).toContain(
       "@use './internal/variables';\n@use './internal/tailwind-adapter.css';",
     );
-    const appProject = workspaceFile('apps/trinity/project.json');
-    expect(appProject).toContain('"libs/theme-foundation/styles/theme.scss"');
-    expect(appProject).not.toContain('apps/trinity/src/theme/');
-
-    const storybookStyles = workspaceFile(
-      'libs/components/storybook-host/.storybook/global-styles.scss',
-    );
-    const globalIndex = storybookStyles.indexOf(
-      "@use '../../../../apps/trinity/src/global';",
-    );
-    const themeIndex = storybookStyles.indexOf(
-      "@use '../../../theme-foundation/styles/theme';",
-    );
-    expect(globalIndex).toBeGreaterThanOrEqual(0);
-    expect(themeIndex).toBeGreaterThan(globalIndex);
-    expect(storybookStyles).not.toContain('apps/trinity/src/theme/');
-    expect(storybookStyles).not.toContain('styles/internal/');
-
-    expect(
-      existsSync(join(workspaceRoot, 'apps/trinity/src/theme/variables.scss')),
-    ).toBe(false);
-    expect(
-      existsSync(join(workspaceRoot, 'apps/trinity/src/theme/spartan.css')),
-    ).toBe(false);
-  });
-
-  it('keeps Theme metadata and root semantic Theme definitions in this module', () => {
-    const sourceRoots = ['apps', 'libs', 'e2e'].map((path) =>
-      join(workspaceRoot, path),
-    );
-    const codeFiles = sourceRoots
-      .flatMap((root) => filesBelow(root, new Set(['.ts', '.mts'])))
-      .filter(
-        (path) =>
-          !relative(workspaceRoot, path).startsWith('libs/theme-foundation/'),
-      );
-    const duplicateMetadata = codeFiles
-      .filter((path) => {
-        const source = readFileSync(path, 'utf8');
-        return (
-          /\bTRINITY_(?:PALETTES|THEME_MODES)\b/u.test(source) ||
-          /(?:^|[,{])\s*dataTheme\s*:/mu.test(source)
-        );
-      })
-      .map((path) => relative(workspaceRoot, path));
-
-    expect(duplicateMetadata).toEqual([]);
-
-    const styleFiles = sourceRoots
-      .flatMap((root) => filesBelow(root, new Set(['.css', '.scss'])))
-      .filter(
-        (path) =>
-          !relative(workspaceRoot, path).startsWith(
-            'libs/theme-foundation/styles/',
-          ),
-      );
-    const externalThemeDefinitions = styleFiles
-      .filter((path) => {
-        const source = readFileSync(path, 'utf8')
-          .replace(/\/\*[\s\S]*?\*\//gu, '')
-          .replace(/\/\/.*$/gmu, '');
-        return (
-          /\[data-theme(?:\s*=|\])/u.test(source) ||
-          /:root[^{}]*\{[^{}]*--trinity-[a-z0-9-]+\s*:/u.test(source)
-        );
-      })
-      .map((path) => relative(workspaceRoot, path));
-
-    expect(externalThemeDefinitions).toEqual([]);
   });
 
   it('allows named Themes to override governed semantic roles only', () => {

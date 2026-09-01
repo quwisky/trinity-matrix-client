@@ -1,29 +1,15 @@
 import { expect, test } from '@playwright/test';
 import {
-  THEME_CATALOG,
-  type ResolvedThemeMode,
-  type ThemeId,
-} from '../../../libs/theme-foundation/src/lib/theme-catalog.ts';
-import {
   AA_NORMAL_TEXT,
   measureContrast,
 } from '../../browser/support/contrast.mts';
+import {
+  STORYBOOK_THEME_PREVIEWS,
+  expectStorybookThemeRoot,
+  storybookThemeGlobals,
+} from './theme-preview.mts';
 
 const BODY_COPY = 'No pinned messages in this room.';
-
-function themeEntry(themeId: ThemeId) {
-  const theme = THEME_CATALOG.themes.find(({ id }) => id === themeId);
-  if (!theme) throw new Error(`Theme Foundation has no Theme ${themeId}`);
-  return theme;
-}
-
-function modeEntry(modeId: ResolvedThemeMode) {
-  const mode = THEME_CATALOG.modes.find(({ id }) => id === modeId);
-  if (!mode || mode.previewClass === null) {
-    throw new Error(`Theme Foundation has no resolved Mode ${modeId}`);
-  }
-  return mode;
-}
 
 interface Rgba {
   readonly r: number;
@@ -42,29 +28,19 @@ interface SurfaceMeasurement {
 }
 
 test.describe('Storybook preview theme surface', () => {
-  for (const combination of THEME_CATALOG.preview.combinations) {
-    const theme = themeEntry(combination.theme);
-    const mode = modeEntry(combination.mode);
-
+  for (const preview of STORYBOOK_THEME_PREVIEWS) {
+    const { theme, mode } = preview;
     test(`${theme.id} ${mode.id} paints an accessible full-canvas surface`, async ({
       page,
     }) => {
-      const globals = encodeURIComponent(`mode:${mode.id};theme:${theme.id}`);
       await page.goto(
-        `/iframe.html?id=components-empty-state--body-only&viewMode=story&globals=${globals}`,
+        `/iframe.html?id=components-empty-state--body-only&viewMode=story&globals=${storybookThemeGlobals(preview)}`,
       );
 
       const copy = page.getByText(BODY_COPY, { exact: true });
       await expect(copy).toBeVisible();
 
-      const rootState = await page.locator('html').evaluate((root) => ({
-        dark: root.classList.contains('dark'),
-        themeCarrier: root.getAttribute('data-theme'),
-      }));
-      expect(rootState).toEqual({
-        dark: mode.previewClass === 'dark',
-        themeCarrier: theme.dataTheme,
-      });
+      await expectStorybookThemeRoot(page, preview);
 
       const surface = await page.evaluate((): SurfaceMeasurement => {
         const rgba = (colour: string): Rgba => {

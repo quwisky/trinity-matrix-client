@@ -19,6 +19,7 @@ const lifecycle = e2eLifecycleConfig({
  */
 export default defineConfig({
   ...lifecycle,
+  tsconfig: './tsconfig.json',
   projects: [
     {
       name: 'chromium',
