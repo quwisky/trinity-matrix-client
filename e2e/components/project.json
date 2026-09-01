@@ -7,8 +7,7 @@
   "implicitDependencies": [
     "trinity",
     "trinity-e2e-support",
-    "components-storybook-host",
-    "theme-foundation"
+    "components-storybook-host"
   ],
   "targets": {
     "storybook": {
