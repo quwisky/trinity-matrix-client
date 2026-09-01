@@ -81,6 +81,12 @@ runtime; Settings renders it without importing raw keys or product policy. Devic
 Matrix adapters enforce the declared policy, and recovery diagnostics never contain preference
 values.
 
+Appearance applies that ownership rule across capabilities rather than creating one persistence
+record. Design System owns Mode, Theme, text size, and density; Conversations owns code size and
+code-line presentation. `@trinity/application/appearance` composes their six read-only preference
+cells into one value plus per-axis state, delegates hydration to Preferences Store, and turns any
+partial result into one warning-ready outcome while each failed axis keeps only its own default.
+
 ## Public interfaces
 
 Cross-project imports use one explicit `@trinity/*` entrypoint per library. Secondary and wildcard entrypoints are rejected. Raw SDK clients, writable signals, Router objects, platform flags, and generic connect/disconnect methods do not belong in capability interfaces.

@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "application-appearance",
+  "sourceRoot": "libs/application/appearance/src",
+  "prefix": "trn",
+  "projectType": "library",
+  "tags": [
+    "type:data-access",
+    "scope:matrix",
+    "role:application",
+    "capability:design-system"
+  ],
+  "targets": {
+    "test": {},
+    "typecheck": {}
+  }
+}

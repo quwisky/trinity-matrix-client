@@ -97,6 +97,9 @@
       "@trinity/application/runtime": [
         "./libs/application/runtime/src/index.ts"
       ],
+      "@trinity/application/appearance": [
+        "./libs/application/appearance/src/index.ts"
+      ],
       "@trinity/application/badge": ["./libs/application/badge/src/index.ts"],
       "@trinity/runtime/host": ["./libs/runtime/host/src/index.ts"],
       "@trinity/data-access/room-administration": [

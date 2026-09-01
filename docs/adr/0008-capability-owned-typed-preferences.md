@@ -25,6 +25,16 @@ later write targets only the current key, so this is a one-way upgrade contract 
 promise downgrade compatibility. Synchronous adapter failures and errored storage streams are
 contained behind the same stable read/write diagnostics.
 
+Appearance is the first cross-capability composition of this contract. Design System owns four
+installation-scoped descriptors (Mode, Theme, text size, and density), while Conversations owns
+code size and code-line presentation. Each has its own current `trinity.appearance.*` key and uses
+the former ThemeService key only as read-only migration metadata. The application Appearance model
+projects the six committed values and their individual states without owning storage. An invalid or
+unavailable axis therefore defaults independently, and one partial hydration outcome carries one
+recoverable Appearance warning instead of six application-level warnings. Theme validation reads
+the Theme Foundation catalog, so an unknown or removed Theme id follows the same isolated default
+path as any other rejected value.
+
 Settings is a catalog consumer, not a policy owner. Its shared renderer selects descriptor editor
 metadata for an exact context and subscribes to the descriptor command; it does not know raw keys,
 defaults, migration rules, or capability policy. The Privacy journey is the first migrated slice.

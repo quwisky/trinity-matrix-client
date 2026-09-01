@@ -67,9 +67,18 @@ export class PreferenceStoreService {
     descriptor: PreferenceDescriptor<PreferenceValue>,
     context: PreferenceContext,
   ): Signal<PreferenceValue> {
-    this.rememberDescriptor(descriptor);
-    const state = this.cell(descriptor, context).asReadonly();
+    const state = this.stateFor(descriptor, context);
     return computed(() => state().value);
+  }
+
+  stateFor<T extends PreferenceValue>(
+    descriptor: PreferenceDescriptor<T>,
+    context: PreferenceContext,
+  ): Signal<PreferenceState<T>> {
+    this.rememberDescriptor(descriptor);
+    return this.cell(descriptor, context).asReadonly() as Signal<
+      PreferenceState<T>
+    >;
   }
 
   entries(

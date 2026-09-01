@@ -441,17 +441,27 @@ one another.
 | Axis              | Carrier                                                   | Default                                          |
 | ----------------- | --------------------------------------------------------- | ------------------------------------------------ |
 | Mode              | the `.dark` **class** — presence means dark               | light, the bare `:root` block                    |
-| Palette           | the `data-theme` **attribute**                            | `trinity`, which sets no attribute at all        |
+| Theme             | the `data-theme` **attribute**                            | `trinity`, which sets no attribute at all        |
 | Text size         | an inline `font-size` **percentage**                      | 100%, written as no inline style at all          |
 | Code size         | the `--trinity-code-scale` **custom property** (a factor) | `1`, declared in `variables.scss` and unset here |
 | Code line numbers | the `data-code-lines` **attribute**                       | `auto`, which sets no attribute at all           |
 | Density           | the `data-density` **attribute**                          | `cosy`, which sets no attribute at all           |
 
-All are owned by
-[`ThemeService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/platform-native/src/lib/theme.service.ts)
-and persisted under `trinity.theme`, `trinity.palette`, `trinity.text-scale`,
-`trinity.code-scale`, `trinity.code-lines` and `trinity.density`. The axes compose: any
-palette works in either mode, and code size multiplies text size rather than replacing it.
+The canonical preference policy is split by capability: Design System owns Mode, Theme, text size,
+and density in `@trinity/application/appearance`; Conversations owns code size and code-line
+presentation in `@trinity/data-access/timeline`. Each installation-scoped descriptor has its own
+closed validator, default, versioned `trinity.appearance.*` key, portable export policy, and editor
+metadata. The six cells compose into one read-only Appearance value plus per-axis state without
+moving persistence out of Preferences Store. Theme validation is derived from `THEME_CATALOG`, so
+a removed Theme safely defaults only that axis and contributes to the aggregate's one recoverable
+partial-hydration warning.
+
+`ThemeService` remains the temporary effects and caller-compatibility facade during the staged
+migration. Its old `trinity.theme`, `trinity.palette`, `trinity.text-scale`, `trinity.density`,
+`trinity.code-scale`, and `trinity.code-lines` keys are read-only predecessors on the new
+descriptors; later tickets move startup, Settings, configuration, and rendering before removing
+the facade. The axes remain orthogonal: any Theme works in either Mode, and code size multiplies
+text size rather than replacing it.
 
 Density is the odd one in what it drives: rather than styling anything itself, it re-cuts
 the `--trinity-space-*` scale, so any stylesheet already reading those tokens follows
