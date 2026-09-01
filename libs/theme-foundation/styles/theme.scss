@@ -1,0 +1,8 @@
+/*
+ * The supported Theme Foundation stylesheet interface.
+ *
+ * Consumers load this one entrypoint. Semantic tokens, authored Theme values and the
+ * Helm/Tailwind adapter remain implementation details so their ordering cannot drift.
+ */
+@use './internal/variables';
+@use './internal/tailwind-adapter.css';

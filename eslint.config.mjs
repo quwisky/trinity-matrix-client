@@ -249,6 +249,7 @@ export default defineConfig([
       // direct SDK knowledge at their composition boundary.
       'libs/application/**/*.ts',
       'libs/testing/**/*.ts',
+      'libs/theme-foundation/**/*.ts',
       // `libs/util/ui` and not `libs/util/**`: the sibling `libs/util/matrix` is the
       // sanctioned exception that models the SDK's own types, so a directory-wide glob here
       // would ban the one library that has to import it.

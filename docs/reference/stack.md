@@ -51,7 +51,7 @@ major rather than editing numbers by hand.
 | `@angular/cdk`                        | 22.1.0  | Overlay and Dialog under the Helm overlays, and the encryption route dialogs                                                                 |
 | `@angular/service-worker`             | 22.1.0  | PWA service worker, production web build only. Off in the Electron shell                                                                     |
 | `@spartan-ng/brain`                   | 1.3.0   | Headless UI primitives. The styled Helm layer is copied into `libs/spartan/*` and aliased `@trinity/helm/*`                                  |
-| `tailwindcss`                         | 4.3.3   | v4, configured from CSS. Tokens live in `theme/variables.scss`, framework wiring in `theme/spartan.css`                                      |
+| `tailwindcss`                         | 4.3.3   | v4, configured from CSS. Theme Foundation exposes one aggregate stylesheet and keeps semantic values plus framework wiring internal          |
 | `tw-animate-css`                      | 1.4.0   | Animation utilities the Helm components expect                                                                                               |
 | `@ng-icons/lucide`                    | 34.0.0  | Icon set behind `<trn-icon>`; imported by `@trinity/components/foundations` and five generated kit libraries; `@ng-icons/core` moves with it |
 | `matrix-js-sdk`                       | 42.1.0  | The single source of truth for rooms, timelines and crypto. Crypto types are a deep import, see below                                        |

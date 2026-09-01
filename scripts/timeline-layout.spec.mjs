@@ -18,7 +18,9 @@ const stylesheet = (file) =>
     .replace(/(^|\s)\/\/.*$/gm, '$1');
 const template = (file) => read(file).replace(/<!--[\s\S]*?-->/g, '');
 
-const variables = stylesheet('apps/trinity/src/theme/variables.scss');
+const variables = stylesheet(
+  'libs/theme-foundation/styles/internal/variables.scss',
+);
 const listCss = stylesheet(
   'libs/feature/rooms/src/lib/message-list/_message-list-shared.scss',
 );

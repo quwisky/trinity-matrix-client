@@ -23,7 +23,7 @@ const html = readFileSync(
   'utf8',
 );
 const tokens = readFileSync(
-  join(workspaceRoot, 'apps/trinity/src/theme/variables.scss'),
+  join(workspaceRoot, 'libs/theme-foundation/styles/internal/variables.scss'),
   'utf8',
 );
 
@@ -113,9 +113,9 @@ describe('boot splash', () => {
     expect(darkBlock).not.toBeNull();
 
     const resolve = (block, name) => {
-      const value = declaration(block, name);
+      const value = declaration(block, name) ?? declaration(lightBlock, name);
       const indirect = /^var\((--[\w-]+)\)$/.exec(value ?? '');
-      return indirect ? declaration(block, indirect[1]) : value;
+      return indirect ? resolve(block, indirect[1]) : value;
     };
 
     const light = resolve(lightBlock, '--background');

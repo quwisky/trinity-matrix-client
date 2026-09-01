@@ -368,8 +368,8 @@ work regardless of the overrides.
 ## Tailwind v4 is configured entirely in CSS
 
 There is no `tailwind.config.js`. Everything is in
-[`apps/trinity/src/theme/spartan.css`](https://github.com/quwisky/trinity-matrix-client/blob/develop/apps/trinity/src/theme/spartan.css),
-which is **framework wiring only** and owns no colour values:
+[`libs/theme-foundation/styles/internal/tailwind-adapter.css`](../../libs/theme-foundation/styles/internal/tailwind-adapter.css),
+which is **private framework wiring only** and owns no colour values:
 
 ```css
 @layer theme, base, components, utilities;
@@ -394,9 +394,12 @@ generate a utility, which is why the two non-colour tokens live there rather tha
 `variables.scss`: `--text-13` (0.8125rem — the compact body size used across templates as
 `text-13`, between Tailwind's `text-xs` and `text-sm`) and `--animate-indeterminate`.
 
-Build wiring loads stylesheets in this order: `global.scss`, `theme/variables.scss`,
-`theme/spartan.css`, `rendered-markdown.scss`, the CDK overlay prebuilt stylesheet, then the
-emoji-mart picker CSS.
+Theme Foundation's supported stylesheet interface is the single aggregate
+`libs/theme-foundation/styles/theme.scss`. During the expand phase, build wiring retains the
+two old application paths in their established order: `theme/variables.scss` forwards the
+Foundation's token implementation and `theme/spartan.css` imports its private Tailwind adapter.
+Those compatibility entrypoints preserve application and Storybook rendering until #382 moves
+both consumers to the aggregate and removes them.
 
 ESLint runs `eslint-plugin-tailwindcss` pointed at `spartan.css` with `classnames-order` off
 (`prettier-plugin-tailwindcss` owns ordering) and `no-custom-classname` off (the app mixes
@@ -413,8 +416,26 @@ BEM class names with utilities). The remaining rules are warnings.
 
 ## Design tokens
 
-Every colour and radius in the app is defined once, in
-[`apps/trinity/src/theme/variables.scss`](https://github.com/quwisky/trinity-matrix-client/blob/develop/apps/trinity/src/theme/variables.scss).
+Every token value in the app is defined once inside Theme Foundation, in
+[`libs/theme-foundation/styles/internal/variables.scss`](../../libs/theme-foundation/styles/internal/variables.scss).
+Product styles consume the stable `--trinity-*` semantic vocabulary. Helm and Tailwind names
+are private adapters inside the module; feature code never authors a Theme in vendor terms.
+
+The module has two supported interfaces: the aggregate stylesheet above and the read-only
+`THEME_CATALOG` exported from `@trinity/theme-foundation`. The catalog owns Theme and Mode ids,
+labels, defaults, carrier metadata and the six fixed preview combinations. It contains CSS token
+references for previewing but no resolved colour or shadow values.
+
+A **Theme** is a named visual token set (`trinity`, `amethyst` or `onyx`); **Mode** is the
+`system`, `light` or `dark` selection; **Appearance** is their composition with text size,
+density and Conversations' code preferences. `Palette` remains only in temporary compatibility
+names such as `ThemeService.setPalette()` and `TRINITY_PALETTES` while the migration is expanded.
+
+Theme authors may override only the catalog's governed semantic colour and elevation roles.
+Fonts, assets, arbitrary selectors and component mappings are outside that contract. The default
+`:root` Theme defines every governed role, `:root.dark` supplies the complete Mode delta, and each
+named Theme adds one sparse light block and one sparse dark block. Named Themes never inherit from
+one another.
 
 ### Orthogonal axes, all carried on `<html>`
 
@@ -456,8 +477,9 @@ decides what to do about it.
 
 `pnpm storybook` serves one Storybook covering the whole `libs/components/*` tier
 (`libs/components/storybook-host` is config only — the stories live beside the components they
-document). The toolbar carries palette, light/dark mode and density. Palettes are read from
-`TRINITY_PALETTES` rather than restated, so a newly registered palette appears there immediately.
+document). The toolbar carries Theme, light/dark Mode and density. During the compatibility phase
+its Theme choices arrive through `TRINITY_PALETTES`, a read-only view of `THEME_CATALOG.themes`;
+#382 switches Storybook to consume the catalog and aggregate stylesheet directly.
 
 That is what it is for. A palette is meant to be a data change — a block of token overrides plus
 a registry entry — and before this the only way to know that held was to launch the app and
@@ -667,11 +689,12 @@ highlighter used by Message Presentation before the first timeline projection. D
 from a public barrel: that would make it possible for an eager consumer to pull every grammar into
 the initial bundle.
 
-## Adding a palette
+## Adding a Theme
 
 Two steps.
 
-**1. Add two CSS blocks in `variables.scss`**, copying the `amethyst` pair:
+**1. Add two CSS blocks in Theme Foundation's internal `variables.scss`**, copying the
+`amethyst` pair:
 
 ```scss
 :root[data-theme='<id>']:not(.dark) {
@@ -683,36 +706,27 @@ Two steps.
 }
 ```
 
-Override only what differs; anything omitted falls through to `:root` or `:root.dark`.
+Override only what differs; anything omitted falls through to `:root` or `:root.dark`. Every
+declaration must be one of the semantic color or elevation roles listed by
+`THEME_CATALOG.authoring`. A Theme must not name Helm/Tailwind tokens, component selectors,
+fonts, assets, or arbitrary CSS. Those are private implementation details, and the Theme
+Foundation contract tests reject them inside named-Theme blocks.
 
-You will mostly be overriding Trinity tokens. Helm tokens defined as references re-theme for
-free — `--primary` and the measured focus-backed `--ring` in both modes, and in **dark** also `--card`, `--popover`,
-`--secondary`, `--muted` and `--accent`. Helm tokens holding a _literal_ need explicit
-overrides:
+The private adapter maps Helm/Tailwind roles outward from the Trinity semantic roles, so those
+consumers re-theme automatically. For example, a light accent must pair its
+`--trinity-accent` override with a measured `--trinity-accent-foreground`; Amethyst dark uses
+dark on-accent text because white on its light violet accent would fail WCAG AA. Theme authors
+never override `--primary` or `--primary-foreground` directly.
 
-| Token                                            | When it needs an override     |
-| ------------------------------------------------ | ----------------------------- |
-| `--foreground`, `--muted-foreground`, `--border` | Both modes                    |
-| `--secondary`, `--muted`, `--accent`             | Light only                    |
-| `--background`                                   | Dark, where it is a literal   |
-| `--primary-foreground`                           | Whenever your accent is light |
-
-That last one matters. Amethyst dark sets `--primary-foreground: #1e1633` at 6.3:1, because
-white on `#a78bfa` is 2.7:1 and fails WCAG AA. `--trinity-accent-foreground` tracks
-`--primary-foreground`, so on-accent text follows automatically.
-
-**2. Register the palette** in `TRINITY_PALETTES` in `theme.service.ts` so it appears in
-Appearance settings:
+**2. Register the Theme** in `THEME_CATALOG` so its identity, label and absent-default carrier
+are shared by Appearance and preview consumers:
 
 ```ts
-export const TRINITY_PALETTES = [
-  { id: 'trinity', label: 'Trinity' },
-  { id: 'amethyst', label: 'Amethyst' },
-] as const;
+const themes = Object.freeze([Object.freeze({ id: 'trinity', label: 'Trinity', dataTheme: null }), Object.freeze({ id: 'amethyst', label: 'Amethyst', dataTheme: 'amethyst' })]);
 ```
 
-`setPalette()` writes or removes the `data-theme` attribute; the default palette applies no
-attribute at all.
+The compatibility `setPalette()` method writes or removes the `data-theme` attribute; the default
+Theme applies no attribute at all.
 
 !!! danger "Scope the light block with :not(.dark)"
 

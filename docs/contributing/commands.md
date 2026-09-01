@@ -32,7 +32,7 @@ Two of these surprise people:
 - **`pnpm stylelint` is not part of `pnpm lint`.** They are separate commands and
   separate CI steps. Running only `pnpm lint` will not catch a violation in a `.scss`
   or `.css` file — and the glob covers both, so hand-written CSS like
-  `apps/trinity/src/theme/spartan.css` is linted too.
+  Theme Foundation's internal Tailwind adapter is linted too.
 
 ## Nx patterns
 
