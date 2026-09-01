@@ -44,22 +44,10 @@
       </span>
     }
     @if (r.replyTo) {
-      <button
-        type="button"
-        class="msg__reply msg__target"
-        [attr.aria-label]="'Replying to ' + r.replyTo.senderName"
-        (click)="action.emit({ type: 'jump', id: r.replyTo.id })"
-      >
-        <trn-avatar
-          class="msg__reply-avatar"
-          [mxc]="r.replyTo.senderAvatarMxc"
-          [initial]="r.replyTo.senderInitial"
-          [name]="r.replyTo.senderName"
-          [size]="16"
-        />
-        <span class="msg__reply-author">{{ r.replyTo.senderName }}</span>
-        <span class="msg__reply-body">{{ r.replyTo.body }}</span>
-      </button>
+      <trn-message-reply-preview
+        [reply]="r.replyTo"
+        (jump)="action.emit({ type: 'jump', id: $event })"
+      />
     }
     <!-- The lead slot is the only thing the header/continuation split still owns: an
          avatar on a group start, the hover-revealed timestamp on a continuation. -->
@@ -214,32 +202,13 @@
     </div>
 
     @if (threadSummary(); as thread) {
-      <button
-        type="button"
-        class="msg__thread msg__target"
-        [attr.aria-label]="threadLabel(thread)"
-        (click)="action.emit({ type: 'thread' })"
-      >
-        <trn-icon class="msg__thread-icon" name="messages-square" />
-        <span class="msg__thread-count"
-          >{{ thread.replyCount }}
-          {{ thread.replyCount === 1 ? 'reply' : 'replies' }}</span
-        >
-        @if (thread.latestReplyTs) {
-          <span class="msg__thread-sep" aria-hidden="true">·</span>
-          <span class="msg__thread-time"
-            >last reply {{ fmt.dateTime(thread.latestReplyTs) }}</span
-          >
-        }
-        @if (thread.unreadCount > 0) {
-          <span
-            class="msg__thread-badge"
-            [class.msg__thread-badge--highlight]="thread.highlight"
-            aria-hidden="true"
-            >{{ thread.unreadCount }}</span
-          >
-        }
-      </button>
+      <trn-message-thread-summary
+        [summary]="thread"
+        [latestReplyLabel]="
+          thread.latestReplyTs ? fmt.dateTime(thread.latestReplyTs) : null
+        "
+        (open)="action.emit({ type: 'thread' })"
+      />
     }
 
     @if (!caps().readOnly && r.status === 'failed') {

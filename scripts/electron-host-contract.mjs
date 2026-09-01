@@ -259,7 +259,11 @@ export function validateElectronHostContract(input, errors) {
     }
   }
   for (const [script, command] of Object.entries(packageScripts)) {
-    if (input.packageJson.scripts?.[script] !== command) {
+    const packageCommand = input.packageJson.scripts?.[script]?.replace(
+      /^node scripts\/nx\.mjs run /u,
+      'nx run ',
+    );
+    if (packageCommand !== command) {
       errors.push(`${script} must delegate to its Nx desktop target`);
     }
   }

@@ -39,6 +39,8 @@ import {
   type TrnIconName,
 } from '@trinity/components/foundations';
 import { InlineMxcImagesDirective } from '../inline-mxc-images/inline-mxc-images.directive';
+import { MessageReplyPreviewComponent } from '../message-reply-preview/message-reply-preview.component';
+import { MessageThreadSummaryComponent } from '../message-thread-summary/message-thread-summary.component';
 
 /** A {@link MessageView} plus the presentation state the list derives for it. */
 export interface MessageRow extends MessageView {
@@ -155,6 +157,8 @@ export type MessageSwipeAction = 'edit' | 'reply';
     VoiceMessageComponent,
     TrnTooltip,
     InlineMxcImagesDirective,
+    MessageReplyPreviewComponent,
+    MessageThreadSummaryComponent,
   ],
   templateUrl: './message-row.component.html',
   styleUrl: './message-row.component.scss',
@@ -727,15 +731,6 @@ export class MessageRowComponent {
       canQuote: c.canQuote,
     };
   });
-
-  /** Accessible label for the thread indicator button (incl. any unread count). */
-  threadLabel(summary: ThreadSummary): string {
-    const count = summary.replyCount;
-    const base = `View thread, ${count} ${count === 1 ? 'reply' : 'replies'}`;
-    return summary.unreadCount > 0
-      ? `${base}, ${summary.unreadCount} unread`
-      : base;
-  }
 
   /** Icon shape for an authenticity shield's severity: a distinct glyph per level so the
    * warning (red) and caution (grey) are distinguishable by shape, not colour alone. */

@@ -36,6 +36,10 @@ Two of these surprise people:
 
 ## Nx patterns
 
+Use `pnpm nx`, which runs the workspace's pinned CLI through `scripts/nx.mjs`. Nx 23 forces
+colour into task children; the wrapper removes an inherited `NO_COLOR` that Nx has already made
+ineffective, preventing Node from printing one environment warning per worker.
+
 The `test` target is defined once in `nx.json` as an `nx:run-commands` target that
 runs `vitest run` with `cwd` set to the project directory. Each project opts in
 with an empty `"test": {}` in its own `project.json`. Because it is run-commands
@@ -50,36 +54,36 @@ as `@trinity/data-access/discovery`. Only the first form works on a command line
 same goes for a `--projects=` filter.
 
 ```bash
-pnpm exec nx test util-matrix                          # one project
-pnpm exec nx test feature-rooms --configuration=watch  # watch mode
-pnpm exec nx test feature-rooms -- message-list        # files matching a path substring
-pnpm exec nx test data-access-room-library -- -t "marks a room read" # one test by name
-pnpm exec nx test data-access-discovery -- --coverage  # coverage is opt-in, no threshold
-pnpm exec nx test scripts                              # the repository-invariant guards
-pnpm exec nx affected -t lint test                     # only what changed versus develop
-pnpm exec nx show projects                             # the real project names
-pnpm exec nx graph                                     # dependency graph in a browser
+pnpm nx test util-matrix                          # one project
+pnpm nx test feature-rooms --configuration=watch  # watch mode
+pnpm nx test feature-rooms -- message-list        # files matching a path substring
+pnpm nx test data-access-room-library -- -t "marks a room read" # one test by name
+pnpm nx test data-access-discovery -- --coverage  # coverage is opt-in, no threshold
+pnpm nx test scripts                              # the repository-invariant guards
+pnpm nx affected -t lint test                     # only what changed versus develop
+pnpm nx show projects                             # the real project names
+pnpm nx graph                                     # dependency graph in a browser
 ```
 
 !!! warning "There is no Nx project called `core`"
 
     Older examples in this repository and its history use
-    `pnpm exec nx test core`. `@trinity/core` was dissolved into per-domain
+    `pnpm nx test core`. `@trinity/core` was dissolved into per-domain
     libraries and no project by that name exists, so the command fails with
     `Cannot find configuration for task core:test`. Use a real project name —
     `util-matrix`, `data-access-discovery`, `feature-rooms`, and so on. Run
-    `pnpm exec nx show projects` when in doubt.
+    `pnpm nx show projects` when in doubt.
 
 `nx affected` diffs against `develop`, which is `defaultBase` in `nx.json`.
 
 Caching: `test`, `lint` and `build` are all cached. To reproduce something
 intermittent, add `--skip-nx-cache`.
 
-| Reset command                            | Clears                                                            |
-| ---------------------------------------- | ----------------------------------------------------------------- |
-| `pnpm exec nx reset`                     | Everything, including the daemon and the workspace data directory |
-| `pnpm exec nx reset --onlyCache`         | Task results only, under `.nx/cache`                              |
-| `pnpm exec nx reset --onlyWorkspaceData` | The metadata directory `.nx/workspace-data`                       |
+| Reset command                       | Clears                                                            |
+| ----------------------------------- | ----------------------------------------------------------------- |
+| `pnpm nx reset`                     | Everything, including the daemon and the workspace data directory |
+| `pnpm nx reset --onlyCache`         | Task results only, under `.nx/cache`                              |
+| `pnpm nx reset --onlyWorkspaceData` | The metadata directory `.nx/workspace-data`                       |
 
 Nx keeps its task history in a SQLite database under `.nx/workspace-data`, not in
 `.nx/cache`. That is why `--onlyCache` does not clear a "Nx detected a flaky task"
@@ -164,33 +168,33 @@ Each of these runs `pnpm build` and then `cap sync` before it does anything else
 so a web change is always included. Re-run a `*:sync` after any web change if you
 are iterating in Xcode or Android Studio.
 
-| Command                                          | What it does                                         | Needs                                    |
-| ------------------------------------------------ | ---------------------------------------------------- | ---------------------------------------- |
-| `pnpm android:sync`                              | Build and sync only                                  | Android SDK                              |
-| `pnpm android:run`                               | Build, sync, launch on a device or emulator          | Android SDK                              |
-| `pnpm android:open`                              | Open the project in Android Studio                   | Android Studio                           |
-| `pnpm android:build`                             | Debug APK into `android/app/build/outputs/apk/debug` | Android SDK                              |
-| `pnpm android:build:prebuilt`                    | Sync an existing `www/`, then build the debug APK    | Android SDK                              |
-| `pnpm android:build:release`                     | Release AAB                                          | Android SDK, signing keystore            |
-| `pnpm android:verify`                            | Static Nx/artifact/plugin/capability contract        | Node only                                |
-| `pnpm exec nx run trinity-android:verify-native` | Gradle unit verification after sync                  | JDK 21, Android SDK                      |
-| `pnpm e2e:android`                               | Installed API 36 WebView journeys via Playwright     | JDK 21, API 36 SDK/emulator, Docker, KVM |
-| `pnpm ios:sync`                                  | Build and sync only                                  | macOS, Xcode                             |
-| `pnpm ios:run`                                   | Build, sync, launch on a simulator                   | macOS, Xcode                             |
-| `pnpm ios:open`                                  | Open the project in Xcode                            | macOS, Xcode                             |
-| `pnpm ios:build`                                 | `cap build ios --scheme App`                         | macOS, Xcode, signing identity           |
-| `pnpm ios:verify`                                | Static Nx/artifact/plugin/capability contract        | Node only                                |
-| `pnpm exec nx run trinity-ios:verify-native`     | Unsigned iPhone Simulator build after sync           | macOS, Xcode                             |
+| Command                                     | What it does                                         | Needs                                    |
+| ------------------------------------------- | ---------------------------------------------------- | ---------------------------------------- |
+| `pnpm android:sync`                         | Build and sync only                                  | Android SDK                              |
+| `pnpm android:run`                          | Build, sync, launch on a device or emulator          | Android SDK                              |
+| `pnpm android:open`                         | Open the project in Android Studio                   | Android Studio                           |
+| `pnpm android:build`                        | Debug APK into `android/app/build/outputs/apk/debug` | Android SDK                              |
+| `pnpm android:build:prebuilt`               | Sync an existing `www/`, then build the debug APK    | Android SDK                              |
+| `pnpm android:build:release`                | Release AAB                                          | Android SDK, signing keystore            |
+| `pnpm android:verify`                       | Static Nx/artifact/plugin/capability contract        | Node only                                |
+| `pnpm nx run trinity-android:verify-native` | Gradle unit verification after sync                  | JDK 21, Android SDK                      |
+| `pnpm e2e:android`                          | Installed API 36 WebView journeys via Playwright     | JDK 21, API 36 SDK/emulator, Docker, KVM |
+| `pnpm ios:sync`                             | Build and sync only                                  | macOS, Xcode                             |
+| `pnpm ios:run`                              | Build, sync, launch on a simulator                   | macOS, Xcode                             |
+| `pnpm ios:open`                             | Open the project in Xcode                            | macOS, Xcode                             |
+| `pnpm ios:build`                            | `cap build ios --scheme App`                         | macOS, Xcode, signing identity           |
+| `pnpm ios:verify`                           | Static Nx/artifact/plugin/capability contract        | Node only                                |
+| `pnpm nx run trinity-ios:verify-native`     | Unsigned iPhone Simulator build after sync           | macOS, Xcode                             |
 
 The `*:prebuilt` commands exist for cross-platform evidence, not ordinary iteration.
-`pnpm exec nx run trinity-e2e-web:production-renderer` creates a production `www/`, records
+`pnpm nx run trinity-e2e-web:production-renderer` creates a production `www/`, records
 it, and tests that payload; Electron
 and Android can then copy it without rebuilding. `pnpm bundle:manifest:verify` proves both wrapper
 trees have the exact recorded web file set and bytes; only Android's named `cordova.js` and
 `cordova_plugins.js` bootstrap files are allowed in addition.
 
 The package scripts above are stable aliases for the explicit `trinity-android` and
-`trinity-ios` Nx application targets. Use `pnpm exec nx show project trinity-android` or
+`trinity-ios` Nx application targets. Use `pnpm nx show project trinity-android` or
 `trinity-ios` to inspect their complete sync/build/run/verification lifecycle.
 
 ## End to end harnesses
@@ -225,11 +229,11 @@ The sections below document the focused suites and their current transitional im
 ### The app journey suite
 
 ```bash
-pnpm exec nx run trinity-e2e-browser:e2e
-pnpm exec nx run trinity-e2e-browser:e2e -- --list        # enumerate specs without running them
-pnpm exec nx run trinity-e2e-browser:e2e -- --retries=0   # honest first-attempt result
-pnpm exec nx run trinity-e2e-browser:e2e -- conversations/message-links.spec.mts
-pnpm exec nx run trinity-e2e-browser:e2e -- --grep "opens a copied message link"
+pnpm nx run trinity-e2e-browser:e2e
+pnpm nx run trinity-e2e-browser:e2e -- --list        # enumerate specs without running them
+pnpm nx run trinity-e2e-browser:e2e -- --retries=0   # honest first-attempt result
+pnpm nx run trinity-e2e-browser:e2e -- conversations/message-links.spec.mts
+pnpm nx run trinity-e2e-browser:e2e -- --grep "opens a copied message link"
 ```
 
 Chromium only. The support owner produces the **development** build, serves `www/`

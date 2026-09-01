@@ -53,7 +53,13 @@ function hostFor(query: string): {
   value: Signal<boolean>;
   destroy: () => void;
 } {
-  @Component({ selector: 'trn-mq-host', template: '' })
+  @Component({
+    selector: 'trn-mq-host',
+    template: '',
+    // Angular hashes host metadata into a generated component ID. Each local test host is
+    // a distinct component class, so give it distinct metadata instead of leaking NG0912.
+    host: { 'data-test-host': `mq-${nextHostId++}` },
+  })
   class MqHostComponent {
     readonly value = mediaQuerySignal(query, inject(DestroyRef));
   }
@@ -63,6 +69,8 @@ function hostFor(query: string): {
     destroy: () => fixture.destroy(),
   };
 }
+
+let nextHostId = 0;
 
 describe('media queries', () => {
   afterEach(() => {

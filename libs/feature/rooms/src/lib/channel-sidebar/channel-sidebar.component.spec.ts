@@ -2,9 +2,11 @@ import { signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { type AccountBadge } from '@trinity/components/generic-content';
+import { provideTrnIcons } from '@trinity/components/foundations';
 import { SidebarRoomListComponent } from './sidebar-room-list/sidebar-room-list.component';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
+import { of } from 'rxjs';
 import { describe, expect, it, type Mock } from 'vitest';
 import {
   InvitesService,
@@ -155,6 +157,7 @@ async function renderSidebar(
   const rendered = await render(ChannelSidebarComponent, {
     inputs: opts.inputs ?? {},
     providers: [
+      provideTrnIcons(),
       MockProvider(SpacesService, {
         notJoinedRooms: signals.notJoinedRooms,
         childSpaces: signals.childSpaces,
@@ -172,6 +175,8 @@ async function renderSidebar(
         typingByRoom: signal<Record<string, readonly string[]>>(
           opts.typingByRoom ?? {},
         ).asReadonly(),
+        setFavourite: vi.fn(() => of(void 0)),
+        setLowPriority: vi.fn(() => of(void 0)),
       }),
       MockProvider(RoomNotificationsService, {
         modeForAccounts: modeForSpy,

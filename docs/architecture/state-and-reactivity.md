@@ -400,7 +400,7 @@ Fourteen services take the full `projectFromClient`:
 The library column is the import alias, and it mirrors the directory:
 `@trinity/data-access/room-library` is `libs/data-access/room-library`. The Nx project name is
 the third string and keeps the flat hyphenated form, so the command is
-`pnpm exec nx test data-access-room-library`.
+`pnpm nx test data-access-room-library`.
 
 Six take **only** `coalesce()`, and each says why at the call site. The split is not arbitrary — it
 follows from what the service's lifetime is keyed to:

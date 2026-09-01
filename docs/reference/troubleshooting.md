@@ -31,7 +31,7 @@ Or you bump a dependency and the table is never re-checked.
 are all outside that set, and `node_modules/*/package.json` is read at runtime where Nx
 never sees it. The cache key only moves when a file under `scripts/` changes.
 
-**Fix.** `pnpm exec nx test scripts --skip-nx-cache`. CI is unaffected — its runners are
+**Fix.** `pnpm nx test scripts --skip-nx-cache`. CI is unaffected — its runners are
 always cold, because the setup action deliberately caches nothing for Nx.
 
 ### The Electron compile fails with TS5107 on `moduleResolution`
@@ -105,13 +105,13 @@ lives in `libs/data-access/discovery` and is imported from `@trinity/data-access
 the hyphenated form names a task, so a directory or an alias pasted into an `nx` command
 never resolves.
 
-**Fix.** Use the hyphenated project name — `pnpm exec nx show projects` lists them all. The
+**Fix.** Use the hyphenated project name — `pnpm nx show projects` lists them all. The
 `test` target is `nx:run-commands` running `vitest run` with `cwd` set to the project, so
 Vitest arguments come after `--`:
 
 ```bash
-pnpm exec nx test util-matrix -- message-view
-pnpm exec nx test feature-rooms --configuration=watch
+pnpm nx test util-matrix -- message-view
+pnpm nx test feature-rooms --configuration=watch
 ```
 
 See [commands](../contributing/commands.md).
@@ -163,7 +163,7 @@ fails, then revert:
 
 ```bash
 echo "import type { RoomLibraryService } from '@trinity/data-access/room-library';" >> libs/components/foundations/src/index.ts
-pnpm exec nx lint components-foundations --skip-nx-cache   # must fail
+pnpm nx lint components-foundations --skip-nx-cache   # must fail
 git checkout -- libs/components/foundations/src/index.ts
 ```
 
@@ -185,8 +185,8 @@ browser execution.
 **Cause.** Playwright transpiles the journey; it is not the TypeScript compiler. The browser
 lifecycle has separate lint and typecheck targets so runtime execution can stay focused.
 
-**Fix.** Run `pnpm exec nx run trinity-e2e-browser:typecheck` and
-`pnpm exec nx run trinity-e2e-browser:lint` while iterating. The full local gate runs both through
+**Fix.** Run `pnpm nx run trinity-e2e-browser:typecheck` and
+`pnpm nx run trinity-e2e-browser:lint` while iterating. The full local gate runs both through
 the repository-wide target sets.
 
 ## Tests
@@ -199,7 +199,7 @@ before a journey can reach the app.
 **Cause.** The lifecycle config is deliberately a fail-closed joiner. It does not own a fallback
 build, static server, port, lock, or Synapse stack; those belong to the support invocation.
 
-**Fix.** Run `pnpm exec nx run trinity-e2e-browser:e2e`. Pass a capability-relative spec path
+**Fix.** Run `pnpm nx run trinity-e2e-browser:e2e`. Pass a capability-relative spec path
 or `--grep` after `--` for a focused run.
 
 ### A spec passes locally and fails in CI, reported as flaky
@@ -269,7 +269,7 @@ purge a symlinked `node_modules` and aborts with `ERR_PNPM_ABORTED_REMOVE_MODULE
 than reporting an allocation failure. Below roughly
 2.3 GB available it reproduces reliably; at ~2.9 GB it does not.
 
-**Fix.** Free memory and re-run — stop the Nx daemon (`pnpm exec nx daemon --stop`) and close
+**Fix.** Free memory and re-run — stop the Nx daemon (`pnpm nx daemon --stop`) and close
 anything large. There is deliberately no repo-side workaround: capping esbuild's parallelism
 in the config would slow every build to accommodate one constrained machine.
 

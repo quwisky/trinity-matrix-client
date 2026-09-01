@@ -60,12 +60,12 @@ project name**, which since the libs were nested is neither the directory nor th
 `@trinity/data-access/room-library`.
 
 ```bash
-pnpm exec nx test data-access-room-library                        # one project
-pnpm exec nx test data-access-room-library --configuration=watch  # watch mode
-pnpm exec nx test data-access-room-library -- message-list        # path substring
-pnpm exec nx test data-access-room-library -- -t "marks a room read" # one test
-pnpm exec nx affected -t lint test            # only what changed vs. the base branch
-pnpm exec nx reset                            # clear Nx cache if results look stale
+pnpm nx test data-access-room-library                        # one project
+pnpm nx test data-access-room-library --configuration=watch  # watch mode
+pnpm nx test data-access-room-library -- message-list        # path substring
+pnpm nx test data-access-room-library -- -t "marks a room read" # one test
+pnpm nx affected -t lint test            # only what changed vs. the base branch
+pnpm nx reset                            # clear Nx cache if results look stale
 ```
 
 **`pnpm test` does not typecheck.** Vitest transpiles specs without checking them, so a type
@@ -107,8 +107,8 @@ change. Android needs `ANDROID_HOME`; iOS needs macOS + Xcode.
 | `pnpm ios:build`                     | `cap build ios --scheme App` (needs signing identity) |
 | `pnpm android:verify` / `ios:verify` | Static Nx/artifact/capability host contract           |
 
-The direct toolchain gates are `pnpm exec nx run trinity-android:verify-native` and
-`pnpm exec nx run trinity-ios:verify-native`; the latter requires macOS and Xcode.
+The direct toolchain gates are `pnpm nx run trinity-android:verify-native` and
+`pnpm nx run trinity-ios:verify-native`; the latter requires macOS and Xcode.
 
 **Electron desktop** (hand-rolled shell in `electron/`, its own `package.json`):
 
@@ -128,8 +128,8 @@ The direct toolchain gates are `pnpm exec nx run trinity-android:verify-native` 
 
 | Command                                                                          | Purpose                                                              |
 | -------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `pnpm exec nx run trinity-e2e-browser:e2e`                                       | Capability-owned app journeys against disposable Synapse             |
-| `pnpm exec nx run trinity-e2e-web:production-pwa`                                | Production Web/PWA startup, deep-link and offline check; no Docker   |
+| `pnpm nx run trinity-e2e-browser:e2e`                                            | Capability-owned app journeys against disposable Synapse             |
+| `pnpm nx run trinity-e2e-web:production-pwa`                                     | Production Web/PWA startup, deep-link and offline check; no Docker   |
 | `pnpm e2e:web`                                                                   | Web/PWA host plus renderer matrix; renderer needs Docker             |
 | `pnpm smoke:login`                                                               | Headless redirect→login + live matrix.org `.well-known` discovery    |
 | `pnpm spike:chromium` / `spike:webkit`                                           | E2EE WASM check in Blink / WebKit                                    |

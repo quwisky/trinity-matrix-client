@@ -87,6 +87,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Local validation output is quiet and classified.** Nx commands now normalize contradictory
+  color variables, Vitest configs are ready for Vite's native loader, component tests install
+  deterministic browser APIs and the icons they render, and expected failure logs are asserted at
+  their owning specs. Production browser floors, script budgets and Matrix SDK CommonJS dependencies
+  are explicitly tracked; the oversized message-row styles were split into focused presentation
+  children without weakening the shared component-style limit. Remaining generated and
+  package-owned Capacitor compiler diagnostics are recorded in the contributor warning ledger.
+
 - **Electron and Android E2E now have explicit lifecycle owners and unified local reporting.**
   `trinity-e2e-electron` owns the launched-shell smoke and full desktop suites, while
   `trinity-e2e-android` owns the emulator, installed-WebView fixture and native journeys; the host

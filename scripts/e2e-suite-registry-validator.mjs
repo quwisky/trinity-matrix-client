@@ -335,7 +335,11 @@ const validatePackageScripts = (
   );
 
   for (const contract of snapshot.packageScripts) {
-    if (packageScripts[contract.name] !== contract.command) {
+    const packageCommand = packageScripts[contract.name]?.replace(
+      /^node scripts\/nx\.mjs run /u,
+      'nx run ',
+    );
+    if (packageCommand !== contract.command) {
       errors.push(`package script ${contract.name} drifted from the registry`);
     }
   }

@@ -202,6 +202,7 @@ describe('RoomDirectoryComponent', () => {
   });
 
   it('keeps the dialog open and toasts when a join fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const join = vi.fn(() => throwError(() => new Error('nope')));
     const { cmp, close, toastShow } = await build({ join });
 
@@ -213,6 +214,11 @@ describe('RoomDirectoryComponent', () => {
       'Could not join General. Try again.',
       expect.objectContaining({ variant: 'destructive' }),
     );
+    expect(warn).toHaveBeenCalledWith(
+      '[trinity] Matrix request failed',
+      expect.objectContaining({ operation: 'join room from directory' }),
+    );
+    warn.mockRestore();
   });
 
   it('releases a failed HTTP join and shows actionable retry guidance', async () => {

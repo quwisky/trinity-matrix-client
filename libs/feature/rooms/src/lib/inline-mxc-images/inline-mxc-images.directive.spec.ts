@@ -2,7 +2,7 @@ import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MediaService } from '@trinity/data-access/media';
 import { Subject } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InlineMxcImagesDirective } from './inline-mxc-images.directive';
 
 @Component({
@@ -18,6 +18,7 @@ class HostComponent {
 describe('InlineMxcImagesDirective', () => {
   let fixture: ComponentFixture<HostComponent>;
   let resolved: Subject<string>;
+  let sanitizerWarn: ReturnType<typeof vi.spyOn>;
   const media = {
     resolveMedia: vi.fn(),
     pin: vi.fn(),
@@ -25,6 +26,9 @@ describe('InlineMxcImagesDirective', () => {
   };
 
   beforeEach(async () => {
+    sanitizerWarn = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined);
     resolved = new Subject<string>();
     media.resolveMedia.mockReturnValue(resolved);
     await TestBed.configureTestingModule({
@@ -34,6 +38,13 @@ describe('InlineMxcImagesDirective', () => {
     fixture = TestBed.createComponent(HostComponent);
     fixture.detectChanges();
     await Promise.resolve();
+  });
+
+  afterEach(() => {
+    expect(sanitizerWarn).toHaveBeenCalledWith(
+      expect.stringContaining('sanitizing HTML stripped some content'),
+    );
+    sanitizerWarn.mockRestore();
   });
 
   it('resolves mxc through MediaService and pins the displayed blob', () => {

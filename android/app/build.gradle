@@ -27,11 +27,12 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
-}
-
-repositories {
-    flatDir{
-        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    packaging {
+        jniLibs {
+            // These AndroidX AARs already ship their native objects in the form we package.
+            // Asking AGP to strip them only emits "Unable to strip" and copies the same bytes.
+            keepDebugSymbols += ['**/libdatastore_shared_counter.so', '**/libimage_processing_util_jni.so', '**/libsurface_util_jni.so']
+        }
     }
 }
 

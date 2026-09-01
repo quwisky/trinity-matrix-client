@@ -60,8 +60,8 @@ previous build until you run `pnpm ios:sync`.
 
 Android builds need an Android SDK that Gradle can find. iOS builds need macOS with Xcode.
 Toolchain-backed verification is discoverable as
-`pnpm exec nx run trinity-android:verify-native` and
-`pnpm exec nx run trinity-ios:verify-native`. The latter cannot run on Linux; it performs
+`pnpm nx run trinity-android:verify-native` and
+`pnpm nx run trinity-ios:verify-native`. The latter cannot run on Linux; it performs
 an unsigned iPhone Simulator build on a macOS/Xcode host.
 
 ## Android end-to-end testing

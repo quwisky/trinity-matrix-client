@@ -158,6 +158,9 @@ describe('EditHistoryComponent', () => {
   });
 
   it('resolves custom emoji inside an earlier formatted version', async () => {
+    const sanitizerWarn = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined);
     const html =
       '<img class="mx-emoticon" data-mx-emoticon src="mxc://hs/wave" alt=":wave:">';
     const { container, media } = await build(
@@ -176,6 +179,10 @@ describe('EditHistoryComponent', () => {
     expect(
       (container.querySelector('img.mx-emoticon') as HTMLImageElement).src,
     ).toBe('blob:wave');
+    expect(sanitizerWarn).toHaveBeenCalledWith(
+      expect.stringContaining('sanitizing HTML stripped some content'),
+    );
+    sanitizerWarn.mockRestore();
   });
 
   // The dialog exists to answer "what changed", so it answers it without being asked.

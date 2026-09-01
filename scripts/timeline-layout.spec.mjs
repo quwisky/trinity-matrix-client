@@ -12,24 +12,35 @@ import { describe, expect, it } from 'vitest';
 
 const root = join(import.meta.dirname, '..');
 const read = (file) => readFileSync(join(root, file), 'utf8');
+const stylesheet = (file) =>
+  read(file)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|\s)\/\/.*$/gm, '$1');
+const template = (file) => read(file).replace(/<!--[\s\S]*?-->/g, '');
 
-const variables = read('apps/trinity/src/theme/variables.scss');
-const listCss = read(
+const variables = stylesheet('apps/trinity/src/theme/variables.scss');
+const listCss = stylesheet(
   'libs/feature/rooms/src/lib/message-list/_message-list-shared.scss',
 );
-const rowCss = read(
+const rowCss = stylesheet(
   'libs/feature/rooms/src/lib/message-row/message-row.component.scss',
 );
-const rowHtml = read(
+const rowHtml = template(
   'libs/feature/rooms/src/lib/message-row/message-row.component.html',
 );
-const composerCss = read(
+const replyPreviewCss = stylesheet(
+  'libs/feature/rooms/src/lib/message-reply-preview/message-reply-preview.component.scss',
+);
+const threadSummaryCss = stylesheet(
+  'libs/feature/rooms/src/lib/message-thread-summary/message-thread-summary.component.scss',
+);
+const composerCss = stylesheet(
   'libs/feature/rooms/src/lib/message-composer/message-composer.component.scss',
 );
-const composerHtml = read(
+const composerHtml = template(
   'libs/feature/rooms/src/lib/message-composer/message-composer.component.html',
 );
-const toolbarCss = read(
+const toolbarCss = stylesheet(
   'libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.scss',
 );
 
@@ -51,7 +62,13 @@ describe('modern timeline layout contracts', () => {
     expect(rowCss).toContain(
       '--message-body-indent: calc(40px + var(--trinity-density-message-column-gap));',
     );
-    expect(rowCss.match(/var\(--message-body-indent\)/g)?.length).toBe(4);
+    expect(rowCss.match(/var\(--message-body-indent\)/g)?.length).toBe(1);
+    expect(replyPreviewCss.match(/var\(--message-body-indent\)/g)?.length).toBe(
+      2,
+    );
+    expect(
+      threadSummaryCss.match(/var\(--message-body-indent\)/g)?.length,
+    ).toBe(1);
     // Precise-pointer floating actions do not consume the message's inline width or measured
     // height. The sole `:has()` track is scoped to the hybrid-touch accessibility override.
     expect(rowCss).toMatch(
@@ -65,6 +82,14 @@ describe('modern timeline layout contracts', () => {
       /\.msg__toolbar\s*\{[^}]*position:\s*absolute;[^}]*inset-inline-end:/s,
     );
     expect(rowCss).toMatch(/\.msg__toolbar\s*\{[^}]*translate:/s);
+  });
+
+  it('keeps extracted message actions large enough for coarse pointers', () => {
+    for (const childCss of [replyPreviewCss, threadSummaryCss]) {
+      expect(childCss).toMatch(
+        /@media \(pointer: coarse\)\s*\{\s*\.msg__target\s*\{[^}]*min-width:\s*var\(--trinity-interaction-target-min-size\);[^}]*min-height:\s*var\(--trinity-interaction-target-min-size\);/s,
+      );
+    }
   });
 
   it('keeps conversation prose on its dedicated readable type role', () => {

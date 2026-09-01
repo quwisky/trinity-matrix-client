@@ -184,7 +184,7 @@ runtime importing `feature-crypto`. See [libraries](libraries.md) for the bounda
 regenerate a component with the CLI rather than hand-authoring it:
 
 ```bash
-pnpm exec nx g @spartan-ng/cli:ui <name>
+pnpm nx g @spartan-ng/cli:ui <name>
 ```
 
 That is the whole workflow. The kit keeps upstream's own naming — `hlm` selectors, `Hlm*`
@@ -625,7 +625,7 @@ without a specificity war.
     the opaque tint, and each must cover every emitted variant:
 
     ```bash
-    pnpm exec nx build trinity
+    pnpm nx build trinity
     tr '}' '\n' < www/styles-*.css | grep 'text-destructive.*color:var(--destructive)'
     tr '}' '\n' < www/styles-*.css | grep 'bg-destructive'
     ```

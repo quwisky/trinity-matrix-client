@@ -234,7 +234,11 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
       }
     }
     for (const [script, command] of Object.entries(contract.packageScripts)) {
-      if (input.packageJson.scripts?.[script] !== command) {
+      const packageCommand = input.packageJson.scripts?.[script]?.replace(
+        /^node scripts\/nx\.mjs run /u,
+        'nx run ',
+      );
+      if (packageCommand !== command) {
         errors.push(`${script} must delegate to its Nx host target`);
       }
     }

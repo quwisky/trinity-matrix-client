@@ -61,6 +61,23 @@ vi.stubGlobal('matchMedia', (query: string) => ({
   dispatchEvent: () => false,
 }));
 
+// jsdom has no ResizeObserver. Most component specs only need the browser API to
+// exist so layout-aware dependencies can initialize; projects that assert resize
+// behavior replace this with a controllable observer in their own test setup.
+class NoopResizeObserver {
+  observe(): void {
+    // jsdom has no layout to observe.
+  }
+  unobserve(): void {
+    // jsdom has no layout to observe.
+  }
+  disconnect(): void {
+    // jsdom has no layout to observe.
+  }
+}
+globalThis.ResizeObserver =
+  NoopResizeObserver as unknown as typeof ResizeObserver;
+
 // jsdom HAS shipped PointerEvent since 27, so this is no longer a missing-feature shim.
 // It survives for its DEFAULTS. The native constructor follows the spec — `pointerType`
 // is '' and `isPrimary` false — while brain's BrnTooltip (>= 1.2.0) opens only for a

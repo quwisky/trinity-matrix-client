@@ -1,6 +1,7 @@
 import '../../../../test-setup.base';
 import { inject } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { provideTrnIcons } from '@trinity/components/foundations';
 import { RoomActionPermissionsService } from '@trinity/data-access/room-administration';
 import {
   ROOM_LIBRARY_GOVERNANCE_POLICY,
@@ -13,6 +14,7 @@ import { beforeEach } from 'vitest';
 beforeEach(() => {
   TestBed.configureTestingModule({
     providers: [
+      provideTrnIcons(),
       providePrivacyPreferenceSet(CONVERSATION_PRIVACY_PREFERENCES),
       {
         provide: ROOM_LIBRARY_GOVERNANCE_POLICY,
@@ -64,7 +66,5 @@ class TestResizeObserver {
     this.callback(entries, this as unknown as ResizeObserver);
   }
 }
-if (typeof globalThis.ResizeObserver === 'undefined') {
-  globalThis.ResizeObserver =
-    TestResizeObserver as unknown as typeof ResizeObserver;
-}
+globalThis.ResizeObserver =
+  TestResizeObserver as unknown as typeof ResizeObserver;

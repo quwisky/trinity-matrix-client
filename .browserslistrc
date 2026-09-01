@@ -8,8 +8,8 @@
 # You can see what browsers were selected by your queries by running:
 #   npx browserslist
 
-# These floors are Angular 22's own support policy, which it defines as
-# `baseline widely available on 2025-10-20` (@angular/build/src/utils/supported-browsers.js).
+# These floors are Angular 22.1's own support policy, which it defines as
+# `baseline widely available on 2026-05-07` (@angular/build/src/utils/supported-browsers.js).
 # Resolved, that query is exactly the set below — the build warns on any browser configured
 # here that falls outside it. Re-resolve and re-check after an Angular major upgrade:
 #   node -e "console.log(require('browserslist')('baseline widely available on <BASELINE_DATE>').join('\n'))"
@@ -17,10 +17,10 @@
 # The Android entries are not redundant: browserslist treats `and_chr`/`and_ff` as separate
 # from desktop Chrome/Firefox, so without them the Android WebView Trinity ships through
 # Capacitor is absent from the target set entirely.
-Chrome >=111
-ChromeAndroid >=111
-Firefox >=112
-FirefoxAndroid >=112
-Edge >=111
-Safari >=16.4
-iOS >=16.4
+Chrome >=119
+ChromeAndroid >=119
+Firefox >=119
+FirefoxAndroid >=119
+Edge >=119
+Safari >=17
+iOS >=17

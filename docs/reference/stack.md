@@ -19,7 +19,7 @@ correction itself leaving another row stale.
     plus `sharedGlobals`). This page, `package.json` and `pnpm-lock.yaml` are all
     outside that set, and `node_modules/*/package.json` is read at runtime where Nx
     never sees it — so the cache key only moves when a file under `scripts/` changes.
-    After editing this table run `pnpm exec nx test scripts --skip-nx-cache`. CI is
+    After editing this table run `pnpm nx test scripts --skip-nx-cache`. CI is
     unaffected: its runners are always cold.
 
 ## Runtimes

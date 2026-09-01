@@ -15,6 +15,39 @@ import { describe, expect, it, vi } from 'vitest';
  * the class of regression a `handleError(...)` unit test cannot detect.
  */
 describe('global error listeners', () => {
+  function dispatchHandled(event: Event, expectedError: Error): void {
+    const virtualConsole = (
+      window as unknown as {
+        _virtualConsole: {
+          emit(event: string, ...args: unknown[]): boolean;
+        };
+      }
+    )._virtualConsole;
+    const emit = virtualConsole.emit;
+    const captured: unknown[] = [];
+    virtualConsole.emit = function (
+      eventName: string,
+      ...args: unknown[]
+    ): boolean {
+      const error = args[0] as { type?: unknown; cause?: unknown } | undefined;
+      if (
+        eventName === 'jsdomError' &&
+        error?.type === 'unhandled-exception' &&
+        error.cause === expectedError
+      ) {
+        captured.push(error);
+        return false;
+      }
+      return emit.call(this, eventName, ...args);
+    };
+    try {
+      window.dispatchEvent(event);
+    } finally {
+      virtualConsole.emit = emit;
+    }
+    expect(captured.length).toBeGreaterThan(0);
+  }
+
   function handlerSpy() {
     const handleError = vi.fn();
     TestBed.configureTestingModule({
@@ -34,9 +67,12 @@ describe('global error listeners', () => {
     const promise = Promise.reject(reason);
     promise.catch(() => undefined); // the event is synthetic; don't leave a real rejection
 
-    window.dispatchEvent(
-      new PromiseRejectionEvent('unhandledrejection', { promise, reason }),
-    );
+    const event = new PromiseRejectionEvent('unhandledrejection', {
+      cancelable: true,
+      promise,
+      reason,
+    });
+    dispatchHandled(event, reason);
 
     // The RAW reason, not a `{ rejection }` envelope: that shape was zone.js's, and
     // anything unwrapping it is now reading a property that is never there.
@@ -47,7 +83,8 @@ describe('global error listeners', () => {
     const handleError = handlerSpy();
     const error = new Error('render failed');
 
-    window.dispatchEvent(new ErrorEvent('error', { error }));
+    const event = new ErrorEvent('error', { cancelable: true, error });
+    dispatchHandled(event, error);
 
     expect(handleError).toHaveBeenCalledWith(error);
   });

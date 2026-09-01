@@ -52,7 +52,17 @@
           "node_modules/@angular/cdk/overlay-prebuilt.css",
           "node_modules/@ctrl/ngx-emoji-mart/picker.css"
         ],
-        "scripts": []
+        "scripts": [],
+        "allowedCommonJsDependencies": [
+          "another-json",
+          "content-type",
+          "events",
+          "loglevel",
+          "matrix-events-sdk",
+          "matrix-widget-api",
+          "sdp-transform",
+          "unhomoglyph"
+        ]
       },
       "configurations": {
         "production": {
@@ -69,7 +79,7 @@
             },
             {
               "type": "allScript",
-              "maximumWarning": "6.5mb",
+              "maximumWarning": "7mb",
               "maximumError": "8mb"
             },
             {

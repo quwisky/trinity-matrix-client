@@ -907,6 +907,7 @@ describe('RoomsPage room / DM / invite actions', () => {
   });
 
   it('captures an invite failure and shows an error toast', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const shell = build();
     setRouteRoom('!r:hs');
     await settleWorkspace();
@@ -921,6 +922,11 @@ describe('RoomsPage room / DM / invite actions', () => {
       'Could not invite this user. Try again.',
       expect.objectContaining({ variant: 'destructive' }),
     );
+    expect(warn).toHaveBeenCalledWith(
+      '[trinity] Matrix request failed',
+      expect.objectContaining({ operation: 'invite user to room' }),
+    );
+    warn.mockRestore();
   });
 
   it('recovers from an HTTP invite failure and allows an immediate retry', async () => {

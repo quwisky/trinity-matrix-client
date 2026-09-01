@@ -30,7 +30,7 @@ A library answers to three different strings, and they are not interchangeable. 
 | Directory       | `libs/data-access/room-library`     | the filesystem                         |
 | Import alias    | `@trinity/data-access/room-library` | `paths` in `tsconfig.base.json`        |
 
-Nx takes the project name, so `pnpm exec nx test data-access-room-library` is the command to run
+Nx takes the project name, so `pnpm nx test data-access-room-library` is the command to run
 that library's specs. Source code takes the alias. In the
 tables below, the `Library` column is the directory and the `Alias` column is what you import.
 

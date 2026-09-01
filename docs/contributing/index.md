@@ -53,6 +53,7 @@ commands you can run locally, so nothing in CI is a black box.
 | Get the repo running for the first time       | [Getting started](getting-started.md)               |
 | Look up a command                             | [Commands](commands.md)                             |
 | Understand what proves a change correct       | [Testing](testing.md)                               |
+| Classify a validation warning                 | [Validation warning ledger](validation-warnings.md) |
 | Understand the system-test ownership model    | [End-to-end test architecture](e2e-architecture.md) |
 | Know the code style and commit rules          | [Conventions](conventions.md)                       |
 | Understand the CI jobs and how a release cuts | [CI and releases](ci-and-releases.md)               |
