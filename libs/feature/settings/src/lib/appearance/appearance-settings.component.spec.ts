@@ -1,5 +1,5 @@
-import { signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { signal, type Type } from '@angular/core';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import {
   AppearanceEffects,
   AppearancePreferences,
@@ -493,31 +493,35 @@ describe('AppearanceSettingsComponent', () => {
   });
 
   /** The `trn-switch` inside the labelled toggle with the given testid. */
-  function switchFor(fixture: unknown, testid: string) {
-    return (
-      fixture as { debugElement: { queryAll: (p: unknown) => unknown[] } }
-    ).debugElement
-      .queryAll(By.directive(TrnSwitchComponent))
-      .find((c) =>
-        (c as { nativeElement: HTMLElement }).nativeElement.closest(
-          `[data-testid=${testid}]`,
-        ),
-      ) as { componentInstance: TrnSwitchComponent } | undefined;
+  function componentFor<T>(
+    fixture: ComponentFixture<AppearanceSettingsComponent>,
+    directive: Type<T>,
+    matches: (element: HTMLElement) => boolean,
+  ): T | undefined {
+    const control = fixture.debugElement
+      .queryAll(By.directive(directive))
+      .find((candidate) => matches(candidate.nativeElement as HTMLElement));
+    return control?.componentInstance as T | undefined;
   }
 
-  function selectFor(fixture: unknown, testid: string) {
-    const control = (
-      fixture as { debugElement: { queryAll: (p: unknown) => unknown[] } }
-    ).debugElement
-      .queryAll(By.directive(TrnSelectComponent))
-      .find((control) =>
-        (control as { nativeElement: HTMLElement }).nativeElement.matches(
-          `[data-testid=${testid}]`,
-        ),
-      );
-    return (
-      control as { componentInstance: TrnSelectComponent<string> } | undefined
-    )?.componentInstance;
+  function switchFor(
+    fixture: ComponentFixture<AppearanceSettingsComponent>,
+    testid: string,
+  ): TrnSwitchComponent | undefined {
+    return componentFor(fixture, TrnSwitchComponent, (element) =>
+      Boolean(element.closest(`[data-testid=${testid}]`)),
+    );
+  }
+
+  function selectFor(
+    fixture: ComponentFixture<AppearanceSettingsComponent>,
+    testid: string,
+  ): TrnSelectComponent<string> | undefined {
+    return componentFor<TrnSelectComponent<string>>(
+      fixture,
+      TrnSelectComponent,
+      (element) => element.matches(`[data-testid=${testid}]`),
+    );
   }
 
   // Each switch is a separate binding, so a copy-paste slip (profile bound to
@@ -526,45 +530,28 @@ describe('AppearanceSettingsComponent', () => {
     showProfile.set(false);
     const { fixture } = await renderPage();
 
-    expect(
-      switchFor(
-        fixture,
-        'timeline-show-membership',
-      )!.componentInstance.checked(),
-    ).toBe(true);
-    expect(
-      switchFor(fixture, 'timeline-show-profile')!.componentInstance.checked(),
-    ).toBe(false);
-    expect(
-      switchFor(
-        fixture,
-        'timeline-show-room-changes',
-      )!.componentInstance.checked(),
-    ).toBe(true);
+    expect(switchFor(fixture, 'timeline-show-membership')!.checked()).toBe(
+      true,
+    );
+    expect(switchFor(fixture, 'timeline-show-profile')!.checked()).toBe(false);
+    expect(switchFor(fixture, 'timeline-show-room-changes')!.checked()).toBe(
+      true,
+    );
   });
 
   it('writes each timeline toggle to its own setter', async () => {
     const { fixture } = await renderPage();
 
-    switchFor(
-      fixture,
-      'timeline-show-profile',
-    )!.componentInstance.checkedChange.emit(false);
+    switchFor(fixture, 'timeline-show-profile')!.checkedChange.emit(false);
     expect(setShowProfile).toHaveBeenCalledWith(false);
     // The neighbouring switches must not move — they are separate preferences.
     expect(setShowMembership).not.toHaveBeenCalled();
     expect(setShowRoomChanges).not.toHaveBeenCalled();
 
-    switchFor(
-      fixture,
-      'timeline-show-membership',
-    )!.componentInstance.checkedChange.emit(false);
+    switchFor(fixture, 'timeline-show-membership')!.checkedChange.emit(false);
     expect(setShowMembership).toHaveBeenCalledWith(false);
 
-    switchFor(
-      fixture,
-      'timeline-show-room-changes',
-    )!.componentInstance.checkedChange.emit(false);
+    switchFor(fixture, 'timeline-show-room-changes')!.checkedChange.emit(false);
     expect(setShowRoomChanges).toHaveBeenCalledWith(false);
   });
   it('reflects and sets the formatting-toolbar preference', async () => {
@@ -572,9 +559,9 @@ describe('AppearanceSettingsComponent', () => {
     const { fixture } = await renderPage();
 
     const toggle = switchFor(fixture, 'composer-show-toolbar')!;
-    expect(toggle.componentInstance.checked()).toBe(false);
+    expect(toggle.checked()).toBe(false);
 
-    toggle.componentInstance.checkedChange.emit(true);
+    toggle.checkedChange.emit(true);
     expect(setShowFormattingToolbar).toHaveBeenCalledWith(true);
   });
 
@@ -585,9 +572,9 @@ describe('AppearanceSettingsComponent', () => {
     const { fixture } = await renderPage();
 
     const toggle = switchFor(fixture, 'composer-format-on-selection')!;
-    expect(toggle.componentInstance.checked()).toBe(false);
+    expect(toggle.checked()).toBe(false);
 
-    toggle.componentInstance.checkedChange.emit(true);
+    toggle.checkedChange.emit(true);
     expect(setFormatOnSelection).toHaveBeenCalledWith(true);
     expect(setShowFormattingToolbar).not.toHaveBeenCalled();
   });

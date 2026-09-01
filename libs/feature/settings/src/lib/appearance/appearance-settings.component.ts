@@ -26,7 +26,10 @@ import {
 } from '@trinity/data-access/room-library';
 import { isDateFormat, isTimeFormat } from '@trinity/util/matrix';
 import { CodeAppearanceBlockComponent } from './code-appearance-block.component';
-import { AppearancePreferenceFieldComponent } from './appearance-preference-field/appearance-preference-field.component';
+import {
+  AppearancePreferenceFieldComponent,
+  type AppearancePreferenceField,
+} from './appearance-preference-field/appearance-preference-field.component';
 import { AppearanceSettingsController } from './appearance-settings.controller';
 import { MessageGesturesBlockComponent } from './message-gestures-block.component';
 import { AppearancePreviewComponent } from './appearance-preview.component';
@@ -74,6 +77,24 @@ export class AppearanceSettingsComponent {
       label,
       testId: `theme-${value}`,
     }));
+  readonly themeField = {
+    axis: 'theme',
+    headingId: 'appearance-palette-heading',
+    testId: 'palette-select',
+    optionTestIdPrefix: 'palette',
+  } as const satisfies AppearancePreferenceField;
+  readonly densityField = {
+    axis: 'density',
+    headingId: 'appearance-density-heading',
+    testId: 'density-select',
+    optionTestIdPrefix: 'density',
+  } as const satisfies AppearancePreferenceField;
+  readonly textSizeField = {
+    axis: 'textSize',
+    headingId: 'appearance-text-size-heading',
+    testId: 'text-scale-select',
+    optionTestIdPrefix: 'text-scale',
+  } as const satisfies AppearancePreferenceField;
   readonly systemLines = inject(SystemLineSettingsService);
   readonly composer = inject(ComposerSettingsService);
   readonly format = inject(DateTimeFormatService);

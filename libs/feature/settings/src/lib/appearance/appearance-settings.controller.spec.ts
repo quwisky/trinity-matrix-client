@@ -10,11 +10,51 @@ import {
   PREFERENCE_STORAGE_ADAPTER,
   type PreferenceStorageAdapter,
 } from '@trinity/runtime/preferences';
-import { NEVER, of } from 'rxjs';
+import { NEVER, defer, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { AppearanceSettingsController } from './appearance-settings.controller';
 
 describe('AppearanceSettingsController', () => {
+  it('does not start a command while hydration is still reading preferences', () => {
+    const write = vi.fn<PreferenceStorageAdapter['write']>(() =>
+      of({ kind: 'completed' }),
+    );
+    let effectsSubscribed = false;
+    const run = vi.fn(() =>
+      defer(() => {
+        effectsSubscribed = true;
+        return NEVER;
+      }),
+    );
+    TestBed.configureTestingModule({
+      providers: [
+        AppearanceSettingsController,
+        provideAppearancePreferences(),
+        {
+          provide: PREFERENCE_STORAGE_ADAPTER,
+          useValue: {
+            read: () => NEVER,
+            write,
+          } satisfies PreferenceStorageAdapter,
+        },
+        {
+          provide: AppearanceEffects,
+          useValue: {
+            resolved: signal(undefined).asReadonly(),
+            run,
+          } satisfies Pick<AppearanceEffects, 'resolved' | 'run'>,
+        },
+      ],
+    });
+    const controller = TestBed.inject(AppearanceSettingsController);
+
+    expect(controller.hydrationBusy()).toBe(true);
+    controller.update('theme', 'amethyst');
+
+    expect(write).not.toHaveBeenCalled();
+    expect(effectsSubscribed).toBe(false);
+  });
+
   it('keeps the committed selection visible and retries the same failed candidate', () => {
     const write = vi
       .fn<PreferenceStorageAdapter['write']>()

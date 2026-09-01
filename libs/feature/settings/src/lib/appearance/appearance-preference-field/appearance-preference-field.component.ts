@@ -16,36 +16,48 @@ import {
   type AppearanceAxisKey,
 } from '../appearance-settings.controller';
 
+export interface AppearancePreferenceField {
+  readonly axis: AppearanceAxisKey;
+  readonly headingId: string;
+  readonly testId: string;
+  readonly optionTestIdPrefix: string;
+}
+
 /** One descriptor-owned Appearance select with local command feedback and retry. */
 @Component({
   selector: 'trn-appearance-preference-field',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './appearance-preference-field.component.html',
+  styleUrl: './appearance-preference-field.component.scss',
   imports: [TrnButton, TrnSelectComponent, SettingsFieldRowDirective],
 })
 export class AppearancePreferenceFieldComponent {
-  protected readonly controller = inject(AppearanceSettingsController);
+  private readonly controller = inject(AppearanceSettingsController);
 
-  readonly axis = input.required<AppearanceAxisKey>();
-  readonly headingId = input.required<string>();
-  readonly testId = input.required<string>();
-  readonly optionTestIdPrefix = input.required<string>();
-
-  protected readonly model = computed(() => this.controller.axes[this.axis()]);
+  protected readonly model = computed(
+    () => this.controller.axes[this.field().axis],
+  );
   protected readonly status = computed(
-    () => this.controller.status[this.axis()],
+    () => this.controller.status[this.field().axis],
   );
   protected readonly options = computed<readonly TrnSelectOption<string>[]>(
     () =>
       this.model().editor.options.map((option) => ({
         ...option,
-        testId: `${this.optionTestIdPrefix()}-${option.value}`,
+        testId: `${this.field().optionTestIdPrefix}-${option.value}`,
       })),
   );
+  protected readonly hydrationBusy = this.controller.hydrationBusy;
 
   protected update(value: string | null | undefined): void {
     if (value !== null && value !== undefined) {
-      this.controller.update(this.axis(), value);
+      this.controller.update(this.field().axis, value);
     }
   }
+
+  protected retry(): void {
+    this.controller.retry(this.field().axis);
+  }
+
+  readonly field = input.required<AppearancePreferenceField>();
 }

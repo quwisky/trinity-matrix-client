@@ -1,6 +1,9 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { SettingsGroupComponent } from '../shared/settings-group/settings-group.component';
-import { AppearancePreferenceFieldComponent } from './appearance-preference-field/appearance-preference-field.component';
+import {
+  AppearancePreferenceFieldComponent,
+  type AppearancePreferenceField,
+} from './appearance-preference-field/appearance-preference-field.component';
 
 /**
  * How code inside messages is displayed, as its own block on the Appearance page.
@@ -15,4 +18,17 @@ import { AppearancePreferenceFieldComponent } from './appearance-preference-fiel
   templateUrl: './code-appearance-block.component.html',
   imports: [AppearancePreferenceFieldComponent, SettingsGroupComponent],
 })
-export class CodeAppearanceBlockComponent {}
+export class CodeAppearanceBlockComponent {
+  readonly codeSizeField = {
+    axis: 'codeSize',
+    headingId: 'appearance-code-size-heading',
+    testId: 'code-scale-select',
+    optionTestIdPrefix: 'code-scale',
+  } as const satisfies AppearancePreferenceField;
+  readonly codeLinePresentationField = {
+    axis: 'codeLinePresentation',
+    headingId: 'appearance-code-lines-heading',
+    testId: 'code-lines-select',
+    optionTestIdPrefix: 'code-lines',
+  } as const satisfies AppearancePreferenceField;
+}

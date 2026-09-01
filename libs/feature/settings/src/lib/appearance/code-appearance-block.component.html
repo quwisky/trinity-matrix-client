@@ -3,16 +3,6 @@
   headingId="appearance-code-heading"
   description="Set code text independently while keeping it proportional to the app's text size."
 >
-  <trn-appearance-preference-field
-    axis="codeSize"
-    headingId="appearance-code-size-heading"
-    testId="code-scale-select"
-    optionTestIdPrefix="code-scale"
-  />
-  <trn-appearance-preference-field
-    axis="codeLinePresentation"
-    headingId="appearance-code-lines-heading"
-    testId="code-lines-select"
-    optionTestIdPrefix="code-lines"
-  />
+  <trn-appearance-preference-field [field]="codeSizeField" />
+  <trn-appearance-preference-field [field]="codeLinePresentationField" />
 </trn-settings-group>

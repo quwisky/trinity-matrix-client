@@ -21,8 +21,15 @@ test.describe('Settings', () => {
   configureSettingsSuite();
 
   test('toggles the app theme between dark and light', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
     await openSection(page, 'appearance');
     await page.getByTestId('theme-dark').click();
+    await expect.poll(() => hasDarkPalette(page)).toBe(true);
+
+    // ThemeService is still the startup owner until #387. Its earlier media listener must
+    // not overwrite the successfully committed descriptor when the OS changes underneath a
+    // fixed Mode during this migration slice.
+    await page.emulateMedia({ colorScheme: 'light' });
     await expect.poll(() => hasDarkPalette(page)).toBe(true);
 
     const paletteTrigger = page.getByRole('combobox', { name: 'Theme' });

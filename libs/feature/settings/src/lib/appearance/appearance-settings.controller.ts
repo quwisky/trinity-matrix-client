@@ -16,18 +16,12 @@ import { Subject, concat, defer, exhaustMap, finalize, merge, tap } from 'rxjs';
 
 export type AppearanceAxisKey = keyof AppearancePreferences['axes'];
 
-interface AppearanceAttempt {
-  readonly busy: boolean;
-  readonly failed: boolean;
-  readonly hasCandidate: boolean;
-  readonly candidate?: unknown;
-}
+type AppearanceAttempt =
+  | { readonly kind: 'idle' }
+  | { readonly kind: 'pending'; readonly candidate: unknown }
+  | { readonly kind: 'failed'; readonly candidate: unknown };
 
-const IDLE_ATTEMPT: AppearanceAttempt = Object.freeze({
-  busy: false,
-  failed: false,
-  hasCandidate: false,
-});
+const IDLE_ATTEMPT: AppearanceAttempt = Object.freeze({ kind: 'idle' });
 
 /**
  * Screen-scoped command and recovery model for the six Appearance axes.
@@ -78,7 +72,7 @@ export class AppearanceSettingsController {
       merge(
         this.effects.run(),
         this.hydrationRecoveryRequests.pipe(
-          exhaustMap(() => this.hydrate(true)),
+          exhaustMap(() => this.recoverFailedHydration()),
         ),
       ),
     )
@@ -87,40 +81,28 @@ export class AppearanceSettingsController {
   }
 
   update(key: AppearanceAxisKey, candidate: unknown): void {
-    if (this.attempts()[key].busy) {
+    if (this._hydrationBusy() || this.attempts()[key].kind === 'pending') {
       return;
     }
-    this.patchAttempt(key, {
-      busy: true,
-      failed: false,
-      hasCandidate: true,
-      candidate,
-    });
+    this.setAttempt(key, { kind: 'pending', candidate });
     this.axes[key]
       .set(candidate)
-      .pipe(
-        finalize(() => this.patchAttempt(key, { busy: false })),
-        takeUntilDestroyed(this.destroyRef),
-      )
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (outcome) => {
           if (outcome.kind === 'completed') {
-            this.patchAttempt(key, {
-              failed: false,
-              hasCandidate: false,
-              candidate: undefined,
-            });
+            this.setAttempt(key, IDLE_ATTEMPT);
           } else {
-            this.patchAttempt(key, { failed: true });
+            this.setAttempt(key, { kind: 'failed', candidate });
           }
         },
-        error: () => this.patchAttempt(key, { failed: true }),
+        error: () => this.setAttempt(key, { kind: 'failed', candidate }),
       });
   }
 
   retry(key: AppearanceAxisKey): void {
     const attempt = this.attempts()[key];
-    if (!attempt.busy && attempt.hasCandidate) {
+    if (attempt.kind === 'failed') {
       this.update(key, attempt.candidate);
     }
   }
@@ -131,14 +113,22 @@ export class AppearanceSettingsController {
     }
   }
 
-  private hydrate(recover = false) {
+  private hydrate() {
+    return this.trackHydration(() => this.appearance.hydrate());
+  }
+
+  private recoverFailedHydration() {
+    return this.trackHydration(() =>
+      this.appearance.recoverHydration(this.hydrationFailures),
+    );
+  }
+
+  private trackHydration(
+    hydrate: () => ReturnType<AppearancePreferences['hydrate']>,
+  ) {
     return defer(() => {
       this._hydrationBusy.set(true);
-      const hydration =
-        recover && this.hydrationFailures.length > 0
-          ? this.appearance.recoverHydration(this.hydrationFailures)
-          : this.appearance.hydrate();
-      return hydration.pipe(
+      return hydrate().pipe(
         tap((outcome) => {
           this.hydrationFailures =
             outcome.kind === 'partial' ? outcome.failures : [];
@@ -153,18 +143,15 @@ export class AppearanceSettingsController {
 
   private statusFor(key: AppearanceAxisKey) {
     return Object.freeze({
-      busy: computed(() => this.attempts()[key].busy),
-      failed: computed(() => this.attempts()[key].failed),
+      busy: computed(() => this.attempts()[key].kind === 'pending'),
+      failed: computed(() => this.attempts()[key].kind === 'failed'),
     });
   }
 
-  private patchAttempt(
-    key: AppearanceAxisKey,
-    patch: Partial<AppearanceAttempt>,
-  ): void {
+  private setAttempt(key: AppearanceAxisKey, attempt: AppearanceAttempt): void {
     this.attempts.update((attempts) => ({
       ...attempts,
-      [key]: { ...attempts[key], ...patch },
+      [key]: attempt,
     }));
   }
 }

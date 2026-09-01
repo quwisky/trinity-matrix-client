@@ -128,6 +128,7 @@ export interface TrnRadioOption<T> {
   template: `
     <hlm-radio-group
       [value]="value()"
+      [disabled]="disabled()"
       (valueChange)="onValueChange($event)"
       [attr.aria-labelledby]="ariaLabelledby()"
     >
@@ -137,7 +138,9 @@ export interface TrnRadioOption<T> {
           [class.trn-radio-option--selected]="option.value === value()"
           [attr.data-testid]="option.testId"
         >
-          <hlm-radio [value]="option.value"><hlm-radio-indicator /></hlm-radio>
+          <hlm-radio [value]="option.value" [disabled]="disabled()">
+            <hlm-radio-indicator />
+          </hlm-radio>
           {{ option.label }}
         </label>
       }
@@ -148,6 +151,7 @@ export class TrnRadioGroupComponent<T> {
   readonly variant = input<TrnRadioGroupVariant>('list');
   readonly options = input.required<readonly TrnRadioOption<T>[]>();
   readonly value = input<T | null>(null);
+  readonly disabled = input(false);
 
   /** Points at the heading that names the group. */
   readonly ariaLabelledby = input<string | null>(null, {

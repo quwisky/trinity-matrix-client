@@ -43,6 +43,11 @@ System colour-scheme changes therefore have no observable effect under an explic
 Mode, and a failed preference write cannot change resolved or rendered Appearance because the
 Preferences Store has not committed it.
 
+During the routed-screen migration slice, the document adapter idempotently reasserts a fixed Mode
+after system-colour events because the earlier `ThemeService` startup listener still shares those
+root carriers until the Application Runtime slice removes it. This compatibility reconciliation
+does not publish new resolved state or invoke native chrome under a fixed Mode.
+
 Default values remain stylesheet-owned. The document adapter removes the optional Theme, text
 size, density, code-size, and code-line carriers at their defaults; light Mode removes the dark
 class. Concrete startup and native-host bindings remain part of the staged migration, so this

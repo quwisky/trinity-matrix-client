@@ -91,6 +91,8 @@ All notable changes to this project are documented here. The format is based on
   text size, density, code size, and code-line presentation keep the previous choice visible until
   persistence succeeds. A failed save shows Retry beside that control, while a restore problem
   produces one warning and repairs only the affected defaults without overwriting the other axes.
+  Controls wait for hydration before accepting changes, and a fixed Mode remains authoritative
+  while the legacy startup listener is removed in the next migration step.
 
 - **Appearance rendering now has a safe boundary.** Mode, Theme, text-size, density, and code
   display updates reach the page only after they are saved, and a system light/dark change is

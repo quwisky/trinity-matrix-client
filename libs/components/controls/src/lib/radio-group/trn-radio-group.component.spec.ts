@@ -21,6 +21,7 @@ const OPTIONS: readonly TrnRadioOption<string>[] = [
       variant="segmented"
       [options]="options"
       [value]="value()"
+      [disabled]="disabled()"
       (valueChange)="value.set($event)"
     />
   `,
@@ -28,6 +29,7 @@ const OPTIONS: readonly TrnRadioOption<string>[] = [
 class HostComponent {
   readonly options = OPTIONS;
   readonly value = signal('system');
+  readonly disabled = signal(false);
 }
 
 describe('TrnRadioGroupComponent', () => {
@@ -70,6 +72,17 @@ describe('TrnRadioGroupComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.componentInstance.value()).toBe('light');
+  });
+
+  it('forwards disabled to every radio option', async () => {
+    const { container, fixture } = await render(HostComponent);
+
+    fixture.componentInstance.disabled.set(true);
+    fixture.detectChanges();
+
+    expect(container.querySelectorAll('hlm-radio[data-disabled]')).toHaveLength(
+      OPTIONS.length,
+    );
   });
 
   it('marks the active option in the segmented presentation', async () => {

@@ -1,7 +1,7 @@
 <div trnSettingsFieldRow>
   <span class="min-w-0">
     <strong
-      [id]="headingId()"
+      [id]="field().headingId"
       class="block text-sm font-semibold text-[var(--trinity-text-bright)]"
       >{{ model().editor.label }}</strong
     >
@@ -11,20 +11,20 @@
   </span>
   <div class="min-w-0">
     <trn-select
-      [attr.data-testid]="testId()"
-      [aria-labelledby]="headingId()"
+      [attr.data-testid]="field().testId"
+      [aria-labelledby]="field().headingId"
       [placeholder]="'Select ' + model().editor.label.toLowerCase()"
       triggerClass="w-full"
       [options]="options()"
       [value]="model().value()"
-      [disabled]="status().busy()"
+      [disabled]="hydrationBusy() || status().busy()"
       (valueChange)="update($event)"
     />
     @if (status().failed()) {
       <div
         role="alert"
         class="mt-2 flex flex-wrap items-center justify-end gap-2 text-13 text-danger"
-        [attr.data-testid]="testId() + '-failure'"
+        [attr.data-testid]="field().testId + '-failure'"
       >
         <span>This choice could not be saved.</span>
         <button
@@ -32,8 +32,8 @@
           type="button"
           variant="outline"
           size="sm"
-          [attr.data-testid]="testId() + '-retry'"
-          (click)="controller.retry(axis())"
+          [attr.data-testid]="field().testId + '-retry'"
+          (click)="retry()"
         >
           Retry
         </button>

@@ -461,14 +461,17 @@ Resolved Appearance policy is platform-neutral. `resolveAppearance()` combines t
 axes with a system light/dark value, and `AppearanceEffects.run()` is the cold lifetime that owns
 system-Mode observation and imperative projection. The browser document adapter alone owns every
 root carrier in the table above. Native chrome receives only `{ mode }`, so Theme, sizing,
-density, and code presentation never cross that boundary. A system colour-scheme change can update
-the document and native chrome only while committed Mode is `system`; an explicit light or dark
-Mode makes that input inert. Preference Store publishes only successful writes, so rejected
-persistence never changes resolved or rendered Appearance.
+density, and code presentation never cross that boundary. A system colour-scheme change updates
+resolved Appearance and native chrome only while committed Mode is `system`; an explicit light or
+dark Mode keeps both inert. Until Application Runtime removes the earlier `ThemeService` listener
+in the next migration slice, the document effect idempotently reasserts the same committed carriers
+after that listener runs so it cannot overwrite a fixed Mode. Preference Store publishes only
+successful writes, so rejected persistence never changes resolved or rendered Appearance.
 
 Settings consumes those six axes through one screen-scoped controller. Labels, descriptions and
 options come from descriptor editor metadata; controls invoke descriptor-backed commands rather
-than `ThemeService` setters. A pending or failed command continues to render the committed value,
+than `ThemeService` setters. All six remain disabled until hydration settles, so a write cannot race
+a current or predecessor-key read. A pending or failed command continues to render the committed value,
 and failure adds an inline Retry beside that control. The screen displays one warning for partial
 hydration and can restore only the affected defaults. As an incremental migration seam, the routed
 screen currently owns hydration and the cold effect subscription for its own lifetime; Application

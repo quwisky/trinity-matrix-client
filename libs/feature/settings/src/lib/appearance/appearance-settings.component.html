@@ -50,6 +50,7 @@
       aria-labelledby="appearance-mode-heading"
       [options]="themeOptions"
       [value]="appearance.axes.mode.value()"
+      [disabled]="appearance.hydrationBusy() || appearance.status.mode.busy()"
       (valueChange)="onThemeChange($event)"
     />
     <p class="text-13 text-[var(--trinity-text-muted)]">
@@ -74,12 +75,7 @@
         </button>
       </div>
     }
-    <trn-appearance-preference-field
-      axis="theme"
-      headingId="appearance-palette-heading"
-      testId="palette-select"
-      optionTestIdPrefix="palette"
-    />
+    <trn-appearance-preference-field [field]="themeField" />
   </trn-settings-group>
 
   <trn-settings-group
@@ -88,18 +84,8 @@
     description="Density changes spacing while accessible targets stay the same size."
     data-testid="appearance-layout"
   >
-    <trn-appearance-preference-field
-      axis="density"
-      headingId="appearance-density-heading"
-      testId="density-select"
-      optionTestIdPrefix="density"
-    />
-    <trn-appearance-preference-field
-      axis="textSize"
-      headingId="appearance-text-size-heading"
-      testId="text-scale-select"
-      optionTestIdPrefix="text-scale"
-    />
+    <trn-appearance-preference-field [field]="densityField" />
+    <trn-appearance-preference-field [field]="textSizeField" />
   </trn-settings-group>
 
   <trn-code-appearance-block />
